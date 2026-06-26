@@ -162,8 +162,11 @@ import EditorPane, { stubAddStyleMergeRequest } from "./EditorPane";
 import type { PaneState, EditorPaneViewPrefs, EditorPaneMenuBarBundle } from "./EditorPane";
 import {
   buildEditorPaneViewPrefs,
+  EMPTY_SECTION_PATHS,
+  EMPTY_ORPHANED_FOOTNOTES,
   type EditorMutationHandlers,
   type EditorPaneViewDerivations,
+  type EditorPaneSectionPaths,
 } from "./editor-layout/build-editor-pane-view-prefs";
 import { SplitWithCode } from "./editor-layout/split-with-code";
 import { FULL_CHROME } from "./editor-layout/chrome-config";
@@ -2817,7 +2820,6 @@ export default function EditorLayout() {
   // main app and the Reader. Memoized so the builder's `useMemo` below stays
   // referentially stable across renders.
   const editorMutationHandlers = useMemo<EditorMutationHandlers>(() => ({
-    orphanedFootnotes,
     onEditOrphan: handleEditOrphan,
     onDeleteOrphan: handleDeleteOrphan,
     onEditOrphanTitle: handleEditOrphanTitle,
@@ -2841,7 +2843,6 @@ export default function EditorLayout() {
     setCardArchiveView,
     setSuppressArchiveAtomWarning,
   }), [
-    orphanedFootnotes,
     handleEditOrphan,
     handleDeleteOrphan,
     handleEditOrphanTitle,
@@ -2871,10 +2872,6 @@ export default function EditorLayout() {
   const editorPaneViewDerivations = useMemo<EditorPaneViewDerivations>(() => ({
     isResizingPanels,
     focusState: focusMode.state,
-    activeSectionPath: currentSectionPath,
-    activeParTitleIndex: currentParTitleIndex,
-    mirrorSectionPath,
-    mirrorParTitleIndex,
     zenMode: zenModeOn,
     zenLeftMargin,
     zenRightMargin,
@@ -2887,10 +2884,6 @@ export default function EditorLayout() {
   }), [
     isResizingPanels,
     focusMode.state,
-    currentSectionPath,
-    currentParTitleIndex,
-    mirrorSectionPath,
-    mirrorParTitleIndex,
     zenModeOn,
     zenLeftMargin,
     zenRightMargin,
@@ -2902,15 +2895,64 @@ export default function EditorLayout() {
     cardFloatZIndex,
   ]);
 
+  // Phase 5a: the four scroll-churning section-path fields, isolated into a
+  // tiny memo. The active pane's bundle (`editorPaneViewPrefs`) folds these in
+  // and so re-identifies on every scroll — which is fine, only the active
+  // (visible) pane consumes them. Inactive keep-alive panes get the separate
+  // `editorPaneViewPrefsInactive` bundle (EMPTY_SECTION_PATHS) whose identity
+  // is constant across a scroll/switch, so `React.memo(EditorPane)` bails for
+  // them. Consumers still read `viewPrefs.activeSectionPath` etc. unchanged.
+  const editorPaneSectionPaths = useMemo<EditorPaneSectionPaths>(
+    () => ({
+      activeSectionPath: currentSectionPath,
+      activeParTitleIndex: currentParTitleIndex,
+      mirrorSectionPath,
+      mirrorParTitleIndex,
+    }),
+    [
+      currentSectionPath,
+      currentParTitleIndex,
+      mirrorSectionPath,
+      mirrorParTitleIndex,
+    ],
+  );
+
   // Assemble the bundle through the SAME builder the Reader uses, so the two
   // surfaces share one view-state engine and the Editor/Reader delta is the
   // single named `editorMutationHandlers` set above.
+  // The ACTIVE pane's bundle — folds in live section paths (Phase 5a), so it
+  // re-identifies on every scroll. Only the visible pane reads it, so that
+  // churn is intentional and harmless.
   const editorPaneViewPrefs: EditorPaneViewPrefs = useMemo(
     () =>
       buildEditorPaneViewPrefs(
         viewPrefsResult,
         editorMutationHandlers,
         editorPaneViewDerivations,
+        editorPaneSectionPaths,
+      ),
+    [
+      viewPrefsResult,
+      editorMutationHandlers,
+      editorPaneViewDerivations,
+      editorPaneSectionPaths,
+    ],
+  );
+
+  // The INACTIVE (hidden keep-alive) panes' bundle — identical EXCEPT it pins
+  // section paths to EMPTY_SECTION_PATHS, so its identity is constant across a
+  // scroll/switch (it depends only on the stable engine + derivations, NOT on
+  // the churning section paths). Passing this to inactive panes keeps their
+  // `viewPrefs` prop identity-stable so `React.memo(EditorPane)` bails for them
+  // (Phase 5d). Hidden panes don't surface a breadcrumb/Outline highlight, so
+  // empty section paths are correct for them.
+  const editorPaneViewPrefsInactive: EditorPaneViewPrefs = useMemo(
+    () =>
+      buildEditorPaneViewPrefs(
+        viewPrefsResult,
+        editorMutationHandlers,
+        editorPaneViewDerivations,
+        EMPTY_SECTION_PATHS,
       ),
     [viewPrefsResult, editorMutationHandlers, editorPaneViewDerivations],
   );
@@ -3083,6 +3125,11 @@ export default function EditorLayout() {
   const handleEditorPaneActivate = useCallback(() => {
     if (currentDocId) activateDocPane(currentDocId);
   }, [currentDocId, activateDocPane]);
+
+  // Phase 5c: stable handler so the inline `() => setAiWindowOpen(false)` lambda
+  // doesn't give every pane a fresh `onAiWindowClose` prop each render (which
+  // would defeat `React.memo(EditorPane)`). Passed only to the active pane.
+  const handleAiWindowClose = useCallback(() => setAiWindowOpen(false), []);
 
   const selectionsForStrip = useMemo(
     () => ({
@@ -3703,14 +3750,23 @@ export default function EditorLayout() {
                           }
                           onPaneStateChange={getOnPaneStateChange(slotDocId)}
                           pdfView={isActive && pdfView}
-                          onTogglePdfView={togglePdfView}
+                          onTogglePdfView={isActive ? togglePdfView : undefined}
                           codeView={isActive && codeView}
-                          onToggleCodeView={toggleCodeView}
+                          onToggleCodeView={isActive ? toggleCodeView : undefined}
                           placements={prefs.placements}
-                          viewPrefs={editorPaneViewPrefs}
-                          menuBar={editorPaneMenuBar}
+                          viewPrefs={
+                            isActive
+                              ? editorPaneViewPrefs
+                              : editorPaneViewPrefsInactive
+                          }
+                          orphanedFootnotes={
+                            isActive ? orphanedFootnotes : EMPTY_ORPHANED_FOOTNOTES
+                          }
+                          menuBar={isActive ? editorPaneMenuBar : undefined}
                           aiWindowOpen={isActive && aiWindowOpen}
-                          onAiWindowClose={() => setAiWindowOpen(false)}
+                          onAiWindowClose={
+                            isActive ? handleAiWindowClose : undefined
+                          }
                           highlightText={isActive ? highlightText : undefined}
                           highlightRange={
                             isActive ? effectiveHighlightRange : undefined
@@ -3732,7 +3788,7 @@ export default function EditorLayout() {
                           }
                           expandError={expandError}
                           toggleErrorExpanded={toggleErrorExpanded}
-                          onJumpToError={jumpToError}
+                          onJumpToError={isActive ? jumpToError : undefined}
                         />
                       </EditorChromeProvider>
                     }

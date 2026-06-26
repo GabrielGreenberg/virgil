@@ -352,14 +352,24 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     [update],
   );
 
-  return {
-    state,
-    band,
-    activate,
-    deactivate,
-    toggleLock,
-    moveTo,
-    expandTo,
-    snapBoundary,
-  };
+  // Memoized so the returned object has a STABLE identity across renders — it
+  // re-identifies only when `state`/`band` change (both rare), never on a plain
+  // re-render. Consumers (useFocusActions' handlers → editorMutationHandlers)
+  // depend on this object; an unmemoized fresh-every-render literal made those
+  // handlers churn every render, defeating React.memo(EditorPane) in the
+  // multi-doc keep-alive cascade (Phase 5). All members are individually stable
+  // (band = useMemo; the six actions = useCallback; state = useState).
+  return useMemo(
+    () => ({
+      state,
+      band,
+      activate,
+      deactivate,
+      toggleLock,
+      moveTo,
+      expandTo,
+      snapBoundary,
+    }),
+    [state, band, activate, deactivate, toggleLock, moveTo, expandTo, snapBoundary],
+  );
 }

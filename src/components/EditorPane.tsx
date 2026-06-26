@@ -47,6 +47,7 @@
 
 import {
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -711,6 +712,18 @@ export interface EditorPaneProps {
   viewPrefs?: EditorPaneViewPrefs;
 
   /**
+   * Orphaned footnotes (in-text callout deleted, body preserved) for THIS
+   * doc. Phase 5b split this OUT of the shared `viewPrefs` bundle: it was a
+   * per-doc shell `useState` whose churn on a paper switch gave `viewPrefs` a
+   * fresh identity and defeated `React.memo(EditorPane)`. The main app passes
+   * the live list for the active pane and a stable empty array for inactive
+   * keep-alive panes; the Reader omits it (no orphans). EditorPane injects it
+   * back into the bundle via `effectiveViewPrefs` so every downstream
+   * `viewPrefs.orphanedFootnotes` read is unchanged.
+   */
+  orphanedFootnotes?: import("@/lib/types").OrphanedFootnote[];
+
+  /**
    * Optional adornment rendered just inboard of the left `PaneRail`,
    * directly outboard of the editor column. The Library Reader uses
    * this slot to mount its `PageScrollStrip` (the page-mark navigator)
@@ -773,11 +786,23 @@ export interface EditorPaneProps {
 const EMPTY_LATEX_ERRORS: LatexError[] = [];
 const EMPTY_STRING_MAP: Map<string, string> = new Map();
 const EMPTY_STRING_SET: Set<string> = new Set();
+// Stable empty orphaned-footnote list — the default for the `orphanedFootnotes`
+// prop (Reader omits it; inactive panes pass a stable empty array) so the
+// destructured value keeps a constant identity (Phase 5b).
+const EMPTY_ORPHANS: import("@/lib/types").OrphanedFootnote[] = [];
 // `noop` is the existing module-scope stable no-op (declared above for
 // PaneState stubs); reused here for the optional error-prop defaults.
 const noopSetSelectedErrorId: Dispatch<SetStateAction<string | null>> = () => {};
 
-const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane(
+// Phase 5d: `memo`-wrapped so that, in the multi-doc keep-alive cascade, a
+// warm paper↔paper switch re-renders ONLY the newly-active pane — the inactive
+// (hidden) panes bail with the DEFAULT shallow comparison (NOT a custom
+// comparator: `() => true` would freeze the active pane). This is sound ONLY
+// because Phases 5a–5c made every prop passed to an inactive pane
+// identity-stable across a switch (gated `isActive ? real : undefined`, stable
+// module constants, ref-cached per-slot callbacks, and the split-out
+// `editorPaneViewPrefsInactive` bundle).
+const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function EditorPane(
   {
     docId,
     initialContent,
@@ -795,6 +820,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     onToggleCodeView,
     placements,
     viewPrefs,
+    orphanedFootnotes = EMPTY_ORPHANS,
     leftMarginPrelude,
     menuBar,
     aiWindowOpen = false,
@@ -1104,7 +1130,21 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // orphan fields of `viewPrefs` are never touched on either path.
   const lifecycleFlagOn = isInlineAtomLifecycleOn();
   const effectiveViewPrefs = useMemo(() => {
-    if (!viewPrefs || !lifecycleFlagOn) return viewPrefs;
+    if (!viewPrefs) return viewPrefs;
+    // Phase 5b: the orphan ARRAY no longer rides the shared `viewPrefs`
+    // bundle (its per-doc churn busted the memo). The builder leaves it as the
+    // stable empty default; we inject the live per-doc list from the dedicated
+    // `orphanedFootnotes` prop here so every downstream
+    // `viewPrefs.orphanedFootnotes` read is unchanged. The Reader passes no
+    // prop (defaults to EMPTY_ORPHANS), preserving its empty list.
+    if (!lifecycleFlagOn) {
+      // Flag OFF (default): legacy event web + the per-doc prop drive the
+      // panel. Only the orphan ARRAY is swapped in; the edit/delete handlers
+      // and every non-orphan field pass through byte-identically.
+      return { ...viewPrefs, orphanedFootnotes };
+    }
+    // Flag ON: the SIDECAR store is the single source for both the list and
+    // the edit/delete handlers (W2 cutover).
     return {
       ...viewPrefs,
       orphanedFootnotes: orphanedFootnotesStore.orphans,
@@ -1112,7 +1152,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       onDeleteOrphan: orphanedFootnotesStore.clearOrphan,
       onEditOrphanTitle: orphanedFootnotesStore.editOrphanTitle,
     };
-  }, [viewPrefs, lifecycleFlagOn, orphanedFootnotesStore]);
+  }, [viewPrefs, orphanedFootnotes, lifecycleFlagOn, orphanedFootnotesStore]);
 
   // W2d (T4 D6 seam) — the card-lifecycle reconciler. Consumes the
   // `card-deleted` / `card-morphed` signal `runCardLifecycleEvent` publishes and
@@ -4103,8 +4143,32 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // moves `useDocumentStyle` (for `addStyleMergeRequest`) and the
   // revisions hook into EditorPane and replaces the remaining stubs.
   // The Reader doesn't pass `onPaneStateChange`; the call short-circuits.
+  //
+  // Phase 5e: gate the bubble on readiness + visibility. On a warm switch the
+  // newly-active doc's per-doc slices (compile/AI/sidecar hooks) settle over
+  // several renders; an ungated bubble fires once per settle, each firing a
+  // `setPaneStateByDocId` → an EditorLayout render → the render multiplier.
+  // Suppressing the pre-ready settling burst (NOT with a timer — `isVisible`,
+  // `editor`, and the existing `allCardSidecarsLoaded` readiness predicate)
+  // collapses it to the settled emissions. This adds NO per-keystroke work:
+  // the effect's deps are structural slices (not keystroke-driven), and an
+  // inactive/hidden pane (`!isVisible`) simply doesn't emit. Once ready the
+  // effect still fires on every genuine post-ready change.
   useEffect(() => {
-    if (!onPaneStateChange) return;
+    // Hold the bubble on a sidecar LOAD ERROR (corrupt JSON / FSA glitch):
+    // `allCardSidecarsLoaded` flips true even on error (the read terminated),
+    // but the collections are non-authoritative. Mirror the load-reconcile and
+    // linked-anchor reaper, which both gate on `!anyCardSidecarLoadError` to
+    // avoid acting on a failed load. Without this the bubble would push
+    // empty/stale collections to EditorLayout until a manual reload.
+    if (
+      !onPaneStateChange ||
+      !isVisible ||
+      !editor ||
+      !allCardSidecarsLoaded ||
+      anyCardSidecarLoadError
+    )
+      return;
     onPaneStateChange({
       editor,
       editorRef: innerRef,
@@ -4145,6 +4209,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     });
   }, [
     onPaneStateChange,
+    isVisible,
+    allCardSidecarsLoaded,
+    anyCardSidecarLoadError,
     editor,
     searchHighlightRange,
     aiRequestsHook.requests,
@@ -6013,7 +6080,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       </EditorRefProvider>
     </EditorChromeProvider>
   );
-});
+}));
 
 
 export default EditorPane;
