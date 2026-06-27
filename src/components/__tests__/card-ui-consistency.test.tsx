@@ -110,6 +110,46 @@ describe("G3: PanelCard stamps --link-anchor-color from theme.accent", () => {
   });
 });
 
+describe("Omni 'dim at rest': PanelCard selection marker + CSS contract", () => {
+  it("PanelCard stamps `data-selected` on the card root ONLY when selected", () => {
+    const theme = CARD_THEMES.note;
+    const sel = render(
+      <PanelCard theme={theme} selected kind="note" cardKey="float:card:note:s1">
+        <div>body</div>
+      </PanelCard>,
+    );
+    const selRoot = sel.container.querySelector("[data-card]") as HTMLElement;
+    // Present (empty value) when selected → the omni-dim CSS exempts it via
+    // `[data-omni-entry]:not([data-selected])`, preserving the selected look.
+    expect(selRoot.hasAttribute("data-selected")).toBe(true);
+    cleanup();
+
+    const unsel = render(
+      <PanelCard theme={theme} selected={false} kind="note" cardKey="float:card:note:u1">
+        <div>body</div>
+      </PanelCard>,
+    );
+    const unselRoot = unsel.container.querySelector("[data-card]") as HTMLElement;
+    expect(unselRoot.hasAttribute("data-selected")).toBe(false);
+  });
+
+  it("globals.css inverts omni cards under data-omni-dim, exempting selected", () => {
+    const css = readFileSync(
+      resolve(__dirname, "../../app/globals.css"),
+      "utf8",
+    );
+    // Resting recede + hover brighten, both scoped to omni cards only and
+    // skipping the selected card. (jsdom can't compute stylesheet styles, so
+    // this pins the rule shape at the source level.)
+    expect(css).toMatch(
+      /\[data-omni-dim="true"\]\s+\[data-omni-entry\]:not\(\[data-selected\]\)\s*\{/,
+    );
+    expect(css).toMatch(
+      /\[data-omni-dim="true"\]\s+\[data-omni-entry\]:not\(\[data-selected\]\):hover\s*\{/,
+    );
+  });
+});
+
 describe("T2: in-card tier primitives", () => {
   it("CardMetaLabel renders the .card-meta-label token", () => {
     const { container } = render(<CardMetaLabel>Type</CardMetaLabel>);

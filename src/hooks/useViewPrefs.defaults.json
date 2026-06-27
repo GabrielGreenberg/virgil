@@ -93,6 +93,7 @@
   "showMarginalia": true,
   "hiddenMarginaliaTypes": [],
   "showHeadingLabels": true,
+  "omniDimResting": true,
   "dividerLevels": [
     2,
     4,

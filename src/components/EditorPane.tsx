@@ -497,6 +497,7 @@ export interface EditorPaneMenuBarBundle {
   showParTitles: boolean;
   showLatexComments: boolean;
   showHeadingLabels: boolean;
+  omniDimResting: boolean;
   showMarginalia: boolean;
   hiddenMarginaliaTypes: Set<import("./MenuBar").MarginaliaType>;
   hiddenHighlightTypes: Set<import("@/hooks/useViewPrefs").HighlightType>;
@@ -510,6 +511,7 @@ export interface EditorPaneMenuBarBundle {
   onToggleParTitles: () => void;
   onToggleLatexComments: () => void;
   toggleHeadingLabels: () => void;
+  onToggleOmniDimResting: () => void;
   toggleMarginalia: () => void;
   toggleMarginaliaType: (type: import("./MenuBar").MarginaliaType) => void;
   toggleHighlightType: (type: import("@/hooks/useViewPrefs").HighlightType) => void;
@@ -5136,6 +5138,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     onToggleLatexComments={menuBar.onToggleLatexComments}
                     showHeadingLabels={menuBar.showHeadingLabels}
                     onToggleHeadingLabels={menuBar.toggleHeadingLabels}
+                    omniDimResting={menuBar.omniDimResting}
+                    onToggleOmniDimResting={menuBar.onToggleOmniDimResting}
                     onOpenPreferences={menuBar.onOpenPreferences}
                     editorSplit={menuBar.editorSplit}
                     onToggleEditorSplit={menuBar.toggleEditorSplit}
@@ -6373,6 +6377,7 @@ function PaneRail({
     const omniNode: React.ReactNode = (
         <OmniHost
           side={side}
+          omniDimResting={viewPrefs.prefs.omniDimResting}
           footnotes={footnoteInfos}
           orphanedFootnotes={viewPrefs.orphanedFootnotes}
           handleEditFootnote={onEditFootnote}
