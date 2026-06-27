@@ -3186,10 +3186,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     }
   }, [documentStyleHook.styleId]);
 
-  // ─── Docked MenuBar wrapper ref ────────────────────────────────────
-  // Ref to the docked MenuBar's wrapper so the `menubarWidth` observer
-  // below can publish `--menubar-width` for the section lozenge's max-width.
-  const dockedMenuBarRef = useRef<HTMLDivElement | null>(null);
   // Refs for the custom EditorScrollbar overlay. `editorColRef` points
   // at the editor-pane-column wrapper; `rowScrollRef` resolves to the
   // nearest scrolling ancestor of editor-pane-root after mount.
@@ -3298,45 +3294,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     return () => clearTimeout(t);
   }, [isVisible]);
 
-  // Track the docked MenuBar's rendered width so the section lozenge can
-  // compute a max-width that keeps it from crossing into the centered
-  // MenuBar's column. Exposed as `--menubar-width` on editor-pane-column.
-  // Read width synchronously on mount so it's set even before the
-  // ResizeObserver's initial async callback (which Strict Mode cleanup
-  // would otherwise cancel).
-  const [menubarWidth, setMenubarWidth] = useState(0);
-  useEffect(() => {
-    // Keep a hidden (display:none) pane INERT for menubar-width tracking. Two
-    // hide-flip paths used to fire a `setMenubarWidth` self-render on every warm
-    // paper-switch, for a lozenge max-width nobody can see while hidden:
-    //  (1) the docked MenuBar's ResizeObserver delivers a 0-width contentRect
-    //      when the slot goes display:none; and
-    //  (2) this effect re-runs because Phase 5 gates `menuBar` to `undefined`
-    //      for inactive panes, so the docked MenuBar unmounts, `el` becomes
-    //      null, and the `!el` branch wrote `setMenubarWidth(0)`.
-    // Gate EVERY write on `isVisibleRef`: a hidden pane retains its last visible
-    // width, and the display:none→flex transition on re-show (menuBar returns,
-    // the element re-measures) restores it. Extends the "hidden panes do zero
-    // render work" invariant.
-    const visible = isVisibleRef.current;
-    const el = dockedMenuBarRef.current;
-    if (!el) {
-      if (visible) setMenubarWidth(0);
-      return;
-    }
-    if (visible) {
-      setMenubarWidth(el.getBoundingClientRect().width);
-    }
-    const ro = new ResizeObserver((entries) => {
-      if (!isVisibleRef.current) return;
-      for (const entry of entries) {
-        setMenubarWidth(entry.contentRect.width);
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [menuBar]);
-
   // ── In-text margin-edit mode ────────────────────────────────────
   // Entered from ViewMenu → "Margins…". While active, four guides
   // render over the editor column (L/R vertical, T/B horizontal);
@@ -3419,6 +3376,20 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   });
   const effectiveTopMargin = effectiveMargins.top;
   const effectiveBottomMargin = effectiveMargins.bottom;
+
+  // ── In-card chrome header geometry ────────────────────────────────
+  // The chrome strip (section breadcrumb + docked MenuBar) renders as a
+  // header band INSIDE the white card. `showChromeHeader` gates both the
+  // strip render and the `--pod-header-h` budget so the pod reserves the
+  // band's height iff the band is actually drawn. `POD_TOP_PX` mirrors
+  // the 8px `--pod-cap-inner` (the bottom outer gap) numerically so
+  // `--chrome-top` can be emitted as plain px (chrome-scroll-margin.ts
+  // parses it directly, unlike the old non-reducing calc()).
+  const POD_HEADER_H = 26; // in-card chrome header band height (px)
+  const POD_TOP_PX = 8; // card top-edge gap; mirrors --pod-cap-inner
+  const showChromeHeader = ready && !!viewPrefs && !!(overrideEditor ?? editor);
+  const podHeaderH = showChromeHeader ? POD_HEADER_H : 0;
+  const chromeTopPx = POD_TOP_PX + podHeaderH;
 
   // ─── Toolbar action handlers ──────────────────────────────────────
   // Each creates a card in its corresponding panel — selection-anchored
@@ -5053,40 +5024,53 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 // DOM speed during drag without any React re-render.
                 ['--editor-sym-x' as string]: marginSymmetricX ? "1" : "0",
                 ['--editor-sym-y' as string]: marginSymmetricY ? "1" : "0",
-                // Live width of the docked MenuBar, measured by a
-                // ResizeObserver. Consumed by the sticky section-path
-                // lozenge to compute a max-width that keeps it from
-                // crossing into the centered MenuBar's band.
-                ['--menubar-width' as string]: `${menubarWidth}px`,
-                // ── Chrome-top contract (single source of truth) ──
-                // The pod's top chrome budget, unified so the manila
-                // gap between the docked MenuBar tool-strip and the
-                // pod's card edge is tuned in ONE place. Previously the
-                // offset `32` (= band 24 + cap 8) was hand-duplicated
-                // across the reading mask, pod-frame ring, and margin
-                // overlay (and `40`/`10` derived from it), so the gap
-                // drifted and couldn't be balanced against the ~2px of
-                // air above the centered tool glyphs.
-                //   --chrome-top    = where the visible card border sits
-                //                     below the column top (Editor) /
-                //                     the lone cap (Reader: 8).
-                //   --pod-edge-inset = THE knob for the strip↔pod gap.
-                //                     It shifts the card POSITION only,
-                //                     never the corner-arc radius (that
-                //                     stays --pod-cap-h / --pod-cap-bleed).
-                // The pod caps (top + bottom) derive their geometry from
-                // the --pod-cap-* values so both stay coupled.
-                ['--tool-strip-h' as string]: '24px',
+                // ── Pod top-chrome contract ──────────────────────
+                // The chrome strip (section breadcrumb + docked
+                // MenuBar) lives INSIDE the white card as a header
+                // band, NOT in the manilla band above it. The old
+                // `--chrome-top` conflated two concepts the in-card
+                // move forces apart:
+                //   --pod-top      = the card's TOP EDGE gap below the
+                //                    column top. Locked to --pod-cap-
+                //                    inner (8px) so the top outer gap
+                //                    equals the bottom one (symmetric).
+                //   --pod-header-h = the in-card chrome header height
+                //                    (0 when no header renders).
+                //   --chrome-top   = the CONTENT-area top (= --pod-top
+                //                    + --pod-header-h, i.e. just below
+                //                    the strip): what the reading mask,
+                //                    margin-edit overlay, and scroll-
+                //                    into-view margin all want.
+                // Card-EDGE chrome (top cap, frame ring) reads
+                // --pod-top; CONTENT-area chrome reads --chrome-top.
+                // --chrome-top is emitted as plain px (not calc) so
+                // chrome-scroll-margin.ts parses it directly.
                 ['--pod-cap-inner' as string]: '8px',
                 ['--pod-cap-bleed' as string]: 'calc(4px + var(--pod-gap))',
                 ['--pod-cap-h' as string]:
                   'calc(var(--pod-radius) + 4px + var(--pod-gap))',
-                ['--pod-edge-inset' as string]: '0px',
-                ['--chrome-top' as string]: menuBar
-                  ? 'calc(var(--tool-strip-h) + var(--pod-edge-inset))'
-                  : '8px',
+                ['--pod-top' as string]: 'var(--pod-cap-inner)',
+                // Bottom outer gap. A touch larger than --pod-top: the
+                // card's drop shadow (--pod-shadow, offset DOWNWARD) falls
+                // into the bottom gap and darkens it, so an 8px bottom gap
+                // reads as visually tighter than the clean 8px top gap.
+                // The extra few px leave clean manilla below the shadow so
+                // the bottom gap LOOKS equal to the top.
+                ['--pod-bottom' as string]: 'calc(var(--pod-top) + 4px)',
+                ['--pod-header-h' as string]: `${podHeaderH}px`,
+                ['--chrome-top' as string]: `${chromeTopPx}px`,
               }}
             >
+            {/* Top outer gap — an 8px manilla band above the card's
+                top edge, the exact mirror of the bottom spacer below, so
+                the pod sits the same distance from the desk at top and
+                bottom. In-flow (pushes the in-card header + pod down to
+                the card edge); the top cap's manilla surplus paints this
+                band at every scroll position. Height = --pod-top
+                (= --pod-cap-inner = the 8px bottom gap). */}
+            {(overrideEditor ?? editor) && (
+              <div className="shrink-0" style={{ height: 'var(--pod-top)' }} />
+            )}
             {/* Top reading-frame mask — always-present letterbox band
                 at the top of the visible reading area. Its height is
                 the top margin (`--editor-pt`), so the top `pt` of the
@@ -5120,99 +5104,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   marginBottom: "calc(-1 * var(--editor-pt, 40px))",
                   zIndex: 15,
                   background:
-                    "linear-gradient(to bottom, var(--surface) 0, var(--surface) calc(100% - 10px), transparent 100%)",
+                    "linear-gradient(to bottom, var(--surface) 0, var(--surface) calc(100% - 18px), transparent 100%)",
                 }}
               />
-            )}
-            {/* Section-path indicator — plain text in the chrome strip
-                above the pod, anchored to the pod's left edge. Renders
-                in the same 32px band as the docked MenuBar (z-41 lifts
-                it above the band's background) with a calc'd max-width
-                that prevents it from crossing into the centered
-                MenuBar's column. */}
-            {ready && viewPrefs && (overrideEditor ?? editor) && (
-              <div
-                className="sticky shrink-0 pointer-events-none"
-                style={{ top: 0, height: 0, zIndex: 41 }}
-              >
-                <div
-                  style={{
-                    paddingTop: 6,
-                    maxWidth:
-                      'calc((100% - var(--menubar-width, 0px)) / 2 - 12px)',
-                  }}
-                >
-                  <SectionLozenge sectionPath={viewPrefs.activeSectionPath} />
-                </div>
-              </div>
-            )}
-            {ready && menuBar && (overrideEditor ?? editor) && (
-              <div
-                data-tool-strip="text"
-                className="flex justify-end items-start shrink-0 sticky z-40"
-                style={{
-                  background: "var(--background)",
-                  top: 0,
-                  height: 24,
-                  paddingRight: 4,
-                  marginLeft: -4,
-                  marginRight: -4,
-                  pointerEvents: "none",
-                }}
-              >
-                {/* Margin-edit Save/Cancel renders in-page next to the
-                    drag guides (see the paper-render block below), so
-                    nothing lives in the menu band during margin edit. */}
-                <div ref={dockedMenuBarRef} className="pointer-events-auto">
-                  <MenuBar
-                    editor={overrideEditor ?? editor}
-                    onAddComment={handleToolbarAddComment}
-                    onArchive={handleToolbarArchive}
-                    onCreateFootnote={handleToolbarCreateFootnote}
-                    onAddNote={handleToolbarAddNote}
-                    onAddHighlight={handleToolbarAddHighlight}
-                    onAddTodo={handleToolbarAddTodo}
-                    onCutSelection={handleToolbarAddCut}
-                    onInsertCitation={handleToolbarInsertCitation}
-                    showParTitles={menuBar.showParTitles}
-                    onToggleParTitles={menuBar.onToggleParTitles}
-                    showLatexComments={menuBar.showLatexComments}
-                    onToggleLatexComments={menuBar.onToggleLatexComments}
-                    showHeadingLabels={menuBar.showHeadingLabels}
-                    onToggleHeadingLabels={menuBar.toggleHeadingLabels}
-                    omniDimResting={menuBar.omniDimResting}
-                    onToggleOmniDimResting={menuBar.onToggleOmniDimResting}
-                    onOpenPreferences={menuBar.onOpenPreferences}
-                    editorSplit={menuBar.editorSplit}
-                    onToggleEditorSplit={menuBar.toggleEditorSplit}
-                    activeSplitPane={menuBar.editorSplit ? menuBar.activeSplitPane : undefined}
-                    showMarginalia={menuBar.showMarginalia}
-                    onToggleMarginalia={menuBar.toggleMarginalia}
-                    hiddenMarginaliaTypes={menuBar.hiddenMarginaliaTypes}
-                    onToggleMarginaliaType={menuBar.toggleMarginaliaType}
-                    showHighlights={viewPrefs ? viewPrefs.prefs.showHighlights : true}
-                    onToggleHighlights={() => menuBar.setShowHighlights(viewPrefs ? !viewPrefs.prefs.showHighlights : false)}
-                    hiddenHighlightTypes={menuBar.hiddenHighlightTypes}
-                    onToggleHighlightType={menuBar.toggleHighlightType}
-                    availableDividerLevels={menuBar.availableDividerLevels}
-                    dividerLevels={menuBar.activeDividerLevels}
-                    onToggleDividerLevel={menuBar.toggleDividerLevel}
-                    dividerWidth={menuBar.dividerWidth}
-                    onSetDividerWidth={menuBar.setDividerWidth}
-                    onParaNavBack={menuBar.paraNavBack}
-                    onParaNavForward={menuBar.paraNavForward}
-                    paraNavBackDisabled={menuBar.paraNavBackDisabled}
-                    paraNavForwardDisabled={menuBar.paraNavForwardDisabled}
-                    onCloseAllPanels={menuBar.closeAllPanels}
-                    onOpenFontsDialog={menuBar.onOpenFontsDialog}
-                    onOpenMarginsMode={enterMarginEditMode}
-                    orientation="horizontal"
-                    onSetOrientation={() => {}}
-                    showEditItems={chrome.showMenuBarEditItems ?? true}
-                    showFormattingToolbar={chrome.showFormattingToolbar ?? true}
-                  />
-                </div>
-              </div>
             )}
             {/* Sticky pod-top cap. Container is 8px tall (just the
                 white cap-inner with rounded top corners) with
@@ -5238,25 +5132,25 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 the white edge — to keep the white edge (the pod's
                 visible top) at the card edge, the sticky `top` shifts
                 up from the card edge by the 14px bleed
-                (`--chrome-top` − `--pod-cap-bleed`). That surplus
-                manila lands behind the MenuBar band (cap z-30 < band z-40, both
-                manila) so it blends seamlessly. The SAME formula is
-                used in both modes: the cap `top` is always
-                `--chrome-top − --pod-cap-bleed`, so the bottom-aligned
-                white inner lands EXACTLY at `--chrome-top` (= the frame
-                top) in BOTH the main editor and the Reader. In the
-                Reader `--chrome-top` is 8 and the bleed is 14, so the
-                cap `top` is the (correct) negative −6px; the surplus
-                tail clips above the scroll top. The old Reader special-
-                case `top:0` left the white inner 6px below the frame
-                top, exposing a cream sliver inside the frame's rounded
-                arc. */}
+                (`--pod-top` − `--pod-cap-bleed`). That surplus manila
+                lands ABOVE the card edge, in the top outer gap, so it
+                blends into the manilla desk. The cap's white inner is
+                now overlaid by the in-card chrome header (z-30, white,
+                placed later in DOM), which extends the white edge down
+                into the header band; both are `--pod-editor`, so the
+                8px seam is white-on-white. The cap `top` is always
+                `--pod-top − --pod-cap-bleed`, so the bottom-aligned
+                white inner lands EXACTLY at `--pod-top` (= the card
+                edge, symmetric with the 8px bottom gap) in BOTH the
+                main editor and the Reader. With `--pod-top` = 8 and the
+                bleed = 14, the cap `top` is the (correct) negative −6px;
+                the surplus tail clips above the scroll top. */}
             {ready && (overrideEditor ?? editor) && (
               <div
                 data-editor-pod-cap
                 className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
                 style={{
-                  top: 'calc(var(--chrome-top) - var(--pod-cap-bleed))',
+                  top: 'calc(var(--pod-top) - var(--pod-cap-bleed))',
                   height: 'var(--pod-cap-h)',
                   // The surplus 14px (= bleed) goes ABOVE the white
                   // inner. marginTop pulls the whole cap up by that
@@ -5305,10 +5199,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 showed as a 1–2px displaced edge on retina, is gone).
                 The pod content is borderless; the caps mask scrolling
                 content and fill the manila corner notches behind this
-                ring's rounded corners. Top edge sits at `--chrome-top`
-                (Editor = tool-strip-h + pod-edge-inset; Reader = 8);
-                chromeBottom = `--pod-cap-inner` (8). z-31 sits above
-                the caps (z-30), below the MenuBar band (z-40). */}
+                ring's rounded corners. Top edge sits at `--pod-top`
+                (= --pod-cap-inner = 8, symmetric with the bottom);
+                bottom = `--pod-cap-inner` (8). The in-card chrome header
+                sits just inside this top edge (at --pod-top, z-30), so
+                this ring's border wraps it. z-31 sits above the caps and
+                the header (z-30). */}
             {ready && (overrideEditor ?? editor) && (
               <div
                 data-pod-frame
@@ -5316,15 +5212,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 className="pointer-events-none shrink-0"
                 style={{
                   position: "sticky",
-                  top: 'var(--chrome-top)',
-                  // Visible rectangle = viewport minus the top chrome
-                  // (--chrome-top) and the bottom cap (--pod-cap-inner).
-                  // One form for both modes now that --chrome-top folds
-                  // the old 32/8 split (Editor → vh−32, Reader → vh−16).
+                  top: 'var(--pod-top)',
+                  // Visible rectangle = viewport minus the SYMMETRIC top
+                  // and bottom outer gaps (both --pod-cap-inner; --pod-top
+                  // is locked to it). The card edge sits at --pod-top, NOT
+                  // --chrome-top — the in-card chrome header lives BELOW
+                  // this edge, inside the rectangle, so the frame wraps it.
                   height:
-                    "calc(var(--scroll-viewport-h, 100vh) - var(--chrome-top) - var(--pod-cap-inner))",
+                    "calc(var(--scroll-viewport-h, 100vh) - var(--pod-top) - var(--pod-bottom))",
                   marginBottom:
-                    "calc(-1 * (var(--scroll-viewport-h, 100vh) - var(--chrome-top) - var(--pod-cap-inner)))",
+                    "calc(-1 * (var(--scroll-viewport-h, 100vh) - var(--pod-top) - var(--pod-bottom)))",
                   zIndex: 31,
                   border: "var(--pod-border)",
                   borderRadius: "var(--pod-radius)",
@@ -5343,6 +5240,100 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     "var(--pod-shadow), 0 0 0 var(--pod-gap) var(--background)",
                 }}
               />
+            )}
+            {/* ── In-card chrome header ─────────────────────────────
+                The section-path breadcrumb (left) + the docked MenuBar
+                (right) as ONE header row INSIDE the white card, replacing
+                the old manilla tool-strip + separate lozenge layer above
+                the pod. A white (var(--pod-editor)) sticky band at the
+                card's top edge (top: --pod-top), z-30 — the SAME layer as
+                the caps, so the frame ring's border (z-31) paints cleanly
+                over its edge (the proven cap pattern). Rounded TOP corners
+                (--pod-radius) so its white doesn't square off the corner
+                notch; the top cap behind fills the concentric manila arc.
+                In-flow with height --pod-header-h, so it naturally pushes
+                the prose pod down by the header (no zero-flow margin), and
+                placed AFTER the frame ring so it paints over the top cap's
+                white inner. justify-between lets the breadcrumb truncate
+                (min-width:0) without the old --menubar-width measurement.
+                Renders only when there's a header to show (showChromeHeader
+                gates --pod-header-h in lockstep); the MenuBar half renders
+                only when `menuBar` is present (the Reader shows the
+                breadcrumb alone). */}
+            {ready && viewPrefs && (overrideEditor ?? editor) && (
+              <div
+                data-tool-strip="text"
+                className="flex items-center justify-between shrink-0 sticky z-30 pointer-events-none"
+                style={{
+                  top: 'var(--pod-top)',
+                  height: 'var(--pod-header-h)',
+                  background: 'var(--pod-editor)',
+                  borderTopLeftRadius: 'var(--pod-radius)',
+                  borderTopRightRadius: 'var(--pod-radius)',
+                  paddingLeft: 14,
+                  paddingRight: 6,
+                }}
+              >
+                {/* Breadcrumb (left). flex:0 1 auto + min-width:0 so it
+                    truncates instead of pushing the controls off-edge. */}
+                <div style={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden' }}>
+                  <SectionLozenge sectionPath={viewPrefs.activeSectionPath} />
+                </div>
+                {/* Controls (right) — only in the editor (menuBar present).
+                    Margin-edit Save/Cancel renders in-page next to the drag
+                    guides, so nothing lives here during margin edit. */}
+                {menuBar && (
+                  <div className="pointer-events-auto shrink-0">
+                    <MenuBar
+                      editor={overrideEditor ?? editor}
+                      onAddComment={handleToolbarAddComment}
+                      onArchive={handleToolbarArchive}
+                      onCreateFootnote={handleToolbarCreateFootnote}
+                      onAddNote={handleToolbarAddNote}
+                      onAddHighlight={handleToolbarAddHighlight}
+                      onAddTodo={handleToolbarAddTodo}
+                      onCutSelection={handleToolbarAddCut}
+                      onInsertCitation={handleToolbarInsertCitation}
+                      showParTitles={menuBar.showParTitles}
+                      onToggleParTitles={menuBar.onToggleParTitles}
+                      showLatexComments={menuBar.showLatexComments}
+                      onToggleLatexComments={menuBar.onToggleLatexComments}
+                      showHeadingLabels={menuBar.showHeadingLabels}
+                      onToggleHeadingLabels={menuBar.toggleHeadingLabels}
+                      omniDimResting={menuBar.omniDimResting}
+                      onToggleOmniDimResting={menuBar.onToggleOmniDimResting}
+                      onOpenPreferences={menuBar.onOpenPreferences}
+                      editorSplit={menuBar.editorSplit}
+                      onToggleEditorSplit={menuBar.toggleEditorSplit}
+                      activeSplitPane={menuBar.editorSplit ? menuBar.activeSplitPane : undefined}
+                      showMarginalia={menuBar.showMarginalia}
+                      onToggleMarginalia={menuBar.toggleMarginalia}
+                      hiddenMarginaliaTypes={menuBar.hiddenMarginaliaTypes}
+                      onToggleMarginaliaType={menuBar.toggleMarginaliaType}
+                      showHighlights={viewPrefs ? viewPrefs.prefs.showHighlights : true}
+                      onToggleHighlights={() => menuBar.setShowHighlights(viewPrefs ? !viewPrefs.prefs.showHighlights : false)}
+                      hiddenHighlightTypes={menuBar.hiddenHighlightTypes}
+                      onToggleHighlightType={menuBar.toggleHighlightType}
+                      availableDividerLevels={menuBar.availableDividerLevels}
+                      dividerLevels={menuBar.activeDividerLevels}
+                      onToggleDividerLevel={menuBar.toggleDividerLevel}
+                      dividerWidth={menuBar.dividerWidth}
+                      onSetDividerWidth={menuBar.setDividerWidth}
+                      onParaNavBack={menuBar.paraNavBack}
+                      onParaNavForward={menuBar.paraNavForward}
+                      paraNavBackDisabled={menuBar.paraNavBackDisabled}
+                      paraNavForwardDisabled={menuBar.paraNavForwardDisabled}
+                      onCloseAllPanels={menuBar.closeAllPanels}
+                      onOpenFontsDialog={menuBar.onOpenFontsDialog}
+                      onOpenMarginsMode={enterMarginEditMode}
+                      orientation="horizontal"
+                      onSetOrientation={() => {}}
+                      showEditItems={chrome.showMenuBarEditItems ?? true}
+                      showFormattingToolbar={chrome.showFormattingToolbar ?? true}
+                    />
+                  </div>
+                )}
+              </div>
             )}
             <div
               className="editor-pane-pod"
@@ -5860,11 +5851,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 puts the cap-inner (sitting at the top of the 16px
                 cap container) flush with the pod's natural bottom
                 edge — no doubling. Combined with the cap's full-width
-                manilla bg, gives a consistent 8px manilla band
+                manilla bg, gives a consistent --pod-bottom manilla band
                 between the pod and the window bottom. Caps-mode
                 only. */}
             {(overrideEditor ?? editor) && (
-              <div className="shrink-0" style={{ height: 8 }} />
+              <div className="shrink-0" style={{ height: 'var(--pod-bottom)' }} />
             )}
             {/* Sticky pod-bottom cap — mirror of the top cap's
                 continuous-arc treatment. Container is 22px tall (8px
@@ -5874,16 +5865,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 not the doubled/fuzzy corner an 8px-tall box gave when
                 its 22px radius clamped. The 14px band also still masks
                 content scrolling past the bottom and bleeds manila into
-                the gutters. marginTop -22 keeps flow neutral (−22+22=0);
-                sticky bottom:-6 lets the container's extra 6px hang
-                below the viewport so the white edge stays exactly where
-                it was (vb−8). */}
+                the gutters. marginTop -22 keeps flow neutral; the sticky
+                `bottom` (= --pod-bottom - 14) lands the white edge at
+                vb - --pod-bottom (the frame ring's bottom), so the
+                container's surplus hangs below the viewport. */}
             {ready && (overrideEditor ?? editor) && (
               <div
                 data-editor-pod-cap-bottom
                 className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
                 style={{
-                  bottom: -6,
+                  bottom:
+                    'calc(var(--pod-bottom) - var(--pod-cap-h) + var(--pod-cap-inner))',
                   height: 'var(--pod-cap-h)',
                   marginTop: 'calc(-1 * var(--pod-cap-h))',
                   marginLeft: 'calc(-1 * var(--pod-cap-bleed))',
@@ -5946,16 +5938,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   // bottom at ALL scrolls — mirroring the always-on
                   // pod-cap-bottom. A sticky-`top` here only engaged
                   // near the doc bottom, leaving the band off-screen
-                  // mid-doc. Outer edge 8px above the viewport bottom
-                  // (above the cap); inner edge at `viewport - 8 - pb`,
-                  // exactly the bottom guide bar's position.
-                  bottom: 8,
+                  // mid-doc. Outer edge --pod-bottom above the viewport
+                  // bottom (at the card's bottom edge); inner edge at
+                  // `viewport - pod-bottom - pb`, the bottom guide bar.
+                  bottom: 'var(--pod-bottom)',
                   height: "var(--editor-pb, 40px)",
                   marginTop: "calc(-1 * var(--editor-pb, 40px))",
                   zIndex: 15,
                   display: "var(--cap-bottom-display, block)",
                   background:
-                    "linear-gradient(to top, var(--surface) 0, var(--surface) calc(100% - 10px), transparent 100%)",
+                    "linear-gradient(to top, var(--surface) 0, var(--surface) calc(100% - 18px), transparent 100%)",
                 }}
               />
             )}

@@ -642,7 +642,7 @@ export function ViewMenu({
       <button
         ref={triggerRef}
         onClick={() => setOpen(!open)}
-        className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
+        className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
         data-hint="View options"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -901,7 +901,7 @@ function MenuBarContent({
               onClick={onParaNavBack}
               disabled={paraNavBackDisabled}
               data-hint="Go back"
-              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
+              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
               style={isVert ? { width: 20, height: 16 } : { width: 16, height: 20 }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
@@ -914,7 +914,7 @@ function MenuBarContent({
               onClick={onParaNavForward}
               disabled={paraNavForwardDisabled}
               data-hint="Go forward"
-              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
+              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
               style={isVert ? { width: 20, height: 16 } : { width: 16, height: 20 }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
@@ -929,7 +929,7 @@ function MenuBarContent({
       {onToggleEditorSplit && (
         <button
           onClick={onToggleEditorSplit}
-          className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
+          className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
           data-hint="Split editor"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
