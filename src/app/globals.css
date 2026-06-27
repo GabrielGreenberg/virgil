@@ -4309,15 +4309,18 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
  * header tint + outline chrome. `transition-colors` (CARD_BASE) animates both
  * directions. All values are TOKENS so the effect tracks the active theme.
  *
- * Tuning knobs (the resting "recede"): the two declarations below. `--surface-
- * muted-strong` is one step beyond today's hover bg (`--surface-muted`) for a
- * slightly-more-pronounced recede; `--edge-strong` matches today's hover
- * border. Specificity (≥0,4,0 with `:hover`) beats Tailwind's
+ * Tuning knobs (the resting "recede"): the two declarations below. The resting
+ * fill is `--surface-muted-strong` (one step beyond today's hover bg
+ * `--surface-muted`) for a slightly-more-pronounced recede; the resting BORDER
+ * is the faint `--edge-subtle` (the same light edge the editor sheet / inputs
+ * use) so a quiet card reads recessed in BOTH fill and outline — never heavier
+ * than the page outline. Hover firms the edge up to `--edge-hover` as the fill
+ * brightens to `--surface`. Specificity (≥0,4,0 with `:hover`) beats Tailwind's
  * `hover:bg-surface-muted/50` / `bg-surface`; unselected cards carry no inline
  * background, so no `!important` is needed. */
 [data-omni-dim="true"] [data-omni-entry]:not([data-selected]) {
   background-color: var(--surface-muted-strong);
-  border-color: var(--edge-strong);
+  border-color: var(--edge-subtle);
 }
 [data-omni-dim="true"] [data-omni-entry]:not([data-selected]):hover {
   background-color: var(--surface);
