@@ -19,7 +19,7 @@ import type { TextObjectKind } from "@/text-objects/types";
 import type { CardKind } from "@/cards/types";
 import { panelForCardKind } from "@/cards/predicates";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import type { CardStore } from "@/links/_shared/anchored-card-store";
 import { cardPopKey } from "@/panels/panel-registry";
 import { focusNewCard, cardKindHasEditableBody } from "@/lib/focus-new-card";
 import type { EditorHandle } from "../../Editor";
@@ -131,6 +131,11 @@ export interface CardCreationDeps {
   /** Optional tracker that pins the just-added card to the top of its
    *  panel until the user moves selection elsewhere. */
   recentlyAdded?: RecentlyAddedTracker | null;
+  /** This doc's interaction store. `finishCreate` expands + selects the new
+   *  card in it. Threaded from the EditorPane body (resolved from
+   *  `getCardStore(docId)`), so a create paints the active card in the RIGHT
+   *  doc's store — never a cross-doc singleton. */
+  store: CardStore;
 }
 
 /**
@@ -328,6 +333,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     markFootnotePristine,
     getFootnoteCount,
     recentlyAdded,
+    store,
   } = deps;
 
   const pin = useCallback(
@@ -414,8 +420,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         // has no contenteditable for `focusNewCard` to find) + select in the
         // shared store so the card paints as the active one. Both are
         // single store writes — no per-keystroke work.
-        cardStore.expand({ kind, id });
-        cardStore.select({ kind, id });
+        store.expand({ kind, id });
+        store.select({ kind, id });
         focusNewCard(cardPopKey(kind, id));
       }
       if (opts.mode === "omni") return;
@@ -424,7 +430,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       // all 13 factories); the assertion documents that invariant.
       else ensurePanelActive(panelForCardKind(kind)!);
     },
-    [pin, ensurePanelActive, popCardAtAnchor],
+    [store, pin, ensurePanelActive, popCardAtAnchor],
   );
 
   const createNote = useCallback<CardCreationApi["createNote"]>(

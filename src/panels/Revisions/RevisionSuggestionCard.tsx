@@ -15,7 +15,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 import {
   FIELD_ORDER,
   FieldBlock,
@@ -65,6 +65,7 @@ export function RevisionSuggestionCard({
   extraDataAttrs?: Record<string, string>;
 }) {
   const theme = useCardTheme("revision");
+  const cardStore = useCardStore();
   const cardRef = useRef<HTMLDivElement>(null);
   const isPending = card.status === "pending";
   const isAnchored =

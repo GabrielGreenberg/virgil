@@ -31,15 +31,20 @@ import {
   pruneCardStoreFor,
   rekeyCardStoreForMorph,
 } from "@/links/_shared/inline-atom-lifecycle-policy";
+import type { CardStore } from "@/links/_shared/anchored-card-store";
 
-export function useCardLifecycleReconciler(): void {
+/** Mount once per pane. `store` is this doc's interaction store (the EditorPane
+ *  body resolves it from `getCardStore(docId)`), so the delete/morph reconcile
+ *  targets the right doc's selection/hover/expansion — never a cross-doc
+ *  singleton. */
+export function useCardLifecycleReconciler(store: CardStore): void {
   useEffect(() => {
     return subscribeCardLifecycle((signal) => {
       if (signal.type === "card-deleted") {
-        pruneCardStoreFor(signal.kind, signal.id);
+        pruneCardStoreFor(store, signal.kind, signal.id);
       } else {
-        rekeyCardStoreForMorph(signal.fromKind, signal.toKind, signal.id);
+        rekeyCardStoreForMorph(store, signal.fromKind, signal.toKind, signal.id);
       }
     });
-  }, []);
+  }, [store]);
 }

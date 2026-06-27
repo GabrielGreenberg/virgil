@@ -16,7 +16,7 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { cardPopKey } from "@/panels/panel-registry";
 import { cardKindsForPanel } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 import {
   CopyButton,
   FIELD_ORDER,
@@ -89,6 +89,7 @@ export function CutterSuggestionCard({
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
   const ac = useAnchoredCard({ kind: "cutter-suggestion", id: card.id });
+  const cardStore = useCardStore();
   const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;

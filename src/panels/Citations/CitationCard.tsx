@@ -30,7 +30,7 @@ import BibEntryCard from "@/components/BibEntryCard";
 import { MIME_CITATION } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { useConfirmDialog } from "@/components/ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
 import { useLibraryEntryLookup } from "@/hooks/useLibrary";
@@ -250,6 +250,7 @@ export function CitationCard({
   // same "open entry" affordance as the bibliography card (modular reuse).
   const lookupEntry = useLibraryEntryLookup();
   const ac = useAnchoredCard({ kind: "citation", id: cit.id });
+  const cardStore = useCardStore();
   const isExpanded = isDraft || ac.expanded;
   const isHaloed = ac.selected || isSelected;
   const compressed = !isExpanded && !isPoppedOut;

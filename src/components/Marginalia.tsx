@@ -30,7 +30,7 @@ import {
 } from "@/lib/panel-theme";
 import { panelThemeKeyForMarkerType } from "@/cards/marker-meta";
 import {
-  cardStore,
+  useCardStore,
   useIsHovered,
   useIsSelected,
   type AnchoredCardRef,
@@ -187,6 +187,7 @@ export function MarkerButton({
   const ref: AnchoredCardRef | null = m.entityKind
     ? { kind: m.entityKind, id: m.entityId }
     : null;
+  const cardStore = useCardStore();
   const selected = useIsSelected(ref);
   const hovered = useIsHovered(ref);
   // Set true once a re-anchor grab crosses a small movement threshold, so the

@@ -64,6 +64,7 @@ import { useIdentityBusConsumer } from "@/lib/identity/useIdentityBusConsumer";
 import { setIdentityCascadeFlag } from "@/lib/identity/identity-flag";
 import { setInlineAtomLifecycleFlag } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { useInlineAtomLifecycle } from "../useInlineAtomLifecycle";
+import { defaultCardStore } from "@/links/_shared/anchored-card-store";
 import { useOrphanedFootnotes } from "@/hooks/useOrphanedFootnotes";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { beginDocPipeline, __resetForTests } from "@/lib/multi-window/doc-pipeline";
@@ -164,6 +165,7 @@ function wireSidecar(editor: Editor, docId: string) {
     const orphans = useOrphanedFootnotes(docId);
     useInlineAtomLifecycle({
       editor,
+      store: defaultCardStore,
       consumer,
       cascade,
       orphans,

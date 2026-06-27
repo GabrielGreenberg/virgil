@@ -52,6 +52,7 @@ import {
   type InlineAtomLifecycleDeps,
   type RemovedFootnoteContent,
 } from "./inline-atom-lifecycle-policy";
+import type { CardStore } from "./anchored-card-store";
 
 /** The orphan-store surface the hook re-targets onto the durable sidecar
  *  (`useOrphanedFootnotes`) in the cutover. */
@@ -70,6 +71,10 @@ export interface FloatStoreApi {
 
 export interface UseInlineAtomLifecycleArgs {
   editor: Editor | null | undefined;
+  /** This doc's interaction store (resolved by the EditorPane-body wiring from
+   *  `getCardStore(docId)`), threaded so the prune/regen-remap touch the right
+   *  doc's selection/hover/expansion — never a cross-doc singleton. */
+  store: CardStore;
   /** The single W1b consumer (or null when `virgil:identity-cascade` is off —
    *  then there is no consumer to register on and this hook is inert). */
   consumer: IdentityBusConsumer | null;
@@ -126,6 +131,7 @@ function snapshotAtoms(editor: Editor): AtomSnapshot {
 
 export function useInlineAtomLifecycle({
   editor,
+  store,
   consumer,
   cascade,
   orphans,
@@ -196,7 +202,7 @@ export function useInlineAtomLifecycle({
         ? (key) => floatsRef.current?.poppedOutCards.includes(key) ?? false
         : undefined,
     };
-    const policy = makeInlineAtomLifecyclePolicy(deps);
+    const policy = makeInlineAtomLifecyclePolicy(store, deps);
 
     // Wrap the policy so the dying-body snapshot is REFRESHED after each fire —
     // the next removal then resolves its dying body from this post-tx snapshot.
@@ -212,6 +218,7 @@ export function useInlineAtomLifecycle({
     const offMigrator = cascade.registerMigrator(
       "inlineAtom",
       makeInlineAtomRegenMigrator(
+        store,
         floats ? (oldKey, newKey) => floatsRef.current?.remapCardPopKey(oldKey, newKey) : undefined,
       ),
     );
@@ -234,7 +241,7 @@ export function useInlineAtomLifecycle({
       offMigrator();
       offResolver();
     };
-  }, [flagOn, consumer, cascade, editor, floats]);
+  }, [flagOn, store, consumer, cascade, editor, floats]);
 }
 
 /** Cheap liveness-only walk (no body flatten) for the `isAtomLive` re-check. */

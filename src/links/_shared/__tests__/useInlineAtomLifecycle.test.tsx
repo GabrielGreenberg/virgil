@@ -46,7 +46,7 @@ import { IdentityCascade } from "@/lib/identity/identity-cascade";
 import { useIdentityBusConsumer } from "@/lib/identity/useIdentityBusConsumer";
 import { setIdentityCascadeFlag } from "@/lib/identity/identity-flag";
 import { setInlineAtomLifecycleFlag } from "@/lib/identity/inline-atom-lifecycle-flag";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import { useInlineAtomLifecycle, type OrphanStoreApi, type FloatStoreApi } from "../useInlineAtomLifecycle";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import type { OrphanedFootnote } from "@/lib/types";
@@ -128,6 +128,7 @@ function wire(editor: Editor, orphans: OrphanStoreApi, floats?: FloatStoreApi) {
     const rev = useStructuralRevisions(editor);
     useInlineAtomLifecycle({
       editor,
+      store: cardStore,
       consumer,
       cascade,
       orphans,

@@ -64,6 +64,7 @@ import {
   type DragHandleRef,
 } from "../drag-handle-actions";
 import { useCardCreation } from "../card-creation";
+import { defaultCardStore } from "@/links/_shared/anchored-card-store";
 import { useTodos } from "@/hooks/useTodos";
 import { useLinkedAnchorReconciler } from "@/links/_shared/useLinkedAnchorReconciler";
 import { getTextAnchor, reanchorByText } from "@/links/links";
@@ -229,6 +230,7 @@ function useStack(editor: Editor) {
     popCardAtAnchor: (() => {}) as never,
     markFootnotePristine: (() => {}) as never,
     getFootnoteCount: (() => 0) as never,
+    store: defaultCardStore,
   });
 
   // Override the stubbed factories the dispatcher type-checks but the todo

@@ -68,7 +68,7 @@ import type { ComponentProps } from "react";
 import { citationCommandOrNull } from "@/lib/bib-parser";
 import { citationDropSpec } from "@/panels/Citations/drop-spec";
 import { CitationCard } from "@/panels/Citations/CitationCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { CitationRef } from "@/lib/types";
 import type { DropCtx, Placement } from "@/components/drop-mode/types";
 

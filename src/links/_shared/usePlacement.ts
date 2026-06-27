@@ -23,9 +23,9 @@ import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import {
-  cardStore,
-  useSelection,
+  useStoreSelection,
   type AnchoredCardRef,
+  type CardStore,
 } from "./anchored-card-store";
 import {
   cardKeyForEntity,
@@ -63,10 +63,14 @@ function getAnchorLinks(
 export interface UsePlacementArgs {
   editor: Editor | null;
   collections: EntityCollectionSlots;
+  /** This doc's interaction store (threaded from the EditorPane body, which
+   *  runs ABOVE the pane's own CardStoreProvider — so it can't read context).
+   *  Resolved once from `getCardStore(docId)`. */
+  store: CardStore;
 }
 
-export function usePlacement({ editor, collections }: UsePlacementArgs): void {
-  const selection = useSelection();
+export function usePlacement({ editor, collections, store }: UsePlacementArgs): void {
+  const selection = useStoreSelection(store);
   // Magnetism guard: this effect's deps re-fire on every render because
   // `collections` is a fresh object literal at the call site. Without
   // this ref, the scroll would re-run on every render and drag the user
@@ -159,10 +163,13 @@ export function usePlacement({ editor, collections }: UsePlacementArgs): void {
  *  effect, so a microtask clear would race and consume the flag BEFORE
  *  the effect runs. */
 let _suppressNextPlacement = false;
-export function setSelectionWithoutPlacement(ref: AnchoredCardRef | null): void {
+export function setSelectionWithoutPlacement(
+  store: CardStore,
+  ref: AnchoredCardRef | null,
+): void {
   _suppressNextPlacement = true;
-  if (ref) cardStore.select(ref);
-  else cardStore.clearSelection();
+  if (ref) store.select(ref);
+  else store.clearSelection();
 }
 
 /** Imperative escape hatch for callers that change selection via the

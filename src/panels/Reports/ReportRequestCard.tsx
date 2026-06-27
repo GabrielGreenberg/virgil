@@ -15,7 +15,7 @@ import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
 import { bodyVariantForCardKind, cardKindsForPanel } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 
 export function ReportRequestCard({
   request,
@@ -59,6 +59,7 @@ export function ReportRequestCard({
   );
 
   const ac = useAnchoredCard({ kind: "report-request", id: request.id });
+  const cardStore = useCardStore();
   const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const theme = useCardTheme("report");

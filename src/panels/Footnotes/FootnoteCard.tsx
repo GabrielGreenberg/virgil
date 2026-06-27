@@ -17,7 +17,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 
 // FN-F7-01 (audit-confirmed dead code, removed): `startFootnoteDrag` set up a
 // native HTML5 drag (MIME_FOOTNOTE + an 80-char-truncated ghost) but had NO
@@ -84,6 +84,7 @@ export function FootnoteCard({
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
     [onEdit],
   );
+  const cardStore = useCardStore();
   const theme = useCardTheme("footnote");
   const popped = usePoppedCards();
   const cardKey = popKey("footnotes", fn.footnoteId);

@@ -18,7 +18,7 @@ import { cardPopKey } from "@/panels/panel-registry";
 import { cardKindsForPanel } from "@/cards/predicates";
 import { canMorphNoteToHighlight } from "@/cards/morphs";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 
 export function NoteCard({
   note,
@@ -65,6 +65,7 @@ export function NoteCard({
   );
 
   const ac = useAnchoredCard({ kind: "note", id: note.id });
+  const cardStore = useCardStore();
   // N1 (A4): the two axes are independent. ac.expanded drives open/closed
   // (multi-card); ac.selected drives the halo (single). The legacy `selected`
   // prop folds into SELECTION ONLY now — expansion is its own axis, never

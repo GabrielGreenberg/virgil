@@ -15,12 +15,37 @@
 // the reader's note autosave (the only thing a read-only reader persists) is
 // flushed by usePersistentState's unmount flushPending before the pipeline ends.
 
+import { useEffect, type ReactNode } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { useKeepAliveLRU } from "@/lib/keep-alive/useKeepAliveLRU";
 import { KeepAliveSlot } from "@/lib/keep-alive/KeepAliveSlot";
+import { disposeCardStore } from "@/links/_shared/anchored-card-store";
 import PaperFileBody from "./PaperFileBody";
+
+/**
+ * KeepAliveSlot + a true-unmount hook that drops THIS reader paper's per-doc
+ * interaction store (the canonical <EditorPane> it mounts resolves
+ * `getCardStore(docId)`). Mirrors the main app's DocKeepAliveSlot →
+ * disposeCardStore: on LRU tail eviction (a real unmount, NOT a display:none
+ * hide) the store leaves the registry, so a re-opened paper gets a fresh store
+ * (no stale selection/expansion halo) and the registry doesn't grow unbounded.
+ * The cleanup is keyed on the stable `docId` (= the React key), so a
+ * display:none visibility flip never fires it.
+ */
+function ReaderKeepAliveSlot({
+  docId,
+  isVisible,
+  children,
+}: {
+  docId: string;
+  isVisible: boolean;
+  children: ReactNode;
+}) {
+  useEffect(() => () => disposeCardStore(docId), [docId]);
+  return <KeepAliveSlot isVisible={isVisible}>{children}</KeepAliveSlot>;
+}
 
 /** 1 visible + 3 hidden. Tune down to 2 (1 visible + 1 hidden — enough to make
  *  a back-and-forth between two papers instant) if heap profiling is tight. */
@@ -56,7 +81,7 @@ export default function ReaderLRU({
       {lru.map((entry) => {
         const citekey = entry.id.slice(LIBRARY_PAPER_PREFIX.length);
         return (
-          <KeepAliveSlot key={entry.id} isVisible={entry.isVisible}>
+          <ReaderKeepAliveSlot key={entry.id} docId={entry.id} isVisible={entry.isVisible}>
             <PaperFileBody
               handle={handle}
               citekey={citekey}
@@ -66,7 +91,7 @@ export default function ReaderLRU({
               scope={scope}
               panel={panel}
             />
-          </KeepAliveSlot>
+          </ReaderKeepAliveSlot>
         );
       })}
     </>

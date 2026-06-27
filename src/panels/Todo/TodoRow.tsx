@@ -14,7 +14,7 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 
 const theme = CARD_THEMES.todo;
 
@@ -98,6 +98,7 @@ export function TodoRow({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const ac = useAnchoredCard({ kind: "todo", id: item.id });
+  const cardStore = useCardStore();
   const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;

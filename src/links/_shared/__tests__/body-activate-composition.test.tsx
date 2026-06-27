@@ -14,7 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore, type AnchoredCardRef } from "@/links/_shared/anchored-card-store";
+import { defaultCardStore as cardStore, type AnchoredCardRef } from "@/links/_shared/anchored-card-store";
 
 const REF: AnchoredCardRef = { kind: "footnote", id: "fn1" };
 const OTHER: AnchoredCardRef = { kind: "note", id: "n9" };

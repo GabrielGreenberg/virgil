@@ -12,7 +12,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 
 export function ArchiveCard({
   snippet,
@@ -46,6 +46,7 @@ export function ArchiveCard({
   isPoppedOut?: boolean;
 }) {
   const isAnchored = !orphaned;
+  const cardStore = useCardStore();
   const theme = useCardTheme("archive");
   const popped = usePoppedCards();
   const cardKey = popKey("archive", snippet.id);

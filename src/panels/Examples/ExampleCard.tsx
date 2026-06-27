@@ -20,7 +20,7 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { BorrowedMainText } from "@/components/BorrowedMainText";
 import { useEditorRefContextOrNull } from "@/components/editor-layout/contexts/editor-ref";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
@@ -421,6 +421,7 @@ export function ExampleCard({
   const isHaloed = ac.selected || isSelected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
+  const cardStore = useCardStore();
 
   const [showHelp, setShowHelp] = useState(false);
 

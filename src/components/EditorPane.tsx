@@ -85,7 +85,11 @@ import { LoadingScreen } from "./LoadingScreen";
 import type { PrintPanelKey } from "@/lib/print";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
-import { cardStore, type AnchoredCardRef } from "@/links/_shared/anchored-card-store";
+import {
+  getCardStore,
+  CardStoreProvider,
+  type AnchoredCardRef,
+} from "@/links/_shared/anchored-card-store";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
 import {
@@ -933,9 +937,21 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
   // ── Per-doc selection state ──────────────────────────────────────
   // Anchored selection slots are derived from the global cardStore via
+  // This pane's per-doc interaction store. Resolved from the registry by docId
+  // (idempotent, so it's a stable reference per render in steady state, and a
+  // dispose+recreate — dev StrictMode / HMR — re-resolves to the live instance
+  // here AND in the shell, so they never diverge). EditorPane's BODY hooks run
+  // ABOVE the <CardStoreProvider> this component renders, so they CANNOT read it
+  // from context — they get this instance threaded explicitly. The descendants
+  // (panels / marginalia / popouts) read the SAME instance via that provider.
+  const cardStoreInst = getCardStore(docId);
+
   // useAnchoredSelectionSlots — same single source of truth as
   // EditorLayout, so the Library reader (which mounts EditorPane
   // standalone) gets identical hover/selection plumbing for free.
+  // Threaded `cardStoreInst` because this body call is ABOVE the pane's
+  // CardStoreProvider — without it the slot setters would write the context
+  // DEFAULT store (cross-doc bleed) while every reader uses the per-doc store.
   // Bib stays as local useState (it's not an anchored kind).
   const {
     selectedNoteId, setSelectedNoteId,
@@ -947,7 +963,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     selectedReportCardId, setSelectedReportCardId,
     selectedCommentId, setSelectedCommentId,
     selectedExampleId, setSelectedExampleId,
-  } = useAnchoredSelectionSlots();
+  } = useAnchoredSelectionSlots(cardStoreInst);
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
 
   // ── Pristine card manager (per-pane) ──────────────────────────────
@@ -1084,6 +1100,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const orphanedFootnotesStore = useOrphanedFootnotes(docId);
   useInlineAtomLifecycle({
     editor,
+    store: cardStoreInst,
     consumer: identityBusConsumer,
     cascade: identityCascade,
     orphans: orphanedFootnotesStore,
@@ -1138,7 +1155,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // sees. Unflagged (correct-by-construction; no bus subscription) — keeps a
   // morphed report's selection halo (REP-F6-02 / OMNI-F6-02) and clears a
   // deleted card's stale halo regardless of the inline-atom-lifecycle flag.
-  useCardLifecycleReconciler();
+  useCardLifecycleReconciler(cardStoreInst);
 
   // W2c — the citation add/resync reconciler, registered as a POLICY on the
   // same single consumer (NOT a new subscription; the +1-not-+3 invariant). The
@@ -2187,16 +2204,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // depend on selection state (a selection change re-renders no markers).
   const handleMarginMarkerClick = useCallback(
     (ref: AnchoredCardRef, clickY?: number, anchorIndex?: number) => {
-      if (cardStore.isSelected(ref)) {
+      if (cardStoreInst.isSelected(ref)) {
         // Toggle-off: second click deselects across ALL marker kinds.
-        cardStore.clearSelection();
+        cardStoreInst.clearSelection();
         return;
       }
       // Suppress the selection-driven placement scroll — alignment happens
       // by pulling the card to the click (alignOmniCardWithClick), never by
       // scrolling the document row.
       suppressNextPlacement();
-      cardStore.select(ref);
+      cardStoreInst.select(ref);
       // T5 Pillar E-2 (REP-F3-01 / OMNI-F3-01 / OMNI-F8-02): a multi-anchor
       // card draws ONE margin marker per anchored paragraph, and the omni
       // surface draws one row per anchor keyed `…@<anchorIndex>`. Stamp the
@@ -2210,7 +2227,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         }),
       );
     },
-    [],
+    [cardStoreInst],
   );
 
   // Ref mirror so the error marker's toggle reads the live (prop) selection
@@ -2709,6 +2726,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     markFootnotePristine,
     getFootnoteCount,
     recentlyAdded,
+    store: cardStoreInst,
   });
 
   // Compound citation delete (the hard-delete contract). The bare sidecar
@@ -4227,12 +4245,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // identical plumbing (the Library reader mounts EditorPane standalone).
   const _setHoveredEntity = useCallback(
     (id: string | null, kind: EntityKind | null) =>
-      cardStore.setHover(id && kind ? { id, kind } : null),
-    [],
+      cardStoreInst.setHover(id && kind ? { id, kind } : null),
+    [cardStoreInst],
   );
 
   useAnchorHighlightReconciler({
     editor,
+    store: cardStoreInst,
     // The inline-atom structural counter (footnotes + citations) so the
     // dangling-ref prune re-runs when an inline atom is added/removed — the
     // inline kinds never change `collections` (they aren't in it). T2 §3b.2.
@@ -4285,6 +4304,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // direction (text → card alignment) is handled by openForCard.
   usePlacement({
     editor,
+    store: cardStoreInst,
     collections: {
       notes: notesHook.notes,
       cutterCards: cutterHook.cards,
@@ -4419,6 +4439,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
 
   return (
+    // This pane's per-doc store provider. Dominates the editor text, marginalia,
+    // panels, and every floating/popout portal (React context flows through
+    // portals by tree position), so all three card surfaces of this doc — and no
+    // other — share one interaction store. Mounted INSIDE EditorPane so it covers
+    // both the main-app mount and the Library Reader mount.
+    <CardStoreProvider store={cardStoreInst}>
     <EditorChromeProvider value={{ ...chrome, menuBar }}>
       <EditorRefProvider
         value={{ editorInstance: editor, editorRef: innerRef, setOverrideEditor }}
@@ -6062,6 +6088,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         </AiRequestsProvider>
       </EditorRefProvider>
     </EditorChromeProvider>
+    </CardStoreProvider>
   );
 }));
 
