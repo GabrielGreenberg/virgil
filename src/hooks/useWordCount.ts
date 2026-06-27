@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Node as PmNode } from "@tiptap/pm/model";
 
@@ -295,5 +295,5 @@ export function useWordCount(editor: Editor | null) {
     };
   }, [editor, recount, resel]);
 
-  return { counts, selection };
+  return useMemo(() => ({ counts, selection }), [counts, selection]);
 }

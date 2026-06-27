@@ -292,6 +292,94 @@ function windowStorageKey(): string {
   return WINDOW_STORAGE_PREFIX + getWindowId();
 }
 
+// ── Per-window pref garbage collection ──────────────────────────────────
+// Every window/session mints a fresh window-id and writes a
+// `virgil-view-prefs/window/<id>` layout key. Nothing ever removed them, so
+// they accumulated without bound (hundreds observed on a dev machine after many
+// restarts) — every one is JSON we keep around forever and walk on relevant
+// reads. This GC bounds that growth WITHOUT risking a live window's layout:
+// a recency index (`window-index`) stamps the current window alive on every
+// load, and a window-pref key is dropped only once its window has gone unseen
+// for `WINDOW_PREF_RETENTION_MS`. A never-indexed (legacy) key is adopted with
+// a short grace so a window that simply hasn't reloaded recently survives, but
+// truly-dead keys age out within ~`WINDOW_PREF_ADOPT_GRACE_MS`. Self-contained,
+// runs once per window load (O(window-keys)), no multi-window coupling.
+const WINDOW_INDEX_KEY = "virgil-view-prefs/window-index";
+const WINDOW_PREF_RETENTION_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+const WINDOW_PREF_ADOPT_GRACE_MS = 2 * 24 * 60 * 60 * 1000; // 2 days
+const WINDOW_PREF_HARD_CAP = 128; // backstop against pathological growth
+
+let windowPrefsGcRan = false;
+function gcWindowPrefs(): void {
+  if (windowPrefsGcRan) return;
+  windowPrefsGcRan = true;
+  if (typeof localStorage === "undefined") return;
+  try {
+    const now = Date.now();
+    const currentId = getWindowId();
+    let index: Record<string, number> = {};
+    try {
+      const raw = localStorage.getItem(WINDOW_INDEX_KEY);
+      if (raw) index = JSON.parse(raw) as Record<string, number>;
+    } catch {
+      index = {};
+    }
+    if (typeof index !== "object" || index === null) index = {};
+    index[currentId] = now; // stamp the live window
+
+    // Collect window-pref keys up front (mutating localStorage mid-iteration
+    // shifts indices).
+    const windowKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(WINDOW_STORAGE_PREFIX)) windowKeys.push(k);
+    }
+
+    const survivors: { id: string; lastSeen: number }[] = [];
+    for (const key of windowKeys) {
+      const id = key.slice(WINDOW_STORAGE_PREFIX.length);
+      if (id === currentId) {
+        survivors.push({ id, lastSeen: now });
+        continue;
+      }
+      if (index[id] === undefined) {
+        // Legacy key with no recency record: adopt with a short grace window
+        // so a real-but-idle window survives, but a dead one ages out soon.
+        index[id] = now - (WINDOW_PREF_RETENTION_MS - WINDOW_PREF_ADOPT_GRACE_MS);
+      }
+      if (now - index[id] > WINDOW_PREF_RETENTION_MS) {
+        localStorage.removeItem(key);
+        delete index[id];
+      } else {
+        survivors.push({ id, lastSeen: index[id] });
+      }
+    }
+
+    // Hard cap backstop: if still over the cap, drop the least-recently-seen
+    // non-current survivors beyond it.
+    if (survivors.length > WINDOW_PREF_HARD_CAP) {
+      survivors
+        .filter((s) => s.id !== currentId)
+        .sort((a, b) => a.lastSeen - b.lastSeen)
+        .slice(0, survivors.length - WINDOW_PREF_HARD_CAP)
+        .forEach((s) => {
+          localStorage.removeItem(WINDOW_STORAGE_PREFIX + s.id);
+          delete index[s.id];
+        });
+    }
+
+    // Prune index entries whose key no longer exists (keep the current window).
+    for (const id of Object.keys(index)) {
+      if (id === currentId) continue;
+      if (localStorage.getItem(WINDOW_STORAGE_PREFIX + id) === null) delete index[id];
+    }
+
+    localStorage.setItem(WINDOW_INDEX_KEY, JSON.stringify(index));
+  } catch {
+    // GC is best-effort; never let it break pref loading.
+  }
+}
+
 /** Same-window fan-out for global-pref changes. The BroadcastChannel
  *  bus reaches *other* windows only (its `postMessage` does not echo to
  *  the sender), so two `useViewPrefs` instances inside the same tab —
@@ -759,6 +847,7 @@ export function useViewPrefs(opts?: { persistence?: ViewPrefsPersistence }) {
       initialized.current = true;
       return;
     }
+    gcWindowPrefs(); // one-shot, module-guarded: prune stale per-window pref keys
     setPrefs(loadPrefs());
     initialized.current = true;
   }, [ephemeral]);

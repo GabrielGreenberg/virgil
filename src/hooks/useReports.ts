@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { generateEntityId } from "@/lib/uuid";
 import type {
@@ -470,26 +470,50 @@ export function useReports(
     return () => window.removeEventListener("virgil-anchor-orphaned", handler);
   }, [clearCardAnchor]);
 
-  return {
-    cards: state.cards,
-    addReport,
-    addReportRequest,
-    updateReportContent,
-    updateReportTitle,
-    updateRequestContent,
-    setRequestAiRequest,
-    addCardParagraphId,
-    removeCardParagraphId,
-    reconcileAnchors,
-    loaded,
-    loadError,
-    deleteCard,
-    setArchived,
-    cloneReport,
-    cloneRequest,
-    convertCard,
-    bindAnchor,
-    clearCardAnchor,
-    discardPristineCards,
-  };
+  return useMemo(
+    () => ({
+      cards: state.cards,
+      addReport,
+      addReportRequest,
+      updateReportContent,
+      updateReportTitle,
+      updateRequestContent,
+      setRequestAiRequest,
+      addCardParagraphId,
+      removeCardParagraphId,
+      reconcileAnchors,
+      loaded,
+      loadError,
+      deleteCard,
+      setArchived,
+      cloneReport,
+      cloneRequest,
+      convertCard,
+      bindAnchor,
+      clearCardAnchor,
+      discardPristineCards,
+    }),
+    [
+      state.cards,
+      addReport,
+      addReportRequest,
+      updateReportContent,
+      updateReportTitle,
+      updateRequestContent,
+      setRequestAiRequest,
+      addCardParagraphId,
+      removeCardParagraphId,
+      reconcileAnchors,
+      loaded,
+      loadError,
+      deleteCard,
+      setArchived,
+      cloneReport,
+      cloneRequest,
+      convertCard,
+      bindAnchor,
+      clearCardAnchor,
+      discardPristineCards,
+    ],
+  );
 }

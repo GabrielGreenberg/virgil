@@ -141,5 +141,8 @@ export function useAnnotations(
     [update, cascadeOn, getBibEntry],
   );
 
-  return { annotations: state, getAnnotation, setAnnotation };
+  return useMemo(
+    () => ({ annotations: state, getAnnotation, setAnnotation }),
+    [state, getAnnotation, setAnnotation],
+  );
 }
