@@ -3288,13 +3288,29 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // would otherwise cancel).
   const [menubarWidth, setMenubarWidth] = useState(0);
   useEffect(() => {
+    // Keep a hidden (display:none) pane INERT for menubar-width tracking. Two
+    // hide-flip paths used to fire a `setMenubarWidth` self-render on every warm
+    // paper-switch, for a lozenge max-width nobody can see while hidden:
+    //  (1) the docked MenuBar's ResizeObserver delivers a 0-width contentRect
+    //      when the slot goes display:none; and
+    //  (2) this effect re-runs because Phase 5 gates `menuBar` to `undefined`
+    //      for inactive panes, so the docked MenuBar unmounts, `el` becomes
+    //      null, and the `!el` branch wrote `setMenubarWidth(0)`.
+    // Gate EVERY write on `isVisibleRef`: a hidden pane retains its last visible
+    // width, and the display:none→flex transition on re-show (menuBar returns,
+    // the element re-measures) restores it. Extends the "hidden panes do zero
+    // render work" invariant.
+    const visible = isVisibleRef.current;
     const el = dockedMenuBarRef.current;
     if (!el) {
-      setMenubarWidth(0);
+      if (visible) setMenubarWidth(0);
       return;
     }
-    setMenubarWidth(el.getBoundingClientRect().width);
+    if (visible) {
+      setMenubarWidth(el.getBoundingClientRect().width);
+    }
     const ro = new ResizeObserver((entries) => {
+      if (!isVisibleRef.current) return;
       for (const entry of entries) {
         setMenubarWidth(entry.contentRect.width);
       }

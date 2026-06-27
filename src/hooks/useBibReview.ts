@@ -187,12 +187,22 @@ export function useBibReview(
     if (id) fetchState(id);
   }, [fetchState]);
 
-  return {
-    requests: state.requests,
-    requestReview,
-    cancelRequest,
-    getRequestStatus,
-    clearRequest,
-    refresh,
-  };
+  return useMemo(
+    () => ({
+      requests: state.requests,
+      requestReview,
+      cancelRequest,
+      getRequestStatus,
+      clearRequest,
+      refresh,
+    }),
+    [
+      state.requests,
+      requestReview,
+      cancelRequest,
+      getRequestStatus,
+      clearRequest,
+      refresh,
+    ],
+  );
 }

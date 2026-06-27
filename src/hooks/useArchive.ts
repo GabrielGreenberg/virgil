@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -189,18 +189,34 @@ export function useArchive(docId: string | null) {
     (_s, snippets) => ({ snippets }),
   );
 
-  return {
-    snippets: state.snippets,
-    archiveContent,
-    updateSnippet,
-    updateSnippetTitle,
-    addParagraphId,
-    removeParagraphId,
-    reconcileAnchors,
-    loaded,
-    loadError,
-    restoreSnippet,
-    deleteSnippet,
-    setArchived,
-  };
+  return useMemo(
+    () => ({
+      snippets: state.snippets,
+      archiveContent,
+      updateSnippet,
+      updateSnippetTitle,
+      addParagraphId,
+      removeParagraphId,
+      reconcileAnchors,
+      loaded,
+      loadError,
+      restoreSnippet,
+      deleteSnippet,
+      setArchived,
+    }),
+    [
+      state.snippets,
+      archiveContent,
+      updateSnippet,
+      updateSnippetTitle,
+      addParagraphId,
+      removeParagraphId,
+      reconcileAnchors,
+      loaded,
+      loadError,
+      restoreSnippet,
+      deleteSnippet,
+      setArchived,
+    ],
+  );
 }

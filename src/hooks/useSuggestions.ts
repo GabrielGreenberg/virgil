@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { SuggestionsState, Suggestion } from "@/lib/types";
 import { usePersistentState } from "./usePersistentState";
 
@@ -85,13 +85,24 @@ export function useSuggestions(docId: string | null) {
     state.suggestions.length > 0 &&
     state.suggestions.every((s) => s.status !== "pending");
 
-  return {
-    state,
-    currentSuggestion,
-    isComplete,
-    actOnSuggestion,
-    updateSuggestionField,
-    jumpToSuggestion,
-    clearSuggestions,
-  };
+  return useMemo(
+    () => ({
+      state,
+      currentSuggestion,
+      isComplete,
+      actOnSuggestion,
+      updateSuggestionField,
+      jumpToSuggestion,
+      clearSuggestions,
+    }),
+    [
+      state,
+      currentSuggestion,
+      isComplete,
+      actOnSuggestion,
+      updateSuggestionField,
+      jumpToSuggestion,
+      clearSuggestions,
+    ],
+  );
 }

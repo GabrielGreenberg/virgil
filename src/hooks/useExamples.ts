@@ -159,10 +159,13 @@ export function useExamples(docId: string | null) {
     [persist],
   );
 
-  return {
-    exampleRefs: state.examples,
-    updateExampleTitle,
-    deleteExample,
-    syncFromEditor,
-  };
+  return useMemo(
+    () => ({
+      exampleRefs: state.examples,
+      updateExampleTitle,
+      deleteExample,
+      syncFromEditor,
+    }),
+    [state.examples, updateExampleTitle, deleteExample, syncFromEditor],
+  );
 }
