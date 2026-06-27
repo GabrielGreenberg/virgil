@@ -5050,13 +5050,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 ['--pod-cap-h' as string]:
                   'calc(var(--pod-radius) + 4px + var(--pod-gap))',
                 ['--pod-top' as string]: 'var(--pod-cap-inner)',
-                // Bottom outer gap. A touch larger than --pod-top: the
-                // card's drop shadow (--pod-shadow, offset DOWNWARD) falls
-                // into the bottom gap and darkens it, so an 8px bottom gap
-                // reads as visually tighter than the clean 8px top gap.
-                // The extra few px leave clean manilla below the shadow so
-                // the bottom gap LOOKS equal to the top.
-                ['--pod-bottom' as string]: 'calc(var(--pod-top) + 4px)',
+                // Bottom outer gap. Kept EQUAL to --pod-top so the manilla
+                // padding outside the pod is symmetric top/bottom. (Its own
+                // var, rather than reusing --pod-top directly, so the bottom
+                // gap stays independently tunable.)
+                ['--pod-bottom' as string]: 'var(--pod-top)',
                 ['--pod-header-h' as string]: `${podHeaderH}px`,
                 ['--chrome-top' as string]: `${chromeTopPx}px`,
               }}
