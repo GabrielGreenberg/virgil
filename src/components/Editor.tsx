@@ -698,10 +698,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               tr = tr.insert(mappedPos, newNode);
               view.dispatch(tr);
 
+              const originDocId = docIdRef.current ?? null;
               setTimeout(() => {
                 window.dispatchEvent(
                   new CustomEvent("virgil-footnote-panel-dropped", {
-                    detail: { footnoteId, isOrphan },
+                    // `docId` scopes the orphan-clear to the originating doc's
+                    // store so a re-drop in doc A can't clear a same-id orphan
+                    // in doc B under multi-doc keep-alive (FN-A2-03).
+                    detail: { footnoteId, isOrphan, docId: originDocId },
                   })
                 );
               }, 0);

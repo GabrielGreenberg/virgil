@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from "@tiptap/react";
+import type { RefObject } from "react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
@@ -25,6 +26,15 @@ import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
 // avoidance against the existing footnote IDs in the document.
 export interface FootnoteOptions {
   idGenerator: (existing: Set<string>) => string;
+  /**
+   * Live ref to the owning editor's docId. Threaded onto the deferred
+   * `virgil-footnote-orphaned` event so the per-pane orphan bridge can route
+   * each orphan to its ORIGINATING doc's store — without this, under multi-doc
+   * keep-alive a teardown in doc A bleeds into doc B's Footnotes panel
+   * (FN-A2-03). Null on surfaces with no doc identity (cards / floats / the
+   * Reader's id-substitution path).
+   */
+  docIdRef?: RefObject<string | null> | null;
 }
 
 export const Footnote = Node.create<FootnoteOptions>({
@@ -47,6 +57,7 @@ export const Footnote = Node.create<FootnoteOptions>({
   addOptions() {
     return {
       idGenerator: (existing: Set<string>) => generateShortId(existing),
+      docIdRef: null,
     };
   },
 
@@ -103,6 +114,7 @@ export const Footnote = Node.create<FootnoteOptions>({
   addProseMirrorPlugins() {
     const nodeType = this.type;
     const idGenerator = this.options.idGenerator;
+    const docIdRef = this.options.docIdRef;
     return [
       new Plugin({
         key: new PluginKey("footnoteInput"),
@@ -220,10 +232,11 @@ export const Footnote = Node.create<FootnoteOptions>({
               // it must orphan. Routed through the shared `cardHasContent` so
               // this gate and the delete-confirm read the SAME content model.
               if (cardHasContent("footnote", { content, title })) {
+                const originDocId = docIdRef?.current ?? null;
                 setTimeout(() => {
                   window.dispatchEvent(
                     new CustomEvent("virgil-footnote-orphaned", {
-                      detail: { footnoteId: removed.id, content },
+                      detail: { footnoteId: removed.id, content, docId: originDocId },
                     }),
                   );
                 }, 0);

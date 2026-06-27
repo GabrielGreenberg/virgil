@@ -120,7 +120,6 @@ import { useEditorOps } from "./editor-layout/card-actions/editor-ops";
 import { useFocusActions } from "./editor-layout/card-actions/focus";
 import { useCommentActions } from "./editor-layout/card-actions/comments";
 import { useFileActions } from "./editor-layout/card-actions/files";
-import { useOrphanActions } from "./editor-layout/card-actions/orphans";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useRefActions, resolveLabelDisplay } from "./editor-layout/card-actions/ref";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
@@ -163,7 +162,6 @@ import type { PaneState, EditorPaneViewPrefs, EditorPaneMenuBarBundle } from "./
 import {
   buildEditorPaneViewPrefs,
   EMPTY_SECTION_PATHS,
-  EMPTY_ORPHANED_FOOTNOTES,
   type EditorMutationHandlers,
   type EditorPaneViewDerivations,
   type EditorPaneSectionPaths,
@@ -209,7 +207,6 @@ const EMPTY_CUTTER: PaneState["cutterCards"] = [];
 const EMPTY_TODOS: PaneState["todoItems"] = [];
 const EMPTY_ARCHIVE: PaneState["archiveSnippets"] = [];
 const EMPTY_AI_REQUESTS: PaneState["aiRequests"] = [];
-import type { OrphanedFootnote } from "@/lib/types";
 import { hasFsaSupport } from "@/lib/fsa-support";
 import { queryRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
@@ -1033,8 +1030,13 @@ export default function EditorLayout() {
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
   // Anchored selection slots are declared above near useCutter — derived
   // from the cardStore via useAnchoredSelectionSlots.
-  const [orphanedFootnotes, setOrphanedFootnotes] = useState<OrphanedFootnote[]>([]);
-  const suppressOrphanRef = useRef<Set<string>>(new Set());
+  //
+  // Orphaned footnotes are NO LONGER shell state. They live in the per-doc
+  // sidecar store (`useOrphanedFootnotes(docId)`) UNDER the `<DocPipeline>`
+  // boundary, owned inside each `EditorPane`. The legacy shell `useState` here
+  // bled across warm keep-alive panes (FN-A2-03) because it sat above that
+  // boundary; the per-pane store + docId-routed event web (EditorPane) replaces
+  // it on both flag paths.
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
   // Marker-click → omni card alignment. The user clicked at viewport Y
   // `clickY` and we want the corresponding omni card to lock there.
@@ -2476,10 +2478,6 @@ export default function EditorLayout() {
   );
 
 
-  const { handleDeleteOrphan, handleEditOrphan, handleEditOrphanTitle } = useOrphanActions({
-    setOrphanedFootnotes,
-  });
-
   const editorPaneMenuBar: EditorPaneMenuBarBundle = useMemo(() => ({
     showParTitles,
     showLatexComments,
@@ -2560,7 +2558,9 @@ export default function EditorLayout() {
     alignOmniCardWithClick,
   });
 
-  useFootnoteSyncBridges({ suppressOrphanRef, setOrphanedFootnotes, deleteSnippet });
+  // Shell-level archive bridge only. The orphan/suppress/panel-dropped web moved
+  // into EditorPane (per-doc, docId-routed) — see useFootnoteOrphanBridges.
+  useFootnoteSyncBridges({ deleteSnippet });
 
   // Highlight the active \ref node with yellow while the popover is open
   useEffect(() => {
@@ -2820,9 +2820,12 @@ export default function EditorLayout() {
   // main app and the Reader. Memoized so the builder's `useMemo` below stays
   // referentially stable across renders.
   const editorMutationHandlers = useMemo<EditorMutationHandlers>(() => ({
-    onEditOrphan: handleEditOrphan,
-    onDeleteOrphan: handleDeleteOrphan,
-    onEditOrphanTitle: handleEditOrphanTitle,
+    // Orphan edit/delete/title handlers are owned by EditorPane's per-doc store
+    // (`useOrphanedFootnotes`) and injected via `effectiveViewPrefs`; these noop
+    // placeholders satisfy the bundle shape and are always overridden there.
+    onEditOrphan: noop,
+    onDeleteOrphan: noop,
+    onEditOrphanTitle: noop,
     onScrollToHeading: handleScrollToHeading,
     onReorderBlocks: handleReorderBlocks,
     onRenameHeading: handleRenameHeading,
@@ -2843,9 +2846,6 @@ export default function EditorLayout() {
     setCardArchiveView,
     setSuppressArchiveAtomWarning,
   }), [
-    handleEditOrphan,
-    handleDeleteOrphan,
-    handleEditOrphanTitle,
     handleScrollToHeading,
     handleReorderBlocks,
     handleRenameHeading,
@@ -3758,9 +3758,6 @@ export default function EditorLayout() {
                             isActive
                               ? editorPaneViewPrefs
                               : editorPaneViewPrefsInactive
-                          }
-                          orphanedFootnotes={
-                            isActive ? orphanedFootnotes : EMPTY_ORPHANED_FOOTNOTES
                           }
                           menuBar={isActive ? editorPaneMenuBar : undefined}
                           aiWindowOpen={isActive && aiWindowOpen}

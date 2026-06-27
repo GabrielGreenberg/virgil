@@ -1,49 +1,84 @@
-import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { OrphanedFootnote } from "@/lib/types";
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 
 /**
- * Footnote ↔ orphan bookkeeping bridges.
+ * Footnote ↔ orphan + archive bookkeeping bridges.
  *
- * - `virgil-footnote-orphaned` — editor node's teardown fires this when
- *   a footnote mark is deleted. We mirror it into `orphanedFootnotes`
- *   so the footnote can still be edited and re-dropped from the panel.
- *   Deletions done via `handleDeleteFootnote` pre-register the id in
- *   `suppressOrphanRef` so the subsequent teardown event doesn't
- *   resurrect the footnote as an orphan card.
- * - `virgil-footnote-suppress-orphan` — the PRODUCER side of the
- *   suppression latch. `handleDeleteFootnote` (EditorPane) dispatches
- *   this synchronously, BEFORE removing the atom, so the id is in
- *   `suppressOrphanRef` by the time the orphan-detector's deferred
- *   `virgil-footnote-orphaned` arrives. (The ref lives in EditorLayout
- *   alongside this hook; the delete handler lives in EditorPane — the
- *   window event is the decoupling seam.)
- * - `virgil-footnote-panel-dropped` — panel reports that the orphan was
- *   dropped back into the doc; we clear the orphan slot.
- * - `virgil-footnote-consumed-archive` — a footnote drop target swallowed
- *   an archive snippet; delete the archive entry to match.
+ * Split into two hooks because their state lives at two different layers:
+ *
+ *  - {@link useFootnoteOrphanBridges} is **per-pane** — it writes the per-doc
+ *    orphan store (`useOrphanedFootnotes(docId)`), so it is mounted inside
+ *    `EditorPane` once per mounted doc. Each instance only processes events
+ *    that ORIGINATED in its own doc (the `detail.docId` filter), which is what
+ *    keeps two warm keep-alive panes from co-mingling each other's orphans
+ *    (FN-A2-03). Before the per-doc cutover the orphan list was a single shell
+ *    `useState` above the `<DocPipeline>` boundary, so a window-level event web
+ *    accumulated every doc's orphans into one list.
+ *
+ *  - {@link useFootnoteSyncBridges} is the **shell-level archive bridge** — it
+ *    deletes an archive snippet swallowed by a footnote drop target. It targets
+ *    the ACTIVE doc's archive (via the bubbled-up `deleteSnippet`) and is
+ *    flag-agnostic, so it stays in `EditorLayout`.
+ *
+ * Both are decoupled from their producers by `window` CustomEvents — the
+ * decoupling seam exists because the orphan detector lives in ProseMirror-land
+ * (`footnote.ts`) while the state lives in React-land.
  */
-export function useFootnoteSyncBridges(deps: {
-  suppressOrphanRef: MutableRefObject<Set<string>>;
-  setOrphanedFootnotes: Dispatch<SetStateAction<OrphanedFootnote[]>>;
-  deleteSnippet: (id: string) => void;
-}) {
-  const { suppressOrphanRef, setOrphanedFootnotes, deleteSnippet } = deps;
 
-  // W2 cutover: flag-ON the bus reconciler (`useInlineAtomLifecycle`) is the
-  // SOLE orphan store writer (the durable sidecar), so this legacy event web
-  // is RETIRED — each handler bails before touching the (now-dormant) shell
-  // `orphanedFootnotes` state, leaving ONE store. Flag-OFF every handler runs
-  // exactly as before (byte-identical). The flag is read inside each handler
-  // (at event time, not mount time) so a per-test toggle takes effect without
-  // re-subscribing. The archive bridge below is flag-agnostic (unrelated).
+/** The orphan-store surface the per-pane bridge writes (the array-shaped setter
+ *  exposed by `useOrphanedFootnotes`). */
+export interface OrphanBridgeStore {
+  setOrphanedFootnotes: Dispatch<SetStateAction<OrphanedFootnote[]>>;
+}
+
+/**
+ * Per-pane orphan event web (legacy / flag-OFF path). Mounted in `EditorPane`
+ * beside `useOrphanedFootnotes(docId)`.
+ *
+ * Each handler:
+ *  - bails when `virgil:inline-atom-lifecycle` is ON — the bus reconciler
+ *    (`useInlineAtomLifecycle`) is then the sole orphan-store writer and the
+ *    detector in `footnote.ts` no longer emits these events. The flag is read
+ *    at EVENT time (not mount time) so a per-test toggle takes effect without
+ *    re-subscribing.
+ *  - bails when `detail.docId !== docId` — the events are window-level, so
+ *    every mounted pane's listener receives a teardown from any doc; this
+ *    filter routes each one to its ORIGINATING doc's store only (FN-A2-03).
+ *    `docId == null` events (cards / floats / Reader) never match an authored
+ *    pane, so they are inert.
+ *
+ * - `virgil-footnote-orphaned` — the detector fires this (deferred) when a
+ *   footnote-with-content's marker is deleted; we upsert an orphan so it can be
+ *   recovered/re-dropped from the panel. A deliberate trash-delete pre-arms
+ *   `suppressRef` (below) so this event is swallowed instead.
+ * - `virgil-footnote-suppress-orphan` — `handleDeleteFootnote` /
+ *   `spliceAndArchiveAtom` (EditorPane, same pane) dispatch this synchronously
+ *   BEFORE removing the atom, arming the latch so the immediately-following
+ *   `virgil-footnote-orphaned` doesn't resurrect the footnote as an orphan card.
+ *   The latch is per-pane (one `suppressRef` per doc), so two docs that happen
+ *   to share a short footnoteId don't cross-suppress.
+ * - `virgil-footnote-panel-dropped` — the panel reports the orphan was dropped
+ *   back into the doc; clear its orphan slot.
+ */
+export function useFootnoteOrphanBridges(deps: {
+  docId: string | null;
+  store: OrphanBridgeStore;
+}) {
+  const { docId, store } = deps;
+  const { setOrphanedFootnotes } = store;
+
+  // Per-pane suppression latch (was a shared ref in EditorLayout pre-cutover).
+  const suppressRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     const handler = (e: Event) => {
       if (isInlineAtomLifecycleOn()) return;
       const detail = (e as CustomEvent).detail;
       if (!detail?.footnoteId) return;
-      if (suppressOrphanRef.current.has(detail.footnoteId)) {
-        suppressOrphanRef.current.delete(detail.footnoteId);
+      if (detail.docId !== docId) return;
+      if (suppressRef.current.has(detail.footnoteId)) {
+        suppressRef.current.delete(detail.footnoteId);
         return;
       }
       setOrphanedFootnotes((prev) => {
@@ -57,37 +92,46 @@ export function useFootnoteSyncBridges(deps: {
     };
     window.addEventListener("virgil-footnote-orphaned", handler);
     return () => window.removeEventListener("virgil-footnote-orphaned", handler);
-  }, [suppressOrphanRef, setOrphanedFootnotes]);
+  }, [docId, setOrphanedFootnotes]);
 
-  // Producer for the orphan-suppression latch. A deliberate trash-delete
-  // (`handleDeleteFootnote`) fires this before removing the atom; we arm
-  // `suppressOrphanRef` so the immediately-following `virgil-footnote-
-  // orphaned` is swallowed instead of resurrecting the footnote as an
-  // orphan card. O(1) per event; no doc walk.
   useEffect(() => {
     const handler = (e: Event) => {
       if (isInlineAtomLifecycleOn()) return;
       const detail = (e as CustomEvent).detail;
       if (!detail?.footnoteId) return;
-      suppressOrphanRef.current.add(detail.footnoteId);
+      if (detail.docId !== docId) return;
+      suppressRef.current.add(detail.footnoteId);
     };
     window.addEventListener("virgil-footnote-suppress-orphan", handler);
     return () =>
       window.removeEventListener("virgil-footnote-suppress-orphan", handler);
-  }, [suppressOrphanRef]);
+  }, [docId]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       if (isInlineAtomLifecycleOn()) return;
       const detail = (e as CustomEvent).detail;
       if (!detail?.footnoteId) return;
+      if (detail.docId !== docId) return;
       if (detail.isOrphan) {
         setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== detail.footnoteId));
       }
     };
     window.addEventListener("virgil-footnote-panel-dropped", handler);
     return () => window.removeEventListener("virgil-footnote-panel-dropped", handler);
-  }, [setOrphanedFootnotes]);
+  }, [docId, setOrphanedFootnotes]);
+}
+
+/**
+ * Shell-level archive bridge (flag-agnostic). When a footnote drop target
+ * swallows an archive snippet, delete the matching archive entry. `deleteSnippet`
+ * targets the active doc's archive. Kept in `EditorLayout` — it has nothing to
+ * do with the per-doc orphan store.
+ */
+export function useFootnoteSyncBridges(deps: {
+  deleteSnippet: (id: string) => void;
+}) {
+  const { deleteSnippet } = deps;
 
   useEffect(() => {
     const handler = (e: Event) => {

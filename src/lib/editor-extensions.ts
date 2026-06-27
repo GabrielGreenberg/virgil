@@ -1755,7 +1755,12 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // NodeViews' surface threading above (memo L3h.1).
     InlineMath.configure({ surface: isFloat ? "float" : "main" }),
     DisplayMath.configure({ surface: isFloat ? "float" : "main" }),
-    Footnote,
+    // `docIdRef` rides onto the deferred `virgil-footnote-orphaned` event so the
+    // per-pane orphan bridge routes each orphan to its ORIGINATING doc's store
+    // (FN-A2-03 cross-doc bleed under multi-doc keep-alive). Cards/floats/Reader
+    // pass no docIdRef → the event carries `docId: null` (harmless: the orphan
+    // web only runs on the main authored panes).
+    Footnote.configure({ docIdRef: ctx.docIdRef ?? null }),
     // Per-surface so the atom's selection chrome stays MAIN-only: a float is a
     // single-node surface, so its atom-only doc rests a NodeSelection on the
     // lone comment and the NodeView would paint `.selected` chrome the page

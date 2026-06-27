@@ -188,6 +188,7 @@ import { useInlineAtomLifecycle } from "@/links/_shared/useInlineAtomLifecycle";
 import { useCardLifecycleReconciler } from "@/cards/lifecycle/useCardLifecycleReconciler";
 import { useCitationResync } from "@/links/_shared/useCitationResync";
 import { useOrphanedFootnotes } from "@/hooks/useOrphanedFootnotes";
+import { useFootnoteOrphanBridges } from "./editor-layout/event-bridges/footnote-sync";
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
@@ -712,18 +713,6 @@ export interface EditorPaneProps {
   viewPrefs?: EditorPaneViewPrefs;
 
   /**
-   * Orphaned footnotes (in-text callout deleted, body preserved) for THIS
-   * doc. Phase 5b split this OUT of the shared `viewPrefs` bundle: it was a
-   * per-doc shell `useState` whose churn on a paper switch gave `viewPrefs` a
-   * fresh identity and defeated `React.memo(EditorPane)`. The main app passes
-   * the live list for the active pane and a stable empty array for inactive
-   * keep-alive panes; the Reader omits it (no orphans). EditorPane injects it
-   * back into the bundle via `effectiveViewPrefs` so every downstream
-   * `viewPrefs.orphanedFootnotes` read is unchanged.
-   */
-  orphanedFootnotes?: import("@/lib/types").OrphanedFootnote[];
-
-  /**
    * Optional adornment rendered just inboard of the left `PaneRail`,
    * directly outboard of the editor column. The Library Reader uses
    * this slot to mount its `PageScrollStrip` (the page-mark navigator)
@@ -786,10 +775,6 @@ export interface EditorPaneProps {
 const EMPTY_LATEX_ERRORS: LatexError[] = [];
 const EMPTY_STRING_MAP: Map<string, string> = new Map();
 const EMPTY_STRING_SET: Set<string> = new Set();
-// Stable empty orphaned-footnote list — the default for the `orphanedFootnotes`
-// prop (Reader omits it; inactive panes pass a stable empty array) so the
-// destructured value keeps a constant identity (Phase 5b).
-const EMPTY_ORPHANS: import("@/lib/types").OrphanedFootnote[] = [];
 // `noop` is the existing module-scope stable no-op (declared above for
 // PaneState stubs); reused here for the optional error-prop defaults.
 const noopSetSelectedErrorId: Dispatch<SetStateAction<string | null>> = () => {};
@@ -820,7 +805,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     onToggleCodeView,
     placements,
     viewPrefs,
-    orphanedFootnotes = EMPTY_ORPHANS,
     leftMarginPrelude,
     menuBar,
     aiWindowOpen = false,
@@ -1113,38 +1097,29 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       : undefined,
   });
 
-  // ── W2 CUTOVER: the SINGLE rendered orphan store ────────────────────────
-  // The panel / omni / search surfaces render orphaned footnotes from
-  // `viewPrefs.orphanedFootnotes` (+ the `onEditOrphan` / `onDeleteOrphan` /
-  // `onEditOrphanTitle` handlers). Pre-cutover that store was the volatile
-  // EditorLayout shell `useState`, populated by the legacy `virgil-footnote-
-  // orphaned` event web. W2a built the durable per-doc sidecar
-  // (`orphanedFootnotesStore`) and W2b made the bus reconciler its only writer —
-  // but NOTHING rendered it, so flag-ON the reconciler maintained a store the
-  // UI never read while the legacy web still drove the panel (the BLOCKER).
+  // ── The per-doc orphan store is the SINGLE store on BOTH flag paths ──────
+  // The store (`useOrphanedFootnotes(docId)`) lives UNDER the `<DocPipeline>`
+  // boundary, keyed on docId, so it can never co-mingle two docs' orphans. The
+  // only thing the `virgil:inline-atom-lifecycle` flag governs is WHO writes it:
   //
-  // Here we close that gap: flag-ON, swap the four orphan fields of the
-  // `viewPrefs` bundle to read/write the SIDECAR (one store: reconciler writes,
-  // panel reads). Flag-OFF, pass `viewPrefs` through UNCHANGED so the legacy
-  // event web + shell state still drive the panel byte-identically. The non-
-  // orphan fields of `viewPrefs` are never touched on either path.
-  const lifecycleFlagOn = isInlineAtomLifecycleOn();
+  //   - flag ON  → the bus reconciler (`useInlineAtomLifecycle`, above);
+  //   - flag OFF → the legacy event web, now mounted HERE per-pane and routed
+  //     by the event's originating docId (so a teardown in doc A never lands in
+  //     doc B's store). This un-bundles the low-risk per-doc store re-home (T2
+  //     §9 step 2) from the still-gated reconciler cutover (step 3).
+  //
+  // Pre-cutover the orphan list was a volatile shell `useState` ABOVE the
+  // DocPipeline boundary, threaded down as the `orphanedFootnotes` prop — that
+  // is exactly what bled across warm keep-alive panes (FN-A2-03). The prop is
+  // gone; the store is internal and per-doc.
+  useFootnoteOrphanBridges({ docId, store: orphanedFootnotesStore });
   const effectiveViewPrefs = useMemo(() => {
     if (!viewPrefs) return viewPrefs;
-    // Phase 5b: the orphan ARRAY no longer rides the shared `viewPrefs`
-    // bundle (its per-doc churn busted the memo). The builder leaves it as the
-    // stable empty default; we inject the live per-doc list from the dedicated
-    // `orphanedFootnotes` prop here so every downstream
-    // `viewPrefs.orphanedFootnotes` read is unchanged. The Reader passes no
-    // prop (defaults to EMPTY_ORPHANS), preserving its empty list.
-    if (!lifecycleFlagOn) {
-      // Flag OFF (default): legacy event web + the per-doc prop drive the
-      // panel. Only the orphan ARRAY is swapped in; the edit/delete handlers
-      // and every non-orphan field pass through byte-identically.
-      return { ...viewPrefs, orphanedFootnotes };
-    }
-    // Flag ON: the SIDECAR store is the single source for both the list and
-    // the edit/delete handlers (W2 cutover).
+    // The SIDECAR store is the single source for both the list and the
+    // edit/delete handlers, regardless of flag. The builder leaves the orphan
+    // fields at their stable empty/noop defaults; we override all four here so
+    // every downstream `viewPrefs.orphanedFootnotes` / `onEditOrphan` read is
+    // the per-doc store. The Reader's store no-ops its writes (no handle).
     return {
       ...viewPrefs,
       orphanedFootnotes: orphanedFootnotesStore.orphans,
@@ -1152,7 +1127,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       onDeleteOrphan: orphanedFootnotesStore.clearOrphan,
       onEditOrphanTitle: orphanedFootnotesStore.editOrphanTitle,
     };
-  }, [viewPrefs, orphanedFootnotes, lifecycleFlagOn, orphanedFootnotesStore]);
+  }, [viewPrefs, orphanedFootnotesStore]);
 
   // W2d (T4 D6 seam) — the card-lifecycle reconciler. Consumes the
   // `card-deleted` / `card-morphed` signal `runCardLifecycleEvent` publishes and
@@ -3751,12 +3726,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     if (!isInlineAtomLifecycleOn()) {
       window.dispatchEvent(
         new CustomEvent("virgil-footnote-suppress-orphan", {
-          detail: { footnoteId: id },
+          // `docId` scopes the suppress latch to THIS doc's per-pane bridge so
+          // a deliberate delete in doc A can't swallow a coincidental same-id
+          // orphan event in doc B under multi-doc keep-alive (FN-A2-03).
+          detail: { footnoteId: id, docId },
         }),
       );
     }
     innerRef.current?.deleteFootnote(id);
-  }, []);
+  }, [docId]);
 
   // Citation order — left-to-right ids of `\cite{}` commands in the
   // doc. Recomputes only when citations actually change (`rev.citations`),
@@ -4379,7 +4357,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         if (!isInlineAtomLifecycleOn()) {
           window.dispatchEvent(
             new CustomEvent("virgil-footnote-suppress-orphan", {
-              detail: { footnoteId: id },
+              // `docId`-scoped latch — see handleDeleteFootnote (FN-A2-03).
+              detail: { footnoteId: id, docId },
             }),
           );
         }
@@ -4390,7 +4369,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         citationsHook.setArchived(id, true);
       }
     },
-    [footnotesHook.setArchived, citationsHook.setArchived],
+    [docId, footnotesHook.setArchived, citationsHook.setArchived],
   );
 
   // Pending atom-archive confirm ({kind,id} while the dialog is open).

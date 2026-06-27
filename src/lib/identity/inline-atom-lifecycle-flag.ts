@@ -1,18 +1,23 @@
 /**
  * Feature flag for the inline-atom lifecycle rollout (T2 Wave 2).
  *
- * `virgil:inline-atom-lifecycle` (localStorage, default OFF) gates the NEW
- * lifecycle behavior so it can be A/B'd in the preview and rolled back if a
- * regression surfaces (PLAN.md §6, T2 §9 de-risking):
+ * `virgil:inline-atom-lifecycle` (localStorage, default OFF) gates the
+ * bus-driven `useInlineAtomLifecycle` reconciler so it can be A/B'd in the
+ * preview and rolled back if a regression surfaces (PLAN.md §6, T2 §9
+ * de-risking). When ON, that one reconciler upserts/clears the orphan record,
+ * prunes the `cardStore`/`poppedOutCards` refs, and replaces the
+ * `virgil-footnote-orphaned/-suppress-orphan/-panel-dropped` event web (W2b —
+ * registers as a POLICY on the single identity bus consumer, NOT a new
+ * `editor.on('update')` subscriber).
  *
- *  - orphaned footnotes move from volatile EditorLayout shell state into a
- *    per-doc durable sidecar (`orphaned-footnotes.json`) so they survive a
- *    reload and never bleed across documents (FN-A2-01 DATA-LOSS, FN-A2-03);
- *  - the one bus-driven `useInlineAtomLifecycle` reconciler upserts/clears the
- *    orphan record, prunes the `cardStore`/`poppedOutCards` refs, and replaces
- *    the `virgil-footnote-orphaned/-suppress-orphan/-panel-dropped` event web
- *    (W2b — registers as a POLICY on the single identity bus consumer, NOT a
- *    new `editor.on('update')` subscriber).
+ * NOTE — what the flag does NOT gate any more: the per-doc orphan STORE itself
+ * (`useOrphanedFootnotes(docId)`) is now the single store on BOTH paths,
+ * UNCONDITIONALLY (the design's low-risk step 2, un-bundled from the gated
+ * reconciler). It lives under the `<DocPipeline>` boundary so orphans survive a
+ * reload and never bleed across documents (FN-A2-01, FN-A2-03), regardless of
+ * this flag. Flag OFF, the legacy event web — now mounted PER-PANE and routed by
+ * the event's originating docId (`useFootnoteOrphanBridges`) — writes that
+ * store; flag ON, the reconciler does. Only the WRITER differs by flag.
  *
  * **Flag OFF MUST preserve current behavior exactly** — every site that reads
  * this flag keeps its legacy path intact so the existing suite stays green.
