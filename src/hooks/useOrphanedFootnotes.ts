@@ -33,11 +33,12 @@ import type { OrphanedFootnote, OrphanedFootnotesState } from "@/lib/types";
  * reload-loss (FN-A2-01) and cross-doc bleed (FN-A2-03) both vanish, and
  * orphan body/title edits persist (FN-F5-02).
  *
- * Gated behind `virgil:inline-atom-lifecycle`: the wiring that swaps the
- * shell `useState` for this hook (and re-targets the `useOrphanActions` /
- * `useFootnoteSyncBridges` setters onto it) lands in W2b behind that flag.
- * This hook itself is behavior-correct in isolation; the flag governs the
- * cutover, not the hook's internals.
+ * This hook is the SINGLE orphan store on BOTH flag paths — the swap off the old
+ * EditorLayout shell `useState` is now UNCONDITIONAL (the design's low-risk step
+ * 2, un-bundled from the still-gated reconciler). `virgil:inline-atom-lifecycle`
+ * only chooses the WRITER: ON → the bus reconciler (`useInlineAtomLifecycle`);
+ * OFF → the per-pane, docId-routed event web (`useFootnoteOrphanBridges`). Both
+ * write THIS store via the array-shaped `setOrphanedFootnotes` setter below.
  */
 
 const EMPTY: OrphanedFootnotesState = { version: 1, orphans: [] };
