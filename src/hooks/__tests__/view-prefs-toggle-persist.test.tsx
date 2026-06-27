@@ -93,7 +93,7 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
     cleanup(); // unmount between renders (no auto-cleanup configured here)
   });
 
-  it("Paragraph titles: click flips state AND persists false (no revert)", () => {
+  it("Paragraph titles: click flips state AND persists true (no revert)", () => {
     const { getByTestId } = render(
       <StrictMode>
         <Toggle
@@ -104,18 +104,18 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
       </StrictMode>,
     );
     const btn = getByTestId("par");
-    expect(btn.textContent).toBe("true"); // shipped default
+    expect(btn.textContent).toBe("false"); // shipped default (promoted from prefs)
 
     fireEvent.click(btn);
 
     // React state flipped...
-    expect(btn.textContent).toBe("false");
-    // ...AND it actually landed in the global blob. The bug wrote `false` then
-    // immediately re-wrote `true` here, so a reload (loadPrefs) read `true`.
-    expect(persistedGlobal().showParTitles).toBe(false);
+    expect(btn.textContent).toBe("true");
+    // ...AND it actually landed in the global blob. The bug wrote `true` then
+    // immediately re-wrote `false` here, so a reload (loadPrefs) read `false`.
+    expect(persistedGlobal().showParTitles).toBe(true);
   });
 
-  it("Paragraph titles: a second click toggles back on and persists true", () => {
+  it("Paragraph titles: a second click toggles back off and persists false", () => {
     const { getByTestId } = render(
       <StrictMode>
         <Toggle
@@ -128,8 +128,8 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
     const btn = getByTestId("par");
     fireEvent.click(btn);
     fireEvent.click(btn);
-    expect(btn.textContent).toBe("true");
-    expect(persistedGlobal().showParTitles).toBe(true);
+    expect(btn.textContent).toBe("false");
+    expect(persistedGlobal().showParTitles).toBe(false);
   });
 
   it("% comments twin persists (no revert)", () => {
