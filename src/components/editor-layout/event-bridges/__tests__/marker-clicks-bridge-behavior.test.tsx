@@ -50,7 +50,7 @@ vi.mock("@/links/_shared/usePlacement", async (importOriginal) => {
 import { useMarkerClickBridges } from "@/components/editor-layout/event-bridges/marker-clicks";
 import { openForCard } from "@/components/editor-layout/event-bridges/open-for-card";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { ViewPrefs } from "@/hooks/useViewPrefs";
 
 const openForCardMock = vi.mocked(openForCard);
@@ -80,6 +80,9 @@ function makeDeps(prefsOverrides: Partial<ViewPrefs> = {}) {
     setActiveMath: vi.fn(),
     setActiveFigure: vi.fn(),
     alignOmniCardWithClick: vi.fn(),
+    // The bridge resolves the active store via this getter at click time; point
+    // it at the same instance the `selectSpy` below spies on.
+    getActiveCardStore: () => cardStore,
   };
 }
 

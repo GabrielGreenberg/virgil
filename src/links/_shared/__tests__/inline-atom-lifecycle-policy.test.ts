@@ -14,7 +14,7 @@
 //      key on a markerless re-parse (OMNI-F3-02, CI-A3-01, CI-F1-02).
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { createCardStore, type CardStore } from "@/links/_shared/anchored-card-store";
 import {
   EMPTY_DIFF,
   type CitationEntry,
@@ -68,10 +68,12 @@ function makeDeps(s: StubState): InlineAtomLifecycleDeps {
   };
 }
 
+// A fresh, isolated per-doc store each test; passed to the policy/migrator AND
+// seeded/asserted here, so the instance under test is exactly the one the
+// factory mutates.
+let cardStore: CardStore;
 beforeEach(() => {
-  cardStore.clearSelection();
-  cardStore.setHover(null);
-  for (const r of [...cardStore.getState().expandedSet]) cardStore.collapse(r);
+  cardStore = createCardStore();
 });
 
 describe("makeInlineAtomLifecyclePolicy — (a) orphan upsert/clear", () => {
@@ -84,7 +86,7 @@ describe("makeInlineAtomLifecyclePolicy — (a) orphan upsert/clear", () => {
         ["f1", { content: { type: "doc" }, plainText: "a real body", title: "T", thanks: false }],
       ]),
     };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
     expect(s.orphans).toHaveLength(1);
     expect(s.orphans[0].footnoteId).toBe("f1");
@@ -98,7 +100,7 @@ describe("makeInlineAtomLifecyclePolicy — (a) orphan upsert/clear", () => {
       open: new Set(),
       bodies: new Map([["f1", { content: null, plainText: "   ", thanks: false }]]),
     };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
     expect(s.orphans).toHaveLength(0);
   });
@@ -110,7 +112,7 @@ describe("makeInlineAtomLifecyclePolicy — (a) orphan upsert/clear", () => {
       open: new Set(),
       bodies: new Map([["f1", { content: null, plainText: "", title: "Just a title", thanks: false }]]),
     };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
     expect(s.orphans).toHaveLength(1);
   });
@@ -122,7 +124,7 @@ describe("makeInlineAtomLifecyclePolicy — (a) orphan upsert/clear", () => {
       open: new Set(),
       bodies: new Map(),
     };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     // The undo re-adds f1 → addedFootnotes carries it → orphan must clear so the
     // atom is never simultaneously anchored AND orphan.
     policy(diffWith({ addedFootnotes: [fn("f1")] }), NO_REMAP);
@@ -134,7 +136,7 @@ describe("makeInlineAtomLifecyclePolicy — (b) cardStore prune", () => {
   it("clears a selected footnote ref on its genuine removal", () => {
     cardStore.select({ kind: "footnote", id: "f1" });
     const s: StubState = { orphans: [], live: new Set(), open: new Set(), bodies: new Map() };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
     expect(cardStore.isSelected({ kind: "footnote", id: "f1" })).toBe(false);
   });
@@ -142,7 +144,7 @@ describe("makeInlineAtomLifecyclePolicy — (b) cardStore prune", () => {
   it("clears a selected citation ref on its removal", () => {
     cardStore.select({ kind: "citation", id: "c1" });
     const s: StubState = { orphans: [], live: new Set(), open: new Set(), bodies: new Map() };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedCitations: [cite("c1")] }), NO_REMAP);
     expect(cardStore.isSelected({ kind: "citation", id: "c1" })).toBe(false);
   });
@@ -150,7 +152,7 @@ describe("makeInlineAtomLifecyclePolicy — (b) cardStore prune", () => {
   it("does NOT prune a re-parse SURVIVOR (id is a remap key)", () => {
     cardStore.select({ kind: "citation", id: "c1" });
     const s: StubState = { orphans: [], live: new Set(["c2"]), open: new Set(), bodies: new Map() };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     // c1 appears in removedCitations but is a remap key (it survived as c2). The
     // regen migrator re-points selection to c2; the policy must NOT also prune.
     const ctx: InlineAtomPolicyContext = { remap: new Map([["c1", "c2"]]) };
@@ -162,7 +164,7 @@ describe("makeInlineAtomLifecyclePolicy — (b) cardStore prune", () => {
   it("does NOT prune a MOVED footnote (removed + re-added live in same tx)", () => {
     cardStore.select({ kind: "footnote", id: "f1" });
     const s: StubState = { orphans: [], live: new Set(["f1"]), open: new Set(), bodies: new Map() };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedFootnotes: [fn("f1")], addedFootnotes: [fn("f1", 9)] }), NO_REMAP);
     expect(cardStore.isSelected({ kind: "footnote", id: "f1" })).toBe(true);
     expect(s.orphans).toHaveLength(0); // a move is not an orphan
@@ -172,7 +174,7 @@ describe("makeInlineAtomLifecyclePolicy — (b) cardStore prune", () => {
     cardStore.setHover({ kind: "footnote", id: "f1" });
     cardStore.expand({ kind: "footnote", id: "f1" });
     const s: StubState = { orphans: [], live: new Set(), open: new Set(), bodies: new Map() };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
     expect(cardStore.getState().hover).toBeNull();
     expect(cardStore.isExpanded({ kind: "footnote", id: "f1" })).toBe(false);
@@ -188,7 +190,7 @@ describe("makeInlineAtomLifecyclePolicy — (c) float prune/re-point", () => {
       open: new Set([key]),
       bodies: new Map([["f1", { content: null, plainText: "", thanks: false }]]),
     };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
     expect(s.open.has(key)).toBe(false); // closed
   });
@@ -201,7 +203,7 @@ describe("makeInlineAtomLifecyclePolicy — (c) float prune/re-point", () => {
       open: new Set([key]),
       bodies: new Map([["f1", { content: { type: "doc" }, plainText: "recoverable body", thanks: false }]]),
     };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
     expect(s.open.has(key)).toBe(true); // left open → renders the orphan body
     expect(s.orphans).toHaveLength(1);
@@ -210,7 +212,7 @@ describe("makeInlineAtomLifecyclePolicy — (c) float prune/re-point", () => {
   it("closes a popped citation float on removal (citations have no orphan model)", () => {
     const key = "float:card:citation:c1";
     const s: StubState = { orphans: [], live: new Set(), open: new Set([key]), bodies: new Map() };
-    const policy = makeInlineAtomLifecyclePolicy(makeDeps(s));
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
     policy(diffWith({ removedCitations: [cite("c1")] }), NO_REMAP);
     expect(s.open.has(key)).toBe(false);
   });
@@ -219,7 +221,7 @@ describe("makeInlineAtomLifecyclePolicy — (c) float prune/re-point", () => {
 describe("makeInlineAtomRegenMigrator — (d) selection + float re-point", () => {
   it("re-points the selected card id on a regen remap", () => {
     cardStore.select({ kind: "citation", id: "c1" });
-    const migrator = makeInlineAtomRegenMigrator();
+    const migrator = makeInlineAtomRegenMigrator(cardStore);
     migrator(regenIdsChange(new Map([["c1", "c1-NEW"]])));
     expect(cardStore.isSelected({ kind: "citation", id: "c1-NEW" })).toBe(true);
     expect(cardStore.isSelected({ kind: "citation", id: "c1" })).toBe(false);
@@ -228,7 +230,7 @@ describe("makeInlineAtomRegenMigrator — (d) selection + float re-point", () =>
   it("re-points hover + expansion on a regen remap", () => {
     cardStore.setHover({ kind: "footnote", id: "f1" });
     cardStore.expand({ kind: "footnote", id: "f1" });
-    const migrator = makeInlineAtomRegenMigrator();
+    const migrator = makeInlineAtomRegenMigrator(cardStore);
     migrator(regenIdsChange(new Map([["f1", "f1-NEW"]])));
     expect(cardStore.getState().hover).toEqual({ kind: "footnote", id: "f1-NEW" });
     expect(cardStore.isExpanded({ kind: "footnote", id: "f1-NEW" })).toBe(true);
@@ -237,7 +239,7 @@ describe("makeInlineAtomRegenMigrator — (d) selection + float re-point", () =>
 
   it("remaps the open float key (lockstep) on a regen remap", () => {
     const remapped: Array<[string, string]> = [];
-    const migrator = makeInlineAtomRegenMigrator((oldKey, newKey) => remapped.push([oldKey, newKey]));
+    const migrator = makeInlineAtomRegenMigrator(cardStore, (oldKey, newKey) => remapped.push([oldKey, newKey]));
     migrator(regenIdsChange(new Map([["c1", "c2"]])));
     // Tries both domains; the float-key remap is a no-op when not open, so we
     // just assert the citation key was offered for remap.
@@ -246,7 +248,7 @@ describe("makeInlineAtomRegenMigrator — (d) selection + float re-point", () =>
 
   it("ignores a non-regen change and an empty remap", () => {
     cardStore.select({ kind: "citation", id: "c1" });
-    const migrator = makeInlineAtomRegenMigrator();
+    const migrator = makeInlineAtomRegenMigrator(cardStore);
     migrator(regenIdsChange(new Map())); // empty
     expect(cardStore.isSelected({ kind: "citation", id: "c1" })).toBe(true);
   });

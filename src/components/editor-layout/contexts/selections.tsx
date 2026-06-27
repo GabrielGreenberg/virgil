@@ -2,8 +2,9 @@
 
 import { createContext, useCallback, useContext, useMemo, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import {
-  cardStore,
-  useSelection,
+  useCardStore,
+  useStoreSelection,
+  type CardStore,
 } from "@/links/_shared/anchored-card-store";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 
@@ -56,33 +57,37 @@ export interface SelectionsProviderInputs {
  *  Writes target the SELECTION axis only (`select`/`clearSelection`): a
  *  per-kind "selected id" is the selection slot when it holds this kind. It
  *  does NOT expand the card (N1: selecting ≠ expanding) — a marker click that
- *  routes here selects + scrolls without unfurling the body. */
-function makeKindSetter(kind: EntityKind): Dispatch<SetStateAction<string | null>> {
+ *  routes here selects + scrolls without unfurling the body.
+ *
+ *  `store` is the per-doc instance the provider resolved (context for the
+ *  per-pane mount, the active-doc store for the shell mount). */
+function makeKindSetter(store: CardStore, kind: EntityKind): Dispatch<SetStateAction<string | null>> {
   return (action) => {
-    const sel = primarySelectionFor(kind);
+    const sel = primarySelectionFor(store, kind);
     const curId = sel ? sel.id : null;
     const nextId = typeof action === "function" ? action(curId) : action;
     if (nextId == null) {
       // Clear the selection if it currently refers to this kind.
-      const s = cardStore.getState().selected;
-      if (s && s.kind === kind) cardStore.clearSelection();
+      const s = store.getState().selected;
+      if (s && s.kind === kind) store.clearSelection();
       return;
     }
-    cardStore.select({ kind, id: nextId });
+    store.select({ kind, id: nextId });
   };
 }
 
-function primarySelectionFor(kind: EntityKind): { kind: EntityKind; id: string } | null {
-  const s = cardStore.getState().selected;
+function primarySelectionFor(store: CardStore, kind: EntityKind): { kind: EntityKind; id: string } | null {
+  const s = store.getState().selected;
   return s && s.kind === kind ? s : null;
 }
 
 /** Like `primarySelectionFor` but matches any of a set of kinds — for the
  *  polymorphic Cutter and Revisions slots that accept two kinds each. */
 function polymorphicFocusFor(
+  store: CardStore,
   kinds: ReadonlyArray<EntityKind>,
 ): { kind: EntityKind; id: string } | null {
-  const s = cardStore.getState().selected;
+  const s = store.getState().selected;
   return s && kinds.includes(s.kind) ? s : null;
 }
 
@@ -97,13 +102,18 @@ function polymorphicFocusFor(
  *  separately. */
 export type AnchoredSlotSet = Omit<SelectionsContextValue, "selectedBibKey" | "setSelectedBibKey">;
 
-export function useAnchoredSelectionSlots(): AnchoredSlotSet {
+export function useAnchoredSelectionSlots(storeOverride?: CardStore): AnchoredSlotSet {
   // Reuse the derivation by passing a no-op bib pair; we only consume the
-  // anchored slots. Cheaper than duplicating the logic.
-  const v = useSelectionsValue({
-    selectedBibKey: null,
-    setSelectedBibKey: NOOP_BIB_SETTER,
-  });
+  // anchored slots. Cheaper than duplicating the logic. `storeOverride` is the
+  // active-doc store the SHELL caller (EditorLayout) passes so its setters
+  // target the active doc, not the context default.
+  const v = useSelectionsValue(
+    {
+      selectedBibKey: null,
+      setSelectedBibKey: NOOP_BIB_SETTER,
+    },
+    storeOverride,
+  );
   // Strip the bib slots — they're undefined on this caller path.
   const { selectedBibKey: _b, setSelectedBibKey: _sb, ...rest } = v;
   void _b; void _sb;
@@ -114,31 +124,40 @@ const NOOP_BIB_SETTER: Dispatch<SetStateAction<string | null>> = () => {};
 
 /** Hook that returns the SelectionsContextValue shape, derived live from
  *  the global store. Subscribes to selection changes via useSelection. */
-function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContextValue {
-  const sel = useSelection();
+function useSelectionsValue(
+  inputs: SelectionsProviderInputs,
+  storeOverride?: CardStore,
+): SelectionsContextValue {
+  // Always read context (hooks-rule), then prefer the explicit override: the
+  // per-pane mount passes nothing (uses its CardStoreProvider context store);
+  // the shell mount passes the active-doc store so its setters + `sel` target
+  // the active doc, not the context default.
+  const ctxStore = useCardStore();
+  const store = storeOverride ?? ctxStore;
+  const sel = useStoreSelection(store);
   const idFor = (k: EntityKind) => (sel && sel.kind === k ? sel.id : null);
 
-  // Setters are stable across renders — the store reads "current" state at
-  // call time, so the setters never need to be recreated.
-  const setSelectedNoteId = useCallback(makeKindSetter("note"), []);
-  const setSelectedFootnoteId = useCallback(makeKindSetter("footnote"), []);
-  const setSelectedCitationId = useCallback(makeKindSetter("citation"), []);
-  const setSelectedTodoId = useCallback(makeKindSetter("todo"), []);
-  const setSelectedArchiveId = useCallback(makeKindSetter("archive"), []);
-  const setSelectedExampleId = useCallback(makeKindSetter("example"), []);
+  // Setters are stable per store — the store reads "current" state at call
+  // time, so they only recreate when the doc's store instance changes.
+  const setSelectedNoteId = useCallback(makeKindSetter(store, "note"), [store]);
+  const setSelectedFootnoteId = useCallback(makeKindSetter(store, "footnote"), [store]);
+  const setSelectedCitationId = useCallback(makeKindSetter(store, "citation"), [store]);
+  const setSelectedTodoId = useCallback(makeKindSetter(store, "todo"), [store]);
+  const setSelectedArchiveId = useCallback(makeKindSetter(store, "archive"), [store]);
+  const setSelectedExampleId = useCallback(makeKindSetter(store, "example"), [store]);
   // Cutter and Revisions still share one slot per panel until U7 splits
   // their polymorphic kinds. Both slots accept any of the panel's two
   // kinds; the slot setter routes to whichever is currently in the store
   // or defaults to the comment kind on a fresh select.
   const setSelectedCutterCardId = useCallback<Dispatch<SetStateAction<string | null>>>(
     (action) => {
-      const focused = polymorphicFocusFor(["cutter-comment", "cutter-suggestion"]);
+      const focused = polymorphicFocusFor(store, ["cutter-comment", "cutter-suggestion"]);
       const curId = focused ? focused.id : null;
       const nextId = typeof action === "function" ? action(curId) : action;
       if (nextId == null) {
-        const s = cardStore.getState().selected;
+        const s = store.getState().selected;
         if (s && (s.kind === "cutter-comment" || s.kind === "cutter-suggestion")) {
-          cardStore.clearSelection();
+          store.clearSelection();
         }
         return;
       }
@@ -147,47 +166,47 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
       //-aware callers should set the store directly with the right kind.)
       const kind: EntityKind =
         focused && focused.kind === "cutter-suggestion" ? "cutter-suggestion" : "cutter-comment";
-      cardStore.select({ kind, id: nextId });
+      store.select({ kind, id: nextId });
     },
-    [],
+    [store],
   );
   // Reports shares one slot for its two polymorphic kinds (report +
   // report-request), mirroring the Cutter slot above.
   const setSelectedReportCardId = useCallback<Dispatch<SetStateAction<string | null>>>(
     (action) => {
-      const focused = polymorphicFocusFor(["report", "report-request"]);
+      const focused = polymorphicFocusFor(store, ["report", "report-request"]);
       const curId = focused ? focused.id : null;
       const nextId = typeof action === "function" ? action(curId) : action;
       if (nextId == null) {
-        const s = cardStore.getState().selected;
+        const s = store.getState().selected;
         if (s && (s.kind === "report" || s.kind === "report-request")) {
-          cardStore.clearSelection();
+          store.clearSelection();
         }
         return;
       }
       const kind: EntityKind =
         focused && focused.kind === "report-request" ? "report-request" : "report";
-      cardStore.select({ kind, id: nextId });
+      store.select({ kind, id: nextId });
     },
-    [],
+    [store],
   );
   const setSelectedCommentId = useCallback<Dispatch<SetStateAction<string | null>>>(
     (action) => {
-      const focused = polymorphicFocusFor(["revision-comment", "revision-suggestion"]);
+      const focused = polymorphicFocusFor(store, ["revision-comment", "revision-suggestion"]);
       const curId = focused ? focused.id : null;
       const nextId = typeof action === "function" ? action(curId) : action;
       if (nextId == null) {
-        const s = cardStore.getState().selected;
+        const s = store.getState().selected;
         if (s && (s.kind === "revision-comment" || s.kind === "revision-suggestion")) {
-          cardStore.clearSelection();
+          store.clearSelection();
         }
         return;
       }
       const kind: EntityKind =
         focused && focused.kind === "revision-suggestion" ? "revision-suggestion" : "revision-comment";
-      cardStore.select({ kind, id: nextId });
+      store.select({ kind, id: nextId });
     },
-    [],
+    [store],
   );
 
   const cutterId = sel && (sel.kind === "cutter-comment" || sel.kind === "cutter-suggestion") ? sel.id : null;
@@ -239,16 +258,21 @@ const SelectionsCtx = createContext<SelectionsContextValue | null>(null);
  */
 export function SelectionsProvider({
   value,
+  store,
   children,
 }: {
   value: SelectionsContextValue | SelectionsProviderInputs;
+  /** The active-doc store, passed by the SHELL mount (EditorLayout) so its
+   *  derived setters target the active doc. The per-pane mount (EditorPane)
+   *  omits it and uses its CardStoreProvider context store. */
+  store?: CardStore;
   children: ReactNode;
 }) {
   const inputs: SelectionsProviderInputs = {
     selectedBibKey: value.selectedBibKey,
     setSelectedBibKey: value.setSelectedBibKey,
   };
-  const derived = useSelectionsValue(inputs);
+  const derived = useSelectionsValue(inputs, store);
   return <SelectionsCtx.Provider value={derived}>{children}</SelectionsCtx.Provider>;
 }
 

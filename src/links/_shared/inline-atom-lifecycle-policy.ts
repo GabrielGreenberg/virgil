@@ -52,7 +52,7 @@
  * is O(added + removed atoms), never O(doc).
  */
 
-import { cardStore } from "./anchored-card-store";
+import type { CardStore } from "./anchored-card-store";
 import { cardKeyForEntity } from "./entity-hover";
 import {
   type IdentityChange,
@@ -112,17 +112,18 @@ export interface InlineAtomLifecycleDeps {
 }
 
 /** Clear every `cardStore` ref (selected / hover / expand) pointing at a card
- *  of `kind` + `id` that is genuinely gone. Module-scoped store, so no instance
- *  needed. Used both by the inline-atom removal path and by the D6 card-deleted
- *  signal handler (sidecar-backed kinds). */
-export function pruneCardStoreFor(kind: string, id: string): void {
-  const s = cardStore.getState();
+ *  of `kind` + `id` that is genuinely gone. The per-doc store is threaded in by
+ *  the caller (its React wiring hook resolved it from `getCardStore(docId)` /
+ *  context). Used both by the inline-atom removal path and by the D6
+ *  card-deleted signal handler (sidecar-backed kinds). */
+export function pruneCardStoreFor(store: CardStore, kind: string, id: string): void {
+  const s = store.getState();
   const matches = (ref: { kind: string; id: string } | null | undefined) =>
     !!ref && ref.kind === kind && ref.id === id;
-  if (matches(s.selected)) cardStore.clearSelection();
-  if (matches(s.hover)) cardStore.setHover(null);
+  if (matches(s.selected)) store.clearSelection();
+  if (matches(s.hover)) store.setHover(null);
   for (const ref of s.expandedSet) {
-    if (matches(ref)) cardStore.collapse(ref);
+    if (matches(ref)) store.collapse(ref);
   }
 }
 
@@ -131,19 +132,20 @@ export function pruneCardStoreFor(kind: string, id: string): void {
  *  flip (REP-F6-02 / OMNI-F6-02). The id is preserved across a morph; only the
  *  kind changes. The D6 card-morphed signal handler calls this. */
 export function rekeyCardStoreForMorph(
+  store: CardStore,
   fromKind: string,
   toKind: string,
   id: string,
 ): void {
-  const s = cardStore.getState();
+  const s = store.getState();
   const matches = (ref: { kind: string; id: string } | null | undefined) =>
     !!ref && ref.kind === fromKind && ref.id === id;
-  if (matches(s.selected)) cardStore.select({ kind: toKind as never, id });
-  if (matches(s.hover)) cardStore.setHover({ kind: toKind as never, id });
+  if (matches(s.selected)) store.select({ kind: toKind as never, id });
+  if (matches(s.hover)) store.setHover({ kind: toKind as never, id });
   for (const ref of s.expandedSet) {
     if (matches(ref)) {
-      cardStore.collapse(ref);
-      cardStore.expand({ kind: toKind as never, id });
+      store.collapse(ref);
+      store.expand({ kind: toKind as never, id });
     }
   }
 }
@@ -153,6 +155,7 @@ export function rekeyCardStoreForMorph(
  * consumer (after T1's regen policy). Idempotent and side-effect-contained.
  */
 export function makeInlineAtomLifecyclePolicy(
+  store: CardStore,
   deps: InlineAtomLifecycleDeps,
 ): InlineAtomPolicy {
   return (diff: StructureDiff, ctx: InlineAtomPolicyContext) => {
@@ -189,7 +192,7 @@ export function makeInlineAtomLifecyclePolicy(
       }
 
       // cardStore prune (b) — always, for the genuinely-gone footnote.
-      pruneCardStoreFor("footnote", id);
+      pruneCardStoreFor(store, "footnote", id);
 
       // Float prune/re-point (c): close the float UNLESS the footnote is now a
       // recoverable orphan (then leave it open to render the orphan body).
@@ -205,7 +208,7 @@ export function makeInlineAtomLifecyclePolicy(
       if (deps.isAtomLive(id)) continue;
       // Citations have no orphan model in W2b (T5/C17 owns add-resync). A
       // removed citation marker is a genuine vanish → prune + close its float.
-      pruneCardStoreFor("citation", id);
+      pruneCardStoreFor(store, "citation", id);
       const floatKey = cardKeyForEntity({ kind: "citation", id });
       if (floatKey && deps.isFloatOpen?.(floatKey)) deps.closeFloat?.(floatKey);
     }
@@ -240,6 +243,7 @@ export function makeInlineAtomLifecyclePolicy(
  * (keys + saved rect move together); absent in the Reader.
  */
 export function makeInlineAtomRegenMigrator(
+  store: CardStore,
   remapFloatKey?: (oldKey: string, newKey: string) => void,
 ): IdentityMigrator {
   return (change: IdentityChange) => {
@@ -251,25 +255,25 @@ export function makeInlineAtomRegenMigrator(
     // inline-atom id. The atom kind (footnote vs citation) isn't carried in the
     // remap, but the id is globally unique across the two kinds, so a match on
     // id alone is safe — re-select under the new id, same kind.
-    const s = cardStore.getState();
+    const s = store.getState();
     const repoint = (ref: { kind: string; id: string }) => {
       const next = remap.get(ref.id);
       return next ? { ...ref, id: next } : null;
     };
     if (s.selected && (s.selected.kind === "footnote" || s.selected.kind === "citation")) {
       const moved = repoint(s.selected);
-      if (moved) cardStore.select(moved as typeof s.selected);
+      if (moved) store.select(moved as typeof s.selected);
     }
     if (s.hover && (s.hover.kind === "footnote" || s.hover.kind === "citation")) {
       const moved = repoint(s.hover);
-      if (moved) cardStore.setHover(moved as typeof s.hover);
+      if (moved) store.setHover(moved as typeof s.hover);
     }
     for (const ref of s.expandedSet) {
       if (ref.kind !== "footnote" && ref.kind !== "citation") continue;
       const moved = repoint(ref);
       if (moved) {
-        cardStore.collapse(ref);
-        cardStore.expand(moved as typeof ref);
+        store.collapse(ref);
+        store.expand(moved as typeof ref);
       }
     }
 

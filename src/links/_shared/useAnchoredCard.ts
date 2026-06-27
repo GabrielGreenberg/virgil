@@ -21,7 +21,7 @@
 
 import { useCallback } from "react";
 import {
-  cardStore,
+  useCardStore,
   useIsExpanded,
   useIsHovered,
   useIsSelected,
@@ -88,14 +88,18 @@ export interface UseAnchoredCardResult {
 }
 
 export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
+  // This card's per-doc store, from context (the CardStoreProvider EditorPane
+  // mounts around the rail / marginalia / popouts). Reads (useIs*) and writes
+  // (store.*) target the SAME per-doc instance.
+  const store = useCardStore();
   const selected = useIsSelected(ref);
   const expanded = useIsExpanded(ref);
   const hovered = useIsHovered(ref);
 
   const onActivate = useCallback(() => {
-    cardStore.select(ref);
-    cardStore.expand(ref);
-  }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    store.select(ref);
+    store.expand(ref);
+  }, [store, ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // C15: the single body-click composition. Read the store-selected state
   // BEFORE the select mutates it — that snapshot decides whether this is a
@@ -104,25 +108,25 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
   // a sibling re-selected between renders.
   const onBodyActivate = useCallback(
     (effects?: BodyActivateEffects) => {
-      const wasSelected = cardStore.isSelected(ref);
-      cardStore.select(ref);
-      cardStore.expand(ref);
+      const wasSelected = store.isSelected(ref);
+      store.select(ref);
+      store.expand(ref);
       effects?.onSelect?.();
       if (!wasSelected) effects?.jump?.();
     },
-    [ref.kind, ref.id], // eslint-disable-line react-hooks/exhaustive-deps
+    [store, ref.kind, ref.id], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Axis-pure: toggles ONLY the body, never the halo.
   const onToggleExpanded = useCallback(() => {
-    cardStore.toggleExpanded(ref);
-  }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    store.toggleExpanded(ref);
+  }, [store, ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Header-click composition: select + toggle expansion, NO jump.
   const onHeaderActivate = useCallback(() => {
-    cardStore.select(ref);
-    cardStore.toggleExpanded(ref);
-  }, [ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    store.select(ref);
+    store.toggleExpanded(ref);
+  }, [store, ref.kind, ref.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { selected, expanded, hovered, onActivate, onBodyActivate, onToggleExpanded, onHeaderActivate, ref };
 }

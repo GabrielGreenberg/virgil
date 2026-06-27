@@ -45,7 +45,7 @@ vi.mock("@/lib/focus-new-card", async (importOriginal) => {
 
 import { useCardCreation } from "../card-creation";
 import { focusNewCard } from "@/lib/focus-new-card";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import { cardPopKey } from "@/panels/panel-registry";
 
 const focusMock = vi.mocked(focusNewCard);
@@ -89,6 +89,10 @@ function makeDeps(over: Partial<CardDeps> = {}): CardDeps {
     popCardAtAnchor: noop,
     markFootnotePristine: noop,
     getFootnoteCount: (() => 0) as never,
+    // The per-doc store finishCreate expands/selects in — point it at the same
+    // instance the assertions read (the `as CardDeps` cast would otherwise hide
+    // a missing `store`, then crash at runtime on `store.expand`).
+    store: cardStore,
     ...over,
   } as CardDeps;
 }

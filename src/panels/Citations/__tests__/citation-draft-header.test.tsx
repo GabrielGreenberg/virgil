@@ -51,7 +51,7 @@ class ResizeObserverStub {
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { CitationCard } from "@/panels/Citations/CitationCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { CitationRef } from "@/lib/types";
 
 afterEach(cleanup);

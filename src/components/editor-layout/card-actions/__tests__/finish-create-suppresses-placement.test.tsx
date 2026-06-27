@@ -47,6 +47,7 @@ vi.mock("@/links/_shared/usePlacement", async (importOriginal) => {
 
 import { useCardCreation } from "../card-creation";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
+import { defaultCardStore } from "@/links/_shared/anchored-card-store";
 
 const suppressMock = vi.mocked(suppressNextPlacement);
 
@@ -97,6 +98,9 @@ function makeDeps(over: Partial<CardDeps> = {}): CardDeps {
     popCardAtAnchor: noop,
     markFootnotePristine: noop,
     getFootnoteCount: (() => 0) as never,
+    // finishCreate expands/selects in this store; supply one so it doesn't
+    // crash (the `as CardDeps` cast hides the missing field at compile time).
+    store: defaultCardStore,
     ...over,
   } as CardDeps;
 }

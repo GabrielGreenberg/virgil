@@ -4,7 +4,7 @@ import {
   publishCardDeleted,
   publishCardMorphed,
 } from "../lifecycle/card-lifecycle-signal";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { createCardStore, type CardStore } from "@/links/_shared/anchored-card-store";
 import {
   pruneCardStoreFor,
   rekeyCardStoreForMorph,
@@ -45,22 +45,19 @@ describe("card-lifecycle signal channel", () => {
 });
 
 describe("cardStore reconcile on the signal (the D6 consumer behavior)", () => {
-  // Wire the same reconcile the hook installs (prune on delete, re-key on morph).
+  // A fresh per-doc store each test; the reconcile is wired against THIS
+  // instance and the assertions read it — exactly the hook's threading.
+  let cardStore: CardStore;
   let off: () => void;
   beforeEach(() => {
-    cardStore.clearSelection();
-    cardStore.setHover(null);
-    for (const ref of [...cardStore.getState().expandedSet]) cardStore.collapse(ref);
+    cardStore = createCardStore();
     off = subscribeCardLifecycle((s) => {
-      if (s.type === "card-deleted") pruneCardStoreFor(s.kind, s.id);
-      else rekeyCardStoreForMorph(s.fromKind, s.toKind, s.id);
+      if (s.type === "card-deleted") pruneCardStoreFor(cardStore, s.kind, s.id);
+      else rekeyCardStoreForMorph(cardStore, s.fromKind, s.toKind, s.id);
     });
   });
   afterEach(() => {
     off();
-    cardStore.clearSelection();
-    cardStore.setHover(null);
-    for (const ref of [...cardStore.getState().expandedSet]) cardStore.collapse(ref);
   });
 
   it("card-deleted clears a stale selection / hover / expansion (no ghost halo)", () => {

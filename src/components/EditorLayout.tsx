@@ -132,7 +132,11 @@ import { DiskWatcherProviderGate } from "./editor-layout/contexts/disk-watcher";
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
 import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import {
+  getCardStore,
+  disposeCardStore,
+  defaultCardStore,
+} from "@/links/_shared/anchored-card-store";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { RecentlyAddedAutoClear } from "./editor-layout/recently-added-auto-clear";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
@@ -437,6 +441,23 @@ export default function EditorLayout() {
   const recentlyAdded = useRecentlyAddedTracker();
   const notes = paneState?.notes ?? EMPTY_NOTES;
   const cutterCards = paneState?.cutterCards ?? EMPTY_CUTTER;
+  // The ACTIVE doc's interaction store. EditorLayout is the SHELL, above the
+  // per-doc <CardStoreProvider> each EditorPane mounts, so it resolves the
+  // active store by id from the registry (the same instance the active pane
+  // uses). A `currentDocIdRef` lets `[]`-deps listeners (the click-away
+  // clearSelection, the marker-click bridge) resolve the active store at FIRE
+  // time without a stale capture. `defaultCardStore` is the no-doc-open
+  // fallback (its mutations are inert no-ops).
+  const activeCardStore = currentDocId ? getCardStore(currentDocId) : defaultCardStore;
+  const currentDocIdRef = useRef(currentDocId);
+  currentDocIdRef.current = currentDocId;
+  // Stable getter (reads the ref, not currentDocId) so it can sit in a []-deps
+  // listener effect without re-attaching the window listener every render.
+  const getActiveCardStore = useCallback(
+    () => (currentDocIdRef.current ? getCardStore(currentDocIdRef.current) : defaultCardStore),
+    [],
+  );
+
   // Anchored selection slots (note, footnote, citation, example,
   // todo, archive, comment, cutter-comment) are now derived from the global
   // cardStore via this hook — single source of truth, shared with EditorPane
@@ -452,7 +473,7 @@ export default function EditorLayout() {
     selectedReportCardId, setSelectedReportCardId,
     selectedCommentId, setSelectedCommentId,
     selectedExampleId, setSelectedExampleId,
-  } = useAnchoredSelectionSlots();
+  } = useAnchoredSelectionSlots(activeCardStore);
   const todoItems = paneState?.todoItems ?? EMPTY_TODOS;
 
   // AI requests: EditorPane owns the live hook; the layout reads the slice it
@@ -800,6 +821,11 @@ export default function EditorLayout() {
     });
     onEditorReadyCacheRef.current.delete(slotDocId);
     onPaneStateCacheRef.current.delete(slotDocId);
+    // Drop this doc's interaction store on a TRUE unmount (LRU evict / tab
+    // close — NOT a keep-alive hide), mirroring the per-doc map prune above. A
+    // warm hidden doc keeps its store, so its selection/expansion survives the
+    // tab-switch; a cold re-open gets a fresh store.
+    disposeCardStore(slotDocId);
   }, []);
 
   // Keep-alive LRU of authored docs. Only a GRANTED, active doc may lead the
@@ -1136,14 +1162,15 @@ export default function EditorLayout() {
   // duplicate) so adding a new anchor-bearing kind (e.g. "todo") stays in
   // sync with `useSelectedAnchorSync`'s setter signature.
   const [activeAnchorKind, setActiveAnchorKind] = useState<LinkedAnchorKind | null>(null);
-  // Hover state read from the canonical cardStore.hover via a
-  // useSyncExternalStore subscription. The only EditorLayout-side consumer
-  // is the `hoveredAnchorId` derivation below (hover → Mode B anchor id for
-  // the linked-anchor highlight). New code should read cardStore directly
-  // via useHover().
+  // Hover state read from the ACTIVE doc's store via a useSyncExternalStore
+  // subscription. The only EditorLayout-side consumer is the `hoveredAnchorId`
+  // derivation below (hover → Mode B anchor id for the linked-anchor highlight).
+  // When `currentDocId` flips, `activeCardStore` changes → this re-subscribes to
+  // the new doc's store (a once-per-switch event, never per-keystroke). New code
+  // inside the pane should read its store via useHover().
   const _paneHoverState = useSyncExternalStore(
-    cardStore.subscribe,
-    () => cardStore.getState().hover,
+    activeCardStore.subscribe,
+    activeCardStore.getHoverSnapshot,
     () => null,
   );
   const hoveredEntityId = _paneHoverState?.id ?? null;
@@ -1480,7 +1507,13 @@ export default function EditorLayout() {
       ) {
         return;
       }
-      cardStore.clearSelection();
+      // Resolve the active doc's store at fire time (this listener has []-deps
+      // and must not capture a stale doc). No-op via defaultCardStore when no
+      // doc is open.
+      (currentDocIdRef.current
+        ? getCardStore(currentDocIdRef.current)
+        : defaultCardStore
+      ).clearSelection();
       setSelectedBibKey(null);
       setSelectedErrorId(null);
     };
@@ -2568,6 +2601,12 @@ export default function EditorLayout() {
     setActiveMath,
     setActiveFigure,
     alignOmniCardWithClick,
+    // Resolve the active doc's store at click time (the bridge's listener
+    // effects don't re-subscribe on doc switch). Shares `currentDocIdRef` with
+    // the click-away clearSelection so marker-select + click-away target the
+    // same active instance. Stable identity (useCallback) so the listener
+    // effect isn't re-attached every render.
+    getActiveCardStore,
   });
 
   // Shell-level archive bridge only. The orphan/suppress/panel-dropped web moved
@@ -3667,8 +3706,12 @@ export default function EditorLayout() {
     {/* SelectionsProvider derives the 9 anchored slots from the cardStore;
         we only thread the bib slot in through `value` because bib isn't
         an anchored kind. The other 9 props on the legacy value shape are
-        ignored by the provider. */}
-    <SelectionsProvider value={{ selectedBibKey, setSelectedBibKey }}>
+        ignored by the provider. This SHELL mount sits above the per-doc
+        CardStoreProvider, so it's handed the ACTIVE doc's store explicitly
+        (`store={activeCardStore}`) — its only consumer is the shell
+        RecentlyAddedAutoClear; the per-pane mount in EditorPane omits the prop
+        and uses context. */}
+    <SelectionsProvider value={{ selectedBibKey, setSelectedBibKey }} store={activeCardStore}>
     <RecentlyAddedProvider value={recentlyAdded}>
     <RecentlyAddedAutoClear />
     <CollabProvider value={collab}>

@@ -66,10 +66,10 @@
 import { useEffect, useLayoutEffect, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import {
-  cardStore,
-  useHover,
-  useSelection,
+  useStoreHover,
+  useStoreSelection,
   type AnchoredCardRef,
+  type CardStore,
 } from "./anchored-card-store";
 import type { CardKind } from "@/panels/_shared/types";
 import { isInlineAtomCardKind } from "@/cards/predicates";
@@ -151,6 +151,10 @@ function linksForRef(ref: AnchoredCardRef, c: EntityCollectionSlots): Link[] {
 export interface UseAnchorHighlightReconcilerArgs {
   editor: Editor | null;
   collections: EntityCollectionSlots;
+  /** This doc's interaction store (threaded from the EditorPane body, which runs
+   *  ABOVE the pane's own CardStoreProvider). The hover/selection painters and
+   *  the dangling-ref prune all target this per-doc instance. */
+  store: CardStore;
   /** Bumps when the footnote/citation set changes (the inline-atom structural
    *  revision counter). Threaded so the dangling-ref prune RE-RUNS when an
    *  inline atom is added/removed — a collection-identity change never fires for
@@ -185,10 +189,11 @@ function liveAtomIdSet(editor: Editor | null): ReadonlySet<string> | null {
 export function useAnchorHighlightReconciler({
   editor,
   collections,
+  store,
   atomRevision,
 }: UseAnchorHighlightReconcilerArgs): void {
-  const selected = useSelection();
-  const hover = useHover();
+  const selected = useStoreSelection(store);
+  const hover = useStoreHover(store);
 
   // The caller (EditorPane) rebuilds `collections` every render as a fresh
   // object literal, so depending on the wrapper directly would re-fire our
@@ -243,20 +248,20 @@ export function useAnchorHighlightReconciler({
   // the legacy always-present inline treatment (`liveAtomIds` stays null).
   useEffect(() => {
     const liveAtomIds = isInlineAtomLifecycleOn() ? liveAtomIdSet(editor) : null;
-    const s = cardStore.getState();
+    const s = store.getState();
     if (s.selected && !entityExists(s.selected, stableCollections, liveAtomIds)) {
-      cardStore.clearSelection();
+      store.clearSelection();
     }
     if (s.hover && !entityExists(s.hover, stableCollections, liveAtomIds)) {
-      cardStore.setHover(null);
+      store.setHover(null);
     }
     for (const ref of s.expandedSet) {
-      if (!entityExists(ref, stableCollections, liveAtomIds)) cardStore.collapse(ref);
+      if (!entityExists(ref, stableCollections, liveAtomIds)) store.collapse(ref);
     }
     // `atomRevision` is a dep so an inline add/remove re-runs the prune (the
     // inline kinds never change `stableCollections`); `editor` so the set is
     // read from the current instance.
-  }, [stableCollections, atomRevision, editor]);
+  }, [store, stableCollections, atomRevision, editor]);
 
   // Reconcile from the current (selection, hover, collections) tuple.
   // Idempotent: recomputes the desired in-editor NODE-decoration targets, the

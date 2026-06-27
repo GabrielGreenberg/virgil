@@ -19,7 +19,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { cardPopKey } from "@/panels/panel-registry";
 import { cardKindsForPanel, bodyVariantForCardKind } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { FieldTitleRow } from "./CutterSuggestionCard";
 
@@ -66,6 +66,7 @@ export function CutterCommentCard({
 
   const [originalFolded, setOriginalFolded] = useState(false);
   const ac = useAnchoredCard({ kind: "cutter-comment", id: card.id });
+  const cardStore = useCardStore();
   const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;

@@ -49,7 +49,7 @@ class ResizeObserverStub {
 
 import { render, screen, cleanup } from "@testing-library/react";
 import { CutterCommentCard } from "@/panels/Cutter/CutterCommentCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
 
 afterEach(() => {

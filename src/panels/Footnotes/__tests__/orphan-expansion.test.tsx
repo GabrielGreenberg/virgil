@@ -48,7 +48,7 @@ class ResizeObserverStub {
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { OrphanedFootnoteCard } from "@/panels/Footnotes/FootnoteCard";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { OrphanedFootnote } from "@/lib/types";
 
 afterEach(cleanup);

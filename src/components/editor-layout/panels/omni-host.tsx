@@ -47,7 +47,7 @@ import type { FocusState } from "@/hooks/useFocusMode";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCitationDisplayContext } from "../contexts/citation-display";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { useCardStore } from "@/links/_shared/anchored-card-store";
 
 const EMPTY_HIDDEN: ReadonlySet<number> = new Set<number>();
 
@@ -235,13 +235,16 @@ export function OmniHost(p: OmniHostProps) {
     selectedReportCardId, setSelectedReportCardId,
   } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
+  // This doc's interaction store (OmniHost renders inside EditorPane's
+  // CardStoreProvider). Click-away clears THIS doc's selection only.
+  const cardStore = useCardStore();
 
   // Click-away in the omni panel clears the selection (halo) only.
   // Expanded cards survive — expansion is sticky and independent of
   // selection (N1), so they stay open until collapsed via the chevron.
   const handleBackgroundClick = useCallback(() => {
     cardStore.clearSelection();
-  }, []);
+  }, [cardStore]);
   // Focus moving into a card body used to promote a transient selection
   // into the sticky set; obsolete now that expansion is sticky by
   // construction (nothing to promote). Kept as a no-op so OmniViewPanel's

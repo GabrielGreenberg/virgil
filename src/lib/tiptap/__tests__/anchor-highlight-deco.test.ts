@@ -56,7 +56,7 @@ import {
 } from "@/lib/tiptap/anchor-highlight-deco";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import type { EntityCollectionSlots } from "@/cards/entity-collections";
 import type { Link } from "@/links/_shared/types";
 
@@ -498,7 +498,7 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
     // the editor's deferred `create` tick first so `editor.isInitialized` is
     // true (the reconciler's `editorReady` guard requires it).
     const recon = renderHook(() =>
-      useAnchorHighlightReconciler({ editor, collections }),
+      useAnchorHighlightReconciler({ editor, collections, store: cardStore }),
     );
     await waitForEditorInit(editor);
     act(() => {
@@ -533,7 +533,7 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
     const collections = modeBNoteCollections();
 
     const recon = renderHook(() =>
-      useAnchorHighlightReconciler({ editor, collections }),
+      useAnchorHighlightReconciler({ editor, collections, store: cardStore }),
     );
     await waitForEditorInit(editor);
     act(() => {
@@ -553,7 +553,7 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
     const collections = modeBNoteCollections();
 
     const recon = renderHook(() =>
-      useAnchorHighlightReconciler({ editor, collections }),
+      useAnchorHighlightReconciler({ editor, collections, store: cardStore }),
     );
     await waitForEditorInit(editor);
     act(() => {

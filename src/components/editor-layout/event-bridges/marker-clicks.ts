@@ -10,7 +10,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { panelForCardKind } from "@/cards/predicates";
 import { suppressNextPlacement } from "@/links/_shared/usePlacement";
-import { cardStore } from "@/links/_shared/anchored-card-store";
+import type { CardStore } from "@/links/_shared/anchored-card-store";
 import { openForCard, type OpenForCardDeps } from "./open-for-card";
 import { cardPopKey, cardDomSelector } from "@/panels/panel-registry";
 import {
@@ -96,6 +96,11 @@ interface AnchorClickEnv {
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
   alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
+  /** Resolve the ACTIVE doc's interaction store at CLICK time. A getter (not a
+   *  captured instance) because this bridge is shell-mounted above the per-doc
+   *  CardStoreProvider and its listener effect doesn't re-subscribe on doc
+   *  switch — resolving lazily keeps the select targeting the active doc. */
+  getActiveCardStore: () => CardStore;
 }
 
 /**
@@ -124,7 +129,7 @@ function routeAnchorClick(
   // resolve comment-vs-suggestion / report-vs-request from the record), so
   // select directly instead of going through the per-kind slot setters
   // (which would have to re-derive the polymorphic kind).
-  cardStore.select({ kind: detail.kind, id });
+  env.getActiveCardStore().select({ kind: detail.kind, id });
 
   const entrySelector =
     route.entrySelectorBase === "data-card-key"
@@ -240,6 +245,9 @@ export function useMarkerClickBridges(deps: {
    *  OmniViewPanel reads the pin and overrides that one card's transform.
    *  No document scroll. */
   alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
+  /** Resolve the ACTIVE doc's interaction store at click time (see
+   *  `AnchorClickEnv.getActiveCardStore`). */
+  getActiveCardStore: () => CardStore;
 }) {
   const {
     prefsRef,
@@ -257,6 +265,7 @@ export function useMarkerClickBridges(deps: {
     setActiveMath,
     setActiveFigure,
     alignOmniCardWithClick,
+    getActiveCardStore,
   } = deps;
 
   useEffect(() => {
@@ -476,6 +485,7 @@ export function useMarkerClickBridges(deps: {
         tryScrollOmniEntry,
         getOmniEnabled,
         alignOmniCardWithClick,
+        getActiveCardStore,
       });
     };
     window.addEventListener("virgil-linked-anchor-click", handler);
@@ -487,6 +497,7 @@ export function useMarkerClickBridges(deps: {
     tryScrollOmniEntry,
     getOmniEnabled,
     alignOmniCardWithClick,
+    getActiveCardStore,
   ]);
 
   // Error margin-marker bridge — errors aren't anchored cards (no cardStore
