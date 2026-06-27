@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { generateEntityId } from "@/lib/uuid";
 import type {
@@ -572,30 +572,58 @@ export function useCutter(
     return () => window.removeEventListener("virgil-anchor-orphaned", handler);
   }, [clearCardAnchor]);
 
-  return {
-    cards: state.cards,
-    goal: state.goal ?? null,
-    addComment,
-    addSuggestion,
-    updateCommentContent,
-    updateCommentText,
-    setCommentAiRequest,
-    updateSuggestionField,
-    setSuggestionStatus,
-    setGoal,
-    clearGoal,
-    addCardParagraphId,
-    removeCardParagraphId,
-    reconcileAnchors,
-    loaded,
-    loadError,
-    deleteCard,
-    setArchived,
-    cloneComment,
-    cloneSuggestion,
-    convertCard,
-    bindAnchor,
-    clearCardAnchor,
-    discardPristineCards,
-  };
+  return useMemo(
+    () => ({
+      cards: state.cards,
+      goal: state.goal ?? null,
+      addComment,
+      addSuggestion,
+      updateCommentContent,
+      updateCommentText,
+      setCommentAiRequest,
+      updateSuggestionField,
+      setSuggestionStatus,
+      setGoal,
+      clearGoal,
+      addCardParagraphId,
+      removeCardParagraphId,
+      reconcileAnchors,
+      loaded,
+      loadError,
+      deleteCard,
+      setArchived,
+      cloneComment,
+      cloneSuggestion,
+      convertCard,
+      bindAnchor,
+      clearCardAnchor,
+      discardPristineCards,
+    }),
+    [
+      state.cards,
+      state.goal,
+      addComment,
+      addSuggestion,
+      updateCommentContent,
+      updateCommentText,
+      setCommentAiRequest,
+      updateSuggestionField,
+      setSuggestionStatus,
+      setGoal,
+      clearGoal,
+      addCardParagraphId,
+      removeCardParagraphId,
+      reconcileAnchors,
+      loaded,
+      loadError,
+      deleteCard,
+      setArchived,
+      cloneComment,
+      cloneSuggestion,
+      convertCard,
+      bindAnchor,
+      clearCardAnchor,
+      discardPristineCards,
+    ],
+  );
 }

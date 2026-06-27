@@ -234,14 +234,26 @@ export function useFootnotes(
     [persist]
   );
 
-  return {
-    footnoteRefs: state.footnotes,
-    addFootnote,
-    updateFootnoteContent,
-    deleteFootnote,
-    setArchived,
-    setFootnoteAiRequest,
-    cloneFootnote,
-    syncFromEditor,
-  };
+  return useMemo(
+    () => ({
+      footnoteRefs: state.footnotes,
+      addFootnote,
+      updateFootnoteContent,
+      deleteFootnote,
+      setArchived,
+      setFootnoteAiRequest,
+      cloneFootnote,
+      syncFromEditor,
+    }),
+    [
+      state.footnotes,
+      addFootnote,
+      updateFootnoteContent,
+      deleteFootnote,
+      setArchived,
+      setFootnoteAiRequest,
+      cloneFootnote,
+      syncFromEditor,
+    ],
+  );
 }

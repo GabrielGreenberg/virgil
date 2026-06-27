@@ -775,25 +775,53 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     [close],
   );
 
-  return {
-    registry,
-    leftTabs: displayedLeftTabs,
-    rightTabs,
-    libraryById,
-    projectLibraries,
-    activate,
-    close,
-    rename,
-    create,
-    createFromBib,
-    openRecent,
-    moveTab,
-    addEntryToLibrary,
-    addEntriesToLibrary,
-    removeEntryFromLibrary,
-    openPaper,
-    openLibrary,
-    togglePinLibrary,
-    closePaperByCitekey,
-  };
+  // Stabilize the API object identity. Every member is individually
+  // stable (useMemo values + useCallback fns), but the wrapper literal
+  // re-identifies each render — defeating consumers that use the whole
+  // return as a memo dep / prop. Memoize so a parent re-render that
+  // leaves every member intact also leaves this object intact.
+  return useMemo<LibraryTabsApi>(
+    () => ({
+      registry,
+      leftTabs: displayedLeftTabs,
+      rightTabs,
+      libraryById,
+      projectLibraries,
+      activate,
+      close,
+      rename,
+      create,
+      createFromBib,
+      openRecent,
+      moveTab,
+      addEntryToLibrary,
+      addEntriesToLibrary,
+      removeEntryFromLibrary,
+      openPaper,
+      openLibrary,
+      togglePinLibrary,
+      closePaperByCitekey,
+    }),
+    [
+      registry,
+      displayedLeftTabs,
+      rightTabs,
+      libraryById,
+      projectLibraries,
+      activate,
+      close,
+      rename,
+      create,
+      createFromBib,
+      openRecent,
+      moveTab,
+      addEntryToLibrary,
+      addEntriesToLibrary,
+      removeEntryFromLibrary,
+      openPaper,
+      openLibrary,
+      togglePinLibrary,
+      closePaperByCitekey,
+    ],
+  );
 }

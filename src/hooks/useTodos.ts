@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { TodoState, TodoItem } from "@/lib/types";
 import {
@@ -317,25 +317,48 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
-  return {
-    items: state.items,
-    addItem,
-    appendItems,
-    toggleItem,
-    updateItem,
-    updateNotes,
-    setAiRequest,
-    deleteItem,
-    setArchived,
-    reorder,
-    archiveDone,
-    addParagraphId,
-    removeParagraphId,
-    reconcileAnchors,
-    loaded,
-    loadError,
-    setTodoAnchor,
-    bindAnchor,
-    discardPristineTodos,
-  };
+  return useMemo(
+    () => ({
+      items: state.items,
+      addItem,
+      appendItems,
+      toggleItem,
+      updateItem,
+      updateNotes,
+      setAiRequest,
+      deleteItem,
+      setArchived,
+      reorder,
+      archiveDone,
+      addParagraphId,
+      removeParagraphId,
+      reconcileAnchors,
+      loaded,
+      loadError,
+      setTodoAnchor,
+      bindAnchor,
+      discardPristineTodos,
+    }),
+    [
+      state.items,
+      addItem,
+      appendItems,
+      toggleItem,
+      updateItem,
+      updateNotes,
+      setAiRequest,
+      deleteItem,
+      setArchived,
+      reorder,
+      archiveDone,
+      addParagraphId,
+      removeParagraphId,
+      reconcileAnchors,
+      loaded,
+      loadError,
+      setTodoAnchor,
+      bindAnchor,
+      discardPristineTodos,
+    ],
+  );
 }

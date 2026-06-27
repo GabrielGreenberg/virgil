@@ -152,13 +152,24 @@ export function useAiRequests(docId: string | null) {
     });
   }, [persist]);
 
-  return {
-    requests: state.requests,
-    loaded,
-    addRequest,
-    addStyleMergeRequest,
-    updateRequestText,
-    deleteRequest,
-    relinkRequests,
-  };
+  return useMemo(
+    () => ({
+      requests: state.requests,
+      loaded,
+      addRequest,
+      addStyleMergeRequest,
+      updateRequestText,
+      deleteRequest,
+      relinkRequests,
+    }),
+    [
+      state.requests,
+      loaded,
+      addRequest,
+      addStyleMergeRequest,
+      updateRequestText,
+      deleteRequest,
+      relinkRequests,
+    ],
+  );
 }
