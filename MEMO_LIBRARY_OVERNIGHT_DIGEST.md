@@ -122,6 +122,10 @@ DM-3 partial via the existing `gridTemplate` SSOT. **F#14 (fold bib-imp → 4th 
 
 ---
 
+### Phase 4 — Reader top-bar (F#16) — ✅ MERGED to local main `cc1810df` (no-ff, NOT pushed)
+Resumed workflow-heavy (explore→implement→review all in subagent context to preserve main-loop context, per Gabriel's mid-run ask). DM-5(b): the Reader's docked MenuBar now inherits via a typed `menuBar` bundle on PaperRender's one `<EditorPane>`. `useReaderView(editor, editorHandleRef, scrollEl)` returns BOTH bundles off **one** ephemeral `useViewPrefs` (two-engine trap avoided). View toggles functional; back/forward = keystroke-safe wall-clock `useParaNavHistory` (DiskWatcher-class, not an editor subscriber). Inheritance invariant honored. Workflow review 0 defects + my own diff-gate. tsc 0 · vitest 2997 · reader-view-prefs lints clean.
+- **DEFERRED in F#16:** the section **breadcrumb** half (still `EMPTY_SECTION_PATHS` — needs a separate ~60-line coordsAtPos section-path port, foldable into the same para-nav poll); and `editorSplit` is wired type-complete but a single-pane Reader has no real second pane — **live-check / product call** whether the split button should appear in the Reader.
+
 ## ☀️ MORNING DIGEST (PHASE Z)
 
 **Bottom line:** the three highest-priority, deepest phases — **0 (foundations), 1 (the bibliography subsystem spine), 2 (list-table)** — are landed, fully verified, adversarially reviewed, and merged to local `main` (no-ff, **NOT pushed**, your convention). 10 of 16 features are fully or substantially done. I optimized for *deeply-right Phase 0+1+2* over a shallow all-six, per your central directive, and stopped before the live-verification-dependent phases (3/4/5) rather than ship them unverified from a long-context state.

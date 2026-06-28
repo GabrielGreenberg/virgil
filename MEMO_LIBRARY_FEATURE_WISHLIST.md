@@ -60,7 +60,7 @@ work; `little` = contained UI or behavior tweak). Refined at planning time.
 - **F#13** — [Drag column headers to reorder the library paper list (global pref, promoted to defaults)](#f13--drag-column-headers-to-reorder-the-library-paper-list-global-pref-promoted-to-defaults) · `medium` · **DEFERRED** — order-SSOT + drag + promote-defaults; needs live tuning (see digest)
 - **F#14** — [Sort by index-status facet (movable sub-bar) + fold bib-imported into Status](#f14--sort-by-index-status-facet-movable-sub-bar-under-status--fold-bib-imported-into-status) · `medium` · **◑ PARTIAL (Phase 2)** — bib-imp folded into Status LANDED; the facet sub-bar sort DEFERRED
 - **F#15** — [Inner library tabs: compress Chrome-style (always attached, ellipsized inactive names)](#f15--inner-library-tabs-compress-chrome-style-always-attached-ellipsized-inactive-names) · `medium` · understood · _couples to F#8_
-- **F#16** — [Library papers inherit the editor's top-bar chrome (breadcrumb + back/forward + three-dot)](#f16--library-papers-inherit-the-editors-top-bar-chrome-breadcrumb--backforward--three-dot) · `medium` · understood · _couples to F#11_
+- **F#16** — [Library papers inherit the editor's top-bar chrome (breadcrumb + back/forward + three-dot)](#f16--library-papers-inherit-the-editors-top-bar-chrome-breadcrumb--backforward--three-dot) · `medium` · **◑ PARTIAL (Phase 4)** — three-dot View menu (functional) + functional back/forward LANDED; the section **breadcrumb half deferred** (still EMPTY_SECTION_PATHS)
 
 ---
 
