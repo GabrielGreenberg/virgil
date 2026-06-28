@@ -116,6 +116,57 @@ Note: a non-standard `bib.state="needs-reauth"` is written by `apply_metadata_mi
 
 ## Per-phase landing log
 
+### Phase 2 — List-table — ✅ MERGED to local main `0e45eafa` (no-ff, NOT pushed)
+DM-3 partial via the existing `gridTemplate` SSOT. **F#14 (fold bib-imp → 4th "✓ imp" Status pill)** + **F#9 (open-in-tab list column)** landed; **F#13 (column-order drag + promote-defaults)** and **F#14's facet sub-bar sort** DEFERRED (live tuning). Skeptic-reviewed: 0 real defects; 1 LOW self-healing edge (a persisted status width <208 may clip the 4th pill until resized). tsc 0 · vitest 2995 · eslint clean.
+- F#9 header-button half folds into F#11 (not done).
+
+---
+
+## ☀️ MORNING DIGEST (PHASE Z)
+
+**Bottom line:** the three highest-priority, deepest phases — **0 (foundations), 1 (the bibliography subsystem spine), 2 (list-table)** — are landed, fully verified, adversarially reviewed, and merged to local `main` (no-ff, **NOT pushed**, your convention). 10 of 16 features are fully or substantially done. I optimized for *deeply-right Phase 0+1+2* over a shallow all-six, per your central directive, and stopped before the live-verification-dependent phases (3/4/5) rather than ship them unverified from a long-context state.
+
+### Merge log (local `main`, unpushed)
+| Phase | Merge sha | Features |
+|---|---|---|
+| 0 Foundations | `e3b0744f` | F#12 ✅, F#6 ✅, F#5 ✅, F#7 ✅ |
+| 1 Bib subsystem | `607e9b8b` (+fix `6e41d7b0`) | F#1 ✅, F#2 ✅, F#3 ✅, F#4 ◑ (reader-side) |
+| 2 List-table | `0e45eafa` | F#14 ◑ (fold), F#9 ◑ (column) |
+
+Current `HEAD` of main is the Phase-2 merge + digest commits. `git log --oneline -15` shows the chain. Everything is **unpushed**.
+
+### Verification status (whole run)
+- **tsc:** 0 errors (re-checked each phase).
+- **vitest:** 2995 passed / 1 skipped / 0 failed (baseline was 2983; +12 new guard tests).
+- **Python:** bib-index 11/11, bib-auth-predigital 12/12 (new), bib-parse 7/7, bib-import OK.
+- **eslint:** no new problems (pre-existing OutlinePanel + LibraryView warnings unchanged).
+- **Build mirrors:** `npm run build:library-bundle` re-run after every Python/skill edit.
+- **Adversarial review:** Phase 0 (3-dim workflow, 2 fixes), Phase 1 (3-dim workflow, 6 fixes incl. a CRITICAL), Phase 2 (skeptic agent, 0 defects). Every finding independently verified before fixing.
+- **OWED (yours): live FSA feel-checks** — I could not drive the dev preview (another chat's server holds the port; the Library Reader recipe needs FSA). Nothing in this run was eyeballed in a real browser. Highest-value checks: the taupe toggle fills (F#12, 6 controls), the rail row-menus (F#5/F#7), toast ✕/hover (F#6), the 2-row dashboard (F#1), the folded "✓ imp" Status pill + open-in-tab column (F#14/F#9), and that fileless refs now show real auth state (F#4).
+
+### Decisions I made on your behalf (NEEDS-GABRIEL items) — please confirm
+1. **F#3 confidence model (the big design surface):** authenticate a pre-digital work when **≥2 independent sources agree on title+author** OR **one authoritative catalog agrees AND the bib publisher matches**; authoritative (OpenLibrary/Internet Archive/OpenAlex/Crossref/S2) > secondary (Google Books); per-record bar = book-title sim ≥0.85 + author-surname overlap + year within 5y. **Year gate reconciled to `<1980`** (the code's gate; docs said ~1950). Fail-closed to the `canonical` descriptor. I did **NOT** mass-re-authenticate your real `master.bib` — it ships as the (now-changed) re-runnable `/library/authenticate-bib` skill. Tune `score_predigital` in `bib_auth.py` if you want a different bar.
+2. **F#4 = sources-only, but I deferred the destructive half.** The reader-side layered model is live (UI is honest on both catalog models). The **writer-stop + row-prune** (the part that actually shrinks `catalog.json` for the perf win) is NOT done — it's a coordinated multi-script Python change + a destructive prune I won't run unattended. Exact steps are in **Deferred (supervised follow-ups)** above. Confirm you want sources-only finished (and the prune is dry-run-first).
+3. **F#1 dashboard** folds canonical/manuscript/unverified/failed/none all into "Non-authenticated" (strict binary). Confirm that reads right.
+4. **F#12** repointed the *global* `.iconbtn-toggle`/`.topbarbtn` aria-pressed rules to the taupe family (not just the 6 segmented controls) — so every toggled-on control app-wide now reads taupe, not brown. If you only wanted the 6 library controls changed, say so and I'll narrow it.
+5. **F#5 menu primitive** lives at `library/components/RowMenu.tsx`, imported cross-silo by `src/components/library/MyPapersPod.tsx` (same bridge `LibraryTabView` already uses). Confirm the location.
+
+### Not started (Phases 3–5) — precise specs in the wishlist; all need live verification
+- **Phase 3 — F#10 (PDF, decided Option B):** vendor pdf.js prebuilt viewer to `public/pdfjs/` (download the matching release zip — needs network; may HARD-STOP if unavailable), restyle to Virgil tokens, swap the iframe. Unlocks F#11's PDF page-picker. Not started — pure visual + asset vendoring, can't verify headless.
+- **Phase 4 — F#11 (paper-header overhaul) + F#16 (Reader inherits editor top bar):** F#16 is the cleaner one (a typed `READER_MENUBAR_BUNDLE` in `reader-view-prefs.ts` + `menuBar` on the one `PaperRender` EditorPane + port the keystroke-safe paragraph-visit recorder). F#11 extracts `<BibEntryChrome>` (shared with the editor Bibliography panel), one cohesive pod, responsive chooser, page picker; it absorbs F#9's header button and F#2's chip. Not started.
+- **Phase 5 — F#8 (tab outline clipped stroke) + F#15 (Chrome-style tab compress):** both rewrite `PanelFolderTab`/`folder-path.ts`. F#8 is a small SVG horizontal-gutter fix but its whole point is a 1×/2× DPR pixel-perfect result that MUST be eyeballed — I didn't want to ship a guessed offset. F#15 is the SVG-flex inversion. Not started.
+
+### Also deferred within landed phases
+- **F#13** (column-order drag + the promote-defaults pipeline — the first Library pref to ride it) and **F#14's facet sub-bar sort**: the interactive + tuning-heavy parts of DM-3. The order-SSOT refactor they'd build on is straightforward over the now-9-track grid.
+- **F#9 header button** → folds into F#11.
+- **F#4 writer-side** → see Deferred (supervised follow-ups).
+
+### Notes / gotchas for you
+- **The `git add -A` incident** (Phase 1, corrected in `6e41d7b0`): I briefly swept your concurrent bug-catcher files into a commit; reverted, your content is intact (`MEMO_FOCUS_BAND_SECTION_END.md` untracked, `MEMO_BUG_BACKLOG.md` +8 unstaged — exactly as you left them). I switched to explicit `git add` after.
+- Branches `phase0-foundations` / `phase1-bibliography` / `phase2-list-table` are merged into main but not deleted — clean them whenever (`/cleanup-worktrees` or `git branch -d`).
+- `bib_auth.py`'s `apply_metadata_mismatch_policy.py` writes a non-standard `bib.state="needs-reauth"` — the new bib-index reader drops it (→ "none"). Reconcile when doing the F#4 writer-side.
+
+
 ### Phase 1 — Bibliography subsystem — ✅ MERGED to local main `607e9b8b` (no-ff, NOT pushed)
 > ⚠️ **Incident (corrected):** my `git add -A` on the review-fixes commit swept in two files from your concurrent bug-catcher session — `MEMO_FOCUS_BAND_SECTION_END.md` (new) and a `MEMO_BUG_BACKLOG.md` (+8). Corrected in `6e41d7b0`: HEAD reverts both to baseline and their content is restored to the working tree exactly as you left it (untracked / unstaged). No content lost. I've stopped using `git add -A` for the rest of the run.
 
