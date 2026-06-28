@@ -122,6 +122,9 @@ DM-3 partial via the existing `gridTemplate` SSOT. **F#14 (fold bib-imp → 4th 
 
 ---
 
+### Completions A — F#16 breadcrumb + F#14 facet sort — ✅ MERGED to local main `d73624d6` (no-ff, NOT pushed)
+Completes the deferred halves: **F#16** now FULLY done (functional Reader section breadcrumb — keystroke-safe scroll-driven `useReaderSectionPath` + one-shot settle recompute so it populates on fresh open) and **F#14** FULLY done (status facet sub-bar sort; one shared `FACETS` array genuinely drives the comparator + sub-bar + StatusPills glyph order). Workflow-implemented + reviewed (2 findings fixed: breadcrumb fresh-open recompute; StatusPills FACETS-driven) + my verification. tsc 0 · vitest 3046 · eslint clean. OWED live feel-check (breadcrumb follows scroll; 2-row Status header + facet rail).
+
 ### Phase 4b — Paper-header (F#11, library-scoped) — ✅ MERGED to local main `ee8ed084` (no-ff, NOT pushed)
 DM-5(a). NEW leaf-pure `<BibEntryChrome>` (structured headline + "more"→APA, membership chips, ✓Authenticated/index-tier status row, drag-to-custom-library) + NEW `usePgmarkPages` (extracted; **single owner** in RightDetail feeding both the lozenge + the header picker — review caught & I fixed a two-instance double-derivation) + PaperHeader collapsed to ONE responsive warm-sheet pod (50/50 grid killed; StatusPills→StatusDots <560px via RAF-coalesced RO) + text-view "p. N / x" page picker + the F#9 header open button. Also completes **F#9** (list column + header button). Workflow-implemented + reviewed (2 findings fixed) + my diff-gate (confirmed 1 usePgmarkPages call site). tsc 0 · vitest 3025 · no net-new lint. **DEFERRED:** editor Bibliography-panel single-source `<BibEntryChrome>` adoption (fast-follow, kept editor blast radius out) + PDF page-picker (needs F#10). OWED live feel-check (560px swap, picker jump, borderless pod, grab-drag).
 
