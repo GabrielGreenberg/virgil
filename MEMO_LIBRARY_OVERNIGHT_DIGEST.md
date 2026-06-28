@@ -116,6 +116,23 @@ Note: a non-standard `bib.state="needs-reauth"` is written by `apply_metadata_mi
 
 ## Per-phase landing log
 
+### Phase F#11(a) — PDF-mode page picker (F#10 fast-follow) — ✅ MERGED to local main `74c37f8f` (no-ff, NOT pushed); phase commit `87ea3ca9`
+Landed 2026-06-28. **F#11(a) — the PDF-mode page picker** (the F#10 fast-follow): the Reader's `PagePicker` now works in PDF mode too, tracking the vendored pdf.js viewer's own page state.
+
+**NEW `library/lib/pdf-pgmark-adapter.ts`:** pure `pdfPagesToPgmark(pagesCount, currentPage, onScrollToPage) -> PgmarkPages` — synthesizes `1..N` ordinal page labels, clamps the viewer's 1-based page to a 0-based `currentIndex`/`currentLabel`, and routes a typed label/index back to a 1-based page via the caller's navigate callback. `pagesCount===0` ⇒ an empty inert picker. 9 unit tests, no iframe/DOM refs.
+
+**`PdfView.tsx` gained an `onPdfPageStateChange(state, navigate)` prop:** after `initializedPromise` it subscribes to the viewer's OWN `eventBus` (`pagesinit` → `pagesCount`; `pagechanging` → current page), emits `{pagesCount, currentPage}` + a `navigate` closure bound to `PDFViewerApplication.page` — **NO `editor.on(...)`**, listeners removed on unmount/switch/mode-toggle, parent reset to not-ready on teardown. `RightDetail` lifts the state and threads a synthesized `PgmarkPages` to `PaperHeader` in PDF mode (text mode keeps `usePgmarkPages`); `PaperHeader` now renders the `PagePicker` in PDF mode too.
+
+**Review:** ship; 2 findings fixed — **F1** (cold-mount race double-subscribed the eventBus: pdf.js `EventBus.on` has no dedup + `off` removes one → listener leak; fixed with a synchronous re-entry guard, no `await` between the guard and `.on`) and **F2** (warm-switch stale page-count flash; removed the redundant eager warm-emit since `pagesinit` re-fires on every open, confirmed vs `viewer.mjs`). Two net-new lint issues from the implement pass were also fixed in the diff-gate (a `react-hooks/refs` during-render ref write → moved to an effect; an unused `ViewMode` import removed).
+
+**Verify:** tsc **0** · full vitest **3072 pass / 1 skip / 0 fail** · no net-new lint (only the pre-existing `react-hooks/set-state-in-effect` on PdfView's read effect remains, confirmed on HEAD).
+
+**F#11(b)** (editor Bibliography-panel `<BibEntryChrome>` adoption): deliberately **NOT** done — risk re-assessment reaffirmed risky-defer (low marginal value: BibliographyPanel already shares LibraryStatusRow + LibraryMembershipChips, only a ~15-line headline duplicates; prereq is a non-trivial embedded/noDrag mode + `dragHandle`/`titleStyle` slots on `<BibEntryChrome>` to avoid drag-on-drag on the data-loss-grade BibEntryCard).
+
+**OWED browser-verify** (depends on F#10, also unverified): open a PDF in the Reader, toggle PDF mode, confirm the header shows `p.N/TOTAL`, the current page tracks scroll/nav, and typing a page + Enter navigates the viewer.
+
+---
+
 ### Phase F#4 writer-side — sources-only catalog — ✅ MERGED to local main `18e9fd6c` (no-ff, NOT pushed); phase commit `485be521`
 Landed 2026-06-28. **F#4 (sources-only / layered-hybrid catalog) — the writer half (the perf win).** The reader-side was already done; this completes the migration with the writer-stop, the canonical `bib.state` unification, the relaxed shrinkage-guard, and the dry-run-first prune.
 

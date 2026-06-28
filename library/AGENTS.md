@@ -253,11 +253,12 @@ Queue kind: `"deepIndex"`. Queue file: `queue/<citekey>-deepindex.json`.
 
 ## Bib states
 
-Every catalog entry's `bib.state` is one of five values, set by the auth pipeline and consumed by the frontend's status pill:
+Every catalog entry's `bib.state` is one of six values, set by the auth pipeline and consumed by the frontend's status pill:
 
 - **`authenticated`** — DOI verified against Crossref *or* ≥2 sources agreed with score ≥0.92, *or* (for books) Google Books + OpenLibrary both score ≥0.85. Terminal state.
 - **`unverified`** — single source matched at the lower threshold. Fields are best-effort. **Action needed.**
 - **`failed`** — no source produced a match above threshold. **Action needed.** Try `/library/authenticate-bib` again or fill by hand.
+- **`needs-reauth`** — set by `apply_metadata_mismatch_policy.py` when a metadata-mismatch policy is applied to an entry: the entry was authenticated/known but its on-file metadata diverged from the authoritative source, so it is flagged to be re-authenticated. **Action needed** (re-run `/library/authenticate-bib`). (F#4) Now a canonical state shared by the Python writer and the TS reader; previously it was non-standard and the bib-index reader silently dropped it to `"none"`.
 - **`manuscript`** — explicitly unpublished or forthcoming (`@unpublished`). Terminal state. **No action needed.**
 - **`canonical`** — pre-digital **descriptor**, no longer a terminal give-up (F#3). For a failed pre-digital work (book/incollection/inbook, `0 < year < 1980`, no DOI/ISBN) the auth pipeline first runs the **pre-digital route** — multi-source agreement across book catalogs (OpenLibrary, Internet Archive, Google Books) + scholarly indexes (OpenAlex, Crossref), corroborated by the bib's publisher. On agreement the entry becomes a real **`authenticated`** (carrying a `predigital(...)` source + provenance note). `canonical` is set ONLY when that route also finds no authoritative agreement — a "pre-digital classic; no agreement found" descriptor, re-runnable as catalogs improve. **No action needed.** (Year gate is `<1980`, the code's actual cutoff — older docs said ~1950.)
 
