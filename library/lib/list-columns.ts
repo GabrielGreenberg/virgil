@@ -16,21 +16,23 @@ export type ResizableColId = "year" | "author" | "status" | "citekey";
 export const DEFAULT_WIDTHS: Record<ResizableColId, number> = {
   year: 56,
   author: 130,
-  status: 156,
+  // F#14: bib-imp folded INTO status (a 4th "✓ imp" pill) — widened ~52px so
+  // the freed bib-imp space holds the extra pill instead of flowing to title.
+  status: 208,
   citekey: 140,
 };
 
 const MIN_WIDTHS: Record<ResizableColId, number> = {
   year: 40,
   author: 70,
-  status: 100,
+  status: 120,
   citekey: 80,
 };
 
 const MAX_WIDTHS: Record<ResizableColId, number> = {
   year: 110,
   author: 260,
-  status: 260,
+  status: 320,
   citekey: 200,
 };
 
@@ -39,11 +41,6 @@ export const RESIZER_WIDTH = 4;
 export function clampWidth(col: ResizableColId, w: number): number {
   return Math.max(MIN_WIDTHS[col], Math.min(MAX_WIDTHS[col], Math.round(w)));
 }
-
-/** Fixed width of the trailing "imp" (bibliography-imported) check column.
- *  Non-resizable and non-sortable — a pure read-only indicator, so it stays
- *  out of the resize/sort math (no ResizableColId / SortColId entry). */
-export const BIB_IMP_WIDTH = 52;
 
 export function gridTemplate(widths: Record<ResizableColId, number>): string {
   return [
@@ -56,7 +53,7 @@ export function gridTemplate(widths: Record<ResizableColId, number>): string {
     `${widths.status}px`,
     `${RESIZER_WIDTH}px`,
     `${widths.citekey}px`,
-    `${BIB_IMP_WIDTH}px`, // bib-imp (trailing, fixed)
+    // F#14: the trailing bib-imp track is gone — it's now a 4th status pill.
   ].join(" ");
 }
 

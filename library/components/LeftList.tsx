@@ -23,6 +23,7 @@ import {
 } from "@library/lib/list-columns";
 import LeftListRow, {
   ACTION_COL_WIDTH,
+  OPEN_COL_WIDTH,
   STATUS_DOT_COL_WIDTH,
   type RowActions,
 } from "./LeftListRow";
@@ -514,20 +515,10 @@ export default function LeftList({
           <SortHeader col="status" label="status" activeSort={sort} onSort={handleSort} />
           <Resizer onPointerDown={handleResize("status", "citekey")} />
           <SortHeader col="citekey" label="citekey" activeSort={sort} onSort={handleSort} />
-          <div
-            title="Bibliography imported into master.bib"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "0 4px",
-              color: "var(--muted)",
-              userSelect: "none",
-            }}
-          >
-            imp
-          </div>
         </div>
+        {/* F#9 open-in-tab column spacer + the ⋮ action column spacer —
+            mirror the row's two trailing flex siblings so header/rows align. */}
+        <div style={{ flexShrink: 0, width: OPEN_COL_WIDTH }} />
         <div style={{ flexShrink: 0, width: ACTION_COL_WIDTH }} />
       </div>
 
