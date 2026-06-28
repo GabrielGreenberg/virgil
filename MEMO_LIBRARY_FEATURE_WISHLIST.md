@@ -48,7 +48,7 @@ work; `little` = contained UI or behavior tweak). Refined at planning time.
 - **F#1** — [Dashboard headline-stats redesign](#f1--dashboard-headline-stats-redesign) · `little` · **✅ LANDED (Phase 1)**
 - **F#2** — [Retire "verified", unify on "authenticated"](#f2--retire-verified-unify-on-authenticated) · `little` · **✅ LANDED (Phase 1)**
 - **F#3** — [Pre-digital ("canonical") authentication pipeline](#f3--pre-digital-canonical-authentication-pipeline) · `big` · **✅ LANDED (Phase 1)** — engine+skill+tests; not mass-run on the real lib (re-runnable skill)
-- **F#4** — [Catalog membership policy: all-bib vs sources-only](#f4--catalog-membership-policy-all-bib-vs-sources-only) · `big` · **◑ PARTIAL (Phase 1)** — reader-side layered model + bib-index `bs` projection LANDED; **writer-stop + row-prune DEFERRED** (supervised; see digest)
+- **F#4** — [Catalog membership policy: all-bib vs sources-only](#f4--catalog-membership-policy-all-bib-vs-sources-only) · `big` · **✅ LANDED (Phase F#4 writer-side)** (landed 2026-06-28, merge 18e9fd6c) — reader-side (prior) + writer-side (now) BOTH complete: holdings-only writers, canonical `bib.state` vocabulary, relaxed shrinkage-guard, dry-run-first prune; OWED supervised prune on the real library
 - **F#5** — [Per-row three-dot menus in the libraries list](#f5--per-row-three-dot-menus-in-the-libraries-list) · `little` · **✅ LANDED (Phase 0)**
 - **F#6** — [Toast attention tabs: close button + reliable auto-dismiss](#f6--toast-attention-tabs-close-button--reliable-auto-dismiss) · `little` · **✅ LANDED (Phase 0)**
 - **F#7** — [Three-dot menu on "My Papers" pod rows (Remove)](#f7--three-dot-menu-on-my-papers-pod-rows-remove) · `little` · **✅ LANDED (Phase 0)**
@@ -298,6 +298,8 @@ the triage bib-only path) minting reference rows, and gate `authenticate-bib` /
 expected-flat); (6) one-time prune of `present:false` rows — **back-filling the master.bib comment
 from any row whose state predates the comment BEFORE deleting it** (the one real data-loss risk).
 The `imported` flag needs no re-home — it already lives on the holdings paper's surviving row.
+
+**✅ LANDED (2026-06-28, merge 18e9fd6c; phase commit 485be521): reader-side (prior) + writer-side (now) BOTH complete.** Writer half landed migration steps 4–6: holdings-only writers (`paper_has_holdings()`-gated), the canonical 7-value `bib.state` vocabulary unified across Python/TS, the relaxed shrinkage-guard, and a dry-run-first destructive prune script. OWED: supervised prune on the real library (see digest §Phase F#4 writer-side).
 
 **✅ DECIDED (Gabriel, 2026-06-25): adopt sources-only (layered-hybrid).** A deliberate
 cross-cutting redefinition (medium effort, high reversibility) — bigger than F#1, but the research

@@ -116,6 +116,25 @@ Note: a non-standard `bib.state="needs-reauth"` is written by `apply_metadata_mi
 
 ## Per-phase landing log
 
+### Phase F#4 writer-side — sources-only catalog — ✅ MERGED to local main `18e9fd6c` (no-ff, NOT pushed); phase commit `485be521`
+Landed 2026-06-28. **F#4 (sources-only / layered-hybrid catalog) — the writer half (the perf win).** The reader-side was already done; this completes the migration with the writer-stop, the canonical `bib.state` unification, the relaxed shrinkage-guard, and the dry-run-first prune.
+
+**(4) Holdings-only writers:** `merge_paper_references._upsert_catalog_row` + `triage_apply._upsert_catalog_row_bib_only` now gate on `paper_has_holdings()` — a reference-only entry mints **NO catalog row**, just re-asserts the `% bib.state` comment in `master.bib` (idempotent); a true holding still gets its row.
+
+**Canonical `bib.state` (the DEEP unification):** one shared 7-value vocabulary `{none, unverified, authenticated, manuscript, canonical, failed, needs-reauth}` in `_tools.py` `CANONICAL_BIB_STATES`, mirrored (with an explicit cross-ref comment) by `bib-index.ts` `VALID_BIB_STATES`, the `BibAuthState` union (`catalog.ts`), and `src/lib/library/library-types.ts`. `apply_metadata_mismatch_policy.py`'s previously non-standard `"needs-reauth"` (silently dropped to `"none"` by the reader) is now canonical and round-trips writer→reader→UI (StatusPill / provenance-chips / library-entry-status / list column all render it).
+
+**(5) Relaxed shrinkage guard:** `merge_bibs_postflight` no longer alerts on a bare catalog total decline (the expected effect of dropping reference rows). True loss now = a `master.bib` shrink, a real `indexed.state` regression, OR (added) a drop in the `pdf.present==true` holdings count — so a held-but-unindexed `state==none` row vanishing is still caught.
+
+**(6) DESTRUCTIVE prune, dry-run-first:** new `library/scripts/prune_catalog_present_false.py` — **DEFAULTS to dry-run**, requires explicit `--apply`, never silently resolves `~/Virgil-Library`, writes only via lock-gated `_tools` helpers, **back-fills EVERY pruned row's `% bib.state` comment BEFORE deleting**, and is disk-aware (a stale `pdf.present==false` row whose source file is actually on disk via `paper_has_holdings` is **SKIPPED**, never pruned). **NOT RUN on any real library.**
+
+**Review:** fix-then-ship; the F4W bug class (`pdf.present` flag unreliable for holdings) fixed at the root — **F4W-1** (prune disk cross-check), **F4W-3** (merge no longer mints a holding's row `present:false`), **F4W-2** (holdings-count floor). A `master.bib` field-bleed in the back-fill was caught + fixed during the dry-run proof (use the brace-aware `read_master_bib`, not the tolerant slim parser).
+
+**Verify:** tsc **0** · pytest **49 pass** (19 new F#4 guard tests incl. back-fill-before-delete, held-row-skip, holdings floor) · full vitest **3063 pass / 1 skip / 0 fail** · no net-new lint · library bundle rebuilt (gitignored output).
+
+**OWED (supervised, on the REAL library — NOT done here):** Gabriel runs the prune in DRY-RUN against `~/Virgil-Library`, takes a `master.bib` + `catalog.json` backup, then `--apply`; and feel-checks that merge/triage no longer mint reference rows and the bib-index `bs` projection carries their state honestly in the UI. Possible follow-up: a cross-language drift-guard test asserting `CANONICAL_BIB_STATES` (py) == `VALID_BIB_STATES` (ts).
+
+---
+
 ### Phase DM-6 — F#10 vendored pdf.js prebuilt viewer — ✅ MERGED to local main `b65e6ef4` (no-ff, NOT pushed); phase commit `c8b20382`
 Landed 2026-06-28. **F#10 (Option B — vendor pdf.js's prebuilt viewer + restyle its toolbar to Virgil tokens)** — the PDF surface deep move (DM-6).
 
