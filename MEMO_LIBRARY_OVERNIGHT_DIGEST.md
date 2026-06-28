@@ -122,6 +122,9 @@ DM-3 partial via the existing `gridTemplate` SSOT. **F#14 (fold bib-imp → 4th 
 
 ---
 
+### Phase 4b — Paper-header (F#11, library-scoped) — ✅ MERGED to local main `ee8ed084` (no-ff, NOT pushed)
+DM-5(a). NEW leaf-pure `<BibEntryChrome>` (structured headline + "more"→APA, membership chips, ✓Authenticated/index-tier status row, drag-to-custom-library) + NEW `usePgmarkPages` (extracted; **single owner** in RightDetail feeding both the lozenge + the header picker — review caught & I fixed a two-instance double-derivation) + PaperHeader collapsed to ONE responsive warm-sheet pod (50/50 grid killed; StatusPills→StatusDots <560px via RAF-coalesced RO) + text-view "p. N / x" page picker + the F#9 header open button. Also completes **F#9** (list column + header button). Workflow-implemented + reviewed (2 findings fixed) + my diff-gate (confirmed 1 usePgmarkPages call site). tsc 0 · vitest 3025 · no net-new lint. **DEFERRED:** editor Bibliography-panel single-source `<BibEntryChrome>` adoption (fast-follow, kept editor blast radius out) + PDF page-picker (needs F#10). OWED live feel-check (560px swap, picker jump, borderless pod, grab-drag).
+
 ### Phase 2b — List-table column-order (F#13) — ✅ MERGED to local main `1bb50490` (no-ff, NOT pushed)
 Completes **DM-3** (list-table now fully done: F#9 + F#14-fold + F#13). One `order[]` SSOT across the 3 column sites; `resizeNeighborsForBoundary` (the asymmetric 1fr-title-aware resize helper — I diff-gated it reproduces the legacy pairs + generalizes); global `colOrder` on the layout slice; HTML5 drag-reorder; **promote-defaults wiring** (first library pref to ride it — new `list-columns.defaults.json` + registry entry + a permutation guard in check-prefs-coverage — reusable plumbing for future library globals). Workflow-implemented (subagent context) + review 0 defects + my diff-gate. tsc 0 · vitest 3015 · prefs-coverage OK · eslint clean. OWED live drag feel-check (resize-after-reorder; click-vs-drag).
 
