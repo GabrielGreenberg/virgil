@@ -97,7 +97,7 @@ export function provenanceChipStyle(
           return {
             text: "auth",
             tooltip:
-              "Library entry verified against authoritative sources (Crossref / OpenAlex / etc.)",
+              "Library entry authenticated against authoritative sources (Crossref / OpenAlex / etc.)",
             className:
               "text-emerald-700 bg-emerald-50 border border-emerald-200",
           };

@@ -77,6 +77,12 @@ export interface BibStatus {
   doiVerified?: boolean;
   sources?: string[];
   fieldChanges?: BibFieldChange[];
+  // Confidence score (0–1) and a free-text provenance note from the auth
+  // pipeline (bib_auth.py AuthResult). Already written to catalog.json /
+  // surfaced in the master.bib comment; declared here so readers can show
+  // *why* an entry is authenticated (esp. F#3 pre-digital corroboration).
+  score?: number;
+  note?: string;
   manuallyAcceptedAt?: string;
   // Set by the bib-merge engine (merge_paper_references.py) when this paper's
   // references.bib has been folded into the central master.bib — surfaced as a

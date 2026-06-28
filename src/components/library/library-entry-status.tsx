@@ -6,9 +6,9 @@
  * the two axes that are NOT library membership (those live on the layer
  * above, via `LibraryMembershipChips`):
  *
- *   - a VERIFICATION badge from the catalog's bib-auth state
- *     (`authenticated` → "✓ Verified"). This replaces the old cramped "AUTH"
- *     chip and lives on its own layer, distinct from the libraries.
+ *   - an AUTHENTICATION badge from the catalog's bib-auth state
+ *     (`authenticated` → "✓ Authenticated"). This replaces the old cramped
+ *     "AUTH" chip and lives on its own layer, distinct from the libraries.
  *   - a PROCESSING-TIER badge (Bib only / Indexed PDF / Deep-indexed PDF),
  *     derived from `indexed.state` via `LibraryIndexTier`.
  *   - the shared `<OpenEntryLink>` affordance — opens the entry as a new
@@ -29,17 +29,17 @@ import { OpenEntryLink } from "./open-library-entry";
 const CHIP_BASE =
   "inline-flex items-center gap-0.5 text-[10px] tracking-wide px-1.5 py-0.5 rounded whitespace-nowrap";
 
-/** Verification badge from the bib-auth axis. `none`/undefined → nothing. */
+/** Authentication badge from the bib-auth axis. `none`/undefined → nothing. */
 function verifiedChip(state: LibraryBibState | undefined) {
   switch (state) {
     case "authenticated":
       return (
         <span
           className={`${CHIP_BASE} text-emerald-700 bg-emerald-50 border border-emerald-200`}
-          data-hint="Verified against authoritative sources (Crossref / OpenAlex / …)"
-          aria-label="Verified bibliography entry"
+          data-hint="Authenticated against authoritative sources (Crossref / OpenAlex / …)"
+          aria-label="Authenticated bibliography entry"
         >
-          ✓ Verified
+          ✓ Authenticated
         </span>
       );
     case "unverified":

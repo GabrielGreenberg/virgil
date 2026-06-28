@@ -15,6 +15,7 @@ function entry(p: {
   authors?: string[];
   year?: number;
   originalFilename?: string;
+  pdfPresent?: boolean;
 }): CatalogEntry {
   return {
     citekey: p.citekey,
@@ -23,7 +24,7 @@ function entry(p: {
     year: p.year,
     addedAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
-    pdf: { present: true },
+    pdf: { present: p.pdfPresent ?? true },
     indexed: { state: p.indexed },
     bib: { state: p.bib },
     originalFilename: p.originalFilename,
@@ -33,15 +34,15 @@ function entry(p: {
 describe("computeCatalogStats", () => {
   it("counts each indexing + bib bucket in one pass", () => {
     const entries: CatalogEntry[] = [
-      // deepIndexed + canonical (verified terminal, not authenticated)
+      // deepIndexed + canonical
       entry({ citekey: "a", indexed: "deepIndexed", bib: "canonical" }),
-      // indexed + authenticated (verified terminal + authenticated)
+      // indexed + authenticated
       entry({ citekey: "b", indexed: "indexed", bib: "authenticated" }),
       // queued + unverified (needs action)
       entry({ citekey: "c", indexed: "queued", bib: "unverified" }),
       // running + failed bib (needs action)
       entry({ citekey: "d", indexed: "running", bib: "failed" }),
-      // failed index + manuscript (verified terminal)
+      // failed index + manuscript
       entry({ citekey: "e", indexed: "failed", bib: "manuscript" }),
       // none + none — contributes to nothing but totals/papers
       entry({ citekey: "f", indexed: "none", bib: "none" }),
@@ -59,6 +60,7 @@ describe("computeCatalogStats", () => {
 
     expect(s.totalSources).toBe(7);
     expect(s.papers).toBe(6); // all but the null-citekey row
+    expect(s.sourcesWithFile).toBe(6); // all 6 citekey rows have pdf.present
     expect(s.unsorted).toBe(1);
     expect(s.bibEntries).toBe(3); // map size, independent of entries
 
@@ -68,10 +70,48 @@ describe("computeCatalogStats", () => {
     expect(s.queuedOrRunning).toBe(2); // c + d
     expect(s.failedIndex).toBe(1); // e
 
-    // Bibliography
+    // Bibliography (F#1/F#2/F#4)
     expect(s.authenticated).toBe(1); // b
-    expect(s.verifiedTerminal).toBe(3); // canonical(a) + authenticated(b) + manuscript(e)
     expect(s.bibNeedsAction).toBe(2); // unverified(c) + failed(d)
+    // Strict binary complement over the bibliography total: 3 − 1 = 2.
+    expect(s.nonAuthenticated).toBe(2);
+  });
+
+  it("Sources counts only citekey+pdf-present rows (F#1); non-auth is the strict complement", () => {
+    // The merged universe: 2 real holdings (one authenticated) + 3 fileless
+    // reference rows (one authenticated via the bib-index projection) + an
+    // untriaged file.
+    const entries: CatalogEntry[] = [
+      entry({ citekey: "h1", indexed: "indexed", bib: "authenticated", pdfPresent: true }),
+      entry({ citekey: "h2", indexed: "indexed", bib: "none", pdfPresent: true }),
+      entry({ citekey: "r1", indexed: "none", bib: "authenticated", pdfPresent: false }),
+      entry({ citekey: "r2", indexed: "none", bib: "none", pdfPresent: false }),
+      entry({ citekey: "r3", indexed: "none", bib: "unverified", pdfPresent: false }),
+      entry({ citekey: null, indexed: "none", bib: "none", originalFilename: "drop.pdf", pdfPresent: true }),
+    ];
+    const bibByKey = new Map<string, BibEntry>(
+      ["h1", "h2", "r1", "r2", "r3"].map((k) => [
+        k,
+        { key: k, type: "article", fields: {}, raw: "" } as BibEntry,
+      ]),
+    );
+
+    const s = computeCatalogStats(entries, bibByKey);
+    // Only h1 + h2 are real documents on disk.
+    expect(s.sourcesWithFile).toBe(2);
+    // Authenticated over the whole universe: h1 + r1.
+    expect(s.authenticated).toBe(2);
+    // 5 references total − 2 authenticated = 3 non-authenticated.
+    expect(s.nonAuthenticated).toBe(3);
+  });
+
+  it("clamps nonAuthenticated at zero when a holding's citekey isn't in master.bib", () => {
+    const s = computeCatalogStats(
+      [entry({ citekey: "ghost", indexed: "indexed", bib: "authenticated" })],
+      new Map(), // bibEntries = 0
+    );
+    expect(s.authenticated).toBe(1);
+    expect(s.nonAuthenticated).toBe(0); // max(0, 0 − 1)
   });
 
   it("is defensive against empty / missing inputs", () => {

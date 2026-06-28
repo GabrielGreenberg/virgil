@@ -114,7 +114,7 @@ drift:
 | Dialect | Spec | Use |
 |---|---|---|
 | **Membership chip** | 9px / uppercase / tracking-wide | "location tags" — which library an entry lives in (Local / Central / a custom library). `provenance-chips.tsx`. |
-| **Status badge** | 10px / sentence-case / tracking-wide / colored | the entry's *state* — `✓ Verified` (bib-auth) and the processing tier (`Bib only` / `Indexed PDF` / `Deep-indexed PDF`). `library-entry-status.tsx`. |
+| **Status badge** | 10px / sentence-case / tracking-wide / colored | the entry's *state* — `✓ Authenticated` (bib-auth; "Verified" is retired — F#2) and the processing tier (`Bib only` / `Indexed PDF` / `Deep-indexed PDF`). `library-entry-status.tsx`. |
 
 Sentence-case on the status badge is deliberate: the labels are user-facing
 vocabulary that reads as words, not shouted tags. Membership chips stay the

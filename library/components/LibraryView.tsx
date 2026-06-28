@@ -106,7 +106,7 @@ export default function LibraryView({
   // pickers, this tab) — see catalog-store.ts. refreshCatalogStore() forces an
   // immediate re-read after a local mutation (drag-drop).
   const { entries: catalogEntries } = useCatalogItems();
-  const { entries: bibEntries, reload: reloadBib } = useMasterBib(handle);
+  const { entries: bibEntries, bibStateByKey, reload: reloadBib } = useMasterBib(handle);
   const { files: unsortedFiles, reload: reloadUnsorted } = useUnsortedPdfs(handle);
   const { byFile: unsortedBibByFile, reload: reloadUnsortedBib } =
     useUnsortedBibEntries(handle);
@@ -443,7 +443,11 @@ export default function LibraryView({
         updatedAt: "",
         pdf: { present: false },
         indexed: { state: "none" },
-        bib: { state: "unverified" },
+        // F#4: the authoritative auth state for a fileless reference lives in
+        // the bib-index (projected from master.bib's "% bib.state" comment).
+        // Default "none" (honest "not yet authenticated") rather than the old
+        // hardcoded "unverified" that mislabelled the whole reference universe.
+        bib: { state: bibStateByKey.get(b.key) ?? "none" },
       });
       seenKeys.add(b.key);
     }
@@ -464,7 +468,9 @@ export default function LibraryView({
           updatedAt: "",
           pdf: { present: false },
           indexed: { state: "none" },
-          bib: { state: "unverified" },
+          // Freshly-imported .bib entries (not in master.bib yet) carry no
+          // authoritative state — honest "none" until a skill authenticates.
+          bib: { state: bibStateByKey.get(b.key) ?? "none" },
         });
         seenKeys.add(b.key);
       }
@@ -475,7 +481,7 @@ export default function LibraryView({
       ...bibOnlySynthetic,
       ...unsortedBibSynthetic,
     ];
-  }, [catalogEntries, bibEntries, unsortedFiles, unsortedBibByFile]);
+  }, [catalogEntries, bibEntries, bibStateByKey, unsortedFiles, unsortedBibByFile]);
 
   // Row keys that actually exist in the merged catalog. A row's selection
   // key is its citekey, falling back to its original filename for

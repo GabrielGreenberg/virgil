@@ -420,6 +420,27 @@ _BIB_INDEX_FIELDS = (
 # it). Line-anchored splitting contains any malformation to its own entry.
 _BIB_ENTRY_START_RE = re.compile(r"(?m)^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,")
 
+# The per-entry auth state lives in a `% bib.state = <state>` comment written
+# immediately before the entry by update_master_bib_entry. Pair each comment
+# with the citekey of the entry that follows it (tolerating blank lines).
+# This is the authoritative state home for the reference universe (F#4): the
+# bib-index projects it into each record's `bs` so the fileless mass of
+# citation-only references carries real auth state without a catalog row.
+_BIB_STATE_COMMENT_RE = re.compile(
+    r"(?m)^%[ \t]*bib\.state[ \t]*=[ \t]*(\w+)[ \t]*\n(?:[ \t]*\n)*@\w+[ \t]*\{[ \t]*([^,\s]+)"
+)
+
+
+def iter_master_bib_states(text: str):
+    """Yield (citekey, state) for every `% bib.state = <state>` comment paired
+    with the entry it precedes. Later duplicates win (matches the file order
+    update_master_bib_entry maintains)."""
+    for m in _BIB_STATE_COMMENT_RE.finditer(text):
+        state = m.group(1).strip()
+        citekey = m.group(2).strip()
+        if citekey:
+            yield citekey, state
+
 
 def iter_master_bib_slim(text: str):
     """Yield (citekey, entry_type, fields) for every entry in master.bib text.
@@ -478,6 +499,8 @@ def build_bib_index(library: Path, *, force: bool = False) -> bool:
 
     master_path = library / "master.bib"
     text = master_path.read_text() if master_path.exists() else ""
+    # Project the per-entry `% bib.state` comments into the index (F#4).
+    state_by_key = dict(iter_master_bib_states(text))
     entries: list[dict] = []
     seen: set[str] = set()
     for citekey, _entry_type, fields in iter_master_bib_slim(text):
@@ -489,6 +512,9 @@ def build_bib_index(library: Path, *, force: bool = False) -> bool:
             val = fields.get(full)
             if val:
                 slim[short] = val
+        state = state_by_key.get(citekey)
+        if state:
+            slim["bs"] = state
         entries.append(slim)
 
     payload = {
@@ -496,7 +522,8 @@ def build_bib_index(library: Path, *, force: bool = False) -> bool:
         "stamp": stamp,
         "generatedAt": _now(),
         "schema": "k=citekey t=title a=author e=editor y=year d=doi "
-                  "j=journal b=booktitle v=volume n=number p=pages q=publisher s=series",
+                  "j=journal b=booktitle v=volume n=number p=pages q=publisher s=series "
+                  "bs=bib.state",
         "count": len(entries),
         "entries": entries,
     }

@@ -11,7 +11,12 @@ from pathlib import Path
 _SCRIPTS = str(Path(__file__).resolve().parent.parent)
 sys.path.insert(0, _SCRIPTS)
 
-from _tools import build_bib_index, iter_master_bib_slim, read_master_bib  # noqa: E402
+from _tools import (  # noqa: E402
+    build_bib_index,
+    iter_master_bib_slim,
+    iter_master_bib_states,
+    read_master_bib,
+)
 
 
 def _write(lib: Path, bib: str) -> None:
@@ -72,6 +77,39 @@ def test_slim_projection_carries_all_browse_fields(tmp_path):
         "b": "The Volume", "v": "3", "n": "2", "p": "10--20",
         "q": "Pub Co", "s": "A Series",
     }
+
+
+def test_projects_bib_state_comment_into_bs(tmp_path):
+    # F#4: the per-entry `% bib.state = <state>` comment is the authoritative
+    # auth-state home for the reference universe; build_bib_index must project
+    # it into each record's `bs`. Entries with no comment carry no `bs`.
+    _write(tmp_path, (
+        "% bib.state = authenticated\n"
+        "@article{auth,\n  title = {A},\n  author = {A, A},\n}\n\n"
+        "% bib.state = manuscript\n"
+        "@unpublished{ms,\n  title = {M},\n}\n\n"
+        "@book{plain,\n  title = {P},\n  year = {1850},\n}\n"
+    ))
+    assert build_bib_index(tmp_path, force=True) is True
+    idx = json.loads((tmp_path / ".virgil" / "bib-index.json").read_text())
+    by_key = {e["k"]: e for e in idx["entries"]}
+    assert by_key["auth"]["bs"] == "authenticated"
+    assert by_key["ms"]["bs"] == "manuscript"
+    assert "bs" not in by_key["plain"]  # no comment → no state projected
+    # Standalone helper agrees.
+    assert dict(iter_master_bib_states((tmp_path / "master.bib").read_text())) == {
+        "auth": "authenticated", "ms": "manuscript",
+    }
+
+
+def test_bib_state_comment_tolerates_blank_line_before_entry(tmp_path):
+    _write(tmp_path, (
+        "% bib.state = failed\n\n"
+        "@article{spaced,\n  title = {S},\n}\n"
+    ))
+    assert build_bib_index(tmp_path, force=True) is True
+    idx = json.loads((tmp_path / ".virgil" / "bib-index.json").read_text())
+    assert idx["entries"][0]["bs"] == "failed"
 
 
 def test_stamp_gate_skips_rebuild_when_master_unchanged(tmp_path):

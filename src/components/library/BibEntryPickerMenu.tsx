@@ -659,16 +659,16 @@ function VerifiedPill({
   bibState: string | undefined;
 }) {
   const tooltip = verified
-    ? "Library entry verified against authoritative sources (Crossref / OpenAlex / etc.)"
+    ? "Library entry authenticated against authoritative sources (Crossref / OpenAlex / etc.)"
     : bibState === "manuscript"
       ? "Manuscript / forthcoming — no external source applies"
       : bibState === "canonical"
         ? "Pre-digital classic — no DOI/ISBN registry will ever index it"
         : bibState === "failed"
-          ? "Library entry couldn't be verified against external sources"
+          ? "Library entry couldn't be authenticated against external sources"
           : bibState === "unverified"
             ? "Library entry partially matched a source — fields are best-effort"
-            : "Library entry has not been verified";
+            : "Library entry has not been authenticated";
   const cls = verified
     ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
     : "text-amber-700 bg-amber-50 border border-amber-200";
@@ -678,7 +678,7 @@ function VerifiedPill({
       data-hint={tooltip}
       aria-label={tooltip}
     >
-      {verified ? "verified" : "unverified"}
+      {verified ? "authenticated" : "unverified"}
     </span>
   );
 }
