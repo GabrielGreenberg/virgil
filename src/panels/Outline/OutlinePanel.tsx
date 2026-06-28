@@ -1785,7 +1785,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
           onClick={() => { if (focusState?.active) return; setEditMode(!editMode); }}
           className={`text-[11px] px-1.5 py-0 rounded-md transition-colors ${
             editMode
-              ? "bg-[var(--accent)] text-white"
+              ? "bg-[var(--control-selected)] text-white"
               : focusState?.active
                 ? "bg-surface/50 text-ink-faint cursor-not-allowed"
                 : "bg-surface/50 text-ink-body hover:bg-surface/80 hover:text-ink-strong"
@@ -1807,7 +1807,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
           }}
           className={`text-[11px] px-1.5 py-0 rounded-md transition-colors ${
             focusState?.active
-              ? "bg-[var(--accent)] text-white"
+              ? "bg-[var(--control-selected)] text-white"
               : editMode
                 ? "bg-surface/50 text-ink-faint cursor-not-allowed"
                 : "bg-surface/50 text-ink-body hover:bg-surface/80 hover:text-ink-strong"

@@ -15,6 +15,22 @@
   --muted-light: #b5b0aa;
   --accent: #7c5e3c;
   --accent-light: #f5f0ea;
+  /* Selected-fill for segmented controls / toggle "on" states. A warm
+     taupe — the manila's own deeper tone (lower chroma, slightly higher
+     value than --accent) so an active pill reads as "a darker shade of
+     the paper" rather than the saturated brown sticker --accent paints.
+     Decoupled from --accent on purpose: --accent is the user-overridable
+     link/selection/CTA accent; this is purely the toggle aesthetic and
+     ships one value across both themes. F#12. NOT a promoted pref —
+     lives outside the PROMOTE-DEFAULTS block.
+       --control-selected      solid fill; white label text clears AA (4.5:1).
+       --control-selected-tint pale "on" background for tint-path toggles.
+       --control-selected-ink  text/icon on the tint; a darker taupe that
+                               clears AA (5.6:1 on the tint) — the lighter
+                               --control-selected would only hit 3.7:1. */
+  --control-selected: #8a7355;
+  --control-selected-tint: #efe9e0;
+  --control-selected-ink: #6b5840;
   /* Blue accent for drop-mode placement indicators (paragraph-side
      bar, between-blocks line, inline-cursor). Distinct from --accent
      so the gesture reads as "placing a popped item" rather than
@@ -487,9 +503,12 @@ body[data-zen-mode="on"] {
 .iconbtn-sm.iconbtn-toggle[aria-pressed="true"],
 .iconbtn-md.iconbtn-toggle[aria-pressed="true"],
 .iconbtn-lg.iconbtn-toggle[aria-pressed="true"] {
-  background-color: var(--accent-light);
-  color: var(--accent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent);
+  /* F#12: toggle "on" reads as a shade of the paper (warm taupe), not
+     the saturated brown. Text uses --control-selected-ink (the darker
+     taupe) on the tint so glyph/label contrast clears AA. */
+  background-color: var(--control-selected-tint);
+  color: var(--control-selected-ink);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--control-selected-ink) 30%, transparent);
 }
 
 /* ── Topbar button utility ─────────────────────────────────────────
@@ -533,8 +552,9 @@ body[data-zen-mode="on"] {
 .topbarbtn.topbarbtn-icon { padding: 0 4px; }
 
 .topbarbtn[aria-pressed="true"] {
-  color: var(--accent);
-  background-color: var(--accent-light);
+  /* F#12: warm-taupe toggle "on" — darker ink on tint for AA contrast. */
+  color: var(--control-selected-ink);
+  background-color: var(--control-selected-tint);
 }
 
 /* Accent-hover variant — icon buttons that should hover to brand

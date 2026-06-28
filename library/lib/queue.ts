@@ -185,6 +185,39 @@ export interface NotificationItem {
   summary: string;
 }
 
+/** Visual severity of a toast — drives its auto-dismiss TTL (and its accent
+ *  in the Toaster). `info` = a routine "done" message that can vanish
+ *  quickly; `attention` = a warning / action-needed message the user should
+ *  have time to read and act on. F#6. */
+export type NotificationSeverity = "info" | "attention";
+
+const NOTIFICATION_SEVERITY: Record<NotificationItem["kind"], NotificationSeverity> = {
+  indexed: "info",
+  authenticated: "info",
+  triaged: "info",
+  failed: "attention",
+  "setup-needed": "attention",
+};
+
+/** Per-severity auto-dismiss duration (ms). Info toasts vanish quickly;
+ *  attention/warning toasts linger so they're readable + actionable before
+ *  disappearing. Dismissal is session-scoped — a toast re-surfaces on reload
+ *  if its condition still holds (no persisted suppression). */
+export const NOTIFICATION_TTL_MS: Record<NotificationSeverity, number> = {
+  info: 5000,
+  attention: 11000,
+};
+
+export function notificationSeverity(
+  kind: NotificationItem["kind"],
+): NotificationSeverity {
+  return NOTIFICATION_SEVERITY[kind] ?? "info";
+}
+
+export function notificationTtlMs(kind: NotificationItem["kind"]): number {
+  return NOTIFICATION_TTL_MS[notificationSeverity(kind)];
+}
+
 export interface NotificationInbox {
   items: NotificationItem[];
 }

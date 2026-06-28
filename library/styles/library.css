@@ -656,7 +656,7 @@
 }
 
 .lib-viewswitch-btn[aria-pressed="true"] {
-  background: var(--accent);
+  background: var(--control-selected); /* F#12: warm taupe, not brown */
   color: #fff;
 }
 

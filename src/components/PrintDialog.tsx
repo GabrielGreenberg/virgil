@@ -162,7 +162,7 @@ export default function PrintDialog({
                   onClick={() => setFontSize(size)}
                   className={`px-2 py-1 text-xs rounded border transition-colors ${
                     active
-                      ? "bg-[var(--accent)] text-white border-[var(--accent)]"
+                      ? "bg-[var(--control-selected)] text-white border-[var(--control-selected)]"
                       : "bg-surface border-edge-subtle text-ink-body hover:bg-surface-muted-strong"
                   }`}
                 >

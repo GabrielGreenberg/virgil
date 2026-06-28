@@ -519,13 +519,13 @@ function ActionButton({
       title={title}
       aria-pressed={ariaPressed}
       style={{
-        background: pressed ? "var(--accent)" : "transparent",
+        background: pressed ? "var(--control-selected)" : "transparent",
         color: pressed
           ? "white"
           : disabled
             ? "var(--muted)"
             : "var(--foreground)",
-        border: pressed ? "1px solid var(--accent)" : "1px solid var(--border-light)",
+        border: pressed ? "1px solid var(--control-selected)" : "1px solid var(--border-light)",
         borderRadius: 4,
         padding: "4px 10px",
         fontSize: 12,
