@@ -1,8 +1,9 @@
 "use client";
 
-import { memo, useState } from "react";
+import { Fragment, memo, useState } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
+import type { ReorderableColId } from "@library/lib/list-columns";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { Dot, StatusPills } from "./StatusPill";
@@ -30,6 +31,12 @@ interface Props {
   bib: BibEntry | undefined;
   selected: boolean;
   gridTemplate: string;
+  /** Live column order (F#13). The grid children render in THIS sequence so
+   *  the row lines up with the header's order-driven tracks. A referentially-
+   *  stable array memoized by the parent — passing it keeps the row memo()
+   *  bailing on plain keystrokes, exactly like the stable `gridTemplate`
+   *  string. */
+  colOrder: readonly ReorderableColId[];
   /** Stable identifier — citekey for indexed entries, `__triage__<filename>`
    * for unsorted ones. Used as the dataTransfer payload when dragging the
    * row to another library. */
@@ -66,7 +73,7 @@ export const OPEN_COL_WIDTH = 28;
 /** Width of the always-visible request-state dot column on the left edge. */
 export const STATUS_DOT_COL_WIDTH = 16;
 
-function LeftListRow({ entry, bib, selected, gridTemplate, entryKey, onActivate, resolveDragKeys, actions, dotTone }: Props) {
+function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, onActivate, resolveDragKeys, actions, dotTone }: Props) {
   // Bib wins over catalog: master.bib is the authoritative source for
   // bibliographic display fields. Catalog title/authors/year is a snapshot
   // taken at index time and can drift after /authenticate-bib runs.
@@ -84,6 +91,150 @@ function LeftListRow({ entry, bib, selected, gridTemplate, entryKey, onActivate,
   const ck = entry.citekey;
 
   const [copied, setCopied] = useState(false);
+
+  // Per-column cell body. The internals are byte-identical to the prior
+  // hard-coded layout; only the SEQUENCING is now driven by `colOrder` (F#13)
+  // so a reordered grid renders cells in the same order as the header tracks.
+  const renderCell = (col: ReorderableColId) => {
+    switch (col) {
+      case "year":
+        return (
+          <span
+            style={{
+              color: "var(--muted)",
+              textAlign: "left",
+              paddingLeft: 8,
+              paddingRight: 6,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+            }}
+          >
+            {year || "—"}
+          </span>
+        );
+      case "author":
+        return (
+          <Cell>
+            <span
+              style={{
+                color: "var(--foreground)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                display: "block",
+                paddingLeft: 8,
+              }}
+            >
+              {firstAuthor || "—"}
+            </span>
+          </Cell>
+        );
+      case "title":
+        return (
+          <Cell>
+            <span
+              style={{
+                color: "var(--foreground)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                display: "block",
+                paddingLeft: 8,
+              }}
+            >
+              {title}
+            </span>
+          </Cell>
+        );
+      case "status":
+        return (
+          <Cell>
+            <span style={{ display: "block", paddingLeft: 8 }}>
+              <StatusPills
+                pdfPresent={entry.pdf.present}
+                indexed={entry.indexed.state}
+                bib={entry.bib.state}
+                bibImported={entry.bib.imported}
+              />
+            </span>
+          </Cell>
+        );
+      case "citekey":
+        return (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              minWidth: 0,
+              paddingLeft: 8,
+              paddingRight: 8,
+            }}
+          >
+            <code
+              style={{
+                fontFamily: "var(--mono)",
+                fontSize: 11,
+                color: "var(--accent)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                display: "block",
+                flex: "1 1 auto",
+                minWidth: 0,
+              }}
+            >
+              {citekeyLabel}
+            </code>
+            {ck && (
+              <button
+                type="button"
+                className="iconbtn-sm"
+                aria-label="Copy citekey"
+                title={copied ? "Copied" : "Copy citekey"}
+                draggable={false}
+                onPointerDown={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={handleCopyCitekey}
+                style={{ flexShrink: 0 }}
+              >
+                {copied ? (
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <polyline points="2.5,6.5 5,9 9.5,3.5" />
+                  </svg>
+                ) : (
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1" />
+                    <path d="M2 8V2.5A1 1 0 0 1 3 1.5h5.5" />
+                  </svg>
+                )}
+              </button>
+            )}
+          </div>
+        );
+    }
+  };
+
   const handleCopyCitekey = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!ck) return;
@@ -196,135 +347,15 @@ function LeftListRow({ entry, bib, selected, gridTemplate, entryKey, onActivate,
           padding: "4px 0",
         }}
       >
-        {/* year */}
-        <span
-          style={{
-            color: "var(--muted)",
-            textAlign: "left",
-            paddingLeft: 8,
-            paddingRight: 6,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-          }}
-        >
-          {year || "—"}
-        </span>
-        <Spacer />
-        {/* author */}
-        <Cell>
-          <span
-            style={{
-              color: "var(--foreground)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              display: "block",
-              paddingLeft: 8,
-            }}
-          >
-            {firstAuthor || "—"}
-          </span>
-        </Cell>
-        <Spacer />
-        {/* title */}
-        <Cell>
-          <span
-            style={{
-              color: "var(--foreground)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              display: "block",
-              paddingLeft: 8,
-            }}
-          >
-            {title}
-          </span>
-        </Cell>
-        <Spacer />
-        {/* status */}
-        <Cell>
-          <span style={{ display: "block", paddingLeft: 8 }}>
-            <StatusPills
-              pdfPresent={entry.pdf.present}
-              indexed={entry.indexed.state}
-              bib={entry.bib.state}
-              bibImported={entry.bib.imported}
-            />
-          </span>
-        </Cell>
-        <Spacer />
-        {/* citekey + copy button */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            minWidth: 0,
-            paddingLeft: 8,
-            paddingRight: 8,
-          }}
-        >
-          <code
-            style={{
-              fontFamily: "var(--mono)",
-              fontSize: 11,
-              color: "var(--accent)",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              display: "block",
-              flex: "1 1 auto",
-              minWidth: 0,
-            }}
-          >
-            {citekeyLabel}
-          </code>
-          {ck && (
-            <button
-              type="button"
-              className="iconbtn-sm"
-              aria-label="Copy citekey"
-              title={copied ? "Copied" : "Copy citekey"}
-              draggable={false}
-              onPointerDown={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={handleCopyCitekey}
-              style={{ flexShrink: 0 }}
-            >
-              {copied ? (
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 12 12"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <polyline points="2.5,6.5 5,9 9.5,3.5" />
-                </svg>
-              ) : (
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 12 12"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1" />
-                  <path d="M2 8V2.5A1 1 0 0 1 3 1.5h5.5" />
-                </svg>
-              )}
-            </button>
-          )}
-        </div>
+        {/* Order-driven cells (F#13). Each content column followed by a
+            Spacer occupying the RESIZER track between it and the next — N
+            columns → N-1 spacers, mirroring the header's resizer tracks. */}
+        {colOrder.map((col, i) => (
+          <Fragment key={col}>
+            {renderCell(col)}
+            {i < colOrder.length - 1 && <Spacer />}
+          </Fragment>
+        ))}
       </div>
       {/* F#9: open-in-Virgil-tab column. A fixed-width flex sibling just
           before the ⋮ action column (outside the resizable grid, like the
@@ -408,7 +439,8 @@ function LeftListRow({ entry, bib, selected, gridTemplate, entryKey, onActivate,
 // poll touches only rows whose dot flipped, and a keystroke touches only the
 // rows whose membership in the filtered set changed. All incoming props are
 // primitive (`selected`, `dotTone`, `gridTemplate`, `entryKey`) or stable
-// (`entry`/`bib` refs from the catalog, `onActivate`/`resolveDragKeys`/`actions`
+// (`entry`/`bib` refs from the catalog, the `colOrder` array memoized by the
+// parent on `layout.colOrder`, `onActivate`/`resolveDragKeys`/`actions`
 // memoized by the parent), so the default shallow comparison is correct.
 export default memo(LeftListRow);
 

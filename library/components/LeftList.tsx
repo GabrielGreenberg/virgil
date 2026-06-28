@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -14,11 +15,15 @@ import type { BibEntry } from "@library/lib/types";
 import {
   DEFAULT_WIDTHS,
   RESIZER_WIDTH,
+  type ReorderableColId,
   type ResizableColId,
   type SortColId,
   type SortDir,
   clampWidth,
   gridTemplate,
+  isReorderableColId,
+  resizeNeighborsForBoundary,
+  resolveColOrder,
   sortEntries,
 } from "@library/lib/list-columns";
 import LeftListRow, {
@@ -144,7 +149,20 @@ export default function LeftList({
     return sorted.filter((e) => keep.has(keyOf(e)));
   }, [sorted, entries, bibByKey, deferredQuery]);
 
-  const template = useMemo(() => gridTemplate(widths), [widths]);
+  // GLOBAL column order (F#13), stored alongside colWidths in the layout slice.
+  // Normalized once here so it's a complete permutation and referentially
+  // stable between renders (its identity changes ONLY when `layout.colOrder`
+  // changes — i.e. on a drag-reorder commit, never on a keystroke). Passing
+  // this stable array to the memo()'d LeftListRow does NOT defeat the bail.
+  const colOrder = useMemo<ReorderableColId[]>(
+    () => resolveColOrder(layout.colOrder),
+    [layout.colOrder],
+  );
+
+  const template = useMemo(
+    () => gridTemplate(widths, colOrder),
+    [widths, colOrder],
+  );
 
   // Visible ordering as keys — used by the shift-click range math (read via
   // a ref from the stable activation handler below). Memoized on `filtered`.
@@ -425,6 +443,27 @@ export default function LeftList({
     [setLayout],
   );
 
+  // ── Header drag-reorder (F#13) ───────────────────────────────────────
+  // Commit a new GLOBAL column order when the user drops a dragged header
+  // onto another. `side` says whether the drop landed before or after the
+  // target column (computed from the pointer-x vs the target's midpoint).
+  // Only touches the layout slice — zero document/editor work, fires only on
+  // a deliberate drop (never per keystroke).
+  const onReorder = useCallback(
+    (fromId: ReorderableColId, overId: ReorderableColId, side: "before" | "after") => {
+      if (fromId === overId) return;
+      const next = colOrder.filter((c) => c !== fromId);
+      const at = next.indexOf(overId) + (side === "after" ? 1 : 0);
+      next.splice(at, 0, fromId);
+      // No-op guard: skip the commit when the order is unchanged.
+      if (next.length === colOrder.length && next.every((c, i) => c === colOrder[i])) {
+        return;
+      }
+      setLayout({ colOrder: next });
+    },
+    [colOrder, setLayout],
+  );
+
   // ── Window (chip C7) ─────────────────────────────────────────────────
   // Before the container is measured, fall back to a generous viewport so the
   // first paint fills any reasonable panel (then ResizeObserver trims it).
@@ -506,15 +545,27 @@ export default function LeftList({
             overflow: "hidden",
           }}
         >
-          <SortHeader col="year" label="year" activeSort={sort} onSort={handleSort} />
-          <Resizer onPointerDown={handleResize("year", null)} />
-          <SortHeader col="author" label="author" activeSort={sort} onSort={handleSort} />
-          <Resizer onPointerDown={handleResize("author", null)} />
-          <SortHeader col="title" label="title" activeSort={sort} onSort={handleSort} />
-          <Resizer onPointerDown={handleResize(null, "status")} />
-          <SortHeader col="status" label="status" activeSort={sort} onSort={handleSort} />
-          <Resizer onPointerDown={handleResize("status", "citekey")} />
-          <SortHeader col="citekey" label="citekey" activeSort={sort} onSort={handleSort} />
+          {/* Order-driven headers + interleaved resizers (F#13). The resizer
+              between boundary i pulls the px-resizable neighbors derived from
+              the LIVE order (the 1fr `title` can sit anywhere). */}
+          {colOrder.map((col, i) => {
+            const n =
+              i < colOrder.length - 1
+                ? resizeNeighborsForBoundary(colOrder, i)
+                : null;
+            return (
+              <Fragment key={col}>
+                <SortHeader
+                  col={col}
+                  label={col}
+                  activeSort={sort}
+                  onSort={handleSort}
+                  onReorder={onReorder}
+                />
+                {n && <Resizer onPointerDown={handleResize(n.left, n.right)} />}
+              </Fragment>
+            );
+          })}
         </div>
         {/* F#9 open-in-tab column spacer + the ⋮ action column spacer —
             mirror the row's two trailing flex siblings so header/rows align. */}
@@ -561,6 +612,7 @@ export default function LeftList({
                     bib={entry.citekey ? bibByKey.get(entry.citekey) : undefined}
                     selected={selectedKeys.has(key)}
                     gridTemplate={template}
+                    colOrder={colOrder}
                     entryKey={key}
                     onActivate={onActivate}
                     resolveDragKeys={resolveDragKeys}
@@ -581,22 +633,73 @@ export default function LeftList({
 // Header cell
 // ────────────────────────────────────────────────────────────────────────
 
+/** dataTransfer MIME for a dragged column header (F#13). Private to this
+ *  drag — distinct from the entry-row DnD types so the two never cross. */
+const COL_DT_TYPE = "application/x-virgil-colid";
+
 interface SortHeaderProps {
-  col: SortColId;
+  col: ReorderableColId;
   label: string;
   align?: "left" | "right";
   activeSort: { col: SortColId; dir: SortDir };
   onSort: (col: SortColId) => void;
+  /** Commit a drag-reorder: move `from` to before/after this header (F#13). */
+  onReorder: (
+    from: ReorderableColId,
+    over: ReorderableColId,
+    side: "before" | "after",
+  ) => void;
 }
 
-function SortHeader({ col, label, align = "left", activeSort, onSort }: SortHeaderProps) {
+function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder }: SortHeaderProps) {
   const active = activeSort.col === col;
   const arrow = active ? (activeSort.dir === "asc" ? " ↑" : " ↓") : "";
+  // A stationary click fires onClick (sort); a press-and-move past the
+  // browser's drag threshold fires the native drag instead (reorder). The
+  // ref suppresses a stray click that some browsers synthesize after a drag.
+  const draggingRef = useRef(false);
+  const [dropSide, setDropSide] = useState<"before" | "after" | null>(null);
   return (
     <button
       type="button"
-      onClick={() => onSort(col)}
-      title={`Sort by ${label}`}
+      draggable
+      onDragStart={(e) => {
+        draggingRef.current = true;
+        e.dataTransfer.setData(COL_DT_TYPE, col);
+        e.dataTransfer.effectAllowed = "move";
+      }}
+      onDragEnd={() => {
+        // Cleared on a microtask so the post-drag click guard still sees it.
+        setDropSide(null);
+        setTimeout(() => {
+          draggingRef.current = false;
+        }, 0);
+      }}
+      onDragOver={(e) => {
+        // Only a column drag is a valid drop target here.
+        if (!e.dataTransfer.types.includes(COL_DT_TYPE)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const rect = e.currentTarget.getBoundingClientRect();
+        const side = e.clientX < rect.left + rect.width / 2 ? "before" : "after";
+        setDropSide((prev) => (prev === side ? prev : side));
+      }}
+      onDragLeave={() => setDropSide(null)}
+      onDrop={(e) => {
+        const from = e.dataTransfer.getData(COL_DT_TYPE);
+        setDropSide(null);
+        if (!from) return;
+        e.preventDefault();
+        const rect = e.currentTarget.getBoundingClientRect();
+        const side = e.clientX < rect.left + rect.width / 2 ? "before" : "after";
+        if (isReorderableColId(from)) onReorder(from, col, side);
+      }}
+      onClick={() => {
+        // Suppress the stray click a drag can synthesize on release.
+        if (draggingRef.current) return;
+        onSort(col);
+      }}
+      title={`Sort by ${label} · drag to reorder`}
       style={{
         background: "transparent",
         border: "none",
@@ -611,6 +714,13 @@ function SortHeader({ col, label, align = "left", activeSort, onSort }: SortHead
         whiteSpace: "nowrap",
         overflow: "hidden",
         textOverflow: "ellipsis",
+        // Insertion indicator: a heavy accent edge on the side the drop lands.
+        boxShadow:
+          dropSide === "before"
+            ? "inset 2px 0 0 var(--accent)"
+            : dropSide === "after"
+              ? "inset -2px 0 0 var(--accent)"
+              : "none",
       }}
     >
       {label}

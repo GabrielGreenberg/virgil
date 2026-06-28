@@ -188,6 +188,103 @@ describe("view-session-store — versioning / migration", () => {
   });
 });
 
+describe("view-session-store — colOrder normalization (F#13)", () => {
+  it("a valid full order round-trips unchanged", () => {
+    localStorage.setItem(
+      VIEW_SESSION_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        scopes: {},
+        paperPinned: [],
+        projectHidden: [],
+        projectPinned: [],
+        citedOnly: false,
+        layout: { colOrder: ["title", "year", "author", "status", "citekey"] },
+      }),
+    );
+    expect(getSession().layout.colOrder).toEqual([
+      "title",
+      "year",
+      "author",
+      "status",
+      "citekey",
+    ]);
+  });
+
+  it("drops unknown ids, dedupes, and appends the missing columns", () => {
+    localStorage.setItem(
+      VIEW_SESSION_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        scopes: {},
+        paperPinned: [],
+        projectHidden: [],
+        projectPinned: [],
+        citedOnly: false,
+        // duplicate "status", an unknown "bibimp", and only 2 distinct knowns.
+        layout: { colOrder: ["status", "bibimp", "status", "year"] },
+      }),
+    );
+    // First-occurrence-wins for the knowns, unknown dropped, missing appended
+    // in default order (author, title, citekey).
+    expect(getSession().layout.colOrder).toEqual([
+      "status",
+      "year",
+      "author",
+      "title",
+      "citekey",
+    ]);
+  });
+
+  it("an absent colOrder stays undefined (consumer falls back to the default)", () => {
+    localStorage.setItem(
+      VIEW_SESSION_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        scopes: {},
+        paperPinned: [],
+        projectHidden: [],
+        projectPinned: [],
+        citedOnly: false,
+        layout: { colWidths: { year: 80 } },
+      }),
+    );
+    const layout = getSession().layout;
+    expect(layout.colOrder).toBeUndefined();
+    // sibling layout fields survive the normalize.
+    expect(layout.colWidths?.year).toBe(80);
+  });
+
+  it("a non-array colOrder is treated as absent", () => {
+    localStorage.setItem(
+      VIEW_SESSION_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        scopes: {},
+        paperPinned: [],
+        projectHidden: [],
+        projectPinned: [],
+        citedOnly: false,
+        layout: { colOrder: "year,author" },
+      }),
+    );
+    expect(getSession().layout.colOrder).toBeUndefined();
+  });
+
+  it("setLayout({ colOrder }) persists the global order", () => {
+    setLayout({ colOrder: ["citekey", "title", "year", "author", "status"] });
+    flushNow();
+    const raw = JSON.parse(localStorage.getItem(VIEW_SESSION_KEY) as string);
+    expect(raw.layout.colOrder).toEqual([
+      "citekey",
+      "title",
+      "year",
+      "author",
+      "status",
+    ]);
+  });
+});
+
 describe("view-session-store — idempotent seed", () => {
   it("running getSession() twice does not overwrite the blob or delete legacy keys", () => {
     localStorage.setItem(PAPER_PINNED_KEY, JSON.stringify(["paper:p1"]));

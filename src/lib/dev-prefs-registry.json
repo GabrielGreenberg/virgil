@@ -41,6 +41,13 @@
       "subPath": "printOptions",
       "defaultsFile": "src/lib/print.defaults.json",
       "strategy": "print-options"
+    },
+    {
+      "storageKey": "virgil-library-view-session",
+      "subPath": "layout",
+      "defaultsFile": "library/lib/list-columns.defaults.json",
+      "strategy": "whitelist",
+      "whitelist": ["colOrder"]
     }
   ],
   "cssVarMap": {

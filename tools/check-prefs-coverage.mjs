@@ -32,6 +32,9 @@ const EDITOR_TS = path.join(REPO_ROOT, "src/hooks/usePreferences.ts");
 const VIEW_TS = path.join(REPO_ROOT, "src/hooks/useViewPrefs.ts");
 const VIEW_PREF_REGISTRY_TS = path.join(REPO_ROOT, "src/lib/view-prefs/registry.ts");
 const REGISTRY = path.join(REPO_ROOT, "src/lib/dev-prefs-registry.json");
+// F#13: the Library column-order shipped default (rides promote-defaults).
+const LIST_COL_DEFAULTS = path.join(REPO_ROOT, "library/lib/list-columns.defaults.json");
+const LIST_COLUMNS_TS = path.join(REPO_ROOT, "library/lib/list-columns.ts");
 
 /* ── View-pref registry parsing ───────────────────────────────────
  *
@@ -199,6 +202,43 @@ const VIEW_RUNTIME_KEYS = new Set([
       fail(
         `cssVarMap[${cssVar}].source "${spec.source}" — key "${key}" missing from the "${bucket}" defaults`,
       );
+    }
+  }
+}
+
+// 5. F#13 — library column-order shipped default must be a valid PERMUTATION
+//    of the ReorderableColId union. The default rides promote-defaults (check
+//    3 already confirms "colOrder" exists in the file via the whitelist entry);
+//    this guards the *value* against a typo'd or incomplete promotion that
+//    could silently drop or duplicate a column.
+{
+  // Parse the union members from `type ReorderableColId = "a" | "b" | ...;`.
+  const src = fs.readFileSync(LIST_COLUMNS_TS, "utf-8");
+  const m = /type\s+ReorderableColId\s*=\s*([^;]+);/.exec(src);
+  if (!m) {
+    fail(`could not parse ReorderableColId union from ${path.relative(REPO_ROOT, LIST_COLUMNS_TS)}`);
+  } else {
+    const union = new Set(
+      [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]),
+    );
+    if (union.size === 0) {
+      fail(`ReorderableColId union parsed empty from ${path.relative(REPO_ROOT, LIST_COLUMNS_TS)}`);
+    }
+    const defaults = readJson(LIST_COL_DEFAULTS);
+    const order = defaults.colOrder;
+    const rel = path.relative(REPO_ROOT, LIST_COL_DEFAULTS);
+    if (!Array.isArray(order)) {
+      fail(`colOrder in ${rel} must be an array`);
+    } else {
+      const seen = new Set();
+      for (const c of order) {
+        if (!union.has(c)) fail(`colOrder in ${rel} has unknown column "${c}"`);
+        if (seen.has(c)) fail(`colOrder in ${rel} has duplicate column "${c}"`);
+        seen.add(c);
+      }
+      for (const c of union) {
+        if (!seen.has(c)) fail(`colOrder in ${rel} is missing column "${c}"`);
+      }
     }
   }
 }
