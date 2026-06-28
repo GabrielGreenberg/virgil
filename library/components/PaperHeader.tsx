@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BibEntry } from "@library/lib/types";
 import type { CatalogEntry, IndexedState } from "@library/lib/catalog";
 import {
@@ -22,10 +22,14 @@ import type { QueueEntry } from "@library/lib/queue";
 import { deleteFile, readJsonFile, SUBDIRS } from "@library/lib/library-storage";
 import { formatBibliography } from "@library/lib/bib-parser";
 import { ExpandedFields } from "./BibCard";
-import { StatusPills } from "./StatusPill";
+import { StatusPills, StatusDots } from "./StatusPill";
 import PaperAiRequestsMenu, {
   type AiRequestItem,
 } from "./PaperAiRequestsMenu";
+import { BibEntryChrome } from "@/components/library/bib-entry-chrome";
+import { mapTier, useLibraryMemberships } from "@/hooks/useLibrary";
+import { membershipChipsFor } from "@/components/library/provenance-chips";
+import { type PgmarkPages } from "@library/hooks/usePgmarkPages";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -46,6 +50,16 @@ interface Props {
    *  hiding it, so the control doesn't pop in late. Ignored when `onEdit` is
    *  present (already editable). */
   editPending?: boolean;
+  /** Whether to surface the "Open in a new tab" link inside the bib-entry
+   *  status row (F#9). False in the OUTER Virgil-bar tab (already a tab, so
+   *  the link is self-referential); true in the in-library Reader. */
+  showOpenInTab?: boolean;
+  /** The shared printed-page derivation for the TEXT-view page picker. F#11:
+   *  this is computed ONCE in RightDetail (the single owner) off the live
+   *  reader refs and threaded down here AND into PageScrollLozenge, so both
+   *  consumers share one ResizeObserver / scroll listener / doc-scan. Absent
+   *  in PDF mode (picker only renders in text mode). */
+  pgmarkPages?: PgmarkPages;
 }
 
 type RequestKind = "index" | "deep" | "bib" | "doc" | "importbib";
@@ -72,6 +86,8 @@ export default function PaperHeader({
   indexedState,
   onEdit,
   editPending = false,
+  showOpenInTab = true,
+  pgmarkPages,
 }: Props) {
   const citekey = entry.citekey;
   const [expanded, setExpanded] = useState(false);
@@ -230,17 +246,62 @@ export default function PaperHeader({
   const titleText = fields.title ?? entry.title ?? "(no title)";
   const authorText = fields.author ?? (entry.authors?.join(", ") ?? "");
   const yearText = fields.year ?? (entry.year ? String(entry.year) : "");
-  const venueText = fields.journal ?? fields.booktitle ?? fields.publisher ?? "";
-  const doiText = fields.doi ?? entry.doi ?? "";
-
-  const metaSegments: string[] = [];
-  if (authorText) metaSegments.push(authorText);
-  if (yearText) metaSegments.push(yearText);
-  if (venueText) metaSegments.push(venueText);
-  if (fields.volume) metaSegments.push(`vol. ${fields.volume}`);
-  if (fields.pages) metaSegments.push(`pp. ${fields.pages}`);
 
   const anyChecked = Object.values(queued).some(Boolean);
+
+  // Membership chips for the bib-entry status stack. "Central" is implicit
+  // for any real catalog entry (it lives in master.bib), so surface it
+  // alongside any custom-library memberships.
+  const { membershipMap } = useLibraryMemberships();
+  const membershipChips = citekey
+    ? membershipChipsFor({
+        inLocal: false,
+        inCentral: true,
+        customLibraries: membershipMap.get(citekey),
+      })
+    : [];
+  const apaHtml = bib ? formatBibliography(bib, "apa") : undefined;
+
+  // Responsive status: swap full StatusPills → compact StatusDots below a
+  // width threshold so the priority ViewToggle is never pushed off the edge.
+  const podRef = useRef<HTMLDivElement | null>(null);
+  const [narrow, setNarrow] = useState(false);
+  const narrowRaf = useRef<number | null>(null);
+  useEffect(() => {
+    const el = podRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = (w: number) => setNarrow(w < 560);
+    // Initial sync uses the BORDER-box width (getBoundingClientRect).
+    measure(el.getBoundingClientRect().width);
+    // RAF-coalesced so a resize storm can't thrash setState (keystroke
+    // sanctity / AGENTS.md — a width-watching RO must be RAF-guarded). Read the
+    // BORDER-box (`borderBoxSize.inlineSize`) here too so the 560px threshold
+    // resolves against the SAME box as the initial sync above — the pod carries
+    // 14px of horizontal padding, so mixing in `contentRect.width` (content-box)
+    // could flip the StatusPills↔StatusDots swap differently on first paint vs.
+    // after the first resize tick. Fall back to the border-box rect (then
+    // contentRect) where `borderBoxSize` is unavailable.
+    const ro = new ResizeObserver((entries) => {
+      if (narrowRaf.current !== null) return;
+      narrowRaf.current = requestAnimationFrame(() => {
+        narrowRaf.current = null;
+        const entry = entries[0];
+        const w =
+          entry?.borderBoxSize?.[0]?.inlineSize ??
+          el.getBoundingClientRect().width ??
+          entry?.contentRect.width;
+        if (typeof w === "number") setNarrow(w < 560);
+      });
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      if (narrowRaf.current !== null) {
+        cancelAnimationFrame(narrowRaf.current);
+        narrowRaf.current = null;
+      }
+    };
+  }, []);
 
   // Build the dropdown items from the static REQUESTS list + live queued/disabled
   // state. Order + labels match the old checkbox row.
@@ -254,261 +315,321 @@ export default function PaperHeader({
   return (
     <div
       style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        padding: "10px calc(4px + var(--pod-gap))",
+        padding: "8px calc(4px + var(--pod-gap))",
         background: "var(--background)",
       }}
     >
+      {/* ── One cohesive warm-sheet pod (borderless; ambient shadow). The old
+          50/50 grid + two nested --surface pods are gone; internal regions are
+          delimited by spacing + hairline dividers. ── */}
       <div
+        ref={podRef}
         style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+          background: "var(--pod-panel)",
+          borderRadius: "var(--panel-radius)",
+          border: "var(--panel-border)",
+          boxShadow: "var(--card-shadow-ambient)",
+          padding: "10px 14px",
+          display: "flex",
+          flexDirection: "column",
           gap: 8,
-          alignItems: "stretch",
+          minWidth: 0,
         }}
       >
-        {/* ── Left cell: formatted bibliography entry ─────────────── */}
+        {/* Single flex ROW: bib region (yields) + controls cluster (pinned). */}
         <div
           style={{
-            background: "var(--surface)",
-            border: "var(--pod-border)",
-            borderRadius: "var(--pod-radius)",
-            padding: "12px 14px",
             display: "flex",
-            flexDirection: "column",
-            gap: 6,
+            alignItems: "center",
+            gap: 12,
             minWidth: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
-            <code
-              style={{
-                fontFamily: "var(--mono)",
-                fontSize: 10,
-                color: "var(--muted)",
-                whiteSpace: "nowrap",
-                flexShrink: 0,
-              }}
-            >
-              @{bib?.type ?? "?"}{`{${citekey ?? "?"}}`}
-            </code>
-            <button
-              type="button"
-              onClick={() => setExpanded((x) => !x)}
-              aria-expanded={expanded}
-              aria-label={expanded ? "Collapse bib entry" : "Expand bib entry"}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "var(--muted)",
-                fontFamily: "var(--mono)",
-                fontSize: 10,
-                cursor: "pointer",
-                padding: "0 4px",
-                flexShrink: 0,
-              }}
-            >
-              {expanded ? "▾ less" : "▸ more"}
-            </button>
-            {onEdit ? (
-              <button
-                type="button"
-                onClick={onEdit}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--muted)",
-                  fontFamily: "var(--mono)",
-                  fontSize: 10,
-                  cursor: "pointer",
-                  padding: "0 4px",
-                  flexShrink: 0,
-                }}
-              >
-                edit
-              </button>
-            ) : editPending ? (
-              <button
-                type="button"
-                disabled
-                title="Loading bibliography…"
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--muted)",
-                  fontFamily: "var(--mono)",
-                  fontSize: 10,
-                  cursor: "not-allowed",
-                  padding: "0 4px",
-                  flexShrink: 0,
-                  opacity: 0.55,
-                }}
-              >
-                edit
-              </button>
-            ) : null}
-          </div>
-          {bib ? (
-            <div
-              className="library-bib-formatted"
-              style={{
-                fontFamily: "var(--serif)",
-                fontSize: 13,
-                lineHeight: 1.45,
-                color: "var(--foreground)",
-                wordBreak: "break-word",
-              }}
-              dangerouslySetInnerHTML={{ __html: formatBibliography(bib, "apa") }}
+          {/* Bib region — the yielder. */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <BibEntryChrome
+              citekey={citekey ?? "?"}
+              author={authorText || undefined}
+              year={yearText || undefined}
+              title={titleText || undefined}
+              apaHtml={apaHtml}
+              indexTier={mapTier(entry.indexed.state)}
+              bibState={entry.bib.state}
+              inLibrary={!!citekey}
+              membershipChips={membershipChips}
+              showOpenLink={showOpenInTab}
             />
-          ) : (
+            {/* edit + field-table affordances — mono micro-controls under the
+                headline, aligned with the chip column. */}
             <div
               style={{
-                fontFamily: "var(--serif)",
-                fontSize: 13,
-                lineHeight: 1.45,
-                color: "var(--foreground)",
-                wordBreak: "break-word",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                paddingLeft: 18,
+                marginTop: 2,
               }}
             >
-              <span style={{ fontWeight: 600 }}>{titleText}</span>
-              {metaSegments.length > 0 && (
-                <>
-                  {" — "}
-                  <span style={{ color: "var(--muted)" }}>{metaSegments.join(" · ")}</span>
-                </>
+              <code
+                style={{
+                  fontFamily: "var(--mono)",
+                  fontSize: 10,
+                  color: "var(--muted)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                @{bib?.type ?? "?"}{`{${citekey ?? "?"}}`}
+              </code>
+              {bib && (
+                <button
+                  type="button"
+                  onClick={() => setExpanded((x) => !x)}
+                  aria-expanded={expanded}
+                  aria-label={expanded ? "Collapse fields" : "Expand fields"}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--muted)",
+                    fontFamily: "var(--mono)",
+                    fontSize: 10,
+                    cursor: "pointer",
+                    padding: "0 4px",
+                  }}
+                >
+                  {expanded ? "▾ fields" : "▸ fields"}
+                </button>
               )}
-              {doiText && (
-                <>
-                  {" "}
-                  <span style={{ fontFamily: "var(--mono)", color: "var(--muted)" }}>doi:{doiText}</span>
-                </>
-              )}
+              {onEdit ? (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--muted)",
+                    fontFamily: "var(--mono)",
+                    fontSize: 10,
+                    cursor: "pointer",
+                    padding: "0 4px",
+                  }}
+                >
+                  edit
+                </button>
+              ) : editPending ? (
+                <button
+                  type="button"
+                  disabled
+                  title="Loading bibliography…"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--muted)",
+                    fontFamily: "var(--mono)",
+                    fontSize: 10,
+                    cursor: "not-allowed",
+                    padding: "0 4px",
+                    opacity: 0.55,
+                  }}
+                >
+                  edit
+                </button>
+              ) : null}
             </div>
-          )}
-        </div>
-
-        {/* ── Right column: status / view toggle / AI requests / instructions ── */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            minWidth: 0,
-          }}
-        >
-          {/* Status pills (left) + Text / PDF toggle (right) — bare, no pod. */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              minHeight: 22,
-            }}
-          >
-            <StatusPills
-              pdfPresent={pdfAvailable}
-              indexed={entry.indexed.state}
-              bib={entry.bib.state}
-              bibImported={!!entry.bib.imported}
-            />
-            <ViewToggle
-              mode={viewMode}
-              onChange={onViewModeChange}
-              pdfAvailable={pdfAvailable}
-              indexedState={indexedState}
-            />
           </div>
 
-          {/* AI requests: a single dropdown of the five toggleable requests
-           *  (replaces the inline checkbox row). Each item stays an independent
-           *  toggle (multi-select); a ✓ marks queued ones and the trigger badge
-           *  counts them. */}
+          {/* Controls cluster — never compresses; ViewToggle pinned rightmost. */}
           <div
             style={{
+              flexShrink: 0,
               display: "flex",
               alignItems: "center",
-              flexWrap: "wrap",
-              gap: 10,
-              minHeight: 22,
+              gap: 8,
             }}
           >
+            {narrow ? (
+              <StatusDots
+                pdfPresent={pdfAvailable}
+                indexed={entry.indexed.state}
+                bib={entry.bib.state}
+              />
+            ) : (
+              <StatusPills
+                pdfPresent={pdfAvailable}
+                indexed={entry.indexed.state}
+                bib={entry.bib.state}
+                bibImported={!!entry.bib.imported}
+              />
+            )}
+            {viewMode === "text" && pgmarkPages && (
+              <PagePicker pages={pgmarkPages} narrow={narrow} />
+            )}
             <PaperAiRequestsMenu
               items={aiRequestItems}
               onToggle={(kind, next) => void onToggle(kind, next)}
               disabled={!handle || !citekey}
             />
-            {flash && (
-              <span
-                style={{
-                  fontFamily: "var(--mono)",
-                  fontSize: 11,
-                  color: "var(--accent, var(--muted))",
-                  marginLeft: "auto",
-                }}
-              >
-                {flash}
-              </span>
-            )}
-          </div>
-
-          {/* Instructions textarea — only rendered when at least one
-           *  request is checked. Text persists across toggles; whatever's
-           *  here at the moment of a toggle gets sent with the queue
-           *  entry's `note` field. */}
-          {anyChecked && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-              <label
-                htmlFor="paper-ai-instructions"
-                style={{
-                  fontFamily: "var(--mono)",
-                  fontSize: 10,
-                  color: "var(--muted)",
-                  letterSpacing: 0.3,
-                }}
-              >
-                instructions
-              </label>
-              <textarea
-                id="paper-ai-instructions"
-                value={instructions}
-                onChange={(e) => setInstructions(e.target.value)}
-                rows={2}
-                placeholder="Optional note. Sent with the next request you check on."
-                style={{
-                  resize: "vertical",
-                  minHeight: 38,
-                  padding: "6px 8px",
-                  fontFamily: "var(--mono)",
-                  fontSize: 12,
-                  lineHeight: 1.4,
-                  color: "var(--foreground)",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border-light)",
-                  borderRadius: 4,
-                  outline: "none",
-                }}
+            <div style={{ marginLeft: "auto", flexShrink: 0 }}>
+              <ViewToggle
+                mode={viewMode}
+                onChange={onViewModeChange}
+                pdfAvailable={pdfAvailable}
+                indexedState={indexedState}
+                narrow={narrow}
               />
             </div>
-          )}
+          </div>
         </div>
-      </div>
 
-      {expanded && bib && (
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "var(--pod-border)",
-            borderRadius: 6,
-            padding: 12,
-            marginTop: 4,
-          }}
-        >
-          <ExpandedFields entry={bib} />
-        </div>
-      )}
+        {/* Flash text — its own thin line so it never displaces the row. */}
+        {flash && (
+          <div
+            style={{
+              fontFamily: "var(--mono)",
+              fontSize: 11,
+              color: "var(--accent, var(--muted))",
+              textAlign: "right",
+            }}
+          >
+            {flash}
+          </div>
+        )}
+
+        {/* Field table — inline under a hairline (no nested pod). */}
+        {expanded && bib && (
+          <div
+            style={{
+              borderTop: "1px solid var(--border-light)",
+              paddingTop: 10,
+            }}
+          >
+            <ExpandedFields entry={bib} />
+          </div>
+        )}
+
+        {/* Instructions textarea — full width below the row, gated on a
+            checked request. */}
+        {anyChecked && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              minWidth: 0,
+              borderTop: "1px solid var(--border-light)",
+              paddingTop: 8,
+            }}
+          >
+            <label
+              htmlFor="paper-ai-instructions"
+              style={{
+                fontFamily: "var(--mono)",
+                fontSize: 10,
+                color: "var(--muted)",
+                letterSpacing: 0.3,
+              }}
+            >
+              instructions
+            </label>
+            <textarea
+              id="paper-ai-instructions"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              rows={2}
+              placeholder="Optional note. Sent with the next request you check on."
+              style={{
+                resize: "vertical",
+                minHeight: 38,
+                padding: "6px 8px",
+                fontFamily: "var(--mono)",
+                fontSize: 12,
+                lineHeight: 1.4,
+                color: "var(--foreground)",
+                background: "var(--surface)",
+                border: "1px solid var(--border-light)",
+                borderRadius: 4,
+                outline: "none",
+              }}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── text-view page picker ───────────────────────────────────────────
+
+/** `[label] / count [go]` — seeds the input with the current page label, jumps
+ *  to the typed LABEL on Enter / go. Renders nothing for pgmark-less papers
+ *  (DOCX / plain-tex). The page COUNT is `pages.length`; the input matches the
+ *  literal printed-page LABEL (not a 1..N ordinal). */
+function PagePicker({ pages, narrow }: { pages: PgmarkPages; narrow: boolean }) {
+  const { pages: marks, currentLabel, scrollToPage } = pages;
+  const [draft, setDraft] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+
+  // No anchors → nothing to pick.
+  if (marks.length === 0) return null;
+
+  const shown = editing ? (draft ?? "") : (currentLabel ?? "");
+  const commit = () => {
+    if (draft != null && draft.trim()) scrollToPage(draft.trim());
+    setEditing(false);
+    setDraft(null);
+  };
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        fontFamily: "var(--mono)",
+        fontSize: 11,
+        color: "var(--muted)",
+        flexShrink: 0,
+      }}
+      title="Jump to a printed page"
+    >
+      {!narrow && <span aria-hidden="true">p.</span>}
+      <input
+        type="text"
+        value={shown}
+        onFocus={() => {
+          setEditing(true);
+          setDraft(currentLabel ?? "");
+        }}
+        onChange={(e) => {
+          setEditing(true);
+          setDraft(e.target.value);
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+            (e.currentTarget as HTMLInputElement).blur();
+          } else if (e.key === "Escape") {
+            setEditing(false);
+            setDraft(null);
+            (e.currentTarget as HTMLInputElement).blur();
+          }
+        }}
+        aria-label="Go to printed page"
+        style={{
+          width: 40,
+          padding: "2px 4px",
+          fontFamily: "var(--mono)",
+          fontSize: 11,
+          textAlign: "center",
+          color: "var(--foreground)",
+          background: "var(--surface)",
+          border: "1px solid var(--border-light)",
+          borderRadius: 4,
+          outline: "none",
+        }}
+      />
+      <span aria-hidden="true">/ {marks.length}</span>
     </div>
   );
 }
@@ -520,11 +641,13 @@ function ViewToggle({
   onChange,
   pdfAvailable,
   indexedState,
+  narrow = false,
 }: {
   mode: "text" | "pdf";
   onChange: (m: "text" | "pdf") => void;
   pdfAvailable: boolean;
   indexedState: IndexedState;
+  narrow?: boolean;
 }) {
   return (
     <div
@@ -540,7 +663,13 @@ function ViewToggle({
       <ToggleButton
         active={mode === "text"}
         onClick={() => onChange("text")}
-        label={indexedState === "deepIndexed" ? "Virgil Text" : "Raw Text"}
+        label={
+          narrow
+            ? "Text"
+            : indexedState === "deepIndexed"
+              ? "Virgil Text"
+              : "Raw Text"
+        }
       />
       <ToggleButton
         active={mode === "pdf"}
