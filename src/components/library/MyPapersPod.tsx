@@ -24,6 +24,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import NavPod from "@library/components/NavPod";
+import RowMenu from "@library/components/RowMenu";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle, type FsaDocMeta } from "@/lib/doc-index";
 
@@ -334,46 +335,12 @@ function PaperRow({
       >
         {label}
       </span>
-      {hovered && (
-        <button
-          type="button"
-          aria-label={`Remove ${label} from My Papers`}
-          data-hint="Remove from My Papers"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove();
-          }}
-          style={{
-            width: 18,
-            height: 18,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "transparent",
-            border: "none",
-            color: "var(--muted)",
-            cursor: "pointer",
-            fontSize: 14,
-            lineHeight: 1,
-            padding: 0,
-            borderRadius: 3,
-            fontFamily: "inherit",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "rgba(0, 0, 0, 0.08)";
-            (e.currentTarget as HTMLButtonElement).style.color =
-              "var(--foreground)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "transparent";
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)";
-          }}
-        >
-          ×
-        </button>
-      )}
+      <RowMenu
+        items={[{ key: "remove", label: "Remove", onSelect: onRemove }]}
+        ariaLabel={`${label} actions`}
+        title="Actions"
+        minWidth={140}
+      />
     </div>
   );
 }

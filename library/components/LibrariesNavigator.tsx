@@ -16,6 +16,7 @@ import {
 } from "@library/lib/library-store";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import NavPod from "./NavPod";
+import RowMenu, { type RowMenuEntry } from "./RowMenu";
 
 interface Props {
   registry: Registry;
@@ -42,6 +43,17 @@ interface Props {
    *  via drag-drop. Always batched. */
   onAddEntriesToLibrary: (libId: string, entryKeys: readonly string[]) => void;
   onRenameLibrary: (id: string, label: string) => void;
+  /** Re-run the skill sync — surfaced in the Central row's ⋮ menu (F#5). */
+  onResync?: () => void;
+  /** Re-pick the library folder — Central row's ⋮ menu "Change folder…". */
+  onChangeFolder?: () => void;
+  /** Delete a custom library (manifest only; entries + master.bib survive).
+   *  Host owns the confirm. F#5. */
+  onDeleteLibrary?: (id: string) => void;
+  /** Import a picked .bib's entries INTO an existing custom library
+   *  (membership add). The standalone "Add from .bib" row is retired in
+   *  favour of this per-library action + the header's "New from .bib". F#5. */
+  onAddBibToLibrary?: (id: string) => void;
 }
 
 const ACCENT = "var(--accent)";
@@ -57,6 +69,10 @@ export default function LibrariesNavigator({
   onCreateLibraryFromBib,
   onAddEntriesToLibrary,
   onRenameLibrary,
+  onResync,
+  onChangeFolder,
+  onDeleteLibrary,
+  onAddBibToLibrary,
 }: Props) {
   const central = useMemo(
     () => registry.libraries.find((l) => l.id === CENTRAL_LIBRARY_ID) ?? null,
@@ -88,6 +104,42 @@ export default function LibrariesNavigator({
     setDraftLabel("Untitled");
   };
 
+  const centralMenu: RowMenuEntry[] = [
+    ...(onResync
+      ? [{ key: "resync", label: "Re-sync skills", onSelect: onResync }]
+      : []),
+    ...(onChangeFolder
+      ? [{ key: "changefolder", label: "Change folder…", onSelect: onChangeFolder }]
+      : []),
+  ];
+
+  const customMenu = (lib: Library): RowMenuEntry[] => [
+    { key: "rename", label: "Rename", onSelect: () => startEditing(lib.id, lib.label) },
+    ...(onAddBibToLibrary
+      ? [{ key: "addbib", label: "Add from .bib…", onSelect: () => onAddBibToLibrary(lib.id) }]
+      : []),
+    ...(onDeleteLibrary
+      ? ([
+          { key: "div", divider: true },
+          {
+            key: "delete",
+            label: "Delete library",
+            destructive: true,
+            onSelect: () => onDeleteLibrary(lib.id),
+          },
+        ] satisfies RowMenuEntry[])
+      : []),
+  ];
+
+  const newLibraryMenu: RowMenuEntry[] = [
+    { key: "new-empty", label: "New empty library", onSelect: handleCreate },
+    {
+      key: "new-from-bib",
+      label: "New library from .bib…",
+      onSelect: () => void onCreateLibraryFromBib(),
+    },
+  ];
+
   return (
     <NavPod title="Libraries">
       {central ? (
@@ -97,6 +149,8 @@ export default function LibrariesNavigator({
           active={activeMiddleId === central.id}
           isOpen={openLibraryIds.has(central.id)}
           onClick={() => onOpenLibrary(central.id)}
+          menuItems={centralMenu.length > 0 ? centralMenu : undefined}
+          menuAriaLabel="Central library actions"
         />
       ) : null}
 
@@ -115,8 +169,7 @@ export default function LibrariesNavigator({
         ))
       )}
 
-      <SectionHeader onAdd={handleCreate}>My libraries</SectionHeader>
-      <AddFromBibRow onClick={() => void onCreateLibraryFromBib()} />
+      <SectionHeader addMenu={newLibraryMenu}>My libraries</SectionHeader>
       {customs.length === 0 ? (
         <EmptyHint>No custom libraries</EmptyHint>
       ) : (
@@ -135,6 +188,8 @@ export default function LibrariesNavigator({
             onStartEdit={() => startEditing(lib.id, lib.label)}
             dropTargetLibId={lib.id}
             onDropEntries={onAddEntriesToLibrary}
+            menuItems={customMenu(lib)}
+            menuAriaLabel={`${lib.label} actions`}
           />
         ))
       )}
@@ -157,6 +212,9 @@ interface NavRowProps {
    *  onDropEntries. */
   dropTargetLibId?: string;
   onDropEntries?: (libId: string, keys: readonly string[]) => void;
+  /** Right-aligned ⋮ menu (always visible). Omit for no menu. F#5. */
+  menuItems?: RowMenuEntry[];
+  menuAriaLabel?: string;
 }
 
 function NavRow({
@@ -172,6 +230,8 @@ function NavRow({
   onStartEdit,
   dropTargetLibId,
   onDropEntries,
+  menuItems,
+  menuAriaLabel,
 }: NavRowProps) {
   const [hovered, setHovered] = useState(false);
   const [dropOver, setDropOver] = useState(false);
@@ -300,16 +360,22 @@ function NavRow({
           }}
         />
       )}
+      {!editing && menuItems && menuItems.length > 0 && (
+        <RowMenu items={menuItems} ariaLabel={menuAriaLabel ?? "Library actions"} />
+      )}
     </div>
   );
 }
 
 function SectionHeader({
   children,
-  onAdd,
+  addMenu,
 }: {
   children: ReactNode;
-  onAdd?: () => void;
+  /** When set, the header shows a "+" that opens this menu (New empty /
+   *  New from .bib). Replaces the old single-action onAdd + the standalone
+   *  AddFromBibRow. F#5. */
+  addMenu?: RowMenuEntry[];
 }) {
   return (
     <div
@@ -332,13 +398,14 @@ function SectionHeader({
       >
         {children}
       </div>
-      {onAdd ? (
-        <button
-          type="button"
-          onClick={onAdd}
+      {addMenu && addMenu.length > 0 ? (
+        <RowMenu
+          items={addMenu}
+          glyph="+"
+          ariaLabel="New custom library"
           title="New custom library"
-          aria-label="New custom library"
-          style={{
+          minWidth={184}
+          triggerStyle={{
             flexShrink: 0,
             background: "transparent",
             border: "none",
@@ -355,69 +422,8 @@ function SectionHeader({
             padding: 0,
             fontFamily: "inherit",
           }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "rgba(0,0,0,0.08)";
-            (e.currentTarget as HTMLButtonElement).style.color =
-              "var(--foreground)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background =
-              "transparent";
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)";
-          }}
-        >
-          +
-        </button>
+        />
       ) : null}
-    </div>
-  );
-}
-
-/** Static "+ Add from .bib" row rendered just below the My libraries
- *  header. Click → host triggers the file-picker → import flow in
- *  `LibraryView.handleCreateLibraryFromBib`. Styled like a NavRow but
- *  muted (no accent bar, no drop target, no editing affordance). */
-function AddFromBibRow({ onClick }: { onClick: () => void }) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      title="Pick a .bib file and import it as a new custom library"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "0 12px 0 14px",
-        height: 26,
-        cursor: "pointer",
-        background: hovered ? "rgba(0, 0, 0, 0.04)" : "transparent",
-      }}
-    >
-      <span
-        style={{
-          flex: 1,
-          fontSize: 12,
-          lineHeight: "16px",
-          color: "var(--muted)",
-          fontStyle: "italic",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}
-      >
-        + Add from .bib
-      </span>
     </div>
   );
 }

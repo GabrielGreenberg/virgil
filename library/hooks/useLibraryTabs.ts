@@ -56,6 +56,10 @@ export type LibraryTabsApi = {
   close: (id: string, panel: PanelKey) => void;
   rename: (id: string, label: string) => void;
   create: (panel: PanelKey) => string;
+  /** Delete a custom library: closes any open tab for it in both panels,
+   *  then removes its on-disk manifest. Entries + master.bib are untouched.
+   *  No-op for built-in (Central / project / paper) libraries. F#5. */
+  remove: (id: string) => void;
   /**
    * Create a custom library pre-populated from a parsed `.bib` file. The
    * caller is responsible for having already written the source `.bib`
@@ -517,6 +521,26 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     [diskLibs, pinIfLeft],
   );
 
+  const remove = useCallback(
+    (id: string) => {
+      if (isBuiltin(id)) return; // never delete Central / project / paper libs
+      // Close any open tab for this library in both panels before its
+      // manifest disappears, so no strip renders a dangling tab.
+      const closer = (t: PanelTabsState): PanelTabsState => {
+        const idx = t.openIds.indexOf(id);
+        if (idx < 0) return t;
+        const nextOpen = t.openIds.filter((x) => x !== id);
+        const nextActive =
+          t.activeId === id ? (t.openIds[idx - 1] ?? nextOpen[0] ?? "") : t.activeId;
+        return { openIds: nextOpen, activeId: nextActive };
+      };
+      setLeftTabs(closer);
+      setRightTabs(closer);
+      diskLibs.remove(id);
+    },
+    [diskLibs],
+  );
+
   const createFromBib = useCallback(
     (args: {
       label: string;
@@ -791,6 +815,7 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
       close,
       rename,
       create,
+      remove,
       createFromBib,
       openRecent,
       moveTab,
@@ -812,6 +837,7 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
       close,
       rename,
       create,
+      remove,
       createFromBib,
       openRecent,
       moveTab,

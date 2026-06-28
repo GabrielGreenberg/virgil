@@ -11,7 +11,9 @@ Subsystem context lives in [library/AGENTS.md](library/AGENTS.md) (catalog,
 multi-tab libraries, skill cowork, Python pipeline) and the recent Library work
 is logged across `MEMO_LIBRARY_*.md` + `docs/memos/library-*`.
 
-Started: 2026-06-24.
+Started: 2026-06-24. **16 features captured (F#1–F#16).** Grouping & approach →
+[MEMO_LIBRARY_FEATURES_LITE_PLAN.md](MEMO_LIBRARY_FEATURES_LITE_PLAN.md); autonomous-overnight
+launch prompt → [MEMO_LIBRARY_OVERNIGHT_HANDOFF.md](MEMO_LIBRARY_OVERNIGHT_HANDOFF.md).
 
 ---
 
@@ -47,17 +49,18 @@ work; `little` = contained UI or behavior tweak). Refined at planning time.
 - **F#2** — [Retire "verified", unify on "authenticated"](#f2--retire-verified-unify-on-authenticated) · `little` · understood
 - **F#3** — [Pre-digital ("canonical") authentication pipeline](#f3--pre-digital-canonical-authentication-pipeline) · `big` · understood
 - **F#4** — [Catalog membership policy: all-bib vs sources-only](#f4--catalog-membership-policy-all-bib-vs-sources-only) · `big` · understood · **decided: sources-only (layered-hybrid)**
-- **F#5** — [Per-row three-dot menus in the libraries list](#f5--per-row-three-dot-menus-in-the-libraries-list) · `little` · understood
-- **F#6** — [Toast attention tabs: close button + reliable auto-dismiss](#f6--toast-attention-tabs-close-button--reliable-auto-dismiss) · `little` · understood
-- **F#7** — [Three-dot menu on "My Papers" pod rows (Remove)](#f7--three-dot-menu-on-my-papers-pod-rows-remove) · `little` · understood
+- **F#5** — [Per-row three-dot menus in the libraries list](#f5--per-row-three-dot-menus-in-the-libraries-list) · `little` · **✅ LANDED (Phase 0)**
+- **F#6** — [Toast attention tabs: close button + reliable auto-dismiss](#f6--toast-attention-tabs-close-button--reliable-auto-dismiss) · `little` · **✅ LANDED (Phase 0)**
+- **F#7** — [Three-dot menu on "My Papers" pod rows (Remove)](#f7--three-dot-menu-on-my-papers-pod-rows-remove) · `little` · **✅ LANDED (Phase 0)**
 - **F#8** — [Library tab outline doesn't fully wrap the shape (clipped stroke)](#f8--library-tab-outline-doesnt-fully-wrap-the-shape-clipped-stroke) · `little` · understood
 - **F#9** — [\"Open in Virgil tab\" button for library papers (list column + paper header)](#f9--open-in-virgil-tab-button-for-library-papers-list-column--paper-header) · `little` · understood
 - **F#10** — [Lighten the library PDF viewer's heavy native toolbar](#f10--lighten-the-library-pdf-viewers-heavy-native-toolbar) · `medium` · understood · **decided: Option B**
 - **F#11** — [Paper-header design overhaul (cohesive pod, unified bib chrome, page picker)](#f11--paper-header-design-overhaul-cohesive-pod-unified-bib-chrome-page-picker) · `medium` · understood · _hub: ties to F#2/F#9/F#10_
-- **F#12** — [Replace the incongruous brown on toggle selected-fills (warm-taupe complement)](#f12--replace-the-incongruous-brown-on-toggle-selected-fills-with-a-warm-taupe-complement) · `little` · understood · **decided: `#8a7355`**
+- **F#12** — [Replace the incongruous brown on toggle selected-fills (warm-taupe complement)](#f12--replace-the-incongruous-brown-on-toggle-selected-fills-with-a-warm-taupe-complement) · `little` · **✅ LANDED (Phase 0)** · `#8a7355` (+ `--control-selected-ink #6b5840` for AA on the tint path)
 - **F#13** — [Drag column headers to reorder the library paper list (global pref, promoted to defaults)](#f13--drag-column-headers-to-reorder-the-library-paper-list-global-pref-promoted-to-defaults) · `medium` · understood
 - **F#14** — [Sort by index-status facet (movable sub-bar) + fold bib-imported into Status](#f14--sort-by-index-status-facet-movable-sub-bar-under-status--fold-bib-imported-into-status) · `medium` · understood · _couples to F#13_
 - **F#15** — [Inner library tabs: compress Chrome-style (always attached, ellipsized inactive names)](#f15--inner-library-tabs-compress-chrome-style-always-attached-ellipsized-inactive-names) · `medium` · understood · _couples to F#8_
+- **F#16** — [Library papers inherit the editor's top-bar chrome (breadcrumb + back/forward + three-dot)](#f16--library-papers-inherit-the-editors-top-bar-chrome-breadcrumb--backforward--three-dot) · `medium` · understood · _couples to F#11_
 
 ---
 
@@ -1066,6 +1069,76 @@ once width becomes flex-driven.
 
 ---
 
+### F#16 — Library papers inherit the editor's top-bar chrome (breadcrumb + back/forward + three-dot)            [size: medium]  ·  status: understood
+
+**Ask (Gabriel's words):** The top bar of the text-editor body — the current session, back/forward
+buttons, three-dot menu — should also apply to library papers. (Clarified: the editor's top-bar
+chrome **changed recently** — the library should just **inherit it smoothly**; it isn't inheriting
+automatically now.)
+
+**Understanding (verified against current code):** The recent change is `f9070d57` "move pod top
+chrome strip inside the white card" — the editor's top bar is now an **in-card chrome band**
+([EditorPane.tsx:5261–5335](src/components/EditorPane.tsx)). It has two halves:
+- **Left = the `SectionLozenge` breadcrumb** ("current session" = the live section path you're
+  scrolled into). It **already renders in the Reader** — it's always-on.
+- **Right = the docked `MenuBar`** — the **back/forward** paragraph-visit nav chevrons + the
+  **three-dot View menu** (display toggles: par-titles, latex-comments, marginalia, highlights,
+  dividers, dim-cards, close-all-panels — all read-only-safe; edit items Fonts/Margins are already
+  gated off). It's **dormant in the Reader purely because no `menuBar` bundle is threaded** — the
+  render is gated `{menuBar && <MenuBar/>}`, and the in-code comment confirms "the Reader shows the
+  breadcrumb alone."
+
+So the Reader is **half-inheriting** the bar today. Library papers render through the canonical
+`<EditorPane>` (Reader inheritance), so the fix is to supply the missing bundle — **no
+Reader-specific render code** (the `READER_INHERITANCE.md` invariant).
+
+**Decided:**
+- **Smoothly inherit the FULL current top bar** in the Text reader by threading a **read-only
+  `menuBar` bundle** — the symmetric counterpart to `READER_NOOP_HANDLERS`. Build
+  `READER_MENUBAR_BUNDLE` / `useReaderMenuBar(editor, vp)` in the sanctioned
+  [reader-view-prefs.ts](src/components/editor-layout/reader-view-prefs.ts), reading the Reader's
+  **existing ephemeral `useViewPrefs` engine** so the View-menu toggles are **functional
+  session-only** (same way `useReaderViewPrefs` already wires its derivations). Pass
+  `menuBar={readerMenuBar}` on the one existing `PaperRender` `<EditorPane>` mount — **both reader
+  contexts** (inline panel + outer tab) inherit it, since both funnel through `PaperRender`.
+- **Read-only-correct, for free:** Fonts…/Margins… auto-drop via `showMenuBarEditItems=false`
+  (already set in `READER_CHROME`); Preferences/split = no-op (or wire Preferences if wanted).
+- **back/forward functional:** the chevrons only `scrollToParagraph` (no mutation), but the
+  paragraph-visit **history recorder** lives in `EditorLayout` (which the Reader doesn't run). Port
+  the small (~50-line, editor-driven, keystroke-safe) selection-history recorder into the Reader
+  hook so the buttons actually navigate. *(MVP fallback: render them present-but-disabled — but
+  "apply to library papers" means functional, so that's the target.)*
+- **PDF mode is unaffected** — it mounts no `<EditorPane>` (and has no section path), so the editor
+  band correctly appears only in the **Text** reader.
+
+**Scope & touch-points:**
+- **NEW** in [reader-view-prefs.ts](src/components/editor-layout/reader-view-prefs.ts) —
+  `useReaderMenuBar` / `READER_MENUBAR_BUNDLE` (a typed `EditorPaneMenuBarBundle` read from the
+  ephemeral `vp`; no-op edit members; functional paraNav).
+- [library/components/PaperRender.tsx](library/components/PaperRender.tsx) — pass
+  `menuBar={readerMenuBar}` on the existing `<EditorPane>` (the **only** library-side line).
+- Port the paragraph-visit history recorder (`EditorLayout.tsx`:~1756–1810) into a Reader-usable
+  hook for functional back/forward.
+- No `EditorPane` render change (it already lights up the `{menuBar && …}` half and threads the
+  bundle to its inner `EditorChromeProvider` so float view-toggle classes derive correctly).
+
+**Open questions / details (non-blocking):**
+- back/forward: ship **functional** (port the recorder) vs **disabled-MVP** first. *(Lean: functional —
+  that's the ask.)*
+- Whether the three-dot in the Reader should also expose **Preferences** (wire it) or stay a pure
+  view-toggle menu. *(Lean: match the main editor's menu exactly, minus the auto-dropped edit items —
+  "smooth inheritance.")*
+
+**Notes:** `medium` (mostly the functional back/forward recorder; the bundle + prop are small).
+**Coordinate with F#11:** in Text mode this inherited editor band stacks **below** the library's own
+`PaperHeader` (bib / AI / Text-PDF) — two distinct bands. The editor band **must stay inherited from
+`EditorPane`** (never re-rendered in `PaperHeader` — that would fork the Reader path, an
+anti-pattern). If F#11 ever wants a single visually-unified top chrome, the breadcrumb/nav/View-menu
+must remain the **inherited** controls, just placed in the pod. F#11 should keep `PaperHeader`
+compact so the combined chrome isn't bulky.
+
+---
+
 ## Cross-cutting themes / shared infrastructure
 
 - **"Source" vs "reference" vocabulary** (seeded by F#1; central to F#4). A *source* =
@@ -1082,6 +1155,13 @@ once width becomes flex-driven.
   retires `canonical`-as-a-state. **These should be planned together** so the enum, the
   stats, the pills, and the docs (`library/CLAUDE.md` "Bib states", `glossary.md`,
   `STYLE_GUIDE.md`) change once, coherently — not in three conflicting passes.
+
+- **Reader chrome stacks two bands** (F#11 + F#16). In Text mode the library reader will show the
+  library's own `PaperHeader` (F#11 — bib / AI / Text-PDF) **above** the **inherited** editor
+  in-card top bar (F#16 — section breadcrumb + back/forward + three-dot View menu). Hard rule: the
+  editor band is **inherited from `EditorPane` via a `menuBar` bundle**, never re-rendered in
+  `PaperHeader` (forking the Reader path is the `READER_INHERITANCE.md` anti-pattern). Plan F#11's
+  layout knowing F#16's band sits just below it; keep `PaperHeader` compact.
 
 - **Shared `<BibEntryChrome>` + the paper-header hub** (F#11, reaching into F#2/F#9/F#10). F#11
   extracts the editor bib-card's header stack (status row ✓chip + index-tier + open link + the

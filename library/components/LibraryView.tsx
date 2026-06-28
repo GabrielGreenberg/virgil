@@ -571,9 +571,18 @@ export default function LibraryView({
   // synthesis branch in `mergedEntries` (above) renders bib-only rows
   // for those citekeys; afterward the same citekeys resolve through the
   // master.bib path and the library transitions seamlessly.
-  const handleCreateLibraryFromBib = useCallback(async () => {
+  // Shared first half of both .bib import paths (F#5): open the system
+  // file picker, parse the chosen .bib, and write it into unsorted/ under a
+  // unique filename so a triage skill can later fold its entries into
+  // master.bib. Returns the parsed citekeys + the on-disk filename + the
+  // bare basename, or null when the user cancels / nothing usable is found.
+  const stagePickedBib = useCallback(async (): Promise<{
+    entryKeys: string[];
+    onDiskName: string;
+    base: string;
+  } | null> => {
     const picked = await pickBibFile();
-    if (!picked) return; // user cancelled or environment lacks the API
+    if (!picked) return null; // user cancelled or environment lacks the API
 
     let parsed: BibEntry[] = [];
     try {
@@ -585,64 +594,93 @@ export default function LibraryView({
       console.warn(
         `[library] no entries found in ${picked.filename} — skipping import`,
       );
-      return;
+      return null;
     }
 
     // Pick a unique on-disk filename in unsorted/ so re-imports of the
-    // same source file don't clobber each other. `foo.bib` → `foo-2.bib`,
-    // `foo-3.bib`, etc.
+    // same source file don't clobber each other. `foo.bib` → `foo-2.bib`.
     const dotIdx = picked.filename.lastIndexOf(".");
-    const base =
-      dotIdx > 0 ? picked.filename.slice(0, dotIdx) : picked.filename;
+    const base = dotIdx > 0 ? picked.filename.slice(0, dotIdx) : picked.filename;
     const ext = dotIdx > 0 ? picked.filename.slice(dotIdx) : ".bib";
     let attempt = 1;
     let onDiskName = picked.filename;
-    while (
-      await fileExists(handle, `${SUBDIRS.unsorted}/${onDiskName}`)
-    ) {
+    while (await fileExists(handle, `${SUBDIRS.unsorted}/${onDiskName}`)) {
       attempt += 1;
       onDiskName = `${base}-${attempt}${ext}`;
       if (attempt > 999) break; // pathological safety valve
     }
     try {
-      await writeTextFile(
-        handle,
-        `${SUBDIRS.unsorted}/${onDiskName}`,
-        picked.text,
-      );
+      await writeTextFile(handle, `${SUBDIRS.unsorted}/${onDiskName}`, picked.text);
     } catch (err) {
       console.error("[library] failed to write picked .bib to unsorted/", err);
-      return;
+      return null;
     }
 
-    // De-duplicate citekeys against existing custom-library labels for
-    // the navigator label. The on-disk filename uniqueness is independent
-    // of the label uniqueness — both can drift ("foo (2)" vs "foo-2.bib").
+    const entryKeys = parsed.map((e) => e.key).filter(Boolean);
+    return { entryKeys, onDiskName, base };
+  }, [handle]);
+
+  // "New library from .bib" — stage the picked file, then spin up a NEW
+  // custom library populated with the parsed citekeys.
+  const handleCreateLibraryFromBib = useCallback(async () => {
+    const staged = await stagePickedBib();
+    if (!staged) return;
+
+    // De-duplicate the navigator label against existing custom libraries.
     const existingLabels = new Set(
       libraryTabs.registry.libraries
         .filter((l) => l.kind === "custom")
         .map((l) => l.label),
     );
-    let label = base;
+    let label = staged.base;
     let labelAttempt = 1;
     while (existingLabels.has(label)) {
       labelAttempt += 1;
-      label = `${base} (${labelAttempt})`;
+      label = `${staged.base} (${labelAttempt})`;
       if (labelAttempt > 999) break;
     }
 
-    const entryKeys = parsed.map((e) => e.key).filter(Boolean);
     libraryTabs.createFromBib({
       label,
-      sourceBibFile: onDiskName,
-      entryKeys,
+      sourceBibFile: staged.onDiskName,
+      entryKeys: staged.entryKeys,
       panel: "left",
     });
-    // Trigger an immediate poll instead of waiting for the 6 s tick so
-    // the synthesized rows show up the moment the user clicks the new
-    // library tab.
+    // Immediate poll so the synthesized rows show the moment the new tab
+    // is clicked, rather than waiting for the 6 s tick.
     void reloadUnsortedBib();
-  }, [handle, libraryTabs, reloadUnsortedBib]);
+  }, [stagePickedBib, libraryTabs, reloadUnsortedBib]);
+
+  // "Add from .bib…" on an EXISTING custom library (F#5) — stage the picked
+  // file, then add its parsed citekeys to that library's manifest
+  // (membership). Same staging flow; only the destination differs.
+  const handleAddBibToLibrary = useCallback(
+    async (libId: string) => {
+      const staged = await stagePickedBib();
+      if (!staged) return;
+      if (staged.entryKeys.length > 0) {
+        libraryTabs.addEntriesToLibrary(libId, staged.entryKeys);
+      }
+      void reloadUnsortedBib();
+    },
+    [stagePickedBib, libraryTabs, reloadUnsortedBib],
+  );
+
+  // "Delete library" on a custom library (F#5) — lightweight confirm, then
+  // drop the manifest. Papers + master.bib entries are untouched (a manifest
+  // is only a membership list).
+  const handleDeleteLibrary = useCallback(
+    (libId: string) => {
+      const lib = libraryTabs.registry.libraries.find((l) => l.id === libId);
+      if (!lib || lib.kind !== "custom") return;
+      const ok = window.confirm(
+        `Delete the library "${lib.label}"?\n\nThis removes the collection only — its papers and bibliography entries stay in your library.`,
+      );
+      if (!ok) return;
+      libraryTabs.remove(libId);
+    },
+    [libraryTabs],
+  );
 
   // Container-scoped drag tracking. Two responsibilities:
   //   1. Maintain `dragActive` so the lozenge in TopBar and the dashed
@@ -765,6 +803,10 @@ export default function LibraryView({
       onCreateLibraryFromBib={handleCreateLibraryFromBib}
       onAddEntriesToLibrary={handleAddEntriesToLibrary}
       onRenameLibrary={libraryTabs.rename}
+      onResync={onResync}
+      onChangeFolder={onReset}
+      onDeleteLibrary={handleDeleteLibrary}
+      onAddBibToLibrary={handleAddBibToLibrary}
     />
   ) : null;
 

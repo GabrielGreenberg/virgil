@@ -298,7 +298,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
             aria-selected={active}
             onClick={() => onChange(m)}
             style={{
-              background: active ? "var(--accent)" : "transparent",
+              background: active ? "var(--control-selected)" : "transparent",
               color: active ? "white" : "var(--foreground)",
               border: "none",
               padding: "4px 12px",

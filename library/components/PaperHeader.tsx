@@ -575,7 +575,7 @@ function ToggleButton({
       disabled={disabled}
       title={disabled ? disabledTitle : undefined}
       style={{
-        background: active ? "var(--accent)" : "transparent",
+        background: active ? "var(--control-selected)" : "transparent",
         color: disabled ? "var(--muted)" : active ? "white" : "var(--foreground)",
         border: "none",
         padding: "4px 10px",
