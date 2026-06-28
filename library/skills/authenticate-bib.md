@@ -119,12 +119,23 @@ directory).
       - Crossref query by author + journal + year (ignoring the junk
         title) when a journal/booktitle field is present.
 
-   5. **Canonical fallback.** When the full chain fails on what looks
-      like a pre-digital work (book-typed, year before ~1950, no DOI
-      and no ISBN in the bib), the helper returns
-      `state="canonical"` instead of `failed` — these are works no
-      external authority registry will ever index (Saussure, Frege,
-      Plato, etc.) and the red `failed` pill is misleading for them.
+   5. **Pre-digital route → `authenticated`, then the `canonical`
+      descriptor (F#3).** When the full chain fails on what looks like a
+      pre-digital work (book/incollection/inbook, `0 < year < 1980`, no
+      DOI and no ISBN in the bib), the helper runs the **pre-digital
+      authentication route** before giving up: it scores agreement across
+      book catalogs (OpenLibrary, Internet Archive, Google Books) and
+      scholarly indexes (OpenAlex, Crossref), corroborated by the bib's
+      publisher. If ≥2 independent sources agree on title+author (or one
+      authoritative catalog agrees AND the publisher matches), the entry
+      becomes a real **`authenticated`** with a provenance note — a
+      pre-digital work CAN be authenticated, just by different means than
+      a DOI. Only when that route ALSO finds no agreement does the helper
+      fall back to `state="canonical"` — now a *descriptor* ("pre-digital
+      classic; no authoritative agreement found"), not a give-up auth
+      state. Runs for cited-only references too (no paper folder needed).
+      Year gate is **`<1980`** (the code's actual cutoff; older docs said
+      ~1950).
 
    **Modern proceedings without DOIs are expected to land in
    `unverified`, not `authenticated` or `canonical`.** Conferences
@@ -315,10 +326,18 @@ directory).
            and len(t1_sources & AUTHORITATIVE) >= 2):
        final_state = "authenticated"
        final_sources = list(r["sources"]) + sorted(t1_sources & AUTHORITATIVE)
-   # `canonical` is terminal — never upgrade. If you have authoritative
-   # tier-1 sources for a `canonical` verdict, the helper's canonical
-   # fallback fired prematurely; the right fix is to surface the
-   # corroboration to bib_auth.py, not to patch around it here.
+   # `canonical` may upgrade — it is NO LONGER terminal (F#3). It now means
+   # "the pre-digital route ran and found no authoritative agreement", so if
+   # YOU have ≥2 authoritative tier-1 corroborations for a `canonical` verdict
+   # (e.g. Internet Archive + a publisher page agreeing on the work), promote
+   # it to `authenticated` the same way as the unverified case — the helper's
+   # pre-digital route simply didn't reach those sources. The deeper fix is to
+   # surface the corroboration to bib_auth.py's pre-digital route; this is the
+   # operator escape hatch.
+   if (r["state"] == "canonical"
+           and len(t1_sources & AUTHORITATIVE) >= 2):
+       final_state = "authenticated"
+       final_sources = list(r["sources"]) + sorted(t1_sources & AUTHORITATIVE)
 
    bib_status = {
        "state":         final_state,
@@ -379,12 +398,14 @@ directory).
 
 If `state == "authenticated"`:
 > `Authenticated <citekey> via <sources>. <N> field changes applied.`
+> (When the pre-digital route fired, `<sources>` reads `predigital(<srcs>)` and
+> the note records the corroborating catalogs/indexes.)
 
 If `state == "unverified"`:
 > `Unverified <citekey>. Best match score <S> from <source>. Manual review recommended.`
 
 If `state == "canonical"`:
-> `<citekey>: pre-digital classic (year=<y>); no external authority record expected. Pill marked canonical.`
+> `<citekey>: pre-digital work (year=<y>); the pre-digital route found no authoritative multi-source agreement. Marked canonical (descriptor, not a give-up — re-runnable as catalogs improve).`
 
 If `state == "manuscript"`:
 > `<citekey>: marked as manuscript (entry_type=@unpublished). No external authentication attempted; pill marked MS.`

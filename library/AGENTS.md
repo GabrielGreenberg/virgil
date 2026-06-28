@@ -259,9 +259,9 @@ Every catalog entry's `bib.state` is one of five values, set by the auth pipelin
 - **`unverified`** — single source matched at the lower threshold. Fields are best-effort. **Action needed.**
 - **`failed`** — no source produced a match above threshold. **Action needed.** Try `/library/authenticate-bib` again or fill by hand.
 - **`manuscript`** — explicitly unpublished or forthcoming (`@unpublished`). Terminal state. **No action needed.**
-- **`canonical`** — pre-digital classic (book-typed, year < 1950, no DOI/ISBN); no external authority registry will ever index it. Terminal state. **No action needed.** Set as a fallback only after the full search chain has come back empty, so modern works still get the action-needed `failed` signal.
+- **`canonical`** — pre-digital **descriptor**, no longer a terminal give-up (F#3). For a failed pre-digital work (book/incollection/inbook, `0 < year < 1980`, no DOI/ISBN) the auth pipeline first runs the **pre-digital route** — multi-source agreement across book catalogs (OpenLibrary, Internet Archive, Google Books) + scholarly indexes (OpenAlex, Crossref), corroborated by the bib's publisher. On agreement the entry becomes a real **`authenticated`** (carrying a `predigital(...)` source + provenance note). `canonical` is set ONLY when that route also finds no authoritative agreement — a "pre-digital classic; no agreement found" descriptor, re-runnable as catalogs improve. **No action needed.** (Year gate is `<1980`, the code's actual cutoff — older docs said ~1950.)
 
-The `manuscript` and `canonical` states distinguish properly-terminal entries from `failed` lookups that genuinely *should* be in Crossref but aren't. Don't conflate them in summaries.
+The `manuscript` and `canonical` states distinguish properly-terminal/no-action entries from `failed` lookups that genuinely *should* be in Crossref but aren't. Don't conflate them in summaries.
 
 ## Reader inheritance from the main editor
 

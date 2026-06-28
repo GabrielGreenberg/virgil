@@ -1556,6 +1556,233 @@ def _authenticate_core(seed_title: str, seed_authors: list[str],
     )
 
 
+# ── F#3: pre-digital authentication route ───────────────────────────────
+#
+# Pre-1980 books / chapters without a DOI or ISBN are invisible to the modern
+# DOI-first chain, so they used to terminate at the `canonical` give-up. They
+# CAN be authenticated — just by different means: agreement across book
+# catalogs (OpenLibrary, Internet Archive, Google Books) and scholarly indexes
+# (OpenAlex, Crossref), corroborated by the bib's own publisher. This route
+# scores that multi-source agreement and, when it's strong enough, returns a
+# real `authenticated` verdict (with a provenance note); otherwise it returns
+# None and the caller falls back to the `canonical` *descriptor*. So canonical
+# stops being a terminal "we gave up" auth state and becomes "we tried the
+# pre-digital route and still found no authoritative agreement".
+
+# Sources we trust as authoritative catalogs/indexes — weighted above scraped
+# / secondary sources (Google Books) per the confidence model.
+_PREDIGITAL_AUTHORITATIVE = frozenset(
+    {"openlibrary-search", "internet-archive", "crossref", "openalex", "semanticscholar"}
+)
+
+
+def _internet_archive_search(title: str, author: str = "") -> list[dict]:
+    """Internet Archive metadata catalog (authoritative) — title+creator
+    search via advancedsearch.php. Returns up to 3 normalized records.
+    Fail-closed: any error → []."""
+    if not title:
+        return []
+    main_title = title.split(":", 1)[0].strip() if ":" in title else title
+    q = f"title:({main_title})"
+    surname = ""
+    if author:
+        first = author.split(" and ")[0]
+        if "," in first:
+            surname = first.split(",", 1)[0].strip()
+        else:
+            toks = first.strip().split()
+            surname = toks[-1] if toks else ""
+    if surname:
+        q += f" AND creator:({surname})"
+    params = [
+        ("q", q),
+        ("rows", "3"),
+        ("output", "json"),
+        ("fl[]", "title"),
+        ("fl[]", "creator"),
+        ("fl[]", "year"),
+        ("fl[]", "publisher"),
+    ]
+    url = "https://archive.org/advancedsearch.php?" + urllib.parse.urlencode(params)
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        r.raise_for_status()
+        docs = ((r.json() or {}).get("response", {}) or {}).get("docs", [])
+    except Exception:
+        return []
+
+    def _first(v):
+        if isinstance(v, list):
+            return v[0] if v else ""
+        return v or ""
+
+    out: list[dict] = []
+    for d in docs:
+        creator = d.get("creator", "")
+        authors = creator if isinstance(creator, list) else ([creator] if creator else [])
+        out.append({
+            "source": "internet-archive",
+            "doi": "",
+            "title": _first(d.get("title", "")),
+            "authors": authors,
+            "year": str(d.get("year", "") or "")[:4],
+            "type": "book",
+            "container": "",
+            "volume": "",
+            "issue": "",
+            "page": "",
+            "publisher": _first(d.get("publisher", "")),
+            "raw": d,
+        })
+    return out
+
+
+def score_predigital(seed_title: str, seed_authors: list[str], seed_year: str,
+                     seed_publisher: str, records: list[dict]):
+    """Pure corroboration scorer (no I/O — unit-testable). Decide whether the
+    multi-source agreement among `records` is strong enough to authenticate a
+    pre-digital work.
+
+    A record CORROBORATES when: book-aware title sim ≥ 0.85, ≥1 seed-author
+    surname overlaps, and the years aren't wildly apart (|diff| ≤ 5, or either
+    missing — pre-digital reprints drift). AUTHENTICATE when EITHER (a) ≥2
+    corroborations from DISTINCT sources, OR (b) ≥1 AUTHORITATIVE-source
+    corroboration AND the bib publisher matches a corroborating record.
+
+    Returns (authenticated, score, sources, best_record).
+    """
+    by_source: dict[str, dict] = {}
+    for r in records or []:
+        title_sim = _book_title_sim(seed_title, r.get("title", ""))
+        if title_sim < 0.85:
+            continue
+        rec_authors = r.get("authors") or []
+        if rec_authors and all(_is_author_sentinel(a) for a in rec_authors):
+            continue
+        if _author_overlap(seed_authors, rec_authors) < 1:
+            continue
+        ry = str(r.get("year") or "").strip()[:4]
+        if seed_year and ry and seed_year.isdigit() and ry.isdigit():
+            if abs(int(seed_year) - int(ry)) > 5:
+                continue
+        src = r.get("source", "")
+        cand = {"source": src, "title_sim": title_sim,
+                "publisher": (r.get("publisher") or ""), "record": r}
+        if src not in by_source or title_sim > by_source[src]["title_sim"]:
+            by_source[src] = cand
+
+    distinct = sorted(by_source.keys())
+    authoritative = [s for s in distinct if s in _PREDIGITAL_AUTHORITATIVE]
+    publisher_match = bool(seed_publisher) and any(
+        m["publisher"] and _ratio(seed_publisher, m["publisher"]) >= 0.8
+        for m in by_source.values()
+    )
+
+    authenticated = len(distinct) >= 2 or bool(authoritative and publisher_match)
+    if not authenticated:
+        return (False, 0.0, distinct, None)
+
+    score = min(0.95, 0.85 + 0.03 * (len(distinct) - 1) + (0.03 if publisher_match else 0.0))
+    best = max(
+        by_source.values(),
+        key=lambda m: (m["source"] in _PREDIGITAL_AUTHORITATIVE, m["title_sim"]),
+    )
+    return (True, round(score, 3), distinct, best["record"])
+
+
+def _authenticate_predigital(seed_title: str, seed_authors: list[str],
+                             current_fields: dict, *, entry_type: str,
+                             year_int: int) -> Optional[AuthResult]:
+    """Gather corroborations across book catalogs + scholarly indexes and, when
+    `score_predigital` clears the bar, return an AuthResult(authenticated) with
+    a provenance note. Fail-closed: source errors yield no corroboration (→ the
+    function returns None and the caller keeps the `canonical` descriptor)."""
+    title = (current_fields.get("title") or seed_title or "").strip()
+    if not title:
+        return None
+    author = ""
+    if seed_authors:
+        author = seed_authors[0]
+    elif current_fields.get("author"):
+        author = current_fields["author"].split(" and ")[0]
+    publisher = (current_fields.get("publisher") or "").strip()
+    seed_year = str(year_int) if year_int else ""
+
+    records: list[dict] = []
+    for fetch in (
+        lambda: _openlibrary_title_search(title, author),
+        lambda: _google_books_search(title, author),
+        lambda: _internet_archive_search(title, author),
+        lambda: openalex_search(title),
+        lambda: crossref_search(title, author),
+    ):
+        try:
+            records.extend(fetch() or [])
+        except Exception:
+            pass
+        time.sleep(0.2)
+
+    ok, score, sources, best = score_predigital(
+        title, seed_authors, seed_year, publisher, records,
+    )
+    if not ok or best is None:
+        return None
+    return _authenticated_from_record(
+        best, current_fields, entry_type,
+        sources=["predigital(" + ",".join(sources) + ")"],
+        score=score,
+        note=(
+            f"pre-digital corroboration ({year_int}): {len(sources)} independent "
+            f"source(s) [{', '.join(sources)}] agree on title + author"
+            + ("; publisher matches" if publisher else "")
+            + " — authenticated via the pre-digital route (no DOI/ISBN registry)."
+        ),
+        doi_verified=False,
+    )
+
+
+def _predigital_or_canonical(result: AuthResult, seed_title: str,
+                             seed_authors: list[str], current_fields: dict,
+                             entry_type: str) -> Optional[AuthResult]:
+    """Phase D. For a FAILED pre-digital book/chapter (book/incollection/inbook,
+    0 < year < 1980, no DOI/ISBN), try the pre-digital authentication route; on
+    success return `authenticated`, otherwise return the `canonical` descriptor.
+    Returns None when Phase D doesn't apply, so the caller returns the original
+    result. Needs NO paper files — so it runs for cited-only references too (the
+    common pre-digital case), not just indexed papers. Year cutoff <1980 (the
+    code's gate; the old docs said <1950)."""
+    if result.state != "failed":
+        return None
+    year_str = str(current_fields.get("year", "")).strip()
+    try:
+        year_int = int(year_str)
+    except (ValueError, TypeError):
+        year_int = 0
+    has_identifier = bool(
+        (current_fields.get("doi") or "").strip()
+        or (current_fields.get("isbn") or "").strip()
+    )
+    if not (entry_type in ("book", "incollection", "inbook")
+            and 0 < year_int < 1980
+            and not has_identifier):
+        return None
+    predigital = _authenticate_predigital(
+        seed_title, seed_authors, current_fields,
+        entry_type=entry_type, year_int=year_int,
+    )
+    if predigital is not None:
+        return predigital
+    return AuthResult(
+        state="canonical",
+        score=0.0,
+        sources=result.sources,
+        note=(
+            f"pre-digital work ({year_int}); the pre-digital route found "
+            "no authoritative multi-source agreement"
+        ),
+    )
+
+
 def authenticate(seed_title: str, seed_authors: list[str], current_fields: dict,
                  *, entry_type: str = "",
                  library: Optional[Path] = None,
@@ -1706,9 +1933,14 @@ def authenticate(seed_title: str, seed_authors: list[str], current_fields: dict,
                 return result
         return result
 
-    # Recovery chain — only if we know where the indexed paper lives.
+    # Recovery chain — only if we know where the indexed paper lives. Phase D
+    # (pre-digital route / canonical) needs no paper files, so run it here for
+    # the cited-only case before returning.
     if not (library and citekey):
-        return result
+        phase_d = _predigital_or_canonical(
+            result, seed_title, seed_authors, current_fields, entry_type,
+        )
+        return phase_d if phase_d is not None else result
 
     # P11: DOI extraction from indexed paper.
     paper_dois = _extract_dois_from_paper(library, citekey)
@@ -1815,39 +2047,17 @@ def authenticate(seed_title: str, seed_authors: list[str], current_fields: dict,
                 doi_verified=bool(rec.get("doi")),
             )
 
-    # Phase D: canonical fallback. Only fires when the full search
-    # chain returned NO matches at all (state=="failed", not
-    # "unverified" — if any source matched we leave it as unverified
-    # so the user can review the proposed field changes). For book-,
-    # incollection-, or inbook-typed entries with year < 1980 and no
-    # DOI/ISBN, promote to `canonical` — these are pre-digital works
-    # (or modern translations of pre-digital works: Saussure 1959,
-    # Plato 1968 trans. Grube, Frege 1879 in The Frege Reader) that no
-    # external authority registry will ever index, and the red "failed"
-    # pill is misleading. Modern works (Bordwell 2008, Pylyshyn 2003)
-    # stay `failed` so the user still sees the action-needed signal.
-    if result.state == "failed":
-        year_str = str(current_fields.get("year", "")).strip()
-        try:
-            year_int = int(year_str)
-        except (ValueError, TypeError):
-            year_int = 0
-        has_identifier = bool(
-            (current_fields.get("doi") or "").strip()
-            or (current_fields.get("isbn") or "").strip()
-        )
-        if (entry_type in ("book", "incollection", "inbook")
-                and 0 < year_int < 1980
-                and not has_identifier):
-            return AuthResult(
-                state="canonical",
-                score=0.0,
-                sources=result.sources,
-                note=(
-                    f"pre-digital work ({year_int}); exhausted external "
-                    "authority sources without a match"
-                ),
-            )
+    # Phase D: pre-digital route (F#3) → authenticated, else the `canonical`
+    # descriptor. Runs after the recovery chain for indexed papers; the same
+    # block runs (via the early no-library branch above) for cited-only refs.
+    # `_authenticate_predigital` fail-closes to canonical if corroboration is
+    # unavailable, so this never regresses today's behavior. Modern failed
+    # works stay `failed` (the gate is book-typed + 0<year<1980 + no id).
+    phase_d = _predigital_or_canonical(
+        result, seed_title, seed_authors, current_fields, entry_type,
+    )
+    if phase_d is not None:
+        return phase_d
 
     # Nothing recovered — return the original (unverified or failed) result.
     return result
