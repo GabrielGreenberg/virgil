@@ -53,6 +53,16 @@ function verifiedChip(state: LibraryBibState | undefined) {
           Unverified
         </span>
       );
+    case "needs-reauth":
+      return (
+        <span
+          className={`${CHIP_BASE} text-amber-700 bg-amber-50 border border-amber-200`}
+          data-hint="Metadata rewritten from the file — run /library/authenticate-bib to re-verify"
+          aria-label="Needs re-authentication"
+        >
+          ↻ Needs re-auth
+        </span>
+      );
     case "manuscript":
       return (
         <span

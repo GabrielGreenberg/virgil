@@ -22,7 +22,12 @@ export type BibAuthState =
   | "authenticated"
   | "manuscript"
   | "canonical"
-  | "failed";
+  | "failed"
+  // Metadata-mismatch policy rewrote the entry's fields from the on-disk
+  // file (apply_metadata_mismatch_policy.py); awaiting a re-authentication
+  // pass before the new fields are trusted. Action needed. Mirrors the
+  // canonical Python set in library/scripts/_tools.py CANONICAL_BIB_STATES.
+  | "needs-reauth";
 
 export type SourceFormat = "pdf" | "docx" | "tex";
 

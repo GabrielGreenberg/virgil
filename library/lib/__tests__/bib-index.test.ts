@@ -86,6 +86,24 @@ describe("readBibIndex — slim → BibEntry mapping", () => {
     expect(res!.stateByKey.size).toBe(2);
   });
 
+  it("recognizes the canonical needs-reauth state (F#4 reconciliation round-trip)", async () => {
+    // apply_metadata_mismatch_policy.py writes `needs-reauth`; before the
+    // reconciliation the reader dropped it to "none". Now it round-trips —
+    // writer and reader share one canonical set
+    // (library/scripts/_tools.py CANONICAL_BIB_STATES ↔ VALID_BIB_STATES).
+    readTextFile.mockImplementation(async (_h: unknown, path?: string) =>
+      path?.endsWith("bib-index.json")
+        ? JSON.stringify({
+            v: 1, stamp: "s",
+            entries: [{ k: "mismatch", t: "A Book", bs: "needs-reauth" }],
+          })
+        : undefined,
+    );
+    const res = await readBibIndex(handle);
+    expect(res).not.toBeNull();
+    expect(res!.stateByKey.get("mismatch")).toBe("needs-reauth");
+  });
+
   it("returns null on a CORRUPT index (truncated JSON) → caller falls back", async () => {
     readTextFile.mockImplementation(async (_h: unknown, path?: string) =>
       path?.endsWith("bib-index.json") ? '{"v":1,"entries":[{"k":"a"' : undefined,

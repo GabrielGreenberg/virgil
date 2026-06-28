@@ -48,6 +48,21 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _tools import CANONICAL_BIB_STATES  # noqa: E402
+
+# The auth state this policy moves an entry into once it rewrites the bib
+# fields from the on-disk file. Validated against the canonical set
+# (library/scripts/_tools.py) so writer and the bib-index reader agree —
+# a state not in that set is silently dropped to "none" on read (F#4).
+POLICY_BIB_STATE = "needs-reauth"
+assert POLICY_BIB_STATE in CANONICAL_BIB_STATES, (
+    f"{POLICY_BIB_STATE!r} not in CANONICAL_BIB_STATES — the bib-index "
+    "reader would drop it to 'none'. Add it to both the Python set and "
+    "library/lib/bib-index.ts VALID_BIB_STATES."
+)
+
 
 def _resolve_library_root() -> Path:
     env = os.environ.get("VIRGIL_LIBRARY_ROOT")
@@ -333,7 +348,7 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
             "applied": False,
             "dry_run": True,
             "fields": fields,
-            "would_set": {"bib.state": "needs-reauth"},
+            "would_set": {"bib.state": POLICY_BIB_STATE},
         }
 
     with tempfile.NamedTemporaryFile(
@@ -347,7 +362,7 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
                 "python3", str(scripts_dir / "update_master_bib_entry.py"),
                 citekey, "--entry-type", "book",
                 "--fields-file", fields_file,
-                "--bib-state", "needs-reauth",
+                "--bib-state", POLICY_BIB_STATE,
             ],
             check=True,
         )
@@ -357,7 +372,7 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
     os.unlink(fields_file)
 
     # Update catalog row.
-    patch = {"title": title, "bib": {"state": "needs-reauth"}}
+    patch = {"title": title, "bib": {"state": POLICY_BIB_STATE}}
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False, encoding="utf-8",
     ) as fh:
@@ -415,7 +430,7 @@ def main() -> int:
         return 0
     print(f"Policy applied: master.bib updated to @book, "
           f"catalog title set to {result['fields']['title'][:80]!r}, "
-          f"bib.state=needs-reauth.")
+          f"bib.state={POLICY_BIB_STATE}.")
     if result.get("notes_override"):
         print(f"  Override: {result['notes_override']}")
     return 0

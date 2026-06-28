@@ -46,10 +46,12 @@ from _bib_parse import read_bib_file  # noqa: E402
 from _tools import (  # noqa: E402
     append_inbox_item,
     citekey_matches,
+    ensure_bib_state_comment,
     lock_catalog,
     lock_master_bib,
     mark_bib_imported,
     normalize_citekey,
+    paper_has_holdings,
     read_catalog,
     read_master_bib,
     update_master_bib_entry,
@@ -380,9 +382,30 @@ def _remove_master_entry(library: Path, citekey: str) -> bool:
 
 def _upsert_catalog_row(library: Path, citekey: str, bib_status: dict,
                         master_entry: dict) -> None:
-    """Add or update a catalog row for `citekey`, carrying over top-level
-    fields (title/year/authors/doi) derived from master + `bib_status`."""
+    """Record the auth state for `citekey` after a merge.
+
+    F#4 holdings-only gate: catalog.json carries ONLY rows for entries with
+    a source document on disk (`papers/<citekey>/<citekey>.{pdf,docx,tex}`).
+    A reference-only entry (cited but not held — the common case during a
+    bib merge) must NOT mint a catalog row; its auth state lives solely in
+    the `% bib.state` comment in master.bib, which `_write_master` already
+    wrote before this call. So for a reference-only entry we re-assert that
+    comment (idempotent) and return without touching the catalog.
+
+    For a true holding, fall through to the catalog write, carrying over
+    top-level fields (title/year/authors/doi) derived from master.
+    """
     fields = master_entry.get("fields", {})
+    if not paper_has_holdings(library, citekey):
+        # Reference-only: state lives only as the master.bib comment.
+        state = bib_status.get("state", "none")
+        if state and state != "none":
+            ensure_bib_state_comment(
+                library, citekey,
+                master_entry.get("type", "misc"),
+                fields, state,
+            )
+        return
     top: dict = {
         "title": _strip_braces(fields.get("title", "")),
         "authors": _split_authors(fields.get("author", "")),
@@ -394,13 +417,27 @@ def _upsert_catalog_row(library: Path, citekey: str, bib_status: dict,
         # Merge prior fieldChanges so they accumulate across runs (same
         # behavior as /authenticate-bib).
         prior_changes: list = []
+        row_exists = False
         for e in catalog.get("entries", []):
             if citekey_matches(e.get("citekey", ""), citekey):
                 prior_changes = ((e.get("bib") or {}).get("fieldChanges") or [])
+                row_exists = True
                 break
         merged_bib = dict(bib_status)
         merged_bib["fieldChanges"] = prior_changes + list(bib_status.get("fieldChanges", []))
-        upsert_catalog_entry(catalog, citekey, **{k: v for k, v in top.items() if v not in (None, "", [])})
+        write_fields = {k: v for k, v in top.items() if v not in (None, "", [])}
+        # F4W-3: this is a TRUE holding (paper_has_holdings passed above), so its
+        # catalog row must carry pdf.present == True — otherwise the merge mints
+        # the row with upsert_catalog_entry's default pdf:{present:False}, the
+        # exact stale flag the prune then has to defend against. upsert_catalog_entry
+        # does a SHALLOW e.update(fields) on an existing row, so passing `pdf` would
+        # REPLACE the whole pdf object and clobber richer metadata (filename /
+        # pageCount / format). So only inject pdf:{present:True} when NO row exists
+        # yet (the default would otherwise be present:False); a pre-existing row
+        # keeps its own — correct — pdf object untouched.
+        if not row_exists:
+            write_fields["pdf"] = {"present": True}
+        upsert_catalog_entry(catalog, citekey, **write_fields)
         # upsert_catalog_entry returns the row; re-find it to set bib.
         for e in catalog.get("entries", []):
             if citekey_matches(e.get("citekey", ""), citekey):

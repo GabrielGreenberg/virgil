@@ -217,8 +217,9 @@ const BIB_RANK: Record<BibAuthState, number> = {
   manuscript: 1,
   canonical: 2,
   unverified: 3,
-  failed: 4,
-  none: 5,
+  "needs-reauth": 4,
+  failed: 5,
+  none: 6,
 };
 
 /** Compare two catalog entries for the given sort column. Returns the
