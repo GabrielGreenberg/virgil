@@ -103,9 +103,25 @@ Legend: **[DEFAULT]** = taking the wishlist "lean"/decided option, proceeding. *
 
 ---
 
+## Deferred (supervised follow-ups)
+
+**F#4 writer-side — sources-only data flip (the perf win).** The reader-side is done and makes the UI correct/honest on *both* catalog models, so this is non-urgent and is the destructive half — land it with the Python pipeline runnable. Exact steps (from the wishlist migration plan, dependency order):
+1. ✅ (done) project `% bib.state` into `bib-index.json` (the safety net).
+2. ✅ (done) widen the frontend reader so synthetic rows show real state.
+3. ✅ (done, reader-side) search + stats already run over the merged universe.
+4. **TODO** stop the Python writers minting reference rows — gate `merge_paper_references._upsert_catalog_row` + `triage_apply._upsert_catalog_row_bib_only` to holdings-only; gate `authenticate-bib` / `update_catalog_entry.py` so they stop *requiring* a row (write the master.bib `% bib.state` comment instead — `update_master_bib_entry --bib-state`, already the path).
+5. **TODO** relax the merge shrinkage-guard (`merge_bibs_postflight._check_catalog` — catalog is now expected-flat/shrinking).
+6. **TODO (destructive)** one-time prune of `present:false` rows — **back-fill the `% bib.state` comment from any row whose state predates the comment BEFORE deleting it.** Ship as a dry-run-first idempotent script; do not auto-run.
+Note: a non-standard `bib.state="needs-reauth"` is written by `apply_metadata_mismatch_policy.py` — not in the `BibAuthState` union, so the bib-index reader drops it (→ "none"). Reconcile to `unverified`/`failed` (or add to the union) when doing the writer-side.
+
 ## Per-phase landing log
 
-### Phase 1 — Bibliography subsystem (branch `phase1-bibliography`) — IMPLEMENTED, review-in-progress
+### Phase 1 — Bibliography subsystem — ✅ MERGED to local main `607e9b8b` (no-ff, NOT pushed)
+> ⚠️ **Incident (corrected):** my `git add -A` on the review-fixes commit swept in two files from your concurrent bug-catcher session — `MEMO_FOCUS_BAND_SECTION_END.md` (new) and a `MEMO_BUG_BACKLOG.md` (+8). Corrected in `6e41d7b0`: HEAD reverts both to baseline and their content is restored to the working tree exactly as you left it (untracked / unstaged). No content lost. I've stopped using `git add -A` for the rest of the run.
+
+Adversarial review (3 dimensions, every finding verified): 10 raw → 6 confirmed, **all fixed** (commit `598676f9`): a **CRITICAL** F#4 SSOT bug (`update_master_bib_entry` wiped the `% bib.state` comment on fields-only writebacks → would erase projected state; now preserved), IA `year` list-normalization, F#4 projection completeness on 2 more fileless surfaces (TabbedLibraryPanel project tab + PaperFileBody reader fallback — threaded `bibStateByKey`), and 2 F#2 tooltip rename misses.
+
+
 Split into Tier 1 (frontend/TS, fully verified) + Tier 2 (Python F#3). The F#4 **writer-side** (stop minting reference rows + the destructive row-prune) is **DEFERRED** — see QUESTION 1 — because the reader-side already makes the UI correct/honest on *both* catalog models, and the writer-stop+prune is a coordinated multi-script behavioral change + a destructive migration I won't run unattended.
 
 - **Tier 1** (commit `73d015bc`): F#4 reader-side layered model — `build_bib_index` projects the `% bib.state` comment into bib-index `bs` (new `iter_master_bib_states`); `bib-index.ts` → validated `stateByKey`; `useMasterBib` exposes `bibStateByKey`; `mergedEntries` fileless rows show real state (default "none", was hardcoded "unverified"); `BibStatus` gains `score?`/`note?`. F#1 dashboard 2-row redesign (`sourcesWithFile`, `nonAuthenticated`; removed Pipeline + Verified card + `verifiedTerminal`). F#2 verified→authenticated rename (chip/pill/tooltips/aria + STYLE_GUIDE + glossary + test). tsc 0 / vitest 2995 / Python bib-index 9/9.
