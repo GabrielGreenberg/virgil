@@ -116,6 +116,25 @@ Note: a non-standard `bib.state="needs-reauth"` is written by `apply_metadata_mi
 
 ## Per-phase landing log
 
+### Phase DM-6 — F#10 vendored pdf.js prebuilt viewer — ✅ MERGED to local main `b65e6ef4` (no-ff, NOT pushed); phase commit `c8b20382`
+Landed 2026-06-28. **F#10 (Option B — vendor pdf.js's prebuilt viewer + restyle its toolbar to Virgil tokens)** — the PDF surface deep move (DM-6).
+
+**What landed:** vendored Mozilla pdf.js **4.10.38** prebuilt dist into `public/pdfjs/` (`web/` + `build/` + `LICENSE`, **373 files / 8.8 MB**; `.map` sourcemaps + the bundled sample PDF excluded). The ONLY hand-authored/edited files inside the vendored tree are `web/virgil-overrides.css` + a single marked `<link>` line in `web/viewer.html`; `public/pdfjs/VIRGIL_VENDOR_NOTE.md` documents the re-vendor procedure.
+
+**Repoint:** `PdfView.tsx` now points a same-origin iframe at `/pdfjs/web/viewer.html`, awaits `contentWindow.PDFViewerApplication.initializedPromise`, then `.open({ url, originalUrl })`. The FSA read→blob plumbing is unchanged; the props API (`handle`, `citekey`) is unchanged, so the `RightDetail` caller is unaffected. A pure `pdfOpenArgs()` helper (unit-tested, 3 cases) builds the open args. An empty `?file=` in the iframe `src` suppresses pdf.js's sample-PDF auto-open 404.
+
+**Overrides:** `virgil-overrides.css` remaps pdf.js's toolbar/field/button CSS vars → Virgil hex tokens (~40px manila strip, mono-uppercase micro-labels), and `display:none`s the editor/annotate/print/download/open-file/presentation/bookmark groups (real 4.10.38 ids `#printButton`/`#downloadButton`/`#secondary*`). Literal hex is used because the iframe doc doesn't inherit `globals.css`.
+
+**Review:** fix-then-ship; **2 confirmed-real findings FIXED before merge** — **F1** (hide selectors targeted non-existent `#print`/`#download`/`#openFile`, so Print/Download were never hidden → corrected to `#printButton`/`#downloadButton`, dropped `#openFile`) and **F2** (sample auto-open 404 → suppressed via the empty `?file=` in PdfView, zero extra vendored edits). **F3** nit (dangling `#viewBookmarkSeparator`) fixed.
+
+**Verify:** tsc **0** · full vitest **3062 pass / 1 skip / 0 fail** · **3 new** `pdfOpenArgs` tests · **no net-new lint** (1 pre-existing `react-hooks/set-state-in-effect` on the UNCHANGED FSA read effect, confirmed on HEAD baseline).
+
+**OWED live check (BROWSER-VERIFY-ONLY, no headless proof; FSA picker dead in dev preview):** open a library paper PDF → confirm `/pdfjs/web/viewer.html` loads, the 40px manila toolbar renders with mono-uppercase labels, page-nav + zoom work, the annotate/print/download/open groups are hidden, and `build/pdf.worker.mjs` loads same-origin with the correct module MIME in prod.
+
+**Note:** F#10 **UNLOCKS** the F#11 PDF page-picker fast-follow (seam: `PDFViewerApplication.page` / `pagechanging` → a `PgmarkPages`-compatible object threaded `RightDetail` → `PaperHeader`; documented in the workflow map).
+
+---
+
 ### Phase DM-4 — Library folder tabs (F#8 + F#15) — ✅ MERGED to local main `f329c5b0` (no-ff, NOT pushed); phase commit `dd9372ec`
 Landed 2026-06-28. **F#8 (clipped-stroke horizontal SVG gutter)** + **F#15 (Chrome-style flex-compress)** landed **TOGETHER** — the two couple at the folder-tab geometry, so they shipped as one phase.
 
