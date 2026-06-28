@@ -18,6 +18,10 @@ import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { PanelFolderTab } from "./PanelFolderTab";
 
+// F#15 inactive-tab floor: inactive tabs absorb the squeeze first and
+// ellipsize their names down to this width before the active tab compresses.
+const INACTIVE_MIN_CONTENT = 60;
+
 export type TabDef = {
   id: string;
   label: string;
@@ -115,6 +119,28 @@ export function PanelTabStrip({
   const stripRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Map<string, HTMLElement>>(new Map());
   const addBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // F#15 scroll-active-into-view. Engages ONLY past the floor: when every tab
+  // has compressed to its min-width and the total still exceeds the strip
+  // (scrollWidth > clientWidth, i.e. the overflow:hidden strip has off-screen
+  // content), nudge the active tab fully into view via scrollLeft so its 1px
+  // bridge stays attached to the body. Above the floor the tabs share the width
+  // and there's nothing to scroll, so this is a no-op. Keyed on activeId + tab
+  // count so it re-runs on selection / open / close — not on every render, and
+  // never on a doc keystroke (the strip subscribes to no editor events).
+  useEffect(() => {
+    const strip = stripRef.current;
+    const el = tabRefs.current.get(activeId);
+    if (!strip || !el) return;
+    if (strip.scrollWidth <= strip.clientWidth) return; // above the floor
+    const stripRect = strip.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    if (elRect.right > stripRect.right) {
+      strip.scrollLeft += elRect.right - stripRect.right;
+    } else if (elRect.left < stripRect.left) {
+      strip.scrollLeft -= stripRect.left - elRect.left;
+    }
+  }, [activeId, tabs.length]);
 
   const startEditing = (id: string, label: string) => {
     setEditingId(id);
@@ -356,13 +382,21 @@ export function PanelTabStrip({
         // --background for paper) and the body pop as the white "page".
         background: "var(--library-bg)",
         flexShrink: 0,
+        // F#15: the strip itself must be able to shrink to its panel column
+        // (which is min-width:0), so tabs SHARE the width Chrome-style instead
+        // of overflowing. Without this the flex parent would let the strip grow
+        // to its content and the share-the-width contract would never engage.
+        minWidth: 0,
         position: "relative",
         zIndex: 20,
-        // Tabs are flexShrink:0; when more open than fit, scroll horizontally
-        // rather than hard-clipping the rightmost tab. Scrollbar hidden — the
-        // strip stays visually clean. Per-tab menus are body-portaled (see
-        // TabMenuTrigger) so this overflow can't clip them.
-        overflowX: "auto",
+        // F#15: tabs are flex:1 1 auto (inactive) / flex:0 1 auto (active) —
+        // they SHARE the strip width and compress (inactive names ellipsize)
+        // instead of flex-shrink:0 + scroll. Only past every tab's floor does
+        // total content exceed the strip; then the scroll-active-into-view
+        // effect below keeps the active tab visible via scrollLeft. Scrollbar
+        // hidden — the strip stays visually clean. Per-tab menus are
+        // body-portaled (see TabMenuTrigger) so this overflow can't clip them.
+        overflowX: "hidden",
         overflowY: "hidden",
         scrollbarWidth: "none",
       }}
@@ -435,6 +469,14 @@ export function PanelTabStrip({
                       fontSize: 13,
                       lineHeight: "16px",
                       whiteSpace: "nowrap",
+                      // F#15: the active tab's name ellipsizes only when the tab
+                      // is compressed toward its floor (the overlay clips it);
+                      // above the floor the tab grows to its natural width and
+                      // the name shows in full. min-w-0 lets flex actually
+                      // shrink this span below its content width.
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
                       cursor: tab.renamable ? "text" : "default",
                     }}
                     onDoubleClick={
@@ -590,7 +632,16 @@ const BackgroundTab = forwardRef<
       style={{
         display: "inline-flex",
         alignItems: "center",
-        flexShrink: 0,
+        // F#15: inactive tabs SHARE the strip width and absorb the squeeze
+        // first — flex:1 1 auto down to INACTIVE_MIN_CONTENT, then their names
+        // ellipsize (the button below carries min-w-0 + text-overflow:ellipsis).
+        // They yield before the active tab compresses, so the active name stays
+        // intact longest.
+        flex: "1 1 auto",
+        minWidth: INACTIVE_MIN_CONTENT,
+        // Cap at the natural content width so a short-named inactive tab does
+        // NOT stretch to fill the strip — it only shares width when crowded.
+        maxWidth: "max-content",
         height: 32,
         opacity: isDragging ? 0.5 : 1,
         cursor: dragProps.draggable ? "grab" : "default",
@@ -623,6 +674,14 @@ const BackgroundTab = forwardRef<
           cursor: "pointer",
           whiteSpace: "nowrap",
           fontFamily: "inherit",
+          // F#15: the label is the part that ellipsizes when the inactive tab
+          // is squeezed — it takes the flex shrink (the pin/menu/close stay
+          // fixed) and clips with an ellipsis. min-w-0 lets it shrink below its
+          // text width; the title attr keeps the full name on hover.
+          flex: "1 1 auto",
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
         }}
       >
         {label}
