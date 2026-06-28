@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
@@ -12,6 +12,10 @@ import {
 } from "@library/lib/view-session-store";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { usePgmarkPages, type PgmarkPages } from "@library/hooks/usePgmarkPages";
+import {
+  pdfPagesToPgmark,
+  type PdfPageState,
+} from "@library/lib/pdf-pgmark-adapter";
 import BibEditModal from "./BibEditModal";
 import PaperHeader from "./PaperHeader";
 import PaperRender from "./PaperRender";
@@ -33,8 +37,6 @@ interface Props {
   scope: string;
   panel: PanelKey;
 }
-
-type ViewMode = "text" | "pdf";
 
 /** Whether a PDF source is on disk for this entry (canonical or kept as
  *  an alternate after a .docx superseded the original .pdf). */
@@ -95,6 +97,38 @@ export default function RightDetail({
   const pgmarkPages: PgmarkPages = usePgmarkPages(
     viewMode === "text" ? readerEditor : null,
     viewMode === "text" ? readerScrollEl : null,
+  );
+
+  // F#11(a) — PDF-mode page picker. PdfView lifts the live pdf.js viewer page
+  // state (pagesCount + current page) UP here, along with a `navigate(page)`
+  // callback bound to the viewer's `PDFViewerApplication.page` setter. We hold
+  // it and synthesize a `PgmarkPages`-shaped object via the pure adapter, then
+  // thread it to the SAME PaperHeader PagePicker the text-mode picker uses —
+  // RightDetail stays the single owner; PaperHeader never reaches into PdfView
+  // or the iframe. pagesCount is 0 until `pagesinit` fires; the adapter yields
+  // an empty picker (renders nothing) until then.
+  const [pdfPageState, setPdfPageState] = useState<PdfPageState>({
+    pagesCount: 0,
+    currentPage: 1,
+  });
+  const pdfNavigateRef = useRef<(page: number) => void>(() => {});
+  const onPdfPageStateChange = useCallback(
+    (state: PdfPageState, navigate: (page: number) => void) => {
+      pdfNavigateRef.current = navigate;
+      setPdfPageState(state);
+    },
+    [],
+  );
+  // Re-derive only when the scalar page state changes; the scrollToPage closure
+  // reads the latest navigate via the ref, so its identity needn't churn.
+  const pdfPgmarkPages: PgmarkPages = useMemo(
+    () =>
+      pdfPagesToPgmark(
+        pdfPageState.pagesCount,
+        pdfPageState.currentPage,
+        (page) => pdfNavigateRef.current(page),
+      ),
+    [pdfPageState.pagesCount, pdfPageState.currentPage],
   );
 
   // Whether a PDF source is on disk for THIS paper. Computed from `entry`
@@ -178,9 +212,14 @@ export default function RightDetail({
           onEdit={canEdit ? () => setEditOpen(true) : undefined}
           editPending={!canEdit && editPending}
           showOpenInTab={!isOuterTab}
+          pgmarkPages={pdfPgmarkPages}
         />
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-          <PdfView handle={handle} citekey={entry.citekey} />
+          <PdfView
+            handle={handle}
+            citekey={entry.citekey}
+            onPdfPageStateChange={onPdfPageStateChange}
+          />
         </div>
         {editOpen && canEdit && bib && handle && entry.citekey && (
           <BibEditModal

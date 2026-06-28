@@ -54,11 +54,15 @@ interface Props {
    *  status row (F#9). False in the OUTER Virgil-bar tab (already a tab, so
    *  the link is self-referential); true in the in-library Reader. */
   showOpenInTab?: boolean;
-  /** The shared printed-page derivation for the TEXT-view page picker. F#11:
-   *  this is computed ONCE in RightDetail (the single owner) off the live
-   *  reader refs and threaded down here AND into PageScrollLozenge, so both
-   *  consumers share one ResizeObserver / scroll listener / doc-scan. Absent
-   *  in PDF mode (picker only renders in text mode). */
+  /** The shared printed-page derivation that drives the header page picker.
+   *  F#11: in TEXT mode this is computed ONCE in RightDetail (the single owner)
+   *  off the live reader refs and threaded down here AND into PageScrollLozenge,
+   *  so both consumers share one ResizeObserver / scroll listener / doc-scan.
+   *  F#11(a): in PDF mode RightDetail instead synthesizes this from the live
+   *  pdf.js viewer page state (`pdfPagesToPgmark`) so the SAME PagePicker drives
+   *  the PDF picker at parity. Either way PaperHeader stays agnostic — it just
+   *  renders the picker from whatever `PgmarkPages` it's handed. Absent only
+   *  when no picker applies (e.g. no entry). */
   pgmarkPages?: PgmarkPages;
 }
 
@@ -460,9 +464,7 @@ export default function PaperHeader({
                 bibImported={!!entry.bib.imported}
               />
             )}
-            {viewMode === "text" && pgmarkPages && (
-              <PagePicker pages={pgmarkPages} narrow={narrow} />
-            )}
+            {pgmarkPages && <PagePicker pages={pgmarkPages} narrow={narrow} />}
             <PaperAiRequestsMenu
               items={aiRequestItems}
               onToggle={(kind, next) => void onToggle(kind, next)}

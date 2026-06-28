@@ -2,10 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { readFile } from "@library/lib/library-storage";
+import type { PdfPageState } from "@library/lib/pdf-pgmark-adapter";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
   citekey: string | null;
+  /** F#11(a) — lift the live viewer page state UP to RightDetail so it can
+   *  synthesize a `PgmarkPages` for the header PagePicker at parity with the
+   *  text-mode picker. Fires once after `pagesinit` (pagesCount known) and on
+   *  every `pagechanging`. Also exposes a `navigate(page)` callback bound to
+   *  the viewer's `PDFViewerApplication.page` setter, so RightDetail can drive
+   *  the picker's scroll-to-page without reaching into the iframe itself. */
+  onPdfPageStateChange?: (
+    state: PdfPageState,
+    navigate: (page: number) => void,
+  ) => void;
 }
 
 /** Path to the vendored pdf.js prebuilt viewer (public/pdfjs/web/viewer.html).
@@ -21,10 +32,21 @@ interface Props {
  *  PDFViewerApplication.open() in the load effect still fires normally. */
 const VIEWER_SRC = "/pdfjs/web/viewer.html?file=";
 
+/** Minimal shape of the pdf.js eventBus we subscribe to. */
+interface PdfEventBus {
+  on: (name: string, handler: (...args: unknown[]) => void) => void;
+  off: (name: string, handler: (...args: unknown[]) => void) => void;
+}
+
 /** Minimal shape of the bits of pdf.js's PDFViewerApplication we drive. */
 interface PdfViewerApplication {
   initializedPromise?: Promise<void>;
   open: (args: { url: string; originalUrl?: string }) => Promise<void>;
+  /** Total page count — 0 until the `pagesinit` event fires. */
+  pagesCount?: number;
+  /** Current 1-based page; getter + setter (set to navigate). */
+  page?: number;
+  eventBus?: PdfEventBus;
 }
 
 /**
@@ -54,10 +76,22 @@ export function pdfOpenArgs(
  * If no PDF exists on disk (e.g., a paper indexed from a .docx with no PDF
  * alternate), shows a friendly message instead of an empty frame.
  */
-export default function PdfView({ handle, citekey }: Props) {
+export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props) {
   const [url, setUrl] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  // Keep the latest callback in a ref so the page-state effect (which depends
+  // on the blob URL + citekey, not the callback identity) doesn't re-subscribe
+  // when the parent re-renders with a fresh closure.
+  const onPageStateRef = useRef(onPdfPageStateChange);
+  // Sync the latest callback into the ref AFTER render (an effect, not a
+  // during-render write) so the page-state effect reads the freshest closure
+  // without re-subscribing — and without tripping react-hooks/refs. The
+  // eventBus callbacks fire asynchronously (after paint + effect flush), so
+  // the ref is always current by the time emit() runs.
+  useEffect(() => {
+    onPageStateRef.current = onPdfPageStateChange;
+  });
 
   // Read the PDF bytes off disk -> mint a blob object URL (unchanged FSA plumbing).
   useEffect(() => {
@@ -120,6 +154,101 @@ export default function PdfView({ handle, citekey }: Props) {
     return () => {
       cancelled = true;
       iframe.removeEventListener("load", onLoad);
+    };
+  }, [url, citekey]);
+
+  // F#11(a) — lift the viewer's live page state UP. Subscribe to the viewer's
+  // OWN eventBus (`pagesinit` → pagesCount known; `pagechanging` → current page
+  // moved). This is the pdf.js viewer's internal bus, fully independent of the
+  // TipTap editor — no `editor.on(...)` subscription, no keystroke-path work.
+  // Re-runs per blob URL / citekey (= per paper). Cleans up its listeners on
+  // unmount / paper switch / mode toggle (PdfView unmounts) via the return
+  // block + a `cancelled` flag, so nothing leaks across the keep-alive app.
+  useEffect(() => {
+    if (!url) return;
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    let cancelled = false;
+    let bus: PdfEventBus | null = null;
+    let app: PdfViewerApplication | null = null;
+    let subscribed = false;
+
+    const emit = () => {
+      if (cancelled || !app) return;
+      const pagesCount = app.pagesCount ?? 0;
+      const currentPage = app.page ?? 1;
+      onPageStateRef.current?.({ pagesCount, currentPage }, (page: number) => {
+        // Navigate by setting the viewer's 1-based page. Guard against a
+        // teardown race where the app/iframe is gone.
+        if (cancelled || !app) return;
+        try {
+          app.page = page;
+        } catch {
+          /* viewer torn down mid-navigate — ignore */
+        }
+      });
+    };
+
+    const onPagesInit = () => emit();
+    const onPageChanging = () => emit();
+
+    const subscribe = async () => {
+      const win = iframe.contentWindow as
+        | (Window & { PDFViewerApplication?: PdfViewerApplication })
+        | null;
+      const a = win?.PDFViewerApplication;
+      if (!a) return; // viewer script not ready; the load handler retries
+      try {
+        await a.initializedPromise;
+      } catch {
+        return;
+      }
+      if (cancelled) return;
+      const b = a.eventBus;
+      if (!b) return;
+      app = a;
+      bus = b;
+      // Synchronous re-entry guard: this effect arms `subscribe()` twice (an
+      // eager `void subscribe()` + the iframe `load` handler), and on a cold
+      // mount both can clear the `await a.initializedPromise` above. pdf.js
+      // `EventBus.on` is a plain push with no dedup, while the cleanup's
+      // `bus.off(...)` removes only ONE matching entry — so a double subscribe
+      // would leak a listener across the keep-alive app (and emit twice per
+      // page change). Because there is NO `await` between here and the
+      // `bus.on(...)` calls, the first invocation past the await sets the flag
+      // and subscribes; any concurrent second invocation returns here.
+      if (subscribed) return;
+      subscribed = true;
+      bus.on("pagesinit", onPagesInit);
+      bus.on("pagechanging", onPageChanging);
+      // No eager warm-emit here. The real count arrives via the `pagesinit`
+      // listener, which fires on EVERY `app.open()` — including warm
+      // paper-switches (pdf.js `PDFViewer.setDocument` dispatches `pagesdestroy`
+      // then a fresh `pagesinit` for the new doc). The listener is attached
+      // synchronously above, before the slow `app.open()` parse completes, so
+      // it reliably catches the new document's count. Eagerly emitting
+      // `a.pagesCount` here would instead surface the PREVIOUS document's stale
+      // count on a warm switch (the iframe persists, and `app.open(newBlob)` —
+      // kicked off by the separate open effect — has not finished yet), causing
+      // a brief wrong "p. N / OLD_TOTAL" flash before `pagesinit` corrects it.
+    };
+
+    const onLoad = () => {
+      void subscribe();
+    };
+    iframe.addEventListener("load", onLoad);
+    void subscribe();
+
+    return () => {
+      cancelled = true;
+      iframe.removeEventListener("load", onLoad);
+      if (bus) {
+        bus.off("pagesinit", onPagesInit);
+        bus.off("pagechanging", onPageChanging);
+      }
+      // Reset the picker to the not-ready state so a stale page count from the
+      // previous paper can't briefly show against the next paper's viewer.
+      onPageStateRef.current?.({ pagesCount: 0, currentPage: 1 }, () => {});
     };
   }, [url, citekey]);
 
