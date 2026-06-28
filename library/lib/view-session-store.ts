@@ -27,6 +27,9 @@ import {
 import {
   loadSort,
   loadWidths,
+  isReorderableColId,
+  DEFAULT_COL_ORDER,
+  type ReorderableColId,
   type ResizableColId,
   type SortColId,
   type SortDir,
@@ -114,6 +117,12 @@ export interface LibraryViewSession {
     middleWidth?: number;
     papersHeight?: number;
     colWidths?: Partial<Record<ResizableColId, number>>;
+    // F#13: GLOBAL column order (one ordering across every library — a sibling
+    // of colWidths in this singleton blob, so it's global-by-construction).
+    // A user override; absent ⇒ the consumer falls back to DEFAULT_COL_ORDER.
+    // Normalized on read (see normalizeColOrder) so a partial/hand-edited blob
+    // can never hide a column.
+    colOrder?: ReorderableColId[];
     // Central library landing view. Absent → "dashboard" (the stats home is
     // the default entry point; the heavy virtualized list mounts only when the
     // user explicitly clicks Browse). Persists the user's last explicit choice.
@@ -241,12 +250,52 @@ function normalizeSession(raw: LibraryViewSession): LibraryViewSession {
       ? raw.projectPinned.filter((v): v is string => typeof v === "string")
       : base.projectPinned,
     citedOnly: raw.citedOnly === true,
-    layout:
-      raw.layout && typeof raw.layout === "object" ? { ...raw.layout } : {},
+    layout: normalizeLayout(raw.layout),
   };
   if (raw.scopes && typeof raw.scopes === "object") {
     for (const [scope, scopeState] of Object.entries(raw.scopes)) {
       out.scopes[scope] = normalizeScope(scopeState as ScopeState);
+    }
+  }
+  return out;
+}
+
+/** Defensive sanitize of the persisted `layout` slice. Spreads the raw layout
+ *  (preserving sizes / colWidths / centralViewMode as-is) then SANITIZES
+ *  `colOrder`: a partial/hand-edited array is filtered to known ids, deduped
+ *  (first occurrence wins), and any missing reorderable id is APPENDED so a
+ *  column can never be hidden. An absent or fully-invalid colOrder is left
+ *  undefined (the consumer falls back to DEFAULT_COL_ORDER). */
+function normalizeLayout(
+  raw: LibraryViewSession["layout"] | undefined,
+): LibraryViewSession["layout"] {
+  if (!raw || typeof raw !== "object") return {};
+  const out: LibraryViewSession["layout"] = { ...raw };
+  out.colOrder = normalizeColOrder(raw.colOrder);
+  if (out.colOrder === undefined) delete out.colOrder;
+  return out;
+}
+
+/** Sanitize a saved colOrder array. Returns a complete permutation of the five
+ *  reorderable columns when the input is a (possibly partial) array, or
+ *  `undefined` when it's absent/not-an-array — so the absent case stays
+ *  undefined rather than baking the default into the blob. */
+function normalizeColOrder(
+  raw: ReorderableColId[] | undefined,
+): ReorderableColId[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: ReorderableColId[] = [];
+  const seen = new Set<ReorderableColId>();
+  for (const c of raw) {
+    if (isReorderableColId(c) && !seen.has(c)) {
+      seen.add(c);
+      out.push(c);
+    }
+  }
+  for (const c of DEFAULT_COL_ORDER) {
+    if (!seen.has(c)) {
+      seen.add(c);
+      out.push(c);
     }
   }
   return out;
