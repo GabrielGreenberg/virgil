@@ -5,7 +5,7 @@ import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
-import { BibImportedCheck, Dot, StatusPills } from "./StatusPill";
+import { Dot, StatusPills } from "./StatusPill";
 import RowActionMenu from "./RowActionMenu";
 
 export interface RowActions {
@@ -59,6 +59,9 @@ interface Props {
 
 /** Width of the always-visible action-menu column on the right edge. */
 export const ACTION_COL_WIDTH = 32;
+
+/** Width of the F#9 open-in-tab column (just left of the action menu). */
+export const OPEN_COL_WIDTH = 28;
 
 /** Width of the always-visible request-state dot column on the left edge. */
 export const STATUS_DOT_COL_WIDTH = 16;
@@ -246,6 +249,7 @@ function LeftListRow({ entry, bib, selected, gridTemplate, entryKey, onActivate,
               pdfPresent={entry.pdf.present}
               indexed={entry.indexed.state}
               bib={entry.bib.state}
+              bibImported={entry.bib.imported}
             />
           </span>
         </Cell>
@@ -321,17 +325,57 @@ function LeftListRow({ entry, bib, selected, gridTemplate, entryKey, onActivate,
             </button>
           )}
         </div>
-        {/* bib-imp: blue check when this paper's references.bib is in master.bib */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            overflow: "hidden",
+      </div>
+      {/* F#9: open-in-Virgil-tab column. A fixed-width flex sibling just
+          before the ⋮ action column (outside the resizable grid, like the
+          dot + action columns), so it never clips. Fires the existing
+          `virgil-open-library` bridge by name — no Virgil internals imported.
+          Disabled on triage rows (no citekey). */}
+      <div
+        style={{
+          flexShrink: 0,
+          width: OPEN_COL_WIDTH,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <button
+          type="button"
+          className="iconbtn-sm"
+          aria-label={ck ? "Open in a new Virgil tab" : "Triage this entry first"}
+          title={ck ? "Open in a new Virgil tab" : "Triage this entry first"}
+          disabled={!ck}
+          draggable={false}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!ck) return;
+            window.dispatchEvent(
+              new CustomEvent("virgil-open-library", {
+                detail: { citekey: ck, target: "tab" },
+              }),
+            );
           }}
+          style={{ opacity: ck ? 1 : 0.4 }}
         >
-          {entry.bib.imported ? <BibImportedCheck /> : null}
-        </div>
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+        </button>
       </div>
       {/* Always-visible action-menu column. Stays pinned on the right
           regardless of how compressed the grid is — it's a flex sibling

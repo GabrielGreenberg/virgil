@@ -42,6 +42,7 @@ vi.mock("../LeftListRow", async () => {
     __esModule: true,
     default: memo(MockRow),
     ACTION_COL_WIDTH: 32,
+    OPEN_COL_WIDTH: 28,
     STATUS_DOT_COL_WIDTH: 16,
   };
 });
