@@ -63,6 +63,29 @@ describe("readBibIndex — slim → BibEntry mapping", () => {
     });
   });
 
+  it("projects the bib.state (bs) field into stateByKey, ignoring stray values (F#4)", async () => {
+    readTextFile.mockImplementation(async (_h: unknown, path?: string) =>
+      path?.endsWith("bib-index.json")
+        ? JSON.stringify({
+            v: 1, stamp: "s",
+            entries: [
+              { k: "auth", t: "A", bs: "authenticated" },
+              { k: "ms", bs: "manuscript" },
+              { k: "nostate", t: "B" }, // no bs → absent from the map
+              { k: "bogus", bs: "wat" }, // invalid state → ignored
+            ],
+          })
+        : undefined,
+    );
+    const res = await readBibIndex(handle);
+    expect(res).not.toBeNull();
+    expect(res!.stateByKey.get("auth")).toBe("authenticated");
+    expect(res!.stateByKey.get("ms")).toBe("manuscript");
+    expect(res!.stateByKey.has("nostate")).toBe(false);
+    expect(res!.stateByKey.has("bogus")).toBe(false);
+    expect(res!.stateByKey.size).toBe(2);
+  });
+
   it("returns null on a CORRUPT index (truncated JSON) → caller falls back", async () => {
     readTextFile.mockImplementation(async (_h: unknown, path?: string) =>
       path?.endsWith("bib-index.json") ? '{"v":1,"entries":[{"k":"a"' : undefined,

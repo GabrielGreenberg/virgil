@@ -16,7 +16,7 @@
 // flushed by usePersistentState's unmount flushPending before the pipeline ends.
 
 import { useEffect, type ReactNode } from "react";
-import type { CatalogEntry } from "@library/lib/catalog";
+import type { BibAuthState, CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { useKeepAliveLRU } from "@/lib/keep-alive/useKeepAliveLRU";
@@ -59,6 +59,7 @@ interface Props {
   activeCitekey: string | null;
   entries: CatalogEntry[];
   bibByKey: Map<string, BibEntry>;
+  bibStateByKey?: ReadonlyMap<string, BibAuthState>;
   onBibChanged?: () => void;
   scope: string;
   panel: PanelKey;
@@ -69,6 +70,7 @@ export default function ReaderLRU({
   activeCitekey,
   entries,
   bibByKey,
+  bibStateByKey,
   onBibChanged,
   scope,
   panel,
@@ -87,6 +89,7 @@ export default function ReaderLRU({
               citekey={citekey}
               entries={entries}
               bibByKey={bibByKey}
+              bibStateByKey={bibStateByKey}
               onBibChanged={onBibChanged}
               scope={scope}
               panel={panel}

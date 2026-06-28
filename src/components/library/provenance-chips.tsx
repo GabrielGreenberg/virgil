@@ -97,7 +97,7 @@ export function provenanceChipStyle(
           return {
             text: "auth",
             tooltip:
-              "Library entry verified against authoritative sources (Crossref / OpenAlex / etc.)",
+              "Library entry authenticated against authoritative sources (Crossref / OpenAlex / etc.)",
             className:
               "text-emerald-700 bg-emerald-50 border border-emerald-200",
           };
@@ -112,7 +112,7 @@ export function provenanceChipStyle(
           return {
             text: "unverified",
             tooltip:
-              "Library entry couldn't be verified against external sources",
+              "Library entry couldn't be authenticated against external sources",
             className: "text-rose-700 bg-rose-50 border border-rose-200",
           };
         case "manuscript":

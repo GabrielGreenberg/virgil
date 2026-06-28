@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useDeferredValue,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { computeCatalogStats, type CatalogStats } from "@library/lib/catalog-stats";
@@ -117,21 +111,23 @@ export default function LibraryCentralDashboard({
 function StatsGrid({ stats }: { stats: CatalogStats }) {
   return (
     <div className="lib-dashboard-scroll">
-      <Section title="Library size">
+      {/* Top line (F#1): the size axis — the reference universe + the real
+          documents on disk and how far they've been processed. */}
+      <Section title="Library">
         <StatCard
           value={stats.bibEntries}
           label="Bibliography"
           sub="references in master.bib"
         />
         <StatCard
-          value={stats.totalSources}
+          value={stats.sourcesWithFile}
           label="Sources"
-          sub="papers & files tracked"
+          sub="documents on disk"
         />
         <StatCard
           value={stats.indexed}
           label="Indexed"
-          sub={`of ${fmt(stats.totalSources)} sources`}
+          sub={`of ${fmt(stats.sourcesWithFile)} sources`}
         />
         <StatCard
           value={stats.deepIndexed}
@@ -140,49 +136,18 @@ function StatsGrid({ stats }: { stats: CatalogStats }) {
         />
       </Section>
 
-      <Section title="Bibliography health">
-        <StatCard
-          value={stats.verifiedTerminal}
-          label="Verified"
-          pill={<IndexedPillNeutral tone="green" text="✓ no action" />}
-        />
+      {/* Middle line (F#1): the bibliography axis — a strict binary partition
+          of the Bibliography total, plus the untriaged inbox. */}
+      <Section title="Bibliography">
         <StatCard
           value={stats.authenticated}
           label="Authenticated"
           sub="checked against sources"
         />
         <StatCard
-          value={stats.bibNeedsAction}
-          label="Needs action"
-          pill={
-            <IndexedPillNeutral
-              tone={stats.bibNeedsAction > 0 ? "amber" : "gray"}
-              text={stats.bibNeedsAction > 0 ? "⋯ review" : "— clear"}
-            />
-          }
-        />
-      </Section>
-
-      <Section title="Pipeline">
-        <StatCard
-          value={stats.queuedOrRunning}
-          label="In progress"
-          pill={
-            <IndexedPillNeutral
-              tone={stats.queuedOrRunning > 0 ? "amber" : "gray"}
-              text={stats.queuedOrRunning > 0 ? "⋯ running" : "— idle"}
-            />
-          }
-        />
-        <StatCard
-          value={stats.failedIndex}
-          label="Failed"
-          pill={
-            <IndexedPillNeutral
-              tone={stats.failedIndex > 0 ? "red" : "gray"}
-              text={stats.failedIndex > 0 ? "! retry" : "— none"}
-            />
-          }
+          value={stats.nonAuthenticated}
+          label="Non-authenticated"
+          sub="not yet authenticated"
         />
         <StatCard
           value={stats.unsorted}
@@ -231,31 +196,6 @@ function StatCard({
       ) : null}
     </div>
   );
-}
-
-/** A bare 5-tone pill for the dashboard cards (reuses the pill CSS vars; the
- *  StatusPill module's pills are status-specific, so this is the generic
- *  variant for the dashboard's own ✓/⋯/!/— glyph labels). */
-function IndexedPillNeutral({
-  tone,
-  text,
-}: {
-  tone: "green" | "amber" | "red" | "gray" | "blue";
-  text: string;
-}) {
-  const style: CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    background: `var(--pill-${tone}-bg)`,
-    color: `var(--pill-${tone}-fg)`,
-    fontSize: 11,
-    lineHeight: "16px",
-    padding: "1px 6px",
-    borderRadius: 999,
-    fontFamily: "var(--mono)",
-    whiteSpace: "nowrap",
-  };
-  return <span style={style}>{text}</span>;
 }
 
 // ── Search palette ────────────────────────────────────────────────────────

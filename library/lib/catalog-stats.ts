@@ -20,6 +20,11 @@ export interface CatalogStats {
   totalSources: number;
   /** Catalog rows with a citekey (i.e. sorted/named papers, not triage rows). */
   papers: number;
+  /** "Sources" in the honest, F#1 sense: rows that are a real document on
+   *  disk — a citekey AND `pdf.present`. Excludes citation-only / bib-only
+   *  reference rows (the mass of fileless master.bib entries) and the
+   *  untriaged unsorted files. This is "documents I actually have". */
+  sourcesWithFile: number;
   /** Distinct master.bib entries. Size of the bibByKey map at the call site. */
   bibEntries: number;
   /** indexed OR deepIndexed — papers whose text Virgil can render. */
@@ -30,13 +35,16 @@ export interface CatalogStats {
   queuedOrRunning: number;
   /** Indexing failed — needs a retry. */
   failedIndex: number;
-  /** bib.state === "authenticated". */
+  /** bib.state === "authenticated", counted over the reference universe (the
+   *  caller passes the merged universe rows, whose fileless entries carry the
+   *  bib-index-projected state — F#4). */
   authenticated: number;
-  /** bib.state ∈ {authenticated, manuscript, canonical} — the "no action
-   *  needed" terminal set (verified or legitimately unverifiable). */
-  verifiedTerminal: number;
   /** bib.state ∈ {unverified, failed} — entries that want a human/skill pass. */
   bibNeedsAction: number;
+  /** The strict complement of `authenticated` over the bibliography total:
+   *  `bibEntries − authenticated` (folds unverified / failed / manuscript /
+   *  canonical / none together). F#1's middle-line "Non-authenticated". */
+  nonAuthenticated: number;
   /** Catalog rows with no citekey — unsorted files awaiting triage. If the
    *  caller's `entries` array excludes unsorted rows, this is simply 0. */
   unsorted: number;
@@ -71,14 +79,15 @@ export function computeCatalogStats(
   const stats: CatalogStats = {
     totalSources: list.length,
     papers: 0,
+    sourcesWithFile: 0,
     bibEntries: typeof bibByKey?.size === "number" ? bibByKey.size : 0,
     indexed: 0,
     deepIndexed: 0,
     queuedOrRunning: 0,
     failedIndex: 0,
     authenticated: 0,
-    verifiedTerminal: 0,
     bibNeedsAction: 0,
+    nonAuthenticated: 0,
     unsorted: 0,
   };
 
@@ -86,8 +95,14 @@ export function computeCatalogStats(
     if (!e) continue;
 
     // citekey presence: a sorted paper vs. an unsorted/triaging file.
-    if (e.citekey) stats.papers++;
-    else stats.unsorted++;
+    if (e.citekey) {
+      stats.papers++;
+      // A real document on disk (F#1 "Sources"): citekey + a present file.
+      const pdf = (e as { pdf?: unknown }).pdf;
+      if (isObj(pdf) && pdf.present === true) stats.sourcesWithFile++;
+    } else {
+      stats.unsorted++;
+    }
 
     // Indexing pipeline state.
     const ix = indexedState(e);
@@ -96,13 +111,16 @@ export function computeCatalogStats(
     if (ix === "queued" || ix === "running") stats.queuedOrRunning++;
     if (ix === "failed") stats.failedIndex++;
 
-    // Bibliography authentication state.
+    // Bibliography authentication state (counted over the reference universe
+    // when the caller passes the merged universe rows).
     const bib = bibState(e);
     if (bib === "authenticated") stats.authenticated++;
-    if (bib === "authenticated" || bib === "manuscript" || bib === "canonical")
-      stats.verifiedTerminal++;
     if (bib === "unverified" || bib === "failed") stats.bibNeedsAction++;
   }
+
+  // Strict binary complement over the bibliography total (F#1). Clamp so a
+  // stray holding whose citekey isn't in master.bib can't push it negative.
+  stats.nonAuthenticated = Math.max(0, stats.bibEntries - stats.authenticated);
 
   return stats;
 }

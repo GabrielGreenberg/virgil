@@ -95,7 +95,7 @@ describe("useLibraryBridge routing", () => {
 });
 
 describe("LibraryStatusRow", () => {
-  it("shows '✓ Verified' for an authenticated entry plus its index tier and the Open link", () => {
+  it("shows '✓ Authenticated' for an authenticated entry plus its index tier and the Open link", () => {
     render(
       <LibraryStatusRow
         bibState="authenticated"
@@ -104,7 +104,7 @@ describe("LibraryStatusRow", () => {
         inLibrary
       />,
     );
-    expect(screen.getByText("✓ Verified")).toBeTruthy();
+    expect(screen.getByText("✓ Authenticated")).toBeTruthy();
     expect(screen.getByText("Deep-indexed PDF")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Open bringhurst1992 in a new tab/ })).toBeTruthy();
   });

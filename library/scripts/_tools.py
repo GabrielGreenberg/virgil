@@ -420,6 +420,27 @@ _BIB_INDEX_FIELDS = (
 # it). Line-anchored splitting contains any malformation to its own entry.
 _BIB_ENTRY_START_RE = re.compile(r"(?m)^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,")
 
+# The per-entry auth state lives in a `% bib.state = <state>` comment written
+# immediately before the entry by update_master_bib_entry. Pair each comment
+# with the citekey of the entry that follows it (tolerating blank lines).
+# This is the authoritative state home for the reference universe (F#4): the
+# bib-index projects it into each record's `bs` so the fileless mass of
+# citation-only references carries real auth state without a catalog row.
+_BIB_STATE_COMMENT_RE = re.compile(
+    r"(?m)^%[ \t]*bib\.state[ \t]*=[ \t]*(\w+)[ \t]*\n(?:[ \t]*\n)*@\w+[ \t]*\{[ \t]*([^,\s]+)"
+)
+
+
+def iter_master_bib_states(text: str):
+    """Yield (citekey, state) for every `% bib.state = <state>` comment paired
+    with the entry it precedes. Later duplicates win (matches the file order
+    update_master_bib_entry maintains)."""
+    for m in _BIB_STATE_COMMENT_RE.finditer(text):
+        state = m.group(1).strip()
+        citekey = m.group(2).strip()
+        if citekey:
+            yield citekey, state
+
 
 def iter_master_bib_slim(text: str):
     """Yield (citekey, entry_type, fields) for every entry in master.bib text.
@@ -478,6 +499,8 @@ def build_bib_index(library: Path, *, force: bool = False) -> bool:
 
     master_path = library / "master.bib"
     text = master_path.read_text() if master_path.exists() else ""
+    # Project the per-entry `% bib.state` comments into the index (F#4).
+    state_by_key = dict(iter_master_bib_states(text))
     entries: list[dict] = []
     seen: set[str] = set()
     for citekey, _entry_type, fields in iter_master_bib_slim(text):
@@ -489,6 +512,9 @@ def build_bib_index(library: Path, *, force: bool = False) -> bool:
             val = fields.get(full)
             if val:
                 slim[short] = val
+        state = state_by_key.get(citekey)
+        if state:
+            slim["bs"] = state
         entries.append(slim)
 
     payload = {
@@ -496,7 +522,8 @@ def build_bib_index(library: Path, *, force: bool = False) -> bool:
         "stamp": stamp,
         "generatedAt": _now(),
         "schema": "k=citekey t=title a=author e=editor y=year d=doi "
-                  "j=journal b=booktitle v=volume n=number p=pages q=publisher s=series",
+                  "j=journal b=booktitle v=volume n=number p=pages q=publisher s=series "
+                  "bs=bib.state",
         "count": len(entries),
         "entries": entries,
     }
@@ -929,10 +956,6 @@ def update_master_bib_entry(
             m = pattern.search(text)
             if m:
                 break
-        replacement = ""
-        if bib_state:
-            replacement += f"% bib.state = {bib_state}\n"
-        replacement += emit_bib_entry(citekey, entry_type, fields)
         if m:
             entry_start = m.start()
             brace_pos = text.index("{", m.start())
@@ -956,10 +979,27 @@ def update_master_bib_entry(
             else:
                 prev_line_start += 1
             prev_line = text[prev_line_start:at_line_start].strip()
+            # F#4: the `% bib.state` comment is the authoritative state home,
+            # so a fields-only writeback (no `bib_state` arg) must NOT erase it.
+            # When we're swallowing an existing comment, carry its state forward
+            # unless the caller passed an explicit new state.
+            existing_comment_state = ""
             if prev_line.startswith("% bib.state"):
                 entry_start = prev_line_start
+                cm = re.match(r"%\s*bib\.state\s*=\s*(\w+)", prev_line)
+                if cm:
+                    existing_comment_state = cm.group(1)
+            effective_bib_state = bib_state or existing_comment_state
+            replacement = ""
+            if effective_bib_state:
+                replacement += f"% bib.state = {effective_bib_state}\n"
+            replacement += emit_bib_entry(citekey, entry_type, fields)
             text = text[:entry_start] + replacement + text[entry_end:]
         else:
+            replacement = ""
+            if bib_state:
+                replacement += f"% bib.state = {bib_state}\n"
+            replacement += emit_bib_entry(citekey, entry_type, fields)
             if text and not text.endswith("\n"):
                 text += "\n"
             text += "\n" + replacement

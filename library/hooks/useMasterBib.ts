@@ -6,6 +6,9 @@ import { parseBibFile } from "@library/lib/bib-parser";
 import { readBibIndex, readBibIndexStamp } from "@library/lib/bib-index";
 import { libPerf, libPerfAsync } from "@library/lib/perf";
 import type { BibEntry } from "@library/lib/types";
+import type { BibAuthState } from "@library/lib/catalog";
+
+const EMPTY_STATES: ReadonlyMap<string, BibAuthState> = new Map();
 
 /**
  * Library bib entries for the BROWSE path (list, search, citation picker).
@@ -22,6 +25,11 @@ import type { BibEntry } from "@library/lib/types";
  */
 export function useMasterBib(handle: FileSystemDirectoryHandle | null) {
   const [entries, setEntries] = useState<BibEntry[]>([]);
+  // citekey → bib.state for the whole reference universe (F#4). Populated
+  // from the slim bib-index's projected `bs`; empty on the master.bib-parse
+  // fallback (old libraries) — readers default missing keys to "none".
+  const [bibStateByKey, setBibStateByKey] =
+    useState<ReadonlyMap<string, BibAuthState>>(EMPTY_STATES);
   const [error, setError] = useState<Error | null>(null);
   // Change signals that let an unchanged reload short-circuit (keeping the
   // entries array reference stable for downstream identity-keyed memos /
@@ -47,6 +55,7 @@ export function useMasterBib(handle: FileSystemDirectoryHandle | null) {
           lastStampRef.current = stamp;
           lastTextRef.current = null;
           setEntries(result.entries);
+          setBibStateByKey(result.stateByKey);
           setError(null);
           return;
         }
@@ -59,12 +68,16 @@ export function useMasterBib(handle: FileSystemDirectoryHandle | null) {
         lastTextRef.current = null;
         lastStampRef.current = null;
         setEntries([]);
+        setBibStateByKey(EMPTY_STATES);
         return;
       }
       if (text === lastTextRef.current) return;
       lastTextRef.current = text;
       lastStampRef.current = null;
       setEntries(libPerf("master.bib citation-js parse", () => parseBibFile(text), (e) => `${e.length} entries`));
+      // The citation-js fallback drops comments, so no state projection is
+      // available here — keep the universe states empty (→ "none").
+      setBibStateByKey(EMPTY_STATES);
       setError(null);
     } catch (e) {
       setError(e as Error);
@@ -82,5 +95,5 @@ export function useMasterBib(handle: FileSystemDirectoryHandle | null) {
     return () => window.removeEventListener("focus", onFocus);
   }, [handle, reload]);
 
-  return { entries, error, reload };
+  return { entries, bibStateByKey, error, reload };
 }

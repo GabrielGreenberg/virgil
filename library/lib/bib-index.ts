@@ -14,11 +14,15 @@
 
 import { readTextFile, ROOT_FILES } from "./library-storage";
 import type { BibEntry } from "./types";
+import type { BibAuthState } from "./catalog";
 
 /** One slim record in bib-index.json. Compact keys; these are exactly the
  *  fields the browse path renders (list/sort, search, picker expanded details).
  *  k=citekey t=title a=author e=editor y=year d=doi
- *  j=journal b=booktitle v=volume n=number p=pages q=publisher s=series. */
+ *  j=journal b=booktitle v=volume n=number p=pages q=publisher s=series.
+ *  bs=bib.state (projected from the master.bib "% bib.state" comment — F#4
+ *  layered model: the reference universe's auth state lives here, NOT on a
+ *  per-reference catalog row). */
 interface BibIndexRecord {
   k: string;
   t?: string;
@@ -33,6 +37,7 @@ interface BibIndexRecord {
   p?: string;
   q?: string;
   s?: string;
+  bs?: string;
 }
 
 interface BibIndexFile {
@@ -46,7 +51,23 @@ export interface BibIndexResult {
   stamp: string;
   /** Slim records widened to the BibEntry shape (raw="" — browse fields only). */
   entries: BibEntry[];
+  /** citekey → bib.state, projected from the master.bib "% bib.state"
+   *  comment. The authoritative auth state for the whole reference universe
+   *  (F#4). Absent entries (no comment yet) are simply not in the map →
+   *  readers default to "none". */
+  stateByKey: Map<string, BibAuthState>;
 }
+
+/** Valid bib-auth states — guards the projected `bs` field against a stray
+ *  on-disk value. */
+const VALID_BIB_STATES: ReadonlySet<string> = new Set<BibAuthState>([
+  "none",
+  "unverified",
+  "authenticated",
+  "manuscript",
+  "canonical",
+  "failed",
+]);
 
 /** Map a slim record to the BibEntry shape the browse path already consumes.
  *  `raw` is intentionally empty — slim records never serialize/format. */
@@ -92,8 +113,15 @@ export async function readBibIndex(
     return null; // truncated / corrupt index → fall back to master.bib
   }
   if (!parsed || !Array.isArray(parsed.entries)) return null;
+  const stateByKey = new Map<string, BibAuthState>();
+  for (const r of parsed.entries) {
+    if (r.bs && VALID_BIB_STATES.has(r.bs)) {
+      stateByKey.set(r.k, r.bs as BibAuthState);
+    }
+  }
   return {
     stamp: parsed.stamp ?? "",
     entries: parsed.entries.map(recordToBibEntry),
+    stateByKey,
   };
 }

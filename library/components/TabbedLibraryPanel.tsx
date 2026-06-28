@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
-import type { CatalogEntry } from "@library/lib/catalog";
+import type { BibAuthState, CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import {
   CENTRAL_LIBRARY_ID,
@@ -53,6 +53,9 @@ interface Props {
   libraryById: Map<string, Library>;
   entries: CatalogEntry[];
   bibByKey: Map<string, BibEntry>;
+  /** F#4: authoritative reference-universe states (bib-index projection),
+   *  used so fileless synthetic rows show the real state, not a hardcode. */
+  bibStateByKey?: ReadonlyMap<string, BibAuthState>;
   selectedKeys: ReadonlySet<string>;
   anchorKey: string | null;
   /** Commit a new selection set + anchor. The anchor is the pivot for
@@ -107,6 +110,7 @@ export default function TabbedLibraryPanel({
   libraryById,
   entries,
   bibByKey,
+  bibStateByKey,
   selectedKeys,
   anchorKey,
   onSelectKeys,
@@ -275,7 +279,8 @@ export default function TabbedLibraryPanel({
           updatedAt: "",
           pdf: { present: false },
           indexed: { state: "none" },
-          bib: { state: "unverified" },
+          // F#4: real projected state for the fileless reference, default "none".
+          bib: { state: bibStateByKey?.get(key) ?? "none" },
         });
       }
       return out;
@@ -285,7 +290,7 @@ export default function TabbedLibraryPanel({
       const k = e.citekey ?? `__triage__${e.originalFilename}`;
       return allowedKeys.has(k);
     });
-  }, [activeLibrary, entries, project]);
+  }, [activeLibrary, entries, project, bibStateByKey]);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -484,6 +489,7 @@ export default function TabbedLibraryPanel({
               activeCitekey={activeLibrary.citekey ?? null}
               entries={entries}
               bibByKey={bibByKey}
+              bibStateByKey={bibStateByKey}
               onBibChanged={onBibChanged}
               scope={scope}
               panel={panel}
