@@ -16,6 +16,7 @@ from _tools import (  # noqa: E402
     iter_master_bib_slim,
     iter_master_bib_states,
     read_master_bib,
+    update_master_bib_entry,
 )
 
 
@@ -110,6 +111,36 @@ def test_bib_state_comment_tolerates_blank_line_before_entry(tmp_path):
     assert build_bib_index(tmp_path, force=True) is True
     idx = json.loads((tmp_path / ".virgil" / "bib-index.json").read_text())
     assert idx["entries"][0]["bs"] == "failed"
+
+
+def test_fields_only_writeback_preserves_bib_state_comment(tmp_path):
+    # F#4 SSOT integrity: the `% bib.state` comment is the authoritative state
+    # home, so a fields-only update_master_bib_entry (no --bib-state) must NOT
+    # erase it. Regression guard for the comment-wipe bug.
+    (tmp_path / "master.bib").write_text(
+        "% bib.state = authenticated\n"
+        "@book{saussure1959,\n  title = {Course},\n  author = {Saussure, F},\n}\n"
+    )
+    update_master_bib_entry(
+        tmp_path, "saussure1959", "book",
+        {"title": "Course in General Linguistics", "author": "Saussure, Ferdinand de"},
+    )
+    text = (tmp_path / "master.bib").read_text()
+    assert "% bib.state = authenticated" in text, text
+    assert dict(iter_master_bib_states(text)).get("saussure1959") == "authenticated"
+    # The fields were still updated.
+    assert "Course in General Linguistics" in text
+
+
+def test_explicit_bib_state_overrides_existing_comment(tmp_path):
+    (tmp_path / "master.bib").write_text(
+        "% bib.state = canonical\n"
+        "@book{x,\n  title = {T},\n}\n"
+    )
+    update_master_bib_entry(tmp_path, "x", "book", {"title": "T2"}, bib_state="authenticated")
+    text = (tmp_path / "master.bib").read_text()
+    assert "% bib.state = authenticated" in text
+    assert "canonical" not in text
 
 
 def test_stamp_gate_skips_rebuild_when_master_unchanged(tmp_path):

@@ -47,7 +47,7 @@ function verifiedChip(state: LibraryBibState | undefined) {
       return (
         <span
           className={`${CHIP_BASE} text-amber-700 bg-amber-50 border border-amber-200`}
-          data-hint="Best-effort fields — not yet verified against an authoritative source"
+          data-hint="Best-effort fields — not yet authenticated against an authoritative source"
           aria-label="Unverified bibliography entry"
         >
           Unverified

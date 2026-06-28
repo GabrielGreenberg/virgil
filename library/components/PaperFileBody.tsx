@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { CatalogEntry } from "@library/lib/catalog";
+import type { BibAuthState, CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { getFullLibraryBibEntry } from "@library/lib/bib-entry-full";
@@ -13,6 +13,10 @@ interface Props {
   citekey: string | null;
   entries: CatalogEntry[];
   bibByKey: Map<string, BibEntry>;
+  /** F#4: authoritative reference-universe states (bib-index projection).
+   *  Optional — the outer-tab mount has none, so a fileless synthesized
+   *  entry defaults to "none" there. */
+  bibStateByKey?: ReadonlyMap<string, BibAuthState>;
   onBibChanged?: () => void;
   /** View-session scope + panel — threaded into the Reader scroll key. */
   scope: string;
@@ -30,6 +34,7 @@ export default function PaperFileBody({
   citekey,
   entries,
   bibByKey,
+  bibStateByKey,
   onBibChanged,
   scope,
   panel,
@@ -49,9 +54,10 @@ export default function PaperFileBody({
       updatedAt: "",
       pdf: { present: false },
       indexed: { state: "none" },
-      bib: { state: bib ? "unverified" : "none" },
+      // F#4: real projected state for the fileless reference, default "none".
+      bib: { state: bibStateByKey?.get(citekey) ?? "none" },
     };
-  }, [citekey, entries, bibByKey]);
+  }, [citekey, entries, bibByKey, bibStateByKey]);
 
   // bibByKey carries only slim browse fields (raw="", partial fields). The
   // detail surface (PaperHeader's formatted bibliography, BibEditModal,

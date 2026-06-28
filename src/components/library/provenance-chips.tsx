@@ -112,7 +112,7 @@ export function provenanceChipStyle(
           return {
             text: "unverified",
             tooltip:
-              "Library entry couldn't be verified against external sources",
+              "Library entry couldn't be authenticated against external sources",
             className: "text-rose-700 bg-rose-50 border border-rose-200",
           };
         case "manuscript":

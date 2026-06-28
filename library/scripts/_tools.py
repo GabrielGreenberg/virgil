@@ -956,10 +956,6 @@ def update_master_bib_entry(
             m = pattern.search(text)
             if m:
                 break
-        replacement = ""
-        if bib_state:
-            replacement += f"% bib.state = {bib_state}\n"
-        replacement += emit_bib_entry(citekey, entry_type, fields)
         if m:
             entry_start = m.start()
             brace_pos = text.index("{", m.start())
@@ -983,10 +979,27 @@ def update_master_bib_entry(
             else:
                 prev_line_start += 1
             prev_line = text[prev_line_start:at_line_start].strip()
+            # F#4: the `% bib.state` comment is the authoritative state home,
+            # so a fields-only writeback (no `bib_state` arg) must NOT erase it.
+            # When we're swallowing an existing comment, carry its state forward
+            # unless the caller passed an explicit new state.
+            existing_comment_state = ""
             if prev_line.startswith("% bib.state"):
                 entry_start = prev_line_start
+                cm = re.match(r"%\s*bib\.state\s*=\s*(\w+)", prev_line)
+                if cm:
+                    existing_comment_state = cm.group(1)
+            effective_bib_state = bib_state or existing_comment_state
+            replacement = ""
+            if effective_bib_state:
+                replacement += f"% bib.state = {effective_bib_state}\n"
+            replacement += emit_bib_entry(citekey, entry_type, fields)
             text = text[:entry_start] + replacement + text[entry_end:]
         else:
+            replacement = ""
+            if bib_state:
+                replacement += f"% bib.state = {bib_state}\n"
+            replacement += emit_bib_entry(citekey, entry_type, fields)
             if text and not text.endswith("\n"):
                 text += "\n"
             text += "\n" + replacement

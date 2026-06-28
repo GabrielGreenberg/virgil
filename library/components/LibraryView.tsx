@@ -759,6 +759,7 @@ export default function LibraryView({
       libraryById={libraryTabs.libraryById}
       entries={mergedEntries}
       bibByKey={bibByKey}
+      bibStateByKey={bibStateByKey}
       selectedKeys={sel.selectedKeys}
       anchorKey={sel.anchorKey}
       // Pass the store setter directly — it's already referentially stable

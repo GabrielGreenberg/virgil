@@ -1625,7 +1625,7 @@ def _internet_archive_search(title: str, author: str = "") -> list[dict]:
             "doi": "",
             "title": _first(d.get("title", "")),
             "authors": authors,
-            "year": str(d.get("year", "") or "")[:4],
+            "year": str(_first(d.get("year", "")) or "")[:4],
             "type": "book",
             "container": "",
             "volume": "",

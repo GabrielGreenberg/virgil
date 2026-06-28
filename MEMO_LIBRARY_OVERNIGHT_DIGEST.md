@@ -105,6 +105,13 @@ Legend: **[DEFAULT]** = taking the wishlist "lean"/decided option, proceeding. *
 
 ## Per-phase landing log
 
+### Phase 1 — Bibliography subsystem (branch `phase1-bibliography`) — IMPLEMENTED, review-in-progress
+Split into Tier 1 (frontend/TS, fully verified) + Tier 2 (Python F#3). The F#4 **writer-side** (stop minting reference rows + the destructive row-prune) is **DEFERRED** — see QUESTION 1 — because the reader-side already makes the UI correct/honest on *both* catalog models, and the writer-stop+prune is a coordinated multi-script behavioral change + a destructive migration I won't run unattended.
+
+- **Tier 1** (commit `73d015bc`): F#4 reader-side layered model — `build_bib_index` projects the `% bib.state` comment into bib-index `bs` (new `iter_master_bib_states`); `bib-index.ts` → validated `stateByKey`; `useMasterBib` exposes `bibStateByKey`; `mergedEntries` fileless rows show real state (default "none", was hardcoded "unverified"); `BibStatus` gains `score?`/`note?`. F#1 dashboard 2-row redesign (`sourcesWithFile`, `nonAuthenticated`; removed Pipeline + Verified card + `verifiedTerminal`). F#2 verified→authenticated rename (chip/pill/tooltips/aria + STYLE_GUIDE + glossary + test). tsc 0 / vitest 2995 / Python bib-index 9/9.
+- **Tier 2** (commit `2d6bf666`): F#3 pre-digital authentication route — `score_predigital` (pure, tested), `_internet_archive_search`, `_authenticate_predigital` (fail-closed), `_predigital_or_canonical` (Phase D extracted so it runs for cited-only refs too). canonical → route to authenticated; `<1980` reconcile. Skill + "Bib states" doc reworked. Python bib-auth-predigital 12/12 (new). NOT mass-re-authenticated on the real library (delivered as the re-runnable skill).
+
+
 *(appended as each phase merges — sha, what landed, verification status)*
 
 ### Phase 0 — Foundations — ✅ MERGED to local main `e3b0744f` (no-ff, NOT pushed); branch commit `69084fa3`
