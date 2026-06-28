@@ -1,4 +1,4 @@
-<!-- last-verified: a7b0a41a 2026-06-24 -->
+<!-- last-verified: 3d621676 2026-06-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -128,8 +128,12 @@ citation-resync register on as ordered POLICIES) plus stable bib UIDs from
 `src/lib/bib-uid.ts`. Both halves are gated behind **default-OFF** flags:
 `virgil:identity-cascade` (sidecars re-key on `BibEntry.uid` instead of the
 renameable citekey; a citekey rename also rewrites every `\cite{}` in-doc) and
-`virgil:inline-atom-lifecycle` (orphan footnotes move to a durable
-`orphaned-footnotes.json` sidecar; the one `useInlineAtomLifecycle` reconciler
-owns orphan upsert/clear off the structural diff). **Flag OFF preserves current
-behavior exactly** — including the legacy `virgil-footnote-orphaned` event in
-`footnote.ts`, which the flag-ON path retires.
+`virgil:inline-atom-lifecycle`. The durable **per-doc** orphan store
+(`useOrphanedFootnotes(docId)`, backed by `orphaned-footnotes.json`) is now
+unconditional on **both** flag paths — so orphans survive a reload and never
+bleed across documents under multi-doc keep-alive (FN-A2-03), regardless of the
+flag. The flag governs only the **writer** that fills that store: ON → the one
+bus-driven `useInlineAtomLifecycle` reconciler upserts/clears off the structural
+diff; OFF → the legacy per-pane event web (`useFootnoteOrphanBridges`), routed by
+the originating `docId` the `virgil-footnote-orphaned` event in `footnote.ts` now
+carries. **Flag OFF preserves current behavior exactly.**

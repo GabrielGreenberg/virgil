@@ -1,4 +1,4 @@
-<!-- last-verified: a7b0a41a 2026-06-24 -->
+<!-- last-verified: 3d621676 2026-06-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -178,7 +178,7 @@ Archive PANEL (the `archive` CardKind, which *moves text objects*).
 
 ## Card-lifecycle reconciler — selection survives delete/morph
 
-A card's delete / morph incurs a cross-store obligation: the global `cardStore`
+A card's delete / morph incurs a cross-store obligation: the per-doc `cardStore`
 selection/hover/expansion slots, keyed `{kind, id}`, must be PRUNED (delete) or
 RE-KEYED `{fromKind→toKind, id}` (morph). The sidecar-backed kinds (report /
 note / cutter / revision) have no doc-node the `DocStructureBus` reports, so the
@@ -186,9 +186,12 @@ single delete/morph executor `runCardLifecycleEvent`
 ([src/cards/lifecycle/run-event.ts](../../src/cards/lifecycle/run-event.ts))
 PUBLISHES a `card-deleted` / `card-morphed` signal
 ([card-lifecycle-signal.ts](../../src/cards/lifecycle/card-lifecycle-signal.ts)),
-and `useCardLifecycleReconciler`
+and `useCardLifecycleReconciler(store)`
 ([useCardLifecycleReconciler.ts](../../src/cards/lifecycle/useCardLifecycleReconciler.ts),
-mounted once per pane) prunes/re-keys `cardStore`. This is an explicit
+mounted once per pane, threaded **this doc's** store from `getCardStore(docId)`
+— the singleton was scoped per-doc behind a `CardStoreContext` seam so a
+delete/morph in doc B never touches doc A's selection under multi-doc
+keep-alive) prunes/re-keys that store. This is an explicit
 user-action channel — NOT a `DocStructureBus` subscription, so it doesn't touch
 keystroke sanctity or the +1-not-+3 invariant.
 

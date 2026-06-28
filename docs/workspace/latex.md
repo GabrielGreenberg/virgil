@@ -1,4 +1,4 @@
-<!-- last-verified: a7b0a41a 2026-06-24 -->
+<!-- last-verified: 3d621676 2026-06-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-typography.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 

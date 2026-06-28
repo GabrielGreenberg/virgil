@@ -1,4 +1,4 @@
-<!-- last-verified: a7b0a41a 2026-06-24 -->
+<!-- last-verified: 3d621676 2026-06-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -94,10 +94,13 @@ marker vanished but whose body the user might recover/re-drop (`thanks?` preserv
 the dying footnote's `\thanks` attr for a full-attr re-drop). As of T2 it is now
 **persisted** to a per-doc `virgil/orphaned-footnotes.json` —
 `OrphanedFootnotesState { version: 1; orphans: OrphanedFootnote[] }`, owned by
-[useOrphanedFootnotes](../../src/hooks/useOrphanedFootnotes.ts) (the cutover that
-swaps shell `useState` for this sidecar is gated behind `virgil:inline-atom-lifecycle`,
-default OFF; the hook itself migrates a legacy bare-array / version-less shape to
-`{ version: 1, … }`). Absent file ⇒ start empty (nothing to migrate from). See
+[useOrphanedFootnotes](../../src/hooks/useOrphanedFootnotes.ts). This hook is now
+the **single** orphan store on **both** flag paths — the swap off the old shell
+`useState` is **unconditional** (FN-A2-03); `virgil:inline-atom-lifecycle` (default
+OFF) now governs only the **writer** (ON → the bus reconciler `useInlineAtomLifecycle`;
+OFF → the per-pane, docId-routed `useFootnoteOrphanBridges` event web). The hook
+migrates a legacy bare-array / version-less shape to `{ version: 1, … }`. Absent
+file ⇒ start empty (nothing to migrate from). See
 [anchoring.md → orphans](anchoring.md#what-invalidates-a-link).
 
 **`citations.json` — `CitationsState`:**
@@ -258,7 +261,8 @@ VirgilSidecar  { paragraphs: Record<string, ParagraphMeta> }
 ParagraphMeta  { title?; fingerprint?; collapsed? }
 // editor-state.json
 EditorStateData { lastParagraphId: string | null; foldedSections: string[];
-                  lastModified; cursorPosition?/*dep*/; selection?/*dep*/ }
+                  scrollTop?/*cold-restore*/; lastModified;
+                  cursorPosition?/*dep*/; selection?/*dep*/ }
 // notifications.json
 DocNotificationsInbox { items: DocNotification[] }
 DocNotification       { kind: "ai-request-complete"|"ai-request-failed";

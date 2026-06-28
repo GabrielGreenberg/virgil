@@ -1,4 +1,4 @@
-<!-- last-verified: a7b0a41a 2026-06-24 -->
+<!-- last-verified: 3d621676 2026-06-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
@@ -143,7 +143,14 @@ legacy paths exactly, so nothing below is on the hot path until a flag is set.
 - **`virgil:identity-cascade`** (`src/lib/identity/identity-flag.ts`,
   `isIdentityCascadeOn`) — the bib-rename + id-regen cascade.
 - **`virgil:inline-atom-lifecycle`** (`inline-atom-lifecycle-flag.ts`,
-  `isInlineAtomLifecycleOn`) — the orphan-footnote lifecycle (T2 Wave 2).
+  `isInlineAtomLifecycleOn`) — gates only the orphan-footnote **writer** (T2
+  Wave 2): flag-ON, the bus-driven `useInlineAtomLifecycle` reconciler writes the
+  store; flag-OFF, the per-pane, docId-routed legacy event web
+  (`useFootnoteOrphanBridges`) does. The per-doc orphan **store** itself
+  (`useOrphanedFootnotes(docId)`, `src/hooks/useOrphanedFootnotes.ts`) is now the
+  single store on **both** paths, unconditionally (un-bundled from the gated
+  reconciler) — so orphans survive a reload and never bleed across documents
+  regardless of this flag (FN-A2-01, FN-A2-03).
 
 **`IdentityCascade`** (`src/lib/identity/identity-cascade.ts`) is a pure-logic,
 per-document service (no React/editor import). Surfaces `registerMigrator(kind,

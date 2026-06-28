@@ -1,4 +1,4 @@
-<!-- last-verified: a7b0a41a 2026-06-24 -->
+<!-- last-verified: 3d621676 2026-06-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -126,9 +126,16 @@ so a title-only (`\thanks`) footnote still orphans, and the gate matches the
 delete-confirm's content model. Orphans persist per-doc in
 `virgil/orphaned-footnotes.json` (`OrphanedFootnotesState` = `{ version: 1, orphans }`,
 each an `OrphanedFootnote` carrying `content` + optional `title`/`thanks`), owned
-by `useOrphanedFootnotes` (`src/hooks/useOrphanedFootnotes.ts`) and surfaced in
-both the Footnotes and Search panels. The plumbing toggles on the DEFAULT-OFF
-`virgil:inline-atom-lifecycle` flag: flag-ON the bus reconciler
+by `useOrphanedFootnotes(docId)` (`src/hooks/useOrphanedFootnotes.ts`) — keyed
+per-doc, which kills cross-doc orphan bleed under multi-doc keep-alive (FN-A2-03)
+— and surfaced in both the Footnotes and Search panels. This hook is now the
+**SINGLE** orphan store on **both** flag paths (the swap off the old shell
+`useState` is unconditional). The DEFAULT-OFF `virgil:inline-atom-lifecycle`
+flag governs **only the writer**: flag-ON the bus reconciler
 (`src/links/_shared/useInlineAtomLifecycle.ts`) owns orphan upsert/clear and the
-legacy `virgil-footnote-orphaned` event is suppressed; flag-OFF that event is the
-sole orphan source (byte-identical to before).
+legacy `virgil-footnote-orphaned` event is suppressed; flag-OFF that event drives
+the per-pane, docId-routed `useFootnoteOrphanBridges`
+(`src/components/editor-layout/event-bridges/footnote-sync.ts`), which filters on
+`detail.docId` so a teardown in doc A no longer bleeds into doc B's store. The
+detector stamps that `docId` onto the event via the `Footnote` plugin's new
+`docIdRef` option (`src/lib/tiptap/footnote.ts`).
