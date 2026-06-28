@@ -45,10 +45,10 @@ work; `little` = contained UI or behavior tweak). Refined at planning time.
 
 ## Index
 
-- **F#1** — [Dashboard headline-stats redesign](#f1--dashboard-headline-stats-redesign) · `little` · understood
-- **F#2** — [Retire "verified", unify on "authenticated"](#f2--retire-verified-unify-on-authenticated) · `little` · understood
-- **F#3** — [Pre-digital ("canonical") authentication pipeline](#f3--pre-digital-canonical-authentication-pipeline) · `big` · understood
-- **F#4** — [Catalog membership policy: all-bib vs sources-only](#f4--catalog-membership-policy-all-bib-vs-sources-only) · `big` · understood · **decided: sources-only (layered-hybrid)**
+- **F#1** — [Dashboard headline-stats redesign](#f1--dashboard-headline-stats-redesign) · `little` · **✅ LANDED (Phase 1)**
+- **F#2** — [Retire "verified", unify on "authenticated"](#f2--retire-verified-unify-on-authenticated) · `little` · **✅ LANDED (Phase 1)**
+- **F#3** — [Pre-digital ("canonical") authentication pipeline](#f3--pre-digital-canonical-authentication-pipeline) · `big` · **✅ LANDED (Phase 1)** — engine+skill+tests; not mass-run on the real lib (re-runnable skill)
+- **F#4** — [Catalog membership policy: all-bib vs sources-only](#f4--catalog-membership-policy-all-bib-vs-sources-only) · `big` · **◑ PARTIAL (Phase 1)** — reader-side layered model + bib-index `bs` projection LANDED; **writer-stop + row-prune DEFERRED** (supervised; see digest)
 - **F#5** — [Per-row three-dot menus in the libraries list](#f5--per-row-three-dot-menus-in-the-libraries-list) · `little` · **✅ LANDED (Phase 0)**
 - **F#6** — [Toast attention tabs: close button + reliable auto-dismiss](#f6--toast-attention-tabs-close-button--reliable-auto-dismiss) · `little` · **✅ LANDED (Phase 0)**
 - **F#7** — [Three-dot menu on "My Papers" pod rows (Remove)](#f7--three-dot-menu-on-my-papers-pod-rows-remove) · `little` · **✅ LANDED (Phase 0)**
