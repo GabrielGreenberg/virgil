@@ -14,12 +14,16 @@ import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import {
   DEFAULT_WIDTHS,
+  FACETS,
   RESIZER_WIDTH,
   type ReorderableColId,
   type ResizableColId,
   type SortColId,
   type SortDir,
+  type SortState,
+  type StatusFacet,
   clampWidth,
+  defaultDirForStatusFacet,
   gridTemplate,
   isReorderableColId,
   resizeNeighborsForBoundary,
@@ -128,7 +132,7 @@ export default function LeftList({
   // keystroke. Sorting is the expensive O(n log n) collated pass; lifting it
   // out of the per-keystroke path is the T2 fix.
   const sorted = useMemo(
-    () => sortEntries(entries, bibByKey, sort.col, sort.dir),
+    () => sortEntries(entries, bibByKey, sort.col, sort.dir, sort.facet),
     [entries, bibByKey, sort],
   );
 
@@ -376,12 +380,32 @@ export default function LeftList({
     return sel.has(ek) && sel.size > 1 ? Array.from(sel) : [ek];
   }, []);
 
+  // Column label-click. For STATUS this is the COMPOSITE statusRank sort
+  // (clears any active facet — facet is undefined, reached only via the
+  // sub-bar). A re-click on the already-active column (same col AND, for
+  // status, no facet) flips direction.
   const handleSort = useCallback(
     (col: SortColId) => {
-      const next: { col: SortColId; dir: SortDir } =
-        sort.col === col
-          ? { col, dir: sort.dir === "asc" ? "desc" : "asc" }
-          : { col, dir: defaultDirFor(col) };
+      const isReclick =
+        sort.col === col && (col !== "status" || sort.facet === undefined);
+      const next: SortState = isReclick
+        ? { col, dir: sort.dir === "asc" ? "desc" : "asc" }
+        : { col, dir: defaultDirFor(col) };
+      setSort(next);
+    },
+    [sort, setSort],
+  );
+
+  // Sub-bar facet click (F#14). Picking a facet sorts that single status facet
+  // best-first; re-clicking the ACTIVE facet flips direction (the same dir
+  // toggle the columns use). Runs on the already-debounced sort path — the
+  // `sorted` memo gates on the `sort` identity, never per keystroke.
+  const handleSortStatusFacet = useCallback(
+    (facet: StatusFacet) => {
+      const active = sort.col === "status" && sort.facet === facet;
+      const next: SortState = active
+        ? { col: "status", dir: sort.dir === "asc" ? "desc" : "asc", facet }
+        : { col: "status", dir: defaultDirForStatusFacet(), facet };
       setSort(next);
     },
     [sort, setSort],
@@ -555,13 +579,22 @@ export default function LeftList({
                 : null;
             return (
               <Fragment key={col}>
-                <SortHeader
-                  col={col}
-                  label={col}
-                  activeSort={sort}
-                  onSort={handleSort}
-                  onReorder={onReorder}
-                />
+                {col === "status" ? (
+                  <StatusSortHeader
+                    activeSort={sort}
+                    onSort={handleSort}
+                    onSortFacet={handleSortStatusFacet}
+                    onReorder={onReorder}
+                  />
+                ) : (
+                  <SortHeader
+                    col={col}
+                    label={col}
+                    activeSort={sort}
+                    onSort={handleSort}
+                    onReorder={onReorder}
+                  />
+                )}
                 {n && <Resizer onPointerDown={handleResize(n.left, n.right)} />}
               </Fragment>
             );
@@ -641,7 +674,7 @@ interface SortHeaderProps {
   col: ReorderableColId;
   label: string;
   align?: "left" | "right";
-  activeSort: { col: SortColId; dir: SortDir };
+  activeSort: SortState;
   onSort: (col: SortColId) => void;
   /** Commit a drag-reorder: move `from` to before/after this header (F#13). */
   onReorder: (
@@ -652,7 +685,10 @@ interface SortHeaderProps {
 }
 
 function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder }: SortHeaderProps) {
-  const active = activeSort.col === col;
+  // The label is "active" only for the COMPOSITE sort — when a status facet is
+  // chosen via the sub-bar (F#14) the facet owns the active state, not the
+  // label. Non-status columns never carry a facet, so this is a no-op for them.
+  const active = activeSort.col === col && activeSort.facet === undefined;
   const arrow = active ? (activeSort.dir === "asc" ? " ↑" : " ↓") : "";
   // A stationary click fires onClick (sort); a press-and-move past the
   // browser's drag threshold fires the native drag instead (reorder). The
@@ -729,6 +765,136 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
   );
 }
 
+/** Glyph for each facet's sub-bar segment — mirrors the StatusPills order. */
+const FACET_GLYPH: Record<StatusFacet, string> = {
+  pdf: "pdf",
+  idx: "idx",
+  bib: "bib",
+  imp: "imp",
+};
+
+/**
+ * The STATUS header (F#14): a 2-row stack inside the single status grid track.
+ *   - Row 1 is the ordinary `SortHeader` (label-click → COMPOSITE statusRank,
+ *     clears the facet; also the drag-reorder handle).
+ *   - Row 2 is the facet sub-bar — 4 equal-width segments in the shared
+ *     `FACETS` glyph order; the active facet draws a short `--accent` accent
+ *     bar + an up/down arrow.
+ * Living in one grid track keeps the header aligned with the row's status cell
+ * pixel-for-pixel.
+ */
+function StatusSortHeader({
+  activeSort,
+  onSort,
+  onSortFacet,
+  onReorder,
+}: {
+  activeSort: SortState;
+  onSort: (col: SortColId) => void;
+  onSortFacet: (facet: StatusFacet) => void;
+  onReorder: (
+    from: ReorderableColId,
+    over: ReorderableColId,
+    side: "before" | "after",
+  ) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        minWidth: 0,
+        overflow: "hidden",
+      }}
+    >
+      <SortHeader
+        col="status"
+        label="status"
+        activeSort={activeSort}
+        onSort={onSort}
+        onReorder={onReorder}
+      />
+      <FacetSubBar activeSort={activeSort} onSortFacet={onSortFacet} />
+    </div>
+  );
+}
+
+/** The ~3px facet rail under the STATUS label. Four equal-width clickable
+ *  segments in `FACETS` order; the active facet draws an accent bar + arrow. */
+function FacetSubBar({
+  activeSort,
+  onSortFacet,
+}: {
+  activeSort: SortState;
+  onSortFacet: (facet: StatusFacet) => void;
+}) {
+  const activeFacet =
+    activeSort.col === "status" ? activeSort.facet : undefined;
+  return (
+    <div
+      role="group"
+      aria-label="Sort by status facet"
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${FACETS.length}, 1fr)`,
+        gap: 2,
+        padding: "0 8px 4px",
+      }}
+    >
+      {FACETS.map((facet) => {
+        const active = activeFacet === facet;
+        const arrow = active ? (activeSort.dir === "asc" ? "▲" : "▼") : "";
+        return (
+          <button
+            key={facet}
+            type="button"
+            onClick={() => onSortFacet(facet)}
+            title={`Sort by ${facet} (best first; click again to reverse)`}
+            aria-label={`Sort by ${facet}`}
+            aria-pressed={active}
+            style={{
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 2,
+              minWidth: 0,
+              height: 11,
+              padding: 0,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              fontFamily: "var(--mono)",
+              fontSize: 8,
+              lineHeight: "11px",
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: active ? "var(--accent)" : "var(--muted)",
+              // The ~3px accent rail: a bottom border that's accent when active,
+              // a faint divider otherwise, so all four segments read as a rail.
+              borderBottom: active
+                ? "3px solid var(--accent)"
+                : "3px solid var(--border-light)",
+              overflow: "hidden",
+            }}
+          >
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {FACET_GLYPH[facet]}
+            </span>
+            {arrow && <span aria-hidden="true">{arrow}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function Resizer({
   onPointerDown,
 }: {
@@ -764,7 +930,10 @@ function Resizer({
 }
 
 function defaultDirFor(col: SortColId): SortDir {
-  if (col === "year" || col === "status") return "desc";
+  if (col === "year") return "desc";
+  // STATUS composite: "asc" so the most-complete entries (statusRank best = 0)
+  // sort to the top — the spec's "most-complete-first" label default (F#14).
+  if (col === "status") return "asc";
   return "asc";
 }
 

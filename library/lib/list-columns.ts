@@ -12,6 +12,35 @@ export type SortColId = "year" | "author" | "title" | "status" | "citekey";
 
 export type SortDir = "asc" | "desc";
 
+/** A single index-status facet the user can sort by (F#14). Meaningful ONLY
+ *  when `col === "status"`; absent → the composite `statusRank` (reached by
+ *  clicking the STATUS label). The ONE shared `FACETS` array below drives the
+ *  StatusPills glyph order, this comparator switch, AND the sub-bar segments,
+ *  so the three can never drift. */
+export type StatusFacet = "pdf" | "idx" | "bib" | "imp";
+
+/** The canonical facet order — glyph order in StatusPills (pdf · idx · bib ·
+ *  imp), the sub-bar segment order, and the comparator routing. Single source
+ *  of truth for all three (F#14): StatusPills `.map`s this array onto its
+ *  per-facet pill, the FacetSubBar `.map`s it onto its segments, and the
+ *  `compareStatusFacet` switch is exhaustive over it — none can drift. */
+export const FACETS: readonly StatusFacet[] = ["pdf", "idx", "bib", "imp"];
+
+const FACET_IDS: ReadonlySet<string> = new Set(FACETS);
+
+export function isStatusFacet(s: unknown): s is StatusFacet {
+  return typeof s === "string" && FACET_IDS.has(s);
+}
+
+/** The full sort state: a column, a direction, and — only when sorting the
+ *  STATUS column by a single facet — which facet. Absent `facet` (or any
+ *  non-status column) means the composite `statusRank` sort. */
+export interface SortState {
+  col: SortColId;
+  dir: SortDir;
+  facet?: StatusFacet;
+}
+
 export type ResizableColId = "year" | "author" | "status" | "citekey";
 
 /** The five header-bearing CONTENT columns the user can drag to reorder
@@ -193,12 +222,15 @@ const BIB_RANK: Record<BibAuthState, number> = {
 };
 
 /** Compare two catalog entries for the given sort column. Returns the
- *  ascending result; the caller flips the sign for descending. */
+ *  ascending result; the caller flips the sign for descending. When `col ===
+ *  "status"` and a `facet` is given, routes to the single-facet comparator
+ *  (F#14); otherwise the status case is the composite `statusRank`. */
 export function compareEntries(
   a: CatalogEntry,
   b: CatalogEntry,
   bibByKey: Map<string, BibEntry>,
   col: SortColId,
+  facet?: StatusFacet,
 ): number {
   switch (col) {
     case "year": {
@@ -213,7 +245,9 @@ export function compareEntries(
     case "title":
       return titleOf(a, bibByKey).localeCompare(titleOf(b, bibByKey));
     case "status":
-      return statusRank(a) - statusRank(b);
+      return facet
+        ? compareStatusFacet(a, b, facet)
+        : statusRank(a) - statusRank(b);
     case "citekey":
       return (a.citekey ?? "").localeCompare(b.citekey ?? "");
   }
@@ -224,16 +258,55 @@ export function sortEntries(
   bibByKey: Map<string, BibEntry>,
   col: SortColId,
   dir: SortDir,
+  facet?: StatusFacet,
 ): CatalogEntry[] {
   const arr = [...entries];
   const sign = dir === "asc" ? 1 : -1;
-  arr.sort((a, b) => sign * compareEntries(a, b, bibByKey, col));
+  arr.sort((a, b) => sign * compareEntries(a, b, bibByKey, col, facet));
   return arr;
 }
 
 function statusRank(e: CatalogEntry): number {
   const pdfR = e.pdf.present ? 0 : 4;
   return pdfR + INDEXED_RANK[e.indexed.state] + BIB_RANK[e.bib.state];
+}
+
+/** Per-facet rank: the ASCENDING comparand for a single status facet, where
+ *  the BEST value (deepIndexed / authenticated / has-PDF / imported) is the
+ *  SMALLEST — so the ascending sort puts best-first, and the existing `dir`
+ *  flip reverses it (F#14: click best-first, re-click reverses). The pdf/imp
+ *  facets are booleans (present/imported → 0, else 1); idx/bib reuse the
+ *  existing INDEXED_RANK / BIB_RANK tables. */
+function facetRank(e: CatalogEntry, facet: StatusFacet): number {
+  switch (facet) {
+    case "pdf":
+      return e.pdf.present ? 0 : 1;
+    case "idx":
+      return INDEXED_RANK[e.indexed.state];
+    case "bib":
+      return BIB_RANK[e.bib.state];
+    case "imp":
+      return e.bib.imported ? 0 : 1;
+  }
+}
+
+/** Compare two entries on one status facet, best-first, with a stable citekey
+ *  tie-break so equal-rank rows keep a deterministic order. */
+function compareStatusFacet(
+  a: CatalogEntry,
+  b: CatalogEntry,
+  facet: StatusFacet,
+): number {
+  const d = facetRank(a, facet) - facetRank(b, facet);
+  if (d !== 0) return d;
+  return (a.citekey ?? "").localeCompare(b.citekey ?? "");
+}
+
+/** Default direction when a facet (or the composite STATUS) is first picked:
+ *  "asc" so the BEST values sort to the top (the facet ranks are best=0). The
+ *  composite STATUS label also defaults best-first via this same "asc". */
+export function defaultDirForStatusFacet(): SortDir {
+  return "asc";
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
@@ -308,19 +381,23 @@ export function saveWidths(w: Record<ResizableColId, number>): void {
   }
 }
 
-export function loadSort(): { col: SortColId; dir: SortDir } {
-  const fallback: { col: SortColId; dir: SortDir } = { col: "year", dir: "desc" };
+export function loadSort(): SortState {
+  const fallback: SortState = { col: "year", dir: "desc" };
   if (typeof window === "undefined") return fallback;
   try {
     const raw = localStorage.getItem(COL_SORT_KEY);
     if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as { col?: string; dir?: string };
+    const parsed = JSON.parse(raw) as { col?: string; dir?: string; facet?: string };
     if (
       parsed.col &&
       ["year", "author", "title", "status", "citekey"].includes(parsed.col) &&
       (parsed.dir === "asc" || parsed.dir === "desc")
     ) {
-      return { col: parsed.col as SortColId, dir: parsed.dir };
+      const col = parsed.col as SortColId;
+      // `facet` is only meaningful on the status column; ignore it elsewhere.
+      const facet =
+        col === "status" && isStatusFacet(parsed.facet) ? parsed.facet : undefined;
+      return facet ? { col, dir: parsed.dir, facet } : { col, dir: parsed.dir };
     }
     return fallback;
   } catch {
@@ -328,9 +405,14 @@ export function loadSort(): { col: SortColId; dir: SortDir } {
   }
 }
 
-export function saveSort(s: { col: SortColId; dir: SortDir }): void {
+export function saveSort(s: SortState): void {
   try {
-    localStorage.setItem(COL_SORT_KEY, JSON.stringify(s));
+    // Drop a stray facet on a non-status column so the blob stays canonical.
+    const canonical: SortState =
+      s.col === "status" && s.facet
+        ? { col: s.col, dir: s.dir, facet: s.facet }
+        : { col: s.col, dir: s.dir };
+    localStorage.setItem(COL_SORT_KEY, JSON.stringify(canonical));
   } catch {
     // ignore
   }

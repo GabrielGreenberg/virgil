@@ -21,6 +21,15 @@
  * Margins, panel widths, the stacked dock engine, popouts, band heights, and
  * omni toggles all come from the real `vp` now, so they are FUNCTIONAL.
  *
+ * F#16 (deferred half): the Reader breadcrumb / Outline active-line is now
+ * FUNCTIONAL too. `useReaderSectionPath` derives the live `activeSectionPath`
+ * (the section you're scrolled into) and threads it into
+ * `buildEditorPaneViewPrefs` in place of the old `EMPTY_SECTION_PATHS` stub, so
+ * the docked SectionLozenge + Outline active-line light up. It is keystroke-safe
+ * by construction: the Reader doc is read-only, so the path changes only on
+ * SCROLL — derived on the same RAF-coalesced passive-scroll cadence as
+ * `useParaNavHistory`, NEVER via `editor.on('update')`.
+ *
  * F#16: the Reader now ALSO passes a `menuBar` bundle, so the docked MenuBar
  * (View menu toggles + paragraph back/forward nav) lights up in BOTH reader
  * contexts (inline panel + outer tab) — both funnel through PaperRender's one
@@ -57,10 +66,12 @@ import {
 } from "@/hooks/useViewPrefs";
 import {
   buildEditorPaneViewPrefs,
-  EMPTY_SECTION_PATHS,
   type EditorMutationHandlers,
+  type EditorPaneSectionPaths,
   type EditorPaneViewDerivations,
 } from "./build-editor-pane-view-prefs";
+import { SECTION_ACTIVE_LINE_FRACTION } from "./layout-scroll";
+import type { SectionPathEntry } from "@/panels/Outline";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import {
   PANEL_TO_CATEGORY,
@@ -344,6 +355,194 @@ function useReaderMenuBarBundle(
 }
 
 /**
+ * Reader breadcrumb / Outline-active-line section path (F#16 deferred half).
+ *
+ * A FUNCTIONAL port of EditorLayout's section-path recompute
+ * (`EditorLayout.tsx:2000-2117`), trimmed for the Reader: single-pane (no
+ * mirror), no focus mode (no out-of-band skip). It derives the
+ * `activeSectionPath` — the section breadcrumb you are scrolled INTO — plus the
+ * active parTitle index, exactly as the main app does (same
+ * `SECTION_ACTIVE_LINE_FRACTION = 0.25` reference line + the same bottom-clamp
+ * so the last section can become current).
+ *
+ * KEYSTROKE SANCTITY: this is NOT an `editor.on('update'|'transaction')`
+ * subscriber. The Reader doc is read-only (`editable=false`), so the section
+ * path can ONLY change on SCROLL (or resize). It rides the SAME wall-clock /
+ * passive-scroll cadence as `useParaNavHistory` — a RAF-coalesced passive
+ * `scroll` listener on the Reader scroll container + a one-shot `compute()` on
+ * mount/dep-change, PLUS a small fixed set of one-shot settle recomputes
+ * (double-rAF + a ~200ms setTimeout) so the breadcrumb isn't blank on fresh
+ * open before the doc has laid out (all cancel on unmount; still no standing
+ * subscriber). There is no per-keystroke (or any per-transaction) work, so
+ * it needs NO entry in the AGENTS.md permitted-subscriber list (same class as
+ * DiskWatcher / the para-nav recorder). Each tick is O(top-level headings +
+ * parTitled blocks) — one `coordsAtPos` per candidate — never doc-size on a
+ * keystroke (there are no keystrokes here at all).
+ *
+ * @param editor the live TipTap editor (null until it mounts).
+ * @param scrollEl the Reader's scroll container (PaperRender owns it as state).
+ */
+function useReaderSectionPath(
+  editor: Editor | null,
+  scrollEl: HTMLElement | null,
+): EditorPaneSectionPaths {
+  const [activeSectionPath, setActiveSectionPath] = useState<
+    SectionPathEntry[]
+  >([]);
+  const [activeParTitleIndex, setActiveParTitleIndex] = useState<number | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!editor || !scrollEl) return;
+    const view = editor.view;
+
+    const compute = () => {
+      // Keep-alive: a hidden (display:none) pane reports offsetHeight 0, so
+      // every coordsAtPos/rect collapses to 0 — bail and keep the last-good
+      // path (scroll can't change while hidden). Mirrors EditorLayout :2011.
+      if (scrollEl.offsetHeight === 0) return;
+      const doc = editor.state.doc;
+      const scrollRect = scrollEl.getBoundingClientRect();
+
+      // Reference line = the SHARED section-active line (top 25% of the
+      // viewport), with the same bottom-clamp EditorLayout uses so the final
+      // section near the doc end — which can't be scrolled up to the 25% line —
+      // can still become current when parked at the bottom.
+      const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
+      const atBottom = maxScroll > 4 && maxScroll - scrollEl.scrollTop <= 2;
+      const referenceY = atBottom
+        ? scrollRect.bottom
+        : scrollRect.top + scrollRect.height * SECTION_ACTIVE_LINE_FRACTION;
+
+      const stack: {
+        level: number;
+        text: string;
+        index: number;
+        sectionNumber: string | null;
+      }[] = [];
+      let lastCrossedStack: typeof stack = [];
+      let activeParTitleIdx: number | null = null;
+
+      doc.forEach((node, offset, index) => {
+        if (node.type.name === "heading" && node.attrs?.level) {
+          const level = node.attrs.level as number;
+          let headingTop: number | null = null;
+          try {
+            headingTop = view.coordsAtPos(offset + 1).top;
+          } catch {
+            headingTop = null;
+          }
+          if (headingTop == null) return;
+          if (headingTop <= referenceY) {
+            while (
+              stack.length > 0 &&
+              stack[stack.length - 1].level >= level
+            ) {
+              stack.pop();
+            }
+            stack.push({
+              level,
+              text: node.textContent || "Untitled",
+              index,
+              sectionNumber: (node.attrs?.sectionNumber as string) ?? null,
+            });
+            lastCrossedStack = [...stack];
+            activeParTitleIdx = null;
+          }
+          return;
+        }
+
+        if (
+          (node.type.name === "paragraph" ||
+            node.type.name === "bulletList" ||
+            node.type.name === "orderedList") &&
+          node.attrs?.parTitle
+        ) {
+          let top: number | null = null;
+          try {
+            top = view.coordsAtPos(offset + 1).top;
+          } catch {
+            top = null;
+          }
+          if (top == null) return;
+          if (top <= referenceY) activeParTitleIdx = index;
+        }
+      });
+
+      const path: SectionPathEntry[] = lastCrossedStack.map((s) => ({
+        text: s.text,
+        index: s.index,
+        sectionNumber: s.sectionNumber,
+      }));
+      setActiveSectionPath((prev) =>
+        prev.length === path.length &&
+        prev.every(
+          (v, i) =>
+            v.text === path[i].text &&
+            v.index === path[i].index &&
+            v.sectionNumber === path[i].sectionNumber,
+        )
+          ? prev
+          : path,
+      );
+      setActiveParTitleIndex((prev) =>
+        prev === activeParTitleIdx ? prev : activeParTitleIdx,
+      );
+    };
+
+    // RAF-coalesced scroll/resize cadence (NOT editor.on(update)).
+    let raf = 0;
+    const schedule = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(compute);
+    };
+    compute();
+    scrollEl.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+
+    // Fresh-open breadcrumb fix: the synchronous mount-time compute() above
+    // runs BEFORE the doc has laid out, so coordsAtPos reads stale/zero tops
+    // (or scrollEl.offsetHeight is still 0) and the breadcrumb comes up EMPTY
+    // until the user scrolls. Schedule a couple of ONE-SHOT recomputes once the
+    // post-mount layout settles. These are NOT standing subscribers — they fire
+    // a fixed number of times and all cancel on unmount, so keystroke sanctity
+    // is preserved (the Reader doc is read-only anyway). Each recompute is
+    // O(headings) and the compute()'s state-equality bail makes a redundant run
+    // a no-op.
+    //   (a) double-rAF: measure after the browser has painted the first frame.
+    //   (b) a short setTimeout fallback for layouts that aren't ready by then
+    //       (e.g. fonts/images still settling, or a hidden→visible flip).
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(compute);
+    });
+    const settleTimer = setTimeout(compute, 200);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(settleTimer);
+      scrollEl.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [editor, scrollEl]);
+
+  // Reader is single-pane — no mirror view, so the mirror fields stay empty.
+  return useMemo<EditorPaneSectionPaths>(
+    () => ({
+      activeSectionPath,
+      activeParTitleIndex,
+      mirrorSectionPath: [],
+      mirrorParTitleIndex: null,
+    }),
+    [activeSectionPath, activeParTitleIndex],
+  );
+}
+
+/**
  * The Reader's combined view-state: BOTH the `EditorPaneViewPrefs` bundle and
  * the `EditorPaneMenuBarBundle`, built off ONE ephemeral `useViewPrefs`
  * instance so a menu toggle and a rail click mutate the same store. This is
@@ -413,8 +612,8 @@ export function useReaderView(
 
   const derivations = useMemo<EditorPaneViewDerivations>(
     () => ({
-      // Reader has no focus mode, no section-path band, no zen mode.
-      // (Section paths are passed separately as EMPTY_SECTION_PATHS — 5a.)
+      // Reader has no focus mode, no zen mode. (Section paths are passed
+      // separately — see `useReaderSectionPath` below — Phase 5a.)
       isResizingPanels: false,
       focusState: null,
       zenMode: false,
@@ -435,9 +634,15 @@ export function useReaderView(
     [vp, getOmniEnabled, getOmniHideAll],
   );
 
+  // Reader breadcrumb — the current-session section path you're scrolled into
+  // (F#16 deferred half). Keystroke-safe by construction (scroll-driven, no
+  // editor.on(update); see `useReaderSectionPath`). Split into its own memo so
+  // its scroll-churn doesn't bust the otherwise-stable `derivations` bundle.
+  const sectionPaths = useReaderSectionPath(editor, scrollEl);
+
   const viewPrefs = useMemo<EditorPaneViewPrefs>(
-    () => buildEditorPaneViewPrefs(vp, handlers, derivations, EMPTY_SECTION_PATHS),
-    [vp, handlers, derivations],
+    () => buildEditorPaneViewPrefs(vp, handlers, derivations, sectionPaths),
+    [vp, handlers, derivations, sectionPaths],
   );
 
   // Paragraph back/forward — functional, keystroke-safe (see hook doc).

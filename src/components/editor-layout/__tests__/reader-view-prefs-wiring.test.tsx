@@ -165,6 +165,103 @@ describe("useReaderView — onScrollToHeading is a REAL handler", () => {
   });
 });
 
+/**
+ * A stub editor for the section-path recorder: top-level nodes carry real
+ * (node, offset, index) and a `view.coordsAtPos(pos)` keyed off the offset so
+ * the recorder's heading walk can resolve viewport tops. Layout (3 headings):
+ *   idx0  heading L1 "Intro"      pos1 → top 10  (above the 25% line)
+ *   idx1  heading L2 "Background" pos3 → top 40  (above the line)
+ *   idx2  heading L1 "Methods"    pos5 → top 900 (below the line — not crossed)
+ */
+function makeSectionPathStubEditor() {
+  const tops: Record<number, number> = { 1: 10, 3: 40, 5: 900 };
+  const editor = {
+    state: {
+      doc: {
+        forEach: (cb: (n: unknown, pos: number, index: number) => void) => {
+          cb(
+            { type: { name: "heading" }, attrs: { level: 1, sectionNumber: "1" }, textContent: "Intro" },
+            0,
+            0,
+          );
+          cb(
+            { type: { name: "heading" }, attrs: { level: 2, sectionNumber: "1.1" }, textContent: "Background" },
+            2,
+            1,
+          );
+          cb(
+            { type: { name: "heading" }, attrs: { level: 1, sectionNumber: "2" }, textContent: "Methods" },
+            4,
+            2,
+          );
+        },
+      },
+    },
+    view: { coordsAtPos: (pos: number) => ({ top: tops[pos] ?? 9999 }) },
+  } as unknown as Editor;
+  return editor;
+}
+
+/** A scroll container with the geometry the recorder reads. Top of the
+ *  viewport at y=0, height 1000 ⇒ the 25% reference line sits at y=250, so the
+ *  first two headings (tops 10/40) are crossed and "Methods" (900) is not. */
+function makeScrollEl(): HTMLElement {
+  const el = document.createElement("div");
+  Object.defineProperties(el, {
+    offsetHeight: { configurable: true, value: 1000 },
+    scrollHeight: { configurable: true, value: 5000 },
+    clientHeight: { configurable: true, value: 1000 },
+    scrollTop: { configurable: true, value: 0 },
+  });
+  el.getBoundingClientRect = () =>
+    ({ top: 0, bottom: 1000, height: 1000 }) as DOMRect;
+  return el;
+}
+
+describe("useReaderView — section path / breadcrumb (F#16 deferred half)", () => {
+  beforeAll(() => {
+    installStorageShim("localStorage");
+    installStorageShim("sessionStorage");
+    // The recorder schedules via requestAnimationFrame; run it synchronously.
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+  });
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("derives the active breadcrumb from scrolled-past headings (not EMPTY_SECTION_PATHS)", () => {
+    const editor = makeSectionPathStubEditor();
+    const scrollEl = makeScrollEl();
+    const { result } = renderHook(() =>
+      useReaderView(editor, NULL_HANDLE_REF, scrollEl),
+    );
+
+    // compute() runs on mount (effect) → the two crossed headings form the
+    // active path; "Methods" (below the 25% line) is excluded.
+    const path = result.current.viewPrefs.activeSectionPath;
+    expect(path.map((e) => e.text)).toEqual(["Intro", "Background"]);
+    expect(path.map((e) => e.sectionNumber)).toEqual(["1", "1.1"]);
+    // Mirror stays empty (single-pane Reader).
+    expect(result.current.viewPrefs.mirrorSectionPath).toEqual([]);
+  });
+
+  it("stays EMPTY when there is no scroll container yet (null scrollEl)", () => {
+    const editor = makeSectionPathStubEditor();
+    const { result } = renderHook(() =>
+      useReaderView(editor, NULL_HANDLE_REF, null),
+    );
+    expect(result.current.viewPrefs.activeSectionPath).toEqual([]);
+  });
+});
+
 describe("useReaderView — menuBar bundle (F#16)", () => {
   beforeAll(() => {
     installStorageShim("localStorage");

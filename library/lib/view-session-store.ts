@@ -28,11 +28,11 @@ import {
   loadSort,
   loadWidths,
   isReorderableColId,
+  isStatusFacet,
   DEFAULT_COL_ORDER,
   type ReorderableColId,
   type ResizableColId,
-  type SortColId,
-  type SortDir,
+  type SortState,
 } from "./list-columns";
 
 // ── storage key + version ───────────────────────────────────────────────
@@ -76,8 +76,11 @@ export interface PanelTabsState {
 
 export interface ListView {
   // sort is per-(panel,libId) — the coherence fix. Optional so an
-  // un-touched list inherits the default {col:'year',dir:'desc'}.
-  sort?: { col: SortColId; dir: SortDir };
+  // un-touched list inherits the default {col:'year',dir:'desc'}. The
+  // optional `facet` (F#14) is meaningful only when col==="status" — it
+  // selects a single index-status facet (pdf/idx/bib/imp) instead of the
+  // composite statusRank.
+  sort?: SortState;
   // query is per-(panel,libId) so each library remembers its own filter
   // and it survives the LeftList per-tab remount.
   query?: string;
@@ -323,10 +326,24 @@ function normalizePanel(raw: PanelState | undefined): PanelState {
   if (raw.tabs && typeof raw.tabs === "object") p.tabs = raw.tabs;
   if (raw.lists && typeof raw.lists === "object") {
     for (const [libId, lv] of Object.entries(raw.lists)) {
-      if (lv && typeof lv === "object") p.lists[libId] = { ...lv };
+      if (lv && typeof lv === "object") p.lists[libId] = normalizeListView(lv);
     }
   }
   return p;
+}
+
+/** Sanitize one persisted ListView slice. Spreads the raw fields as-is, then
+ *  canonicalizes the sort so a hand-edited blob can't carry a `facet` on a
+ *  non-status column (F#14) — the facet is dropped unless col==="status" and
+ *  the value is a known facet. */
+function normalizeListView(raw: ListView): ListView {
+  const out: ListView = { ...raw };
+  if (out.sort) {
+    const { col, dir, facet } = out.sort;
+    const keepFacet = col === "status" && isStatusFacet(facet) ? facet : undefined;
+    out.sort = keepFacet ? { col, dir, facet: keepFacet } : { col, dir };
+  }
+  return out;
 }
 
 /**
@@ -524,7 +541,7 @@ export function setListSort(
   scope: string,
   panel: PanelKey,
   libId: string,
-  sort: { col: SortColId; dir: SortDir },
+  sort: SortState,
 ): void {
   const s = ensureInit();
   commit(withScopePanel(s, scope, panel, (p) => withList(p, libId, { sort })));
@@ -717,7 +734,7 @@ export function migrateLegacyLayoutSizes(): boolean {
 
 // ── selector-side helpers (cached-equality snapshots) ───────────────────
 
-const DEFAULT_SORT: { col: SortColId; dir: SortDir } = { col: "year", dir: "desc" };
+const DEFAULT_SORT: SortState = { col: "year", dir: "desc" };
 
 // Stable singletons for the absent/default slices. The readers MUST return a
 // referentially-stable value when the slice is missing — `useSyncExternalStore`
@@ -806,10 +823,10 @@ export function useListView(
   panel: PanelKey,
   libId: string,
 ): {
-  sort: { col: SortColId; dir: SortDir };
+  sort: SortState;
   query: string;
   scrollTop: number;
-  setSort: (s: { col: SortColId; dir: SortDir }) => void;
+  setSort: (s: SortState) => void;
   setQuery: (q: string) => void;
   setScroll: (top: number) => void;
 } {
@@ -828,7 +845,7 @@ export function useListView(
   }, [scope, panel, libId]);
   const lv = useSyncExternalStore(subscribe, getSnap, getSnap);
   const setSort = useCallback(
-    (s: { col: SortColId; dir: SortDir }) => setListSort(scope, panel, libId, s),
+    (s: SortState) => setListSort(scope, panel, libId, s),
     [scope, panel, libId],
   );
   const setQuery = useCallback(

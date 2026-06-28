@@ -1,6 +1,7 @@
 "use client";
 
 import type { IndexedState, BibAuthState } from "@library/lib/catalog";
+import { FACETS, type StatusFacet } from "@library/lib/list-columns";
 
 type Tone = "green" | "amber" | "red" | "gray" | "blue";
 
@@ -134,12 +135,25 @@ export function StatusPills({
   /** When true, appends a blue "imported" pill after the bib pill. */
   bibImported?: boolean;
 }) {
+  // F#14: the glyph order is GENUINELY driven by the shared `FACETS` array
+  // (`list-columns.ts`) — the same SSOT the comparator switch and the facet
+  // sub-bar use — so the pills, the sortable sub-bar segments, and the
+  // comparator can never drift out of order. Each facet maps to its pill via
+  // `FACET_PILL`; `imp` returns null unless `bibImported`, preserving the
+  // conditional "imported" pill.
+  const FACET_PILL: Record<StatusFacet, () => React.ReactNode> = {
+    pdf: () => <PdfPill present={pdfPresent} />,
+    idx: () => <IndexedPill state={indexed} />,
+    bib: () => <BibPill state={bib} />,
+    imp: () => (bibImported ? <BibImportedPill /> : null),
+  };
   return (
     <span style={{ display: "inline-flex", gap: 3, alignItems: "center" }}>
-      <PdfPill present={pdfPresent} />
-      <IndexedPill state={indexed} />
-      <BibPill state={bib} />
-      {bibImported && <BibImportedPill />}
+      {FACETS.map((facet) => (
+        <span key={facet} style={{ display: "contents" }}>
+          {FACET_PILL[facet]()}
+        </span>
+      ))}
     </span>
   );
 }
