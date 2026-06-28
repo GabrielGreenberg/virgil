@@ -129,6 +129,13 @@ export function provenanceChipStyle(
               "Pre-digital classic — no DOI/ISBN registry will ever index it",
             className: "text-indigo-700 bg-indigo-50 border border-indigo-200",
           };
+        case "needs-reauth":
+          return {
+            text: "needs re-auth",
+            tooltip:
+              "Metadata rewritten from the file — run /library/authenticate-bib to re-verify",
+            className: "text-amber-700 bg-amber-50 border border-amber-200",
+          };
         default:
           return {
             text: chip.state,

@@ -66,19 +66,22 @@ def _count_bib_entries(path: Path) -> int:
 
 
 def _catalog_summary(path: Path) -> dict:
-    """Total entries + indexed.state distribution."""
+    """Total entries + indexed.state distribution + holdings (pdf.present) count."""
     if not path.exists():
-        return {"total": 0, "indexed_states": {}}
+        return {"total": 0, "indexed_states": {}, "present": 0}
     try:
         cat = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
-        return {"total": 0, "indexed_states": {}}
+        return {"total": 0, "indexed_states": {}, "present": 0}
     entries = cat.get("entries", []) or []
     states: Counter[str] = Counter()
+    present = 0
     for e in entries:
         s = (e.get("indexed") or {}).get("state", "none")
         states[s] += 1
-    return {"total": len(entries), "indexed_states": dict(states)}
+        if (e.get("pdf") or {}).get("present"):
+            present += 1
+    return {"total": len(entries), "indexed_states": dict(states), "present": present}
 
 
 def _check_master(snap_dir: Path, library: Path) -> dict:
@@ -92,11 +95,23 @@ def _check_master(snap_dir: Path, library: Path) -> dict:
     }
 
 
+# indexed.state values that represent real indexing work. A drop in any of
+# these is genuine data loss. `none` is deliberately EXCLUDED: under the F#4
+# holdings-only model the pruned/never-minted reference rows all carry
+# indexed.state == "none", so a `none` count decline is the expected effect
+# of the model, not a regression.
+_REAL_INDEX_STATES = frozenset({
+    "indexed", "deepIndexed", "richIndexed", "running", "queued", "failed",
+})
+
+
 def _check_catalog(snap_dir: Path, library: Path) -> dict:
     before = _catalog_summary(snap_dir / "catalog.json")
     after = _catalog_summary(library / ".virgil" / "catalog.json")
     state_regressions: list[dict] = []
     for state, n_before in before["indexed_states"].items():
+        if state not in _REAL_INDEX_STATES:
+            continue  # `none` drops are expected reference-row prunes (F#4)
         n_after = after["indexed_states"].get(state, 0)
         if n_after < n_before:
             state_regressions.append({
@@ -104,6 +119,14 @@ def _check_catalog(snap_dir: Path, library: Path) -> dict:
                 "before": n_before,
                 "after": n_after,
             })
+    # F4W-2: coarse holdings floor. A held-but-not-yet-indexed paper
+    # (pdf.present==true, indexed.state=="none") wiped during a merge produces
+    # NEITHER a master.bib shrink NOR a real-index-state regression (none is
+    # excluded), so it would slip through silently. Counting rows with
+    # pdf.present==true catches a vanishing source-file row regardless of its
+    # indexed.state.
+    before_present = before.get("present", 0)
+    after_present = after.get("present", 0)
     return {
         "before_total": before["total"],
         "after_total": after["total"],
@@ -112,6 +135,9 @@ def _check_catalog(snap_dir: Path, library: Path) -> dict:
         "state_regressions": state_regressions,
         "before_states": before["indexed_states"],
         "after_states": after["indexed_states"],
+        "before_present": before_present,
+        "after_present": after_present,
+        "present_dropped": after_present < before_present,
     }
 
 
@@ -137,15 +163,30 @@ def main(argv: list[str]) -> int:
             f"master.bib shrank: {master['before']} -> {master['after']} entries "
             f"(delta {master['delta']:+d})"
         )
-    if catalog["shrank"]:
-        alerts.append(
-            f"catalog.json shrank: {catalog['before_total']} -> "
-            f"{catalog['after_total']} entries (delta {catalog['delta']:+d})"
-        )
+    # F#4: a bare catalog.json total decline is NO LONGER an alert. Under the
+    # holdings-only model the merge legitimately removes/never-mints
+    # reference-only rows (their auth state moved to the `% bib.state`
+    # comment in master.bib), so the catalog total shrinks by design. True
+    # data loss now shows up ONLY as (a) a master.bib shrink — the bib is the
+    # canonical store and the merge only appends to it — or (b) an
+    # indexed.state regression (a holding that lost its indexed status). A
+    # pure catalog total drop with no state regression is expected and clean.
+    if catalog["shrank"] and not catalog["state_regressions"]:
+        # Informational only — recorded in the JSON, not surfaced as an alert.
+        pass
     for r in catalog["state_regressions"]:
         alerts.append(
             f"catalog.json indexed.state.{r['state']} regressed: "
             f"{r['before']} -> {r['after']}"
+        )
+    # F4W-2: holdings floor — a present:true row disappearing is data loss even
+    # when indexed.state=="none" (so no master shrink, no state regression fires).
+    if catalog["present_dropped"]:
+        alerts.append(
+            f"catalog.json holdings dropped: {catalog['before_present']} -> "
+            f"{catalog['after_present']} (delta "
+            f"{catalog['after_present'] - catalog['before_present']:+d}) — "
+            f"a present:true row disappeared"
         )
 
     restore_cmds: list[str] = []
@@ -161,6 +202,11 @@ def main(argv: list[str]) -> int:
         "snapshot_dir": str(snap_dir),
         "master_bib": master,
         "catalog_json": catalog,
+        # F#4: a catalog total shrink with no indexed-state regression is the
+        # expected effect of the holdings-only model, not an alert.
+        "catalog_shrank_expected": bool(
+            catalog["shrank"] and not catalog["state_regressions"]
+        ),
         "alerts": alerts,
         "clean": not alerts,
         "restore_commands": restore_cmds,

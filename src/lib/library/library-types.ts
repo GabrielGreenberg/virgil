@@ -14,14 +14,17 @@ export type LibraryItemStatus =
   | "ready"
   | "failed";
 
-/** Bib-authentication state mirrored from `catalog.json`'s `bib.state`. */
+/** Bib-authentication state mirrored from `catalog.json`'s `bib.state`.
+ *  Kept in lockstep with `BibAuthState` (library/lib/catalog.ts) and the
+ *  canonical Python set (library/scripts/_tools.py CANONICAL_BIB_STATES). */
 export type LibraryBibState =
   | "none"
   | "unverified"
   | "authenticated"
   | "manuscript"
   | "canonical"
-  | "failed";
+  | "failed"
+  | "needs-reauth";
 
 /**
  * Coarse, paper-side processing tier for a library entry — derived from the

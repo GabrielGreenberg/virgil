@@ -238,6 +238,43 @@ def require_setup_or_die(library: Path, *, for_tool: str = "marker-pdf") -> None
         )
 
 
+# ── canonical bib.state vocabulary ────────────────────────────────────
+#
+# ONE shared source of truth for the set of legal `% bib.state = <state>`
+# values, imported by every writer (merge_paper_references, triage_apply,
+# apply_metadata_mismatch_policy, …) and mirrored by the reader-side
+# VALID_BIB_STATES in library/lib/bib-index.ts. Keep the two in lockstep:
+# a state written here but absent from the TS set is silently dropped to
+# "none" by the bib-index reader (the exact `needs-reauth` round-trip bug
+# F#4 fixes).
+#
+# Semantics (see library/CLAUDE.md §Bib states):
+#   none          — no state assigned yet (the implicit default; no comment)
+#   unverified    — single source matched at lower threshold (action needed)
+#   authenticated — DOI verified / ≥2 sources agreed (terminal)
+#   manuscript    — explicitly unpublished/forthcoming (terminal)
+#   canonical     — pre-digital descriptor, no modern agreement (terminal,
+#                   re-runnable)
+#   failed        — no source matched above threshold (action needed)
+#   needs-reauth  — metadata-mismatch policy rewrote fields from the file;
+#                   awaiting a re-authentication pass before the new fields
+#                   are trusted (action needed — try /library/authenticate-bib)
+CANONICAL_BIB_STATES: frozenset[str] = frozenset({
+    "none",
+    "unverified",
+    "authenticated",
+    "manuscript",
+    "canonical",
+    "failed",
+    "needs-reauth",
+})
+
+
+def is_canonical_bib_state(state: str) -> bool:
+    """True iff `state` is one of the canonical `% bib.state` values."""
+    return state in CANONICAL_BIB_STATES
+
+
 # ── small utilities ───────────────────────────────────────────────────
 
 
@@ -426,8 +463,10 @@ _BIB_ENTRY_START_RE = re.compile(r"(?m)^@(\w+)[ \t]*\{[ \t]*([^,\s]+)[ \t]*,")
 # This is the authoritative state home for the reference universe (F#4): the
 # bib-index projects it into each record's `bs` so the fileless mass of
 # citation-only references carries real auth state without a catalog row.
+# State token is `[\w-]+` (not `\w+`) so hyphenated canonical states like
+# `needs-reauth` round-trip; `\w+` silently dropped them mid-hyphen → "none".
 _BIB_STATE_COMMENT_RE = re.compile(
-    r"(?m)^%[ \t]*bib\.state[ \t]*=[ \t]*(\w+)[ \t]*\n(?:[ \t]*\n)*@\w+[ \t]*\{[ \t]*([^,\s]+)"
+    r"(?m)^%[ \t]*bib\.state[ \t]*=[ \t]*([\w-]+)[ \t]*\n(?:[ \t]*\n)*@\w+[ \t]*\{[ \t]*([^,\s]+)"
 )
 
 
@@ -986,7 +1025,9 @@ def update_master_bib_entry(
             existing_comment_state = ""
             if prev_line.startswith("% bib.state"):
                 entry_start = prev_line_start
-                cm = re.match(r"%\s*bib\.state\s*=\s*(\w+)", prev_line)
+                # `[\w-]+` so hyphenated states (needs-reauth) survive a
+                # fields-only writeback instead of truncating to "needs".
+                cm = re.match(r"%\s*bib\.state\s*=\s*([\w-]+)", prev_line)
                 if cm:
                     existing_comment_state = cm.group(1)
             effective_bib_state = bib_state or existing_comment_state
@@ -1005,3 +1046,57 @@ def update_master_bib_entry(
             text += "\n" + replacement
         _atomic_write_text(master_path, text)
     _mark_bib_index_dirty(library)
+
+
+# ── F#4 holdings model ────────────────────────────────────────────────
+#
+# catalog.json carries ONLY holdings rows (pdf.present=true). Reference-only
+# entries (no source file on disk) no longer get a catalog row; their auth
+# state lives solely as a `% bib.state = <state>` comment in master.bib,
+# projected into bib-index.json by build_bib_index. These helpers are the
+# single decision point shared by every writer (merge_paper_references,
+# triage_apply).
+
+# Source-file extensions that count as a holding (a real document on disk).
+_HOLDINGS_EXTS = (".pdf", ".docx", ".tex")
+
+
+def paper_has_holdings(library: Path, citekey: str) -> bool:
+    """True iff `papers/<citekey>/` holds an actual source document.
+
+    A holding is a `<citekey>.{pdf,docx,tex}` source file. This is the F#4
+    gate: only holdings get a catalog row. A reference-only entry (cited but
+    not held) has a master.bib entry + `% bib.state` comment but no source
+    file, so this returns False and the writer skips the catalog row.
+    """
+    import unicodedata
+    paper_dir = library / "papers"
+    for form in ("NFC", "NFD"):
+        ck = unicodedata.normalize(form, citekey)
+        for ext in _HOLDINGS_EXTS:
+            if (paper_dir / ck / f"{ck}{ext}").exists():
+                return True
+    return False
+
+
+def ensure_bib_state_comment(
+    library: Path,
+    citekey: str,
+    entry_type: str,
+    fields: dict[str, str],
+    state: str,
+) -> None:
+    """Write/refresh the `% bib.state = <state>` comment for `citekey` in
+    master.bib WITHOUT minting a catalog row (the F#4 reference-only path).
+
+    Thin wrapper over `update_master_bib_entry` so callers read at the
+    intent level ("record this reference's auth state") rather than the
+    mechanism. The state is validated against the canonical set so a typo
+    can't write a value the bib-index reader will silently drop to "none".
+    """
+    if state and state not in CANONICAL_BIB_STATES:
+        raise ValueError(
+            f"bib.state {state!r} is not canonical (see CANONICAL_BIB_STATES); "
+            "the bib-index reader would drop it to 'none'."
+        )
+    update_master_bib_entry(library, citekey, entry_type, fields, bib_state=state)

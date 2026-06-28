@@ -39,6 +39,7 @@ from _tools import (
     bump_catalog_version,
     emit_bib_entry,
     lock_catalog,
+    paper_has_holdings,
     read_catalog,
     read_master_bib,
     update_master_bib_entry,
@@ -135,11 +136,50 @@ def _upsert_catalog_row_bib_only(
     field_changes: list[dict[str, str]] | None = None,
     bib_state: str = "unverified",
 ) -> None:
-    """Insert or update a bib-only catalog row (no source file, indexed=none).
+    """Update a bib-only catalog row — F#4 holdings-only.
+
+    A `.bib` import carries no source document, so its entry is
+    reference-only: under the F#4 sources-only model it must NOT mint a
+    catalog row. The auth state already lives in the `% bib.state` comment
+    in master.bib (written by the `update_master_bib_entry` call in
+    `apply_bib_row`), which `build_bib_index` projects into bib-index.json.
+
+    The one exception: if a HOLDINGS row already exists for this citekey
+    (the `.bib` import names a citekey that's also held on disk), we still
+    refresh that existing row's bib fields in place — never clobbering its
+    `pdf.present`/`indexed` — so a real holding doesn't lose its merged
+    field history. We never CREATE a `pdf.present=false` row here.
 
     Read-modify-write is serialized via `lock_catalog` so concurrent
     triage runs don't drop each other's row updates.
     """
+    bib_status_min: dict[str, Any] = {"state": bib_state}
+    if field_changes:
+        bib_status_min["fieldChanges"] = field_changes
+
+    if not paper_has_holdings(library, citekey):
+        # Reference-only: only touch the catalog if a row already exists
+        # (a stale pre-F#4 row); otherwise skip — state lives in master.bib.
+        with lock_catalog(library):
+            catalog = read_catalog(library)
+            catalog.setdefault("version", 1)
+            catalog.setdefault("entries", [])
+            for i, e in enumerate(catalog["entries"]):
+                if e.get("citekey") == citekey:
+                    merged_bib = dict(e.get("bib") or {})
+                    merged_bib.update(bib_status_min)
+                    existing_changes = (e.get("bib") or {}).get("fieldChanges") or []
+                    new_changes = bib_status_min.get("fieldChanges") or []
+                    if existing_changes or new_changes:
+                        merged_bib["fieldChanges"] = existing_changes + new_changes
+                    e["bib"] = merged_bib
+                    e["updatedAt"] = _now()
+                    catalog["entries"][i] = e
+                    write_catalog(library, catalog)
+                    return
+            # No existing row → reference-only entry, no catalog row minted.
+            return
+
     title = fields.get("title", "") or ""
     authors_str = fields.get("author", "") or ""
     authors = [a.strip() for a in authors_str.split(" and ") if a.strip()]
@@ -178,11 +218,15 @@ def _upsert_catalog_row_bib_only(
         catalog.setdefault("entries", [])
         for i, e in enumerate(catalog["entries"]):
             if e.get("citekey") == citekey:
-                # Preserve addedAt; only update mutable fields.
+                # Preserve addedAt; only update mutable fields. F#4: never
+                # clobber a holding's pdf/indexed status with the bib-only
+                # placeholders — this path now runs only for real holdings.
                 preserved = {
                     "addedAt": e.get("addedAt", now),
                     "tags": e.get("tags"),
                     "originalFilename": e.get("originalFilename"),
+                    "pdf": e.get("pdf"),
+                    "indexed": e.get("indexed"),
                 }
                 merged_bib = dict(e.get("bib") or {})
                 merged_bib.update(bib_status)
@@ -199,6 +243,8 @@ def _upsert_catalog_row_bib_only(
                 catalog["entries"][i] = updated
                 write_catalog(library, catalog)
                 return
+        # New holdings row: reflect the source file actually present on disk.
+        base_row["pdf"] = {"present": True}
         catalog["entries"].append(base_row)
         write_catalog(library, catalog)
 

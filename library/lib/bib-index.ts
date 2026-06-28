@@ -67,6 +67,11 @@ const VALID_BIB_STATES: ReadonlySet<string> = new Set<BibAuthState>([
   "manuscript",
   "canonical",
   "failed",
+  // Mirrors the canonical Python set in
+  // library/scripts/_tools.py CANONICAL_BIB_STATES. Without this entry the
+  // `needs-reauth` state written by apply_metadata_mismatch_policy.py would
+  // be silently dropped to "none" on read (the F#4 round-trip bug).
+  "needs-reauth",
 ]);
 
 /** Map a slim record to the BibEntry shape the browse path already consumes.

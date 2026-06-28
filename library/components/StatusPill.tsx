@@ -70,6 +70,7 @@ const bibTone: Record<BibAuthState, Tone> = {
   manuscript: "blue",
   canonical: "blue",
   failed: "red",
+  "needs-reauth": "amber",
 };
 
 const bibLabel: Record<BibAuthState, string> = {
@@ -79,6 +80,7 @@ const bibLabel: Record<BibAuthState, string> = {
   manuscript: "MS",
   canonical: "≈ bib",
   failed: "! bib",
+  "needs-reauth": "↻ bib",
 };
 
 const bibTitle: Record<BibAuthState, string> = {
@@ -89,6 +91,8 @@ const bibTitle: Record<BibAuthState, string> = {
   canonical:
     "Bib auth: canonical (pre-digital classic; no external registry expected)",
   failed: "Bib auth: failed — try again or fill by hand",
+  "needs-reauth":
+    "Bib auth: needs re-auth — metadata rewritten from the file; run /library/authenticate-bib",
 };
 
 export function BibPill({ state }: { state: BibAuthState }) {
