@@ -8,7 +8,7 @@ import type { EditorHandle } from "@/components/Editor";
 import { READER_CHROME } from "@/components/editor-layout/chrome-config";
 import { EditorChromeProvider } from "@/components/editor-layout/chrome-context";
 import { DocPipeline } from "@/components/editor-layout/DocPipeline";
-import { useReaderViewPrefs } from "@/components/editor-layout/reader-view-prefs";
+import { useReaderView } from "@/components/editor-layout/reader-view-prefs";
 import { setDocHandle, deleteDocHandle } from "@/lib/doc-index";
 import { readTextFile } from "@library/lib/library-storage";
 import { parseLatex } from "@/lib/latex-parser";
@@ -45,16 +45,25 @@ interface Props {
  *
  * Panel + view-state inheritance (NOT a Reader subset anymore): the
  * Reader runs the SAME `useViewPrefs` engine as the main app, in
- * `"ephemeral"` (session-only) mode via `useReaderViewPrefs()`, assembled
- * by the shared `buildEditorPaneViewPrefs(...)` builder. So the panel rail
+ * `"ephemeral"` (session-only) mode via `useReaderView()`, which assembles
+ * BOTH the `viewPrefs` bundle (shared `buildEditorPaneViewPrefs(...)` builder)
+ * AND the `menuBar` bundle off ONE ephemeral engine. So the panel rail
  * (for the 6 whitelisted kinds — outline, footnotes, examples, citations,
  * bibliography, notes), the panel↔text divider, dock stacking, card
  * popouts, omni toggles, and margins are all LIVE here (session-only). The
  * Outline panel's click-to-scroll is wired through the one REAL Reader
  * editor-handler (`onScrollToHeading`); the rest of the editor-mutation
- * handlers are typed no-ops because the doc is read-only. The Reader passes
- * no `menuBar` bundle, so only the docked MenuBar + detached toolbars stay
- * dormant. Note cards stay editable (`READER_CHROME.editableCardKinds`).
+ * handlers are typed no-ops because the doc is read-only.
+ *
+ * F#16: the Reader now ALSO passes a `menuBar` bundle, so the docked MenuBar
+ * lights up — its View-menu toggles (par titles, latex comments, marginalia/
+ * highlight types, divider levels/width, dim-at-rest, close-all) are all
+ * FUNCTIONAL via the SAME ephemeral engine, and paragraph back/forward nav is
+ * a keystroke-safe wall-clock recorder. Fonts…/Margins…/Preferences stay
+ * absent (Fonts/Margins via `READER_CHROME.showMenuBarEditItems=false`;
+ * ViewMenu renders no Preferences row). Passing `menuBar` on this single
+ * `<EditorPane>` lights up BOTH reader contexts (inline panel + outer tab).
+ * Note cards stay editable (`READER_CHROME.editableCardKinds`).
  */
 export default function PaperRender({
   handle,
@@ -178,15 +187,21 @@ function PaperReader({
   // `onEditorReady`; we keep it in state (not a ref) so the lozenge
   // re-renders once the editor is mounted.
   const [editor, setEditor] = useState<Editor | null>(null);
-  // Reader view-prefs run the real `useViewPrefs` engine in ephemeral mode.
-  // The editor is threaded in so the Outline panel's click-to-scroll works
-  // (the only live editor-handler in an otherwise read-only doc).
-  const readerViewPrefs = useReaderViewPrefs(editor);
   // Tracked as state (not a ref) so the lozenge re-mounts/relays out once
   // the scroll container exists. A plain ref would leave the lozenge
   // with `null` on its first render.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
+  // Reader view-prefs + menuBar bundle run the real `useViewPrefs` engine in
+  // ephemeral mode — ONE engine backs both so a menu toggle and a rail click
+  // mutate the same store (F#16). The editor is threaded in for the Outline
+  // panel's click-to-scroll + the menu's divider-level walk; the editor handle
+  // ref + scroll element drive the menu's paragraph back/forward recorder.
+  const { viewPrefs: readerViewPrefs, menuBar: readerMenuBar } = useReaderView(
+    editor,
+    editorRef,
+    scrollEl,
+  );
 
   // ── Reader scroll save/restore (per (scope, panel, paper:<citekey>)) ──
   const scrollSessionLibId = `paper:${citekey}`;
@@ -386,6 +401,7 @@ function PaperReader({
               editable={false}
               chrome={READER_CHROME}
               viewPrefs={readerViewPrefs}
+              menuBar={readerMenuBar}
               onEditorReady={setEditor}
             />
           </EditorChromeProvider>
