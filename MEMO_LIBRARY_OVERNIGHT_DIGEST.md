@@ -116,6 +116,23 @@ Note: a non-standard `bib.state="needs-reauth"` is written by `apply_metadata_mi
 
 ## Per-phase landing log
 
+### Phase DM-4 — Library folder tabs (F#8 + F#15) — ✅ MERGED to local main `f329c5b0` (no-ff, NOT pushed); phase commit `dd9372ec`
+Landed 2026-06-28. **F#8 (clipped-stroke horizontal SVG gutter)** + **F#15 (Chrome-style flex-compress)** landed **TOGETHER** — the two couple at the folder-tab geometry, so they shipped as one phase.
+
+**Deep solution — a single unified pure geometry SSOT** in [library/components/panel-tabs/folder-path.ts](library/components/panel-tabs/folder-path.ts):
+- `tabSvgGeometry()` (**F#8**): `svgW = 2*S + tabW + 1`, mirroring the pre-existing `svgH = TAB_H + 1` vertical precedent — the horizontal stroke gutter so both swoop feet + bottom corners render inside the viewport instead of bleeding past `overflow: hidden`.
+- `deriveTabWidthFromWrapper()` (**F#15**): **inverts the sizing model** — a ResizeObserver reads the flex-**ASSIGNED** wrapper width and maps back to `tabW`; it **ceils** the measured width so `svgW >= laidOut` (canvas always covers its box) and keeps `tabW` an integer for DPR crispness.
+- Shared constants `STROKE_INSET=0.5`, `ACTIVE_MIN_CONTENT=116`, `INACTIVE_MIN_CONTENT=60`.
+- Strip is `overflow-x: hidden` + `min-width: 0`; **inactive tabs** `flex: 1 1 auto` + ellipsize first; **active tab** `flex: 0 1 auto` with a reserved min-width, ellipsizes only above the floor; past the floor a `[activeId, tabs.length]`-keyed scroll-into-view effect keeps the active tab attached. **The active stroke path's omitted bottom edge IS both the F#8 panel-merge seam and the F#15 attach guarantee** — one geometry serves both features.
+
+**Review:** adversarial review verdict = **ship**; 2 confirmed-real findings **FIXED before merge** — **F1** (`Math.floor` truncated fractional flex width → a ~1px `--library-bg` strip on the active tab's right edge; fixed by **ceiling** the measured width so the canvas covers the box) and **F2** (content overlay width decoupled from the F#8 stroke gutter → now spans exactly `tabW`). **F3** (`react-hooks/refs` at the `DropIndicator` render in `PanelTabStrip.tsx`) is **PRE-EXISTING on HEAD** (confirmed via eslint baseline), **NOT introduced** — flagged for a separate cleanup pass.
+
+**Verify:** tsc **0** · full vitest **3059 pass / 1 skip / 0 fail** · **13 new** folder-path geometry tests (gutter / integer-fixpoint / fractional-cover / active-always-attached) · **no net-new lint** (2 pre-existing `react-hooks/refs` errors + 1 pre-existing unused-`i` warning, all confirmed on HEAD baseline at lines 373/518/519).
+
+**OWED live check:** 1×/2× DPR pixel-check in **prod FSA** — swoop-feet crispness + that tabs compress/scroll at the right thresholds with 8+ open libraries. **NOT drivable in the dev preview iframe** (Library FSA picker dead there).
+
+---
+
 ### Phase 2 — List-table — ✅ MERGED to local main `0e45eafa` (no-ff, NOT pushed)
 DM-3 partial via the existing `gridTemplate` SSOT. **F#14 (fold bib-imp → 4th "✓ imp" Status pill)** + **F#9 (open-in-tab list column)** landed; **F#13 (column-order drag + promote-defaults)** and **F#14's facet sub-bar sort** DEFERRED (live tuning). Skeptic-reviewed: 0 real defects; 1 LOW self-healing edge (a persisted status width <208 may clip the 4th pill until resized). tsc 0 · vitest 2995 · eslint clean.
 - F#9 header-button half folds into F#11 (not done).
