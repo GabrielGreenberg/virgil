@@ -1,0 +1,101 @@
+/*
+ * Virgil overrides for the vendored pdf.js prebuilt viewer (F#10).
+ *
+ * This file is loaded AFTER viewer.css via a single <link> we add to the
+ * vendored web/viewer.html (search that file for "VIRGIL OVERRIDE"). It is
+ * the ONLY hand-authored asset in public/pdfjs/ — everything else is the
+ * unmodified Mozilla dist (Apache-2.0). On a pdfjs version bump: re-vendor
+ * the zip, then re-add the viewer.html <link> line and keep this file.
+ *
+ * The viewer renders inside an <iframe> at /pdfjs/web/viewer.html — a
+ * SEPARATE document that does NOT inherit the parent app's globals.css.
+ * So the Virgil design tokens are hard-coded here as literal hex values
+ * (the source token is named in a comment next to each one). Keep these in
+ * sync with src/app/globals.css if the palette ever changes.
+ *
+ * Goal: turn pdf.js's tall dark toolbar into a quiet ~40px manila strip in
+ * the same register as the Library TopBar, keeping only page navigation +
+ * zoom, and hiding the annotate / editor / print / download / open groups.
+ */
+
+:root {
+  /* Toolbar surface + chrome -> Virgil topbar tokens */
+  --toolbar-bg-color: #dcdbd7;            /* --topbar-bg (manila/taupe) */
+  --toolbar-border-color: #cbc3b8;        /* --topbar-border */
+  --toolbar-height: 40px;
+  --toolbar-box-shadow: none;
+  --toolbar-border-bottom: 1px solid #cbc3b8; /* --topbar-border */
+
+  /* Body / main background behind the pages stays the warm sheet */
+  --main-color: #1a1a1a;                  /* --foreground (ink) */
+
+  /* Toolbar icon + control colors */
+  --toolbar-icon-bg-color: #1a1a1a;       /* --foreground (ink) */
+  --toolbar-icon-opacity: 0.7;
+  --toolbar-icon-hover-bg-color: #8a7355; /* --control-selected */
+
+  --button-hover-color: rgba(138, 115, 85, 0.16); /* --control-selected @ low alpha */
+  --button-background-color: transparent;
+  --button-background-color-hover: rgba(138, 115, 85, 0.16);
+  --button-background-color-active: rgba(138, 115, 85, 0.28);
+
+  /* Page-number + scale fields */
+  --field-color: #1a1a1a;                 /* --foreground */
+  --field-bg-color: #ffffff;              /* --surface */
+  --field-border-color: #cbc3b8;          /* --topbar-border */
+
+  /* Secondary toolbar doorhanger (kept for the few items we keep there) */
+  --doorhanger-bg-color: #fdfaf5;         /* warm panel sheet */
+  --doorhanger-border-color: #cbc3b8;     /* --topbar-border */
+  --doorhanger-hover-bg-color: rgba(138, 115, 85, 0.16);
+}
+
+/* Quiet the toolbar container: thin manila strip, no heavy gradient/shadow. */
+#toolbarContainer,
+.toolbar {
+  background-color: #dcdbd7;              /* --topbar-bg */
+  border-bottom: 1px solid #cbc3b8;       /* --topbar-border */
+  box-shadow: none;
+}
+
+#toolbarViewer {
+  height: 40px;
+}
+
+/* Micro-label register for the page-count + scale text. */
+#numPages,
+.toolbarLabel {
+  color: #6f6a63;                         /* between --muted and ink */
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+#pageNumber {
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, monospace);
+}
+
+/*
+ * Hide the groups we don't want: annotate/editor tools, print, download,
+ * open-file, presentation mode, bookmark. We keep:
+ *   - sidebar toggle (thumbnails / outline)
+ *   - previous / next page + page-number field + page count
+ *   - zoom out / in + scale dropdown
+ */
+#editorModeButtons,
+#editorModeSeparator,
+#editorFreeText,
+#editorHighlight,
+#editorInk,
+#editorStamp,
+#printButton,
+#downloadButton,
+#secondaryPrint,
+#secondaryDownload,
+#secondaryOpenFile,
+#presentationMode,
+#viewBookmark,
+#viewBookmarkSeparator {
+  display: none !important;
+}
