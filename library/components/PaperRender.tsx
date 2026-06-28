@@ -16,6 +16,7 @@ import { assignUuids } from "@/lib/latex-serializer";
 import type { IndexedState } from "@library/lib/catalog";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { getSession, setListScrollQuiet } from "@library/lib/view-session-store";
+import type { PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PageScrollLozenge from "./PageScrollLozenge";
 
 interface Props {
@@ -26,6 +27,20 @@ interface Props {
    *  The reader scroll is persisted under (scope, panel, paper:<citekey>). */
   scope: string;
   panel: PanelKey;
+  /** Reports the live TipTap editor + scroll container up to RightDetail,
+   *  which calls `usePgmarkPages` ONCE off these refs (F#11) and threads the
+   *  resulting `PgmarkPages` back down to BOTH the header's page picker and
+   *  this component's `PageScrollLozenge`. Both null while the reader is still
+   *  mounting / on unmount. */
+  onReaderRefs?: (refs: {
+    editor: Editor | null;
+    scrollEl: HTMLElement | null;
+  }) => void;
+  /** F#11: the shared printed-page derivation, computed ONCE in RightDetail
+   *  (the single owner) and threaded down so PageScrollLozenge consumes the
+   *  SAME PgmarkPages the header's page picker uses — no second
+   *  ResizeObserver / scroll listener / doc-scan. */
+  pgmarkPages?: PgmarkPages;
 }
 
 /**
@@ -71,6 +86,8 @@ export default function PaperRender({
   indexedState,
   scope,
   panel,
+  onReaderRefs,
+  pgmarkPages,
 }: Props) {
   const [tex, setTex] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -160,6 +177,8 @@ export default function PaperRender({
       parseError={parseError}
       scope={scope}
       panel={panel}
+      onReaderRefs={onReaderRefs}
+      pgmarkPages={pgmarkPages}
     />
   );
 }
@@ -171,6 +190,11 @@ interface PaperReaderProps {
   onParseError: (err: string | null) => void;
   scope: string;
   panel: PanelKey;
+  onReaderRefs?: (refs: {
+    editor: Editor | null;
+    scrollEl: HTMLElement | null;
+  }) => void;
+  pgmarkPages?: PgmarkPages;
 }
 
 function PaperReader({
@@ -180,6 +204,8 @@ function PaperReader({
   onParseError,
   scope,
   panel,
+  onReaderRefs,
+  pgmarkPages,
 }: PaperReaderProps) {
   const [content, setContent] = useState<JSONContent | null>(null);
   // PageScrollLozenge needs the live TipTap Editor instance to compute
@@ -192,6 +218,16 @@ function PaperReader({
   // with `null` on its first render.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const editorRef = useRef<EditorHandle | null>(null);
+
+  // Report the live editor + scroll container up to RightDetail, which owns the
+  // single `usePgmarkPages` derivation (F#11) and threads the result back down
+  // to both the header's page picker and this component's lozenge. Re-fires
+  // whenever either ref flips.
+  useEffect(() => {
+    onReaderRefs?.({ editor, scrollEl });
+    return () => onReaderRefs?.({ editor: null, scrollEl: null });
+  }, [editor, scrollEl, onReaderRefs]);
+
   // Reader view-prefs + menuBar bundle run the real `useViewPrefs` engine in
   // ephemeral mode — ONE engine backs both so a menu toggle and a rail click
   // mutate the same store (F#16). The editor is threaded in for the Outline
@@ -410,8 +446,10 @@ function PaperReader({
       {/* Page lozenge — a floating `p. N` pill pinned near the right
           scrollbar (D-4), absolutely positioned against this wrapper so
           it stays put while the inner div scrolls. Fades in on scroll,
-          out after ~1s idle; renders nothing for pgmark-less papers. */}
-      <PageScrollLozenge editor={editor} scrollContainer={scrollEl} />
+          out after ~1s idle; renders nothing for pgmark-less papers.
+          F#11: consumes the SHARED PgmarkPages threaded from RightDetail
+          (one derivation) rather than running its own usePgmarkPages. */}
+      <PageScrollLozenge pages={pgmarkPages} scrollContainer={scrollEl} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { Editor } from "@tiptap/react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { queueBibEdit } from "@library/lib/bib-edit";
@@ -10,6 +11,7 @@ import {
   usePaperViewMode,
 } from "@library/lib/view-session-store";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
+import { usePgmarkPages, type PgmarkPages } from "@library/hooks/usePgmarkPages";
 import BibEditModal from "./BibEditModal";
 import PaperHeader from "./PaperHeader";
 import PaperRender from "./PaperRender";
@@ -62,6 +64,38 @@ export default function RightDetail({
   const viewModeLibId = `paper:${entry?.citekey ?? "__none__"}`;
   const { viewMode, setViewMode } = usePaperViewMode(scope, panel, viewModeLibId);
   const [editOpen, setEditOpen] = useState(false);
+
+  // F#9: the "open in a new tab" link is redundant inside the OUTER Virgil-bar
+  // tab (you're already in a tab). PaperOuterView passes `scope="outer:..."`;
+  // the in-library Reader passes a non-"outer:" panel scope. Derive once and
+  // thread to PaperHeader as `showOpenInTab` (pure prop threading — no
+  // Reader-specific EditorPane render path; READER_INHERITANCE preserved).
+  const isOuterTab = scope.startsWith("outer:");
+
+  // Live Reader refs lifted up from PaperRender (a sibling BELOW the header) so
+  // this component can run the SINGLE `usePgmarkPages` derivation (F#11) and
+  // feed it to both consumers. Null in PDF mode (no PaperRender mounted).
+  const [readerEditor, setReaderEditor] = useState<Editor | null>(null);
+  const [readerScrollEl, setReaderScrollEl] = useState<HTMLElement | null>(null);
+  const onReaderRefs = useCallback(
+    (refs: { editor: Editor | null; scrollEl: HTMLElement | null }) => {
+      setReaderEditor(refs.editor);
+      setReaderScrollEl(refs.scrollEl);
+    },
+    [],
+  );
+
+  // F#11 — ONE printed-page derivation, owned here. RightDetail is the single
+  // ancestor that renders BOTH consumers (PaperHeader's PagePicker directly,
+  // and PageScrollLozenge via PaperRender), and it already holds the live
+  // reader refs. Calling the hook here ONCE (instead of one instance per
+  // consumer) means a single ResizeObserver + scroll listener + transaction
+  // listener + doc-scan, with the resulting PgmarkPages threaded down as a
+  // prop to both. Gated on text mode (refs are null in PDF mode anyway).
+  const pgmarkPages: PgmarkPages = usePgmarkPages(
+    viewMode === "text" ? readerEditor : null,
+    viewMode === "text" ? readerScrollEl : null,
+  );
 
   // Whether a PDF source is on disk for THIS paper. Computed from `entry`
   // directly (not the post-early-return `pdfAvailable`) so the hook order below
@@ -143,6 +177,7 @@ export default function RightDetail({
           indexedState={entry.indexed.state}
           onEdit={canEdit ? () => setEditOpen(true) : undefined}
           editPending={!canEdit && editPending}
+          showOpenInTab={!isOuterTab}
         />
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <PdfView handle={handle} citekey={entry.citekey} />
@@ -185,6 +220,8 @@ export default function RightDetail({
         indexedState={entry.indexed.state}
         onEdit={canEdit ? () => setEditOpen(true) : undefined}
         editPending={!canEdit && editPending}
+        showOpenInTab={!isOuterTab}
+        pgmarkPages={pgmarkPages}
       />
       <div
         style={{
@@ -200,6 +237,8 @@ export default function RightDetail({
           indexedState={entry.indexed.state}
           scope={scope}
           panel={panel}
+          onReaderRefs={onReaderRefs}
+          pgmarkPages={pgmarkPages}
         />
       </div>
       {editOpen && canEdit && bib && handle && entry.citekey && (

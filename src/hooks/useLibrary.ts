@@ -42,8 +42,12 @@ function mapStatus(s: IndexedState): LibraryItemStatus {
 
 /** Catalog `indexed.state` → the paper-side Bib only / Indexed / Deep-indexed
  *  tier. Keeps the indexed-vs-deepIndexed distinction that `mapStatus`
- *  collapses, so cards can surface a readable processing tier. */
-function mapTier(s: IndexedState): LibraryIndexTier {
+ *  collapses, so cards can surface a readable processing tier.
+ *
+ *  Exported so library chrome (PaperHeader → BibEntryChrome's status row)
+ *  can derive the same processing-tier chip from a `CatalogEntry`'s
+ *  `indexed.state` without duplicating the mapping (F#11). */
+export function mapTier(s: IndexedState): LibraryIndexTier {
   switch (s) {
     case "deepIndexed":
       return "deep-indexed";
