@@ -7,10 +7,12 @@ type FocusHeading = { index: number; level: number };
 /**
  * Focus-mode action handlers. Thin forwarders that thread the outline
  * heading list and total block count into the focus-mode hook — those
- * two arguments are shared by the section-aware mutations (activate /
- * moveTo / expandTo) and live in the shell because they're derived from
- * the latest doc snapshot. `snapBoundary` needs neither (its drag edges
- * are row-raw), so it forwards just the edge + block index.
+ * two arguments are shared by ALL the section-aware mutations (activate /
+ * moveTo / expandTo / snapBoundary) and live in the shell because they're
+ * derived from the latest doc snapshot. `snapBoundary` is now section-aware
+ * too (a drag edge onto a heading confines to its section), so it forwards
+ * the heading list + total — the OutlinePanel drag call keeps its
+ * (edge, blockIndex) signature; the heading context is closed over here.
  */
 export function useFocusActions(deps: {
   focusMode: FocusMode;
@@ -33,9 +35,9 @@ export function useFocusActions(deps: {
 
   const handleFocusSnapBoundary = useCallback(
     (edge: "top" | "bottom", blockIndex: number) => {
-      focusMode.snapBoundary(edge, blockIndex);
+      focusMode.snapBoundary(edge, blockIndex, outlineHeadings, outlineTotalBlocks);
     },
-    [focusMode],
+    [focusMode, outlineHeadings, outlineTotalBlocks],
   );
 
   return {

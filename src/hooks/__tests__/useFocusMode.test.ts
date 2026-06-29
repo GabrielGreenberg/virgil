@@ -31,11 +31,14 @@ import { regionForNode, sectionRange } from "@/hooks/useFocusMode";
  *  - `regionForNode` (new): a heading → its subtree; any non-heading block →
  *    just that one block.
  *
- * The `snapBoundary` drag-edge semantics are now pure index math (no
- * `sectionRange` re-expansion): the top edge sets `min(blockIndex, end)` and
- * the bottom edge sets `max(blockIndex, start)`. We assert that clamp directly
- * (it is the whole behavioral contract — symmetric, free, never a section jump,
- * and a minimum 1-row band on a crossing rather than a silent freeze).
+ * The `snapBoundary` drag edges are now SECTION-AWARE + edge-asymmetric (bug
+ * sweep #7): the snapped row is resolved through `regionForNode`, the TOP edge
+ * taking the region START and the BOTTOM edge the region END. So a bottom drag
+ * onto a section HEADING confines to the whole section (ending at its last body
+ * block) instead of stopping at the bare header row; a non-heading row still
+ * resolves to itself. We assert the extracted clamp directly (the whole
+ * behavioral contract — section-aware, edge-asymmetric, and a 1-row minimum on a
+ * crossing rather than a silent freeze).
  */
 
 // Doc shape used throughout: index 0 is a doc-start/paragraph region before any
@@ -93,40 +96,57 @@ describe("regionForNode (a click selects the clicked node's OWN extent)", () => 
 });
 
 /**
- * The pure drag-edge clamp `snapBoundary` now applies. Extracted verbatim from
- * the hook so the contract is pinned without a React render harness — the hook
- * wraps exactly this in a `bandFromIndices(doc, …)` call.
+ * The drag-edge clamp `snapBoundary` now applies, extracted verbatim from the
+ * hook so the contract is pinned without a React render harness — the hook wraps
+ * exactly this `regionForNode`-resolved clamp in a `bandFromIndices(doc, …)` call.
  */
-function snapTop(blockIndex: number, curEnd: number): number {
-  return Math.min(blockIndex, curEnd);
+function snapTop(
+  blockIndex: number,
+  curEnd: number,
+  headings = HEADINGS,
+  total = TOTAL,
+): number {
+  return Math.min(regionForNode(blockIndex, headings, total)[0], curEnd);
 }
-function snapBottom(blockIndex: number, curStart: number): number {
-  return Math.max(blockIndex, curStart);
+function snapBottom(
+  blockIndex: number,
+  curStart: number,
+  headings = HEADINGS,
+  total = TOTAL,
+): number {
+  return Math.max(regionForNode(blockIndex, headings, total)[1], curStart);
 }
 
-describe("snapBoundary drag edges (symmetric + free + clamping, no section jump)", () => {
-  it("(c) bottom-edge drag to a paragraph row sets end = that exact row (no section re-expansion)", () => {
-    // Band currently [1, 6]; drag the bottom handle up to paragraph row 2.
-    // Old buggy behavior re-ran sectionRange(2) → [.., 3] (jumped past cursor).
-    // New behavior: end = 2 exactly.
+describe("snapBoundary drag edges (section-aware + edge-asymmetric + clamping)", () => {
+  it("(c) bottom-edge drag to a paragraph row sets end = that exact row (precision kept)", () => {
+    // Band currently [1, 6]; drag the bottom handle up to paragraph row 2 / 5.
+    // Non-heading rows resolve to themselves, so end = the exact row.
     expect(snapBottom(2, /* curStart */ 1)).toBe(2);
     expect(snapBottom(5, /* curStart */ 1)).toBe(5);
   });
 
-  it("the top edge sets the raw row it snaps to (free, no section math)", () => {
-    expect(snapTop(2, /* curEnd */ 6)).toBe(2);
+  it("(FIX) bottom-edge drag onto a HEADING extends to the section's END, not the header", () => {
+    // The reported bug: dragging the bottom edge onto §2 (heading index 4) used
+    // to stop at row 4 (header only). Now it ends at the section's last body
+    // block (regionForNode(4) = [4, 6] → end 6).
+    expect(snapBottom(4, /* curStart */ 0)).toBe(6);
+    // §1 heading (index 1) spans 1..3 → bottom drag onto it ends at 3.
+    expect(snapBottom(1, /* curStart */ 0)).toBe(3);
+  });
+
+  it("the top edge takes the snapped row's region START (heading → the heading row itself)", () => {
+    expect(snapTop(2, /* curEnd */ 6)).toBe(2); // paragraph → itself
     expect(snapTop(0, /* curEnd */ 6)).toBe(0);
+    expect(snapTop(4, /* curEnd */ 6)).toBe(4); // heading §2 → starts AT the header
   });
 
   it("(d) a top-edge drag PAST the bottom clamps to the bottom (1-row band), not a freeze", () => {
-    // Band [1, 3]; drag top handle down past the bottom edge to row 5.
-    // Old: returned `s` unchanged (handle appeared frozen). New: start clamps to 3.
+    // Band [1, 3]; drag top handle down past the bottom edge to paragraph row 5.
     expect(snapTop(5, /* curEnd */ 3)).toBe(3); // band becomes [3, 3]
   });
 
   it("(d) a bottom-edge drag ABOVE the top clamps to the top (1-row band), not a freeze", () => {
-    // Band [3, 6]; drag bottom handle up past the top edge to row 1.
-    // Old: returned `s` unchanged. New: end clamps to 3.
-    expect(snapBottom(1, /* curStart */ 3)).toBe(3); // band becomes [3, 3]
+    // Band [3, 6]; drag bottom handle up past the top edge to paragraph row 2.
+    expect(snapBottom(2, /* curStart */ 3)).toBe(3); // band becomes [3, 3]
   });
 });

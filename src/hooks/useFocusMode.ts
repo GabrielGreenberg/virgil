@@ -329,23 +329,35 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     [update],
   );
 
-  // Drag-handle reposition. Both edges are SYMMETRIC + FREE: each snaps to the
-  // raw outline row under the handle (no section re-expansion) and CLAMPS past
-  // the opposite edge to a minimum 1-row band — the handle keeps tracking the
-  // cursor instead of freezing when a drag crosses over. No heading/total-block
-  // args: edges are row-raw now, so the section list is irrelevant.
+  // Drag-handle reposition. SECTION-AWARE + edge-asymmetric: the snapped outline
+  // row is resolved through `regionForNode` (the SAME resolver click/shift-click
+  // use), so dragging an edge onto a section HEADING confines to the whole
+  // section, not the bare header row. The TOP edge takes the region START, the
+  // BOTTOM edge the region END — so a bottom drag onto a heading ends at the
+  // section's last body block (the reported bug: it used to stop at the header).
+  // A non-heading row resolves to itself (`[i, i]`), preserving parTitle/
+  // paragraph precision. Both edges CLAMP past the opposite edge to a 1-row
+  // minimum so the handle keeps tracking the cursor across a crossover. The
+  // visual band rect (OutlinePanel `measure()`) already lands botEl on the last
+  // visible row ≤ endBlockIndex, so the committed range paints with no jump.
   const snapBoundary = useCallback(
-    (edge: "top" | "bottom", blockIndex: number) => {
+    (
+      edge: "top" | "bottom",
+      blockIndex: number,
+      headings: { index: number; level: number }[],
+      totalBlocks: number,
+    ) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
       update((s) => {
         if (!s.active || s.locked) return s;
         const cur = resolveFocusBand(doc, s) ?? { startIdx: 0, endIdx: doc.childCount - 1 };
+        const [regionStart, regionEnd] = regionForNode(blockIndex, headings, totalBlocks);
         if (edge === "top") {
-          const newStart = Math.min(blockIndex, cur.endIdx);
+          const newStart = Math.min(regionStart, cur.endIdx);
           return bandFromIndices(doc, newStart, cur.endIdx, true, s.locked);
         }
-        const newEnd = Math.max(blockIndex, cur.startIdx);
+        const newEnd = Math.max(regionEnd, cur.startIdx);
         return bandFromIndices(doc, cur.startIdx, newEnd, true, s.locked);
       });
     },
