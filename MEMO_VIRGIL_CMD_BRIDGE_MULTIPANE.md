@@ -1,5 +1,7 @@
 # Bug: `\ex` (and the whole bridge-routed Virgil-command class) silently no-ops under multi-doc keep-alive
 
+> **STATUS: LANDED** — branch `bugsweep-2026-06-26`, commit `6d17a598` (editor-actions bridge → per-`EditorView` registry + `getEditorActionsHandleFor(view)` + `pickProbeEditor`-backed arg-less resolver). The sibling latent `findRowScroll` multi-pane half (the #4 cluster) also landed: `5e5dfb71`. tsc 0, vitest green. NOT pushed/merged.
+
 **Status:** `ROOT-CAUSE-FOUND` / `FIX-READY` — diagnosis only, NOT fixed. Bug-catcher session 2026-06-25.
 **Confidence:** HIGH on the core mechanism (all 6 steps confirmed against code by an adversarial pass). One MODERATE-confidence dev-only secondary cause (StrictMode).
 **Worktree:** none chosen — this is on `main` (`ed8f6b0b`), affects the live multi-doc keep-alive that already shipped to local main. Whoever implements picks the worktree.

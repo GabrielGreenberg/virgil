@@ -1,5 +1,7 @@
 # Feature: add `\list` / `\itemize` / `\enumerate` / `\quote` / `\quotation` slash commands (+ omissions audit)
 
+> **STATUS: LANDED** — branch `bugsweep-2026-06-26`, commit `ac530271` (+ SSOT-contract followup `7e28f3c3`). 5 entries in `VIRGIL_COMMANDS` routed through the bridge (`getEditorActionsHandleFor(view)`, NOT `runViewOnlyAction`); aliases mapped in `SLASH_NAME_TO_ACTION_ID` (list/itemize→bullet-list, enumerate→ordered-list, quote/quotation→blockquote); rows stay lightning-only (reconciliation skips). Data-loss-safe on non-listable blocks via `wrapperApplies`/`selectionIsListable`. Depended on #1 (done first). tsc 0, vitest green. NOT pushed/merged.
+
 **Status:** `FIX-READY` (scoped, exact code below) — diagnosis/spec only, NOT implemented (user chose memo-only, 2026-06-26). Bug-catcher session 2026-06-26.
 **Confidence:** HIGH (routing + registry rows verified against code).
 **Worktree:** TBD (single file: `src/lib/tiptap/commands.ts`; a fresh worktree when implemented).

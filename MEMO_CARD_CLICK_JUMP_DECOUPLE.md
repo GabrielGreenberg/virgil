@@ -1,5 +1,7 @@
 # Bug: clicking a panel card (e.g. a footnote-nested cite) yanks the document to its anchor
 
+> **STATUS: select/jump decouple DEFERRED by sign-off** (2026-06-29) — the C15 reversal + chevron promotion were NOT implemented this sweep (user chose "Defer #4"). The independent latent multi-pane half DID land: `findRowScroll` now resolves the VISIBLE pane (commit `5e5dfb71` on branch `bugsweep-2026-06-26`), so a jump can no longer scroll a hidden keep-alive pane. The decouple remains available for a future session (options (a) full decouple+chevron, (c) off-screen-only). NOT pushed/merged.
+
 **Status:** `ROOT-CAUSE-FOUND` / `DESIGN-READY` — diagnosis only, NOT implemented. **Carries a PRODUCT DECISION (see "The fork").** Bug-catcher session 2026-06-25; investigate→adversarial-verify workflow.
 **Confidence:** HIGH on the mechanism + enumeration (all confirmed against code). The fix is a deliberate reversal of a *tested, ratified contract* — needs sign-off, not a silent patch.
 **Worktree:** TBD (touches the shared card-activation hook + every panel card).

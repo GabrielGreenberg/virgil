@@ -1863,7 +1863,7 @@ Five items submitted together; full diagnoses + file:line + deep fixes in `MEMO_
 
 ---
 
-## `\ex` (+ `\ref`/`\cite`/`\footnote`) silently no-op under multi-doc keep-alive — `ROOT-CAUSE-FOUND`/`FIX-READY` — see `MEMO_VIRGIL_CMD_BRIDGE_MULTIPANE.md`
+## `\ex` (+ `\ref`/`\cite`/`\footnote`) silently no-op under multi-doc keep-alive — ✅ **LANDED** `6d17a598` (+ findRowScroll half `5e5dfb71`), branch `bugsweep-2026-06-26` — see `MEMO_VIRGIL_CMD_BRIDGE_MULTIPANE.md`
 
 - **Report (2026-06-25):** typing `\ex` + Return makes no example; user suspects it generalizes to other Virgil commands. It does — to exactly the **bridge-routed** command class.
 - **Root cause (one deep fault):** the editor-actions bridge ([editor-actions-bridge.ts:71](src/lib/actions/editor-actions-bridge.ts:71)) is a **single-slot, last-writer-wins module cell** whose own docs assert "EXACTLY ONE main editor is mounted at a time." **Multi-doc keep-alive (default ON, capacity 3** — [multi-doc-keepalive-flag.ts:31](src/lib/multi-doc-keepalive-flag.ts:31), [DocKeepAliveLRU.tsx:27](src/components/editor-layout/DocKeepAliveLRU.tsx:27)**)** mounts up to 3 `EditorPane`s, each publishing into that one cell via an **ungated `[editor]`-only effect with a blind-null cleanup** ([EditorPane.tsx:3090-3098](src/components/EditorPane.tsx:3090)). `runAction` then reads the **publishing pane's** editor ([EditorPane.tsx:2995](src/components/EditorPane.tsx:2995)), and a doc switch never re-runs the effect ([useKeepAliveLRU.ts:36](src/lib/keep-alive/useKeepAliveLRU.ts:36)). → `\ex` either inserts the example into the **hidden** doc (stale handle) or **no-ops** (cell nulled by an evicting pane).
@@ -1873,7 +1873,7 @@ Five items submitted together; full diagnoses + file:line + deep fixes in `MEMO_
 
 ---
 
-## Panel bottom chrome: hide the drag lozenge at rest + shorten the under-panel fade to a shadow/rim — `FIX-READY` (live-tune)
+## Panel bottom chrome: hide the drag lozenge at rest + shorten the under-panel fade to a shadow/rim — ✅ **LANDED** `d0ab2977` (live-tune px owed), branch `bugsweep-2026-06-26`
 
 - **Request (2026-06-25):** at the bottom of a panel, (a) make the **drag lozenge** invisible when not engaged (only appears on hover/drag); (b) make the **fade-to-background under the panel shorter**, so it reads "almost like a shadow or visibility rim around the bottom of the panel" rather than a long dissolve.
 - **(a) Lozenge — exact + trivial:** the resting pill is `.drag-gap-h.band-grip::before` ([globals.css:4246-4258](src/app/globals.css:4246)) — a 28×4px rounded pill, `background: var(--edge-hover); opacity: 0.9` (persistent "muted grey at rest" by original design). The hover/drag rules ([:4260-4269](src/app/globals.css:4260)) already raise it to `opacity:1` + brighten to `--drag-highlight` + widen, with a 120ms transition. **Fix = flip the resting `opacity: 0.9` → `0`** (the only resting-visible mark — base `.drag-gap::after` is already `opacity:0` at [:4163-4168](src/app/globals.css:4163)). Update the now-stale "persistent … discoverable" comment at [:4232-4236](src/app/globals.css:4232). Trade-off the implementer should sanity-check live: rest-invisible reduces resize discoverability (mitigated — hovering the gutter fades it in via the existing transition).
@@ -1885,7 +1885,7 @@ Five items submitted together; full diagnoses + file:line + deep fixes in `MEMO_
 
 ---
 
-## Include footnote cards in per-card archiving (+ Footnotes-panel Archives view) — `ROOT-CAUSE-FOUND`/`DESIGN-READY` (hardened) — see `MEMO_FOOTNOTE_ARCHIVE.md`
+## Include footnote cards in per-card archiving (+ Footnotes-panel Archives view) — ✅ **LANDED (hardened)** `832042f0`, branch `bugsweep-2026-06-26` — see `MEMO_FOOTNOTE_ARCHIVE.md`
 
 - **Request (2026-06-25):** footnote cards should get the bottom-right archive button (like notes) + corresponding panel UX. Follow-up to the [[card_archive_status]] deferral.
 - **Root cause — a missing RENDER PATH, not a missing data model:** most citation-mirrored scaffolding already exists & routes footnote (`FootnoteRef.archived`, `useFootnotes.setArchived`/`syncFromEditor`-preserve, EditorPane splice+confirm+`archivedIds`, `archiveRemovesAtom("footnote")=true`). Two seams unclosed: (1) `isArchivable` still excludes footnote ([predicates.ts:61](src/cards/predicates.ts:61)) so `EditableCard` renders no archive button; (2) the Footnotes panel sources live-editor `footnoteInfos` ([EditorPane.tsx:3768](src/components/EditorPane.tsx:3768)) not the ref list, so a spliced/archived footnote has **no render path** (unlike ref-backed Citations).
@@ -1894,7 +1894,7 @@ Five items submitted together; full diagnoses + file:line + deep fixes in `MEMO_
 
 ---
 
-## Clicking a panel card yanks the doc to its anchor (footnote-nested cite + the whole card cluster) — `ROOT-CAUSE-FOUND`/`DESIGN-READY` + **PRODUCT FORK** — see `MEMO_CARD_CLICK_JUMP_DECOUPLE.md`
+## Clicking a panel card yanks the doc to its anchor (footnote-nested cite + the whole card cluster) — ⏸️ **DECOUPLE DEFERRED** by sign-off (2026-06-29); latent `findRowScroll` multi-pane half **LANDED** `5e5dfb71` — see `MEMO_CARD_CLICK_JUMP_DECOUPLE.md`
 
 - **Request (2026-06-25):** clicking the sub-cite card under a footnote jumps the document to the footnote — distracting; address other similar jumps too.
 - **Root cause:** ONE shared coupling — `useAnchoredCard.onBodyActivate` ([:105-114](src/links/_shared/useAnchoredCard.ts:105)) fuses `cardStore.select` + `effects.jump()` on the first select-click. The nested cite resolves to the host footnote marker ([findInlineAtomPosDeep](src/lib/inline-content.ts:347) → `nested:true` → [resolveLink:506](src/links/links.ts:506)) — **the target is correct; the fault is "select auto-scrolls."** `alignEntryToY` moves the viewport even for an already-visible marker.
@@ -1904,7 +1904,7 @@ Five items submitted together; full diagnoses + file:line + deep fixes in `MEMO_
 
 ---
 
-## Clicking an Outline section arms the panel-move drag (blue dock halo) instead of jumping — `ROOT-CAUSE-FOUND`/`FIX-READY` (hardened) — see `MEMO_OUTLINE_PANEL_DRAG.md`
+## Clicking an Outline section arms the panel-move drag (blue dock halo) instead of jumping — ✅ **LANDED** `503d9a08` (live halo eyeball owed), branch `bugsweep-2026-06-26` — see `MEMO_OUTLINE_PANEL_DRAG.md`
 
 - **Request (2026-06-25):** clicking a section in the Outline panel grabs the panel to drag it (blue halo) instead of jumping.
 - **Root cause:** docked panels are `<FloatingPanel mode="docked">`, whose drag handler `onHeaderMouseDown` wraps the **whole panel body** `{children}` ([FloatingPanel.tsx:728-734](src/components/FloatingPanel.tsx:728)) and arms the drag **at mousedown with ZERO threshold** — `setDockDragTarget(sourceGhost)` (the blue halo, [:557](src/components/FloatingPanel.tsx:557)). The only press-exclusion is `WINDOW_DRAG_BLOCK_SELECTOR` = interactive controls + `[data-card]` ([drag-blocklist.ts:38](src/lib/drag-blocklist.ts:38)). **Outline rows are plain `<div onClick>`** — not blocklisted — so they fall through. Other panels are immune only because their bodies are `[data-card]`. Same class as "bug #36," patched then ONLY for cards.
@@ -1913,7 +1913,7 @@ Five items submitted together; full diagnoses + file:line + deep fixes in `MEMO_
 
 ---
 
-## FEATURE: add `\list`/`\itemize`/`\enumerate`/`\quote`/`\quotation` slash commands (+ omissions audit) — `FIX-READY` (scoped, exact code) — see `MEMO_VIRGIL_SLASH_COMMANDS.md`
+## FEATURE: add `\list`/`\itemize`/`\enumerate`/`\quote`/`\quotation` slash commands (+ omissions audit) — ✅ **LANDED** `ac530271` (+ SSOT followup `7e28f3c3`), branch `bugsweep-2026-06-26` — see `MEMO_VIRGIL_SLASH_COMMANDS.md`
 
 - **Request (2026-06-26):** add `\list` + `\enumerate`; check for other obvious omissions. User chose the **clean set** + **memo-only** (no implement now).
 - **Clean set to add** (5 entries in [commands.ts](src/lib/tiptap/commands.ts) `VIRGIL_COMMANDS`): `\list` + `\itemize` → `bullet-list`; `\enumerate` → `ordered-list`; `\quote` + `\quotation` → `blockquote`. All are existing SSOT registry rows — no new rows; slash-popup/`COMMAND_MAP`/typed-Enter pick them up automatically.
@@ -1923,7 +1923,7 @@ Five items submitted together; full diagnoses + file:line + deep fixes in `MEMO_
 
 ---
 
-## Focus band drag stops at a section's header instead of its end — `ROOT-CAUSE-FOUND`/`FIX-READY` — see `MEMO_FOCUS_BAND_SECTION_END.md`
+## Focus band drag stops at a section's header instead of its end — ✅ **LANDED** `4ce81cf5`, branch `bugsweep-2026-06-26` — see `MEMO_FOCUS_BAND_SECTION_END.md`
 
 - **Request (2026-06-26):** in Outline Focus view, selecting a range of sections includes the last section's *header* but not its text — should extend to the section's end.
 - **Root cause:** the band **drag-resize** (`snapBoundary`, [useFocusMode.ts:337-353](src/hooks/useFocusMode.ts:337)) is deliberately "row-raw — no section re-expansion", so the bottom edge snaps to the bare `blockIndex` of the outline row under the handle. The outline only shows heading/parTitle rows, so dragging the bottom edge onto a section sets `endBlockIndex = headerIndex`, excluding the body. (`moveTo`/`expandTo` use `regionForNode`→`sectionRange` and are already section-aware/correct — so shift-click works; only the drag is buggy.)

@@ -1,5 +1,7 @@
 # Bug: clicking an Outline section arms the panel-move drag (blue dock halo) instead of jumping
 
+> **STATUS: LANDED** — branch `bugsweep-2026-06-26`, commit `503d9a08`. `Panel` marks the `variant="raw"` body with `[data-no-window-drag]` (a `display:contents` wrapper — no box, child scroll/flex untouched), so `FloatingPanel.onHeaderMouseDown` bails. Header stays the drag handle. Correctly scoped to the raw archetype: Outline is the only `variant="raw"` panel; Search is `variant="list"` with `<button>` rows (already drag-inert). General ≥5px threshold left as optional polish (not bundled). tsc 0, vitest green. NOT pushed/merged. OWED: live halo eyeball.
+
 **Status:** `ROOT-CAUSE-FOUND` / `FIX-READY` (hardened; **fix re-scoped per user steer 2026-06-25 — see "Re-scoping"**) — diagnosis only, NOT implemented. Bug-catcher session 2026-06-25; traced + adversarially verified.
 **Confidence:** HIGH on root cause + the fix; MEDIUM-HIGH on the "jump is swallowed" half (depends on click jitter — see Dual nature).
 **Worktree:** TBD (the re-scoped fix touches the shared `Panel` wrapper + Outline; a fresh worktree, with a live feel-check).

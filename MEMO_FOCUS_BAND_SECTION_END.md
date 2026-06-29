@@ -1,5 +1,7 @@
 # Bug: dragging the Focus band's bottom edge onto a section stops at the header, not the section's end
 
+> **STATUS: LANDED** — branch `bugsweep-2026-06-26`, commit `4ce81cf5`. `snapBoundary` made section-aware via the existing `regionForNode`, edge-asymmetric (top→regionStart, bottom→regionEnd); heading list threaded at the handler level (`useFocusActions`), so the OutlinePanel drag call keeps its `(edge, blockIndex)` signature. `measure()` already absorbs it (no visual jump). tsc 0, vitest green. NOT pushed/merged.
+
 **Status:** `ROOT-CAUSE-FOUND` / `FIX-READY` — diagnosis only, NOT implemented. Bug-catcher session 2026-06-26.
 **Confidence:** HIGH (full trace; the one risk — a visual jump — is ruled out by the existing `measure()` logic).
 **Worktree:** TBD (touches `useFocusMode.ts` + the `onFocusSnapBoundary` wiring; small, self-contained).

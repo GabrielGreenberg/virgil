@@ -1,5 +1,7 @@
 # Feature: include footnote cards in the per-card archive functionality (+ panel UX)
 
+> **STATUS: LANDED (hardened)** — branch `bugsweep-2026-06-26`, commit `832042f0`. Predicate flip + `FootnoteRef.unanchored` + ref-backed Footnotes panel (third `ref` union case + Archives view) + the flag-ON `archivedSuppress` one-shot seam (orphan double-creation fixed) + omni untouched (archived = atomless). `syncFromEditor` deliberately NOT wired (panel sources reactive `footnoteRefs`; avoids reorder/overwrite risk). tsc 0, vitest green (incl. policy both-flag-states). NOT pushed/merged. OWED: live FSA archive→unarchive walk.
+
 **Status:** `ROOT-CAUSE-FOUND` / `DESIGN-READY` (HARDENED) — diagnosis only, NOT implemented. Bug-catcher session 2026-06-25; investigate→adversarial-verify workflow.
 **Confidence:** HIGH on diagnosis; the deep-fix shape is directionally right but **ships on a stale premise and misses one collision** — see "Adversarial corrections (MUST HEED)". Treat the corrected version below as the real spec.
 **Worktree:** TBD. Touches the footnote subsystem + EditorPane + predicates — a fresh worktree is cleanest.
