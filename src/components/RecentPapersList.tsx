@@ -33,7 +33,7 @@ export function RecentPapersList({ docs, onOpen, excludeIds, limit = 8 }: Props)
   if (rows.length === 0) return null;
 
   return (
-    <div className="flex flex-col w-full max-w-md">
+    <div className="flex flex-col w-full">
       <div className="text-[11px] uppercase tracking-wide text-ink-subtle mb-2 px-1">
         Recent papers
       </div>
