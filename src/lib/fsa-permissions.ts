@@ -25,16 +25,25 @@ interface HandleWithPerms {
   requestPermission(d?: { mode?: "read" | "readwrite" }): Promise<PermState>;
 }
 
-function asPermHandle(handle: FileSystemHandle): HandleWithPerms {
-  return handle as unknown as HandleWithPerms;
+function asPermHandle(handle: FileSystemHandle): Partial<HandleWithPerms> {
+  return handle as unknown as Partial<HandleWithPerms>;
 }
 
 export async function queryRW(handle: FileSystemHandle): Promise<PermState> {
-  return asPermHandle(handle).queryPermission({ mode: "readwrite" });
+  const h = asPermHandle(handle);
+  // OPFS handles (and any engine lacking the FSA permissions extension —
+  // notably Firefox/Safari) expose no `queryPermission`. OPFS is same-origin
+  // private storage that is always readable/writable, so treat a missing API
+  // as already-granted rather than routing into a gate that can never resolve
+  // (there is no picker to grant from).
+  if (typeof h.queryPermission !== "function") return "granted";
+  return h.queryPermission({ mode: "readwrite" });
 }
 
 export async function requestRW(handle: FileSystemHandle): Promise<PermState> {
-  return asPermHandle(handle).requestPermission({ mode: "readwrite" });
+  const h = asPermHandle(handle);
+  if (typeof h.requestPermission !== "function") return "granted";
+  return h.requestPermission({ mode: "readwrite" });
 }
 
 /**

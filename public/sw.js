@@ -15,7 +15,7 @@
 // "Update available" banner in the Virgil bar. This keeps existing tabs
 // stable across silent background SW installs and lets the user pick
 // their refresh moment. See src/components/ServiceWorkerRegistration.tsx.
-const CACHE_NAME = "virgil-v4";
+const CACHE_NAME = "virgil-v5";
 
 // Cross-origin hosts whose responses we deliberately cache so they keep
 // working offline. Google Fonts is on the allowlist because the Fonts…

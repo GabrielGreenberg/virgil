@@ -7,6 +7,7 @@ import { LoadingScreen } from "./LoadingScreen";
 import { setFocusBandMeta } from "@/lib/focus-view";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
+import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
 import { readPdf } from "@/lib/storage";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
@@ -293,6 +294,8 @@ export default function EditorLayout() {
     openFile,
     closeTab,
     openExistingFile,
+    openExample,
+    resetExampleDoc,
     pendingFolderPick,
     selectFileInFolder,
     cancelFolderPick,
@@ -361,6 +364,10 @@ export default function EditorLayout() {
   // after hydration. Used in render to hide FSA-only chrome inside the
   // Claude Preview iframe; in a normal tab it stays false.
   const [devStorage, setDevStorage] = useState(false);
+  // SSR-safe mirror of OPFS availability (the runtime check needs `navigator`).
+  // The bundled example doc is offered only where OPFS works AND we're not on
+  // the dev backend (the example is a production-only FSA/OPFS feature).
+  const [opfsOk, setOpfsOk] = useState(false);
 
   // "Is the external-change badge currently showing something?" — lifted from a
   // provider-descendant reporter (ExternalChangeActiveReporter, rendered in the
@@ -372,6 +379,11 @@ export default function EditorLayout() {
   // per-keystroke work.
   const [externalChangeActive, setExternalChangeActive] = useState(false);
   useEffect(() => { setDevStorage(isDevStorage); }, []);
+  useEffect(() => { setOpfsOk(opfsAvailable()); }, []);
+  const exampleAvailable = opfsOk && !devStorage;
+  // For a brand-new user (no docs yet), the example is the primary call to
+  // action; "Create new document" then steps down to a secondary button.
+  const exampleIsPrimary = exampleAvailable && docs.length === 0;
 
   // Hooks read from disk, so we gate their docId on the permission
   // state. Until the active folder has been re-granted readwrite
@@ -3505,7 +3517,10 @@ export default function EditorLayout() {
       onOpenRecent: openFile,
       onOpenFolder: handleNativeOpen,
       onCreateNew: onCreateNewTab,
+      onOpenExample: openExample,
+      onResetExample: resetExampleDoc,
       onOpenNewWindow: openNewVirgilWindow,
+      exampleAvailable,
     }),
     [
       docs,
@@ -3537,7 +3552,10 @@ export default function EditorLayout() {
       openFile,
       handleNativeOpen,
       onCreateNewTab,
+      openExample,
+      resetExampleDoc,
       openNewVirgilWindow,
+      exampleAvailable,
     ],
   );
 
@@ -4010,10 +4028,31 @@ export default function EditorLayout() {
               <div className="text-ink-subtle text-sm">No document open</div>
             )}
             <div className="flex items-center gap-2">
+              {exampleAvailable && (
+                <button
+                  type="button"
+                  onClick={() => void openExample()}
+                  className={
+                    exampleIsPrimary
+                      ? "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[var(--accent)] rounded-md hover:opacity-90 transition-opacity"
+                      : "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover-on-light"
+                  }
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H17l3 3v13.5A1.5 1.5 0 0 1 18.5 21h-13A1.5 1.5 0 0 1 4 19.5z" />
+                    <path d="m9.2 9.2 1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z" />
+                  </svg>
+                  Open the example document
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setNewDocModal({ mode: "fresh" })}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[var(--accent)] rounded-md hover:opacity-90 transition-opacity"
+                className={
+                  exampleIsPrimary
+                    ? "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover-on-light"
+                    : "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[var(--accent)] rounded-md hover:opacity-90 transition-opacity"
+                }
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 5v14" />

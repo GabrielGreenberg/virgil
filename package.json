@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "postinstall": "patch-package",
-    "predev": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs",
+    "predev": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs && node scripts/build-example-bundle.mjs",
     "dev": "next dev",
     "dev:preview": "NEXT_PUBLIC_DEV_STORAGE=true next dev",
-    "prebuild": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs",
+    "prebuild": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs && node scripts/build-example-bundle.mjs",
     "build": "next build",
     "start": "next start",
     "preview:pages": "NEXT_PUBLIC_BASE_PATH=/virgil next build && npx serve out -p 4173",
@@ -23,6 +23,7 @@
     "build:editor-bundle": "node editor/build/build-editor-bundle.mjs",
     "build:virgil-bundle": "node virgil/build/build-virgil-bundle.mjs",
     "build:meta-bundle": "node scripts/build-meta-bundle.mjs",
+    "build:example-bundle": "node scripts/build-example-bundle.mjs",
     "build:skill-bundles": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node virgil/build/build-virgil-bundle.mjs && node scripts/build-meta-bundle.mjs"
   },
   "dependencies": {

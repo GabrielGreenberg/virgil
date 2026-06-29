@@ -42,11 +42,15 @@ function renderMenu() {
     <TabPlusMenu
       docs={[]}
       openTabIds={[]}
+      currentDocId={null}
       onOpenRecent={() => {}}
       onOpenFolder={() => {}}
       onCreateNew={() => {}}
+      onOpenExample={() => {}}
+      onResetExample={() => {}}
       onOpenNewWindow={() => {}}
       devStorage
+      exampleAvailable={false}
     />,
   );
 }

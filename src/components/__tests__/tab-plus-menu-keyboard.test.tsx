@@ -70,17 +70,23 @@ function renderMenu(
     onOpenRecent: vi.fn(),
     onOpenFolder: vi.fn(),
     onCreateNew: vi.fn(),
+    onOpenExample: vi.fn(),
+    onResetExample: vi.fn(),
     onOpenNewWindow: vi.fn(),
   };
   const utils = render(
     <TabPlusMenu
       docs={DOCS}
       openTabIds={[]}
+      currentDocId={null}
       onOpenRecent={handlers.onOpenRecent}
       onOpenFolder={handlers.onOpenFolder}
       onCreateNew={handlers.onCreateNew}
+      onOpenExample={handlers.onOpenExample}
+      onResetExample={handlers.onResetExample}
       onOpenNewWindow={handlers.onOpenNewWindow}
       devStorage={false}
+      exampleAvailable={false}
       {...overrides}
     />,
   );

@@ -29,6 +29,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { FsaDocMeta } from "@/lib/doc-index";
+import { EXAMPLE_DOC_ID } from "@/lib/example-doc/example-identity";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
 import { multiWindowSupported } from "@/lib/multi-window/bus";
@@ -41,11 +42,17 @@ import { useMenuItem } from "./menu/useMenuItem";
 interface Props {
   docs: FsaDocMeta[];
   openTabIds: string[];
+  currentDocId: string | null;
   onOpenRecent: (id: string) => void;
   onOpenFolder: () => void;
   onCreateNew: () => void;
+  onOpenExample: () => void;
+  onResetExample: () => void;
   onOpenNewWindow: () => void;
   devStorage: boolean;
+  /** Whether the bundled example doc can be offered here (OPFS available
+   *  and not the dev backend). */
+  exampleAvailable: boolean;
 }
 
 const TAB_PLUS_PLACEMENTS: FloatingMenuPlacement[] = [
@@ -56,11 +63,15 @@ const TAB_PLUS_PLACEMENTS: FloatingMenuPlacement[] = [
 export function TabPlusMenu({
   docs,
   openTabIds,
+  currentDocId,
   onOpenRecent,
   onOpenFolder,
   onCreateNew,
+  onOpenExample,
+  onResetExample,
   onOpenNewWindow,
   devStorage,
+  exampleAvailable,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [canMultiWindow, setCanMultiWindow] = useState(false);
@@ -195,6 +206,30 @@ export function TabPlusMenu({
       >
         <PlusIcon />
       </MenuActionItem>
+      {exampleAvailable && (
+        <MenuActionItem
+          id="open-example"
+          label="Open example document"
+          run={() => {
+            onOpenExample();
+            close();
+          }}
+        >
+          <ExampleIcon />
+        </MenuActionItem>
+      )}
+      {exampleAvailable && currentDocId === EXAMPLE_DOC_ID && (
+        <MenuActionItem
+          id="reset-example"
+          label="Reset example document"
+          run={() => {
+            onResetExample();
+            close();
+          }}
+        >
+          <ResetIcon />
+        </MenuActionItem>
+      )}
       {canMultiWindow && (
         <>
           <div aria-hidden className="my-1.5 mx-2 h-px bg-edge-hover/50" />
@@ -381,6 +416,44 @@ function PlusIcon() {
       className="text-ink-subtle shrink-0"
     >
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function ExampleIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-ink-subtle shrink-0"
+    >
+      <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H17l3 3v13.5A1.5 1.5 0 0 1 18.5 21h-13A1.5 1.5 0 0 1 4 19.5z" />
+      <path d="m9.2 9.2 1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z" />
+    </svg>
+  );
+}
+
+function ResetIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-ink-subtle shrink-0"
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 3v5h5" />
     </svg>
   );
 }

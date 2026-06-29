@@ -51,6 +51,8 @@ next-env.d.ts
 
 # library — generated skill bundle + python bytecode
 /public/skill-bundle/
+# generated example-document bundle (built from samples/annotation-history/)
+/public/examples/
 /library/scripts/__pycache__/
 *.pyc
 

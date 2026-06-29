@@ -79,7 +79,11 @@ export type TabStripProps = {
   onOpenRecent: (id: string) => void;
   onOpenFolder: () => void;
   onCreateNew: () => void;
+  onOpenExample: () => void;
+  onResetExample: () => void;
   onOpenNewWindow: () => void;
+  /** Whether the bundled example doc can be offered (OPFS + not dev backend). */
+  exampleAvailable: boolean;
 };
 
 function TabStripImpl(props: TabStripProps) {
@@ -116,7 +120,10 @@ function TabStripImpl(props: TabStripProps) {
     onOpenRecent,
     onOpenFolder,
     onCreateNew,
+    onOpenExample,
+    onResetExample,
     onOpenNewWindow,
+    exampleAvailable,
   } = props;
 
   // Outer-tab strip render. Library root + the currently active entry render
@@ -543,11 +550,15 @@ function TabStripImpl(props: TabStripProps) {
       <TabPlusMenu
         docs={docs}
         openTabIds={openTabIds}
+        currentDocId={currentDocId}
         onOpenRecent={onOpenRecent}
         onOpenFolder={onOpenFolder}
         onCreateNew={onCreateNew}
+        onOpenExample={onOpenExample}
+        onResetExample={onResetExample}
         onOpenNewWindow={onOpenNewWindow}
         devStorage={devStorage}
+        exampleAvailable={exampleAvailable}
       />
       {tabNodes}
       {paperDropIndex !== null && (

@@ -27,6 +27,12 @@ import {
 } from "@/lib/doc-index";
 import { syncSkillBundle } from "@library/lib/skill-sync";
 import { resolveLibraryRootPath } from "@library/lib/library-folder";
+import {
+  EXAMPLE_DOC_ID,
+  ExampleUnavailableError,
+  ensureExampleSeeded,
+  resetExample,
+} from "@/lib/example-doc/example-seeder";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getWindowId } from "@/lib/multi-window/window-id";
 import {
@@ -308,6 +314,20 @@ export function useFiles() {
 
   const openFile = useCallback(
     async (id: string) => {
+      // Re-opening the example from recents self-heals the OPFS sandbox:
+      // idempotent (a cheap no-op when the marker is current), but it
+      // re-seeds + re-`setDocHandle` if OPFS was cleared while the index
+      // row survived (dead-handle case), so the normal open below finds a
+      // live handle. No-op/ignored when OPFS isn't available.
+      if (id === EXAMPLE_DOC_ID) {
+        try {
+          await ensureExampleSeeded();
+        } catch (err) {
+          if (!(err instanceof ExampleUnavailableError)) {
+            console.error("Failed to prepare example:", err);
+          }
+        }
+      }
       // Drain pending writes for the doc we're switching away from
       // BEFORE its pipeline ends, so its autosave isn't lost.
       const prev = currentDocIdRef.current;
@@ -629,6 +649,51 @@ export function useFiles() {
   );
 
   /**
+   * Open the bundled EXAMPLE document — seed it into OPFS on first use
+   * (idempotent + self-healing), then activate it like any indexed doc.
+   * This is the only delta from a normal open: `ensureExampleSeeded` runs
+   * first. A no-op (silently ignored) when OPFS isn't available.
+   */
+  const openExample = useCallback(async () => {
+    try {
+      const meta = await ensureExampleSeeded();
+      await activateDoc(meta);
+    } catch (err) {
+      if (err instanceof ExampleUnavailableError) return;
+      console.error("Failed to open example document:", err);
+    }
+  }, [activateDoc]);
+
+  /**
+   * Restore the example to its pristine bundled state, discarding the
+   * user's edits + AI annotations. Confirms first (destructive), closes
+   * the tab so the editor unmounts, wipes + re-seeds OPFS, then re-opens
+   * to force a fresh read of the restored content.
+   */
+  const resetExampleDoc = useCallback(async () => {
+    const ok = await dialog.confirm({
+      title: "Reset example document?",
+      message:
+        "This discards your edits and AI annotations to the example and restores the original.",
+      confirmLabel: "Reset",
+      cancelLabel: "Cancel",
+      tone: "danger",
+    });
+    if (!ok) return;
+    closeTab(EXAMPLE_DOC_ID);
+    try {
+      const meta = await resetExample();
+      // activateDoc's per-session skill-sync dedup (syncedDocIdsRef) still has
+      // this id, so the bundle won't re-sync after a same-session reset — safe,
+      // since the bundle is idempotent + version-gated (and re-syncs on reload).
+      await activateDoc(meta);
+    } catch (err) {
+      if (err instanceof ExampleUnavailableError) return;
+      console.error("Failed to reset example document:", err);
+    }
+  }, [dialog, closeTab, activateDoc]);
+
+  /**
    * Open an existing paper folder. Must be called from a user gesture.
    * When the folder has multiple .tex files, sets `pendingFolderPick`
    * so the UI can show a file picker modal.
@@ -838,6 +903,8 @@ export function useFiles() {
     loading,
     createFile,
     openExistingFile,
+    openExample,
+    resetExampleDoc,
     deleteFile,
     renameFile,
     openFile,
