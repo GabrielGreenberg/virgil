@@ -116,6 +116,11 @@ Note: a non-standard `bib.state="needs-reauth"` is written by `apply_metadata_mi
 
 ## Per-phase landing log
 
+### Polish (post-effort, 2026-06-28) — Library tab continuous baseline seam — ✅ MERGED to local main `b9f75344` (no-ff, NOT pushed); commit `15f18932`
+Gabriel-reported: the inner Library tab strip's bottom OUTLINE didn't continue to the right of the active tab (gaps + empty strip area showed no baseline; "outline should continue here"). **Root cause:** the seam was the BODY's top border, but the strip's opaque `--library-bg` (pulled down 1px via `marginBottom:-1`) covered it everywhere except under the active tab (white-fill merge) + inactive tabs (own stroke). A `border-bottom` ON the strip can't fix it — the strip has `overflowX/Y:hidden` (F#15), which clips the active tab's 1px fill-bridge overhang so it can't punch through to merge. **Fix:** an INSET bottom box-shadow on the strip (`inset 0 -1px 0 var(--topbar-border)`) — paints the 1px baseline INSIDE the padding box (overflow doesn't clip it), above the bg but below the tabs; the active tab's white fill-bridge covers it under itself (merge), gaps/inactive/empty keep it → continuous Chrome-tab baseline. One-line change in `library/components/panel-tabs/PanelTabStrip.tsx`. **Verified live in the dev preview** (temporary red-baseline probe: continuous right of the active tab, absent under it). **Paper (outer) tabs: probed pixel-by-pixel along the TopBar seam — NO bug, left unchanged** (Gabriel-confirmed): their strip is transparent so the full-width TopBar `border-b` already shows in every gap and is interrupted only by the active tab's merge. tsc 0 · 13/13 panel-tabs tests · no net-new lint.
+
+---
+
 ### Phase F#11(a) — PDF-mode page picker (F#10 fast-follow) — ✅ MERGED to local main `74c37f8f` (no-ff, NOT pushed); phase commit `87ea3ca9`
 Landed 2026-06-28. **F#11(a) — the PDF-mode page picker** (the F#10 fast-follow): the Reader's `PagePicker` now works in PDF mode too, tracking the vendored pdf.js viewer's own page state.
 
