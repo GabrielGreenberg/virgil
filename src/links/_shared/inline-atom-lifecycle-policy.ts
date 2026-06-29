@@ -109,6 +109,13 @@ export interface InlineAtomLifecycleDeps {
   closeFloat?: (floatKey: string) => void;
   /** True iff the float key is currently popped out. */
   isFloatOpen?: (floatKey: string) => boolean;
+  /** Bug sweep #3: one-shot check — true (and CONSUMES the entry) iff this
+   *  footnote id was just spliced out by an ARCHIVE action. Archiving already
+   *  preserves the body in the `footnotes.json` ref (flagged archived +
+   *  unanchored), so minting an orphan here would double-create the same
+   *  footnote (archived ref + orphan). When set, the policy SKIPS the orphan
+   *  upsert (and clears any stale orphan) for that id. */
+  consumeArchivedSuppress?: (footnoteId: string) => boolean;
 }
 
 /** Clear every `cardStore` ref (selected / hover / expand) pointing at a card
@@ -171,10 +178,19 @@ export function makeInlineAtomLifecyclePolicy(
       if (remapKeys.has(id)) continue; // re-parse survivor, not a removal
       if (deps.isAtomLive(id)) continue; // re-added in the same tx (a move)
 
+      // Bug sweep #3: an ARCHIVE removes the marker but the archived ref already
+      // preserves the body (footnotes.json, flagged archived+unanchored), so an
+      // orphan here would double-create the same footnote. Consume the one-shot
+      // suppress flag and treat an archived removal as non-recoverable (no orphan,
+      // and the float closes below — the user finds it in the panel's Archives).
+      const archiveSuppressed = deps.consumeArchivedSuppress?.(id) ?? false;
+
       // Orphan upsert IFF the dying footnote had recoverable content (body or
-      // title). Folds FN-A1-02: title counts toward orphan-worthiness.
+      // title) AND was not archived. Folds FN-A1-02: title counts toward
+      // orphan-worthiness.
       const dying = deps.removedFootnoteContent(id);
       const recoverable =
+        !archiveSuppressed &&
         !!dying &&
         (dying.plainText.trim().length > 0 ||
           (dying.title?.trim().length ?? 0) > 0);
@@ -187,7 +203,7 @@ export function makeInlineAtomLifecyclePolicy(
           orphanedAt: new Date().toISOString(),
         });
       } else {
-        // Empty footnote deleted → no orphan; make sure no stale record lingers.
+        // Archived OR empty footnote → no orphan; clear any stale record.
         deps.clearOrphan(id);
       }
 

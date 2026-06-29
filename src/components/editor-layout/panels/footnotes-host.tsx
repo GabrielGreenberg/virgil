@@ -3,7 +3,7 @@
 import type { JSONContent } from "@tiptap/react";
 import FootnotePanel from "@/panels/Footnotes";
 import type { Side } from "@/hooks/useViewPrefs";
-import type { OrphanedFootnote } from "@/lib/types";
+import type { OrphanedFootnote, FootnoteRef } from "@/lib/types";
 import type { FootnoteInfo } from "../../Editor";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
@@ -14,6 +14,12 @@ export interface FootnotesHostProps {
   side: Side;
   footnotes: FootnoteInfo[];
   orphanedFootnotes: OrphanedFootnote[];
+  /** Bug sweep #3: atomless footnote refs (archived or unanchored) from the
+   *  footnotes.json sidecar — listed alongside live anchored footnotes + orphans;
+   *  the archived ones surface under the panel's Archives view. */
+  unanchoredFootnotes?: FootnoteRef[];
+  /** Delete an atomless ref (sidecar-only — no `\footnote` atom to splice). */
+  onDeleteUnanchored?: (id: string) => void;
   onEdit: (id: string, newContent: JSONContent) => void;
   onEditTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
@@ -41,6 +47,9 @@ export function FootnotesHost(p: FootnotesHostProps) {
       onDelete={p.onDelete}
       onScrollToMarker={(id, sourceEl) => editorRef.current?.scrollToFootnote(id, sourceEl)}
       orphanedFootnotes={p.orphanedFootnotes}
+      unanchoredFootnotes={p.unanchoredFootnotes}
+      onDeleteUnanchored={p.onDeleteUnanchored}
+      onEditUnanchored={p.onEdit}
       onDeleteOrphan={p.onDeleteOrphan}
       onEditOrphan={p.onEditOrphan}
       onEditOrphanTitle={p.onEditOrphanTitle}

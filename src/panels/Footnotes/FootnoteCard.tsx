@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { FootnoteInfo } from "@/components/Editor";
-import type { OrphanedFootnote } from "@/lib/types";
+import type { OrphanedFootnote, FootnoteRef } from "@/lib/types";
 import {
   EditableCard,
   AiRequestCheckbox,
@@ -242,6 +242,90 @@ export function OrphanedFootnoteCard({
       compressed={compressed}
       compressedSummary={compressedSummary}
       compressedContent={orphan.content}
+      onToggleExpanded={ac.onToggleExpanded}
+      onHeaderActivate={ac.onHeaderActivate}
+    />
+  );
+}
+
+export interface UnanchoredFootnoteCardProps {
+  footnote: FootnoteRef;
+  isSelected?: boolean;
+  onSelect?: () => void;
+  onEdit: (json: JSONContent) => void;
+  onDelete: () => void;
+  onEditorFocus?: (editor: any) => void;
+  getCitationDisplayText?: (command: string) => string;
+  onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
+  wrapperClassName?: string;
+  wrapperStyle?: React.CSSProperties;
+  extraDataAttrs?: Record<string, string>;
+}
+
+/**
+ * Bug sweep #3: an ATOMLESS footnote ref (archived or unanchored) — its
+ * `\footnote` marker has been spliced out, but the body lives on in the
+ * footnotes.json sidecar (`FootnoteRef`). Renders like an orphan (no in-text
+ * marker → no jump), but the EditableCard chrome's archive control (gated on the
+ * cardArchive context + `isArchivable("footnote")`) drives archive ⇄ unarchive
+ * — so the user re-surfaces or permanently removes it from the Archives view.
+ */
+export function UnanchoredFootnoteCard({
+  footnote: fn,
+  isSelected = false,
+  onSelect,
+  onEdit,
+  onDelete,
+  onEditorFocus,
+  getCitationDisplayText,
+  onCitationCreated,
+  wrapperClassName,
+  wrapperStyle,
+  extraDataAttrs,
+}: UnanchoredFootnoteCardProps) {
+  const handleEdit = useCallback(
+    (json: JSONContent) => onEdit(normalizeRichContent(json)),
+    [onEdit],
+  );
+  const content = normalizeRichContent(fn.content);
+  const theme = useCardTheme("footnote");
+  const compressedLines = useCompressedLines();
+  const ac = useAnchoredCard({ kind: "footnote", id: fn.id });
+  const isHaloed = ac.selected || isSelected;
+  const compressed = !ac.expanded;
+  const compressedSummary = compressed
+    ? (makeCompressedSummary(content, compressedLines) || "")
+    : undefined;
+
+  return (
+    <EditableCard
+      id={fn.id}
+      cardKind="footnote"
+      kind="footnote"
+      selected={isHaloed}
+      theme={theme}
+      hideToolbar
+      inlineDelete
+      onEditorFocus={onEditorFocus}
+      // No in-text marker for an atomless ref, so body click is select+expand
+      // only (no jump) — same composition as an orphan card.
+      onClick={() => ac.onBodyActivate({ onSelect })}
+      onDelete={onDelete}
+      value={content}
+      variant="footnote"
+      panelKey="footnote"
+      placeholder="Text here."
+      onChange={handleEdit}
+      onArchiveConsumed={onFootnoteArchiveConsumed}
+      getCitationDisplayText={getCitationDisplayText}
+      onCitationCreated={onCitationCreated}
+      dataAttr={{ name: "footnote-entry", value: fn.id }}
+      extraDataAttrs={extraDataAttrs}
+      wrapperClassName={wrapperClassName}
+      wrapperStyle={wrapperStyle}
+      compressed={compressed}
+      compressedSummary={compressedSummary}
+      compressedContent={content}
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
     />

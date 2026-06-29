@@ -49,17 +49,15 @@ export const isSystemCardKind = (k: CardKind): boolean =>
  *  persistent tint in the prose (the tint rides the `linkedAnchor` mark, a
  *  separate decoration). Highlights are delete-only.
  *
- *  EXCEPTION — `footnote` is NOT archivable (pending follow-up): the desired
- *  behavior is archive → unanchored footnote (re-place later), but the footnote
- *  subsystem doesn't model "unanchored" the way citations do — `syncFromEditor`
- *  is dead, the panel sources only live doc nodes, and the atom-less state is
- *  owned by a separate orphan system behind the `inline-atom-lifecycle` flag.
- *  Enabling it cleanly needs a footnote-lifecycle change (mirror citations'
- *  `unanchored` flag, or extend the orphan store) done as a verified pass — not
- *  a blind edit to a fragile subsystem. Citation — the other atom kind — works
- *  fully because the Citations panel already lists unanchored refs. */
+ *  `footnote` IS archivable (bug sweep #3): archiving splices the `\footnote`
+ *  atom out and flags the `footnotes.json` ref `archived` + `unanchored` (mirror
+ *  of citations), so the atomless ref survives and the Footnotes panel lists it
+ *  under Archives. The flag-ON inline-atom-lifecycle policy's orphan-upsert is
+ *  suppressed for the archived id so the same footnote can't be BOTH archived
+ *  and orphaned (the one-shot `archivedSuppress` seam in
+ *  inline-atom-lifecycle-policy.ts). */
 export const isArchivable = (k: CardKind): boolean =>
-  CARD_REGISTRY[k].origin === "user" && k !== "highlight" && k !== "footnote";
+  CARD_REGISTRY[k].origin === "user" && k !== "highlight";
 
 /** Whether archiving a card of this kind also splices an inline atom out of the
  *  document (footnote/citation). These kinds' cards ARE backed by a

@@ -402,6 +402,14 @@ export interface FootnoteRef {
    *  the `footnotes.json` sidecar (not the live `FootnoteInfo`, which is derived
    *  from the .tex) — the same home as `archived`. */
   aiRequest?: boolean;
+  /** When true, this footnote has no corresponding `\footnote` atom in the
+   *  editor — it was set aside (archived) or the user may later re-place it.
+   *  Mirrors CitationRef.unanchored: archiving sets BOTH `archived` and
+   *  `unanchored` so the atomless ref survives `syncFromEditor` (which keeps any
+   *  ref absent from the editor) and the panel can list it under Archives. An
+   *  unarchive clears `archived` but leaves `unanchored` (the atom is NOT
+   *  re-inserted — the card returns as a re-placeable unanchored ref). */
+  unanchored?: boolean;
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   // Legacy footnotes stored HTML strings; migrated on read.
   content: unknown;

@@ -47,6 +47,8 @@ interface StubState {
   live: Set<string>;
   open: Set<string>;
   bodies: Map<string, RemovedFootnoteContent>;
+  /** Bug sweep #3: ids being spliced out by an ARCHIVE action (one-shot). */
+  archivedSuppress?: Set<string>;
 }
 
 function makeDeps(s: StubState): InlineAtomLifecycleDeps {
@@ -65,6 +67,14 @@ function makeDeps(s: StubState): InlineAtomLifecycleDeps {
     isAtomLive: (id) => s.live.has(id),
     closeFloat: (key) => s.open.delete(key),
     isFloatOpen: (key) => s.open.has(key),
+    consumeArchivedSuppress: (id) => {
+      const set = s.archivedSuppress;
+      if (set?.has(id)) {
+        set.delete(id);
+        return true;
+      }
+      return false;
+    },
   };
 }
 
@@ -129,6 +139,67 @@ describe("makeInlineAtomLifecyclePolicy — (a) orphan upsert/clear", () => {
     // atom is never simultaneously anchored AND orphan.
     policy(diffWith({ addedFootnotes: [fn("f1")] }), NO_REMAP);
     expect(s.orphans).toHaveLength(0);
+  });
+});
+
+describe("makeInlineAtomLifecyclePolicy — (a') archive suppress (bug sweep #3)", () => {
+  it("does NOT mint an orphan for a content-bearing footnote removed by an ARCHIVE", () => {
+    // Archiving splices the marker but the archived ref already preserves the
+    // body → an orphan here would double-create the same footnote.
+    const s: StubState = {
+      orphans: [],
+      live: new Set(),
+      open: new Set(),
+      bodies: new Map([
+        ["f1", { content: { type: "doc" }, plainText: "a real body", thanks: false }],
+      ]),
+      archivedSuppress: new Set(["f1"]),
+    };
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
+    policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
+    expect(s.orphans).toHaveLength(0); // suppressed — no double-create
+    expect(s.archivedSuppress!.has("f1")).toBe(false); // one-shot: consumed
+  });
+
+  it("clears any stale orphan record for an archived removal", () => {
+    const s: StubState = {
+      orphans: [{ footnoteId: "f1", content: { type: "doc" } } as OrphanedFootnote],
+      live: new Set(),
+      open: new Set(),
+      bodies: new Map([["f1", { content: { type: "doc" }, plainText: "body", thanks: false }]]),
+      archivedSuppress: new Set(["f1"]),
+    };
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
+    policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
+    expect(s.orphans).toHaveLength(0);
+  });
+
+  it("closes the float of an archived footnote (non-recoverable → not left open)", () => {
+    const key = "float:card:footnote:f1";
+    const s: StubState = {
+      orphans: [],
+      live: new Set(),
+      open: new Set([key]),
+      bodies: new Map([["f1", { content: { type: "doc" }, plainText: "body", thanks: false }]]),
+      archivedSuppress: new Set(["f1"]),
+    };
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
+    policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
+    expect(s.open.has(key)).toBe(false);
+  });
+
+  it("a NON-archived content-bearing removal still orphans (suppress is targeted)", () => {
+    const s: StubState = {
+      orphans: [],
+      live: new Set(),
+      open: new Set(),
+      bodies: new Map([["f1", { content: { type: "doc" }, plainText: "body", thanks: false }]]),
+      archivedSuppress: new Set(["OTHER"]), // f1 not in the set
+    };
+    const policy = makeInlineAtomLifecyclePolicy(cardStore, makeDeps(s));
+    policy(diffWith({ removedFootnotes: [fn("f1")] }), NO_REMAP);
+    expect(s.orphans).toHaveLength(1);
+    expect(s.orphans[0].footnoteId).toBe("f1");
   });
 });
 

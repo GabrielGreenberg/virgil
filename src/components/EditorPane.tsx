@@ -273,7 +273,7 @@ import type { FocusState } from "@/hooks/useFocusMode";
 import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
 import type { PanelKind, CardKind } from "@/panels/_shared/types";
-import type { AiRequest, Suggestion } from "@/lib/types";
+import type { AiRequest, Suggestion, FootnoteRef } from "@/lib/types";
 import {
   useCardLifecycleApi,
   assertLifecycleCoverage,
@@ -1101,6 +1101,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // (OMNI-F3-02, CI-A3-01, CI-F1-02). Behind `virgil:inline-atom-lifecycle`
   // (default OFF); flag-off the hook is inert and the legacy paths are untouched.
   const orphanedFootnotesStore = useOrphanedFootnotes(docId);
+  // Bug sweep #3: one-shot set of footnote ids being spliced out by an ARCHIVE
+  // action (flag-ON path). The archive handler (spliceAndArchiveAtom) adds an id
+  // BEFORE removing the marker; the inline-atom lifecycle policy CONSUMES it on
+  // the resulting removal tx and skips the orphan upsert (the archived ref
+  // already preserves the body, so an orphan would double-create). A ref so its
+  // Set identity is stable across renders.
+  const archivedSuppressRef = useRef<Set<string>>(new Set());
   useInlineAtomLifecycle({
     editor,
     store: cardStoreInst,
@@ -1110,6 +1117,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // Inline structural counter — the liveness reconcile that closes the
     // orphan-clear undo edge (FN-A1-03) fires when this bumps, never per keystroke.
     atomRevision: rev.footnotes + rev.citations,
+    archivedSuppress: archivedSuppressRef.current,
     floats: viewPrefs
       ? {
           poppedOutCards: viewPrefs.prefs.poppedOutCards,
@@ -2344,6 +2352,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     for (const f of footnotesHook.footnoteRefs) if (f.aiRequest) m[f.id] = true;
     return m;
   }, [footnotesHook.footnoteRefs]);
+
+  // Bug sweep #3: the ATOMLESS footnote refs (archived or unanchored) the
+  // Footnotes panel lists alongside live anchored footnotes + orphans. Anchored
+  // footnotes come from the live editor (footnoteInfos); an archived/unanchored
+  // ref has no `\footnote` atom, so it lives only in the footnotes.json sidecar.
+  // Pure derivation off footnoteRefs — recomputes only when the sidecar changes
+  // (archive toggle / add / delete), never on a plain keystroke.
+  const unanchoredFootnoteRefs = useMemo(
+    () => footnotesHook.footnoteRefs.filter((f) => f.archived || f.unanchored),
+    [footnotesHook.footnoteRefs],
+  );
 
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
@@ -4369,10 +4388,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const spliceAndArchiveAtom = useCallback(
     (kind: CardKind, id: string) => {
       if (kind === "footnote") {
-        if (!isInlineAtomLifecycleOn()) {
+        // Suppress the orphan that the marker removal would otherwise mint — the
+        // archived ref already preserves the body (double-create otherwise). The
+        // two flag paths own different orphan writers: flag-ON the bus policy
+        // (consumes the archivedSuppress set), flag-OFF the legacy event web
+        // (consumes the docId-scoped suppress event — see handleDeleteFootnote,
+        // FN-A2-03).
+        if (isInlineAtomLifecycleOn()) {
+          archivedSuppressRef.current.add(id);
+        } else {
           window.dispatchEvent(
             new CustomEvent("virgil-footnote-suppress-orphan", {
-              // `docId`-scoped latch — see handleDeleteFootnote (FN-A2-03).
               detail: { footnoteId: id, docId },
             }),
           );
@@ -4677,6 +4703,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     citationPositionMap={citationPositionMap}
                     citationOrder={citationOrder}
                     footnoteInfos={footnoteInfos}
+                    unanchoredFootnotes={unanchoredFootnoteRefs}
+                    onDeleteUnanchoredFootnote={footnotesHook.deleteFootnote}
                     footnoteAiRequests={footnoteAiRequests}
                     setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                     setBibActiveCitationId={setBibActiveCitationId}
@@ -4752,6 +4780,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       citationPositionMap={citationPositionMap}
                       citationOrder={citationOrder}
                       footnoteInfos={footnoteInfos}
+                      unanchoredFootnotes={unanchoredFootnoteRefs}
+                      onDeleteUnanchoredFootnote={footnotesHook.deleteFootnote}
                       footnoteAiRequests={footnoteAiRequests}
                       setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                       setBibActiveCitationId={setBibActiveCitationId}
@@ -5763,6 +5793,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         citationPositionMap={citationPositionMap}
                         citationOrder={citationOrder}
                         footnoteInfos={footnoteInfos}
+                        unanchoredFootnotes={unanchoredFootnoteRefs}
+                        onDeleteUnanchoredFootnote={footnotesHook.deleteFootnote}
                         footnoteAiRequests={footnoteAiRequests}
                         setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                         setBibActiveCitationId={setBibActiveCitationId}
@@ -6646,6 +6678,11 @@ interface PaneRailBodyProps {
    *  it (the Reader via `useReaderViewPrefs()`), so the body's outline branch
    *  always routes to `<OutlineHost>`. Kept optional for any future caller. */
   viewPrefs?: EditorPaneViewPrefs;
+  /** Bug sweep #3: atomless footnote refs (archived or unanchored) the Footnotes
+   *  panel lists alongside live anchored footnotes + orphans, plus the ref-delete
+   *  handler (removes only the sidecar ref — no atom to splice). */
+  unanchoredFootnotes: FootnoteRef[];
+  onDeleteUnanchoredFootnote: (id: string) => void;
 }
 
 function PaneRailBody({
@@ -6714,6 +6751,8 @@ function PaneRailBody({
   openItemInPanel,
   wordCountHook,
   viewPrefs,
+  unanchoredFootnotes,
+  onDeleteUnanchoredFootnote,
 }: PaneRailBodyProps) {
   if (panelKind === "outline") {
     // Single OutlineHost path. Both the main app AND the Library Reader now
@@ -6766,9 +6805,14 @@ function PaneRailBody({
         // orphan handlers. Must match the OmniHost wiring above, else orphan
         // footnote cards never render in the Footnotes panel.
         orphanedFootnotes={viewPrefs?.orphanedFootnotes ?? []}
+        unanchoredFootnotes={unanchoredFootnotes}
         onEdit={onEditFootnote}
         onEditTitle={onEditFootnoteTitle}
         onDelete={onDeleteFootnote}
+        // An atomless archived/unanchored ref has no `\footnote` atom — deleting
+        // it removes only the sidecar ref (the anchored onDelete would no-op on
+        // the missing atom and leave the ref behind).
+        onDeleteUnanchored={onDeleteUnanchoredFootnote}
         onAdd={onAddFootnote}
         onDeleteOrphan={viewPrefs?.onDeleteOrphan ?? (() => {})}
         onEditOrphan={viewPrefs?.onEditOrphan ?? (() => {})}

@@ -294,6 +294,55 @@ describe("useFootnotes — sidecar content stays coherent on edit (task_9768c44e
     expect(req.text).not.toContain("stale seed");
   });
 
+  it("setArchived(true) flags archived + unanchored (bug sweep #3, mirror of citations)", async () => {
+    beginDocPipeline(DOC);
+    DISK["footnotes.json"] = {
+      footnotes: [
+        {
+          id: "fn-arch",
+          content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "keep me" }] }] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    } satisfies FootnotesState;
+
+    const { result } = renderHook(() => useFootnotes(DOC));
+    await waitFor(() => expect(result.current.footnoteRefs).toHaveLength(1));
+
+    // Archive: BOTH flags so the atomless ref survives syncFromEditor and lists
+    // under the panel's Archives view.
+    await act(async () => {
+      result.current.setArchived("fn-arch", true);
+    });
+    {
+      const ref = result.current.footnoteRefs.find((f) => f.id === "fn-arch");
+      expect(ref?.archived).toBe(true);
+      expect(ref?.unanchored).toBe(true);
+    }
+
+    // The archived (atomless) ref survives a re-sync that doesn't include it.
+    await act(async () => {
+      result.current.syncFromEditor([]); // editor has no footnote atoms
+    });
+    {
+      const ref = result.current.footnoteRefs.find((f) => f.id === "fn-arch");
+      expect(ref?.archived).toBe(true);
+      expect(ref?.unanchored).toBe(true);
+      expect(richJsonToPlainText(ref?.content ?? {})).toContain("keep me");
+    }
+
+    // Unarchive: clears `archived` but leaves `unanchored` (atom NOT re-inserted;
+    // the card returns re-placeable).
+    await act(async () => {
+      result.current.setArchived("fn-arch", false);
+    });
+    {
+      const ref = result.current.footnoteRefs.find((f) => f.id === "fn-arch");
+      expect(ref?.archived).toBe(false);
+      expect(ref?.unanchored).toBe(true);
+    }
+  });
+
   it("updateFootnoteContent does NOT clear pristine (a still-empty footnote stays discardable)", async () => {
     beginDocPipeline(DOC);
     DISK["footnotes.json"] = {

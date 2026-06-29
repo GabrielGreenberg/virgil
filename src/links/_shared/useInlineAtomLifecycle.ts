@@ -89,6 +89,13 @@ export interface UseInlineAtomLifecycleArgs {
    *  closes the orphan-clear undo edge (FN-A1-03) robustly without widening the
    *  consumer's O(1) atom-touched bail. Silent on a plain keystroke. */
   atomRevision?: number;
+  /** Bug sweep #3: ids whose `\footnote` marker is being spliced out by an
+   *  ARCHIVE action (the EditorPane-owned one-shot set). The lifecycle policy
+   *  CONSUMES an entry when it processes that id's removal, so it skips the
+   *  orphan upsert (the archived ref already preserves the body — an orphan
+   *  would double-create). A stable ref-backed Set (identity never changes), so
+   *  referencing it in the effect doesn't re-register the policy. */
+  archivedSuppress?: Set<string>;
 }
 
 interface AtomSnapshot {
@@ -137,6 +144,7 @@ export function useInlineAtomLifecycle({
   orphans,
   floats,
   atomRevision,
+  archivedSuppress,
 }: UseInlineAtomLifecycleArgs): void {
   const flagOn = isInlineAtomLifecycleOn();
 
@@ -201,6 +209,18 @@ export function useInlineAtomLifecycle({
       isFloatOpen: floats
         ? (key) => floatsRef.current?.poppedOutCards.includes(key) ?? false
         : undefined,
+      // Bug sweep #3: one-shot archive-suppress consume. The EditorPane archive
+      // handler adds the id BEFORE splicing the marker; the policy consumes it
+      // here on the resulting removal tx so the orphan upsert is skipped.
+      consumeArchivedSuppress: archivedSuppress
+        ? (id) => {
+            if (archivedSuppress.has(id)) {
+              archivedSuppress.delete(id);
+              return true;
+            }
+            return false;
+          }
+        : undefined,
     };
     const policy = makeInlineAtomLifecyclePolicy(store, deps);
 
@@ -241,7 +261,7 @@ export function useInlineAtomLifecycle({
       offMigrator();
       offResolver();
     };
-  }, [flagOn, store, consumer, cascade, editor, floats]);
+  }, [flagOn, store, consumer, cascade, editor, floats, archivedSuppress]);
 }
 
 /** Cheap liveness-only walk (no body flatten) for the `isAtomLive` re-check. */

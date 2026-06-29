@@ -139,7 +139,13 @@ export function useFootnotes(
     setState((prev) => {
       const next = {
         footnotes: prev.footnotes.map((f) =>
-          f.id === id ? { ...f, archived } : f,
+          // Archiving ALSO marks `unanchored` (mirror of useCitations.setArchived)
+          // so the atomless ref survives `syncFromEditor` and the panel lists it
+          // under Archives. Unarchive clears `archived` only — `unanchored` rides
+          // on (the atom is NOT re-inserted; the card returns re-placeable).
+          f.id === id
+            ? { ...f, archived, ...(archived ? { unanchored: true as const } : {}) }
+            : f,
         ),
       };
       stateRef.current = next;
