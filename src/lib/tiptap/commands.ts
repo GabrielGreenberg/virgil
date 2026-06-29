@@ -201,6 +201,28 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   // synthesizes the view-only ActionContext (`texRun` reads the live selection
   // off `ctx.view.state`, not the synthesized CursorRef).
   { name: "tex", action: (view) => runViewOnlyAction("tex", view) },
+  // Bug sweep #6: the 5 structural WRAPPER toggles. `\list`/`\itemize` → bullet
+  // list, `\enumerate` → numbered list, `\quote`/`\quotation` → blockquote.
+  //
+  // Unlike the pure-PM commands above (heading / tex / title-fields, which take
+  // `runViewOnlyAction`), the wrapper rows run `editor.chain().toggleBulletList()`
+  // / `toggleOrderedList()` / `toggleBlockquote()` — which the view-only path's
+  // SYNTHESIZED `{ view, state }` stub lacks (`.chain()` is undefined there). So
+  // they MUST route through the BRIDGE (`getEditorActionsHandleFor`), the same
+  // path as `\cite`/`\footnote`/`\ex` — the bridge builds the ctx from the LIVE
+  // TipTap editor (`innerRef.getEditor()`), which has `.chain()`. The EXACT
+  // `view` reaches THIS pane's handle under multi-doc keep-alive.
+  //
+  // Data-loss is impossible on a non-listable block (titleField / heading /
+  // atom): the registry rows grey via `wrapperApplies` AND no-op in `run()` via
+  // `selectionIsListable` (action-registry.ts) — a `\enumerate` typed on a
+  // heading simply does nothing. The `if (!view.editable) return` gate mirrors
+  // `\cite`/`\footnote` — uniform collab read-only refusal.
+  { name: "list", action: (view) => { if (!view.editable) return; getEditorActionsHandleFor(view)?.runAction("bullet-list", { surface: "slash" }); } },
+  { name: "itemize", action: (view) => { if (!view.editable) return; getEditorActionsHandleFor(view)?.runAction("bullet-list", { surface: "slash" }); } },
+  { name: "enumerate", action: (view) => { if (!view.editable) return; getEditorActionsHandleFor(view)?.runAction("ordered-list", { surface: "slash" }); } },
+  { name: "quote", action: (view) => { if (!view.editable) return; getEditorActionsHandleFor(view)?.runAction("blockquote", { surface: "slash" }); } },
+  { name: "quotation", action: (view) => { if (!view.editable) return; getEditorActionsHandleFor(view)?.runAction("blockquote", { surface: "slash" }); } },
 ];
 
 /** Fast lookup by command name (without backslash). */
