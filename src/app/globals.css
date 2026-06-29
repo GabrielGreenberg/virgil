@@ -249,7 +249,7 @@
      wins rule lets a single managed block override the descriptive ones
      above without touching the comments that explain what each token does.
      Do not edit by hand; edit the JSON sidecars instead. */
-  --background: #f2e5d4;
+  --background: #ede3de;
   --foreground: #1a1a1a;
   --surface: #ffffff;
   --border: #e5e2dd;
