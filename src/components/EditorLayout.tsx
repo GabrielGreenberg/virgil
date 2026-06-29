@@ -94,7 +94,7 @@ import {
 import { useViewPrefs, PanelId, Side, ALL_HIGHLIGHT_TYPES, HighlightType, dockedSideOf, isPanelDocked } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
 import { entityToAnchorId } from "@/links/_shared/entity-hover";
-import { PanelChromeProvider } from "./panel-primitives";
+import { Button, PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";
@@ -381,9 +381,6 @@ export default function EditorLayout() {
   useEffect(() => { setDevStorage(isDevStorage); }, []);
   useEffect(() => { setOpfsOk(opfsAvailable()); }, []);
   const exampleAvailable = opfsOk && !devStorage;
-  // For a brand-new user (no docs yet), the example is the primary call to
-  // action; "Create new document" then steps down to a secondary button.
-  const exampleIsPrimary = exampleAvailable && docs.length === 0;
 
   // Hooks read from disk, so we gate their docId on the permission
   // state. Until the active folder has been re-granted readwrite
@@ -4021,56 +4018,50 @@ export default function EditorLayout() {
         </div>
       ) : currentDocId ? null : (
         <div className="flex flex-1 items-center justify-center bg-[var(--background)]">
-          <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-md">
+          <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-2xl">
             {docs.length > 0 ? (
               <RecentPapersList docs={docs} onOpen={openFile} />
             ) : (
               <div className="text-ink-subtle text-sm">No document open</div>
             )}
-            <div className="flex items-center gap-2">
-              {exampleAvailable && (
-                <button
-                  type="button"
-                  onClick={() => void openExample()}
-                  className={
-                    exampleIsPrimary
-                      ? "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[var(--accent)] rounded-md hover:opacity-90 transition-opacity"
-                      : "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover-on-light"
-                  }
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H17l3 3v13.5A1.5 1.5 0 0 1 18.5 21h-13A1.5 1.5 0 0 1 4 19.5z" />
-                    <path d="m9.2 9.2 1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z" />
-                  </svg>
-                  Open the example document
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setNewDocModal({ mode: "fresh" })}
-                className={
-                  exampleIsPrimary
-                    ? "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover-on-light"
-                    : "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[var(--accent)] rounded-md hover:opacity-90 transition-opacity"
-                }
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 5v14" />
-                  <path d="M5 12h14" />
-                </svg>
-                Create new document
-              </button>
+            {/* Uniform action lozenges, order: open existing → create new →
+                example. Single `secondary` variant for all so none reads as a
+                mismatched primary. */}
+            <div className="flex flex-wrap items-center justify-center gap-2.5">
               {!devStorage && (
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
                   onClick={openExistingFile}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover-on-light"
+                  className="gap-2 whitespace-nowrap"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
                   </svg>
                   Open existing folder
-                </button>
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                onClick={() => setNewDocModal({ mode: "fresh" })}
+                className="gap-2 whitespace-nowrap"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                Create new document
+              </Button>
+              {exampleAvailable && (
+                <Button
+                  variant="secondary"
+                  onClick={() => void openExample()}
+                  className="gap-2 whitespace-nowrap"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 3h8l4 4v12.5A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5z" />
+                    <path d="M14 3v4h4" />
+                  </svg>
+                  Open the example document
+                </Button>
               )}
             </div>
             <InstallPwaPrompt />
