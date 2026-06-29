@@ -381,6 +381,15 @@ export function PanelTabStrip({
         // library background; only the active tab's manila fill (--surface /
         // --background for paper) and the body pop as the white "page".
         background: "var(--library-bg)",
+        // Full-width baseline seam (Chrome-tab style): an INSET bottom shadow
+        // paints a 1px --topbar-border line along the strip's inner bottom edge,
+        // above the bg but below the tabs. Unlike a border-bottom it is NOT
+        // clipped by overflowX/Y:hidden (inset shadows render inside the padding
+        // box), so it survives the F#15 scroll-clip. The active tab's white
+        // fill-bridge paints over it under itself (seamless merge); the inactive
+        // tabs and the gaps between/after tabs keep the line, so the page outline
+        // runs CONTINUOUSLY across the whole strip.
+        boxShadow: "inset 0 -1px 0 var(--topbar-border)",
         flexShrink: 0,
         // F#15: the strip itself must be able to shrink to its panel column
         // (which is min-width:0), so tabs SHARE the width Chrome-style instead
