@@ -59,7 +59,13 @@ import {
 import {
   setEditorActionsHandle,
   getEditorActionsHandle,
+  registerEditorActionsHandle,
+  unregisterEditorActionsHandle,
+  getEditorActionsHandleFor,
+  __resetEditorActionsRegistry,
 } from "@/lib/actions/editor-actions-bridge";
+import type { Editor } from "@tiptap/react";
+import type { EditorView } from "@tiptap/pm/view";
 import { paragraphUuidAt } from "@/links/links";
 
 // ---------------------------------------------------------------------------
@@ -153,9 +159,29 @@ function buildHandle(
 }
 
 afterEach(() => {
-  setEditorActionsHandle(null);
+  // Clear ALL registry entries (per-view + the legacy default slot) so the
+  // module-global registry can't leak across cases.
+  __resetEditorActionsRegistry();
   vi.restoreAllMocks();
 });
+
+/**
+ * A minimal `Editor`-shaped object for the registry routing tests. Each call
+ * makes a DISTINCT `view` (distinct `dom`) so it registers under its own key.
+ * `pickProbeEditor` reads `isDestroyed`, `isFocused`, and `view.dom.offsetHeight`
+ * — all controllable here (jsdom's real `offsetHeight` is always 0).
+ */
+function makeFakeEditor(
+  opts: { focused?: boolean; visible?: boolean; destroyed?: boolean } = {},
+): Editor {
+  const dom = { offsetHeight: opts.visible === false ? 0 : 100 } as unknown as HTMLElement;
+  const view = { dom } as unknown as EditorView;
+  return {
+    view,
+    isFocused: !!opts.focused,
+    isDestroyed: !!opts.destroyed,
+  } as unknown as Editor;
+}
 
 // ---------------------------------------------------------------------------
 // (1) storage contract
@@ -325,5 +351,120 @@ describe("runAction collab read-only gate (CHIP 7b)", () => {
     // And the ctx carries canEdit:true so the run()'s own guard passes.
     const ctx = runSpy.mock.calls[0][0] as ActionContext;
     expect(ctx.canEdit).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (5) MULTI-PANE REGISTRY (multi-doc keep-alive) — the bug-sweep #1 fix.
+//
+// Under keep-alive N EditorPanes mount at once (one visible, the rest
+// display:none). The registry must (a) route a PM caller's EXACT `view` to its
+// OWN pane's handle (no mis-route into a hidden doc), (b) resolve the ACTIVE
+// handle for a contextless caller via focused→visible→single, and (c) let an
+// unmounting/evicted pane remove ONLY its own key (never clobber a live pane).
+// ---------------------------------------------------------------------------
+
+describe("editor-actions-bridge registry (multi-doc keep-alive)", () => {
+  it("getEditorActionsHandleFor(view) routes to THAT view's own handle (no mis-route)", () => {
+    const edA = makeFakeEditor({ visible: false }); // hidden keep-alive pane
+    const edB = makeFakeEditor({ focused: true, visible: true }); // active pane
+    const handleA: EditorActionsHandle = { runAction: vi.fn() };
+    const handleB: EditorActionsHandle = { runAction: vi.fn() };
+    registerEditorActionsHandle(edA, handleA);
+    registerEditorActionsHandle(edB, handleB);
+
+    // Even though B is the focused/visible pane, a PM command that fired in A's
+    // view reaches A's OWN handle — not the active one.
+    expect(getEditorActionsHandleFor(edA.view)).toBe(handleA);
+    expect(getEditorActionsHandleFor(edB.view)).toBe(handleB);
+  });
+
+  it("arg-less getEditorActionsHandle() resolves the ACTIVE (focused) pane", () => {
+    const edA = makeFakeEditor({ focused: false, visible: true });
+    const edB = makeFakeEditor({ focused: true, visible: true });
+    const handleA: EditorActionsHandle = { runAction: vi.fn() };
+    const handleB: EditorActionsHandle = { runAction: vi.fn() };
+    registerEditorActionsHandle(edA, handleA);
+    registerEditorActionsHandle(edB, handleB);
+
+    // Focused wins.
+    expect(getEditorActionsHandle()).toBe(handleB);
+  });
+
+  it("falls back to the VISIBLE pane when none is focused (console-probe case)", () => {
+    const edHidden = makeFakeEditor({ focused: false, visible: false });
+    const edVisible = makeFakeEditor({ focused: false, visible: true });
+    const hHidden: EditorActionsHandle = { runAction: vi.fn() };
+    const hVisible: EditorActionsHandle = { runAction: vi.fn() };
+    registerEditorActionsHandle(edHidden, hHidden);
+    registerEditorActionsHandle(edVisible, hVisible);
+    expect(getEditorActionsHandle()).toBe(hVisible);
+  });
+
+  it("switching the active doc re-resolves WITHOUT any remount (LRU flip)", () => {
+    // Mirrors the decisive keep-alive timing bug: on a doc switch the LRU only
+    // flips isVisible/isFocused — no pane remounts — so resolution must be
+    // computed at call time, not baked at publish time.
+    const edA = makeFakeEditor({ focused: true, visible: true });
+    const edB = makeFakeEditor({ focused: false, visible: false });
+    const handleA: EditorActionsHandle = { runAction: vi.fn() };
+    const handleB: EditorActionsHandle = { runAction: vi.fn() };
+    registerEditorActionsHandle(edA, handleA);
+    registerEditorActionsHandle(edB, handleB);
+    expect(getEditorActionsHandle()).toBe(handleA);
+
+    // Switch focus to B (no re-register — just the live flags flip).
+    (edA as unknown as { isFocused: boolean }).isFocused = false;
+    (edA.view.dom as unknown as { offsetHeight: number }).offsetHeight = 0;
+    (edB as unknown as { isFocused: boolean }).isFocused = true;
+    (edB.view.dom as unknown as { offsetHeight: number }).offsetHeight = 100;
+    expect(getEditorActionsHandle()).toBe(handleB);
+  });
+
+  it("unmounting one pane removes ONLY its own key (no clobber of a live pane)", () => {
+    const edA = makeFakeEditor({ focused: true, visible: true });
+    const edB = makeFakeEditor({ visible: false });
+    const handleA: EditorActionsHandle = { runAction: vi.fn() };
+    const handleB: EditorActionsHandle = { runAction: vi.fn() };
+    registerEditorActionsHandle(edA, handleA);
+    registerEditorActionsHandle(edB, handleB);
+
+    // Evict / unmount B — A must remain fully reachable (the old single-slot
+    // blind-null bug would have wiped A here).
+    unregisterEditorActionsHandle(edB);
+    expect(getEditorActionsHandleFor(edA.view)).toBe(handleA);
+    expect(getEditorActionsHandle()).toBe(handleA);
+    expect(getEditorActionsHandleFor(edB.view)).toBe(handleA); // exact miss → active fallback
+  });
+
+  it("StrictMode double-invoke (mount→cleanup→mount, same view) leaves the handle live", () => {
+    const ed = makeFakeEditor({ focused: true, visible: true });
+    const handle: EditorActionsHandle = { runAction: vi.fn() };
+    registerEditorActionsHandle(ed, handle); // mount
+    unregisterEditorActionsHandle(ed); // StrictMode cleanup
+    registerEditorActionsHandle(ed, handle); // mount again
+    expect(getEditorActionsHandle()).toBe(handle);
+    expect(getEditorActionsHandleFor(ed.view)).toBe(handle);
+  });
+
+  it("getEditorActionsHandleFor(view) falls back to the active handle when view is unregistered", () => {
+    const ed = makeFakeEditor({ focused: true, visible: true });
+    const handle: EditorActionsHandle = { runAction: vi.fn() };
+    registerEditorActionsHandle(ed, handle);
+    // A nested sub-editor's view (never registered) → resolves the active pane.
+    const strayView = makeFakeEditor().view;
+    expect(getEditorActionsHandleFor(strayView)).toBe(handle);
+    expect(getEditorActionsHandleFor(null)).toBe(handle);
+  });
+
+  it("legacy setEditorActionsHandle still publishes a single default slot", () => {
+    expect(getEditorActionsHandle()).toBeNull();
+    const handle: EditorActionsHandle = { runAction: vi.fn() };
+    setEditorActionsHandle(handle);
+    expect(getEditorActionsHandle()).toBe(handle);
+    // An arbitrary view with no per-view entry resolves the default slot.
+    expect(getEditorActionsHandleFor(makeFakeEditor().view)).toBe(handle);
+    setEditorActionsHandle(null);
+    expect(getEditorActionsHandle()).toBeNull();
   });
 });

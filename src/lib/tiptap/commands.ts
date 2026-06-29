@@ -5,7 +5,7 @@ import { generateShortId } from "@/lib/uuid";
 // `virgil-citation-create` CustomEvent — one typed entrypoint into the
 // registry's `citation.run`. CHIP 7a: `\ref` rides the same bridge (the
 // `LabelRef` create-mode popover is the creator → `refRun` → `openRefPopover`).
-import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
 // CHIP 5a: the canonical heading transform lives in the action registry
 // (`headingRun` → SET + numbered:true). The 4 `\chapter`/`\section`/
 // `\subsection`/`\subsubsection` slash commands call the registry row's `run()`
@@ -103,7 +103,7 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   { name: "subsubsection", action: (view) => runViewOnlyAction("heading-subsubsection", view) },
   {
     name: "ref",
-    action: () => {
+    action: (view) => {
       // `\ref` routes through the SINGLE canonical `refRun` in the action
       // registry — the SAME `run()` the lightning 'Cross-ref' grid cell calls.
       // `refRun` opens the SHARED create popover (the same deferred-commit
@@ -113,12 +113,14 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // side-effect (it sets EditorLayout's `atomCreateRequest`), so `\ref` rides
       // the bridge (like `\cite`/`\footnote`) — `refRun` receives
       // `ctx.openAtomCreate` from EditorPane's bridge handle.
-      getEditorActionsHandle()?.runAction("ref", { surface: "slash" });
+      // Routed via the EXACT live `view` (multi-doc keep-alive) so it reaches
+      // THIS pane's handle, not a hidden keep-alive pane's.
+      getEditorActionsHandleFor(view)?.runAction("ref", { surface: "slash" });
     },
   },
   {
     name: "ex",
-    action: () => {
+    action: (view) => {
       // CHIP 5c: `\ex` routes through the SINGLE canonical `exampleRun`
       // (wrap-if-selection-else-insert) in the action registry — the SAME
       // `run()` the lightning grid `ex` cell calls. The former `virgil-ex-create`
@@ -129,7 +131,7 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // never force-opens), which is a React-land side-effect. So `\ex` rides the
       // bridge (like `\cite`/`\footnote`) rather than the view-only path, so
       // `exampleRun` receives `ctx.panelRouting.selectExample`.
-      getEditorActionsHandle()?.runAction("example", { surface: "slash" });
+      getEditorActionsHandleFor(view)?.runAction("example", { surface: "slash" });
     },
   },
   {
@@ -146,7 +148,7 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // the create popover at the caret (`openAtomCreate("citation")`). The user
       // searches citekeys; the atom + card materialize only on commit (OK /
       // click-away with ≥1 key), via a second `runAction` carrying the payload.
-      getEditorActionsHandle()?.runAction("citation", { surface: "slash" });
+      getEditorActionsHandleFor(view)?.runAction("citation", { surface: "slash" });
     },
   },
   {
@@ -183,7 +185,7 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // the Footnotes panel). Replaces the retired `virgil-footnote-input`
       // event + its command-input.ts listener (and the dead
       // `virgil-footnote-created` it used to broadcast).
-      getEditorActionsHandle()?.runAction("footnote", {
+      getEditorActionsHandleFor(view)?.runAction("footnote", {
         surface: "slash",
         payload: { footnoteId },
       });

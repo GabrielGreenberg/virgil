@@ -183,7 +183,10 @@ import {
   type CursorRef,
   type EditorActionsHandle,
 } from "@/lib/actions/action-registry";
-import { setEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import {
+  registerEditorActionsHandle,
+  unregisterEditorActionsHandle,
+} from "@/lib/actions/editor-actions-bridge";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { isRenameCitekey } from "@/lib/identity/identity-cascade";
 import { rewriteCiteKeyInDoc } from "@/lib/identity/bib-cite-rewrite";
@@ -3115,8 +3118,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         void spec.run(ctx);
       },
     };
-    setEditorActionsHandle(handle);
-    return () => setEditorActionsHandle(null);
+    // Register THIS pane's handle keyed by its live `EditorView` (multi-doc
+    // keep-alive renders N panes at once). Cleanup removes ONLY this editor's
+    // own key, so an evicted/unmounting pane can never clobber a live one.
+    registerEditorActionsHandle(editor, handle);
+    return () => unregisterEditorActionsHandle(editor);
     // Intentionally depends ONLY on `editor` — the live cardCreation /
     // cardLifecycle / dispatch are read through `bridgeDepsRef` (not closed
     // over), and the editor itself is re-read via `innerRef` at call time, so

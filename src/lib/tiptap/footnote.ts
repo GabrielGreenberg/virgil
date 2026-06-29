@@ -18,7 +18,7 @@ import { FOOTNOTE_RE_FULL } from "@/lib/footnote-commands";
 // Replaces the DEAD `virgil-footnote-created` CustomEvent (zero listeners) —
 // one typed entrypoint into the registry's `footnote.run`, which now applies
 // the SAME pristine + pinned lifecycle the menu's Footnote gets.
-import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
 
 // Options accepted by the Footnote extension. `idGenerator` lets a host
 // (e.g. the Library Reader) substitute a different ID strategy for newly
@@ -186,7 +186,7 @@ export const Footnote = Node.create<FootnoteOptions>({
             // body content, so we pass `pristine:false` — the click-away
             // discarder must NOT reap a footnote the user typed prose into.
             const pristine = match[1].trim().length === 0;
-            getEditorActionsHandle()?.runAction("footnote", {
+            getEditorActionsHandleFor(view)?.runAction("footnote", {
               surface: "typed",
               payload: { footnoteId, pristine },
             });

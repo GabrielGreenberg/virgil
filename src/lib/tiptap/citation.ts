@@ -7,7 +7,7 @@ import { generateShortId } from "@/lib/uuid";
 // the `virgil-citation-create` CustomEvent. The FULL `\cite{key}` branch
 // previously made NO card at all — this is the bug fix: both the full and the
 // bare branch now land at the SAME registry `citation.run` as menu + slash.
-import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
+import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
 
 // Flag: when a bare \cite is typed, signal the panel to open
 let _pendingCitationCreate: string | null = null;
@@ -173,7 +173,7 @@ export const Citation = Node.create<CitationOptions>({
                 // `citation.run` (surface "typed"), the SAME destination as
                 // menu + slash. Keeps the FULL typed command on the card so
                 // the card renders the keys instead of an empty `\cite{}`.
-                getEditorActionsHandle()?.runAction("citation", {
+                getEditorActionsHandleFor(view)?.runAction("citation", {
                   surface: "typed",
                   payload: { citationId, command },
                 });
@@ -208,7 +208,7 @@ export const Citation = Node.create<CitationOptions>({
                 // Register the panel card via the registry's `citation.run`
                 // (surface "typed"). Replaces the retired
                 // `virgil-citation-create` CustomEvent + its two listeners.
-                getEditorActionsHandle()?.runAction("citation", {
+                getEditorActionsHandleFor(view)?.runAction("citation", {
                   surface: "typed",
                   payload: { citationId, command },
                 });
