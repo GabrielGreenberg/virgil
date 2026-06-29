@@ -29,6 +29,27 @@ import {
   WINDOW_DRAG_BLOCK_SELECTOR,
 } from "@/lib/drag-blocklist";
 
+// Rendering the real <Panel> (bug sweep #5 cases) transitively imports
+// `@/lib/storage`, whose `require("@/lib/storage-fsa")` vitest can't alias (the
+// known barrel-storage gotcha). Stub the storage surface so the module loads —
+// these tests touch no storage call.
+vi.mock("@/lib/storage", () => {
+  const STORAGE_FNS = [
+    "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
+    "readDocBundle", "writeDocBundle", "readBib", "writeBib",
+    "createDocFromPicker", "createDocInFolder", "pickProjectFolder",
+    "registerDocInFolder", "openExistingDocFromPicker", "listDocs", "renameDoc",
+    "deleteDocFromIndex", "flushDoc", "drainDoc", "detectBibPackage",
+    "readPaperFolder", "getTexFilename", "writePdf", "readPdf", "getPdfFilename",
+    "pdfFilenameFromTex", "readFigureSource", "readFigureRaster",
+    "writeFigureRaster", "deleteFigureRaster", "readFigureIndex",
+    "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
+  ];
+  const mod: Record<string, unknown> = { isDevStorage: false };
+  for (const name of STORAGE_FNS) mod[name] = vi.fn();
+  return mod;
+});
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../.."); // src/
 
@@ -127,6 +148,68 @@ describe("FloatingPanel window drag bails on a [data-card] child (bug #36)", () 
     expect(document.body.style.cursor).toBe("grabbing");
     // Release so the global mouseup listener resets body styles for the next test.
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
+  });
+});
+
+describe("Panel variant='raw' body is inert to the window drag (bug sweep #5)", () => {
+  // Outline is the only content-bodied (variant="raw") docked panel; its section
+  // rows are plain <div onClick> (not buttons, not [data-card]), so a press used
+  // to arm the panel-move drag (blue halo + jitter-undock) and swallow the jump.
+  // Panel marks the raw body region with [data-no-window-drag] (display:contents,
+  // so the child's own scroll/flex layout is untouched), making the FloatingPanel
+  // mousedown bail before arming. Search is unaffected — it's variant="list" with
+  // <button> rows, already in INTERACTIVE_CONTROL_SELECTOR.
+  afterEach(async () => {
+    // Unmount RTL renders so the two cases below don't both leave an
+    // "outline-row" in document.body (getByTestId would then find multiples).
+    const { cleanup } = await import("@testing-library/react");
+    cleanup();
+  });
+
+  async function renderRawPanelInFloat() {
+    const { render } = await import("@testing-library/react");
+    const { default: FloatingPanel } = await import("@/components/FloatingPanel");
+    const { Panel } = await import("@/panels/_shared/Panel");
+    return render(
+      <FloatingPanel
+        cardKey="note:n1"
+        mode="floating"
+        surface="card"
+        initialX={100}
+        initialY={100}
+        initialWidth={300}
+        initialHeight={400}
+        zIndex={1200}
+        onChange={vi.fn()}
+      >
+        <Panel kind="outline" variant="raw">
+          <div data-testid="outline-scroll">
+            <div data-testid="outline-row" onClick={() => {}}>
+              § Introduction
+            </div>
+          </div>
+        </Panel>
+      </FloatingPanel>,
+    );
+  }
+
+  it("wraps the raw body in a [data-no-window-drag] display:contents marker (no extra box)", async () => {
+    const { getByTestId } = await renderRawPanelInFloat();
+    const marker = getByTestId("outline-row").closest(
+      "[data-no-window-drag]",
+    ) as HTMLElement | null;
+    expect(marker).not.toBeNull();
+    expect(marker!.style.display).toBe("contents");
+  });
+
+  it("a press on a raw-panel content row does NOT arm the window drag", async () => {
+    const { getByTestId } = await renderRawPanelInFloat();
+    const ev = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 });
+    getByTestId("outline-row").dispatchEvent(ev);
+    // Bailed at the closest([data-no-window-drag]) check — no preventDefault, no
+    // grabbing cursor, so the row's own onClick jump fires instead.
+    expect(ev.defaultPrevented).toBe(false);
+    expect(document.body.style.cursor).not.toBe("grabbing");
   });
 });
 

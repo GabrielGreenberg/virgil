@@ -134,7 +134,18 @@ export function Panel({
             {children}
           </div>
         ) : (
-          children
+          // variant="raw": the panel owns its scroll element. Mark the body
+          // region inert to the FloatingPanel WINDOW-drag (bug sweep #5) so its
+          // content rows (Outline sections, Search results) jump on click rather
+          // than arming the panel-move drag (the blue halo + jitter-undock that
+          // swallowed the click). The PanelHeader above stays OUTSIDE this
+          // wrapper, so dragging the title bar still undocks. `display:contents`
+          // emits NO box — the child's own scroll/flex layout is unchanged —
+          // while `closest('[data-no-window-drag]')` in onHeaderMouseDown still
+          // matches it via the DOM tree (it's in WINDOW_DRAG_BLOCK_SELECTOR).
+          <div data-no-window-drag style={{ display: "contents" }}>
+            {children}
+          </div>
         )}
         {footer}
       </div>
