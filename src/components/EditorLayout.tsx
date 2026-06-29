@@ -4018,49 +4018,50 @@ export default function EditorLayout() {
         </div>
       ) : currentDocId ? null : (
         <div className="flex flex-1 items-center justify-center bg-[var(--background)]">
-          <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-2xl">
+          <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-md">
             {docs.length > 0 ? (
               <RecentPapersList docs={docs} onOpen={openFile} />
             ) : (
               <div className="text-ink-subtle text-sm">No document open</div>
             )}
-            {/* Uniform action lozenges, order: open existing → create new →
-                example. Single `secondary` variant for all so none reads as a
-                mismatched primary. */}
-            <div className="flex flex-wrap items-center justify-center gap-2.5">
+            {/* Uniform action lozenges spanning the recents-column width:
+                three equal-width (flex-1), two-line-tall buttons, all the same
+                `secondary` variant so none reads as a mismatched primary.
+                Order: open existing → create new → example. */}
+            <div className="flex w-full items-stretch gap-2.5">
               {!devStorage && (
                 <Button
                   variant="secondary"
                   onClick={openExistingFile}
-                  className="gap-2 whitespace-nowrap"
+                  className="flex-1 basis-0 min-w-0 !h-auto min-h-[3.25rem] py-2 gap-2 text-left leading-snug"
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" className="shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
                   </svg>
-                  Open existing folder
+                  <span className="flex-1 min-w-0">Open existing folder</span>
                 </Button>
               )}
               <Button
                 variant="secondary"
                 onClick={() => setNewDocModal({ mode: "fresh" })}
-                className="gap-2 whitespace-nowrap"
+                className="flex-1 basis-0 min-w-0 !h-auto min-h-[3.25rem] py-2 gap-2 text-left leading-snug"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="16" height="16" className="shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
-                Create new document
+                <span className="flex-1 min-w-0">Create new document</span>
               </Button>
               {exampleAvailable && (
                 <Button
                   variant="secondary"
                   onClick={() => void openExample()}
-                  className="gap-2 whitespace-nowrap"
+                  className="flex-1 basis-0 min-w-0 !h-auto min-h-[3.25rem] py-2 gap-2 text-left leading-snug"
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="16" height="16" className="shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M6 3h8l4 4v12.5A1.5 1.5 0 0 1 16.5 21h-9A1.5 1.5 0 0 1 6 19.5z" />
                     <path d="M14 3v4h4" />
                   </svg>
-                  Open the example document
+                  <span className="flex-1 min-w-0">Open example document</span>
                 </Button>
               )}
             </div>
