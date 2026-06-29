@@ -1,6 +1,6 @@
 {
-  "version": "99b150e1c4b0",
-  "syncedAt": "2026-06-26T04:17:29.630Z",
+  "version": "4ea642c37ae9",
+  "syncedAt": "2026-06-29T04:14:35.586Z",
   "files": [
     "library/CLAUDE.md",
     "library/claude-commands/_doctrine.md",
@@ -77,6 +77,7 @@
     "library/scripts/pgmark_validate.py",
     "library/scripts/populate_references_bib_from_itemize.py",
     "library/scripts/promote_inline_section_labels.py",
+    "library/scripts/prune_catalog_present_false.py",
     "library/scripts/reattach_chapter_end_notes.py",
     "library/scripts/reattach_document_end_notes.py",
     "library/scripts/reattach_footnotes.py",
