@@ -1,3 +1,9 @@
 {
-  "colOrder": ["year", "author", "title", "status", "citekey"]
+  "colOrder": [
+    "year",
+    "author",
+    "title",
+    "status",
+    "citekey"
+  ]
 }

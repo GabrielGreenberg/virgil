@@ -48,6 +48,7 @@ TARGETS=(
   src/hooks/usePreferences.defaults.json
   src/lib/panel-theme.defaults.json
   src/lib/print.defaults.json
+  library/lib/list-columns.defaults.json
   src/app/globals.css
 )
 
@@ -56,7 +57,7 @@ if git diff --quiet -- "${TARGETS[@]}"; then
   exit 0
 fi
 
-# Sanity gate: the four sidecars must parse as valid JSON. The promote
+# Sanity gate: the five sidecars must parse as valid JSON. The promote
 # script always emits well-formed JSON, but a corrupt snapshot or a hand-
 # edit between cron runs could leave them broken. We skip a full `tsc
 # --noEmit` because unrelated WIP elsewhere in the repo would falsely
@@ -69,6 +70,7 @@ node -e '
     "src/hooks/usePreferences.defaults.json",
     "src/lib/panel-theme.defaults.json",
     "src/lib/print.defaults.json",
+    "library/lib/list-columns.defaults.json",
   ]) JSON.parse(fs.readFileSync(f, "utf-8"));
 '
 
