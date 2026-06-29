@@ -1,4 +1,4 @@
-<!-- last-verified: 3d621676 2026-06-27 -->
+<!-- last-verified: aa79f333 2026-06-29 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -41,8 +41,9 @@ below carry only what's *distinctive*:
 - **`archived?: boolean`** — set-aside flag (per-card Archive). Absent ≡ active;
   `true` hides the card from the active list / omni / in-doc, surfaced only under
   the View Archives/All menu. On most kinds it's a pure sidecar flip; on the
-  atom-linked kinds it's gated — `footnote`/`highlight` are **delete-only** (no
-  archive), and archiving a `citation` splices its atom out. The kind→behavior
+  atom-linked kinds it's gated — only `highlight` is **delete-only** (no
+  archive), while archiving a `citation` **or `footnote`** (the latter since bug
+  sweep #3) splices its atom out and flags the ref `archived` + `unanchored`. The kind→behavior
   switches are `isArchivable` / `archiveRemovesAtom` in
   [src/cards/predicates.ts](../../src/cards/predicates.ts) — read those, don't
   hard-code the list.
@@ -82,7 +83,7 @@ TodoItem { id; text; notes; done: boolean; aiRequest; createdAt; links: Link[] }
 **`footnotes.json` — `FootnotesState { footnotes: FootnoteRef[] }`:**
 
 ```ts
-FootnoteRef { id; content; createdAt; archived?; aiRequest? }  // no links/anchor
+FootnoteRef { id; content; createdAt; archived?; unanchored?; aiRequest? }  // no links/anchor
 ```
 
 The `id` **is** the anchor — it equals the `\vfid{}` marker. Splice recipe +

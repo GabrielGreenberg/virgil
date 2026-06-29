@@ -1,4 +1,4 @@
-<!-- last-verified: 3d621676 2026-06-27 -->
+<!-- last-verified: aa79f333 2026-06-29 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -136,4 +136,8 @@ flag. The flag governs only the **writer** that fills that store: ON → the one
 bus-driven `useInlineAtomLifecycle` reconciler upserts/clears off the structural
 diff; OFF → the legacy per-pane event web (`useFootnoteOrphanBridges`), routed by
 the originating `docId` the `virgil-footnote-orphaned` event in `footnote.ts` now
-carries. **Flag OFF preserves current behavior exactly.**
+carries. **Flag OFF preserves current behavior exactly.** When a footnote is
+*archived* (bug sweep #3), a one-shot `archivedSuppress` seam
+(`inline-atom-lifecycle-policy.ts`) skips the flag-ON orphan-upsert for that id so
+the same footnote can't be both archived and orphaned; flag-OFF uses its existing
+suppress-event latch.

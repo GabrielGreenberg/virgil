@@ -1,4 +1,4 @@
-<!-- last-verified: 3d621676 2026-06-27 -->
+<!-- last-verified: aa79f333 2026-06-29 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -154,16 +154,16 @@ reversibly rather than deleted. This is **wholly distinct** from the text-object
 Archive PANEL (the `archive` CardKind, which *moves text objects*).
 
 - **`isArchivable(kind)`** ([predicates.ts](../../src/cards/predicates.ts)) —
-  derived from provenance: `origin === "user"`, MINUS two exceptions.
+  derived from provenance: `origin === "user"`, MINUS one exception.
   `highlight` is delete-only (a bodyless range tint; archiving would orphan the
-  tint) and `footnote` is delete-only (pending a footnote-lifecycle follow-up —
-  the subsystem doesn't model "unanchored" the way citations do; **user
-  decision**). So the archivable set is note/citation/archive/todo/report/
-  report-request + the comment/suggestion pairs.
+  tint). `footnote` joined the archivable set in bug sweep #3 (mirror of
+  citations — see [footnotes.md](footnotes.md)). So the archivable set is
+  note/citation/footnote/archive/todo/report/report-request + the
+  comment/suggestion pairs.
 - **`archiveRemovesAtom(kind)`** (= `isInlineAtomCardKind`) — for the atom kinds,
   archiving splices the `\footnote{}`/`\cite{}` marker out of the `.tex` (behind
   a confirm) and does NOT re-insert it on unarchive (returns as an unanchored
-  ref). With `footnote` now delete-only, this is reachable only for `citation`.
+  ref). Reachable for both `citation` and (since sweep #3) `footnote`.
 - **The button** — `CardArchiveButton` / `MenuArchive`
   ([panel-primitives.tsx](../../src/components/panel-primitives.tsx)) mounts
   beside the trash, self-wired from the **`CardArchiveActionsProvider`**

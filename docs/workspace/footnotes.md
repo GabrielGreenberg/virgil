@@ -1,4 +1,4 @@
-<!-- last-verified: 3d621676 2026-06-27 -->
+<!-- last-verified: aa79f333 2026-06-29 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -59,8 +59,8 @@ contract just places it.
 `FootnoteRef` (`src/lib/types.ts`) is `id`, `content` (Tiptap `JSONContent` doc;
 legacy HTML strings migrate on read), `createdAt`, an optional **`aiRequest?`** flag (#55a — see
 [the AI-request flag](#the-per-card-ai-request-flag-55a)), plus the family-wide
-optional `archived?` flag (present for type-uniformity but **inert for
-footnotes** — see the delete-only note below). **There is no anchor / paragraphId
+optional **`archived?`** and (bug sweep #3) **`unanchored?`** flags — both **live**
+for footnotes now, mirroring `CitationRef` (see the archive note below). **There is no anchor / paragraphId
 field**: the
 `\vfid{<id>}` in the `.tex` *is*
 the anchor, and the entry's `id` **must equal** that `\vfid` id (the id-equality
@@ -108,14 +108,21 @@ footnote — the create flow below). The footnote AI-request lives in the AIWind
 (it is **not** in `list_requests.py`'s `PANEL_FILES` fallback — footnote flags
 are always bridged, never unbridged-virtual).
 
-## Delete-only + orphaned footnotes
+## Archive + orphaned footnotes
 
-Footnotes are **delete-only** — `isArchivable` (`src/cards/predicates.ts`)
-excludes `footnote` (alongside `highlight`). The per-card Archive feature's
-button does NOT render on a footnote card: the desired archive→unanchored
-behavior isn't modelled the way citations' `unanchored` is, so it's a pending
-follow-up (the `card-archive-gaps` user decision). The `archived?` field on
-`FootnoteRef` is therefore never set by the footnote path.
+Footnotes are **archivable** (bug sweep #3) — `isArchivable`
+(`src/cards/predicates.ts`) now excludes only `highlight`. Archiving a footnote
+splices its `\footnote` atom out of the `.tex` and flags the `footnotes.json` ref
+`archived` + `unanchored` (mirror of citations), so the atomless ref survives and
+the Footnotes panel lists it under the **Archives** view (`CardViewModeMenu`);
+`FootnoteCard` renders an `UnanchoredFootnoteCard` (no jump) whose `EditableCard`
+chrome drives archive⇄unarchive. Unarchive clears `archived` only — the atom is
+**not** re-inserted, so the footnote returns as an unanchored ref to re-place. It
+was a missing render path, not a missing model (the archive machinery already
+dispatched to footnotes). Under the DEFAULT-OFF `virgil:inline-atom-lifecycle`
+flag the bus policy's orphan-upsert is suppressed for the archived id (the
+one-shot `archivedSuppress` seam in `inline-atom-lifecycle-policy.ts`) so a
+footnote can't be both archived and orphaned.
 
 When a footnote's in-text marker is deleted but its body/title might still be
 wanted, it becomes an **orphan**. The `Footnote` plugin
