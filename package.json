@@ -41,6 +41,7 @@
     "@uiw/react-codemirror": "^4.25.9",
     "@unified-latex/unified-latex-lint": "^1.8.4",
     "@unified-latex/unified-latex-util-parse": "^1.8.4",
+    "@vercel/analytics": "^2.0.1",
     "citation-js": "^0.7.22",
     "codemirror-lang-latex": "^0.2.0",
     "fuse.js": "^7.3.0",
