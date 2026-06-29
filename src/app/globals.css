@@ -4249,12 +4249,13 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   transform: translateY(-0.5px);
 }
 
-/* Visible, grabbable slider handle for panel-height resizing — the
-   inter-band dividers and the bottom-band/omni edge. A persistent
-   centered grip (muted grey at rest, accent on hover/drag, widening on
-   interaction) makes the resize affordance discoverable, unlike the
-   bare hover-only .drag-gap line that the editor/code splitter keeps.
-   Scoped to `.band-grip`, so HSplit is unaffected. */
+/* Grabbable slider handle for panel-height resizing — the inter-band dividers
+   and the bottom-band/omni edge. The centered grip is HIDDEN at rest (bug sweep
+   #2: a persistent lozenge cluttered the quiet gutter) and fades in on
+   hover/drag (accent + widening), like the bare hover-only .drag-gap line the
+   editor/code splitter keeps — the band strip itself is the hover zone, so the
+   affordance is still discoverable on approach. Scoped to `.band-grip`, so
+   HSplit is unaffected. */
 .drag-gap-h.band-grip {
   /* Opaque manilla (--background, the canvas) backing so the gutter strip
      between/below stacked panels reads as the cream desktop — each band a
@@ -4273,7 +4274,8 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   transform: translate(-50%, -50%);
   border-radius: 999px;
   background: var(--edge-hover);
-  opacity: 0.9;
+  /* Hidden at rest (bug sweep #2); the hover/drag rules below raise it. */
+  opacity: 0;
   transition: background 120ms ease, opacity 120ms ease, width 120ms ease;
   pointer-events: none;
 }

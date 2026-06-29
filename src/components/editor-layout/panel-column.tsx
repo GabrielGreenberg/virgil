@@ -76,9 +76,12 @@ function ColumnEdgeFade({ side, edge }: {
       style={{
         ...(isTop ? { top: 0 } : { bottom: 0 }),
         alignSelf: 'stretch',
-        background: `linear-gradient(${isTop ? 'to bottom' : 'to top'}, var(--background) 0, var(--background) var(--pod-gap), transparent calc(var(--pod-gap) + 32px))`,
-        height: 64,
-        ...(isTop ? { marginBottom: -64 } : { marginTop: -64 }),
+        // Bug sweep #2: shorten the omni-scroll edge dissolve to a rim — solid
+        // over the gutter, then a short 14px ramp to transparent (was 32px).
+        // Height + the negative margin stay in lockstep (zero net flow height).
+        background: `linear-gradient(${isTop ? 'to bottom' : 'to top'}, var(--background) 0, var(--background) var(--pod-gap), transparent calc(var(--pod-gap) + 14px))`,
+        height: 34,
+        ...(isTop ? { marginBottom: -34 } : { marginTop: -34 }),
         marginLeft: -4,
         marginRight: -4,
         pointerEvents: 'none',
@@ -172,7 +175,9 @@ function BottomEdgeHandle({
           className="absolute left-0 right-0"
           style={{
             top: '100%',
-            height: 22,
+            // Bug sweep #2: a short rim, not a long dissolve — the panel edge
+            // reads as a sheet with a thin shadow-ish fade into the omni gap.
+            height: 10,
             background: 'linear-gradient(to bottom, var(--background), transparent)',
             pointerEvents: 'none',
           }}
