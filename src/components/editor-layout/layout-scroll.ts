@@ -41,9 +41,28 @@ export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
-/** The unified row scroll container. */
+/**
+ * The unified row scroll container — resolved to the VISIBLE pane.
+ *
+ * Multi-doc keep-alive (default ON) renders N panes at once: the active one is
+ * `display:flex`, the warm/evicted ones `display:none`. Each pane has its own
+ * `[data-virgil-row-scroll]`, so a bare `querySelector` returns the FIRST in DOM
+ * order — which may be a hidden pane, silently scrolling the wrong (offscreen)
+ * doc on every jump (the latent multi-pane bug behind the card-jump cluster).
+ *
+ * A `display:none` element has `offsetParent === null`, so we prefer the first
+ * rendered match — mirroring the focused→visible precedence of
+ * [active-editor-probe.ts](../../lib/active-editor-probe.ts) `pickProbeEditor`.
+ * The common single-pane case (≤1 match) short-circuits, which also avoids a
+ * false negative if a sole pane is mid-transition.
+ */
 export function findRowScroll(): HTMLElement | null {
-  return document.querySelector("[data-virgil-row-scroll]") as HTMLElement | null;
+  const all = document.querySelectorAll<HTMLElement>("[data-virgil-row-scroll]");
+  if (all.length <= 1) return all[0] ?? null;
+  for (const el of all) {
+    if (el.offsetParent !== null) return el;
+  }
+  return all[0] ?? null;
 }
 
 /** The scroll container relevant to a given ProseMirror view. Mirror

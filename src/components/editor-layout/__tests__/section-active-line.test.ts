@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   SECTION_ACTIVE_LINE_FRACTION,
   scrollHeadingToActiveLine,
+  findRowScroll,
 } from "../layout-scroll";
 
 /**
@@ -70,5 +71,48 @@ describe("section active line", () => {
     heading.getBoundingClientRect = () => rect(100, 30); // already near top
     scrollHeadingToActiveLine(heading, heading);
     expect(scrollEl.scrollTop).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/**
+ * Bug sweep #4 (latent half): under multi-doc keep-alive several panes mount at
+ * once, each with its own `[data-virgil-row-scroll]`; only the active pane is
+ * displayed (the rest are `display:none` → `offsetParent === null`). A jump must
+ * scroll the VISIBLE pane's row, not the first DOM match (a hidden pane).
+ */
+describe("findRowScroll (multi-doc keep-alive)", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  function makeRow(visible: boolean): HTMLDivElement {
+    const el = document.createElement("div");
+    el.setAttribute("data-virgil-row-scroll", "");
+    // jsdom does no layout, so offsetParent is always null — stub it per-instance
+    // to model display:none (null) vs displayed (a parent element).
+    Object.defineProperty(el, "offsetParent", {
+      configurable: true,
+      get: () => (visible ? document.body : null),
+    });
+    document.body.appendChild(el);
+    return el;
+  }
+
+  it("returns the sole row directly when only one pane is mounted", () => {
+    const only = makeRow(true);
+    expect(findRowScroll()).toBe(only);
+  });
+
+  it("returns the VISIBLE pane's row, not the first (hidden) DOM match", () => {
+    const hidden = makeRow(false); // first in DOM order — a warm/offscreen pane
+    const visible = makeRow(true); // the active pane
+    expect(findRowScroll()).toBe(visible);
+    expect(findRowScroll()).not.toBe(hidden);
+  });
+
+  it("falls back to the first match if none report as displayed (transition)", () => {
+    const first = makeRow(false);
+    makeRow(false);
+    expect(findRowScroll()).toBe(first);
   });
 });
