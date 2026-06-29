@@ -317,15 +317,38 @@ describe("registry is the COMPLETE SSOT (CHIP 7a milestone)", () => {
   });
 
   it("every live slash command name maps to a registry row that owns the slash surface", () => {
+    // The 4 heading names fan out to the discrete heading rows; the 5 structural-
+    // wrapper names (bug sweep #6) ALIAS onto existing lightning format rows
+    // reached through the bridge (many-to-one), so neither group maps 1:1 to a
+    // slash-surface row — they're checked separately below.
+    const fanOutNames = [
+      "chapter", "section", "subsection", "subsubsection",
+      "list", "itemize", "enumerate", "quote", "quotation",
+    ];
     for (const name of VIRGIL_COMMAND_NAMES) {
-      // The 4 heading names fan out; the rest map 1:1 to their slashName.
-      const headingNames = ["chapter", "section", "subsection", "subsubsection"];
-      if (headingNames.includes(name)) continue;
+      if (fanOutNames.includes(name)) continue;
       const row = Object.values(VIRGIL_ACTION_REGISTRY).find(
         (r) => r?.slashName === name,
       );
       expect(row, `slash \\${name} should resolve to a row`).toBeTruthy();
       expect(row!.surfaces.slash).toBe(true);
+    }
+  });
+
+  it("the structural-wrapper slash commands alias onto existing format rows (bug sweep #6)", () => {
+    // \list/\itemize → bullet-list, \enumerate → ordered-list,
+    // \quote/\quotation → blockquote. Each alias must be a live command name and
+    // resolve to a real registry row (reached via the bridge, not a slash row).
+    const aliases: Array<[string, string]> = [
+      ["list", "bullet-list"],
+      ["itemize", "bullet-list"],
+      ["enumerate", "ordered-list"],
+      ["quote", "blockquote"],
+      ["quotation", "blockquote"],
+    ];
+    for (const [name, id] of aliases) {
+      expect(VIRGIL_COMMAND_NAMES, `\\${name} is a live command`).toContain(name);
+      expect(VIRGIL_ACTION_REGISTRY[id as keyof typeof VIRGIL_ACTION_REGISTRY], `${name} → ${id}`).toBeTruthy();
     }
   });
 });

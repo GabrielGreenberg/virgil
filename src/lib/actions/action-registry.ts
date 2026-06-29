@@ -2762,6 +2762,15 @@ const EXPECTED_ACTION_IDS: readonly ActionId[] = [
  *
  * `chapter/section/subsection/subsubsection` fan out to the four discrete
  * heading ids (see the HEADING ID SCHEME note on `BlockActionId`).
+ *
+ * Bug sweep #6: the 5 structural-wrapper commands ALIAS onto existing FORMAT
+ * rows (`bullet-list`/`ordered-list`/`blockquote`) — `\list`/`\itemize` both →
+ * bullet-list, `\quote`/`\quotation` both → blockquote. Unlike the 1:1 slash
+ * surfaces, these are a MANY-to-one alias group reached through the bridge
+ * (`runAction`), so the target rows keep their `lightning`-only `surfaces` (no
+ * per-row `slashName` could be 1:1 across two aliases); the slash reconciliation
+ * below skips a row that doesn't own the slash surface, so this mapping just
+ * pins that every alias resolves to a real action id.
  */
 const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
   title: "title",
@@ -2776,6 +2785,11 @@ const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
   cite: "citation",
   footnote: "footnote",
   tex: "tex",
+  list: "bullet-list",
+  itemize: "bullet-list",
+  enumerate: "ordered-list",
+  quote: "blockquote",
+  quotation: "blockquote",
 };
 
 /**
