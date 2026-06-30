@@ -239,6 +239,12 @@ export function PendingChangePill({
   const [placement, setPlacement] = useState<Placement>(INVISIBLE);
   // Keep the latest target resolvers reachable from the mount-once RAF effect
   // without re-subscribing the editor listener on every hover/selection change.
+  /* eslint-disable react-hooks/refs -- This RAF-coalesced placement portal
+     latches the latest hover/selection/index and reads the viewport-cache /
+     editor refs DURING RENDER by design, so the mount-once RAF effect can see
+     live values without re-subscribing the editor listener on every
+     hover/selection change. Same established pattern as SelectionActionsMenu
+     (the cloned component) and the float-body refs convention. */
   const hoverRef = useRef(hover);
   hoverRef.current = hover;
   const selectedRef = useRef(selected);
@@ -249,6 +255,7 @@ export function PendingChangePill({
   const { cacheRef, version: cacheVersion } = useEditorViewportCache(
     editorRef.current,
   );
+  /* eslint-enable react-hooks/refs */
 
   // The RAF-coalesced placement compute. Held in a ref so BOTH effects below
   // share ONE scheduler: the long-lived subscription effect (editor events +
