@@ -49,8 +49,20 @@ export const LinkedAnchor = Mark.create({
       tintColor: {
         default: null,
         parseHTML: (el: HTMLElement) => el.getAttribute("data-tint-color"),
-        renderHTML: (attrs: Record<string, unknown>) =>
-          attrs.tintColor ? { "data-tint-color": attrs.tintColor as string } : {},
+        renderHTML: (attrs: Record<string, unknown>) => {
+          const tint = attrs.tintColor;
+          if (typeof tint !== "string" || !tint) return {};
+          // Per-instance tint paint: globals.css reads `var(--tint-color)` so
+          // each anchor wears its own hue (amber highlight, light-blue pending
+          // AI change, …) instead of the v1 hardcoded yellow. The value rides
+          // sidecar JSON, so guard the inline-style CSS sink — only a strict
+          // hex colour is interpolated; anything else emits the data attr only
+          // and falls back to the amber default. No untrusted text in `style`.
+          const safe = /^#[0-9a-fA-F]{3,8}$/.test(tint);
+          return safe
+            ? { "data-tint-color": tint, style: `--tint-color: ${tint}` }
+            : { "data-tint-color": tint };
+        },
       },
     };
   },

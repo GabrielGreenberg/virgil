@@ -2723,14 +2723,15 @@ textarea,
  * attribute (Adobe-style: stays visible without hover/selection gating
  * and independent of the `data-show-hl-*` toggles below). Carries through
  * the highlight→note morph: changing the card's kind does not strip the
- * tint from the anchored text. Yellow is hardcoded in v1; a future pass
- * can read per-instance hex from the attribute via an inline style.
+ * tint from the anchored text. Per-instance hue: the mark stamps an inline
+ * `--tint-color` (validated hex) and this rule reads it, so amber highlights
+ * and the light-blue pending-AI-change mark coexist; default stays yellow.
  *
  * `!important` wins over the kind-based `data-show-hl-*` rules so a note
  * that was born from a highlight still wears the yellow even when "show
  * note highlights" is toggled on. */
 .linked-anchor[data-tint-color] {
-  background: color-mix(in oklab, #fbbf24 35%, transparent) !important;
+  background: color-mix(in oklab, var(--tint-color, #fbbf24) 35%, transparent) !important;
 }
 
 /* Per-kind --link-anchor-color on panel cards is NO LONGER a CSS map:
