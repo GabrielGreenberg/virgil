@@ -16,12 +16,11 @@ import { useCardCreationContext } from "../contexts/card-creation";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useRecentlyAddedId } from "../contexts/recently-added";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
-import { applyPendingChange } from "@/links/apply-suggestion";
 import {
+  applySuggestion,
   keepSuggestion,
   revertSuggestion,
 } from "@/links/pending-change-actions";
-import { getLinkedTextObjectIds } from "@/links/links";
 import { generateEntityId } from "@/lib/uuid";
 import { useDocWriteHandleOrNull } from "../DocPipeline";
 
@@ -140,35 +139,19 @@ export function RevisionsHost(p: RevisionsHostProps) {
         (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
       );
       if (!s) return;
-      // Mode-A anchor: the first linked paragraph uuid. No anchor → not
-      // applicable; bail without mutating the doc or the card.
-      const anchorUuid = getLinkedTextObjectIds(s)[0];
-      if (!anchorUuid) return;
-      const mode: "replace" | "delete" =
-        s.suggested_text === "" ? "delete" : "replace";
-      const anchorId = generateEntityId();
-      const result = applyPendingChange(editorInstance, {
-        anchorUuid,
-        originalText: s.original_text,
-        replacement: s.suggested_text,
-        mode,
-        cardId: id,
-        anchorId,
+      // Route through the shared `applySuggestion` (the same path the auto-apply
+      // driver uses — Phase 2), so the manual button and the driver are
+      // byte-identical. Returns applied / stale / skipped; the card-state
+      // transitions happen inside via the deps.
+      applySuggestion<RevisionSuggestionCard["status"]>({
+        editor: editorInstance,
+        card: s,
+        setSuggestionStatus: p.setSuggestionStatus,
+        setAppliedChange: p.setAppliedChange,
+        generateAnchorId: generateEntityId,
+        appliedStatus: "applied",
+        staleStatus: "stale",
       });
-      if (result.ok) {
-        p.setSuggestionStatus(id, "applied");
-        p.setAppliedChange(id, {
-          anchorId: result.anchorId,
-          anchorUuid,
-          originalText: s.original_text,
-          replacement: s.suggested_text,
-          mode,
-          appliedAt: new Date().toISOString(),
-        });
-      } else {
-        // result.reason === "stale" — no doc mutation happened.
-        p.setSuggestionStatus(id, "stale");
-      }
     },
     [p, editorInstance],
   );

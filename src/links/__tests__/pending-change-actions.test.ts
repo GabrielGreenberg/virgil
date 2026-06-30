@@ -20,6 +20,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const keepPendingChange = vi.fn<(editor: unknown, args: unknown) => void>();
 const revertPendingChange = vi.fn<(editor: unknown, args: unknown) => void>();
+// applyPendingChange is mocked so the `applySuggestion` orchestration tests
+// assert the SEQUENCE (anchor/mode compute → applyPendingChange → card-state
+// flip) without the real doc splice. Default: a successful replace.
+const applyPendingChange = vi.fn<
+  (editor: unknown, args: unknown) => { ok: true; anchorId: string } | { ok: false; reason: "stale" }
+>(() => ({ ok: true, anchorId: "anc-applied" }));
 const flushPendingForDoc = vi.fn<(docId: unknown) => Promise<void>>(() =>
   Promise.resolve(),
 );
@@ -27,6 +33,7 @@ const flushPendingForDoc = vi.fn<(docId: unknown) => Promise<void>>(() =>
 vi.mock("@/links/apply-suggestion", () => ({
   keepPendingChange: (...a: unknown[]) => keepPendingChange(a[0], a[1]),
   revertPendingChange: (...a: unknown[]) => revertPendingChange(a[0], a[1]),
+  applyPendingChange: (...a: unknown[]) => applyPendingChange(a[0], a[1]),
 }));
 vi.mock("@/lib/multi-window/pending-saves", () => ({
   flushPendingForDoc: (...a: unknown[]) => flushPendingForDoc(a[0]),
@@ -35,8 +42,10 @@ vi.mock("@/lib/multi-window/pending-saves", () => ({
 import {
   keepSuggestion,
   revertSuggestion,
+  applySuggestion,
   type AppliedChangeDescriptor,
   type PendingChangeCardDeps,
+  type SuggestionLike,
 } from "@/links/pending-change-actions";
 import type { Editor } from "@tiptap/react";
 
@@ -71,6 +80,8 @@ beforeEach(() => {
   keepPendingChange.mockClear();
   revertPendingChange.mockClear();
   flushPendingForDoc.mockClear();
+  applyPendingChange.mockClear();
+  applyPendingChange.mockImplementation(() => ({ ok: true, anchorId: "anc-applied" }));
 });
 
 describe("keepSuggestion", () => {
@@ -137,5 +148,100 @@ describe("revertSuggestion", () => {
     expect(revertPendingChange).not.toHaveBeenCalled();
     expect(flushPendingForDoc).not.toHaveBeenCalled();
     expect(deps.deleteCard).not.toHaveBeenCalled();
+  });
+});
+
+// ── Phase 2 — the shared applySuggestion orchestration ─────────────────────
+// Both the manual Apply button (revisions-host / cutter-host) AND the new
+// auto-apply driver call this, so a unit here pins the SEQUENCE: compute the
+// Mode-A anchor + mode → call applyPendingChange → flip the card to
+// applied + appliedChange (success) or stale (verbatim miss) or skip (no
+// anchor). The real splice is mocked; we assert orchestration only.
+
+/** A SuggestionLike with one Mode-A textObject link to paragraph `P1`. */
+function makeSuggestion(over: Partial<SuggestionLike> = {}): SuggestionLike {
+  return {
+    id: "s1",
+    original_text: "old text",
+    suggested_text: "new text",
+    links: [
+      {
+        id: "l1",
+        kind: "anchor",
+        anchor: { type: "textObject", targetKind: "paragraph", textObjectIds: ["P1"] },
+        target: { panel: "revisions", cardId: "s1" },
+      },
+    ],
+    ...over,
+  } as SuggestionLike;
+}
+
+function makeApplyDeps() {
+  return {
+    editor,
+    setSuggestionStatus: vi.fn(),
+    setAppliedChange: vi.fn(),
+    generateAnchorId: () => "anc-new",
+    appliedStatus: "applied" as const,
+    staleStatus: "stale" as const,
+  };
+}
+
+describe("applySuggestion", () => {
+  it("(replace) splices via applyPendingChange, then flips status→applied + sets appliedChange", () => {
+    const deps = makeApplyDeps();
+    const result = applySuggestion({ ...deps, card: makeSuggestion() });
+
+    expect(applyPendingChange).toHaveBeenCalledTimes(1);
+    expect(applyPendingChange).toHaveBeenCalledWith(editor, {
+      anchorUuid: "P1",
+      originalText: "old text",
+      replacement: "new text",
+      mode: "replace",
+      cardId: "s1",
+      anchorId: "anc-new",
+    });
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("s1", "applied");
+    expect(deps.setAppliedChange).toHaveBeenCalledTimes(1);
+    const ac2 = (deps.setAppliedChange as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(ac2).toMatchObject({
+      anchorId: "anc-applied",
+      anchorUuid: "P1",
+      originalText: "old text",
+      replacement: "new text",
+      mode: "replace",
+    });
+    expect(result).toMatchObject({ outcome: "applied", anchorUuid: "P1" });
+  });
+
+  it("(delete) derives mode:'delete' when suggested_text is empty", () => {
+    const deps = makeApplyDeps();
+    applySuggestion({ ...deps, card: makeSuggestion({ suggested_text: "" }) });
+
+    expect(applyPendingChange).toHaveBeenCalledWith(
+      editor,
+      expect.objectContaining({ mode: "delete", replacement: "" }),
+    );
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("s1", "applied");
+  });
+
+  it("marks the card stale (no appliedChange) when applyPendingChange refuses", () => {
+    applyPendingChange.mockImplementation(() => ({ ok: false, reason: "stale" }));
+    const deps = makeApplyDeps();
+    const result = applySuggestion({ ...deps, card: makeSuggestion() });
+
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("s1", "stale");
+    expect(deps.setAppliedChange).not.toHaveBeenCalled();
+    expect(result).toEqual({ outcome: "stale" });
+  });
+
+  it("skips (no splice, no card change) when the card has no Mode-A anchor", () => {
+    const deps = makeApplyDeps();
+    const result = applySuggestion({ ...deps, card: makeSuggestion({ links: [] }) });
+
+    expect(applyPendingChange).not.toHaveBeenCalled();
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+    expect(deps.setAppliedChange).not.toHaveBeenCalled();
+    expect(result).toEqual({ outcome: "skipped" });
   });
 });

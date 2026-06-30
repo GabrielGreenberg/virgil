@@ -15,12 +15,11 @@ import { useCardCreationContext } from "../contexts/card-creation";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useRecentlyAddedId } from "../contexts/recently-added";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
-import { applyPendingChange } from "@/links/apply-suggestion";
 import {
+  applySuggestion,
   keepSuggestion,
   revertSuggestion,
 } from "@/links/pending-change-actions";
-import { getLinkedTextObjectIds } from "@/links/links";
 import { generateEntityId } from "@/lib/uuid";
 import { useDocWriteHandleOrNull } from "../DocPipeline";
 
@@ -139,32 +138,16 @@ export function CutterHost(p: CutterHostProps) {
         (c): c is CutterSuggestionCard => c.id === id && c.kind === "suggestion",
       );
       if (!s) return;
-      const anchorUuid = getLinkedTextObjectIds(s)[0];
-      if (!anchorUuid) return;
-      const mode: "replace" | "delete" =
-        s.suggested_text === "" ? "delete" : "replace";
-      const anchorId = generateEntityId();
-      const result = applyPendingChange(editorInstance, {
-        anchorUuid,
-        originalText: s.original_text,
-        replacement: s.suggested_text,
-        mode,
-        cardId: id,
-        anchorId,
+      // Shared `applySuggestion` — same path the auto-apply driver uses (Phase 2).
+      applySuggestion<CutterSuggestionCard["status"]>({
+        editor: editorInstance,
+        card: s,
+        setSuggestionStatus: p.setSuggestionStatus,
+        setAppliedChange: p.setAppliedChange,
+        generateAnchorId: generateEntityId,
+        appliedStatus: "applied",
+        staleStatus: "stale",
       });
-      if (result.ok) {
-        p.setSuggestionStatus(id, "applied");
-        p.setAppliedChange(id, {
-          anchorId: result.anchorId,
-          anchorUuid,
-          originalText: s.original_text,
-          replacement: s.suggested_text,
-          mode,
-          appliedAt: new Date().toISOString(),
-        });
-      } else {
-        p.setSuggestionStatus(id, "stale");
-      }
     },
     [p, editorInstance],
   );

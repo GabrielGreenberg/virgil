@@ -50,8 +50,12 @@ function migrate(raw: unknown): EditorStateData {
   };
 }
 
-/** Walk up from the selection to the nearest ancestor with a UUID attr. */
-function paragraphUuidAtSelection(editor: Editor): string | null {
+/** Walk up from the selection to the nearest anchorable ancestor with a UUID
+ *  attr — the paragraph the caret is currently in. O(depth) (nesting depth,
+ *  not doc size). Exported so the auto-apply driver can ask the same question
+ *  (is the caret in this suggestion's target paragraph?) with identical
+ *  semantics to the selection tracker. */
+export function paragraphUuidAtSelection(editor: Editor): string | null {
   const $from = editor.state.selection.$from;
   for (let depth = $from.depth; depth >= 0; depth--) {
     const node = $from.node(depth);
@@ -88,6 +92,18 @@ export interface UseEditorUIStateApi {
 export function useEditorUIState(
   docId: string | null,
   editor: Editor | null,
+  /**
+   * Optional caret-paragraph-change notifier. Invoked from the EXISTING
+   * `selectionUpdate` subscriber (no new always-on subscriber — keystroke
+   * sanctity) with the uuid of the paragraph the caret JUST LEFT (`prev`) and
+   * the one it just entered (`next`), but ONLY when they differ. The
+   * computation is O(depth) (walk up from `$from` to the nearest anchorable
+   * ancestor — bounded by nesting depth, not doc size) plus a string compare,
+   * so it stays O(1) per keystroke. Fires synchronously (un-debounced), unlike
+   * the 400 ms-debounced disk persist — the auto-apply driver needs the leave
+   * promptly. Stable identity expected (the caller wraps it in a ref).
+   */
+  onCaretParagraphChange?: (prev: string | null, next: string | null) => void,
 ): UseEditorUIStateApi {
   const [state, setState] = useState<EditorStateData>(DEFAULT);
   const stateRef = useRef(state);
@@ -95,6 +111,18 @@ export function useEditorUIState(
   const [loaded, setLoaded] = useState(false);
   const loadedRef = useRef(false);
   loadedRef.current = loaded;
+
+  // Latest caret-paragraph-change notifier + the last-seen caret paragraph
+  // uuid, held in refs so the single `selectionUpdate` subscriber stays stable
+  // (no re-subscribe when the callback identity changes) and so the O(1)
+  // leave-detection compares against the prior value without re-rendering. The
+  // notifier ref is synced in an effect (not during render) for the
+  // React-Compiler refs rule; the handler reads `.current` at fire time.
+  const caretNotifyRef = useRef(onCaretParagraphChange);
+  useEffect(() => {
+    caretNotifyRef.current = onCaretParagraphChange;
+  });
+  const caretParaRef = useRef<string | null>(null);
 
   const handle = useMemo(
     () => (docId ? getActiveHandle(docId) : null),
@@ -195,8 +223,24 @@ export function useEditorUIState(
   useEffect(() => {
     if (!editor) return;
     let cursorTimer: ReturnType<typeof setTimeout> | null = null;
+    // Re-baseline the caret-paragraph tracker on (re)subscribe — a doc switch
+    // remounts with a fresh editor, so the prior doc's caret uuid must not leak.
+    caretParaRef.current = paragraphUuidAtSelection(editor);
 
     const onSelection = () => {
+      // O(1) caret-paragraph-leave detection, on the EXISTING selectionUpdate
+      // subscriber (no new editor.on('update') — keystroke sanctity). Walk up
+      // to the nearest anchorable ancestor (bounded by nesting depth) + compare
+      // the uuid string to the prior; notify only on a real change. Runs BEFORE
+      // the debounce so the leave is reported promptly. Typing inside one
+      // paragraph leaves `caretParaRef` unchanged → no notify, O(1) bail.
+      const nextPara = paragraphUuidAtSelection(editor);
+      const prevPara = caretParaRef.current;
+      if (nextPara !== prevPara) {
+        caretParaRef.current = nextPara;
+        caretNotifyRef.current?.(prevPara, nextPara);
+      }
+
       if (cursorTimer) clearTimeout(cursorTimer);
       cursorTimer = setTimeout(() => {
         if (editor.isDestroyed) return;

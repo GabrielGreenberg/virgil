@@ -141,6 +141,7 @@ import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
 import { useFootnotes } from "@/hooks/useFootnotes";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
+import { useAutoApplyPendingChanges } from "@/hooks/useAutoApplyPendingChanges";
 import { usePristineCardManager } from "@/hooks/usePristineCardManager";
 import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
@@ -1327,6 +1328,32 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () => ({ ...cutterHookRaw, convertCard: convertCutterCard }),
     [cutterHookRaw, convertCutterCard],
   );
+
+  // ── Phase 2 — auto-apply driver for AI-pending changes (flag-ON) ──────────
+  // Auto-applies an AI-authored, still-pending suggestion the moment it is safe
+  // (caret not in the target paragraph; no other applied change there yet) via
+  // the SAME shared `applySuggestion` the manual Apply button uses. Keystroke-
+  // safe: the batch effect gates only on `[editor, structural counters, card
+  // arrays]` (silent on plain typing), and the selection-leave path piggybacks
+  // on `useEditorUIState`'s existing `selectionUpdate` subscriber via the
+  // returned `onCaretParagraphChange` notifier (no new always-on subscriber).
+  // Flag-OFF: inert (no card ever reaches the statuses it reads). `rev` is the
+  // `useStructuralRevisions` snapshot; `editor` the reactive instance.
+  const { onCaretParagraphChange: onAutoApplyCaretLeave } =
+    useAutoApplyPendingChanges({
+      editor,
+      structural: rev,
+      revisions: {
+        cards: revisionsHook.cards,
+        setSuggestionStatus: revisionsHook.setSuggestionStatus,
+        setAppliedChange: revisionsHook.setAppliedChange,
+      },
+      cutter: {
+        cards: cutterHook.cards,
+        setSuggestionStatus: cutterHook.setSuggestionStatus,
+        setAppliedChange: cutterHook.setAppliedChange,
+      },
+    });
   // Wrap the reports `deleteCard` so a DELETE of an aiRequest-bearing
   // report-request discharges the same cross-store obligation a morph does:
   // UNBRIDGE the pending ai-requests.json entry (REP-F7-02, the symmetric
@@ -1477,7 +1504,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // the doc content, AND the sidecar load — the sidecar is async and
   // can resolve after the editor mounts, so depending on `loaded` is
   // mandatory to avoid restoring the pre-load default.
-  const uiStateHook = useEditorUIState(docId, editor);
+  // The 3rd arg is the auto-apply driver's selection-leave notifier (Phase 2):
+  // it rides this hook's existing `selectionUpdate` subscriber, so no new
+  // always-on editor subscriber is added (keystroke sanctity). Stable identity
+  // (a `useCallback` in the driver), so it never re-subscribes.
+  const uiStateHook = useEditorUIState(docId, editor, onAutoApplyCaretLeave);
   const uiRestoredRef = useRef(false);
   const scrollRestoredRef = useRef(false); // Phase D: once-per-mount scroll restore
   const cancelScrollRestoreRef = useRef<(() => void) | null>(null);
