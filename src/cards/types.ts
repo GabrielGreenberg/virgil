@@ -72,7 +72,17 @@ export type MarkerType =
   | "cut"
   | "todo"
   | "report"
-  | "error";
+  | "error"
+  // Persistent margin-gutter control for an APPLIED-but-not-yet-kept pending AI
+  // change (Phase 1c, flag-gated). NOT a card kind — it is DERIVED from
+  // `status:"applied"` revision-suggestion / cutter-suggestion cards, so unlike
+  // every other marker type NO `CARD_REGISTRY` kind declares it (a kind already
+  // declares its base `revision`/`cut` marker, and may declare only one). It is
+  // therefore exempt from the registry-derived `MARKER_META` coverage closure —
+  // see `NON_REGISTRY_MARKER_TYPES` in `src/cards/marker-meta.ts`. Fixed
+  // light-blue accent (`#bfdbfe`, the in-doc applied-range tint); not
+  // user-overridable.
+  | "pending-change";
 
 /** Creation provenance.
  *  - `user`    — has a "+" / action / drop creation path

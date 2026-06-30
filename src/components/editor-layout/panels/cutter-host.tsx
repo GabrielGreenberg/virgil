@@ -15,14 +15,13 @@ import { useCardCreationContext } from "../contexts/card-creation";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useRecentlyAddedId } from "../contexts/recently-added";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
+import { applyPendingChange } from "@/links/apply-suggestion";
 import {
-  applyPendingChange,
-  keepPendingChange,
-  revertPendingChange,
-} from "@/links/apply-suggestion";
+  keepSuggestion,
+  revertSuggestion,
+} from "@/links/pending-change-actions";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { generateEntityId } from "@/lib/uuid";
-import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
 import { useDocWriteHandleOrNull } from "../DocPipeline";
 
 export interface CutterHostProps {
@@ -170,26 +169,23 @@ export function CutterHost(p: CutterHostProps) {
     [p, editorInstance],
   );
 
+  // Keep / Revert route through the shared `pending-change-actions` sequence
+  // (the same one the EditorPane margin-gutter marker calls — Phase 1c), so the
+  // card surface and the gutter stay byte-identical.
   const onKeepSuggestion = useCallback(
     (id: string) => {
       if (!isPendingChangesOn() || !editorInstance) return;
-      const s = p.cards.find(
-        (c): c is CutterSuggestionCard => c.id === id && c.kind === "suggestion",
-      );
-      const ac = s?.appliedChange;
-      if (!ac) return;
-      keepPendingChange(editorInstance, {
-        anchorUuid: ac.anchorUuid,
-        mode: ac.mode,
-        anchorId: ac.anchorId,
-        originalText: ac.originalText,
-        replacement: ac.replacement,
+      keepSuggestion<CutterSuggestionCard["status"]>(editorInstance, id, docId, {
+        getAppliedChange: (cid) =>
+          p.cards.find(
+            (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+          )?.appliedChange,
+        setSuggestionStatus: p.setSuggestionStatus,
+        setArchived: p.setArchived,
+        setAppliedChange: p.setAppliedChange,
+        deleteCard: p.deleteCard,
+        acceptedStatus: "accepted",
       });
-      // Text-first ordering: flush the .tex BEFORE flipping card state.
-      if (docId) void flushPendingForDoc(docId).catch(() => {});
-      p.setSuggestionStatus(id, "accepted");
-      p.setArchived(id, true);
-      p.setAppliedChange(id, undefined);
     },
     [p, editorInstance, docId],
   );
@@ -197,20 +193,17 @@ export function CutterHost(p: CutterHostProps) {
   const onRevertSuggestion = useCallback(
     (id: string) => {
       if (!isPendingChangesOn() || !editorInstance) return;
-      const s = p.cards.find(
-        (c): c is CutterSuggestionCard => c.id === id && c.kind === "suggestion",
-      );
-      const ac = s?.appliedChange;
-      if (!ac) return;
-      revertPendingChange(editorInstance, {
-        anchorUuid: ac.anchorUuid,
-        originalText: ac.originalText,
-        replacement: ac.replacement,
-        mode: ac.mode,
-        anchorId: ac.anchorId,
+      revertSuggestion<CutterSuggestionCard["status"]>(editorInstance, id, docId, {
+        getAppliedChange: (cid) =>
+          p.cards.find(
+            (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+          )?.appliedChange,
+        setSuggestionStatus: p.setSuggestionStatus,
+        setArchived: p.setArchived,
+        setAppliedChange: p.setAppliedChange,
+        deleteCard: p.deleteCard,
+        acceptedStatus: "accepted",
       });
-      if (docId) void flushPendingForDoc(docId).catch(() => {});
-      p.deleteCard(id);
     },
     [p, editorInstance, docId],
   );

@@ -42,11 +42,14 @@ import {
 } from "@/cards/has-content";
 import type { MarkerType } from "@/cards/types";
 
-/** Margin marker kinds that map to deletable cards — `MarkerType` minus
- *  `"error"` (errors aren't cards; their marker dismisses the lint entry).
- *  Derived, so a new marker namespace automatically needs a handler bundle
- *  here or fails to typecheck. */
-export type MarginItemKind = Exclude<MarkerType, "error">;
+/** Margin marker kinds that map to deletable cards — `MarkerType` minus the
+ *  non-card markers: `"error"` (errors aren't cards; their marker dismisses the
+ *  lint entry) and `"pending-change"` (Phase 1c — a DERIVED presence marker for
+ *  an applied revision/cutter suggestion; its `onDelete` routes through the
+ *  underlying card's own `"revision"`/`"cut"` handler bundle, so it needs no
+ *  bundle of its own). Derived, so a new card-bearing marker namespace
+ *  automatically needs a handler bundle here or fails to typecheck. */
+export type MarginItemKind = Exclude<MarkerType, "error" | "pending-change">;
 
 /** Per-kind handler bundle. `buildMarginItemHandlers` produces one of
  *  these maps from a set of hook returns. */

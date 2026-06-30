@@ -259,6 +259,11 @@ import {
 } from "@/links/resolve-card-anchor";
 import { reapplyModeBAnchors } from "@/links/_shared/reapply-mode-b-anchors";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
+import { isPendingChangesOn } from "@/lib/pending-changes-flag";
+import {
+  keepSuggestion,
+  revertSuggestion,
+} from "@/links/pending-change-actions";
 import type { MarginaliaMarker } from "@/lib/marginalia";
 import type {
   PanelPlacement,
@@ -273,7 +278,13 @@ import type { FocusState } from "@/hooks/useFocusMode";
 import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
 import type { PanelKind, CardKind } from "@/panels/_shared/types";
-import type { AiRequest, Suggestion, FootnoteRef } from "@/lib/types";
+import type {
+  AiRequest,
+  Suggestion,
+  FootnoteRef,
+  RevisionSuggestionCard,
+  CutterSuggestionCard,
+} from "@/lib/types";
 import {
   useCardLifecycleApi,
   assertLifecycleCoverage,
@@ -2364,6 +2375,83 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [footnotesHook.footnoteRefs],
   );
 
+  // ── Phase 1c — gutter-driven Keep / Revert for an applied pending change ──
+  // The persistent margin-gutter marker (the `pending-change` marker emitted
+  // below for `status:"applied"` revision/cutter suggestions) calls these. They
+  // route through the SAME `pending-change-actions` sequence the card-surface
+  // host closures use, so the gutter and the card stay byte-identical. The flag
+  // + editor-mounted guard lives here (flag-OFF: no applied marker is ever
+  // emitted, so these are unreachable — byte-identical OFF). `editor` is the
+  // reactive instance the rest of EditorPane threads.
+  const onKeepRevisionPending = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editor) return;
+      keepSuggestion<RevisionSuggestionCard["status"]>(editor, id, docId, {
+        getAppliedChange: (cid) =>
+          revisionsHook.cards.find(
+            (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
+          )?.appliedChange,
+        setSuggestionStatus: revisionsHook.setSuggestionStatus,
+        setArchived: revisionsHook.setArchived,
+        setAppliedChange: revisionsHook.setAppliedChange,
+        deleteCard: revisionsHook.deleteCard,
+        acceptedStatus: "accepted",
+      });
+    },
+    [editor, docId, revisionsHook],
+  );
+  const onRevertRevisionPending = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editor) return;
+      revertSuggestion<RevisionSuggestionCard["status"]>(editor, id, docId, {
+        getAppliedChange: (cid) =>
+          revisionsHook.cards.find(
+            (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
+          )?.appliedChange,
+        setSuggestionStatus: revisionsHook.setSuggestionStatus,
+        setArchived: revisionsHook.setArchived,
+        setAppliedChange: revisionsHook.setAppliedChange,
+        deleteCard: revisionsHook.deleteCard,
+        acceptedStatus: "accepted",
+      });
+    },
+    [editor, docId, revisionsHook],
+  );
+  const onKeepCutterPending = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editor) return;
+      keepSuggestion<CutterSuggestionCard["status"]>(editor, id, docId, {
+        getAppliedChange: (cid) =>
+          cutterHook.cards.find(
+            (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+          )?.appliedChange,
+        setSuggestionStatus: cutterHook.setSuggestionStatus,
+        setArchived: cutterHook.setArchived,
+        setAppliedChange: cutterHook.setAppliedChange,
+        deleteCard: cutterHook.deleteCard,
+        acceptedStatus: "accepted",
+      });
+    },
+    [editor, docId, cutterHook],
+  );
+  const onRevertCutterPending = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editor) return;
+      revertSuggestion<CutterSuggestionCard["status"]>(editor, id, docId, {
+        getAppliedChange: (cid) =>
+          cutterHook.cards.find(
+            (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+          )?.appliedChange,
+        setSuggestionStatus: cutterHook.setSuggestionStatus,
+        setArchived: cutterHook.setArchived,
+        setAppliedChange: cutterHook.setAppliedChange,
+        deleteCard: cutterHook.deleteCard,
+        acceptedStatus: "accepted",
+      });
+    },
+    [editor, docId, cutterHook],
+  );
+
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
     // or the paragraph-UUID set changes (`rev.blocks`). Card-store arrays
@@ -2371,6 +2459,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // bumps none of these, so markers don't recompute or shift per keystroke.
     void rev.anchors;
     void rev.blocks;
+    // Phase 1c flag read (call-time, not memoized): gates whether an applied
+    // suggestion emits the `pending-change` gutter control vs. its base
+    // revision/cut marker. Flag-OFF → no card ever reaches `status:"applied"`,
+    // so this is dead and the marker set is byte-identical to pre-1c.
+    const pendingChangesOn = isPendingChangesOn();
     const result: MarginaliaMarker[] = [];
 
     // ONE O(doc) resolve index for the whole pass, built at the TOP before
@@ -2519,14 +2612,21 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       const anchorId = revAnchor?.anchorId;
       const revKind: EntityKind =
         r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
+      // Phase 1c — an APPLIED suggestion (flag-ON, spliced-but-not-yet-kept)
+      // shows the persistent `pending-change` gutter control INSTEAD of the
+      // base `revision` marker: light-blue, carrying Keep/Revert. Flag-OFF (or
+      // any non-applied status) keeps the regular `revision` marker, byte-for-
+      // byte — no card reaches `applied` without the flag-ON apply path.
+      const isAppliedPending =
+        r.kind === "suggestion" && r.status === "applied" && pendingChangesOn;
       for (const { pid, unanchored } of resolveMarkerPids(r, pids)) {
         result.push({
           id: `${r.id}:${pid}`,
           entityId: r.id,
           entityKind: revKind,
-          type: "revision",
+          type: isAppliedPending ? "pending-change" : "revision",
           textObjectId: pid,
-          title: r.selectedText || "Revision",
+          title: isAppliedPending ? "Pending change" : r.selectedText || "Revision",
           unanchored,
           anchorId,
           onClick: (clickY?: number) =>
@@ -2534,6 +2634,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           onDelete: () => {
             void handleMarginItemDelete("revision", r.id, pid, anchorId);
           },
+          ...(isAppliedPending
+            ? {
+                onKeep: () => onKeepRevisionPending(r.id),
+                onRevert: () => onRevertRevisionPending(r.id),
+              }
+            : null),
         });
       }
     }
@@ -2548,14 +2654,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         : c.text || "Comment";
       const cutKind: EntityKind =
         c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
+      // Phase 1c — an APPLIED cutter suggestion (flag-ON) shows the persistent
+      // `pending-change` gutter control instead of the base `cut` marker.
+      // Flag-OFF / non-applied keeps the `cut` marker byte-for-byte.
+      const isAppliedPending =
+        c.kind === "suggestion" && c.status === "applied" && pendingChangesOn;
       for (const { pid, unanchored } of resolveMarkerPids(c, pids)) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
           entityKind: cutKind,
-          type: "cut",
+          type: isAppliedPending ? "pending-change" : "cut",
           textObjectId: pid,
-          title,
+          title: isAppliedPending ? "Pending change" : title,
           unanchored,
           onClick: (clickY?: number) =>
             handleMarginMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
@@ -2563,6 +2674,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
           },
           anchorId: cardAnchor?.anchorId,
+          ...(isAppliedPending
+            ? {
+                onKeep: () => onKeepCutterPending(c.id),
+                onRevert: () => onRevertCutterPending(c.id),
+              }
+            : null),
         });
       }
     }
@@ -2658,6 +2775,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // editor mounts (AGENTS "Initial population"). A plain keystroke doesn't
     // change `editor`'s identity, so this adds no per-keystroke recompute.
     editor,
+    // Phase 1c — the gutter Keep/Revert callbacks for an applied pending change.
+    // Stable `useCallback`s (deps: editor·docId·the hook), so they change only
+    // on a doc switch / hook-identity change, never per keystroke.
+    onKeepRevisionPending,
+    onRevertRevisionPending,
+    onKeepCutterPending,
+    onRevertCutterPending,
   ]);
 
   // Marginalia uses this to decide which margin to render each marker

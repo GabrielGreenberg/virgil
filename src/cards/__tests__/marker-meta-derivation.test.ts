@@ -65,6 +65,25 @@ const FROZEN_MARKER_TYPES = [
   "todo",
   "report",
   "error",
+  // Phase 1c — DERIVED from a card status (applied revision/cutter suggestion),
+  // not declared by any registry kind. Has a MARKER_META row + a pinned
+  // panel/theme, but is exempt from the registry-declarer closure (see
+  // NON_REGISTRY_MARKER_TYPES).
+  "pending-change",
+] as const satisfies readonly MarkerType[];
+
+/** The marker types a `CARD_REGISTRY` kind actually declares — `FROZEN_MARKER_TYPES`
+ *  minus the non-registry (status-derived) ones. The registry-coverage test
+ *  anchors to THIS list, while `ALL_MARKER_TYPES` / `MARKER_META` keys (which
+ *  DO carry the non-registry rows) anchor to the full frozen list. */
+const FROZEN_REGISTRY_MARKER_TYPES = [
+  "note",
+  "archive",
+  "revision",
+  "cut",
+  "todo",
+  "report",
+  "error",
 ] as const satisfies readonly MarkerType[];
 
 /** FROZEN literal theme-key list (13 keys) — same rationale; also pinned
@@ -75,14 +94,17 @@ const FROZEN_THEME_KEYS = [
 ] as const satisfies readonly PanelThemeKey[];
 
 describe("marker-meta derivation (A6/R17)", () => {
-  it("registry distinct markerTypes ≡ MARKER_META keys ≡ ALL_MARKER_TYPES ≡ the FROZEN list", () => {
+  it("registry distinct markerTypes ≡ the REGISTRY frozen list; MARKER_META keys ≡ ALL_MARKER_TYPES ≡ the FULL frozen list (incl. non-registry pending-change)", () => {
     const declared = new Set<MarkerType>();
     for (const kind of Object.keys(CARD_REGISTRY) as CardKind[]) {
       const t = CARD_REGISTRY[kind].markerType;
       if (t != null) declared.add(t);
     }
-    // Anchor every derived/source set to the frozen literal, not to each other.
-    expect([...declared].sort()).toEqual([...FROZEN_MARKER_TYPES].sort());
+    // The registry declares only the card-backed marker types — NOT the
+    // status-derived `pending-change`.
+    expect([...declared].sort()).toEqual([...FROZEN_REGISTRY_MARKER_TYPES].sort());
+    // ALL_MARKER_TYPES + MARKER_META keys carry the full set (including the
+    // derived non-registry rows), anchored to the full frozen literal.
     expect([...ALL_MARKER_TYPES].sort()).toEqual([...FROZEN_MARKER_TYPES].sort());
     expect(Object.keys(MARKER_META).sort()).toEqual([...FROZEN_MARKER_TYPES].sort());
   });
@@ -96,6 +118,8 @@ describe("marker-meta derivation (A6/R17)", () => {
       todo: ["todo"],
       report: ["report", "report-request"],
       error: ["error"],
+      // Non-registry (status-derived): no declaring card kind.
+      "pending-change": [],
     };
     for (const t of FROZEN_MARKER_TYPES) {
       expect(cardKindsForMarkerType(t).sort()).toEqual(frozen[t].sort());
@@ -111,6 +135,8 @@ describe("marker-meta derivation (A6/R17)", () => {
       todo: "todo",
       report: "reports",
       error: "errors",
+      // pending-change docks with the Revisions panel (pinned, not derived).
+      "pending-change": "revisions",
     };
     for (const t of FROZEN_MARKER_TYPES) {
       expect(panelForMarkerType(t)).toBe(frozen[t]);
@@ -127,6 +153,9 @@ describe("marker-meta derivation (A6/R17)", () => {
       todo: "todo",
       report: "report",
       error: "error",
+      // pending-change borrows the "revision" slot only to return a valid key;
+      // its color is the fixed #bfdbfe baked into MARKER_META.
+      "pending-change": "revision",
     };
     for (const t of FROZEN_MARKER_TYPES) {
       expect(panelThemeKeyForMarkerType(t)).toBe(frozen[t]);
@@ -171,8 +200,11 @@ describe("marker-meta derivation (A6/R17)", () => {
     }).toEqual(legacy);
   });
 
-  it("MarginItemKind ≡ Exclude<MarkerType, 'error'> (compile-time pin)", () => {
-    const pinned: AssertEqual<MarginItemKind, Exclude<MarkerType, "error">> = true;
+  it("MarginItemKind ≡ Exclude<MarkerType, 'error' | 'pending-change'> (compile-time pin)", () => {
+    const pinned: AssertEqual<
+      MarginItemKind,
+      Exclude<MarkerType, "error" | "pending-change">
+    > = true;
     expect(pinned).toBe(true);
   });
 });
