@@ -1649,9 +1649,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // Reverts). Same SAME load phase as the Mode-B reapply, runs BEFORE the
     // orphan reaper (whose alive-set is extended with these anchorIds below).
     // Self-gated on `isPendingChangesOn()` — flag-OFF stamps nothing.
+    // Family-tagged groups so the re-stamp carries the right `linkCard` token
+    // (`revision-suggestion:` vs `cutter-suggestion:`) — the family is NOT
+    // recoverable from the shared `pending-ai-change` kind (Phase 4, Part A).
     reapplyPendingMarks(editor, [
-      ...(revisionsHookRaw.cards as ReadonlyArray<PendingMarkCardLike>),
-      ...(cutterHookRaw.cards as ReadonlyArray<PendingMarkCardLike>),
+      {
+        family: "revision-suggestion",
+        cards: revisionsHookRaw.cards as ReadonlyArray<PendingMarkCardLike>,
+      },
+      {
+        family: "cutter-suggestion",
+        cards: cutterHookRaw.cards as ReadonlyArray<PendingMarkCardLike>,
+      },
     ]);
     notesHookRaw.reconcileAnchors(editor);
     todosHook.reconcileAnchors(editor);

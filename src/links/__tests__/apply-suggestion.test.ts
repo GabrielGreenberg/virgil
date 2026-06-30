@@ -187,6 +187,7 @@ describe("applyPendingChange — replace mode", () => {
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
       expect(res).toEqual({ ok: true, anchorId: ANCHOR_ID });
       // The block is still a paragraph with the SAME uuid.
@@ -210,6 +211,7 @@ describe("applyPendingChange — replace mode", () => {
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
       expect(res.ok).toBe(true);
 
@@ -247,6 +249,7 @@ describe("applyPendingChange — replace mode", () => {
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
       expect(res).toEqual({ ok: false, reason: "stale" });
       // No mark, doc untouched.
@@ -271,6 +274,7 @@ describe("applyPendingChange — replace mode", () => {
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
       expect(res).toEqual({ ok: false, reason: "stale" });
       expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull();
@@ -291,6 +295,7 @@ describe("applyPendingChange — replace mode", () => {
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
       expect(res).toEqual({ ok: false, reason: "stale" });
       expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull();
@@ -310,6 +315,7 @@ describe("applyPendingChange — replace mode", () => {
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
       // Serialize the whole doc body and confirm the uuid anchor survives.
       const tex = serializeBodyOnly(editor.state.doc.toJSON());
@@ -343,6 +349,7 @@ describe("applyPendingChange — delete mode", () => {
           mode: "delete",
           cardId: CARD_ID,
           anchorId: ANCHOR_ID,
+          family: "revision-suggestion",
         });
         expect(res).toEqual({ ok: true, anchorId: ANCHOR_ID });
         // The document TEXT is UNCHANGED — delete mode mutates no text on apply;
@@ -371,6 +378,7 @@ describe("applyPendingChange — delete mode", () => {
           mode: "delete",
           cardId: CARD_ID,
           anchorId: ANCHOR_ID,
+          family: "revision-suggestion",
         });
         keepPendingChange(editor, {
           anchorUuid: PARA_UUID,
@@ -401,6 +409,7 @@ describe("applyPendingChange — delete mode", () => {
           mode: "delete",
           cardId: CARD_ID,
           anchorId: ANCHOR_ID,
+          family: "revision-suggestion",
         });
         revertPendingChange(editor, {
           anchorUuid: PARA_UUID,
@@ -429,6 +438,7 @@ describe("keepPendingChange — replace mode leaves no residual marker (7)", () 
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
       // While pending, the mark is present in the doc.
       expect(markAttrsFor(editor, ANCHOR_ID)).not.toBeNull();
@@ -469,6 +479,7 @@ describe("revertPendingChange — replace mode restores byte-identical original 
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
       // Sanity: the text actually changed.
       expect(paraInline(editor, PARA_UUID)).not.toBe(original);
@@ -569,6 +580,7 @@ describe("applyPendingChange — preserves a coexisting linked anchor (9)", () =
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
       expect(res).toEqual({ ok: true, anchorId: ANCHOR_ID });
 
@@ -608,6 +620,7 @@ describe("applyPendingChange — preserves a coexisting linked anchor (9)", () =
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
 
       // Serialize the whole doc: both anchors must emit their paired markers.
@@ -641,6 +654,115 @@ describe("applyPendingChange — preserves a coexisting linked anchor (9)", () =
       };
       expect(textForAnchor(reparsed as JNode, HL_ANCHOR_ID)).toBe("brown");
       expect(textForAnchor(reparsed as JNode, ANCHOR_ID)).toBe("leaps");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ── family-correct linkCard token (Phase 4, Part A) ────────────────────────
+//
+// Both suggestion families share the single `pending-ai-change` kind (which
+// drives tint/behaviour only), so the `linkCard` token (card IDENTITY) cannot be
+// derived from the kind — it must be threaded from the host/hook that owns the
+// card. The bug: a CUTTER applied change stamped `revision-suggestion:<id>`,
+// breaking the three-surface hover halo (the gutter marker + card use
+// `cutter-suggestion:<id>`). The fix threads an explicit `family`, so:
+//   - a cutter applied change's mark tokens `cutter-suggestion:<id>`,
+//   - a revision applied change's mark tokens `revision-suggestion:<id>`.
+
+describe("applyPendingChange — family-correct linkCard token (Part A)", () => {
+  it("a CUTTER applied change tokens cutter-suggestion:<id>", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const res = applyPendingChange(editor, {
+        anchorUuid: PARA_UUID,
+        originalText: "quick brown fox",
+        replacement: "lazy grey cat",
+        mode: "replace",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "cutter-suggestion",
+      });
+      expect(res.ok).toBe(true);
+      const attrs = markAttrsFor(editor, ANCHOR_ID);
+      // The kind still folds onto the shared pending kind …
+      expect(attrs?.kind).toBe("pending-ai-change");
+      // … but the IDENTITY token now carries the CUTTER family.
+      expect(String(attrs?.linkCard)).toBe(`cutter-suggestion:${CARD_ID}`);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a REVISION applied change tokens revision-suggestion:<id>", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const res = applyPendingChange(editor, {
+        anchorUuid: PARA_UUID,
+        originalText: "quick brown fox",
+        replacement: "lazy grey cat",
+        mode: "replace",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
+      });
+      expect(res.ok).toBe(true);
+      const attrs = markAttrsFor(editor, ANCHOR_ID);
+      expect(String(attrs?.linkCard)).toBe(`revision-suggestion:${CARD_ID}`);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+// ── delete-mode strikethrough signal (Phase 4, Part B) ─────────────────────
+//
+// A pure cutter deletion (empty suggested_text → mode "delete") stamps the blue
+// mark over the ORIGINAL text. Per the design it must render struck-through in
+// blue (a preview of what Keep removes), distinct from a replacement's plain
+// blue highlight. The mark carries a `pendingDelete` attr → `data-pending-delete`
+// in the DOM that CSS targets. A replacement carries no such signal.
+
+describe("applyPendingChange — delete-mode strikethrough signal (Part B)", () => {
+  it("a delete-mode pending mark carries pendingDelete:true", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const res = applyPendingChange(editor, {
+        anchorUuid: PARA_UUID,
+        originalText: "quick brown fox ",
+        replacement: "",
+        mode: "delete",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "cutter-suggestion",
+      });
+      expect(res.ok).toBe(true);
+      const attrs = markAttrsFor(editor, ANCHOR_ID);
+      expect(attrs?.pendingDelete).toBe(true);
+      // The struck text is still in the doc (delete-mode marks but does not cut).
+      expect(markedTextFor(editor, ANCHOR_ID)).toBe("quick brown fox ");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a replace-mode pending mark carries NO pendingDelete signal", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const res = applyPendingChange(editor, {
+        anchorUuid: PARA_UUID,
+        originalText: "quick brown fox",
+        replacement: "lazy grey cat",
+        mode: "replace",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
+      });
+      expect(res.ok).toBe(true);
+      const attrs = markAttrsFor(editor, ANCHOR_ID);
+      // null (not true) — a replacement renders as the plain blue highlight.
+      expect(attrs?.pendingDelete).toBeNull();
     } finally {
       cleanup();
     }
@@ -697,6 +819,7 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
         mode: "replace",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
       });
       expect(res.ok).toBe(true);
 
@@ -723,7 +846,9 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
           mode: "replace",
         },
       };
-      const n = reapplyPendingMarks(reloaded.editor, [card]);
+      const n = reapplyPendingMarks(reloaded.editor, [
+        { family: "revision-suggestion", cards: [card] },
+      ]);
       expect(n).toBe(1);
 
       // The blue pending mark is back, over EXACTLY the replacement region.
@@ -738,10 +863,13 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
     }
   });
 
-  it("re-stamps the blue mark on the original region after a reload (delete)", () => {
+  it("re-stamps the blue mark on the original region after a reload (delete, cutter family)", () => {
     const src = mount();
     let reloaded: { editor: Editor; cleanup: () => void } | null = null;
     try {
+      // Apply as a CUTTER delete so the reload re-stamp must reconstruct BOTH the
+      // cutter family token (Part A) and the pending-delete strikethrough signal
+      // (Part B) from the card's `appliedChange`.
       const res = applyPendingChange(src.editor, {
         anchorUuid: PARA_UUID,
         originalText: "quick brown fox ",
@@ -749,6 +877,7 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
         mode: "delete",
         cardId: CARD_ID,
         anchorId: ANCHOR_ID,
+        family: "cutter-suggestion",
       });
       expect(res.ok).toBe(true);
 
@@ -767,12 +896,19 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
           mode: "delete",
         },
       };
-      const n = reapplyPendingMarks(reloaded.editor, [card]);
+      const n = reapplyPendingMarks(reloaded.editor, [
+        { family: "cutter-suggestion", cards: [card] },
+      ]);
       expect(n).toBe(1);
 
       const restamped = markAttrsFor(reloaded.editor, ANCHOR_ID);
       expect(restamped?.kind).toBe("pending-ai-change");
       expect(restamped?.tintColor).toBe("#bfdbfe");
+      // Part A: the re-stamped token carries the CUTTER family, not the
+      // kind-folded revision-suggestion.
+      expect(String(restamped?.linkCard)).toBe(`cutter-suggestion:${CARD_ID}`);
+      // Part B: a delete re-stamp carries the strikethrough signal.
+      expect(restamped?.pendingDelete).toBe(true);
       expect(markedTextFor(reloaded.editor, ANCHOR_ID)).toBe("quick brown fox ");
     } finally {
       reloaded?.cleanup();
@@ -797,7 +933,9 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
         },
       };
       // The record is built (text non-empty), but reanchorByText finds nothing.
-      const n = reapplyPendingMarks(editor, [card]);
+      const n = reapplyPendingMarks(editor, [
+        { family: "revision-suggestion", cards: [card] },
+      ]);
       expect(n).toBe(1); // processed …
       expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull(); // … but no mark stamped
     } finally {
@@ -821,7 +959,11 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
           mode: "replace",
         },
       };
-      expect(reapplyPendingMarks(editor, [card])).toBe(0);
+      expect(
+        reapplyPendingMarks(editor, [
+          { family: "revision-suggestion", cards: [card] },
+        ]),
+      ).toBe(0);
       expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull();
       expect(pendingMarkAnchorIds([card]).size).toBe(0);
     } finally {

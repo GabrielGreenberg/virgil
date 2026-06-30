@@ -28,6 +28,7 @@ import {
   applyPendingChange,
   keepPendingChange,
   revertPendingChange,
+  type PendingChangeFamily,
 } from "@/links/apply-suggestion";
 import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
 import { getLinkedTextObjectIds, type CardWithLinks } from "@/links/links";
@@ -150,6 +151,13 @@ export interface ApplySuggestionDeps<TStatus extends string = string> {
   editor: Editor;
   /** The pending suggestion card to apply. */
   card: SuggestionLike;
+  /** The card's suggestion family — threaded into the blue mark's `linkCard`
+   *  token so a cutter applied change tokens `cutter-suggestion:<id>` and a
+   *  revision tokens `revision-suggestion:<id>` (the family is NOT derivable from
+   *  the shared `pending-ai-change` kind). The host/hook that owns the card
+   *  supplies the literal; the auto-apply driver passes the resolved family
+   *  through. */
+  family: PendingChangeFamily;
   setSuggestionStatus: (id: string, status: TStatus) => void;
   setAppliedChange: (
     id: string,
@@ -205,6 +213,7 @@ export function applySuggestion<TStatus extends string>(
     mode,
     cardId: card.id,
     anchorId,
+    family: deps.family,
   });
 
   if (!result.ok) {

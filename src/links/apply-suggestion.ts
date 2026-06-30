@@ -51,6 +51,16 @@ import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
  *  differs (see below), so the caller names the intent explicitly. */
 export type ApplyMode = "replace" | "delete";
 
+/** Which suggestion family the applied change belongs to — the EXPLICIT
+ *  `data-link-card` token (card IDENTITY) stamped on the blue mark. Both families
+ *  share the single `pending-ai-change` kind (which drives tint/behaviour only),
+ *  so the family is NOT recoverable from the kind: it must be threaded from the
+ *  host/hook that owns the card (revisions → "revision-suggestion", cutter →
+ *  "cutter-suggestion"). Threading it keeps the in-text mark's token in lockstep
+ *  with the gutter marker + panel/omni card so the three-surface hover halo
+ *  resolves for BOTH families. */
+export type PendingChangeFamily = "revision-suggestion" | "cutter-suggestion";
+
 export interface ApplyArgs {
   /** The uuid of the paragraph the suggestion is anchored to. */
   anchorUuid: string;
@@ -66,6 +76,10 @@ export interface ApplyArgs {
   /** The anchorId to stamp on the `linkedAnchor` mark (so Keep / Revert can
    *  resolve the exact range later). */
   anchorId: string;
+  /** The owning suggestion family — drives the `linkCard` token (card IDENTITY)
+   *  so a cutter pending mark tokens `cutter-suggestion:<id>`, not the
+   *  kind-folded `revision-suggestion:<id>`. */
+  family: PendingChangeFamily;
 }
 
 export type ApplyResult =
@@ -264,14 +278,17 @@ function spliceParagraphInner(
  * `originalText` isn't present verbatim (also covers a marker-straddling span).
  */
 export function applyPendingChange(editor: Editor, args: ApplyArgs): ApplyResult {
-  const { anchorUuid, originalText, replacement, mode, cardId, anchorId } = args;
+  const { anchorUuid, originalText, replacement, mode, cardId, anchorId, family } =
+    args;
 
   const located = locateSpan(editor, anchorUuid, originalText);
   if (!located) return { ok: false, reason: "stale" };
 
   if (mode === "delete") {
     // No text mutation — stamp the blue mark over the ORIGINAL region so the
-    // user previews exactly what Keep will remove.
+    // user previews exactly what Keep will remove. `pendingDelete:true` so CSS
+    // renders the struck-through-in-blue deletion preview (Part B); `family` so
+    // the linkCard token carries the real family (Part A).
     reanchorByText(
       editor,
       PENDING_KIND,
@@ -280,6 +297,7 @@ export function applyPendingChange(editor: Editor, args: ApplyArgs): ApplyResult
       cardId,
       PENDING_TINT,
       anchorUuid,
+      { linkCardToken: family, pendingDelete: true },
     );
     return { ok: true, anchorId };
   }
@@ -297,7 +315,9 @@ export function applyPendingChange(editor: Editor, args: ApplyArgs): ApplyResult
 
   // Stamp the blue mark over the freshly-inserted `replacement` text, scoped to
   // the anchored paragraph (reanchorByText's uuid-scoped path) so a span that
-  // happens to recur elsewhere isn't mis-marked.
+  // happens to recur elsewhere isn't mis-marked. `family` so the linkCard token
+  // carries the real family (Part A); NOT a delete (a replacement renders as the
+  // plain blue highlight, no strikethrough).
   reanchorByText(
     editor,
     PENDING_KIND,
@@ -306,6 +326,7 @@ export function applyPendingChange(editor: Editor, args: ApplyArgs): ApplyResult
     cardId,
     PENDING_TINT,
     anchorUuid,
+    { linkCardToken: family },
   );
   return { ok: true, anchorId };
 }

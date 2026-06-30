@@ -63,6 +63,7 @@ import type {
 } from "@/lib/types";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { applySuggestion } from "@/links/pending-change-actions";
+import type { PendingChangeFamily } from "@/links/apply-suggestion";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import { paragraphUuidAtSelection } from "@/hooks/useEditorUIState";
 import { generateEntityId } from "@/lib/uuid";
@@ -103,10 +104,14 @@ export type CutterAutoApplyFamily = AutoApplyFamily<
 >;
 
 /** A suggestion paired with its resolved Mode-A anchor uuid + its family's
- *  mutators — the unit the driver iterates. */
+ *  mutators — the unit the driver iterates. `family` is set by WHICH family
+ *  pushed the suggestion (revision vs cutter), so the blue mark's `linkCard`
+ *  token carries the real family even though both share the `pending-ai-change`
+ *  kind (Part A). */
 export interface ResolvedSuggestion {
   card: AnySuggestionCard;
   anchorUuid: string;
+  family: PendingChangeFamily;
   setSuggestionStatus: (id: string, status: string) => void;
   setAppliedChange: (id: string, appliedChange: unknown) => void;
 }
@@ -173,6 +178,7 @@ export function collectPendingAiSuggestions(
     TSugg extends AnySuggestionCard,
   >(
     fam: AutoApplyFamily<TCard, TSugg>,
+    family: PendingChangeFamily,
     isSuggestion: (c: TCard) => c is TCard & TSugg,
   ): void => {
     for (const card of fam.cards) {
@@ -183,6 +189,7 @@ export function collectPendingAiSuggestions(
       out.push({
         card,
         anchorUuid,
+        family,
         setSuggestionStatus: fam.setSuggestionStatus as (
           id: string,
           status: string,
@@ -196,10 +203,12 @@ export function collectPendingAiSuggestions(
   };
   push(
     revisions,
+    "revision-suggestion",
     (c): c is RevisionCard & RevisionSuggestionCard => c.kind === "suggestion",
   );
   push(
     cutter,
+    "cutter-suggestion",
     (c): c is CutterCard & CutterSuggestionCard => c.kind === "suggestion",
   );
   return out;
@@ -325,6 +334,7 @@ function applyOne(
   const result = applySuggestion<string>({
     editor,
     card: target.card,
+    family: target.family,
     setSuggestionStatus: target.setSuggestionStatus,
     setAppliedChange: target.setAppliedChange as never,
     generateAnchorId: generateEntityId,

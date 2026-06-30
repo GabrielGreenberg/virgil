@@ -142,6 +142,7 @@ export function CutterHost(p: CutterHostProps) {
       applySuggestion<CutterSuggestionCard["status"]>({
         editor: editorInstance,
         card: s,
+        family: "cutter-suggestion",
         setSuggestionStatus: p.setSuggestionStatus,
         setAppliedChange: p.setAppliedChange,
         generateAnchorId: generateEntityId,

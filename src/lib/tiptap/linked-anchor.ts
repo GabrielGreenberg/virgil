@@ -64,6 +64,20 @@ export const LinkedAnchor = Mark.create({
             : { "data-tint-color": tint };
         },
       },
+      // Delete-mode signal for a pending AI change (Phase 4, Part B). When the
+      // applicator stamps the blue mark over the ORIGINAL text of a pure
+      // DELETION (a cutter cut whose suggested_text is empty), it sets this so
+      // CSS can render the range struck-through-in-blue (a preview of what Keep
+      // will remove), distinct from a replacement's plain blue highlight. Render-
+      // only; like `tintColor` it is app-state (stripped on `.tex` export and
+      // re-stamped on load from the card's `appliedChange.mode`).
+      pendingDelete: {
+        default: null,
+        parseHTML: (el: HTMLElement) =>
+          el.getAttribute("data-pending-delete") === "true" ? true : null,
+        renderHTML: (attrs: Record<string, unknown>) =>
+          attrs.pendingDelete ? { "data-pending-delete": "true" } : {},
+      },
     };
   },
 

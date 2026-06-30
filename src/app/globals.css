@@ -2734,6 +2734,18 @@ textarea,
   background: color-mix(in oklab, var(--tint-color, #fbbf24) 35%, transparent) !important;
 }
 
+/* Pending DELETION preview — a pure cutter cut (empty suggested_text → mode
+ * "delete") stamps the blue `pending-ai-change` mark over the ORIGINAL text and
+ * sets `data-pending-delete` (linked-anchor.ts). Render that range struck-through
+ * so the user sees exactly what Keep will remove, while KEEPING the blue tint
+ * (the rule above still paints the `--tint-color` background). A replacement-mode
+ * pending mark carries no `data-pending-delete`, so it stays the plain blue
+ * highlight. The line colour matches the light-blue tint accent. */
+.linked-anchor[data-pending-delete="true"] {
+  text-decoration: line-through;
+  text-decoration-color: #60a5fa;
+}
+
 /* Per-kind --link-anchor-color on panel cards is NO LONGER a CSS map:
  * `PanelCard` stamps `--link-anchor-color: theme.accent` inline on the
  * card root (panel-primitives), so the color derives from CARD_THEMES /

@@ -146,6 +146,7 @@ export function RevisionsHost(p: RevisionsHostProps) {
       applySuggestion<RevisionSuggestionCard["status"]>({
         editor: editorInstance,
         card: s,
+        family: "revision-suggestion",
         setSuggestionStatus: p.setSuggestionStatus,
         setAppliedChange: p.setAppliedChange,
         generateAnchorId: generateEntityId,

@@ -126,6 +126,23 @@ describe("collectPendingAiSuggestions — the candidate filter", () => {
     expect(out).toHaveLength(1);
     expect(out[0].card.id).toBe("a");
     expect(out[0].anchorUuid).toBe("P1");
+    // Phase 4, Part A: a revision-family suggestion is tagged so the blue mark's
+    // linkCard token carries the right family downstream.
+    expect(out[0].family).toBe("revision-suggestion");
+  });
+
+  it("tags a cutter-family suggestion with family 'cutter-suggestion'", () => {
+    const emptyRev: RevisionAutoApplyFamily = {
+      cards: [] as RevisionCard[],
+      ...noMutators,
+    };
+    const cutterFam: CutterAutoApplyFamily = {
+      cards: [suggestion({ id: "c", anchorUuid: "P1" }) as unknown as CutterCard],
+      ...noMutators,
+    };
+    const out = collectPendingAiSuggestions(emptyRev, cutterFam);
+    expect(out).toHaveLength(1);
+    expect(out[0].family).toBe("cutter-suggestion");
   });
 
   it("(e) drops human-authored suggestions", () => {

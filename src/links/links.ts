@@ -995,6 +995,17 @@ export function reanchorByText(
   // Declared from Chip 3; its uuid-scoped search body lands in Chip 6. Until
   // then it is accepted-and-ignored (the legacy doc-wide search runs).
   paragraphUuid?: string,
+  // Trailing options bag (added without disturbing the positional callers):
+  //  - `linkCardToken` — the EXPLICIT `data-link-card` token (card IDENTITY) to
+  //    stamp instead of the one derived from `kind`. The pending-AI-change kind
+  //    folds onto `revision-suggestion` for BOTH suggestion families, so a cutter
+  //    pending mark would otherwise stamp the WRONG family token. The caller
+  //    threads the real family ("revision-suggestion" | "cutter-suggestion") so
+  //    the three-surface halo (text ↔ gutter ↔ card) resolves. Drives ONLY the
+  //    token; the kind still drives tint/behaviour.
+  //  - `pendingDelete` — when true, sets `data-pending-delete` on the mark so CSS
+  //    can render the blue range as a struck-through pending DELETION (Part B).
+  opts?: { linkCardToken?: string; pendingDelete?: boolean },
 ): LinkedAnchorRecord | null {
   let from = -1;
   let to = -1;
@@ -1067,7 +1078,10 @@ export function reanchorByText(
     (nodePos != null ? paragraphUuid : undefined) ??
     paragraphUuidAt(editor.state.doc, from) ??
     "";
-  const cardKind = legacyKindToCardKindString(kind);
+  // Card-identity token: prefer the caller's EXPLICIT family token (so a cutter
+  // pending mark stamps `cutter-suggestion:<id>`, not the kind-folded
+  // `revision-suggestion:<id>`); fall back to the kind-derived token otherwise.
+  const cardKind = opts?.linkCardToken ?? legacyKindToCardKindString(kind);
   const linkCard = cardId ? `${cardKind}:${cardId}` : "";
   const ok = editor
     .chain()
@@ -1084,6 +1098,7 @@ export function reanchorByText(
       linkKind: "anchor",
       linkCard,
       tintColor: tintColor ?? null,
+      pendingDelete: opts?.pendingDelete ? true : null,
     })
     .setTextSelection(from)
     .run();

@@ -179,6 +179,9 @@ function makeSuggestion(over: Partial<SuggestionLike> = {}): SuggestionLike {
 function makeApplyDeps() {
   return {
     editor,
+    // Cutter family so the test pins that `family` propagates into the
+    // applyPendingChange call (Phase 4, Part A).
+    family: "cutter-suggestion" as const,
     setSuggestionStatus: vi.fn(),
     setAppliedChange: vi.fn(),
     generateAnchorId: () => "anc-new",
@@ -200,6 +203,7 @@ describe("applySuggestion", () => {
       mode: "replace",
       cardId: "s1",
       anchorId: "anc-new",
+      family: "cutter-suggestion",
     });
     expect(deps.setSuggestionStatus).toHaveBeenCalledWith("s1", "applied");
     expect(deps.setAppliedChange).toHaveBeenCalledTimes(1);

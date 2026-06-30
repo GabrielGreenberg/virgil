@@ -24,7 +24,12 @@
  * Re-stamping reuses the EXACT primitive the applicator uses — `reanchorByText`
  * with kind `"pending-ai-change"` and the crosswalk-derived blue tint — so the
  * reloaded mark is byte-identical to the one apply originally stamped (same
- * `#bfdbfe` tint, same `revision-suggestion:<cardId>` linkCard token). The
+ * `#bfdbfe` tint, same `<family>:<cardId>` linkCard token, same delete-mode
+ * `data-pending-delete` strikethrough signal). The family — `revision-suggestion`
+ * or `cutter-suggestion` — is NOT recoverable from the shared `pending-ai-change`
+ * kind, so the CALLER (EditorPane, which knows revision vs cutter cards) tags each
+ * card's family; the re-stamp threads it into `reanchorByText`'s explicit
+ * `linkCardToken` so the cutter halo resolves on reload too (Phase 4, Part A). The
  * search is uuid-scoped to `appliedChange.anchorUuid`, so a span that recurs
  * elsewhere isn't mis-marked; if the stored text no longer matches (the user
  * edited it post-apply), `reanchorByText` returns null and the re-stamp is a
@@ -42,6 +47,7 @@ import type { Editor } from "@tiptap/react";
 import { reanchorByText } from "../links";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
+import type { PendingChangeFamily } from "@/links/apply-suggestion";
 
 /** The legacy `linkedAnchor.kind` namespace value for a pending AI change — the
  *  same constant the applicator stamps (apply-suggestion.ts `PENDING_KIND`). */
@@ -80,12 +86,28 @@ export interface PendingMarkReapplyRecord {
   anchorId: string;
   /** The containing-paragraph uuid — scopes `reanchorByText`'s text search. */
   anchorUuid: string;
-  /** The owning card id — stamped into the mark's `linkCard` token (folds onto
-   *  the `revision-suggestion:` spine, same as apply). */
+  /** The owning card id — stamped into the mark's `linkCard` token, paired with
+   *  `family` to form `<family>:<cardId>` (same as apply). */
   cardId: string;
+  /** The owning suggestion family — the `linkCard` token prefix. Tagged by the
+   *  caller (which knows revision vs cutter); NOT derivable from the shared
+   *  `pending-ai-change` kind, so it's carried explicitly so the cutter halo
+   *  resolves on reload (Phase 4, Part A). */
+  family: PendingChangeFamily;
   /** The doc text the mark wraps: `replacement` (mode "replace") or
    *  `originalText` (mode "delete" — the struck text is still in the paragraph). */
   text: string;
+  /** Whether this is a pending DELETION — drives the `data-pending-delete`
+   *  strikethrough signal on the re-stamped mark (Phase 4, Part B). */
+  pendingDelete: boolean;
+}
+
+/** A family-tagged card group — the caller (EditorPane) passes the revision and
+ *  cutter card collections each tagged with their family, so the re-stamp can
+ *  carry the right `linkCard` token without re-deriving family from the kind. */
+export interface PendingMarkCardGroup {
+  family: PendingChangeFamily;
+  cards: ReadonlyArray<PendingMarkCardLike>;
 }
 
 /**
@@ -111,48 +133,56 @@ export function pendingMarkAnchorIds(
 }
 
 /**
- * Build the re-stamp record set from a card collection. Pure — separated from
- * the editor dispatch so a test can assert the record set without mounting an
+ * Build the re-stamp record set from family-tagged card groups. Pure — separated
+ * from the editor dispatch so a test can assert the record set without mounting an
  * editor, mirroring `buildModeBReapplyRecords`. Skips cards whose stored text is
  * empty (nothing to locate). Gated on `isPendingChangesOn()` (flag-OFF → []).
+ * Each record carries its group's `family` (the `linkCard` token) and the
+ * mode-derived `pendingDelete` flag.
  */
 export function buildPendingMarkReapplyRecords(
-  cards: ReadonlyArray<PendingMarkCardLike>,
+  groups: ReadonlyArray<PendingMarkCardGroup>,
 ): PendingMarkReapplyRecord[] {
   const records: PendingMarkReapplyRecord[] = [];
   if (!isPendingChangesOn()) return records;
-  for (const c of cards) {
-    if (c.kind !== "suggestion" || c.status !== "applied") continue;
-    const ac = c.appliedChange;
-    if (!ac) continue;
-    // mode "replace": the blue wraps the inserted `replacement`.
-    // mode "delete":  the text was never cut, so the blue wraps `originalText`
-    //                 (still present in the paragraph) — a pending-delete preview.
-    const text = ac.mode === "delete" ? ac.originalText : ac.replacement;
-    if (!text) continue;
-    records.push({
-      anchorId: ac.anchorId,
-      anchorUuid: ac.anchorUuid,
-      cardId: c.id,
-      text,
-    });
+  for (const group of groups) {
+    for (const c of group.cards) {
+      if (c.kind !== "suggestion" || c.status !== "applied") continue;
+      const ac = c.appliedChange;
+      if (!ac) continue;
+      // mode "replace": the blue wraps the inserted `replacement`.
+      // mode "delete":  the text was never cut, so the blue wraps `originalText`
+      //                 (still present in the paragraph) — a pending-delete preview.
+      const text = ac.mode === "delete" ? ac.originalText : ac.replacement;
+      if (!text) continue;
+      records.push({
+        anchorId: ac.anchorId,
+        anchorUuid: ac.anchorUuid,
+        cardId: c.id,
+        family: group.family,
+        text,
+        pendingDelete: ac.mode === "delete",
+      });
+    }
   }
   return records;
 }
 
 /**
- * Re-stamp the `pending-ai-change` mark for every applied suggestion in `cards`,
- * via the SAME `reanchorByText` primitive the applicator uses. Returns the number
- * of records processed (for no-op short-circuits / tests). A record whose stored
- * text no longer matches the live paragraph is a graceful no-op (reanchorByText
- * → null). Gated on `isPendingChangesOn()` (flag-OFF → 0, nothing stamped).
+ * Re-stamp the `pending-ai-change` mark for every applied suggestion in `groups`,
+ * via the SAME `reanchorByText` primitive the applicator uses — threading each
+ * record's `family` (the explicit `linkCard` token) and the `pendingDelete`
+ * strikethrough signal so the reloaded mark is byte-identical to apply's. Returns
+ * the number of records processed (for no-op short-circuits / tests). A record
+ * whose stored text no longer matches the live paragraph is a graceful no-op
+ * (reanchorByText → null). Gated on `isPendingChangesOn()` (flag-OFF → 0).
  */
 export function reapplyPendingMarks(
   editor: Editor,
-  cards: ReadonlyArray<PendingMarkCardLike>,
+  groups: ReadonlyArray<PendingMarkCardGroup>,
 ): number {
   if (!editor || editor.isDestroyed) return 0;
-  const records = buildPendingMarkReapplyRecords(cards);
+  const records = buildPendingMarkReapplyRecords(groups);
   for (const rec of records) {
     reanchorByText(
       editor,
@@ -162,6 +192,7 @@ export function reapplyPendingMarks(
       rec.cardId,
       PENDING_TINT,
       rec.anchorUuid,
+      { linkCardToken: rec.family, pendingDelete: rec.pendingDelete },
     );
   }
   return records.length;
