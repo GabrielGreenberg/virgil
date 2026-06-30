@@ -797,7 +797,13 @@ export type LinkedAnchorKind =
   | "cutter-comment"
   | "cutter-suggestion"
   | "report"
-  | "report-request";
+  | "report-request"
+  // The light-blue marker the headless AI-change applicator stamps over an
+  // applied-but-not-yet-kept suggestion (Phase 0). Folds onto the
+  // `revision-suggestion` spine kind so the data-link-card token, jump-to, and
+  // float plumbing reuse the suggestion machinery — the only thing distinct is
+  // the tint (`#bfdbfe`, see `defaultTintForLinkedAnchorKind`).
+  | "pending-ai-change";
 
 export interface LinkedAnchorRecord {
   anchorId: string;
@@ -819,6 +825,7 @@ function linkedAnchorKindToCardKind(kind: LinkedAnchorKind): CardKind {
     case "revision":          return "revision-comment";
     case "report":            return "report";
     case "report-request":    return "report-request";
+    case "pending-ai-change": return "revision-suggestion";
   }
 }
 

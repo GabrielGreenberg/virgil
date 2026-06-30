@@ -75,7 +75,12 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
   const links = migrateCardLinks("cutter-suggestion", raw);
   const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   const status: CutterSuggestionCard["status"] =
-    r.status === "accepted" || r.status === "rejected" ? r.status : "pending";
+    r.status === "accepted" ||
+    r.status === "rejected" ||
+    r.status === "applied" ||
+    r.status === "stale"
+      ? r.status
+      : "pending";
   return {
     kind: "suggestion",
     id: r.id,
@@ -88,6 +93,9 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
     user_text: typeof r.user_text === "string" ? r.user_text : "",
     instructions: typeof r.instructions === "string" ? r.instructions : "",
     status,
+    // Carry the apply descriptor through unchanged when present (only set on
+    // `applied` cards via the flag-ON apply path); absent otherwise.
+    ...(r.appliedChange ? { appliedChange: r.appliedChange } : {}),
     selectedText:
       r.selectedText ??
       (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),

@@ -2499,7 +2499,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // anchorId→paragraph doc walk). `orphan` (mark + uuid + snapshot all
     // dead) still surfaces an `unanchored` marker rather than vanishing.
     for (const r of revisionsHook.cards) {
-      if (r.kind === "suggestion" && r.status !== "pending") continue;
+      // Skip only *resolved* suggestions (accepted/rejected). A `pending` card
+      // is awaiting review and an `applied` card is spliced into the doc but
+      // still awaiting an explicit "Keep" — both are live and keep their margin
+      // marker; `stale` (the paragraph drifted) likewise stays visible so the
+      // user can resolve it. Flag-OFF this is identical to the old
+      // `status !== "pending"` skip, since no card ever reaches applied/stale
+      // without the Phase-1b apply path (pending-changes-flag).
+      if (
+        r.kind === "suggestion" &&
+        (r.status === "accepted" || r.status === "rejected")
+      )
+        continue;
       const revAnchor = getTextAnchor(r);
       const pids = getLinkedTextObjectIds(r);
       // A revision with neither a text anchor nor a stored pid has nothing

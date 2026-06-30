@@ -931,8 +931,18 @@ function numberFootnotes(node: JSONContent): void {
  *  - Unmatched `\vlid{x}` at EOF — `console.warn`; the sidecar's
  *    `textSnapshot` re-anchoring (`reanchorByText`) is the recovery
  *    path for any cards still pointing at the orphan.
+ *
+ * Fragment-safe: the matching is position-LOCAL (an open/close pair both
+ * inside one block's inline-content array is resolved within that array),
+ * so this also runs on a SINGLE synthetic block wrapping one paragraph's
+ * inline JSON — the reuse path the headless apply-suggestion applicator
+ * takes to keep pre-existing in-paragraph anchors alive across its
+ * serialize → splice → reparse round-trip. Exported for that reuse; the
+ * stamped mark carries only the anchorId+range (the `\vlid{}` marker holds
+ * nothing else), so a caller wanting the original `kind`/`tintColor`/
+ * `linkCard` must re-apply them from its own live source afterwards.
  */
-function applyLinkedAnchorBoundaries(doc: JSONContent): void {
+export function applyLinkedAnchorBoundaries(doc: JSONContent): void {
   const open: string[] = [];
 
   function walk(n: JSONContent): void {

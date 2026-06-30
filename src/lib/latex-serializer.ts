@@ -751,6 +751,29 @@ export function serializeBodyOnly(doc: JSONContent): string {
 }
 
 /**
+ * Serialize ONE paragraph node's inline content to LaTeX — the inline sequence
+ * only (atoms, marks, `\vcid`/`\vfid`/`\vlid` markers), with NO trailing
+ * ` %!v:<uuid>` anchor and NO surrounding blank lines.
+ *
+ * This is the exact string the headless AI-change applicator
+ * (`src/links/apply-suggestion.ts`) splices into: it serializes the live
+ * paragraph, byte-matches the suggestion's `originalText` against it (the stale
+ * guard), splices `originalText → replacement`, and re-parses the whole result
+ * with `parseInlineContent`. Routing through the real `serializeNode` path
+ * (with `suppressChildUuids = true`, the same flag lists / blockquote bodies
+ * use to drop the per-paragraph anchor) keeps the projection byte-faithful to
+ * what `serializeBodyOnly` would emit for the same paragraph, so the splice the
+ * applicator computes matches the headless Python accept's splice.
+ *
+ * `node` must be a JSONContent `paragraph` (e.g. from `pmNode.toJSON()` on the
+ * live block); any other node type returns its default `serializeNode`
+ * projection. No `%!v:` trailer is emitted regardless.
+ */
+export function serializeParagraphInline(node: JSONContent): string {
+  return serializeNode(node, /* suppressChildUuids */ true);
+}
+
+/**
  * Carry `\title{…}` / `\author{…}` / `\date{…}` lines from the OLD
  * LaTeX's preamble into a NEW style preamble. Used by the Style
  * dropdown switch path ([useDocumentStyle.setStyle]), which previously

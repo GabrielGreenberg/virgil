@@ -79,7 +79,12 @@ function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
   const links = migrateCardLinks("revision-suggestion", raw);
   const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   const status: RevisionSuggestionCard["status"] =
-    r.status === "accepted" || r.status === "rejected" ? r.status : "pending";
+    r.status === "accepted" ||
+    r.status === "rejected" ||
+    r.status === "applied" ||
+    r.status === "stale"
+      ? r.status
+      : "pending";
   return {
     kind: "suggestion",
     id: r.id,
@@ -92,6 +97,9 @@ function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
     user_text: typeof r.user_text === "string" ? r.user_text : "",
     instructions: typeof r.instructions === "string" ? r.instructions : "",
     status,
+    // Carry the apply descriptor through unchanged when present (only set on
+    // `applied` cards via the flag-ON apply path); absent otherwise.
+    ...(r.appliedChange ? { appliedChange: r.appliedChange } : {}),
     selectedText:
       r.selectedText ??
       (ta?.anchor.type === "textObject" ? ta.anchor.textRange?.textSnapshot : undefined),

@@ -105,7 +105,23 @@ export interface RevisionSuggestionCard {
   explanation: string;
   user_text: string;
   instructions: string;
-  status: "pending" | "accepted" | "rejected";
+  /** `applied` = the suggestion is spliced into the doc as a blue, revertable
+   *  range awaiting an explicit "Keep"; `stale` = the paragraph drifted since
+   *  the suggestion was drafted, so the blue range can no longer be resolved.
+   *  Both are reachable only via the flag-ON apply path (pending-changes-flag).
+   */
+  status: "pending" | "applied" | "stale" | "accepted" | "rejected";
+  /** Set when `status` becomes `applied`: describes the in-doc splice so it can
+   *  be reverted (back to `original_text`) or kept. Absent until the apply path
+   *  runs (flag-ON only). */
+  appliedChange?: {
+    anchorId: string; // resolves the exact blue range
+    anchorUuid: string; // durable paragraph address
+    originalText: string; // pre-splice paragraph inline LaTeX — revert source + surviving-card body
+    replacement: string; // "" for a pure deletion
+    mode: "replace" | "delete";
+    appliedAt: string; // ISO timestamp
+  };
   selectedText?: string;
   links: Link[];
 }
@@ -572,7 +588,23 @@ export interface CutterSuggestionCard {
    *  (e.g. "make it punchier", "preserve the citation"). Hidden behind
    *  a collapsed affordance on human-authored cards — empty in practice. */
   instructions: string;
-  status: "pending" | "accepted" | "rejected";
+  /** `applied` = the cut/replacement is spliced into the doc as a blue,
+   *  revertable range awaiting an explicit "Keep"; `stale` = the paragraph
+   *  drifted since the suggestion was drafted, so the blue range can no longer
+   *  be resolved. Both are reachable only via the flag-ON apply path
+   *  (pending-changes-flag). */
+  status: "pending" | "applied" | "stale" | "accepted" | "rejected";
+  /** Set when `status` becomes `applied`: describes the in-doc splice so it can
+   *  be reverted (back to `original_text`) or kept. Absent until the apply path
+   *  runs (flag-ON only). */
+  appliedChange?: {
+    anchorId: string; // resolves the exact blue range
+    anchorUuid: string; // durable paragraph address
+    originalText: string; // pre-splice paragraph inline LaTeX — revert source + surviving-card body
+    replacement: string; // "" for a pure deletion
+    mode: "replace" | "delete";
+    appliedAt: string; // ISO timestamp
+  };
   selectedText?: string;
   links: Link[];
 }

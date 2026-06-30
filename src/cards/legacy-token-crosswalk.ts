@@ -213,6 +213,11 @@ export function dataLinkCardTokenForLegacyMarkKind(kind: string): string | null 
  * caller (it prefers a non-null card color), never here — this is the DEFAULT.
  */
 export function defaultTintForLinkedAnchorKind(kind: string): string | null {
+  // `pending-ai-change`: the light-blue band the headless AI-change applicator
+  // paints over an applied-but-not-yet-kept suggestion (Phase 0). A
+  // pending-DELETE variant renders the struck text differently in a later UI
+  // phase; the tint string is what the Phase 0 unit tests assert.
+  if (kind === "pending-ai-change") return "#bfdbfe";
   return kind === "highlight" ? "#fbbf24" : null;
 }
 

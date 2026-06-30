@@ -27,18 +27,29 @@ export type SuggestionField =
   | "user_text"
   | "instructions";
 
-/** The two cards share a `"pending" | "accepted" | "rejected"` status union. */
-export type SuggestionStatus = "pending" | "accepted" | "rejected";
+/** The two cards share a
+ *  `"pending" | "applied" | "stale" | "accepted" | "rejected"` status union.
+ *  `applied`/`stale` are flag-ON-only (pending-changes-flag). */
+export type SuggestionStatus =
+  | "pending"
+  | "applied"
+  | "stale"
+  | "accepted"
+  | "rejected";
 export type SuggestionAuthor = "human" | "ai";
 
 export const STATUS_DOT: Record<SuggestionStatus, string> = {
   pending: "bg-blue-400",
+  applied: "bg-sky-300",
+  stale: "bg-amber-400",
   accepted: "bg-emerald-500",
   rejected: "bg-red-400",
 };
 
 export const STATUS_LABEL: Record<SuggestionStatus, string> = {
   pending: "Pending",
+  applied: "Applied",
+  stale: "Stale",
   accepted: "Accepted",
   rejected: "Rejected",
 };
