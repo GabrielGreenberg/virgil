@@ -20,6 +20,10 @@
 import { useLayoutEffect, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import { getTextAnchor, removeLinkedAnchor, type CardWithLinks } from "../links";
+import {
+  pendingMarkAnchorIds,
+  type PendingMarkCardLike,
+} from "./reapply-pending-marks";
 
 /**
  * Pure orphan-reap sweep (no React). Walk the editor doc and strip every
@@ -117,6 +121,17 @@ export function useLinkedAnchorReconciler({
     add(comments);
     add(reportCards);
     add(todos);
+    // Pending-AI-change marks live at `appliedChange.anchorId` (NOT a card text
+    // anchor), so they must be added explicitly or the in-session sweep would
+    // strip an applied suggestion's blue mark as an orphan after load. The
+    // applied cards live in `comments` (revisions) + `cutterCards`. Flag-OFF →
+    // empty set (no applied cards), so this is a no-op when the feature is off.
+    for (const id of pendingMarkAnchorIds([
+      ...(comments as ReadonlyArray<PendingMarkCardLike>),
+      ...(cutterCards as ReadonlyArray<PendingMarkCardLike>),
+    ])) {
+      ids.add(id);
+    }
     return ids;
   }, [notes, highlights, cutterCards, comments, reportCards, todos]);
 

@@ -16,7 +16,7 @@
 //   7. keep (replace) leaves NO residual `\vlid` marker in the serialized .tex,
 //   8. revert (replace) restores the byte-identical original inline LaTeX.
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Figure / graphics / tex-block React NodeViews transitively import
 // `@/lib/storage`; stub it (the structural-edit + smoke-test pattern). Without
@@ -50,6 +50,13 @@ import {
   revertPendingChange,
   keepPendingChange,
 } from "@/links/apply-suggestion";
+import {
+  reapplyPendingMarks,
+  pendingMarkAnchorIds,
+  type PendingMarkCardLike,
+} from "@/links/_shared/reapply-pending-marks";
+import { setPendingChangesFlag } from "@/lib/pending-changes-flag";
+import { parseLatex } from "@/lib/latex-parser";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -637,5 +644,207 @@ describe("applyPendingChange — preserves a coexisting linked anchor (9)", () =
     } finally {
       cleanup();
     }
+  });
+});
+
+// ── reload re-stamp (the persistence fix, 10) ──────────────────────────────
+//
+// `linkedAnchor` marks are app-state: the serializer strips kind/tint/linkCard
+// on `.tex` export, the parser resurrects each `\vlid` pair as a placeholder
+// `kind:"note"` mark, and the load reconcile re-applies the authoritative attrs
+// from the sidecar. For an APPLIED-but-not-yet-kept suggestion the blue
+// `pending-ai-change` mark is described by the card's `appliedChange`
+// descriptor, not a text-range link, so the Mode-B reconcile doesn't know about
+// it. `reapplyPendingMarks` is the load-only pass that re-stamps it. Here we
+// simulate a reload (serialize → re-parse → mount fresh editor, which DROPS the
+// blue mark) and assert the re-stamp restores `#bfdbfe` over the right region.
+
+/** Mount a fresh editor from arbitrary content (the "after reload" editor). */
+function mountContent(content: Content): { editor: Editor; cleanup: () => void } {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const editor = new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx()),
+    content,
+  });
+  return { editor, cleanup: () => { editor.destroy(); element.remove(); } };
+}
+
+/** Simulate a reload of `editor`'s doc: serialize body to `.tex`, re-parse to
+ *  JSON, and mount a fresh editor on the result. The blue mark is gone (the
+ *  serializer dropped its kind/tint; the parser resurrects a `note` placeholder),
+ *  exactly as on a real reopen. */
+function reload(editor: Editor): { editor: Editor; cleanup: () => void } {
+  const tex = serializeBodyOnly(editor.state.doc.toJSON());
+  const reparsed = parseLatex(tex) as Content;
+  return mountContent(reparsed);
+}
+
+describe("reapplyPendingMarks — reload re-stamp (10)", () => {
+  beforeEach(() => setPendingChangesFlag(true));
+  afterEach(() => setPendingChangesFlag(undefined));
+
+  it("re-stamps the blue mark on the replacement region after a reload (replace)", () => {
+    const src = mount();
+    let reloaded: { editor: Editor; cleanup: () => void } | null = null;
+    try {
+      const res = applyPendingChange(src.editor, {
+        anchorUuid: PARA_UUID,
+        originalText: "quick brown fox",
+        replacement: "lazy grey cat",
+        mode: "replace",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+      });
+      expect(res.ok).toBe(true);
+
+      // Reload: the blue mark is NOT the pending mark anymore — the serializer
+      // stripped kind/tint, so the round-tripped mark is a placeholder.
+      reloaded = reload(src.editor);
+      const afterReload = markAttrsFor(reloaded.editor, ANCHOR_ID);
+      // The anchorId's range survived (the `\vlid` pair round-trips) …
+      expect(afterReload).not.toBeNull();
+      // … but it is NOT the blue pending mark (kind/tint were dropped on export).
+      expect(afterReload?.kind).not.toBe("pending-ai-change");
+      expect(afterReload?.tintColor).not.toBe("#bfdbfe");
+
+      // The load re-stamp: the card carrying the appliedChange descriptor.
+      const card: PendingMarkCardLike = {
+        id: CARD_ID,
+        kind: "suggestion",
+        status: "applied",
+        appliedChange: {
+          anchorId: ANCHOR_ID,
+          anchorUuid: PARA_UUID,
+          originalText: "quick brown fox",
+          replacement: "lazy grey cat",
+          mode: "replace",
+        },
+      };
+      const n = reapplyPendingMarks(reloaded.editor, [card]);
+      expect(n).toBe(1);
+
+      // The blue pending mark is back, over EXACTLY the replacement region.
+      const restamped = markAttrsFor(reloaded.editor, ANCHOR_ID);
+      expect(restamped?.kind).toBe("pending-ai-change");
+      expect(restamped?.tintColor).toBe("#bfdbfe");
+      expect(String(restamped?.linkCard)).toBe(`revision-suggestion:${CARD_ID}`);
+      expect(markedTextFor(reloaded.editor, ANCHOR_ID)).toBe("lazy grey cat");
+    } finally {
+      reloaded?.cleanup();
+      src.cleanup();
+    }
+  });
+
+  it("re-stamps the blue mark on the original region after a reload (delete)", () => {
+    const src = mount();
+    let reloaded: { editor: Editor; cleanup: () => void } | null = null;
+    try {
+      const res = applyPendingChange(src.editor, {
+        anchorUuid: PARA_UUID,
+        originalText: "quick brown fox ",
+        replacement: "",
+        mode: "delete",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+      });
+      expect(res.ok).toBe(true);
+
+      reloaded = reload(src.editor);
+      // Delete mode left the text in the doc, so "quick brown fox " is present
+      // and the blue mark must wrap it after re-stamp.
+      const card: PendingMarkCardLike = {
+        id: CARD_ID,
+        kind: "suggestion",
+        status: "applied",
+        appliedChange: {
+          anchorId: ANCHOR_ID,
+          anchorUuid: PARA_UUID,
+          originalText: "quick brown fox ",
+          replacement: "",
+          mode: "delete",
+        },
+      };
+      const n = reapplyPendingMarks(reloaded.editor, [card]);
+      expect(n).toBe(1);
+
+      const restamped = markAttrsFor(reloaded.editor, ANCHOR_ID);
+      expect(restamped?.kind).toBe("pending-ai-change");
+      expect(restamped?.tintColor).toBe("#bfdbfe");
+      expect(markedTextFor(reloaded.editor, ANCHOR_ID)).toBe("quick brown fox ");
+    } finally {
+      reloaded?.cleanup();
+      src.cleanup();
+    }
+  });
+
+  it("is a graceful no-op when the stored text no longer matches (edited post-apply)", () => {
+    const { editor, cleanup } = mount();
+    try {
+      // No apply ran; the card claims a replacement that isn't in the doc.
+      const card: PendingMarkCardLike = {
+        id: CARD_ID,
+        kind: "suggestion",
+        status: "applied",
+        appliedChange: {
+          anchorId: ANCHOR_ID,
+          anchorUuid: PARA_UUID,
+          originalText: "quick brown fox",
+          replacement: "text that is not present anywhere",
+          mode: "replace",
+        },
+      };
+      // The record is built (text non-empty), but reanchorByText finds nothing.
+      const n = reapplyPendingMarks(editor, [card]);
+      expect(n).toBe(1); // processed …
+      expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull(); // … but no mark stamped
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("flag-OFF stamps nothing and the alive-set is empty (parity)", () => {
+    setPendingChangesFlag(false);
+    const { editor, cleanup } = mount();
+    try {
+      const card: PendingMarkCardLike = {
+        id: CARD_ID,
+        kind: "suggestion",
+        status: "applied",
+        appliedChange: {
+          anchorId: ANCHOR_ID,
+          anchorUuid: PARA_UUID,
+          originalText: "quick brown fox",
+          replacement: "lazy grey cat",
+          mode: "replace",
+        },
+      };
+      expect(reapplyPendingMarks(editor, [card])).toBe(0);
+      expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull();
+      expect(pendingMarkAnchorIds([card]).size).toBe(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("pendingMarkAnchorIds collects only applied cards' appliedChange.anchorId", () => {
+    const applied: PendingMarkCardLike = {
+      id: "c1",
+      kind: "suggestion",
+      status: "applied",
+      appliedChange: {
+        anchorId: "anc-1",
+        anchorUuid: PARA_UUID,
+        originalText: "x",
+        replacement: "y",
+        mode: "replace",
+      },
+    };
+    const pending: PendingMarkCardLike = { id: "c2", kind: "suggestion", status: "pending" };
+    const comment: PendingMarkCardLike = { id: "c3", kind: "comment", status: "applied" };
+    const ids = pendingMarkAnchorIds([applied, pending, comment]);
+    expect([...ids]).toEqual(["anc-1"]);
   });
 });

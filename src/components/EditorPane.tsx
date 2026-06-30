@@ -259,6 +259,11 @@ import {
   resolveCardAnchor,
 } from "@/links/resolve-card-anchor";
 import { reapplyModeBAnchors } from "@/links/_shared/reapply-mode-b-anchors";
+import {
+  reapplyPendingMarks,
+  pendingMarkAnchorIds,
+  type PendingMarkCardLike,
+} from "@/links/_shared/reapply-pending-marks";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import {
@@ -1629,6 +1634,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         highlights: notesHookRaw.highlights,
       });
     }
+    // Pending-AI-changes: re-stamp the light-blue `pending-ai-change` mark for
+    // every applied-but-not-yet-kept revision/cutter suggestion from its
+    // `appliedChange` descriptor — the serializer strips it on `.tex` export, so
+    // it must be reconstructed on load (the blue stays until the user Keeps /
+    // Reverts). Same SAME load phase as the Mode-B reapply, runs BEFORE the
+    // orphan reaper (whose alive-set is extended with these anchorIds below).
+    // Self-gated on `isPendingChangesOn()` — flag-OFF stamps nothing.
+    reapplyPendingMarks(editor, [
+      ...(revisionsHookRaw.cards as ReadonlyArray<PendingMarkCardLike>),
+      ...(cutterHookRaw.cards as ReadonlyArray<PendingMarkCardLike>),
+    ]);
     notesHookRaw.reconcileAnchors(editor);
     todosHook.reconcileAnchors(editor);
     cutterHookRaw.reconcileAnchors(editor);
@@ -1653,6 +1669,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         const ta = getTextAnchor(c);
         if (ta) aliveIds.add(ta.anchorId);
       }
+    }
+    // Pending-AI-change marks live at `appliedChange.anchorId`, which is NOT a
+    // card text-anchor (`getTextAnchor`) — so add them to the alive-set or the
+    // reaper would strip the mark we just re-stamped above. Flag-OFF → empty set.
+    for (const id of pendingMarkAnchorIds([
+      ...(revisionsHookRaw.cards as ReadonlyArray<PendingMarkCardLike>),
+      ...(cutterHookRaw.cards as ReadonlyArray<PendingMarkCardLike>),
+    ])) {
+      aliveIds.add(id);
     }
     // DESTRUCTIVE: only reap when every sidecar loaded SUCCESSFULLY. If any
     // read threw, that kind's collection is the empty default (non-authoritative
