@@ -900,6 +900,12 @@ export interface EditableCardProps {
    *  AF `FloatChrome` window header owns it. Only set true together with
    *  `isPoppedOut`. */
   chromeless?: boolean;
+  /** Unconditionally mount the inner RichTextField read-only, independent of
+   *  the chrome `editableCardKinds` whitelist. Used by record-only cards that
+   *  display borrowed prose the user must not edit (the pending-changes
+   *  "Applied" original-record card). ANDs into the chrome-derived editable
+   *  flag, so it only ever tightens, never loosens. */
+  forceReadOnly?: boolean;
 }
 
 /**
@@ -921,7 +927,7 @@ export function EditableCard({
   onTogglePopout, isPoppedOut, cardKey,
   compressed, compressedSummary, compressedContent, onToggleExpanded, onHeaderActivate,
   kind, kindLabelOverride, kindOptions, onKindChange,
-  canJump, onJump, chromeless,
+  canJump, onJump, chromeless, forceReadOnly,
 }: EditableCardProps) {
   // Chrome-driven read-only mode: when the host has set
   // `editableCardKinds` and this card's kind isn't on the list, the
@@ -929,9 +935,10 @@ export function EditableCard({
   // omitted `cardKind` falls back to fully editable (existing main-app
   // behavior).
   const chrome = useEditorChrome();
-  const cardEditable = !cardKind ||
+  const cardEditable = !forceReadOnly &&
+    (!cardKind ||
     !chrome.editableCardKinds ||
-    chrome.editableCardKinds.includes(cardKind);
+    chrome.editableCardKinds.includes(cardKind));
   const compressedLines = useCompressedLines();
   const compressedBody = usePanelBodyStyle(panelKey);
   // A9 §C3: a "borrowed"-class kind (footnote/archive/example) with a resolved

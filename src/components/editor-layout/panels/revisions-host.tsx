@@ -15,6 +15,16 @@ import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useRecentlyAddedId } from "../contexts/recently-added";
+import { isPendingChangesOn } from "@/lib/pending-changes-flag";
+import {
+  applyPendingChange,
+  keepPendingChange,
+  revertPendingChange,
+} from "@/links/apply-suggestion";
+import { getLinkedTextObjectIds } from "@/links/links";
+import { generateEntityId } from "@/lib/uuid";
+import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
+import { useDocWriteHandleOrNull } from "../DocPipeline";
 
 export interface RevisionsHostProps {
   side: Side;
@@ -38,6 +48,14 @@ export interface RevisionsHostProps {
     id: string,
     status: RevisionSuggestionCard["status"],
   ) => void;
+  /** Flag-ON only: set/clear the in-doc splice descriptor on a suggestion card
+   *  (Apply sets it, Keep clears it). Threaded from `useRevisions`. */
+  setAppliedChange: (
+    id: string,
+    appliedChange: RevisionSuggestionCard["appliedChange"] | undefined,
+  ) => void;
+  /** Flag-ON only: archive the surviving original-record card on Keep. */
+  setArchived: (id: string, archived: boolean) => void;
   convertCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
@@ -76,6 +94,8 @@ export function RevisionsHost(p: RevisionsHostProps) {
     useCardCreationContext();
   const { addAiRequest } = useAiRequestsContext();
   const recentlyAddedId = useRecentlyAddedId("revision");
+  const docHandle = useDocWriteHandleOrNull();
+  const docId = docHandle?.docId ?? null;
   const discardRef = useRef(p.discardPristine);
   discardRef.current = p.discardPristine;
   useEffect(() => () => discardRef.current(), []);
@@ -108,6 +128,98 @@ export function RevisionsHost(p: RevisionsHostProps) {
     [p],
   );
 
+  // ── Pending-changes (flag-ON) — client-side Apply / Keep / Revert ──
+  // These three mirror the headless propose→apply loop entirely in-browser.
+  // Each no-ops gracefully when the flag is OFF, the editor isn't mounted, or
+  // the card has no resolvable Mode-A anchor (treat as not-applicable, never
+  // crash). The OFF path stays on onAcceptSuggestion/onRejectSuggestion above.
+
+  const onApplySuggestion = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editorInstance) return;
+      const s = p.cards.find(
+        (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
+      );
+      if (!s) return;
+      // Mode-A anchor: the first linked paragraph uuid. No anchor → not
+      // applicable; bail without mutating the doc or the card.
+      const anchorUuid = getLinkedTextObjectIds(s)[0];
+      if (!anchorUuid) return;
+      const mode: "replace" | "delete" =
+        s.suggested_text === "" ? "delete" : "replace";
+      const anchorId = generateEntityId();
+      const result = applyPendingChange(editorInstance, {
+        anchorUuid,
+        originalText: s.original_text,
+        replacement: s.suggested_text,
+        mode,
+        cardId: id,
+        anchorId,
+      });
+      if (result.ok) {
+        p.setSuggestionStatus(id, "applied");
+        p.setAppliedChange(id, {
+          anchorId: result.anchorId,
+          anchorUuid,
+          originalText: s.original_text,
+          replacement: s.suggested_text,
+          mode,
+          appliedAt: new Date().toISOString(),
+        });
+      } else {
+        // result.reason === "stale" — no doc mutation happened.
+        p.setSuggestionStatus(id, "stale");
+      }
+    },
+    [p, editorInstance],
+  );
+
+  const onKeepSuggestion = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editorInstance) return;
+      const s = p.cards.find(
+        (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
+      );
+      const ac = s?.appliedChange;
+      if (!ac) return;
+      keepPendingChange(editorInstance, {
+        anchorUuid: ac.anchorUuid,
+        mode: ac.mode,
+        anchorId: ac.anchorId,
+        originalText: ac.originalText,
+        replacement: ac.replacement,
+      });
+      // Text-first ordering: flush the .tex BEFORE flipping card state, so the
+      // finalized splice is on disk ahead of the sidecar status change.
+      if (docId) void flushPendingForDoc(docId).catch(() => {});
+      p.setSuggestionStatus(id, "accepted");
+      p.setArchived(id, true);
+      p.setAppliedChange(id, undefined);
+    },
+    [p, editorInstance, docId],
+  );
+
+  const onRevertSuggestion = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editorInstance) return;
+      const s = p.cards.find(
+        (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
+      );
+      const ac = s?.appliedChange;
+      if (!ac) return;
+      revertPendingChange(editorInstance, {
+        anchorUuid: ac.anchorUuid,
+        originalText: ac.originalText,
+        replacement: ac.replacement,
+        mode: ac.mode,
+        anchorId: ac.anchorId,
+      });
+      if (docId) void flushPendingForDoc(docId).catch(() => {});
+      p.deleteCard(id);
+    },
+    [p, editorInstance, docId],
+  );
+
   return (
     <RevisionsPanel
       cards={p.cards}
@@ -120,6 +232,9 @@ export function RevisionsHost(p: RevisionsHostProps) {
       onUpdateSuggestionField={p.updateSuggestionField}
       onAcceptSuggestion={onAcceptSuggestion}
       onRejectSuggestion={onRejectSuggestion}
+      onApplySuggestion={onApplySuggestion}
+      onKeepSuggestion={onKeepSuggestion}
+      onRevertSuggestion={onRevertSuggestion}
       onConvertCard={p.convertCard}
       onDelete={p.deleteCard}
       onSelect={setSelectedCommentId}

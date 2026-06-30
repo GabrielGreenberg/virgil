@@ -6928,6 +6928,8 @@ function PaneRailBody({
         setCommentAiRequest={cutterHook.setCommentAiRequest}
         updateSuggestionField={cutterHook.updateSuggestionField}
         setSuggestionStatus={cutterHook.setSuggestionStatus}
+        setAppliedChange={cutterHook.setAppliedChange}
+        setArchived={cutterHook.setArchived}
         convertCard={cutterHook.convertCard}
         deleteCard={cutterHook.deleteCard}
         discardPristine={cutterHook.discardPristineCards}
@@ -6962,6 +6964,8 @@ function PaneRailBody({
         setCommentAiRequest={revisionsHook.setCommentAiRequest}
         updateSuggestionField={revisionsHook.updateSuggestionField}
         setSuggestionStatus={revisionsHook.setSuggestionStatus}
+        setAppliedChange={revisionsHook.setAppliedChange}
+        setArchived={revisionsHook.setArchived}
         convertCard={revisionsHook.convertCard}
         deleteCard={revisionsHook.deleteCard}
         discardPristine={revisionsHook.discardPristineCards}

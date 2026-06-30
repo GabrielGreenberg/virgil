@@ -14,11 +14,16 @@
  */
 
 import { useRef, useState } from "react";
-import { Chevron } from "@/components/panel-primitives";
+import type { JSONContent } from "@tiptap/react";
+import { Button, Chevron, EditableCard } from "@/components/panel-primitives";
+import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { countWords } from "@/hooks/useWordCount";
+import { parseInlineContent } from "@/lib/latex-parser";
 import type { PanelBodyKey } from "@/lib/panel-typography";
+import type { PanelThemeKey } from "@/lib/panel-theme";
+import type { CardKind } from "@/panels/_shared/types";
 
 export type SuggestionField =
   | "original_text"
@@ -300,6 +305,164 @@ export function FieldBlock({
           rows={2}
         />
       )}
+    </div>
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Pending-changes (flag-ON) shared UI. These render only when the
+// pending-changes flag is on; the cards gate on `isPendingChangesOn()` before
+// using them, so flag-OFF callers never reach this code (and the legacy
+// Accept/Reject path stays byte-identical).
+// ───────────────────────────────────────────────────────────────────────────
+
+/** The `pending`-status action row under the flag: a single primary "Apply"
+ *  button (replaces Accept/Reject). Phase 2 will auto-apply; for now it's a
+ *  manual button so the mechanics are testable. */
+export function ApplyActionRow({
+  id,
+  onApply,
+}: {
+  id: string;
+  onApply: (id: string) => void;
+}) {
+  return (
+    <div className="flex gap-1.5 pt-1 pr-7">
+      <Button
+        variant="warm"
+        size="sm"
+        onClick={(e) => {
+          e.stopPropagation();
+          onApply(id);
+        }}
+      >
+        Apply
+      </Button>
+    </div>
+  );
+}
+
+/** Wrap an inline-LaTeX string as a TipTap doc with one paragraph, so the
+ *  read-only EditableCard renders the original prose with real inline atoms
+ *  (citations / \ref / math) rather than a flattened string. */
+function inlineLatexToDoc(text: string): JSONContent {
+  return {
+    type: "doc",
+    content: [{ type: "paragraph", content: parseInlineContent(text) }],
+  };
+}
+
+/** The body of an `applied`-status card — the SURVIVING ORIGINAL-RECORD. Shows
+ *  the original paragraph in rendered rich text, READ-ONLY (the footnote-style
+ *  EditableCard path with a no-op onChange + forceReadOnly), plus Keep
+ *  (affirmative) and Revert (quiet) actions. `cardKind`/`panelKey` pick the
+ *  per-panel chrome + typography. */
+export function AppliedRecordBody({
+  id,
+  originalText,
+  cardKind,
+  panelKey,
+  themeKey,
+  onKeep,
+  onRevert,
+}: {
+  id: string;
+  originalText: string;
+  cardKind: CardKind;
+  panelKey: PanelBodyKey;
+  themeKey: PanelThemeKey;
+  onKeep: (id: string) => void;
+  onRevert: (id: string) => void;
+}) {
+  const theme = useCardTheme(themeKey);
+  const value = inlineLatexToDoc(originalText);
+  return (
+    <div
+      className="px-3 pt-2 pb-2 space-y-2"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Light-blue (sky) "applied" accent frame around the original record. */}
+      <div className="rounded border border-sky-200 bg-sky-50/60 px-1 py-0.5">
+        <EditableCard
+          id={`applied-record-${id}`}
+          kind={cardKind}
+          cardKind={cardKind}
+          selected={false}
+          theme={theme}
+          hideToolbar
+          forceReadOnly
+          value={value}
+          variant="footnote"
+          panelKey={panelKey}
+          placeholder=""
+          onChange={() => {}}
+        />
+      </div>
+      <div className="flex gap-1.5 pt-1 pr-7">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRevert(id);
+          }}
+        >
+          Revert
+        </Button>
+        <Button
+          variant="warm"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            onKeep(id);
+          }}
+        >
+          Keep
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** The body of a `stale`-status card: a quiet notice that the paragraph drifted
+ *  since the suggestion was drafted, with Dismiss (delete) and a disabled
+ *  "Re-draft" affordance (a later phase will re-draft). No doc mutation. */
+export function StaleNotice({
+  id,
+  onDismiss,
+}: {
+  id: string;
+  onDismiss: (id: string) => void;
+}) {
+  return (
+    <div
+      className="px-3 pt-2 pb-2 space-y-2"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <p className="text-[12px] text-ink-subtle">
+        This paragraph changed since the suggestion was drafted, so it can no
+        longer be applied as-is.
+      </p>
+      <div className="flex gap-1.5 pt-1 pr-7">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDismiss(id);
+          }}
+        >
+          Dismiss
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled
+          data-hint="Re-drafting arrives in a later phase"
+        >
+          Re-draft
+        </Button>
+      </div>
     </div>
   );
 }

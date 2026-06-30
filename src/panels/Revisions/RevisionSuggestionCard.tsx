@@ -17,11 +17,15 @@ import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import {
+  ApplyActionRow,
+  AppliedRecordBody,
   FIELD_ORDER,
   FieldBlock,
+  StaleNotice,
   SuggestionTrailing,
   type SuggestionField,
 } from "@/panels/_shared/suggestion-fields";
+import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 
 /** Status dot + author chip + status label — the revision-suggestion header
  *  trailing, shown docked and (via the `toFloatable` factory) in `FloatChrome`. */
@@ -39,6 +43,9 @@ export function RevisionSuggestionCard({
   onUpdateField,
   onAccept,
   onReject,
+  onApply,
+  onKeep,
+  onRevert,
   onConvert,
   onDelete,
   onSelect,
@@ -56,6 +63,13 @@ export function RevisionSuggestionCard({
   ) => void;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
+  /** Pending-changes (flag-ON) client-side apply/keep/revert. Optional: the
+   *  float/omni mounts don't wire them (Phase 1b proves the mechanics on the
+   *  panel card only). The flag-ON UI that calls them renders only in the
+   *  docked panel, where they're always supplied. */
+  onApply?: (id: string) => void;
+  onKeep?: (id: string) => void;
+  onRevert?: (id: string) => void;
   onConvert: (id: string, toKind: "comment" | "suggestion") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -68,6 +82,17 @@ export function RevisionSuggestionCard({
   const cardStore = useCardStore();
   const cardRef = useRef<HTMLDivElement>(null);
   const isPending = card.status === "pending";
+  // Pending-changes (flag-ON) status branches. With the flag OFF these are all
+  // false (status never reaches applied/stale), so the card renders exactly as
+  // today and the Accept/Reject path is untouched. The dedicated bodies need
+  // their callbacks, which only the docked panel wires — float/omni mounts omit
+  // them and fall back to the field view (those surfaces never apply anyway).
+  const pendingChangesOn = isPendingChangesOn();
+  const hasPendingCallbacks = !!onApply && !!onKeep && !!onRevert;
+  const isApplied =
+    pendingChangesOn && hasPendingCallbacks && card.status === "applied";
+  const isStale =
+    pendingChangesOn && hasPendingCallbacks && card.status === "stale";
   const isAnchored =
     getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
   const anchorKind: "selection" | "paragraph" | null = hasTextAnchor(card)
@@ -152,6 +177,21 @@ export function RevisionSuggestionCard({
             )}
           </div>
         </div>
+      ) : isApplied ? (
+        // Flag-ON applied: the surviving original-record card. onKeep/onRevert
+        // are guaranteed present here (isApplied gates on hasPendingCallbacks).
+        <AppliedRecordBody
+          id={card.id}
+          originalText={card.original_text}
+          cardKind="revision-suggestion"
+          panelKey="revision"
+          themeKey="revision"
+          onKeep={onKeep!}
+          onRevert={onRevert!}
+        />
+      ) : isStale ? (
+        // Flag-ON stale: quiet notice + Dismiss (delete). No doc mutation.
+        <StaleNotice id={card.id} onDismiss={onReject} />
       ) : (
       <div
         className={`px-3 pt-2 pb-2 space-y-2.5${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
@@ -181,30 +221,35 @@ export function RevisionSuggestionCard({
           />
         )}
 
-        {isPending && (
-          <div className="flex gap-1.5 pt-1 pr-7">
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onReject(card.id);
-              }}
-            >
-              Reject
-            </Button>
-            <Button
-              variant="warm"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAccept(card.id);
-              }}
-            >
-              Accept
-            </Button>
-          </div>
-        )}
+        {isPending &&
+          (pendingChangesOn && onApply ? (
+            // Flag-ON pending: a single primary Apply (manual for Phase 1b;
+            // Phase 2 auto-applies). Replaces the Accept/Reject pair.
+            <ApplyActionRow id={card.id} onApply={onApply} />
+          ) : (
+            <div className="flex gap-1.5 pt-1 pr-7">
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onReject(card.id);
+                }}
+              >
+                Reject
+              </Button>
+              <Button
+                variant="warm"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAccept(card.id);
+                }}
+              >
+                Accept
+              </Button>
+            </div>
+          ))}
       </div>
       )}
     </PanelCard>

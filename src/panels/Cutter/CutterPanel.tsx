@@ -35,6 +35,9 @@ export default function CutterPanel({
   onUpdateSuggestionField,
   onAcceptSuggestion,
   onRejectSuggestion,
+  onApplySuggestion,
+  onKeepSuggestion,
+  onRevertSuggestion,
   onConvertCard,
   onDelete,
   onSelect,
@@ -63,6 +66,10 @@ export default function CutterPanel({
   ) => void;
   onAcceptSuggestion: (id: string) => void;
   onRejectSuggestion: (id: string) => void;
+  /** Pending-changes (flag-ON) client-side apply/keep/revert. */
+  onApplySuggestion: (id: string) => void;
+  onKeepSuggestion: (id: string) => void;
+  onRevertSuggestion: (id: string) => void;
   onConvertCard: (id: string, toKind: "comment" | "suggestion") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
@@ -132,6 +139,9 @@ export default function CutterPanel({
               onConvert={onConvertCard}
               onAccept={onAcceptSuggestion}
               onReject={onRejectSuggestion}
+              onApply={onApplySuggestion}
+              onKeep={onKeepSuggestion}
+              onRevert={onRevertSuggestion}
               onDelete={onDelete}
               onSelect={onSelect}
               onJump={

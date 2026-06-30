@@ -339,6 +339,27 @@ export function useRevisions(
     [update, pristine],
   );
 
+  /** Set (or clear, when `appliedChange` is undefined) the `appliedChange`
+   *  splice descriptor on a suggestion card. Mirrors `setArchived`: functional
+   *  `update`, marks the card pristine-dirty so it persists. Only the flag-ON
+   *  apply path calls this; with the flag OFF nothing ever sets it. Clearing
+   *  drops the key entirely (Keep) rather than leaving an `undefined` field. */
+  const setAppliedChange = useCallback(
+    (id: string, appliedChange: RevisionSuggestionCard["appliedChange"] | undefined) => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) => {
+          if (c.id !== id || c.kind !== "suggestion") return c;
+          if (appliedChange) return { ...c, appliedChange };
+          const { appliedChange: _drop, ...rest } = c;
+          return rest;
+        }),
+      }));
+    },
+    [update, pristine],
+  );
+
   /** Flip a card's kind in place (comment ⇄ suggestion) via the registered
    *  morph transform. Preserves id, createdAt, anchor and paragraph links;
    *  salvages text fields across the shape change. The float-key remap rides
@@ -571,6 +592,7 @@ export function useRevisions(
       setCommentAiRequest,
       updateSuggestionField,
       setSuggestionStatus,
+      setAppliedChange,
       convertCard,
       setTrackerTarget,
       addCardParagraphId,
@@ -596,6 +618,7 @@ export function useRevisions(
       setCommentAiRequest,
       updateSuggestionField,
       setSuggestionStatus,
+      setAppliedChange,
       convertCard,
       setTrackerTarget,
       addCardParagraphId,
