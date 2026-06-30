@@ -173,6 +173,18 @@ export interface OmniHostProps {
    *  pane. Passed straight through to OmniViewPanel; never fires on a plain
    *  keystroke. */
   onVisibleCardsChange?: (count: number) => void;
+  /** Phase 3 — the omni bulk index for applied pending AI changes (Keep-all /
+   *  Revert-all). EditorPane derives `count` + the two drains from the applied
+   *  revision + cutter cards (routed through the shared `pending-change-actions`
+   *  sequence). The header renders only when this side actually SHOWS an applied
+   *  pending card (computed below from the enabled categories), so it appears
+   *  once — on whichever side hosts the revisions/cutter omni cards. Absent /
+   *  count 0 → no header (flag-OFF never produces applied cards). */
+  bulkPendingChanges?: {
+    count: number;
+    onKeepAll: () => void;
+    onRevertAll: () => void;
+  };
 }
 
 export function OmniHost(p: OmniHostProps) {
@@ -720,17 +732,32 @@ export function OmniHost(p: OmniHostProps) {
     return filterOmniItemsByFoldAndFocus(nestedItems, doc, hiddenTopLevel, p.focusState, resolvePos);
   }, [nestedItems, hiddenTopLevel, p.focusState, editorInstance, resolvePos]);
 
+  // Phase 3 — show the bulk Keep-all / Revert-all header on THIS side only when
+  // applied pending cards exist AND this side hosts the revisions/cutter omni
+  // cards (so it appears exactly once, not on both strips). `getOmniEnabled`
+  // returns the enabled categories for this side; the applied cards live under
+  // the `revisions` / `cutter` categories. Gated this way the header tracks the
+  // panels' placement (drag a panel to the other strip → the header follows).
+  const enabledForSide = p.getOmniEnabled(p.side);
+  const bulkForSide =
+    p.bulkPendingChanges &&
+    p.bulkPendingChanges.count > 0 &&
+    (enabledForSide.has("revisions") || enabledForSide.has("cutter"))
+      ? p.bulkPendingChanges
+      : undefined;
+
   return (
     <OmniViewPanel
       side={p.side}
       items={displayedItems}
       editor={editorInstance}
-      enabledCategories={p.getOmniEnabled(p.side)}
+      enabledCategories={enabledForSide}
       hideAllCards={p.getOmniHideAll(p.side)}
       dimResting={p.omniDimResting}
       onBackgroundClick={handleBackgroundClick}
       onCardFocus={handleCardFocus}
       onVisibleCardsChange={p.onVisibleCardsChange}
+      bulkPendingChanges={bulkForSide}
     />
   );
 }

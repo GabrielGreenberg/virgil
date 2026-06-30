@@ -19,7 +19,7 @@ import {
   CardDisplayProvider,
   OMNI_COMPRESSED_LINES,
 } from "@/components/editor-layout/contexts/card-display";
-import { BadgeOrphaned, CARD_THEMES } from "@/components/panel-primitives";
+import { BadgeOrphaned, CARD_THEMES, Button } from "@/components/panel-primitives";
 import {
   omniPinStore,
   usePinRequest,
@@ -134,6 +134,16 @@ interface OmniViewPanelProps {
    *  plain keystroke never recomputes it and this never fires off the
    *  keystroke path (keystroke sanctity). */
   onVisibleCardsChange?: (count: number) => void;
+  /** Phase 3 — the bulk Keep-all / Revert-all affordance for applied pending AI
+   *  changes. When present (count > 0), a small header renders at the top of the
+   *  cascade. The host (OmniHost) only passes this on the side that hosts the
+   *  applied cards, so it appears once. Click handlers route through the shared
+   *  `pending-change-actions` sequence — no per-keystroke work. */
+  bulkPendingChanges?: {
+    count: number;
+    onKeepAll: () => void;
+    onRevertAll: () => void;
+  };
   // Pin-driven per-card positioning replaces the old global `cardsOffset`
   // and `cardsSilent` props. See `@/components/editor-layout/omni-pin-store`.
 }
@@ -398,6 +408,62 @@ export function OmniOutsideFocusBin({
   );
 }
 
+/**
+ * Phase 3 — the omni BULK index header for applied pending AI changes. A small
+ * strip at the top of the cascade with the count and Keep-all / Revert-all.
+ * `position:sticky; top:0` pins it to the top of the omni column's scroll
+ * viewport so it stays reachable as the user scrolls the document (the applied
+ * blue ranges can be anywhere in the doc). It's a flow sibling ABOVE the
+ * `position:relative` cascade pod (`panelScrollRef`), not inside it, so it
+ * cannot desync the absolute-positioned cascade — the cards pack below it. Keep
+ * = warm (affirmative), Revert = ghost (quiet), mirroring the pill + the gutter
+ * control. Each click drains the WHOLE applied set through the shared
+ * `pending-change-actions` sequence the host wired.
+ */
+function OmniBulkPendingHeader({
+  bulk,
+}: {
+  bulk: { count: number; onKeepAll: () => void; onRevertAll: () => void };
+}) {
+  const label = `${bulk.count} pending change${bulk.count === 1 ? "" : "s"}`;
+  return (
+    <div
+      className="sticky top-0 z-30 mx-2 mb-2 flex items-center gap-2 rounded-md border border-sky-200 bg-surface px-2 py-1.5 shadow-sm"
+      role="group"
+      aria-label="Bulk pending change actions"
+      data-omni-bulk-pending={bulk.count}
+    >
+      <span className="text-[11px] font-medium text-ink-muted">{label}</span>
+      <div className="ml-auto flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            bulk.onRevertAll();
+          }}
+          data-hint="Revert every applied change"
+        >
+          Revert all
+        </Button>
+        <Button
+          variant="warm"
+          size="sm"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            bulk.onKeepAll();
+          }}
+          data-hint="Keep every applied change"
+        >
+          Keep all
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function OmniViewPanel({
   side,
   items,
@@ -408,6 +474,7 @@ function OmniViewPanel({
   onBackgroundClick,
   onCardFocus,
   onVisibleCardsChange,
+  bulkPendingChanges,
 }: OmniViewPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -544,6 +611,9 @@ function OmniViewPanel({
         }
       }}
     >
+      {bulkPendingChanges && bulkPendingChanges.count > 0 && (
+        <OmniBulkPendingHeader bulk={bulkPendingChanges} />
+      )}
       {visibleItems.length === 0 && enabledCategories.size === 0 && (
         <div className="text-center text-ink-muted text-xs px-3 py-6">
           No item types selected — use the filter menu at the bottom of the strip.

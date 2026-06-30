@@ -238,6 +238,10 @@ import WordCountPanel from "@/panels/WordCount";
 import { INITIAL_SEARCH_STATE, type SearchPanelState } from "@/panels/Search";
 import type { LatexError } from "@/lib/latex-errors";
 import Marginalia from "./Marginalia";
+import {
+  PendingChangePill,
+  type PendingChangeIndex,
+} from "./PendingChangePill";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
 import { IconBlank } from "./editor-layout/panel-icons";
@@ -270,6 +274,10 @@ import {
   keepSuggestion,
   revertSuggestion,
 } from "@/links/pending-change-actions";
+import {
+  isAppliedPending,
+  collectAppliedPendingIds,
+} from "@/links/pending-change-collect";
 import type { MarginaliaMarker } from "@/lib/marginalia";
 import type {
   PanelPlacement,
@@ -2507,6 +2515,104 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     },
     [editor, docId, cutterHook],
   );
+
+  // ── Phase 3 — the floating pill's target index + the omni bulk handlers ──
+  // The pill (rendered below, inside the CardStoreProvider) and the omni
+  // Keep-all / Revert-all both need the applied-pending suggestion set. Derive
+  // ONE index — `kind:id` → { anchorId, onKeep, onRevert } — from the applied
+  // revision + cutter cards, each routed through the SAME per-card callbacks the
+  // gutter uses (so the pill, gutter, and bulk index are byte-identical). The
+  // memo is gated on the card arrays + the flag; a plain keystroke bumps neither,
+  // so it never recomputes per keystroke. Flag-OFF: no card reaches `applied`,
+  // the map is empty, and the pill isn't mounted (`size === 0`).
+  const pendingChangeIndex = useMemo<PendingChangeIndex>(() => {
+    const map: PendingChangeIndex = new Map();
+    if (!isPendingChangesOn()) return map;
+    for (const r of revisionsHook.cards) {
+      if (r.kind !== "suggestion" || !isAppliedPending(r) || !r.appliedChange)
+        continue;
+      map.set(`revision-suggestion:${r.id}`, {
+        anchorId: r.appliedChange.anchorId,
+        onKeep: () => onKeepRevisionPending(r.id),
+        onRevert: () => onRevertRevisionPending(r.id),
+      });
+    }
+    for (const c of cutterHook.cards) {
+      if (c.kind !== "suggestion" || !isAppliedPending(c) || !c.appliedChange)
+        continue;
+      map.set(`cutter-suggestion:${c.id}`, {
+        anchorId: c.appliedChange.anchorId,
+        onKeep: () => onKeepCutterPending(c.id),
+        onRevert: () => onRevertCutterPending(c.id),
+      });
+    }
+    return map;
+  }, [
+    revisionsHook.cards,
+    cutterHook.cards,
+    onKeepRevisionPending,
+    onRevertRevisionPending,
+    onKeepCutterPending,
+    onRevertCutterPending,
+  ]);
+
+  // Bulk Keep-all / Revert-all — iterate the applied AI cards of one family
+  // through the shared per-card sequence. `keepSuggestion`/`revertSuggestion`
+  // re-read the live card by id, so applying them in source order is safe even
+  // as each splice shifts later positions (the next id re-resolves its own
+  // appliedChange). Click handlers only — no ticks, no per-keystroke work.
+  const keepAllRevisionPending = useCallback(() => {
+    if (!isPendingChangesOn()) return;
+    for (const id of collectAppliedPendingIds(revisionsHook.cards)) {
+      onKeepRevisionPending(id);
+    }
+  }, [revisionsHook.cards, onKeepRevisionPending]);
+  const revertAllRevisionPending = useCallback(() => {
+    if (!isPendingChangesOn()) return;
+    for (const id of collectAppliedPendingIds(revisionsHook.cards)) {
+      onRevertRevisionPending(id);
+    }
+  }, [revisionsHook.cards, onRevertRevisionPending]);
+  const keepAllCutterPending = useCallback(() => {
+    if (!isPendingChangesOn()) return;
+    for (const id of collectAppliedPendingIds(cutterHook.cards)) {
+      onKeepCutterPending(id);
+    }
+  }, [cutterHook.cards, onKeepCutterPending]);
+  const revertAllCutterPending = useCallback(() => {
+    if (!isPendingChangesOn()) return;
+    for (const id of collectAppliedPendingIds(cutterHook.cards)) {
+      onRevertCutterPending(id);
+    }
+  }, [cutterHook.cards, onRevertCutterPending]);
+
+  // The unified bulk affordance threaded to OmniHost → OmniViewPanel: one
+  // Keep-all / Revert-all that drains BOTH families (revision + cutter), plus
+  // the count so the header only renders when something is applied. Stable
+  // unless a family's applied set or a per-family bulk callback changes.
+  const omniBulkPendingChanges = useMemo(() => {
+    const count =
+      collectAppliedPendingIds(revisionsHook.cards).length +
+      collectAppliedPendingIds(cutterHook.cards).length;
+    return {
+      count,
+      onKeepAll: () => {
+        keepAllRevisionPending();
+        keepAllCutterPending();
+      },
+      onRevertAll: () => {
+        revertAllRevisionPending();
+        revertAllCutterPending();
+      },
+    };
+  }, [
+    revisionsHook.cards,
+    cutterHook.cards,
+    keepAllRevisionPending,
+    keepAllCutterPending,
+    revertAllRevisionPending,
+    revertAllCutterPending,
+  ]);
 
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Re-resolve markers when anchors move between paragraphs (`rev.anchors`)
@@ -5163,6 +5269,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 openItemInPanel={openItemInPanel}
                 wordCountHook={wordCountHook}
                 tail={leftMarginPrelude}
+                omniBulkPendingChanges={omniBulkPendingChanges}
               />
             ))}
             {/* Column wrapper — sits between the two PaneRails. Holds the
@@ -5603,6 +5710,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 markers={visibleMarginaliaMarkers}
                 panelSides={marginaliaPanelSides}
               />
+              {/* Phase 3 — the floating in-context Keep / Revert pill. Mounted
+                  ONLY while an applied pending change exists (flag-ON +
+                  `index.size > 0`), like SlashCommandPopup — so flag-OFF / no
+                  applied card costs nothing and adds no editor subscriber. It
+                  portals to document.body; mounting here keeps it inside the
+                  pane's CardStoreProvider so the hover read is this doc's. */}
+              {pendingChangeIndex.size > 0 && (
+                <PendingChangePill
+                  editorRef={editorInstanceRef}
+                  store={cardStoreInst}
+                  index={pendingChangeIndex}
+                />
+              )}
               {/* Sticky expand-all / collapse-all controls — fade in on
                   hover near the pod top. GENUINE zero-flow: a height:0
                   sticky container (same pattern as the SectionLozenge
@@ -6256,6 +6376,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 setSearchHighlightRange={setSearchHighlightRange}
                 openItemInPanel={openItemInPanel}
                 wordCountHook={wordCountHook}
+                omniBulkPendingChanges={omniBulkPendingChanges}
               />
             ))}
           </div>
@@ -6427,6 +6548,16 @@ interface PaneRailProps {
    *  its `PageScrollStrip` here so the drag-gap line lands just inboard
    *  of the page-mark navigator. */
   tail?: React.ReactNode;
+  /** Phase 3 — the omni bulk Keep-all / Revert-all affordance for applied
+   *  pending AI changes. Built once in EditorPane from the applied revision +
+   *  cutter cards (routed through the shared `pending-change-actions` sequence)
+   *  and threaded to OmniHost, which renders it on the side hosting the applied
+   *  cards. Absent / count 0 → no header. */
+  omniBulkPendingChanges?: {
+    count: number;
+    onKeepAll: () => void;
+    onRevertAll: () => void;
+  };
 }
 
 /**
@@ -6597,6 +6728,7 @@ function PaneRail({
   wordCountHook,
   viewPrefs,
   tail,
+  omniBulkPendingChanges,
 }: PaneRailProps) {
   const isLeft = side === "left";
 
@@ -6719,6 +6851,7 @@ function PaneRail({
           getOmniHideAll={viewPrefs.getOmniHideAll}
           focusState={viewPrefs.focusState}
           onVisibleCardsChange={setOmniCardCount}
+          bulkPendingChanges={omniBulkPendingChanges}
         />
     );
 

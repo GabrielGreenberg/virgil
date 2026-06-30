@@ -1,0 +1,388 @@
+"use client";
+
+/**
+ * Phase 3 — the floating Keep / Revert pill for an applied pending AI change.
+ *
+ * A quiet, EPHEMERAL in-context control that materializes at the blue change in
+ * the prose whenever that change is HOVERED (text mark / margin marker / panel
+ * card — the three-surface cardStore halo) or FOCUSED (caret inside the blue
+ * range). It is the in-text twin of the PERSISTENT margin-gutter control
+ * (`PendingChangeMarker` in Marginalia.tsx): same shared `keepSuggestion` /
+ * `revertSuggestion` orchestration, surfaced right at the text instead of out in
+ * the gutter.
+ *
+ * ── Placement (cloned from SelectionActionsMenu's "margin-bolt") ──────────────
+ * The pill is a `position:fixed` portal. Each event that could move/hide it runs
+ * a SINGLE RAF-coalesced `computePlacement`: resolve the target card's blue range
+ * via `findLinkedAnchorRange(doc, anchorId)` (the mark carries the anchorId the
+ * card's `appliedChange` stamped), one `coordsAtPos(range.from)`, then viewport-
+ * clamp. A `placementsEqual` bail short-circuits `setPlacement` when nothing
+ * moved, so a re-tick that lands the same coords causes no React re-render.
+ *
+ * ── How it binds to the hovered/focused pending card ──────────────────────────
+ * The target is resolved from TWO inputs, hover taking precedence:
+ *   1. cardStore hover/selection — a `revision-suggestion` / `cutter-suggestion`
+ *      ref present in `index` (the applied-pending set EditorPane threads).
+ *   2. caret focus — the editor selection head sits inside a blue `linkedAnchor`
+ *      range; resolve which applied card owns that range by anchorId.
+ * Whichever resolves first (hover, then selection, then caret) is the target.
+ *
+ * ── Keystroke sanctity ───────────────────────────────────────────────────────
+ * MOUNT-ON-DEMAND, like SlashCommandPopup: EditorPane renders this ONLY when at
+ * least one applied pending change exists (`index.size > 0`); flag-OFF / no
+ * applied card → it isn't mounted, zero cost. While mounted it mirrors
+ * SelectionActionsMenu (already on the keystroke-sanctity allow-list): the
+ * single `editor.on("selectionUpdate"|"update"|"focus"|"blur")` subscription
+ * schedules ONE RAF that does ONE `coordsAtPos` + a placement-equality bail —
+ * O(1) per transaction, no doc walk on the keystroke path. The cardStore hover
+ * read is a `useSyncExternalStore` subscription that fires only on a real
+ * hover/selection change (never on a keystroke). Typing N plain characters
+ * therefore leaves `__virgilBusStats().emitCount` flat (the range walk only runs
+ * inside the RAF, and only when the target's anchorId is set — and the target
+ * doesn't change on a structurally-null keystroke).
+ */
+
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
+import type { Editor } from "@tiptap/react";
+import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
+import {
+  useStoreHover,
+  useStoreSelection,
+  type CardStore,
+  type AnchoredCardRef,
+} from "@/links/_shared/anchored-card-store";
+import {
+  useEditorViewportCache,
+  type EditorViewportCache,
+} from "@/hooks/useEditorViewportCache";
+import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
+import { Button } from "@/components/panel-primitives";
+
+const VIEWPORT_MARGIN = 8;
+/** Small inset so the pill floats just above-left of the blue range's start,
+ *  clear of the caret line — the same "seed near the anchor" feel the margin
+ *  bolt has, but in-context rather than out in the gutter. */
+const PILL_GAP_Y = 6;
+
+/** The applied-pending target the pill currently acts on: the resolved card ref
+ *  plus the splice's anchorId (resolves the blue range) and the two Keep/Revert
+ *  closures EditorPane built (the SAME `pending-change-actions` sequence the
+ *  gutter + card surface use). */
+export interface PendingChangeTarget {
+  anchorId: string;
+  onKeep: () => void;
+  onRevert: () => void;
+}
+
+/** `kind:id` → target. EditorPane derives this from the applied suggestion
+ *  cards; its `size` also gates whether EditorPane mounts the pill at all. */
+export type PendingChangeIndex = Map<string, PendingChangeTarget>;
+
+interface Placement {
+  visible: boolean;
+  left: number;
+  top: number;
+  /** The `kind:id` the placement was computed for — the close/re-open identity.
+   *  Null when nothing is targeted. */
+  targetKey: string | null;
+}
+
+const INVISIBLE: Placement = { visible: false, left: 0, top: 0, targetKey: null };
+
+function refKey(ref: AnchoredCardRef): string {
+  return `${ref.kind}:${ref.id}`;
+}
+
+/** Collect the `linkedAnchor` anchorIds at the editor selection head — the
+ *  caret-focus candidates. O(1): reads only the marks at/around the head, never
+ *  walks the doc. The caller matches these against the applied-pending `index`,
+ *  so a non-pending anchor's id simply won't resolve a target (no `kind` check
+ *  needed here — the index IS the pending-set membership). */
+function anchorIdsAtCaret(editor: Editor): string[] {
+  const { selection } = editor.state;
+  const $head = selection.$head;
+  // A caret resting inside a marked run carries the mark via `$head.marks()`; at
+  // the exact run boundary the mark sits on the node before/after instead.
+  const before = $head.nodeBefore?.marks ?? [];
+  const after = $head.nodeAfter?.marks ?? [];
+  const ids: string[] = [];
+  for (const m of [...$head.marks(), ...before, ...after]) {
+    if (m.type.name === "linkedAnchor" && typeof m.attrs.anchorId === "string") {
+      ids.push(m.attrs.anchorId);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Resolve the active target `kind:id` from the three inputs, hover first. The
+ * hover/selection refs are read from the cardStore; the caret anchorId is read
+ * from the editor. Only refs/anchors that resolve to an applied-pending entry in
+ * `index` count (so a hovered NON-pending card never summons the pill).
+ *
+ * Exported for unit testing — it is the load-bearing binding between the
+ * cardStore hover/selection + caret focus and the applied-pending index (the
+ * part live preview can't drive because the placement is RAF-gated).
+ */
+export function resolveTargetKey(
+  hover: AnchoredCardRef | null,
+  selected: AnchoredCardRef | null,
+  caretAnchorIds: string[],
+  index: PendingChangeIndex,
+): string | null {
+  for (const ref of [hover, selected]) {
+    if (!ref) continue;
+    // Exact `kind:id` match first.
+    const key = refKey(ref);
+    if (index.has(key)) return key;
+    // Fall back to matching the card ID alone (kind-agnostic): the in-text blue
+    // mark stamps the `linkedAnchor.linkCard` namespace from the shared
+    // pending-change `LinkedAnchorKind`, which maps to `revision-suggestion` for
+    // BOTH families — so a hovered CUTTER applied change arrives with the
+    // "revision-suggestion" kind even though its index key is
+    // `cutter-suggestion:<id>`. The card ID is unique across the applied set, so
+    // an id-only match resolves the right target without depending on the
+    // (currently family-flattened) mark kind.
+    const idSuffix = `:${ref.id}`;
+    for (const k of index.keys()) {
+      if (k.endsWith(idSuffix)) return k;
+    }
+  }
+  // Caret focus: find the index entry whose target anchorId matches a mark at
+  // the caret. (index is small — only applied cards — so this is O(applied).)
+  if (caretAnchorIds.length > 0) {
+    for (const [key, t] of index) {
+      if (caretAnchorIds.includes(t.anchorId)) return key;
+    }
+  }
+  return null;
+}
+
+/** One `coordsAtPos` over the target's blue range, mirroring
+ *  SelectionActionsMenu's cached-metric placement. Hidden when the editor is
+ *  collapsed (keep-alive), the range is gone, or the range is scrolled out of
+ *  the editor's viewport. */
+function computePlacement(
+  editor: Editor,
+  cache: EditorViewportCache,
+  targetKey: string | null,
+  index: PendingChangeIndex,
+): Placement {
+  if (!targetKey) return INVISIBLE;
+  const target = index.get(targetKey);
+  if (!target) return INVISIBLE;
+  // Keep-alive: a hidden (display:none) editor measures 0×0 — bail BEFORE
+  // coordsAtPos so the pill never jitters and a hidden pane does no measure.
+  if (!cache.editorEl || cache.editorEl.offsetHeight === 0) return INVISIBLE;
+
+  const range = findLinkedAnchorRange(editor.state.doc, target.anchorId);
+  if (!range) return INVISIBLE;
+
+  let coords: { left: number; top: number; bottom: number };
+  try {
+    coords = editor.view.coordsAtPos(range.from);
+  } catch {
+    return INVISIBLE;
+  }
+
+  const scrollTop = cache.scrollTop;
+  const scrollBottom = cache.scrollBottom;
+  // Off-screen (scrolled out of the editor's viewport band) → hide.
+  if (coords.bottom < scrollTop || coords.top > scrollBottom) {
+    return { visible: false, left: 0, top: 0, targetKey };
+  }
+
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  // Seat the pill just above the range start, left-aligned to it.
+  let left = coords.left;
+  let top = coords.top - PILL_GAP_Y;
+  // Viewport clamp (both axes), matching SelectionActionsMenu.
+  if (left + 1 > vw - VIEWPORT_MARGIN) {
+    left = Math.max(VIEWPORT_MARGIN, vw - VIEWPORT_MARGIN);
+  }
+  if (left < VIEWPORT_MARGIN) left = VIEWPORT_MARGIN;
+  top = Math.max(top, scrollTop, VIEWPORT_MARGIN);
+  if (top > vh - VIEWPORT_MARGIN) top = vh - VIEWPORT_MARGIN;
+
+  return { visible: true, left, top, targetKey };
+}
+
+function placementsEqual(a: Placement, b: Placement): boolean {
+  return (
+    a.visible === b.visible &&
+    a.left === b.left &&
+    a.top === b.top &&
+    a.targetKey === b.targetKey
+  );
+}
+
+/**
+ * The floating pill. Mounted by EditorPane ONLY while an applied pending change
+ * exists. `index` is the applied-pending target set; `store` is THIS doc's
+ * cardStore (so the hover read is per-doc and never bleeds across keep-alive
+ * panes).
+ */
+export function PendingChangePill({
+  editorRef,
+  store,
+  index,
+}: {
+  editorRef: RefObject<Editor | null>;
+  store: CardStore;
+  index: PendingChangeIndex;
+}) {
+  const hover = useStoreHover(store);
+  const selected = useStoreSelection(store);
+  const [placement, setPlacement] = useState<Placement>(INVISIBLE);
+  // Keep the latest target resolvers reachable from the mount-once RAF effect
+  // without re-subscribing the editor listener on every hover/selection change.
+  const hoverRef = useRef(hover);
+  hoverRef.current = hover;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const indexRef = useRef(index);
+  indexRef.current = index;
+
+  const { cacheRef, version: cacheVersion } = useEditorViewportCache(
+    editorRef.current,
+  );
+
+  // The RAF-coalesced placement compute. Held in a ref so BOTH effects below
+  // share ONE scheduler: the long-lived subscription effect (editor events +
+  // scroll/resize) and the short trigger effect (hover/selection/index change).
+  // `run` reads the latest hover/selected/index/cache off refs, so the scheduler
+  // identity never has to change when those change — it stays mounted while the
+  // trigger effect just pokes it. The `placementsEqual` bail keeps a
+  // structurally-null keystroke from re-rendering the portal.
+  const scheduleRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    let rafId = 0;
+    const run = () => {
+      const ed = editorRef.current;
+      if (!ed || ed.isDestroyed) {
+        setPlacement((prev) => (placementsEqual(prev, INVISIBLE) ? prev : INVISIBLE));
+        return;
+      }
+      const caretAnchorIds = ed.isFocused ? anchorIdsAtCaret(ed) : [];
+      const targetKey = resolveTargetKey(
+        hoverRef.current,
+        selectedRef.current,
+        caretAnchorIds,
+        indexRef.current,
+      );
+      const next = computePlacement(ed, cacheRef.current, targetKey, indexRef.current);
+      setPlacement((prev) => (placementsEqual(prev, next) ? prev : next));
+    };
+    const update = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        run();
+      });
+    };
+    scheduleRef.current = update;
+
+    let readyRaf = 0;
+    let subscribed: Editor | null = null;
+    const subscribe = (ed: Editor) => {
+      subscribed = ed;
+      ed.on("selectionUpdate", update);
+      ed.on("update", update);
+      ed.on("focus", update);
+      ed.on("blur", update);
+    };
+    const unsubscribe = () => {
+      if (!subscribed) return;
+      subscribed.off("selectionUpdate", update);
+      subscribed.off("update", update);
+      subscribed.off("focus", update);
+      subscribed.off("blur", update);
+      subscribed = null;
+    };
+    const waitForEditor = () => {
+      const ed = editorRef.current;
+      if (ed) {
+        subscribe(ed);
+        run();
+        return;
+      }
+      readyRaf = requestAnimationFrame(waitForEditor);
+    };
+    waitForEditor();
+    const scrollParent = findEditorScrollFor(editorRef.current?.view.dom ?? null);
+    scrollParent?.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (readyRaf) cancelAnimationFrame(readyRaf);
+      unsubscribe();
+      scrollParent?.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+    // `cacheVersion` re-runs when the viewport cache changes (sidebar toggle).
+  }, [editorRef, cacheRef, cacheVersion]);
+
+  // Re-run placement when the hovered/selected card or the applied index
+  // changes — these are cardStore/React changes, NOT editor events, so they
+  // wouldn't otherwise schedule a compute. Pokes the shared RAF scheduler
+  // (already O(1) + placement-bail), so this is not per-keystroke work: hover
+  // changes only on a real mouse move, selection on a click, index on an
+  // apply/keep/revert. (The refs above already carry the latest values into
+  // `run`; this just triggers it.)
+  useEffect(() => {
+    scheduleRef.current();
+  }, [hover, selected, index]);
+
+  if (!placement.visible || placement.targetKey === null) return null;
+  if (typeof document === "undefined") return null;
+  const target = index.get(placement.targetKey);
+  if (!target) return null;
+
+  return createPortal(
+    <div
+      className="pointer-events-auto flex items-center gap-1 rounded-md border border-sky-200 bg-surface px-1.5 py-1 shadow-lg"
+      style={{
+        position: "fixed",
+        left: placement.left,
+        top: placement.top,
+        // Lift slightly so it sits ABOVE its own line; the seed-near-anchor feel.
+        transform: "translateY(-100%)",
+        zIndex: RESTING_MARGIN_TRIGGER_Z,
+        whiteSpace: "nowrap",
+      }}
+      role="group"
+      aria-label="Pending change actions"
+      data-pending-change-pill={placement.targetKey}
+      // Prevent a mousedown on the pill from blurring the editor / clearing the
+      // selection before the click registers (mirrors the margin bolt).
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          target.onRevert();
+        }}
+      >
+        Revert
+      </Button>
+      <Button
+        variant="warm"
+        size="sm"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          target.onKeep();
+        }}
+      >
+        Keep
+      </Button>
+    </div>,
+    document.body,
+  );
+}
