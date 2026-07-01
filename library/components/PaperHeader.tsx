@@ -29,6 +29,7 @@ import PaperAiRequestsMenu, {
 import { BibEntryChrome } from "@/components/library/bib-entry-chrome";
 import { mapTier } from "@/hooks/useLibrary";
 import { type PgmarkPages } from "@library/hooks/usePgmarkPages";
+import PagePicker from "./PagePicker";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -539,7 +540,11 @@ export default function PaperHeader({
           </div>
 
           {/* ── COLUMN 3 — PDF / PAPER (page count · picker) ── The view toggle
-              lives pinned at the pod's top-right, not in this column. */}
+              lives pinned at the pod's top-right, not in this column. The page
+              picker renders here ONLY in PDF mode: in TEXT mode it moves into
+              the editor's in-card chrome band (EditorPane `chromeHeaderTrailing`,
+              inline with the paragraph back/forward nav), so the header would
+              double it. The page-count LABEL stays in both modes. */}
           <div
             style={{
               minWidth: 0,
@@ -559,7 +564,9 @@ export default function PaperHeader({
             >
               {pageCountLabel}
             </span>
-            {pgmarkPages && <PagePicker pages={pgmarkPages} narrow={narrow} />}
+            {viewMode === "pdf" && pgmarkPages && (
+              <PagePicker pages={pgmarkPages} narrow={narrow} />
+            )}
           </div>
         </div>
 
@@ -636,83 +643,6 @@ export default function PaperHeader({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// ─── text-view page picker ───────────────────────────────────────────
-
-/** `[label] / count [go]` — seeds the input with the current page label, jumps
- *  to the typed LABEL on Enter / go. Renders nothing for pgmark-less papers
- *  (DOCX / plain-tex). The page COUNT is `pages.length`; the input matches the
- *  literal printed-page LABEL (not a 1..N ordinal). */
-function PagePicker({ pages, narrow }: { pages: PgmarkPages; narrow: boolean }) {
-  const { pages: marks, currentLabel, scrollToPage } = pages;
-  const [draft, setDraft] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
-
-  // No anchors → nothing to pick.
-  if (marks.length === 0) return null;
-
-  const shown = editing ? (draft ?? "") : (currentLabel ?? "");
-  const commit = () => {
-    if (draft != null && draft.trim()) scrollToPage(draft.trim());
-    setEditing(false);
-    setDraft(null);
-  };
-
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        fontFamily: "var(--mono)",
-        fontSize: 11,
-        color: "var(--muted)",
-        flexShrink: 0,
-      }}
-      title="Jump to a printed page"
-    >
-      {!narrow && <span aria-hidden="true">p.</span>}
-      <input
-        type="text"
-        value={shown}
-        onFocus={() => {
-          setEditing(true);
-          setDraft(currentLabel ?? "");
-        }}
-        onChange={(e) => {
-          setEditing(true);
-          setDraft(e.target.value);
-        }}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-            (e.currentTarget as HTMLInputElement).blur();
-          } else if (e.key === "Escape") {
-            setEditing(false);
-            setDraft(null);
-            (e.currentTarget as HTMLInputElement).blur();
-          }
-        }}
-        aria-label="Go to printed page"
-        style={{
-          width: 40,
-          padding: "2px 4px",
-          fontFamily: "var(--mono)",
-          fontSize: 11,
-          textAlign: "center",
-          color: "var(--foreground)",
-          background: "var(--surface)",
-          border: "1px solid var(--border-light)",
-          borderRadius: 4,
-          outline: "none",
-        }}
-      />
-      <span aria-hidden="true">/ {marks.length}</span>
     </div>
   );
 }

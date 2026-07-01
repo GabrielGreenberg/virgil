@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/react";
 import EditorPane from "@/components/EditorPane";
@@ -18,6 +18,7 @@ import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { getSession, setListScrollQuiet } from "@library/lib/view-session-store";
 import type { PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PageScrollLozenge from "./PageScrollLozenge";
+import PagePicker from "./PagePicker";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -353,6 +354,24 @@ function PaperReader({
     }
   }, [tex, onParseError]);
 
+  // Chrome-band page picker element, memoized on the fields PagePicker actually
+  // renders from — NOT on the `pgmarkPages` object, which usePgmarkPages returns
+  // as a fresh literal every render. During a same-page scroll only
+  // scrollTop/containerH bump, leaving `pages` (ref), `currentLabel` (value) and
+  // `scrollToPage` (ref) stable, so this element stays identity-stable and
+  // EditorPane's memo() can bail on the scroll frame; it re-creates only when the
+  // shown page label or the marks actually change. Must sit above the early
+  // returns below (hooks run unconditionally).
+  const pagePickerEl = useMemo(
+    () =>
+      pgmarkPages && pgmarkPages.pages.length > 0 ? (
+        <PagePicker pages={pgmarkPages} />
+      ) : undefined,
+    // Intentionally keyed on the sub-fields, not the fresh `pgmarkPages` object.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pgmarkPages?.pages, pgmarkPages?.currentLabel, pgmarkPages?.scrollToPage],
+  );
+
   if (parseError) {
     return (
       <div
@@ -438,6 +457,14 @@ function PaperReader({
               chrome={READER_CHROME}
               viewPrefs={readerViewPrefs}
               menuBar={readerMenuBar}
+              // Printed-page selector, docked into the editor's in-card chrome
+              // band just left of the paragraph back/forward nav (text mode
+              // only — this component never mounts in PDF mode, where the picker
+              // stays in PaperHeader). Fed the SHARED PgmarkPages threaded from
+              // RightDetail (F#11); renders nothing for pgmark-less papers
+              // (DOCX / plain-tex). Memoized above so a same-page scroll frame
+              // doesn't defeat EditorPane's memo().
+              chromeHeaderTrailing={pagePickerEl}
               onEditorReady={setEditor}
             />
           </EditorChromeProvider>
