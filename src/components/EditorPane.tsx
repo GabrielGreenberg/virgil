@@ -760,6 +760,18 @@ export interface EditorPaneProps {
   leftMarginPrelude?: React.ReactNode;
 
   /**
+   * Optional adornment rendered in the in-card chrome header band, at the
+   * trailing (right) edge just before the docked MenuBar controls (so it lands
+   * immediately to the left of the paragraph back/forward nav). The Library
+   * Reader threads its printed-page `PagePicker` here so the page selector sits
+   * inline with the nav rather than up in the `PaperHeader` pod. Generic
+   * `ReactNode` slot (mirrors `leftMarginPrelude`) — no host-specific code
+   * enters the shared layer. `undefined` in the main app → the band renders
+   * exactly as before.
+   */
+  chromeHeaderTrailing?: React.ReactNode;
+
+  /**
    * Bundle of docked-MenuBar shell state. Reader omits — its chrome hides
    * every control these fields drive (no menu bar edit items, no formatting
    * affordances). The main app passes this to render the docked MenuBar.
@@ -844,6 +856,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     placements,
     viewPrefs,
     leftMarginPrelude,
+    chromeHeaderTrailing,
     menuBar,
     aiWindowOpen = false,
     onAiWindowClose,
@@ -5632,11 +5645,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 <div style={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden' }}>
                   <SectionLozenge sectionPath={viewPrefs.activeSectionPath} />
                 </div>
-                {/* Controls (right) — only in the editor (menuBar present).
-                    Margin-edit Save/Cancel renders in-page next to the drag
-                    guides, so nothing lives here during margin edit. */}
-                {menuBar && (
-                  <div className="pointer-events-auto shrink-0">
+                {/* Controls (right) — the optional `chromeHeaderTrailing`
+                    adornment (Library page picker) sits just left of the docked
+                    MenuBar (present only in the editor). Grouped in one
+                    pointer-events-auto flex row so the picker lands immediately
+                    to the left of the paragraph back/forward nav. Margin-edit
+                    Save/Cancel renders in-page next to the drag guides, so
+                    nothing lives here during margin edit. */}
+                {(chromeHeaderTrailing || menuBar) && (
+                  <div className="pointer-events-auto shrink-0 flex items-center gap-2">
+                    {chromeHeaderTrailing}
+                    {menuBar && (
                     <MenuBar
                       editor={overrideEditor ?? editor}
                       onAddComment={handleToolbarAddComment}
@@ -5684,6 +5703,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       showEditItems={chrome.showMenuBarEditItems ?? true}
                       showFormattingToolbar={chrome.showFormattingToolbar ?? true}
                     />
+                    )}
                   </div>
                 )}
               </div>
