@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
-// The pending-changes feature flag: default OFF (flag-off MUST preserve
-// current behavior so the existing suite stays green), localStorage-readable,
-// and test-overridable.
+// The pending-changes feature flag: default ON (graduated), OPT-OUT via the
+// `"0"` sentinel (which preserves the legacy accept-immediately path),
+// localStorage-readable, and test-overridable.
 import { describe, it, expect, beforeAll, afterEach } from "vitest";
 import { isPendingChangesOn, setPendingChangesFlag } from "../pending-changes-flag";
 
@@ -28,27 +28,29 @@ afterEach(() => {
 });
 
 describe("pending-changes flag", () => {
-  it("defaults OFF", () => {
-    expect(isPendingChangesOn()).toBe(false);
-  });
-
-  it("reads `1` from localStorage", () => {
-    window.localStorage.setItem("virgil:pending-changes", "1");
+  it("defaults ON (unset)", () => {
     expect(isPendingChangesOn()).toBe(true);
   });
 
-  it("any non-`1` localStorage value is OFF", () => {
-    window.localStorage.setItem("virgil:pending-changes", "true");
+  it("opts out with the `0` sentinel", () => {
+    window.localStorage.setItem("virgil:pending-changes", "0");
     expect(isPendingChangesOn()).toBe(false);
+  });
+
+  it("any non-`0` localStorage value is ON", () => {
+    window.localStorage.setItem("virgil:pending-changes", "true");
+    expect(isPendingChangesOn()).toBe(true);
+    window.localStorage.setItem("virgil:pending-changes", "1");
+    expect(isPendingChangesOn()).toBe(true);
   });
 
   it("the test override wins over localStorage (both directions)", () => {
-    window.localStorage.setItem("virgil:pending-changes", "1");
-    setPendingChangesFlag(false);
-    expect(isPendingChangesOn()).toBe(false);
+    window.localStorage.setItem("virgil:pending-changes", "0");
     setPendingChangesFlag(true);
     expect(isPendingChangesOn()).toBe(true);
-    setPendingChangesFlag(undefined); // clear → falls back to localStorage
-    expect(isPendingChangesOn()).toBe(true);
+    setPendingChangesFlag(false);
+    expect(isPendingChangesOn()).toBe(false);
+    setPendingChangesFlag(undefined); // clear → falls back to localStorage ("0" → off)
+    expect(isPendingChangesOn()).toBe(false);
   });
 });
