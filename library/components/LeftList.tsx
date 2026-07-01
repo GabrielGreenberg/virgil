@@ -583,7 +583,6 @@ export default function LeftList({
                 {col === "status" ? (
                   <StatusSortHeader
                     activeSort={sort}
-                    onSort={handleSort}
                     onSortFacet={handleSortStatusFacet}
                     onReorder={onReorder}
                   />
@@ -738,15 +737,18 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
       }}
       title={`Sort by ${label} · drag to reorder`}
       style={{
-        background: "transparent",
+        // Selected-column highlight: a taupe fill (not just text colour) with
+        // AA-safe ink text when this column is the active sort (F#12 tokens).
+        background: active ? "var(--control-selected-tint)" : "transparent",
         border: "none",
+        borderRadius: 5,
         padding: "6px 8px",
         textAlign: align,
         fontFamily: "var(--mono)",
         fontSize: 10,
         letterSpacing: "0.06em",
         textTransform: "uppercase",
-        color: active ? "var(--accent)" : "var(--muted)",
+        color: active ? "var(--control-selected-ink)" : "var(--muted)",
         cursor: "pointer",
         whiteSpace: "nowrap",
         overflow: "hidden",
@@ -775,23 +777,24 @@ const FACET_GLYPH: Record<StatusFacet, string> = {
 };
 
 /**
- * The STATUS header (F#14): a 2-row stack inside the single status grid track.
- *   - Row 1 is the ordinary `SortHeader` (label-click → COMPOSITE statusRank,
- *     clears the facet; also the drag-reorder handle).
- *   - Row 2 is the facet sub-bar — 4 equal-width segments in the shared
- *     `FACETS` glyph order; the active facet draws a short `--accent` accent
- *     bar + an up/down arrow.
- * Living in one grid track keeps the header aligned with the row's status cell
- * pixel-for-pixel.
+ * The STATUS header (F#14, one line): a single facet rail — 4 equal-width
+ * segments in the shared `FACETS` glyph order (pdf · idx · bib · imp) sharing
+ * `STATUS_SUBGRID` with the row's status cell so the labels sit pixel-for-pixel
+ * over the row pills. Clicking a segment sorts by that facet (click again to
+ * reverse); the active facet gets a taupe background highlight + arrow. The rail
+ * is also the STATUS column's drag-reorder handle (F#13).
+ *
+ * The old two-row layout (a "STATUS" label row over the rail) is gone so the
+ * header reads as a single line aligned with the other column headers. Removing
+ * the label also removed the click target for the COMPOSITE statusRank sort —
+ * sorting is now per-facet only.
  */
 function StatusSortHeader({
   activeSort,
-  onSort,
   onSortFacet,
   onReorder,
 }: {
   activeSort: SortState;
-  onSort: (col: SortColId) => void;
   onSortFacet: (facet: StatusFacet) => void;
   onReorder: (
     from: ReorderableColId,
@@ -800,49 +803,77 @@ function StatusSortHeader({
   ) => void;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        minWidth: 0,
-        overflow: "hidden",
-      }}
-    >
-      <SortHeader
-        col="status"
-        label="status"
-        activeSort={activeSort}
-        onSort={onSort}
-        onReorder={onReorder}
-      />
-      <FacetSubBar activeSort={activeSort} onSortFacet={onSortFacet} />
-    </div>
+    <FacetSubBar
+      activeSort={activeSort}
+      onSortFacet={onSortFacet}
+      onReorder={onReorder}
+    />
   );
 }
 
-/** The ~3px facet rail under the STATUS label. Four equal-width clickable
- *  segments in `FACETS` order; the active facet draws an accent bar + arrow. */
+/** The single-line STATUS facet rail. Four equal-width clickable segments in
+ *  `FACETS` order, sharing `STATUS_SUBGRID` + the row's `0 8px` inset with the
+ *  StatusPills cell so each glyph sits over its row pill. The active facet gets
+ *  a taupe background highlight + arrow (no bottom-border bar). Doubles as the
+ *  STATUS column's drag-reorder handle (F#13): each segment is a drag source
+ *  (col = "status") and the rail is a drop target. */
 function FacetSubBar({
   activeSort,
   onSortFacet,
+  onReorder,
 }: {
   activeSort: SortState;
   onSortFacet: (facet: StatusFacet) => void;
+  onReorder: (
+    from: ReorderableColId,
+    over: ReorderableColId,
+    side: "before" | "after",
+  ) => void;
 }) {
   const activeFacet =
     activeSort.col === "status" ? activeSort.facet : undefined;
+  // A stationary click sorts; a press-and-drag reorders the column (mirrors
+  // SortHeader). The ref suppresses the stray click some browsers synthesize
+  // after a drag.
+  const draggingRef = useRef(false);
+  const [dropSide, setDropSide] = useState<"before" | "after" | null>(null);
   return (
     <div
       role="group"
-      aria-label="Sort by status facet"
+      aria-label="Sort by status facet · drag to reorder the column"
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes(COL_DT_TYPE)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const rect = e.currentTarget.getBoundingClientRect();
+        const side = e.clientX < rect.left + rect.width / 2 ? "before" : "after";
+        setDropSide((prev) => (prev === side ? prev : side));
+      }}
+      onDragLeave={() => setDropSide(null)}
+      onDrop={(e) => {
+        const from = e.dataTransfer.getData(COL_DT_TYPE);
+        setDropSide(null);
+        if (!from) return;
+        e.preventDefault();
+        const rect = e.currentTarget.getBoundingClientRect();
+        const side = e.clientX < rect.left + rect.width / 2 ? "before" : "after";
+        if (isReorderableColId(from)) onReorder(from, "status", side);
+      }}
       style={{
-        // Shared with the row's StatusPills grid cell (STATUS_SUBGRID) so the
-        // four labels sit directly over the four row pills and scale together
-        // on resize. No inter-segment gap — the row cell has none either, so a
-        // gap here would drift the labels off the pills.
+        // Shared with the row's StatusPills grid cell (STATUS_SUBGRID + the
+        // matching `0 8px` inset) so the four labels sit directly over the four
+        // row pills and scale together on resize.
         display: "grid",
         gridTemplateColumns: STATUS_SUBGRID,
-        padding: "0 8px 4px",
+        padding: "0 8px",
+        alignItems: "stretch",
+        // Insertion indicator when another column is dragged over (F#13).
+        boxShadow:
+          dropSide === "before"
+            ? "inset 2px 0 0 var(--accent)"
+            : dropSide === "after"
+              ? "inset -2px 0 0 var(--accent)"
+              : "none",
       }}
     >
       {FACETS.map((facet) => {
@@ -852,36 +883,49 @@ function FacetSubBar({
           <button
             key={facet}
             type="button"
-            onClick={() => onSortFacet(facet)}
-            title={`Sort by ${facet} (best first; click again to reverse)`}
+            draggable
+            onDragStart={(e) => {
+              draggingRef.current = true;
+              e.dataTransfer.setData(COL_DT_TYPE, "status");
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragEnd={() => {
+              setDropSide(null);
+              setTimeout(() => {
+                draggingRef.current = false;
+              }, 0);
+            }}
+            onClick={() => {
+              if (draggingRef.current) return;
+              onSortFacet(facet);
+            }}
+            title={`Sort by ${facet} (best first; click again to reverse) · drag to reorder`}
             aria-label={`Sort by ${facet}`}
             aria-pressed={active}
             style={{
-              position: "relative",
               display: "flex",
               alignItems: "center",
-              // Left-anchor the glyph within its track so it sits over the row
-              // pill (StatusPills grid cells are justifySelf:start). Centering
-              // here would drift the label off the left-aligned pill below.
+              // Left-anchor the glyph within its track (matching the row pill's
+              // ~6px inset) so the label sits over the pill below.
               justifyContent: "flex-start",
               gap: 2,
               minWidth: 0,
-              height: 11,
-              padding: 0,
+              // Match SortHeader's 6px vertical rhythm so the rail sits on the
+              // same baseline as the other one-line column headers.
+              padding: "6px 6px",
               border: "none",
-              background: "transparent",
+              borderRadius: 5,
+              // Selected-column highlight: a taupe fill (not just text colour)
+              // with AA-safe ink text (F#12 tokens). Applies to the active facet
+              // here and to the active regular header in SortHeader.
+              background: active ? "var(--control-selected-tint)" : "transparent",
               cursor: "pointer",
               fontFamily: "var(--mono)",
-              fontSize: 8,
-              lineHeight: "11px",
-              letterSpacing: "0.04em",
+              fontSize: 10,
+              lineHeight: "12px",
+              letterSpacing: "0.06em",
               textTransform: "uppercase",
-              color: active ? "var(--accent)" : "var(--muted)",
-              // The ~3px accent rail: a bottom border that's accent when active,
-              // a faint divider otherwise, so all four segments read as a rail.
-              borderBottom: active
-                ? "3px solid var(--accent)"
-                : "3px solid var(--border-light)",
+              color: active ? "var(--control-selected-ink)" : "var(--muted)",
               overflow: "hidden",
             }}
           >
@@ -894,7 +938,11 @@ function FacetSubBar({
             >
               {FACET_GLYPH[facet]}
             </span>
-            {arrow && <span aria-hidden="true">{arrow}</span>}
+            {arrow && (
+              <span aria-hidden="true" style={{ fontSize: 8 }}>
+                {arrow}
+              </span>
+            )}
           </button>
         );
       })}
