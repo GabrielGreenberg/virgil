@@ -16,6 +16,7 @@ import {
   DEFAULT_WIDTHS,
   FACETS,
   RESIZER_WIDTH,
+  STATUS_SUBGRID,
   type ReorderableColId,
   type ResizableColId,
   type SortColId,
@@ -835,9 +836,12 @@ function FacetSubBar({
       role="group"
       aria-label="Sort by status facet"
       style={{
+        // Shared with the row's StatusPills grid cell (STATUS_SUBGRID) so the
+        // four labels sit directly over the four row pills and scale together
+        // on resize. No inter-segment gap — the row cell has none either, so a
+        // gap here would drift the labels off the pills.
         display: "grid",
-        gridTemplateColumns: `repeat(${FACETS.length}, 1fr)`,
-        gap: 2,
+        gridTemplateColumns: STATUS_SUBGRID,
         padding: "0 8px 4px",
       }}
     >
@@ -856,7 +860,10 @@ function FacetSubBar({
               position: "relative",
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
+              // Left-anchor the glyph within its track so it sits over the row
+              // pill (StatusPills grid cells are justifySelf:start). Centering
+              // here would drift the label off the left-aligned pill below.
+              justifyContent: "flex-start",
               gap: 2,
               minWidth: 0,
               height: 11,

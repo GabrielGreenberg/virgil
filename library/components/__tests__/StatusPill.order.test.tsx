@@ -6,9 +6,13 @@
 //
 // This pins:
 //   1. The rendered pills appear in `FACETS` order (pdf · idx · bib · imp).
-//   2. The "imp" pill is conditional on `bibImported` (preserved through the
-//      FACETS-driven refactor).
-//   3. Reordering `FACETS` reorders the pills — i.e. the render really reads the
+//   2. In FLOW mode the "imp" pill is conditional on `bibImported` (preserved
+//      through the FACETS-driven refactor — the PaperHeader relies on it).
+//   3. In GRID mode (the LeftList row's 4-mini-column cell) every facet ALWAYS
+//      renders a GLYPH-ONLY pill (the FacetSubBar header names the facet) —
+//      `imp` shows a gray "—" when not imported — so all 4 cells are filled and
+//      the pills stay aligned under the header labels without overflowing.
+//   4. Reordering `FACETS` reorders the pills — i.e. the render really reads the
 //      array (a manual JSX order would ignore this).
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
@@ -54,7 +58,7 @@ describe("StatusPills — FACETS drives glyph order", () => {
     expect(renderedFacetOrder(container)).toEqual([...FACETS]);
   });
 
-  it("omits the imp pill when not imported (the conditional is preserved)", () => {
+  it("omits the imp pill when not imported in FLOW mode (the conditional is preserved)", () => {
     const { container } = render(
       <StatusPills pdfPresent indexed="indexed" bib="authenticated" />,
     );
@@ -62,6 +66,29 @@ describe("StatusPills — FACETS drives glyph order", () => {
     expect(order).not.toContain("imp");
     // The remaining three keep their FACETS-relative order.
     expect(order).toEqual(FACETS.filter((f) => f !== "imp"));
+  });
+
+  it("renders four glyph-only pills in GRID mode (imp gray '—' when not imported), in FACETS order", () => {
+    // Distinct per-facet glyphs prove the render is in pdf·idx·bib·imp order:
+    // pdf present → "✓", idx failed → "!", bib canonical → "≈", imp absent → "—".
+    const { container } = render(
+      <StatusPills pdfPresent indexed="failed" bib="canonical" grid />,
+    );
+    const gridEl = container.firstElementChild as HTMLElement;
+    // Every facet renders a cell — no empty cell, so alignment holds.
+    expect(gridEl.children.length).toBe(FACETS.length);
+    expect(container.textContent).toBe("✓!≈—");
+    // Glyph-only: the facet name is NOT repeated in the pill (the header owns it).
+    expect(container.textContent).not.toMatch(/pdf|idx|bib|imp/);
+  });
+
+  it("renders a blue '✓' imp glyph in GRID mode when imported", () => {
+    const { container } = render(
+      <StatusPills pdfPresent indexed="failed" bib="canonical" bibImported grid />,
+    );
+    const gridEl = container.firstElementChild as HTMLElement;
+    expect(gridEl.children.length).toBe(FACETS.length);
+    expect(container.textContent).toBe("✓!≈✓");
   });
 
   it("the render order genuinely tracks FACETS (not a hardcoded JSX sequence)", () => {
