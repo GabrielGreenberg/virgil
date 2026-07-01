@@ -61,6 +61,13 @@ export interface BibEntryChromeProps {
    *  true. Independent of `inLibrary` so the index-tier + ✓ chips still
    *  render in the outer tab; only the link is suppressed. */
   showOpenLink?: boolean;
+  /** Whether to render the trailing `<LibraryStatusRow>` (index-tier chip +
+   *  bib-auth chip + open link). Defaults to true (the historical behavior —
+   *  every other caller keeps its status row). PaperHeader passes false: it
+   *  surfaces those states full-phrase in a dedicated STATUS column, so the
+   *  inline chips would be redundant. The membership chips + headline are
+   *  unaffected. */
+  showStatusRow?: boolean;
 }
 
 /** Subtle 6-dot grip — the drag affordance lean (grab cursor + subtle
@@ -96,6 +103,7 @@ export function BibEntryChrome({
   inLibrary,
   membershipChips,
   showOpenLink = true,
+  showStatusRow = true,
 }: BibEntryChromeProps) {
   const [expanded, setExpanded] = useState(false);
   const headerText = [author, year, title].filter(Boolean).join(" · ");
@@ -185,12 +193,14 @@ export function BibEntryChrome({
       {/* Layers 2 + 3 — membership chips, then verification / tier / open. */}
       <div className="flex flex-col gap-1 pl-[18px]">
         <LibraryMembershipChips chips={membershipChips} />
-        <LibraryStatusRow
-          indexTier={indexTier}
-          bibState={bibState}
-          citekey={citekey}
-          inLibrary={inLibrary && showOpenLink}
-        />
+        {showStatusRow && (
+          <LibraryStatusRow
+            indexTier={indexTier}
+            bibState={bibState}
+            citekey={citekey}
+            inLibrary={inLibrary && showOpenLink}
+          />
+        )}
       </div>
     </div>
   );
