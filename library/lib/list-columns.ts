@@ -26,6 +26,17 @@ export type StatusFacet = "pdf" | "idx" | "bib" | "imp";
  *  `compareStatusFacet` switch is exhaustive over it — none can drift. */
 export const FACETS: readonly StatusFacet[] = ["pdf", "idx", "bib", "imp"];
 
+/** The shared sub-grid track template for the STATUS column's four facets —
+ *  one `minmax(0, 1fr)` track per FACET. The SAME string drives BOTH the
+ *  FacetSubBar header segments AND the row's `StatusPills` cell (grid mode),
+ *  so the four header labels (pdf · idx · bib · imp) and the four row pills
+ *  share identical tracks and always align — and scale together when the
+ *  STATUS column is resized (F#13). `minmax(0, 1fr)` (not bare `1fr`) lets
+ *  each cell shrink below its content width instead of overflowing the
+ *  column at its min width. Kept next to FACETS so the track count and the
+ *  facet count can't drift. */
+export const STATUS_SUBGRID = "repeat(4, minmax(0, 1fr))";
+
 const FACET_IDS: ReadonlySet<string> = new Set(FACETS);
 
 export function isStatusFacet(s: unknown): s is StatusFacet {

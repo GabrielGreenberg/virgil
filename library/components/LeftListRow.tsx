@@ -149,12 +149,17 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
       case "status":
         return (
           <Cell>
-            <span style={{ display: "block", paddingLeft: 8 }}>
+            {/* 4 mini-columns aligned under the FacetSubBar's pdf/idx/bib/imp
+             *  labels. The 0 8px horizontal padding mirrors the sub-bar's own
+             *  `padding: "0 8px 4px"` so the shared STATUS_SUBGRID tracks line
+             *  up header-to-cell. */}
+            <span style={{ display: "block", padding: "0 8px" }}>
               <StatusPills
                 pdfPresent={entry.pdf.present}
                 indexed={entry.indexed.state}
                 bib={entry.bib.state}
                 bibImported={entry.bib.imported}
+                grid
               />
             </span>
           </Cell>
