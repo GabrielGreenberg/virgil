@@ -71,7 +71,6 @@ import {
   type AnchoredCardRef,
   type CardStore,
 } from "./anchored-card-store";
-import type { CardKind } from "@/panels/_shared/types";
 import { isInlineAtomCardKind } from "@/cards/predicates";
 import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-flag";
 import { cssTokenForCardKind } from "@/cards/legacy-token-crosswalk";
@@ -140,12 +139,72 @@ function entityExists(
   return findEntity(ref, c) !== undefined;
 }
 
+/** Narrow view of a suggestion card for the applied-change synthesis. The
+ *  reconciler's `findEntity` returns the widened `{id,kind?,links?}` shape, but
+ *  a suggestion entity IS the full card at runtime, so we read `status` /
+ *  `appliedChange` through this cast. */
+type AppliedSuggestionEntity = {
+  kind?: string;
+  status?: string;
+  appliedChange?: {
+    anchorId: string;
+    anchorUuid: string;
+    replacement: string;
+    originalText: string;
+  };
+};
+
+/** Synthesized Mode-B link for an APPLIED pending-AI-change. Its persisted card
+ *  links still point at the ORIGINAL span, whose text the splice replaced — so
+ *  `resolveLink` can't find that mark and degrades to a whole-paragraph vertical
+ *  bar. The live blue `linkedAnchor` mark is under `appliedChange.anchorId`
+ *  instead; this link points the reconciler at it, so it paints the AI-written
+ *  span as an inline text highlight (never the paragraph rail). Returns null
+ *  unless `ref` is an applied suggestion — pending/stale/kept cards fall back to
+ *  their persisted links, and a lost mark degrades to the paragraph as before. */
+export function appliedChangeLink(
+  ref: AnchoredCardRef,
+  entity: { id: string; kind?: string; links?: Link[] },
+): Link | null {
+  if (ref.kind !== "revision-suggestion" && ref.kind !== "cutter-suggestion") {
+    return null;
+  }
+  const sugg = entity as AppliedSuggestionEntity;
+  if (
+    sugg.kind !== "suggestion" ||
+    sugg.status !== "applied" ||
+    !sugg.appliedChange
+  ) {
+    return null;
+  }
+  const ac = sugg.appliedChange;
+  return {
+    id: ac.anchorId,
+    kind: "anchor",
+    anchor: {
+      type: "textObject",
+      targetKind: "linkedRange",
+      textObjectIds: [ac.anchorUuid],
+      margin: { side: "right" },
+      textRange: {
+        anchorId: ac.anchorId,
+        textSnapshot: ac.replacement || ac.originalText,
+      },
+    },
+    target: { type: "card", ref: { kind: ref.kind, id: ref.id } },
+    createdAt: "",
+  };
+}
+
 function linksForRef(ref: AnchoredCardRef, c: EntityCollectionSlots): Link[] {
   if (ref.kind === "footnote" || ref.kind === "citation") {
     return [linkForInlineAtom(ref.kind, ref.id)];
   }
   const entity = findEntity(ref, c);
-  return entity?.links ? [...entity.links] : [];
+  if (!entity) return [];
+  const applied = appliedChangeLink(ref, entity);
+  if (applied) return [applied];
+  return entity.links ? [...entity.links] : [];
 }
 
 export interface UseAnchorHighlightReconcilerArgs {
@@ -318,10 +377,12 @@ export function useAnchorHighlightReconciler({
         if (intoNode.has(from)) continue;
         const valueAttr: "paragraph" | "true" =
           resolved.kind === "paragraph" ? "paragraph" : "true";
+        // Use the AnchoredCardRef's spine `kind` (guaranteed a real CardKind by
+        // findEntity), NOT `link.target.ref.kind` — the on-disk link token can
+        // be an un-normalized raw kind like "suggestion" (legacy/stale live
+        // data), which the crosswalk rejects with a console error.
         const kind =
-          resolved.kind === "paragraph"
-            ? paragraphKindFor(link.target.ref.kind as CardKind)
-            : null;
+          resolved.kind === "paragraph" ? paragraphKindFor(ref.kind) : null;
         const side =
           resolved.kind === "paragraph" && link.anchor.type === "textObject"
             ? link.anchor.margin.side
