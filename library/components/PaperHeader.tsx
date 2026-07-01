@@ -27,8 +27,7 @@ import PaperAiRequestsMenu, {
   type AiRequestItem,
 } from "./PaperAiRequestsMenu";
 import { BibEntryChrome } from "@/components/library/bib-entry-chrome";
-import { mapTier, useLibraryMemberships } from "@/hooks/useLibrary";
-import { membershipChipsFor } from "@/components/library/provenance-chips";
+import { mapTier } from "@/hooks/useLibrary";
 import { type PgmarkPages } from "@library/hooks/usePgmarkPages";
 
 interface Props {
@@ -76,15 +75,18 @@ const REQUESTS: { kind: RequestKind; label: string }[] = [
   { kind: "importbib", label: "Import bib" },
 ];
 
-/** Sole header for a paper-file tab — a 3-column row inside one warm-sheet pod:
- *  (1) BIB DATA — the formatted bibliography headline + membership chips, with
- *      the citekey (@type{key}), a copy button, and the fields/edit controls as
- *      its footer; (2) STATUS — the index-state, bib-auth, and (when imported)
- *      "Bibliography imported" pills as full-phrase stacked lozenges, with the
- *      AI-requests dropdown beneath; (3) PDF / PAPER — a page-count label, the
- *      printed-page picker, and the Text/PDF view toggle. Flash text, the
- *      expanded fields table, and the AI-instructions textarea run full-width
- *      below the row. Below ~560px the three columns stack. */
+/** Sole header for a paper-file tab — a narrow, centered warm-sheet pod
+ *  (max-width ~620px, margin-inline auto) with three EQUAL-width columns:
+ *  (1) BIB DATA — the formatted bibliography headline (author · year, then the
+ *      title on its own line) + the full APA citation, with the raw citekey, a
+ *      copy button, and the fields/edit controls as its footer; (2) STATUS —
+ *      the index-state, bib-auth, and (when imported) "Bibliography imported"
+ *      pills as full-phrase stacked lozenges, with the AI-requests dropdown
+ *      beneath; (3) PDF / PAPER — a page-count label and the printed-page
+ *      picker. The Text/PDF view toggle is PINNED at the pod's top-right so it
+ *      stays fixed as content changes. Flash text, the expanded fields table,
+ *      and the AI-instructions textarea run full-width below the row. Below
+ *      ~560px the three columns stack. */
 export default function PaperHeader({
   handle,
   entry,
@@ -258,17 +260,6 @@ export default function PaperHeader({
 
   const anyChecked = Object.values(queued).some(Boolean);
 
-  // Membership chips for the bib-entry status stack. "Central" is implicit
-  // for any real catalog entry (it lives in master.bib), so surface it
-  // alongside any custom-library memberships.
-  const { membershipMap } = useLibraryMemberships();
-  const membershipChips = citekey
-    ? membershipChipsFor({
-        inLocal: false,
-        inCentral: true,
-        customLibraries: membershipMap.get(citekey),
-      })
-    : [];
   const apaHtml = bib ? formatBibliography(bib, "apa") : undefined;
 
   // Responsive layout: measure the pod's border-box width and, below a
@@ -353,6 +344,7 @@ export default function PaperHeader({
       <div
         ref={podRef}
         style={{
+          position: "relative",
           background: "var(--pod-panel)",
           borderRadius: "var(--panel-radius)",
           border: "var(--panel-border)",
@@ -361,23 +353,54 @@ export default function PaperHeader({
           display: "flex",
           flexDirection: "column",
           gap: 8,
+          // NARROW + CENTERED (change 6): the pod does not stretch full-width.
+          // A comfortable max-width centered over the text pod below; it shrinks
+          // freely on narrow panels and still stacks below the 560px threshold.
+          width: "100%",
+          maxWidth: 620,
+          marginInline: "auto",
           minWidth: 0,
         }}
       >
-        {/* THREE-column flex ROW: bib data (yields) · status · pdf/paper.
-            Below ~560px the columns STACK (flexDirection: column) so the
-            detail panel can shrink to ~330px without overflow. */}
+        {/* Text/PDF view toggle — PINNED top-right of the pod so it never moves
+            as the columns' content changes. Reserved space (paddingRight on the
+            row) keeps it from overlapping col-3 content at any width. */}
         <div
           style={{
-            display: "flex",
-            flexDirection: narrow ? "column" : "row",
-            alignItems: narrow ? "stretch" : "flex-start",
+            position: "absolute",
+            top: 10,
+            right: 14,
+            zIndex: 1,
+          }}
+        >
+          <ViewToggle
+            mode={viewMode}
+            onChange={onViewModeChange}
+            pdfAvailable={pdfAvailable}
+            indexedState={indexedState}
+            narrow={narrow}
+          />
+        </div>
+
+        {/* THREE EQUAL-width columns: bib data · status · pdf/paper. A grid of
+            `repeat(3, minmax(0, 1fr))` keeps col1/col2/col3 the same width.
+            Below ~560px the columns STACK (single column) so the detail panel
+            can shrink to ~330px without overflow. The top row reserves space on
+            the right for the pinned view toggle. */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: narrow ? "1fr" : "repeat(3, minmax(0, 1fr))",
+            alignItems: "start",
             gap: narrow ? 10 : 16,
             minWidth: 0,
+            // Reserve vertical room for the pinned toggle so it never overlaps
+            // col-1 headline content; stacked layout gets the same clearance.
+            paddingTop: 26,
           }}
         >
           {/* ── COLUMN 1 — BIB DATA (the yielder) ── */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ minWidth: 0 }}>
             <BibEntryChrome
               citekey={citekey ?? "?"}
               author={authorText || undefined}
@@ -387,12 +410,13 @@ export default function PaperHeader({
               indexTier={mapTier(entry.indexed.state)}
               bibState={entry.bib.state}
               inLibrary={!!citekey}
-              membershipChips={membershipChips}
+              membershipChips={[]}
+              showMembershipChips={false}
               showOpenLink={showOpenInTab}
               showStatusRow={false}
             />
-            {/* citekey (@type{key}) + copy + fields/edit — mono micro-controls
-                under the headline, aligned with the chip column. */}
+            {/* raw citekey + copy + fields/edit — mono micro-controls under
+                the headline, aligned with the chip column. */}
             <div
               style={{
                 display: "flex",
@@ -411,7 +435,7 @@ export default function PaperHeader({
                   whiteSpace: "nowrap",
                 }}
               >
-                @{bib?.type ?? "?"}{`{${citekey ?? "?"}}`}
+                {citekey ?? "?"}
               </code>
               {citekey && (
                 <button
@@ -497,8 +521,7 @@ export default function PaperHeader({
           {/* ── COLUMN 2 — STATUS (full-phrase pills, stacked) + AI menu ── */}
           <div
             style={{
-              flexShrink: 0,
-              minWidth: 160,
+              minWidth: 0,
               display: "flex",
               flexDirection: "column",
               gap: 5,
@@ -515,11 +538,11 @@ export default function PaperHeader({
             />
           </div>
 
-          {/* ── COLUMN 3 — PDF / PAPER (page count · picker · view toggle) ── */}
+          {/* ── COLUMN 3 — PDF / PAPER (page count · picker) ── The view toggle
+              lives pinned at the pod's top-right, not in this column. */}
           <div
             style={{
-              flexShrink: 0,
-              minWidth: 110,
+              minWidth: 0,
               display: "flex",
               flexDirection: "column",
               gap: 5,
@@ -537,13 +560,6 @@ export default function PaperHeader({
               {pageCountLabel}
             </span>
             {pgmarkPages && <PagePicker pages={pgmarkPages} narrow={narrow} />}
-            <ViewToggle
-              mode={viewMode}
-              onChange={onViewModeChange}
-              pdfAvailable={pdfAvailable}
-              indexedState={indexedState}
-              narrow={narrow}
-            />
           </div>
         </div>
 

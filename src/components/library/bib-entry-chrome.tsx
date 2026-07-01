@@ -8,11 +8,11 @@
  * popout, AnnotationEditor, or atom plumbing — so it's pure and reusable.
  *
  * Three stacked layers (matching BibEntryCard top→bottom):
- *   1. Structured headline: `{author bold} · {year bold} · {title italic}`,
- *      with a subtle drag handle (grab cursor) and a "more"/"less" toggle that
- *      reveals the full APA-formatted citation.
+ *   1. Structured headline: author · year on the first line, the title on its
+ *      own line beneath, with a subtle drag handle (grab cursor). The full
+ *      APA-formatted citation is always shown beneath (when present).
  *   2. Library membership chips (`<LibraryMembershipChips>`) — renders nothing
- *      when empty.
+ *      when empty or when `showMembershipChips` is false.
  *   3. Status row (`<LibraryStatusRow>`) — the ✓Authenticated chip + the
  *      index-tier chip + the shared `<OpenEntryLink>` (the F#9 "open in a new
  *      tab" link, gated by `showOpenLink`).
@@ -21,7 +21,6 @@
  * it as the single source in a later fast-follow (deferred).
  */
 
-import { useState } from "react";
 import type {
   LibraryBibState,
   LibraryIndexTier,
@@ -43,9 +42,9 @@ export interface BibEntryChromeProps {
   author?: string;
   year?: string;
   title?: string;
-  /** `formatBibliography(bib, "apa")` HTML — revealed under "more". When
-   *  absent, the "more" toggle is hidden. Trusted the same way PaperHeader
-   *  trusts it today (rendered via dangerouslySetInnerHTML into a
+  /** `formatBibliography(bib, "apa")` HTML — always rendered beneath the
+   *  headline when present (no "more"/"less" toggle). Trusted the same way
+   *  PaperHeader trusts it today (rendered via dangerouslySetInnerHTML into a
    *  `.library-bib-formatted` block). */
   apaHtml?: string;
   /** Processing tier (from `mapTier(entry.indexed.state)`). */
@@ -56,6 +55,10 @@ export interface BibEntryChromeProps {
   inLibrary: boolean;
   /** Custom-library membership chips (from `membershipChipsFor(...)`). */
   membershipChips: ProvenanceChip[];
+  /** Whether to render the library-membership chips (CENTRAL / custom). Defaults
+   *  to true (historical behavior). PaperHeader passes false: it deliberately
+   *  drops the lozenges from the paper header. */
+  showMembershipChips?: boolean;
   /** Whether to surface the `<OpenEntryLink>` "open in a new tab" link.
    *  Hidden in the OUTER Virgil-bar tab (already a tab) — F#9. Defaults to
    *  true. Independent of `inLibrary` so the index-tier + ✓ chips still
@@ -102,10 +105,10 @@ export function BibEntryChrome({
   bibState,
   inLibrary,
   membershipChips,
+  showMembershipChips = true,
   showOpenLink = true,
   showStatusRow = true,
 }: BibEntryChromeProps) {
-  const [expanded, setExpanded] = useState(false);
   const headerText = [author, year, title].filter(Boolean).join(" · ");
 
   return (
@@ -140,45 +143,30 @@ export function BibEntryChrome({
         data-citekey={citekey}
       >
         <GripDots />
+        {/* author · year on the first line; title on its own line beneath. */}
         <div
           className="flex-1 min-w-0 leading-snug text-[13px]"
           style={{ overflowWrap: "anywhere" }}
           data-hint={headerText}
           aria-label={headerText}
         >
-          {author && <span className="font-semibold">{author}</span>}
-          {author && year && (
-            <span className="text-ink-muted mx-1.5">&middot;</span>
+          {(author || year) && (
+            <div className="min-w-0">
+              {author && <span className="font-semibold">{author}</span>}
+              {author && year && (
+                <span className="text-ink-muted mx-1.5">&middot;</span>
+              )}
+              {year && <span className="font-semibold">{year}</span>}
+            </div>
           )}
-          {year && <span className="font-semibold">{year}</span>}
-          {(author || year) && title && (
-            <span className="text-ink-muted mx-1.5">&middot;</span>
+          {title && (
+            <div className="min-w-0 italic">{title}</div>
           )}
-          {title && <span className="italic">{title}</span>}
         </div>
-        {apaHtml ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setExpanded((x) => !x);
-            }}
-            draggable={false}
-            onDragStart={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-            aria-expanded={expanded}
-            aria-label={expanded ? "Hide full citation" : "Show full citation"}
-            className="shrink-0 text-[10px] text-ink-muted hover:text-ink-body transition-colors px-1"
-          >
-            {expanded ? "less" : "more"}
-          </button>
-        ) : null}
       </div>
 
-      {/* Expanded APA citation — trusted formatBibliography output. */}
-      {expanded && apaHtml ? (
+      {/* Full APA citation — trusted formatBibliography output, always shown. */}
+      {apaHtml ? (
         <div
           className="library-bib-formatted pl-[18px] text-[13px] leading-relaxed"
           style={{
@@ -190,18 +178,23 @@ export function BibEntryChrome({
         />
       ) : null}
 
-      {/* Layers 2 + 3 — membership chips, then verification / tier / open. */}
-      <div className="flex flex-col gap-1 pl-[18px]">
-        <LibraryMembershipChips chips={membershipChips} />
-        {showStatusRow && (
-          <LibraryStatusRow
-            indexTier={indexTier}
-            bibState={bibState}
-            citekey={citekey}
-            inLibrary={inLibrary && showOpenLink}
-          />
-        )}
-      </div>
+      {/* Layers 2 + 3 — membership chips, then verification / tier / open.
+          Skip the wrapper entirely when both are suppressed/empty (e.g. the
+          PaperHeader passes showMembershipChips=false + showStatusRow=false)
+          so no empty flex row is left behind. */}
+      {((showMembershipChips && membershipChips.length > 0) || showStatusRow) && (
+        <div className="flex flex-col gap-1 pl-[18px]">
+          {showMembershipChips && <LibraryMembershipChips chips={membershipChips} />}
+          {showStatusRow && (
+            <LibraryStatusRow
+              indexTier={indexTier}
+              bibState={bibState}
+              citekey={citekey}
+              inLibrary={inLibrary && showOpenLink}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
