@@ -89,4 +89,28 @@ describe("BibEntryChrome", () => {
     render(<BibEntryChrome {...baseProps} />);
     expect(screen.getByText("Open")).toBeTruthy();
   });
+
+  it("always renders the APA citation with no more/less toggle", () => {
+    render(
+      <BibEntryChrome
+        {...baseProps}
+        apaHtml="Smith, J. (2020). <em>On the theory of widgets</em>."
+      />,
+    );
+    // The APA block is shown outright — no toggle button to reveal it.
+    expect(screen.queryByRole("button", { name: /full citation/i })).toBeNull();
+    expect(screen.queryByText("more")).toBeNull();
+    expect(screen.queryByText("less")).toBeNull();
+    const apa = document.querySelector(".library-bib-formatted");
+    expect(apa).toBeTruthy();
+    expect(apa?.textContent).toContain("On the theory of widgets");
+  });
+
+  it("hides the membership chips when showMembershipChips=false", () => {
+    render(<BibEntryChrome {...baseProps} showMembershipChips={false} />);
+    expect(screen.queryByText("Reading list")).toBeNull();
+    expect(screen.queryByText("central")).toBeNull();
+    // Headline is unaffected.
+    expect(screen.getByText("On the theory of widgets")).toBeTruthy();
+  });
 });
