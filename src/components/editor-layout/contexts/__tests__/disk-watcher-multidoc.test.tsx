@@ -47,6 +47,19 @@ vi.mock("@/lib/storage", () => ({
   readTextFile: async () => "",
   getTexFilename: () => "main.tex",
   getBibFilename: () => null,
+  invalidateSidecarBundle: () => {},
+}));
+// The provider also mounts a SIBLING SidecarWatcher per doc (live sidecar
+// reactivity). These A2/F2 cases only exercise the DiskWatcher lifecycle, so we
+// stub the sidecar watcher to inert start/stop/pollNow — its own lifecycle is
+// covered by sidecar-watcher.test.ts.
+const sidecarWatchers = new Map<string, { start: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn> }>();
+vi.mock("@/lib/sidecar-watcher", () => ({
+  createSidecarWatcher: (cfg: { docId: string }) => {
+    const w = { start: vi.fn(), stop: vi.fn(), pollNow: async () => {} };
+    sidecarWatchers.set(cfg.docId, w);
+    return w;
+  },
 }));
 
 import {
@@ -71,6 +84,7 @@ function Harness({ docId, liveDocIds }: { docId: string; liveDocIds: string[] })
 beforeEach(() => {
   createCalls.clear();
   watchers.clear();
+  sidecarWatchers.clear();
   clearLedgerCalls.length = 0;
   ctx = null;
 });

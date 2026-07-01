@@ -350,11 +350,18 @@ export async function writeSidecar<T>(
     const docHandle = await requireDocHandle(h.docId);
     const virgil = await getVirgilSubdir(docHandle);
     const fileHandle = await virgil.getFileHandle(filename, { create: true });
-    await writeTextToHandle(fileHandle, JSON.stringify(data, null, 2));
+    const serialized = JSON.stringify(data, null, 2);
+    await writeTextToHandle(fileHandle, serialized);
     // Keep the bundle coherent: the value we just wrote IS the freshest, so
     // update it in place rather than invalidating (a read-after-write sees it).
     const bundle = sidecarCache.get(h.docId);
     if (bundle) bundle.files.set(filename, data);
+    // Stamp the disk ledger with the authoritative post-write fingerprint so
+    // the SidecarWatcher never misreads Virgil's OWN debounced sidecar autosave
+    // as an external change (the own-write guard — same false-positive killer
+    // the .tex/.bib path uses). Keyed on the `virgil/<filename>` relPath the
+    // watcher stats. Best-effort: `stampLedger` never throws.
+    await stampLedger(h.docId, `virgil/${filename}`, serialized);
   });
 }
 

@@ -269,9 +269,15 @@ export async function writeSidecar<T>(
   // "No folder handle stored" throw the Reader hits in production).
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
-  await putText(docFileUrl(h.docId, `virgil/${filename}`), JSON.stringify(data, null, 2));
+  const serialized = JSON.stringify(data, null, 2);
+  await putText(docFileUrl(h.docId, `virgil/${filename}`), serialized);
   const bundle = sidecarCache.get(h.docId);
   if (bundle) bundle.files.set(filename, data);
+  // Stamp the disk ledger so the SidecarWatcher never misreads Virgil's own
+  // debounced sidecar autosave as an external change (own-write guard; dev
+  // mirror of storage-fsa). Keyed on the `virgil/<filename>` relPath the watcher
+  // stats. Best-effort: `stampLedger` never throws.
+  await stampLedger(h.docId, `virgil/${filename}`, serialized);
 }
 
 // ---------------------------------------------------------------------------

@@ -216,8 +216,16 @@ describe("storage-dev — library-paper write guard (per-entry-point)", () => {
     const h = beginDocPipeline(NORMAL_DOC);
     await writeSidecarDev(h, "citations.json", { citations: [] });
     endDocPipeline(h);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0];
+    // The write issues exactly one PUT to the sidecar path. (A second, HEAD,
+    // fetch now follows — the disk-ledger stamp's post-write re-stat, the
+    // own-write guard for the live-sidecar-reactivity SidecarWatcher — so we
+    // filter for the PUT rather than asserting a total fetch count, mirroring the
+    // `writeTex` case below.)
+    const putCalls = fetchSpy.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+    );
+    expect(putCalls.length).toBe(1);
+    const [url, init] = putCalls[0];
     expect(String(url)).toContain(`/api/dev/doc/${NORMAL_DOC}/virgil/citations.json`);
     expect((init as RequestInit).method).toBe("PUT");
   });

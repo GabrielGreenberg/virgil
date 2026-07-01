@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 
 const mockRead = vi.fn();
 const mockWrite = vi.fn();
@@ -13,6 +13,10 @@ vi.mock("@/lib/storage", () => ({
 
 import { type ReactNode } from "react";
 import { usePersistentState } from "../usePersistentState";
+import {
+  SIDECAR_CHANGED_EVENT,
+  dispatchSidecarChanged,
+} from "@/lib/sidecar-watcher";
 import {
   beginDocPipeline,
   __resetForTests,
@@ -34,6 +38,14 @@ beforeEach(() => {
   mockWrite.mockReset();
   mockWrite.mockResolvedValue(undefined);
   __resetForTests();
+});
+
+// Unmount every rendered hook between tests so their window event listeners
+// (the live external-sidecar re-read subscription) don't leak across cases — a
+// leaked listener from a prior `doc-live`/`revisions.json` test would re-read on
+// the next test's dispatch and inflate the mockRead call count.
+afterEach(() => {
+  cleanup();
 });
 
 /**
@@ -294,5 +306,145 @@ describe("usePersistentState — Reader write-guard engages through context", ()
     await Promise.resolve();
     await Promise.resolve();
     expect(mockWrite).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * LIVE external-sidecar reactivity: a `virgil-sidecar-changed` event (dispatched
+ * by the SidecarWatcher after it invalidated the bundle) makes the owning
+ * instance re-read from disk — but ONLY when clean (no pending local edit).
+ *
+ * The event carries `{docId, filename}`; each hook instance re-reads iff BOTH
+ * match its own docId+filename, and iff it has no in-flight debounced write
+ * (the dirty guard — no clobber of a local card edit). These tests drive the
+ * event directly (no watcher / no timers).
+ */
+describe("usePersistentState — live external-sidecar re-read", () => {
+  it("re-reads on a matching event when CLEAN and updates state", async () => {
+    beginDocPipeline("doc-live");
+    mockRead.mockResolvedValue({ items: ["initial"] });
+    const { result } = renderHook(() =>
+      usePersistentState<Shape>("doc-live", "revisions.json", EMPTY),
+    );
+    await waitFor(() => expect(result.current.state.items).toEqual(["initial"]));
+
+    // Simulate an out-of-band write: the next read returns the AI-drafted card.
+    mockRead.mockResolvedValue({ items: ["initial", "ai-drafted"] });
+    act(() => {
+      dispatchSidecarChanged({ docId: "doc-live", filename: "revisions.json" });
+    });
+
+    await waitFor(() =>
+      expect(result.current.state.items).toEqual(["initial", "ai-drafted"]),
+    );
+  });
+
+  it("IGNORES an event for a DIFFERENT filename (per-instance scoping)", async () => {
+    beginDocPipeline("doc-live");
+    mockRead.mockResolvedValue({ items: ["revs"] });
+    const { result } = renderHook(() =>
+      usePersistentState<Shape>("doc-live", "revisions.json", EMPTY),
+    );
+    await waitFor(() => expect(result.current.state.items).toEqual(["revs"]));
+
+    mockRead.mockClear();
+    // An event for cutter.json must not touch this revisions.json instance.
+    act(() => {
+      dispatchSidecarChanged({ docId: "doc-live", filename: "cutter.json" });
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockRead).not.toHaveBeenCalled();
+    expect(result.current.state.items).toEqual(["revs"]);
+  });
+
+  it("IGNORES an event for a DIFFERENT docId", async () => {
+    beginDocPipeline("doc-live");
+    mockRead.mockResolvedValue({ items: ["revs"] });
+    const { result } = renderHook(() =>
+      usePersistentState<Shape>("doc-live", "revisions.json", EMPTY),
+    );
+    await waitFor(() => expect(result.current.state.items).toEqual(["revs"]));
+
+    mockRead.mockClear();
+    act(() => {
+      dispatchSidecarChanged({ docId: "other-doc", filename: "revisions.json" });
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockRead).not.toHaveBeenCalled();
+    expect(result.current.state.items).toEqual(["revs"]);
+  });
+
+  it("DEFERS the re-read (no clobber) while a local edit is pending its debounced write", async () => {
+    beginDocPipeline("doc-live");
+    mockRead.mockResolvedValue({ items: ["initial"] });
+    const { result } = renderHook(() =>
+      // debounceMs > 0 so a pending write exists between update() and its flush.
+      usePersistentState<Shape>("doc-live", "revisions.json", EMPTY, {
+        debounceMs: 5000,
+      }),
+    );
+    await waitFor(() => expect(result.current.state.items).toEqual(["initial"]));
+
+    // Local edit → arms a pending debounced write (the DIRTY signal).
+    act(() => {
+      result.current.update((prev) => ({ items: [...prev.items, "local-edit"] }));
+    });
+    expect(result.current.state.items).toEqual(["initial", "local-edit"]);
+
+    // An external event arrives WHILE dirty. It must be deferred — the local
+    // edit is preserved, and the read is NOT run (so the on-disk value can't
+    // stomp the unsaved local edit).
+    mockRead.mockClear();
+    mockRead.mockResolvedValue({ items: ["initial", "external-only"] });
+    act(() => {
+      dispatchSidecarChanged({ docId: "doc-live", filename: "revisions.json" });
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockRead).not.toHaveBeenCalled(); // deferred
+    expect(result.current.state.items).toEqual(["initial", "local-edit"]); // preserved
+  });
+
+  it("resets to the default when the sidecar was externally REMOVED (read returns null)", async () => {
+    beginDocPipeline("doc-live");
+    mockRead.mockResolvedValue({ items: ["will-be-removed"] });
+    const { result } = renderHook(() =>
+      usePersistentState<Shape>("doc-live", "revisions.json", EMPTY),
+    );
+    await waitFor(() =>
+      expect(result.current.state.items).toEqual(["will-be-removed"]),
+    );
+
+    // The watcher's re-read now hits an absent file → readSidecarIfExists null.
+    mockRead.mockResolvedValue(null);
+    act(() => {
+      dispatchSidecarChanged({ docId: "doc-live", filename: "revisions.json" });
+    });
+    await waitFor(() => expect(result.current.state).toBe(EMPTY));
+  });
+
+  it("unsubscribes from the event on unmount (no re-read after teardown)", async () => {
+    beginDocPipeline("doc-live");
+    mockRead.mockResolvedValue({ items: ["x"] });
+    const { result, unmount } = renderHook(() =>
+      usePersistentState<Shape>("doc-live", "revisions.json", EMPTY),
+    );
+    await waitFor(() => expect(result.current.state.items).toEqual(["x"]));
+
+    unmount();
+    mockRead.mockClear();
+    // Firing after unmount must not re-read (listener removed). Use the raw
+    // event to prove no handler remains.
+    window.dispatchEvent(
+      new CustomEvent(SIDECAR_CHANGED_EVENT, {
+        detail: { docId: "doc-live", filename: "revisions.json" },
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockRead).not.toHaveBeenCalled();
   });
 });

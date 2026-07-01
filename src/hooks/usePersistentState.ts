@@ -11,6 +11,10 @@ import {
 } from "react";
 import { readSidecarIfExists, writeSidecar } from "@/lib/storage";
 import {
+  SIDECAR_CHANGED_EVENT,
+  type SidecarChangedDetail,
+} from "@/lib/sidecar-watcher";
+import {
   getActiveHandle,
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
@@ -296,6 +300,71 @@ export function usePersistentState<S>(
       flushPending();
     };
   }, [docId, flushPending]);
+
+  // ── LIVE external-sidecar reactivity ──────────────────────────────────────
+  // Subscribe to the `SidecarWatcher`'s per-file change signal so a card an AI
+  // agent drafts straight onto disk (into `virgil/<filename>`) surfaces in the
+  // LIVE app without a manual reload. The watcher only fires on a GENUINE
+  // external change (Virgil's own debounced writes stamp the disk ledger via
+  // `writeSidecar`, so they are filtered upstream — the own-write guard), and it
+  // has already `invalidateSidecarBundle`'d before dispatching, so the re-read
+  // below hits disk rather than the stale cached snapshot.
+  //
+  // DATA SAFETY — DIRTY GUARD (no clobber): re-read ONLY when THIS instance is
+  // clean, i.e. it has no pending debounced write (`pendingTimerRef.current ===
+  // null`). If a local card edit is mid-debounce we DEFER — skip this round and
+  // let the next poll re-check once the write has flushed — so an in-progress
+  // local edit is never overwritten by the on-disk value. The guard is
+  // per-instance (docId+filename), so a dirty notes.json never blocks a clean
+  // revisions.json re-read.
+  //
+  // KEYSTROKE SANCTITY: this is an event listener on `window`, NOT an
+  // `editor.on(...)` subscriber. It fires only on an external sidecar change
+  // (wall-clock-driven), never per keystroke. Typing runs zero code here.
+  useEffect(() => {
+    if (!docId) return;
+    let cancelled = false;
+
+    const onSidecarChanged = (e: Event) => {
+      const detail = (e as CustomEvent<SidecarChangedDetail>).detail;
+      if (!detail) return;
+      if (detail.docId !== docId || detail.filename !== filename) return;
+      // DIRTY GUARD: a pending debounced write means local state has an unsaved
+      // edit — defer rather than clobber it. The next poll re-emits once clean.
+      if (pendingTimerRef.current !== null) return;
+      // Re-read from disk (the bundle was invalidated by the watcher, so this
+      // hits disk). Update state on success; on absence (file removed) fall back
+      // to the default so the panel empties. A read error leaves state as-is.
+      readSidecarIfExists<S>(docId, filename)
+        .then((raw) => {
+          if (cancelled) return;
+          // Re-check the dirty guard AFTER the async read: the user may have
+          // started editing while the read was in flight — never stomp that.
+          if (pendingTimerRef.current !== null) return;
+          if (raw === null) {
+            // External removal → reset to the empty default (matches the load
+            // path's "absent" handling, but here the sidecar existed then went
+            // away, so an explicit reset is correct).
+            setState(defaultValue);
+            return;
+          }
+          const migrated = migrate ? migrate(raw) : raw;
+          setState(migrated);
+        })
+        .catch(() => {
+          // Transient read failure — leave state untouched; the next poll retries.
+        });
+    };
+
+    window.addEventListener(SIDECAR_CHANGED_EVENT, onSidecarChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SIDECAR_CHANGED_EVENT, onSidecarChanged);
+    };
+    // Same rationale as the loader effect: `filename`/`defaultValue`/`migrate`
+    // are module-level constants; we track only `docId` so a switch re-subscribes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docId]);
 
   return { state, setState, update, persist, stateRef, loaded, loadError };
 }

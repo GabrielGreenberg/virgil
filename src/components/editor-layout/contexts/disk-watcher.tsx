@@ -14,9 +14,15 @@ import {
   readTextFile,
   getTexFilename,
   getBibFilename,
+  invalidateSidecarBundle,
 } from "@/lib/storage";
 import { clearDiskLedger } from "@/lib/disk-ledger";
 import { createDiskWatcher, type DiskWatcher } from "@/lib/disk-watcher";
+import {
+  createSidecarWatcher,
+  type SidecarWatcher,
+} from "@/lib/sidecar-watcher";
+import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
 
 /**
  * Per-doc lifecycle owner for the external-change `DiskWatcher` (design:
@@ -169,6 +175,39 @@ export function DiskWatcherProvider({
   };
   const watcher = useMemo(() => getOrCreateWatcher(docId), [docId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── The SIDECAR watcher — a SIBLING of the DiskWatcher ────────────────────
+  // Same per-doc keep-alive lifecycle (created lazily on first activation,
+  // survives an A→B→A round-trip, disposed only when the doc leaves the
+  // keep-alive set), so `virgil/*.json` panel sidecars become LIVE-reactive to
+  // out-of-band writes (an AI agent drafting a card onto disk while the paper is
+  // open). It shares the DiskWatcher poll MECHANISM but emits a plain
+  // `virgil-sidecar-changed` event rather than a badge store — see
+  // sidecar-watcher.ts for the sibling-vs-extend rationale. Covers EVERY sidecar
+  // in ALL_SIDECAR_FILENAMES, so all panels (revisions/cutter/notes/todos/
+  // footnotes/citations/reports/archive/…) get the reactivity for free.
+  const sidecarWatchersByDoc = useRef(new Map<string, SidecarWatcher>());
+  const startedSidecarWatchers = useRef(new WeakSet<SidecarWatcher>());
+  const getOrCreateSidecarWatcher = (wDocId: string): SidecarWatcher => {
+    const existing = sidecarWatchersByDoc.current.get(wDocId);
+    if (existing) return existing;
+    const created = createSidecarWatcher({
+      docId: wDocId,
+      filenames: ALL_SIDECAR_FILENAMES,
+      statFiles,
+      readTextFile,
+      invalidateSidecarBundle,
+      isHidden: () =>
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden",
+    });
+    sidecarWatchersByDoc.current.set(wDocId, created);
+    return created;
+  };
+  const sidecarWatcher = useMemo(
+    () => getOrCreateSidecarWatcher(docId),
+    [docId], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // Start each watcher EXACTLY ONCE (on first activation) and NEVER stop it on a
   // switch — a warm doc's watcher keeps polling, so returning to it shows its
   // already-detected change with no re-prime (the F2 fix). `start()` re-primes
@@ -182,6 +221,16 @@ export function DiskWatcherProvider({
     // No stop-on-cleanup: disposal is owned by the dispose effect below (true
     // unload only), not by an active-doc switch.
   }, [watcher]);
+
+  // Start the sidecar watcher on first activation, exactly once, mirroring the
+  // DiskWatcher above. Never stopped on a switch — a warm doc keeps polling its
+  // sidecars, so an out-of-band card written to a warm doc surfaces on return.
+  useEffect(() => {
+    if (!startedSidecarWatchers.current.has(sidecarWatcher)) {
+      sidecarWatcher.start();
+      startedSidecarWatchers.current.add(sidecarWatcher);
+    }
+  }, [sidecarWatcher]);
 
   // Dispose watchers whose doc has LEFT the keep-alive set (LRU eviction / tab
   // close) — the ONLY place a watcher stops + its ledger is cleared. A mere
@@ -200,18 +249,31 @@ export function DiskWatcherProvider({
         startedWatchers.current.delete(w);
       }
     }
+    // Dispose the SIDECAR watcher for the same evicted docs. `clearDiskLedger`
+    // above already wiped the whole-doc ledger (the .tex/.bib AND sidecar
+    // fingerprints share it), so here we only stop the timer + drop the entry.
+    for (const [id, sw] of [...sidecarWatchersByDoc.current]) {
+      if (id !== docId && !alive.has(id)) {
+        sw.stop();
+        sidecarWatchersByDoc.current.delete(id);
+        startedSidecarWatchers.current.delete(sw);
+      }
+    }
   }, [liveKey, docId]);
 
   // Provider unmount (no doc open / app teardown): dispose everything still
   // cached so no watcher timer or ledger baseline leaks across the session.
   useEffect(() => {
     const cache = watchersByDoc.current;
+    const sidecarCache = sidecarWatchersByDoc.current;
     return () => {
       for (const [id, w] of cache) {
         w.stop();
         clearDiskLedger(id);
       }
       cache.clear();
+      for (const [, sw] of sidecarCache) sw.stop();
+      sidecarCache.clear();
     };
   }, []);
 
