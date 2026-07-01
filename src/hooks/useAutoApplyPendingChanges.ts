@@ -165,6 +165,43 @@ export function paragraphsWithInFlightApplied(
   return set;
 }
 
+/**
+ * Reconcile the synchronous "already-dispatched-an-apply" id guard against the
+ * latest card arrays. This is the fix for the double-apply race:
+ *
+ * A successful `applyOne` splices the paragraph, which bumps
+ * `structural.blocks/.anchors` and RE-FIRES the batch effect — often BEFORE
+ * React has committed the card's `pending → applied` status update. That re-run
+ * reads a STALE card array (status still `"pending"`, so `paragraphsWithInFlightApplied`
+ * is empty), judges the just-applied card eligible again, and re-applies against
+ * the already-spliced text → `applySuggestion` returns `stale`, clobbering the
+ * good applied state. (Observed: a revision applies cleanly but a same-load
+ * cutter loses the race and goes `stale` with its blue mark still in the doc.)
+ *
+ * `dispatched` is a ref-Set of card ids we've synchronously claimed an apply for.
+ * It bridges the pre-commit window: while a card's status still reads `"pending"`
+ * (the array is lagging), its id stays claimed and {@link applyOne} skips it.
+ * Once React commits the real status (`applied`/`stale`/gone), that status is the
+ * authoritative guard, so we drop the id here — keeping the guard from leaking
+ * across a later genuine re-pending (undo) or a same-paragraph successor (#7).
+ * O(dispatched), never O(doc).
+ */
+export function reconcileDispatched(
+  dispatched: Set<string>,
+  cards: readonly (RevisionCard | CutterCard)[],
+): void {
+  if (dispatched.size === 0) return;
+  const stillPending = new Set<string>();
+  for (const c of cards) {
+    if (c.kind === "suggestion" && c.status === "pending") stillPending.add(c.id);
+  }
+  for (const id of dispatched) {
+    // Real status has caught up (no longer a lagging "pending") → hand the guard
+    // back to `status`/`appliedChange`; drop the synchronous claim.
+    if (!stillPending.has(id)) dispatched.delete(id);
+  }
+}
+
 /** Collect every AI-authored, still-pending suggestion across both families,
  *  each resolved to its Mode-A anchor uuid (cards with no anchor are dropped:
  *  not applicable). O(cards). */
@@ -245,6 +282,12 @@ export function useAutoApplyPendingChanges(
     famRef.current = { revisions, cutter };
   });
 
+  // Synchronous guard against the double-apply race (see `reconcileDispatched`):
+  // card ids we've already claimed an apply for this session. Survives the
+  // stale-card-array window that opens when a splice re-fires the batch effect
+  // before React commits the `pending → applied` status.
+  const dispatchedRef = useRef<Set<string>>(new Set());
+
   // ── BATCH trigger ────────────────────────────────────────────────────────
   // Runs on editor-mount + whenever the AI-pending set may have changed. Gated
   // ONLY on the reactive editor + the DocStructureBus-backed structural counters
@@ -260,13 +303,17 @@ export function useAutoApplyPendingChanges(
     if (!isPendingChangesOn()) return;
     if (!editor) return;
     const caret = paragraphUuidAtSelection(editor);
+    reconcileDispatched(dispatchedRef.current, [
+      ...revisions.cards,
+      ...cutter.cards,
+    ]);
     const inFlight = paragraphsWithInFlightApplied([
       ...revisions.cards,
       ...cutter.cards,
     ]);
     const pending = collectPendingAiSuggestions(revisions, cutter);
     for (const target of pending) {
-      applyOne(editor, target, caret, inFlight);
+      applyOne(editor, target, caret, inFlight, dispatchedRef.current);
     }
     // `revisions`/`cutter` are intentionally read but NOT deps: only the stable
     // `revisionCards`/`cutterCards` array identities + counters gate this (the
@@ -289,6 +336,7 @@ export function useAutoApplyPendingChanges(
       const ed = editorRef.current;
       if (!ed) return;
       const { revisions: rev, cutter: cut } = famRef.current;
+      reconcileDispatched(dispatchedRef.current, [...rev.cards, ...cut.cards]);
       const inFlight = paragraphsWithInFlightApplied([
         ...rev.cards,
         ...cut.cards,
@@ -298,7 +346,7 @@ export function useAutoApplyPendingChanges(
         // Only the suggestions anchored to the paragraph we just left became
         // newly-safe; `next` is the current caret paragraph for the gate.
         if (target.anchorUuid !== prev) continue;
-        applyOne(ed, target, next, inFlight);
+        applyOne(ed, target, next, inFlight, dispatchedRef.current);
       }
     },
     [],
@@ -314,13 +362,24 @@ export function useAutoApplyPendingChanges(
  * pending suggestion on the SAME paragraph in this pass waits (serialization
  * within one batch). A module-level helper (not a hook closure) so it needs no
  * deps and can't capture stale state.
+ *
+ * `dispatched` is the cross-pass id guard (see `reconcileDispatched`): if this
+ * card's apply was already claimed in a prior pass whose status flip React
+ * hasn't committed yet, skip it — otherwise the re-fired batch effect would
+ * re-apply against the already-spliced text and mark it `stale`. We claim the id
+ * synchronously BEFORE calling `applySuggestion`, so a re-entrant pass in the
+ * same tick sees the claim.
  */
-function applyOne(
+export function applyOne(
   editor: Editor,
   target: ResolvedSuggestion,
   caretParagraphUuid: string | null,
   inFlight: Set<string>,
+  dispatched: Set<string>,
 ): void {
+  // Already claimed an apply for this card (status flip not yet committed) —
+  // don't re-apply against post-splice text.
+  if (dispatched.has(target.card.id)) return;
   if (
     !isAutoApplyEligible({
       card: target.card,
@@ -331,6 +390,8 @@ function applyOne(
   ) {
     return;
   }
+  // Claim synchronously before the splice so the splice-triggered re-run bails.
+  dispatched.add(target.card.id);
   const result = applySuggestion<string>({
     editor,
     card: target.card,

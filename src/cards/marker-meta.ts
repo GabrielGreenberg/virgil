@@ -33,7 +33,6 @@ export const ALL_MARKER_TYPES = [
   "todo",
   "report",
   "error",
-  "pending-change",
 ] as const satisfies readonly MarkerType[];
 type _MarkerTypeExhaustive = MarkerType extends (typeof ALL_MARKER_TYPES)[number]
   ? true
@@ -42,32 +41,22 @@ const _markerTypeExhaustive: _MarkerTypeExhaustive = true;
 void _markerTypeExhaustive;
 
 /**
- * Marker types that are NOT declared by any `CARD_REGISTRY` kind — they are
- * DERIVED in the margin from a card *status* (not owned by a dedicated card
- * kind), so the registry-coverage assertions must not flag them as orphan rows.
+ * Marker types that are NOT declared by any `CARD_REGISTRY` kind — they would
+ * be DERIVED in the margin from a card *status* (not owned by a dedicated card
+ * kind), and so must be exempt from the registry-coverage assertions and from
+ * `MarkerButton`'s user-color override path (their palette would be a fixed,
+ * non-overridable accent baked into `MARKER_META`).
  *
- * `pending-change` (Phase 1c) is emitted for `status:"applied"`
- * revision-suggestion / cutter-suggestion cards. Those kinds already declare
- * their base `revision`/`cut` marker (a kind may declare only one `markerType`),
- * so the pending-change presence marker has no registry declarer. Its
- * panel/theme are pinned here (`PENDING_CHANGE_PANEL` / `…_THEME_KEY`) rather
- * than derived from the registry, and its palette is the fixed `#bfdbfe`
- * applied-range blue baked directly into `MARKER_META` (non-overridable).
+ * Currently EMPTY. The Phase-1c applied pending-AI-change presence marker used
+ * to live here as `"pending-change"`, but an applied revision/cut suggestion now
+ * keeps its ordinary `revision`/`cut` marker (registry-derived, overridable) and
+ * carries the persistent Keep/Revert affordance via the marker's `onKeep`/
+ * `onRevert` handlers instead of a distinct re-skinned marker type. The set +
+ * the guard sites are retained (empty) so a future fixed-accent marker can opt
+ * out without re-plumbing.
  */
 export const NON_REGISTRY_MARKER_TYPES: ReadonlySet<MarkerType> =
-  new Set<MarkerType>(["pending-change"]);
-
-/** Owning panel for the derived `pending-change` marker — it docks with the
- *  Revisions panel (the suggestion family's primary home; the cutter family
- *  shares the same blue presence marker). Drives only the marker's margin side. */
-export const PENDING_CHANGE_PANEL: PanelKind = "revisions";
-/** Theme slot the `pending-change` marker reports. It is NOT a real
- *  `PanelThemeKey` color slot — the marker's palette is the fixed `#bfdbfe`
- *  blue in `MARKER_META`, and `MarkerButton` short-circuits the override path
- *  for this marker so a user's Revisions-panel color override never re-tints
- *  it. Reuses the `"revision"` slot only so `panelThemeKeyForMarkerType` returns
- *  a valid `PanelThemeKey` (the value is never consulted for this type's color). */
-export const PENDING_CHANGE_THEME_KEY: PanelThemeKey = "revision";
+  new Set<MarkerType>();
 
 /* ── Eager derivation tables ──────────────────────────────────────────
  * Built once at module init. `CARD_REGISTRY` is a fully-initialized const
@@ -123,10 +112,8 @@ export function cardKindsForMarkerType(t: MarkerType): CardKind[] {
 }
 
 /** The panel that owns marker namespace `t` — derived from the registry
- *  `.panel` of its card kinds (asserted unique per type). The non-registry
- *  `pending-change` marker (no declaring kind) returns its pinned panel. */
+ *  `.panel` of its card kinds (asserted unique per type). */
 export function panelForMarkerType(t: MarkerType): PanelKind {
-  if (NON_REGISTRY_MARKER_TYPES.has(t)) return PENDING_CHANGE_PANEL;
   const panel = panelByMarkerType.get(t);
   if (!panel) {
     // Unreachable when assertMarkerCoverage holds; throw loudly rather than
@@ -137,12 +124,8 @@ export function panelForMarkerType(t: MarkerType): PanelKind {
 }
 
 /** The user-overridable color slot for marker namespace `t` — the registry
- *  `.themeKey` verbatim (one keyspace post-A10/B). The non-registry
- *  `pending-change` marker returns its pinned slot; its palette is fixed in
- *  `MARKER_META` and `MarkerButton` skips the override path for it, so the slot
- *  is never consulted for its color. */
+ *  `.themeKey` verbatim (one keyspace post-A10/B). */
 export function panelThemeKeyForMarkerType(t: MarkerType): PanelThemeKey {
-  if (NON_REGISTRY_MARKER_TYPES.has(t)) return PENDING_CHANGE_THEME_KEY;
   const key = themeKeyByMarkerType.get(t);
   if (!key) {
     throw new Error(`[MarkerMeta] no theme key derived for markerType "${t}"`);
@@ -159,8 +142,8 @@ export function assertMarkerCoverage(): void {
   if (process.env.NODE_ENV === "production") return;
   const declared = new Set<MarkerType>(kindsByMarkerType.keys());
   for (const t of ALL_MARKER_TYPES) {
-    // Non-registry markers (e.g. `pending-change`) are derived from a card
-    // STATUS, not declared by a kind — exempt them from the declarer check.
+    // Non-registry markers (currently none) are derived from a card STATUS, not
+    // declared by a kind — exempt them from the declarer check.
     if (NON_REGISTRY_MARKER_TYPES.has(t)) continue;
     if (!declared.has(t)) {
       console.error(

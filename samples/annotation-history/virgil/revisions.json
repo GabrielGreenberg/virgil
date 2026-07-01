@@ -1,315 +1,356 @@
 {
-  "cards": [
-    {
-      "kind": "comment",
-      "id": "0dd67fac-9571-47cc-acf2-edb6429b6b23",
-      "createdAt": "2026-04-23T18:30:00.000Z",
-      "text": "The thesis (annotation as the medium through which texts become social) only really lands at the end of §1. Could we promote a clearer one-line version into the very first paragraph?",
-      "content": {
-        "type": "doc",
-        "content": [
-          {
-            "type": "paragraph",
-            "content": [
-              {
-                "type": "text",
-                "text": "The thesis (annotation as the medium through which texts become social) only really lands at the end of §1. Could we promote a clearer one-line version into the very first paragraph?"
-              }
-            ]
-          }
-        ]
-      },
-      "aiRequest": false,
-      "links": []
-    },
-    {
-      "kind": "comment",
-      "id": "acf69008-7728-4c02-90a4-181513922bcc",
-      "createdAt": "2026-04-23T18:32:00.000Z",
-      "text": "Could be sharper — \"second voice\" is doing a lot of work and the metaphor doesn't fully cash out until §3.",
-      "content": {
-        "type": "doc",
-        "content": [
-          {
-            "type": "paragraph",
-            "content": [
-              {
-                "type": "text",
-                "text": "Could be sharper — \"second voice\" is doing a lot of work and the metaphor doesn't fully cash out until §3."
-              }
-            ]
-          }
-        ]
-      },
-      "aiRequest": false,
-      "links": [
-        {
-          "id": "f500c21d-187f-4608-8496-29b75574c3cd",
-          "kind": "anchor",
-          "anchor": {
-            "type": "textObject",
-            "targetKind": "linkedRange",
-            "textObjectIds": [
-              "1101"
-            ],
-            "margin": {
-              "side": "right"
-            },
-            "textRange": {
-              "anchorId": "f500c21d-187f-4608-8496-29b75574c3cd",
-              "textSnapshot": "Annotation is not decoration. It is the second voice that every serious text learns to carry on its back."
-            }
-          },
-          "target": {
-            "type": "card",
-            "ref": {
-              "kind": "comment",
-              "id": "acf69008-7728-4c02-90a4-181513922bcc"
-            }
-          },
-          "createdAt": "2026-04-23T18:32:00.000Z"
-        }
-      ],
-      "selectedText": "second voice"
-    },
-    {
-      "kind": "comment",
-      "id": "94d33a67-ef82-4e0b-9acb-61d61c0a6606",
-      "createdAt": "2026-04-24T09:15:00.000Z",
-      "text": "Talk pages, edit summaries, and references-as-discourse seem like a natural fit for the digital remediation section — Wikipedia has effectively rebuilt the medieval gloss at planetary scale. Worth a paragraph?",
-      "content": {
-        "type": "doc",
-        "content": [
-          {
-            "type": "paragraph",
-            "content": [
-              {
-                "type": "text",
-                "text": "Talk pages, edit summaries, and references-as-discourse seem like a natural fit for the digital remediation section — Wikipedia has effectively rebuilt the medieval gloss at planetary scale. Worth a paragraph?"
-              }
-            ]
-          }
-        ]
-      },
-      "aiRequest": false,
-      "links": []
-    },
-    {
-      "kind": "comment",
-      "id": "4efd41a9-9257-4f53-b8a6-f925a573ed9b",
-      "createdAt": "2026-04-24T10:15:00.000Z",
-      "text": "If you're going to call Jackson \"the standard study,\" consider naming a chapter — readers who haven't read her may want a starting point.",
-      "content": {
-        "type": "doc",
-        "content": [
-          {
-            "type": "paragraph",
-            "content": [
-              {
-                "type": "text",
-                "text": "If you're going to call Jackson \"the standard study,\" consider naming a chapter — readers who haven't read her may want a starting point."
-              }
-            ]
-          }
-        ]
-      },
-      "aiRequest": false,
-      "links": [
-        {
-          "id": "61232fc8-06c8-4276-b3fa-a73f6c0e3a48",
-          "kind": "anchor",
-          "anchor": {
-            "type": "textObject",
-            "targetKind": "linkedRange",
-            "textObjectIds": [
-              "2201"
-            ],
-            "margin": {
-              "side": "right"
-            },
-            "textRange": {
-              "anchorId": "61232fc8-06c8-4276-b3fa-a73f6c0e3a48",
-              "textSnapshot": "The standard study is"
-            }
-          },
-          "target": {
-            "type": "card",
-            "ref": {
-              "kind": "comment",
-              "id": "4efd41a9-9257-4f53-b8a6-f925a573ed9b"
-            }
-          },
-          "createdAt": "2026-04-24T10:15:00.000Z"
-        }
-      ],
-      "selectedText": "the standard study is"
-    },
-    {
-      "kind": "comment",
-      "id": "f6c5785c-2d68-421e-9f9e-a1919996b144",
-      "createdAt": "2026-04-24T11:00:00.000Z",
-      "text": "We use \"lineage\" loosely here. Worth defining? Or do we trust the reader to feel the difference between a citation that points and one that situates?",
-      "content": {
-        "type": "doc",
-        "content": [
-          {
-            "type": "paragraph",
-            "content": [
-              {
-                "type": "text",
-                "text": "We use \"lineage\" loosely here. Worth defining? Or do we trust the reader to feel the difference between a citation that points and one that situates?"
-              }
-            ]
-          }
-        ]
-      },
-      "aiRequest": false,
-      "links": [
-        {
-          "id": "f03feeee-1c3b-4690-aa69-15d3f81014aa",
-          "kind": "anchor",
-          "anchor": {
-            "type": "textObject",
-            "targetKind": "linkedRange",
-            "textObjectIds": [
-              "4403"
-            ],
-            "margin": {
-              "side": "right"
-            },
-            "textRange": {
-              "anchorId": "f03feeee-1c3b-4690-aa69-15d3f81014aa",
-              "textSnapshot": "additionally signal a lineage --- not just a source but a tradition"
-            }
-          },
-          "target": {
-            "type": "card",
-            "ref": {
-              "kind": "comment",
-              "id": "f6c5785c-2d68-421e-9f9e-a1919996b144"
-            }
-          },
-          "createdAt": "2026-04-24T11:00:00.000Z"
-        }
-      ],
-      "selectedText": "lineage"
-    },
-    {
-      "kind": "comment",
-      "id": "99af2540-25e4-46eb-a044-0fbb8670a503",
-      "createdAt": "2026-04-24T16:30:00.000Z",
-      "text": "This sentence might land harder if it's the first line of the coda rather than the last paragraph of §6 proper. Try moving.",
-      "content": {
-        "type": "doc",
-        "content": [
-          {
-            "type": "paragraph",
-            "content": [
-              {
-                "type": "text",
-                "text": "This sentence might land harder if it's the first line of the coda rather than the last paragraph of §6 proper. Try moving."
-              }
-            ]
-          }
-        ]
-      },
-      "aiRequest": false,
-      "links": [
-        {
-          "id": "f4a0e2aa-7e36-4839-9c09-b6f361275e1b",
-          "kind": "anchor",
-          "anchor": {
-            "type": "textObject",
-            "targetKind": "linkedRange",
-            "textObjectIds": [
-              "6607"
-            ],
-            "margin": {
-              "side": "right"
-            },
-            "textRange": {
-              "anchorId": "f4a0e2aa-7e36-4839-9c09-b6f361275e1b",
-              "textSnapshot": "The fact that this notation has survived from the late nineteenth century"
-            }
-          },
-          "target": {
-            "type": "card",
-            "ref": {
-              "kind": "comment",
-              "id": "99af2540-25e4-46eb-a044-0fbb8670a503"
-            }
-          },
-          "createdAt": "2026-04-24T16:30:00.000Z"
-        }
-      ],
-      "selectedText": "The fact that this notation has survived"
-    },
-    {
-      "kind": "comment",
-      "id": "f96a7aa8-44f7-499b-9375-e55ef17b7b8f",
-      "createdAt": "2026-04-24T17:00:00.000Z",
-      "text": "Word count crept back up while we added the apparatus demo — the cutter goal is set; let's land a couple of the pending suggestions before calling it.",
-      "content": {
-        "type": "doc",
-        "content": [
-          {
-            "type": "paragraph",
-            "content": [
-              {
-                "type": "text",
-                "text": "Word count crept back up while we added the apparatus demo — the cutter goal is set; let's land a couple of the pending suggestions before calling it."
-              }
-            ]
-          }
-        ]
-      },
-      "aiRequest": false,
-      "links": []
-    },
-    {
-      "kind": "suggestion",
-      "id": "374060f9-5710-49cd-8d60-696e85182709",
-      "createdAt": "2026-05-16T17:00:00.000Z",
-      "author": "ai",
-      "original_text": "The fact that this notation has survived from the late nineteenth century into the present is not an accident of typography.",
-      "suggested_text": "That this notation has survived from the late nineteenth century into the present is not typographic accident.",
-      "explanation": "Trim the lede; the original opens with a heavy nominalization that delays the verb.",
-      "user_text": "",
-      "instructions": "Keep the rhythm; the sentence is doing real work as the bridge to the coda.",
-      "status": "pending",
-      "selectedText": "The fact that this notation has survived from the late nineteenth century into the present is not an accident of typography.",
-      "links": [
-        {
-          "id": "f971cb86-9a7e-400d-af36-238025fe6dd7",
-          "kind": "anchor",
-          "anchor": {
-            "type": "textObject",
-            "targetKind": "linkedRange",
-            "textObjectIds": [
-              "6607"
-            ],
-            "margin": {
-              "side": "right"
-            },
-            "textRange": {
-              "anchorId": "f971cb86-9a7e-400d-af36-238025fe6dd7",
-              "textSnapshot": "The fact that this notation has survived from the late nineteenth century into the present is not an accident of typography."
-            }
-          },
-          "target": {
-            "type": "card",
-            "ref": {
-              "kind": "revision-suggestion",
-              "id": "374060f9-5710-49cd-8d60-696e85182709"
-            }
-          },
-          "createdAt": "2026-05-16T17:00:00.000Z"
-        }
+ "cards": [
+  {
+   "kind": "comment",
+   "id": "0dd67fac-9571-47cc-acf2-edb6429b6b23",
+   "createdAt": "2026-04-23T18:30:00.000Z",
+   "text": "The thesis (annotation as the medium through which texts become social) only really lands at the end of §1. Could we promote a clearer one-line version into the very first paragraph?",
+   "content": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "The thesis (annotation as the medium through which texts become social) only really lands at the end of §1. Could we promote a clearer one-line version into the very first paragraph?"
+       }
       ]
+     }
+    ]
+   },
+   "aiRequest": false,
+   "links": []
+  },
+  {
+   "kind": "comment",
+   "id": "acf69008-7728-4c02-90a4-181513922bcc",
+   "createdAt": "2026-04-23T18:32:00.000Z",
+   "text": "Could be sharper — \"second voice\" is doing a lot of work and the metaphor doesn't fully cash out until §3.",
+   "content": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "Could be sharper — \"second voice\" is doing a lot of work and the metaphor doesn't fully cash out until §3."
+       }
+      ]
+     }
+    ]
+   },
+   "aiRequest": false,
+   "links": [
+    {
+     "id": "f500c21d-187f-4608-8496-29b75574c3cd",
+     "kind": "anchor",
+     "anchor": {
+      "type": "textObject",
+      "targetKind": "linkedRange",
+      "textObjectIds": [
+       "1101"
+      ],
+      "margin": {
+       "side": "right"
+      },
+      "textRange": {
+       "anchorId": "f500c21d-187f-4608-8496-29b75574c3cd",
+       "textSnapshot": "Annotation is not decoration. It is the second voice that every serious text learns to carry on its back."
+      }
+     },
+     "target": {
+      "type": "card",
+      "ref": {
+       "kind": "comment",
+       "id": "acf69008-7728-4c02-90a4-181513922bcc"
+      }
+     },
+     "createdAt": "2026-04-23T18:32:00.000Z"
     }
-  ],
-  "tracker": {
-    "target": 6,
-    "setAt": "2026-05-16T17:00:00.000Z"
+   ],
+   "selectedText": "second voice"
+  },
+  {
+   "kind": "comment",
+   "id": "94d33a67-ef82-4e0b-9acb-61d61c0a6606",
+   "createdAt": "2026-04-24T09:15:00.000Z",
+   "text": "Talk pages, edit summaries, and references-as-discourse seem like a natural fit for the digital remediation section — Wikipedia has effectively rebuilt the medieval gloss at planetary scale. Worth a paragraph?",
+   "content": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "Talk pages, edit summaries, and references-as-discourse seem like a natural fit for the digital remediation section — Wikipedia has effectively rebuilt the medieval gloss at planetary scale. Worth a paragraph?"
+       }
+      ]
+     }
+    ]
+   },
+   "aiRequest": false,
+   "links": []
+  },
+  {
+   "kind": "comment",
+   "id": "4efd41a9-9257-4f53-b8a6-f925a573ed9b",
+   "createdAt": "2026-04-24T10:15:00.000Z",
+   "text": "If you're going to call Jackson \"the standard study,\" consider naming a chapter — readers who haven't read her may want a starting point.",
+   "content": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "If you're going to call Jackson \"the standard study,\" consider naming a chapter — readers who haven't read her may want a starting point."
+       }
+      ]
+     }
+    ]
+   },
+   "aiRequest": false,
+   "links": [
+    {
+     "id": "61232fc8-06c8-4276-b3fa-a73f6c0e3a48",
+     "kind": "anchor",
+     "anchor": {
+      "type": "textObject",
+      "targetKind": "linkedRange",
+      "textObjectIds": [
+       "2201"
+      ],
+      "margin": {
+       "side": "right"
+      },
+      "textRange": {
+       "anchorId": "61232fc8-06c8-4276-b3fa-a73f6c0e3a48",
+       "textSnapshot": "The standard study is"
+      }
+     },
+     "target": {
+      "type": "card",
+      "ref": {
+       "kind": "comment",
+       "id": "4efd41a9-9257-4f53-b8a6-f925a573ed9b"
+      }
+     },
+     "createdAt": "2026-04-24T10:15:00.000Z"
+    }
+   ],
+   "selectedText": "the standard study is"
+  },
+  {
+   "kind": "comment",
+   "id": "f6c5785c-2d68-421e-9f9e-a1919996b144",
+   "createdAt": "2026-04-24T11:00:00.000Z",
+   "text": "We use \"lineage\" loosely here. Worth defining? Or do we trust the reader to feel the difference between a citation that points and one that situates?",
+   "content": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "We use \"lineage\" loosely here. Worth defining? Or do we trust the reader to feel the difference between a citation that points and one that situates?"
+       }
+      ]
+     }
+    ]
+   },
+   "aiRequest": false,
+   "links": [
+    {
+     "id": "f03feeee-1c3b-4690-aa69-15d3f81014aa",
+     "kind": "anchor",
+     "anchor": {
+      "type": "textObject",
+      "targetKind": "linkedRange",
+      "textObjectIds": [
+       "4403"
+      ],
+      "margin": {
+       "side": "right"
+      },
+      "textRange": {
+       "anchorId": "f03feeee-1c3b-4690-aa69-15d3f81014aa",
+       "textSnapshot": "additionally signal a lineage --- not just a source but a tradition"
+      }
+     },
+     "target": {
+      "type": "card",
+      "ref": {
+       "kind": "comment",
+       "id": "f6c5785c-2d68-421e-9f9e-a1919996b144"
+      }
+     },
+     "createdAt": "2026-04-24T11:00:00.000Z"
+    }
+   ],
+   "selectedText": "lineage"
+  },
+  {
+   "kind": "comment",
+   "id": "99af2540-25e4-46eb-a044-0fbb8670a503",
+   "createdAt": "2026-04-24T16:30:00.000Z",
+   "text": "This sentence might land harder if it's the first line of the coda rather than the last paragraph of §6 proper. Try moving.",
+   "content": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "This sentence might land harder if it's the first line of the coda rather than the last paragraph of §6 proper. Try moving."
+       }
+      ]
+     }
+    ]
+   },
+   "aiRequest": false,
+   "links": [
+    {
+     "id": "f4a0e2aa-7e36-4839-9c09-b6f361275e1b",
+     "kind": "anchor",
+     "anchor": {
+      "type": "textObject",
+      "targetKind": "linkedRange",
+      "textObjectIds": [
+       "6607"
+      ],
+      "margin": {
+       "side": "right"
+      },
+      "textRange": {
+       "anchorId": "f4a0e2aa-7e36-4839-9c09-b6f361275e1b",
+       "textSnapshot": "The fact that this notation has survived from the late nineteenth century"
+      }
+     },
+     "target": {
+      "type": "card",
+      "ref": {
+       "kind": "comment",
+       "id": "99af2540-25e4-46eb-a044-0fbb8670a503"
+      }
+     },
+     "createdAt": "2026-04-24T16:30:00.000Z"
+    }
+   ],
+   "selectedText": "The fact that this notation has survived"
+  },
+  {
+   "kind": "comment",
+   "id": "f96a7aa8-44f7-499b-9375-e55ef17b7b8f",
+   "createdAt": "2026-04-24T17:00:00.000Z",
+   "text": "Word count crept back up while we added the apparatus demo — the cutter goal is set; let's land a couple of the pending suggestions before calling it.",
+   "content": {
+    "type": "doc",
+    "content": [
+     {
+      "type": "paragraph",
+      "content": [
+       {
+        "type": "text",
+        "text": "Word count crept back up while we added the apparatus demo — the cutter goal is set; let's land a couple of the pending suggestions before calling it."
+       }
+      ]
+     }
+    ]
+   },
+   "aiRequest": false,
+   "links": []
+  },
+  {
+   "kind": "suggestion",
+   "id": "374060f9-5710-49cd-8d60-696e85182709",
+   "createdAt": "2026-05-16T17:00:00.000Z",
+   "author": "ai",
+   "original_text": "The fact that this notation has survived from the late nineteenth century into the present is not an accident of typography.",
+   "suggested_text": "That this notation has survived from the late nineteenth century into the present is not typographic accident.",
+   "explanation": "Trim the lede; the original opens with a heavy nominalization that delays the verb.",
+   "user_text": "",
+   "instructions": "Keep the rhythm; the sentence is doing real work as the bridge to the coda.",
+   "status": "pending",
+   "selectedText": "The fact that this notation has survived from the late nineteenth century into the present is not an accident of typography.",
+   "links": [
+    {
+     "id": "f971cb86-9a7e-400d-af36-238025fe6dd7",
+     "kind": "anchor",
+     "anchor": {
+      "type": "textObject",
+      "targetKind": "linkedRange",
+      "textObjectIds": [
+       "6607"
+      ],
+      "margin": {
+       "side": "right"
+      },
+      "textRange": {
+       "anchorId": "f971cb86-9a7e-400d-af36-238025fe6dd7",
+       "textSnapshot": "The fact that this notation has survived from the late nineteenth century into the present is not an accident of typography."
+      }
+     },
+     "target": {
+      "type": "card",
+      "ref": {
+       "kind": "revision-suggestion",
+       "id": "374060f9-5710-49cd-8d60-696e85182709"
+      }
+     },
+     "createdAt": "2026-05-16T17:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "kind": "suggestion",
+   "id": "7c1e2a90-1102-4b3c-a1d2-9f0e11020001",
+   "createdAt": "2026-05-16T18:00:00.000Z",
+   "author": "ai",
+   "original_text": "This essay sketches a partial history of that cohabitation.",
+   "suggested_text": "This essay traces one partial history of that long cohabitation.",
+   "explanation": "Foreground the framing verb and mark this as one history among several.",
+   "user_text": "",
+   "instructions": "",
+   "status": "pending",
+   "selectedText": "This essay sketches a partial history of that cohabitation.",
+   "links": [
+    {
+     "id": "7c1e2a90-1102-4b3c-a1d2-9f0e11020002",
+     "kind": "anchor",
+     "anchor": {
+      "type": "textObject",
+      "targetKind": "linkedRange",
+      "textObjectIds": [
+       "1102"
+      ],
+      "margin": {
+       "side": "right"
+      },
+      "textRange": {
+       "anchorId": "7c1e2a90-1102-4b3c-a1d2-9f0e11020002",
+       "textSnapshot": "This essay sketches a partial history of that cohabitation."
+      }
+     },
+     "target": {
+      "type": "card",
+      "ref": {
+       "kind": "revision-suggestion",
+       "id": "7c1e2a90-1102-4b3c-a1d2-9f0e11020001"
+      }
+     },
+     "createdAt": "2026-05-16T18:00:00.000Z"
+    }
+   ]
   }
+ ],
+ "tracker": {
+  "target": 6,
+  "setAt": "2026-05-16T17:00:00.000Z"
+ }
 }

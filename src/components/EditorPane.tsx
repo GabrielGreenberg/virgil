@@ -278,6 +278,10 @@ import {
   isAppliedPending,
   collectAppliedPendingIds,
 } from "@/links/pending-change-collect";
+import {
+  PendingChangeControllerProvider,
+  type PendingChangeController,
+} from "@/links/pending-change-controller";
 import type { MarginaliaMarker } from "@/lib/marginalia";
 import type {
   PanelPlacement,
@@ -2449,11 +2453,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   );
 
   // ── Phase 1c — gutter-driven Keep / Revert for an applied pending change ──
-  // The persistent margin-gutter marker (the `pending-change` marker emitted
-  // below for `status:"applied"` revision/cutter suggestions) calls these. They
-  // route through the SAME `pending-change-actions` sequence the card-surface
-  // host closures use, so the gutter and the card stay byte-identical. The flag
-  // + editor-mounted guard lives here (flag-OFF: no applied marker is ever
+  // The persistent margin-gutter Keep/Revert affordance (attached below to the
+  // ordinary revision/cut marker of a `status:"applied"` suggestion) calls
+  // these. They route through the SAME `pending-change-actions` sequence the
+  // card-surface host closures use, so the gutter and the card stay
+  // byte-identical. The flag + editor-mounted guard lives here (flag-OFF: no
+  // applied handler is ever
   // emitted, so these are unreachable — byte-identical OFF). `editor` is the
   // reactive instance the rest of EditorPane threads.
   const onKeepRevisionPending = useCallback(
@@ -2523,6 +2528,34 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       });
     },
     [editor, docId, cutterHook],
+  );
+
+  // The SSOT controller any suggestion-card body reads for its applied
+  // Keep/Revert (docked panel, omni, float, margin) — see
+  // `pending-change-controller`. Reuses the stable `onKeep*Pending` /
+  // `onRevert*Pending` closures above, so its identity is constant across
+  // keystrokes (deps are all stable `useCallback` refs + the reactive
+  // `editor`). Do NOT add `revisionsHook.cards`/`cutterHook.cards` here —
+  // that would break keystroke sanctity for every consuming card body.
+  const pendingController = useMemo<PendingChangeController>(
+    () => ({
+      isOn: isPendingChangesOn() && !!editor,
+      keep: (family, id) => {
+        if (family === "revision-suggestion") onKeepRevisionPending(id);
+        else onKeepCutterPending(id);
+      },
+      revert: (family, id) => {
+        if (family === "revision-suggestion") onRevertRevisionPending(id);
+        else onRevertCutterPending(id);
+      },
+    }),
+    [
+      editor,
+      onKeepRevisionPending,
+      onRevertRevisionPending,
+      onKeepCutterPending,
+      onRevertCutterPending,
+    ],
   );
 
   // ── Phase 3 — the floating pill's target index + the omni bulk handlers ──
@@ -2631,9 +2664,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     void rev.anchors;
     void rev.blocks;
     // Phase 1c flag read (call-time, not memoized): gates whether an applied
-    // suggestion emits the `pending-change` gutter control vs. its base
-    // revision/cut marker. Flag-OFF → no card ever reaches `status:"applied"`,
-    // so this is dead and the marker set is byte-identical to pre-1c.
+    // suggestion's ordinary revision/cut marker also carries the Keep/Revert
+    // handlers. Flag-OFF → no card ever reaches `status:"applied"`, so this is
+    // dead and the marker set is byte-identical to pre-1c.
     const pendingChangesOn = isPendingChangesOn();
     const result: MarginaliaMarker[] = [];
 
@@ -2783,21 +2816,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       const anchorId = revAnchor?.anchorId;
       const revKind: EntityKind =
         r.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
-      // Phase 1c — an APPLIED suggestion (flag-ON, spliced-but-not-yet-kept)
-      // shows the persistent `pending-change` gutter control INSTEAD of the
-      // base `revision` marker: light-blue, carrying Keep/Revert. Flag-OFF (or
-      // any non-applied status) keeps the regular `revision` marker, byte-for-
-      // byte — no card reaches `applied` without the flag-ON apply path.
-      const isAppliedPending =
-        r.kind === "suggestion" && r.status === "applied" && pendingChangesOn;
+      // An APPLIED suggestion (flag-ON, spliced-but-not-yet-kept) keeps its
+      // ordinary `revision` marker — no re-skin, and (as of the margin-declutter
+      // pass) no hover Keep/Revert chips either: the gutter marker is just a
+      // plain revision marker. Keep/Revert reach the change through the card and
+      // the in-context left-margin pill instead.
       for (const { pid, unanchored } of resolveMarkerPids(r, pids)) {
         result.push({
           id: `${r.id}:${pid}`,
           entityId: r.id,
           entityKind: revKind,
-          type: isAppliedPending ? "pending-change" : "revision",
+          type: "revision",
           textObjectId: pid,
-          title: isAppliedPending ? "Pending change" : r.selectedText || "Revision",
+          title: r.selectedText || "Revision",
           unanchored,
           anchorId,
           onClick: (clickY?: number) =>
@@ -2805,12 +2836,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           onDelete: () => {
             void handleMarginItemDelete("revision", r.id, pid, anchorId);
           },
-          ...(isAppliedPending
-            ? {
-                onKeep: () => onKeepRevisionPending(r.id),
-                onRevert: () => onRevertRevisionPending(r.id),
-              }
-            : null),
         });
       }
     }
@@ -2825,19 +2850,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         : c.text || "Comment";
       const cutKind: EntityKind =
         c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
-      // Phase 1c — an APPLIED cutter suggestion (flag-ON) shows the persistent
-      // `pending-change` gutter control instead of the base `cut` marker.
-      // Flag-OFF / non-applied keeps the `cut` marker byte-for-byte.
-      const isAppliedPending =
-        c.kind === "suggestion" && c.status === "applied" && pendingChangesOn;
+      // An APPLIED cutter suggestion (flag-ON) keeps its ordinary `cut` marker —
+      // no re-skin and no hover Keep/Revert chips (margin-declutter pass); the
+      // gutter marker is plain. Keep/Revert reach the change through the card and
+      // the in-context left-margin pill instead.
       for (const { pid, unanchored } of resolveMarkerPids(c, pids)) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
           entityKind: cutKind,
-          type: isAppliedPending ? "pending-change" : "cut",
+          type: "cut",
           textObjectId: pid,
-          title: isAppliedPending ? "Pending change" : title,
+          title,
           unanchored,
           onClick: (clickY?: number) =>
             handleMarginMarkerClick({ kind: cutKind, id: c.id }, clickY, anchorIndexFor(pids, pid)),
@@ -2845,12 +2869,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
           },
           anchorId: cardAnchor?.anchorId,
-          ...(isAppliedPending
-            ? {
-                onKeep: () => onKeepCutterPending(c.id),
-                onRevert: () => onRevertCutterPending(c.id),
-              }
-            : null),
         });
       }
     }
@@ -2946,13 +2964,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // editor mounts (AGENTS "Initial population"). A plain keystroke doesn't
     // change `editor`'s identity, so this adds no per-keystroke recompute.
     editor,
-    // Phase 1c — the gutter Keep/Revert callbacks for an applied pending change.
-    // Stable `useCallback`s (deps: editor·docId·the hook), so they change only
-    // on a doc switch / hook-identity change, never per keystroke.
-    onKeepRevisionPending,
-    onRevertRevisionPending,
-    onKeepCutterPending,
-    onRevertCutterPending,
   ]);
 
   // Marginalia uses this to decide which margin to render each marker
@@ -4770,6 +4781,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // other — share one interaction store. Mounted INSIDE EditorPane so it covers
     // both the main-app mount and the Library Reader mount.
     <CardStoreProvider store={cardStoreInst}>
+    <PendingChangeControllerProvider value={pendingController}>
     <EditorChromeProvider value={{ ...chrome, menuBar }}>
       <EditorRefProvider
         value={{ editorInstance: editor, editorRef: innerRef, setOverrideEditor }}
@@ -6453,6 +6465,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         </AiRequestsProvider>
       </EditorRefProvider>
     </EditorChromeProvider>
+    </PendingChangeControllerProvider>
     </CardStoreProvider>
   );
 }));

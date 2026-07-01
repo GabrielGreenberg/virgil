@@ -14,13 +14,14 @@
  */
 
 import { useRef, useState } from "react";
-import type { JSONContent } from "@tiptap/react";
-import { Button, Chevron, EditableCard } from "@/components/panel-primitives";
-import { useCardTheme } from "@/hooks/usePanelTheme";
+import { Button, Chevron } from "@/components/panel-primitives";
+import { BorrowedMainText } from "@/components/BorrowedMainText";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { countWords } from "@/hooks/useWordCount";
-import { parseInlineContent } from "@/lib/latex-parser";
+import type { PendingChangeFamily } from "@/links/apply-suggestion";
+import { usePendingChangeController } from "@/links/pending-change-controller";
+import { richLatexToJson } from "@/lib/footnote-content";
 import type { PanelBodyKey } from "@/lib/panel-typography";
 import type { PanelThemeKey } from "@/lib/panel-theme";
 import type { CardKind } from "@/panels/_shared/types";
@@ -342,69 +343,54 @@ export function ApplyActionRow({
   );
 }
 
-/** Wrap an inline-LaTeX string as a TipTap doc with one paragraph, so the
- *  read-only EditableCard renders the original prose with real inline atoms
- *  (citations / \ref / math) rather than a flattened string. */
-function inlineLatexToDoc(text: string): JSONContent {
-  return {
-    type: "doc",
-    content: [{ type: "paragraph", content: parseInlineContent(text) }],
-  };
-}
-
-/** The body of an `applied`-status card — the SURVIVING ORIGINAL-RECORD. Shows
- *  the original paragraph in rendered rich text, READ-ONLY (the footnote-style
- *  EditableCard path with a no-op onChange + forceReadOnly), plus Keep
- *  (affirmative) and Revert (quiet) actions. `cardKind`/`panelKey` pick the
- *  per-panel chrome + typography. */
+/** The body of an `applied`-status card — the SURVIVING ORIGINAL-RECORD, now
+ *  MINIMAL and surface-agnostic. Renders identically docked, in omni, and in a
+ *  float, as three stacked rows:
+ *    1. Keep (affirmative) / Revert (quiet) — always visible.
+ *    2. an "ORIGINAL" label + chevron disclosure (collapsed by default).
+ *    3. only when expanded — the original paragraph rendered as bare read-only
+ *       main-text (no card chrome / box), exactly as it reads in the document
+ *       (`richLatexToJson` → `BorrowedMainText`, the footnote/archive renderer).
+ *
+ *  Keep/Revert route through the `PendingChangeController` context (not per-mount
+ *  `onKeep`/`onRevert` callbacks), so the SAME minimal card works on every
+ *  surface — omni/float no longer fall back to the legacy field-view. When no
+ *  controller is present or it's off, the buttons render disabled (defensive).
+ *  `panelKey` picks the per-panel body typography; `family` tags Keep/Revert so
+ *  the controller tokens the right in-text mark. (`cardKind`/`themeKey` remain in
+ *  the prop type for call-site compatibility but the bare renderer needs neither.) */
 export function AppliedRecordBody({
   id,
   originalText,
-  cardKind,
-  panelKey,
-  themeKey,
-  onKeep,
-  onRevert,
+  family,
 }: {
   id: string;
   originalText: string;
   cardKind: CardKind;
   panelKey: PanelBodyKey;
   themeKey: PanelThemeKey;
-  onKeep: (id: string) => void;
-  onRevert: (id: string) => void;
+  family: PendingChangeFamily;
 }) {
-  const theme = useCardTheme(themeKey);
-  const value = inlineLatexToDoc(originalText);
+  const controller = usePendingChangeController();
+  const [showOriginal, setShowOriginal] = useState(false);
+  const disabled = !controller || !controller.isOn;
+  // The original renders with the FOOTNOTE typography (per the footnote styling
+  // guide) — same as footnote/archive card bodies — not the revision panel body.
+  const bodyStyle = usePanelBodyStyle("footnote");
   return (
     <div
-      className="px-3 pt-2 pb-2 space-y-2"
+      className="px-3 pt-2 pb-2 space-y-1.5"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Light-blue (sky) "applied" accent frame around the original record. */}
-      <div className="rounded border border-sky-200 bg-sky-50/60 px-1 py-0.5">
-        <EditableCard
-          id={`applied-record-${id}`}
-          kind={cardKind}
-          cardKind={cardKind}
-          selected={false}
-          theme={theme}
-          hideToolbar
-          forceReadOnly
-          value={value}
-          variant="footnote"
-          panelKey={panelKey}
-          placeholder=""
-          onChange={() => {}}
-        />
-      </div>
-      <div className="flex gap-1.5 pt-1 pr-7">
+      {/* Row 1 — Keep / Revert (always visible), with a thin divider beneath. */}
+      <div className="flex gap-1.5 pb-1.5 border-b border-[var(--border)]">
         <Button
           variant="ghost"
           size="sm"
+          disabled={disabled}
           onClick={(e) => {
             e.stopPropagation();
-            onRevert(id);
+            controller?.revert(family, id);
           }}
         >
           Revert
@@ -412,14 +398,39 @@ export function AppliedRecordBody({
         <Button
           variant="warm"
           size="sm"
+          disabled={disabled}
           onClick={(e) => {
             e.stopPropagation();
-            onKeep(id);
+            controller?.keep(family, id);
           }}
         >
           Keep
         </Button>
       </div>
+      {/* Row 2 — "ORIGINAL" label + chevron disclosure. */}
+      <button
+        type="button"
+        aria-expanded={showOriginal}
+        aria-label={showOriginal ? "Hide original" : "Show original"}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowOriginal((v) => !v);
+        }}
+        className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-medium text-[var(--muted)] hover:text-ink-strong cursor-pointer"
+      >
+        <span>Original</span> <Chevron expanded={showOriginal} />
+      </button>
+      {/* Row 3 — the original paragraph, bare, as it reads in the main text. */}
+      {showOriginal && (
+        <BorrowedMainText
+          value={richLatexToJson(originalText)}
+          instanceKey={`applied-original:${id}`}
+          variant="footnote"
+          className="break-words"
+          bodyStyle={bodyStyle}
+        />
+      )}
     </div>
   );
 }

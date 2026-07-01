@@ -168,18 +168,6 @@ export interface MarginaliaMarker {
    * pid so the marker keys stably and the re-pin grab gesture has a kind+id.
    */
   unanchored?: boolean;
-  /**
-   * Phase 1c — the PERSISTENT Keep / Revert affordance for a `pending-change`
-   * marker (set ONLY on that marker type, flag-ON). The gutter is the
-   * always-visible control for an applied-but-not-yet-kept pending AI change:
-   * `onKeep` finalizes the splice, `onRevert` restores the paragraph + deletes
-   * the suggestion. Both route through the EditorPane bridge to the SAME
-   * `pending-change-actions` sequence the card surface uses. Absent on every
-   * other marker type — `MarkerButton` only renders the Keep/Revert chips when
-   * BOTH are present.
-   */
-  onKeep?: () => void;
-  onRevert?: () => void;
 }
 
 export interface MarkerMeta {
@@ -262,7 +250,6 @@ import {
   IconTodo,
   IconReports,
   IconErrors,
-  IconZap,
 } from "@/components/editor-layout/panel-icons";
 import { DEFAULT_PANEL_COLORS, markerPaletteFromAccent } from "@/lib/panel-theme";
 import {
@@ -279,16 +266,6 @@ const CutIcon = React.createElement(IconCutter, { size: MARGIN_ICON_SIZE });
 const TodoIcon = React.createElement(IconTodo, { size: MARGIN_ICON_SIZE });
 const ReportIcon = React.createElement(IconReports, { size: MARGIN_ICON_SIZE, hideFrame: true });
 const ErrorIcon = React.createElement(IconErrors, { size: MARGIN_ICON_SIZE });
-// `muted` ⇒ the zap glyph paints with `currentColor` (the marker's blue),
-// rather than the default amber AI-bolt — so the pending-change marker reads in
-// the `#bfdbfe` family like the in-doc applied range.
-const PendingChangeIcon = React.createElement(IconZap, { size: MARGIN_ICON_SIZE, muted: true });
-
-/** The fixed light-blue accent the `pending-change` marker derives its palette
- *  from — the SAME `#bfdbfe` the headless applicator paints as the in-doc
- *  applied-range tint (`defaultTintForLinkedAnchorKind("pending-ai-change")`),
- *  so the margin presence marker and the spliced text read as one change. */
-export const PENDING_CHANGE_ACCENT = "#bfdbfe";
 
 /** Build a MARKER_META row. The owning panel and the accent color derive from
  *  `CARD_REGISTRY` via `src/cards/marker-meta.ts` (R17) — only the
@@ -306,31 +283,6 @@ function meta(
   return { ...base, panelId: panelForMarkerType(type), ...palette };
 }
 
-/** Build a MARKER_META row with a FIXED accent (not a `PanelThemeKey` color
- *  slot). For the derived `pending-change` marker, whose `#bfdbfe` blue is the
- *  in-doc applied-range tint and is intentionally non-overridable — it has no
- *  user-customizable panel color of its own. The palette is derived from the
- *  fixed accent via the same `markerPaletteFromAccent` math every other marker
- *  uses, so it sits in the same visual family. */
-function metaFixed(
-  type: MarkerType,
-  base: {
-    label: string;
-    defaultSide: "left" | "right";
-    icon: React.ReactNode;
-    accent: string;
-  },
-): MarkerMeta {
-  const palette = markerPaletteFromAccent(base.accent);
-  return {
-    label: base.label,
-    defaultSide: base.defaultSide,
-    icon: base.icon,
-    panelId: panelForMarkerType(type),
-    ...palette,
-  };
-}
-
 export const MARKER_META: Record<MarkerType, MarkerMeta> = {
   note:     meta("note",     { label: "Note",      defaultSide: "right", icon: NoteIcon }),
   archive:  meta("archive",  { label: "Archived",  defaultSide: "right", icon: ArchiveIcon }),
@@ -343,14 +295,6 @@ export const MARKER_META: Record<MarkerType, MarkerMeta> = {
   // DEFAULT_PANEL_COLORS.footnote, pinned in marker-meta-derivation.test.ts);
   // same color family as footnotes, distinguished by the icon glyph.
   error:    meta("error",    { label: "Error",     defaultSide: "right", icon: ErrorIcon }),
-  // Derived (no card kind), fixed `#bfdbfe` blue — see `metaFixed`. Persistent
-  // gutter control for an applied-but-not-yet-kept pending AI change (Phase 1c).
-  "pending-change": metaFixed("pending-change", {
-    label: "Pending change",
-    defaultSide: "right",
-    icon: PendingChangeIcon,
-    accent: PENDING_CHANGE_ACCENT,
-  }),
 };
 
 /** Number of icon columns per row in the margin grid */

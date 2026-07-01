@@ -20,7 +20,6 @@ import {
 import { buildFloatKey } from "@/floats/float-key";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
-import { Button } from "@/components/panel-primitives";
 import type { PanelId } from "@/hooks/useViewPrefs";
 import {
   deriveMarkerPalette,
@@ -208,12 +207,10 @@ export function MarkerButton({
   // `isPanelColorOverridden` always reports false for (SYSTEM_THEME_KEYS),
   // so error markers stay fixed.
   //
-  // `pending-change` is a NON-REGISTRY marker (`NON_REGISTRY_MARKER_TYPES`):
-  // its `#bfdbfe` blue is the fixed in-doc applied-range tint, baked into
-  // `MARKER_META` and intentionally non-overridable. Skip the override path
-  // entirely so a user's Revisions-panel color choice never re-tints it
-  // (its `panelThemeKeyForMarkerType` borrows the `"revision"` slot only to
-  // return a valid key — the value would otherwise leak the wrong color here).
+  // `NON_REGISTRY_MARKER_TYPES` is the (currently empty) set of markers whose
+  // palette is a fixed, non-overridable accent baked into `MARKER_META` rather
+  // than a user-overridable panel color slot. The check is retained so a future
+  // fixed-accent marker skips the override path without re-plumbing this.
   const themeKey = panelThemeKeyForMarkerType(m.type);
   const palette =
     !NON_REGISTRY_MARKER_TYPES.has(m.type) && isPanelColorOverridden(themeKey)
@@ -334,94 +331,6 @@ export function MarkerButton({
     >
       {meta.icon}
     </button>
-  );
-}
-
-/**
- * Phase 1c — the persistent margin-gutter control for an applied pending AI
- * change. Wraps a `pending-change` `MarkerButton` (presence + navigation: click
- * selects the card via the cardStore halo) and reveals a persistent Keep /
- * Revert affordance on hover or keyboard focus. The gutter is the ALWAYS-VISIBLE
- * entry point — distinct from the card surface, which is the other control.
- *
- * Keep = `variant="warm"` (affirmative), Revert = `variant="ghost"` (quiet),
- * matching the card-surface `AppliedRecordView` action row. The chips overlay
- * INBOARD of the marker (toward the text) so they don't collide with the
- * scrollbar/bolt lane, and they sit on the marker's interaction layer
- * (`pointer-events-auto`).
- *
- * Only rendered for markers that carry BOTH `onKeep` and `onRevert` — i.e. the
- * pending-change marker, flag-ON. Every other marker renders the bare
- * `MarkerButton`.
- */
-function PendingChangeMarker({
-  m,
-  cell,
-  dragEnabled,
-}: {
-  m: MarginaliaMarker;
-  cell?: GridCell;
-  dragEnabled: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  // The chips reveal on hover OR keyboard focus anywhere in the group, so the
-  // control is reachable without a mouse. RAF-free: pure local state toggled by
-  // React synthetic events (no per-keystroke work — this only mounts for an
-  // applied pending change, of which there are few).
-  return (
-    <div
-      className="pointer-events-none"
-      style={cell ? { position: "absolute", left: cell.x, top: cell.y } : undefined}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onFocusCapture={() => setOpen(true)}
-      onBlurCapture={(e) => {
-        // Close only when focus leaves the whole group (not on inner tab moves).
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
-      }}
-      data-marginalia-pending-change={m.id}
-    >
-      {/* The marker itself — placed at the cell origin (the wrapper already
-          carries the cell offset, so the button renders in-flow here). */}
-      <MarkerButton m={m} dragEnabled={dragEnabled} />
-      {open && (
-        <div
-          className="pointer-events-auto absolute z-30 flex items-center gap-1 rounded-md border border-sky-200 bg-surface px-1.5 py-1 shadow-lg"
-          // Inboard of the marker (toward the prose), vertically centered on it.
-          style={{
-            top: "50%",
-            right: MARGINALIA_ICON_SIZE + 6,
-            transform: "translateY(-50%)",
-            whiteSpace: "nowrap",
-          }}
-          role="group"
-          aria-label="Pending change actions"
-        >
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              m.onRevert?.();
-            }}
-          >
-            Revert
-          </Button>
-          <Button
-            variant="warm"
-            size="sm"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              m.onKeep?.();
-            }}
-          >
-            Keep
-          </Button>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -589,20 +498,13 @@ function MarginColumn({
       }}
       data-marginalia-margin={side}
     >
-      {markers.map((m) =>
-        // Phase 1c — a pending-change marker (carries Keep/Revert) renders with
-        // the persistent gutter control wrapper; every other marker is bare.
-        m.type === "pending-change" && m.onKeep && m.onRevert ? (
-          <PendingChangeMarker
-            key={`${m.type}:${m.id}`}
-            m={m}
-            cell={m.cell}
-            dragEnabled={dragEnabled}
-          />
-        ) : (
-          <MarkerButton key={`${m.type}:${m.id}`} m={m} cell={m.cell} dragEnabled={dragEnabled} />
-        ),
-      )}
+      {markers.map((m) => (
+        // Every marker — including an applied pending AI change — renders as a
+        // plain marker. The applied-change Keep/Revert affordance lives on the
+        // card and the in-context left-margin pill, NOT as gutter hover chips
+        // (margin-declutter pass).
+        <MarkerButton key={`${m.type}:${m.id}`} m={m} cell={m.cell} dragEnabled={dragEnabled} />
+      ))}
       {overflow.map((g) => (
         <OverflowPill key={`overflow:${g.side}:${g.textObjectId}`} group={g} dragEnabled={dragEnabled} />
       ))}

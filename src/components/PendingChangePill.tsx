@@ -1,23 +1,24 @@
 "use client";
 
 /**
- * Phase 3 — the floating Keep / Revert pill for an applied pending AI change.
+ * The Keep / Revert pill for an applied pending AI change — the ONLY in-context
+ * Keep/Revert affordance now that the gutter marker's hover chips were removed
+ * (margin-declutter pass). It's a quiet, EPHEMERAL control that materializes in
+ * the LEFT MARGIN, level with the blue change, whenever that change is HOVERED
+ * (text mark / margin marker / panel card — the three-surface cardStore halo) or
+ * FOCUSED (caret inside the blue range). Same shared `keepSuggestion` /
+ * `revertSuggestion` orchestration the card surface uses.
  *
- * A quiet, EPHEMERAL in-context control that materializes at the blue change in
- * the prose whenever that change is HOVERED (text mark / margin marker / panel
- * card — the three-surface cardStore halo) or FOCUSED (caret inside the blue
- * range). It is the in-text twin of the PERSISTENT margin-gutter control
- * (`PendingChangeMarker` in Marginalia.tsx): same shared `keepSuggestion` /
- * `revertSuggestion` orchestration, surfaced right at the text instead of out in
- * the gutter.
- *
- * ── Placement (cloned from SelectionActionsMenu's "margin-bolt") ──────────────
+ * ── Placement (left margin) ───────────────────────────────────────────────────
  * The pill is a `position:fixed` portal. Each event that could move/hide it runs
  * a SINGLE RAF-coalesced `computePlacement`: resolve the target card's blue range
  * via `findLinkedAnchorRange(doc, anchorId)` (the mark carries the anchorId the
- * card's `appliedChange` stamped), one `coordsAtPos(range.from)`, then viewport-
- * clamp. A `placementsEqual` bail short-circuits `setPlacement` when nothing
- * moved, so a re-tick that lands the same coords causes no React re-render.
+ * card's `appliedChange` stamped), one `coordsAtPos(range.from)` for the vertical
+ * line, then RIGHT-anchor the pill into the left margin (right edge one
+ * margin-width inboard of the editor DOM's left edge) and vertically center it on
+ * the line. It sits ABOVE any left-margin markers (z-order) — accepted overlap.
+ * A `placementsEqual` bail short-circuits `setPlacement` when nothing moved, so a
+ * re-tick that lands the same coords causes no React re-render.
  *
  * ── How it binds to the hovered/focused pending card ──────────────────────────
  * The target is resolved from TWO inputs, hover taking precedence:
@@ -61,10 +62,11 @@ import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 import { Button } from "@/components/panel-primitives";
 
 const VIEWPORT_MARGIN = 8;
-/** Small inset so the pill floats just above-left of the blue range's start,
- *  clear of the caret line — the same "seed near the anchor" feel the margin
- *  bolt has, but in-context rather than out in the gutter. */
-const PILL_GAP_Y = 6;
+/** How far LEFT of the paragraph's text-column edge the pill's right edge sits,
+ *  so it clears the paragraph grab handle (the grab bar sits ~21px left of the
+ *  text) and seats in the margin just OUTSIDE the grab bar, vertically level
+ *  with the change (it may temporarily overlap other margin markers). */
+const GRAB_BAR_CLEARANCE = 28;
 
 /** The applied-pending target the pill currently acts on: the resolved card ref
  *  plus the splice's anchorId (resolves the blue range) and the two Keep/Revert
@@ -82,14 +84,15 @@ export type PendingChangeIndex = Map<string, PendingChangeTarget>;
 
 interface Placement {
   visible: boolean;
-  left: number;
+  /** CSS `right` (viewport px) — the pill is right-anchored into the left margin. */
+  right: number;
   top: number;
   /** The `kind:id` the placement was computed for — the close/re-open identity.
    *  Null when nothing is targeted. */
   targetKey: string | null;
 }
 
-const INVISIBLE: Placement = { visible: false, left: 0, top: 0, targetKey: null };
+const INVISIBLE: Placement = { visible: false, right: 0, top: 0, targetKey: null };
 
 function refKey(ref: AnchoredCardRef): string {
   return `${ref.kind}:${ref.id}`;
@@ -160,6 +163,27 @@ export function resolveTargetKey(
   return null;
 }
 
+/** The viewport left edge of the block (paragraph) DOM element containing `pos`
+ *  — the text-column edge for that block, which the paragraph grab handle sits
+ *  just to the left of. Walks up from the text node to the direct block child
+ *  of the editor content root. Returns null if the DOM can't be resolved. */
+function paragraphBlockLeft(editor: Editor, pos: number): number | null {
+  try {
+    const domAt = editor.view.domAtPos(pos);
+    let el: Node | null = domAt.node;
+    if (el && el.nodeType === Node.TEXT_NODE) el = el.parentElement;
+    const pmDom = editor.view.dom;
+    let block = el as HTMLElement | null;
+    while (block && block.parentElement && block.parentElement !== pmDom) {
+      block = block.parentElement;
+    }
+    if (!(block instanceof HTMLElement)) return null;
+    return block.getBoundingClientRect().left;
+  } catch {
+    return null;
+  }
+}
+
 /** One `coordsAtPos` over the target's blue range, mirroring
  *  SelectionActionsMenu's cached-metric placement. Hidden when the editor is
  *  collapsed (keep-alive), the range is gone, or the range is scrolled out of
@@ -191,29 +215,34 @@ function computePlacement(
   const scrollBottom = cache.scrollBottom;
   // Off-screen (scrolled out of the editor's viewport band) → hide.
   if (coords.bottom < scrollTop || coords.top > scrollBottom) {
-    return { visible: false, left: 0, top: 0, targetKey };
+    return { visible: false, right: 0, top: 0, targetKey };
   }
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  // Seat the pill just above the range start, left-aligned to it.
-  let left = coords.left;
-  let top = coords.top - PILL_GAP_Y;
-  // Viewport clamp (both axes), matching SelectionActionsMenu.
-  if (left + 1 > vw - VIEWPORT_MARGIN) {
-    left = Math.max(VIEWPORT_MARGIN, vw - VIEWPORT_MARGIN);
-  }
-  if (left < VIEWPORT_MARGIN) left = VIEWPORT_MARGIN;
-  top = Math.max(top, scrollTop, VIEWPORT_MARGIN);
+  // Seat the pill in the LEFT MARGIN, just OUTSIDE the paragraph grab bar: take
+  // the change paragraph's block-left edge (the text column edge for that block,
+  // which the grab handle sits ~21px left of) and put the pill's right edge
+  // `GRAB_BAR_CLEARANCE` further left — clear of the grab bar. Vertically center
+  // on the change's first line. It may overlap other margin markers (accepted;
+  // the pill z-order lifts it above them).
+  const textLeft = paragraphBlockLeft(editor, range.from) ?? coords.left;
+  const rightEdge = textLeft - GRAB_BAR_CLEARANCE; // viewport x of the pill's right edge
+  let right = vw - rightEdge; // CSS `right`
+  if (right < VIEWPORT_MARGIN) right = VIEWPORT_MARGIN;
+  if (right > vw - VIEWPORT_MARGIN) right = vw - VIEWPORT_MARGIN;
+
+  let top = (coords.top + coords.bottom) / 2; // vertical center of the line
+  top = Math.max(top, scrollTop + VIEWPORT_MARGIN, VIEWPORT_MARGIN);
   if (top > vh - VIEWPORT_MARGIN) top = vh - VIEWPORT_MARGIN;
 
-  return { visible: true, left, top, targetKey };
+  return { visible: true, right, top, targetKey };
 }
 
 function placementsEqual(a: Placement, b: Placement): boolean {
   return (
     a.visible === b.visible &&
-    a.left === b.left &&
+    a.right === b.right &&
     a.top === b.top &&
     a.targetKey === b.targetKey
   );
@@ -353,10 +382,11 @@ export function PendingChangePill({
       className="pointer-events-auto flex items-center gap-1 rounded-md border border-sky-200 bg-surface px-1.5 py-1 shadow-lg"
       style={{
         position: "fixed",
-        left: placement.left,
+        right: placement.right,
         top: placement.top,
-        // Lift slightly so it sits ABOVE its own line; the seed-near-anchor feel.
-        transform: "translateY(-100%)",
+        // Vertically center the pill on the change's first line (it's seated in
+        // the left margin, level with the prose).
+        transform: "translateY(-50%)",
         zIndex: RESTING_MARGIN_TRIGGER_Z,
         whiteSpace: "nowrap",
       }}

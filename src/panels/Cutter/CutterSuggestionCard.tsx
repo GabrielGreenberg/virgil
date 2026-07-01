@@ -53,7 +53,9 @@ export function CutterSuggestionCard({
   onAccept,
   onReject,
   onApply,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- tolerated-vestigial: Keep/Revert now flow through the PendingChangeController context; kept so docked callers don't break.
   onKeep,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- tolerated-vestigial: see onKeep.
   onRevert,
   onDelete,
   onSelect,
@@ -73,10 +75,12 @@ export function CutterSuggestionCard({
   onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
-  /** Pending-changes (flag-ON) client-side apply/keep/revert. Optional: the
-   *  float/omni mounts don't wire them (Phase 1b proves the mechanics on the
-   *  panel card only). The flag-ON UI that calls them renders only in the
-   *  docked panel, where they're always supplied. */
+  /** Pending-changes (flag-ON) client-side apply. `onApply` still wires the
+   *  docked pending→apply button. `onKeep`/`onRevert` are now tolerated-vestigial
+   *  (kept so existing docked callers don't break): the applied card routes
+   *  Keep/Revert through the `PendingChangeController` context instead, so the
+   *  minimal applied card renders identically on every surface (docked / omni /
+   *  float) without per-mount callbacks. */
   onApply?: (id: string) => void;
   onKeep?: (id: string) => void;
   onRevert?: (id: string) => void;
@@ -91,15 +95,13 @@ export function CutterSuggestionCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const isPending = card.status === "pending";
   // Pending-changes (flag-ON) status branches. Flag OFF → all false (status
-  // never reaches applied/stale), so the card renders exactly as today. The
-  // dedicated bodies need their callbacks, which only the docked panel wires —
-  // float/omni mounts omit them and fall back to the field view.
+  // never reaches applied/stale), so the card renders exactly as today. Keep/
+  // Revert now flow through the PendingChangeController context (not per-mount
+  // callbacks), so the applied card renders on EVERY surface — no
+  // `hasPendingCallbacks` gate.
   const pendingChangesOn = isPendingChangesOn();
-  const hasPendingCallbacks = !!onApply && !!onKeep && !!onRevert;
-  const isApplied =
-    pendingChangesOn && hasPendingCallbacks && card.status === "applied";
-  const isStale =
-    pendingChangesOn && hasPendingCallbacks && card.status === "stale";
+  const isApplied = pendingChangesOn && card.status === "applied";
+  const isStale = pendingChangesOn && card.status === "stale";
   const isAnchored =
     getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
   const anchorKind: "selection" | "paragraph" | null = hasTextAnchor(card)
@@ -133,7 +135,9 @@ export function CutterSuggestionCard({
       chromeless={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
-      isCollapsed={compressed}
+      // Applied cards always show their (minimal) body, so the header must not
+      // display a misleading collapsed chevron.
+      isCollapsed={compressed && !isApplied}
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
       onTrashClick={() => onDelete(card.id)}
@@ -175,7 +179,22 @@ export function CutterSuggestionCard({
       }}
       headerTrailing={<CutterSuggestionTrailing card={card} />}
     >
-      {compressed ? (
+      {isApplied ? (
+        // Flag-ON applied: the minimal surviving original-record card. Wins over
+        // `compressed` so Keep/Revert are always reachable. Keep/Revert route
+        // through the PendingChangeController context (family-tagged).
+        <AppliedRecordBody
+          id={card.id}
+          originalText={card.appliedChange?.originalText ?? card.original_text}
+          cardKind="cutter-suggestion"
+          panelKey="cut"
+          themeKey="cut"
+          family="cutter-suggestion"
+        />
+      ) : isStale ? (
+        // Flag-ON stale: quiet notice + Dismiss (delete). No doc mutation.
+        <StaleNotice id={card.id} onDismiss={onReject} />
+      ) : compressed ? (
         <div className="px-3 pt-1.5 pb-1.5">
           <div style={{ ...cardBodyStyle, ...compressedBodyStyle(compressedLines) }}>
             {card.suggested_text ? (
@@ -187,21 +206,6 @@ export function CutterSuggestionCard({
             )}
           </div>
         </div>
-      ) : isApplied ? (
-        // Flag-ON applied: the surviving original-record card. onKeep/onRevert
-        // are guaranteed present here (isApplied gates on hasPendingCallbacks).
-        <AppliedRecordBody
-          id={card.id}
-          originalText={card.original_text}
-          cardKind="cutter-suggestion"
-          panelKey="cut"
-          themeKey="cut"
-          onKeep={onKeep!}
-          onRevert={onRevert!}
-        />
-      ) : isStale ? (
-        // Flag-ON stale: quiet notice + Dismiss (delete). No doc mutation.
-        <StaleNotice id={card.id} onDismiss={onReject} />
       ) : (
       <div
         className={`px-3 pt-2 pb-2 space-y-2.5${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
