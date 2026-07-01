@@ -70,8 +70,29 @@ const indexedGlyph: Record<IndexedState, string> = {
   failed: "!",
 };
 
-export function IndexedPill({ state, compact = false }: { state: IndexedState; compact?: boolean }) {
-  return <Pill label={compact ? indexedGlyph[state] : indexedLabel[state]} tone={indexedTone[state]} title={`Indexed: ${state}`} />;
+/** Full-phrase labels for the PaperHeader's stacked STATUS column (`long`
+ *  mode). One human-readable phrase per state, no glyph shorthand. */
+const indexedLong: Record<IndexedState, string> = {
+  none: "Not indexed",
+  queued: "Queued",
+  running: "Indexing…",
+  indexed: "Indexed",
+  deepIndexed: "Deep Indexed",
+  failed: "Index failed",
+};
+
+export function IndexedPill({
+  state,
+  compact = false,
+  long = false,
+}: {
+  state: IndexedState;
+  compact?: boolean;
+  /** Full-phrase label (PaperHeader stacked column). Wins over `compact`. */
+  long?: boolean;
+}) {
+  const label = long ? indexedLong[state] : compact ? indexedGlyph[state] : indexedLabel[state];
+  return <Pill label={label} tone={indexedTone[state]} title={`Indexed: ${state}`} />;
 }
 
 const bibTone: Record<BibAuthState, Tone> = {
@@ -117,16 +138,46 @@ const bibTitle: Record<BibAuthState, string> = {
     "Bib auth: needs re-auth — metadata rewritten from the file; run /library/authenticate-bib",
 };
 
-export function BibPill({ state, compact = false }: { state: BibAuthState; compact?: boolean }) {
-  return <Pill label={compact ? bibGlyph[state] : bibLabel[state]} tone={bibTone[state]} title={bibTitle[state]} />;
+/** Full-phrase bib-auth labels for the PaperHeader's stacked STATUS column
+ *  (`long` mode). */
+const bibLong: Record<BibAuthState, string> = {
+  none: "Not authenticated",
+  unverified: "Unverified",
+  authenticated: "Authenticated",
+  manuscript: "Manuscript",
+  canonical: "Pre-digital classic",
+  failed: "Auth failed",
+  "needs-reauth": "Needs re-auth",
+};
+
+export function BibPill({
+  state,
+  compact = false,
+  long = false,
+}: {
+  state: BibAuthState;
+  compact?: boolean;
+  /** Full-phrase label (PaperHeader stacked column). Wins over `compact`. */
+  long?: boolean;
+}) {
+  const label = long ? bibLong[state] : compact ? bibGlyph[state] : bibLabel[state];
+  return <Pill label={label} tone={bibTone[state]} title={bibTitle[state]} />;
 }
 
 /** Blue "imported" pill — shown in the paper-header pill group when this
  *  paper's references.bib has been folded into the central master.bib.
  *  Reuses the slate-blue pill tone (same family as the manuscript/canonical
  *  bib pills). */
-export function BibImportedPill({ compact = false }: { compact?: boolean }) {
-  return <Pill label={compact ? "✓" : "✓ imp"} tone="blue" title="Bibliography imported into master.bib" />;
+export function BibImportedPill({
+  compact = false,
+  long = false,
+}: {
+  compact?: boolean;
+  /** Full-phrase label (PaperHeader stacked column). Wins over `compact`. */
+  long?: boolean;
+}) {
+  const label = long ? "Bibliography imported" : compact ? "✓" : "✓ imp";
+  return <Pill label={label} tone="blue" title="Bibliography imported into master.bib" />;
 }
 
 /** Gray empty-state "imp" pill — the not-imported counterpart to

@@ -22,7 +22,7 @@ import type { QueueEntry } from "@library/lib/queue";
 import { deleteFile, readJsonFile, SUBDIRS } from "@library/lib/library-storage";
 import { formatBibliography } from "@library/lib/bib-parser";
 import { ExpandedFields } from "./BibCard";
-import { StatusPills, StatusDots } from "./StatusPill";
+import { IndexedPill, BibPill, BibImportedPill } from "./StatusPill";
 import PaperAiRequestsMenu, {
   type AiRequestItem,
 } from "./PaperAiRequestsMenu";
@@ -76,10 +76,15 @@ const REQUESTS: { kind: RequestKind; label: string }[] = [
   { kind: "importbib", label: "Import bib" },
 ];
 
-/** Sole header for a paper-file tab — a 2-column grid:
- *  formatted bibliography entry on the left (full height); right column
- *  stacks the status pills, the Text/PDF toggle, an "AI requests:" row
- *  of checkboxes, and an instructions textarea. */
+/** Sole header for a paper-file tab — a 3-column row inside one warm-sheet pod:
+ *  (1) BIB DATA — the formatted bibliography headline + membership chips, with
+ *      the citekey (@type{key}), a copy button, and the fields/edit controls as
+ *      its footer; (2) STATUS — the index-state, bib-auth, and (when imported)
+ *      "Bibliography imported" pills as full-phrase stacked lozenges, with the
+ *      AI-requests dropdown beneath; (3) PDF / PAPER — a page-count label, the
+ *      printed-page picker, and the Text/PDF view toggle. Flash text, the
+ *      expanded fields table, and the AI-instructions textarea run full-width
+ *      below the row. Below ~560px the three columns stack. */
 export default function PaperHeader({
   handle,
   entry,
@@ -266,8 +271,13 @@ export default function PaperHeader({
     : [];
   const apaHtml = bib ? formatBibliography(bib, "apa") : undefined;
 
-  // Responsive status: swap full StatusPills → compact StatusDots below a
-  // width threshold so the priority ViewToggle is never pushed off the edge.
+  // Responsive layout: measure the pod's border-box width and, below a
+  // threshold, STACK the 3 status columns (flexDirection: column) instead of
+  // laying them side-by-side, so the detail panel can shrink to ~330px without
+  // the columns overflowing. The SAME `narrow` flag also drives the compact
+  // labels in PagePicker ("p." prefix dropped) and ViewToggle ("Text" vs.
+  // "Virgil Text"/"Raw Text") so the bottom-of-column controls stay legible
+  // when stacked.
   const podRef = useRef<HTMLDivElement | null>(null);
   const [narrow, setNarrow] = useState(false);
   const narrowRaf = useRef<number | null>(null);
@@ -281,10 +291,10 @@ export default function PaperHeader({
     // sanctity / AGENTS.md — a width-watching RO must be RAF-guarded). Read the
     // BORDER-box (`borderBoxSize.inlineSize`) here too so the 560px threshold
     // resolves against the SAME box as the initial sync above — the pod carries
-    // 14px of horizontal padding, so mixing in `contentRect.width` (content-box)
-    // could flip the StatusPills↔StatusDots swap differently on first paint vs.
-    // after the first resize tick. Fall back to the border-box rect (then
-    // contentRect) where `borderBoxSize` is unavailable.
+    // 14px of horizontal padding, so mixing in `contentRect.width`
+    // (content-box) could flip the side-by-side↔stacked layout differently on
+    // first paint vs. after the first resize tick. Fall back to the border-box
+    // rect (then contentRect) where `borderBoxSize` is unavailable.
     const ro = new ResizeObserver((entries) => {
       if (narrowRaf.current !== null) return;
       narrowRaf.current = requestAnimationFrame(() => {
@@ -306,6 +316,20 @@ export default function PaperHeader({
       }
     };
   }, []);
+
+  // ── PDF / paper page-count label (column 3) ──────────────────────────
+  const pdfStatus = entry.pdf;
+  const pageCountLabel = (() => {
+    if (pdfStatus.present && typeof pdfStatus.pageCount === "number") {
+      const n = pdfStatus.pageCount;
+      return `${n} page${n !== 1 ? "s" : ""}`;
+    }
+    const fmt = pdfStatus.format;
+    if (fmt === "docx") return "Word document";
+    if (fmt === "tex") return "LaTeX source";
+    if (pdfStatus.present) return "PDF";
+    return "No PDF";
+  })();
 
   // Build the dropdown items from the static REQUESTS list + live queued/disabled
   // state. Order + labels match the old checkbox row.
@@ -340,16 +364,19 @@ export default function PaperHeader({
           minWidth: 0,
         }}
       >
-        {/* Single flex ROW: bib region (yields) + controls cluster (pinned). */}
+        {/* THREE-column flex ROW: bib data (yields) · status · pdf/paper.
+            Below ~560px the columns STACK (flexDirection: column) so the
+            detail panel can shrink to ~330px without overflow. */}
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: 12,
+            flexDirection: narrow ? "column" : "row",
+            alignItems: narrow ? "stretch" : "flex-start",
+            gap: narrow ? 10 : 16,
             minWidth: 0,
           }}
         >
-          {/* Bib region — the yielder. */}
+          {/* ── COLUMN 1 — BIB DATA (the yielder) ── */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <BibEntryChrome
               citekey={citekey ?? "?"}
@@ -362,9 +389,10 @@ export default function PaperHeader({
               inLibrary={!!citekey}
               membershipChips={membershipChips}
               showOpenLink={showOpenInTab}
+              showStatusRow={false}
             />
-            {/* edit + field-table affordances — mono micro-controls under the
-                headline, aligned with the chip column. */}
+            {/* citekey (@type{key}) + copy + fields/edit — mono micro-controls
+                under the headline, aligned with the chip column. */}
             <div
               style={{
                 display: "flex",
@@ -372,6 +400,7 @@ export default function PaperHeader({
                 gap: 8,
                 paddingLeft: 18,
                 marginTop: 2,
+                flexWrap: "wrap",
               }}
             >
               <code
@@ -384,6 +413,30 @@ export default function PaperHeader({
               >
                 @{bib?.type ?? "?"}{`{${citekey ?? "?"}}`}
               </code>
+              {citekey && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(citekey).then(
+                      () => flashFor("citekey copied ✓"),
+                      () => flashFor("copy failed"),
+                    );
+                  }}
+                  title="Copy citekey"
+                  aria-label="Copy citekey"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--muted)",
+                    fontFamily: "var(--mono)",
+                    fontSize: 10,
+                    cursor: "pointer",
+                    padding: "0 4px",
+                  }}
+                >
+                  copy
+                </button>
+              )}
               {bib && (
                 <button
                   type="button"
@@ -441,44 +494,56 @@ export default function PaperHeader({
             </div>
           </div>
 
-          {/* Controls cluster — never compresses; ViewToggle pinned rightmost. */}
+          {/* ── COLUMN 2 — STATUS (full-phrase pills, stacked) + AI menu ── */}
           <div
             style={{
               flexShrink: 0,
+              minWidth: 160,
               display: "flex",
-              alignItems: "center",
-              gap: 8,
+              flexDirection: "column",
+              gap: 5,
+              alignItems: "flex-start",
             }}
           >
-            {narrow ? (
-              <StatusDots
-                pdfPresent={pdfAvailable}
-                indexed={entry.indexed.state}
-                bib={entry.bib.state}
-              />
-            ) : (
-              <StatusPills
-                pdfPresent={pdfAvailable}
-                indexed={entry.indexed.state}
-                bib={entry.bib.state}
-                bibImported={!!entry.bib.imported}
-              />
-            )}
-            {pgmarkPages && <PagePicker pages={pgmarkPages} narrow={narrow} />}
+            <IndexedPill state={entry.indexed.state} long />
+            <BibPill state={entry.bib.state} long />
+            {entry.bib.imported && <BibImportedPill long />}
             <PaperAiRequestsMenu
               items={aiRequestItems}
               onToggle={(kind, next) => void onToggle(kind, next)}
               disabled={!handle || !citekey}
             />
-            <div style={{ marginLeft: "auto", flexShrink: 0 }}>
-              <ViewToggle
-                mode={viewMode}
-                onChange={onViewModeChange}
-                pdfAvailable={pdfAvailable}
-                indexedState={indexedState}
-                narrow={narrow}
-              />
-            </div>
+          </div>
+
+          {/* ── COLUMN 3 — PDF / PAPER (page count · picker · view toggle) ── */}
+          <div
+            style={{
+              flexShrink: 0,
+              minWidth: 110,
+              display: "flex",
+              flexDirection: "column",
+              gap: 5,
+              alignItems: "flex-start",
+            }}
+          >
+            <span
+              style={{
+                fontFamily: "var(--mono)",
+                fontSize: 11,
+                color: "var(--muted)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {pageCountLabel}
+            </span>
+            {pgmarkPages && <PagePicker pages={pgmarkPages} narrow={narrow} />}
+            <ViewToggle
+              mode={viewMode}
+              onChange={onViewModeChange}
+              pdfAvailable={pdfAvailable}
+              indexedState={indexedState}
+              narrow={narrow}
+            />
           </div>
         </div>
 
