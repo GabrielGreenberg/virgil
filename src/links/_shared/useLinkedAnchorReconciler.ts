@@ -55,6 +55,15 @@ export function reapOrphanLinkedAnchors(
     if (!node.isText) return true;
     for (const m of node.marks) {
       if (m.type.name !== "linkedAnchor") continue;
+      // Pending-AI-change marks are lifecycle-managed by the applicator (stamped
+      // on apply, unset on Keep/Revert) — NOT by card-anchor presence. The
+      // card-derived alive-set LAGS a fresh auto-apply: the blue mark is stamped
+      // one React commit before the card flips to `applied` / gets its
+      // `appliedChange.anchorId`, so a sweep in that window reaped the just-
+      // stamped mark (the fresh-apply blue vanished while a reload re-stamp
+      // stuck — that asymmetry was the bug). Skip by kind so protection is
+      // timing-independent; Revert removes the mark explicitly, so none leak.
+      if (m.attrs.kind === "pending-ai-change") continue;
       const id = m.attrs.anchorId as string | undefined;
       if (id && !alive.has(id)) orphans.add(id);
     }

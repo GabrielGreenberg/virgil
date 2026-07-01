@@ -329,3 +329,48 @@ describe("reapOrphanLinkedAnchors — create-not-reaped regression guard", () =>
     editor.destroy();
   });
 });
+
+describe("reapOrphanLinkedAnchors — pending-ai-change marks are applicator-managed", () => {
+  // The fresh-apply reap bug: a fresh auto-apply stamps the blue
+  // `pending-ai-change` mark ONE React commit before the card flips to
+  // `applied` / gets its `appliedChange.anchorId`, so the card-derived alive-set
+  // transiently EXCLUDES it and the sweep reaped the just-applied blue mark (it
+  // vanished on fresh apply while a reload re-stamp stuck — that asymmetry was
+  // the bug). Pending marks are lifecycle-managed by the applicator (stamped on
+  // apply, unset on Keep/Revert), so the reaper must never strip them by kind.
+  it("KEEPS a pending-ai-change mark even when its anchorId is NOT in the alive-set", () => {
+    const editor = mountDoc([
+      {
+        uuid: "p1",
+        runs: [
+          { text: "kept " },
+          { text: "AI edit", anchor: { anchorId: "pac1", kind: "pending-ai-change" } },
+          { text: " tail" },
+        ],
+      },
+    ]);
+    expect(hasMark(editor, "pac1")).toBe(true);
+    // Empty alive-set (card not `applied` yet) — a normal mark WOULD be reaped.
+    reapOrphanLinkedAnchors(editor, new Set<string>());
+    expect(hasMark(editor, "pac1")).toBe(true); // survives — protected by kind
+    editor.destroy();
+  });
+
+  it("still reaps a genuine orphan of another kind in the same pass", () => {
+    const editor = mountDoc([
+      {
+        uuid: "p1",
+        runs: [
+          { text: "a " },
+          { text: "pending", anchor: { anchorId: "pac2", kind: "pending-ai-change" } },
+          { text: " b " },
+          { text: "orphan-note", anchor: { anchorId: "on1", kind: "note" } },
+        ],
+      },
+    ]);
+    reapOrphanLinkedAnchors(editor, new Set<string>());
+    expect(hasMark(editor, "pac2")).toBe(true); // protected by kind
+    expect(hasMark(editor, "on1")).toBe(false); // orphan note still reaped
+    editor.destroy();
+  });
+});
