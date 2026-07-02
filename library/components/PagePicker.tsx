@@ -16,9 +16,13 @@ import type { PgmarkPages } from "@library/hooks/usePgmarkPages";
 export default function PagePicker({
   pages,
   narrow = false,
+  dense = false,
 }: {
   pages: PgmarkPages;
   narrow?: boolean;
+  /** Shorter input box — used in the editor chrome band (26px tall) so the box
+   *  doesn't crowd the pod's top border. */
+  dense?: boolean;
 }) {
   const { pages: marks, currentLabel, scrollToPage } = pages;
   const [draft, setDraft] = useState<string | null>(null);
@@ -74,7 +78,10 @@ export default function PagePicker({
         aria-label="Go to printed page"
         style={{
           width: 40,
-          padding: "2px 4px",
+          padding: dense ? "0px 4px" : "2px 4px",
+          // Dense: a fixed short box (border-box) so it sits clear of the 26px
+          // band's top/bottom edges instead of nearly filling it.
+          ...(dense ? { height: 16, lineHeight: "14px" } : null),
           fontFamily: "var(--mono)",
           fontSize: 11,
           textAlign: "center",
