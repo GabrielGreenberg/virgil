@@ -71,6 +71,14 @@ export interface BibEntryChromeProps {
    *  inline chips would be redundant. The membership chips + headline are
    *  unaffected. */
   showStatusRow?: boolean;
+  /** Dedupe the headline against the APA citation. When true AND `apaHtml` is
+   *  present, the structured author·year·title headline is dropped and the APA
+   *  becomes the SOLE citation (the grab handle rides the APA row, so the
+   *  drag-to-library affordance survives) — the APA already restates author,
+   *  year, and title, so showing both repeats them. When there is no APA the
+   *  structured headline still renders (there must always be a headline).
+   *  Defaults to false (both are shown). */
+  dedupeApaHeadline?: boolean;
 }
 
 /** Subtle 6-dot grip — the drag affordance lean (grab cursor + subtle
@@ -108,12 +116,18 @@ export function BibEntryChrome({
   showMembershipChips = true,
   showOpenLink = true,
   showStatusRow = true,
+  dedupeApaHeadline = false,
 }: BibEntryChromeProps) {
   const headerText = [author, year, title].filter(Boolean).join(" · ");
+  // When deduping and an APA citation exists, the APA IS the headline — the
+  // structured author·year·title line would just repeat it.
+  const apaOnly = dedupeApaHeadline && !!apaHtml;
 
   return (
     <div className="flex flex-col gap-1 min-w-0">
-      {/* Layer 1 — structured headline, with a grab-draggable region. */}
+      {/* Layer 1 — headline, with a grab-draggable region. Normally the
+          structured author·year·title stack; in `apaOnly` mode the APA citation
+          rides this row instead (so the drag handle stays attached to it). */}
       <div
         className="flex items-center gap-2 min-w-0 cursor-grab active:cursor-grabbing"
         draggable
@@ -143,30 +157,45 @@ export function BibEntryChrome({
         data-citekey={citekey}
       >
         <GripDots />
-        {/* author · year on the first line; title on its own line beneath. */}
+        {/* Structured author·year·title stack — or, in apaOnly mode, the APA
+            citation itself, so it inherits this grab row. */}
         <div
           className="flex-1 min-w-0 leading-snug text-[13px]"
           style={{ overflowWrap: "anywhere" }}
           data-hint={headerText}
           aria-label={headerText}
         >
-          {(author || year) && (
-            <div className="min-w-0">
-              {author && <span className="font-semibold">{author}</span>}
-              {author && year && (
-                <span className="text-ink-muted mx-1.5">&middot;</span>
+          {apaOnly ? (
+            <div
+              className="library-bib-formatted leading-relaxed"
+              style={{
+                fontFamily: "var(--serif)",
+                color: "var(--foreground)",
+                wordBreak: "break-word",
+              }}
+              dangerouslySetInnerHTML={{ __html: apaHtml! }}
+            />
+          ) : (
+            <>
+              {(author || year) && (
+                <div className="min-w-0">
+                  {author && <span className="font-semibold">{author}</span>}
+                  {author && year && (
+                    <span className="text-ink-muted mx-1.5">&middot;</span>
+                  )}
+                  {year && <span className="font-semibold">{year}</span>}
+                </div>
               )}
-              {year && <span className="font-semibold">{year}</span>}
-            </div>
-          )}
-          {title && (
-            <div className="min-w-0 italic">{title}</div>
+              {title && <div className="min-w-0 italic">{title}</div>}
+            </>
           )}
         </div>
       </div>
 
-      {/* Full APA citation — trusted formatBibliography output, always shown. */}
-      {apaHtml ? (
+      {/* Full APA citation — trusted formatBibliography output. Rendered beneath
+          the structured headline; SKIPPED in apaOnly mode, where it already
+          rides Layer 1 above (else it would repeat). */}
+      {!apaOnly && apaHtml ? (
         <div
           className="library-bib-formatted pl-[18px] text-[13px] leading-relaxed"
           style={{

@@ -87,6 +87,75 @@ export default function RightDetail({
     [],
   );
 
+  // ── Header ↔ text-pod width pinning ──────────────────────────────────
+  // The PaperHeader pod is a sibling ABOVE the reader; left to its own devices
+  // it centres in the FULL detail width, but the reader's editor card is pushed
+  // right by the left panel rail (footnote/citation cards), so the two don't
+  // line up. Measure the live text pod (`[data-pod-frame]` inside the reader)
+  // in viewport coords and hand it to PaperHeader, which pins its own pod to
+  // match (same width, same left edge). Text mode only — PDF mode has no editor
+  // card, so the header falls back to its centred default. Panel dock/undock and
+  // window resize both change the card's geometry, so we observe the scroll
+  // container + the frame; RAF-coalesced, and the setState is equality-gated so
+  // it never churns RightDetail on a no-op measure.
+  const [textPodRect, setTextPodRect] = useState<{
+    left: number;
+    width: number;
+  } | null>(null);
+  useEffect(() => {
+    if (viewMode !== "text" || !readerScrollEl) {
+      setTextPodRect(null);
+      return;
+    }
+    let raf = 0;
+    let cancelled = false;
+    const ro = new ResizeObserver(() => schedule());
+    const measure = () => {
+      if (cancelled) return;
+      const frame = readerScrollEl.querySelector<HTMLElement>("[data-pod-frame]");
+      if (!frame) return;
+      const r = frame.getBoundingClientRect();
+      if (r.width <= 0) return;
+      setTextPodRect((prev) =>
+        prev &&
+        Math.abs(prev.left - r.left) < 0.5 &&
+        Math.abs(prev.width - r.width) < 0.5
+          ? prev
+          : { left: r.left, width: r.width },
+      );
+    };
+    const schedule = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        measure();
+      });
+    };
+    ro.observe(readerScrollEl);
+    // The frame streams in after the EditorPane mounts — poll a bounded window
+    // of frames until it exists, then observe it directly and stop polling.
+    let polls = 0;
+    const poll = () => {
+      if (cancelled) return;
+      const frame = readerScrollEl.querySelector<HTMLElement>("[data-pod-frame]");
+      if (frame) {
+        ro.observe(frame);
+        measure();
+        return;
+      }
+      if (polls++ < 180) requestAnimationFrame(poll);
+    };
+    requestAnimationFrame(poll);
+    window.addEventListener("resize", schedule);
+    measure();
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener("resize", schedule);
+    };
+  }, [viewMode, readerScrollEl]);
+
   // F#11 — ONE printed-page derivation, owned here. RightDetail is the single
   // ancestor that renders BOTH consumers (PaperHeader's PagePicker directly,
   // and PageScrollLozenge via PaperRender), and it already holds the live
@@ -213,6 +282,7 @@ export default function RightDetail({
           editPending={!canEdit && editPending}
           showOpenInTab={!isOuterTab}
           pgmarkPages={pdfPgmarkPages}
+          textPodRect={textPodRect}
         />
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
           <PdfView
@@ -261,6 +331,7 @@ export default function RightDetail({
         editPending={!canEdit && editPending}
         showOpenInTab={!isOuterTab}
         pgmarkPages={pgmarkPages}
+        textPodRect={textPodRect}
       />
       <div
         style={{
