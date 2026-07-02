@@ -818,18 +818,31 @@ function seedEphemeralPrefs(): ViewPrefs {
   }
 }
 
-export function useViewPrefs(opts?: { persistence?: ViewPrefsPersistence }) {
+export function useViewPrefs(opts?: {
+  persistence?: ViewPrefsPersistence;
+  /** EPHEMERAL-ONLY seed overrides applied ONCE at init (on top of
+   *  `seedEphemeralPrefs()`). Lets a host set session-only starting state a
+   *  reader wants — e.g. the Library inline reader seeds `collapsedLeft/Right:
+   *  true` so the panel columns start folded in. Ignored in `global` mode (the
+   *  persisted blob owns the state there). Read once by the useState initializer,
+   *  so later changes to this object are inert. */
+  initialOverrides?: Partial<ViewPrefs>;
+}) {
   // `"global"` is the default; passing no arg is byte-identical to the prior
   // behavior. `"ephemeral"` gates off the three persistence touch-points
   // (initial load, cross-window subscribe, and `persist`) below.
   const ephemeral = opts?.persistence === "ephemeral";
+  const initialOverrides = opts?.initialOverrides;
   const [prefs, setPrefs] = useState<ViewPrefs>(() =>
     // Ephemeral seeds from DEFAULT_PREFS, but folds in the user's existing
     // global page geometry / placements read ONCE at init (a pleasant
     // starting point — same page width / margins / strip order as the editor)
-    // without subscribing to later changes. Global mode starts from
-    // DEFAULT_PREFS and hydrates from localStorage in the load effect below.
-    ephemeral ? seedEphemeralPrefs() : DEFAULT_PREFS,
+    // without subscribing to later changes, PLUS any `initialOverrides`. Global
+    // mode starts from DEFAULT_PREFS and hydrates from localStorage in the load
+    // effect below.
+    ephemeral
+      ? { ...seedEphemeralPrefs(), ...(initialOverrides ?? {}) }
+      : DEFAULT_PREFS,
   );
   const initialized = useRef(false);
   // Deferred-persistence handoff: `update` records the change here (a pure ref

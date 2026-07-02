@@ -234,10 +234,16 @@ function PaperReader({
   // mutate the same store (F#16). The editor is threaded in for the Outline
   // panel's click-to-scroll + the menu's divider-level walk; the editor handle
   // ref + scroll element drive the menu's paragraph back/forward recorder.
+  // Gutter default: the inline Library reader opens with panel columns FOLDED IN
+  // (a clean reading view); the popped-out Virgil-bar tab (scope `outer:…`)
+  // opens with them OUT, like a doc. Session-only — the rail still lets the user
+  // expand them.
+  const isOuterTab = scope.startsWith("outer:");
   const { viewPrefs: readerViewPrefs, menuBar: readerMenuBar } = useReaderView(
     editor,
     editorRef,
     scrollEl,
+    !isOuterTab,
   );
 
   // ── Reader scroll save/restore (per (scope, panel, paper:<citekey>)) ──
