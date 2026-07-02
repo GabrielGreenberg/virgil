@@ -459,13 +459,15 @@ export default function TabbedLibraryPanel({
         showRecent={showRecent}
       />
       {activeLibrary ? (
-        // Body region = the "page". It owns the outline (1px border + rounded
-        // corners): the active tab's open-bottomed stroke + its 1px fill bridge
-        // merge into THIS top border (the tab overlaps it by 1px via
-        // marginBottom:-1), while the border continues full-width under the
-        // inactive tabs — so the active tab reads as part of the page and the
-        // page has clean rounded top corners. Paper-kind tabs fill the warm
-        // Virgil canvas; other kinds use --surface.
+        // Body region = the "page". It owns the outline (1px border): the active
+        // tab's open-bottomed stroke + its 1px fill bridge merge into THIS top
+        // border (the tab overlaps it by 1px via marginBottom:-1), while the
+        // border continues full-width under the inactive tabs — so the active tab
+        // reads as part of the page. The TOP corners are SQUARE: a rounded arc up
+        // there reads as a little "wing" poking out beside the tabs (the tabs are
+        // inset a few px from the page edge), so only the BOTTOM is rounded — the
+        // page keeps a soft base while the tabbed top edge stays flat/clean.
+        // Paper-kind tabs fill the warm Virgil canvas; other kinds use --surface.
         <div
           style={{
             flex: 1,
@@ -474,7 +476,7 @@ export default function TabbedLibraryPanel({
               ? "var(--background)"
               : "var(--surface)",
             border: "1px solid var(--topbar-border)",
-            borderRadius: 10,
+            borderRadius: "0 0 10px 10px",
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
