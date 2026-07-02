@@ -274,18 +274,16 @@ export default function PaperHeader({
 
   const apaHtml = bib ? formatBibliography(bib, "apa") : undefined;
 
-  // Responsive layout: measure the pod's border-box width and, below a
-  // threshold, STACK the 3 status columns (flexDirection: column) instead of
-  // laying them side-by-side, so the detail panel can shrink to ~330px without
-  // the columns overflowing. The SAME `narrow` flag also drives the compact
-  // labels in PagePicker ("p." prefix dropped) and ViewToggle ("Text" vs.
-  // "Virgil Text"/"Raw Text") so the bottom-of-column controls stay legible
-  // when stacked.
+  // Compact-label threshold: measure the pod's border-box width; below ~560px the
+  // `narrow` flag switches PagePicker ("p." prefix dropped) and ViewToggle
+  // ("Text" vs. "Virgil Text"/"Raw Text") to their compact labels so they stay
+  // legible on a tight detail panel. (The header groups are always stacked rows
+  // now — a single-column grid — so `narrow` no longer drives any column layout.)
   const podRef = useRef<HTMLDivElement | null>(null);
   // `narrowMeasured` = the pod's OWN measured width < 560, used only as the
   // fallback (PDF mode / no text pod). When we pin to the text pod we derive
   // `narrow` from the TARGET width instead (below), so setting the pod's width
-  // can't feed back through this observer and oscillate the stack↔row layout.
+  // can't feed back through this observer and oscillate the compact-label flag.
   const [narrowMeasured, setNarrowMeasured] = useState(false);
   const narrowRaf = useRef<number | null>(null);
   useEffect(() => {
@@ -335,8 +333,9 @@ export default function PaperHeader({
   // header centering in the full detail width while the editor card sits offset
   // by the left panel rail. In PDF mode (textPodRect null) → centered max-width
   // fallback. RAF-coalesced + equality-gated so it never churns on a no-op
-  // measure. (Pinning even when the pinned width is < 560 is fine — the columns
-  // still stack via `narrow` above; we just also match the narrow text pod.)
+  // measure. (Pinning even when the pinned width is < 560 is fine — the groups
+  // are always stacked rows regardless; `narrow` above just also flips the
+  // compact labels to match the narrow text pod.)
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [podAlign, setPodAlign] = useState<{
     marginLeft: number;
@@ -438,17 +437,15 @@ export default function PaperHeader({
           ...podSizing,
         }}
       >
-        {/* THREE EQUAL-width columns: bib data · status · pdf/paper. A grid of
-            `repeat(3, minmax(0, 1fr))` keeps col1/col2/col3 the same width.
-            Below ~560px the columns STACK (single column) so the detail panel
-            can shrink to ~330px without overflow. The Text/PDF toggle + pop-out
-            live at the TOP of column 3 (left-justified), not pinned. */}
+        {/* ROW-BASED header: bib · status · view as three stacked ROWS (was a
+            3-column grid). A single-column grid stacks the groups; each group
+            lays its own items out horizontally (below). */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: narrow ? "1fr" : "repeat(3, minmax(0, 1fr))",
+            gridTemplateColumns: "1fr",
             alignItems: "start",
-            gap: narrow ? 10 : 16,
+            gap: 10,
             minWidth: 0,
           }}
         >
@@ -572,14 +569,15 @@ export default function PaperHeader({
             </div>
           </div>
 
-          {/* ── COLUMN 2 — STATUS (full-phrase pills, stacked) + AI menu ── */}
+          {/* ── ROW 2 — STATUS pills + AI menu (horizontal) ── */}
           <div
             style={{
               minWidth: 0,
               display: "flex",
-              flexDirection: "column",
-              gap: 5,
-              alignItems: "flex-start",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
             }}
           >
             <IndexedPill state={entry.indexed.state} long />
@@ -592,19 +590,17 @@ export default function PaperHeader({
             />
           </div>
 
-          {/* ── COLUMN 3 — VIEW + PDF/PAPER (a single left-justified stack) ──
-              The Text/PDF toggle heads the column, the pop-out-to-tab button
-              sits directly under it, then the page-count label and (PDF mode
-              only) the page picker. In TEXT mode the picker lives in the editor
-              chrome band instead, so it is not duplicated here. Everything is
-              left-aligned so the whole column lines up on one edge. */}
+          {/* ── ROW 3 — VIEW controls (horizontal) ── Text/PDF toggle · pop-out
+              · page-count · (PDF-mode) picker, flowing left-to-right. In TEXT
+              mode the picker lives in the editor chrome band, not here. */}
           <div
             style={{
               minWidth: 0,
               display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              alignItems: "flex-start",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
             }}
           >
             <ViewToggle

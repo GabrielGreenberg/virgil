@@ -557,10 +557,24 @@ export function useReaderView(
   editor: Editor | null,
   editorHandleRef: RefObject<EditorHandle | null>,
   scrollEl: HTMLElement | null,
+  /** Seed the panel columns ("gutters") folded IN (collapsed) when the reader
+   *  mounts. The Library inline reader passes true (a clean reading view); the
+   *  popped-out Virgil-bar tab passes false so it opens with columns out, like a
+   *  doc. This is the STANDING DEFAULT, re-applied on each fresh reader mount
+   *  (the ephemeral prefs live in PaperReader, which remounts on a PDF↔text swap
+   *  — like all reader view-state, the fold resets then). A user can expand/
+   *  collapse within a text-mode session; switching papers within the ReaderLRU
+   *  keep-alive preserves that (a display:none flip, not a remount). */
+  foldGutters = false,
 ): { viewPrefs: EditorPaneViewPrefs; menuBar: EditorPaneMenuBarBundle } {
   // The real engine, but in-memory only — its setters mutate session state
   // and never touch the user's persisted editor layout.
-  const vp = useViewPrefs({ persistence: "ephemeral" });
+  const vp = useViewPrefs({
+    persistence: "ephemeral",
+    initialOverrides: foldGutters
+      ? { collapsedLeft: true, collapsedRight: true }
+      : undefined,
+  });
 
   // Omni read-helpers derived from the live ephemeral prefs (same shape the
   // main app derives in EditorLayout). Reference-stable per side so the
