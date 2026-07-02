@@ -365,7 +365,12 @@ function PaperReader({
   const pagePickerEl = useMemo(
     () =>
       pgmarkPages && pgmarkPages.pages.length > 0 ? (
-        <PagePicker pages={pgmarkPages} />
+        // `dense` keeps the input short so it doesn't crowd the 26px band's top
+        // border; marginRight nudges the picker left to give the paragraph
+        // back/forward nav (immediately to its right) some breathing room.
+        <span style={{ display: "inline-flex", marginRight: 12 }}>
+          <PagePicker pages={pgmarkPages} dense />
+        </span>
       ) : undefined,
     // Intentionally keyed on the sub-fields, not the fresh `pgmarkPages` object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
