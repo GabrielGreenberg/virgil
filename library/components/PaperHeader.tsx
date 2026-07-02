@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { BibEntry } from "@library/lib/types";
 import type { CatalogEntry, IndexedState } from "@library/lib/catalog";
 import {
@@ -27,6 +27,9 @@ import PaperAiRequestsMenu, {
   type AiRequestItem,
 } from "./PaperAiRequestsMenu";
 import { BibEntryChrome } from "@/components/library/bib-entry-chrome";
+import { dispatchOpenLibrary } from "@/components/library/open-library-entry";
+import { CopyIcon } from "@/components/icons/CopyIcon";
+import { ExternalLinkIcon } from "@/components/icons/ExternalLinkIcon";
 import { mapTier } from "@/hooks/useLibrary";
 import { type PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PagePicker from "./PagePicker";
@@ -64,6 +67,13 @@ interface Props {
    *  renders the picker from whatever `PgmarkPages` it's handed. Absent only
    *  when no picker applies (e.g. no entry). */
   pgmarkPages?: PgmarkPages;
+  /** Live viewport geometry of the reader's text pod (`[data-pod-frame]`),
+   *  measured by RightDetail. When present (TEXT mode) the header pins its own
+   *  pod to match — same width, same left edge — so the two line up instead of
+   *  the header centering in the full detail width while the editor card sits
+   *  offset by the left panel rail. Null in PDF mode → the header falls back to
+   *  its centered max-width default. */
+  textPodRect?: { left: number; width: number } | null;
 }
 
 type RequestKind = "index" | "deep" | "bib" | "doc" | "importbib";
@@ -100,6 +110,7 @@ export default function PaperHeader({
   editPending = false,
   showOpenInTab = true,
   pgmarkPages,
+  textPodRect,
 }: Props) {
   const citekey = entry.citekey;
   const [expanded, setExpanded] = useState(false);
@@ -271,12 +282,16 @@ export default function PaperHeader({
   // "Virgil Text"/"Raw Text") so the bottom-of-column controls stay legible
   // when stacked.
   const podRef = useRef<HTMLDivElement | null>(null);
-  const [narrow, setNarrow] = useState(false);
+  // `narrowMeasured` = the pod's OWN measured width < 560, used only as the
+  // fallback (PDF mode / no text pod). When we pin to the text pod we derive
+  // `narrow` from the TARGET width instead (below), so setting the pod's width
+  // can't feed back through this observer and oscillate the stack↔row layout.
+  const [narrowMeasured, setNarrowMeasured] = useState(false);
   const narrowRaf = useRef<number | null>(null);
   useEffect(() => {
     const el = podRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const measure = (w: number) => setNarrow(w < 560);
+    const measure = (w: number) => setNarrowMeasured(w < 560);
     // Initial sync uses the BORDER-box width (getBoundingClientRect).
     measure(el.getBoundingClientRect().width);
     // RAF-coalesced so a resize storm can't thrash setState (keystroke
@@ -296,7 +311,7 @@ export default function PaperHeader({
           entry?.borderBoxSize?.[0]?.inlineSize ??
           el.getBoundingClientRect().width ??
           entry?.contentRect.width;
-        if (typeof w === "number") setNarrow(w < 560);
+        if (typeof w === "number") setNarrowMeasured(w < 560);
       });
     });
     ro.observe(el);
@@ -308,6 +323,57 @@ export default function PaperHeader({
       }
     };
   }, []);
+
+  // Stacking flag: when pinned to the text pod, derive it from the TARGET width
+  // (stable input) so it can't oscillate with the pin; otherwise fall back to
+  // the pod's own measured width.
+  const narrow = textPodRect ? textPodRect.width < 560 : narrowMeasured;
+
+  // ── Pin the pod to the reader's text pod (change 1) ───────────────────
+  // When RightDetail hands us the live text-pod geometry (TEXT mode), match the
+  // header pod's width + left edge to it so the two line up — instead of the
+  // header centering in the full detail width while the editor card sits offset
+  // by the left panel rail. In PDF mode (textPodRect null) → centered max-width
+  // fallback. RAF-coalesced + equality-gated so it never churns on a no-op
+  // measure. (Pinning even when the pinned width is < 560 is fine — the columns
+  // still stack via `narrow` above; we just also match the narrow text pod.)
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [podAlign, setPodAlign] = useState<{
+    marginLeft: number;
+    width: number;
+  } | null>(null);
+  const alignRaf = useRef<number | null>(null);
+  useEffect(() => {
+    if (!textPodRect) {
+      setPodAlign(null);
+      return;
+    }
+    const compute = () => {
+      const wrap = wrapperRef.current;
+      if (!wrap) return;
+      const wr = wrap.getBoundingClientRect();
+      const padL = parseFloat(getComputedStyle(wrap).paddingLeft) || 0;
+      const marginLeft = textPodRect.left - (wr.left + padL);
+      setPodAlign((prev) =>
+        prev &&
+        Math.abs(prev.marginLeft - marginLeft) < 0.5 &&
+        Math.abs(prev.width - textPodRect.width) < 0.5
+          ? prev
+          : { marginLeft, width: textPodRect.width },
+      );
+    };
+    if (alignRaf.current !== null) cancelAnimationFrame(alignRaf.current);
+    alignRaf.current = requestAnimationFrame(() => {
+      alignRaf.current = null;
+      compute();
+    });
+    return () => {
+      if (alignRaf.current !== null) {
+        cancelAnimationFrame(alignRaf.current);
+        alignRaf.current = null;
+      }
+    };
+  }, [textPodRect]);
 
   // ── PDF / paper page-count label (column 3) ──────────────────────────
   const pdfStatus = entry.pdf;
@@ -332,8 +398,20 @@ export default function PaperHeader({
     },
   );
 
+  // Pod sizing: pinned to the reader's text pod when we have its geometry
+  // (change 1), else the centered max-width default.
+  const podSizing: CSSProperties = podAlign
+    ? {
+        width: podAlign.width,
+        maxWidth: "none",
+        marginLeft: podAlign.marginLeft,
+        marginRight: 0,
+      }
+    : { width: "100%", maxWidth: 620, marginInline: "auto" };
+
   return (
     <div
+      ref={wrapperRef}
       style={{
         padding: "8px calc(4px + var(--pod-gap))",
         background: "var(--background)",
@@ -354,40 +432,17 @@ export default function PaperHeader({
           display: "flex",
           flexDirection: "column",
           gap: 8,
-          // NARROW + CENTERED (change 6): the pod does not stretch full-width.
-          // A comfortable max-width centered over the text pod below; it shrinks
-          // freely on narrow panels and still stacks below the 560px threshold.
-          width: "100%",
-          maxWidth: 620,
-          marginInline: "auto",
           minWidth: 0,
+          // Width/position: pinned to the text pod when available (change 1),
+          // else a comfortable centered max-width. Stacks below 560px either way.
+          ...podSizing,
         }}
       >
-        {/* Text/PDF view toggle — PINNED top-right of the pod so it never moves
-            as the columns' content changes. Reserved space (paddingRight on the
-            row) keeps it from overlapping col-3 content at any width. */}
-        <div
-          style={{
-            position: "absolute",
-            top: 10,
-            right: 14,
-            zIndex: 1,
-          }}
-        >
-          <ViewToggle
-            mode={viewMode}
-            onChange={onViewModeChange}
-            pdfAvailable={pdfAvailable}
-            indexedState={indexedState}
-            narrow={narrow}
-          />
-        </div>
-
         {/* THREE EQUAL-width columns: bib data · status · pdf/paper. A grid of
             `repeat(3, minmax(0, 1fr))` keeps col1/col2/col3 the same width.
             Below ~560px the columns STACK (single column) so the detail panel
-            can shrink to ~330px without overflow. The top row reserves space on
-            the right for the pinned view toggle. */}
+            can shrink to ~330px without overflow. The Text/PDF toggle + pop-out
+            live at the TOP of column 3 (left-justified), not pinned. */}
         <div
           style={{
             display: "grid",
@@ -395,9 +450,6 @@ export default function PaperHeader({
             alignItems: "start",
             gap: narrow ? 10 : 16,
             minWidth: 0,
-            // Reserve vertical room for the pinned toggle so it never overlaps
-            // col-1 headline content; stacked layout gets the same clearance.
-            paddingTop: 26,
           }}
         >
           {/* ── COLUMN 1 — BIB DATA (the yielder) ── */}
@@ -415,6 +467,7 @@ export default function PaperHeader({
               showMembershipChips={false}
               showOpenLink={showOpenInTab}
               showStatusRow={false}
+              dedupeApaHeadline
             />
             {/* raw citekey + copy + fields/edit — mono micro-controls under
                 the headline, aligned with the chip column. */}
@@ -450,16 +503,16 @@ export default function PaperHeader({
                   title="Copy citekey"
                   aria-label="Copy citekey"
                   style={{
+                    display: "inline-flex",
+                    alignItems: "center",
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
-                    fontFamily: "var(--mono)",
-                    fontSize: 10,
                     cursor: "pointer",
                     padding: "0 4px",
                   }}
                 >
-                  copy
+                  <CopyIcon size={12} />
                 </button>
               )}
               {bib && (
@@ -539,21 +592,51 @@ export default function PaperHeader({
             />
           </div>
 
-          {/* ── COLUMN 3 — PDF / PAPER (page count · picker) ── The view toggle
-              lives pinned at the pod's top-right, not in this column. The page
-              picker renders here ONLY in PDF mode: in TEXT mode it moves into
-              the editor's in-card chrome band (EditorPane `chromeHeaderTrailing`,
-              inline with the paragraph back/forward nav), so the header would
-              double it. The page-count LABEL stays in both modes. */}
+          {/* ── COLUMN 3 — VIEW + PDF/PAPER (a single left-justified stack) ──
+              The Text/PDF toggle heads the column, the pop-out-to-tab button
+              sits directly under it, then the page-count label and (PDF mode
+              only) the page picker. In TEXT mode the picker lives in the editor
+              chrome band instead, so it is not duplicated here. Everything is
+              left-aligned so the whole column lines up on one edge. */}
           <div
             style={{
               minWidth: 0,
               display: "flex",
               flexDirection: "column",
-              gap: 5,
+              gap: 6,
               alignItems: "flex-start",
             }}
           >
+            <ViewToggle
+              mode={viewMode}
+              onChange={onViewModeChange}
+              pdfAvailable={pdfAvailable}
+              indexedState={indexedState}
+              narrow={narrow}
+            />
+            {citekey && (
+              <button
+                type="button"
+                onClick={() => dispatchOpenLibrary({ citekey, target: "tab" })}
+                title="Open this paper in a new tab"
+                aria-label="Open this paper in a new tab"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--muted)",
+                  fontFamily: "var(--sans, inherit)",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  padding: "2px 0",
+                }}
+              >
+                <ExternalLinkIcon size={12} />
+                <span>Pop out</span>
+              </button>
+            )}
             <span
               style={{
                 fontFamily: "var(--mono)",
