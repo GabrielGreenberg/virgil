@@ -264,7 +264,7 @@ const ArchiveIcon = React.createElement(IconArchive, { size: MARGIN_ICON_SIZE })
 const RevisionIcon = React.createElement(IconRevisions, { size: MARGIN_ICON_SIZE });
 const CutIcon = React.createElement(IconCutter, { size: MARGIN_ICON_SIZE });
 const TodoIcon = React.createElement(IconTodo, { size: MARGIN_ICON_SIZE });
-const ReportIcon = React.createElement(IconReports, { size: MARGIN_ICON_SIZE, hideFrame: true });
+const ReportIcon = React.createElement(IconReports, { size: MARGIN_ICON_SIZE });
 const ErrorIcon = React.createElement(IconErrors, { size: MARGIN_ICON_SIZE });
 
 /** Build a MARKER_META row. The owning panel and the accent color derive from
