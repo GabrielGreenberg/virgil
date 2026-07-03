@@ -386,6 +386,7 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
 export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
+  opts?: { delimiters?: { preamble: string; postamble: string } },
 ): Promise<void> {
   // Read-only library-paper docs never persist (parity with storage-fsa).
   if (isLibraryPaper(h.docId)) return;
@@ -405,9 +406,14 @@ export async function writeDocBundle(
 
   // Preserve the user's preamble/postamble by re-reading the existing
   // .tex file. The editor never sees these chunks, so the disk is the
-  // only source of truth for them.
-  const existingLatex = (await fetchText(`${API}/doc/${h.docId}/${texFilename}`)) ?? "";
-  const delimiters = extractPreambleAndPostamble(existingLatex);
+  // only source of truth for them — unless the caller supplies fresher
+  // delimiters (the code pane's preamble-edit commit; parity with
+  // storage-fsa), in which case the disk copy is the stale one.
+  const delimiters =
+    opts?.delimiters ??
+    extractPreambleAndPostamble(
+      (await fetchText(`${API}/doc/${h.docId}/${texFilename}`)) ?? "",
+    );
 
   const newSidecar = extractSidecarData(content);
   // Brand-new docs (no \begin{document}) seed their preamble from the

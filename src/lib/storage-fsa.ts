@@ -541,6 +541,7 @@ async function writeReStampedTexOnLoad(
 export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
+  opts?: { delimiters?: { preamble: string; postamble: string } },
 ): Promise<void> {
   return enqueueDocWrite(h, "bundle", async () => {
     const docHandle = await requireDocHandle(h.docId);
@@ -560,9 +561,15 @@ export async function writeDocBundle(
 
     // Preserve the user's preamble/postamble verbatim across the
     // parse/serialize round-trip. The editor never sees them, so we
-    // read them straight off the existing .tex file on every save.
-    const existingLatex = await safeReadText(docHandle, meta.texFilename, "");
-    const delimiters = extractPreambleAndPostamble(existingLatex);
+    // read them straight off the existing .tex file on every save —
+    // UNLESS the caller supplies fresher delimiters (the code pane's
+    // preamble-edit commit), in which case the disk copy is exactly
+    // what's stale and re-reading it would resurrect the old preamble.
+    const delimiters =
+      opts?.delimiters ??
+      extractPreambleAndPostamble(
+        await safeReadText(docHandle, meta.texFilename, ""),
+      );
 
     const newSidecar = extractSidecarData(content);
     // For brand-new / empty docs with no \begin{document} marker yet,

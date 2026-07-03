@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { drainDoc, readTex, writeTex } from "@/lib/storage";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
+import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
 import { mergeTitlesIntoStylePreamble } from "@/lib/latex-serializer";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
@@ -91,6 +92,9 @@ export function useDocumentStyle(docId: string | null) {
         );
         const newLatex = newPreamble + body + delimiters.postamble;
         await writeTex(handle, newLatex);
+        // The .tex preamble just changed OUT OF BAND from the code pane's
+        // bridge closure — tell an open CodeEditor to re-read + resync.
+        dispatchTexDelimitersChanged(docId);
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error("Failed to rewrite preamble for style switch:", err);

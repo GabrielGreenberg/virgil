@@ -89,10 +89,13 @@ export function useDocument() {
   const editorRef = useRef<Editor | null>(null);
 
   const save = useCallback(
-    async (doc: JSONContent) => {
+    async (
+      doc: JSONContent,
+      opts?: { delimiters?: { preamble: string; postamble: string } },
+    ) => {
       setSaveStatus("saving");
       try {
-        await writeDocBundle(handle, doc);
+        await writeDocBundle(handle, doc, opts);
         lastSavedRef.current = doc;
         setSaveStatus("saved");
         setTimeout(() => {
@@ -370,6 +373,39 @@ export function useDocument() {
     void save(doc);
   }, [save, debouncedSave]);
 
+  // Code-pane preamble commit: persist the live TipTap JSON with the
+  // caller-supplied .tex delimiters. `writeDocBundle` skips its disk
+  // re-read for them, so the code pane's preamble edit — which lives only
+  // in the bridge closure, never in the TipTap doc — reaches disk instead
+  // of being resurrected-over by the stale on-disk preamble. Same
+  // immediate-flush shape as `flushNow` (same handle, same "bundle" write
+  // queue — ordered against autosaves); subsequent autosaves then re-read
+  // the NEW preamble from disk naturally. Runs only on a discrete code-pane
+  // flush that changed the delimiters, never on the keystroke path.
+  //
+  // AUTOSAVE-CLOBBER GUARD: while an external change is unresolved, skip
+  // the write like every other save path (re-arm the debounce so the dirty
+  // flag stays true). The code pane keeps displaying the edit; resolving
+  // via Reload resyncs the pane from disk (disk wins, by design).
+  const saveWithDelimiters = useCallback(
+    (delimiters: { preamble: string; postamble: string }) => {
+      if (shouldPauseAutosave(watcherRef.current)) {
+        debouncedSave();
+        return;
+      }
+      if (saveTimerRef.current !== null) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      const editor = editorRef.current;
+      if (!editor || editor.isDestroyed) return;
+      const doc = editor.getJSON();
+      latestContentRef.current = doc;
+      void save(doc, { delimiters });
+    },
+    [save, debouncedSave],
+  );
+
   // CHIP-C: immediate doc-bundle flush requested on a drop-mode re-anchor
   // COMMIT (the single mouseup in `controller.finishApply`). RC3: a card can
   // re-anchor onto a paragraph that ALREADY carries a UUID — `ensureAnchorUuid`
@@ -437,9 +473,12 @@ export function useDocument() {
     [debouncedSave, flushNow],
   );
 
-  const refetch = useCallback(() => {
+  // Returns the load promise so the external-change Reload path can await
+  // the refetch settling (it dispatches the code pane's delimiters-changed
+  // event only AFTER the reload completes — see disk-watcher.tsx).
+  const refetch = useCallback((): Promise<void> => {
     setLoading(true);
-    readDocBundle(docId)
+    return readDocBundle(docId)
       .then((bundle) => {
         setContent(bundle.content);
         lastSavedRef.current = bundle.content;
@@ -474,5 +513,8 @@ export function useDocument() {
     // through the same `flushNow` → `save` → `writeDocBundle` path the
     // anchor-mint signal uses, with a coalescing guard (see `flushAnchorCommit`).
     flushAnchorCommit,
+    // Code-pane preamble commit — see `saveWithDelimiters` above. Bubbled to
+    // the shell via PaneState so EditorLayout can hand it to CodeEditor.
+    saveWithDelimiters,
   };
 }

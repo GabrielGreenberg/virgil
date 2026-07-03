@@ -649,6 +649,13 @@ export interface PaneState {
   // owner instead of a dead duplicate. The producer→editor path no longer
   // crosses the component boundary in the wrong direction (SR-F3-01/F8-01).
   searchHighlightRange: { from: number; to: number } | null;
+  // Code-pane preamble commit (`useDocument.saveWithDelimiters`): persists
+  // the live doc with caller-supplied .tex delimiters through the SAME
+  // handle + "bundle" write queue the autosaver uses. Bubbled because
+  // EditorLayout renders CodeEditor (a sibling of EditorPane inside the
+  // DocPipeline) and must hand the pane's save machinery to the bridge's
+  // `persistDelimiters` callback.
+  saveWithDelimiters: (d: { preamble: string; postamble: string }) => void;
 }
 
 export interface EditorPaneProps {
@@ -4546,6 +4553,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       addRequest: aiRequestsHook.addRequest,
       updateRequestText: aiRequestsHook.updateRequestText,
       deleteRequest: aiRequestsHook.deleteRequest,
+      saveWithDelimiters: docHook.saveWithDelimiters,
     });
   }, [
     onPaneStateChange,
@@ -4580,6 +4588,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     aiRequestsHook.addRequest,
     aiRequestsHook.updateRequestText,
     aiRequestsHook.deleteRequest,
+    docHook.saveWithDelimiters,
   ]);
 
   // ── Anchored-card hover/selection bridges + highlight painters ────

@@ -3406,6 +3406,13 @@ export default function EditorLayout() {
   const stableSwitchFromPdfView = useCallback(() => paneStateRef.current?.switchFromPdfView?.(), []);
   const stableSwitchToCodeView = useCallback(() => paneStateRef.current?.switchToCodeView?.(), []);
   const stableSwitchToVisualView = useCallback(() => paneStateRef.current?.switchToVisualView?.(), []);
+  // Code-pane preamble commit → the ACTIVE pane's `useDocument.saveWithDelimiters`
+  // (CodeEditor only renders for the active doc, so paneState is its pane's).
+  const stablePersistDelimiters = useCallback(
+    (d: { preamble: string; postamble: string }) =>
+      paneStateRef.current?.saveWithDelimiters?.(d),
+    [],
+  );
   const stableAddStyleMergeRequest: NonNullable<PaneState["addStyleMergeRequest"]> =
     useCallback(
       (...args: Parameters<NonNullable<PaneState["addStyleMergeRequest"]>>) =>
@@ -3882,6 +3889,7 @@ export default function EditorLayout() {
                               codeEditorHandleRef.current = handle;
                             }}
                             onTextChange={handleCodeEditorTextChange}
+                            persistDelimiters={stablePersistDelimiters}
                             compileLog={paneState?.compileLog ?? null}
                             compileStatus={paneState?.compileStatus ?? null}
                             isCompiling={paneState?.isCompiling ?? false}
