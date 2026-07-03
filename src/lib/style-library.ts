@@ -35,6 +35,30 @@ export const STYLE_LIBRARY_KEY = "virgil-style-library";
  */
 export const STYLE_LIBRARY_VERSION = 2;
 
+// Frozen bytes of the v0 CLASSIC_PREAMBLE — the pre-xcolor seed generation
+// (87f8ad38/a293e604, 2026-05-07 → 8471ef99, 2026-05-16): byte-identical to
+// V1 below MINUS the `\usepackage{xcolor}` line. Libraries seeded from a
+// build in that nine-day window stored these bytes; the version bump is
+// one-shot per stored library, so this generation must be listed BEFORE the
+// v2 migration runs or those seeds are sealed out forever. Do NOT reformat —
+// the migration gate is exact byte equality.
+const LEGACY_CLASSIC_PREAMBLE_V0 = `\\documentclass{article}
+\\usepackage[utf8]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amssymb}
+
+% Virgil entity-id markers — no-op commands that carry stable UUIDs for
+% inline entities (footnotes, citations, examples) across .tex parse
+% cycles. Without these, every re-parse regenerates the ids and any UI
+% state keyed by them (e.g. popped-out cards) becomes stale.
+\\providecommand{\\vfid}[1]{}
+\\providecommand{\\vcid}[1]{}
+\\providecommand{\\vexid}[1]{}
+
+\\begin{document}
+
+`;
+
 // Frozen bytes of the v1 CLASSIC_PREAMBLE (Greenberg + Emergency were
 // byte-identical to it). Do NOT reformat — the migration gate is exact
 // byte equality.
@@ -57,6 +81,7 @@ const LEGACY_CLASSIC_PREAMBLE_V1 = `\\documentclass{article}
 `;
 
 const KNOWN_LEGACY_SEED_PREAMBLES: readonly string[] = [
+  LEGACY_CLASSIC_PREAMBLE_V0,
   LEGACY_CLASSIC_PREAMBLE_V1,
 ];
 

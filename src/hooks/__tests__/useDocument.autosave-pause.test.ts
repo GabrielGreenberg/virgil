@@ -48,6 +48,7 @@ import { useDocument } from "../useDocument";
 import { DocPipeline } from "@/components/editor-layout/DocPipeline";
 import { __resetForTests as resetPipelines } from "@/lib/multi-window/doc-pipeline";
 import { __resetForTests as resetFlushers } from "@/lib/multi-window/pending-saves";
+import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
 
 const EMPTY_CONTENT: JSONContent = { type: "doc", content: [] };
 const SAMPLE_CONTENT: JSONContent = {
@@ -171,6 +172,127 @@ describe("useDocument autosave-pause guard (DESIGN §4)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // ------------------------------------------------------------------
+  // Code-pane delimiters commit during a pause (`saveWithDelimiters`):
+  // the bridge consumed its own pendingPersist BEFORE calling us, so the
+  // argument is the ONLY copy of the user's preamble edit — the pause
+  // branch must STASH it, not drop it, and the next unpaused save must
+  // carry it (the Dismiss / "Keep my version" resolution). The Reload
+  // resolution (disk wins) instead clears the stash via refetch + the
+  // tex-delimiters-changed event.
+  // ------------------------------------------------------------------
+
+  const DELIMS = {
+    preamble:
+      "\\documentclass{article}\n\\usepackage{tikz}\n\n\\begin{document}\n\n",
+    postamble: "\n\\end{document}\n",
+  };
+
+  it("saveWithDelimiters during a pause STASHES the payload; the next unpaused save carries it exactly once (Dismiss / 'Keep mine')", async () => {
+    vi.useFakeTimers();
+    try {
+      unresolved = true;
+
+      const { result } = renderHook(() => useDocument(), {
+        wrapper: withPipeline("doc-1"),
+      });
+      await vi.runOnlyPendingTimersAsync();
+
+      // Code flush: body pushed into TipTap (onUpdate) + delimiters commit.
+      act(() => {
+        result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
+        result.current.saveWithDelimiters(DELIMS);
+      });
+      // Paused → no write yet, and the payload must not be dropped.
+      expect(mockWrite).not.toHaveBeenCalled();
+
+      // Still unresolved → the re-armed debounce keeps skipping.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(mockWrite).not.toHaveBeenCalled();
+
+      // User resolves via Dismiss ("Keep my version") — no reload, no
+      // tex-delimiters-changed event. The next fire must write WITH the
+      // stashed delimiters, or the preamble edit dies while the pane
+      // keeps displaying it.
+      unresolved = false;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      expect(mockWrite.mock.calls[0][2]).toEqual({ delimiters: DELIMS });
+
+      // One-shot: a later autosave does NOT replay the stale delimiters
+      // (writeDocBundle re-reads the now-fresh disk preamble instead).
+      act(() => {
+        result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(mockWrite).toHaveBeenCalledTimes(2);
+      expect(mockWrite.mock.calls[1][2]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a stashed payload does NOT survive an out-of-band delimiters change (Reload / style switch): the event clears it", async () => {
+    vi.useFakeTimers();
+    try {
+      unresolved = true;
+
+      const { result } = renderHook(() => useDocument(), {
+        wrapper: withPipeline("doc-1"),
+      });
+      await vi.runOnlyPendingTimersAsync();
+
+      act(() => {
+        result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
+        result.current.saveWithDelimiters(DELIMS);
+      });
+      expect(mockWrite).not.toHaveBeenCalled();
+
+      // User resolves via RELOAD: disk wins. The reload path dispatches
+      // tex-delimiters-changed after the refetch settles — replaying the
+      // stash would clobber the just-reloaded preamble.
+      unresolved = false;
+      act(() => {
+        dispatchTexDelimitersChanged("doc-1");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(mockWrite).toHaveBeenCalledTimes(1);
+      expect(mockWrite.mock.calls[0][2]).toBeUndefined(); // no stale replay
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the TERMINAL pagehide flush during a conflict carries a stashed delimiters payload ('Keep mine' includes the preamble edit)", async () => {
+    unresolved = true;
+
+    const { result } = renderHook(() => useDocument(), {
+      wrapper: withPipeline("doc-1"),
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.onUpdate(makeMockEditor(SAMPLE_CONTENT));
+      result.current.saveWithDelimiters(DELIMS);
+    });
+    expect(mockWrite).not.toHaveBeenCalled();
+
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent("pagehide"));
+    });
+    await waitFor(() => expect(mockWrite).toHaveBeenCalledTimes(1));
+    expect(mockWrite.mock.calls[0][1]).toEqual(SAMPLE_CONTENT);
+    expect(mockWrite.mock.calls[0][2]).toEqual({ delimiters: DELIMS });
   });
 
   it("TERMINAL flush (pagehide) STILL writes during an unresolved conflict (work-preservation carve-out)", async () => {

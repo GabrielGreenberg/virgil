@@ -38,6 +38,7 @@ import {
   type DocWriteHandle,
 } from "@/lib/multi-window/doc-pipeline";
 import { stampDiskFingerprint, fingerprintOf } from "@/lib/disk-ledger";
+import { enqueueWrite, flushPrefix } from "@/lib/write-queue";
 
 // Re-export types that consumers import alongside functions.
 export type { FsaDocMeta } from "@/lib/doc-index";
@@ -302,12 +303,19 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
   // would otherwise PUT to the read-only source.
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
-  const docs = await getDevIndex();
-  const entry = findEntry(docs, h.docId);
-  const filename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
-  await putText(`${API}/doc/${h.docId}/${filename}`, latex);
-  // Stamp the ledger with the authoritative post-write fingerprint.
-  await stampLedger(h.docId, filename, latex);
+  // Same per-doc "bundle" serial queue as writeDocBundle (parity with
+  // storage-fsa, where writeTex shares the bundle subkey): raw .tex rewrites
+  // (style switch, compile documentclass-switch) and bundle autosaves target
+  // the same file and must land in enqueue order.
+  return enqueueWrite(`${h.docId}/bundle`, async () => {
+    assertNotSuperseded(h);
+    const docs = await getDevIndex();
+    const entry = findEntry(docs, h.docId);
+    const filename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
+    await putText(`${API}/doc/${h.docId}/${filename}`, latex);
+    // Stamp the ledger with the authoritative post-write fingerprint.
+    await stampLedger(h.docId, filename, latex);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -363,8 +371,10 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   if (writebackHandle && !isLibraryPaper(docId)) {
     // Fire-and-forget — don't block the editor from opening. The
     // `isActive` re-check inside the closure rejects the writeback if
-    // the pipeline was superseded between read and write.
-    void (async () => {
+    // the pipeline was superseded between read and write. Routed through
+    // the per-doc "bundle" queue (parity with storage-fsa's
+    // writeReStampedTexOnLoad) so it serializes against real bundle writes.
+    void enqueueWrite(`${docId}/bundle`, async () => {
       try {
         if (!isActive(writebackHandle)) return;
         await Promise.all([
@@ -378,7 +388,7 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
       } catch {
         // Silent — this is an opportunistic UUID-stamp, not a save.
       }
-    })();
+    });
   }
   return { content, editorState };
 }
@@ -391,56 +401,65 @@ export async function writeDocBundle(
   // Read-only library-paper docs never persist (parity with storage-fsa).
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
-  const docs = await getDevIndex();
-  const entry = findEntry(docs, h.docId);
-  const texFilename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
+  // Per-doc serial queue (parity with storage-fsa's enqueueDocWrite
+  // "bundle" subkey): without it, bundle writes race — an in-flight
+  // autosave that already re-read the OLD .tex preamble can PUT after a
+  // delimiters-override commit and resurrect the stale preamble
+  // permanently (the masked-loss signature, dev backend only). The disk
+  // re-read for the preamble happens INSIDE the chained task, so every
+  // queued write sees its predecessor's bytes.
+  return enqueueWrite(`${h.docId}/bundle`, async () => {
+    const docs = await getDevIndex();
+    const entry = findEntry(docs, h.docId);
+    const texFilename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
 
-  // Same sidecar/uuid logic as the FSA version.
-  const existingSidecar = await fetchJson<VirgilSidecar>(
-    `${API}/doc/${h.docId}/virgil/virgil.json`,
-    DEFAULT_SIDECAR,
-  );
-  // recoverOrphanedUuids disabled — fingerprint matching causes UUID collisions.
-  // Lost UUIDs get fresh ones via assignUuids instead.
-  assignUuids(content);
-
-  // Preserve the user's preamble/postamble by re-reading the existing
-  // .tex file. The editor never sees these chunks, so the disk is the
-  // only source of truth for them — unless the caller supplies fresher
-  // delimiters (the code pane's preamble-edit commit; parity with
-  // storage-fsa), in which case the disk copy is the stale one.
-  const delimiters =
-    opts?.delimiters ??
-    extractPreambleAndPostamble(
-      (await fetchText(`${API}/doc/${h.docId}/${texFilename}`)) ?? "",
+    // Same sidecar/uuid logic as the FSA version.
+    const existingSidecar = await fetchJson<VirgilSidecar>(
+      `${API}/doc/${h.docId}/virgil/virgil.json`,
+      DEFAULT_SIDECAR,
     );
+    // recoverOrphanedUuids disabled — fingerprint matching causes UUID collisions.
+    // Lost UUIDs get fresh ones via assignUuids instead.
+    assignUuids(content);
 
-  const newSidecar = extractSidecarData(content);
-  // Brand-new docs (no \begin{document}) seed their preamble from the
-  // doc's selected style; existing docs keep their verbatim preamble.
-  let serializeOpts: { preamble?: string } | undefined = delimiters ?? undefined;
-  if (!delimiters) {
-    const rawSettings = await fetchJson<unknown>(
-      `${API}/doc/${h.docId}/virgil/document-settings.json`,
-      { styleId: DEFAULT_STYLE_ID },
-    );
-    const settings = migrateDocumentSettings(rawSettings);
-    serializeOpts = { preamble: resolveStyle(settings.styleId).preamble };
-  }
-  const latex = serializeToLatex(content, serializeOpts);
+    // Preserve the user's preamble/postamble by re-reading the existing
+    // .tex file. The editor never sees these chunks, so the disk is the
+    // only source of truth for them — unless the caller supplies fresher
+    // delimiters (the code pane's preamble-edit commit; parity with
+    // storage-fsa), in which case the disk copy is the stale one.
+    const delimiters =
+      opts?.delimiters ??
+      extractPreambleAndPostamble(
+        (await fetchText(`${API}/doc/${h.docId}/${texFilename}`)) ?? "",
+      );
 
-  // Re-check before the actual writes — a doc switch could have
-  // landed between the awaits above. Lenient: an ended-cleanly pipeline
-  // is still safe to write to, only a SUPERSEDED one would corrupt.
-  assertNotSuperseded(h);
-  // editor-state.json is owned by useEditorUIState, not the bundle save.
-  await Promise.all([
-    putText(`${API}/doc/${h.docId}/${texFilename}`, latex),
-    putText(`${API}/doc/${h.docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
-  ]);
-  // Stamp the ledger with the FINAL serialized .tex that hit disk (preamble
-  // preserved), not the JSONContent — so the next poll matches exactly.
-  await stampLedger(h.docId, texFilename, latex);
+    const newSidecar = extractSidecarData(content);
+    // Brand-new docs (no \begin{document}) seed their preamble from the
+    // doc's selected style; existing docs keep their verbatim preamble.
+    let serializeOpts: { preamble?: string } | undefined = delimiters ?? undefined;
+    if (!delimiters) {
+      const rawSettings = await fetchJson<unknown>(
+        `${API}/doc/${h.docId}/virgil/document-settings.json`,
+        { styleId: DEFAULT_STYLE_ID },
+      );
+      const settings = migrateDocumentSettings(rawSettings);
+      serializeOpts = { preamble: resolveStyle(settings.styleId).preamble };
+    }
+    const latex = serializeToLatex(content, serializeOpts);
+
+    // Re-check before the actual writes — a doc switch could have
+    // landed between the awaits above. Lenient: an ended-cleanly pipeline
+    // is still safe to write to, only a SUPERSEDED one would corrupt.
+    assertNotSuperseded(h);
+    // editor-state.json is owned by useEditorUIState, not the bundle save.
+    await Promise.all([
+      putText(`${API}/doc/${h.docId}/${texFilename}`, latex),
+      putText(`${API}/doc/${h.docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
+    ]);
+    // Stamp the ledger with the FINAL serialized .tex that hit disk (preamble
+    // preserved), not the JSONContent — so the next poll matches exactly.
+    await stampLedger(h.docId, texFilename, latex);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -897,7 +916,12 @@ export async function getTexFilename(docId: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Drain helpers — no-op in dev mode (no write queue)
+// Drain helpers — the dev backend now serializes .tex/bundle writes through
+// the shared write-queue (see writeTex / writeDocBundle / the load-writeback
+// above), so flushDoc drains every `${docId}/…` queue key, mirroring the
+// FSA backend's semantics for drainDoc/compile/style-switch callers.
 // ---------------------------------------------------------------------------
 
-export async function flushDoc(_docId: string): Promise<void> {}
+export async function flushDoc(docId: string): Promise<void> {
+  await flushPrefix(docId);
+}

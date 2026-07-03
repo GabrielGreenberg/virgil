@@ -13,6 +13,10 @@ import {
 } from "@/lib/multi-window/pending-saves";
 import { useDiskWatcherOrNull } from "@/components/editor-layout/contexts/disk-watcher";
 import { shouldPauseAutosave } from "@/lib/autosave-pause";
+import {
+  TEX_DELIMITERS_CHANGED_EVENT,
+  type TexDelimitersChangedDetail,
+} from "@/lib/tex-delimiters-event";
 
 type SaveStatus = "idle" | "saving" | "saved";
 
@@ -87,6 +91,35 @@ export function useDocument() {
   // refreshed on every call so a remount-without-onUpdate can't leave
   // it pointing at a stale editor.
   const editorRef = useRef<Editor | null>(null);
+  // Code-pane delimiters whose immediate commit was SWALLOWED by the
+  // autosave-pause guard (or by a destroyed-editor race) in
+  // `saveWithDelimiters`. The bridge clears its own `pendingPersist` BEFORE
+  // invoking the persist callback, so this ref is the ONLY durable copy of
+  // the user's preamble edit until a write lands — dropping it would
+  // permanently lose the edit while the code pane keeps displaying it (the
+  // masked-loss failure mode of the original bug). Every bundle-write path
+  // below consumes it via `takeDelimitersOpts()` so the NEXT successful
+  // save carries the delimiters exactly once. Cleared when disk becomes
+  // authoritative out-of-band: `refetch()` (external-change Reload) and the
+  // per-doc tex-delimiters-changed event (style switch / compile
+  // class-switch / Reload), where replaying a stale stash would clobber
+  // the just-written preamble.
+  const pendingDelimitersRef = useRef<{
+    preamble: string;
+    postamble: string;
+  } | null>(null);
+
+  // Consume the stashed delimiters (one-shot). Returns the `writeDocBundle`
+  // opts for the next save, or undefined when nothing is stashed — so every
+  // save call site can pass `takeDelimitersOpts()` unconditionally.
+  const takeDelimitersOpts = useCallback(():
+    | { delimiters: { preamble: string; postamble: string } }
+    | undefined => {
+    const d = pendingDelimitersRef.current;
+    if (!d) return undefined;
+    pendingDelimitersRef.current = null;
+    return { delimiters: d };
+  }, []);
 
   const save = useCallback(
     async (
@@ -158,8 +191,8 @@ export function useDocument() {
     }
     if (!pending) return;
     latestContentRef.current = null;
-    await save(pending);
-  }, [save]);
+    await save(pending, takeDelimitersOpts());
+  }, [save, takeDelimitersOpts]);
 
   // Load the doc on mount. The `<DocPipeline key={docId}>` ancestor
   // forces a full remount when the docId changes, so this effect runs
@@ -239,9 +272,9 @@ export function useDocument() {
         pending = latestContentRef.current;
       }
       latestContentRef.current = null;
-      if (pending) void save(pending);
+      if (pending) void save(pending, takeDelimitersOpts());
     };
-  }, [save]);
+  }, [save, takeDelimitersOpts]);
 
   // Refresh / tab-close flush. `pagehide` is the modern, mobile-safe
   // counterpart to `beforeunload` for actually doing work; we use
@@ -268,7 +301,7 @@ export function useDocument() {
       }
       if (pending) {
         latestContentRef.current = null;
-        void save(pending);
+        void save(pending, takeDelimitersOpts());
       }
     };
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -287,7 +320,7 @@ export function useDocument() {
         : latestContentRef.current;
       if (!pending) return;
       latestContentRef.current = null;
-      void save(pending);
+      void save(pending, takeDelimitersOpts());
       e.preventDefault();
       e.returnValue = "";
     };
@@ -297,7 +330,7 @@ export function useDocument() {
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [save]);
+  }, [save, takeDelimitersOpts]);
 
   // Debounced save — schedules a 1500 ms timer that, on fire, asks the
   // live editor for its current JSON snapshot and writes it. The doc
@@ -334,9 +367,13 @@ export function useDocument() {
       // Populate the snapshot ref so the unmount cleanup (which fires
       // after the editor is destroyed) has something to flush.
       latestContentRef.current = doc;
-      save(doc);
+      // Carry any pause-swallowed code-pane delimiters (see
+      // `pendingDelimitersRef`) — this is the retry path that lands a
+      // preamble edit after the user resolves an external change via
+      // Dismiss / "Keep my version".
+      save(doc, takeDelimitersOpts());
     }, 1500);
-  }, [save]);
+  }, [save, takeDelimitersOpts]);
   // Sync the self-reference ref in an effect (never during render). The re-arm
   // path inside the timer reads it only after this effect has run.
   useEffect(() => {
@@ -370,8 +407,8 @@ export function useDocument() {
     if (!editor || editor.isDestroyed) return;
     const doc = editor.getJSON();
     latestContentRef.current = doc;
-    void save(doc);
-  }, [save, debouncedSave]);
+    void save(doc, takeDelimitersOpts());
+  }, [save, debouncedSave, takeDelimitersOpts]);
 
   // Code-pane preamble commit: persist the live TipTap JSON with the
   // caller-supplied .tex delimiters. `writeDocBundle` skips its disk
@@ -385,20 +422,38 @@ export function useDocument() {
   //
   // AUTOSAVE-CLOBBER GUARD: while an external change is unresolved, skip
   // the write like every other save path (re-arm the debounce so the dirty
-  // flag stays true). The code pane keeps displaying the edit; resolving
-  // via Reload resyncs the pane from disk (disk wins, by design).
+  // flag stays true) — but STASH the delimiters in `pendingDelimitersRef`
+  // first. The bridge already consumed its own pendingPersist before
+  // calling us, so this call's argument is the ONLY copy of the user's
+  // preamble edit; without the stash it would be permanently lost on the
+  // Dismiss / "Keep my version" resolution (the re-armed debounce would
+  // save WITHOUT delimiters and writeDocBundle would re-read the stale
+  // on-disk preamble, while the pane keeps displaying the edit). Resolving
+  // via Reload instead resyncs the pane from disk (disk wins, by design) —
+  // that path clears the stash (refetch + the delimiters-changed event).
   const saveWithDelimiters = useCallback(
     (delimiters: { preamble: string; postamble: string }) => {
       if (shouldPauseAutosave(watcherRef.current)) {
+        pendingDelimitersRef.current = delimiters;
         debouncedSave();
+        return;
+      }
+      const editor = editorRef.current;
+      if (!editor || editor.isDestroyed) {
+        // Editor gone (pane-teardown race) — keep the payload so a terminal
+        // flush (unmount cleanup / pagehide), which saves from the content
+        // ref, still carries it instead of silently dropping the edit.
+        pendingDelimitersRef.current = delimiters;
         return;
       }
       if (saveTimerRef.current !== null) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
-      const editor = editorRef.current;
-      if (!editor || editor.isDestroyed) return;
+      // The argument is strictly fresher than any earlier stash (the bridge
+      // re-extracts the FULL delimiters from the current pane text, so a
+      // prior swallowed edit is already folded in) — supersede it.
+      pendingDelimitersRef.current = null;
       const doc = editor.getJSON();
       latestContentRef.current = doc;
       void save(doc, { delimiters });
@@ -478,6 +533,9 @@ export function useDocument() {
   // event only AFTER the reload completes — see disk-watcher.tsx).
   const refetch = useCallback((): Promise<void> => {
     setLoading(true);
+    // Reload = disk wins: a stashed pause-swallowed delimiters payload must
+    // not survive to clobber the freshly reloaded preamble.
+    pendingDelimitersRef.current = null;
     return readDocBundle(docId)
       .then((bundle) => {
         setContent(bundle.content);
@@ -501,6 +559,28 @@ export function useDocument() {
     const unregister = registerReload(docId, refetch);
     return unregister;
   }, [registerReload, docId, refetch]);
+
+  // Whenever the .tex delimiters change AUTHORITATIVELY out of band (style
+  // switch, external-change Reload, compile documentclass-switch — the
+  // paths that dispatch tex-delimiters-changed after writing disk), drop
+  // any stale pause-swallowed stash: replaying it on the next save would
+  // silently revert the preamble those paths just wrote. The open code
+  // pane re-reads disk on the same event, so the user's view resyncs too.
+  // Set ONCE per mount; O(1) per event, never on the keystroke path.
+  useEffect(() => {
+    const onDelimitersChanged = (e: Event) => {
+      const detail = (e as CustomEvent<TexDelimitersChangedDetail>).detail;
+      if (!detail || detail.docId !== docId) return;
+      pendingDelimitersRef.current = null;
+    };
+    window.addEventListener(TEX_DELIMITERS_CHANGED_EVENT, onDelimitersChanged);
+    return () => {
+      window.removeEventListener(
+        TEX_DELIMITERS_CHANGED_EVENT,
+        onDelimitersChanged,
+      );
+    };
+  }, [docId]);
 
   return {
     content,

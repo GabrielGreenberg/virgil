@@ -18,6 +18,7 @@ import {
 } from "@/lib/code-pane-bridge";
 import {
   TEX_DELIMITERS_CHANGED_EVENT,
+  TEX_DELIMITERS_WILL_CHANGE_EVENT,
   type TexDelimitersChangedDetail,
 } from "@/lib/tex-delimiters-event";
 import { codeBandField } from "@/lib/code-band";
@@ -286,11 +287,30 @@ export default function CodeEditor({
           /* disk read best-effort — keep the current closure values */
         });
     };
+    // Pre-write counterpart: setStyle is ABOUT to read + rewrite the .tex.
+    // Flush the bridge synchronously so a preamble edit sitting in the
+    // code→TipTap debounce commits (persistDelimiters → bundle write) BEFORE
+    // the style path's drainDoc/readTex — otherwise the un-fired debounce
+    // could fire mid-switch and its delimiters override would race (and
+    // possibly silently undo) the style's preamble rewrite.
+    const onDelimitersWillChange = (e: Event) => {
+      const detail = (e as CustomEvent<TexDelimitersChangedDetail>).detail;
+      if (!detail || detail.docId !== docId) return;
+      bridgeRef.current?.flush();
+    };
     window.addEventListener(TEX_DELIMITERS_CHANGED_EVENT, onDelimitersChanged);
+    window.addEventListener(
+      TEX_DELIMITERS_WILL_CHANGE_EVENT,
+      onDelimitersWillChange,
+    );
     return () => {
       window.removeEventListener(
         TEX_DELIMITERS_CHANGED_EVENT,
         onDelimitersChanged,
+      );
+      window.removeEventListener(
+        TEX_DELIMITERS_WILL_CHANGE_EVENT,
+        onDelimitersWillChange,
       );
     };
   }, [docId]);

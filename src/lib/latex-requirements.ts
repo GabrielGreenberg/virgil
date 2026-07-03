@@ -22,7 +22,12 @@
  * a single regex pass over the serialized body, never per keystroke.
  */
 
-import { KNOWN_CITE_COMMANDS } from "@/lib/cite-commands";
+import {
+  BIBLATEX_ONLY_CITE_COMMANDS,
+  KERNEL_NEUTRAL_CITE_COMMANDS,
+  NATBIB_ONLY_CITE_COMMANDS,
+  SHARED_CITE_COMMANDS,
+} from "@/lib/cite-commands";
 
 export type LatexRequirementKind = "package" | "shim";
 
@@ -41,7 +46,17 @@ function packageReq(name: string): LatexRequirement {
     id: name,
     kind: "package",
     injectLine: `\\usepackage{${name}}`,
-    satisfiedRe: new RegExp(`\\\\usepackage(?:\\[[^\\]]*\\])?\\{${name}\\}`),
+    // Word-boundary match INSIDE the brace group, so one regex recognizes
+    // the package in every load shape:
+    //   \usepackage{name}                  — the plain form (our injectLine)
+    //   \usepackage[opts]{a, name ,b}      — comma-separated package lists
+    //   \RequirePackage{name}              — class/package-style loads
+    //   \usepackage[authordate]{name-chicago} — wrapper packages (`-` is a
+    //     word boundary; wrappers like biblatex-chicago load their core, so
+    //     they satisfy — and must gate — the core requirement).
+    satisfiedRe: new RegExp(
+      `\\\\(?:usepackage|RequirePackage)(?:\\[[^\\]]*\\])?\\{[^}]*\\b${name}\\b[^}]*\\}`,
+    ),
   };
 }
 
@@ -102,10 +117,14 @@ const ALWAYS_REQUIRED_IDS: string[] = [
 // Body-scan detection
 // ---------------------------------------------------------------------------
 
-// Escaped prose is safe here: escapeLatex escapes backslashes, so an emitted
-// `\includegraphics` / `\ex` in the body is genuinely a command. The
-// `(?![a-zA-Z])` guard stops `\ex` matching `\example` etc. (LaTeX command
-// names are letters only).
+// NOTE: escapeLatex deliberately does NOT escape backslashes (raw LaTeX in
+// prose is preserved by design — latex-serializer.ts `escapeLatex`), so a
+// `\includegraphics` in the body is not guaranteed to be Virgil-emitted.
+// That's fine for detection — a hand-typed live command needs its package
+// just as much — but it means INERT occurrences (inside `%` comments and
+// verbatim environments) must be projected away first; see
+// `projectDetectableBody` below. The `(?![a-zA-Z])` guard stops `\ex`
+// matching `\example` etc. (LaTeX command names are letters only).
 const BODY_DETECTORS: Array<{ id: string; re: RegExp }> = [
   {
     id: "expex",
@@ -115,26 +134,6 @@ const BODY_DETECTORS: Array<{ id: string; re: RegExp }> = [
   { id: "tikz", re: /\\begin\{tikzpicture\}/ },
   { id: "xcolor", re: /\\textcolor(?![a-zA-Z])/ },
 ];
-
-// Family split for the shared cite-command registry. Bare `\cite`/`\nocite`
-// are LaTeX-kernel commands — neutral, they pin neither package. Everything
-// else in KNOWN_CITE_COMMANDS not listed as natbib is biblatex (natbib's
-// command set is closed; new registry additions default to biblatex).
-const NATBIB_FAMILY = new Set<string>([
-  "citet",
-  "citep",
-  "citealt",
-  "citealp",
-  "citeauthor",
-  "citeyear",
-  "citeyearpar",
-  "citetext",
-  "citenum",
-]);
-const NEUTRAL_CITE_COMMANDS = new Set<string>(["cite", "nocite"]);
-const BIBLATEX_FAMILY = KNOWN_CITE_COMMANDS.filter(
-  (c) => !NATBIB_FAMILY.has(c) && !NEUTRAL_CITE_COMMANDS.has(c),
-);
 
 /** Alternation over the family's commands + capitalized sentence-start
  *  variants, longest-first (same convention as cite-commands.ts). */
@@ -148,22 +147,103 @@ function familyRe(names: Iterable<string>): RegExp {
   return new RegExp(`\\\\(?:${all.join("|")})(?![a-zA-Z])`);
 }
 
-const NATBIB_RE = familyRe(NATBIB_FAMILY);
-const BIBLATEX_RE = familyRe(BIBLATEX_FAMILY);
+// Cite-command buckets from the shared registry (cite-commands.ts):
+// natbib-only pins natbib; biblatex-only pins biblatex; SHARED commands
+// (\cite/\nocite/\citeauthor/\citeyear — defined by both packages) pin
+// neither on their own. Of the shared set, bare \cite/\nocite are
+// additionally LaTeX-kernel commands — a body using ONLY those needs no
+// bib package at all — while \citeauthor/\citeyear DO need one of the two.
+const NATBIB_ONLY_RE = familyRe(NATBIB_ONLY_CITE_COMMANDS);
+const BIBLATEX_ONLY_RE = familyRe(BIBLATEX_ONLY_CITE_COMMANDS);
+const SHARED_NON_KERNEL_RE = familyRe(
+  [...SHARED_CITE_COMMANDS].filter(
+    (c) => !KERNEL_NEUTRAL_CITE_COMMANDS.has(c),
+  ),
+);
+
+const VERBATIM_BEGIN_RE = /\\begin\{verbatim\*?\}/;
+const VERBATIM_END_RE = /\\end\{verbatim\*?\}/;
+
+/** Strip a line's `%`-comment tail. A `%` starts a comment unless escaped
+ *  (`\%`); an even run of backslashes before it (`\\%` = linebreak + comment)
+ *  does not escape it. */
+function stripCommentTail(line: string): string {
+  return line.replace(/((?:^|[^\\])(?:\\\\)*)%.*$/, "$1");
+}
+
+/**
+ * Project the serialized body down to its DETECTABLE LaTeX: drop
+ * `%`-comment tails (respecting `\%`) and the contents of
+ * `\begin{verbatim}…\end{verbatim}` / `verbatim*` environments — both are
+ * inert to the compiler, so a `\autocite` in a TODO comment or an `\ex`
+ * inside a verbatim listing must not drive package injection (injecting
+ * biblatex/expex into a doc that never runs them can BREAK a previously
+ * compiling paper). Line-based single pass; an unterminated
+ * `\begin{verbatim}` (mid-edit) swallows to the end of the body, matching
+ * how TeX would lex it.
+ */
+function projectDetectableBody(bodyLatex: string): string {
+  if (!bodyLatex.includes("%") && !VERBATIM_BEGIN_RE.test(bodyLatex)) {
+    return bodyLatex; // fast path: nothing inert to strip
+  }
+  const out: string[] = [];
+  let inVerbatim = false;
+  for (const rawLine of bodyLatex.split("\n")) {
+    // Comments only exist outside verbatim (inside, `%` is literal — and
+    // the content is dropped wholesale anyway).
+    let line = inVerbatim ? rawLine : stripCommentTail(rawLine);
+    let kept = "";
+    // Walk the line through verbatim open/close transitions so same-line
+    // `\begin{verbatim}…\end{verbatim}` pairs are handled too.
+    for (;;) {
+      if (inVerbatim) {
+        const end = VERBATIM_END_RE.exec(line);
+        if (!end) {
+          line = "";
+          break;
+        }
+        inVerbatim = false;
+        line = line.slice(end.index + end[0].length);
+        continue;
+      }
+      const begin = VERBATIM_BEGIN_RE.exec(line);
+      if (!begin) {
+        kept += line;
+        break;
+      }
+      kept += line.slice(0, begin.index);
+      inVerbatim = true;
+      line = line.slice(begin.index + begin[0].length);
+    }
+    out.push(kept);
+  }
+  return out.join("\n");
+}
 
 /**
  * Single-pass detection over the SERIALIZED body: which registry packages
- * does this body actually use? Returns requirement ids. When BOTH cite
- * families appear in one body, natbib wins (they're mutually exclusive
- * packages; natbib is Virgil's baseline family).
+ * does this body actually use? Returns requirement ids. Runs on the
+ * inert-stripped projection (see `projectDetectableBody`) so commented-out
+ * or verbatim-quoted commands never inject packages.
+ *
+ * Cite-family resolution (three buckets, see cite-commands.ts):
+ *  - any natbib-ONLY command present → natbib (even if biblatex-only
+ *    commands also appear — the packages are mutually exclusive and natbib
+ *    is Virgil's baseline family);
+ *  - else any biblatex-ONLY command present → biblatex;
+ *  - else only SHARED commands: \citeauthor/\citeyear need SOME bib package
+ *    → natbib (baseline default); bare \cite/\nocite are kernel commands →
+ *    no requirement.
  */
 export function detectBodyRequirements(bodyLatex: string): Set<string> {
+  const scannable = projectDetectableBody(bodyLatex);
   const required = new Set<string>();
   for (const d of BODY_DETECTORS) {
-    if (d.re.test(bodyLatex)) required.add(d.id);
+    if (d.re.test(scannable)) required.add(d.id);
   }
-  if (NATBIB_RE.test(bodyLatex)) required.add("natbib");
-  else if (BIBLATEX_RE.test(bodyLatex)) required.add("biblatex");
+  if (NATBIB_ONLY_RE.test(scannable)) required.add("natbib");
+  else if (BIBLATEX_ONLY_RE.test(scannable)) required.add("biblatex");
+  else if (SHARED_NON_KERNEL_RE.test(scannable)) required.add("natbib");
   return required;
 }
 

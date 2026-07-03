@@ -143,7 +143,9 @@ describe("storage-fsa — library-paper write guard (enqueueDocWrite funnel)", (
     // error or the folder-handle error proves the write was attempted.)
     const h = beginDocPipeline(NORMAL_DOC);
     const writePromise = writeTexFsa(h, "\\documentclass{article}");
-    const drained = flushWrites(`${NORMAL_DOC}/tex`);
+    // writeTex shares the "bundle" queue subkey with writeDocBundle (total
+    // .tex-write ordering), so the drain targets that key.
+    const drained = flushWrites(`${NORMAL_DOC}/bundle`);
     await expect(writePromise).rejects.toThrow(/not in index|No folder handle/);
     await drained;
     endDocPipeline(h);

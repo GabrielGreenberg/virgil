@@ -29,3 +29,28 @@ export function dispatchTexDelimitersChanged(docId: string): void {
     }),
   );
 }
+
+/**
+ * Pre-write counterpart: "I'm ABOUT to replace the on-disk preamble —
+ * commit anything you're still debouncing." Dispatched by
+ * useDocumentStyle.setStyle BEFORE it reads/rewrites the .tex; an open
+ * CodeEditor responds by flushing its bridge synchronously (firing the
+ * pending code→TipTap debounce, and with it any un-persisted delimiter
+ * edit), so the style path's drainDoc can land that write FIRST. Without
+ * this, a code-pane preamble edit sitting in the bridge's 600 ms debounce
+ * can fire MID-setStyle and its delimiters-override bundle write races the
+ * style's writeTex — landing last would silently undo the style switch.
+ * No code pane open → nobody listens → free no-op.
+ */
+export const TEX_DELIMITERS_WILL_CHANGE_EVENT =
+  "virgil:tex-delimiters-will-change";
+
+export function dispatchTexDelimitersWillChange(docId: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<TexDelimitersChangedDetail>(
+      TEX_DELIMITERS_WILL_CHANGE_EVENT,
+      { detail: { docId } },
+    ),
+  );
+}

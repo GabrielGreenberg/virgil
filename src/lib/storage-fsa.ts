@@ -389,7 +389,14 @@ export async function readTex(docId: string): Promise<string> {
 }
 
 export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> {
-  return enqueueDocWrite(h, "tex", async () => {
+  // "bundle" (not a separate "tex") subkey: writeTex rewrites the SAME .tex
+  // file the bundle writes own (style switch, compile documentclass-switch),
+  // so it must be totally ordered against writeDocBundle / the load-writeback.
+  // On separate subkeys the two serial queues interleave at every await —
+  // withDocLock is a passthrough in the lock-owning window — and a queued
+  // bundle write carrying a delimiters override could land AFTER a style
+  // rewrite and silently undo it.
+  return enqueueDocWrite(h, "bundle", async () => {
     const meta = await getDocMetaOrThrow(h.docId);
     const fh = await getTexFileHandle(h.docId, { create: true });
     await writeTextToHandle(fh, latex);
