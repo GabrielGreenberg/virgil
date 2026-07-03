@@ -744,13 +744,44 @@ def cmd_verify(args: argparse.Namespace) -> int:
 # ─────────────────────────────────────────────────────────────────────────
 
 
+def _load_distinct_pairs(library: Path) -> set:
+    """Load ``.virgil/dedup-distinct.json`` → set of frozenset({a,b}) pairs that
+    an adjudicator judged NOT the same work, so ``check`` doesn't re-flag them."""
+    p = Path(library) / ".virgil" / "dedup-distinct.json"
+    if not p.exists():
+        return set()
+    try:
+        data = json.loads(p.read_text())
+    except (json.JSONDecodeError, OSError):
+        return set()
+    return {frozenset(pair) for pair in data.get("pairs", []) if len(pair) == 2}
+
+
 def cmd_check(args: argparse.Namespace) -> int:
+    """Recurrence detector: report same-work clusters that are NOT already
+    known-distinct. Every within-cluster pair being in the distinct registry
+    means the cluster was adjudicated-distinct and is ignored."""
     library = Path(args.library).expanduser().resolve()
     records = di.load_library_records(library)
     clusters, _uncertain = wi.cluster(records)
-    n = len(clusters)
-    print(f"same-work clusters: {n}")
-    return 1 if n > 0 else 0
+    distinct = _load_distinct_pairs(library)
+
+    def is_resolved(members: list) -> bool:
+        # Fully resolved iff every pair of members is registered as distinct.
+        for i in range(len(members)):
+            for j in range(i + 1, len(members)):
+                if frozenset((members[i], members[j])) not in distinct:
+                    return False
+        return True
+
+    unresolved = [c for c in clusters if not is_resolved(c)]
+    known = len(clusters) - len(unresolved)
+    print(f"same-work clusters: {len(unresolved)} unresolved"
+          f" ({known} known-distinct ignored, {len(distinct)} distinct pairs registered)")
+    if unresolved and getattr(args, "list", False):
+        for c in unresolved[:50]:
+            print("  " + ", ".join(c))
+    return 1 if unresolved else 0
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -787,8 +818,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--library", required=True)
     p_verify.set_defaults(func=cmd_verify)
 
-    p_check = sub.add_parser("check", help="fast: any same-work clusters left?")
+    p_check = sub.add_parser("check", help="fast: any UNRESOLVED same-work clusters left?")
     p_check.add_argument("--library", required=True)
+    p_check.add_argument("--list", action="store_true", help="print the unresolved clusters")
     p_check.set_defaults(func=cmd_check)
 
     return ap
