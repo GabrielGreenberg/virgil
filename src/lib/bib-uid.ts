@@ -11,7 +11,7 @@
  * the bibliography analogue of the `\vcid{}` / `\vfid{}` inline-atom markers:
  * a no-op `\vbid{<uid>}` line emitted immediately before each entry's BibTeX
  * block, declared in the `.tex` preamble via `\providecommand{\vbid}[1]{}`
- * (see `ensureVirgilCommands` in latex-serializer.ts) so a paper opened in raw
+ * (see `ensurePreambleRequirements` in latex-requirements.ts) so a paper opened in raw
  * LaTeX never breaks. A `.bib` without `\vbid` markers mints a fresh uid on
  * first parse; the first save anchors it — exactly the `\vcid` behaviour.
  *

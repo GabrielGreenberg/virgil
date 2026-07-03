@@ -12,6 +12,8 @@
  * The first entry is the default selection in the picker.
  */
 
+import { buildPreamble } from "@/lib/latex-requirements";
+
 export interface DocumentTemplate {
   /** Stable id used in URLs, logs, and as the picker default. */
   id: string;
@@ -33,32 +35,29 @@ export interface DocumentTemplate {
   files: Record<string, string>;
 }
 
-const BLANK_TEX = `\\documentclass{article}
-\\usepackage[utf8]{inputenc}
-\\usepackage{amsmath}
-\\usepackage{amssymb}
+// Every template preamble is built from the shared baseline block
+// (VIRGIL_BASELINE_PACKAGES + `\v*id` shims — see latex-requirements.ts);
+// per-template extras (geometry, hyperref, title fields) ride on top.
 
-\\begin{document}
-
-Start writing here...
+const BLANK_TEX =
+  buildPreamble("\\documentclass{article}") +
+  `Start writing here...
 
 \\end{document}
 `;
 
-const ARTICLE_TEX = `\\documentclass[11pt]{article}
-\\usepackage[utf8]{inputenc}
-\\usepackage[margin=1in]{geometry}
-\\usepackage{amsmath}
-\\usepackage{amssymb}
-\\usepackage{graphicx}
-\\usepackage{hyperref}
+const ARTICLE_EXTRAS = [
+  "\\usepackage[margin=1in]{geometry}",
+  "\\usepackage{hyperref}",
+  "",
+  "\\title{Untitled}",
+  "\\author{}",
+  "\\date{\\today}",
+];
 
-\\title{Untitled}
-\\author{}
-\\date{\\today}
-
-\\begin{document}
-\\maketitle
+const ARTICLE_TEX =
+  buildPreamble("\\documentclass[11pt]{article}", ARTICLE_EXTRAS) +
+  `\\maketitle
 
 \\section{Introduction}
 
@@ -67,21 +66,10 @@ Start writing here...
 \\end{document}
 `;
 
-const ARTICLE_BIB_TEX = `\\documentclass[11pt]{article}
-\\usepackage[utf8]{inputenc}
-\\usepackage[margin=1in]{geometry}
-\\usepackage{amsmath}
-\\usepackage{amssymb}
-\\usepackage{graphicx}
-\\usepackage{hyperref}
-\\usepackage{natbib}
-
-\\title{Untitled}
-\\author{}
-\\date{\\today}
-
-\\begin{document}
-\\maketitle
+const ARTICLE_BIB_TEX =
+  // natbib comes from the baseline block now.
+  buildPreamble("\\documentclass[11pt]{article}", ARTICLE_EXTRAS) +
+  `\\maketitle
 
 \\section{Introduction}
 
@@ -104,20 +92,16 @@ const ARTICLE_BIB_REFERENCES = `@article{example2024,
 }
 `;
 
-const REPORT_TEX = `\\documentclass[11pt]{report}
-\\usepackage[utf8]{inputenc}
-\\usepackage[margin=1in]{geometry}
-\\usepackage{amsmath}
-\\usepackage{amssymb}
-\\usepackage{graphicx}
-\\usepackage{hyperref}
-
-\\title{Untitled Report}
-\\author{}
-\\date{\\today}
-
-\\begin{document}
-\\maketitle
+const REPORT_TEX =
+  buildPreamble("\\documentclass[11pt]{report}", [
+    "\\usepackage[margin=1in]{geometry}",
+    "\\usepackage{hyperref}",
+    "",
+    "\\title{Untitled Report}",
+    "\\author{}",
+    "\\date{\\today}",
+  ]) +
+  `\\maketitle
 \\tableofcontents
 
 \\chapter{Introduction}

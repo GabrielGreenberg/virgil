@@ -342,7 +342,20 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   assignUuids(content);
   const newSidecar = extractSidecarData(content);
   const delimiters = extractPreambleAndPostamble(latex);
-  const newLatex = serializeToLatex(content, delimiters ?? undefined);
+  // Parity with storage-fsa's writeReStampedTexOnLoad: an existing doc keeps
+  // its verbatim delimiters; only a brand-new / empty doc (no
+  // \begin{document}) seeds a preamble, from the doc's selected style.
+  let serializeOpts: { preamble?: string; postamble?: string } | undefined =
+    delimiters ?? undefined;
+  if (!delimiters) {
+    const rawSettings = await fetchJson<unknown>(
+      `${API}/doc/${docId}/virgil/document-settings.json`,
+      { styleId: DEFAULT_STYLE_ID },
+    );
+    const settings = migrateDocumentSettings(rawSettings);
+    serializeOpts = { preamble: resolveStyle(settings.styleId).preamble };
+  }
+  const newLatex = serializeToLatex(content, serializeOpts);
   const writebackHandle = getActiveHandle(docId);
   // Read-only library-paper docs never persist — skip the opportunistic
   // load-writeback (the tex + virgil.json PUTs observed in the live smoke).
