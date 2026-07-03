@@ -466,6 +466,45 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         emit_bib_entry(citekey, bib_entry["type"], fields)
     )
 
+    # 8b. Work-identity duplicate check (post-auth, pre-catalog-write).
+    # This is where the DOI is strongest (authenticate() may have just filled
+    # or corrected it). If the library already holds this SAME work under a
+    # DIFFERENT citekey, we do NOT want to mint a second first-class holdings
+    # row: we flag `duplicateOf` on this row and append a duplicate-work inbox
+    # notification naming the existing citekey. The extraction stays on disk
+    # (nothing is deleted) so a human can reconcile. Closes the
+    # greenberg2018content/greenberg2019content class. Lazy-import to avoid an
+    # import cycle; any guard error degrades to "no duplicate" so indexing is
+    # never blocked by the guard.
+    duplicate_of: Optional[str] = None
+    try:
+        from dedup_index import find_work_in_library
+        match = find_work_in_library(
+            fields, bib_entry["type"], library,
+            incoming_citekey=citekey,
+            include_uncertain=False,   # only a hard `same`/alias flags a dup row
+            exclude_ck=citekey,
+        )
+        if match is not None and match.citekey != citekey:
+            duplicate_of = match.citekey
+            log(f"  DUPLICATE-WORK: same work already held as {match.citekey!r} "
+                f"(relation={match.relation}, conf={match.confidence:.2f})")
+            append_inbox_item(library, {
+                "kind": "duplicate-work",
+                "citekey": citekey,
+                "duplicateOf": match.citekey,
+                "relation": match.relation,
+                "confidence": match.confidence,
+                "reasons": list(match.reasons),
+                "at": _now(),
+                "summary": (
+                    f"{citekey} indexes the same work already held as "
+                    f"{match.citekey} — flagged duplicateOf (extraction kept on disk)."
+                ),
+            })
+    except Exception as e:
+        log(f"  duplicate-work guard skipped: {e}")
+
     # 9. Update catalog.json.
     log("Step 7: update catalog.json")
     if source_ext == "pdf":
@@ -523,6 +562,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
             pdf=source_status,
             indexed=indexed_block,
             bib=bib_status,
+            **({"duplicateOf": duplicate_of} if duplicate_of else {}),
         )
         write_catalog(library, catalog)
 

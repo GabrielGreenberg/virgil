@@ -72,6 +72,38 @@ def _master_has_citekey(library: Path, citekey: str) -> bool:
     return citekey in read_master_bib(library / "master.bib")
 
 
+def _ck_eq(a: str, b: str) -> bool:
+    """Citekey equality under the shared NFC/whitespace rules."""
+    try:
+        from _tools import citekey_matches
+        return citekey_matches(a, b)
+    except Exception:
+        return (a or "").strip() == (b or "").strip()
+
+
+def _record_alias(library: Path, loser_ck: str, survivor_ck: str, match) -> None:
+    """Record `loser_ck → survivor_ck` in `.virgil/aliases.json` (durable).
+
+    So a later re-intake of `loser_ck` resolves straight to the survivor. Lazy
+    imports the alias I/O from `dedup_index`; failure to persist the alias is
+    non-fatal (the fold decision already stands) — we just skip the record.
+    """
+    try:
+        from dedup_index import load_aliases, save_aliases
+        aliases = load_aliases(library)
+        if loser_ck in aliases:
+            return
+        aliases[loser_ck] = {
+            "survivor": survivor_ck,
+            "work_key": None,
+            "at": _now(),
+            "reason": f"triage-fold ({getattr(match, 'relation', 'same')})",
+        }
+        save_aliases(library, aliases)
+    except Exception:
+        pass
+
+
 def _bib_state_for_citekey(catalog: dict, citekey: str) -> str:
     for e in catalog.get("entries", []):
         if e.get("citekey") == citekey:
@@ -249,13 +281,50 @@ def _upsert_catalog_row_bib_only(
         write_catalog(library, catalog)
 
 
-def apply_bib_row(row: dict[str, Any], library: Path) -> dict[str, str]:
+def _guard_find(
+    library: Path,
+    fields: dict[str, str],
+    entry_type: str,
+    citekey: str,
+    index,
+):
+    """Consult the work-identity intake guard. Returns a `Match` or None.
+
+    Lazy-imports `dedup_index` inside the call so importing `triage_apply`
+    never drags in the dedup stack (and there's no import cycle). Never raises
+    on a clean miss; on any guard error we degrade to "no match" so triage is
+    never blocked by a guard hiccup.
+    """
+    try:
+        from dedup_index import find_work_in_library
+        return find_work_in_library(
+            fields, entry_type, library,
+            index=index,
+            incoming_citekey=citekey,
+            include_uncertain=True,
+        )
+    except Exception:
+        return None
+
+
+def apply_bib_row(
+    row: dict[str, Any],
+    library: Path,
+    *,
+    guard_index=None,
+) -> dict[str, str]:
     """Apply one bib-only triage row.
 
     For .bib imports we don't move a source file; we upsert the bib entry
     and create/refresh the bib-only catalog row + paper folder skeleton.
     The source .bib file in unsorted/ is removed by the caller after all
     rows from a given file have been applied (or parked on parse failure).
+
+    `guard_index` is a shared `work_identity.WorkIndex` built ONCE per apply
+    run (see `main`) and threaded through. Before minting a NEW bib-only row we
+    consult the work-identity guard: a `same`/`alias` hit folds the row into the
+    existing citekey (records an alias, reports "folded into <ck>"); an
+    `uncertain` hit still mints the row but flags `possibleDuplicateOf`.
     """
     filename = row.get("filename", "")
     flags = row.get("flags", []) or []
@@ -273,6 +342,35 @@ def apply_bib_row(row: dict[str, Any], library: Path) -> dict[str, str]:
 
     catalog = read_catalog(library)
     existing_state = _bib_state_for_citekey(catalog, citekey)
+
+    # ── Work-identity intake guard (before minting a bib-only row). ────
+    # Only meaningful when the incoming citekey is genuinely new — an existing
+    # citekey is an update/merge of the SAME record (handled below), not a new
+    # duplicate. A `same`/`alias` verdict under a DIFFERENT citekey folds this
+    # row into the survivor; an `uncertain` verdict mints but flags for review.
+    if guard_index is not None and not _master_has_citekey(library, citekey):
+        match = _guard_find(library, incoming_fields, entry_type, citekey, guard_index)
+        if match is not None and not _ck_eq(match.citekey, citekey):
+            if match.relation in ("same", "alias"):
+                _record_alias(library, citekey, match.citekey, match)
+                append_inbox_item(library, {
+                    "kind": "triage-bib-folded-duplicate",
+                    "filename": filename,
+                    "citekey": citekey,
+                    "foldedInto": match.citekey,
+                    "relation": match.relation,
+                    "confidence": match.confidence,
+                    "at": _now(),
+                })
+                return {
+                    "status": "bib-folded",
+                    "summary": (
+                        f"{filename}: {citekey} folded into existing "
+                        f"{match.citekey} ({match.relation}, conf={match.confidence:.2f})"
+                    ),
+                }
+            # relation == "uncertain": mint the row, but flag it for review.
+            row.setdefault("_possibleDuplicateOf", match.citekey)
 
     # ── Authenticated / manuscript winners stay put. ──────────────────
     if existing_state in ("authenticated", "manuscript"):
@@ -329,6 +427,8 @@ def apply_bib_row(row: dict[str, Any], library: Path) -> dict[str, str]:
     if final_state != "manuscript":
         queued = _write_queue_entry(library, citekey, kind="authenticate")
 
+    possible_dup = row.get("_possibleDuplicateOf")
+
     summary_bits = [f"{citekey} ({entry_type})"]
     if field_changes:
         summary_bits.append(f"merged {len(field_changes)} field(s)")
@@ -338,8 +438,10 @@ def apply_bib_row(row: dict[str, Any], library: Path) -> dict[str, str]:
         summary_bits.append("queued authenticate")
     else:
         summary_bits.append("authenticate already queued")
+    if possible_dup:
+        summary_bits.append(f"possibleDuplicateOf {possible_dup}")
 
-    append_inbox_item(library, {
+    inbox_item = {
         "kind": "triage-bib-imported",
         "filename": filename,
         "citekey": citekey,
@@ -347,21 +449,31 @@ def apply_bib_row(row: dict[str, Any], library: Path) -> dict[str, str]:
         "merged": bool(field_changes),
         "state": final_state,
         "at": _now(),
-    })
-    return {
+    }
+    if possible_dup:
+        inbox_item["possibleDuplicateOf"] = possible_dup
+    append_inbox_item(library, inbox_item)
+    result = {
         "status": "bib-imported",
         "summary": f"{filename} → {' · '.join(summary_bits)}",
     }
+    if possible_dup:
+        result["possibleDuplicateOf"] = possible_dup
+    return result
 
 
-def apply_row(row: dict[str, Any], library: Path) -> dict[str, str]:
-    """Apply one triage row. Returns a result dict with `status` and `summary`."""
+def apply_row(row: dict[str, Any], library: Path, *, guard_index=None) -> dict[str, str]:
+    """Apply one triage row. Returns a result dict with `status` and `summary`.
+
+    `guard_index` is a shared `work_identity.WorkIndex` built once per apply run
+    and threaded through to the intake guards (bib fan-out + PDF/DOCX stub).
+    """
     filename = row.get("filename", "")
     flags = row.get("flags", []) or []
 
     # ── Bib-only branch: no source-file move, fan-out from a .bib import. ──
     if "bib-only" in flags:
-        return apply_bib_row(row, library)
+        return apply_bib_row(row, library, guard_index=guard_index)
 
     src = library / "unsorted" / filename
     if not src.exists():
@@ -459,7 +571,30 @@ def apply_row(row: dict[str, Any], library: Path) -> dict[str, str]:
     # is fine here: `update_master_bib_entry` is locked, so the worst
     # case under a race is the stub being written twice with the same
     # content (idempotent).
+    duplicate_of: str | None = None
     if not _master_has_citekey(library, citekey):
+        # ── Work-identity intake guard (PDF/DOCX intake). ──────────────
+        # A held source is higher-stakes than a bib stub: on a `same`-work
+        # hit under a DIFFERENT citekey we DO NOT silently drop the second
+        # copy (the operator dropped a real file). We flag a duplicate-work
+        # decision, record `duplicateOf`, and still index by default so the
+        # extraction lands and the human can decide. `uncertain` is flagged
+        # the same way but never blocks.
+        if guard_index is not None:
+            match = _guard_find(library, proposed_fields, entry_type, citekey, guard_index)
+            if match is not None and not _ck_eq(match.citekey, citekey):
+                duplicate_of = match.citekey
+                append_inbox_item(library, {
+                    "kind": "triage-duplicate-work",
+                    "filename": filename,
+                    "citekey": citekey,
+                    "duplicateOf": match.citekey,
+                    "relation": match.relation,
+                    "confidence": match.confidence,
+                    "decision": "indexed-with-flag",
+                    "reasons": list(match.reasons),
+                    "at": _now(),
+                })
         update_master_bib_entry(
             library, citekey, entry_type, proposed_fields,
             bib_state="unverified",
@@ -476,12 +611,20 @@ def apply_row(row: dict[str, Any], library: Path) -> dict[str, str]:
 
     # Write queue entry.
     _write_queue_entry(library, citekey, kind="index")
+    triaged_summary = f"Triaged {filename} → {citekey} ({entry_type})"
+    if duplicate_of:
+        triaged_summary += f" [duplicateOf {duplicate_of} — flagged for review]"
     append_inbox_item(library, {
         "kind": "triaged",
-        "summary": f"Triaged {filename} → {citekey} ({entry_type})",
+        "summary": triaged_summary,
         "at": _now(),
+        **({"duplicateOf": duplicate_of} if duplicate_of else {}),
     })
-    return {"status": "triaged", "summary": f"{filename} → {citekey} ({entry_type})"}
+    result = {"status": "triaged", "summary": f"{filename} → {citekey} ({entry_type})"}
+    if duplicate_of:
+        result["duplicateOf"] = duplicate_of
+        result["summary"] += f" [duplicateOf {duplicate_of}]"
+    return result
 
 
 def main() -> int:
@@ -547,13 +690,25 @@ def main() -> int:
                     if not r.get("proposedCitekey"):
                         r["flags"].append("needs-metadata")
 
+    # Build the work-identity guard index ONCE for the whole apply run (a full
+    # master.bib + catalog scan is expensive; every row's intake guard reuses
+    # it). Lazy-imported so triage_apply stays importable without the dedup
+    # stack; a failure to build it degrades to "no guard" (triage still runs).
+    guard_index = None
+    try:
+        from dedup_index import build_index
+        guard_index = build_index(library)
+    except Exception as e:
+        print(f"Note: work-identity guard unavailable ({e}); "
+              f"proceeding without duplicate detection.", file=sys.stderr)
+
     counts: dict[str, int] = {}
     # Track which source .bib files in unsorted/ have been touched, and
     # whether any of their rows hit a parse failure.
     bib_files: dict[str, dict[str, int]] = {}
     for row in rows:
         try:
-            result = apply_row(row, library)
+            result = apply_row(row, library, guard_index=guard_index)
         except Exception as e:
             result = {"status": "error", "summary": f"{row.get('filename','?')}: {e}"}
         status = result["status"]

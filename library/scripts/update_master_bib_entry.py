@@ -30,6 +30,16 @@ line (if any) is replaced with the new value.
 
 Replaces an existing @<type>{<citekey>, ...} block in place, or
 appends at the end if no such block exists.
+
+Duplicate-work guard (`--guard`, default on)
+--------------------------------------------
+Before an APPEND (i.e. when the citekey is NOT already in master.bib — an
+in-place replace of the same citekey is never guarded), the work-identity
+intake guard runs `find_work_in_library` over the incoming fields. If the
+library already holds the SAME work under a DIFFERENT citekey, the append is
+refused: a clear message names the existing entry and the shim exits nonzero.
+Pass `--no-guard` to bypass (e.g. a deliberate re-add of a known-distinct work
+the guard can't tell apart).
 """
 
 from __future__ import annotations
@@ -41,7 +51,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import update_master_bib_entry
+from _tools import read_master_bib, update_master_bib_entry
 
 
 def main() -> int:
@@ -70,6 +80,19 @@ def main() -> int:
         help="Library root. Defaults to the cwd if it contains master.bib, "
         "else ~/Virgil-Library.",
     )
+    ap.add_argument(
+        "--guard",
+        dest="guard",
+        action="store_true",
+        default=True,
+        help="Run the work-identity duplicate guard before an APPEND (default).",
+    )
+    ap.add_argument(
+        "--no-guard",
+        dest="guard",
+        action="store_false",
+        help="Skip the duplicate-work guard (allow the append unconditionally).",
+    )
     args = ap.parse_args()
 
     library = _resolve_library(args.library)
@@ -80,6 +103,32 @@ def main() -> int:
         return 2
     # Coerce all values to str — bib fields are textual.
     fields = {k: str(v) for k, v in fields.items() if v not in (None, "")}
+
+    # Duplicate-work guard — only for an APPEND (new citekey). An in-place
+    # replace of an existing citekey is a legitimate update and is never guarded.
+    if args.guard:
+        existing = read_master_bib(library / "master.bib")
+        is_append = args.citekey not in existing
+        if is_append:
+            # Lazy import to avoid any import cycle through _tools.
+            from dedup_index import find_work_in_library
+            match = find_work_in_library(
+                fields, args.entry_type, library,
+                incoming_citekey=args.citekey,
+                include_uncertain=False,   # only a hard `same`/alias refuses
+            )
+            if match is not None and match.citekey != args.citekey:
+                reasons = "; ".join(match.reasons) if match.reasons else match.relation
+                print(
+                    f"refusing to append {args.citekey}: the library already holds "
+                    f"this work as {match.citekey!r} "
+                    f"(relation={match.relation}, confidence={match.confidence:.2f}; "
+                    f"{reasons}).\n"
+                    f"Re-run with --no-guard to override, or update {match.citekey} "
+                    f"in place instead.",
+                    file=sys.stderr,
+                )
+                return 3
 
     update_master_bib_entry(
         library, args.citekey, args.entry_type, fields,

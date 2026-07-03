@@ -58,6 +58,36 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+# ── work-identity guard error ─────────────────────────────────────────
+
+
+class DuplicateWorkError(Exception):
+    """Raised by `upsert_catalog_entry` when a work-identity guard finds that
+    an incoming (new-citekey) row denotes the SAME work as an existing row under
+    a DIFFERENT citekey — so appending would mint a duplicate holdings record.
+
+    Attributes
+    ----------
+    existing_citekey : str
+        The citekey of the already-present row that matches the incoming work.
+    verdict : work_identity.Verdict | None
+        The classifier verdict that fired (relation ``"same"``), for the caller
+        to log / surface. May be ``None`` if the caller constructs the error
+        without one.
+    """
+
+    def __init__(self, existing_citekey: str, verdict=None):
+        self.existing_citekey = existing_citekey
+        self.verdict = verdict
+        rel = getattr(verdict, "relation", "same")
+        conf = getattr(verdict, "confidence", None)
+        detail = f" ({rel}" + (f" {conf:.2f}" if isinstance(conf, float) else "") + ")"
+        super().__init__(
+            f"incoming work matches existing citekey {existing_citekey!r}{detail}; "
+            "refusing to append a duplicate row"
+        )
+
+
 # ── tool detection (original purpose) ─────────────────────────────────
 
 
@@ -670,18 +700,58 @@ def update_catalog_entry(library: Path, citekey: str, patch: dict) -> None:
         write_catalog(library, catalog)
 
 
-def upsert_catalog_entry(catalog: dict, citekey: str, **fields) -> dict:
+def upsert_catalog_entry(
+    catalog: dict,
+    citekey: str,
+    *,
+    _guard=None,
+    _guard_fields=None,
+    _guard_type=None,
+    **fields,
+) -> dict:
     """In-memory upsert against a catalog dict (no I/O, no lock).
 
     Caller is responsible for reading + writing the catalog under
     `lock_catalog`. Used by the indexing pipeline which already has
     the catalog in hand when it computes new row fields.
+
+    Merge semantics
+    ---------------
+    On an EXISTING row, a nested-dict field (`bib`, `indexed`, `pdf`, or any
+    other dict-valued field) is DEEP-MERGED (`_deep_merge`), not replaced —
+    so a `bib={"state": "x"}` patch preserves sibling keys like
+    `importedKeys`/`authenticatedAt` that a caller didn't re-supply. Scalar and
+    list fields keep REPLACE semantics (the caller's value wins outright).
+
+    Duplicate-work guard (optional, keyword-only)
+    ---------------------------------------------
+    When `_guard` (a `work_identity.WorkIndex`) is provided AND no row matches
+    `citekey` exactly AND `_guard.find(_guard_fields, _guard_type)` yields a
+    `same`-work row under a DIFFERENT citekey, raise `DuplicateWorkError`
+    instead of appending a second holdings record. Callers passing no `_guard`
+    are completely unaffected (the guard block is skipped). The `work_identity`
+    import is lazy (inside this function) to avoid any import cycle.
     """
     for e in catalog.get("entries", []):
         if citekey_matches(e.get("citekey", ""), citekey):
-            e.update(fields)
+            # Deep-merge nested dicts (bib/indexed/pdf/…); replace scalars+lists.
+            for k, v in fields.items():
+                if isinstance(v, dict) and isinstance(e.get(k), dict):
+                    _deep_merge(e[k], v)
+                else:
+                    e[k] = v
             e["updatedAt"] = _now()
             return e
+
+    # No exact-citekey row. Consult the work-identity guard (if supplied) before
+    # minting a NEW row, so an incoming holding that duplicates an existing work
+    # under a different citekey is refused rather than silently added.
+    if _guard is not None:
+        matches = _guard.find(_guard_fields or {}, _guard_type or "", exclude_ck=citekey)
+        for existing_ck, verdict in matches:
+            if verdict.relation == "same" and not citekey_matches(existing_ck, citekey):
+                raise DuplicateWorkError(existing_ck, verdict)
+
     e = {
         "citekey": citekey,
         "addedAt": _now(),
@@ -846,8 +916,30 @@ def _parse_bib_fields(body: str) -> dict[str, str]:
             out[name] = body[i + 1:j - 1].strip()
             i = j
         elif body[i] == '"':
-            j = body.find('"', i + 1)
-            if j == -1:
+            # Hazard 5(a): a `"`-quoted value's closing quote is the `"` at
+            # brace-depth 0 that is not backslash-escaped. The old
+            # `body.find('"', i+1)` stopped at the FIRST inner quote, truncating
+            # values like `title = "He said \"hi\""` (escaped) or ones carrying a
+            # braced quote `title = "a {"} b"` — which corrupted every following
+            # field name and DROPPED the entry's later fields (e.g. its doi).
+            # Walk instead, tracking brace depth and skipping `\"`.
+            j = i + 1
+            qdepth = 0
+            while j < len(body):
+                c = body[j]
+                if c == "\\" and j + 1 < len(body):
+                    j += 2  # escaped char (\" or \\) — never a delimiter
+                    continue
+                if c == "{":
+                    qdepth += 1
+                elif c == "}":
+                    if qdepth > 0:
+                        qdepth -= 1
+                elif c == '"' and qdepth == 0:
+                    break
+                j += 1
+            if j >= len(body):
+                out[name] = body[i + 1:].strip()
                 break
             out[name] = body[i + 1:j].strip()
             i = j + 1
@@ -880,19 +972,42 @@ def read_master_bib(path: Path) -> dict[str, dict]:
     text = path.read_text()
     entries: dict[str, dict] = {}
     starts = list(_BIB_ENTRY_START_RE.finditer(text))
+    consumed_until = 0  # end offset of the last brace-balanced entry
     for idx, m in enumerate(starts):
+        # Hazard 5(b): skip a `@type{key,` that sits inside a prior BALANCED
+        # entry's brace span — it was a value (e.g. a column-0 `@article{...}`
+        # inside a `note = {...}`), not a real entry. Capping at the next opener
+        # (the old behavior) would have truncated the enclosing entry, dropping
+        # its remaining fields (its doi) and minting a phantom. Containment for
+        # genuinely malformed (unbalanced) entries is preserved below.
+        if m.start() < consumed_until:
+            continue
         entry_type = m.group(1).lower()
         citekey = m.group(2).strip()
         seg_end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
         brace = text.find("{", m.start())
         depth = 1
         j = brace + 1
-        while j < seg_end and depth > 0:
+        # Match braces WITHOUT the next-opener cap first, so a value containing a
+        # column-0 `@...{` still balances. If it never balances (malformed), fall
+        # back to the capped end so one bad entry can't swallow the rest.
+        while j < len(text) and depth > 0:
             if text[j] == "{":
                 depth += 1
             elif text[j] == "}":
                 depth -= 1
             j += 1
+        if depth == 0:
+            consumed_until = j
+        else:
+            depth = 1
+            j = brace + 1
+            while j < seg_end and depth > 0:
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                j += 1
         raw = text[m.start():j]
         body_start = text.find(",", brace) + 1
         body = text[body_start:(j - 1) if depth == 0 else seg_end]
