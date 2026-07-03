@@ -219,18 +219,17 @@ export function IconCutter({ active, size = 18 }: { active?: boolean; size?: num
 // reading as "a written response/commentary." Modeled on IconOmni's
 // rounded-rect-plus-lines, but with a higher corner radius + a downward
 // tail + varied line lengths so it stays visually distinct from the omni
-// square. In margin mode (hideFrame) the balloon outline + tail are dropped
-// so the centered text lines still read at 16px in the margin.
-export function IconReports({ active, size = 18, hideFrame }: { active?: boolean; size?: number; hideFrame?: boolean }) {
+// square. The full balloon frame renders on every surface (panel strip,
+// action icon, AND the margin marker at 16px) — the margin marker is just
+// this icon at MARGIN_ICON_SIZE, same as every other marker type.
+export function IconReports({ active, size = 18 }: { active?: boolean; size?: number }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      {!hideFrame && (
-        // Squircle speech balloon with an integral tail at the lower-left:
-        // ONE continuous outline path (the bottom-left corner pulls down into
-        // the tail point) so it reads as an outline, not a filled wedge.
-        <path d="M7 4H17A4 4 0 0 1 21 8V13A4 4 0 0 1 17 17H7L3 21V8A4 4 0 0 1 7 4Z" />
-      )}
+      {/* Squircle speech balloon with an integral tail at the lower-left:
+          ONE continuous outline path (the bottom-left corner pulls down into
+          the tail point) so it reads as an outline, not a filled wedge. */}
+      <path d="M7 4H17A4 4 0 0 1 21 8V13A4 4 0 0 1 17 17H7L3 21V8A4 4 0 0 1 7 4Z" />
       {/* Two text lines, vertically centered in the bubble body */}
       <line x1="7" y1="9" x2="17" y2="9" />
       <line x1="7" y1="12" x2="17" y2="12" />
