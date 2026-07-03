@@ -17,6 +17,7 @@ import {
   invalidateSidecarBundle,
 } from "@/lib/storage";
 import { clearDiskLedger } from "@/lib/disk-ledger";
+import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
 import { createDiskWatcher, type DiskWatcher } from "@/lib/disk-watcher";
 import {
   createSidecarWatcher,
@@ -292,6 +293,10 @@ export function DiskWatcherProvider({
       reloadFromDisk: async () => {
         watcher.clearChanges();
         await (reloadFns.current.get(docId) ?? (() => {}))();
+        // The reload replaced in-memory content from disk; an open code
+        // pane's delimiter closure is now stale — tell it to re-read the
+        // disk preamble/postamble and resync (no code pane → free no-op).
+        dispatchTexDelimitersChanged(docId);
       },
     }),
     [watcher, docId, registerUnsavedGetter, registerReload],

@@ -3,6 +3,10 @@
 import { useCallback, useMemo } from "react";
 import { drainDoc, readTex, writeTex } from "@/lib/storage";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
+import {
+  dispatchTexDelimitersChanged,
+  dispatchTexDelimitersWillChange,
+} from "@/lib/tex-delimiters-event";
 import { mergeTitlesIntoStylePreamble } from "@/lib/latex-serializer";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
@@ -53,6 +57,15 @@ export function useDocumentStyle(docId: string | null) {
 
       const preset = resolveStyle(next);
       try {
+        // Ask an open code pane to flush its bridge FIRST: a preamble edit
+        // sitting in the bridge's 600 ms debounce commits synchronously
+        // (persistDelimiters → an enqueued bundle write) so drainDoc below
+        // lands it BEFORE we read the .tex — instead of it firing
+        // mid-switch, racing our writeTex, and possibly resurrecting the
+        // pre-style preamble. The style rewrite then proceeds on top (hard
+        // update — the user's preamble is intentionally replaced; titles
+        // are harvested below). No code pane open → free no-op.
+        dispatchTexDelimitersWillChange(docId);
         // Flush any in-flight autosave before we read from disk —
         // otherwise the 1500ms debounce window can leave the disk
         // bytes behind the live in-memory title content, and the
@@ -91,6 +104,9 @@ export function useDocumentStyle(docId: string | null) {
         );
         const newLatex = newPreamble + body + delimiters.postamble;
         await writeTex(handle, newLatex);
+        // The .tex preamble just changed OUT OF BAND from the code pane's
+        // bridge closure — tell an open CodeEditor to re-read + resync.
+        dispatchTexDelimitersChanged(docId);
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error("Failed to rewrite preamble for style switch:", err);

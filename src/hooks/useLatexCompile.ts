@@ -12,6 +12,7 @@ import {
   rewriteDocumentClass,
   type DocumentClassMismatch,
 } from "@/lib/document-class";
+import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
 import type { LatexError } from "@/lib/latex-errors";
 import { parseTexLog } from "@/lib/parse-tex-log";
 import { useSystemDialog } from "@/components/system-dialog-host";
@@ -126,6 +127,14 @@ export function useLatexCompile(
                 throw err;
               }
               await flushDoc(docId);
+              // The rewrite replaced the \documentclass line — i.e. the
+              // on-disk PREAMBLE — out of band from the code pane's bridge
+              // closure. Tell an open CodeEditor to re-read + resync (same
+              // contract as useDocumentStyle.setStyle and the external
+              // Reload), or a later code-pane preamble edit would persist
+              // the OLD documentclass back over the switch the user just
+              // confirmed. No code pane open → free no-op.
+              dispatchTexDelimitersChanged(docId);
               files = await readPaperFolder(docId);
             }
             // "compile-anyway" falls through with the original files.

@@ -90,6 +90,13 @@ export interface CodePaneBridge {
    * cursor. Invoked by the divider arrow; runs synchronously.
    */
   moveTextToCodeCursor(): void;
+  /**
+   * Replace the tracked preamble/postamble with fresh authoritative values
+   * (re-read from disk after a style switch or external-change reload) and
+   * force a reverse sync so the CM text reflects them. Clears any pending
+   * `persistDelimiters` — the incoming values ARE the disk state.
+   */
+  setDelimiters(d: { preamble: string; postamble: string }): void;
 }
 
 export interface CreateCodePaneBridgeOptions {
@@ -107,6 +114,16 @@ export interface CreateCodePaneBridgeOptions {
   reverseDebounceMs?: number;
   /** Fired whenever the parse-error state changes (success clears it to null). */
   onParseError?: (err: Error | null) => void;
+  /**
+   * Fired from `flushCodeToTipTap` when a code edit CHANGED the
+   * preamble/postamble (body-only edits never fire it), after the parsed
+   * body has been pushed into TipTap. The autosaver's `writeDocBundle`
+   * re-reads delimiters from the on-disk .tex, so a preamble edit that
+   * lives only in this bridge's closure would silently die on close —
+   * the callback's job is to commit the new delimiters to disk NOW
+   * (writeDocBundle with the `delimiters` override).
+   */
+  persistDelimiters?: (d: { preamble: string; postamble: string }) => void;
 }
 
 export function createCodePaneBridge(
@@ -118,6 +135,12 @@ export function createCodePaneBridge(
 
   let preamble = opts.initialPreamble;
   let postamble = opts.initialPostamble;
+  // Delimiters extracted from a code edit that still need committing to
+  // disk via `persistDelimiters`. Held (not fired) across a parse failure
+  // so a preamble edit made while the body is broken isn't lost — the
+  // next successful flush persists it. Cleared by `setDelimiters` (the
+  // incoming values are already the disk state).
+  let pendingPersist: { preamble: string; postamble: string } | null = null;
   let syncing: "code" | "tiptap" | null = null;
   let lastParseError: string | null = null;
   let codeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -172,9 +195,17 @@ export function createCodePaneBridge(
     const text = view.state.doc.toString();
     // Re-extract preamble/postamble in case the user edited them. We
     // keep the previous values if extraction fails (e.g. mid-edit of
-    // `\begin{document}`).
+    // `\begin{document}` — nothing is persisted in that case either).
     const extracted = extractPreambleAndPostamble(text);
     if (extracted) {
+      if (
+        extracted.preamble !== preamble ||
+        extracted.postamble !== postamble
+      ) {
+        // A genuine delimiter edit — mark it for the disk commit below.
+        // Body-only edits re-extract byte-identical values and skip this.
+        pendingPersist = extracted;
+      }
       preamble = extracted.preamble;
       postamble = extracted.postamble;
     }
@@ -205,6 +236,14 @@ export function createCodePaneBridge(
       });
     } finally {
       syncing = null;
+    }
+    // Commit a delimiter edit to disk AFTER the body push, so the
+    // callback's `editor.getJSON()` snapshot carries the just-parsed
+    // body alongside the new preamble (one write, fully fresh).
+    if (pendingPersist) {
+      const d = pendingPersist;
+      pendingPersist = null;
+      opts.persistDelimiters?.(d);
     }
   }
 
@@ -474,6 +513,13 @@ export function createCodePaneBridge(
     },
     moveTextToCodeCursor() {
       pushCodeSelectionToTipTap();
+    },
+    setDelimiters(d) {
+      preamble = d.preamble;
+      postamble = d.postamble;
+      // These came FROM disk — nothing left to persist back.
+      pendingPersist = null;
+      flushTipTapToCode();
     },
   };
 }

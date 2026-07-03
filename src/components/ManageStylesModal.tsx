@@ -30,6 +30,14 @@ import { useStyleLibrary } from "@/hooks/useStyleLibrary";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
 import { readTex } from "@/lib/storage";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
+import { stripAutoInjectedLines } from "@/lib/latex-requirements";
+
+/** Drift compare on normalized forms — the serializer auto-injects
+ *  requirement lines (packages + `\v*id` shims) into the doc's preamble,
+ *  which must not read as user drift against the registered style. */
+function preamblesDiffer(a: string, b: string): boolean {
+  return stripAutoInjectedLines(a) !== stripAutoInjectedLines(b);
+}
 
 interface ManageStylesModalProps {
   onClose: () => void;
@@ -110,12 +118,12 @@ export default function ManageStylesModal({
   const drifted =
     !!activeStyle &&
     docPreamble != null &&
-    docPreamble !== activeStyle.preamble;
+    preamblesDiffer(docPreamble, activeStyle.preamble);
   const canSaveCurrent =
     !!docId &&
     docPreamble != null &&
     !!activeStyle &&
-    docPreamble !== activeStyle.preamble;
+    preamblesDiffer(docPreamble, activeStyle.preamble);
 
   const editingEntry: StyleEntry | undefined =
     typeof editor === "string" && editor !== "new" && editor !== "fromCurrent"
@@ -174,7 +182,7 @@ export default function ManageStylesModal({
       if (!target) return;
       const current = await ensureDocPreamble();
       const activeRegistered = activeStyle?.preamble ?? "";
-      if (current === activeRegistered) {
+      if (!preamblesDiffer(current, activeRegistered)) {
         // No drift — silent apply.
         void setStyle(id);
       } else {

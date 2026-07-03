@@ -61,6 +61,58 @@ export const KNOWN_CITE_COMMANDS = [
   "smartcites",
 ] as const;
 
+// ---------------------------------------------------------------------------
+// Package-family buckets over KNOWN_CITE_COMMANDS.
+//
+// Used by the preamble-requirements detector (latex-requirements.ts) to
+// decide which bib package a body's cite commands pin. Three buckets:
+//
+//  - NATBIB_ONLY:   defined by natbib and NOT by biblatex — their presence
+//                   pins natbib.
+//  - SHARED:        defined by BOTH packages (\citeauthor/\citeyear exist in
+//                   natbib and biblatex; \cite/\nocite additionally exist in
+//                   the LaTeX kernel itself — see KERNEL_NEUTRAL below).
+//  - biblatex-only: everything else in KNOWN_CITE_COMMANDS (derived, so a
+//                   new registry addition defaults to the biblatex bucket —
+//                   natbib's command set is closed).
+//
+// Every KNOWN_CITE_COMMANDS entry lands in exactly one bucket.
+// ---------------------------------------------------------------------------
+
+/** Commands only natbib defines. */
+export const NATBIB_ONLY_CITE_COMMANDS: ReadonlySet<string> = new Set([
+  "citet",
+  "citep",
+  "citealt",
+  "citealp",
+  "citeyearpar",
+  "citetext",
+  "citenum",
+]);
+
+/** Commands BOTH natbib and biblatex define — they pin neither package on
+ *  their own. */
+export const SHARED_CITE_COMMANDS: ReadonlySet<string> = new Set([
+  "cite",
+  "nocite",
+  "citeauthor",
+  "citeyear",
+]);
+
+/** The subset of SHARED that the LaTeX kernel itself defines — truly
+ *  package-neutral (a body using only these needs no bib package at all). */
+export const KERNEL_NEUTRAL_CITE_COMMANDS: ReadonlySet<string> = new Set([
+  "cite",
+  "nocite",
+]);
+
+/** Commands only biblatex defines — derived as the registry remainder. */
+export const BIBLATEX_ONLY_CITE_COMMANDS: ReadonlySet<string> = new Set(
+  KNOWN_CITE_COMMANDS.filter(
+    (c) => !NATBIB_ONLY_CITE_COMMANDS.has(c) && !SHARED_CITE_COMMANDS.has(c),
+  ),
+);
+
 // Construct the alternation. Longest names FIRST so e.g. "footfullcite" is
 // preferred over "footcite", and "citeyearpar" over "citeyear".
 //

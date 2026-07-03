@@ -12,6 +12,12 @@
 //   2. it preserves the user's preamble/postamble verbatim (never clobbers);
 //   3. it is GUARDED by the active-handle / pipeline check — a read whose
 //      pipeline was superseded by a doc switch writes NOTHING.
+//
+// The `writeDocBundle — delimiters override` describe below shares this
+// fake-FSA harness: it pins the code-pane preamble-commit contract (a
+// caller-supplied `opts.delimiters` SKIPS the on-disk delimiter re-read,
+// so a preamble edit that exists only in the code pane's bridge closure
+// reaches disk instead of being resurrected-over by the stale .tex).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -141,12 +147,18 @@ vi.mock("@/lib/doc-index", () => ({
   }),
 }));
 
+import type { JSONContent } from "@tiptap/react";
 import {
   beginDocPipeline,
   endDocPipeline,
   __resetForTests as resetPipelines,
 } from "@/lib/multi-window/doc-pipeline";
-import { readDocBundle } from "@/lib/storage-fsa";
+import { readDocBundle, writeDocBundle } from "@/lib/storage-fsa";
+import {
+  getDiskFingerprint,
+  hashContent,
+  __resetDiskLedgerForTests,
+} from "@/lib/disk-ledger";
 import { flushWrites } from "@/lib/write-queue";
 
 // A .tex with a real preamble/postamble and ONE body paragraph that carries
@@ -195,6 +207,7 @@ async function settle(): Promise<void> {
 
 beforeEach(() => {
   resetPipelines();
+  __resetDiskLedgerForTests();
   seedDoc(SOURCE_TEX);
 });
 
@@ -314,5 +327,76 @@ describe("storage-fsa readDocBundle — load-writeback parity", () => {
       "OTHER DOC — must stay untouched\n",
     );
     expect(docHandle.files.get(TEX)!.text).toMatch(UUID_MARKER);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// writeDocBundle — the `opts.delimiters` override (code-pane preamble commit)
+// ---------------------------------------------------------------------------
+
+// Editor JSON standing in for the just-parsed TipTap doc. The paragraph
+// already carries a UUID so assignUuids mints nothing (byte-stable body).
+const EDITOR_CONTENT: JSONContent = {
+  type: "doc",
+  content: [
+    {
+      type: "paragraph",
+      attrs: { uuid: "ab12" },
+      content: [{ type: "text", text: "Body text from the editor." }],
+    },
+  ],
+};
+
+// The code-pane-edited delimiters: a package the on-disk preamble does NOT
+// have (\usepackage{fontspec}) and none of its \newcommand{\foo} line —
+// so each assertion can tell exactly which preamble reached disk.
+const OVERRIDE_DELIMITERS = {
+  preamble:
+    "\\documentclass{article}\n\\usepackage{fontspec}\n\n\\begin{document}\n\n",
+  postamble: "\n\\end{document}\n% override trailing comment\n",
+};
+
+describe("storage-fsa writeDocBundle — delimiters override", () => {
+  it("honors opts.delimiters: skips the disk re-read, writes the override preamble/postamble", async () => {
+    const h = beginDocPipeline(DOC_ID);
+    await writeDocBundle(h, structuredClone(EDITOR_CONTENT), {
+      delimiters: OVERRIDE_DELIMITERS,
+    });
+    endDocPipeline(h);
+
+    const after = docHandle.files.get(TEX)!.text;
+    // The override preamble/postamble landed...
+    expect(after).toContain("\\usepackage{fontspec}");
+    expect(after).toContain("% override trailing comment");
+    // ...and the STALE on-disk preamble was NOT resurrected by a re-read.
+    expect(after).not.toContain("\\newcommand{\\foo}{bar}");
+    // Body serialized from the passed JSON.
+    expect(after).toContain("Body text from the editor.");
+  });
+
+  it("without opts.delimiters, the on-disk preamble is re-read and preserved (control)", async () => {
+    const h = beginDocPipeline(DOC_ID);
+    await writeDocBundle(h, structuredClone(EDITOR_CONTENT));
+    endDocPipeline(h);
+
+    const after = docHandle.files.get(TEX)!.text;
+    expect(after).toContain("\\newcommand{\\foo}{bar}");
+    expect(after).not.toContain("fontspec");
+    expect(after).toContain("Body text from the editor.");
+  });
+
+  it("stamps the disk ledger with the FINAL serialized .tex (override path)", async () => {
+    const h = beginDocPipeline(DOC_ID);
+    await writeDocBundle(h, structuredClone(EDITOR_CONTENT), {
+      delimiters: OVERRIDE_DELIMITERS,
+    });
+    endDocPipeline(h);
+
+    const after = docHandle.files.get(TEX)!.text;
+    const fp = getDiskFingerprint(DOC_ID, TEX);
+    // Stamped, and with the bytes that actually hit disk — so the external-
+    // change watcher reads the commit as Virgil's own write, not an edit.
+    expect(fp).toBeDefined();
+    expect(fp!.hash).toBe(hashContent(after));
   });
 });

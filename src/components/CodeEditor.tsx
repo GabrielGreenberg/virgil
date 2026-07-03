@@ -16,6 +16,11 @@ import {
   createCodePaneBridge,
   type CodePaneBridge,
 } from "@/lib/code-pane-bridge";
+import {
+  TEX_DELIMITERS_CHANGED_EVENT,
+  TEX_DELIMITERS_WILL_CHANGE_EVENT,
+  type TexDelimitersChangedDetail,
+} from "@/lib/tex-delimiters-event";
 import { codeBandField } from "@/lib/code-band";
 import CodeEditorLogDrawer from "./CodeEditorLogDrawer";
 
@@ -92,6 +97,16 @@ interface CodeEditorProps {
   /** Emit the current LaTeX text whenever it changes (and once on load).
    *  Wire this to `useLatexLint`. */
   onTextChange?: (text: string) => void;
+  /**
+   * Commit a code-pane preamble/postamble edit to disk. Fired by the
+   * bridge when a code flush changed the delimiters (body-only edits
+   * don't fire it); the shell routes it to `useDocument.saveWithDelimiters`
+   * → `writeDocBundle(handle, editor.getJSON(), { delimiters })`, the same
+   * write-handle/queue the autosaver uses. Without this the edit lives
+   * only in the bridge closure and dies on close (the autosaver re-reads
+   * the stale on-disk preamble).
+   */
+  persistDelimiters?: (d: { preamble: string; postamble: string }) => void;
   /** Compile log + status to render in the bottom drawer. */
   compileLog?: string | null;
   compileStatus?: number | null;
@@ -105,6 +120,7 @@ export default function CodeEditor({
   initialParagraphId,
   onReady,
   onTextChange,
+  persistDelimiters,
   compileLog = null,
   compileStatus = null,
   isCompiling = false,
@@ -114,6 +130,10 @@ export default function CodeEditor({
   const bridgeRef = useRef<CodePaneBridge | null>(null);
   const preambleRef = useRef<string | undefined>(undefined);
   const postambleRef = useRef<string | undefined>(undefined);
+  // Latest-ref for the persist callback so the bridge (constructed once
+  // per view/editor pair) never rebuilds on a prop identity change.
+  const persistDelimitersRef = useRef(persistDelimiters);
+  persistDelimitersRef.current = persistDelimiters;
   const scrolledRef = useRef(false);
   const [parseError, setParseError] = useState<string | null>(null);
   // Flipped to true by `onCreateEditor` once CodeMirror hands us its
@@ -229,6 +249,14 @@ export default function CodeEditor({
       initialPreamble: preambleRef.current,
       initialPostamble: postambleRef.current,
       onParseError: (err) => setParseError(err ? err.message : null),
+      persistDelimiters: (d) => {
+        // Keep the mount-time refs current so a bridge rebuild (editor
+        // swap) seeds from the just-persisted values, not the stale
+        // mount-time disk read.
+        preambleRef.current = d.preamble;
+        postambleRef.current = d.postamble;
+        persistDelimitersRef.current?.(d);
+      },
     });
     bridgeRef.current = bridge;
     return () => {
@@ -236,6 +264,56 @@ export default function CodeEditor({
       bridgeRef.current = null;
     };
   }, [docId, editor, viewReady]);
+
+  // Delimiter divergence fix: a style switch (useDocumentStyle.setStyle →
+  // writeTex) or an external-change Reload replaces the on-disk preamble
+  // WITHOUT going through the bridge, which would otherwise keep serving
+  // its stale closure copy forever. Both paths dispatch the per-doc
+  // delimiters-changed event after their write/reload settles; re-read the
+  // disk delimiters and resync the bridge (forced reverse sync).
+  useEffect(() => {
+    const onDelimitersChanged = (e: Event) => {
+      const detail = (e as CustomEvent<TexDelimitersChangedDetail>).detail;
+      if (!detail || detail.docId !== docId) return;
+      readTex(docId)
+        .then((diskText) => {
+          const extracted = extractPreambleAndPostamble(diskText);
+          if (!extracted) return;
+          preambleRef.current = extracted.preamble;
+          postambleRef.current = extracted.postamble;
+          bridgeRef.current?.setDelimiters(extracted);
+        })
+        .catch(() => {
+          /* disk read best-effort — keep the current closure values */
+        });
+    };
+    // Pre-write counterpart: setStyle is ABOUT to read + rewrite the .tex.
+    // Flush the bridge synchronously so a preamble edit sitting in the
+    // code→TipTap debounce commits (persistDelimiters → bundle write) BEFORE
+    // the style path's drainDoc/readTex — otherwise the un-fired debounce
+    // could fire mid-switch and its delimiters override would race (and
+    // possibly silently undo) the style's preamble rewrite.
+    const onDelimitersWillChange = (e: Event) => {
+      const detail = (e as CustomEvent<TexDelimitersChangedDetail>).detail;
+      if (!detail || detail.docId !== docId) return;
+      bridgeRef.current?.flush();
+    };
+    window.addEventListener(TEX_DELIMITERS_CHANGED_EVENT, onDelimitersChanged);
+    window.addEventListener(
+      TEX_DELIMITERS_WILL_CHANGE_EVENT,
+      onDelimitersWillChange,
+    );
+    return () => {
+      window.removeEventListener(
+        TEX_DELIMITERS_CHANGED_EVENT,
+        onDelimitersChanged,
+      );
+      window.removeEventListener(
+        TEX_DELIMITERS_WILL_CHANGE_EVENT,
+        onDelimitersWillChange,
+      );
+    };
+  }, [docId]);
 
   if (value === null) {
     return (

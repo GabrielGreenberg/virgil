@@ -6,9 +6,9 @@
  * that the user owns the list — seed entries are editable, renameable,
  * and deletable like any other entry.
  *
- * The Virgil entity-id markers (`\vfid`/`\vcid`/`\vexid`) are injected
- * at serialize time by `ensureVirgilCommands` in latex-serializer.ts,
- * so seed/user preambles don't need to declare them.
+ * The Virgil entity-id marker shims and any missing baseline packages
+ * are injected at serialize time by `ensurePreambleRequirements` in
+ * latex-requirements.ts, so user preambles don't need to declare them.
  *
  * `EMERGENCY_PREAMBLE` is the last-resort fallback returned by
  * `resolveStyle` when nothing else works (e.g. user opens a doc whose
@@ -18,23 +18,11 @@
  * default for serialize calls that don't pass an explicit preamble.
  */
 
-export const CLASSIC_PREAMBLE = `\\documentclass{article}
-\\usepackage[utf8]{inputenc}
-\\usepackage{amsmath}
-\\usepackage{amssymb}
-\\usepackage{xcolor}
+import { buildPreamble } from "@/lib/latex-requirements";
 
-% Virgil entity-id markers — no-op commands that carry stable UUIDs for
-% inline entities (footnotes, citations, examples) across .tex parse
-% cycles. Without these, every re-parse regenerates the ids and any UI
-% state keyed by them (e.g. popped-out cards) becomes stale.
-\\providecommand{\\vfid}[1]{}
-\\providecommand{\\vcid}[1]{}
-\\providecommand{\\vexid}[1]{}
-
-\\begin{document}
-
-`;
+// Baseline packages + all `\v*id` shims + article class — see
+// VIRGIL_BASELINE_PACKAGES in latex-requirements.ts for the package set.
+export const CLASSIC_PREAMBLE = buildPreamble("\\documentclass{article}");
 
 // Placeholder until the user supplies the Greenberg preamble. Equal to
 // CLASSIC_PREAMBLE for now so the seed entry round-trips through the

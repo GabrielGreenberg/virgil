@@ -21,6 +21,12 @@ import SystemDialog, {
   SystemDialogFooter,
   SystemDialogHeader,
 } from "./system-dialog";
+import { SHIM_COMMAND_NAMES } from "@/lib/latex-requirements";
+
+// The Virgil `\v*id` marker shims — auto-injected by the serializer, not
+// meaningful "user customizations." Derived from the requirements registry
+// so a new shim never re-surfaces here as a phantom custom macro.
+const SHIM_MACROS = new Set(SHIM_COMMAND_NAMES.map((n) => `\\${n}`));
 
 interface StyleApplyDialogProps {
   /** Display name of the style being switched TO. */
@@ -82,9 +88,7 @@ function diffPreambles(current: string, target: string): DiffSummary {
     extraPackages: [...curPkgs].filter((p) => !tgtPkgs.has(p)).sort(),
     extraMacros: [...curMacros]
       .filter((m) => !tgtMacros.has(m))
-      // Filter out the Virgil markers — they're auto-injected by the
-      // serializer and aren't meaningful "user customizations."
-      .filter((m) => m !== "\\vfid" && m !== "\\vcid" && m !== "\\vexid")
+      .filter((m) => !SHIM_MACROS.has(m))
       .sort(),
     extraSetters: [...curSetters].filter((s) => !tgtSetters.has(s)).sort(),
   };

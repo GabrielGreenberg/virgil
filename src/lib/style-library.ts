@@ -14,6 +14,7 @@
  * points at a missing id). Not surfaced in UI.
  */
 import {
+  CLASSIC_PREAMBLE,
   EMERGENCY_PREAMBLE,
   SEED_STYLES,
   DEFAULT_STYLE_ID,
@@ -21,6 +22,68 @@ import {
 } from "@/lib/document-styles";
 
 export const STYLE_LIBRARY_KEY = "virgil-style-library";
+
+/**
+ * Bumped whenever the SEED preambles change in a way stored libraries
+ * should pick up. On read, any `origin: "seed"` style whose preamble is
+ * byte-identical to a retired seed generation (KNOWN_LEGACY_SEED_PREAMBLES)
+ * is upgraded to the current seed preamble; user-edited seeds (bytes
+ * diverged) and user styles are never touched.
+ *
+ * v2 (2026-07-02): seeds rebuilt on the shared baseline package block
+ * (graphicx/natbib/expex + all 7 `\v*id` shims) via buildPreamble.
+ */
+export const STYLE_LIBRARY_VERSION = 2;
+
+// Frozen bytes of the v0 CLASSIC_PREAMBLE — the pre-xcolor seed generation
+// (87f8ad38/a293e604, 2026-05-07 → 8471ef99, 2026-05-16): byte-identical to
+// V1 below MINUS the `\usepackage{xcolor}` line. Libraries seeded from a
+// build in that nine-day window stored these bytes; the version bump is
+// one-shot per stored library, so this generation must be listed BEFORE the
+// v2 migration runs or those seeds are sealed out forever. Do NOT reformat —
+// the migration gate is exact byte equality.
+const LEGACY_CLASSIC_PREAMBLE_V0 = `\\documentclass{article}
+\\usepackage[utf8]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amssymb}
+
+% Virgil entity-id markers — no-op commands that carry stable UUIDs for
+% inline entities (footnotes, citations, examples) across .tex parse
+% cycles. Without these, every re-parse regenerates the ids and any UI
+% state keyed by them (e.g. popped-out cards) becomes stale.
+\\providecommand{\\vfid}[1]{}
+\\providecommand{\\vcid}[1]{}
+\\providecommand{\\vexid}[1]{}
+
+\\begin{document}
+
+`;
+
+// Frozen bytes of the v1 CLASSIC_PREAMBLE (Greenberg + Emergency were
+// byte-identical to it). Do NOT reformat — the migration gate is exact
+// byte equality.
+const LEGACY_CLASSIC_PREAMBLE_V1 = `\\documentclass{article}
+\\usepackage[utf8]{inputenc}
+\\usepackage{amsmath}
+\\usepackage{amssymb}
+\\usepackage{xcolor}
+
+% Virgil entity-id markers — no-op commands that carry stable UUIDs for
+% inline entities (footnotes, citations, examples) across .tex parse
+% cycles. Without these, every re-parse regenerates the ids and any UI
+% state keyed by them (e.g. popped-out cards) becomes stale.
+\\providecommand{\\vfid}[1]{}
+\\providecommand{\\vcid}[1]{}
+\\providecommand{\\vexid}[1]{}
+
+\\begin{document}
+
+`;
+
+const KNOWN_LEGACY_SEED_PREAMBLES: readonly string[] = [
+  LEGACY_CLASSIC_PREAMBLE_V0,
+  LEGACY_CLASSIC_PREAMBLE_V1,
+];
 
 export interface StyleLibraryBlob {
   version: number;
@@ -39,10 +102,24 @@ const EMERGENCY_ENTRY: StyleEntry = {
 
 function freshSeed(): StyleLibraryBlob {
   return {
-    version: 1,
+    version: STYLE_LIBRARY_VERSION,
     styles: SEED_STYLES.map((s) => ({ ...s })),
     defaultStyleId: DEFAULT_STYLE_ID,
   };
+}
+
+/** Upgrade untouched seed styles to the current seed preamble. Only
+ *  styles byte-identical to a KNOWN legacy seed generation qualify —
+ *  anything the user edited fails the byte gate and is preserved. */
+function migrateSeedStyles(styles: StyleEntry[]): StyleEntry[] {
+  return styles.map((s) => {
+    if (s.origin !== "seed") return s;
+    if (!KNOWN_LEGACY_SEED_PREAMBLES.includes(s.preamble)) return s;
+    const seed = SEED_STYLES.find((x) => x.id === s.id);
+    const preamble = seed?.preamble ?? CLASSIC_PREAMBLE;
+    if (preamble === s.preamble) return s;
+    return { ...s, preamble, updatedAt: new Date().toISOString() };
+  });
 }
 
 /**
@@ -67,8 +144,24 @@ export function getStyleLibrarySync(): StyleLibraryBlob {
     ) {
       return freshSeed();
     }
+    const storedVersion = parsed.version ?? 1;
+    if (storedVersion < STYLE_LIBRARY_VERSION) {
+      const migrated: StyleLibraryBlob = {
+        version: STYLE_LIBRARY_VERSION,
+        styles: migrateSeedStyles(parsed.styles),
+        defaultStyleId: parsed.defaultStyleId ?? DEFAULT_STYLE_ID,
+      };
+      // Persist the bumped version directly (no STYLE_LIBRARY_EVENT — this
+      // can run during render; every reader re-reads localStorage anyway).
+      try {
+        localStorage.setItem(STYLE_LIBRARY_KEY, JSON.stringify(migrated));
+      } catch {
+        /* quota / privacy mode — the in-memory upgrade still applies */
+      }
+      return migrated;
+    }
     return {
-      version: parsed.version ?? 1,
+      version: storedVersion,
       styles: parsed.styles,
       defaultStyleId: parsed.defaultStyleId ?? DEFAULT_STYLE_ID,
     };

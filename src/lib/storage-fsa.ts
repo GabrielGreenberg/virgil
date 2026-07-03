@@ -389,7 +389,14 @@ export async function readTex(docId: string): Promise<string> {
 }
 
 export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> {
-  return enqueueDocWrite(h, "tex", async () => {
+  // "bundle" (not a separate "tex") subkey: writeTex rewrites the SAME .tex
+  // file the bundle writes own (style switch, compile documentclass-switch),
+  // so it must be totally ordered against writeDocBundle / the load-writeback.
+  // On separate subkeys the two serial queues interleave at every await —
+  // withDocLock is a passthrough in the lock-owning window — and a queued
+  // bundle write carrying a delimiters override could land AFTER a style
+  // rewrite and silently undo it.
+  return enqueueDocWrite(h, "bundle", async () => {
     const meta = await getDocMetaOrThrow(h.docId);
     const fh = await getTexFileHandle(h.docId, { create: true });
     await writeTextToHandle(fh, latex);
@@ -541,6 +548,7 @@ async function writeReStampedTexOnLoad(
 export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
+  opts?: { delimiters?: { preamble: string; postamble: string } },
 ): Promise<void> {
   return enqueueDocWrite(h, "bundle", async () => {
     const docHandle = await requireDocHandle(h.docId);
@@ -560,9 +568,15 @@ export async function writeDocBundle(
 
     // Preserve the user's preamble/postamble verbatim across the
     // parse/serialize round-trip. The editor never sees them, so we
-    // read them straight off the existing .tex file on every save.
-    const existingLatex = await safeReadText(docHandle, meta.texFilename, "");
-    const delimiters = extractPreambleAndPostamble(existingLatex);
+    // read them straight off the existing .tex file on every save —
+    // UNLESS the caller supplies fresher delimiters (the code pane's
+    // preamble-edit commit), in which case the disk copy is exactly
+    // what's stale and re-reading it would resurrect the old preamble.
+    const delimiters =
+      opts?.delimiters ??
+      extractPreambleAndPostamble(
+        await safeReadText(docHandle, meta.texFilename, ""),
+      );
 
     const newSidecar = extractSidecarData(content);
     // For brand-new / empty docs with no \begin{document} marker yet,

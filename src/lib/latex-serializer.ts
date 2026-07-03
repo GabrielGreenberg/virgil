@@ -3,6 +3,10 @@ import type { VirgilSidecar } from "@/lib/types";
 import { generateShortId } from "@/lib/uuid";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
+import {
+  detectBodyRequirements,
+  ensurePreambleRequirements,
+} from "@/lib/latex-requirements";
 import { typographyToLatex } from "@/lib/latex-typography";
 
 // The classic preset is the historical default — used as the fallback
@@ -34,62 +38,6 @@ const UUID_BEARING_NODE_TYPES = new Set([
 const DEFAULT_POSTAMBLE = `
 \\end{document}
 `;
-
-/**
- * If the preserved user preamble doesn't already declare `\vfid`/`\vcid`,
- * inject `\providecommand` definitions for them right before
- * `\begin{document}`. Virgil emits these markers inline to carry stable
- * UUIDs for footnotes/citations across parse cycles; without a matching
- * declaration in the preamble, LaTeX compilation fails with "Undefined
- * control sequence."
- */
-function ensureVirgilCommands(preamble: string): string {
-  const hasVfid = /\\(?:provide|new|renew)command\{\\vfid\}/.test(preamble);
-  const hasVcid = /\\(?:provide|new|renew)command\{\\vcid\}/.test(preamble);
-  // `\vbid` marks a bibliography entry's durable surrogate id (in the `.bib`,
-  // round-tripped by serializeBibFile). It never appears in this `.tex`, but
-  // we declare the no-op so a `.bib` `\input` or a paper opened in raw LaTeX
-  // never breaks — mirrors the inline-atom `\vcid`/`\vfid` guards.
-  const hasVbid = /\\(?:provide|new|renew)command\{\\vbid\}/.test(preamble);
-  const hasVexid = /\\(?:provide|new|renew)command\{\\vexid\}/.test(preamble);
-  const hasVxid = /\\(?:provide|new|renew)command\{\\vxid\}/.test(preamble);
-  const hasVlid = /\\(?:provide|new|renew)command\{\\vlid\}/.test(preamble);
-  const hasVlidend = /\\(?:provide|new|renew)command\{\\vlidend\}/.test(preamble);
-  // xcolor is needed for `\textcolor[HTML]{...}` emitted by the textColor
-  // mark. New docs get it from CLASSIC_PREAMBLE; older docs get it
-  // injected lazily on first save.
-  const hasXcolor = /\\usepackage(?:\[[^\]]*\])?\{xcolor\}/.test(preamble);
-  if (
-    hasVfid &&
-    hasVcid &&
-    hasVbid &&
-    hasVexid &&
-    hasVxid &&
-    hasVlid &&
-    hasVlidend &&
-    hasXcolor
-  )
-    return preamble;
-
-  const beginMarker = "\\begin{document}";
-  const beginIdx = preamble.indexOf(beginMarker);
-  if (beginIdx === -1) return preamble;
-
-  const additions: string[] = [];
-  // Packages first, then `\providecommand`s — conventional preamble order.
-  if (!hasXcolor) additions.push("\\usepackage{xcolor}");
-  if (!hasVfid) additions.push("\\providecommand{\\vfid}[1]{}");
-  if (!hasVcid) additions.push("\\providecommand{\\vcid}[1]{}");
-  if (!hasVbid) additions.push("\\providecommand{\\vbid}[1]{}");
-  if (!hasVexid) additions.push("\\providecommand{\\vexid}[1]{}");
-  if (!hasVxid) additions.push("\\providecommand{\\vxid}[1]{}");
-  if (!hasVlid) additions.push("\\providecommand{\\vlid}[1]{}");
-  if (!hasVlidend) additions.push("\\providecommand{\\vlidend}[1]{}");
-
-  const before = preamble.slice(0, beginIdx).replace(/\s*$/, "");
-  const after = preamble.slice(beginIdx);
-  return before + "\n\n" + additions.join("\n") + "\n\n" + after;
-}
 
 function serializeMarks(
   text: string,
@@ -734,9 +682,15 @@ export function serializeToLatex(
   options?: { preamble?: string; postamble?: string },
 ): string {
   const body = serializeNode(doc).replace(/\n{3,}/g, "\n\n").trim();
-  const rawPreamble = options?.preamble
-    ? ensureVirgilCommands(options.preamble)
-    : DEFAULT_PREAMBLE;
+  // Requirements pass runs on EVERY serialize — including the no-options
+  // DEFAULT_PREAMBLE fallback — so a body that emits expex / graphicx /
+  // tikz / cite commands always has the matching \usepackage (and every
+  // `\v*id` shim) by the time the .tex hits disk. `||` (not `??`): an
+  // empty-string preamble falls back to the default, as before.
+  const rawPreamble = ensurePreambleRequirements(
+    options?.preamble || DEFAULT_PREAMBLE,
+    detectBodyRequirements(body),
+  );
   // Re-inject preamble-sourced \title/\author/\date right before
   // \begin{document}. They live in the doc tree (so the editor can show
   // them), but the user intends them to live in the preamble.
