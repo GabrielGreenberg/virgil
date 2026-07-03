@@ -285,6 +285,14 @@ describe("serializeToLatex — requirements integration", () => {
     expect(tex2).toBe(tex1);
   });
 
+  it("double-serialize with the CURRENT classic preamble is byte-stable", () => {
+    const tex1 = serializeToLatex(exampleDoc, { preamble: CLASSIC_PREAMBLE });
+    const parsed = parseLatex(tex1);
+    const delimiters = extractPreambleAndPostamble(tex1);
+    const tex2 = serializeToLatex(parsed, delimiters ?? undefined);
+    expect(tex2).toBe(tex1);
+  });
+
   it("no-options DEFAULT_PREAMBLE path carries all 7 shims (regression: was skipped)", () => {
     const plainDoc: JSONContent = {
       type: "doc",
