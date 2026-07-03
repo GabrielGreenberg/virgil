@@ -835,12 +835,35 @@ def _added_at_key(meta: dict) -> str:
     return str(v) if v else "~"  # '~' > any digit/'T', so absent sorts newest
 
 
+def _citekey_consistency(ck: str, fields: dict) -> int:
+    """How well a citekey matches the entry's actual author+year (0–2).
+
+    A well-formed key like ``pylyshyn2007things`` contains the first-author
+    surname AND the year; a mislabeled key like ``levine1984fm`` on a
+    Pylyshyn-2007 record contains neither. Used as a tie-break so that, when
+    two same-work records are otherwise equal (both deep-indexed, equal
+    completeness), the survivor keeps the *correct-looking* citekey rather than
+    the alphabetically-first one. Substantive signals (index depth, extraction
+    completeness) still rank above this — a mislabeled key with a richer
+    extraction still wins, since the fix there is a rename, not a re-index.
+    """
+    cklow = ck.lower()
+    score = 0
+    surn = first_author_surname(fields.get("author", ""))
+    if surn and surn in cklow:
+        score += 1
+    yr = norm_year(fields.get("year", ""))
+    if yr and str(yr) in ck:
+        score += 1
+    return score
+
+
 def _survivor_sort_key(rec: dict, loadbearing: set) -> tuple:
     """The winner-selection tuple (HIGHER wins) from DEDUP_DESIGN.md §Winner.
 
     Ordered: is_loadbearing, index_depth, bib_state, pgmarkCount, pageCount,
-    field_completeness, then oldest added_at (ascending → negated via a tuple
-    trick), then citekey for a final deterministic tie-break.
+    field_completeness, citekey_consistency, then oldest added_at (ascending →
+    negated via a tuple trick), then citekey for a final deterministic tie-break.
     """
     meta = rec.get("meta", {}) or {}
     fields = rec.get("fields", {}) or {}
@@ -857,6 +880,7 @@ def _survivor_sort_key(rec: dict, loadbearing: set) -> tuple:
         int(meta.get("pgmarkCount", meta.get("pgmark_count", 0)) or 0),
         int(meta.get("pageCount", meta.get("page_count", 0)) or 0),
         _field_completeness(fields),
+        _citekey_consistency(ck, fields),
         # Oldest added_at should win: invert by using a reversed string sort.
         # We can't easily negate a string, so we pair a rank that prefers the
         # lexicographically SMALLER (older) timestamp by negating via order in
@@ -876,8 +900,8 @@ def _rank_members(cluster_records: list[dict], loadbearing: set) -> list[str]:
     """
     def key(rec):
         t = _survivor_sort_key(rec, loadbearing)
-        numeric = t[:6]          # higher-is-better block
-        added, ck = t[6], t[7]   # ascending (older/smaller first)
+        numeric = t[:7]          # higher-is-better block
+        added, ck = t[7], t[8]   # ascending (older/smaller first)
         # Negate the numeric block so a single ascending sort ranks best first.
         return tuple(-n for n in numeric) + (added, ck)
 
