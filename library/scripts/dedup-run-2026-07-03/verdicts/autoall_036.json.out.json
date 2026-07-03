@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "consciousness and the computational mind", "decision": "same", "rationale": "Same Jackendoff book, identical ISBN 9780262100373; 1987 vs 1990 are original and reprint years."},
+    {"id": "semantic structures", "decision": "same", "rationale": "Identical title, author, year, publisher, ISBN."},
+    {"id": "10.1016/0010-0277(91)90031-x", "decision": "same", "rationale": "Shared DOI, identical title 'Parts and boundaries' and author Jackendoff."},
+    {"id": "10.1007/bf00133686", "decision": "same", "rationale": "Shared DOI, identical title and author Jackendoff."},
+    {"id": "foundations of language", "decision": "same", "rationale": "Identical title, author, year, ISBN."},
+    {"id": "perception a representative theory", "decision": "same", "rationale": "Jackson book, same title/author/publisher; 1977 vs 1997 reprint."},
+    {"id": "10.2307/2218853", "decision": "same", "rationale": "Three identical entries, shared DOI, same Tipton review of Jackson's Perception."},
+    {"id": "10.1093/mind/xcvii.387.381", "decision": "same", "rationale": "Shared DOI, identical title/authors Jackson & Pettit."},
+    {"id": "10.1111/j.1468-0017.1993.tb00286.x", "decision": "same", "rationale": "Shared DOI, identical title/authors."},
+    {"id": "10.1093/aristotelian/95.1.253", "decision": "same", "rationale": "Shared DOI, identical title/author Jackson."},
+    {"id": "from metaphysics to ethics", "decision": "same", "rationale": "Three identical entries, same title/author/ISBN."},
+    {"id": "10.1207/s15516709cog1502_2", "decision": "same", "rationale": "Same paper by Jacobs, Jordan & Barto (identical title); the second entry is a 1993 LNCS reprint with a distinct DOI, but it is the same intellectual work."},
+    {"id": "10.1007/978-94-011-0321-3_15", "decision": "same", "rationale": "Shared DOI, identical title/author Jacobson."},
+    {"id": "10.1093/oso/9780199204373.003.0006", "decision": "same", "rationale": "Shared DOI, identical title/author Jacobson."},
+    {"id": "the principles of psychology", "decision": "same", "rationale": "James, same title/author; 1890/1910/1950 are different editions of the same work."},
+    {"id": "the will to believe", "decision": "same", "rationale": "Same James essay, same title/author/year/publisher/ISBN."},
+    {"id": "10.1162/jocn.1992.4.2.119", "decision": "same", "rationale": "Shared DOI, identical title/authors."},
+    {"id": "10.1016/b978-0-444-53726-3.00010-4", "decision": "same", "rationale": "Shared DOI, identical title/authors Janssen & Partee."},
+    {"id": "10.1109/ms.1986.232432", "decision": "same", "rationale": "Shared DOI, identical title/authors."},
+    {"id": "the philosophy of grammar", "decision": "same", "rationale": "Jespersen, same title/author; 1924/1965 editions of the same work."},
+    {"id": "10.1073/pnas.90.24.11802", "decision": "same", "rationale": "Shared DOI, identical title/authors (Le Bihan et al.)."},
+    {"id": "coordinated memory replay in the visual cortex and hippocampus during sleep", "decision": "same", "rationale": "Same Ji & Wilson 2007 Nature Neuroscience paper, identical title and authors."},
+    {"id": "10.1016/0001-6918(50)90003-5", "decision": "same", "rationale": "Shared DOI, identical title/author Johansson."},
+    {"id": "metaphors we live by", "decision": "same", "rationale": "All Lakoff & Johnson 1980, identical title/author/publisher/ISBN."},
+    {"id": "10.2307/2185066", "decision": "same", "rationale": "Shared DOI, identical title 'Induction and Modality' and author David Johnson."}
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "verdicts": [
+    {
+      "id": "10.2307/2025382",
+      "decision": "same",
+      "rationale": "Both 'Intentional Systems' by Dennett; survivor is the 1971 J. Philosophy article, member is the 1978 Brainstorms reprint (note flags original 1971/78). Same work."
+    },
+    {
+      "id": "brainstorms",
+      "decision": "same",
+      "rationale": "Two identical 'Brainstorms' book entries, same author/year/publisher/ISBN."
+    },
+    {
+      "id": "skinner skinned",
+      "decision": "same",
+      "rationale": "Both 'Skinner Skinned' by Dennett; one the Brainstorms incollection, one a standalone book entry, same essay/year lineage."
+    },
+    {
+      "id": "meditations on first philosophy",
+      "decision": "same",
+      "rationale": "Both Descartes 'Meditations on First Philosophy', 1641. Same work."
+    },
+    {
+      "id": "10.1523/jneurosci.04-08-02051.1984",
+      "decision": "same",
+      "rationale": "Three identical records: same title, authors, volume/pages, and DOI."
+    },
+    {
+      "id": "10.1126/science.4023713",
+      "decision": "same",
+      "rationale": "Three identical Moran & Desimone Science 1985 records, same DOI."
+    },
+    {
+      "id": "10.1080/13506280344000284",
+      "decision": "same",
+      "rationale": "Two identical Deubel 2004 Visual Cognition records, same DOI."
+    },
+    {
+      "id": "spatial vision",
+      "decision": "same",
+      "rationale": "Three identical De Valois 'Spatial vision' 1988 book records, same ISBN."
+    },
+    {
+      "id": "societal grounding is essential for meaningful language use",
+      "decision": "same",
+      "rationale": "Two identical DeVault, Oved & Stone 2006 AAAI proceedings records."
+    },
+    {
+      "id": "10.1023/a:1005410301126",
+      "decision": "same",
+      "rationale": "Two identical Dever 'Compositionality as Methodology' 1999 records, same DOI."
+    },
+    {
+      "id": "language and reality",
+      "decision": "distinct",
+      "rationale": "Survivor is Devitt solo 1987 (B. Blackwell); member is Devitt & Sterelny 1999 (MIT Press, different ISBN). Different editions with different author lists, years, and publishers — not a single work."
+    },
+    {
+      "id": "ignorance of language",
+      "decision": "same",
+      "rationale": "All three 'Ignorance of Language' by Michael Devitt, OUP, same ISBN 9780199250974; year 2006/2008 variants of the same book."
+    },
+    {
+      "id": "10.1016/j.cognition.2005.03.004",
+      "decision": "same",
+      "rationale": "Three identical De Winter & Wagemans 2006 Cognition records, same DOI."
+    },
+    {
+      "id": "10.1038/77722",
+      "decision": "same",
+      "rationale": "Both DiCarlo & Maunsell 2000 Nature Neuroscience 'Form representation...' records, same DOI."
+    },
+    {
+      "id": "indefinites",
+      "decision": "same",
+      "rationale": "Three identical Diesing 'Indefinites' 1992 MIT Press records, same ISBN."
+    },
+    {
+      "id": "10.1111/j.1467-9280.1997.tb00442.x",
+      "decision": "same",
+      "rationale": "Two identical Diwadkar & McNamara 1997 Psychological Science records, same DOI."
+    },
+    {
+      "id": "10.1038/329438a0",
+      "decision": "same",
+      "rationale": "Two identical Dobbins, Zucker & Cynader 1987 Nature records, same DOI."
+    },
+    {
+      "id": "10.1007/bf00484804",
+      "decision": "distinct",
+      "rationale": "Survivor is Donnellan's 1970 Synthese article (DOI bf00484804); member is the 1972 book-chapter version in 'Semantics of Natural Language' with a different DOI (978-94-010-2557-7_10). Different publication records/years — should not be collapsed."
+    },
+    {
+      "id": "10.1073/pnas.95.23.13988",
+      "decision": "same",
+      "rationale": "Both Dosher & Lu 1998 PNAS 'Perceptual learning...' records, same authors/title/DOI."
+    },
+    {
+      "id": "10.2307/412260",
+      "decision": "same",
+      "rationale": "Two identical Dougherty 1970 Language 'Grammar of Coordinate Conjoined Structures: I' records, same DOI."
+    },
+    {
+      "id": "10.1007/bf00351936",
+      "decision": "same",
+      "rationale": "Two identical Dowty 1977 Linguistics and Philosophy records, same DOI."
+    },
+    {
+      "id": "word meaning and montague grammar",
+      "decision": "same",
+      "rationale": "All four are Dowty 1979 'Word Meaning and Montague Grammar'; Reidel/Kluwer/Springer are the same publisher lineage and the ISBN/DOI records agree."
+    },
+    {
+      "id": "10.1007/978-94-009-7707-5_4",
+      "decision": "same",
+      "rationale": "Two identical Dowty 1982 'Grammatical Relations and Montague Grammar' records, same DOI."
+    },
+    {
+      "id": "10.1007/bf00627434",
+      "decision": "same",
+      "rationale": "Two identical Dowty 1986 'Effects of aspectual class...' records, same DOI."
+    },
+    {
+      "id": "10.1007/978-94-009-2723-0_3",
+      "decision": "same",
+      "rationale": "Two identical Dowty 1989 'On the Semantic Content of the Notion of Thematic Role' records, same DOI."
+    }
+  ]
+}

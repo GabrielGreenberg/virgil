@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1068/p3173", "decision": "same", "rationale": "All three share identical title, author (Rubin), year 2001, and DOI 10.1068/p3173."},
+    {"id": "10.1038/323533a0", "decision": "same", "rationale": "Both identical Rumelhart/Hinton/Williams 1986 backprop paper, same DOI."},
+    {"id": "10.1093/aristotelian/11.1.108", "decision": "same", "rationale": "Same Russell 1911 title/author/DOI; citekey '1912' is cosmetic, year field is 1911."},
+    {"id": "10.1523/jneurosci.0179-10.2010", "decision": "same", "rationale": "All three same Rust & DiCarlo 2010 title/author/DOI; third is a stripped-abbrev variant."},
+    {"id": "spikes", "decision": "same", "rationale": "Both identical 'Spikes' by Rieke/Warland/de Ruyter van Steveninck/Bialek, same ISBN."},
+    {"id": "the parameter of aspect", "decision": "same", "rationale": "Both identical Smith 1991 book, same ISBN."},
+    {"id": "10.2307/412243", "decision": "same", "rationale": "Both identical Sacks/Schegloff/Jefferson 1974 turn-taking, same DOI."},
+    {"id": "toward a linguistic theory of speech acts", "decision": "same", "rationale": "Both identical Sadock 1974 book, same ISBN (title spelling 'Toward'/'towards' in citekey only)."},
+    {"id": "reference without referents", "decision": "same", "rationale": "Both identical Sainsbury 2005 book, same ISBN; citekey year differs cosmetically."},
+    {"id": "10.1145/97879.97901", "decision": "same", "rationale": "Same Saito & Takahashi 1990 title/author/year/pages; st90's DOI differs by one digit (97880 vs 97879), a typo for the same SIGGRAPH paper."},
+    {"id": "10.1007/bf00635832", "decision": "same", "rationale": "Both identical Salmon 1992 'Reflections on reflexivity', same DOI."},
+    {"id": "film style and technology", "decision": "distinct", "rationale": "salt1983film is the 1st edition (1983, ISBN ...621); salt2009film is the 3rd edition (2009, ISBN ...652). Different editions with different years and ISBNs; matched on title only, no shared DOI. Should not be auto-merged."},
+    {"id": "film style and technology history and analysis 2nd ed", "decision": "same", "rationale": "Both the same 1992 2nd edition by Salt, Starword."},
+    {"id": "10.1126/science.8146653", "decision": "same", "rationale": "Both identical Salzman & Newsome 1994, same DOI."},
+    {"id": "10.1093/jos/9.4.333", "decision": "same", "rationale": "All three identical Van der Sandt 1992 presupposition paper, same DOI."},
+    {"id": "cours de linguistique generale", "decision": "distinct", "rationale": "saussure1916cours (1916, Harrassowitz) vs saussure1922cours (1922, Payot) are different editions — different years, publishers, and editor lists; matched on title only with no shared DOI/ISBN."},
+    {"id": "10.1515/9783110867602.131", "decision": "same", "rationale": "Same Scha title/author/DOI; year 1981 vs 1984 is a minor discrepancy for the same chapter."},
+    {"id": "10.1016/0010-0285(74)90017-6", "decision": "same", "rationale": "Both identical Schaeffer et al. 1974 (citekey typo 'shaeffer' only), same DOI."},
+    {"id": "10.3758/bf03194990", "decision": "same", "rationale": "Both identical Scharlau 2004, same DOI."},
+    {"id": "the situation dependency of perception", "decision": "same", "rationale": "Both Schellenberg 2008 'The Situation-Dependency of Perception', vol 105(2) pp 55-84; one carries placeholder journal/volume ('this journal', 'cv') that resolves to the same J. Philosophy article."},
+    {"id": "deeper into pictures", "decision": "same", "rationale": "Both Schier 'Deeper into Pictures', same ISBN; one dates the reprint 2009, the other the 1986 original — same book."},
+    {"id": "10.1080/09515080600901988", "decision": "same", "rationale": "Both identical Schier 2007 'The Represented Object of Color Experience', same DOI."},
+    {"id": "10.1515/thli.2008.013", "decision": "same", "rationale": "Both identical Schlenker 2008 'Be Articulate', same DOI."},
+    {"id": "10.7358/snip-2015-029-schl", "decision": "same", "rationale": "Both identical Schlenker 2015 'Gradient and iconic features in ASL', same DOI."},
+    {"id": "10.1007/s11049-017-9392-x", "decision": "same", "rationale": "Both are Schlenker 2018 'Iconic pragmatics' with the same DOI; the 'schlenkerchemla2017gestural' citekey is misleading but the fields (author Schlenker, title, journal) match the survivor exactly."}
+  ]
+}

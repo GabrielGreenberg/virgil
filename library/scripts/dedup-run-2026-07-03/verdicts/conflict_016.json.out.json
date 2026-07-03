@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "semantics of pictorial space",
+      "decision": "same",
+      "rationale": "All three are 'Semantics of Pictorial Space' (Greenberg 2021), same journal (Review of Philosophy and Psychology), vol 12(4), pp 847-887, same DOI 10.1007/s13164-020-00513-6. Survivor is a reconstructed stub; the two losers are case-variant Zotero-style keys of the same published article. Merge OK."
+    },
+    {
+      "id": "10.1215/00318108-10697558",
+      "decision": "same",
+      "rationale": "All five share DOI 10.1215/00318108-10697558, title 'The Iconic-Symbolic Spectrum', Phil Review 132(4) 579-627. Survivor and greenberg2023iconic are both deepIndexed duplicates of the same article (title/pages/DOI identical); others are case/hand-key variants. Merge OK, no real work lost."
+    },
+    {
+      "id": "10.1093/oxfordhb/9780192844118.013.23",
+      "decision": "same",
+      "rationale": "Same DOI 10.1093/oxfordhb/9780192844118.013.23, title 'Map Semantics and the Geography of Meaning'. Survivor is the published incollection (deepIndexed); greenberg2024map is the deepIndexed preprint of the same chapter. Preprint vs published = same work. Merge OK."
+    },
+    {
+      "id": "10.1111/phpr.13128",
+      "decision": "same",
+      "rationale": "Both are Gross 2025 'Iconicity, 2nd-order isomorphism, and perceptual categorization', PPR 110(1) 302-310, DOI 10.1111/phpr.13128. Loser is an HTML-entity title variant. Same work."
+    },
+    {
+      "id": "10.1007/s10988-022-09369-8",
+      "decision": "same",
+      "rationale": "All three are Grosz, Greenberg, De Leon & Kaiser 'A semantics of face emoji in discourse', L&P 46(4) 905-957, DOI 10.1007/s10988-022-09369-8. Survivor and grosz2021semantics both deepIndexed but identical (only citekey-year and author-form differ); Grosz2023 is a case variant. Same work, merge OK."
+    },
+    {
+      "id": "10.1177/10298649251321709",
+      "decision": "same",
+      "rationale": "Both are the same 2025 Musicae Scientiae article 29(4) 556-575, DOI 10.1177/10298649251321709, identical author list. Loser is a case-variant key. Same work."
+    },
+    {
+      "id": "10.1093/oso/9780198732570.001.0001",
+      "decision": "same",
+      "rationale": "All three are the book 'Non-Propositional Intentionality' (Grzankowski & Montague 2018, OUP), DOI 10.1093/oso/9780198732570.001.0001. Losers are case/hand-key variants. Same work."
+    },
+    {
+      "id": "10.1080/01445349808837293",
+      "decision": "same",
+      "rationale": "All five are Hammer & Shin 'Euler's visual logic', History and Philosophy of Logic 19(1) 1-29, DOI 10.1080/01445349808837293. Survivor and hammer1998euler both deepIndexed and identical (only title-casing/publisher-name differ); others are key variants. Same work, merge OK."
+    },
+    {
+      "id": "10.1162/neco_a_01559",
+      "decision": "same",
+      "rationale": "All three are Han & Sereno 'Identifying and Localizing Multiple Objects Using Artificial Ventral and Dorsal Cortical Visual Pathways', Neural Computation 35(2) 249-275, DOI 10.1162/neco_a_01559. han2022identifying is a conference-record variant retrieved from Purdue ModVis but carries the same DOI/journal/pages as the published version (same work). Merge OK."
+    },
+    {
+      "id": "10.3389/fncom.2024.1397819",
+      "decision": "same",
+      "rationale": "Both are Han & Sereno 'A spatial map: a propitious choice for constraining the binding problem', Front. Comput. Neurosci. 18, DOI 10.3389/fncom.2024.1397819. Loser is a case-variant key. Same work."
+    },
+    {
+      "id": "10.1162/jocn_a_02121",
+      "decision": "same",
+      "rationale": "Both are Han & Sereno 'Understanding Cortical Streams from a Computational Perspective', J. Cognitive Neuroscience 36(12) 2618-2626, DOI 10.1162/jocn_a_02121. Loser is a case-variant key. Same work."
+    },
+    {
+      "id": "10.2307/2214186",
+      "decision": "same",
+      "rationale": "Both are Harman 'The Intrinsic Quality of Experience' (1990), Philosophical Perspectives vol 4, DOI 10.2307/2214186. Loser differs only in author-name formatting and missing pages. Same work."
+    }
+  ]
+}

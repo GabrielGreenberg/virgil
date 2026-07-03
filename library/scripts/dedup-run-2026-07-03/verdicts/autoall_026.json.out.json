@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1016/s0042-6989(00)00277-7", "decision": "same", "rationale": "Identical title, authors, year, journal, volume/pages, and DOI across both members."},
+  {"id": "10.5840/jphil20081051025", "decision": "same", "rationale": "All three are Gendler 'Alief and Belief' (2008) with identical fields and shared DOI."},
+  {"id": "10.1016/s0364-0213(83)80009-3", "decision": "same", "rationale": "Gentner 'Structure-mapping' 1983; identical fields and DOI, only type differs (article vs misc)."},
+  {"id": "10.1037/0033-295x.100.2.254", "decision": "same", "rationale": "Medin/Goldstone/Gentner 'Respects for similarity' 1993; identical fields and DOI."},
+  {"id": "10.1006/cogp.1993.1011", "decision": "same", "rationale": "Markman & Gentner 'Structural Alignment during Similarity Comparisons' 1993, same authors/pages/year; second member has a wrong journal name (WIREs Cog Sci) but is the same work matched by title+year+author."},
+  {"id": "10.1037/0003-066x.52.1.45", "decision": "same", "rationale": "Gentner & Markman 'Structure mapping in analogy and similarity' 1997; identical fields and DOI."},
+  {"id": "10.1126/science.2911737", "decision": "same", "rationale": "Georgopoulos et al. 'Mental Rotation of the Neuronal Population Vector'; identical fields and DOI, only type differs."},
+  {"id": "10.1007/s00426-005-0025-3", "decision": "same", "rationale": "Germeys & d'Ydewalle 'The psychology of film' 2007; identical fields and DOI."},
+  {"id": "experiencing narrative worlds", "decision": "same", "rationale": "Gerrig 'Experiencing narrative worlds' 1993; identical title, author, year, publisher, ISBN."},
+  {"id": "10.1093/brain/88.2.237", "decision": "same", "rationale": "Geschwind 'Disconnexion Syndromes' 1965; all three share the same DOI, title, author, volume/pages (237-237). The i/ii citekey suffixes do not correspond to distinct Part I/II works — fields are identical."},
+  {"id": "10.1093/analys/23.6.121", "decision": "same", "rationale": "Gettier 'Is Justified True Belief Knowledge?' 1963; identical fields and DOI."},
+  {"id": "10.1093/jos/14.4.319", "decision": "same", "rationale": "Geurts 'Good news about the description theory of names' 1997; identical fields and DOI."},
+  {"id": "understanding movies", "decision": "unsure", "rationale": "Giannetti 'Understanding Movies' matched by title only across three different editions/years (1982, 1987, 2002) with no shared DOI; these are distinct editions of the same textbook — safer to keep separate."},
+  {"id": "10.3410/f.725332609.793506820", "decision": "same", "rationale": "Faculty Opinions recommendation (de Lecea & Giardino, 2015); identical fields and DOI."},
+  {"id": "10.1007/978-94-009-9117-0_8", "decision": "same", "rationale": "Gibbard & Harper 'Counterfactuals and Two Kinds of Expected Utility' 1978; same title/authors/year. Members carry different DOIs and pages (two reprint volumes) but are the same underlying paper matched by title+year+author."},
+  {"id": "10.1007/978-94-009-9117-0_10", "decision": "same", "rationale": "Gibbard 'Two Recent Theories of Conditionals'; identical fields and DOI."},
+  {"id": "the perception of the visual world", "decision": "same", "rationale": "Gibson 'The perception of the visual world' matched by title; 1950 original vs 1974 reprint by same author — same work, republished."},
+  {"id": "10.1037/h0059018", "decision": "same", "rationale": "Gibson 'The visual field and the visual world: a reply to Professor Boring' 1952; identical fields and DOI."},
+  {"id": "10.1086/425063", "decision": "same", "rationale": "Giere 'How Models Are Used to Represent Reality' 2004; identical fields and DOI."},
+  {"id": "10.1037/0033-295x.103.4.650", "decision": "same", "rationale": "Gigerenzer & Goldstein 'Reasoning the fast and frugal way' 1996; identical fields and DOI."},
+  {"id": "simple heuristics that make us smart", "decision": "same", "rationale": "Gigerenzer 'Simple Heuristics That Make Us Smart' 2000; same title/year/ISBN, only type differs (book vs incollection)."},
+  {"id": "10.1037/0003-066x.46.2.107", "decision": "same", "rationale": "Gilbert 'How mental systems believe' 1991; identical fields and DOI."},
+  {"id": "10.1037/0033-295x.106.4.795", "decision": "same", "rationale": "Gilchrist et al. 'An anchoring theory of lightness perception' 1999; identical fields and DOI."},
+  {"id": "10.1093/oxfordhb/9780199686858.013.031", "decision": "same", "rationale": "Gilchrist 'Perceptual Organization in Lightness'; identical fields and DOI."},
+  {"id": "10.2307/1941170", "decision": "same", "rationale": "Gill 'Trapline Foraging by Hermit Hummingbirds' 1988; identical fields and DOI."}
+ ]
+}

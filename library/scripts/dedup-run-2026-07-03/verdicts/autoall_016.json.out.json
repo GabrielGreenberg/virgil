@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1007/bf00355585", "decision": "same", "rationale": "All three members have identical title, authors (Cresswell & von Stechow), year 1982, journal, volume/number/pages, and DOI."},
+    {"id": "10.1097/00005053-199606000-00013", "decision": "distinct", "rationale": "Survivor is a 1996 book-review note (J. of Nervous and Mental Disease, vol 184, p.384) carrying the DOI; the other member is Crick's actual book 'The astonishing hypothesis' (1993/1995, ISBN, no DOI). A review of a book vs the book itself are different works. Years differ (1996 vs 1993); merge was on title+author only."},
+    {"id": "10.2307/2027014", "decision": "same", "rationale": "Identical title, authors (Crimmins & Perry), year, journal, volume/number/pages, and DOI."},
+    {"id": "10.3758/bf03210660", "decision": "same", "rationale": "Identical title, authors (Crowder & Morton), year, journal, volume/number/pages, and DOI."},
+    {"id": "10.1016/s0364-0213(02)00112-x", "decision": "same", "rationale": "Same title, year, journal (Cognitive Science), volume 27, number 1, pages 111-133. Author list is fuller on one; DOIs differ (Elsevier vs Wiley reprint) but this is one and the same article."},
+    {"id": "10.1152/jn.1998.80.5.2657", "decision": "same", "rationale": "Identical title, authors, year, journal, volume/number/pages, and DOI."},
+    {"id": "10.1523/jneurosci.19-13-05602.1999", "decision": "same", "rationale": "Identical title, authors (Cumming & Parker), year, journal, volume/number/pages, and DOI."},
+    {"id": "10.2307/2941118", "decision": "same", "rationale": "Identical title 'Systematicity', author Cummins, year, journal, volume/number/pages, and DOI."},
+    {"id": "representations targets and attitudes", "decision": "same", "rationale": "Identical book title, author Cummins, year 1996, publisher MIT Press, and ISBN."},
+    {"id": "representational specialization the synthetic a priori revisited", "decision": "same", "rationale": "Same title, author Cummins, year 2010; both point to 'The World in the Head' (OUP). Same chapter."},
+    {"id": "10.1016/b978-012240530-3/50005-5", "decision": "same", "rationale": "Identical title, authors (Cutting & Vishton), year, booktitle, pages, and DOI."},
+    {"id": "10.1073/pnas.93.21.12046", "decision": "same", "rationale": "Identical title, authors (Cutzu & Edelman), year, journal, volume/number/pages, and DOI."},
+    {"id": "10.1016/s0042-6989(97)00186-7", "decision": "same", "rationale": "Identical title, authors (Cutzu & Edelman), year, journal, volume/number/pages, and DOI."},
+    {"id": "10.1007/978-1-4615-5089-1_6", "decision": "same", "rationale": "Identical title, authors (Gigerenzer, Czerlinski, Martignon), year, booktitle, pages, and DOI."},
+    {"id": "10.1177/0023830909103175", "decision": "same", "rationale": "Identical title, authors (Dachkovsky & Sandler), year, journal, volume/number/pages, and DOI."},
+    {"id": "10.1145/3375629", "decision": "same", "rationale": "Identical title, authors (Herring & Dainas), year, journal, volume/number/pages, and DOI."},
+    {"id": "10.1007/bf00630923", "decision": "same", "rationale": "Identical title, authors (Dalrymple, Shieber, Pereira), year, journal, volume/number/pages, and DOI."},
+    {"id": "mental spaces in grammar", "decision": "same", "rationale": "Identical book title, author Dancygier, year, publisher, and ISBN."},
+    {"id": "10.1016/j.cden.2014.04.006", "decision": "same", "rationale": "Identical title, authors (Miles & Danforth), year, journal, volume/number/pages, and DOI."},
+    {"id": "10.1037/0033-295x.111.1.3", "decision": "same", "rationale": "Identical title, authors (Gopnik et al.), year, journal, volume/number/pages, and DOI."},
+    {"id": "the transfiguration of the commonplace", "decision": "same", "rationale": "Identical book title, author Danto, year, publisher, and ISBN."},
+    {"id": "10.1016/s0028-3932(97)00061-4", "decision": "same", "rationale": "Identical title 'Grasping an illusion', authors (Daprati & Gentilucci), year, journal, volume/number/pages, and DOI; second member just adds a stray note."},
+    {"id": "the descent of man and selection in relation to sex 2nd ed", "decision": "same", "rationale": "Identical title, author Darwin, year 1874. Two copies of the same work."},
+    {"id": "10.1007/bf00485035", "decision": "same", "rationale": "Identical title 'Truth and meaning', author Davidson, year, journal, volume/number/pages, and DOI; second just adds a reprint note."},
+    {"id": "10.2307/jj.13027259.6", "decision": "same", "rationale": "Both are Davidson's 'The Logical Form of Action Sentences': one is the original 1967 publication in The Logic of Decision and Action, the other the reprint in Essays on Actions and Events (its note explicitly cites the 1967 original). Same work, different printings; different DOIs but title match holds."}
+  ]
+}

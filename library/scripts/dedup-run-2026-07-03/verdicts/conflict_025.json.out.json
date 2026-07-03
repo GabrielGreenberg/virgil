@@ -1,0 +1,64 @@
+{
+ "verdicts": [
+  {
+   "id": "a return to the analogy of being",
+   "decision": "same",
+   "rationale": "Same title, author (Kris McDaniel), year 2010. Loser carries the authenticated DOI 10.1111/j.1933-1592.2010.00378.x (PPR 81:3, 688-717); survivor is the indexed hand-key with matching bib. Zotero-style key vs hand key of the same work."
+  },
+  {
+   "id": "10.1093/bjaesthetics/43.3.279",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume 43(3), pages 279-288, and DOI. Zotero-key duplicate of the same article."
+  },
+  {
+   "id": "10.1111/j.1533-6077.2010.00192.x",
+   "decision": "same",
+   "rationale": "Identical title, author (McLaughlin), year, journal, volume 20(1), pages 266-304, and DOI. Name-formatting-only difference; same work."
+  },
+  {
+   "id": "path integration and the neural basis of the cognitive map",
+   "decision": "same",
+   "rationale": "Same title, journal (Nat. Rev. Neurosci.), year 2006, volume 7, pages 663-678 (663-78). Loser has the full author list; both are the same McNaughton et al. review. Neither is indexed, so no loss."
+  },
+  {
+   "id": "10.1007/978-3-540-87601-4_25",
+   "decision": "same",
+   "rationale": "Byte-identical bib fields (title, author, booktitle, publisher, pages, DOI). Zotero-key duplicate of the same book chapter."
+  },
+  {
+   "id": "10.1017/s095252381500019x",
+   "decision": "same",
+   "rationale": "Identical title, authors (Melcher & Morrone), year, journal, volume 32, and DOI (case-only diff). Same article."
+  },
+  {
+   "id": "10.1111/phib.12047",
+   "decision": "same",
+   "rationale": "Identical title, author (Merino-Rajme), year, journal, volume 55(3), pages 239-275, and DOI. Same work."
+  },
+  {
+   "id": "10.1016/j.dsp.2022.103441",
+   "decision": "same",
+   "rationale": "Identical title, authors, year, journal, volume 123, pages 103441, DOI, and the same clarifying note. Same overview article."
+  },
+  {
+   "id": "10.1111/j.1467-9760.2007.00280.x",
+   "decision": "same",
+   "rationale": "Same title (asterisk only), author (Metz), year, journal, volume 15(3), pages 321-341, and DOI. Same article."
+  },
+  {
+   "id": "10.4314/sajpem.v27i3.31514",
+   "decision": "same",
+   "rationale": "Identical title, author (Metz), year, journal, volume 27(3), pages 227-241, and DOI. Same article."
+  },
+  {
+   "id": "10.1145/1572614.1572617",
+   "decision": "same",
+   "rationale": "Identical title, authors (Mi, DeCarlo, Stone), year, venue, pages 15-24, and DOI. Loser's odd 'Gooch2009' citekey notwithstanding, it is the same paper."
+  },
+  {
+   "id": "10.1111/phpr.12230",
+   "decision": "same",
+   "rationale": "Identical title, author (Boyd Millar), journal, volume 93(2), pages 368-392, and DOI. Year 2015 vs 2016 is print-vs-online-first; same work."
+  }
+ ]
+}

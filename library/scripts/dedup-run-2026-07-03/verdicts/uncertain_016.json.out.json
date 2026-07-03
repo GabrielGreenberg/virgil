@@ -1,0 +1,99 @@
+{
+ "verdicts": [
+  {
+   "id": "mcdowell1994||mcdowell1996mind",
+   "decision": "same",
+   "rationale": "McDowell, Mind and World, 1996, Harvard University Press. b is the 2nd edn. with new introduction — same work."
+  },
+  {
+   "id": "mcdowell1994mind||mcdowell1996mind",
+   "decision": "same",
+   "rationale": "McDowell, Mind and World, 1996, Harvard University Press. b is the 2nd edn. — same work."
+  },
+  {
+   "id": "mehtaetal1997||mehtaetal2000",
+   "decision": "distinct",
+   "rationale": "Different co-authors (Barnes & McNaughton vs Quirk & Wilson), different journals (PNAS 1997 vs Neuron 2000), different years and titles ('asymmetric expansion of place fields' vs 'asymmetric shape of receptive fields'). Two distinct papers."
+  },
+  {
+   "id": "messaris1994visual||messarispaul1994visual",
+   "decision": "same",
+   "rationale": "Messaris, Visual Literacy, 1994, Westview Press. b's title/publisher fields carry OCR spillover but it is the same book."
+  },
+  {
+   "id": "milner1995visual||milner1998visual",
+   "decision": "same",
+   "rationale": "Milner (& Goodale), The Visual Brain in Action, Oxford University Press. Year 1995 vs 1996 (printings); b just names both authors. Same book."
+  },
+  {
+   "id": "milner1998visual||milnergoodale1995visual",
+   "decision": "same",
+   "rationale": "The Visual Brain in Action by Milner & Goodale, Oxford University Press. Same book, minor year/printing and author-listing differences."
+  },
+  {
+   "id": "milsark1977toward||milsark1977towards",
+   "decision": "same",
+   "rationale": "Milsark, existential-construction paper, Linguistic Analysis vol 3, 1977, pp ~1-29/30. Title and author (Gary/Garry) differ only by OCR/typo. Same article."
+  },
+  {
+   "id": "monaghan2014arbitrary||monaghan2014how",
+   "decision": "same",
+   "rationale": "Monaghan et al., 'How arbitrary is language?', Phil. Trans. R. Soc. B vol 369, art 20130299, 2014. a's fields are OCR-mangled but same paper."
+  },
+  {
+   "id": "murray2016multi||murray2016multisensory",
+   "decision": "same",
+   "rationale": "Murray et al., 'The multisensory function of the human primary visual cortex', Neuropsychologia vol 83, pp 161-169, 2016. Same paper (a title has OCR soft hyphen)."
+  },
+  {
+   "id": "newell1975computer||newell1976",
+   "decision": "same",
+   "rationale": "Newell & Simon, 'Computer science as empirical inquiry', CACM vol 19, pp 113-126/136, 1975/1976 (Turing lecture). Same work; year and subtitle vary."
+  },
+  {
+   "id": "newell1975computer||newell1976computer",
+   "decision": "same",
+   "rationale": "Newell & Simon, 'Computer science as empirical inquiry', CACM vol 19, 1975/1976. Same work (year typo in a)."
+  },
+  {
+   "id": "noth1995srb||noth1997can",
+   "decision": "distinct",
+   "rationale": "Nöth 'Can pictures lie?': a is a short piece in Semiotic Review of Books (1995, vol 6, pp 10-12); b is a chapter in Approaches to Semiotics (1997, vol 127, pp 133-146). Different venues, years, and lengths — distinct publications."
+  },
+  {
+   "id": "okeefe1971hippocampus||okeefedostrovsky1971",
+   "decision": "same",
+   "rationale": "O'Keefe & Dostrovsky, 'The hippocampus as a spatial map...', Brain Res. vol 34, pp 171-175, 1971. a's title/journal fields are split by OCR. Same paper."
+  },
+  {
+   "id": "okeefe1978hippo||okeefeNadel1978hippocampus",
+   "decision": "same",
+   "rationale": "O'Keefe & Nadel, The Hippocampus as a Cognitive Map, 1978. Clarendon Press is OUP's imprint. Same book (a title has OCR space, drops Nadel from author name in b)."
+  },
+  {
+   "id": "okeefe1978hippo||okeefenadel1978",
+   "decision": "same",
+   "rationale": "O'Keefe & Nadel, The Hippocampus as a Cognitive Map, 1978, Clarendon Press/OUP. Same book."
+  },
+  {
+   "id": "okeefe1978hippob||okeefeNadel1978hippocampus",
+   "decision": "same",
+   "rationale": "O'Keefe & Nadel, The Hippocampus as a Cognitive Map, 1978, Clarendon Press. Same book."
+  },
+  {
+   "id": "okeefe1978hippob||okeefenadel1978",
+   "decision": "same",
+   "rationale": "O'Keefe & Nadel, The Hippocampus as a Cognitive Map, 1978, Clarendon Press. Same book."
+  },
+  {
+   "id": "okeefe1978hippoc||okeefeNadel1978hippocampus",
+   "decision": "same",
+   "rationale": "O'Keefe & Nadel, The Hippocampus as a Cognitive Map, 1978. Clarendon Press = OUP imprint. Same book."
+  },
+  {
+   "id": "okeefe1978hippoc||okeefenadel1978",
+   "decision": "same",
+   "rationale": "O'Keefe & Nadel, The Hippocampus as a Cognitive Map, 1978, Clarendon Press/OUP. Same book."
+  }
+ ]
+}

@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "Levin2009||levinwang2009spatial",
+   "decision": "distinct",
+   "rationale": "Different works: (a) 'Spatial Representation', a one-page Encyclopedia of Neuroscience entry (p.3807, DOI ...5553); (b) 'Spatial Representation in Cognitive Science and Film', a Projections journal article (vol 3, pp.24-52, DOI ...030103). Different titles, venues, page ranges, and DOIs."
+  },
+  {
+   "id": "Papineau2013||papineau2013comments",
+   "decision": "distinct",
+   "rationale": "Both are contributions to the same Disputatio 5(36) book symposium on Recanati's Mental Files, but (a) is Garcia-Carpintero's 'The Self File and Immunity to Error Through Misidentification' (pp.191-206) and (b) is Papineau's 'Comments on Recanati... Doubts about Indexicality' (pp.159-175). Different authors, titles, and page ranges; the shared DOI is a placeholder/error."
+  },
+  {
+   "id": "Rieser2009||rieser2009interactive",
+   "decision": "same",
+   "rationale": "Same authors (Rieser & Poesio), 2009, same venue (SIGDIAL 2009), same pages 87-96. (b) merely appends the subtitle ': a PTT Model' to the identical paper."
+  },
+  {
+   "id": "Siegel2011||siegel2009visual",
+   "decision": "distinct",
+   "rationale": "Different works: (a) 'The Contents of Visual Experience' is Siegel's 2010 OUP book; (b) 'The Visual Experience of Causation' is a 2009 Philosophical Quarterly article (vol 59, pp.519-540). Same author but distinct title, type, venue, and DOI."
+  },
+  {
+   "id": "Sonesson1989pictorial||Sonneson1989pictorial",
+   "decision": "same",
+   "rationale": "(a) has empty fields but its citekey is a typo variant (Sonneson) of (b) 'Pictorial concepts', Goran Sonesson 1989, Lund University Press. Same work."
+  },
+  {
+   "id": "Sonesson1989pictorial||sonesson1989pictorial",
+   "decision": "same",
+   "rationale": "(a) has empty fields; its citekey differs from (b) only by capitalization. (b) is 'Pictorial concepts', Sonesson 1989, Lund University Press. Same work."
+  },
+  {
+   "id": "Starr2014||Starr2014a",
+   "decision": "same",
+   "rationale": "(a) is the published 'A Uniform Theory of Conditionals' (J Philosophical Logic 43(6):1019-1064); (b) is 'A Uniform Theory of Conditionals (Chapter 3)', an unpublished manuscript that its own note identifies as the companion/dissertation chapter of exactly that article. Same underlying work."
+  },
+  {
+   "id": "Starr2014||starr2013conditionals",
+   "decision": "distinct",
+   "rationale": "(a) 'A Uniform Theory of Conditionals' vs (b) 'Conditionals, Meaning and Content: The Inquisitive Theory of If' are different papers by Starr; the shared DOI is an erroneous copy. Different titles and content."
+  },
+  {
+   "id": "Starr2014||starr2014uniform",
+   "decision": "same",
+   "rationale": "(a) is the published 'A Uniform Theory of Conditionals' (JPL 43(6):1019-1064); (b) is 'A Uniform Theory of Conditionals (Chapter 3)', an unpublished manuscript whose note identifies it as the companion chapter to that exact JPL article. Same underlying work."
+  },
+  {
+   "id": "Starr2014a||starr2013uniform",
+   "decision": "same",
+   "rationale": "(a) 'A Uniform Theory of Conditionals (Chapter 3)' is the unpublished companion (note: companion to Starr 2014 JPL); (b) is 'A Uniform Theory of Conditionals', JPL 43(6):1019-1064 (same DOI, same volume/pages as the published article). Same Uniform Theory work."
+  },
+  {
+   "id": "Westheimer2010||westheimer2010visual",
+   "decision": "distinct",
+   "rationale": "Different works: (a) 'Targets uncrowd when they pop out' (Sayim, Westheimer & Herzog, Journal of Vision abstract, DOI 10.1167/...) vs (b) 'Visual Acuity and Hyperacuity' (Westheimer alone, Handbook of Optics 3rd ed chapter). Different titles, authors, venues; the shared ISBN is spurious cross-contamination."
+  },
+  {
+   "id": "abel1994cine||abelrichard1994cine",
+   "decision": "same",
+   "rationale": "Both are Richard Abel's 1994 'The Cine Goes to Town' (UC Press); (b) merely adds the subtitle 'French Cinema 1896-1914'. Same book."
+  },
+  {
+   "id": "abelson1977scripts||schanketal1977scripts",
+   "decision": "same",
+   "rationale": "Both are Schank & Abelson's 1977 'Scripts, Plans, Goals, and Understanding' (Lawrence Erlbaum, reissued by Taylor & Francis); (b) truncates the title to 'Scripts'. Same authors and year, same classic book."
+  },
+  {
+   "id": "adams2008bounds||adams2010defending",
+   "decision": "distinct",
+   "rationale": "Different works by Adams & Aizawa: (a) 'The Bounds of Cognition' is their 2007 Blackwell book; (b) 'Defending the Bounds of Cognition' is a 2010 chapter in 'The Extended Mind' (MIT Press, pp.67-80). Distinct titles, types, venues, and DOI."
+  },
+  {
+   "id": "agrawala2001rendering||agrawalastolte2001rendering",
+   "decision": "same",
+   "rationale": "Same authors (Agrawala & Stolte), 2001, SIGGRAPH, same pages 241-249. (b) appends the subtitle 'improving usability through generalization' to the identical paper."
+  },
+  {
+   "id": "albrecht1996universal||albrecht1997universal",
+   "decision": "same",
+   "rationale": "Both are Albrecht's 'Universal Analytical GIS Operations' in Geographic Information Research (pp.577-592/591); (a) adds the subtitle and lists 1998, (b) lists 1997. Same chapter, minor year/pagination noise."
+  },
+  {
+   "id": "alchourron1985logic||alchourrongardenforsmakinson1985logic",
+   "decision": "same",
+   "rationale": "Both are the classic AGM paper 'On the Logic of Theory Change: Partial Meet Contraction and Revision Functions', Alchourron/Gardenfors/Makinson, 1985, J Symbolic Logic 50, pp.510-530. Same work (minor subtitle wording variation)."
+  },
+  {
+   "id": "antony2009thinking||dretske2009information",
+   "decision": "distinct",
+   "rationale": "Different chapters in the same Oxford Handbook of Philosophy of Mind: (a) 'Thinking' by Antony (pp.607-630) vs (b) 'Information-Theoretic Semantics' by Dretske (pp.381-393). Different authors, titles, pages, and chapter DOIs; the shared book ISBN does not make them the same work."
+  },
+  {
+   "id": "antony2009thinking||mclaughlin2009oxford",
+   "decision": "distinct",
+   "rationale": "(a) 'Thinking' is a single chapter by Antony; (b) 'The Oxford Handbook of Philosophy of Mind' is the whole edited volume (McLaughlin, Beckermann & Walter, eds). Chapter vs container book — distinct records despite the shared ISBN."
+  },
+  {
+   "id": "arnheim1974art||arnheimrudolf1974art",
+   "decision": "same",
+   "rationale": "Both are Rudolf Arnheim's 1974 'Art and Visual Perception' (UC Press); (b) adds the subtitle 'A Psychology of the Creative Eye'. Same book."
+  }
+ ]
+}

@@ -1,0 +1,65 @@
+{
+  "verdicts": [
+    {
+      "id": "seeing",
+      "decision": "same",
+      "rationale": "All three members are identical: title 'Seeing', John P. Frisby, 2010, MIT Press, ISBN 9780262514279. Duplicate imports under different citekeys."
+    },
+    {
+      "id": "10.1007/bf00344251",
+      "decision": "same",
+      "rationale": "All three share DOI 10.1007/bf00344251, identical title/journal/volume/pages, year 1980. 'fukushima1962neocognitron' has a misleading citekey year (1962) but its fields say 1980 with the same DOI — a mislabeled shadow key of the same paper."
+    },
+    {
+      "id": "10.1002/lnc3.351",
+      "decision": "mixed",
+      "distinct_members": ["galantucci2017experimental"],
+      "rationale": "Survivor and Galantucci2012 are the same 2012 Language and Linguistics Compass article (DOI 10.1002/lnc3.351). galantucci2017experimental is a DISTINCT work: 2017 Oxford Research Encyclopedia of Linguistics entry with a different DOI (10.1093/acrefore/9780199384655.013.210), different publisher, single author, and it is independently indexed (has_folder) — only the short title matches."
+    },
+    {
+      "id": "10.1002/9781444310498",
+      "decision": "same",
+      "rationale": "All four are 'Memory and the Computational Brain' by Gallistel & King. Same DOI 10.1002/9781444310498 / ISBN 9781444310498 (and 9781405122870). Year varies 2009/2010 (printing) and subtitle present/absent, but only the survivor is indexed; same book."
+    },
+    {
+      "id": "10.1080/15475441.2011.578548",
+      "decision": "same",
+      "rationale": "Both members share DOI 10.1080/15475441.2011.578548, identical title 'Prelinguistic Thought', author, journal, volume, pages, year 2011. Zotero-style key vs hand key."
+    },
+    {
+      "id": "10.1016/j.cognition.2020.104533",
+      "decision": "same",
+      "rationale": "Both share DOI 10.1016/j.cognition.2020.104533, identical title 'The physical basis of memory', author, journal, volume, pages, year 2021. Same work."
+    },
+    {
+      "id": "insect navigation brains as symbol processing organs",
+      "decision": "same",
+      "rationale": "All three are the 1998 chapter 'Insect Navigation: Brains as Symbol-Processing Organs' in 'An Invitation to Cognitive Science, Vol. 4', MIT Press. survivor and gallistel1998insect are both deepIndexed but identical title/booktitle/year; the note about an alternate published title confirms it is one chapter. Same work."
+    },
+    {
+      "id": "10.1007/s10539-019-9689-8",
+      "decision": "same",
+      "rationale": "Both share DOI 10.1007/s10539-019-9689-8, title 'Teleosemantics, selection and novel contents', year 2019, same journal/volume/pages. Loser adds a co-author (Papineau) but same DOI/pages — a metadata variant of the same article."
+    },
+    {
+      "id": "10.1017/9781108560764",
+      "decision": "same",
+      "rationale": "Both identical: 'What Biological Functions Are and Why They Matter', Garson 2019, Cambridge UP, DOI 10.1017/9781108560764. Same book."
+    },
+    {
+      "id": "10.1111/mila.12443",
+      "decision": "same",
+      "rationale": "All four share DOI 10.1111/mila.12443, title 'Notions of arbitrariness', year 2023, same journal/volume/pages. 'gasparri2022notions' has citekey year 2022 but fields say 2023 with same DOI — a shadow key; author list varies but DOI is identical. Same work."
+    },
+    {
+      "id": "10.1007/s13164-014-0210-7",
+      "decision": "same",
+      "rationale": "All five share DOI 10.1007/s13164-014-0210-7, title 'Introduction: Varieties of Iconicity', Giardino & Greenberg, same volume/pages. Year 2014 vs 2015 reflects online-first vs print; both indexed members are the same article. Same work."
+    },
+    {
+      "id": "10.4324/9781315675213",
+      "decision": "same",
+      "rationale": "Both identical: 'The Routledge Handbook of Emergence', 2019, Routledge, DOI 10.4324/9781315675213. Same edited volume."
+    }
+  ]
+}

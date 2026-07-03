@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "-Pylyshyn||pylyshyn2003seeing",
+   "decision": "same",
+   "rationale": "Both are Pylyshyn's book 'Seeing and Visualizing' (MIT Press). The -Pylyshyn entry is a Choice Reviews Online catalog/review record of that same book (year 2004 vs 2003 = review vs publication)."
+  },
+  {
+   "id": "-Pylyshyn||pylyshyn2003seeinga",
+   "decision": "same",
+   "rationale": "Same book as above (pylyshyn2003seeinga is a duplicate of pylyshyn2003seeing); -Pylyshyn is the Choice Reviews record of the same MIT Press title."
+  },
+  {
+   "id": "-Pylyshyn||sterelny2000seeing",
+   "decision": "same",
+   "rationale": "Despite the misleading citekey 'sterelny2000seeing', the bib fields are Pylyshyn's 'Seeing and visualizing' (Zenon W. Pylyshyn, MIT Press, same ISBN as the other Pylyshyn entries). Same work as the -Pylyshyn Choice Reviews record."
+  },
+  {
+   "id": "Bateman2013||bateman2012multimodal",
+   "decision": "same",
+   "rationale": "Identical author, year 2012, publisher Routledge, and ISBN 9780415883511. Titles differ only by the subtitle 'How Films Mean'. Same book."
+  },
+  {
+   "id": "Crane2019||crane2015mechanical",
+   "decision": "same",
+   "rationale": "Shared ISBN 9781138858350, same author (Tim Crane), same year 2015, same 3rd edition, same note. 'Mechanical Mind' vs 'The Mechanical Mind: A Philosophical Introduction...' is the same book (Taylor & Francis/Routledge are the same publisher group)."
+  },
+  {
+   "id": "Galantucci2012||GalantucciGarrod2011",
+   "decision": "distinct",
+   "rationale": "Different works: 'Experimental Semiotics' (Language and Linguistics Compass 2012, doi 10.1002/lnc3.351) vs 'Experimental Semiotics: A Review' (Frontiers in Human Neuroscience 2011, doi 10.3389/fnhum.2011.00011). Different venues, years, DOIs, and author lists."
+  },
+  {
+   "id": "Galantucci2012||GalantucciRoberts2012",
+   "decision": "distinct",
+   "rationale": "Different works: 'Experimental Semiotics' (Language and Linguistics Compass, doi 10.1002/lnc3.351) vs 'Experimental Semiotics: an Engine of Discovery for Understanding Human Communication' (Advances in Complex Systems, doi 10.1142/s0219525911500263). Different venues, DOIs, and author lists."
+  },
+  {
+   "id": "Galantucci2012||galantucci2011experimental",
+   "decision": "distinct",
+   "rationale": "'Experimental Semiotics' (Lang & Ling Compass 2012, doi 10.1002/lnc3.351) vs 'Experimental Semiotics: A Review' (Frontiers 2011, doi 10.3389/fnhum.2011.00011). Distinct publications."
+  },
+  {
+   "id": "GalantucciGarrod2011||GalantucciRoberts2012",
+   "decision": "distinct",
+   "rationale": "'Experimental Semiotics: A Review' (Frontiers 2011, doi 10.3389/fnhum.2011.00011) vs 'Experimental Semiotics: an Engine of Discovery...' (Advances in Complex Systems 2012, doi 10.1142/s0219525911500263). Different venues, years, DOIs, and coauthors."
+  },
+  {
+   "id": "GalantucciGarrod2011||galantucci2012experimental",
+   "decision": "distinct",
+   "rationale": "'Experimental Semiotics: A Review' (Frontiers 2011, doi 10.3389/fnhum.2011.00011) vs 'Experimental Semiotics' (Lang & Ling Compass 2012, doi 10.1002/lnc3.351). Distinct publications."
+  },
+  {
+   "id": "GalantucciRoberts2012||galantucci2011experimental",
+   "decision": "distinct",
+   "rationale": "'Experimental Semiotics: an Engine of Discovery...' (Advances in Complex Systems 2012, doi 10.1142/...) vs 'Experimental Semiotics: A Review' (Frontiers 2011, doi 10.3389/fnhum.2011.00011). Distinct publications."
+  },
+  {
+   "id": "GalantucciRoberts2012||galantucci2012experimental",
+   "decision": "distinct",
+   "rationale": "'Experimental Semiotics: an Engine of Discovery...' (Advances in Complex Systems, doi 10.1142/...) vs 'Experimental Semiotics' (Lang & Ling Compass, doi 10.1002/lnc3.351). Different venues and DOIs; only the year matches."
+  },
+  {
+   "id": "Garson2022||garson2022biological",
+   "decision": "same",
+   "rationale": "Shared ISBN 9780367466312, same author (Justin Garson), same year 2022, same 2nd edition and note. 'Biological Mind' vs 'The Biological Mind: A Philosophical Introduction' is the same book (Taylor & Francis/Routledge)."
+  },
+  {
+   "id": "Gazdar1979a||gazdar1979pragmatics",
+   "decision": "same",
+   "rationale": "Same author (Gazdar), year 1979, publisher Academic Press. 'Pragmatics' vs 'Pragmatics, Implicature, Presupposition and Logical Form' is the same 1979 Gazdar monograph (short vs full title)."
+  },
+  {
+   "id": "Ginzburg1996||ginzburg1996dynamics",
+   "decision": "same",
+   "rationale": "Same author (Ginzburg), year 1996, same booktitle 'Language, Logic and Computation' (Volume 1), same publisher (CSLI). 'Dialogue' vs 'Dialog' is a spelling variant. Same chapter."
+  },
+  {
+   "id": "Green2017||green2017what",
+   "decision": "same",
+   "rationale": "Both are 'What is an object file?' in British Journal for the Philosophy of Science, 2017. The a-entry's title string embeds the journal/article-id ('...axx055'). Same paper (Green & Quilty-Dunn)."
+  },
+  {
+   "id": "Jacobson2017||jacobson2014compositional",
+   "decision": "same",
+   "rationale": "Same author (Pauline Jacobson), year 2014, publisher OUP, ISBN 9780199677146, same note. 'Compositional Semantics' vs 'Compositional Semantics: An Introduction to the Syntax/Semantics Interface' is the same book."
+  },
+  {
+   "id": "Kiparsky1971||kiparsky1970fact",
+   "decision": "same",
+   "rationale": "Kiparsky & Kiparsky 'Fact'. Originally in Bierwisch & Heidolph (1970, Mouton) and reprinted in the Steinberg & Jakobovits semantics reader (1971, Cambridge). Same underlying work, different venue/reprint; identical title and authors."
+  },
+  {
+   "id": "Levin2009||levin2009spatial",
+   "decision": "distinct",
+   "rationale": "'Spatial Representation' (Encyclopedia of Neuroscience, Springer, doi 10.1007/978-3-540-29678-2_5553) vs 'Spatial Representation in Cognitive Science and Film' (Projections journal, doi 10.3167/proj.2009.030103). Different venues and DOIs; distinct publications despite same authors and year."
+  },
+  {
+   "id": "Levin2009||levin2010spatial",
+   "decision": "distinct",
+   "rationale": "'Spatial Representation' (Encyclopedia of Neuroscience 2009, doi 10.1007/...5553) vs 'Spatial Representations of the Sets of Familiar and Unfamiliar Television Programs' (Media Psychology 2010, doi 10.1080/15213260903563006). Different works, venues, years, and DOIs."
+  }
+ ]
+}

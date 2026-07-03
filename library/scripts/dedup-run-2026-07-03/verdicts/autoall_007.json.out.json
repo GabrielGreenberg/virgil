@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1006/jecp.2001.2636", "decision": "same", "rationale": "Both share DOI, identical title/author/year/journal/volume/pages. Same work."},
+    {"id": "recognition by components a theory of human image understanding", "decision": "same", "rationale": "One member has empty fields but matches by normalized title; the other is the full Biederman 1987 Recognition-by-components article. Same work."},
+    {"id": "10.1016/0010-0285(91)90014-f", "decision": "same", "rationale": "Both share DOI, identical Biederman & Cooper 1991 priming paper. Same."},
+    {"id": "10.1016/0010-0285(82)90007-x", "decision": "same", "rationale": "Three members share DOI, identical title/authors/year; citekeys differ only by which author surname was used. Same."},
+    {"id": "some semantic universals of german adjectivals", "decision": "same", "rationale": "Identical Bierwisch 1967 article fields. Same."},
+    {"id": "10.1037/0012-1649.29.4.711", "decision": "same", "rationale": "Both share DOI, identical title/authors/year (1993); citekey mismatch to 1991 is cosmetic. Same."},
+    {"id": "10.1093/brain/102.3.609", "decision": "same", "rationale": "Both share DOI, identical Bisiach et al. 1979 Brain paper. Same."},
+    {"id": "relevance and linguistic meaning", "decision": "same", "rationale": "Both are the same Blakemore book, identical title/author/publisher/ISBN. Same."},
+    {"id": "10.1016/j.pragma.2011.08.003", "decision": "same", "rationale": "Both share DOI, identical Blakemore 2011 article. Same."},
+    {"id": "10.1038/321579a0", "decision": "same", "rationale": "Both share DOI, identical Blasdel & Salama 1986 Nature paper. Same."},
+    {"id": "10.1523/jneurosci.12-08-03139.1992", "decision": "same", "rationale": "Three members share DOI, same title/author/year; only formatting differs. Same."},
+    {"id": "10.1038/35041567", "decision": "same", "rationale": "Both share DOI, identical Blaser et al. 2000 Nature paper. Same."},
+    {"id": "10.4159/harvard.9780674594623.c31", "decision": "same", "rationale": "All three are Block 'Troubles with Functionalism' (original + 1980 reprint); two share DOI, third matches by title. Same work reprinted. Same."},
+    {"id": "10.2307/2184371", "decision": "same", "rationale": "Three members share DOI, identical Block 1981 'Psychologism and Behaviorism'. Same."},
+    {"id": "10.2307/2215087", "decision": "same", "rationale": "Both share DOI, identical Block 1983 Photographic Fallacy paper. Same."},
+    {"id": "10.1111/j.1475-4975.1987.tb00558.x", "decision": "same", "rationale": "Both share DOI, same title/author/year/volume 'Advertisement for a Semantics for Psychology'. Same."},
+    {"id": "10.1093/aristotelian/88.1.273", "decision": "same", "rationale": "Both share DOI and identical title/authors/year for the same Aristotelian Society symposium entry. Same."},
+    {"id": "10.1017/s0140525x00038188", "decision": "same", "rationale": "Both share DOI, identical Block 1995 'On a confusion about a function of consciousness'. Same."},
+    {"id": "the nature of consciousness", "decision": "same", "rationale": "All five are the same Block/Flanagan/Guzeldere 1997 MIT Press anthology, same ISBN. Same."},
+    {"id": "10.1002/tht3.62", "decision": "same", "rationale": "Both share DOI, identical Block 2013 'Seeing and Windows of Integration'. Same."},
+    {"id": "10.1111/phpr.12135", "decision": "same", "rationale": "Both share DOI, identical Block 2014 'Seeing-As in the Light of Vision Science'. Same."},
+    {"id": "10.7551/mitpress/10603.003.0016", "decision": "same", "rationale": "Both share DOI, identical 'Puzzle of Perceptual Precision' Open MIND chapter. Same."},
+    {"id": "10.7551/mitpress/9196.003.0007", "decision": "same", "rationale": "Both share DOI, identical Block 2019 'Attention Affects Appearance' Blockheads! chapter. Same."},
+    {"id": "10.7551/mitpress/9196.003.0013", "decision": "same", "rationale": "Three members share DOI, identical 'Empirical Science Meets Higher-Order Views' Blockheads! chapter. Same."},
+    {"id": "10.1016/0024-3841(94)90345-x", "decision": "same", "rationale": "Both are Bloom 1994 'Possible names' with same title/author/year; second member's garbled publisher field is a metadata error, not a different work. Same."}
+  ]
+}

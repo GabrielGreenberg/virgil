@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1038/35048669", "decision": "same", "rationale": "Both 'What you see is what you hear' by Shams/Kamitani/Shimojo, Nature 408, same DOI; second just adds a note field."},
+    {"id": "10.1007/s10988-005-6580-7", "decision": "same", "rationale": "Both 'Explaining Crossover and Superiority' by Shan & Barker, L&P 29, same DOI."},
+    {"id": "10.2307/2185681", "decision": "same", "rationale": "Both 'Content, Kinds, and Individualism in Marr's Theory of Vision' by Shapiro, Phil Review 102, same DOI."},
+    {"id": "10.1093/0195148770.003.0021", "decision": "same", "rationale": "Both 'Logical Consequence, Proof Theory, and Model Theory' by Shapiro, same handbook chapter and DOI."},
+    {"id": "10.2307/1165783", "decision": "same", "rationale": "Both 'The Development of Communication Skills' by Shatz & Gelman, same DOI/title/author."},
+    {"id": "10.1086/658110", "decision": "same", "rationale": "Both 'Developmental Systems Theory...' by Shea, Phil of Science 78, same DOI; citekeys differ only in slug."},
+    {"id": "10.1073/pnas.94.7.3408", "decision": "same", "rationale": "Both 'The role of temporal cortical areas in perceptual organization' by Sheinberg & Logothetis, PNAS 94, same DOI."},
+    {"id": "noticing familiar objects in real world scenes the role of temporal cortical neurons in natural vision", "decision": "same", "rationale": "Both 'Noticing familiar objects...' by Sheinberg & Logothetis, J Neurosci 21, pp 1340-1350."},
+    {"id": "10.1007/bf02289630", "decision": "same", "rationale": "Both 'The Analysis of Proximities... I.' by Shepard, Psychometrika 27, same DOI."},
+    {"id": "10.1016/0022-2496(64)90017-3", "decision": "same", "rationale": "Both 'Attention and the metric structure of the stimulus space' by Shepard, same DOI."},
+    {"id": "10.1016/0010-0285(70)90002-2", "decision": "same", "rationale": "Both 'Second-order isomorphism of internal representations' by Shepard & Chipman, same DOI; citekey prefixes differ by first author choice."},
+    {"id": "10.1016/0010-0285(72)90005-9", "decision": "same", "rationale": "Both 'A chronometric study of mental paper folding' by Shepard & Feng, same DOI."},
+    {"id": "10.1016/0010-0285(75)90006-7", "decision": "same", "rationale": "Both 'The internal representation of numbers' by Shepard/Kilpatric/Cunningham, same DOI."},
+    {"id": "10.1037/0003-066x.33.2.125", "decision": "same", "rationale": "Both 'The mental image.' by Shepard, American Psychologist 33, same DOI."},
+    {"id": "10.1126/science.210.4468.390", "decision": "same", "rationale": "Both 'Multidimensional Scaling, Tree-Fitting, and Clustering' by Shepard, Science 210, same DOI."},
+    {"id": "10.4324/9781315512372-10", "decision": "same", "rationale": "All three are 'Psychophysical Complementarity' by Shepard; the 1981 Erlbaum entry is the original, the 2017 Routledge reprint carries the DOI - same work."},
+    {"id": "10.1016/0010-0277(84)90024-6", "decision": "same", "rationale": "Both 'Upward direction, mental rotation...' by Shepard & Hurwitz, Cognition 18, same DOI."},
+    {"id": "10.1126/science.3629243", "decision": "same", "rationale": "Both 'Toward a Universal Law of Generalization' by Shepard, Science 237, same DOI."},
+    {"id": "mind sights", "decision": "same", "rationale": "Both 'Mind sights' by Roger N. Shepard, 1990, W.H. Freeman, same ISBN."},
+    {"id": "10.1016/s0042-6989(00)00230-3", "decision": "same", "rationale": "Both 'Compression of space in visual memory' by Sheth & Shimojo, Vision Research 41, same DOI."},
+    {"id": "10.1080/01445349408837224", "decision": "same", "rationale": "Both 'Peirce and the logical status of diagrams' by Shin, same DOI."},
+    {"id": "iconic logic of peirce s graphs", "decision": "same", "rationale": "Both 'Iconic Logic of Peirce's Graphs' by Sun-Joo Shin, 2002, MIT Press, same ISBN; citekey year slug differs."},
+    {"id": "10.2307/2026213", "decision": "same", "rationale": "Both 'The Inverted Spectrum' by Shoemaker, J Phil 79, both dated 1982 in fields, same DOI."},
+    {"id": "identity cause and mind", "decision": "same", "rationale": "All three are 'Identity, cause, and mind' by Sydney Shoemaker, Clarendon; the 2003 entry is a reprint with a new ISBN, same work."},
+    {"id": "peirce s theory of signs", "decision": "same", "rationale": "Both 'Peirce's Theory of Signs' by T.L. Short, 2007, CUP; differing ISBNs are hardcover vs ebook editions of the same work."}
+  ]
+}

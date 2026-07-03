@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1016/0010-0277(91)90054-8", "decision": "same", "rationale": "Both members carry identical title, authors (Johnson & Newport), year, pages, and the shared DOI. Odd citekey but same work."},
+  {"id": "10.1080/09515089.2014.893814", "decision": "same", "rationale": "Identical title, author, year, journal, volume/pages, and shared DOI."},
+  {"id": "10.1525/mp.2002.19.3.415", "decision": "same", "rationale": "Both 'How Jazz Musicians Improvise', Johnson-Laird 2002, same journal/pages and shared DOI."},
+  {"id": "10.1037/0033-295x.113.4.822", "decision": "same", "rationale": "Identical hyper-emotion theory entry, same three authors, year, pages, shared DOI."},
+  {"id": "neural ensembles in ca3 transiently encode paths forward of the animal at a decision point", "decision": "same", "rationale": "All three are Johnson & Redish 2007 J. Neurosci. 27:12176, same title; two carry the matching DOI."},
+  {"id": "10.1017/s030500090000252x", "decision": "same", "rationale": "All three identical locative-expressions article, Johnston & Slobin, same journal/pages, shared DOI."},
+  {"id": "10.1007/bf00694847", "decision": "same", "rationale": "Both 'How to speak of the colors', Johnston 1992, same pages and shared DOI."},
+  {"id": "10.3115/980845.980949", "decision": "same", "rationale": "Both 'Unification-based multimodal parsing', Johnston 1998, same proceedings and shared DOI."},
+  {"id": "10.1023/b:phil.0000033753.64202.21", "decision": "same", "rationale": "All three identical 'The Obscure Object of Hallucination', Johnston 2004, shared DOI."},
+  {"id": "10.1093/acprof:oso/9780199289769.003.0008", "decision": "same", "rationale": "All three 'Better than Mere Knowledge?', Johnston 2006, Perceptual Experience chapter; two share the DOI."},
+  {"id": "10.1037//0096-1523.17.4.997", "decision": "same", "rationale": "Identical 'Visual curve tracing properties', same three authors, year, pages, shared DOI."},
+  {"id": "10.1016/0042-6989(93)90143-k", "decision": "same", "rationale": "Identical women-heterozygous colour-deficiency study, Jordan & Mollon, shared DOI."},
+  {"id": "10.1080/13506280903338911", "decision": "same", "rationale": "Identical 'See an object, hear an object file', same authors, year, pages, shared DOI."},
+  {"id": "10.1364/josa.54.001031", "decision": "same", "rationale": "Identical daylight spectral-distribution article, same author list, year, shared DOI."},
+  {"id": "foundations of cyclopean perception", "decision": "same", "rationale": "Identical Julesz 1971 book, same publisher and ISBN."},
+  {"id": "10.1007/bf00985272", "decision": "same", "rationale": "Both 'Any', Kadmon & Landman 1993, same journal/pages, shared DOI."},
+  {"id": "i lost it at the movies", "decision": "same", "rationale": "Identical Pauline Kael 1965 book, same publisher and ISBN."},
+  {"id": "10.2307/1914185", "decision": "same", "rationale": "All three Prospect Theory, Kahneman & Tversky 1979, Econometrica, shared DOI."},
+  {"id": "judgment under uncertainty heuristics and biases", "decision": "same", "rationale": "Identical Kahneman/Slovic/Tversky 1982 book, same publisher."},
+  {"id": "10.1016/0010-0285(92)90007-o", "decision": "same", "rationale": "All three 'The reviewing of object files', same three authors, year, pages, shared DOI."},
+  {"id": "10.3765/plsa.v6i1.5067", "decision": "same", "rationale": "Identical emoji-anaphoricity article, Kaiser & Grosz 2021, shared DOI."},
+  {"id": "10.1515/thli.1994.20.2-3.165", "decision": "same", "rationale": "Both 'DRS-construction and Lexically Driven Inference', Kamp & Rossdeutscher 1994; techreport variant is the preprint of the same work, shared DOI."},
+  {"id": "from discourse to logic introduction to modeltheoretic semantics of natural language formal logic and discourse representation theory part 1 studies in linguistics and philosophy", "decision": "same", "rationale": "Identical Kamp & Reyle 1993 book, same publisher and ISBN."},
+  {"id": "convexity and symmetry in figure ground organization", "decision": "same", "rationale": "Same chapter 'Convexity and Symmetry in Figure-Ground Organization', Kanizsa & Gerbino 1976, same pages; booktitle strings are variant renderings of the same anthology."},
+  {"id": "10.7551/mitpress/7131.003.0090", "decision": "same", "rationale": "Both 'The Ventral Visual Object Pathway in Humans: Evidence from fMRI', Kanwisher, Visual Neurosciences chapter; year off by one (2003/2004) but same work."}
+ ]
+}

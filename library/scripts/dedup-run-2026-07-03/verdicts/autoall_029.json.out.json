@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.2307/411706", "decision": "same", "rationale": "Both members: identical title, author (Greenberg), year, volume/pages, and shared DOI."},
+  {"id": "10.1093/med/9780195371826.003.0072", "decision": "same", "rationale": "Both members: identical title (Augmentative and Alternative Communication Systems), authors, pages, and shared DOI; survivor citekey 'semiotic' is misleading but bib fields agree."},
+  {"id": "10.1002/9781118445112.stat00305", "decision": "same", "rationale": "Both 'Prospective Studies' by Greenberg, same journal/DOI; the stray 'London Aesthetics Forum' note is a spurious carried-over annotation but title/author/DOI match."},
+  {"id": "10.1017/s0140525x00071235", "decision": "same", "rationale": "Identical title, author (Greenfield), year, volume/pages, and shared DOI."},
+  {"id": "10.1097/00001648-199901000-00008", "decision": "same", "rationale": "Both 'Causal Diagrams for Epidemiologic Research' by Greenland/Pearl/Robins, same volume/pages/DOI; alternate citekey pearl1999causal is just author-based."},
+  {"id": "10.1097/00006324-197110000-00016", "decision": "same", "rationale": "All three are 'The Intelligent Eye' by R. L. Gregory; the journal entry is a review/listing but same work, two book entries identical."},
+  {"id": "eye and brain", "decision": "same", "rationale": "Both 'Eye and brain' by Gregory, same publisher and ISBN."},
+  {"id": "10.1007/978-94-009-2727-8_2", "decision": "same", "rationale": "All four are Grice 'Utterer's Meaning, Sentence-Meaning, and Word-Meaning'; three share the DOI, the fourth is the 1989 reprint in Studies in the Way of Words with identical title/author."},
+  {"id": "10.1163/9789004368811_003", "decision": "same", "rationale": "Both 'Logic and Conversation' by Grice; 1967 vs 1975 is the same lecture/paper, matching title/author."},
+  {"id": "further notes on logic and conversation", "decision": "same", "rationale": "All three 'Further Notes on Logic and Conversation' by Grice, 1978; two share DOI, all consistent."},
+  {"id": "indicative conditionals", "decision": "same", "rationale": "Both 'Indicative conditionals' by Grice in Studies in the Way of Words; 1967/1989 is the same reprinted work."},
+  {"id": "studies in the way of words", "decision": "same", "rationale": "All three are Grice's 'Studies in the Way of Words', Harvard UP; year 1989/1991 and ISBN edition variants of the same book."},
+  {"id": "aspects of reason", "decision": "same", "rationale": "Both 'Aspects of Reason' by Paul Grice, same publisher/ISBN."},
+  {"id": "10.1016/j.beproc.2016.12.012", "decision": "same", "rationale": "Identical title, authors (Grieves & Jeffery), volume/pages, and shared DOI."},
+  {"id": "what emotions really are", "decision": "same", "rationale": "Both 'What Emotions Really Are' by Griffiths, same publisher/ISBN."},
+  {"id": "10.1017/s0140525x01000061", "decision": "same", "rationale": "Identical title, authors (Tenenbaum & Griffiths), volume/pages, and shared DOI."},
+  {"id": "10.1098/rstb.1981.0031", "decision": "same", "rationale": "Identical title, author (Grimson), volume/pages, and shared DOI."},
+  {"id": "10.1515/thli.1975.2.1-3.61", "decision": "same", "rationale": "Identical title, authors (Groenendijk & Stokhof), volume/pages, and shared DOI."},
+  {"id": "10.1007/bf00351052", "decision": "same", "rationale": "Identical title, authors, volume/pages, and shared DOI."},
+  {"id": "studies on the semantics of questions and the pragmatics of answers", "decision": "same", "rationale": "Both Groenendijk 1984 dissertation 'Studies on the semantics of questions...'; incollection vs book but same work."},
+  {"id": "type shifting rules and the semantics of interrogatives", "decision": "same", "rationale": "Both 'Type-shifting rules and the semantics of interrogatives' by Groenendijk & Stokhof in Properties, Types and Meaning; 1988/1989 same pages 21-68, same work."},
+  {"id": "coreference and modality", "decision": "same", "rationale": "Both 'Coreference and Modality' by Groenendijk, Stokhof & Veltman, 1996, Handbook of Contemporary Semantic Theory."},
+  {"id": "10.1111/mila.12144", "decision": "same", "rationale": "Identical title, authors (Gross & Flombaum), volume/pages, and shared DOI."},
+  {"id": "10.1163/156856899x00102", "decision": "same", "rationale": "Identical title, author (Grossberg), volume/pages, and shared DOI."},
+  {"id": "the representation and use of focus in dialogue understanding", "decision": "same", "rationale": "Both 'The Representation and Use of Focus in Dialogue Understanding' by B. J. Grosz, 1977, SRI technical note."}
+ ]
+}

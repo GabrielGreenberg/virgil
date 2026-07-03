@@ -1,0 +1,130 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1016/0278-2626(82)90031-8",
+   "decision": "same",
+   "rationale": "Both entries have identical title, authors, journal, volume, pages, and DOI. Same work; one is typed misc, the other article."
+  },
+  {
+   "id": "four dimensionalism",
+   "decision": "distinct",
+   "rationale": "Survivor sider2001four is Sider's 2001 book Four-Dimensionalism (OUP, ISBN 9780191529580). Member sider1997fourdimensionalis is a distinct 1997 journal article 'Four-Dimensionalism' in The Philosophical Review 106(2) (DOI 10.2307/2998357). Different works sharing only a title; the 1997 article and the 2001 monograph should not be merged.",
+   "distinct_members": ["sider1997fourdimensionalis"]
+  },
+  {
+   "id": "ontological realism",
+   "decision": "same",
+   "rationale": "sider2007ontological is a 2007 preprint (forthcoming) and sider2009ontological is the 2009 published version in Metametaphysics (OUP). Same paper, preprint vs published chapter."
+  },
+  {
+   "id": "10.1023/b:phil.0000033752.70521.13",
+   "decision": "same",
+   "rationale": "Identical title, author, journal, volume, pages, and DOI. Same work; duplicate citekeys."
+  },
+  {
+   "id": "10.1093/acprof:oso/9780195386196.003.0012",
+   "decision": "same",
+   "rationale": "Identical title 'Do Experiences Have Contents?', author, booktitle, pages, and DOI. Same work."
+  },
+  {
+   "id": "10.1093/acprof:oso/9780195305296.003.0002",
+   "decision": "same",
+   "rationale": "Identical title 'Experiences', author, year, booktitle, pages, and DOI. Same work; duplicate citekeys."
+  },
+  {
+   "id": "which properties are represented in perception",
+   "decision": "same",
+   "rationale": "Survivor siegel2010which is a 2010 preprint of 'Which Properties are Represented in Perception?'; the other four members are all the 2006 published version in Perceptual Experience (shared DOI 10.1093/acprof:oso/9780199289769.003.0015). Same underlying work — preprint plus the published chapter."
+  },
+  {
+   "id": "10.1016/j.tics.2009.08.005",
+   "decision": "same",
+   "rationale": "Identical title, authors, journal, volume, pages, and DOI. Same work."
+  },
+  {
+   "id": "10.1146/annurev.neuro.24.1.1193",
+   "decision": "same",
+   "rationale": "Same title 'Natural Image Statistics and Neural Representation', same authors (Simoncelli, Olshausen), year, volume, and pages. Second entry lacks DOI but the matched title+year+author confirm the same Annu. Rev. Neurosci. paper."
+  },
+  {
+   "id": "10.1111/j.1467-9280.1996.tb00378.x",
+   "decision": "same",
+   "rationale": "Identical title, author, journal, volume, pages, and DOI. Same work."
+  },
+  {
+   "id": "10.1111/1467-9280.00062",
+   "decision": "same",
+   "rationale": "Identical title 'Perceiving Real-World Viewpoint Changes', authors, journal, volume, pages, and DOI. Same work."
+  },
+  {
+   "id": "10.1023/a:1017597811833",
+   "decision": "same",
+   "rationale": "Identical title 'Disjunction And Alternativeness', author, journal, volume, pages, and DOI. Same work."
+  },
+  {
+   "id": "10.1016/s1364-6613(97)01080-2",
+   "decision": "same",
+   "rationale": "Both are Simons & Levin 'Change blindness', TiCS 1997, pages 261-267, same DOI. Same work; author-order/formatting differences only."
+  },
+  {
+   "id": "10.1109/iccv.2005.77",
+   "decision": "same",
+   "rationale": "Identical title 'Discovering objects and their location in images', same authors, year, venue, pages, and DOI. Same work."
+  },
+  {
+   "id": "10.1126/science.140.3570.951",
+   "decision": "same",
+   "rationale": "Identical title 'Behaviorism at Fifty', author Skinner, Science 140(3570), pages 951-958, same DOI. Same work."
+  },
+  {
+   "id": "about behaviorism",
+   "decision": "same",
+   "rationale": "Both are Skinner's 1974 book 'About behaviorism' (Knopf). Same work; duplicate citekeys."
+  },
+  {
+   "id": "10.1007/978-94-009-9117-0_13",
+   "decision": "same",
+   "rationale": "Identical title 'The Prior Propensity Account of Subjunctive Conditionals', author Skyrms, year 1980, booktitle IFS, pages, and DOI. Same work despite differing citekey years."
+  },
+  {
+   "id": "10.1371/journal.pone.0001699",
+   "decision": "same",
+   "rationale": "Identical title 'Are There Multiple Visual Short-Term Memory Stores?', authors, journal PLoS ONE, volume, pages, and DOI. Same work."
+  },
+  {
+   "id": "10.1075/tsl.6.11slo",
+   "decision": "same",
+   "rationale": "Identical title 'The Child as a linguistic icon-maker', author Slobin, year, booktitle, pages, and DOI. Same work."
+  },
+  {
+   "id": "10.1075/z.82.24slo",
+   "decision": "same",
+   "rationale": "Identical title, author Slobin, year, booktitle, pages, and DOI. Same chapter; duplicate citekeys."
+  },
+  {
+   "id": "diagrams in the mind",
+   "decision": "same",
+   "rationale": "Both are Sloman's 'Diagrams in the Mind?' with identical title and author. The 1995 vs 2002 dates reflect original vs later republication (Springer); same underlying work."
+  },
+  {
+   "id": "10.2307/1130108",
+   "decision": "same",
+   "rationale": "Identical title 'Young Children's Comprehension of Montage', authors, journal Child Development, volume, pages, and DOI. Same work."
+  },
+  {
+   "id": "10.1007/3-540-60392-1_31",
+   "decision": "same",
+   "rationale": "Identical title 'On drawing lines on a map', author Barry Smith, year, venue (LNCS Spatial Information Theory), pages, and DOI. Same work; one typed inproceedings, one incollection."
+  },
+  {
+   "id": "the problem of perception",
+   "decision": "same",
+   "rationale": "Both are A. D. Smith's 2002 book 'The Problem of Perception' (Harvard UP, same ISBN). Same work; duplicate citekeys."
+  },
+  {
+   "id": "10.16910/jemr.2.2.6",
+   "decision": "same",
+   "rationale": "Identical title 'Edit Blindness...', authors Smith & Henderson, journal, volume, pages, and DOI. Same work."
+  }
+ ]
+}

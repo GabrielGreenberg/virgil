@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "a psychology of picture perception", "decision": "same", "rationale": "Identical title, author, year, and publisher."},
+    {"id": "the metaphysics of mind", "decision": "same", "rationale": "Same work by Anthony Kenny; members are the 1989 Clarendon and 1992 Oxford (US) editions/reprints of the same book."},
+    {"id": "10.1146/annurev.psych.55.090902.142005", "decision": "same", "rationale": "Shared DOI with identical title and author list."},
+    {"id": "10.1162/089892901564199", "decision": "same", "rationale": "Shared DOI; same title 'The Speed of Sight' and authors (one drops Foldiak but same work)."},
+    {"id": "object category structure in response patterns of neuronal population in monkey inferior temporal cortex", "decision": "same", "rationale": "Identical title, authors, year, volume, and pages."},
+    {"id": "10.1017/s1446788700027312", "decision": "same", "rationale": "Shared DOI with identical fields."},
+    {"id": "10.2307/2107741", "decision": "same", "rationale": "Shared DOI; identical Kim 'Multiple Realization' fields."},
+    {"id": "supervenience and mind", "decision": "same", "rationale": "Identical title, author, year, publisher, and ISBN."},
+    {"id": "physicalism or something near enough", "decision": "same", "rationale": "Identical title, author, year, publisher, and ISBN."},
+    {"id": "philosophy of mind", "decision": "same", "rationale": "Same Kim textbook; members are different editions (1996 first ed vs 2010 later ed), but the same work."},
+    {"id": "10.1016/s0042-6989(00)00027-4", "decision": "same", "rationale": "Shared DOI with identical title, author, and pages."},
+    {"id": "10.1111/1467-9280.00407", "decision": "same", "rationale": "Shared DOI with identical fields."},
+    {"id": "the perception of hierarchical structure", "decision": "same", "rationale": "Same Kimchi chapter, same title and year; one entry has fuller author/venue detail."},
+    {"id": "10.1111/j.1475-4975.1994.tb00279.x", "decision": "same", "rationale": "Shared DOI with identical fields."},
+    {"id": "10.1007/s12136-006-1008-8", "decision": "same", "rationale": "Shared DOI with identical fields."},
+    {"id": "10.1515/9783111350219.143", "decision": "same", "rationale": "Same Kiparsky & Kiparsky 'Fact' paper reprinted in two anthologies; different booktitle/pages but the same work, and the survivor carries the DOI."},
+    {"id": "10.1111/j.1439-0310.2006.01165.x", "decision": "same", "rationale": "Shared DOI with identical title, authors, and year (2006)."},
+    {"id": "raw feeling", "decision": "same", "rationale": "Identical title, author, year, publisher, and ISBN."},
+    {"id": "10.1086/289413", "decision": "same", "rationale": "All four share the DOI with identical Kitcher 'Marr's Computational Theory of Vision' fields."},
+    {"id": "the advancement of science", "decision": "same", "rationale": "Identical title, author, year, publisher, and ISBN."},
+    {"id": "10.1017/s0031819100000450", "decision": "same", "rationale": "Shared DOI with identical Kitcher & Varzi fields."},
+    {"id": "10.1016/j.visres.2010.08.025", "decision": "same", "rationale": "Shared DOI with identical fields."},
+    {"id": "the signs of language", "decision": "same", "rationale": "Identical title, author, year, publisher, and ISBN."},
+    {"id": "the development of logic", "decision": "same", "rationale": "Same Kneale & Kneale classic; members are different printings (1962 vs 1986 Clarendon reprint) of the same work."},
+    {"id": "10.1146/annurev.ne.10.030187.000353", "decision": "same", "rationale": "Shared DOI with matching title, authors, year, volume, and pages."}
+  ]
+}

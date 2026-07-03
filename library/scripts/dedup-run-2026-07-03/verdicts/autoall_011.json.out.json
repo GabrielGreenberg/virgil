@@ -1,0 +1,130 @@
+{
+ "verdicts": [
+  {
+   "id": "normalization as a canonical neural computation",
+   "decision": "same",
+   "rationale": "Both entries: Carandini & Heeger, identical title, same journal (Nat. Rev. Neurosci.), same volume 13, pages 51-62. Year differs 2011 vs 2012 (a metadata slip) but clearly the same review article."
+  },
+  {
+   "id": "conceptual change in childhood",
+   "decision": "same",
+   "rationale": "All three: Susan Carey, same title, same ISBN 9780262530736, MIT Press. Year 1985/1987 varies but same book."
+  },
+  {
+   "id": "10.1017/cbo9780511752902.008",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Carey & Spelke), booktitle, pages. Same chapter."
+  },
+  {
+   "id": "10.1016/s0010-0277(00)00154-2",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Carey & Xu), journal, volume, pages. Same article."
+  },
+  {
+   "id": "10.1017/s0140525x10003092",
+   "decision": "same",
+   "rationale": "All four share the DOI and have identical title, author (Carey), journal (BBS), volume/number/pages. Despite the 'precis' citekey, all fields are identical to the target article."
+  },
+  {
+   "id": "10.1167/11.10.9",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors, journal, volume/number/pages. Same article."
+  },
+  {
+   "id": "10.1016/0010-0277(93)90011-j",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Carlson-Radvansky & Irwin), journal, volume, pages. Same article."
+  },
+  {
+   "id": "10.1016/s0022-5371(80)90312-6",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Daneman & Carpenter), journal, volume, pages. Same article (Daneman & Carpenter 1980)."
+  },
+  {
+   "id": "10.3758/bf03208370",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Carrasco & Chang), journal, volume, pages. Citekey 'eccentricity' is misleading but the bib data matches."
+  },
+  {
+   "id": "10.3758/bf03210758",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Carrasco & Seamon), journal, volume, pages. Same article."
+  },
+  {
+   "id": "10.1038/nn1194",
+   "decision": "mixed",
+   "rationale": "Two members are the 2004 Nature Neuroscience 'Attention alters appearance' (Carrasco, Ling & Read), DOI 10.1038/nn1194. But carrasco2019attention is a different publication: a 2019 book chapter in 'Blockheads!' (MIT Press), single author Carrasco, with a DIFFERENT DOI (10.7551/mitpress/9196.003.0006). It is a reprint in a distinct venue and should not be merged into the 2004 article.",
+   "distinct_members": ["carrasco2019attention"]
+  },
+  {
+   "id": "10.1016/j.visres.2006.09.017",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Liu, Stevens & Carrasco), journal, volume, pages. Same article."
+  },
+  {
+   "id": "10.3758/pp.70.1.104",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Yeshurun & Carrasco), journal, volume, pages. Same article."
+  },
+  {
+   "id": "10.1101/sqb.2014.79.024687",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Carrasco & Barbot), journal, volume, pages. Same article."
+  },
+  {
+   "id": "toward a structural psychology of cinema",
+   "decision": "same",
+   "rationale": "All three: John M. Carroll, identical title, Mouton Publishers, 1980, same ISBN 9789027934475. Same book."
+  },
+  {
+   "id": "the philosophy of motion pictures",
+   "decision": "same",
+   "rationale": "Both Noël Carroll, same title, same ISBN 9781405120258, Blackwell/Wiley-Blackwell. Year 2007/2008 varies but same book."
+  },
+  {
+   "id": "the architecture of the mind",
+   "decision": "same",
+   "rationale": "Both Peter Carruthers, same title, OUP, 2006. ISBNs differ (9780199207077 vs 9780199207084) but these are hardcover/paperback of the same book."
+  },
+  {
+   "id": "thoughts and utterances",
+   "decision": "same",
+   "rationale": "Both Robyn Carston, same title, same publisher (Wiley/John Wiley), 2002, same ISBN 9780470754603. Same book."
+  },
+  {
+   "id": "10.1093/oso/9780195136975.003.0040",
+   "decision": "distinct",
+   "rationale": "carston2004truthconditional is the 2004 OUP book chapter 'Explicature and Semantics' in 'Semantics' (pp. 817-845) with the DOI. carston2000explicatur is a distinct earlier publication: the 2000 'UCL Working Papers in Linguistics' article (vol 12, pp. 1-44), no DOI. These are separate bibliographic entries (different year, venue, pages) and should not be merged."
+  },
+  {
+   "id": "10.1007/978-3-642-58648-4_4",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, author (Cartwright), booktitle, year 1999, pages. Same chapter (citekey year mismatch only)."
+  },
+  {
+   "id": "10.1093/acprof:oso/9780199282968.003.0005",
+   "decision": "same",
+   "rationale": "All three share the DOI and have identical title, authors (Casati & Dokic), booktitle, pages. Same chapter."
+  },
+  {
+   "id": "10.1016/s0734-189x(87)80001-4",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, author (Cavanagh), journal, volume, pages. Same article."
+  },
+  {
+   "id": "10.1126/science.1523411",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, author (Cavanagh), journal (Science), volume, pages. Same article."
+  },
+  {
+   "id": "10.1037/0096-3445.118.2.148",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Cave & Kosslyn), journal, volume, pages. Same article."
+  },
+  {
+   "id": "10.1068/p220229",
+   "decision": "same",
+   "rationale": "Shared DOI; identical title, authors (Cave & Kosslyn), journal, volume, pages. Same article."
+  }
+ ]
+}

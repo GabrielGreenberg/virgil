@@ -1,0 +1,129 @@
+{
+  "verdicts": [
+    {
+      "id": "filters and control",
+      "decision": "same",
+      "rationale": "Both 'Filters and Control', Chomsky & Lasnik 1977, Linguistic Inquiry vol 8, pp 425-504. Second adds issue number 3. Same work."
+    },
+    {
+      "id": "on binding",
+      "decision": "same",
+      "rationale": "Both 'On Binding', Chomsky 1980, Linguistic Inquiry 11(1), 1-46. Author spelled 'N.' vs 'Noam'. Same work."
+    },
+    {
+      "id": "rules and representations",
+      "decision": "distinct",
+      "rationale": "Survivor is the 1982 Columbia UP book 'Rules and Representations' (a monograph). The member is the 1980 Behavioral and Brain Sciences target article/precis 'Rules and representations' (vol 3(1), pp 1-15, DOI 10.1017/s0140525x00001515). These are two distinct publications — a full book vs. its short BBS precis with open peer commentary. Matched only on title+author, not year (1982 vs 1980)."
+    },
+    {
+      "id": "some concepts and consequences of the theory of government and binding",
+      "decision": "same",
+      "rationale": "Both identical: Chomsky 1982, MIT Press, same ISBN. Same book."
+    },
+    {
+      "id": "barriers",
+      "decision": "same",
+      "rationale": "All four identical: Chomsky 'Barriers' 1986, MIT Press, ISBN 9780262530675. Same book, duplicate citekeys."
+    },
+    {
+      "id": "10.2307/2185417",
+      "decision": "same",
+      "rationale": "Both identical: Hornstein & Chomsky 1988, Philosophical Review 97(4), 567, DOI 10.2307/2185417. Same entry (a review of Knowledge of Language), duplicated."
+    },
+    {
+      "id": "knowledge of language",
+      "decision": "same",
+      "rationale": "All three identical: Chomsky 'Knowledge of language' 1986, Praeger, ISBN 9780275917616. Same book."
+    },
+    {
+      "id": "language and problems of knowledge",
+      "decision": "same",
+      "rationale": "Both 'Language and problems of knowledge', Chomsky 1988, MIT Press, ISBN 9780262530705. One carries an extra note field. Same book."
+    },
+    {
+      "id": "10.1075/z.61.07cho",
+      "decision": "same",
+      "rationale": "Both 'On the Nature, Use and Acquisition of Language' by Chomsky. Same essay reprinted in two venues (Thirty Years of Linguistic Evolution 1992 vs Handbook of Child Language Acquisition 1998, different DOIs). Same underlying work; treat as same for dedup."
+    },
+    {
+      "id": "bare phrase structure",
+      "decision": "same",
+      "rationale": "Both 'Bare phrase structure', Chomsky 1994, distributed by MIT Working Papers in Linguistics. Same work (one as incollection, one as book)."
+    },
+    {
+      "id": "10.1093/mind/104.413.1",
+      "decision": "same",
+      "rationale": "Both identical: Chomsky 'Language and Nature', Mind 1995, 104(413), 1-61, DOI 10.1093/mind/104.413.1. Same article."
+    },
+    {
+      "id": "the minimalist program",
+      "decision": "same",
+      "rationale": "Both identical: Chomsky 'The minimalist program' 1995, MIT Press, ISBN 9780262032292. Same book."
+    },
+    {
+      "id": "10.1515/9783110902440",
+      "decision": "same",
+      "rationale": "Both 'The Generative Enterprise Revisited', Chomsky 2004, De Gruyter Mouton. Same book, minor publisher-name variation."
+    },
+    {
+      "id": "10.1016/j.cognition.2005.02.005",
+      "decision": "same",
+      "rationale": "Both identical: Fitch, Hauser & Chomsky 'The evolution of the language faculty', Cognition 2005, 97(2), 179-210, same DOI. Same article."
+    },
+    {
+      "id": "10.1006/cogp.1998.0681",
+      "decision": "same",
+      "rationale": "Both identical: Chun & Jiang 'Contextual Cueing', Cognitive Psychology 1998, 36(1), 28-71, same DOI. Same article."
+    },
+    {
+      "id": "10.1093/analys/10.5.97",
+      "decision": "same",
+      "rationale": "All four 'On Carnap's Analysis of Statements of Assertion and Belief', Church 1950, Analysis 10(5), 97-99. Two carry the OUP DOI and two the JSTOR DOI (10.2307/3326684) for the same article. Same work."
+    },
+    {
+      "id": "introduction to mathematical logic volume i",
+      "decision": "same",
+      "rationale": "Both identical: Church 'Introduction to Mathematical Logic, Volume I' 1958, Princeton UP. Same book."
+    },
+    {
+      "id": "10.1037//0097-7403.10.1.1",
+      "decision": "same",
+      "rationale": "All three identical: Meck & Church 'Simultaneous temporal processing.' 1984, JEP:ABP 10(1), 1-29, same DOI. Same article."
+    },
+    {
+      "id": "10.1016/0010-0277(90)90018-f",
+      "decision": "same",
+      "rationale": "All three identical: Church & Broadbent 'Alternative representations of time, number, and rate', Cognition 1990, 37(1-2), 55-81, same DOI. Same article."
+    },
+    {
+      "id": "10.5840/jphil198178268",
+      "decision": "same",
+      "rationale": "Both identical: Paul Churchland 'Eliminative Materialism and Propositional Attitudes', J. Philosophy 1981, 78(2), 67-90, same DOI. Same article."
+    },
+    {
+      "id": "10.2307/2025900",
+      "decision": "same",
+      "rationale": "Both 'Eliminative Materialism and the Propositional Attitudes', Paul Churchland 1981, J. Philosophy 78, 67-90, same DOI 10.2307/2025900. Same article."
+    },
+    {
+      "id": "10.1111/j.1468-0114.1983.tb00186.x",
+      "decision": "same",
+      "rationale": "Both identical: Patricia Churchland 'Consciousness: the Transmutation of a Concept', Pacific Philosophical Quarterly 1983, 64(1), 80-95, same DOI. Same article."
+    },
+    {
+      "id": "10.1038/scientificamerican0190-32",
+      "decision": "same",
+      "rationale": "Both identical: P. & P.S. Churchland 'Could a Machine Think?', Scientific American 1990, 262(1), 32-37, same DOI. Same article."
+    },
+    {
+      "id": "the engine of reason the seat of the soul",
+      "decision": "same",
+      "rationale": "Both identical: Paul Churchland 'The engine of reason, the seat of the soul' 1995, MIT Press, ISBN 9780262032247. Same book."
+    },
+    {
+      "id": "10.1007/978-3-642-79928-0_11",
+      "decision": "same",
+      "rationale": "Both 'Feeling Reasons' by Patricia Churchland — originally in Neurobiology of Decision-Making (1996, Springer, with DOI) and reprinted in 'On the Contrary' (1998, MIT Press). Same essay reprinted; same underlying work."
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1007/bf00605471", "decision": "same", "rationale": "Identical title, authors, year, journal, volume, pages, and shared DOI. Pure duplicate."},
+    {"id": "10.1080/08927014.1990.9525492", "decision": "same", "rationale": "Same Wehner & Wehner 1990 'Insect navigation' paper, shared DOI, identical metadata modulo author-name formatting."},
+    {"id": "10.2307/2266496", "decision": "same", "rationale": "Both entries are McKinsey & Chisholm 'The Contrary-to-Fact Conditional' 1947, identical fields and shared DOI. Citekeys are misleading but the works are the same."},
+    {"id": "simulation and similarity", "decision": "same", "rationale": "Weisberg 'Simulation and similarity' 2013, identical author/publisher/isbn. Same book."},
+    {"id": "10.1093/brain/107.4.1033", "decision": "same", "rationale": "All three are Weiskrantz & Saunders 'Impairments of Visual Object Transforms in Monkeys' 1984, shared DOI and identical fields."},
+    {"id": "consciousness lost and found", "decision": "same", "rationale": "Weiskrantz 'Consciousness lost and found' 1997, identical author/publisher/isbn."},
+    {"id": "10.1111/1467-8624.00304", "decision": "same", "rationale": "Wellman, Cross & Watson meta-analysis 2001, shared DOI and identical fields."},
+    {"id": "symbol formation", "decision": "same", "rationale": "Werner & Kaplan 'Symbol formation' 1963, identical author/publisher/isbn."},
+    {"id": "10.1037/11496-001", "decision": "same", "rationale": "All three are Wertheimer 'Gestalt theory' 1938 essay, pages 1-11, same author; two share the DOI and the third is the same reprint (year 1944 metadata variant) with consistent author/pages."},
+    {"id": "productive thinking", "decision": "distinct", "rationale": "False merge on title alone. Survivor is a purported 1961 journal article in 'Trends in Cognitive Sciences' (a journal that did not exist then; Wertheimer died 1943) with fabricated-looking metadata; the other is Wertheimer's real 1945 book 'Productive thinking' (Tavistock). No shared DOI; these should not be merged."},
+    {"id": "10.1007/978-3-642-66744-2_1", "decision": "same", "rationale": "Westheimer 'Visual Hyperacuity' 1981, shared DOI, same pages 1-30. Same work."},
+    {"id": "formal principles of language acquisition", "decision": "same", "rationale": "Wexler (& Culicover) 'Formal principles of language acquisition', MIT Press, same book; year/author-completeness differ trivially (1980 vs 1983 printing)."},
+    {"id": "metaphor and film", "decision": "same", "rationale": "Whittock 'Metaphor and Film', Cambridge University Press; 1990 original vs 2009 reissue of the same book."},
+    {"id": "language thought and reality", "decision": "same", "rationale": "Whorf 'Language, thought, and reality', M.I.T. Press, same author list, year 1956; identical isbn."},
+    {"id": "properties and mechanisms of perceptual priming", "decision": "same", "rationale": "Wiggs & Martin 'Properties and mechanisms of perceptual priming' 1998, Current Opinion in Neurobiology vol 8 pp 227-233. Same work; second entry adds the DOI."},
+    {"id": "10.1016/0378-2166(92)90049-h", "decision": "same", "rationale": "Wilkins 'Interjections as deictics' 1992, shared DOI and identical fields."},
+    {"id": "art and representation", "decision": "same", "rationale": "Willats 'Art and Representation'; both refer to the same book though the 2000 entry has a wrong author initial and publisher (Princeton vs Harvard) — title/year normalize to the same 1997 work by John Willats."},
+    {"id": "10.3758/bf03197432", "decision": "same", "rationale": "Williams & Weisstein 1978 object-line effect paper, shared DOI and identical fields."},
+    {"id": "10.1126/science.1108905", "decision": "same", "rationale": "Wills et al. 2005 'Attractor Dynamics in the Hippocampal Representation', shared DOI and identical fields."},
+    {"id": "presuppositions and non truth conditional semantics", "decision": "same", "rationale": "Deirdre Wilson 'Presuppositions and non-truth-conditional semantics' 1975, identical author/publisher/isbn."},
+    {"id": "10.1057/978-1-349-73908-0_12", "decision": "same", "rationale": "Wilson & Carston 'A unitary approach to lexical pragmatics' 2007, shared DOI and consistent title/authors/publisher."},
+    {"id": "narration in light", "decision": "same", "rationale": "George M. Wilson 'Narration in light' 1986, identical author/publisher/isbn."},
+    {"id": "strangers to ourselves", "decision": "same", "rationale": "Timothy D. Wilson 'Strangers to Ourselves' 2004, identical author/publisher/isbn."},
+    {"id": "seeing fictions in film", "decision": "same", "rationale": "George M. Wilson 'Seeing Fictions in Film' 2013, identical author/publisher/isbn."},
+    {"id": "10.1126/science.8351520", "decision": "same", "rationale": "Wilson & McNaughton 1993 'Dynamics of the Hippocampal Ensemble Code for Space', shared DOI and identical fields across all three."}
+  ]
+}

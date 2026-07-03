@@ -1,0 +1,49 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1007/bf00985572",
+      "decision": "same",
+      "rationale": "Both entries identical: Zadrozny, 'From compositional to systematic semantics', 1994, L&P 17(4):329-342, shared DOI."
+    },
+    {
+      "id": "10.1353/lan.2003.0105",
+      "decision": "same",
+      "rationale": "Both identical: Zanuttini & Portner, 'Exclamative clauses', 2003, Language 79(1):39-81, shared DOI."
+    },
+    {
+      "id": "10.1007/bf00627399",
+      "decision": "same",
+      "rationale": "Both identical: Zeevat, 'A compositional approach to DRT', 1989, L&P 12(1):95-131, shared DOI."
+    },
+    {
+      "id": "are areas teo and pit of monkey visual cortex wholly distinct from the fourth visual complex v4 complex",
+      "decision": "same",
+      "rationale": "Identical title, author Zeki S., 1996, Proc R Soc Lond B 263:1539-44; only trivial journal-abbrev/page-format variants."
+    },
+    {
+      "id": "10.1523/jneurosci.2058-05.2005",
+      "decision": "same",
+      "rationale": "Same title, authors Zoccolan/Cox/DiCarlo, 2005, J Neurosci 25:8150-8164, shared DOI; only case/abbrev variants."
+    },
+    {
+      "id": "trade off between object selectivity and tolerance in monkey inferotemporal cortex",
+      "decision": "same",
+      "rationale": "Identical title, authors, 2007, J Neurosci 27:12292-12307; only trailing-period journal variant."
+    },
+    {
+      "id": "a rodent model for the study of invariant visual object recognition",
+      "decision": "same",
+      "rationale": "Same title, Zoccolan/Oertelt/DiCarlo/Cox, 2009, vol 106:8748-8753 (PNAS); only case/journal-label variants."
+    },
+    {
+      "id": "10.1007/978-94-017-2706-8_5",
+      "decision": "same",
+      "rationale": "Both 'Three Types of Polarity' by Zwarts, 1998, pages 177-238, in Plurality and Quantification (Kluwer); same chapter, shared DOI."
+    },
+    {
+      "id": "10.1163/9789004368828_002",
+      "decision": "same",
+      "rationale": "Both 'Ambiguity Tests and How to Fail Them', Zwicky & Sadock, 1975; one tagged incollection (Syntax and Semantics vol 4), one book, but same classic work."
+    }
+  ]
+}

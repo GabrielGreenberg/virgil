@@ -1,0 +1,104 @@
+{
+  "verdicts": [
+    {
+      "id": "okeefe1978hippocampu||okeefeNadel1978hippocampus",
+      "decision": "same",
+      "rationale": "Both are O'Keefe & Nadel, 'The Hippocampus as a Cognitive Map', 1978, Clarendon Press. Same book."
+    },
+    {
+      "id": "okeefe1978hippocampu||okeefenadel1978",
+      "decision": "same",
+      "rationale": "Both are O'Keefe & Nadel, 'The Hippocampus as a Cognitive Map', 1978, Clarendon Press. Same book."
+    },
+    {
+      "id": "opdebeeck2001||opdebeeck2001inferotemporal",
+      "decision": "same",
+      "rationale": "Op de Beeck, Wagemans & Vogels, 'Inferotemporal neurons represent low-dimensional configurations of parameterized shapes', 2001, Nat. Neurosci. 4:1244-1252. Identical; b has an OCR artifact ('confi gurations')."
+    },
+    {
+      "id": "opdebeeck2001inferotemporal||vogels2001inferotemp",
+      "decision": "same",
+      "rationale": "Same article: Op de Beeck, Wagemans & Vogels, Nature Neuroscience 4(12):1244-1252, 2001, doi:10.1038/nn767. Matching authors, title, volume, pages."
+    },
+    {
+      "id": "ortony1978metaphor||ortony1979metaphor",
+      "decision": "distinct",
+      "rationale": "1978 'Metaphor: Theoretical and empirical research' (Psychological Bulletin article) vs 1979 book 'Metaphor and thought'. Different works, titles, years."
+    },
+    {
+      "id": "pagin2010acompositionality||pagin2010bcompositionality",
+      "decision": "distinct",
+      "rationale": "'Compositionality I: Definitions and Variants' vs 'Compositionality II: Arguments and Problems'. Series parts I/II with distinct pages and DOIs."
+    },
+    {
+      "id": "pagin2010acompositionality||paginwesterstahl2010b",
+      "decision": "distinct",
+      "rationale": "'Compositionality I' (pp.250-264, doi ...00228.x) vs 'Compositionality II' (pp.265-282, doi ...00229.x). Distinct series parts."
+    },
+    {
+      "id": "pagin2010bcompositionality||paginwesterstahl2010a",
+      "decision": "distinct",
+      "rationale": "'Compositionality II' (pp.265-282, doi ...00229.x) vs 'Compositionality I' (pp.250-264, doi ...00228.x). Distinct series parts."
+    },
+    {
+      "id": "paginwesterstahl2010a||paginwesterstahl2010b",
+      "decision": "distinct",
+      "rationale": "'Compositionality I: Definitions and Variants' vs 'Compositionality II: Arguments and Problems'. Distinct pages and DOIs."
+    },
+    {
+      "id": "palmer1978fundamenta||palmer1979aspects",
+      "decision": "distinct",
+      "rationale": "1978 'Fundamental Aspects of Cognitive Representation' vs 1979 'Aspects of Representation' (in 'Computing and Categorization'). Different titles and years."
+    },
+    {
+      "id": "palmer1978fundamental||palmer1979aspects",
+      "decision": "distinct",
+      "rationale": "1978 'Fundamental Aspects of Cognitive Representation' vs 1979 'Aspects of Representation'. Different titles, years, and venues."
+    },
+    {
+      "id": "papineau1993bphysicalism||papineau1993physical",
+      "decision": "same",
+      "rationale": "Both Papineau 1993, 'Physicalism, Consciousness and the Anti-Pathetic Fallacy', pages 169-183/169-83. Same work (journal version and reprint)."
+    },
+    {
+      "id": "pautz2009are||pautz2011what",
+      "decision": "unsure",
+      "rationale": "Same title 'What Are the Contents of Experiences?' but a is a 2009 Philosophical Quarterly article (59:483-507) and b is a 2011 chapter in 'The Admissible Contents of Experience' (Wiley-Blackwell, 114-38). Different year and venue; could be a distinct reprint/chapter rather than the same publication."
+    },
+    {
+      "id": "peacocke1976||peacocke1976what",
+      "decision": "same",
+      "rationale": "Both Peacocke 1976, 'What is a Logical Constant?', Journal of Philosophy 73(9):221-240. Same article."
+    },
+    {
+      "id": "peirce2020logic||peirce2021alogic",
+      "decision": "distinct",
+      "rationale": "2020 'Logic of the Future: Writings on Existential Graphs' vs 2021 'Volume 2: The Logical Tracts'. Different years; b is a specific later volume."
+    },
+    {
+      "id": "peirce2021alogic||peirce2021blogic",
+      "decision": "unsure",
+      "rationale": "a is specifically 'Volume 2: The Logical Tracts' (2021); b is the generic 'Logic of the future: writings on existential graphs' (2021) with no volume specified. Cannot tell whether b is the same Volume 2 or a different volume in the series."
+    },
+    {
+      "id": "petrides1999dorsolateral||petrides2002comparative",
+      "decision": "distinct",
+      "rationale": "1999 paper on dorsolateral prefrontal cortex vs 2002 paper on ventrolateral prefrontal cortex. Different titles, years, volumes; distinct anatomical studies."
+    },
+    {
+      "id": "pettigrove2012meekness||pettigrovetanaka2014anger",
+      "decision": "distinct",
+      "rationale": "2012 'Meekness and Moral Anger' (single author) vs 2014 'Anger and moral judgment' (Pettigrove & Tanaka). Different papers, years, authorship."
+    },
+    {
+      "id": "portner2005meaning||portner2005what",
+      "decision": "same",
+      "rationale": "Both Portner 2005, 'What Is Meaning? Fundamentals of Formal Semantics', Blackwell. Same book."
+    },
+    {
+      "id": "posner1994attention||posner1995attention",
+      "decision": "distinct",
+      "rationale": "1994 'Attention: the mechanisms of consciousness' (PNAS article) vs 1995 'Attention in cognitive neuroscience: an overview' (MIT Press chapter). Different titles, years, venues."
+    }
+  ]
+}

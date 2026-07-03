@@ -1,0 +1,66 @@
+{
+  "verdicts": [
+    {
+      "id": "10.3166/jancl.17.129-155",
+      "decision": "same",
+      "rationale": "Benthem2007 is a Zotero-style key of the same article; identical DOI, title, year, volume/number/pages."
+    },
+    {
+      "id": "10.2307/2104916",
+      "decision": "same",
+      "rationale": "All three share DOI 10.2307/2104916, identical title/author/year/volume/number; only pages formatting (243--249 vs 243) differs. Duplicate imports of one article."
+    },
+    {
+      "id": "the border between seeing and thinking",
+      "decision": "same",
+      "rationale": "Survivor is a misc stub of Block's 2023 OUP book; Block2023a (book) and blockborder (ms) share DOI 10.1093/oso/9780197622223.001.0001 — all the same work."
+    },
+    {
+      "id": "10.1017/s0140525x23001899",
+      "decision": "same",
+      "rationale": "Block2023b is a Zotero-style duplicate; identical DOI, title, journal, volume, year."
+    },
+    {
+      "id": "10.25911/5d63c0dd94e5d",
+      "decision": "distinct",
+      "rationale": "Survivor is Blumson's 2007 ANU PhD thesis (DOI 10.25911/5d63c0dd94e5d, deepIndexed); loser is the substantively distinct 2014 Open Book Publishers monograph (different year, publisher, ISBN, no shared DOI). Thesis and published book are separate publications.",
+      "distinct_members": ["blumson2014resemblance"]
+    },
+    {
+      "id": "10.1007/s11098-009-9337-2",
+      "decision": "same",
+      "rationale": "Blumson2010 is an identical duplicate; blumson2009pictures is the 2009 online-first version of the same article (same volume 149, number 2, pages 135-151, DOI 10.1007/s11098-009-9337-2)."
+    },
+    {
+      "id": "10.1525/fq.2002.55.3.16",
+      "decision": "same",
+      "rationale": "Bordwell2002 is an identical Zotero-style duplicate; same DOI, title, journal, volume/number/pages."
+    },
+    {
+      "id": "film art an introduction",
+      "decision": "mixed",
+      "rationale": "'Film Art: An Introduction' spans multiple editions. Three members are independently deepIndexed and substantively different: survivor bordwell2013film, bordwell2017film (2016 11th ed, adds author Smith, ISBN 9781259253317), and bordwell2001film (2003 ed, ISBN 9780072874617). Keep those distinct editions separate. The two unindexed shadow entries (1993, 2012, no folder/index) merge as duplicates.",
+      "distinct_members": ["bordwell2017film", "bordwell2001film"]
+    },
+    {
+      "id": "10.1017/s0140525x22002813",
+      "decision": "same",
+      "rationale": "Bowers2022 is the same article with the full author list expanded from 'and others'; identical DOI, title, journal, volume."
+    },
+    {
+      "id": "philosophy of mind and cognition",
+      "decision": "same",
+      "rationale": "All four members share ISBN 9781405133241 (the 2nd-edition Braddon-Mitchell & Jackson); only the survivor is indexed. Same edition/work despite mixed 1996/2006 date fields."
+    },
+    {
+      "id": "10.1016/j.jphysparis.2003.09.017",
+      "decision": "same",
+      "rationale": "Bressloff2003 is an identical Zotero-style duplicate; same DOI, title, journal, volume/number/pages."
+    },
+    {
+      "id": "10.1098/rstb.2002.1109",
+      "decision": "same",
+      "rationale": "2003-Bressloff.1 is a legacy year-author shadow key of the same article; identical DOI, title, journal, volume/number/pages."
+    }
+  ]
+}

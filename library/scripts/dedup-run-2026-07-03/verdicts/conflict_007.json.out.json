@@ -1,0 +1,64 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1111/j.1540-594x.2004.00152.x",
+   "decision": "same",
+   "rationale": "Cohen2004 is a Zotero-style duplicate of cohen2004epistemic; identical DOI, title, authors, journal, volume/number/pages. Loser not indexed."
+  },
+  {
+   "id": "10.1080/0951508042000304180",
+   "decision": "same",
+   "rationale": "2004-Cohen.1 is a legacy year-author shadow key of cohen2004objects; identical DOI and all fields. Loser not indexed."
+  },
+  {
+   "id": "10.1016/j.cub.2024.12.034",
+   "decision": "same",
+   "rationale": "Collett2025 is a Zotero-style duplicate of collett2025neuroethology; identical DOI and all fields. Loser not indexed."
+  },
+  {
+   "id": "10.1093/mind/fzm805",
+   "decision": "same",
+   "rationale": "Collins2007 is a Zotero-style duplicate of collins2007syntax; identical DOI and all fields. Loser not indexed."
+  },
+  {
+   "id": "the origin of concepts",
+   "decision": "same",
+   "rationale": "carey2009origin and concepts2009origin are the same book (Carey, The Origin of Concepts, 2009, OUP, ISBN 9780195367638); differ only in author-initial formatting and ISBN hyphenation. Both deepIndexed but clearly identical work."
+  },
+  {
+   "id": "10.1177/1073858408331369",
+   "decision": "same",
+   "rationale": "Conway2009 is a Zotero-style duplicate of conway2009color; identical DOI, title, journal, volume/number/pages; author formatting only. Loser not indexed."
+  },
+  {
+   "id": "10.1073/pnas.0810943106",
+   "decision": "same",
+   "rationale": "Conway2009a is a Zotero-style duplicate of conway2009colortuned; identical DOI and all fields; author formatting only. Loser not indexed."
+  },
+  {
+   "id": "10.1167/16.10.5",
+   "decision": "same",
+   "rationale": "Cooper2016 is a Zotero-style duplicate of cooper2016sensitivity; identical DOI and all fields; author formatting only. Loser not indexed."
+  },
+  {
+   "id": "10.1093/oxfordhb/9780190873417.013.33",
+   "decision": "same",
+   "rationale": "Copenhaver2021 is a Zotero-style duplicate of copenhaver2021berkeley; identical DOI, booktitle, pages, note. Loser not indexed."
+  },
+  {
+   "id": "10.1109/cvpr.2009.5206667",
+   "decision": "same",
+   "rationale": "Cour2009 is a Zotero-style duplicate of cour2009learning; identical DOI (case only), title, authors, booktitle, pages. Loser not indexed."
+  },
+  {
+   "id": "10.1177/1529100619850176",
+   "decision": "same",
+   "rationale": "Cowen2019 is a Zotero-style duplicate of cowen2019mapping; identical DOI, title, journal, volume/number/pages; author formatting only. Loser not indexed."
+  },
+  {
+   "id": "10.1038/s41586-026-10150-1",
+   "decision": "same",
+   "rationale": "Cowley2026 is a Zotero-style duplicate of cowley2026compact; identical DOI and all fields. Loser not indexed."
+  }
+ ]
+}

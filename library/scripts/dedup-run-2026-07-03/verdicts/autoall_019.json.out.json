@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1152/jn.2000.83.2.1019", "decision": "same", "rationale": "Identical title, authors (Dragoi & Sur), year, journal, volume/pages, and shared DOI."},
+  {"id": "10.1073/pnas.1306031110", "decision": "same", "rationale": "Identical title, authors (Dragoi & Tonegawa), year, PNAS pages, and shared DOI."},
+  {"id": "10.1111/j.1468-2885.2010.01362.x", "decision": "same", "rationale": "Identical title, authors, journal Communication Theory, pages, and shared DOI."},
+  {"id": "knowledge and flow of information", "decision": "same", "rationale": "Same Dretske 1981 book, identical title/author/publisher/ISBN."},
+  {"id": "10.1017/s0140525x00014631", "decision": "same", "rationale": "Both are Dretske's Précis in BBS 1983, identical fields and shared DOI (article vs misc type only)."},
+  {"id": "10.7551/mitpress/2927.001.0001", "decision": "same", "rationale": "Explaining Behavior, Dretske, MIT Press — 1988 original vs 1991 reprint (different ISBN), same work."},
+  {"id": "conscious experience", "decision": "same", "rationale": "Dretske 'Conscious experience' — 1993 Mind article and 1997 reprint in Nature of Consciousness; same essay reprinted."},
+  {"id": "10.1111/j.1475-4975.1994.tb00299.x", "decision": "same", "rationale": "'If You Can't Make One...' Dretske — 1994 original article and 2000 reprint in Selected Essays; same work."},
+  {"id": "10.1093/acprof:oso/9780195386196.003.0004", "decision": "same", "rationale": "Identical title (What We See), author, booktitle, pages, and shared DOI."},
+  {"id": "what computers can t do", "decision": "same", "rationale": "Identical Dreyfus 1972 book, same title/author/publisher."},
+  {"id": "mind over machine", "decision": "same", "rationale": "Both Dreyfus 'Mind Over Machine', year 1988, same ISBN and publisher."},
+  {"id": "10.1080/07268608408599325", "decision": "same", "rationale": "Identical Dudman 1984 'Conditional interpretations of if-sentences', shared DOI."},
+  {"id": "10.2307/3327374", "decision": "same", "rationale": "Identical Dudman 1984 'Parsing If-Sentences' in Analysis, shared DOI."},
+  {"id": "10.1037/0033-295x.104.2.211", "decision": "same", "rationale": "Landauer & Dumais 'A solution to Plato's problem', identical fields and shared DOI."},
+  {"id": "10.1016/0010-0285(80)90005-5", "decision": "same", "rationale": "All three are Treisman & Gelade feature-integration theory; identical title/author/pages/DOI despite mislabeled citekeys."},
+  {"id": "10.1037/0096-3445.113.4.501", "decision": "same", "rationale": "Identical Duncan 1984 'Selective attention...', shared DOI."},
+  {"id": "10.1038/6365", "decision": "same", "rationale": "Gould et al. 'Learning enhances adult neurogenesis', identical fields and shared DOI."},
+  {"id": "10.2307/1130256", "decision": "same", "rationale": "Ebeling & Gelman 'Coordination of Size Standards', identical fields and shared DOI."},
+  {"id": "10.1007/978-1-349-15849-2", "decision": "same", "rationale": "All three are Eco 'A Theory of Semiotics'; same title/author, 1976 original and 1979 editions."},
+  {"id": "the role of the reader", "decision": "same", "rationale": "Both Eco 'The role of the reader', year 1981, same ISBN/publisher."},
+  {"id": "10.1007/978-1-349-17338-9", "decision": "same", "rationale": "Identical Eco 'Semiotics and the Philosophy of Language', shared DOI."},
+  {"id": "10.1007/bf00628111", "decision": "same", "rationale": "Identical Edelberg 'Intentional identity and the attitudes', shared DOI."},
+  {"id": "neural darwinism", "decision": "same", "rationale": "Both Edelman 'Neural Darwinism' 1987, same ISBN/publisher."},
+  {"id": "10.1126/science.1589770", "decision": "same", "rationale": "Poggio, Fahle & Edelman 'Fast Perceptual Learning in Visual Hyperacuity', identical fields and shared DOI."},
+  {"id": "10.1017/s0140525x98001253", "decision": "same", "rationale": "Identical Edelman 'Representation is representation of similarities', shared DOI."}
+ ]
+}

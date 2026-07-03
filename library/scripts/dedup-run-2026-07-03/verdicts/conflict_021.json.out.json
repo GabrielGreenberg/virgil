@@ -1,0 +1,64 @@
+{
+ "verdicts": [
+  {
+   "id": "10.3998/ergo.12405314.0002.007",
+   "decision": "same",
+   "rationale": "All three members share title 'Maps, Pictures, and Predication', author Kulvicki, 2015, Ergo vol 2, and DOI 10.3998/ergo.12405314.0002.007. kulvicki2015b just adds pages 149-74 (same DOI). Only survivor is indexed. Identical work."
+  },
+  {
+   "id": "10.1093/oso/9780198847472.001.0001",
+   "decision": "same",
+   "rationale": "Same OUP book, identical ISBN 9780198847472. kulvicki2020modelling is a British-spelling ('Modelling') variant of the same title/edition with matching ISBN/publisher/year; survivor and it are both deepIndexed but genuinely identical edition. Kulvicki2020 shares the DOI. Merge OK."
+  },
+  {
+   "id": "parts of perception",
+   "decision": "same",
+   "rationale": "Both are the same 2018 PhD thesis 'Parts of Perception' by Lande, Kevin Joseph. california2018parts is a shadow/duplicate import (both deepIndexed) with identical title/author/year. Identical work."
+  },
+  {
+   "id": "10.5840/jphil2018115413",
+   "decision": "same",
+   "rationale": "All three share title 'The Perspectival Character of Perception', Lande, 2018, J. Philosophy 115(4), pp 187-214, DOI 10.5840/jphil2018115413. Only survivor indexed. Identical work (journal name 'The Journal of Philosophy' vs 'Journal of Philosophy' cosmetic)."
+  },
+  {
+   "id": "10.1111/nous.12324",
+   "decision": "same",
+   "rationale": "All four share title 'Mental structures', Lande, 2021, Noûs 55(3), pp 649-677, DOI 10.1111/nous.12324. Survivor and lande2021mental both deepIndexed with identical fields (citekey year differs, actual year is 2021 in both). Identical work."
+  },
+  {
+   "id": "10.1086/725094",
+   "decision": "same",
+   "rationale": "Both share title 'Contours of Vision: Towards a Compositional Semantics of Perception', Lande, 2026, BJPS, DOI 10.1086/725094. Lande2026 is a Zotero-style duplicate of the survivor. Identical work."
+  },
+  {
+   "id": "10.1086/737739",
+   "decision": "same",
+   "rationale": "Both share title 'The Imagery Debate Exhumed and Reanimated', Langland-Hassan, 2025, BJPS, DOI 10.1086/737739, same forthcoming note. LanglandHassan2025 is a Zotero-style duplicate. Identical work."
+  },
+  {
+   "id": "10.1007/978-1-4020-5958-2_5",
+   "decision": "same",
+   "rationale": "All three share title 'Segmented Discourse Representation Theory: Dynamic Semantics with Discourse Structure', Lascarides & Asher, 2008, Computing Meaning, pp 87-124, DOI 10.1007/978-1-4020-5958-2_5. Only survivor indexed. Identical work."
+  },
+  {
+   "id": "10.1093/jos/ffp004",
+   "decision": "same",
+   "rationale": "All three share title 'A Formal Semantic Analysis of Gesture', authors Lascarides & Stone, 2009, J. Semantics 26(4), pp 393-449, DOI 10.1093/jos/ffp004. Survivor deepIndexed and stone2009formal indexed are identical (stone2009formal is a first-author-swap citekey for the same paper). Identical work."
+  },
+  {
+   "id": "10.1016/j.tics.2011.05.009",
+   "decision": "same",
+   "rationale": "Both share title 'Empirical support for higher-order theories of conscious awareness', Lau & Rosenthal, 2011, TiCS 15(8), pp 365-373, DOI 10.1016/j.tics.2011.05.009. Lau2011 is a Zotero-style duplicate. Identical work."
+  },
+  {
+   "id": "10.1111/j.0031-8094.2005.00382.x",
+   "decision": "same",
+   "rationale": "Both share title 'Confused Thought and Modes of Presentation', Lawlor, 2005, Phil. Quarterly 55(218), pp 21-36, DOI 10.1111/j.0031-8094.2005.00382.x. Lawlor2005 is a Zotero-style duplicate. Identical work."
+  },
+  {
+   "id": "10.1167/12.13.8",
+   "decision": "same",
+   "rationale": "Both share title 'Dynamic coding of border-ownership in visual cortex', authors Layton, Mingolla & Yazdanbakhsh, 2012, J. Vision 12(13), DOI 10.1167/12.13.8. Layton2012 is a Zotero-style duplicate. Identical work."
+  }
+ ]
+}

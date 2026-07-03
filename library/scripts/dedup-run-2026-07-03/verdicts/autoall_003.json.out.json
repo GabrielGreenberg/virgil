@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1167/10.5.26", "decision": "same", "rationale": "Both members identical title/author/year/DOI (Anderson & Khang 2010, scission in perception of color and opacity)."},
+    {"id": "10.1023/a:1005607111810", "decision": "same", "rationale": "Both 'Optimality Theoretic Semantics', Hendriks & de Hoop, same DOI and fields; the dehoop1999papers citekey label is misleading but its fields describe the 2001 paper."},
+    {"id": "10.4324/9780203712511-3", "decision": "same", "rationale": "Identical fields, Andrews 2020 'Understanding animal behavior', shared DOI."},
+    {"id": "10.1080/01621459.1996.10476902", "decision": "same", "rationale": "Angrist, Imbens & Rubin 1996, identical title/authors/DOI/pages."},
+    {"id": "10.3758/bf03212215", "decision": "same", "rationale": "Ankrum & Palmer 1991 'Memory for objects and parts', identical fields and DOI."},
+    {"id": "10.1016/0024-3841(77)90046-8", "decision": "same", "rationale": "Anscombre & Ducrot 1977 'Deux mais en français?', identical fields and DOI."},
+    {"id": "10.1145/800196.806007", "decision": "same", "rationale": "Appel 1967 quantitative invisibility, identical title/author/DOI; one has extra note only."},
+    {"id": "10.1515/ling.1974.12.142.5", "decision": "same", "rationale": "Apresjan 'Regular Polysemy', same DOI/title/author/volume; one lacks pages but clearly the same work."},
+    {"id": "10.1016/0028-3932(88)90026-7", "decision": "same", "rationale": "Arditi, Holtzman & Kosslyn 1988, identical title/authors/DOI/pages."},
+    {"id": "10.1111/j.0956-7976.2004.00731.x", "decision": "same", "rationale": "Arguin & Saumier 2004, identical fields and DOI."},
+    {"id": "bodily communication", "decision": "same", "rationale": "Argyle 'Bodily Communication', Methuen; members are 1st (1975) and 2nd (1988) editions of the same book — same work."},
+    {"id": "functions", "decision": "same", "rationale": "Ariew, Cummins & Perlman 2002 'Functions', OUP; second member merely omits the author field."},
+    {"id": "10.1016/j.visres.2006.03.003", "decision": "same", "rationale": "Boynton, Ciaramitaro & Arman 2006, identical title/authors/DOI/pages."},
+    {"id": "the nature of mind", "decision": "same", "rationale": "Armstrong 1981 'The nature of mind', Harvester; one typed book, other incollection, same work."},
+    {"id": "10.1038/nature01341", "decision": "same", "rationale": "Moore & Armstrong 2003 'Selective gating of visual signals', Nature, identical fields and DOI."},
+    {"id": "10.1007/s10988-015-9185-9", "decision": "same", "rationale": "Josh Armstrong 2016 'The problem of lexical innovation', identical fields and DOI."},
+    {"id": "art and visual perception", "decision": "same", "rationale": "Arnheim 'Art and Visual Perception', UC Press; members are 1954 original and 1974 revised edition of the same book."},
+    {"id": "an introduction to cybernetics", "decision": "same", "rationale": "Ashby 1956 'An introduction to cybernetics', identical fields."},
+    {"id": "10.1023/a:1005364332007", "decision": "same", "rationale": "Asher & Lascarides 1998 'Questions in Dialogue', identical fields and DOI."},
+    {"id": "10.1093/jos/15.3.239", "decision": "same", "rationale": "Asher 1998 'The semantics and pragmatics of presupposition', identical fields and DOI."},
+    {"id": "10.1093/jos/ffn013", "decision": "same", "rationale": "Lascarides & Asher 'Agreement, Disputes and Commitments in Dialogue', all three share DOI, title, authors, volume, and pages; misleading citekeys but same work."},
+    {"id": "structures of social action", "decision": "same", "rationale": "Atkinson & Heritage 'Structures of Social Action', Cambridge, identical fields."},
+    {"id": "10.1163/9789004368880_012", "decision": "same", "rationale": "Atlas 1979 'How Linguistics Matters to Philosophy: Presupposition, Truth, and Meaning', same DOI/title/author/pages."},
+    {"id": "10.1037/h0054663", "decision": "same", "rationale": "Attneave 1954 'Some informational aspects of visual perception', all three share DOI, title, author, volume, pages."},
+    {"id": "10.2307/1420645", "decision": "same", "rationale": "Attneave 1968 'Triangles as Ambiguous Figures', identical fields and DOI."}
+  ]
+}

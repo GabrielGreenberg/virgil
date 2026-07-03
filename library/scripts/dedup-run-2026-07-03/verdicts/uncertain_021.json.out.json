@@ -1,0 +1,104 @@
+{
+  "verdicts": [
+    {
+      "id": "taube1990head||taubeetal1990",
+      "decision": "same",
+      "rationale": "Identical paper: same title (a keeps the 'I. Description and quantitative analysis' subtitle that is part of this paper's own title), same authors Taube/Muller/Ranck, year 1990, J. Neurosci. vol 10, pages 420-435 = 420-35."
+    },
+    {
+      "id": "thompson1988breaking||thompsonkristin1988breaking",
+      "decision": "same",
+      "rationale": "Same book 'Breaking the Glass Armor: Neoformalist Film Analysis' by Kristin Thompson, 1988, Princeton University Press. b just carries the full subtitle."
+    },
+    {
+      "id": "torralba2006contextu||torralba2006contextual",
+      "decision": "same",
+      "rationale": "Same article (b has OCR artifact 'atten- tion'), same authors Torralba/Oliva/Castelhano/Henderson, 2006, Psychological Review vol 113(4), pages 766-786 = 766-86."
+    },
+    {
+      "id": "treisman1996binding||treisman1999solutions",
+      "decision": "distinct",
+      "rationale": "Different papers: 'The binding problem' (1996, Current Opinion in Neurobiology 6(2), pp 171-178, doi ...80070-5) vs 'Solutions to the Binding Problem' (1999, Neuron 24(1), pp 105-125, doi ...80826-0). Different titles, years, journals, DOIs."
+    },
+    {
+      "id": "vogels1995||vogels1995how",
+      "decision": "same",
+      "rationale": "Same article 'How task-related are the responses of inferior temporal neurons?', 1995, Visual Neuroscience vol 12, pages 207-214. a's journal field bleeds the title's 'Vis'/'Neurosci.' fragments but volume/pages match exactly."
+    },
+    {
+      "id": "vogels1999||vogels1999categorization",
+      "decision": "same",
+      "rationale": "Same article 'Categorization of complex visual images by rhesus monkeys. Part 2: single-cell study', 1999, Eur. J. Neurosci. vol 11, pages 1239-1255. a's journal field misplaces the 'Part 2' subtitle but volume/pages match."
+    },
+    {
+      "id": "vonfintel2001would||vonfintel2003would",
+      "decision": "same",
+      "rationale": "Same essay 'Would you believe it? The King of France is back!' in the collection 'Descriptions and Beyond' (OUP). Year varies (2001 manuscript vs 2003 volume date) but same title, author, and collection."
+    },
+    {
+      "id": "vonfintel2001would||vonfintel2004would",
+      "decision": "same",
+      "rationale": "Same essay 'Would you believe it? The King of France is back!' in 'Descriptions and Beyond' (OUP), same author von Fintel, same pages 315-341; year variation (2001 vs 2004) reflects manuscript vs volume date."
+    },
+    {
+      "id": "wagemans2012acentury||wagemansetal2012century1",
+      "decision": "distinct",
+      "rationale": "Different papers in the same series: a is 'II. Conceptual and theoretical foundations' (pp 1218-1252, doi a0029334, Feldman/Gepshtein et al.), b is 'I. Perceptual grouping and figure-ground organization' (pp 1172-1217, doi a0029333, Elder/Kubovy et al.). Different DOIs, author lists, and pages."
+    },
+    {
+      "id": "wagemans2012bcentury||wagemansetal2012century1",
+      "decision": "distinct",
+      "rationale": "Part II (a, doi a0029334, pp 1218-1252) vs Part I (b, doi a0029333, pp 1172-1217) of the Gestalt-psychology series; distinct papers with different DOIs, authors, and pages."
+    },
+    {
+      "id": "wagemansetal2012century1||wagemansetal2012century2",
+      "decision": "distinct",
+      "rationale": "Part I (a, doi a0029333, pp 1172-1217) vs Part II (b, doi a0029334, pp 1218-1252) of the same series; distinct papers with different DOIs, author lists, and pages."
+    },
+    {
+      "id": "walton1990mimesis||walton1990mimesisd",
+      "decision": "same",
+      "rationale": "Both center on Walton's book 'Mimesis as Make-Believe' (1990, Harvard University Press); b is a corrupted/merged entry whose title and year still identify the same book, though its journal/pages fields leak a stray 2002 Wollheim-response article citation."
+    },
+    {
+      "id": "walton1990mimesisd||walton1993mimesis",
+      "decision": "same",
+      "rationale": "Both identify Walton's book 'Mimesis as Make-Believe', Harvard University Press; a (1990) and b (1993, different ISBN) are the same work in different printings. a is a garbled entry but its title/publisher anchor to the book."
+    },
+    {
+      "id": "wandell2005visual||wandell2007visual",
+      "decision": "distinct",
+      "rationale": "Different papers: 'Visual field map clusters in human cortex' (2005, Phil. Trans. R. Soc. B vol 360, pp 693-707) vs 'Visual Field Maps in Human Cortex' (2007, Neuron vol 56, pp 366-383, doi ...10.012). Different titles, years, journals, DOIs, and author lists."
+    },
+    {
+      "id": "wegner2002illusion||wegner2004precis",
+      "decision": "distinct",
+      "rationale": "a is the book 'The Illusion of Conscious Will' (MIT Press); b is the separate journal article 'Précis of The illusion of conscious will' (2004, Behavioral and Brain Sciences 27(5), pp 649-659). A précis is a distinct work from the book."
+    },
+    {
+      "id": "wegner2004illusion||wegner2004precis",
+      "decision": "distinct",
+      "rationale": "a is the MIT Press book 'The Illusion of Conscious Will' (doi 10.7551/mitpress/3650, the book DOI); b is the BBS 'Précis of The illusion of conscious will' article (doi 10.1017/s0140525x04000159). Distinct works despite overlapping page range in a's mangled fields."
+    },
+    {
+      "id": "whittington2019tolman||whittington2020tolman",
+      "decision": "same",
+      "rationale": "Same work: 'The Tolman-Eichenbaum Machine...' 2019 bioRxiv preprint (unpublished, doi 10.1101/770495) and its 2020 Cell publication (vol 183(5), doi 10.1016/j.cell.2020.10.024). Same title and full author list; preprint to published version."
+    },
+    {
+      "id": "wilcox1998object||wilcox1999object",
+      "decision": "distinct",
+      "rationale": "Different papers: 'Object Individuation in Infancy: The Use of Featural Information...' (1998, Wilcox & Baillargeon, Cognitive Psychology 37(2)) vs 'Object individuation: infants' use of shape, size, pattern, and color' (1999, Wilcox alone, Cognition 72(2)). Different titles, authors, journals, DOIs."
+    },
+    {
+      "id": "willats1997art||willats1999art",
+      "decision": "same",
+      "rationale": "Same book by John Willats, Princeton University Press, year field 1997 in both; b just carries the full subtitle 'New Principles in the Analysis of Pictures'. (b's citekey says 1999 but its year field is 1997.)"
+    },
+    {
+      "id": "williamson2007reference||williamson2009reference",
+      "decision": "same",
+      "rationale": "Same chapter 'Reference, Inference, and the Semantics of Pejoratives' by Timothy Williamson in the OUP Kaplan volume; a labels the collection 'Festschrift for David Kaplan' and b 'The Philosophy of David Kaplan' (the actual title, 2009, chapter 9, pp 137-158). Year 2007 vs 2009 = manuscript vs volume date."
+    }
+  ]
+}

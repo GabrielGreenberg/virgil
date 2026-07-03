@@ -1,0 +1,34 @@
+{
+  "verdicts": [
+    {
+      "cid": "10.1007/s10992-013-9300-8",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "DOI 10.1007/s10992-013-9300-8 verified via Crossref/Springer = 'A Uniform Theory of Conditionals', William B. Starr, Journal of Philosophical Logic 43(6):1019-1064 (2013 online / 2014 print). starr2013new (archived, indexed) carries the EXACT same DOI, author, and year; its variant title 'A New Theory of Conditionals: Time, Inference & Causality' is descriptive language from the same article's abstract, not a separate published work (Starr's actual dissertation is 'Conditionals, Meaning, and Mood', 2010, a different citekey not present here). Starr2014 is the same article at its 2014 print year (same DOI, vol/issue/pages 43/6/1019-1064). starr2014uniform / Starr2014a are the 'A Uniform Theory of Conditionals (Chapter 3)' manuscript form of the same article (identical article title + author). All members denote the one journal article."
+    },
+    {
+      "cid": "a mark of the mental",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three: 'A Mark of the Mental', Karen Neander, 2017, MIT Press. Survivor and archived neander2017mark share ISBN 9780262036146 (print). neander2017 (not archived, depth none) carries the MIT Press book DOI 10.7551/mitpress/9780262036146.001.0001 and e-ISBN 9780262339865 — i.e. the electronic edition of the identical book. Same monograph under variant citekeys/edition ISBNs."
+    },
+    {
+      "cid": "art and representation",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Survivor willats1997art ('Art and representation', John Willats, 1997, Princeton UP, ISBN 9780691087375) and the archived deep-indexed member willats1999art ('Art and Representation: New Principles in the Analysis of Pictures', John Willats, 1997, Princeton UP) are unambiguously the same 1997 Princeton book — the subtitle in willats1999art is the book's real subtitle, and author/year/publisher match. willats2000art has garbled metadata ('Willats, D.', 2000, Harvard University Press) but is depth=null and NOT archived, so no deep-indexed folder is at risk from it; John Willats published no separate Harvard 2000 book, so it is almost certainly the same title with corrupted fields. The only member that would actually be archived is a clean match to the survivor."
+    },
+    {
+      "cid": "10.4324/9781410613561",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "DOI 10.4324/9781410613561 verified via Crossref = 'Making Sense of Children's Drawings', John Willats, Psychology Press (2006 online edition of the 2005 Lawrence Erlbaum book). All three members carry this identical DOI and title. Year (2005/2006), publisher (Lawrence Erlbaum vs Psychology Press — Erlbaum was absorbed into Psychology Press/Taylor & Francis), and type (book/article) differ only as reissue/metadata variants of the single book. The archived member willats2006making shares the DOI. Same work."
+    },
+    {
+      "cid": "10.1111/j.1467-9205.1989.tb00265.x",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "DOI 10.1111/j.1467-9205.1989.tb00265.x verified via Crossref = 'A Lecture on Freedom of the Will', Ludwig Wittgenstein, journal Philosophical Investigations, vol 12 issue 2, 1989. Both members (survivor wittgenstein1986philosophical, archived wittgenstein1958philosophical) have field-identical entries with this same DOI, same title, author, year, publisher (Wiley). The 'philosophical' in the citekeys refers to the journal 'Philosophical Investigations', and the title field correctly reads 'A Lecture on Freedom of the Will'. The 'book' type is a shared minor mislabel of the same journal article. Same work."
+    }
+  ]
+}

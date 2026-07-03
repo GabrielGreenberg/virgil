@@ -1,0 +1,64 @@
+{
+ "verdicts": [
+  {
+   "id": "course in general linguistics",
+   "decision": "same",
+   "rationale": "All are editions/translations of Saussure's Course in General Linguistics (1916 orig; 1959 Baskin/Philosophical Library; Harris/Duckworth/Bloomsbury). Different editions, but only the survivor is indexed; all other members are indexed_state none/null, so per the editions rule they merge into the most-indexed."
+  },
+  {
+   "id": "the unity of perception",
+   "decision": "same",
+   "rationale": "Identical book (Schellenberg, The Unity of Perception, 2018, OUP). spi2018indd is an InDesign-source-file key carrying the same DOI/title/year/publisher. Both indexed but the same single work, so merge is correct."
+  },
+  {
+   "id": "10.1037/a0025827",
+   "decision": "same",
+   "rationale": "Same DOI, title, authors (Banziger/Mortillaro/Scherer 2012), pages. scherer1986facial is a mislabeled shadow key; banziger2012introducin is a duplicate import. Same work."
+  },
+  {
+   "id": "10.1038/nrn750",
+   "decision": "same",
+   "rationale": "Identical fields and DOI (Schlag & Schlag-Rey 2002). Schlag2001 is a Zotero-style key for the same article. Same work."
+  },
+  {
+   "id": "10.1007/s10988-013-9129-1",
+   "decision": "same",
+   "rationale": "All share DOI/title 'Iconic variables' (Schlenker et al.). schlenker2012iconic is an indexed preprint (2012) of the 2013 published deepIndexed survivor; the rest are shadow/duplicate keys. Preprint-vs-published plus duplicates all merge."
+  },
+  {
+   "id": "10.3765/sp.10.9",
+   "decision": "same",
+   "rationale": "Despite the 'i'/'ii' citekey suffixes, both records carry identical bib data: same title 'Super monsters I', same DOI 10.3765/sp.10.9. The genuine Super Monsters II has a different DOI (sp.11.5); this 'ii' key is a duplicate of Part I, not the companion paper. Neither is independently indexed. Same work."
+  },
+  {
+   "id": "10.1007/s10988-017-9225-8",
+   "decision": "same",
+   "rationale": "All share DOI/title 'Gesture projection and cosuppositions' (Schlenker 2018). Schlenker2018a is a Zotero key; schlenker2018projecti is an empty-fields shadow under the same DOI cluster; schlenker2018gesturea is a duplicate. Same work."
+  },
+  {
+   "id": "10.1111/phpe.12122",
+   "decision": "same",
+   "rationale": "All share DOI 10.1111/phpe.12122, title 'What is Super Semantics?', vol 32/1, pp 365-453 (Schlenker 2018, Philosophical Perspectives). Only the survivor is indexed; the rest are Zotero/year-variant/misc duplicate keys. Same work."
+  },
+  {
+   "id": "10.1007/s10988-024-09411-x",
+   "decision": "same",
+   "rationale": "All carry DOI/title 'Iconological Semantics' (Schlenker & Lamberton 2024, L&P 47/5). The sep-sign-language-semantics key is misleading but its bib fields match the survivor exactly (incollection recast of the same article). Schlenker2024 is a Zotero key. Same work."
+  },
+  {
+   "id": "10.1007/s10988-022-09374-x",
+   "decision": "same",
+   "rationale": "Same title 'Super pragmatics of (linguistic-)pictorial discourse', authors (Schloder & Altshuler 2023), vol 46, pp 693-746, DOI matches. schloderaltshuler2023super is a hand-key duplicate. Same work."
+  },
+  {
+   "id": "10.1146/annurev-vision-110323-110009",
+   "decision": "same",
+   "rationale": "Identical DOI, title, author, year, vol 11/1, pp 303-330 (Schloss 2025). Schloss2025 is a Zotero-style key. Same work."
+  },
+  {
+   "id": "10.1111/j.1468-0017.2007.00321.x",
+   "decision": "same",
+   "rationale": "Same DOI, title 'Object Persistence in Philosophy and Psychology' (Scholl 2007, Mind & Language 22/5, 563-591). Scholl2007 is a Zotero-style key. Same work."
+  }
+ ]
+}

@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "lewis1972david||lewis1975language",
+   "decision": "same",
+   "rationale": "Both are Lewis, 'Psychophysical and Theoretical Identifications': (a) the 1972 Australasian Journal of Philosophy article, (b) its 1975 reprint in the anthology 'Philosophical Aspects of the Mind-body Problem'. Same work, republished."
+  },
+  {
+   "id": "lewis1972psychophys||lewis1975language",
+   "decision": "same",
+   "rationale": "Same content as above: Lewis's 'Psychophysical and Theoretical Identifications' article (a) and its anthology reprint (b). Same work."
+  },
+  {
+   "id": "lewis1972psychophysical||lewis1975language",
+   "decision": "same",
+   "rationale": "Same content as above: Lewis's 'Psychophysical and Theoretical Identifications' article (a) and its anthology reprint (b). Same work."
+  },
+  {
+   "id": "lewis1973bcounterfactuals||lewis1973counterf",
+   "decision": "distinct",
+   "rationale": "(a) is the article 'Counterfactuals and comparative possibility' (J. Philosophical Logic 1973, doi 10.1007/bf00262950); (b) is the book 'Counterfactuals' (Blackwell 1973). Two different works published the same year."
+  },
+  {
+   "id": "lewis1973bcounterfactuals||lewis1973counterfactuals",
+   "decision": "distinct",
+   "rationale": "(a) is the article 'Counterfactuals and comparative possibility' (J. Philosophical Logic 1973); (b) is the book 'Counterfactuals' (Harvard UP 1973, isbn 9780631224952). Different works."
+  },
+  {
+   "id": "lewis1973counterf||lewis1973counterfactuals-jpl",
+   "decision": "distinct",
+   "rationale": "(a) is the book 'Counterfactuals' (Blackwell 1973); (b) is the article 'Counterfactuals and comparative possibility' (J. Philosophical Logic 1973, doi 10.1007/bf00262950). Different works."
+  },
+  {
+   "id": "lewis1973counterf||logic1973lewis",
+   "decision": "distinct",
+   "rationale": "(a) is the book 'Counterfactuals' (Blackwell 1973); (b) is the article 'Counterfactuals and comparative possibility' (J. Philosophical Logic 1973, doi 10.1007/bf00262950). Different works."
+  },
+  {
+   "id": "lewis1973counterfactuals||lewis1973counterfactuals-jpl",
+   "decision": "distinct",
+   "rationale": "(a) is the book 'Counterfactuals' (Harvard UP 1973); (b) is the article 'Counterfactuals and comparative possibility' (J. Philosophical Logic 1973, doi 10.1007/bf00262950). Different works."
+  },
+  {
+   "id": "lewis1973counterfactuals||logic1973lewis",
+   "decision": "distinct",
+   "rationale": "(a) is the book 'Counterfactuals' (Harvard UP 1973); (b) is the article 'Counterfactuals and comparative possibility' (J. Philosophical Logic 1973, doi 10.1007/bf00262950). Different works."
+  },
+  {
+   "id": "lewis1975probabilities||lewis1976probabilities",
+   "decision": "distinct",
+   "rationale": "(a) is Lewis's original article 'Probabilities of Conditionals and Conditional Probabilities' (Phil Review 85:3, p.297, doi 10.2307/2184045); (b) is the separately published 'Erratum' (Phil Review 85:4, p.561, doi 10.2307/2184279). Distinct publications with distinct DOIs."
+  },
+  {
+   "id": "lewis1976probabilit||lewis1976probabilities",
+   "decision": "distinct",
+   "rationale": "(a) is the original article 'Probabilities of Conditionals and Conditional Probabilities' (85:3, doi 10.2307/2184045); (b) is the separate 'Erratum' (85:4, doi 10.2307/2184279). Distinct publications."
+  },
+  {
+   "id": "lewis1976probabilities||lewis1976probability",
+   "decision": "distinct",
+   "rationale": "(a) is the 'Erratum' (Phil Review 85:4, doi 10.2307/2184279); (b) is the original article 'Probabilities of Conditionals and Conditional Probabilities' (85:3, doi 10.2307/2184045). Distinct publications with distinct DOIs."
+  },
+  {
+   "id": "lewis1986aphilosophical||lewis1986philosophical",
+   "decision": "same",
+   "rationale": "Both are Lewis, 'Philosophical Papers, Volume II' (Oxford UP, 1987). Same book; differing ISBNs are alternate printings/bindings of the same volume."
+  },
+  {
+   "id": "lewis1986philosophi||lewis1986philosophical",
+   "decision": "same",
+   "rationale": "Both are Lewis, 'Philosophical Papers, Volume II' (Oxford UP, 1987). Same book; differing ISBNs are alternate printings of the same volume."
+  },
+  {
+   "id": "li2008||li2010",
+   "decision": "distinct",
+   "rationale": "(a) Li & DiCarlo 2008, Science, 'Rapidly Alters Invariant Object Representation in Visual Cortex' (doi 10.1126/science.1160028); (b) Li & DiCarlo 2010, Neuron, 'Rapidly Reshapes Size-Invariant Object Representation in Inferior Temporal Cortex' (doi 10.1016/j.neuron.2010.08.029). Different papers, different journals/years/DOIs."
+  },
+  {
+   "id": "li2008unsupervised||li2010",
+   "decision": "distinct",
+   "rationale": "Same as above: 2008 Science paper (a) vs 2010 Neuron paper (b). Distinct works with distinct DOIs."
+  },
+  {
+   "id": "linsker1986abasic||linsker1986bbasic",
+   "decision": "distinct",
+   "rationale": "Linsker 1986 PNAS series: (a) 'emergence of spatial-opponent cells' (pp.7508-12, doi 10.1073/pnas.83.19.7508); (b) 'emergence of orientation-selective cells' (pp.8390-4, doi 10.1073/pnas.83.21.8390). Different installments of the series with distinct DOIs."
+  },
+  {
+   "id": "linsker1986abasic||linsker1986cbasic",
+   "decision": "distinct",
+   "rationale": "Linsker 1986 PNAS series: (a) 'spatial-opponent cells' (doi 10.1073/pnas.83.19.7508); (b) 'orientation-selective cells' (doi 10.1073/pnas.83.21.8390). Different installments, distinct DOIs."
+  },
+  {
+   "id": "logothetis1990function||schiller1990color",
+   "decision": "distinct",
+   "rationale": "(a) Schiller, Logothetis & Charles 1990, Nature, 'Functions of the colour-opponent and broad-band channels of the visual system' (doi 10.1038/343068a0); (b) Schiller & Logothetis 1990, Trends in Neurosciences, 'The color-opponent and broad-band channels of the primate visual system' (doi 10.1016/0166-2236(90)90117-s). Different papers, different journals/authors/DOIs."
+  },
+  {
+   "id": "lopes1996understanding||lopes1996understandingb",
+   "decision": "same",
+   "rationale": "Both are Lopes, 'Understanding Pictures' (Oxford/Clarendon, 1996). Entry (b) is a garbled OCR of a bibliography line whose title is 'Understanding Pictures (Oxford: Oxford University Press)'; the mangled 'journal' field is bleed-through from an adjacent 2000 entry, not a real journal. Same book."
+  }
+ ]
+}

@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.3115/992066.992116", "decision": "same", "rationale": "Both Hardt 1992 'VP ellipsis and contextual interpretation', shared DOI, identical title/author/venue."},
+    {"id": "freedom and reason", "decision": "same", "rationale": "Both Hare 1963 'Freedom and reason', identical author/year/publisher/ISBN."},
+    {"id": "thought", "decision": "same", "rationale": "Both Gilbert Harman 'Thought' 1974, identical publisher/ISBN."},
+    {"id": "10.2307/2025215", "decision": "same", "rationale": "Both 'The Roots of Reference' Harman/Quine/Goodman 1975, shared DOI, identical fields."},
+    {"id": "10.1080/10509207709391329", "decision": "same", "rationale": "Both Harman 1977 'Semiotics and the cinema: Metz and Wollen', shared DOI, identical fields (misleading citekey aside)."},
+    {"id": "10.1007/bf00126691", "decision": "same", "rationale": "Both Harman 1979 'If and modus ponens', shared DOI, identical fields (citekey 'harman1979semiotics' is mislabeled but fields match)."},
+    {"id": "change in view", "decision": "same", "rationale": "Both Gilbert Harman 'Change in View', same ISBN; only a 1986 vs 1988 printing-year difference."},
+    {"id": "categorical perception", "decision": "same", "rationale": "All four are Harnad 1987 'Categorical Perception', same author/year/publisher/ISBN; survivor is the opening chapter of the same volume, others the book itself — entry-type sloppiness, same work."},
+    {"id": "ifs conditionals belief decision chance and time", "decision": "same", "rationale": "Both the 1981 Harper/Stalnaker/Pearce 'Ifs' volume, matching title/year."},
+    {"id": "10.1016/s0003-3472(82)80071-7", "decision": "same", "rationale": "Both Harper 1982 'Competitive foraging in mallards', shared DOI, identical fields."},
+    {"id": "10.2307/427684", "decision": "same", "rationale": "Both Harris 'Children's Drawings as Measures of Intellectual Maturity', shared DOI, identical fields; notes cite different source entries but same work."},
+    {"id": "10.1007/s10988-010-9070-5", "decision": "same", "rationale": "All three Harris & Potts 2009 'Perspective-shifting with appositives and expressives', shared DOI, identical fields."},
+    {"id": "10.1016/s0896-6273(03)00095-3", "decision": "same", "rationale": "Both Hartley et al 2003 'The Well-Worn Route and the Path Less Traveled', shared DOI, identical fields."},
+    {"id": "10.1073/pnas.1515414112", "decision": "same", "rationale": "Both Harvey et al 2015 topographic representations paper, shared DOI, matching title/authors."},
+    {"id": "10.1016/j.tics.2007.05.001", "decision": "same", "rationale": "Both Hassabis & Maguire 2007 'Deconstructing episodic memory with construction', shared DOI, identical fields."},
+    {"id": "10.1098/rspb.1998.0303", "decision": "same", "rationale": "Both van Hateren & van der Schaaf 1998 'Independent component filters of natural images', shared DOI, identical fields."},
+    {"id": "10.5840/philtopics198112150", "decision": "same", "rationale": "All three Haugeland 'Analog and Analog'; two share the DOI, third is a reprint in an edited volume with the same title/author — same work."},
+    {"id": "10.7551/mitpress/4626.003.0001", "decision": "same", "rationale": "Both Haugeland 1997 'What Is Mind Design?', shared DOI, identical fields (citekey 'haugeland1981nature' mislabeled but fields match)."},
+    {"id": "10.1126/science.298.5598.1569", "decision": "same", "rationale": "All three Hauser/Chomsky/Fitch 2002 'The Faculty of Language', shared DOI, identical fields."},
+    {"id": "definiteness and indefiniteness", "decision": "same", "rationale": "Both Hawkins 1978 'Definiteness and indefiniteness', identical author/year/publisher/ISBN."},
+    {"id": "10.1093/acprof:oso/9780199275434.001.0001", "decision": "same", "rationale": "Both Katherine Hawley 'How Things Persist', same ISBN; only a 2002 vs 2004 edition-year difference."},
+    {"id": "10.1111/j.1933-1592.2005.tb00534.x", "decision": "same", "rationale": "Both Hawthorne 2005 'Chance and Counterfactuals', shared DOI, identical fields (one notes a reprint)."},
+    {"id": "10.1016/b978-0-08-042004-2.50028-9", "decision": "distinct", "rationale": "False merge: survivor is the 1993 book-chapter reprint (Elsevier volume, DOI 10.1016/b978-0-08-042004-2.50028-9) while member 'schapiro1991dissociati' is the original 1991 PNAS article (vol 88, pp 1621-1625, DIFFERENT DOI 10.1073/pnas.88.5.1621, and a longer author list including Carson, Herscovitch, Rapoport). Two separate publications with different DOIs, venues, years, and author lists — should not be merged."},
+    {"id": "10.1068/p200393", "decision": "same", "rationale": "Both Hayhoe/Lachter/Feldman 1991 'Integration of Form across Saccadic Eye Movements', shared DOI, identical fields."},
+    {"id": "10.1038/nn1445", "decision": "same", "rationale": "All three Haynes & Rees 2005 'Predicting the orientation of invisible stimuli', shared DOI, matching title/authors."}
+  ]
+}

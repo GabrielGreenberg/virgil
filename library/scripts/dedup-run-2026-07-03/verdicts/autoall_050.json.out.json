@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1007/978-94-010-2506-5_10", "decision": "same", "rationale": "Both are Montague's 'Proper Treatment of Quantification in Ordinary English'; 1974 member is the Formal Philosophy reprint of the 1973 original. Same work."},
+  {"id": "10.1515/9783111546216-007", "decision": "same", "rationale": "All three are Montague 'English as a formal language' — the 1975 Yale reprint plus two copies of the 1970 Italian original (which the reprint note points back to). Same work."},
+  {"id": "formal philosophy selected papers of richard montague", "decision": "same", "rationale": "Same Montague 'Formal Philosophy' book, same title/author/publisher; 1974 vs 1984 is just a reprint/printing year. Same work."},
+  {"id": "universal grammar", "decision": "same", "rationale": "Montague 'Universal Grammar' — 1974 Formal Philosophy reprint plus three copies of the 1970 Theoria article (same DOI 10.1111/j.1755-2567.1970.tb00434.x). Reprint of one original work."},
+  {"id": "10.1111/j.1468-0068.2007.00657.x", "decision": "same", "rationale": "Identical title, author, journal, volume/issue, pages and DOI. Same work."},
+  {"id": "10.1016/0021-9991(92)90172-u", "decision": "same", "rationale": "Identical title, authors, journal, volume/pages and DOI. Same work (citekey prefix differs only)."},
+  {"id": "10.1086/466189", "decision": "same", "rationale": "Identical title, author, journal, volume/pages and DOI. Same review. Same work."},
+  {"id": "10.1037/0096-1523.23.2.339", "decision": "same", "rationale": "Identical title, authors, journal, volume/pages and DOI. Same work."},
+  {"id": "foundations of the theory of signs", "decision": "same", "rationale": "Three copies of Morris 1938 'Foundations of the theory of signs', identical title/author/year/publisher/ISBN. Same work."},
+  {"id": "signs language and behavior", "decision": "same", "rationale": "Morris 'Signs, Language and Behavior', same title/author/publisher; 1946 vs 1955 is a reprint/printing year. Same work."},
+  {"id": "10.1371/journal.pone.0189813", "decision": "same", "rationale": "Identical title, authors, journal, volume/pages and DOI. Same work (article vs misc type only)."},
+  {"id": "10.1037/0278-7393.30.1.142", "decision": "same", "rationale": "Same Mou et al. 'Allocentric and egocentric updating of spatial memories', same journal/volume/pages; second entry lacks DOI but title+author+year+venue match. Same work."},
+  {"id": "10.1113/jphysiol.1978.sp012489", "decision": "same", "rationale": "Identical title, authors, journal, volume/pages and DOI. Same work."},
+  {"id": "10.1038/2151519a0", "decision": "same", "rationale": "Identical title, authors, journal, volume/pages and DOI. Same work."},
+  {"id": "10.1037/0096-1523.15.2.315", "decision": "same", "rationale": "Identical title, authors (Müller & Rabbitt), journal, volume/pages and DOI. Same work."},
+  {"id": "10.1016/j.cogpsych.2010.02.001", "decision": "same", "rationale": "Same Muentener & Carey 'Infants' causal representations of state change events', identical journal/volume/pages/DOI (citekey year label differs). Same work."},
+  {"id": "10.1007/bf00198477", "decision": "mixed", "rationale": "Survivor plus two members are the Part II neocortex paper (DOI 10.1007/bf00198477, vol 66, pp 241-251, note='II. cortico-cortical loops'). mumford1991computational is the distinct Part I paper (different DOI 10.1007/bf00202389, vol 65, pp 135-145) wrongly pulled in.", "distinct_members": ["mumford1991computational"]},
+  {"id": "in the blink of an eye", "decision": "same", "rationale": "Murch 'In the blink of an eye', same author/publisher/ISBN; 1995 vs 2001 is a reprint/edition year. Same work."},
+  {"id": "big book of concepts", "decision": "same", "rationale": "Murphy 'Big Book of Concepts', same author/year/publisher/ISBN; title spacing differs trivially. Same work."},
+  {"id": "10.1167/11.4.8", "decision": "same", "rationale": "Identical title, authors, journal, volume/pages and DOI. Same work."},
+  {"id": "the view from nowhere", "decision": "same", "rationale": "Nagel 'The View from Nowhere', identical author/year(1986)/publisher/ISBN. Same work."},
+  {"id": "10.1287/mnsc.41.3.524", "decision": "same", "rationale": "Both members carry identical real title 'Asymptotics of Likelihood Ratio Derivative Estimators...', same author/venue/pages/DOI. Consistent metadata; same work despite misleading 'visual' citekeys."},
+  {"id": "10.1016/0010-0285(77)90012-3", "decision": "same", "rationale": "Navon 'Forest before trees', identical title/author/journal/volume/pages and DOI. Same work."},
+  {"id": "10.1068/p120239", "decision": "same", "rationale": "Navon 'How Many Trees Does it Take to Make a Forest?', identical title/author/journal/volume/pages and DOI. Same work."},
+  {"id": "10.1080/14786443208647909", "decision": "same", "rationale": "Necker 1832 optical phaenomena paper, identical title/author/journal/volume/pages and DOI. Same work."}
+ ]
+}

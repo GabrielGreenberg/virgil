@@ -1,0 +1,52 @@
+{
+  "verdicts": [
+    {
+      "cid": "10.1111/phpe.12122",
+      "verdict": "confirmed_same",
+      "rationale": "All members share DOI 10.1111/phpe.12122, title 'What Is Super Semantics?', author Schlenker, year 2018, Philosophical Perspectives 32(1):365-453. Only archived member (schlenker2018super, depth=none) is field-identical to the survivor. Pure citekey/title-casing variants of one article.",
+      "offending": []
+    },
+    {
+      "cid": "10.1007/s10988-024-09411-x",
+      "verdict": "confirmed_same",
+      "rationale": "DOI 10.1007/s10988-024-09411-x verified as Schlenker & Lamberton, 'Iconological Semantics', Linguistics and Philosophy 47:779-838 (2024). The archived member sep-sign-language-semantics has a misleading citekey (suggests a SEP article) but its metadata (DOI, title, author, pages) matches the survivor exactly, and it is depth=none, so no deep-indexed folder is lost. Same work.",
+      "offending": []
+    },
+    {
+      "cid": "10.1515/9783484431003.1",
+      "verdict": "confirmed_same",
+      "rationale": "DOI 10.1515/9783484431003 resolves to Winfried Nöth's Handbuch/Handbook of Semiotics (De Gruyter/Niemeyer). Both members share this DOI and the title 'Handbook of Semiotics'. The archived member noth1995handbook (depth=indexed) has the CORRECT author (Nöth); the survivor sebeok2011handbook has the author wrong (Sebeok was series editor/reviewer, not author). Same book under a mis-attributed survivor. Merge is safe; survivor author field should be corrected to Nöth.",
+      "offending": []
+    },
+    {
+      "cid": "10.1126/science.171.3972.701",
+      "verdict": "confirmed_same",
+      "rationale": "All members share DOI 10.1126/science.171.3972.701, Shepard & Metzler, 'Mental Rotation of Three-Dimensional Objects', Science 171(3972):701-703 (1971). Archived member 1971-Shepard (depth=indexed) is field-identical. Same article.",
+      "offending": []
+    },
+    {
+      "cid": "the logical status of diagrams",
+      "verdict": "confirmed_same",
+      "rationale": "All members: 'The logical status of diagrams', Shin Sun-Joo, 1994, Cambridge University Press, ISBN 9780521461573. Archived member diagrams1994shin (depth=deepIndexed) shares title, author, year, and ISBN with the survivor. Same book.",
+      "offending": []
+    },
+    {
+      "cid": "writing the book of the world",
+      "verdict": "confirmed_same",
+      "rationale": "All members: 'Writing the book of the world', Theodore Sider, year 2011, ISBN 9780199697908. Archived member sider2011writing (depth=indexed) shares title, author, year, and ISBN. Survivor citekey says 2009 but its fields also say 2011 with the same ISBN. Same book.",
+      "offending": []
+    },
+    {
+      "cid": "logic for philosophy",
+      "verdict": "different_works",
+      "rationale": "Clustering is on the title string alone (no shared DOI/ISBN). The survivor sider2010logic is the 2010 Oxford University Press book (ISBN 9780199575589). The archived member sider2007logic is a 2007 UNPUBLISHED manuscript (type=unpublished, no publisher, no ISBN, year 2007) — the free lecture-notes precursor that Sider revised substantially before the 2010 OUP publication. Different year, different type, no ISBN match: a draft-vs-published-book relationship with substantively different content, and it is depth=indexed (a real folder would be archived). Flagging to avoid archiving on thin (title-only) evidence.",
+      "offending": ["sider2007logic"]
+    },
+    {
+      "cid": "pictorial concepts",
+      "verdict": "confirmed_same",
+      "rationale": "All members: 'Pictorial concepts', Göran Sonesson, 1989, Lund University Press, ISBN 9780862382056. Archived member Sonneson1989pictorial (depth=none) is a citekey typo variant ('Sonneson') with identical title, author, year, and ISBN. Same book.",
+      "offending": []
+    }
+  ]
+}

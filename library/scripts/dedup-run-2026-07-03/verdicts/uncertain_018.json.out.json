@@ -1,0 +1,104 @@
+{
+  "verdicts": [
+    {
+      "id": "prosser2012sources||prosserrecanati2012immunity",
+      "decision": "distinct",
+      "rationale": "A is a single chapter (\"Sources of immunity to error through misidentification\", pp. 158-179, own DOI) inside the book B (\"Immunity to Error Through Misidentification\"). A's booktitle equals B's title. Chapter vs whole edited volume — different bibliographic objects."
+    },
+    {
+      "id": "pylyshyn1988rules||pylyshyn1991a",
+      "decision": "same",
+      "rationale": "Identical title \"Rules and Representation(s): Chomsky and Representational Realism\", same author Pylyshyn. 1988 unpublished manuscript vs 1991 incollection (Basil Blackwell) — manuscript then published chapter, same work."
+    },
+    {
+      "id": "pylyshyn1988rules||pylyshyn1991rules",
+      "decision": "same",
+      "rationale": "Same title \"Rules and Representation(s): Chomsky and Representational Realism\", same author. 1988 unpublished vs 1991 incollection (Basil Blackwell) — preprint/published version of the same chapter."
+    },
+    {
+      "id": "ramsey1990philosophi||ramsey1990philosophical",
+      "decision": "same",
+      "rationale": "Both \"Philosophical Papers\", F. P. Ramsey, 1990, Cambridge University Press. B's title trails \"ed\" (editor note) but is the same edited collection. Same book."
+    },
+    {
+      "id": "rieser2009interacti||rieser2009interactive",
+      "decision": "same",
+      "rationale": "\"Interactive Gesture(s) in Dialogue: a PTT Model\", Rieser & Poesio, 2009, same venue (SIGDIAL 2009 / 10th Annual Meeting of SIGDIAL), identical pages 87-96. Same paper."
+    },
+    {
+      "id": "rothschild1970increasing||rothschild1972addendum",
+      "decision": "distinct",
+      "rationale": "A is \"Increasing risk: I. A definition\" (1970, JET vol 2). B is the separately published \"Addendum\" (1972, JET vol 5, p. 306, distinct DOI). The addendum is its own short publication, not the same work."
+    },
+    {
+      "id": "rumelhart1986mcclelland||rumelhartmcclelland1986parallel",
+      "decision": "same",
+      "rationale": "Both \"Parallel Distributed Processing\" Vol. 1, Rumelhart, MIT Press; years 1986/1987 (reprint dating). Same volume of the same work."
+    },
+    {
+      "id": "rumelhart1986parallel||rumelhartmcclelland1986parallel",
+      "decision": "unsure",
+      "rationale": "A explicitly spans volume \"1 and 2\" (the complete two-volume PDP set, full-set DOI 10.7551/mitpress/5236), whereas B is \"Vol. 1\" only (different ISBN, paperback). A full set vs a single constituent volume is a genuinely different bibliographic object; not confident enough to merge."
+    },
+    {
+      "id": "rumelhart1988parallel||rumelhartmcclelland1986parallel",
+      "decision": "same",
+      "rationale": "A is \"Parallel Distributed Processing\", Rumelhart & McClelland, 1986, with the canonical PDP DOI (10.7551/mitpress/5236) and no volume specified; B is the \"Vol. 1\" MIT Press edition. Both denote the PDP work — merge."
+    },
+    {
+      "id": "sainsbury2012seven||sainsburytye2012seven",
+      "decision": "same",
+      "rationale": "\"Seven Puzzles of Thought\", Sainsbury & Tye, Oxford University Press, 2012/2013. Same book (A adds the subtitle \"And How to Solve Them\")."
+    },
+    {
+      "id": "saussure1993troisi||saussure1996premier",
+      "decision": "distinct",
+      "rationale": "A is the Third Course of Lectures (Troisième cours, 1910-1911); B is the First Course (Premier cours, 1907). Different lecture courses in the Saussure series — distinct volumes."
+    },
+    {
+      "id": "saussure1996premier||saussure1997deuxi",
+      "decision": "distinct",
+      "rationale": "A is the First Course (Premier cours, 1907); B is the Second Course (Deuxième cours, 1908-1909). Different lecture courses — distinct volumes in the series."
+    },
+    {
+      "id": "schlenker2008local||schlenker2009local",
+      "decision": "unsure",
+      "rationale": "A is \"Local Contexts: a Precis\" (2008 unpublished), B is the full article \"Local Contexts\" (2009, Semantics & Pragmatics). A precis is often a distinct short published summary rather than the full paper's preprint; cannot confidently call these the same work."
+    },
+    {
+      "id": "schlenker2009local||schlenker2010c",
+      "decision": "distinct",
+      "rationale": "\"Local Contexts\" (2009, Semantics & Pragmatics) vs \"Local contexts and local meanings\" (2010, Philosophical Studies) — different titles, journals, years, DOIs. Separate papers."
+    },
+    {
+      "id": "schlenker2010a||schlenker2010c",
+      "decision": "distinct",
+      "rationale": "\"Presuppositions and Local Contexts\" (2010, Mind) vs \"Local contexts and local meanings\" (2010, Philosophical Studies) — different titles, journals, DOIs. Distinct papers."
+    },
+    {
+      "id": "schlenker2017a||schlenker2017supermonstersi",
+      "decision": "distinct",
+      "rationale": "A is \"Super monsters II\" (S&P 10.12, number 12); B's fields are \"Super monsters I\" (S&P 10.9, number 9). Part I vs Part II with distinct DOIs — different papers."
+    },
+    {
+      "id": "schlenker2017a||schlenker2017supermonstersii",
+      "decision": "distinct",
+      "rationale": "A is \"Super monsters II\" (S&P 10.12, number 12); despite the citekey, B's fields describe \"Super monsters I\" (S&P 10.9, number 9). By fields these are the two distinct parts — different works."
+    },
+    {
+      "id": "schlenker2017sign||schlenker2018visible",
+      "decision": "distinct",
+      "rationale": "\"Sign Language and the Foundations of Anaphora\" (2017, Annual Review of Linguistics) vs \"Visible Meaning: Sign language and the foundations of semantics\" (2018, Theoretical Linguistics) — different titles, journals, years, DOIs. Distinct papers."
+    },
+    {
+      "id": "scholl2001pii||scholl2002objects",
+      "decision": "same",
+      "rationale": "A \"Objects and attention: the state of the art\" (2001, Cognition special issue) and B \"Objects and attention\" (2002, MIT Press) are the journal special issue and its book reprint of the same collection by Scholl. Same work."
+    },
+    {
+      "id": "scholl2001visual||scholl2002objects",
+      "decision": "same",
+      "rationale": "A \"Objects and attention: the state of the art\" (2001, Cognition special issue) and B \"Objects and attention\" (2002, MIT Press book) are the same content — the Cognition special issue reprinted as an MIT Press volume. Same work."
+    }
+  ]
+}

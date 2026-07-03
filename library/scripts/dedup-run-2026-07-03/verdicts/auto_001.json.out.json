@@ -1,0 +1,154 @@
+{
+  "verdicts": [
+    {
+      "id": "10.2307/2025382",
+      "decision": "same",
+      "rationale": "Dennett 'Intentional Systems': 1971 J. Phil. article (with DOI) and its 1978 Brainstorms reprint (note: 'Originally published 1971/78'). Same intellectual work across original + reprint manifestations."
+    },
+    {
+      "id": "10.1111/j.1467-9280.1997.tb00442.x",
+      "decision": "same",
+      "rationale": "Identical title, authors, year, journal, volume/number/pages, and DOI. Pure citekey duplicate."
+    },
+    {
+      "id": "10.7551/mitpress/2927.001.0001",
+      "decision": "same",
+      "rationale": "Dretske 'Explaining Behavior', same author/title/publisher. Members differ only as 1988 hardcover (isbn 9780262040945) vs 1991 paperback (isbn 9780262540612) printings of one book."
+    },
+    {
+      "id": "10.1007/978-1-349-17338-9",
+      "decision": "same",
+      "rationale": "Identical Eco 'Semiotics and the Philosophy of Language' 1984, same DOI. Citekey duplicate."
+    },
+    {
+      "id": "the art of dramatic writing",
+      "decision": "same",
+      "rationale": "Egri 'The Art of Dramatic Writing', same author/title/publisher; 1946 vs 1960 are printings of one book."
+    },
+    {
+      "id": "10.1037//0033-295x.98.3.335",
+      "decision": "same",
+      "rationale": "Identical Enns & Rensink 1991 Psych Review paper, same DOI and all fields. Citekey duplicate."
+    },
+    {
+      "id": "10.1016/0028-3932(85)90049-1",
+      "decision": "same",
+      "rationale": "Identical Farah et al. 1985 Neuropsychologia paper, same DOI and fields; only citekey/type differ."
+    },
+    {
+      "id": "10.1016/s0001-6918(98)00054-7",
+      "decision": "same",
+      "rationale": "Three identical Feldman 1999 Acta Psychologica entries, same DOI and all fields."
+    },
+    {
+      "id": "10.3758/bf03197758",
+      "decision": "same",
+      "rationale": "Four identical Finke & Slayton 1988 Memory & Cognition entries, same DOI and fields (type field noise only)."
+    },
+    {
+      "id": "the psychology of language",
+      "decision": "same",
+      "rationale": "Identical Fodor et al. 1974 'The psychology of language', same author/year/publisher/isbn. Citekey spelling variant."
+    },
+    {
+      "id": "10.1111/1467-9329.00169",
+      "decision": "same",
+      "rationale": "Identical Fodor & Lepore 2001 Ratio paper, same DOI and fields. Citekey duplicate."
+    },
+    {
+      "id": "10.1007/978-3-642-27851-8_57-1",
+      "decision": "same",
+      "rationale": "Identical Franklin 'Infant Color Categories' 2013, same DOI. Only citekey/type differ."
+    },
+    {
+      "id": "10.1152/jn.1991.66.1.170",
+      "decision": "same",
+      "rationale": "Identical Tanaka et al. 1991 J. Neurophysiol. paper, same DOI and fields. Citekey duplicate."
+    },
+    {
+      "id": "the mind s new science",
+      "decision": "same",
+      "rationale": "Identical Gardner 'The Mind's New Science' 1987, same author/publisher/isbn. Citekey spelling variant."
+    },
+    {
+      "id": "10.1093/analys/23.6.121",
+      "decision": "same",
+      "rationale": "Identical Gettier 1963 Analysis paper, same DOI and fields. Citekey duplicate."
+    },
+    {
+      "id": "10.1007/bf00628112",
+      "decision": "same",
+      "rationale": "Gillon 'Towards a Common Semantics for English Count and Mass Nouns': 1992 Linguistics & Philosophy original and its 2004 reprint in the Semantics reader (own chapter DOI). Same paper across original + anthology reprint."
+    },
+    {
+      "id": "10.1002/tht3.43",
+      "decision": "same",
+      "rationale": "Identical Gluer 'Martin on the Semantics of Looks' 2012, same DOI and vol/num/pages. Only citekey/type differ."
+    },
+    {
+      "id": "the story of art",
+      "decision": "same",
+      "rationale": "Gombrich 'The story of art', same author/title/publisher; 1950 and 1989 are different editions of one book."
+    },
+    {
+      "id": "10.1126/science.1094492",
+      "decision": "same",
+      "rationale": "Three identical Gordon 2004 Science 'Numerical Cognition Without Words' entries, same DOI and fields."
+    },
+    {
+      "id": "indicative conditionals",
+      "decision": "same",
+      "rationale": "Grice 'Indicative conditionals': 1989 Studies in the Way of Words and the 1967 original (note: 'Reprinted in Paul Grice, 1989'). Same essay."
+    },
+    {
+      "id": "10.1080/09515089708573201",
+      "decision": "same",
+      "rationale": "Identical Grush 'The architecture of representation' 1997 Phil. Psych., same DOI and fields. Citekey duplicate."
+    },
+    {
+      "id": "10.1016/0022-5193(64)90038-4",
+      "decision": "same",
+      "rationale": "Identical Hamilton 1964 'genetical evolution of social behaviour I', same DOI and fields. Citekey duplicate."
+    },
+    {
+      "id": "10.1007/bf00126691",
+      "decision": "same",
+      "rationale": "Both are Harman 'If and modus ponens' 1979 Theory and Decision with identical fields and same DOI; the 'semiotics' citekey is misleading but the record is identical."
+    },
+    {
+      "id": "10.1093/acprof:oso/9780199275434.001.0001",
+      "decision": "same",
+      "rationale": "Hawley 'How Things Persist', same author/title/publisher, same isbn 9780199249138; 2002 vs 2004 are printings of one OUP book."
+    },
+    {
+      "id": "on the projection problem for presuppositions",
+      "decision": "same",
+      "rationale": "Heim 'On the Projection Problem for Presuppositions': WCCFL 1983 original plus its reprints in the Pragmatics reader (1990) and Formal Semantics reader (2002). All the same paper across manifestations."
+    },
+    {
+      "id": "on semantics",
+      "decision": "same",
+      "rationale": "Both Higginbotham 'On semantics' 1985 Linguistic Inquiry vol 16; one adds pages 547-593. Same article."
+    },
+    {
+      "id": "10.1016/j.anbehav.2006.06.009",
+      "decision": "same",
+      "rationale": "Same Hironaka et al. shield-bug paper, Animal Behaviour vol 73 pages 739-745; second member (extracted from Heinze 2018's bibliography, dated 2006 online vs 2007 print) matches exactly. Same work."
+    },
+    {
+      "id": "neural networks and physical systems with emergent collective computational abilities",
+      "decision": "same",
+      "rationale": "Hopfield 1982 PNAS vol 79 pages 2554-2558; second member adds DOI 10.1073/pnas.79.8.2554 and issue number. Same landmark paper."
+    },
+    {
+      "id": "10.1038/225041a0",
+      "decision": "same",
+      "rationale": "Identical Hubel & Wiesel 1970 Nature 'Stereoscopic Vision in Macaque Monkey', same DOI and fields. Citekey duplicate."
+    },
+    {
+      "id": "10.1207/s15516709cog2701_3",
+      "decision": "same",
+      "rationale": "Same Edelman & Intrator 2003 Cognitive Science paper, vol 27 pages 73-109; second member (no DOI, abbreviated journal) matches exactly. Same work."
+    }
+  ]
+}

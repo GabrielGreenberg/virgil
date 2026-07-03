@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "arts1990mimesis||makebelieve1990",
+   "decision": "same",
+   "rationale": "Both are Walton, 'Mimesis as Make-Believe', 1990, Harvard University Press. b truncates the subtitle; differing ISBNs are just hardback vs paperback of the same book."
+  },
+  {
+   "id": "arts1990mimesis||walton1990mimesis",
+   "decision": "same",
+   "rationale": "Both are Walton, 'Mimesis as Make-Believe', 1990, Harvard University Press; b truncates the subtitle. Same book."
+  },
+  {
+   "id": "arts1990mimesis||walton1990mimesisd",
+   "decision": "unsure",
+   "rationale": "b is a corrupted/merged entry: title 'Mimesis as Make-Believe (Cambridge, Mass' but journal/volume/pages point to Walton's 2002 JAAC paper 'Depiction, Perception, and Imagination' (vol 60, 27-40). It conflates the 1990 book with a distinct 2002 article, so it is not cleanly the same work."
+  },
+  {
+   "id": "arts1990mimesis||waltonkendall1990memesis",
+   "decision": "same",
+   "rationale": "b has 'Memesis' (typo for Mimesis) but identical subtitle 'On the Foundations of the Representational Arts', Walton, 1990, Harvard University Press. Same book."
+  },
+  {
+   "id": "asher1998bsemantics||asher2001semantics",
+   "decision": "distinct",
+   "rationale": "a is 'semantics and pragmatics of presupposition' (1998, Journal of Semantics, DOI 10.1093/jos/15.3.239); b is 'semantics and pragmatics of metaphor' (2001, Cambridge UP book). Different topics, venues, and years."
+  },
+  {
+   "id": "asher1998semantics||asher2001semantics",
+   "decision": "distinct",
+   "rationale": "a is on presupposition (1998 Journal of Semantics article); b is on metaphor (2001 Cambridge UP book). Different works."
+  },
+  {
+   "id": "asher2008commitmen||asher2008commitment",
+   "decision": "distinct",
+   "rationale": "a is 'Agreement, Disputes and Commitments in Dialogue' (2009 Journal of Semantics, vol 26, DOI 10.1093/jos/ffn013); b is 'Agreement and disputes in dialogue' (2008 SIGdial workshop, DOI 10.3115/1622064.1622070). Different titles, venues, years, and DOIs."
+  },
+  {
+   "id": "asher2008commitment||lascarides2009agreement",
+   "decision": "distinct",
+   "rationale": "a is the 2008 SIGdial workshop paper 'Agreement and disputes in dialogue' (DOI 10.3115/...); b is the 2009 Journal of Semantics article 'Agreement, Disputes and Commitments in Dialogue' (DOI 10.1093/jos/ffn013). Distinct venues and DOIs."
+  },
+  {
+   "id": "asher2008commitment||lascaridesstone2009a",
+   "decision": "distinct",
+   "rationale": "a is the 2008 SIGdial workshop paper; b is the 2009 Journal of Semantics article (DOI 10.1093/jos/ffn013). Different works with different venues and DOIs."
+  },
+  {
+   "id": "atebbai1998iranian||atebbai1999iranian",
+   "decision": "distinct",
+   "rationale": "Annual series entries: 'Iranian Films and the International Scene in 1997' (1998) vs 'Iranian Films in the International Scene in 1998' (1999). Different years covered, different articles."
+  },
+  {
+   "id": "baillargeon1998infants||wilcox1999object",
+   "decision": "distinct",
+   "rationale": "a is 'Object individuation in young infants' (1998, Developmental Science, Wilcox & Baillargeon, DOI 10.1111/1467-7687.00019); b is 'Object individuation: infants' use of shape, size, pattern, and color' (1999, Cognition, Wilcox, DOI 10.1016/s0010-0277(99)00035-9). Different papers, journals, and DOIs."
+  },
+  {
+   "id": "bal1985narratology||balmieke1985narratology",
+   "decision": "same",
+   "rationale": "Both are Bal, 'Narratology', 1985, University of Toronto Press. b appends the subtitle/translator info ('Introduction to the Theory of Narrative, van Boheemen'). Same book."
+  },
+  {
+   "id": "baltagmoss1998logic||baltagmosssolecki1998logic",
+   "decision": "same",
+   "rationale": "Both are Baltag, Moss & Solecki, TARK 98, pages 43-56, on the logic of public announcements/common knowledge/private suspicions. Title clauses are reordered but it is the same conference paper."
+  },
+  {
+   "id": "banvise1984shifting||barwise1983situations",
+   "decision": "distinct",
+   "rationale": "a is 'Shifting situations and shaken attitudes' (1985 Linguistics and Philosophy article, DOI 10.1007/bf00653379); b is the book 'Situations and Attitudes' (1983, MIT Press). Different works."
+  },
+  {
+   "id": "banvise1984shifting||barwiseperry1983situations",
+   "decision": "distinct",
+   "rationale": "a is the 1985 L&P article 'Shifting situations and shaken attitudes'; b is the 1983 MIT Press book 'Situations and Attitudes'. Different works."
+  },
+  {
+   "id": "banvise1984shifting||perry1983situations",
+   "decision": "distinct",
+   "rationale": "a is the 1985 L&P article 'Shifting situations and shaken attitudes'; b is the 1983 book 'Situations and Attitudes'. Different works."
+  },
+  {
+   "id": "bartlett1932rememberin||bartlett1932remembering",
+   "decision": "same",
+   "rationale": "Both are Bartlett, 'Remembering', 1932. a gives the full title 'Remembering; A Study in Experimental and Social Psychology'; b abbreviates it. Same classic book."
+  },
+  {
+   "id": "bateman2012multimodal||batemanschmidt2013multimodal",
+   "decision": "same",
+   "rationale": "Both are Bateman & Schmidt, 'Multimodal Film Analysis', Routledge/Taylor & Francis. a subtitles 'How Films Mean' and dates 2012; b dates 2013 (reprint). Same book."
+  },
+  {
+   "id": "baylis1993||baylis1994visual",
+   "decision": "distinct",
+   "rationale": "a is 'Visual attention and objects: Evidence for hierarchical coding of location' (1993, vol 19, Baylis & Driver, DOI ...19.3.451); b is 'Visual attention and objects: Two-object cost with equal convexity' (1994, vol 20, Baylis, DOI ...20.1.208). Shared series title but different subtitles, years, volumes, and DOIs."
+  },
+  {
+   "id": "baylis1993visual||baylis1994visual",
+   "decision": "distinct",
+   "rationale": "a is the 1993 'hierarchical coding of location' paper (vol 19); b is the 1994 'Two-object cost with equal convexity' paper (vol 20). Different papers in the same series with different DOIs."
+  }
+ ]
+}

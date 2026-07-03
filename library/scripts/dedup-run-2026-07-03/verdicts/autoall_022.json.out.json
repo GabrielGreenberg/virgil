@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.2307/432363", "decision": "same", "rationale": "All 3 members are 'Presentation and Representation', Feagin 1998, JAAC 56(3):234, shared DOI."},
+    {"id": "10.1016/j.visres.2005.05.012", "decision": "same", "rationale": "Both members 'Binding is a local problem for natural objects and scenes', VanRullen/Reddy/Fei-Fei 2005, Vision Research 45; citekeys differ but work identical."},
+    {"id": "10.1016/j.tics.2007.01.006", "decision": "same", "rationale": "Both 'The equality of quantity', Feigenson 2007, TiCS 11(5):185-187, shared DOI."},
+    {"id": "an introduction to probability theory and its applications vol", "decision": "same", "rationale": "Both Feller, 'An Introduction to Probability Theory and Its Applications' vol; years 1966/1968 differ (edition/printing) but same canonical work."},
+    {"id": "10.1111/0824-7935.00052", "decision": "same", "rationale": "Both 'Regularity-based Perceptual Grouping', Feldman 1997, Computational Intelligence 13(4), shared DOI."},
+    {"id": "10.1016/s0001-6918(98)00054-7", "decision": "same", "rationale": "All 3 'The role of objects in perceptual grouping', Feldman 1999, Acta Psychologica 102, shared DOI."},
+    {"id": "10.1016/s1364-6613(03)00111-6", "decision": "same", "rationale": "Both 'What is a visual object?', Feldman 2003, TiCS 7(6), shared DOI."},
+    {"id": "10.1016/j.cognition.2004.12.008", "decision": "same", "rationale": "All 3 'Individuation of visual objects over time', Feldman & Tremoulet 2006, Cognition 99, shared DOI."},
+    {"id": "10.1093/cercor/1.1.1", "decision": "same", "rationale": "Both 'Distributed Hierarchical Processing in the Primate Cerebral Cortex', Felleman & Van Essen 1991, shared DOI."},
+    {"id": "10.1523/jneurosci.15-11-07472.1995", "decision": "same", "rationale": "Both 'Attention and target selection for smooth pursuit eye movements', Ferrera & Lisberger 1995, shared DOI."},
+    {"id": "10.2307/2024879", "decision": "same", "rationale": "All 3 'Tarski's Theory of Truth', Field 1972, J. Philosophy 69(13):347, shared DOI (one citekey mislabeled 1971)."},
+    {"id": "10.1007/bf00160888", "decision": "same", "rationale": "Both 'Mental representation', Field 1978, Erkenntnis 13(1), shared DOI."},
+    {"id": "indices and identity", "decision": "same", "rationale": "Both 'Indices and identity', Fiengo 1994, MIT Press, same ISBN."},
+    {"id": "de lingua belief", "decision": "same", "rationale": "All 3 'De Lingua Belief', Fiengo 2006, MIT Press, same ISBN."},
+    {"id": "toward a descriptive framework for spatial deixis", "decision": "same", "rationale": "Both 'Toward a descriptive framework for spatial deixis', Fillmore 1982, incollection."},
+    {"id": "10.1016/0010-0285(79)90011-2", "decision": "same", "rationale": "Both 'The functional equivalence of mental images and errors of movement', Finke 1979, Cognitive Psychology 11, shared DOI."},
+    {"id": "10.1037/0096-1523.6.2.244", "decision": "same", "rationale": "All 3 'Emergent two-dimensional patterns in images rotated in depth', Pinker & Finke 1980, shared DOI."},
+    {"id": "10.1037//0278-7393.8.2.142", "decision": "same", "rationale": "Both 'Spontaneous imagery scanning in mental extrapolation', Finke & Pinker 1982, shared DOI (formatting variant)."},
+    {"id": "10.1037/0278-7393.9.3.398", "decision": "same", "rationale": "All 4 'Directional scanning of remembered visual patterns', Finke & Pinker 1983, shared DOI."},
+    {"id": "10.1207/s15516709cog1301_2", "decision": "same", "rationale": "All 4 'Reinterpreting Visual Patterns in Mental Imagery', Finke/Pinker/Farah 1989, Cognitive Science 13(1), shared DOI."},
+    {"id": "10.3758/bf03197758", "decision": "same", "rationale": "All 4 'Explorations of creative visual synthesis in mental imagery', Finke & Slayton 1988, Memory & Cognition 16(3), shared DOI."},
+    {"id": "10.1167/13.8.11", "decision": "same", "rationale": "Both 'Segmentation by depth does not always facilitate visual search', Finlayson et al. 2013, shared DOI."},
+    {"id": "10.3758/s13414-015-0924-3", "decision": "same", "rationale": "Both 'Visual search is influenced by 3D spatial layout', Finlayson & Grove 2015, shared DOI."},
+    {"id": "restrictions on quantifier domains", "decision": "same", "rationale": "Both 'Restrictions on quantifier domains', von Fintel phdthesis; 1984 year is a typo for the well-known 1994 UMass dissertation."},
+    {"id": "10.7551/mitpress/4056.003.0006", "decision": "same", "rationale": "Both 'Counterfactuals in a Dynamic Context', von Fintel, chapter in Ken Hale volume; year 2001/2002 differ but same MIT Press chapter."}
+  ]
+}

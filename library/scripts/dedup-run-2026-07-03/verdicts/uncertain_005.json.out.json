@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "chierchia1989anaphors||chierchia1989semantics",
+   "decision": "same",
+   "rationale": "Same paper 'Anaphora and Attitudes De Se', Chierchia 1989, pages 1-31/1-32; two collection/reprint venues (Language in Context / Semantics and Contextual Expression)."
+  },
+  {
+   "id": "chierchia1995adynamics||chierchia1995dynamics",
+   "decision": "same",
+   "rationale": "'Dynamics of Meaning' / 'The Dynamics of Meaning', Chierchia 1995, University of Chicago Press. Same book, article vs 'the' is trivial."
+  },
+  {
+   "id": "chipman1970second||shepard1970secondorder",
+   "decision": "same",
+   "rationale": "'Second-order isomorphism of internal representations: Shapes of states', Shepard & Chipman 1970, pages 1-17. Same paper; b's publisher field is garbled subtitle."
+  },
+  {
+   "id": "chomsky1969language||chomsky1969quine",
+   "decision": "same",
+   "rationale": "b's note gives full citation for Chomsky, 'Quine's Empirical Assumptions', in Words and Objections, 1969 — identical to a."
+  },
+  {
+   "id": "chomsky1986||chomsky1986language",
+   "decision": "distinct",
+   "rationale": "a = 'Knowledge of Language' 1986 Praeger; b = 'Language and Problems of Knowledge' 1988 MIT Press. Different books, different years/publishers."
+  },
+  {
+   "id": "chomsky1986||chomsky1988language",
+   "decision": "distinct",
+   "rationale": "a = 'Knowledge of Language' 1986 Praeger; b = 'Language and Problems of Knowledge' 1988 MIT Press. Different books."
+  },
+  {
+   "id": "chomsky1986a||chomsky1986language",
+   "decision": "distinct",
+   "rationale": "a = 'Knowledge of Language' 1986 Praeger; b = 'Language and Problems of Knowledge' 1988 MIT Press. Different books."
+  },
+  {
+   "id": "chomsky1986a||chomsky1988language",
+   "decision": "distinct",
+   "rationale": "a = 'Knowledge of Language' 1986 Praeger; b = 'Language and Problems of Knowledge' 1988 MIT Press. Different books."
+  },
+  {
+   "id": "chomsky1986knowledge||chomsky1986language",
+   "decision": "distinct",
+   "rationale": "a = 'Knowledge of Language' 1986 Praeger; b = 'Language and Problems of Knowledge' 1988 MIT Press. Different books."
+  },
+  {
+   "id": "chomsky1986knowledge||chomsky1988language",
+   "decision": "distinct",
+   "rationale": "a = 'Knowledge of Language' 1986 Praeger; b = 'Language and Problems of Knowledge' 1988 MIT Press. Different books."
+  },
+  {
+   "id": "churchland1979scientific||churchland1979scientifice",
+   "decision": "same",
+   "rationale": "'Scientific Realism and the Plasticity of Mind', Paul Churchland 1979, Cambridge UP. b just appends a section/chapter annotation to the title."
+  },
+  {
+   "id": "churchland1981eliminativ||churchland1981eliminative",
+   "decision": "same",
+   "rationale": "'Eliminative Materialism and (the) Propositional Attitudes', Churchland 1981, J Phil vol 78 no 2, p 67(-90). Same article; differing DOIs are JSTOR vs Philosophy Documentation Center registrations."
+  },
+  {
+   "id": "churchland1981eliminativ||churchland1981eliminativeb",
+   "decision": "same",
+   "rationale": "Same article, J Phil vol 78 no 2, 1981; differing DOIs are JSTOR vs PDC registrations."
+  },
+  {
+   "id": "churchland1981eliminative||churchland1981paul",
+   "decision": "same",
+   "rationale": "Same article, Churchland 1981, J Phil vol 78, pp 67-90; author order/name formatting differs only."
+  },
+  {
+   "id": "churchland1981eliminativeb||churchland1981paul",
+   "decision": "same",
+   "rationale": "Same article, Churchland 1981, J Phil vol 78, pp 67-90."
+  },
+  {
+   "id": "churchland1986neurophilo||churchland1986neurophilosophy",
+   "decision": "same",
+   "rationale": "'Neurophilosophy' with/without subtitle 'Toward a Unified Science of the Mind/Brain', Patricia Churchland 1986, MIT Press, identical ISBN 9780262031165."
+  },
+  {
+   "id": "clark1973children||clark1973whats",
+   "decision": "same",
+   "rationale": "'What's in a Word?', Eve V. Clark 1973, pages 65-110. a's title is the garbled full heading with embedded funding footnote."
+  },
+  {
+   "id": "collett2000how||heinze2018principles_ref8",
+   "decision": "same",
+   "rationale": "'How do insects use path integration for their navigation?', Collett & Collett 2000, Biol Cybernetics vol 83, pp 245-259. b is a reference extraction with journal abbreviation leaked into title."
+  },
+  {
+   "id": "conceptions1985chicago||salmon1984scientific",
+   "decision": "distinct",
+   "rationale": "a = 'Scientific Explanation: Three Basic Conceptions' (PSA Proceedings article) 1984; b = 'Scientific Explanation and the Causal Structure of the World' (Princeton book) 1984. Different works by Salmon."
+  },
+  {
+   "id": "condoravdi2001temporal||condoravdi2002temporal",
+   "decision": "same",
+   "rationale": "'Temporal Interpretation of Modals (: Modals for the present and modals for the past)', Condoravdi, published in CSLI's 'The Construction of Meaning'; 2001/2002 are the same paper's manuscript/publication dates."
+  }
+ ]
+}

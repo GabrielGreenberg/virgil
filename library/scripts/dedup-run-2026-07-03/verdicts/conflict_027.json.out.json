@@ -1,0 +1,64 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1093/bjaesthetics/27.3.213",
+   "decision": "same",
+   "rationale": "Both members identical title/author/year/journal/vol/issue/pages and same DOI. Two indexed members (deepIndexed + indexed) but a genuine duplicate import of one work."
+  },
+  {
+   "id": "10.1111/j.1467-9213.2006.460.x",
+   "decision": "same",
+   "rationale": "Identical title/author/year/journal/vol/pages and same DOI; Zotero-style key vs hand key."
+  },
+  {
+   "id": "pictorial experience and seeing",
+   "decision": "same",
+   "rationale": "Same title/author/year; loser adds full journal metadata and DOI for the same paper."
+  },
+  {
+   "id": "10.1057/9780230297531",
+   "decision": "same",
+   "rationale": "Identical book title/author/year/publisher and same DOI; Zotero vs hand key."
+  },
+  {
+   "id": "10.1007/s10988-017-9209-8",
+   "decision": "same",
+   "rationale": "Identical title/author/year/journal/vol/issue/pages and same DOI; Zotero vs hand key."
+  },
+  {
+   "id": "10.1038/nrn.2016.40",
+   "decision": "same",
+   "rationale": "Identical title/author/year/journal/vol/issue/pages and same DOI; Zotero vs hand key."
+  },
+  {
+   "id": "10.1016/j.tics.2013.12.004",
+   "decision": "same",
+   "rationale": "Identical title/author/year/journal/vol/issue/pages and same DOI; Zotero vs hand key."
+  },
+  {
+   "id": "the hippocampus as a cognitive map",
+   "decision": "same",
+   "rationale": "Identical book title/author/year/publisher and same ISBN; duplicate keys."
+  },
+  {
+   "id": "10.1002/hipo.450030307",
+   "decision": "same",
+   "rationale": "Byte-identical fields and same DOI; duplicate import under a truncated key."
+  },
+  {
+   "id": "10.1080/0020174x.2014.883748",
+   "decision": "same",
+   "rationale": "Same DOI and identical vol/issue/pages; the 2015 year is the online-vs-print discrepancy for the same Inquiry article, and onofri2015mental is an empty shadow key."
+  },
+  {
+   "id": "the modifiable areal unit problem",
+   "decision": "same",
+   "rationale": "Identical title/author/year(1983)/publisher/ISBN; the differing citekey years (1981 vs 1984) are just key labels for the same book."
+  },
+  {
+   "id": "10.5860/choice.186706",
+   "decision": "same",
+   "rationale": "Same book title/author/DOI (Orlandi, The Innocent Eye); year 2014 vs 2015 is a metadata variance for the same work, only one member indexed."
+  }
+ ]
+}

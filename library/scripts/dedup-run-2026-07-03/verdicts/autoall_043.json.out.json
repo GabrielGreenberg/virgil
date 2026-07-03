@@ -1,0 +1,130 @@
+{
+ "verdicts": [
+  {
+   "id": "10.2307/1420464",
+   "decision": "same",
+   "rationale": "Both entries: Leeuwenberg 1971 'A Perceptual Coding Language for Visual and Auditory Patterns', identical journal/vol/issue/pages and shared DOI."
+  },
+  {
+   "id": "10.1038/333452a0",
+   "decision": "same",
+   "rationale": "Both are Lehky & Sejnowski 1988 'Network model of shape-from-shading', Nature 333, identical fields and shared DOI (type differs article vs misc only)."
+  },
+  {
+   "id": "10.1162/089976699300016232",
+   "decision": "same",
+   "rationale": "Both are Lehky & Sejnowski 1999 'Seeing White', Neural Computation 11(6), identical fields and shared DOI; citekeys differ only by which author leads."
+  },
+  {
+   "id": "10.1016/s1364-6613(99)01332-7",
+   "decision": "same",
+   "rationale": "All three are Leopold & Logothetis 1999 'Multistable phenomena', Trends in Cognitive Sciences 3(7), identical fields and shared DOI."
+  },
+  {
+   "id": "10.1016/s0010-0277(87)80006-9",
+   "decision": "same",
+   "rationale": "All four are Leslie & Keeble 1987 'Do six-month-old infants perceive causality?', Cognition 25(3), identical fields and shared DOI."
+  },
+  {
+   "id": "10.1109/jrproc.1959.287207",
+   "decision": "same",
+   "rationale": "All four are Lettvin/Maturana/McCulloch/Pitts 'What the Frog's Eye Tells the Frog's Brain'; three share the 1959 Proc. IRE DOI, the fourth (lettvin1968frog) is the 1968 reprint of the same paper in a book collection — same underlying work."
+  },
+  {
+   "id": "10.1016/0010-0285(82)90005-6",
+   "decision": "same",
+   "rationale": "All three are Levelt & Kelter 1982 'Surface form and memory in question answering', Cognitive Psychology 14(1), identical fields and shared DOI."
+  },
+  {
+   "id": "10.1007/978-94-015-7668-0_7",
+   "decision": "same",
+   "rationale": "Both are Levelt 1982 'Linearization in Describing Spatial Networks', same booktitle/pages and shared DOI."
+  },
+  {
+   "id": "some perceptual limitations on talking about space",
+   "decision": "same",
+   "rationale": "Both are Levelt 1984 'Some perceptual limitations on talking about space', identical publisher/pages; matched on title+year+author."
+  },
+  {
+   "id": "speaking",
+   "decision": "same",
+   "rationale": "All three are Levelt 1989 'Speaking', MIT Press, identical ISBN."
+  },
+  {
+   "id": "10.1038/416090a",
+   "decision": "same",
+   "rationale": "Both are Lever et al. 2002 'Long-term plasticity in hippocampal place-cell representation', Nature 416, identical fields and shared DOI."
+  },
+  {
+   "id": "10.1007/bf00485649",
+   "decision": "same",
+   "rationale": "Both are Levi 1977 'Subjunctives, dispositions and chances', Synthese 34(4), identical fields and shared DOI."
+  },
+  {
+   "id": "10.3758/bf03208840",
+   "decision": "same",
+   "rationale": "Both are Simons & Levin 1998 'Failure to detect changes to people during a real-world interaction', Psychonomic Bulletin & Review 5(4), identical fields and shared DOI."
+  },
+  {
+   "id": "10.3167/proj.2009.030103",
+   "decision": "same",
+   "rationale": "Both are Levin & Wang 2009 'Spatial Representation in Cognitive Science and Film', Projections 3(1), identical fields and shared DOI."
+  },
+  {
+   "id": "10.1111/j.1468-0017.2009.01385.x",
+   "decision": "same",
+   "rationale": "Both are Levine 2010 'Demonstrative Thought', Mind & Language 25(2), identical fields and shared DOI."
+  },
+  {
+   "id": "pragmatics",
+   "decision": "same",
+   "rationale": "Both are Levinson 'Pragmatics', Cambridge UP, identical ISBN; citekey year differs (1983 vs 1984) but both entries record year 1983 and same ISBN — same book."
+  },
+  {
+   "id": "10.1075/pbcs.5.10lev",
+   "decision": "same",
+   "rationale": "Both are Levinson 1987 'Minimization and conversational inference', same series/pages and shared DOI."
+  },
+  {
+   "id": "10.1515/ling.1994.32.4-5.791",
+   "decision": "same",
+   "rationale": "All three are Levinson 1994 'Vision, shape, and linguistic description: Tzeltal...', Linguistics 32(4-5), identical fields and shared DOI."
+  },
+  {
+   "id": "10.1111/1540_6245.jaac56.3.0227",
+   "decision": "same",
+   "rationale": "All three are Levinson 1998 'Wollheim on Pictorial Representation', JAAC 56(3); levinson1998wollheima carries an alternate JSTOR DOI (10.2307/432362) for the same article but identical title/author/year/journal, so it is the same work."
+  },
+  {
+   "id": "presumptive meanings",
+   "decision": "same",
+   "rationale": "All three are Levinson 2000 'Presumptive Meanings', MIT Press, identical ISBN."
+  },
+  {
+   "id": "the elementary structures of kinship",
+   "decision": "same",
+   "rationale": "Both are Lévi-Strauss 'The Elementary Structures of Kinship'; one is the 1949 French original and one the 1969 English translation (Beacon Press) — same underlying work matched on title+author."
+  },
+  {
+   "id": "10.1111/nous.12074",
+   "decision": "same",
+   "rationale": "Both are Levy 2015 'Neither Fish nor Fowl: Implicit Attitudes as Patchy Endorsements', Noûs 49(4); shared DOI on survivor, second entry has identical title/author/year/vol/issue."
+  },
+  {
+   "id": "10.2307/2024524",
+   "decision": "same",
+   "rationale": "Both are Lewis 1966 'An Argument for the Identity Theory', J. Philosophy 63(1), identical fields and shared DOI."
+  },
+  {
+   "id": "10.2307/2214320",
+   "decision": "mixed",
+   "rationale": "Survivor lewis1970anselm is the 1970 original 'Anselm and Actuality' (Noûs, DOI 10.2307/2214320). The three 1983 members (lewis1983philosop, lewis1983postscript, lewis1983radical) carry a different DOI (10.1093/0195032047.003.0002) and are entries from Lewis's 1983 Philosophical Papers Vol. I; citekeys 'postscript' and 'radical' indicate distinct chapters onto which the 'Anselm and Actuality' title was mis-propagated. They are not the same work as the 1970 article (and the postscript/reprint distinction makes even the collection entries questionable), so they should not be merged into the survivor.",
+   "distinct_members": ["lewis1983philosop", "lewis1983postscript", "lewis1983radical"]
+  },
+  {
+   "id": "analog and digital",
+   "decision": "same",
+   "rationale": "Both are Lewis 1971 'Analog and Digital', Noûs 5, pages 321-327; matched on title+year+author, one entry adds the JSTOR DOI."
+  }
+ ]
+}

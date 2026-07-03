@@ -1,0 +1,64 @@
+{
+ "verdicts": [
+  {
+   "id": "10.18653/v1/w19-1806",
+   "decision": "same",
+   "rationale": "Both members share identical title, author, year (2019), journal, pages (58-67), and DOI. The loser's citekey 'alikhani2017caption' is misleading but the fields match exactly; a duplicate import of the same ACL workshop paper."
+  },
+  {
+   "id": "logical reasoning with diagrams",
+   "decision": "same",
+   "rationale": "All members are the 1996 OUP edited volume 'Logical Reasoning with Diagrams' (Allwein & Barwise), same DOI 10.1093/oso/9780195104271 / ISBN. Only the survivor is indexed; the barwise1996logical note references a chapter within the same book but the entry itself is the book."
+  },
+  {
+   "id": "10.1007/s10992-004-4065-8",
+   "decision": "same",
+   "rationale": "Identical DOI, title, author, journal, volume/number/pages. Hand key vs Zotero-style key ('Aloni2005') for the same article."
+  },
+  {
+   "id": "modeling brain function",
+   "decision": "same",
+   "rationale": "Identical book (Amit 1989, CUP, same ISBN). Duplicate import under a shortened citekey."
+  },
+  {
+   "id": "the cognitive structure of emotions",
+   "decision": "same",
+   "rationale": "Same book 'The Cognitive Structure of Emotions' (Ortony, Clore & Collins, 1988, CUP). Survivor is deepIndexed, loser indexed; merging into the deepIndexed survivor preserves the more-processed copy of the same work."
+  },
+  {
+   "id": "a materialist theory of the mind",
+   "decision": "same",
+   "rationale": "Same book, Armstrong 1968, Routledge/Routledge and Kegan Paul. Citekey typo variant ('aterialist' vs 'materialist') of one work."
+  },
+  {
+   "id": "singular thoughts and singular propositions",
+   "decision": "same",
+   "rationale": "Same article (Armstrong & Stanley 2011, Philosophical Studies 154(2):205-222). Hand key vs Zotero key 'Armstrong2011'; the loser adds journal/DOI metadata for the identical paper."
+  },
+  {
+   "id": "logics of conversation",
+   "decision": "same",
+   "rationale": "All members are the book 'Logics of Conversation' (Asher & Lascarides, CUP, same ISBN 9780521659512). Year 2003 vs 2004 is a hardback/paperback printing difference of the same book, not distinct works."
+  },
+  {
+   "id": "10.1093/jos/ffl013",
+   "decision": "same",
+   "rationale": "Identical DOI, title, journal, volume/number/pages. Hand key vs Zotero key 'Asher2007' for the same article."
+  },
+  {
+   "id": "10.2307/2960077",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Epiphenomenal Qualia', author Jackson, year 1982, journal/volume/pages. The survivor citekey is a mis-derived key but the fields match exactly."
+  },
+  {
+   "id": "10.1093/bjaesthetics/10.2.119",
+   "decision": "same",
+   "rationale": "All three members are Bach's 'Part of What a Picture Is' in the British Journal of Aesthetics. The bach1971part entry's year 1971/vol 11 is a citation error; the canonical record (BJA 10(2):119-137, 1970, DOI 10.1093/bjaesthetics/10.2.119) is the same paper."
+  },
+  {
+   "id": "10.1080/0020174x.2014.883752",
+   "decision": "same",
+   "rationale": "Same DOI, title, author, journal, volume 58 number 4, pages 353-367. Year 2014 vs 2015 is online-first vs print; hand key vs Zotero key 'Ball2015'."
+  }
+ ]
+}

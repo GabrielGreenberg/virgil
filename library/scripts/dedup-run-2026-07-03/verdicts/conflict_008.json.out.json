@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1016/s0165-1684(98)00172-8",
+      "decision": "same",
+      "rationale": "cowleynoyearhigh and cowleynoyearadaptive have identical title, author, year, journal, volume, number, pages, and DOI. Duplicate imports under different hand keys."
+    },
+    {
+      "id": "10.4324/9780203426319",
+      "decision": "same",
+      "rationale": "crane2003 and crane2003mechanical are identical books (Crane, The Mechanical Mind, 2003, Routledge, same DOI). Hand-key duplicate."
+    },
+    {
+      "id": "10.1111/j.1467-9213.2008.608.x",
+      "decision": "same",
+      "rationale": "crane2009is and Crane2009 are the same article (Is Perception a Propositional Attitude?, Phil Quarterly 59:236, same DOI). Zotero-style key vs hand key; only survivor is indexed."
+    },
+    {
+      "id": "10.1111/phib.12028",
+      "decision": "same",
+      "rationale": "cumming2013creatures (published, Analytic Philosophy 2013) and cumming2010creatures (2010 manuscript) share title 'Creatures of Darkness' and author. Manuscript-to-published pair of the same work; merge preserves the deep-indexed folder."
+    },
+    {
+      "id": "10.1093/acprof:oso/9780199669592.003.0009",
+      "decision": "same",
+      "rationale": "All three 'Discourse Content' by Cumming are versions of the same work: cumming2014discourse is the published Metasemantics chapter (DOI), cumming2009discourse and cumming2013discourse (note 'MS, UCLA', same DOI/pages) are earlier draft/manuscript states of it."
+    },
+    {
+      "id": "showing seeing in film",
+      "decision": "same",
+      "rationale": "cumming2021showing (stub) and Cumming2020 (published Ergo article, DOI) share identical title, all four authors, and year 2021. Stub vs recovered published record of the same paper."
+    },
+    {
+      "id": "the attentional foundations of coherence",
+      "decision": "same",
+      "rationale": "cumming2024attentional (stub manuscript) and Cumming2024 (unpublished, note 'Manuscript, February 2024') share title, author, year, and both are manuscripts. Same work."
+    },
+    {
+      "id": "without miracles",
+      "decision": "same",
+      "rationale": "cziko1995 and cziko1995without are identical books (Cziko, Without Miracles, MIT Press, same ISBN). Hand-key duplicate."
+    },
+    {
+      "id": "inquiries into truth and interpretation",
+      "decision": "same",
+      "rationale": "davidson1984inquiries and davidson1984donald are identical books (Davidson, Inquiries into Truth and Interpretation, Clarendon 1984, same ISBN). Hand-key duplicate."
+    },
+    {
+      "id": "10.1007/s10988-015-9180-1",
+      "decision": "same",
+      "rationale": "All three 'Quotation, demonstration, and iconicity' by Kathryn Davidson: davidson2015quotation (published, DOI) and Davidson2015 (published duplicate) plus davidson2014quotation (2014 preprint manuscript). Preprint + published + duplicate of the same work."
+    },
+    {
+      "id": "10.1016/j.pragma.2007.05.006",
+      "decision": "same",
+      "rationale": "davis2007how and Davis2007 are the same article (How normative is implicature, J. Pragmatics 39:10, same DOI). Hand key vs Zotero-style key; only survivor is indexed."
+    },
+    {
+      "id": "10.2307/329984",
+      "decision": "same",
+      "rationale": "deacon1997symbolica and deacon1997symbolicb have identical title, authors (Unger reviewing Deacon), journal, volume, number, page 437, and DOI. Despite the a/b suffix these are byte-identical duplicate imports, not companion papers; neither is indexed."
+    }
+  ]
+}

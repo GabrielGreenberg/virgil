@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.3758/bf03202727", "decision": "same", "rationale": "Both 'Very short-term conceptual memory', Potter 1993, Memory & Cognition 21(2):156-161, identical DOI."},
+  {"id": "10.1037/0278-7393.24.1.68", "decision": "same", "rationale": "Both 'Word selection in reading sentences', Potter/Stiefbold/Moryadas 1998, identical fields and DOI."},
+  {"id": "10.3389/fpsyg.2012.00032", "decision": "same", "rationale": "Both 'Recognition and Memory for Briefly Presented Scenes', Potter 2012, identical DOI and fields."},
+  {"id": "10.3765/salt.v14i0.2917", "decision": "same", "rationale": "Both 'Japanese Honorifics as Emotive Definite Descriptions', Potts & Kawahara 2004, SALT 14, same DOI."},
+  {"id": "the logic of conventional implicatures", "decision": "same", "rationale": "Both 'The Logic of Conventional Implicatures', Potts 2005, Oxford UP; publisher just abbreviated differently."},
+  {"id": "10.2307/1912743", "decision": "same", "rationale": "Both Pratt 'Risk(-)Aversion in the Small and in the Large', Econometrica; the 1964 member is the original of the DOI-bearing entry, same work despite year metadata differences."},
+  {"id": "10.1007/3-540-57207-4_7", "decision": "same", "rationale": "Both 'Map semantics', Ian Pratt 1993, LNCS, same DOI; member just adds volume 716."},
+  {"id": "10.1207/s15327647jcd0502_2", "decision": "same", "rationale": "Both 'Do Both Pictures and Words Function as Symbols...', Preissler & Carey 2004, identical DOI and fields."},
+  {"id": "narration in the fiction film", "decision": "same", "rationale": "All three 'Narration in the Fiction Film', Bordwell 1986, identical publisher/ISBN; only citekeys differ."},
+  {"id": "thinking and experience", "decision": "same", "rationale": "Both 'Thinking and Experience', H. H. Price; different editions (1962 Harvard / 1969 Hutchinson 2nd) of the same work."},
+  {"id": "optimality theory constraint interaction in generative grammar", "decision": "same", "rationale": "Both 'Optimality Theory: Constraint Interaction in Generative Grammar' 1993; survivor omits Smolensky but it is the same canonical Prince & Smolensky work (book vs ROA techreport)."},
+  {"id": "furnishing the mind", "decision": "same", "rationale": "Both 'Furnishing the Mind', Jesse Prinz 2004, MIT Press, identical ISBN."},
+  {"id": "10.1002/9780470751466.ch20", "decision": "same", "rationale": "Both 'The Intermediate Level Theory of Consciousness', Prinz 2007, same DOI and fields."},
+  {"id": "10.3758/bf03206147", "decision": "same", "rationale": "Both 'Principles of feature integration in visual perception', Prinzmetal 1981, identical DOI and fields."},
+  {"id": "10.1006/ccog.1997.0313", "decision": "same", "rationale": "Both 'The Phenomenology of Attention', Prinzmetal et al 1997, identical author list, DOI, and fields."},
+  {"id": "10.1016/b978-012301160-2/50009-5", "decision": "same", "rationale": "Both 'The Internalization of Perceptual Processing Constraints', Proffitt & Kaiser 1998, identical DOI and fields."},
+  {"id": "10.1111/j.1467-9264.2015.00392.x", "decision": "same", "rationale": "Both 'XII—Why Are Indexicals Essential?', Prosser 2015, identical DOI and fields."},
+  {"id": "10.1037/0278-7393.15.2.211", "decision": "same", "rationale": "Both 'Subjective hierarchies in spatial memory', McNamara/Hardy/Hirtle 1989, same DOI."},
+  {"id": "10.1016/0010-0277(94)90048-5", "decision": "same", "rationale": "Both 'Conversation, co-ordination and convention', Garrod & Doherty 1994, identical DOI and fields."},
+  {"id": "10.2307/1209527", "decision": "same", "rationale": "All four are Pudovkin's 'Film Technique and Film Acting', various editions/reprints (1949-1970) of the same work."},
+  {"id": "the generative lexicon", "decision": "mixed", "rationale": "Survivor pustejovsky1991generative is the 1991 Computational Linguistics journal ARTICLE 'The generative lexicon'; the two book members (1995/1998 MIT Press) are the later, distinct book of the same title, not the article.", "distinct_members": ["pustejovsky1995generative", "pustejovsky1998generative"]},
+  {"id": "10.2307/3326774", "decision": "same", "rationale": "Both 'Synonymity, and the Analysis of Belief Sentences', Putnam 1954, Analysis, same DOI."},
+  {"id": "10.2307/jj.6380610.6", "decision": "same", "rationale": "Both 'Psychological Predicates', Putnam 1967, Art Mind and Religion, identical DOI and fields."},
+  {"id": "is semantics possible", "decision": "same", "rationale": "Both 'Is Semantics Possible?', Putnam; 1970 original and 1975 reprint of the same essay."},
+  {"id": "10.1016/0010-0277(72)90033-9", "decision": "same", "rationale": "Both 'Reductionism and the nature of psychology', Putnam 1973, Cognition 2(1):131-146, same DOI."}
+ ]
+}

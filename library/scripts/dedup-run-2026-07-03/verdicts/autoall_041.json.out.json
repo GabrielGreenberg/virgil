@@ -1,0 +1,133 @@
+{
+ "verdicts": [
+  {
+   "id": "stage level and individual level predicates",
+   "decision": "mixed",
+   "distinct_members": ["kratzer1988stage"],
+   "rationale": "Same title, but kratzer1988stage is the 1988 Tübingen Genericity conference proceedings version, a distinct publication from the 1995/1996 University of Chicago Press versions (The Generic Book, pp. 125-237). The 1995 and 1996 Chicago Press entries are the same book; the 1988 proceedings is a different work clustered only by title."
+  },
+  {
+   "id": "10.1515/9783110126969.7.651",
+   "decision": "mixed",
+   "distinct_members": ["kratzer1986conditionals"],
+   "rationale": "kratzer1991conditionals and kratzer1991aconditionals share the DOI and are the 1991 Semantik handbook article. kratzer1986conditionals is Kratzer's 1986 Chicago Linguistics Society 'Conditionals' — a different, earlier paper with no DOI, clustered by title only."
+  },
+  {
+   "id": "10.1093/cercor/bhq042",
+   "decision": "same",
+   "rationale": "All three entries have identical title, authors, journal, volume/pages, and share the same DOI."
+  },
+  {
+   "id": "10.1016/j.neuron.2008.10.043",
+   "decision": "same",
+   "rationale": "Both entries have identical title, authors, and DOI; one is typed misc but describes the same Neuron article."
+  },
+  {
+   "id": "10.1016/j.tics.2013.06.007",
+   "decision": "same",
+   "rationale": "Both entries are identical (citekey differs only by a spelling variant of Kriegeskorte); same title, authors, DOI."
+  },
+  {
+   "id": "10.1515/9783110877335-005",
+   "decision": "same",
+   "rationale": "Both entries share the DOI and have identical title, author, pages; the odd citekey 'polarity' is just a mislabeled duplicate of the Krifka 1989 nominal reference chapter."
+  },
+  {
+   "id": "10.1023/a:1017903702063",
+   "decision": "same",
+   "rationale": "Three identical entries (title, author, journal, volume/pages, DOI) — duplicate citekeys of Krifka 2001 'Quantifying into Question Acts'."
+  },
+  {
+   "id": "10.1111/j.1475-4975.1977.tb00045.x",
+   "decision": "same",
+   "rationale": "kripke1977speakers and kripke1977speaker share the DOI. kripke1979speakers is the 1979 reprint (Contemporary Perspectives in the Philosophy of Language) of the same Kripke article — same title/author, a reprint of the identical work."
+  },
+  {
+   "id": "10.1007/978-1-4020-4104-4_20",
+   "decision": "same",
+   "rationale": "Both entries are identical 'A Puzzle about Belief' with the same DOI, title, author, pages."
+  },
+  {
+   "id": "wittgenstein on rules and private language",
+   "decision": "same",
+   "rationale": "Both entries identical (same title, author, publisher, ISBN); duplicate citekeys of Kripke 1982."
+  },
+  {
+   "id": "10.1080/00048408712342731",
+   "decision": "same",
+   "rationale": "Both entries identical (title, author, journal, volume/pages, DOI) — duplicate of Kroon 1987 'Causal descriptivism'."
+  },
+  {
+   "id": "10.1007/bf02289565",
+   "decision": "same",
+   "rationale": "Both entries identical (title, author, journal, volume/pages, DOI) — duplicate of Kruskal 1964."
+  },
+  {
+   "id": "multidimensional scaling",
+   "decision": "same",
+   "rationale": "Both entries identical (title, authors Kruskal and Wish, publisher, ISBN); duplicate citekeys of the 1978 book."
+  },
+  {
+   "id": "10.1093/019929075x.003.0011",
+   "decision": "same",
+   "rationale": "Three entries all 'Perceiving Pictures' (Kulvicki, On Images) sharing the DOI; one carries an extra note but is the same chapter."
+  },
+  {
+   "id": "10.1007/s13164-014-0218-z",
+   "decision": "same",
+   "rationale": "Both entries identical (title, author, journal, volume/pages, DOI) — duplicate of Kulvicki 2015."
+  },
+  {
+   "id": "10.1023/a:1005625125110",
+   "decision": "same",
+   "rationale": "Both entries identical (title, authors Kyburg and Morreau, journal, volume/pages, DOI)."
+  },
+  {
+   "id": "10.1046/j.1460-9568.1998.00040.x",
+   "decision": "same",
+   "rationale": "Both entries identical (title, authors, journal, volume/pages, DOI); citekey year 1989 is stale but both agree on the actual 1998 publication."
+  },
+  {
+   "id": "10.3765/salt.v4i0.2463",
+   "decision": "mixed",
+   "distinct_members": ["ladusaw2000thetic"],
+   "rationale": "ladusaw1994thetic is the 1994 SALT 4 paper (DOI salt.v4i0.2463). ladusaw2000thetic is a distinct 2000 publication in 'Negation and Polarity' (Oxford) with its own different DOI 10.1093/oso/9780198238744.003.0008 — a separate venue/year, clustered by title only."
+  },
+  {
+   "id": "10.1017/cbo9781139171434.009",
+   "decision": "same",
+   "rationale": "Both entries are Lakatos 1970 'Falsification and the Methodology of Scientific Research Programmes' in Criticism and the Growth of Knowledge; one lacks the DOI but is the same chapter."
+  },
+  {
+   "id": "10.1007/bf00413602",
+   "decision": "mixed",
+   "distinct_members": ["lakoff1971agenerative", "lakoff1972linguistics"],
+   "rationale": "lakoff1970linguistics is the Synthese 1970 journal article (DOI bf00413602). lakoff1971agenerative and lakoff1972linguistics are the 'Semantics of Natural Language' book-chapter version (pp. 545-665), a distinct publication with its own DOI 10.1007/978-94-010-2557-7_19 — different venue, clustered only by title/author."
+  },
+  {
+   "id": "women fire and dangerous things",
+   "decision": "same",
+   "rationale": "Both entries identical (title, author, publisher, ISBN); duplicate citekeys of Lakoff 1987."
+  },
+  {
+   "id": "philosophy in the flesh",
+   "decision": "same",
+   "rationale": "Both entries identical (title, author, publisher, ISBN); duplicate citekeys of Lakoff & Johnson 1999."
+  },
+  {
+   "id": "10.3765/bls.v16i0.1730",
+   "decision": "same",
+   "rationale": "Both entries identical (title, author, journal, volume/pages, DOI) — duplicate of Lambrecht 1990 'Mad Magazine Sentences'."
+  },
+  {
+   "id": "10.1016/s1364-6613(02)00013-x",
+   "decision": "same",
+   "rationale": "Both entries identical (title, author, journal, volume/pages, DOI) — duplicate of Lamme 2003."
+  },
+  {
+   "id": "10.2307/2185303",
+   "decision": "same",
+   "rationale": "Both entries identical (title, author, journal, volume/pages, DOI) — duplicate of Lance 1991."
+  }
+ ]
+}

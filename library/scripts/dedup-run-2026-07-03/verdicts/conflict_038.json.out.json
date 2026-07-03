@@ -1,0 +1,65 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1112/plms/s2-42.1.230",
+   "decision": "same",
+   "rationale": "Same Turing 'On Computable Numbers' paper, same DOI, PLMS s2-42, pages 230-265. 1936 vs 1937 is the read-vs-published date; loser not indexed."
+  },
+  {
+   "id": "10.1023/a:1024117423963",
+   "decision": "same",
+   "rationale": "Identical title/author/year/journal/vol/num and shared DOI; loser merely adds pages. Same work."
+  },
+  {
+   "id": "10.1007/978-94-011-3524-5_14",
+   "decision": "mixed",
+   "distinct_members": ["tye1988representation"],
+   "rationale": "Survivor is a 1991 Springer book chapter (DOI ...3524-5_14, pp.309-330); loser is a 1988 Southern Journal of Philosophy article (different DOI 10.1111/j.2041-6962.1988.tb00471.x, pp.163-183, Spindel Conference). Different venue, year, DOI, pages = distinct publications. Loser not indexed."
+  },
+  {
+   "id": "visual routines",
+   "decision": "same",
+   "rationale": "Survivor is the 1983 manuscript of 'Visual Routines'; loser is the 1984 Cognition publication of the same work. Preprint/manuscript vs published edition of the same paper."
+  },
+  {
+   "id": "high level vision",
+   "decision": "same",
+   "rationale": "All three are Ullman 'High-level vision' 1996 MIT Press; ISBN 0262210134 is the ISBN-10 form of 9780262210133. Same book."
+  },
+  {
+   "id": "10.1111/b.9781405120197.2007.00057.x",
+   "decision": "same",
+   "rationale": "Same 'Blackwell Companion to Consciousness' 2007, shared DOI and pages; only publisher label differs. Same work."
+  },
+  {
+   "id": "10.1093/jos/ffh022",
+   "decision": "same",
+   "rationale": "Fields identical, shared DOI. Zotero-style key vs hand key of the same article."
+  },
+  {
+   "id": "non literal communication and practical coherence",
+   "decision": "same",
+   "rationale": "Identical manuscript (title/author/year/note); duplicate import under a Zotero-style key. Same work."
+  },
+  {
+   "id": "10.1111/j.1468-0114.2009.01347.x",
+   "decision": "same",
+   "rationale": "Same Voltolini article, shared DOI; only author-name formatting and page dash differ. Same work."
+  },
+  {
+   "id": "mimesis as make believe",
+   "decision": "same",
+   "rationale": "All three are Walton 'Mimesis as Make-Believe' Harvard UP. makebelieve1990 shares the survivor's ISBN; walton1993mimesis is a later paperback reprint (different ISBN) but not independently indexed (indexed_state none), so editions merge into the indexed survivor."
+  },
+  {
+   "id": "10.1016/s1364-6613(02)01961-7",
+   "decision": "same",
+   "rationale": "All three share the same DOI and Wang & Spelke title/journal/year; variants differ only in pages and name punctuation. Same article."
+  },
+  {
+   "id": "10.1016/j.conb.2019.11.005",
+   "decision": "same",
+   "rationale": "Identical Wang/Chen/Knierim article, shared DOI; only author-name punctuation differs. Same work."
+  }
+ ]
+}

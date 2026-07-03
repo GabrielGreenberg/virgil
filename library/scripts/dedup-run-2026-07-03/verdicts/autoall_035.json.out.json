@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "skepticism and the veil of perception", "decision": "same", "rationale": "Both Huemer, Skepticism and the Veil of Perception, 2001, Rowman & Littlefield."},
+    {"id": "a treatise of human nature", "decision": "same", "rationale": "Both Hume, A treatise of human nature, 1739, same ISBN; second has garbled publisher field but is the same work."},
+    {"id": "10.1016/0010-0285(83)90008-7", "decision": "same", "rationale": "Identical DOI, title, author, journal, volume, pages."},
+    {"id": "10.1037//0096-1523.14.2.203", "decision": "same", "rationale": "Identical DOI, title, authors, volume, pages."},
+    {"id": "10.1037/h0041403", "decision": "same", "rationale": "Identical DOI, title, authors, journal, volume, pages (Hurvich & Jameson opponent-process)."},
+    {"id": "10.1086/519477", "decision": "same", "rationale": "Identical DOI, title, author, journal, volume, pages (Huttegger)."},
+    {"id": "10.1007/s11229-009-9477-0", "decision": "same", "rationale": "Same DOI, title, four authors, 2010 Synthese vol 172; citekey year differs but same work."},
+    {"id": "10.1017/s1358246112000276", "decision": "same", "rationale": "Same DOI, title Depiction, Hyman, year 2012, same volume/pages; only citekey differs."},
+    {"id": "theorizing the moving image", "decision": "same", "rationale": "Both Noël Carroll, Theorizing the moving image, 1996, CUP, same ISBN."},
+    {"id": "10.1037/0033-295x.98.3.430", "decision": "same", "rationale": "Same title/author/journal/volume/pages; DOI differs only by extra slash normalization."},
+    {"id": "10.1207/s15516709cog2701_3", "decision": "same", "rationale": "Same DOI, title, Edelman & Intrator, 2003 Cognitive Science, same pages."},
+    {"id": "10.1037/0278-7393.6.1.1", "decision": "same", "rationale": "Same DOI, title, Intraub, 1980, same volume/pages."},
+    {"id": "10.1037//0278-7393.24.1.186", "decision": "same", "rationale": "Identical DOI, title, three authors, 1998, same volume/pages."},
+    {"id": "10.1007/bf00627775", "decision": "same", "rationale": "Same DOI, title, Kratzer, 1989 Linguistics and Philosophy, same volume/pages."},
+    {"id": "10.1016/0010-0285(91)90015-g", "decision": "same", "rationale": "Same DOI, title, Irwin, 1991, same volume/pages."},
+    {"id": "10.1080/00048402.2012.728233", "decision": "same", "rationale": "Same DOI, title, Isaac, Objective Similarity and Mental Representation, same pages; author-initial typo only."},
+    {"id": "10.1093/jos/ffn003", "decision": "same", "rationale": "Same DOI, title Conditional Questions, Isaacs & Rawlins, 2008, same volume/pages."},
+    {"id": "10.1515/thli.1974.1.1-3.233", "decision": "same", "rationale": "Same DOI, title, Isard, 1974, same volume; pages differ only in trailing-number formatting."},
+    {"id": "what is information", "decision": "same", "rationale": "Both Israel & Perry, What Is Information?, 1990, same booktitle and pages."},
+    {"id": "10.1152/jn.1995.73.1.218", "decision": "same", "rationale": "Same DOI, title, four authors, 1995, same volume/pages."},
+    {"id": "10.1109/34.730558", "decision": "same", "rationale": "Same DOI, title, Itti/Koch/Niebur, 1998, same volume/pages; only citekey differs."},
+    {"id": "10.3765/salt.v0i0.2795", "decision": "same", "rationale": "Same title (The Present Perfect as an Epistemic Modal), Izvorski, same page; SALT paper reissued, DOI and year differ across the two SALT volume records but same work."},
+    {"id": "free adjunct free relatives", "decision": "same", "rationale": "Both Izvorski, Free Adjunct Free Relatives, Cascadilla Press, same pages 232-245; year differs by proceedings publication."},
+    {"id": "toward an explanatory semantic representation", "decision": "same", "rationale": "Both Jackendoff, Toward an explanatory semantic representation, 1976 Linguistic Inquiry vol 7, same pages."},
+    {"id": "semantics and cognition", "decision": "same", "rationale": "All five identical: Jackendoff, Semantics and cognition, 1983, MIT Press, same ISBN."}
+  ]
+}

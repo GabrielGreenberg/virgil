@@ -1,0 +1,65 @@
+{
+  "verdicts": [
+    {
+      "id": "10.4324/9781003615644",
+      "decision": "same",
+      "rationale": "Both members are the same 3rd edition of Chandler, 'Semiotics: The Basics' (edition 3rd/Third), same author, same DOI. Survivor labeled 2025 with a note that the PDF is the 2017 3rd edition; loser labeled 2017. Same edition, same work despite two deepIndexed folders."
+    },
+    {
+      "id": "10.1007/s44204-025-00307-6",
+      "decision": "same",
+      "rationale": "Identical fields and DOI (10.1007/s44204-025-00307-6). Loser 'Cheng2025' is a Zotero-style shadow key, indexed_state none. Clear duplicate."
+    },
+    {
+      "id": "10.1111/phc3.12811",
+      "decision": "same",
+      "rationale": "Identical fields and DOI (10.1111/phc3.12811). Loser 'Cherry2022' is a Zotero-style duplicate, indexed_state none."
+    },
+    {
+      "id": "10.1146/annurev.neuro.27.070203.144226",
+      "decision": "same",
+      "rationale": "Identical fields and DOI, differing only in title capitalization. Loser 'Chklovskii2004' is a Zotero-style duplicate, indexed_state none."
+    },
+    {
+      "id": "syntactic structures",
+      "decision": "mixed",
+      "rationale": "Survivor chomsky1957syntactic is the original 1957 Mouton edition; chomsky2002syntactic is the 2002 Mouton de Gruyter reissue (distinct edition with new front matter). Both are independently deepIndexed, so per the editions rule they must be kept separate to avoid losing real indexed work.",
+      "distinct_members": ["chomsky2002syntactic"]
+    },
+    {
+      "id": "matter and consciousness",
+      "decision": "same",
+      "rationale": "Members are different editions of Churchland's 'Matter and Consciousness' (survivor 2013 Third ed; losers 1984 original, 1988 revised x2). Only the survivor is deepIndexed; all three losers are indexed_state none/null. Per the editions rule, merge into the most-indexed member since fewer than two members are independently indexed."
+    },
+    {
+      "id": "10.2307/414729",
+      "decision": "same",
+      "rationale": "Identical fields, volume/number/pages, and DOI (10.2307/414729). Loser 'america1957quotations' is a mangled shadow citekey but the same article; both deepIndexed, same DOI, genuine duplicate."
+    },
+    {
+      "id": "a theory of sentience",
+      "decision": "same",
+      "rationale": "Identical book (Clark, 'A Theory of Sentience', 2000, OUP), same ISBN modulo format. Loser 'clark2001' is a duplicate hand key, indexed_state none."
+    },
+    {
+      "id": "10.1080/0951508042000304171",
+      "decision": "same",
+      "rationale": "Identical fields and DOI (10.1080/0951508042000304171). Loser 'Clark2004' is a Zotero-style duplicate, indexed_state none."
+    },
+    {
+      "id": "10.1037/rev0000026",
+      "decision": "same",
+      "rationale": "Identical fields and DOI (10.1037/rev0000026). Loser 'Clark2016' is a Zotero-style duplicate, indexed_state none."
+    },
+    {
+      "id": "10.1093/pq/pqab054",
+      "decision": "same",
+      "rationale": "All three members share the same DOI (10.1093/pq/pqab054), title, volume 72, and pages 552-577 for Clarke, 'Mapping the Visual Icon'. They differ only in online (2021) vs print (2022) year labeling. Only the survivor is deepIndexed; the others are indexed_state none. Single article, merge."
+    },
+    {
+      "id": "10.1017/psa.2023.123",
+      "decision": "same",
+      "rationale": "Same DOI (10.1017/psa.2023.123), title, volume 91, number 3, pages 682-701 for Coelho Mollo & Vernazzani. Loser 'Mollo2023' differs only in year label (2024 vs 2023) and is a Zotero-style shadow key, indexed_state none."
+    }
+  ]
+}

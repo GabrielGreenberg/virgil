@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "goodman1954fact||goodman1955fact",
+   "decision": "same",
+   "rationale": "Both are Goodman's 'Fact, Fiction, and Forecast', 1954; differ only in publisher edition (Athlone Press vs Bobbs-Merrill). Same work."
+  },
+  {
+   "id": "goodman1968||goodman1968languages",
+   "decision": "same",
+   "rationale": "Both are Goodman's 'Languages of Art', 1968. Same work (subtitle vs no subtitle)."
+  },
+  {
+   "id": "goodman1968||goodman1969languages",
+   "decision": "same",
+   "rationale": "Goodman 'Languages of Art', 1968 vs 1969 (Oxford edition). Same work, adjacent-year edition."
+  },
+  {
+   "id": "goodman1968iiiiiiiii||goodman1968languages",
+   "decision": "same",
+   "rationale": "Both Goodman 'Languages of Art', 1968, Bobbs-Merrill. Same work."
+  },
+  {
+   "id": "goodman1968iiiiiiiii||goodman1969languages",
+   "decision": "same",
+   "rationale": "Goodman 'Languages of Art', 1968 vs 1969 (Oxford). Same work, adjacent-year edition."
+  },
+  {
+   "id": "goodman1988elgin||goodmanelgin1988reconceptions",
+   "decision": "same",
+   "rationale": "Both are Goodman & Elgin 'Reconceptions in Philosophy and Other Arts and Sciences', 1988, Routledge/Kegan Paul. Same work."
+  },
+  {
+   "id": "graziano1994representa||graziano1995representation",
+   "decision": "same",
+   "rationale": "Same Graziano & Gross chapter 'The Representation of Extrapersonal Space...', same pages 1021-34, MIT Press (The Cognitive Neurosciences). Year off by one; same work."
+  },
+  {
+   "id": "green2017||green2017what",
+   "decision": "same",
+   "rationale": "Both 'What is an object file?', 2017, British Journal for the Philosophy of Science. Same work (Green & Quilty-Dunn)."
+  },
+  {
+   "id": "groenendijk1989dynamic||groenendijkstokhof1990dynamic",
+   "decision": "same",
+   "rationale": "Groenendijk & Stokhof 'Dynamic Montague Grammar': 1989 ITLI 'first sketch' working paper vs 1990 published Proceedings version. Same work, preprint/published."
+  },
+  {
+   "id": "groenendijk1996coreference||groenendijk1997coreference",
+   "decision": "distinct",
+   "rationale": "'Coreference and modality' (1996, Blackwell handbook chapter) vs 'Coreference and modality in multi-speaker discourse' (1997, I.M.S). Different titles and venues; separate works."
+  },
+  {
+   "id": "groenendijk1997coreference||groenendijkstokhofveltman1996coreference",
+   "decision": "distinct",
+   "rationale": "'Coreference and modality in multi-speaker discourse' (1997, I.M.S) vs 'Coreference and Modality' (1996, Handbook of Contemporary Semantic Theory, Blackwell, pp.179-214). Different titles and venues; distinct works."
+  },
+  {
+   "id": "groenendijk2008inquisitive||groenendijk2009inquisiti",
+   "decision": "distinct",
+   "rationale": "'Inquisitive Semantics and Dialogue Pragmatics' (2008, unpublished) vs 'Inquisitive Semantics: Two Possibilities for Disjunction' (2009, Springer proceedings, DOI present). Different titles and works."
+  },
+  {
+   "id": "guclu2015deep||güçlü2015deep",
+   "decision": "same",
+   "rationale": "Same paper 'Deep Neural Networks Reveal a Gradient...' Guclu & van Gerven, 2015, J. Neurosci. ASCII vs diacritic citekey variants; same work."
+  },
+  {
+   "id": "hamilton1964genetical||hamilton1964geneticalii",
+   "decision": "distinct",
+   "rationale": "Part I (pp.1-16, DOI ...90038-4) vs Part II (pp.17-52, DOI ...90039-6) of 'The genetical evolution of social behaviour'. Series entries; distinct works."
+  },
+  {
+   "id": "hamilton1964geneticali||hamilton1964geneticalii",
+   "decision": "distinct",
+   "rationale": "Part I (pp.1-16, DOI ...90038-4) vs Part II (pp.17-52, DOI ...90039-6). Different papers in the series; distinct."
+  },
+  {
+   "id": "hartmann1948comments||hartmann1950comments",
+   "decision": "distinct",
+   "rationale": "'Comments on the Psychoanalytic Theory of Instinctual Drives' (1948, Psychoanalytic Quarterly, distinct DOI) vs 'Comments on the Psychoanalytic Theory of the Ego' (1950, Psychoanalytic Study of the Child, distinct DOI). Different papers."
+  },
+  {
+   "id": "haynes2005apredicting||haynes2005bpredicting",
+   "decision": "distinct",
+   "rationale": "'Predicting the orientation of invisible stimuli...' (Nat. Neurosci) vs 'Predicting the stream of consciousness...' (Curr. Biol). Different titles and journals; distinct works (disambiguated a/b)."
+  },
+  {
+   "id": "haynes2005bpredicting||haynes2005predicting",
+   "decision": "distinct",
+   "rationale": "'Predicting the stream of consciousness...' (Curr. Biol) vs 'Predicting the orientation of invisible stimuli...' (Nature Neuroscience, DOI 10.1038/nn1445). Different works."
+  },
+  {
+   "id": "haynes2005bpredicting||rees2005predicting",
+   "decision": "distinct",
+   "rationale": "'Predicting the stream of consciousness...' (Curr. Biol) vs 'Predicting the orientation of invisible stimuli...' (Nature Neuroscience). Different papers despite shared authors."
+  },
+  {
+   "id": "he1996attentional||he1997attentional",
+   "decision": "distinct",
+   "rationale": "'Attentional resolution and the locus of visual awareness' (Nature, 1996) vs 'Attentional resolution' (Trends in Cognitive Sciences, 1997). Different titles, journals, DOIs; distinct works."
+  }
+ ]
+}

@@ -1,0 +1,65 @@
+{
+  "verdicts": [
+    {
+      "id": "the honey bee",
+      "decision": "distinct",
+      "distinct_members": ["gould1995honey"],
+      "rationale": "gouldgould1988honey is the 1988 1st edition (Scientific American Library, single author James L. Gould); gould1995honey is the 1995 2nd edition (W. H. Freeman, two authors Gould & Gould). Genuinely different editions with different publisher, year, and authorship. Neither is indexed, so no real work is lost, but they are substantively different publications and should not be collapsed into one merged entry."
+    },
+    {
+      "id": "10.5840/philtopics201644220",
+      "decision": "same",
+      "rationale": "Green2016 is a Zotero-style key with identical title, DOI, journal, volume/number/pages as the deepIndexed survivor green2016representationalism. Same work."
+    },
+    {
+      "id": "10.1111/phc3.12472",
+      "decision": "same",
+      "rationale": "GreenSchellenberg2018 has identical title, authors, DOI, journal, and volume/number as the deepIndexed survivor green2018spatial. Zotero-style duplicate of the same work."
+    },
+    {
+      "id": "10.1086/696376",
+      "decision": "same",
+      "rationale": "Green2018 is field-identical to the deepIndexed survivor green2018what (same title, author, DOI, journal, volume/number/pages). Same work."
+    },
+    {
+      "id": "10.1111/nous.12207",
+      "decision": "same",
+      "rationale": "Green2019a is field-identical to the deepIndexed survivor green2019perception (same title, DOI, journal, volume/number/pages). Same work."
+    },
+    {
+      "id": "10.1111/phpr.12521",
+      "decision": "same",
+      "rationale": "Green2019b and green2018theory both carry the same DOI 10.1111/phpr.12521, title 'A Theory of Perceptual Objects', author, journal, volume/number/pages as the deepIndexed survivor green2019theory. green2018theory is a legacy year-shadow key. All the same work."
+    },
+    {
+      "id": "10.1007/s11229-019-02351-1",
+      "decision": "same",
+      "rationale": "Green2021a is field-identical to the deepIndexed survivor green2021binding (same title, DOI, journal, volume/number/pages). Same work."
+    },
+    {
+      "id": "10.1093/bjps/axx055",
+      "decision": "same",
+      "rationale": "All members share DOI 10.1093/bjps/axx055 (or are clearly the same 'What Is an Object File?' by Green & Quilty-Dunn). green2016what is deepIndexed but is a legacy year-shadow (online-first vs 2021 print) of the identical paper. gottlieb2014neuronal and green2017what have misleading citekeys but their actual bib fields are this same object-file paper with the matching DOI/title/authors. green2021object, greenquiltydunn2017object, Green2021b, quiltydunn2021perceptual all match. Same work throughout."
+    },
+    {
+      "id": "10.1002/9781394259847.ch26",
+      "decision": "same",
+      "rationale": "green2023perception and Green2023 both carry the same DOI 10.1002/9781394259847.ch26, title (Perception-Cognition Border), booktitle, and pages 469-493 as the deepIndexed survivor green2023perceptioncognition. Same chapter, same 2nd edition. Same work."
+    },
+    {
+      "id": "10.1215/00318108-1963716",
+      "decision": "same",
+      "rationale": "Greenberg2013 and greenberg2013pictorial are field-identical to the deepIndexed survivor greenberg2013beyond (same title 'Beyond Resemblance', DOI, journal, volume/number/pages). Same work."
+    },
+    {
+      "id": "10.3998/ergo.12405314.0005.033",
+      "decision": "same",
+      "rationale": "All members share DOI 10.3998/ergo.12405314.0005.033, title 'Content and Target in Pictorial Representation', author Greenberg, journal Ergo, volume 5. greenberg2019content is deepIndexed but its fields say year 2018 and match exactly (citekey year off by one); it is the same work as the deepIndexed survivor greenberg2018content. Greenberg2018 and greenberg2018ergo also match. Same work."
+    },
+    {
+      "id": "10.1007/s10988-020-09313-8",
+      "decision": "same",
+      "rationale": "Greenberg2021b is field-identical to the deepIndexed survivor greenberg2021counterfactuals (same title 'Counterfactuals and modality', DOI, journal Linguistics and Philosophy, volume/number/pages). Same work."
+    }
+  ]
+}

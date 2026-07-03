@@ -1,0 +1,52 @@
+{
+  "verdicts": [
+    {
+      "cid": "the primacy of metaphysics",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both members are the Peacocke book 'The Primacy of Metaphysics' (OUP). Loser carries DOI 10.1093/oso/9780198835578.001.0001 + ISBN 978-0-19-883557-8, which Crossref resolves to exactly this book by Christopher Peacocke, OUP 2019. Survivor citekey says 2018 but its fields say 2019; the '2018' is only a citekey label. Same book under variant citekeys."
+    },
+    {
+      "cid": "10.16995/glossa.8455",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three members share DOI 10.16995/glossa.8455, title 'THROW', authors Francis/Grosz/Patel-Grosz, Glossa vol 8 issue 1, 2023. Crossref confirms this DOI is the Francis-Grosz-Patel-Grosz THROW article. Identical metadata; the odd '-Patel-Grosz' citekey is just a malformed key. Same work."
+    },
+    {
+      "cid": "10.1007/bf00344251",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three share DOI 10.1007/bf00344251, which Crossref resolves to Fukushima's 1980 Neocognitron paper (Biological Cybernetics vol 36 no 4 pp 193-202, 1980). All member fields carry year 1980, same title/journal/volume/pages. The 'fukushima1962neocognitron' citekey contains a spurious '1962' but its actual fields (year 1980, same DOI) match; it is a mislabeled key, not a different work. Same work."
+    },
+    {
+      "cid": "insect navigation brains as symbol processing organs",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three are the Gallistel incollection chapter 'Insect Navigation: Brains as Symbol-Processing Organs' in 'An Invitation to Cognitive Science, Vol. 4', MIT Press, 1998. Same title (survivor has a stray space/hyphen artifact), same author (C. Gallistel / Gallistel, C. R.), same booktitle, publisher, year, and pages 1-51. Same chapter under variant citekeys."
+    },
+    {
+      "cid": "10.1111/mila.12443",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All four share DOI 10.1111/mila.12443, title 'Notions of arbitrariness', Mind & Language vol 38 no 4 pp 1120-1137, 2023. Crossref confirms this DOI has four authors (Gasparri, Filippi, Wild, Glock). Survivor gasparri2023notions lists only 2 authors (Gasparri, Filippi) but its DOI, title, journal, volume, issue, and pages all match the same single article; its author list is merely truncated. Not a different work. Same work."
+    },
+    {
+      "cid": "10.1007/s13164-014-0210-7",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All five share DOI 10.1007/s13164-014-0210-7, title 'Introduction: Varieties of Iconicity', Giardino & Greenberg, Review of Philosophy and Psychology vol 6 no 1 pp 1-25. Crossref confirms published online Nov 2014, print Mar 2015, which fully explains the 2014 vs 2015 year variants across members. Same article (one member is typed 'misc' but with identical journal DOI metadata). Same work."
+    },
+    {
+      "cid": "10.1215/00318108-2009-002",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three share DOI 10.1215/00318108-2009-002, title 'On Truth-Conditions for If (but Not Quite Only If)', Gillies, The Philosophical Review vol 118 no 3 pp 325-349, 2009. The 'gillies2008truthconditions' citekey contains a spurious '2008' but its fields say 2009 and the DOI matches; mislabeled key, not a different work. Same article under variant citekeys."
+    },
+    {
+      "cid": "10.1017/s0140525x15001247",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All five share DOI 10.1017/s0140525x15001247, title 'Gesture, sign, and language: The coming of age of sign language and gesture studies', Goldin-Meadow & Brentari, Behavioral and Brain Sciences vol 40. Crossref confirms published online Oct 2015, print 2017, which fully explains the 2015 vs 2017 year variants; the 'e46' page in one member is the BBS article id for the same piece. Same target article under variant citekeys. (The cluster does mix in the printed target and would-be commentary keys, but every member here carries the article's own DOI and identical title/volume, so all denote the one BBS target article.)"
+    }
+  ]
+}

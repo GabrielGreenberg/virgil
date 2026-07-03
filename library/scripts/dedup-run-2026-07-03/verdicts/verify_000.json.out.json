@@ -1,0 +1,52 @@
+{
+  "verdicts": [
+    {
+      "cid": "applying discourse semantics and pragmatics to co reference in picture sequences",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three (2012 inproceedings, 2013 article, 2020 unpublished) share the identical title and author (Abusch). This is the Sinn und Bedeutung 17 paper; SuB 17 was held in 2012 and published in the proceedings, with a later manuscript version circulated. The year variants reflect conference-vs-proceedings-vs-manuscript dates of one and the same paper."
+    },
+    {
+      "cid": "temporal succession and aspectual type in visual narrative",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both entries are the same festschrift chapter: 'Temporal Succession and Aspectual Type in Visual Narrative' by Abusch, in The Art and Craft of Semantics: A Festschrift for Irene Heim, MITWPL vol 1 (no. 70), pp. 9-29. Both carry year 2014 and identical pages; the odd citekey 'abusch2002temporal' is merely a stale key. Verified via semanticsarchive and MITWPL catalog."
+    },
+    {
+      "cid": "10.1002/9781118788516.sem003",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three entries share the identical DOI 10.1002/9781118788516.sem003, same title ('Possible-Worlds Semantics for Pictures'), same author (Abusch), same book (Wiley Blackwell Companion to Semantics), same publisher and pages. Year 2020 vs 2021 is online-first vs formal publication date of one chapter."
+    },
+    {
+      "cid": "arrows are the verbs of diagrams",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "The two entries have byte-identical bibliographic fields: same title, authors (Alikhani & Stone), year 2018, booktitle (COLING 27th proceedings), publisher, and pages 3552-3563. Clearly the same paper."
+    },
+    {
+      "cid": "10.18653/v1/w19-1806",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both entries share the identical DOI 10.18653/v1/w19-1806, same title ('Caption as a Coherence Relation'), same authors (Alikhani & Stone), same year 2019, same booktitle (Second Workshop on Shortcomings in Vision and Language), same pages 58-67. The 2017 citekey is stale; fields are identical. Same paper."
+    },
+    {
+      "cid": "logical reasoning with diagrams",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All four denote the same 1996 Oxford University Press book 'Logical Reasoning with Diagrams' by Allwein & Barwise. The DOI 10.1093/oso/9780195104271 and ISBN 0195104277 (survivor) are the same OUP volume; ISBN 9780195355864 is the EBSCO ebook edition of the same title. Survivor lacks an author field but title/publisher/year match. Verified same book via OUP Academic and booksellers."
+    },
+    {
+      "cid": "the cognitive structure of emotions",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both are the same 1988 Cambridge University Press book 'The Cognitive Structure of Emotions'. The loser lists all three authors (Ortony, Clore, Collins) with DOI 10.1017/cbo9780511571299; the survivor lists only Ortony and year 1988 (despite the '1987' citekey) but same title/publisher. Confirmed the first edition is 1988 (ISBN 0-521-35364-5). Survivor is merely missing co-authors."
+    },
+    {
+      "cid": "mimesis as make believe on the foundations of the representational arts",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All entries denote Kendall Walton's 'Mimesis as Make-Believe: On the Foundations of the Representational Arts', Harvard University Press. The 1990 hardcover (ISBN 9780674576032 / 0674576195) and the 1993 paperback (ISBN 9780674268227) are editions/reprints of the same book with the same content. The 'walton1990mimesisd' article entry is a garbled OCR fragment whose journal field bled in stray text, but it still points to the same Mimesis book. Same work."
+    }
+  ]
+}

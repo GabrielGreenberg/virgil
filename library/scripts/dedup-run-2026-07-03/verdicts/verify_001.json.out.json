@@ -1,0 +1,52 @@
+{
+  "verdicts": [
+    {
+      "cid": "rhetoric of the image",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both are Barthes, 'Rhetoric of the image', 1977, Fontana, pages 32-51, in the essay collection Image, Music, Text (trans. Heath). Booktitle differs only in punctuation ('Image, Music, Text' vs 'Image-Music-Text') for the same Fontana 1977 volume. Same work."
+    },
+    {
+      "cid": "hyperproof",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All members are Barwise & Etchemendy, 'Hyperproof', 1994, CSLI (Center for the Study of Language and Information), Lecture Notes No. 42. ISBN 9781881526117 (ISBN-13) and 1881526119 (ISBN-10) verified as the same book. The incollection type on barwise1992hyperproof and the '1992' in that citekey are noise; its field data (year 1994, same publisher/ISBN) matches. Same work."
+    },
+    {
+      "cid": "the frege reader",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three are 'The Frege reader', ed. Beaney, 1997, Blackwell Publishers, identical ISBN 9780631194446. Same book under variant citekeys. Same work."
+    },
+    {
+      "cid": "10.1093/bjps/axu014",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All members share DOI 10.1093/bjps/axu014, title 'Analogue Magnitude Representations: A Philosophical Introduction', author Jacob Beck, BJPS vol 66 no 4 pp 829-855, year 2015. Only cosmetic differences (page-dash style, author formatting, citekey year). Same article."
+    },
+    {
+      "cid": "10.2307/2104916",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All members share DOI 10.2307/2104916, title 'That There Are no Iconic Signs', Bierman, Philosophy and Phenomenological Research vol 23 no 2, 1962. Page field 243 vs 243--249 is a truncation artifact, publisher JSTOR vs International Phenomenological Society is a metadata-source difference. Same article."
+    },
+    {
+      "cid": "10.1080/00048402.2024.2412243",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All members share DOI 10.1080/00048402.2024.2412243, title 'The Priority Map', Buehler, Australasian Journal of Philosophy vol 103 no 1 pp 235-260, field year 2025. The '2024' in one citekey reflects the online-first date; field year is 2025 for all. Same article."
+    },
+    {
+      "cid": "10.1017/cbo9780511819001.007",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both share DOI 10.1017/cbo9780511819001.007, title 'A language of baboon thought?', Camp, in The Philosophy of Animal Minds (CUP 2009), pp 108-127. Same chapter."
+    },
+    {
+      "cid": "10.1093/oso/9780198732570.003.0002",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Survivor DOI 10.1093/oso/9780198732570.003.0002 resolves to Camp, 'Why Maps are Not Propositional', in Non-Propositional Intentionality (OUP 2018), pp 19-45 (verified via oup.com/philpapers). The losers list booktitle 'Non-Propositional Intentionality' and same pages/author; survivor's generic 'Oxford University Press eBooks' booktitle is a Crossref artifact. Same chapter."
+    }
+  ]
+}

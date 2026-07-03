@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1162/neco.1996.8.1.85", "decision": "same", "rationale": "Both entries identical Blum & Abbott 1996 Neural Computation article, shared DOI, matching title/authors/pages."},
+  {"id": "artificial intelligence and natural man", "decision": "same", "rationale": "Same Boden 1977 book, identical title/author/year; just duplicate citekeys."},
+  {"id": "10.1093/mind/xcviii.389.81", "decision": "same", "rationale": "Boghossian & Velleman 1989 'Colour as a Secondary Quality', identical fields and shared DOI."},
+  {"id": "10.2307/412039", "decision": "same", "rationale": "Bolinger 1972 'Accent is Predictable', identical title/author/journal/pages and shared DOI."},
+  {"id": "10.1038/353429a0", "decision": "same", "rationale": "Bonhoeffer & Grinvald 1991 Nature paper, identical fields and shared DOI; one carries an extra note."},
+  {"id": "10.1111/j.1460-9568.1995.tb00720.x", "decision": "same", "rationale": "Bonhoeffer et al. 1995 Eur J Neurosci optical-imaging paper, identical fields and shared DOI."},
+  {"id": "10.2178/bsl/1208358843", "decision": "same", "rationale": "Bonnay 2008 'Logicality and Invariance', identical fields and shared DOI."},
+  {"id": "10.1093/cercor/8.6.510", "decision": "same", "rationale": "Booth et al. 1998 view-invariant representations paper, identical fields and shared DOI."},
+  {"id": "10.1207/s15327647jcd0403_06", "decision": "same", "rationale": "Booth & Waxman 2003 'Mapping Words to the World', identical fields and shared DOI; citekeys differ by lead-author alias."},
+  {"id": "10.2307/1772109", "decision": "distinct", "rationale": "Survivor is the 1986 Poetics Today review article (DOI 10.2307/1772109, pages 179); member bordwelletal1985classical is the 1985 Columbia University Press book itself (no DOI, different year/type/publisher). Book vs. a review of it — different bibliographic items."},
+  {"id": "the classical hollywood cinema", "decision": "same", "rationale": "Both are the Bordwell/Staiger/Thompson 'Classical Hollywood Cinema' book; 1988 Routledge vs 1985 Columbia UP are different printings of the same work."},
+  {"id": "10.1523/jneurosci.17-06-02112.1997", "decision": "same", "rationale": "Bosking et al. 1997 tree-shrew orientation paper, identical fields and shared DOI; one carries an extra note."},
+  {"id": "10.1016/0028-3932(88)90097-8", "decision": "same", "rationale": "Deutsch/Bourbon et al. 1988 visuospatial rCBF paper, identical fields and shared DOI; citekeys differ by author."},
+  {"id": "10.1002/cne.903060403", "decision": "same", "rationale": "Boussaoud, Desimone & Ungerleider 1991 'Visual topography of area TEO', all three entries match on title/authors/year/volume/pages; shared DOI on two and consistent bib on the third."},
+  {"id": "10.1016/0010-0285(79)90009-4", "decision": "same", "rationale": "Bower, Black & Turner 1979 'Scripts in memory for text', identical fields and shared DOI."},
+  {"id": "10.1212/wnl.37.3.522", "decision": "same", "rationale": "Meador et al. 1987 'Remote memory and neglect syndrome', identical fields and shared DOI; citekeys differ by author alias."},
+  {"id": "10.1016/j.visres.2008.03.025", "decision": "mixed", "rationale": "Survivor is Bowmaker 2008 'Evolution of vertebrate visual pigments' (Vision Research vol 48, DOI 10.1016/j.visres.2008.03.025). Member bowmaker2006evolution is a DIFFERENT work: Bowmaker & Hunt 2006, Current Biology vol 16, pages R484-9 — no DOI of its own, wrongly pulled in.", "distinct_members": ["bowmaker2006evolution"]},
+  {"id": "10.1016/0010-0285(76)90013-x", "decision": "same", "rationale": "Rosch et al. 1976 'Basic objects in natural categories', all three entries match on title/authors/year/volume/pages and shared DOI; citekeys differ by co-author."},
+  {"id": "10.3389/fpsyg.2012.00355", "decision": "same", "rationale": "Bradley & Pearson 2012 iconic/working-memory paper, identical fields and shared DOI."},
+  {"id": "10.1163/156856897x00357", "decision": "same", "rationale": "Brainard 1997 'The Psychophysics Toolbox', matching title/author/journal/volume/pages and shared DOI on both."},
+  {"id": "10.1016/j.cub.2019.05.044", "decision": "same", "rationale": "Bayne et al. 2019 'What is cognition?' Current Biology, identical author list/fields and shared DOI; citekeys differ by chosen co-author."},
+  {"id": "10.1111/1467-9280.00342", "decision": "same", "rationale": "Brannon et al. 2001 'Numerical Subtraction in the Pigeon', all three entries identical and shared DOI."},
+  {"id": "10.1111/j.1467-7687.2006.00530.x", "decision": "same", "rationale": "Brannon, Lutz & Cordes 2006 area-discrimination paper, identical fields and shared DOI."},
+  {"id": "10.1126/science.8418487", "decision": "same", "rationale": "Gallant, Braun & Van Essen 1993 Science gratings paper, identical fields and shared DOI; citekeys differ by author."},
+  {"id": "10.2307/2998375", "decision": "same", "rationale": "Braun 1998 'Understanding Belief Reports' Philosophical Review, identical fields and shared DOI."}
+ ]
+}

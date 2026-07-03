@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.3765/salt.v10i0.3106", "decision": "same", "rationale": "Both are Ogihara 2000 'Counterfactuals, Temporal Adverbs, and Association with Focus' in SALT 10, same DOI, title, author, year, volume, pages; only entry type differs."},
+    {"id": "10.1126/science.2396096", "decision": "same", "rationale": "Both Ohzawa, DeAngelis & Freeman 1990 Science 249(4972):1037-1041, identical title/authors/DOI; only type (misc vs article) differs."},
+    {"id": "place units in the hippocampus of the freely moving rat", "decision": "same", "rationale": "Both O'Keefe 1976, Exp Neurol 51:78-109, identical title (case only) and pages; journal abbreviation vs full name."},
+    {"id": "the hippo campus as a cognitive map", "decision": "same", "rationale": "Three copies of O'Keefe & Nadel 1978 book; Clarendon Press is an OUP imprint, so all three are the same book."},
+    {"id": "10.1038/381425a0", "decision": "same", "rationale": "Both O'Keefe & Burgess 1996 Nature 381(6581):425-428, identical title/authors/DOI."},
+    {"id": "10.1002/hipo.20115", "decision": "same", "rationale": "Both O'Keefe & Burgess 2005 Hippocampus 15(7):853-866, identical title/authors/DOI."},
+    {"id": "the hippocampus as a spatial map preliminary evidence from unit activity in the freely moving rat", "decision": "same", "rationale": "Both O'Keefe & Dostrovsky 1971 Brain Res 34:171-175, identical title/authors/year; one adds the correct DOI."},
+    {"id": "single unit activity in the rat hippocampus during a spatial memory task", "decision": "same", "rationale": "Both O'Keefe & Speakman 1987 Exp Brain Res 68:1-27, identical title/authors/pages."},
+    {"id": "10.1017/cbo9780511486777.009", "decision": "same", "rationale": "Both Okrent 2002 chapter in Modality and Structure in Signed and Spoken Languages, identical title/author/DOI/pages."},
+    {"id": "10.1101/sqb.1990.055.01.064", "decision": "same", "rationale": "Both Van Essen et al. 1990 'Modular and Hierarchical Organization of Extrastriate Visual Cortex', identical title/authors/DOI/pages."},
+    {"id": "10.1023/a:1011139631724", "decision": "same", "rationale": "Both Oliva & Torralba 2001 'Modeling the Shape of the Scene', IJCV 42(3):145-175; one has a garbled citekey but same title/authors/DOI."},
+    {"id": "10.1016/j.neulet.2008.04.051", "decision": "same", "rationale": "Both Oliveri et al. 2008 'Perceiving numbers alters time perception', Neurosci Lett 438(3):308-311, identical."},
+    {"id": "10.1523/jneurosci.13-11-04700.1993", "decision": "same", "rationale": "Both Olshausen, Anderson & Van Essen 1993 J Neurosci 13(11):4700-4719, identical title/authors/DOI."},
+    {"id": "10.1038/381607a0", "decision": "same", "rationale": "Both Olshausen & Field 1996 Nature 381(6583):607-609 'Emergence of simple-cell receptive field properties', identical."},
+    {"id": "10.1016/s0042-6989(97)00169-7", "decision": "same", "rationale": "Both Olshausen & Field 1997 'Sparse coding with an overcomplete basis set', Vision Res 37(23):3311-3325, identical."},
+    {"id": "10.1002/1096-9861(20001030)426:4<505::aid-cne1>3.0.co;2-m", "decision": "same", "rationale": "Three copies of Op de Beeck & Vogels 2000 'Spatial sensitivity of macaque inferior temporal neurons', J Comp Neurol 426:505-518."},
+    {"id": "10.1016/j.tics.2004.05.009", "decision": "same", "rationale": "Both Orban, Van Essen & Vanduffel 2004 'Comparative mapping of higher visual areas', TICS 8(7):315-324, identical."},
+    {"id": "10.1017/cbo9780511611926.008", "decision": "same", "rationale": "Both Origgi & Sperber 2000 'Evolution, communication and the proper function of language', same title/authors/year/DOI; second entry's type/publisher is degraded but clearly the same chapter."},
+    {"id": "10.1007/s11097-011-9207-1", "decision": "same", "rationale": "Both Orlandi 2011 'Ambiguous figures and representationalism', Phenom Cogn Sci 10(3):307-323, identical."},
+    {"id": "10.1126/science.8316836", "decision": "same", "rationale": "Both Wilson, Scalaidhe & Goldman-Rakic 1993 'Dissociation of Object and Spatial Processing Domains', Science 260(5116):1955-1958, identical."},
+    {"id": "the measurement of meaning", "decision": "same", "rationale": "Three identical copies of Osgood, Suci & Tannenbaum 1957 'The measurement of meaning', University of Illinois Press."},
+    {"id": "10.1111/j.1747-9991.2009.00228.x", "decision": "same", "rationale": "Both Pagin & Westerstahl 2010 'Compositionality I: Definitions and Variants', Phil Compass 5(3):250-264, identical; correctly separated from Part II by DOI."},
+    {"id": "10.1111/j.1747-9991.2009.00229.x", "decision": "same", "rationale": "Both Pagin & Westerstahl 2010 'Compositionality II: Arguments and Problems', Phil Compass 5(3):265-282, identical; correctly separated from Part I."},
+    {"id": "10.1007/s10988-011-9083-8", "decision": "same", "rationale": "Both Pagin & Westerstahl 2010 'Pure quotation and general compositionality', Ling & Phil 33(5):381-415, identical."},
+    {"id": "10.1093/oso/9780198542841.002.0001", "decision": "same", "rationale": "Both are the 'Title Pages' front-matter (pages i-iv) of Paillard 1991 'Brain and Space' sharing the front-matter DOI; identical content, only type differs."}
+  ]
+}

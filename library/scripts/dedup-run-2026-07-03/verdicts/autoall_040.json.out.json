@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1068/p130321", "decision": "same", "rationale": "Both share DOI and identical title/author/year/volume/pages (Koenderink 1984, occluding contour)."},
+  {"id": "10.1007/bf00204120", "decision": "same", "rationale": "Same Snippe & Koenderink 1992 'Discrimination thresholds for channel-coded systems', matching title/authors/year/pages; second entry just abbreviated journal name."},
+  {"id": "pictorial space", "decision": "distinct", "rationale": "Title-only match. 2003 entry is Koenderink & van Doorn, a chapter in Hecht/Schwartz/Atherton eds. (MIT Press); 2012 entry is Koenderink solo monograph from De Clootcrans Press. Different authors, years, publishers, and work type — not the same work."},
+  {"id": "10.2307/1415906", "decision": "same", "rationale": "Same DOI; identical Pratt review of Koffka's Principles of Gestalt Psychology, all fields match."},
+  {"id": "10.1152/jn.00086.2007", "decision": "same", "rationale": "Same DOI and title (Kohn 2007, Visual Adaptation); second entry only abbreviates journal/author."},
+  {"id": "effects of task demands on the responses of color selective neurons in the inferior temporal cortex", "decision": "same", "rationale": "Same Koida & Komatsu 2007 Nat Neurosci paper, matching title/authors/year/volume/pages."},
+  {"id": "10.1093/acprof:oso/9780195393675.003.0002", "decision": "same", "rationale": "Same DOI and title (Koopman 2010, Prepositions...); one tagged misc, other incollection, same content."},
+  {"id": "10.1016/0010-0285(75)90015-8", "decision": "same", "rationale": "All four members share DOI and identical Kosslyn 1975 'Information representation in visual images' fields."},
+  {"id": "10.1037/h0081649", "decision": "same", "rationale": "Same DOI and title (Kosslyn & Alper 1977, pictorial properties of visual images), identical fields."},
+  {"id": "10.1016/0010-0285(78)90004-x", "decision": "same", "rationale": "All three share DOI and identical Kosslyn 1978 'Measuring the visual angle of the mind's eye' fields."},
+  {"id": "10.1037/0096-1523.4.1.47", "decision": "same", "rationale": "Same DOI and title (Kosslyn, Ball & Reiser 1978, image scanning), identical fields."},
+  {"id": "visual images as spatial representations in active memory", "decision": "same", "rationale": "Title-only match but both Kosslyn & Shwartz 1978, Academic Press; second entry has a garbled author string but clearly the same chapter."},
+  {"id": "10.1017/s0140525x00064268", "decision": "same", "rationale": "All four share DOI and identical Kosslyn/Pinker/Smith/Shwartz 1979 'On the demystification of mental imagery' fields."},
+  {"id": "10.1037/0096-3445.114.3.311", "decision": "same", "rationale": "Same DOI and title (Kosslyn et al. 1985, split-brain image generation), identical fields."},
+  {"id": "wet mind", "decision": "same", "rationale": "Both Kosslyn & Koenig 1992 'Wet mind' with identical ISBN; only the publisher label differs (Maxwell Macmillan vs Free Press), same book."},
+  {"id": "10.1093/brain/117.5.1055", "decision": "same", "rationale": "Same DOI and title (Kosslyn et al. 1994, identifying objects from different viewpoints PET); one lacks journal/volume but same work."},
+  {"id": "10.1097/00001756-200108080-00046", "decision": "same", "rationale": "Same DOI and title (Kosslyn et al. 2001, imagining rotation), identical fields."},
+  {"id": "10.1126/science.1061133", "decision": "same", "rationale": "Same DOI and title (Kourtzi & Kanwisher 2001, LOC object shape), identical fields."},
+  {"id": "10.1038/nn1461", "decision": "same", "rationale": "Same DOI and title (Welchman et al. 2005, 3D shape from combined depth cues), identical fields."},
+  {"id": "10.1207/s1532690xci2001_3", "decision": "same", "rationale": "Same DOI and title (Kozhevnikov, Hegarty & Mayer, Visualizer-Verbalizer); one entry tagged as conference proceedings but same journal article content."},
+  {"id": "10.3758/bf03197378", "decision": "same", "rationale": "Same DOI and title (Kraft & Jenkins 1977, memory for lateral orientation), identical fields."},
+  {"id": "10.1016/0022-2496(83)90014-7", "decision": "same", "rationale": "All three share DOI and identical Krantz 1983 'A comment on the development of the theory of direct psychophysics' fields (citekeys mislabel year)."},
+  {"id": "10.1007/bf00353453", "decision": "same", "rationale": "Same DOI and title (Kratzer 1977, 'What must and can must and can mean'), identical fields."},
+  {"id": "10.1007/978-3-642-67458-7_9", "decision": "same", "rationale": "Same DOI and title (Kratzer 1979, Conditional Necessity and Possibility); misc vs incollection, same chapter."},
+  {"id": "the notional category of modality", "decision": "same", "rationale": "Title-only match; both Kratzer 'The Notional Category of Modality', same well-known work (Words, Worlds and Contexts), 1980 vs 1981 dating discrepancy only."}
+ ]
+}

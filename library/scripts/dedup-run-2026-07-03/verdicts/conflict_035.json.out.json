@@ -1,0 +1,64 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1093/oso/9780199264698.003.0003",
+   "decision": "same",
+   "rationale": "Both are Shoemaker, 'Persons and Their Pasts', same DOI. Survivor is the 1970 American Philosophical Quarterly original (indexed); loser Shoemaker1970 is the 2003 reprint in 'Identity, Cause, and Mind'. Reprint of the same work; only survivor indexed. Merge OK."
+  },
+  {
+   "id": "10.1007/bf01225748",
+   "decision": "same",
+   "rationale": "Both 'Functionalism and qualia', Shoemaker 1975, Philosophical Studies 27(5):291-315, identical DOI and fields. Duplicate import under a different citekey. Neither indexed."
+  },
+  {
+   "id": "10.1111/j.1467-9213.2008.547_1.x",
+   "decision": "same",
+   "rationale": "Both Sidelle review 'Ordinary Objects - Amie Thomasson' 2008, Phil Quarterly 58(230):172-176, same DOI. Zotero-style key vs hand key of the same work; survivor indexed."
+  },
+  {
+   "id": "10.1111/j.1468-0068.2009.00704.x",
+   "decision": "same",
+   "rationale": "Both Sidelle 'Conventionalism and the Contingency of Conventions' 2009, Noûs 43(2):224-241, same DOI (loser only adds italics markup). Same work; survivor indexed."
+  },
+  {
+   "id": "10.1111/j.1467-9213.2008.604.x",
+   "decision": "same",
+   "rationale": "Both Sidelle 'Modality and Objects' 2010, Phil Quarterly 60(238):109-125, same DOI. Duplicate under Zotero-style key; survivor indexed."
+  },
+  {
+   "id": "writing the book of the world",
+   "decision": "same",
+   "rationale": "All four are Sider, 'Writing the Book of the World', same ISBN 9780199697908. Survivor is preprint/manuscript, sider2011writing the published book (both indexed, same book); sider2013/sider2013writing are shadow keys with no folder. Same work throughout."
+  },
+  {
+   "id": "logic for philosophy",
+   "decision": "same",
+   "rationale": "Survivor is Sider 'Logic for Philosophy' 2010 published (OUP). Loser sider2007logic is the 2007 unpublished manuscript version of the same book (preprint vs published). Same work; folder aliased."
+  },
+  {
+   "id": "10.1080/00048400600895961",
+   "decision": "same",
+   "rationale": "Both Siegel 'How does visual phenomenology constrain object-seeing?' 2006, AJP 84(3):429-441, same DOI. Duplicate under Zotero-style key; survivor indexed."
+  },
+  {
+   "id": "the contents of visual experience",
+   "decision": "same",
+   "rationale": "All are Siegel 'The Contents of Visual Experience', a 2010 OUP monograph, ISBN 9780199931248 (year noise 2010/2011/2012, but same ISBN/title). Survivor indexed; losers are duplicate/shadow keys, none independently indexed. Same book."
+  },
+  {
+   "id": "creating coherence with concepts",
+   "decision": "same",
+   "rationale": "Both Simons & Danks 'Creating Coherence with Concepts' 2024 manuscript, identical note. Duplicate import; survivor indexed."
+  },
+  {
+   "id": "10.1111/j.0956-7976.2004.00701.x",
+   "decision": "same",
+   "rationale": "Both Singh 'Modal and Amodal Completion Generate Different Shapes' 2004, Psych Science 15(7):454-459, identical DOI and fields. Duplicate under Zotero-style key; survivor indexed."
+  },
+  {
+   "id": "10.1007/s10516-018-9380-8",
+   "decision": "same",
+   "rationale": "Both Skrzypulec 'Particularity of Content and Illusions of Identity' 2018, Axiomathes 28(5):491-506, identical DOI and fields. Duplicate under Zotero-style key; survivor indexed."
+  }
+ ]
+}

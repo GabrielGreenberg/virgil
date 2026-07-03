@@ -1,0 +1,104 @@
+{
+  "verdicts": [
+    {
+      "id": "frege1918negation||frege1919negation",
+      "decision": "same",
+      "rationale": "Frege's 'Negation' ('Die Verneinung'), originally published in Beiträge zur Philosophie des Deutschen Idealismus (1918/1919), later reprinted in English in Logical Investigations (Blackwell). Same essay: a original-journal entry and b English collection reprint. Year off by one reflects the 1918-1919 straddle of the original publication."
+    },
+    {
+      "id": "frege1963compound||frege1963thoughts",
+      "decision": "distinct",
+      "rationale": "Different Frege essays. 'Compound Thoughts' and 'Thoughts' ('Der Gedanke') are two separate works. The shared DOI 10.1093/mind/lxxii.285.1 actually belongs to Mind LXXII(285) which is 'Compound Thoughts'; it is an erroneous/placeholder DOI on the 'Thoughts' entry. Titles are distinct works, so not the same."
+    },
+    {
+      "id": "friston2010||friston2010freeenergy",
+      "decision": "same",
+      "rationale": "Both are Friston, 'The free-energy principle: a unified brain theory?', Nature Reviews Neuroscience, 2010, vol 11, pp 127-138. a's title has the truncated 'Nat' and journal 'Rev. Neurosci.' split into the journal field (Nature Reviews Neuroscience). Identical work; b has the full DOI 10.1038/nrn2787."
+    },
+    {
+      "id": "galantucci2011experimental||galantucci2012experimental",
+      "decision": "distinct",
+      "rationale": "Two distinct review articles. a: Galantucci & Garrod, 'Experimental Semiotics: A Review', Frontiers in Human Neuroscience, 2011, DOI 10.3389/fnhum.2011.00011. b: Galantucci, Garrod & Roberts, 'Experimental Semiotics', Language and Linguistics Compass, 2012, DOI 10.1002/lnc3.351. Different journals, different DOIs, different author lists, different years."
+    },
+    {
+      "id": "gallistel2002||gallistel2002symbolic",
+      "decision": "same",
+      "rationale": "Both are Gallistel (& Gibbon), 'The Symbolic Foundations of Conditioned Behavior/Behaviour', 2002, Lawrence Erlbaum / L. Erlbaum Associates. Same book; a includes co-author Gibbon, b lists only Gallistel and adds ISBN. Trivial title/spelling variance."
+    },
+    {
+      "id": "gallistel2002symbolic||gallistelGibbon2002",
+      "decision": "same",
+      "rationale": "Both are Gallistel (& Gibbon), 'The Symbolic Foundations of Conditioned Behavior/Behaviour', 2002, L. Erlbaum. Same book; b includes co-author Gibbon, a lists only Gallistel with ISBN. Identical work."
+    },
+    {
+      "id": "gareyjohnson1979computers||johnson1979computers",
+      "decision": "same",
+      "rationale": "Both are Garey & Johnson, 'Computers and Intractability: A Guide to the Theory of NP-Completeness', 1979, W. H. Freeman. b has a truncated title ('Computers and intractability') but same authors, year, publisher; ISBN confirms the canonical work. Low title jaccard is only due to truncation."
+    },
+    {
+      "id": "gazdar1979pragmatics||gazdar1979pragmaticsa",
+      "decision": "same",
+      "rationale": "Both are Gazdar, 'Pragmatics: Implicature, Presupposition and Logical Form', 1979, Academic Press. b has truncated title 'Pragmatics' but same author, year, publisher; ISBN 9780122784507 confirms the canonical book. Low jaccard only from truncation."
+    },
+    {
+      "id": "gibson1950perception||gibson1950tbe",
+      "decision": "same",
+      "rationale": "Both are J. J. Gibson, 'The Perception of the Visual World', 1950, Houghton Mifflin. b has OCR typo 'Tbe' for 'The'. Same author, year, publisher. Identical work."
+    },
+    {
+      "id": "gibson1978ecological||gibson1979ecological",
+      "decision": "distinct",
+      "rationale": "Two distinct Gibson works. a: 'The Ecological Approach to the Visual Perception of Pictures', article in Leonardo, 1978, DOI 10.2307/1574154. b: 'The Ecological Approach to Visual Perception', book, Houghton Mifflin, 1979, ISBN 9780395270493. Different titles (article about pictures vs. the book), different types, years, and identifiers."
+    },
+    {
+      "id": "gibson1979ecological||gibson1979tbe",
+      "decision": "same",
+      "rationale": "Both are J. J. Gibson, 'The Ecological Approach to Visual Perception', 1979, Houghton Mifflin. b has OCR typo 'Tbe' for 'The'. Same author, year, publisher, book. Identical work."
+    },
+    {
+      "id": "gilman1891report||gilman1892report",
+      "decision": "distinct",
+      "rationale": "Two parts of a serialized study. a: 'Report on an Experimental Test of Musical Expressiveness', Am. J. Psychology vol 4(4) p558, DOI 10.2307/1410803. b: 'Report ... (Continued)', vol 5(1) p42, DOI 10.2307/1410813. Different volumes, pages, and DOIs — the '(Continued)' second installment is a distinct bibliographic unit."
+    },
+    {
+      "id": "goldinmeadow1983gestural||goldinmeadow1984gestural",
+      "decision": "distinct",
+      "rationale": "Two distinct works. a: Goldin-Meadow & Mylander, 'Gestural Communication in Deaf Children: Noneffect of Parental Input on Language Development', Science, 1983, DOI 10.1126/science.6867713. b: a much longer-author Monograph 'The Effects and Noneffects of Parental Input on Early Language Development', Monographs SRCD, 1984, DOI 10.2307/1165838. Different journals, author lists, titles, years, DOIs."
+    },
+    {
+      "id": "goldinmeadow2003chearing||goldinmeadow2003hearing",
+      "decision": "same",
+      "rationale": "Both are Goldin-Meadow, 'Hearing Gesture(s): How Our Hands Help Us Think', 2003. a is a PsycEXTRA dataset record (a for the book), b is the Harvard University Press book. Same underlying work; a's 'Gestures' plural is a minor variant."
+    },
+    {
+      "id": "gombrich1972art||gombrich1973illusion",
+      "decision": "distinct",
+      "rationale": "Different works. a: Gombrich, 'Art and Illusion', 2nd edition, book, Princeton UP, 1972. b: 'Illusion and Art', a chapter in the collection 'Nature and Art', Duckworth, 1973. The essay in an edited volume is not the same as the monograph despite overlapping words."
+    },
+    {
+      "id": "gomerydouglas1992shared||week1992march",
+      "decision": "same",
+      "rationale": "Both are Douglas Gomery, 'Shared Pleasures: A History of Movie Presentation in the United States', 1992. a lists publisher BFI, b University of Wisconsin Press (the book was co-published BFI/UW Press) with ISBN. Same book; b's citekey is a mislabel but fields match."
+    },
+    {
+      "id": "goodale1995visual||milner1995visual",
+      "decision": "same",
+      "rationale": "Both are Milner & Goodale, 'The Visual Brain in Action', Oxford University Press. a dated 1996 (paperback/reprint), b 1995 (first edition). Same authors and title; the ±1 year is edition printing. Same work."
+    },
+    {
+      "id": "goodale1995visual||milnergoodale1995visual",
+      "decision": "same",
+      "rationale": "Both are Milner & Goodale, 'The Visual Brain in Action', Oxford University Press. a 1996, b 1995; same title and authorship. Same book, ±1 year edition. b is a duplicate of milner1995visual."
+    },
+    {
+      "id": "goodall1986||goodall1986chimpanzees",
+      "decision": "same",
+      "rationale": "Both are Jane Goodall, 'The Chimpanzees of Gombe: Patterns of Behavior', 1986, Belknap/Harvard University Press (Belknap is Harvard's imprint). b has OCR typo 'Bombe' for 'Gombe'. Same book."
+    },
+    {
+      "id": "goodman1954fact||goodman1955",
+      "decision": "same",
+      "rationale": "Both are Nelson Goodman, 'Fact, Fiction, and Forecast', originally 1954. a's title/author fields are garbled ('), Fact, Fiction, and Forecast, University of London, Athlone Press' / 'Goodman and (') but clearly the same work, publisher Athlone Press; b is the same book (1954, Bobbs-Merrill/Harvard first ed). Same work."
+    }
+  ]
+}

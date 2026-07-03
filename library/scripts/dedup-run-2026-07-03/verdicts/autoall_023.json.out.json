@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1017/s0140525x16000029", "decision": "same", "rationale": "All 3 share title 'Seeing and thinking: Foundational issues and empirical horizons', Firestone & Scholl 2016, BBS vol 39, same DOI."},
+  {"id": "10.1017/s0140525x15000965", "decision": "same", "rationale": "Both 'Cognition does not affect perception', Firestone & Scholl 2016, same DOI."},
+  {"id": "10.1016/j.cub.2009.06.059", "decision": "same", "rationale": "Both identical: 'Attention Narrows Position Tuning...', Fischer & Whitney 2009, same DOI/vol/pages."},
+  {"id": "10.1093/acprof:oso/9780195381344.003.0003", "decision": "same", "rationale": "All 4 are Fish 2009 'Perception' from Perception, Hallucination, and Illusion; the book variant has garbled publisher but same work."},
+  {"id": "10.1037/0033-295x.111.2.486", "decision": "same", "rationale": "Both 'The Emergence of Autobiographical Memory', Nelson & Fivush 2004, same DOI."},
+  {"id": "the retinotopic organization of primate dorsal v4 and surrounding areas a functional magnetic resonance imaging study in awake monkeys", "decision": "same", "rationale": "Both same title, Fize et al. 2003, J Neurosci vol 23, pages 7395-7406; author list truncated in one."},
+  {"id": "10.7551/mitpress/2112.001.0001", "decision": "same", "rationale": "All 3 'Consciousness Reconsidered', Owen Flanagan 1992, MIT Press."},
+  {"id": "10.1007/bf00126503", "decision": "same", "rationale": "Both 'Reading cursive handwriting by alignment of letter prototypes', Edelman/Flash/Ullman 1990, same DOI."},
+  {"id": "10.1016/j.cognition.2004.09.004", "decision": "same", "rationale": "All 3 identical: Flombaum/Junge/Hauser 2005 rhesus addition paper, same DOI."},
+  {"id": "10.1093/acprof:oso/9780199216895.003.0006", "decision": "same", "rationale": "All 4 'Spatiotemporal priority as a fundamental principle of object persistence', Flombaum/Scholl/Santos 2009."},
+  {"id": "the psychology of language", "decision": "same", "rationale": "Both 'The psychology of language', Fodor 1974, McGraw-Hill, same ISBN."},
+  {"id": "10.2307/2024316", "decision": "same", "rationale": "Both 'The Appeal to Tacit Knowledge in Psychological Explanation', Fodor 1968, same DOI."},
+  {"id": "10.1017/s0140525x00001771", "decision": "same", "rationale": "All 5 are 'Methodological solipsism considered as a research strategy'; the 1983 book variants are the Representations reprint of the same paper."},
+  {"id": "10.2307/1347241", "decision": "same", "rationale": "Both identical review of 'The Psychology of Language' by Fodor/Bever/Garrett, same DOI/fields."},
+  {"id": "10.1017/s0140525x00002041", "decision": "same", "rationale": "Both 'Methodological solipsism: replies to commentators', Fodor 1980, same DOI."},
+  {"id": "10.1016/0010-0277(81)90009-3", "decision": "same", "rationale": "Both 'How direct is visual perception?', Fodor & Pylyshyn 1981, same DOI."},
+  {"id": "imagistic representation", "decision": "same", "rationale": "Both 'Imagistic Representation', Fodor, in Imagery, MIT Press; year 1981/1982 variant, same work."},
+  {"id": "10.1007/bf00351459", "decision": "same", "rationale": "All 3 'Referential and quantificational indefinites', Fodor & Sag 1982, same DOI."},
+  {"id": "10.7551/mitpress/4737.001.0001", "decision": "same", "rationale": "Both 'The Modularity of Mind', Fodor 1983, MIT Press, same ISBN."},
+  {"id": "10.1111/j.1475-4975.1987.tb00532.x", "decision": "same", "rationale": "Both 'Why Paramecia Don't Have Mental Representations', Fodor, same DOI (year 1984/1986 variant)."},
+  {"id": "10.1007/bf00869335", "decision": "same", "rationale": "Both 'Semantics, Wisconsin style', Fodor 1984, Synthese, same DOI."},
+  {"id": "10.1016/0010-0277(90)90014-b", "decision": "same", "rationale": "All 5 'Connectionism and the problem of systematicity', Fodor & McLaughlin 1990, same DOI."},
+  {"id": "10.3109/10641969009073495", "decision": "same", "rationale": "All 3 members carry identical fields: 'The Canadian Consensus Report on Non-Pharmacological Approaches...', Fodor J.G. & Chockalingam, same DOI; internally consistent regardless of misleading citekeys."},
+  {"id": "10.1093/mind/c.398.201", "decision": "same", "rationale": "Both 'The Dogma that Didn't Bark', Fodor 1991, Mind, same DOI."},
+  {"id": "10.5840/jphil1996931013", "decision": "same", "rationale": "Both 'What Cannot Be Evaluated Cannot Be Evaluated...', Fodor & Lepore 1996, same DOI."}
+ ]
+}

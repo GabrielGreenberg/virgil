@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1016/s0010-0277(96)00727-5", "decision": "same", "rationale": "Both entries identical title/author/year/DOI (Needham 1997, Object segregation in 8-month-old infants)."},
+    {"id": "10.1017/s0140525x0006475x", "decision": "same", "rationale": "Identical Neisser 1979 'Tracing eidetic imagery' in both entries; shared DOI, consistent fields."},
+    {"id": "10.1016/0006-8993(78)90937-x", "decision": "same", "rationale": "Nelson & Frost 1978 identical in both; shared DOI and consistent title/author."},
+    {"id": "cahiers du cinema", "decision": "same", "rationale": "Both Hillier 1985 'Cahiers Du Cinema' Routledge, same ISBN 9780710203069."},
+    {"id": "10.1037/h0048495", "decision": "same", "rationale": "Newell/Shaw/Simon 1958 'Elements of a theory of human problem solving', identical fields and DOI."},
+    {"id": "10.2307/1421456", "decision": "same", "rationale": "All three members carry identical fields (Human Problem Solving, Johnson/Newell/Simon, 1973, Am. J. Psychology, shared DOI)."},
+    {"id": "10.1145/360018.360022", "decision": "same", "rationale": "Newell & Simon 1976 'Computer science as empirical inquiry', identical fields and DOI."},
+    {"id": "10.1016/0004-3702(82)90012-1", "decision": "same", "rationale": "Newell 1982 'The knowledge level', identical fields and DOI."},
+    {"id": "10.1016/j.concog.2016.09.005", "decision": "same", "rationale": "Newen & Vetter 2017 'Why cognitive penetration...', identical fields and DOI."},
+    {"id": "the acquisition of american sign language", "decision": "same", "rationale": "Both Newport & Meier 1985 'The acquisition of American Sign Language', same booktitle series and publisher (Erlbaum)."},
+    {"id": "10.1016/s0896-6273(02)01144-3", "decision": "same", "rationale": "All three members Nieder & Miller 2003 'Coding of Cognitive Magnitude', identical fields and shared DOI."},
+    {"id": "10.1073/pnas.0402239101", "decision": "same", "rationale": "All three Nieder & Miller 2004 parieto-frontal network paper; consistent title/author/year/pages, shared DOI on two, third matches title exactly."},
+    {"id": "10.3765/sp.5.5", "decision": "same", "rationale": "Ninan 2012 'Counterfactual attitudes and multi-centered worlds', identical fields and DOI."},
+    {"id": "10.1037/0033-295x.84.3.231", "decision": "same", "rationale": "Nisbett & Wilson 1977 'Telling more than we can know', identical fields and DOI."},
+    {"id": "action in perception", "decision": "same", "rationale": "Both Noë 2004 'Action in Perception' MIT Press; the incollection's booktitle is a metadata glitch but same monograph."},
+    {"id": "10.3758/bf03206495", "decision": "same", "rationale": "Noles/Scholl/Mitroff 2005 'The persistence of object file representations', identical fields and DOI."},
+    {"id": "10.1016/j.pragma.2008.08.005", "decision": "same", "rationale": "Norrick 2009 'Interjections as pragmatic markers', identical fields and DOI."},
+    {"id": "the pragmatics of reference", "decision": "same", "rationale": "Both Nunberg 'The Pragmatics of Reference' 1978 (IULC-reproduced dissertation); book vs phdthesis type but same work."},
+    {"id": "10.1007/bf00984721", "decision": "same", "rationale": "Nunberg 1993 'Indexicality and deixis', identical fields and DOI."},
+    {"id": "10.2307/2025340", "decision": "same", "rationale": "Nute 1975 'Counterfactuals and the Similarity of Words', identical fields and DOI."},
+    {"id": "10.1007/bf00247746", "decision": "same", "rationale": "Nute 1980 'Conversational scorekeeping and conditionals', identical fields and DOI."},
+    {"id": "notes towards a structuralist theory of mental representation", "decision": "same", "rationale": "Both O'Brien & Opie 2004 same chapter in 'Representation in Mind', Elsevier."},
+    {"id": "10.1016/0959-4388(94)90071-x", "decision": "same", "rationale": "All three Ochsner/Chiu/Schacter 1994 'Varieties of priming', identical fields and shared DOI."},
+    {"id": "10.1523/jneurosci.3217-16.2017", "decision": "same", "rationale": "Odegaard/Knight/Lau 2017 'Should a Few Null Findings...', identical fields and DOI."},
+    {"id": "the meaning of meaning", "decision": "same", "rationale": "Both Ogden & Richards 'The Meaning of Meaning'; 1923 first ed. vs 1956 8th ed., same work."}
+  ]
+}

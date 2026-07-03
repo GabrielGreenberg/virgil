@@ -1,0 +1,65 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1086/693876",
+      "decision": "same",
+      "rationale": "echeverri2017visual and Echeverri2017 share identical title, DOI, volume/number/pages, year; Echeverri2017 is a Zotero-style shadow key of the same article."
+    },
+    {
+      "id": "10.1007/s11098-013-0172-0",
+      "decision": "same",
+      "rationale": "egan2013how and Egan2014 share the same DOI, title, volume/number/pages; year differs only 2013 vs 2014 (online-first vs print). Same article."
+    },
+    {
+      "id": "10.1098/rstb.2013.0301",
+      "decision": "same",
+      "rationale": "emmorey2014iconicity and Emmorey2014 are identical in title, DOI, volume/number/pages/year; Zotero-style duplicate."
+    },
+    {
+      "id": "the neuroscience of emotion",
+      "decision": "mixed",
+      "rationale": "Survivor is the whole book 'The Neuroscience of Emotion' (deepIndexed). adolphs2018neuroscience is a distinct chapter ('The Neuroscience of Emotion in Rodents', Chapter 6, incollection) that is independently deepIndexed with its own folder — real work that must not be archived into the book. Adolphs2018 is likewise an incollection Chapter 6, part of the volume rather than the whole book. Exclude both.",
+      "distinct_members": ["adolphs2018neuroscience", "Adolphs2018"]
+    },
+    {
+      "id": "10.1038/nn.4656",
+      "decision": "same",
+      "rationale": "epstein2017cognitive and Epstein2017 are identical in title, DOI, volume/number/pages/year; Zotero-style duplicate."
+    },
+    {
+      "id": "10.5334/gjgl.1314",
+      "decision": "same",
+      "rationale": "esipova2021notatissueness, esipova2021not, and Esipova2021 all share the same title, DOI, volume/number/year; they differ only by presence of a page field ('83'). Same article."
+    },
+    {
+      "id": "the varieties of reference",
+      "decision": "same",
+      "rationale": "evans1982varieties, evans1982gareth, and evans1980varieties are the identical Evans 1982 book (same title, author, publisher, ISBN); year/author variants in citekeys are shadow keys of one work."
+    },
+    {
+      "id": "10.1111/cogs.12676",
+      "decision": "same",
+      "rationale": "fan2018common and Fan2018 are identical (title, DOI, volume/number/pages/year); only a Unicode hyphen in an author name differs."
+    },
+    {
+      "id": "drawing as a versatile cognitive tool",
+      "decision": "same",
+      "rationale": "Survivor fan2023drawing is a reconstructed stub of the same paper; Fan2023 is the full record (same title, year, lead author Fan) with DOI and journal filling in the missing data. Same work."
+    },
+    {
+      "id": "10.1093/acprof:oso/9780190613501.001.0001",
+      "decision": "same",
+      "rationale": "fernandezdols2017science and FernandezDols2017 are identical (same title, DOI, publisher, year); Zotero-style duplicate."
+    },
+    {
+      "id": "the primacy of metaphysics",
+      "decision": "same",
+      "rationale": "final2018primacy and peacocke2019primacy are both the full Peacocke book 'The Primacy of Metaphysics' (same title/author/publisher/year); peacocke2019primacy just adds DOI and ISBN. The survivor note confirms the indexed source is the full book. Same work."
+    },
+    {
+      "id": "10.1016/j.visres.2016.07.003",
+      "decision": "same",
+      "rationale": "finlayson2016featurelocation and Finlayson2016 are identical (same title, DOI, volume/pages/year); Zotero-style duplicate."
+    }
+  ]
+}

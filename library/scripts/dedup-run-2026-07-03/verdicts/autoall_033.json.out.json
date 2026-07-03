@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "on semantics", "decision": "same", "rationale": "Both 'On semantics', Higginbotham, 1985, Linguistic Inquiry vol 16."},
+  {"id": "linguistic theory and davidson s program in semantics", "decision": "same", "rationale": "Both 'Linguistic theory and Davidson's program in semantics', Higginbotham, 1986, pages 29-48."},
+  {"id": "the pseudo cleft construction in english", "decision": "same", "rationale": "Higgins 'The Pseudo-Cleft construction in English', Garland; 1973 diss vs 1979 reprint of same work."},
+  {"id": "10.1016/0010-0285(82)90006-8", "decision": "same", "rationale": "All three 'Illusory conjunctions', Treisman & Schmidt 1982, identical DOI/title/authors."},
+  {"id": "10.1063/1.3061234", "decision": "same", "rationale": "Both 'Geometry and the Imagination', Hilbert; survivor carries a Physics Today review-notice DOI of the same book, other is the book itself — same work."},
+  {"id": "10.1075/pb.iii.2-3.02hil", "decision": "same", "rationale": "All three identical Hill 1982 'Up/down, front/back, left/right', same DOI."},
+  {"id": "10.2307/2653682", "decision": "same", "rationale": "Both 'There are Fewer Things...', Hill/McLaughlin/Chalmers 1999, same DOI."},
+  {"id": "10.1111/j.1533-6077.2008.00149.x", "decision": "same", "rationale": "Both 'The Perception of Size and Shape', Hill & Bennett 2008, same DOI."},
+  {"id": "10.1017/s0140525x00064360", "decision": "same", "rationale": "Both 'Imagery without arrays', Hinton 1979, same DOI."},
+  {"id": "10.1016/s0364-0213(79)80008-7", "decision": "same", "rationale": "Both 'Some Demonstrations of the Effects of Structural Descriptions in Mental Imagery', Hinton 1979, Cognitive Science vol 3 pp 231-250; DOIs differ but title/author/journal/volume/pages match."},
+  {"id": "10.1117/12.952282", "decision": "same", "rationale": "Both members carry identical metadata ('Bit-Sequential VLSI Pixel-Kernel-Processor', Hinton O.R. & Kim, same DOI); internally consistent regardless of misleading citekeys."},
+  {"id": "10.1016/0010-0277(88)90002-9", "decision": "same", "rationale": "Both 'Scene-based and viewer-centered representations', Hinton & Parsons 1988, same DOI."},
+  {"id": "sound symbolism", "decision": "same", "rationale": "'Sound symbolism' edited volume, Hinton/Nichols(/Ohala); 1994 original and 2006 reissue are the same work."},
+  {"id": "10.1126/science.7761831", "decision": "same", "rationale": "Both 'Wake-Sleep Algorithm', Hinton/Dayan/Frey/Neal 1995, same DOI."},
+  {"id": "10.1126/science.1127647", "decision": "same", "rationale": "Both 'Reducing the Dimensionality of Data with Neural Networks', Hinton & Salakhutdinov 2006, same DOI."},
+  {"id": "10.1016/j.anbehav.2006.06.009", "decision": "same", "rationale": "Both 'Hierarchical use of chemical marking...', Hironaka et al., same DOI/title (year 2007 vs 2006 trivial)."},
+  {"id": "10.1007/s13752-013-0158-3", "decision": "same", "rationale": "All three 'Learning in Lithic Landscapes', Hiscock 2014, same DOI."},
+  {"id": "10.1901/jaba.1976.9-189", "decision": "same", "rationale": "Both 'Effects of Token Reinforcement on the Behavior of Delinquents', Hobbs & Holt 1976, identical fields/DOI."},
+  {"id": "10.3115/981210.981218", "decision": "same", "rationale": "Both 'Ontological promiscuity', Hobbs 1985, same DOI."},
+  {"id": "10.3115/979617.979668", "decision": "same", "rationale": "Both 'A theory of parallelism and the case of VP ellipsis', Hobbs & Kehler 1997, matching title/authors/pages; DOIs differ trivially."},
+  {"id": "in the mind s eye", "decision": "same", "rationale": "Both 'In the mind's eye', Hochberg 1968, pages 309-331."},
+  {"id": "the guild handbook of scientific illustration", "decision": "same", "rationale": "'The Guild Handbook of Scientific Illustration', Elaine Hodges; 1989 1st ed and 2003 2nd ed of the same work."},
+  {"id": "10.1126/science.aap7778", "decision": "same", "rationale": "Survivor has empty fields; matched to Hoffmann et al. 2018 'U-Th dating... Neandertal origin of Iberian cave art' via shared DOI."},
+  {"id": "godel escher bach", "decision": "same", "rationale": "Both 'Gödel, Escher, Bach', Hofstadter 1979, identical fields."},
+  {"id": "10.1037/0096-3445.114.2.198", "decision": "same", "rationale": "Both 'Object perception and object-directed reaching in infancy', von Hofsten & Spelke 1985, same DOI."}
+ ]
+}

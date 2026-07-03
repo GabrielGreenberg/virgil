@@ -1,0 +1,64 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1093/aesthj/ayl011",
+   "decision": "same",
+   "rationale": "Ribeiro2006 and Ribeiro2006a share identical title, author, year, journal, volume 46/3, pages 317-319, and DOI. Zotero-style suffix key vs hand key for the same review."
+  },
+  {
+   "id": "10.1093/bjaesthetics/ayi005",
+   "decision": "same",
+   "rationale": "abell2005mcintoshs and Abell2005 share identical title, same DOI, journal BJA, vol 45/1, pages 64-68. Duplicate import under different citekeys."
+  },
+  {
+   "id": "10.1111/j.1467-9329.2005.00268.x",
+   "decision": "same",
+   "rationale": "abell2005outlining and legacy shadow key 2005-Abell.1 share identical title 'On Outlining the Shape of Depiction', same DOI, journal Ratio, vol 18/1. Year-author shadow key of the indexed paper."
+  },
+  {
+   "id": "philosophical perspectives on depiction",
+   "decision": "same",
+   "rationale": "abell2010philosophical and AbellBantinaki2010 share identical title, authors, year, and ISBN 9780191723490. Same edited book, one entry adds publisher/DOI."
+  },
+  {
+   "id": "applying discourse semantics and pragmatics to co reference in picture sequences",
+   "decision": "same",
+   "rationale": "All three share identical title and author (Abusch). 2013 is the published Sinn und Bedeutung 17 proceedings; 2012 is the inproceedings/presentation version; 2020 is a circulated ms of the same paper. Preprint/proceedings/ms of one work."
+  },
+  {
+   "id": "temporal succession and aspectual type in visual narrative",
+   "decision": "same",
+   "rationale": "abusch2014temporal and abusch2002temporal share identical title, author, year 2014, booktitle (Festschrift for Irene Heim), and pages 9-29. The '2002' citekey is a mislabeled shadow key; fields agree it is the 2014 work."
+  },
+  {
+   "id": "10.1002/9781118788516.sem003",
+   "decision": "same",
+   "rationale": "All three share identical title 'Possible-Worlds Semantics for Pictures', same DOI, booktitle (Wiley Blackwell Companion to Semantics), pages 1-31. Year 2020 vs 2021 are online-vs-print variants of one chapter."
+  },
+  {
+   "id": "10.1007/s10988-022-09370-1",
+   "decision": "same",
+   "rationale": "abusch2022formal (published L&P article) and abuschrooth2017formal (Amsterdam Colloquium proceedings version) share identical title 'The Formal Semantics of Free Perception in Pictorial Narratives'. Proceedings/preprint vs published journal article of the same work."
+  },
+  {
+   "id": "10.1145/1924421.1924439",
+   "decision": "same",
+   "rationale": "agrawala2011design and Agrawala2011 share identical title, authors, same DOI, vol 54/4, pages 60-69. Duplicate import."
+  },
+  {
+   "id": "10.1007/s11229-020-02957-w",
+   "decision": "same",
+   "rationale": "aguilera2021heterogeneous and Aguilera2021 share identical title, author, same DOI, vol 199/1-2, pages 3805-3824. Duplicate import."
+  },
+  {
+   "id": "arrows are the verbs of diagrams",
+   "decision": "same",
+   "rationale": "alikhani2018arrows and alikhani2020arrows share identical title, authors, booktitle, and pages 3552-3563. Both members' notes explicitly confirm they refer to the same COLING 2018 paper (ACL Anthology C18-1301). Distinct from the 'Exploring Coherence' MIPR paper, which is a separate cluster."
+  },
+  {
+   "id": "10.1109/mipr.2018.00063",
+   "decision": "same",
+   "rationale": "alikhani2018exploring, Alikhani2018, and alikhanistone2018b all share identical title 'Exploring Coherence in Visual Explanations', MIPR 2018 venue, and same DOI. Duplicate imports of one paper (distinct from the COLING 'Arrows' paper)."
+  }
+ ]
+}

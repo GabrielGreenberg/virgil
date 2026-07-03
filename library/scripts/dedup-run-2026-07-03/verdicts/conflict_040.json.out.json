@@ -1,0 +1,39 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1111/j.1533-6077.2006.00116.x",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume 16(1), pages 310-333, and DOI. Only citekey/formatting differs (Zotero-style vs hand key)."
+  },
+  {
+   "id": "10.1080/00048402.2011.592541",
+   "decision": "same",
+   "rationale": "Identical DOI, title, author, year, journal, volume 89(4), pages 755-756. Zotero-style key vs hand key duplicate."
+  },
+  {
+   "id": "tractatus logico philosophicus",
+   "decision": "same",
+   "rationale": "All three are the Tractatus Logico-Philosophicus (Ogden translation editions, 1921/1922/1961). Only the survivor is indexed; the other two are none/null, so per the editions rule they merge into the most-indexed."
+  },
+  {
+   "id": "10.1111/j.1467-9205.1989.tb00265.x",
+   "decision": "same",
+   "rationale": "Both 'A Lecture on Freedom of the Will' with identical DOI and year 1989. Neither is indexed/deepIndexed. Same work; the '3rd edition'/translator note does not override the shared DOI."
+  },
+  {
+   "id": "10.1007/s00359-002-0301-2",
+   "decision": "same",
+   "rationale": "Byte-identical fields and DOI. Zotero-style key vs hand key duplicate import."
+  },
+  {
+   "id": "epistemic modals",
+   "decision": "same",
+   "rationale": "All three are Yalcin's 'Epistemic Modals' (Mind 2007, 116(464), 983-1026); two share DOI 10.1093/mind/fzm983 and the survivor matches title/author/year. Only the survivor is indexed."
+  },
+  {
+   "id": "10.1007/bf00189397",
+   "decision": "same",
+   "rationale": "Despite the ...orientationi / ...orientationii (I/II) citekey suffix, both entries have identical title, author, journal, volume 172(2), pages 207-222, and the SAME DOI. A genuine Part I/II would differ in pages and DOI; this is a duplicate import, not companion papers. Neither is indexed."
+  }
+ ]
+}

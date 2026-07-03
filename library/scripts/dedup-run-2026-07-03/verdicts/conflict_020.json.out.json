@@ -1,0 +1,65 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1037/0033-295x.88.1.46",
+   "decision": "same",
+   "rationale": "Same title, author, year (1981), and DOI 10.1037/0033-295x.88.1.46. Loser is an incollection variant of the same Psychological Review article."
+  },
+  {
+   "id": "10.1093/acprof:oso/9780195179088.001.0001",
+   "decision": "same",
+   "rationale": "All three are 'The Case for Mental Imagery' (Kosslyn/Thompson/Ganis, 2006, OUP). Two share the DOI; the third shares ISBN 9780195179088. The kosslyn1995mental citekey is a mislabeled shadow key but its fields are the same 2006 book."
+  },
+  {
+   "id": "10.3389/fpsyg.2024.1368989",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume, and DOI. Zotero-style key vs hand key for the same article."
+  },
+  {
+   "id": "10.1023/a:1020807615085",
+   "decision": "same",
+   "rationale": "Same title, author, year, volume, pages, and DOI. Loser noted as 'Preprint (manuscript)' — preprint vs published is the same work."
+  },
+  {
+   "id": "10.1093/jos/ffh020",
+   "decision": "same",
+   "rationale": "Identical fields including DOI. Zotero-style key vs hand key for the same Journal of Semantics article."
+  },
+  {
+   "id": "10.3389/neuro.06.004.2008",
+   "decision": "same",
+   "rationale": "Identical title, year, journal, and DOI; only author-name formatting differs. Same work."
+  },
+  {
+   "id": "10.1146/annurev-vision-082114-035447",
+   "decision": "same",
+   "rationale": "Identical title, year, journal, volume, pages, and DOI. Same work under two citekeys."
+  },
+  {
+   "id": "10.1007/978-94-010-2557-7_9",
+   "decision": "same",
+   "rationale": "'Naming and Necessity' — survivor is the 1972 chapter in Semantics of Natural Language; losers are the 1980 Harvard standalone edition (same ISBN twice). Same work republished; no member is independently indexed, so merging risks no real work."
+  },
+  {
+   "id": "10.3758/bf03200759",
+   "decision": "distinct",
+   "rationale": "The survivor is Shepard's 1994 Psychonomic Bulletin & Review paper (vol 1, pp 2-28, DOI 10.3758/bf03200759). The loser shepard2001perceptual is the distinct 2001 Behavioral and Brain Sciences target article (vol 24, pp 581-601, DOI 10.1017/s0140525x01000012) — different journal, year, volume, pages, and DOI. Distinct publications despite the shared title.",
+   "distinct_members": ["shepard2001perceptual"]
+  },
+  {
+   "id": "10.1111/j.1468-0114.2004.00206.x",
+   "decision": "same",
+   "rationale": "Same title, author, year, journal, volume, and DOI. Loser merely adds page range. Same work."
+  },
+  {
+   "id": "10.1086/651321",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume, pages, and DOI. Same work under two citekeys."
+  },
+  {
+   "id": "images",
+   "decision": "same",
+   "rationale": "'Images' (Kulvicki, 2013, Routledge, ISBN 9780415557009) — kulvicki2013images vs kulvicki2014images are the same book under two citekeys with identical metadata."
+  }
+ ]
+}

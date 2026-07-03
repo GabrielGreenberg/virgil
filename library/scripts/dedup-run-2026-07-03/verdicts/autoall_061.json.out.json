@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1075/sll.00025.sch", "decision": "same", "rationale": "Identical title, author, year, volume, pages, and DOI across both members."},
+  {"id": "10.1007/s10988-021-09329-8", "decision": "same", "rationale": "Identical title/author/year/journal/DOI; only bibtex type differs (article vs misc)."},
+  {"id": "10.1006/cogp.1998.0698", "decision": "same", "rationale": "Identical Scholl & Pylyshyn title, authors, year, pages, DOI."},
+  {"id": "10.1016/s0010-0277(00)00152-9", "decision": "same", "rationale": "Identical Scholl 2001 'Objects and attention' title/author/DOI."},
+  {"id": "10.1007/978-94-009-2723-0_6", "decision": "same", "rationale": "Identical Schubert & Pelletier generics chapter, same title/author/DOI/pages."},
+  {"id": "10.1093/mind/fzu144", "decision": "same", "rationale": "Identical Schulz 'Counterfactuals and Arbitrariness' fields and DOI; both entries have year 2014, only citekeys differ."},
+  {"id": "object files across eye movements previous fixations affect the latencies of corrective saccades", "decision": "same", "rationale": "Same Schut et al. 2017 title, authors, journal, year, pages; second member adds the correct DOI."},
+  {"id": "10.1111/j.1467-9280.1994.tb00500.x", "decision": "same", "rationale": "Identical Schyns & Oliva title/author/DOI; second citekey merely misspelled."},
+  {"id": "10.2307/2964389", "decision": "same", "rationale": "Identical Scott & Suppes measurement-theory article across both members."},
+  {"id": "10.1136/jnnp.20.1.11", "decision": "same", "rationale": "All three are the identical Scoville & Milner 1957 hippocampal-lesion paper, same DOI/pages."},
+  {"id": "10.1093/acprof:oso/9780199832798.003.0004", "decision": "same", "rationale": "Both members are Shea 'Distinguishing Top-Down from Bottom-Up Effects', same author/title/DOI; misleading survivor citekey only."},
+  {"id": "the aesthetic understanding", "decision": "same", "rationale": "Identical Scruton book, same ISBN/publisher/year."},
+  {"id": "10.1163/9789004368811_004", "decision": "same", "rationale": "All three are Searle 'Indirect Speech Acts', same author/title/pages/DOI."},
+  {"id": "foundations of illocutionary logic", "decision": "same", "rationale": "All three are the identical Searle & Vanderveken book, same ISBN."},
+  {"id": "the rediscovery of the mind", "decision": "same", "rationale": "All members are Searle's 'The Rediscovery of the Mind' 1992 MIT Press; one carries the book DOI, all the same work."},
+  {"id": "10.4324/9780203826430-9", "decision": "same", "rationale": "All share the title 'Consciousness, explanatory inversion, and cognitive science' — the survivor is the 1998 reprinted chapter and the two 1990 members are the original BBS target article; same intellectual work (reprint) despite differing DOI/venue."},
+  {"id": "10.1037/h0088180", "decision": "same", "rationale": "Both members carry identical fields (same title, author, DOI). The DOI is mis-authenticated to an unrelated Heather Sears book review, but since both entries are identical copies of that same (erroneous) record, merging them together is correct — no odd-one-out to split."},
+  {"id": "10.1037/h0028840", "decision": "same", "rationale": "Identical Segal & Fusella 1970 imagery paper across both members."},
+  {"id": "10.2307/2185282", "decision": "same", "rationale": "Identical Segal 'Seeing What is not There' 1989 fields/DOI."},
+  {"id": "10.1093/mind/c.400.485", "decision": "same", "rationale": "Identical Segal 'Defence of a Reasonable Individualism' fields/DOI."},
+  {"id": "parallel networks that learn to pronounce english text", "decision": "same", "rationale": "Same Sejnowski & Rosenberg NETtalk paper, same title/year/journal/volume; only minor author-initial and page formatting differences."},
+  {"id": "10.1037/0096-3445.121.1.95", "decision": "same", "rationale": "Identical Sekuler & Palmer 1992 occluded-objects paper, same DOI."},
+  {"id": "10.1086/287464", "decision": "same", "rationale": "Both members carry identical fields (title 'Physical Realism and Relativity', author Roy Wood Sellars, same DOI). The citekey stem is misleading but both entries are identical copies of the same record, so merging them is correct."},
+  {"id": "the computational neurobiology of reaching and pointing", "decision": "same", "rationale": "Identical Shadmehr & Wise book, same ISBN/publisher/year."},
+  {"id": "the art of causal conjecture", "decision": "same", "rationale": "Identical Shafer book, same ISBN/publisher/year."}
+ ]
+}

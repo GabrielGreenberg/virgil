@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "jolicoeur1989identifica||jolicoeur1990identifi",
+   "decision": "distinct",
+   "rationale": "Different titles (\"Effects of context of prior presentation\" JEP:LMC vol 15, 1989 vs \"A Dual-systems Theory\" Mind & Language vol 5, 1990), different journals, years, and DOIs. Two distinct papers."
+  },
+  {
+   "id": "jonides1980towards||jonides1983further",
+   "decision": "distinct",
+   "rationale": "\"Towards a model...\" (1980, Canadian J Psych, DOI h0081031) vs \"Further toward a model...\" (1983, Bulletin of the Psychonomic Society, DOI bf03334699). Distinct follow-up paper: different year, journal, pages, DOI."
+  },
+  {
+   "id": "juslin2003communicat||juslin2003communication",
+   "decision": "same",
+   "rationale": "Both \"Communication of emotions in vocal expression and music performance\", Juslin & Laukka 2003, Psychological Bulletin 129, 770-814. B's title/publisher are corrupted with leaked citation metadata but it is the same work."
+  },
+  {
+   "id": "kamp1993discourse||kampreyle1993discourse",
+   "decision": "same",
+   "rationale": "Both \"From Discourse to Logic\" by Kamp & Reyle 1993, Springer. B carries the full subtitle; same book."
+  },
+  {
+   "id": "kamp1993discourse||reyle1993from",
+   "decision": "same",
+   "rationale": "Both \"From Discourse to Logic\" by Kamp & Reyle 1993, Springer. Same book, differently keyed."
+  },
+  {
+   "id": "kaplan1968quantifying||kaplan1969quantifying",
+   "decision": "same",
+   "rationale": "Kaplan's \"Quantifying In\", same author and title. Appeared in Synthese 19 (1968) and reprinted in Words and Objections (1969); same intellectual work across the two venues."
+  },
+  {
+   "id": "karttunen1973presupposi||karttunen1973presuppositions",
+   "decision": "same",
+   "rationale": "\"Presuppositions of/and Compound Sentences\", Karttunen 1973, Linguistic Inquiry vol 4, pages 169-193. Same work."
+  },
+  {
+   "id": "kendon1972relationships||kendon1972some",
+   "decision": "same",
+   "rationale": "\"Some Relationships Between Body Motion and Speech\", Kendon 1972, pages 177-210, in Studies in Dyadic Communication (Pergamon). Same work."
+  },
+  {
+   "id": "kihara2010time||kihara2012attention",
+   "decision": "distinct",
+   "rationale": "\"Time course of the integration...\" (2010, Vision Research 50, DOI 2010.08.012) vs \"Attention-free integration...\" (2012, Vision Research 65, DOI 2012.06.008). Different titles, years, volumes, DOIs."
+  },
+  {
+   "id": "kimchi2005||kimchi2005microgenesis",
+   "decision": "same",
+   "rationale": "Both \"Microgenesis and Ontogenesis of Perceptual Organization\", Kimchi/Hadad/Behrmann/Palmer 2005, Psychological Science vol 16(4), pp 282-290. Same work."
+  },
+  {
+   "id": "kiparsky1970fact||kiparsky1971fact",
+   "decision": "same",
+   "rationale": "\"Fact\" by Kiparsky & Kiparsky, published in Progress in Linguistics (1970/1971). Same work; the two entries differ only in a 1-year date discrepancy and book/chapter typing."
+  },
+  {
+   "id": "knott1994discourse||knottdale1994using",
+   "decision": "distinct",
+   "rationale": "The shared DOI (10.1080/01638539409544883) belongs to \"Using linguistic phenomena to motivate a set of coherence relations\" (Discourse Processes 1994). Entry a has a genuinely different title (\"Discourse relations as descriptions of an algorithm...\") — the DOI on a is erroneous/copied; two distinct Knott & Dale papers."
+  },
+  {
+   "id": "kowler1979effect||kowler1979effecta",
+   "decision": "distinct",
+   "rationale": "Part I (\"Periodic target steps\", pp 619-632, DOI 90238-4) vs Part II (\"Single target displacements\", pp 633-646, DOI 90239-6). Two-part series; distinct articles with different pages and DOIs."
+  },
+  {
+   "id": "krantz1971foundation||krantz1971foundations",
+   "decision": "same",
+   "rationale": "Both \"Foundations of measurement\", Krantz/Luce/Suppes/Tversky 1971, Academic Press. Entry a has a garbled author list but is the same book."
+  },
+  {
+   "id": "krantz1971foundation||krantzlucesuppestversky1971foundations",
+   "decision": "same",
+   "rationale": "Both \"Foundations of measurement\", Krantz et al. 1971, Academic Press. Same book (vol 1)."
+  },
+  {
+   "id": "krantz1971foundations||krantzlucesuppestversky1971foundations",
+   "decision": "same",
+   "rationale": "Both \"Foundations of measurement\", Krantz/Luce/Suppes/Tversky 1971, Academic Press. Same book (vol 1)."
+  },
+  {
+   "id": "kravitz2008||kravitz2008how",
+   "decision": "same",
+   "rationale": "Both \"How position dependent is visual object recognition?\", Kravitz/Vinson/Baker 2008, Trends in Cognitive Sciences vol 12, pp 114-122. Same work; a has leaked journal text into its title/journal fields."
+  },
+  {
+   "id": "krifka1995bsemantics||krifka1995semantics",
+   "decision": "distinct",
+   "rationale": "\"The Semantics and Pragmatics of Weak and Strong Polarity Items in Assertions\" (1994, SALT 4, pp 195-219, DOI salt.v4i0.2462) vs \"The Semantics and Pragmatics of Polarity Items\" (1995, Linguistic Analysis, pp 209-257). Two distinct Krifka papers: different venues, years, pages, titles."
+  },
+  {
+   "id": "kripke1979speaker||kripke1979speakers",
+   "decision": "same",
+   "rationale": "\"Speaker's Reference and Semantic Reference\", Kripke 1979, University of Minnesota Press. Entry a's title is truncated to \"Speaker\"; same work."
+  },
+  {
+   "id": "lakoff1987women||lakoffgeorge1987women",
+   "decision": "same",
+   "rationale": "\"Women, Fire, and Dangerous Things\", Lakoff 1987, University of Chicago Press. Entry b's title is truncated to \"Women\"; same book."
+  }
+ ]
+}

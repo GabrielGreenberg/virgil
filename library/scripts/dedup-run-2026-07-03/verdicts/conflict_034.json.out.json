@@ -1,0 +1,66 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1007/s11229-010-9780-9",
+      "decision": "same",
+      "rationale": "Same DOI, title, journal, volume/number/pages. Only diff is preprint year 2010 vs published 2011 and citekey style — same work."
+    },
+    {
+      "id": "10.1017/s0140525x00005756",
+      "decision": "same",
+      "rationale": "All three share the same DOI, title, author, journal, volume, pages. The garbled 'maximizingversussatisficing...' key is just a bad Zotero-style prefix on identical fields."
+    },
+    {
+      "id": "10.1515/9783484431003.1",
+      "decision": "mixed",
+      "rationale": "Survivor (Sebeok attribution) and noth1995handbook share the exact same DOI and year (2001, de Gruyter) — same book with a mis-attributed author field, both indexed. But noth1990handbook is the 1990 Indiana University Press edition (different year, different publisher, no DOI) — a substantively distinct edition; keep it separate to avoid conflating editions.",
+      "distinct_members": ["noth1990handbook"]
+    },
+    {
+      "id": "10.1177/20416695221118388",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, journal, volume/number. Hand key vs Zotero key duplicate."
+    },
+    {
+      "id": "10.1038/s41598-025-06919-5",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, journal, volume/number. Hand key vs Zotero key duplicate."
+    },
+    {
+      "id": "10.3389/fnsys.2022.787737",
+      "decision": "same",
+      "rationale": "Same authoritative DOI, title, journal, volume, year. Author lists differ (Anne B. Sereno et al. vs Martin I. Sereno et al.) but that is corrupted author metadata on the non-indexed loser; the DOI identifies a single paper."
+    },
+    {
+      "id": "10.1093/bjps/axr038",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, journal, volume/number/pages. Hand key vs Zotero key duplicate."
+    },
+    {
+      "id": "10.1111/phc3.12033",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, journal, volume/number/pages. Hand key vs Zotero key duplicate."
+    },
+    {
+      "id": "10.1093/bjps/axw036",
+      "decision": "same",
+      "rationale": "Identical DOI, title, full author list, journal, volume/number/pages. Hand key vs Zotero key duplicate."
+    },
+    {
+      "id": "representation in cognitive science",
+      "decision": "same",
+      "rationale": "Identical title, author, year, publisher, ISBN. 'shea2018represen' is a truncated shadow key of the same book."
+    },
+    {
+      "id": "10.1126/science.171.3972.701",
+      "decision": "mixed",
+      "rationale": "Survivor (deepIndexed) and legacy shadow key 1971-Shepard (indexed) are the same Science article; shepard1971science is a clean not-indexed shadow duplicate. But metzler1973cognitive is typed as a phdthesis and its key points to Metzler's 1973 dissertation — a distinct work whose fields were merely overwritten with the article's metadata; keep it separate.",
+      "distinct_members": ["metzler1973cognitive"]
+    },
+    {
+      "id": "the logical status of diagrams",
+      "decision": "same",
+      "rationale": "All three share identical title, author, year (1994), publisher, and ISBN 9780521461573. Same book imported multiple times; the two deep-indexed rows are genuine duplicates, shin1995the is a not-indexed shadow."
+    }
+  ]
+}

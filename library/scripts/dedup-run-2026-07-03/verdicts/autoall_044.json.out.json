@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1080/00048407212341301", "decision": "same", "rationale": "All three are Lewis 1972 'Psychophysical and theoretical identifications', AJP 50(3):249-258, same DOI, identical fields."},
+    {"id": "10.2307/2025310", "decision": "same", "rationale": "All three are Lewis 1973 'Causation', J. Phil 70(17), same DOI, identical fields; note field differs only in reprint annotation."},
+    {"id": "languages and language", "decision": "same", "rationale": "All Lewis 'Languages and Language' (1975 orig, reprinted in Philosophical Papers Vol I 1983/1985); same work."},
+    {"id": "10.2307/2184045", "decision": "same", "rationale": "All three are Lewis 1976 'Probabilities of Conditionals and Conditional Probabilities', Phil Review 85(3), same DOI/fields."},
+    {"id": "10.1007/bf00258436", "decision": "same", "rationale": "All Lewis 1979 'Scorekeeping in a Language Game'; two members carry the collection-reprint DOI but it is the same work (journal vs reprinted-in-collection version)."},
+    {"id": "10.2307/2184843", "decision": "same", "rationale": "All five are Lewis 1979 'Attitudes De Dicto and De Se', Phil Review 88(4), same DOI, identical title/authors."},
+    {"id": "10.1080/00048408012341251", "decision": "same", "rationale": "Both 'Veridical Hallucination and Prosthetic Vision' by Lewis; journal original (1980) and reprint in Philosophical Papers Vol II; same work."},
+    {"id": "10.1080/00048408412340013", "decision": "same", "rationale": "All four are Lewis 1984 'Putnam's paradox', AJP 62(3):221-236, same DOI/fields."},
+    {"id": "10.2307/j.ctv6gqr05.3", "decision": "same", "rationale": "Both are 'Foreword' by Lewis, Herbert in 'Lily Lewis', same DOI, identical fields; misleading citekeys but actual bib data matches."},
+    {"id": "philosophical papers vol 2", "decision": "same", "rationale": "Both are David K. Lewis 'Philosophical Papers, Vol. 2', 1987, same ISBN; same work."},
+    {"id": "10.1111/j.1468-0149.1986.tb01146.x", "decision": "same", "rationale": "All four are 'Antiaesthetics...' by Lewis, Peter 1986, Philosophical Books 27(1), same DOI; misleading citekeys but identical fields."},
+    {"id": "on the plurality of worlds", "decision": "same", "rationale": "All are Lewis 'On the Plurality of Worlds' (1986 Blackwell / 2001 reissue); same work."},
+    {"id": "10.1093/mind/103.412.473", "decision": "same", "rationale": "All four are Lewis 1994 'Symposium: Chance and Credence', Mind 103(412):473-490, same DOI/fields."},
+    {"id": "10.1017/s0068246200004530", "decision": "same", "rationale": "All three are 'Vitruvius and Greek aqueducts' by Lewis, Michael 1999, same DOI, identical title/authors."},
+    {"id": "10.1017/s0080443600010955", "decision": "same", "rationale": "Both are 'The Elusive Self and the I-Thou Relation' by Lewis, H. D. 1968, same DOI, identical fields."},
+    {"id": "10.1007/978-1-4757-2606-0", "decision": "same", "rationale": "All are Li & Vitanyi 'Introduction to Kolmogorov Complexity'; 3rd-edition member has its own edition DOI but is the same work across editions."},
+    {"id": "10.1126/science.1160028", "decision": "same", "rationale": "Both are Li & DiCarlo 2008 'Unsupervised Natural Experience...', Science 321(5895), same DOI/fields."},
+    {"id": "what response properties do individual neurons need to underlie position and clutter invariant object recognition j", "decision": "same", "rationale": "Both are Li, Cox, Zoccolan & DiCarlo 2009, J. Neurophysiol 102:360-376; identical apart from quote-mark encoding."},
+    {"id": "universal grammar and iconicity", "decision": "same", "rationale": "Both are Yafei Li 'Universal Grammar and Iconicity', same ISBN; same work."},
+    {"id": "10.1017/s0140525x00044903", "decision": "same", "rationale": "Both are Libet 1985 'Unconscious cerebral initiative...', BBS 8(4):529-539, same DOI/fields."},
+    {"id": "10.2307/413645", "decision": "same", "rationale": "Both are Liddell 1984 'Think and Believe: Sequentiality in ASL', Language 60(2), same DOI/fields."},
+    {"id": "10.1515/thli.2011.009", "decision": "same", "rationale": "Both are Lillo-Martin & Meier 2011 'On the linguistic status of agreement...', same DOI, identical title/authors; page ranges differ but same work."},
+    {"id": "10.1007/bf00629320", "decision": "same", "rationale": "Both are Lindauer 1957 'Sonnenorientierung der Bienen...', Naturwissenschaften 44(1), same DOI/fields."},
+    {"id": "10.2307/412701", "decision": "same", "rationale": "Both are Linde & Labov 1975 'Spatial networks...', Language 51(4), same DOI/fields."},
+    {"id": "10.1016/j.visres.2008.05.025", "decision": "same", "rationale": "Both are Ling, Liu & Carrasco 2009 'How spatial and feature-based attention...', Vision Research 49(10), same DOI/fields."}
+  ]
+}

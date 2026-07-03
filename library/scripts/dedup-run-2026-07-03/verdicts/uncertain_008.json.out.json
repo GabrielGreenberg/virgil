@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "foderbevergarrett1974psychology||fodor1975jerry",
+   "decision": "distinct",
+   "rationale": "'The psychology of language' (Fodor, Bever & Garrett 1974, McGraw-Hill) is a different book from 'The language of thought' (Fodor 1975, Harvard). Different titles, years, publishers, and ISBNs."
+  },
+  {
+   "id": "foderbevergarrett1974psychology||fodor1975language",
+   "decision": "distinct",
+   "rationale": "'The psychology of language' (1974, McGraw-Hill) vs 'The language of thought' (1975, Crowell) are distinct works with different titles, years, and ISBNs."
+  },
+  {
+   "id": "foderbevergarrett1974psychology||fodor1976language",
+   "decision": "distinct",
+   "rationale": "'The psychology of language' (1974) vs 'The language of thought' (1975, Harvard) are distinct books; different titles, years, and ISBNs."
+  },
+  {
+   "id": "fodor1975jerry||fodor1975language-2",
+   "decision": "same",
+   "rationale": "Both are Fodor's 'The Language of Thought' (1975), Harvard University Press (Cambridge, MA). The -2 entry just embeds the publisher in the title field. Same work."
+  },
+  {
+   "id": "fodor1975jerry||fodorbevergarrett1974psychology",
+   "decision": "distinct",
+   "rationale": "'The language of thought' (1975, Harvard) vs 'The psychology of language' (1974, McGraw-Hill, Fodor/Bever/Garrett) are distinct books."
+  },
+  {
+   "id": "fodor1975language||fodor1975language-2",
+   "decision": "same",
+   "rationale": "Both are Fodor's 'The Language of Thought' (1975). fodor1975language lists the Crowell first edition; -2 lists the Harvard printing embedded in the title. Same underlying work."
+  },
+  {
+   "id": "fodor1975language||fodorbevergarrett1974psychology",
+   "decision": "distinct",
+   "rationale": "'The language of thought' (1975, Crowell) vs 'The psychology of language' (1974, McGraw-Hill) are distinct books with different titles and years."
+  },
+  {
+   "id": "fodor1975language-2||fodor1976language",
+   "decision": "same",
+   "rationale": "Both are Fodor's 'The Language of Thought' (1975), Harvard University Press (Cambridge, MA). Same work despite the misleading 1976 citekey."
+  },
+  {
+   "id": "fodor1975psychologi||fodor1975psychological",
+   "decision": "same",
+   "rationale": "Same paper: Fodor, Fodor & Garrett, 'The psychological unreality of semantic representations', Linguistic Inquiry 6 (1975), pp. 515-532. The 'linguistic representations' title and 515--31 pages are transcription variants of the same article."
+  },
+  {
+   "id": "fodor1976language||fodorbevergarrett1974psychology",
+   "decision": "distinct",
+   "rationale": "'The language of thought' (Fodor 1975, Harvard) vs 'The psychology of language' (1974, McGraw-Hill, Fodor/Bever/Garrett) are distinct books."
+  },
+  {
+   "id": "fodor1980a||fodor1980behavioral",
+   "decision": "distinct",
+   "rationale": "'Methodological solipsism considered as a research strategy...' (pp. 63-73, doi ...1771) is the target article; 'Methodological solipsism: replies to commentators' (pp. 99-109, doi ...2041) is Fodor's reply. Different papers, distinct DOIs and pages."
+  },
+  {
+   "id": "fodor1980a||fodor1980jerry",
+   "decision": "distinct",
+   "rationale": "The main article (pp. 63-73, doi ...1771) vs the 'replies to commentators' (pp. 99-109, doi ...2041) are distinct works with different DOIs and pages."
+  },
+  {
+   "id": "fodor1980behavioral||fodor1980methodolog",
+   "decision": "distinct",
+   "rationale": "'Replies to commentators' (pp. 99-109, doi ...2041) vs the main 'considered as a research strategy' article (pp. 63-73, doi ...1771) are distinct works."
+  },
+  {
+   "id": "fodor1980behavioral||fodor1980methodological",
+   "decision": "distinct",
+   "rationale": "'Replies to commentators' (pp. 99-109, doi ...2041) vs the main article (pp. 63-73, doi ...1771) are distinct works with different DOIs and pages."
+  },
+  {
+   "id": "fodor1980jerry||fodor1980methodolog",
+   "decision": "distinct",
+   "rationale": "'Replies to commentators' (pp. 99-109, doi ...2041) vs the main 'considered as a research strategy' article (pp. 63-73, doi ...1771) are distinct works."
+  },
+  {
+   "id": "fodor1980jerry||fodor1980methodological",
+   "decision": "distinct",
+   "rationale": "'Replies to commentators' (pp. 99-109, doi ...2041) vs the main article (pp. 63-73, doi ...1771) are distinct works with different DOIs and pages."
+  },
+  {
+   "id": "fodor1981modularity||fodor1983modularityc",
+   "decision": "same",
+   "rationale": "Both are Fodor's 'The Modularity of Mind' (1983), MIT Press. The 1981 citekey is misleading; year, author, publisher, and title all match. Same work."
+  },
+  {
+   "id": "fodor1983modularity||fodor1983modularityc",
+   "decision": "same",
+   "rationale": "Both are Fodor's 'The Modularity of Mind' (1983), MIT Press. Same book; differing ISBNs are just print/electronic variants."
+  },
+  {
+   "id": "frege1879begriffs||frege:1879",
+   "decision": "same",
+   "rationale": "Both are Frege's 'Begriffsschrift' (1879). The incollection is the English translation reprinted in The Frege Reader; same underlying work."
+  },
+  {
+   "id": "frege1892sense||frege1892sense-2",
+   "decision": "same",
+   "rationale": "Both are Frege's 1892 'Über Sinn und Bedeutung'. 'On Sense and Reference' and 'On Sense and Meaning' are alternate English translations of the same work."
+  }
+ ]
+}

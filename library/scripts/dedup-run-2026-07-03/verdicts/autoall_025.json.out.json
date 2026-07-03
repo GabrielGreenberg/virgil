@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1016/s1364-6613(99)01281-4", "decision": "same", "rationale": "Both members share DOI, identical title, author list (Frith, Perry, Lumer), year, journal, volume/number/pages. Alternate citekeys for one TiCS 1999 paper."},
+    {"id": "10.1037/0096-3445.122.1.73", "decision": "same", "rationale": "Identical title, full author list (Loomis et al.), year, journal, volume/pages and shared DOI. Same JEP:General 1993 paper under two citekeys."},
+    {"id": "syntactic methods in pattern recognition", "decision": "same", "rationale": "Same title (K.S. Fu, 1974), identical ISBN 9780080956213; publisher differs only as Academic Press vs Elsevier (same book, different imprint label)."},
+    {"id": "10.3389/fpsyg.2021.605928", "decision": "same", "rationale": "Identical title, authors (Fugate, Franco), year, journal and shared DOI. Same Frontiers 2021 article."},
+    {"id": "10.1038/360343a0", "decision": "same", "rationale": "Identical title, author list (Fujita, Tanaka, Ito, Cheng), Nature 1992, vol/pages and shared DOI. Same paper, two citekeys."},
+    {"id": "10.1152/jn.1991.66.1.170", "decision": "same", "rationale": "Identical title, authors (Tanaka, Saito, Fukada, Moriya), J Neurophysiol 1991, vol/pages and shared DOI. Same paper."},
+    {"id": "self organization of a neural network which gives position invariant response in japanese", "decision": "same", "rationale": "Identical title, author (Fukushima), year 1979, techreport number MBE 78-109 (one just adds 'Pap. Tech. Group' prefix). Same tech report."},
+    {"id": "10.2307/2526490", "decision": "same", "rationale": "Both members are byte-identical (same title, author, DOI, booktitle, pages). Record has a mismatched title/booktitle but the two members are the same record; merging them is correct."},
+    {"id": "10.2207/qjjws1943.48.272", "decision": "same", "rationale": "Identical title, authors, journal, vol/pages and shared DOI across both members. Same article."},
+    {"id": "10.1016/0004-3702(80)90002-8", "decision": "same", "rationale": "Same title and author (Funt); the 1995 entry is an explicit republication of the 1980 original in the Diagrammatic Reasoning volume. Same work."},
+    {"id": "10.1016/0006-8993(85)90689-4", "decision": "same", "rationale": "Identical title, authors (Fuster, Bauer, Jervey), Brain Research 1985, vol/pages and shared DOI. The a/b citekeys are just alternates for one paper."},
+    {"id": "10.1162/jocn.1993.5.1.118", "decision": "same", "rationale": "Identical title, authors (Gaffan, Heywood), JOCN 1993, vol/pages and shared DOI. Same paper."},
+    {"id": "10.3758/bf03337670", "decision": "same", "rationale": "Identical title, authors (Gallant, Garner), journal, vol/pages and shared DOI. Same 1988 article."},
+    {"id": "10.1093/aristotelian/56.1.167", "decision": "same", "rationale": "Identical title (Essentially Contested Concepts), author Gallie, year 1956, vol/pages and shared DOI. Citekey year label differs (1955 vs 1956) but same work."},
+    {"id": "10.1016/s1364-6613(99)01424-2", "decision": "same", "rationale": "All six members have identical title (Non-verbal numerical cognition), authors (Gallistel, Gelman), TiCS 2000, vol/pages and shared DOI. Multiple alternate citekeys for one paper."},
+    {"id": "the symbolic foundations of conditioned behaviour", "decision": "same", "rationale": "Both members byte-identical: same title, authors (Gallistel, Gibbon), year 2002, publisher. Same book."},
+    {"id": "10.1016/j.cogbrainres.2004.02.012", "decision": "same", "rationale": "Identical title, authors (Ganis, Thompson, Kosslyn), journal, vol/pages and shared DOI. Same 2004 fMRI paper."},
+    {"id": "10.3758/cabn.5.2.235", "decision": "same", "rationale": "Identical title, authors (Ganis, Thompson, Kosslyn), CABN 2005, vol/pages and shared DOI. The kosslyn2005two citekey is just an alternate key for the same paper."},
+    {"id": "knowledge in flux", "decision": "same", "rationale": "Same title (Knowledge in Flux) and author Gärdenfors; year/publisher differ (1987 MIT Press vs 1990 College Publications) as reprint editions of one book. Same work."},
+    {"id": "10.1016/0376-6357(95)00043-7", "decision": "same", "rationale": "Identical title, author (Gärdenfors), journal, vol/pages and shared DOI. Same 1995 article; citekey year label differs (1995 vs 1996)."},
+    {"id": "the mind s new science", "decision": "same", "rationale": "Both members byte-identical: same title (The Mind's New Science), author Gardner, year, publisher, ISBN. Same book."},
+    {"id": "10.1068/p6970", "decision": "same", "rationale": "Identical title, authors (Garrigan, Kellman), Perception 2011, vol/pages and shared DOI. Same paper."},
+    {"id": "10.1007/978-3-319-32020-5", "decision": "same", "rationale": "Identical title (A Critical Overview of Biological Functions), author Garson, year 2016, and shared DOI. Same Springer book, two citekeys."},
+    {"id": "reference and generality an examination of some medieval and modern theories", "decision": "same", "rationale": "Same title (Reference and Generality), author Geach, Cornell UP; year differs (1962 vs 1980 edition). Same book across editions."},
+    {"id": "10.1037//0033-295x.107.4.677", "decision": "same", "rationale": "Identical title, authors (Geisler, Super), Psych Review 2000, vol/pages and shared DOI. Same paper."}
+  ]
+}

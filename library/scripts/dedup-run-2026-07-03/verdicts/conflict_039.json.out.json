@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1016/j.cognition.2017.05.020",
+      "decision": "same",
+      "rationale": "Identical DOI, title, authors, journal, volume, pages. warren2017wormholes (indexed) vs Warren2017 (Zotero-style key, unindexed). Same work."
+    },
+    {
+      "id": "10.1162/089120103322753347",
+      "decision": "same",
+      "rationale": "Identical DOI, title, authors, journal, volume/number/pages. Citekeys differ only by a trailing 'a' (webberetal2003anaphora vs webberetal2003anaphor). Same work."
+    },
+    {
+      "id": "10.1371/journal.pone.0177239",
+      "decision": "same",
+      "rationale": "Identical DOI, title, authors, volume/number/pages; journal 'PLoS ONE' vs 'PLOS ONE' is cosmetic. wegrzyn2017mapping (indexed) vs Zotero key. Same work."
+    },
+    {
+      "id": "10.1007/s11050-006-9001-8",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, volume/number/pages. Year 2006 vs 2007 is a metadata variant (online-first vs issue year); same paper. Same work."
+    },
+    {
+      "id": "10.4324/978020376620",
+      "decision": "same",
+      "rationale": "All three are 'Film Discourse Interpretation', Wildfeuer, Routledge 2014. Two share the DOI; the third carries an ISBN only. Same book across a hand key, a Zotero key, and a bare key."
+    },
+    {
+      "id": "10.4324/9781410613561",
+      "decision": "same",
+      "rationale": "All members share DOI 10.4324/9781410613561, title 'Making Sense of Children's Drawings', author Willats. book/article type and 2005/2006 publisher (Erlbaum/Psychology Press) differences reflect the same work reissued under one DOI; note confirms provenance. Both indexed members are the same book, so merging loses no distinct work."
+    },
+    {
+      "id": "10.1215/00318108-1728714",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, journal, volume/number/pages. willer2013dynamics (indexed) vs Zotero key. Same work."
+    },
+    {
+      "id": "10.3765/sp.10.4",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, journal, volume/number/pages. willer2017lessons (indexed) vs Zotero key. Same work."
+    },
+    {
+      "id": "10.1111/j.1933-1592.2008.00196.x",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, journal, volume/number/pages. williams2008chances (indexed) vs Zotero key. Same work."
+    },
+    {
+      "id": "10.1007/s10670-008-9145-7",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, journal, volume/number/pages. williams2009vagueness (indexed) vs Zotero key. Same work."
+    },
+    {
+      "id": "10.1111/j.1468-0068.2010.00766.x",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, journal, volume/number/pages. williams2010defending (indexed) vs Zotero key. Same work."
+    },
+    {
+      "id": "10.1007/s11229-017-1578-6",
+      "decision": "same",
+      "rationale": "Identical DOI, title, journal, volume/number/pages. Survivor lists Williams, Daniel; loser adds 'and Colling, Lincoln' — an author-list metadata discrepancy on the same DOI/paper. Same work."
+    }
+  ]
+}

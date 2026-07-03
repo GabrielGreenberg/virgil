@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1111/1467-9329.00169", "decision": "same", "rationale": "Identical title, authors, year, journal, volume/number/pages, and DOI across both members."},
+    {"id": "10.1111/j.1933-1592.2007.00045.x", "decision": "same", "rationale": "Both 'Brandom Beleaguered', Fodor & Lepore 2007, same booktitle/vol/pages and DOI."},
+    {"id": "10.1080/01638539409544896", "decision": "same", "rationale": "Same title, authors, year, vol/number/pages and DOI; only entry-type/journal-vs-booktitle labeling differs."},
+    {"id": "10.1126/science.1106138", "decision": "same", "rationale": "Identical Fogassi et al. 2005 Science parietal-lobe paper, same authors/vol/pages/DOI."},
+    {"id": "learning invariance from transformation sequences", "decision": "same", "rationale": "Foldiak 1991, same title/author/year/vol/pages; only 'Neural Comput.' vs 'Neural Computation' journal abbreviation differs."},
+    {"id": "10.1016/s0896-6273(02)00745-6", "decision": "same", "rationale": "Sack et al. 2002 'Tracking the Mind's Image in the Brain II', identical authors/vol/pages and DOI."},
+    {"id": "10.1016/j.visres.2010.09.006", "decision": "same", "rationale": "Foster 2011 'Color constancy', identical fields and DOI."},
+    {"id": "10.1167/11.12.3", "decision": "same", "rationale": "Fougnie & Alvarez 2011, identical title/authors/vol/pages and DOI."},
+    {"id": "10.1007/bf00255570", "decision": "same", "rationale": "Van Fraassen 1972 'The logic of conditional obligation', identical fields and DOI."},
+    {"id": "10.3765/salt.v7i0.2790", "decision": "same", "rationale": "Frank & Kamp 'On Context Dependence In Modal Constructions', both year 1997, same vol/pages and DOI."},
+    {"id": "10.1007/3-540-45460-8_7", "decision": "same", "rationale": "Frank 2000 'Spatial Communication with Maps', identical fields and DOI."},
+    {"id": "10.1016/s0896-6273(00)00018-0", "decision": "same", "rationale": "Frank et al. 2000 'Trajectory Encoding in the Hippocampus and Entorhinal Cortex', identical fields and DOI."},
+    {"id": "10.1037/0096-3445.119.1.63", "decision": "same", "rationale": "Franklin & Tversky 1990 'Searching imagined environments', same title/authors/vol/pages; DOI differs only by a normalizable double slash."},
+    {"id": "10.3758/bf03199583", "decision": "same", "rationale": "Franklin, Tversky & Coon 1992 'Switching points of view in spatial mental models', identical fields and DOI."},
+    {"id": "10.1016/j.cognition.2010.08.017", "decision": "same", "rationale": "Franklin, Giannakidou & Goldin-Meadow 2011 homesign negation paper, identical fields and DOI."},
+    {"id": "10.1007/978-3-642-27851-8_57-1", "decision": "same", "rationale": "Franklin 2013 'Infant Color Categories', identical title/author/year/pages and DOI."},
+    {"id": "uber sinn und bedeutung", "decision": "same", "rationale": "All three are Frege 1892 'Über Sinn und Bedeutung', same journal and pages 25-50; only LaTeX encoding differs."},
+    {"id": "on sense and reference", "decision": "same", "rationale": "All three are Frege's essay 'On Sense and Reference' (English translation of Über Sinn und Bedeutung); differing years reflect translation-edition dates, not different works."},
+    {"id": "letter to jourdain", "decision": "same", "rationale": "Both Frege 1914 'Letter to Jourdain', same pages 319-321."},
+    {"id": "the foundations of arithmetic", "decision": "same", "rationale": "Both Frege 'The Foundations of Arithmetic'; differing publisher/year reflect different translation editions of the same 1884 work."},
+    {"id": "10.2307/2218521", "decision": "same", "rationale": "All three are 'The Basic Laws of Arithmetic: Exposition of the System', identical authors/vol/pages and DOI; the erroneous note on one member does not change the described work."},
+    {"id": "the thought a logical inquiry", "decision": "same", "rationale": "Both Frege 'The Thought: A Logical Inquiry', same essay; differing translation years only."},
+    {"id": "10.1037/0033-295x.94.4.427", "decision": "same", "rationale": "Freyd 'Dynamic mental representations', Psychological Review vol 94 p427; the 1983 year on one member is an error but title/author/vol/page match the DOI'd 1987 paper."},
+    {"id": "10.3758/bf03205000", "decision": "same", "rationale": "Friederici & Levelt 1990 'Spatial reference in weightlessness', identical fields and DOI."},
+    {"id": "10.1068/p040173", "decision": "same", "rationale": "Frisby & Clatworthy 1975 'Learning to See Complex Random-Dot Stereograms', identical fields and DOI."}
+  ]
+}

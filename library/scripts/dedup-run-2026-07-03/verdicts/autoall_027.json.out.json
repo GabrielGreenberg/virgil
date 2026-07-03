@@ -1,0 +1,130 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1007/bf00628112",
+   "decision": "same",
+   "rationale": "Identical title/author (Gillon, 'Towards a Common Semantics for English Count and Mass Nouns'). One is the 1992 Linguistics & Philosophy journal article, the other the 2004 reprint in the Oxford 'Semantics' anthology (different DOI). Same intellectual work reprinted; safe to merge."
+  },
+  {
+   "id": "10.1080/00048409212345061",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume, number, pages, and DOI. Pure duplicate."
+  },
+  {
+   "id": "10.1016/0004-3702(86)90067-6",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume, number, pages, and DOI (Ginsberg, 'Counterfactuals'). Pure duplicate."
+  },
+  {
+   "id": "10.1007/bf00985365",
+   "decision": "same",
+   "rationale": "All three share identical title, author, year, journal, volume, number, pages, and DOI (Ginzburg, 'Resolving questions, I'). Note the title is 'Resolving questions, I' on all three so this is one paper, not a Part I/II split."
+  },
+  {
+   "id": "the interactive stance",
+   "decision": "same",
+   "rationale": "Identical title, author, year (2012), publisher, and ISBN. One carries a 'note: in print' field; same book."
+  },
+  {
+   "id": "tense and aspect",
+   "decision": "same",
+   "rationale": "Identical title, author, year (1997), publisher, and ISBN (Giorgi & Pianesi). Citekey differs by year label only; same book."
+  },
+  {
+   "id": "10.1007/978-3-662-09224-8_7",
+   "decision": "same",
+   "rationale": "Identical title, full author list, year, booktitle, publisher, pages, and DOI (Movshon et al., 'The Analysis of Moving Visual Patterns'). Pure duplicate."
+  },
+  {
+   "id": "10.1016/0898-1221(85)90049-5",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume, number, pages, and DOI (Glasgow & Browse). Pure duplicate."
+  },
+  {
+   "id": "10.1109/caia.1991.120852",
+   "decision": "same",
+   "rationale": "Identical title, author, year, volume, pages, and DOI (Glasgow et al., 'Crystal and molecular structure determination through imagery'). Pure duplicate."
+  },
+  {
+   "id": "10.1016/j.neuroimage.2013.04.095",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume, pages, and DOI (Van Essen & Glasser). One entry adds number '2'; same paper."
+  },
+  {
+   "id": "10.2307/411878",
+   "decision": "mixed",
+   "rationale": "Survivor gleitman1965coordinating is the 1965 Language journal article (vol 41, DOI 10.2307/411878). Member gleitman1969coordinating is a 1969 incollection (Prentice-Hall, pp 80-112) with NO DOI and a different year — it carries no DOI so it was matched on title+author only, but the year and venue differ (1969 book chapter vs 1965 journal article). Likely a distinct reprint/version; flag the odd one out.",
+   "distinct_members": ["gleitman1969coordinating"]
+  },
+  {
+   "id": "10.1017/s0305000900005584",
+   "decision": "same",
+   "rationale": "Identical title, full author list, year, journal, volume, number, pages, and DOI (Gleitman, Newport & Gleitman, 'The current status of the motherese hypothesis'). Citekeys differ but same paper."
+  },
+  {
+   "id": "10.1207/s15473341lld0101_4",
+   "decision": "same",
+   "rationale": "Identical title, full author list, year, journal, volume, number, pages, and DOI (Gleitman et al., 'Hard Words'). Different citekeys pick different authors as key but same paper."
+  },
+  {
+   "id": "10.1016/0010-0285(84)90009-4",
+   "decision": "same",
+   "rationale": "All three share identical title, author, year, journal, volume, number, pages, and DOI (Jolicoeur, Gluck & Kosslyn). Pure duplicates."
+  },
+  {
+   "id": "10.1111/j.1468-0017.2009.01364.x",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume, number, pages, and DOI (Glüer, 'In Defence of a Doxastic Account of Experience'). Pure duplicate."
+  },
+  {
+   "id": "10.1002/tht3.43",
+   "decision": "same",
+   "rationale": "Identical title, author, year, volume, number, pages, and DOI (Glüer, 'Martin on the Semantics of Looks'). Same journal (Thought) as booktitle vs journal; same paper."
+  },
+  {
+   "id": "10.1111/j.1467-9280.2005.01588.x",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume, number, pages, and DOI (Gobell & Carrasco). Pure duplicate."
+  },
+  {
+   "id": "10.1016/s1364-6613(00)01662-4",
+   "decision": "same",
+   "rationale": "Identical title, full author list, year, journal, volume, number, pages, and DOI (Gobet et al., 'Chunking mechanisms in human learning'). Same paper."
+  },
+  {
+   "id": "10.1177/1754073913491843",
+   "decision": "same",
+   "rationale": "All three share identical title, author, year, journal, volume, number, pages, and DOI (Goddard, 'Interjections and Emotion'). Pure duplicates."
+  },
+  {
+   "id": "10.1016/s0003-3472(84)80330-9",
+   "decision": "same",
+   "rationale": "Identical title, author, year, journal, volume, number, pages, and DOI (Godin & Keenleyside). Pure duplicate."
+  },
+  {
+   "id": "the presentation of self in everyday life",
+   "decision": "same",
+   "rationale": "Same title, author (Goffman), and year (1959). Publishers differ (Penguin vs Doubleday) — different editions/imprints of the same book. Same work."
+  },
+  {
+   "id": "10.1016/b978-0-12-688980-2.50030-8",
+   "decision": "same",
+   "rationale": "Identical title, author, year, pages, and DOI (Goldberg & Robinson). Same chapter, journal vs booktitle field difference only."
+  },
+  {
+   "id": "10.1016/0028-3932(87)90072-8",
+   "decision": "same",
+   "rationale": "Identical title, full author list, year, journal, volume, number, pages, and DOI (Goldenberg et al., 1987). Same paper, different key author."
+  },
+  {
+   "id": "10.1016/0028-3932(89)90110-3",
+   "decision": "same",
+   "rationale": "All three share identical title, full author list, year, journal, volume, number, pages, and DOI (Goldenberg et al., 1989, 'Regional cerebral blood flow patterns in visual imagery'). Pure duplicates."
+  },
+  {
+   "id": "10.2307/416883",
+   "decision": "same",
+   "rationale": "Identical title, full author list, year, volume, number, pages, and DOI (Singleton, Morford & Goldin-Meadow). Language journal, article vs incollection field difference only; same paper."
+  }
+ ]
+}
