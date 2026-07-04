@@ -109,8 +109,11 @@ with `/loop /editor/review`.
    stamps the two-field `status`/`result` (`complete` + `silent-applied` /
    `auto-applied` / `direct-created`, or `in-progress` for a level-3 proposal).
    Surface the level in the banner (below) and echo the subskill's stamped
-   outcome. A level-3 proposal stays open, so a later `/editor/review` re-lists
-   it until the user accepts or rejects.
+   outcome. A level-3 proposal's Task stays `in-progress` (the user owns
+   accept/reject in the editor), but once its proposal card is drafted the Task
+   carries a `resultId`, and the drain treats an `in-progress`-with-`resultId`
+   row as answered — so a later `/editor/review` does NOT re-list it. The user,
+   not the drain, closes it via accept/reject.
 
 4. **Surface progress as you go.** Before each dispatch, print:
    ```

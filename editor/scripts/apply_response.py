@@ -316,6 +316,15 @@ class _Txn:
         return None
 
     def clear_source_flag(self, linked: dict):
+        # Clears the `aiRequest` flag on the SOURCE card `linked` names — the
+        # card the user flagged, i.e. the thing being answered — NEVER the new
+        # card a responder produces. "The AI answered this card" MEANS its flag
+        # is down: this is what stops the unbridged-card-flag fallback
+        # (list_requests.list_unbridged_card_flags) from re-surfacing an
+        # already-answered request. cmd_write calls it default-on
+        # (op.clearSourceFlag, default True) for every linked-completion path;
+        # the one deliberate opt-out is create_card.py's examples block (a
+        # virtual id with no distinct source card).
         panel = linked.get("panel")
         card_id = linked.get("cardId")
         if panel not in PANEL_TO_SIDECAR or not card_id:
@@ -881,7 +890,14 @@ def cmd_write(
     else:
         die("op missing requestId (or pass --synthesize-task to create the Task)")
 
-    # 4. Clear the source card's aiRequest flag if asked.
+    # 4. Clear the SOURCE card's aiRequest flag. Default-on: clearing the flag
+    #    is what "the AI answered this card" means, so every linked-completion
+    #    path (L1/L2/direct AND the L3 propose draft) lowers it — that closes
+    #    the unbridged-card-flag recycling leg, the twin of the ai-requests
+    #    status/resultId leg the drain gate owns. `linked` resolves to the
+    #    request's own `linkedTo` (or a virtual id); it is the source, never the
+    #    card just produced. Only create_card.py's examples block opts out
+    #    (clearSourceFlag:false — a virtual id with no distinct source card).
     if op.get("clearSourceFlag", True) and isinstance(linked, dict):
         txn.clear_source_flag(linked)
 

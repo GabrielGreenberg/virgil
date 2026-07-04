@@ -162,7 +162,9 @@ Skipped <requestId> (already answered).
 A path-(a) proposal leaves the Task `in-progress` (awaiting review), **not**
 `complete` — so the *card-existence* check, not the status check, is what
 prevents a double-draft. Don't re-draft a proposal just because its Task isn't
-terminal yet.
+terminal yet. (As of the resultId-gated drain rule, `list_requests.py` already
+stops surfacing an `in-progress`-with-`resultId` proposal — so this guard is now
+belt-and-suspenders against a duplicate dispatch, no longer the only defense.)
 
 ## Safety
 

@@ -6,7 +6,9 @@ request — that the `/editor/review` umbrella consumes:
 
   1. `virgil/ai-requests.json` — entries with an open status (anything that
      is not a terminal `complete` / `failed`; legacy `draft` / `submitted` and
-     v1 `pending` / `in-progress` are all open).
+     v1 `pending` / `in-progress` are open) — EXCEPT an `in-progress` row that
+     already carries a `resultId` (an L3 proposal whose card has been drafted:
+     the user owns accept/reject in the editor, so the drain never re-nags).
   2. `virgil/bib-review-requests.json` — entries with status == "pending".
   3. The card-flag sidecars (notes / highlights / todos / cutter / revisions /
      reports / footnotes). Cards whose `aiRequest: true` flag has no matching
@@ -67,10 +69,27 @@ def list_ai_requests(doc) -> tuple[list[dict], set[tuple[str, str]]]:
     rows: list[dict] = []
     bridged: set[tuple[str, str]] = set()
     for r in state.get("requests", []) or []:
-        # Open == not terminal. `complete` and `failed` are the v1 terminal
-        # statuses; legacy `draft`/`submitted` and v1 `pending`/`in-progress`
-        # (and a status-absent row) all stay open.
-        if r.get("status") in ("complete", "failed"):
+        # The ONE canonical "is this request still open to the drain?" rule.
+        # Open == not-terminal AND not an L3 proposal that has already produced
+        # its card. Two clauses, one gate:
+        #
+        #   1. `complete` / `failed` are the v1 terminal statuses; legacy
+        #      `draft`/`submitted` and v1 `pending`/`in-progress` (and a
+        #      status-absent row) are otherwise open.
+        #   2. An L3 propose responder deliberately leaves its Task
+        #      `in-progress` (run_write_subcommand `complete-task --propose`)
+        #      while stamping `resultId` the moment its proposal card lands
+        #      (apply_response.cmd_write). Once that card exists, the USER owns
+        #      accept/reject in the editor — the drain must NOT re-nag. So an
+        #      `in-progress` row WITH a non-empty `resultId` is answered, not
+        #      open. This is the single drain-side invariant that retires the N
+        #      scattered per-skill card-existence idempotency guards; the source
+        #      card's `aiRequest` flag is cleared on the same write
+        #      (clearSourceFlag, default-on), closing the fallback leg too.
+        status = r.get("status")
+        if status in ("complete", "failed"):
+            continue
+        if status == "in-progress" and r.get("resultId"):
             continue
         linked = r.get("linkedTo")
         if isinstance(linked, dict) and linked.get("panel") and linked.get("cardId"):
