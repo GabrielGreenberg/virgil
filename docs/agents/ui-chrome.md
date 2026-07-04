@@ -1,4 +1,4 @@
-<!-- last-verified: aa79f333 2026-06-29 -->
+<!-- last-verified: ad9cb6b0 2026-07-04 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts -->
 
@@ -166,11 +166,11 @@ The action vocabulary (same colors, coordinated with each panel's `CARD_THEME`):
 
 | Action | Color | Opens/creates |
 |---|---|---|
-| Revision | purple | Revision thread |
+| Revision | purple | Revision thread (menu label "Request revision" since 43215f9b — labels only; action id `suggest-edit` unchanged) |
 | Note | green | Note card |
 | Highlight | amber/yellow | Highlight card (Adobe-style; requires a live text selection) |
 | Todo | stone | Todo item |
-| Cut | red | Cutter card |
+| Cut | red | Cutter card (menu label "Request cut"; Report action shows "Request report") |
 | Archive | blue-grey | Archive card |
 | Footnote | red | Footnote atom |
 | Citation | amber | Citation atom |

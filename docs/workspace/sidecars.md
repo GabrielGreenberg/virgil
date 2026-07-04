@@ -1,4 +1,4 @@
-<!-- last-verified: aa79f333 2026-06-29 -->
+<!-- last-verified: ad9cb6b0 2026-07-04 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -125,7 +125,9 @@ CutterCommentCard    { kind: "comment"; id; createdAt; text; content;
                        aiRequest; selectedText?; links: Link[] }
 CutterSuggestionCard { kind: "suggestion"; id; createdAt; author: "human"|"ai";
                        original_text; suggested_text; explanation; user_text;
-                       instructions; status: "pending"|"accepted"|"rejected";
+                       instructions;
+                       status: "pending"|"applied"|"stale"|"accepted"|"rejected";
+                       appliedChange?: { originalText; appliedAt };  // set on `applied`
                        selectedText?; links: Link[] }
 CutterGoal           { target: number; initialWords: number; setAt }
 ```
@@ -133,6 +135,11 @@ CutterGoal           { target: number; initialWords: number; setAt }
 The **suggestion** shape (the six text fields + `author` + `status`) is shared
 verbatim with `RevisionSuggestionCard` below. `user_text` is the human's revised
 take (empty until they edit the AI draft); `instructions` is AI-only guidance.
+The `applied` / `stale` statuses + `appliedChange` are the pending-ai-changes
+in-doc splice path (flag-ON, `pending-changes-flag`): `applied` = the suggestion
+is spliced into the doc as a blue, revertable mark; `appliedChange.originalText`
+is the pre-splice revert source. `accepted`/`rejected` remain the terminal
+propose→review states.
 (`CutItemLegacy { id; title; content; createdAt; links }` is the pre-refactor cut
 shape, kept only for the `useCutter` migration.)
 

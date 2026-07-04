@@ -1,4 +1,4 @@
-<!-- last-verified: aa79f333 2026-06-29 -->
+<!-- last-verified: ad9cb6b0 2026-07-04 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -63,9 +63,9 @@ an `applies()` gate + `run()`.
 | 3 | `footnote` | Footnote | `F` | atom + card | `cardCreation.createFootnote` |
 | 4 | `citation` | Citation | `C` | atom + card | `citationRun` (cursor/slash front-door → `openAtomCreate("citation")`; grab/lightning ref → legacy `dispatch("citation")`; commit → `cardCreation.createCitation`) — see [below](#the-unified-inline-atom-create-popover) |
 | 5 | `todo` | Todo | `T` | annotation | `cardCreation.createTodo` |
-| 6 | `suggest-edit` | Suggest edit | `E` | annotation | `cardCreation.createRevisionComment` |
-| 7 | `cutter` | Suggest cut | `X` | annotation | `cardCreation.createCutterComment` |
-| 8 | `report` | Report | `R` | annotation | `cardCreation.createReportRequest` (files the *ask*) |
+| 6 | `suggest-edit` | Request revision | `E` | annotation | `cardCreation.createRevisionComment` |
+| 7 | `cutter` | Request cut | `X` | annotation | `cardCreation.createCutterComment` |
+| 8 | `report` | Request report | `R` | annotation | `cardCreation.createReportRequest` (files the *ask*) |
 | 9 | `duplicate` | Duplicate | `D` | lifecycle | `cardLifecycle` clone + slice insert |
 | 10 | `archive` | Archive | `A` | lifecycle | `cardCreation.createArchiveSnippet` |
 | 11 | `delete` | Delete | `⌫` | lifecycle | `cardLifecycle` delete + range cut |
@@ -407,7 +407,8 @@ assembled in [editor-extensions.ts](../../src/lib/editor-extensions.ts).
 | `Tab` / `Shift-Tab` | nest a para into a sub-item / dissolve an empty example | inside an `exampleBlock` | [expex.ts](../../src/lib/tiptap/expex.ts) |
 | `Enter` / `Tab` / `Shift-Tab` | split / sink / lift (lift promotes the outermost tier to a new block) | inside an `exampleItem` | [expex.ts](../../src/lib/tiptap/expex.ts) |
 | `Tab` / `Shift-Tab` | move to the next / previous gloss cell (append a cell at the end) | inside a gloss row (`ExpexNumbering`) | [expex.ts](../../src/lib/tiptap/expex.ts) |
-| `Delete` / `Backspace` | delete the whole `latexComment` atom | a node-selected `latexComment` | [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
+| `Enter` | exit the comment — insert a paragraph after it and move the caret there (a comment is one `%` source line, never multi-line) | caret inside a `latexComment` | [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
+| `Delete` / `Backspace` | delete the whole `latexComment` block; `Backspace` at the start of an EMPTY comment dissolves it back to a plain paragraph | node-selected `latexComment` (delete) / empty-comment caret (dissolve) | [latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
 
 ### Inherited TipTap defaults (enabled in StarterKit)
 
@@ -436,7 +437,7 @@ their default bindings survive:
 Not keymaps, but typed triggers that transform text (cite where relevant):
 
 - **Smart quotes** — typing `"` becomes a curly quote ([smart-quotes.ts](../../src/lib/tiptap/smart-quotes.ts)).
-- **`% ` → latexComment** — a line-leading `% ` converts to a comment atom; suppressed on card surfaces ([latex-comment.ts](../../src/lib/tiptap/latex-comment.ts)).
+- **`% ` → latexComment** — a line-leading `% ` converts a paragraph into an editable comment **block** (native inline content, `% ` non-editable prefix widget — no longer an atom); suppressed on card surfaces ([latex-comment.ts](../../src/lib/tiptap/latex-comment.ts)).
 - **Slash popup** — typing `\` opens the command popup (`SlashPopupExtension`; see [SlashCommandPopup.tsx](../../src/components/SlashCommandPopup.tsx)). The command list ([commands.ts](../../src/lib/tiptap/commands.ts)) now routes EVERY command through the action registry — card/atom commands needing React (`\cite`, `\footnote`, `\ex`, `\ref`) **and** the structural-wrapper toggles (`\list`/`\itemize` → bullet-list, `\enumerate` → ordered-list, `\quote`/`\quotation` → blockquote — bug sweep #6; they need the live editor's `.chain()`, which the view-only stub lacks) via the bridge's `runAction(id, { surface: "slash" })`; pure-PM commands (`\chapter`…`\subsubsection`, `\tex`, `\title`/`\author`/`\date`) via `runViewOnlyAction`. The 5 wrapper names are a many-to-one **alias group** in `SLASH_NAME_TO_ACTION_ID` (their target format rows stay lightning-only) and no-op on a non-listable block via `selectionIsListable`. Commands insert **inline only** — `\ex`/`\footnote` insert nodes at the cursor; `\cite` soft-routes to Omni-View (surfaced only if not already covered), not the dedicated Citations panel. No slash command force-opens a panel.
 - **Math popover (inline + display math click-to-edit)** — saves on **any** dismissal (Enter / click-away / blur / Escape); a **Cancel** button is the only revert path ([src/components/MathPopover.tsx](../../src/components/MathPopover.tsx)).
 - **Ref popover (`\ref` create-mode dropdown)** — the label candidate list is arrow-key navigable; Enter commits the selection ([src/components/LabelRefPopover.tsx](../../src/components/LabelRefPopover.tsx)).

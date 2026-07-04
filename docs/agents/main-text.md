@@ -1,4 +1,4 @@
-<!-- last-verified: aa79f333 2026-06-29 -->
+<!-- last-verified: ad9cb6b0 2026-07-04 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts -->
 
@@ -33,7 +33,7 @@ The `textObject` schema group is the single canonical answer to "is this graspab
 | `texBlock` | `%!vtex:begin <uuid>` … `%!vtex:end <uuid>` (block-level raw LaTeX passthrough, edited inside a CodeMirror pod; popoutable like `exampleBlock`) | Atom block; `selectable:false`; node-view in `TexBlockNodeView.tsx` |
 | `titleField` | hoisted `\title{}` / `\author{}` / `\date{}` | Round-trips via `\title`/`\author`/`\date` commands; the `fromPreamble` flag was dropped in 35824df |
 | `maketitleMarker` | `\maketitle` | |
-| `latexComment` | `%…` | Atom node |
+| `latexComment` | `%…` | Editable block node (`content: "text*"` + a non-editable `% ` widget prefix) — remodeled from an atom in 5ac7b847 (text now lives in `node.textContent`, not `attrs.text`); `isAtomBlock:true` stays as a semantic non-prose-unit flag |
 
 **Paragraph titles are NOT a Tiptap attr.** They're stored in the `virgil.json` sidecar (`ParagraphMeta.title`), loaded in [src/hooks/useDocument.ts](../../src/hooks/useDocument.ts) as `paragraphTitles: Map<uuid, string>`. They appear in Omni view and search breadcrumbs — not inline in the editor.
 
@@ -51,7 +51,7 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | `figureBlock` | non-atom block — schema `content: "figureCaption?"`. Structured attrs: `extras` (the env body sans `\caption`/`\label`, source-of-truth for round-trip), `source[]`, `widthPercent`, `label`. Caption text lives in the `figureCaption` child node (`content: "inline*"`) so citations, footnotes, math, and inline marks work natively; a bold "Figure N:" prefix renders ahead of the caption and re-numbers via the `sectionNumbers` plugin. A blue label lozenge under the caption mirrors the heading annotation (Figure chip, # numbered toggle, label slot with conflict detection, hover-revealed delete). Click anywhere outside the caption opens `FigurePopover` for raw-LaTeX editing of `extras`; on save the popover dispatches `setNodeMarkup` (the EX-F4-02 twin routes `virgil-figure-click`/`handleFigureSave` by the owning editor, so figures are editable inside embedded float surfaces — `FigureFloatView`/`FigureFullView` — not just the main doc). Round-trip via the figure raster cache (see architecture.md). | `figure-block.ts` |
 | `figureCaption` | child block of `figureBlock` (`content: "inline*"`) | (rendered as the prose after `\caption{…}`; serializer emits it back into the env body) | `figure-caption.ts` |
 | `graphicsBlock` | atom block | bare `\includegraphics[...]{source}` (outside a `figure` env) — same popover + raster cache as `figureBlock` | `graphics-block.ts` |
-| `latexComment` | node | `%…` | `latex-comment.ts` |
+| `latexComment` | editable block node | `%…` (native `content: "text*"` + `% ` widget prefix; NOT an atom since 5ac7b847) | `latex-comment.ts` |
 | `label` | mark | `\label{ref}` | `label.ts` |
 | `labelRef` | node | `\ref{…}` / `\getref{…}` / `\getfullref{…}` (attr `refCommand` selects command; `targetKind` tags heading vs example) | `label.ts` |
 | `linkedAnchor` | mark | (invisible by default; a `tintColor` attr makes the mark paint its range with a persistent color — used by Highlight cards for the Adobe-style yellow swatch. The tint survives kind transitions, so spawning a sibling note over a highlight's range keeps the yellow) | `linked-anchor.ts` |
