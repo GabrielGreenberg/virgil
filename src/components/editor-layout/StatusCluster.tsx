@@ -208,10 +208,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
               aria-pressed="true"
               data-hint="Focus view"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="8" cy="8" r="2.25" />
-                <path d="M8 2.5v1.5M8 12v1.5M2.5 8H4M12 8h1.5" />
-              </svg>
               Focus view
             </button>
           )}
