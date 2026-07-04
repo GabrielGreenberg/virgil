@@ -1,0 +1,12 @@
+{
+  "_comment": "Projection of CARD_REGISTRY[kind].aiRequest (src/cards/card-registry.tsx) — the FROZEN wire routing for the card-flag -> ai-requests.json bridge. `kind` is the AiRequest.kind a subskill dispatches on; `linkPanel` is the AiRequestLink.panel token. This is the single source both the TS bridge and the Python drain (list_requests.py) read, so they can't disagree about kinds or fallback coverage. PINNED against the registry by src/cards/__tests__/ai-request-routing-manifest.test.ts: a registry edit that changes the routing must regenerate this file or the test fails. Do NOT hand-edit the routing map; mirror the registry.",
+  "routing": {
+    "note": { "kind": "note", "linkPanel": "notes" },
+    "highlight": { "kind": "highlight", "linkPanel": "notes" },
+    "todo": { "kind": "todo", "linkPanel": "todos" },
+    "cutter-comment": { "kind": "suggestion", "linkPanel": "cutter" },
+    "revision-comment": { "kind": "suggestion", "linkPanel": "revisions" },
+    "report-request": { "kind": "report", "linkPanel": "reports" },
+    "footnote": { "kind": "footnote", "linkPanel": "footnotes" }
+  }
+}

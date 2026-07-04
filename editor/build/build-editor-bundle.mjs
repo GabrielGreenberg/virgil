@@ -61,9 +61,12 @@ async function buildSources() {
     join(repoRoot, "editor", "skills"),
     (n) => n.endsWith(".md"),
   );
+  // `.py` scripts plus the data files they read at runtime (e.g.
+  // `ai_request_routing.json`, resolved beside the script) — otherwise a script
+  // that reads a sibling data file breaks when run from the distributed bundle.
   const scriptNames = await listFilesIn(
     join(repoRoot, "editor", "scripts"),
-    (n) => n.endsWith(".py"),
+    (n) => n.endsWith(".py") || n.endsWith(".json"),
   );
 
   return [
