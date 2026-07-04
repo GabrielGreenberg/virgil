@@ -65,14 +65,27 @@ export function CitationCreatePopover({
     setStaged((prev) => prev.filter((k) => k !== key));
   }, []);
 
-  // The single commit-or-close chokepoint, shared by OK and dismiss (click-away
-  // / Escape): commit iff ≥1 key was staged, then tear down. Stable identity +
-  // ref-read so a stale closure can never lose the staged keys.
-  const commitAndClose = useCallback(() => {
-    const keys = stagedRef.current;
-    if (keys.length > 0) onCommit(keys);
-    onClose();
-  }, [onCommit, onClose]);
+  // The single commit-or-close chokepoint, shared by OK, dismiss (click-away /
+  // Escape), AND Return-commit. Commits iff ≥1 key would result, then tears
+  // down. Reads the staged set from the ref so a stale closure can never lose
+  // it; `extraKey` folds in a key staged in the SAME tick (the Return path
+  // stages + commits before the `staged` state has re-rendered, so the ref
+  // doesn't yet see it) — deduped against the ref exactly like `stageKey`.
+  const commitWith = useCallback(
+    (extraKey?: string) => {
+      const base = stagedRef.current;
+      const trimmed = extraKey?.trim();
+      const keys =
+        trimmed && !base.includes(trimmed) ? [...base, trimmed] : base;
+      if (keys.length > 0) onCommit(keys);
+      onClose();
+    },
+    [onCommit, onClose],
+  );
+
+  // Zero-arg wrapper for the mouse/Escape close paths — those call sites pass a
+  // DOM event (the OK/× button `onClick`), which must never reach `extraKey`.
+  const commitAndClose = useCallback(() => commitWith(), [commitWith]);
 
   return (
     <CitekeyPicker
@@ -83,6 +96,7 @@ export function CitationCreatePopover({
       onAddBibEntry={onAddBibEntry}
       onClose={commitAndClose}
       keepOpenOnPick
+      onEnterCommit={commitWith}
       footer={
         <StagedFooter
           staged={staged}

@@ -409,6 +409,35 @@ describe("BibEntryPickerMenu combobox — external-input mode", () => {
   });
 });
 
+describe("BibEntryPickerMenu combobox — onEnterCommit seam (deferred create popover)", () => {
+  it("Enter stages the active entry (onPick) AND fires onEnterCommit with its key", () => {
+    const onEnterCommit = vi.fn();
+    const { input, onPick } = setup({ onEnterCommit });
+    // Default highlight is the first row (burge1977).
+    fireEvent.keyDown(input!, { key: "Enter" });
+    expect(onPick).toHaveBeenCalledWith(
+      expect.objectContaining({ key: "burge1977" }),
+    );
+    expect(onEnterCommit).toHaveBeenCalledWith("burge1977");
+  });
+
+  it("Enter on a raw (no-match) query commits raw AND fires onEnterCommit with the text", () => {
+    const onEnterCommit = vi.fn();
+    const { input, onCommitRaw } = setup({ onEnterCommit });
+    fireEvent.change(input!, { target: { value: "freshkey" } });
+    fireEvent.keyDown(input!, { key: "Enter" });
+    expect(onCommitRaw).toHaveBeenCalledWith("freshkey");
+    expect(onEnterCommit).toHaveBeenCalledWith("freshkey");
+  });
+
+  it("without onEnterCommit, Enter picks-and-does-not-commit (in-card parity)", () => {
+    // The absence of the seam leaves the default pick behavior byte-identical.
+    const { input, onPick } = setup();
+    fireEvent.keyDown(input!, { key: "Enter" });
+    expect(onPick).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("BibEntryPickerMenu combobox — maxHeight passthrough (§3.3)", () => {
   it("the container carries a maxHeight clamp + overflowY:auto so a tall list scrolls", async () => {
     // A short viewport so the clamp is a finite, small number.

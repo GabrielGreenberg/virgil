@@ -56,6 +56,12 @@ export interface CitekeyPickerProps {
    * keeps the in-card / panel behavior byte-identical (pick → commit → close).
    */
   keepOpenOnPick?: boolean;
+  /** Enter-commits-the-whole-pick hook, forwarded to `BibEntryPickerMenu`. In
+   *  `keepOpenOnPick` mode the deferred create popover passes this so Return
+   *  stages the active key then commits + closes in one keystroke. The
+   *  just-staged key rides through so the caller can fold it into the commit
+   *  synchronously. Absent for the in-card / panel picker. */
+  onEnterCommit?: (pickedKey?: string) => void;
   /** Sticky strip rendered inside the popover below the list (staged chips +
    *  OK), forwarded to `BibEntryPickerMenu`. */
   footer?: React.ReactNode;
@@ -73,6 +79,7 @@ export function CitekeyPicker({
   externalQuery,
   externalInputEl,
   keepOpenOnPick = false,
+  onEnterCommit,
   footer,
 }: CitekeyPickerProps) {
   const { entries: libraryBibEntries } = useLibraryMasterBib();
@@ -163,6 +170,7 @@ export function CitekeyPicker({
       getLibraryItem={getLibraryItem}
       getMembershipChips={getMembershipChips}
       onCommitRaw={onCommitRaw}
+      onEnterCommit={onEnterCommit}
       initialQuery={initialQuery}
       placeholder="Search references or library…"
       ariaLabel="Pick a citation key"

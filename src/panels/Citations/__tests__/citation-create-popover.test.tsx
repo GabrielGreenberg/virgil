@@ -17,6 +17,7 @@ vi.mock("@/panels/Citations/CitekeyPicker", () => ({
   CitekeyPicker: (props: {
     onSelectKey: (k: string) => void;
     onClose: () => void;
+    onEnterCommit?: (pickedKey?: string) => void;
     footer?: React.ReactNode;
   }) => (
     <div data-testid="picker">
@@ -25,6 +26,30 @@ vi.mock("@/panels/Citations/CitekeyPicker", () => ({
       </button>
       <button data-testid="pick-jones" onClick={() => props.onSelectKey("jones")}>
         pick jones
+      </button>
+      {/* Return in the real picker STAGES the active key then fires
+          onEnterCommit(key) in the same tick — reproduce both here. */}
+      <button
+        data-testid="enter-smith"
+        onClick={() => {
+          props.onSelectKey("smith");
+          props.onEnterCommit?.("smith");
+        }}
+      >
+        enter smith
+      </button>
+      <button
+        data-testid="enter-jones"
+        onClick={() => {
+          props.onSelectKey("jones");
+          props.onEnterCommit?.("jones");
+        }}
+      >
+        enter jones
+      </button>
+      {/* Return with nothing new to stage (empty list / empty query). */}
+      <button data-testid="enter-empty" onClick={() => props.onEnterCommit?.(undefined)}>
+        enter empty
       </button>
       {/* The picker's onClose — what click-away / Escape route through. */}
       <button data-testid="dismiss" onClick={() => props.onClose()}>
@@ -101,5 +126,36 @@ describe("CitationCreatePopover — deferred commit", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove smith" }));
     fireEvent.click(okButton());
     expect(onCommit).toHaveBeenCalledWith(["jones"]);
+  });
+});
+
+describe("CitationCreatePopover — Return commits (single keystroke)", () => {
+  it("Return on a fresh key stages it and commits in one step, then closes", () => {
+    const { onCommit, onClose } = setup();
+    fireEvent.click(screen.getByTestId("enter-smith"));
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith(["smith"]);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("Return folds the active key into keys staged earlier (multi-cite)", () => {
+    const { onCommit } = setup();
+    fireEvent.click(screen.getByTestId("pick-smith")); // staged via mouse
+    fireEvent.click(screen.getByTestId("enter-jones")); // Return on the last
+    expect(onCommit).toHaveBeenCalledWith(["smith", "jones"]);
+  });
+
+  it("Return dedups an already-staged active key", () => {
+    const { onCommit } = setup();
+    fireEvent.click(screen.getByTestId("pick-smith"));
+    fireEvent.click(screen.getByTestId("enter-smith"));
+    expect(onCommit).toHaveBeenCalledWith(["smith"]);
+  });
+
+  it("Return with nothing staged and no active key commits nothing, just closes", () => {
+    const { onCommit, onClose } = setup();
+    fireEvent.click(screen.getByTestId("enter-empty"));
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
