@@ -325,7 +325,7 @@ export function SplitWithCode({
             >
               <div
                 ref={gapRef}
-                className="drag-gap drag-gap-v w-full h-full"
+                className="drag-gap drag-gap-v band-grip w-full h-full"
                 onMouseDown={onMouseDown}
               />
               {/* Manual "sync position" pill — pinned with the divider

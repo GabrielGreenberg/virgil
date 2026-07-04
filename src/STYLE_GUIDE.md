@@ -366,6 +366,24 @@ Active toggle: `bg-pod-dark/80 text-ink-strong` — the lit strip icon is
 the **only** active-panel cue. A panel looks **identical whether or not it
 has focus**: no per-pod stripe, ring, border, or shadow-change on focus.
 
+## Resize gutters
+
+Every draggable divider in the app — the panel-band dividers, the
+panel↔editor gutters, the code splitter, zen margins, and the three
+Library resizers — shares ONE grip chrome: `.drag-gap.drag-gap-{h,v}
+.band-grip`. The strip is **invisible at rest** (only the resize cursor
+shows) and reveals a single centered **grip pill** on hover AND drag —
+`--edge-hover` → `--drag-highlight` accent, widening on its short axis
+(28→40→44px). It's orientation-agnostic from one rule set in `globals.css`:
+a horizontal gutter gets a wide-short pill on `::before`; a vertical gutter
+a tall-thin pill on `::after` (its `::before` is the hit-area extension).
+Don't hand-roll a resizer's look — put `band-grip` on a `.drag-gap-{h,v}`
+element and toggle `.dragging` for the gesture (`useDragGap` does this for
+the editor gutters; an imperative resizer adds/removes the class itself).
+The stacked-panel bands additionally carry `.band-grip-occlude` for an
+opaque `--background` backing (they occlude omni cards showing through);
+**no other gutter opts in** — every other resizer stays transparent at rest.
+
 ## Code view
 
 The CodeMirror LaTeX-source pane (right of the `SplitWithCode` divider)

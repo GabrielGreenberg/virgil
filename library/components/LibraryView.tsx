@@ -187,6 +187,12 @@ export default function LibraryView({
     ) =>
       (e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
+        // Reveal the shared band-grip pill in its dragging state (accent +
+        // widen) for the duration of the gesture — the same class the editor
+        // gutters toggle via useDragGap. Chrome only; the resize itself stays
+        // imperative (off the React render path).
+        const handle = e.currentTarget;
+        handle.classList.add("dragging");
         const startX = e.clientX;
         const startWidth = currentWidth;
         let latest = startWidth;
@@ -205,6 +211,7 @@ export default function LibraryView({
           window.removeEventListener("pointerup", onUp);
           document.body.style.cursor = "";
           document.body.style.userSelect = "";
+          handle.classList.remove("dragging");
           commit(Math.round(latest));
         };
         window.addEventListener("pointermove", onMove);
@@ -234,6 +241,10 @@ export default function LibraryView({
   const startPapersResize = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       e.preventDefault();
+      // Reveal the shared band-grip pill in its dragging state for the gesture
+      // (chrome only — the resize stays imperative, off the React render path).
+      const handle = e.currentTarget;
+      handle.classList.add("dragging");
       const startY = e.clientY;
       const startHeight = papersHeight;
       let latest = startHeight;
@@ -252,6 +263,7 @@ export default function LibraryView({
         window.removeEventListener("pointerup", onUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
+        handle.classList.remove("dragging");
         setLayout({ papersHeight: Math.round(latest) });
       };
       window.addEventListener("pointermove", onMove);
@@ -944,20 +956,12 @@ export default function LibraryView({
                       role="separator"
                       aria-orientation="horizontal"
                       aria-label="Resize My Papers pod"
+                      className="drag-gap drag-gap-h band-grip"
                       onPointerDown={startPapersResize}
                       style={{
                         height: 6,
-                        cursor: "row-resize",
-                        background: "var(--library-bg)",
-                        transition: "background 120ms",
                         touchAction: "none",
                         flexShrink: 0,
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLDivElement).style.background = "var(--accent)";
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLDivElement).style.background = "var(--library-bg)";
                       }}
                     />
                     <div
@@ -978,19 +982,9 @@ export default function LibraryView({
                 role="separator"
                 aria-orientation="vertical"
                 aria-label="Resize Libraries navigator"
+                className="drag-gap drag-gap-v band-grip"
                 onPointerDown={startNavResize}
-                style={{
-                  cursor: "col-resize",
-                  background: "var(--library-bg)",
-                  transition: "background 120ms",
-                  touchAction: "none",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.background = "var(--accent)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.background = "var(--library-bg)";
-                }}
+                style={{ touchAction: "none" }}
               />
             </>
           )}
@@ -1009,19 +1003,9 @@ export default function LibraryView({
             role="separator"
             aria-orientation="vertical"
             aria-label="Resize library file panel"
+            className="drag-gap drag-gap-v band-grip"
             onPointerDown={startResize}
-            style={{
-              cursor: "col-resize",
-              background: "var(--library-bg)",
-              transition: "background 120ms",
-              touchAction: "none",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLDivElement).style.background = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLDivElement).style.background = "var(--library-bg)";
-            }}
+            style={{ touchAction: "none" }}
           />
           <div
             style={{
