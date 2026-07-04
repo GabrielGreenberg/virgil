@@ -136,6 +136,20 @@ export function useReports(
   const localPristine = usePristineTracker();
   const pristine = externalPristine ?? localPristine;
 
+  // The ONE bridge seam for a report-request (task 2026-07-03-016 6b) — the
+  // checkbox toggle AND the default-on-create path both funnel through it, so
+  // the `ai-requests.json` payload shape lives once.
+  const bridgeRequest = useCallback(
+    (card: ReportRequestCard, value: boolean) => {
+      void bridgeCardAiRequestFlag(docId, "report-request", card.id, value, {
+        text: card.text || "<report request>",
+        paragraphIds: getLinkedTextObjectIds(card),
+        selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
+      });
+    },
+    [docId],
+  );
+
   /** Create a Report (the authored content card). Defaults `author` to
    *  "human" — the answer-report-request skill writes `author: "ai"`
    *  directly into reports.json. */
@@ -188,7 +202,10 @@ export function useReports(
         createdAt: new Date().toISOString(),
         text: content ? richJsonToPlainText(content) || "" : "",
         content: content ?? emptyRichContent(),
-        aiRequest: false,
+        // task 2026-07-03-016 6b: a report-request is an AI request by default;
+        // the inbox bridge follows the same pristine gate as sidecar
+        // persistence (below), so a discarded empty request never orphans.
+        aiRequest: true,
         selectedText: anchor?.anchorText,
         links: [],
       };
@@ -200,9 +217,12 @@ export function useReports(
       // discards on click-away regardless of anchor/paragraph.
       if (!content) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
+      // Seeded-with-content requests are committed at birth → bridge now; empty
+      // pristine ones bridge on first edit (updateRequestContent).
+      if (content) bridgeRequest(card, true);
       return card;
     },
-    [update, pristine],
+    [update, pristine, bridgeRequest],
   );
 
   const updateReportContent = useCallback(
@@ -239,6 +259,9 @@ export function useReports(
 
   const updateRequestContent = useCallback(
     (id: string, content: JSONContent) => {
+      // A pristine→committed transition bridges the default AI-request flag
+      // (task 2026-07-03-016 6b). Read isPristine BEFORE markDirty clears it.
+      const firstCommit = pristine.isPristine(id);
       pristine.markDirty(id);
       const text = richJsonToPlainText(content) || "";
       update((prev) => ({
@@ -247,8 +270,14 @@ export function useReports(
           c.id === id && c.kind === "report-request" ? { ...c, content, text } : c,
         ),
       }));
+      if (firstCommit) {
+        const card = state.cards.find(
+          (c) => c.id === id && c.kind === "report-request",
+        ) as ReportRequestCard | undefined;
+        if (card?.aiRequest) bridgeRequest({ ...card, content, text }, true);
+      }
     },
-    [update, pristine],
+    [update, pristine, state.cards, bridgeRequest],
   );
 
   const setRequestAiRequest = useCallback(
@@ -265,21 +294,9 @@ export function useReports(
             : c,
         ),
       }));
-      if (card) {
-        void bridgeCardAiRequestFlag(
-          docId,
-          "report-request",
-          id,
-          value,
-          {
-            text: card.text || "<report request>",
-            paragraphIds: getLinkedTextObjectIds(card),
-            selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
-          },
-        );
-      }
+      if (card) bridgeRequest({ ...card, aiRequest: value }, value);
     },
-    [update, pristine, docId, state.cards],
+    [update, pristine, state.cards, bridgeRequest],
   );
 
   /** Flip a report card's kind in place (report ⇄ report-request) via the

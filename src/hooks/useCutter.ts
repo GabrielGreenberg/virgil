@@ -181,6 +181,21 @@ export function useCutter(
   const localPristine = usePristineTracker();
   const pristine = externalPristine ?? localPristine;
 
+  // The ONE bridge seam for a cutter-comment (task 2026-07-03-016 6b). Both the
+  // AI-request checkbox toggle AND the default-on-create path funnel through it,
+  // so the `ai-requests.json` payload shape lives once. `value=true` writes the
+  // unified-queue entry; `value=false` drops it.
+  const bridgeComment = useCallback(
+    (card: CutterCommentCard, value: boolean) => {
+      void bridgeCardAiRequestFlag(docId, "cutter-comment", card.id, value, {
+        text: card.text || "<cutter comment>",
+        paragraphIds: getLinkedTextObjectIds(card),
+        selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
+      });
+    },
+    [docId],
+  );
+
   const addComment = useCallback(
     (
       paragraphId: string | null,
@@ -194,7 +209,12 @@ export function useCutter(
         createdAt: new Date().toISOString(),
         text: content ? richJsonToPlainText(content) || "" : "",
         content: content ?? emptyRichContent(),
-        aiRequest: false,
+        // task 2026-07-03-016 6b: a comment is an AI request by default. The
+        // bridge that puts it in the inbox follows the SAME pristine gate as
+        // sidecar persistence (below) — a still-empty pristine comment is not
+        // bridged until it commits, so a click-away discard leaves no orphan
+        // `ai-requests.json` entry.
+        aiRequest: true,
         selectedText: anchor?.anchorText,
         links: [],
       };
@@ -210,9 +230,13 @@ export function useCutter(
       // click-away regardless of anchor/paragraph (an anchor isn't user content).
       if (!content) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
+      // Non-pristine (seeded-with-content) comments are committed immediately, so
+      // bridge the default request now; empty pristine ones bridge on first edit
+      // (updateCommentContent/Text), mirroring the persistence gate.
+      if (content) bridgeComment(card, true);
       return card;
     },
-    [update, pristine, state.cards.length],
+    [update, pristine, state.cards.length, bridgeComment],
   );
 
   const addSuggestion = useCallback(
@@ -259,6 +283,11 @@ export function useCutter(
 
   const updateCommentContent = useCallback(
     (id: string, content: JSONContent) => {
+      // A pristine→committed transition is the moment an empty default-request
+      // comment becomes real user content (task 2026-07-03-016 6b): bridge its
+      // default AI-request flag now, so it reaches the inbox without a manual
+      // checkbox toggle. Read isPristine BEFORE markDirty clears it.
+      const firstCommit = pristine.isPristine(id);
       pristine.markDirty(id);
       const text = richJsonToPlainText(content) || "";
       update((prev) => ({
@@ -269,12 +298,19 @@ export function useCutter(
             : c,
         ),
       }));
+      if (firstCommit) {
+        const card = state.cards.find(
+          (c) => c.id === id && c.kind === "comment",
+        ) as CutterCommentCard | undefined;
+        if (card?.aiRequest) bridgeComment({ ...card, content, text }, true);
+      }
     },
-    [update, pristine],
+    [update, pristine, state.cards, bridgeComment],
   );
 
   const updateCommentText = useCallback(
     (id: string, text: string) => {
+      const firstCommit = pristine.isPristine(id);
       pristine.markDirty(id);
       const content: JSONContent = text
         ? { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] }
@@ -285,8 +321,14 @@ export function useCutter(
           c.id === id && c.kind === "comment" ? { ...c, content, text } : c,
         ),
       }));
+      if (firstCommit) {
+        const card = state.cards.find(
+          (c) => c.id === id && c.kind === "comment",
+        ) as CutterCommentCard | undefined;
+        if (card?.aiRequest) bridgeComment({ ...card, content, text }, true);
+      }
     },
-    [update, pristine],
+    [update, pristine, state.cards, bridgeComment],
   );
 
   const setCommentAiRequest = useCallback(
@@ -301,21 +343,9 @@ export function useCutter(
           c.id === id && c.kind === "comment" ? { ...c, aiRequest: value } : c,
         ),
       }));
-      if (card) {
-        void bridgeCardAiRequestFlag(
-          docId,
-          "cutter-comment",
-          id,
-          value,
-          {
-            text: card.text || "<cutter comment>",
-            paragraphIds: getLinkedTextObjectIds(card),
-            selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
-          },
-        );
-      }
+      if (card) bridgeComment({ ...card, aiRequest: value }, value);
     },
-    [update, pristine, docId, state.cards],
+    [update, pristine, state.cards, bridgeComment],
   );
 
   const updateSuggestionField = useCallback(

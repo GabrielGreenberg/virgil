@@ -36,6 +36,22 @@ export function onFootnoteArchiveConsumed(archiveId: string) {
   );
 }
 
+/**
+ * D1 (task 2026-07-03-016) — the AI-request affordance is a property of "has a
+ * resolvable in-text anchor," NOT "is a footnote." A footnote can bear an AI
+ * request only when it carries a real `\footnote` marker position the drain can
+ * anchor the request to; orphan / unanchored footnotes (rendered by the sibling
+ * `OrphanedFootnoteCard` / `UnanchoredFootnoteCard`, which never receive
+ * `onSetAiRequest`) have no marker, so the checkbox is INTENTIONALLY suppressed
+ * for them rather than incidentally absent. `FootnoteCard` only ever renders the
+ * anchored variant, so in practice this is always true here — it makes the
+ * invariant explicit and testable (a footnote with an unresolvable pos shows no
+ * affordance, matching what the drain can route).
+ */
+export function footnoteCanAiRequest(fn: Pick<FootnoteInfo, "pos">): boolean {
+  return typeof fn.pos === "number" && Number.isFinite(fn.pos) && fn.pos >= 0;
+}
+
 export interface FootnoteCardProps {
   footnote: FootnoteInfo;
   isSelected: boolean;
@@ -127,7 +143,7 @@ export function FootnoteCard({
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       onDelete={onDelete}
       footer={
-        onSetAiRequest && !compressed ? (
+        onSetAiRequest && !compressed && footnoteCanAiRequest(fn) ? (
           <div className="px-3 pb-2 -mt-1">
             <AiRequestCheckbox
               checked={!!aiRequest}

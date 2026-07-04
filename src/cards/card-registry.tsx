@@ -485,7 +485,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   "revision-comment": {
-    label: "Comment",
+    label: "Request",
     titleLabel: null,
     // Shared `revision` popout prefix for BOTH revision kinds (revision-suggestion
     // pops under `revision:s:<id>`). Kept byte-for-byte; AF's float: grammar
@@ -515,7 +515,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   "cutter-comment": {
-    label: "Comment",
+    label: "Request",
     titleLabel: null,
     keyPrefix: "cutter-comment",
     themeKey: "cut",

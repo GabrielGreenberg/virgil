@@ -124,9 +124,11 @@ describe("CutterCommentCard layout parity (#35)", () => {
 
   it("exposes the morph affordance (kind dropdown) and the AI-request toggle", () => {
     renderExpanded(makeCard());
-    // Morph chevron: the kind label ("Comment") is rendered as a dropdown
+    // Morph chevron: the kind label ("Request") is rendered as a dropdown
     // button because kindOptions has >1 entry and onConvert is wired.
-    expect(screen.getByText("Comment")).toBeTruthy();
+    // (Relabeled from "Comment" → "Request", task 2026-07-03-016 6c — labels
+    // only; the internal kind id stays `cutter-comment`.)
+    expect(screen.getByText("Request")).toBeTruthy();
     // AI-request checkbox lives in EditableCard's footer slot.
     expect(screen.getByText("AI request")).toBeTruthy();
   });

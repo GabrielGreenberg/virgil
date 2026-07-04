@@ -85,13 +85,16 @@ export async function bridgeCardAiRequestFlag(
   const handle = getActiveHandle(docId);
   if (!handle) return;
 
-  let state: AiRequestsState;
+  let state: AiRequestsState | null;
   try {
     state = await readSidecar<AiRequestsState>(docId, "ai-requests.json", EMPTY);
   } catch {
     return;
   }
-  const requests = Array.isArray(state.requests) ? state.requests : [];
+  // Best-effort contract (this module never throws): tolerate a storage backend
+  // that returns null/undefined for a missing sidecar instead of the default —
+  // treat it as an empty queue rather than dereferencing null.
+  const requests = Array.isArray(state?.requests) ? state.requests : [];
 
   const existingIdx = requests.findIndex(
     (r) =>
