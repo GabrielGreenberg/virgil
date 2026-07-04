@@ -93,7 +93,15 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
     cleanup(); // unmount between renders (no auto-cleanup configured here)
   });
 
-  it("Paragraph titles: click flips state AND persists true (no revert)", () => {
+  // NOTE ON THE SHIPPED DEFAULT: each toggle's default is owned by
+  // `useViewPrefs.defaults.json` and is REWRITTEN by the promote-personal-prefs
+  // pipeline (e.g. `showParTitles` flipped false→true in the 2026-07-04 promote).
+  // These tests guard the toggle→persist→no-revert BEHAVIOR, which is independent
+  // of that value — so read the live default from the rendered button rather than
+  // hard-coding it, and assert the flip relative to it. The persisted value must
+  // equal the flipped React state; the revert bug wrote its opposite.
+
+  it("Paragraph titles: click flips state AND persists the flipped value (no revert)", () => {
     const { getByTestId } = render(
       <StrictMode>
         <Toggle
@@ -104,18 +112,18 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
       </StrictMode>,
     );
     const btn = getByTestId("par");
-    expect(btn.textContent).toBe("false"); // shipped default (promoted from prefs)
+    const start = btn.textContent === "true"; // shipped default (promoted; not asserted)
 
     fireEvent.click(btn);
 
     // React state flipped...
-    expect(btn.textContent).toBe("true");
-    // ...AND it actually landed in the global blob. The bug wrote `true` then
-    // immediately re-wrote `false` here, so a reload (loadPrefs) read `false`.
-    expect(persistedGlobal().showParTitles).toBe(true);
+    expect(btn.textContent).toBe(String(!start));
+    // ...AND it actually landed in the global blob. The bug wrote the flipped
+    // value then immediately re-wrote the original, so a reload read the original.
+    expect(persistedGlobal().showParTitles).toBe(!start);
   });
 
-  it("Paragraph titles: a second click toggles back off and persists false", () => {
+  it("Paragraph titles: a second click toggles back and persists the round-trip", () => {
     const { getByTestId } = render(
       <StrictMode>
         <Toggle
@@ -126,10 +134,11 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
       </StrictMode>,
     );
     const btn = getByTestId("par");
+    const start = btn.textContent === "true";
     fireEvent.click(btn);
     fireEvent.click(btn);
-    expect(btn.textContent).toBe("false");
-    expect(persistedGlobal().showParTitles).toBe(false);
+    expect(btn.textContent).toBe(String(start));
+    expect(persistedGlobal().showParTitles).toBe(start);
   });
 
   it("% comments twin persists (no revert)", () => {
@@ -143,9 +152,10 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
       </StrictMode>,
     );
     const btn = getByTestId("lc");
+    const start = btn.textContent === "true";
     fireEvent.click(btn);
-    expect(btn.textContent).toBe("false");
-    expect(persistedGlobal().showLatexComments).toBe(false);
+    expect(btn.textContent).toBe(String(!start));
+    expect(persistedGlobal().showLatexComments).toBe(!start);
   });
 
   it("a generic registry toggle (heading labels) persists (no revert)", () => {
@@ -159,8 +169,9 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
       </StrictMode>,
     );
     const btn = getByTestId("hl");
+    const start = btn.textContent === "true";
     fireEvent.click(btn);
-    expect(btn.textContent).toBe("false");
-    expect(persistedGlobal().showHeadingLabels).toBe(false);
+    expect(btn.textContent).toBe(String(!start));
+    expect(persistedGlobal().showHeadingLabels).toBe(!start);
   });
 });
