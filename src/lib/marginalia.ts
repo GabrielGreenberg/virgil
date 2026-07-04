@@ -108,6 +108,30 @@ export function isAnchorDrag(dt: DataTransfer | null): boolean {
   return dt != null && ANCHOR_DRAG_TYPES.some((t) => dt.types.includes(t));
 }
 
+/**
+ * All MIME types the main editor's `handleDrop` accepts as an inline insert /
+ * entity placement — a citation, raw text, or a footnote move. The editor's
+ * `dragover` handler uses this set to give these drags a clean `"move"` drop
+ * affordance instead of the browser's default green-plus `copy` cursor (which
+ * an `effectAllowed="copy"` source would otherwise yield over the
+ * contenteditable surface). `dropEffect` is purely cosmetic — it does not
+ * change what `handleDrop` does with the payload. Sources of these drags must
+ * advertise `effectAllowed = "copyMove"` so the `"move"` effect isn't reset to
+ * `"none"` here while `"copy"` still works at the panel/card merge targets.
+ */
+export const EDITOR_INSERT_DRAG_TYPES: readonly string[] = [
+  MIME_CITATION,
+  MIME_TEXT_INSERT,
+  MIME_FOOTNOTE,
+];
+
+/** True if the DataTransfer carries an editor inline-insert / placement drag. */
+export function isEditorInsertDrag(dt: DataTransfer | null): boolean {
+  return (
+    dt != null && EDITOR_INSERT_DRAG_TYPES.some((t) => dt.types.includes(t))
+  );
+}
+
 export interface MarginaliaMarker {
   /** Stable per-marker id — unique per marker instance (may be composite for multi-anchor) */
   id: string;
