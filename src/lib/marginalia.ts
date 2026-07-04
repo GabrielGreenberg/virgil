@@ -219,7 +219,15 @@ export interface MarkerMeta {
 export interface AnchorNodeMetrics {
   /** Paragraph UUID */
   id: string;
-  /** Top of the first text line (px) — used for icon positioning in the grid */
+  /**
+   * Vertical anchor (px, host-relative) for grid icon positioning. For a prose
+   * block this is `opticalCenterY − lineHeight/2`, so the grid's
+   * `top + lineHeight/2` (row-0 icon center) lands on the first text line's
+   * OPTICAL cap-band center — the same anchor the grab handle uses
+   * (`block-frame.ts` `opticalCenterY`), derived via the shared
+   * `resolveInlineContextElement` SSOT in `useMarginaliaRegistry.measureBlock`.
+   * For an atom / glyph-anchor-override block it is the element's border-box top.
+   */
   top: number;
   /** Top of the full DOM element (px) — used for hit-testing in drop resolution */
   domTop: number;
