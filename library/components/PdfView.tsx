@@ -294,7 +294,10 @@ export default function PdfView({ handle, citekey, onPdfPageStateChange }: Props
       ref={iframeRef}
       src={VIEWER_SRC}
       title={`${citekey}.pdf`}
-      style={{ width: "100%", height: "100%", border: "none" }}
+      // borderRadius matches the framed-viewer pod so the iframe corners are
+      // clipped to the rounded surface (parity with the docs compiled-PDF
+      // iframe — some browsers don't clip iframe content to a parent's radius).
+      style={{ width: "100%", height: "100%", border: "none", borderRadius: "var(--pod-radius)" }}
     />
   );
 }

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } fr
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { LoadingScreen } from "./LoadingScreen";
+import FramedViewerSurface from "./FramedViewerSurface";
 import { setFocusBandMeta } from "@/lib/focus-view";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
@@ -4008,47 +4009,32 @@ export default function EditorLayout() {
           />
         </div>
       ) : currentDoc && docPermState !== "granted" ? null : pdfView && currentDocId ? (
-        <div
-          className="flex flex-1 overflow-hidden"
-          style={{
-            paddingTop: 4,
-            paddingBottom: zenModeOn ? 4 : 'var(--pod-gap)',
-            paddingLeft: 4,
-            paddingRight: 4,
-          }}
+        <FramedViewerSurface
+          backdrop="dark"
+          paddingBottom={zenModeOn ? 4 : 'var(--pod-gap)'}
         >
-          <div
-            className="flex-1 flex flex-col min-h-0 overflow-hidden relative"
-            style={{
-              background: '#525659',
-              borderRadius: 'var(--pod-radius)',
-              border: 'var(--pod-border)',
-              boxShadow: 'var(--pod-shadow)',
-            }}
-          >
-            {pdfBlobUrl ? (
-              <iframe
-                src={pdfBlobUrl}
-                className="w-full h-full border-none"
-                style={{ borderRadius: 'var(--pod-radius)' }}
-                title="Compiled PDF"
-              />
-            ) : (
-              <div className="flex flex-1 items-center justify-center">
-                <div className="text-center text-white/70 p-8">
-                  <p className="text-lg mb-2">No compiled PDF</p>
-                  <p className="text-sm">Click Compile to generate a PDF.</p>
-                </div>
+          {pdfBlobUrl ? (
+            <iframe
+              src={pdfBlobUrl}
+              className="w-full h-full border-none"
+              style={{ borderRadius: 'var(--pod-radius)' }}
+              title="Compiled PDF"
+            />
+          ) : (
+            <div className="flex flex-1 items-center justify-center">
+              <div className="text-center text-white/70 p-8">
+                <p className="text-lg mb-2">No compiled PDF</p>
+                <p className="text-sm">Click Compile to generate a PDF.</p>
               </div>
-            )}
-            {pdfStale && pdfBlobUrl && (
-              <div className="absolute top-3 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow flex items-center gap-1.5 z-10">
-                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
-                PDF is out of date
-              </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+          {pdfStale && pdfBlobUrl && (
+            <div className="absolute top-3 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow flex items-center gap-1.5 z-10">
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
+              PDF is out of date
+            </div>
+          )}
+        </FramedViewerSurface>
       ) : currentDocId ? null : (
         <div className="flex flex-1 items-center justify-center bg-[var(--background)]">
           <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-xl">
