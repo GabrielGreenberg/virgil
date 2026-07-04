@@ -13,6 +13,7 @@ import {
   getActiveHandle,
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
+import { subscribeAiRequests } from "@/lib/ai-request-events";
 
 const EMPTY: AiRequestsState = { requests: [] };
 
@@ -43,6 +44,20 @@ export function useAiRequests(docId: string | null) {
     return () => {
       cancelled = true;
     };
+  }, [docId]);
+
+  // Stay in sync with out-of-band writes to `ai-requests.json`. The card-flag
+  // bridge (`bridgeCardAiRequestFlag`) persists the file directly, behind this
+  // hook's back; without this the AIWindow wouldn't reflect a freshly-toggled
+  // request until a reload/remount (drop D3). The bridge publishes its
+  // authoritative post-write list on the doc channel; we adopt it verbatim so
+  // the inbox and the on-disk queue can't diverge. Fires only on a flag toggle
+  // (never on a keystroke), so it's exempt from the keystroke-sanctity list.
+  useEffect(() => {
+    if (!docId) return;
+    return subscribeAiRequests(docId, (requests) => {
+      setState({ requests });
+    });
   }, [docId]);
 
   const persist = useCallback(

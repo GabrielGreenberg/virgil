@@ -28,6 +28,7 @@ import {
   getActiveHandle,
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
+import { publishAiRequests } from "@/lib/ai-request-events";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
 
@@ -140,5 +141,11 @@ export async function bridgeCardAiRequestFlag(
   } catch (err) {
     if (isStalePipelineError(err)) return;
     console.error("Failed to bridge card AI request flag:", err);
+    return;
   }
+  // Announce the authoritative post-write list so the live inbox
+  // (`useAiRequests`) adopts it without a reload/remount (drop D3). Only after a
+  // successful persist — a failed write leaves the on-disk queue unchanged, so
+  // the in-memory inbox must not diverge from it.
+  publishAiRequests(docId, nextRequests);
 }
