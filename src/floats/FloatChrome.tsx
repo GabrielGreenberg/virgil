@@ -3,6 +3,7 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { PopoutButton } from "@/components/panel-primitives";
 import { DropChevrons } from "@/components/icons/DropChevrons";
+import { JumpChevron } from "@/components/icons/JumpChevron";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
 
 /**
@@ -124,18 +125,7 @@ export function FloatChrome({
           data-hint={`Jump to ${labelNoun}`}
           aria-label={`Jump to ${labelNoun}`}
         >
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polyline points="9 6 15 12 9 18" />
-          </svg>
+          <JumpChevron />
         </button>
       )}
       {/* (Re)anchor drop button — the popped-float twin of the docked
