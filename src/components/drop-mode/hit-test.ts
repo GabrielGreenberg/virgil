@@ -512,10 +512,10 @@ export function resolveBlockIntoExpex(
   );
 
   if (frac < EXPEX_EDGE_BAND_FRAC) {
-    return makeExpexNewItemPlacement(editor, active, "above");
+    return makeExpexNewItemPlacement(editor, active, "above", blockRect.right);
   }
   if (frac > 1 - EXPEX_EDGE_BAND_FRAC) {
-    return makeExpexNewItemPlacement(editor, active, "below");
+    return makeExpexNewItemPlacement(editor, active, "below", blockRect.right);
   }
   return makeExpexIntoItemPlacement(editor, active);
 }
@@ -585,12 +585,20 @@ function makeExpexNewItemPlacement(
   editor: Editor,
   item: ExpexItemGeom,
   side: "above" | "below",
+  bodyRight: number,
 ): Placement {
   const gapY = side === "above" ? item.top : item.bottom;
+  // WIDTH encodes SCOPE (task 007): a new sibling ITEM spans the example's BODY
+  // COLUMN — from the item's indented text-left to the example body's right edge
+  // (`bodyRight`, the exampleBlock box's right; body `1fr` extends to it) — NOT
+  // the (possibly short, one-line) `item.contentWidth`. So "a new item lands
+  // here" reads full-width within the example, mirroring the full-column bar a
+  // top-level sibling gets. Falls back to the item's own content width if the
+  // body edge somehow sits left of it (defensive; never in a laid-out block).
   const rect: ViewportRect = {
     x: item.contentLeft,
     y: gapY - EXPEX_BAR_WIDTH / 2,
-    width: Math.max(item.contentWidth, EXPEX_BAR_WIDTH * 2),
+    width: Math.max(bodyRight - item.contentLeft, item.contentWidth, EXPEX_BAR_WIDTH * 2),
     height: EXPEX_BAR_WIDTH,
   };
   const insertPos = side === "above" ? item.pos : item.pos + item.nodeSize;
@@ -643,24 +651,49 @@ export function makeBetweenBlocksPlacement(
     ? block.blockPos
     : block.blockPos + (node ? node.nodeSize : 0);
 
-  // Horizontal extent from the shared content-edge primitive `resolveContentEdges`
-  // (which `resolveBlockFrame` composes) — the SAME content-left / width the grab
-  // handles and the expex drop bars read, so this bar lines up with the block's
-  // content-left (and the expex bars over the same block) by construction, not via
-  // an independent `block.dom` box measurement (the §4 fix). It descends wrappers
-  // to the text element (titled paragraph / blockquote / list item / expex item),
-  // matching where the dropped block's text will land. The lean primitive skips
-  // the marker / optical-center / depth work this bar doesn't use. Y still comes
-  // from the block's own box (the gap line above/below).
-  const frame = resolveContentEdges(block.dom);
+  // Horizontal extent — the bar WIDTH encodes the insert SCOPE (task 007), not
+  // the neighbor's text length:
+  //
+  //  • TOP-LEVEL sibling insert (the block sits at doc depth 0) → the bar spans
+  //    the block's OWN COLUMN box (`block.dom`'s border box). A top-level block
+  //    fills the prose column, and its content-left IS the column-left — for a
+  //    paragraph / heading / figure that box already equals the descended
+  //    content edge (byte-identical to before), but for a CONTAINER (exampleBlock
+  //    / list) the descended first-line target is the narrow, INDENTED inner item
+  //    (`resolveContentEdges` walks into it), which made the sibling bar read
+  //    short below an example. Because the descended target is always a
+  //    DESCENDANT of `block.dom`, the outer box is never narrower — this can only
+  //    widen the bar to true column scope, never shrink it, so "a new top-level
+  //    block lands here" reads full-width for every kind.
+  //
+  //  • SUB-TIER peer insert (an item among its peers, depth ≥ 1) → keep the
+  //    shared content-edge primitive `resolveContentEdges` (which `resolveBlock-
+  //    Frame` composes — the SAME content-left / width the grab handles read), so
+  //    the reorder bar hugs the item's indented TEXT-left and coincides with the
+  //    into-item bar over the same item (chip 4a §4). The indented item width is
+  //    the correct scope here.
+  //
+  // Y still comes from the block's own box (the gap line above/below).
+  const isTopLevelSibling =
+    editor.state.doc.resolve(block.blockPos).depth === 0;
   const barY = insertBefore ? blockRect.top : blockRect.bottom;
+  let barLeft: number;
+  let barWidth: number;
+  if (isTopLevelSibling) {
+    barLeft = blockRect.left;
+    barWidth = blockRect.width;
+  } else {
+    const frame = resolveContentEdges(block.dom);
+    barLeft = frame.contentLeft;
+    barWidth = frame.contentWidth;
+  }
   const rect: ViewportRect = {
-    x: frame.contentLeft,
+    x: barLeft,
     y: barY - 1,
     // Floor the span above the 2px bar height so a (theoretical) zero-width
     // content box can't flip the indicator vertical (Indicator: height>width ⇒
     // vertical); real laid-out blocks are hundreds of px, so it never bites.
-    width: Math.max(frame.contentWidth, 3),
+    width: Math.max(barWidth, 3),
     height: 2,
   };
   return { kind: "between-blocks", editor, insertPos, rect };
