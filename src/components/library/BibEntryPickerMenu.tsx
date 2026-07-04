@@ -84,6 +84,14 @@ export interface BibEntryPickerMenuProps {
    *  matching entry. Citation-card use enables this so an unknown citekey
    *  can still be locked in. */
   onCommitRaw?: (text: string) => void;
+  /** Enter-commits-the-whole-pick hook for a DEFERRED create popover (the
+   *  citation / any keep-open picker). When set, Enter still STAGES the
+   *  active/raw key through the normal pick path, then ALSO fires this so the
+   *  caller can commit everything staged and close in one keystroke. The
+   *  just-staged key is passed through so the caller can fold it into the
+   *  commit synchronously (the staged-state update is async). Absent for the
+   *  in-card / panel pickers, where Enter picks-and-closes as before. */
+  onEnterCommit?: (pickedKey?: string) => void;
   /** Optional initial query (e.g. preselect the current citekey when
    *  re-opening the picker on a filled citation row). */
   initialQuery?: string;
@@ -148,6 +156,7 @@ function BibEntryPickerMenuInner({
   getLibraryItem,
   getMembershipChips,
   onCommitRaw,
+  onEnterCommit,
   initialQuery,
   placeholder = "Search…",
   ariaLabel = "Search entries",
@@ -219,6 +228,7 @@ function BibEntryPickerMenuInner({
         getLibraryItem={getLibraryItem}
         getMembershipChips={getMembershipChips}
         onCommitRaw={onCommitRaw}
+        onEnterCommit={onEnterCommit}
         initialQuery={initialQuery}
         placeholder={placeholder}
         emptyHint={emptyHint}
@@ -239,6 +249,7 @@ interface BodyProps {
   getLibraryItem?: (entry: BibEntry) => LibraryIndexItem | undefined;
   getMembershipChips?: (entry: BibEntry) => MembershipChips;
   onCommitRaw?: (text: string) => void;
+  onEnterCommit?: (pickedKey?: string) => void;
   initialQuery?: string;
   placeholder: string;
   emptyHint: NonNullable<BibEntryPickerMenuProps["emptyHint"]>;
@@ -259,6 +270,7 @@ function BibEntryPickerBody({
   getLibraryItem,
   getMembershipChips,
   onCommitRaw,
+  onEnterCommit,
   initialQuery,
   placeholder,
   emptyHint,
@@ -376,10 +388,21 @@ function BibEntryPickerBody({
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter") {
         e.preventDefault();
+        // Stage the active/raw key through the normal pick path (this is what
+        // adds a library-only entry to the paper's bib), then — in a deferred
+        // create popover (`onEnterCommit` set) — commit everything staged and
+        // close. The just-staged key rides `onEnterCommit` so the caller can
+        // fold it in synchronously (its own staged state hasn't ticked yet).
         if (activeEntry) {
           void performPick(activeEntry);
+          onEnterCommit?.(activeEntry.key);
         } else if (showRawCommit) {
           onCommitRaw?.(trimmedQuery);
+          onEnterCommit?.(trimmedQuery);
+        } else {
+          // Nothing to stage (empty list / empty query) — still let a create
+          // popover commit whatever was staged earlier.
+          onEnterCommit?.(undefined);
         }
         return;
       }
@@ -388,7 +411,15 @@ function BibEntryPickerBody({
         onClose();
       }
     },
-    [activeEntry, performPick, showRawCommit, onCommitRaw, trimmedQuery, onClose],
+    [
+      activeEntry,
+      performPick,
+      showRawCommit,
+      onCommitRaw,
+      onEnterCommit,
+      trimmedQuery,
+      onClose,
+    ],
   );
 
   const inputProps = getInputProps({
