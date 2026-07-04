@@ -89,6 +89,7 @@
   "editorBottomMargin": 24,
   "topbarRightCollapsed": false,
   "showParTitles": false,
+  "showCardTitles": true,
   "showLatexComments": true,
   "showMarginalia": true,
   "hiddenMarginaliaTypes": [],

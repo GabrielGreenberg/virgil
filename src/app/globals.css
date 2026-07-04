@@ -3952,6 +3952,18 @@ html {
   display: none !important;
 }
 
+/* View toggles — hide the card +T add-title affordance (page-level
+   `showCardTitles`, the card analog of `showParTitles`). Gated on a
+   body-level `.hide-card-titles` class rather than the `.editor-pane-column`
+   ancestor that `.hide-par-titles` uses: cards live in the panel strips, the
+   omni host, AND body-portaled float popouts — none under that column — so
+   the class must sit on `document.body` to reach every card surface. Only the
+   empty-title `+T` prompt (`.card-title-add-only`) hides; existing set titles
+   stay visible, mirroring the paragraph-title behavior. */
+.hide-card-titles .card-title-add-only {
+  display: none !important;
+}
+
 /* View toggles — hide LaTeX % comments */
 .hide-latex-comments .latex-comment {
   display: none !important;

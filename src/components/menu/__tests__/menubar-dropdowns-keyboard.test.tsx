@@ -228,6 +228,8 @@ function makeViewProps(overrides: Partial<ViewMenuProps> = {}): ViewMenuProps {
   return {
     showParTitles: false,
     onToggleParTitles: vi.fn(),
+    showCardTitles: false,
+    onToggleCardTitles: vi.fn(),
     showLatexComments: false,
     onToggleLatexComments: vi.fn(),
     showHeadingLabels: false,

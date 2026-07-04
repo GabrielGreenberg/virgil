@@ -64,6 +64,7 @@ export type ViewPrefDef = ToggleDef | EnumDef<string> | SetDef<string | number>;
 export const VIEW_PREF_REGISTRY = {
   // Display group (flat toggles)
   showParTitles:        { kind: "toggle", scope: "global", default: true, label: "Paragraph titles", menu: "display" },
+  showCardTitles:       { kind: "toggle", scope: "global", default: true, label: "Card titles",       menu: "display" },
   showLatexComments:    { kind: "toggle", scope: "global", default: true, label: "% comments",        menu: "display" },
   showHeadingLabels:    { kind: "toggle", scope: "global", default: true, label: "Labels",            menu: "display" },
   omniDimResting:       { kind: "toggle", scope: "global", default: true, label: "Dim cards at rest",  menu: "display" },

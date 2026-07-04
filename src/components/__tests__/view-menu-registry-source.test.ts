@@ -22,6 +22,7 @@ import {
   REGISTRY_GLOBAL_KEYS,
 } from "@/lib/view-prefs/registry";
 import devPrefsRegistry from "@/lib/dev-prefs-registry.json";
+import viewPrefsDefaults from "@/hooks/useViewPrefs.defaults.json";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const MENUBAR_SRC = readFileSync(path.resolve(here, "../MenuBar.tsx"), "utf8");
@@ -105,5 +106,29 @@ describe("menu-bearing registry labels are SOURCED from the registry, not hardco
       }
     }
     expect(blank).toEqual([]);
+  });
+});
+
+describe("showCardTitles — the page-level card +T pref mirrors showParTitles", () => {
+  it("is a global Display toggle, registered like its paragraph sibling", () => {
+    const def = VIEW_PREF_REGISTRY.showCardTitles;
+    expect(def.kind).toBe("toggle");
+    expect(def.scope).toBe("global");
+    expect(def.menu).toBe("display");
+    expect(def.label).toBe("Card titles");
+    // Global → must ride the personal-prefs promotion whitelist (the same
+    // invariant enforced generically above; pinned explicitly here).
+    expect(REGISTRY_GLOBAL_KEYS).toContain("showCardTitles");
+  });
+
+  it("registry default is byte-identical with useViewPrefs.defaults.json (release-snapshot contract)", () => {
+    // The promotion pipeline is byte-stable against the JSON; a divergence here
+    // is the release_prefs_snapshot gotcha. Default `true` also preserves the
+    // current always-on `+T` behavior (the affordance shows unless toggled off).
+    expect(VIEW_PREF_REGISTRY.showCardTitles.default).toBe(true);
+    expect((viewPrefsDefaults as Record<string, unknown>).showCardTitles).toBe(true);
+    expect(VIEW_PREF_REGISTRY.showCardTitles.default).toBe(
+      (viewPrefsDefaults as Record<string, unknown>).showCardTitles,
+    );
   });
 });
