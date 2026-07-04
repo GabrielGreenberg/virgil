@@ -218,6 +218,13 @@ export function defaultTintForLinkedAnchorKind(kind: string): string | null {
   // pending-DELETE variant renders the struck text differently in a later UI
   // phase; the tint string is what the Phase 0 unit tests assert.
   if (kind === "pending-ai-change") return "#bfdbfe";
+  // `pending-ai-request`: the SAME light-blue band, painted over the anchored
+  // text of an OPEN AI request (a note/todo/report-request/revision-comment/
+  // cutter-comment card whose `aiRequest` flag is set) — the request-open twin
+  // of `pending-ai-change`. A DISTINCT kind (independent lifecycle: request
+  // marks clear on flag-off, applied marks clear on Keep/Revert) mapped to the
+  // identical hex so the two look the same (Gabriel, 2026-07-03).
+  if (kind === "pending-ai-request") return "#bfdbfe";
   return kind === "highlight" ? "#fbbf24" : null;
 }
 

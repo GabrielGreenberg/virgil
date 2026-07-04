@@ -268,6 +268,11 @@ import {
   pendingMarkAnchorIds,
   type PendingMarkCardLike,
 } from "@/links/_shared/reapply-pending-marks";
+import {
+  reconcileRequestMarks,
+  isModeARequestCard,
+  type RequestMarkCardLike,
+} from "@/links/_shared/request-marks";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import {
@@ -4666,6 +4671,69 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     reportCards: reportsHook.cards,
     todos:       todosHook.items,
   });
+
+  // ── Open-AI-request text highlight (task 021) ──────────────────────────────
+  // Persist the light-blue `pending-ai-request` wash over the anchored text of
+  // every open request (a Mode-A card whose `aiRequest` flag is set), and light
+  // it on hover/select through the reconciler above (`requestHighlightLink`).
+  // ONE idempotent reconcile (`reconcileRequestMarks`) is the mark's sole
+  // lifecycle owner — it serves flag-on, flag-off, delete, AND reload
+  // (the serializer strips the mark, so the reactive reconcile re-stamps it once
+  // the sidecars load). The reconcile is DESTRUCTIVE (strips stale marks), so it
+  // rides the SAME load-order DATA-LOSS gate as the orphan reaper.
+  const requestMarkCards = useMemo<RequestMarkCardLike[]>(() => {
+    // Only the paragraph-anchored margin kinds carry an `aiRequest` flag; the
+    // reconcile filters to the Mode-A subset. Highlights are Mode-B (their own
+    // span mark) — excluded to avoid clobbering it.
+    const all = [
+      ...notesHook.notes,
+      ...todosHook.items,
+      ...revisionsHook.cards,
+      ...reportsHook.cards,
+      ...cutterHook.cards,
+    ] as RequestMarkCardLike[];
+    return all.filter((c) => c.aiRequest === true);
+  }, [
+    notesHook.notes,
+    todosHook.items,
+    revisionsHook.cards,
+    reportsHook.cards,
+    cutterHook.cards,
+  ]);
+  // Keystroke-sanctity key: the reconcile must fire only when the DESIRED mark
+  // set changes — the Mode-A request cards' ids + their anchor paragraphs — not
+  // on every unrelated card edit (or ever on a keystroke: typing changes neither
+  // the card set nor its anchors). Read the live cards through a ref so the
+  // effect body isn't in the dep list.
+  const requestMarkKey = useMemo(
+    () =>
+      requestMarkCards
+        .filter(isModeARequestCard)
+        .map((c) => `${c.id}@${getLinkedTextObjectIds(c)[0] ?? ""}`)
+        .sort()
+        .join("|"),
+    [requestMarkCards],
+  );
+  const requestMarkCardsRef = useRef(requestMarkCards);
+  requestMarkCardsRef.current = requestMarkCards;
+  useEffect(() => {
+    if (!editor) return;
+    // SAME gate as the orphan reaper — never strip against transiently-empty or
+    // load-errored collections.
+    if (!(allCardSidecarsLoaded && docContentReady && !anyCardSidecarLoadError)) {
+      return;
+    }
+    reconcileRequestMarks(editor, requestMarkCardsRef.current);
+    // `requestMarkKey` gates re-runs to genuine desired-set changes; the cards
+    // themselves are read via the ref. `editor`/gate flips also (re)run it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    editor,
+    allCardSidecarsLoaded,
+    docContentReady,
+    anyCardSidecarLoadError,
+    requestMarkKey,
+  ]);
 
   useTextHoverBridge({
     editor,

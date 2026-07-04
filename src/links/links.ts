@@ -746,6 +746,22 @@ function findParagraphByUuid(editor: Editor, uuid: string): number | null {
   return found;
 }
 
+/**
+ * The live plain-text content of the paragraph node carrying `uuid`, or null if
+ * no such node exists. Used by the open-AI-request highlight (request-marks.ts)
+ * to stamp a whole-paragraph `pending-ai-request` mark: it feeds this text back
+ * into `reanchorByText` as the uuid-scoped snapshot, so a Mode-A card's WHOLE
+ * anchored paragraph gets the persistent blue wash (no sub-range). `textContent`
+ * excludes inline atoms (footnote/citation), which is fine — `reanchorByText`'s
+ * per-child offset walk maps the char span back across any interleaved atoms.
+ */
+export function paragraphTextByUuid(editor: Editor, uuid: string): string | null {
+  const pos = findParagraphByUuid(editor, uuid);
+  if (pos == null) return null;
+  const node = editor.state.doc.nodeAt(pos);
+  return node ? node.textContent : null;
+}
+
 export function resolveTextRangeByAnchorId(
   editor: Editor,
   anchorId: string,
@@ -803,7 +819,15 @@ export type LinkedAnchorKind =
   // `revision-suggestion` spine kind so the data-link-card token, jump-to, and
   // float plumbing reuse the suggestion machinery — the only thing distinct is
   // the tint (`#bfdbfe`, see `defaultTintForLinkedAnchorKind`).
-  | "pending-ai-change";
+  | "pending-ai-change"
+  // The light-blue marker stamped over the anchored text of an OPEN AI request
+  // (the request-open twin of `pending-ai-change`). Same `#bfdbfe` tint, but a
+  // DISTINCT kind so request marks and applied-change marks keep independent
+  // lifecycles. Lifecycle-owned by `reconcileRequestMarks` (request-marks.ts),
+  // NOT by a card text-anchor — so the orphan reapers skip it by kind and its
+  // `linkCard` token is always threaded explicitly by the reconcile (never
+  // kind-derived, which is why the fold below maps it to a placeholder).
+  | "pending-ai-request";
 
 export interface LinkedAnchorRecord {
   anchorId: string;
@@ -826,6 +850,11 @@ function linkedAnchorKindToCardKind(kind: LinkedAnchorKind): CardKind {
     case "report":            return "report";
     case "report-request":    return "report-request";
     case "pending-ai-change": return "revision-suggestion";
+    // Placeholder fold: the request reconcile ALWAYS threads an explicit
+    // `linkCardToken` (the owning card's real kind), so this fallback is never
+    // consulted for a `pending-ai-request` mark's stamped token — it exists only
+    // to keep the switch exhaustive. `note` is an arbitrary safe CardKind.
+    case "pending-ai-request": return "note";
   }
 }
 
