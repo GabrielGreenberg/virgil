@@ -1,24 +1,22 @@
 /**
- * Right-margin geometry SSOT (backlog #8).
+ * Right-margin geometry SSOT (backlog #8 → task 2026-07-03-030).
  *
- * Three chrome elements share the editor's right margin — the marginalia
- * marker grid, the selection bolt (⚡), and the overlay scrollbar. They used
- * to be positioned by three independent ad-hoc constants in three coordinate
- * systems, so they overlapped: the rightmost marker column sat under the
- * scrollbar (6px outer-pad < 9px gutter), and the bolt at `textRight + 6`
- * straddled the marker grid's left column.
+ * Four chrome elements share the editor's right margin — the selection bolt
+ * (⚡), the marginalia marker grid, and the overlay scrollbar. They used to be
+ * positioned by independent ad-hoc constants in different coordinate systems,
+ * so they overlapped and — worse — the bolt was TEXT-anchored while the markers
+ * are POD-anchored, so dragging the right margin wide slid the markers outboard
+ * while the bolt stayed put, drifting the bolt onto the markers.
  *
- * These tests pin the ONE shared lane model so the three never drift:
- *  (a) the marker outer-pad reserves the bolt band + the scrollbar gutter;
- *  (b) the rightmost marker column's right edge clears the scrollbar gutter
- *      (modelled through `computeMarkerPositions`, the real placement fn);
- *  (c) the bolt gets its OWN dedicated band just outboard of the marker grid
- *      (the lane was widened to make room), so the bolt is FULLY DISJOINT from
- *      BOTH marker columns AND the scrollbar. The disjointness is asserted
- *      against the column x-ranges from the REAL `computeMarkerPositions` (so
- *      they aren't hand-derived) and against the scrollbar band at the minimum
- *      lane (the tight case — the gap only grows for wider margins). The test
- *      FAILS if anyone shrinks the lane back under the disjoint minimum.
+ * The lane is now ONE ordered band list (`RIGHT_LANE_BANDS`), so:
+ *  (a) every element offset (bolt x, grid col x, scrollbar x) and the lane
+ *      width derive from the SAME list — disjointness is STRUCTURAL (sequential
+ *      non-overlapping bands cannot collide), not a hand-checked docstring;
+ *  (b) BOLT_PLACEMENT = "inboard": the bolt is the first band after the inner
+ *      pad, so the markers sit to its RIGHT;
+ *  (c) the bolt is POD-anchored (`computeBoltLeftFromPod`), so it is
+ *      MARGIN-INVARIANT — the wide-margin case the old text-edge-only suite
+ *      structurally could not see (the task's headline regression);
  *  (d) the per-side min-floor equals the full lane width, and the margin-edit
  *      floor rises to it ONLY when the marker lane is reserved.
  */
@@ -31,7 +29,6 @@ import {
 } from "@/components/editor-layout/constants";
 import {
   MARGINALIA_INNER_PAD,
-  MARGINALIA_OUTER_PAD_RIGHT,
   MARGINALIA_OUTER_PAD_LEFT,
   ICONS_BLOCK_WIDTH,
   MARGINALIA_ICON_SIZE,
@@ -41,10 +38,15 @@ import {
   MARGINALIA_MIN_MARGIN_LEFT,
   CODE_VIEW_GUTTER_PX,
   resolveHorizontalMargin,
-  MARGINALIA_BOLT_LEFT_FROM_TEXT,
+  RIGHT_LANE_BANDS,
+  rightLaneOffset,
+  MARGINALIA_GRID_X_RIGHT,
+  MARGINALIA_BOLT_X_RIGHT,
+  MARGINALIA_BOLT_PLACEMENT,
   MARGINALIA_BOLT_SIZE,
   MARGINALIA_BOLT_MARKER_GAP,
   MARGINALIA_BOLT_SCROLLBAR_GAP,
+  computeBoltLeftFromPod,
   type AnchorNodeMetrics,
   type MarginaliaMarker,
 } from "@/lib/marginalia";
@@ -54,30 +56,30 @@ import {
   MARGIN_MIN_WITH_MARKERS,
 } from "@/hooks/useMarginEdit";
 
-// The bolt's pixel size now lives in the SSOT (SelectionActionsMenu's
-// BUTTON_SIZE aliases it), so the test can't drift from the component.
+// The bolt's pixel size lives in the SSOT (SelectionActionsMenu's BUTTON_SIZE
+// aliases it), so the test can't drift from the component.
 const BOLT_SIZE = MARGINALIA_BOLT_SIZE;
+
+/** 1-line node metrics for driving the REAL grid placement fn. */
+const ONE_LINE: AnchorNodeMetrics = {
+  id: "p1",
+  top: 0,
+  domTop: 0,
+  height: 24,
+  lineHeight: 24,
+  lineCount: 1,
+  isAtom: false,
+};
 
 /**
  * Place 2 right-side markers on a 1-line node through the REAL grid fn, then
- * return each marker column's [left, right] x-range as an offset from the
- * text edge. For the RIGHT side `cellAt` packs from the text edge outward:
- * `cell.x = INNER_PAD + col*(ICON_SIZE + COL_GAP)` — i.e. cell.x is already
- * the offset-from-text-edge, the SAME coordinate system the bolt offset
- * (`MARGINALIA_BOLT_LEFT_FROM_TEXT`) lives in. So a column spans
- * `[cell.x, cell.x + ICON_SIZE]` and is directly comparable to the bolt.
- * Sorted left→right so [0] is col0 (the default/single-marker slot).
+ * return each marker column's [left, right] x-range as a CONTAINER-relative
+ * offset (`cell.x`). For the right side the marker container is `right:0` width
+ * MARGINALIA_MARGIN_WIDTH_RIGHT, so `cell.x` is measured from the container's
+ * left edge = `podRight − MARGINALIA_MARGIN_WIDTH_RIGHT` — the SAME origin the
+ * pod-anchored bolt inboard slot uses. Sorted left→right so [0] is col0.
  */
-function rightColumnRangesFromText(): Array<[number, number]> {
-  const metrics: AnchorNodeMetrics = {
-    id: "p1",
-    top: 0,
-    domTop: 0,
-    height: 24,
-    lineHeight: 24,
-    lineCount: 1,
-    isAtom: false,
-  };
+function rightColumnRanges(): Array<[number, number]> {
   const markers: MarginaliaMarker[] = [0, 1].map((i) => ({
     id: `m${i}:p1`,
     entityId: `m${i}`,
@@ -86,7 +88,7 @@ function rightColumnRangesFromText(): Array<[number, number]> {
     side: "right" as const,
   }));
   const { positioned } = computeMarkerPositions(
-    (uuid) => (uuid === "p1" ? metrics : null),
+    (uuid) => (uuid === "p1" ? ONE_LINE : null),
     markers,
     {},
   );
@@ -94,6 +96,12 @@ function rightColumnRangesFromText(): Array<[number, number]> {
     .map((p): [number, number] => [p.cell.x, p.cell.x + MARGINALIA_ICON_SIZE])
     .sort((a, b) => a[0] - b[0]);
 }
+
+/** The bolt's inboard-slot band, in container-relative coordinates. */
+const BOLT_BAND: [number, number] = [
+  MARGINALIA_BOLT_X_RIGHT,
+  MARGINALIA_BOLT_X_RIGHT + BOLT_SIZE,
+];
 
 /** True iff [aL,aR] and [bL,bR] overlap (share any x). */
 function rangesIntersect(
@@ -110,196 +118,185 @@ describe("right-margin geometry SSOT — scrollbar gutter", () => {
   });
 });
 
-describe("right-margin geometry SSOT — marker grid clears the scrollbar", () => {
-  it("the right outer-pad reserves the bolt band + the scrollbar gutter (outboard of the markers)", () => {
-    // The outer-pad now seats THREE elements outboard of the marker grid:
-    //   [BOLT_MARKER_GAP] [BOLT] [BOLT_SCROLLBAR_GAP] [SCROLLBAR_GUTTER]
-    expect(MARGINALIA_OUTER_PAD_RIGHT).toBe(
-      MARGINALIA_BOLT_MARKER_GAP +
-        MARGINALIA_BOLT_SIZE +
-        MARGINALIA_BOLT_SCROLLBAR_GAP +
-        SCROLLBAR_GUTTER,
-    );
-    // Concrete pin: 6 + 28 + 3 + 9 = 46.
-    expect(MARGINALIA_OUTER_PAD_RIGHT).toBe(46);
-    // It still clears the scrollbar (the old 6 < 9 bug stays fixed) — and now
-    // also clears the whole bolt band.
-    expect(MARGINALIA_OUTER_PAD_RIGHT).toBeGreaterThan(SCROLLBAR_GUTTER);
-    // The reused gap consts are the ratified inter-column / marker-scrollbar
-    // gaps, so the bolt band reads consistently with the grid.
-    expect(MARGINALIA_BOLT_MARKER_GAP).toBe(6);
-    expect(MARGINALIA_BOLT_SCROLLBAR_GAP).toBe(MARKER_SCROLLBAR_GAP);
+describe("right-margin geometry SSOT — the ordered band list", () => {
+  it("the lane width is the sum of every band (= 104), unchanged from the outboard-bolt layout", () => {
+    const sum = RIGHT_LANE_BANDS.reduce((s, b) => s + b.width, 0);
+    expect(MARGINALIA_MARGIN_WIDTH_RIGHT).toBe(sum);
+    // The bolt band only MOVED (outboard→inboard); it was already counted, so
+    // the lane width — and hence the reserved `--editor-pr` floor — is unchanged.
+    expect(MARGINALIA_MARGIN_WIDTH_RIGHT).toBe(104);
   });
 
-  it("the right margin width recomputes from the new outer-pad", () => {
-    expect(MARGINALIA_MARGIN_WIDTH_RIGHT).toBe(
-      MARGINALIA_INNER_PAD + ICONS_BLOCK_WIDTH + MARGINALIA_OUTER_PAD_RIGHT,
-    );
+  it("the bands tile the lane with NO gaps and NO overlaps (disjointness is structural)", () => {
+    // Every band's left offset = Σ prior widths; the next band starts exactly
+    // where this one ends. So the lane is fully tiled and no two bands overlap —
+    // the invariant the old hand-written docstring asserted is now computed.
+    let cursor = 0;
+    for (const band of RIGHT_LANE_BANDS) {
+      expect(rightLaneOffset(band.key)).toBe(cursor);
+      cursor += band.width;
+    }
+    expect(cursor).toBe(MARGINALIA_MARGIN_WIDTH_RIGHT);
   });
 
-  it("the rightmost marker column's right edge sits LEFT of the scrollbar gutter, clearing the whole bolt band", () => {
-    // Model the real placement: a 1-line node, right side, 2 markers → both
-    // columns placed. The MarginColumn div is `right:0` width
-    // MARGINALIA_MARGIN_WIDTH_RIGHT, so cell.x is measured from the column's
-    // left edge = podRight - MARGINALIA_MARGIN_WIDTH_RIGHT.
-    const metrics: AnchorNodeMetrics = {
-      id: "p1",
-      top: 0,
-      domTop: 0,
-      height: 24,
-      lineHeight: 24,
-      lineCount: 1,
-      isAtom: false,
-    };
-    const markers: MarginaliaMarker[] = [0, 1].map((i) => ({
-      id: `m${i}:p1`,
-      entityId: `m${i}`,
-      type: "note",
-      textObjectId: "p1",
-      side: "right",
-    }));
-    const { positioned } = computeMarkerPositions(
-      (uuid) => (uuid === "p1" ? metrics : null),
-      markers,
-      {},
-    );
-    // The rightmost icon is the higher-x cell.
-    const rightmost = positioned.reduce((a, b) => (b.cell.x > a.cell.x ? b : a));
-    const iconRightEdgeFromColumnLeft = rightmost.cell.x + MARGINALIA_ICON_SIZE;
+  it("the expected band order + concrete offsets (inboard bolt, markers to its right)", () => {
+    expect(MARGINALIA_BOLT_PLACEMENT).toBe("inboard");
+    // inner-pad 0, bolt 8, gap 36, col0 42, gap 64, col1 70, sb-gap 92, sb 95.
+    expect(rightLaneOffset("inner-pad")).toBe(0);
+    expect(rightLaneOffset("bolt")).toBe(8);
+    expect(rightLaneOffset("col0")).toBe(42);
+    expect(rightLaneOffset("col1")).toBe(70);
+    expect(rightLaneOffset("scrollbar")).toBe(95);
+    // The derived offset constants the grid + bolt consume.
+    expect(MARGINALIA_BOLT_X_RIGHT).toBe(8);
+    expect(MARGINALIA_GRID_X_RIGHT).toBe(42);
+  });
 
-    const podRight = 1000; // arbitrary
-    const columnLeft = podRight - MARGINALIA_MARGIN_WIDTH_RIGHT;
-    const iconRightEdge = columnLeft + iconRightEdgeFromColumnLeft;
-    const scrollbarLeft = podRight - SCROLLBAR_GUTTER;
-
-    // Marker right edge must clear (be ≤) the scrollbar's left edge.
-    expect(iconRightEdge).toBeLessThanOrEqual(scrollbarLeft);
-    // ...and the clearance now spans the whole bolt band that sits between the
-    // marker grid and the scrollbar: BOLT_MARKER_GAP + BOLT + BOLT_SCROLLBAR_GAP.
-    expect(scrollbarLeft - iconRightEdge).toBe(
-      MARGINALIA_BOLT_MARKER_GAP +
-        MARGINALIA_BOLT_SIZE +
-        MARGINALIA_BOLT_SCROLLBAR_GAP,
-    );
+  it("rightLaneOffset throws on an unknown band (a typo can't silently read 0)", () => {
+    expect(() => rightLaneOffset("nope")).toThrow();
   });
 });
 
-describe("right-margin geometry SSOT — selection bolt joins the lane", () => {
-  it("the bolt sits in its OWN band just outboard of the marker grid (INNER_PAD + ICONS_BLOCK_WIDTH + BOLT_MARKER_GAP)", () => {
-    expect(MARGINALIA_BOLT_LEFT_FROM_TEXT).toBe(
-      MARGINALIA_INNER_PAD + ICONS_BLOCK_WIDTH + MARGINALIA_BOLT_MARKER_GAP,
-    );
-    // Concrete pin: 8 + 50 + 6 = 64 → band [64…92].
-    expect(MARGINALIA_BOLT_LEFT_FROM_TEXT).toBe(64);
-    // It is NOT the grid's inner edge (that put a 28px bolt squarely over the
-    // 22px left marker column — the user's complaint).
-    expect(MARGINALIA_BOLT_LEFT_FROM_TEXT).not.toBe(MARGINALIA_INNER_PAD);
+describe("right-margin geometry SSOT — inboard bolt disjoint from the markers + scrollbar", () => {
+  it("the bolt is INBOARD — its band sits LEFT of BOTH marker columns", () => {
+    const [col0, col1] = rightColumnRanges();
+    // Bolt band [8,36] is entirely left of col0 [42,64] and col1 [70,92].
+    expect(rangesIntersect(BOLT_BAND, col0)).toBe(false);
+    expect(rangesIntersect(BOLT_BAND, col1)).toBe(false);
+    expect(BOLT_BAND[1]).toBeLessThanOrEqual(col0[0]); // bolt < col0
+    // The gap between the bolt and col0 is exactly the ratified BOLT_MARKER_GAP.
+    expect(col0[0] - BOLT_BAND[1]).toBe(MARGINALIA_BOLT_MARKER_GAP);
   });
 
-  it("the bolt sits in the margin (not over the prose) and clears the scrollbar at the minimum lane", () => {
-    const textRight = 0; // measure offsets from the text edge
-    const boltLeft = textRight + MARGINALIA_BOLT_LEFT_FROM_TEXT;
-    const boltRight = boltLeft + BOLT_SIZE;
-
-    // Left edge is in the margin, off the prose (past the marker grid even).
-    expect(boltLeft).toBeGreaterThanOrEqual(textRight + MARGINALIA_INNER_PAD);
-    // The bolt clears the scrollbar with a strictly-positive gap. The bolt is
-    // FIXED-from-text; the scrollbar tracks the pod's right edge, so the
-    // tightest case is the MINIMUM lane (where the pod edge is closest to the
-    // text). Its right edge (92) sits a BOLT_SCROLLBAR_GAP (3) left of the
-    // scrollbar's left edge (95).
-    const scrollbarLeft =
-      textRight + (MARGINALIA_MIN_MARGIN_RIGHT - SCROLLBAR_GUTTER);
-    expect(boltRight).toBeLessThan(scrollbarLeft);
-    expect(scrollbarLeft - boltRight).toBe(MARGINALIA_BOLT_SCROLLBAR_GAP);
-    // Concrete pins for the band and the scrollbar at the min lane.
-    expect(boltRight).toBe(92);
-    expect(scrollbarLeft).toBe(95);
+  it("the marker grid now abuts the scrollbar by MARKER_SCROLLBAR_GAP (its pre-bolt-band home)", () => {
+    const ranges = rightColumnRanges();
+    const col1 = ranges[ranges.length - 1]; // outboard column, nearest scrollbar
+    const scrollbarLeft = MARGINALIA_MARGIN_WIDTH_RIGHT - SCROLLBAR_GUTTER; // 95
+    expect(col1[1]).toBeLessThanOrEqual(scrollbarLeft);
+    expect(scrollbarLeft - col1[1]).toBe(MARKER_SCROLLBAR_GAP);
   });
 
-  // THE original complaint: the bolt must not paint over the LEFT marker
-  // column (the column the default/single marker occupies). Driven through the
-  // REAL grid placement fn so the column x-ranges are not hand-derived.
-  it("the bolt's x-range does NOT intersect the LEFT marker column (col0 — the user's collision)", () => {
-    const boltRange: [number, number] = [
-      MARGINALIA_BOLT_LEFT_FROM_TEXT,
-      MARGINALIA_BOLT_LEFT_FROM_TEXT + BOLT_SIZE,
-    ];
-    const [leftCol] = rightColumnRangesFromText(); // col0 = leftmost
-    // col0 is where a single/default right-side marker lands.
-    expect(rangesIntersect(boltRange, leftCol)).toBe(false);
-    // ...with a strictly-positive clearance (left of the bolt, not abutting).
-    expect(boltRange[0]).toBeGreaterThan(leftCol[1]);
-  });
-
-  // NEW (the widened-lane invariant the prior test pair LACKED): the bolt band
-  // is now disjoint from BOTH marker columns AND the scrollbar. These pins
-  // FAIL the moment anyone shrinks the lane back under the disjoint minimum.
-  it("the bolt's x-range does NOT intersect the OUTBOARD (right) marker column (col1) — the widened-lane fix", () => {
-    const boltRange: [number, number] = [
-      MARGINALIA_BOLT_LEFT_FROM_TEXT,
-      MARGINALIA_BOLT_LEFT_FROM_TEXT + BOLT_SIZE,
-    ];
-    const ranges = rightColumnRangesFromText();
-    const rightCol = ranges[ranges.length - 1]; // col1 = outboard
-    // Previously the bolt OVERLAPPED this column (the accepted-collision bug).
-    // The lane was widened so it no longer does.
-    expect(rangesIntersect(boltRange, rightCol)).toBe(false);
-    // ...with a strictly-positive clearance: the bolt is to the RIGHT of col1.
-    expect(boltRange[0]).toBeGreaterThan(rightCol[1]);
-    // The gap is exactly the ratified BOLT_MARKER_GAP.
-    expect(boltRange[0] - rightCol[1]).toBe(MARGINALIA_BOLT_MARKER_GAP);
-  });
-
-  it("the bolt's x-range does NOT intersect the scrollbar band (computed from the SSOT, at the minimum lane)", () => {
-    const boltRange: [number, number] = [
-      MARGINALIA_BOLT_LEFT_FROM_TEXT,
-      MARGINALIA_BOLT_LEFT_FROM_TEXT + BOLT_SIZE,
-    ];
-    // Scrollbar band at the minimum lane, in text-edge offsets: it occupies
-    // the outer SCROLLBAR_GUTTER of the lane → [MIN − GUTTER, MIN].
-    const scrollbarBand: [number, number] = [
-      MARGINALIA_MIN_MARGIN_RIGHT - SCROLLBAR_GUTTER,
-      MARGINALIA_MIN_MARGIN_RIGHT,
-    ];
-    expect(rangesIntersect(boltRange, scrollbarBand)).toBe(false);
-    // ...with a strictly-positive clearance: the bolt is to the LEFT of the bar.
-    expect(boltRange[1]).toBeLessThan(scrollbarBand[0]);
-    expect(scrollbarBand[0] - boltRange[1]).toBe(MARGINALIA_BOLT_SCROLLBAR_GAP);
-  });
-
-  it("the three outboard elements tile the lane with no overlap: col1 < bolt < scrollbar, all disjoint", () => {
-    // One assertion that the entire outboard run is monotone + disjoint, so a
-    // future pad/gap edit can't quietly re-introduce ANY pairwise overlap.
-    const ranges = rightColumnRangesFromText();
+  it("the four elements tile the lane monotone + disjoint: bolt < col0 < col1 < scrollbar", () => {
+    const ranges = rightColumnRanges();
     const col0 = ranges[0];
     const col1 = ranges[ranges.length - 1];
-    const boltRange: [number, number] = [
-      MARGINALIA_BOLT_LEFT_FROM_TEXT,
-      MARGINALIA_BOLT_LEFT_FROM_TEXT + BOLT_SIZE,
-    ];
     const scrollbarBand: [number, number] = [
-      MARGINALIA_MIN_MARGIN_RIGHT - SCROLLBAR_GUTTER,
-      MARGINALIA_MIN_MARGIN_RIGHT,
+      MARGINALIA_MARGIN_WIDTH_RIGHT - SCROLLBAR_GUTTER,
+      MARGINALIA_MARGIN_WIDTH_RIGHT,
     ];
-    // Strictly increasing left-to-right with no shared x anywhere.
-    expect(col0[1]).toBeLessThanOrEqual(col1[0]); // col0 ≤ col1 (gap between)
-    expect(col1[1]).toBeLessThan(boltRange[0]); // col1 < bolt
-    expect(boltRange[1]).toBeLessThan(scrollbarBand[0]); // bolt < scrollbar
-    // Concrete band pins (col0 8…30, col1 36…58, bolt 64…92, scrollbar 95…104).
-    expect(col0).toEqual([8, 30]);
-    expect(col1).toEqual([36, 58]);
-    expect(boltRange).toEqual([64, 92]);
+    expect(BOLT_BAND[1]).toBeLessThanOrEqual(col0[0]); // bolt ≤ col0
+    expect(col0[1]).toBeLessThanOrEqual(col1[0]); // col0 ≤ col1
+    expect(col1[1]).toBeLessThan(scrollbarBand[0]); // col1 < scrollbar
+    // Concrete band pins (bolt 8…36, col0 42…64, col1 70…92, scrollbar 95…104).
+    expect(BOLT_BAND).toEqual([8, 36]);
+    expect(col0).toEqual([42, 64]);
+    expect(col1).toEqual([70, 92]);
     expect(scrollbarBand).toEqual([95, 104]);
   });
 
-  it("the bolt's left edge no longer straddles the text/grid boundary (the old `textRight + 6` bug)", () => {
-    // Old placement dropped the bolt at textRight + 6, landing half on the
-    // prose (< INNER_PAD) and squarely on the grid's left column. The derived
-    // band placement starts well past the marker grid instead.
-    const OLD_RIGHT_GAP = 6;
-    expect(MARGINALIA_BOLT_LEFT_FROM_TEXT).toBeGreaterThan(OLD_RIGHT_GAP);
-    expect(MARGINALIA_BOLT_LEFT_FROM_TEXT).toBeGreaterThan(MARGINALIA_INNER_PAD);
+  it("the bolt's inboard slot clears the prose (= INNER_PAD off the text edge)", () => {
+    // The band's left edge is exactly one INNER_PAD off the container/text edge.
+    expect(MARGINALIA_BOLT_X_RIGHT).toBe(MARGINALIA_INNER_PAD);
+    expect(BOLT_BAND[0]).toBeGreaterThanOrEqual(MARGINALIA_INNER_PAD);
+  });
+});
+
+describe("right-margin geometry SSOT — the bolt is POD-anchored (margin-invariant)", () => {
+  // Fix a pod-right edge; vary only the right margin (--editor-pr). The marker
+  // container is `right:0` width MARGIN_WIDTH_RIGHT, so its left = podRight −
+  // MARGIN_WIDTH_RIGHT regardless of the margin. The bolt is pod-anchored the
+  // SAME way, so its absolute x must NOT move as the margin widens.
+  const podRight = 1000;
+  const markerContainerLeft = podRight - MARGINALIA_MARGIN_WIDTH_RIGHT;
+
+  /** Absolute marker column ranges at this podRight (container + cell.x). */
+  function absoluteColumns(): Array<[number, number]> {
+    return rightColumnRanges().map(
+      ([l, r]): [number, number] => [
+        markerContainerLeft + l,
+        markerContainerLeft + r,
+      ],
+    );
+  }
+
+  it("DEFAULT margin (--editor-pr = 104): bolt seats in the inboard slot, LEFT of the markers", () => {
+    const editorRight = podRight - 104; // text edge at the 104 floor
+    const boltLeft = computeBoltLeftFromPod({ podRight, editorRight });
+    const boltBand: [number, number] = [boltLeft, boltLeft + BOLT_SIZE];
+    const [col0] = absoluteColumns();
+    expect(boltBand[1]).toBeLessThanOrEqual(col0[0]);
+    // Absolute inboard slot = container-left + BOLT_X_RIGHT.
+    expect(boltLeft).toBe(markerContainerLeft + MARGINALIA_BOLT_X_RIGHT);
+  });
+
+  it("WIDE margin (--editor-pr = 160 and 200): the bolt does NOT move and NEVER paints on the markers", () => {
+    // THE task's headline regression: the old text-anchored bolt would slide to
+    // `editorRight + 64`, i.e. INTO the markers, as the margin widened. The
+    // pod-anchored bolt is fixed relative to podRight, so it is identical at
+    // every margin width and stays disjoint from both pod-anchored columns.
+    const boltAt104 = computeBoltLeftFromPod({
+      podRight,
+      editorRight: podRight - 104,
+    });
+    for (const pr of [160, 200]) {
+      const editorRight = podRight - pr;
+      const boltLeft = computeBoltLeftFromPod({ podRight, editorRight });
+      expect(boltLeft).toBe(boltAt104); // margin-invariant
+      const boltBand: [number, number] = [boltLeft, boltLeft + BOLT_SIZE];
+      const [col0, col1] = absoluteColumns();
+      expect(rangesIntersect(boltBand, col0)).toBe(false);
+      expect(rangesIntersect(boltBand, col1)).toBe(false);
+      // Strictly LEFT (inboard) of the markers, by the ratified gap.
+      expect(col0[0] - boltBand[1]).toBe(MARGINALIA_BOLT_MARKER_GAP);
+    }
+  });
+
+  it("the OLD text-anchored formula drifted with the margin and collided with the (old) markers; the new one does neither", () => {
+    // The retired placement was `editorRight + (INNER_PAD + ICONS_BLOCK + GAP)`
+    // (= +64) — TEXT-anchored, so it moved with the margin while the markers
+    // (pod-anchored) did not. Reconstruct it at two margins:
+    const OLD_FROM_TEXT =
+      MARGINALIA_INNER_PAD + ICONS_BLOCK_WIDTH + MARGINALIA_BOLT_MARKER_GAP; // 64
+    const oldBoltAt104 = (podRight - 104) + OLD_FROM_TEXT;
+    const oldBoltAt160 = (podRight - 160) + OLD_FROM_TEXT;
+    // (1) TEXT-anchored → margin-DEPENDENT: it slid 56px inboard as the margin
+    // widened from 104→160 (the drift mechanism).
+    expect(oldBoltAt104 - oldBoltAt160).toBe(56);
+
+    // (2) At the wide margin it slid onto the OLD marker col0, which packed at
+    // the raw INNER_PAD (container-relative 8 → [8,30]). Old bolt at 160 lands
+    // at container-relative 8 too → a direct overlap.
+    const oldCol0: [number, number] = [
+      markerContainerLeft + MARGINALIA_INNER_PAD,
+      markerContainerLeft + MARGINALIA_INNER_PAD + MARGINALIA_ICON_SIZE,
+    ];
+    const oldBoltBand160: [number, number] = [oldBoltAt160, oldBoltAt160 + BOLT_SIZE];
+    expect(rangesIntersect(oldBoltBand160, oldCol0)).toBe(true); // the drift bug
+
+    // The new pod-anchored bolt is margin-invariant AND clears the new markers.
+    const newBoltAt104 = computeBoltLeftFromPod({ podRight, editorRight: podRight - 104 });
+    const newBoltAt160 = computeBoltLeftFromPod({ podRight, editorRight: podRight - 160 });
+    expect(newBoltAt104 - newBoltAt160).toBe(0); // no drift
+    const newBoltBand: [number, number] = [newBoltAt160, newBoltAt160 + BOLT_SIZE];
+    expect(absoluteColumns().some((c) => rangesIntersect(newBoltBand, c))).toBe(false);
+  });
+
+  it("CRAMPED code-view gutter (--editor-pr = 48, lane NOT reserved): the bolt tucks against the scrollbar, never over the prose", () => {
+    const editorRight = podRight - CODE_VIEW_GUTTER_PX; // 48px gutter
+    const boltLeft = computeBoltLeftFromPod({ podRight, editorRight });
+    const boltBand: [number, number] = [boltLeft, boltLeft + BOLT_SIZE];
+    // The inboard slot would land back over the prose; the fallback tucks the
+    // bolt against the scrollbar instead.
+    expect(boltLeft).toBe(
+      podRight - SCROLLBAR_GUTTER - MARGINALIA_BOLT_SCROLLBAR_GAP - BOLT_SIZE,
+    );
+    // Its right edge clears the scrollbar by BOLT_SCROLLBAR_GAP...
+    const scrollbarLeft = podRight - SCROLLBAR_GUTTER;
+    expect(scrollbarLeft - boltBand[1]).toBe(MARGINALIA_BOLT_SCROLLBAR_GAP);
+    // ...and its left edge stays in the gutter, clear of the prose (≥ INNER_PAD).
+    expect(boltBand[0]).toBeGreaterThanOrEqual(
+      editorRight + MARGINALIA_INNER_PAD,
+    );
   });
 });
 
@@ -308,9 +305,7 @@ describe("right-margin geometry SSOT — min-margin floor (gated on marker visib
     expect(MARGINALIA_MIN_MARGIN_RIGHT).toBe(MARGINALIA_MARGIN_WIDTH_RIGHT);
     expect(MARGINALIA_MIN_MARGIN_LEFT).toBe(MARGINALIA_MARGIN_WIDTH_LEFT);
     // Concrete pins so a stray edit to a pad is caught.
-    expect(MARGINALIA_MIN_MARGIN_RIGHT).toBe(
-      MARGINALIA_INNER_PAD + ICONS_BLOCK_WIDTH + MARGINALIA_OUTER_PAD_RIGHT,
-    );
+    expect(MARGINALIA_MIN_MARGIN_RIGHT).toBe(104);
     expect(MARGINALIA_MIN_MARGIN_LEFT).toBe(
       MARGINALIA_INNER_PAD + ICONS_BLOCK_WIDTH + MARGINALIA_OUTER_PAD_LEFT,
     );
@@ -343,8 +338,6 @@ describe("resolveHorizontalMargin — compressed-code-split comfort cap vs. mark
   const WIDE = 160;
 
   it("NORMAL markers-on editor (not compressed): the marker floor applies — margins rise to the 104/80 lane", () => {
-    // Lane reserved, NOT compressed: a narrow saved margin is floored UP to the
-    // full lane so the marker grid never eats the prose/scrollbar/bolt.
     const right = resolveHorizontalMargin(40, {
       compress: false,
       laneReserved: true,
@@ -368,9 +361,6 @@ describe("resolveHorizontalMargin — compressed-code-split comfort cap vs. mark
   });
 
   it("COMPRESSED code-split: the lane is NOT reserved, so the 48px comfort cap WINS (floor is NOT applied)", () => {
-    // THE FIX: in compressed code-split `marginaliaLaneReserved` is false, so
-    // the margin compresses to the 48 cap instead of being floored to 104/80.
-    // The editor keeps its width; markers gracefully degrade (same as zen).
     const right = resolveHorizontalMargin(WIDE, {
       compress: true,
       laneReserved: false,
@@ -383,16 +373,11 @@ describe("resolveHorizontalMargin — compressed-code-split comfort cap vs. mark
     });
     expect(right).toBe(CODE_VIEW_GUTTER_PX); // 48, NOT 104
     expect(left).toBe(CODE_VIEW_GUTTER_PX); //  48, NOT 80
-    // Explicitly: the floor did NOT win — both sides sit BELOW the lane minimum.
     expect(right).toBeLessThan(MARGINALIA_MIN_MARGIN_RIGHT);
     expect(left).toBeLessThan(MARGINALIA_MIN_MARGIN_LEFT);
   });
 
   it("regression guard: the OLD (buggy) behavior — floor still reserved while compressed — would have pinned 104/80", () => {
-    // Before the fix, the lane stayed reserved in compressed code-split, so the
-    // floor over-rode the cap: max(min(160,48), 104) = 104. This pins that the
-    // new wiring no longer does that, by reproducing the old inputs
-    // (laneReserved=true) and the new ones (laneReserved=false) side by side.
     const oldBuggy = resolveHorizontalMargin(WIDE, {
       compress: true,
       laneReserved: true, // the bug: lane stayed reserved while compressed
@@ -409,9 +394,6 @@ describe("resolveHorizontalMargin — compressed-code-split comfort cap vs. mark
   });
 
   it("compressed but lane STILL reserved (markers on, NOT code-split → never happens, but pins the priority): floor wins over cap", () => {
-    // Defensive pin of the `Math.max` LAST ordering: if a caller ever passed
-    // compress+laneReserved together, the floor outranks the cap. EditorPane
-    // never does (compress ⇒ !laneReserved), but the priority must be stable.
     expect(
       resolveHorizontalMargin(WIDE, {
         compress: true,
@@ -423,8 +405,6 @@ describe("resolveHorizontalMargin — compressed-code-split comfort cap vs. mark
 
   it("CODE_VIEW_GUTTER_PX is the 48px comfort cap (kept in sync with SplitWithCode)", () => {
     expect(CODE_VIEW_GUTTER_PX).toBe(48);
-    // The cap is below both lane floors — that's why the floor would otherwise
-    // override it (the whole bug).
     expect(CODE_VIEW_GUTTER_PX).toBeLessThan(MARGINALIA_MIN_MARGIN_LEFT);
     expect(CODE_VIEW_GUTTER_PX).toBeLessThan(MARGINALIA_MIN_MARGIN_RIGHT);
   });

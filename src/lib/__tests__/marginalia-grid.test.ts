@@ -14,6 +14,7 @@ import {
   MARGINALIA_MARGIN_WIDTH,
   MARGINALIA_ICON_SIZE,
   MARGINALIA_INNER_PAD,
+  MARGINALIA_GRID_X_RIGHT,
   type AnchorNodeMetrics,
   type MarginaliaMarker,
 } from "@/lib/marginalia";
@@ -47,7 +48,11 @@ function expectedY(row: number): number {
 }
 
 function expectedXRight(col: number): number {
-  return MARGINALIA_INNER_PAD + col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP);
+  // Right-side columns now pack from MARGINALIA_GRID_X_RIGHT (outboard of the
+  // inboard selection-bolt band), not from the raw inner pad.
+  return (
+    MARGINALIA_GRID_X_RIGHT + col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP)
+  );
 }
 
 function expectedXLeft(col: number): number {
