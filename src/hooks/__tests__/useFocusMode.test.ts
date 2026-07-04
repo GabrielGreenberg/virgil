@@ -117,6 +117,57 @@ function snapBottom(
   return Math.max(regionForNode(blockIndex, headings, total)[1], curStart);
 }
 
+/**
+ * `activate` seed resolution (task 2026-07-03-027): enabling focus mode seeds
+ * the CURRENT section, not `headings[0]`. Extracted verbatim from the hook's
+ * `activate` branch (the hook wraps exactly this in `bandFromIndices(doc, …)`).
+ * The seed is threaded from the live section-path:
+ * `currentSectionPath.at(-1)?.index ?? currentParTitleIndex`, hence the
+ * `number | null | undefined` shape and the `< 0` guard.
+ */
+function activateRange(
+  headings: { index: number; level: number }[],
+  total: number,
+  seedBlockIndex?: number | null,
+): [number, number] {
+  if (headings.length === 0) return [0, total - 1];
+  const seed =
+    seedBlockIndex != null && seedBlockIndex >= 0 ? seedBlockIndex : headings[0].index;
+  return sectionRange(seed, headings, total);
+}
+
+describe("activate seed resolution (seed the CURRENT section, not the first)", () => {
+  it("no seed (null / undefined / negative) falls back to the FIRST section", () => {
+    expect(activateRange(HEADINGS, TOTAL)).toEqual([1, 3]);
+    expect(activateRange(HEADINGS, TOTAL, null)).toEqual([1, 3]);
+    expect(activateRange(HEADINGS, TOTAL, -1)).toEqual([1, 3]);
+  });
+
+  it("a current-section HEADING seed scopes that section, not headings[0]", () => {
+    // Caret in §2: section-path innermost = heading index 4 → §2, NOT §1.
+    expect(activateRange(HEADINGS, TOTAL, 4)).toEqual([4, 6]);
+  });
+
+  it("a mid-section PARAGRAPH seed scopes the ENCLOSING section (not the bare block)", () => {
+    // Non-heading blocks inside §1 (2,3) and §2 (5,6) → their whole section.
+    expect(activateRange(HEADINGS, TOTAL, 2)).toEqual([1, 3]);
+    expect(activateRange(HEADINGS, TOTAL, 3)).toEqual([1, 3]);
+    expect(activateRange(HEADINGS, TOTAL, 5)).toEqual([4, 6]);
+  });
+
+  it("a doc-start par-title seed scopes the whole pre-heading region", () => {
+    // §1 heading at index 2; index-0/1 par-titles sit before it → region [0,1].
+    const heads = [{ index: 2, level: 1 }, { index: 5, level: 1 }];
+    expect(activateRange(heads, 8, 0)).toEqual([0, 1]);
+    expect(activateRange(heads, 8, 1)).toEqual([0, 1]);
+  });
+
+  it("with no headings, any seed scopes the whole doc", () => {
+    expect(activateRange([], TOTAL, 3)).toEqual([0, TOTAL - 1]);
+    expect(activateRange([], TOTAL)).toEqual([0, TOTAL - 1]);
+  });
+});
+
 describe("snapBoundary drag edges (section-aware + edge-asymmetric + clamping)", () => {
   it("(c) bottom-edge drag to a paragraph row sets end = that exact row (precision kept)", () => {
     // Band currently [1, 6]; drag the bottom handle up to paragraph row 2 / 5.

@@ -2463,7 +2463,16 @@ export default function EditorLayout() {
     handleFocusMoveTo,
     handleFocusExpandTo,
     handleFocusSnapBoundary,
-  } = useFocusActions({ focusMode, outlineHeadings: outlineFocusHeadings, outlineTotalBlocks });
+  } = useFocusActions({
+    focusMode,
+    outlineHeadings: outlineFocusHeadings,
+    outlineTotalBlocks,
+    // Seed focus-mode from the CURRENT section: the innermost active heading
+    // (last section-path entry), else the doc-start par-title region, else null
+    // (nothing measured yet → activate() falls back to the first section). All
+    // three are top-level block indices in the same space as outlineFocusHeadings.
+    currentSeedBlockIndex: currentSectionPath.at(-1)?.index ?? currentParTitleIndex,
+  });
 
   // Focus word count: sum per-block counts within the focused range
   const focusWordCount = useMemo(() => {
