@@ -11,6 +11,11 @@ import {
 import { findRowScroll } from "@/components/editor-layout/layout-scroll";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
+import {
+  capHeight,
+  capTopOffset,
+  resolveInlineContextElement,
+} from "@/lib/text-metrics";
 
 /**
  * Viewport-scoped, on-demand layout registry for UUID-bearing blocks.
@@ -176,12 +181,45 @@ function emptyState(): RegistryState {
 }
 
 /**
- * Measure one anchorable block. Pure — no state mutation. Lifted from
- * `useMarginalia.compute` (lines 53-119 of the old implementation).
+ * Measure one anchorable block. Pure — no state mutation.
+ *
+ * The vertical anchor (`top`) for a prose block is derived from the SAME
+ * grab-handle geometry SSOT the drag handles use: `resolveInlineContextElement`
+ * ([text-metrics.ts]) descends the block's wrapper NodeView to the element that
+ * carries the first visual text line (handling `heading-wrapper` h1–**h6**,
+ * `par-title-wrapper`, `title-field-wrapper`, `list-title-wrapper`, `blockquote`,
+ * `<pre>`→`<code>`, `expex-item`), and the anchor is the OPTICAL cap-band center
+ * of that first line (`firstLineRect.top + capTopOffset + capHeight/2`, the same
+ * `opticalCenterY` `block-frame.ts` resolves). Storing `top = opticalCenter −
+ * lineHeight/2` makes the grid's `cellAt` formula (`top + row·lineHeight +
+ * (lineHeight − ICON)/2`, whose row-0 icon-CENTER is `top + lineHeight/2`) land
+ * each marker on the optical middle of the text line — pixel-aligned with the
+ * grab handle on the same block.
+ *
+ * Why this replaced the old two-branch measurement: the previous code forked
+ * between `coordsAtPos(pos+1)` (a caret/line top) for bare prose and
+ * `getBoundingClientRect().top` (a border-box top) for wrappers, and its
+ * heading descent only matched `h1,h2,h3`. When a block's DOM flipped branch
+ * between the first paint and a settle re-measure (bare `<p>` → wrapper /
+ * decoration mount), the reference point changed and the marker JUMPED (worst
+ * on divider-on headings, where the wrapper carries the divider margin);
+ * h4–h6 fell through to the `coordsAtPos` branch entirely. Reading ONE stable
+ * reference — the resolved text element's optical center, identical to the grab
+ * handle — makes first-paint and settle agree, kills the divider/h4–h6 miss,
+ * and unifies the two independent measurement paths into one.
+ *
+ * Atoms (displayMath / latexComment) and blocks that declare an explicit
+ * `[data-glyph-anchor]` visual top (the titled tex-block pod, the expex `(n)`
+ * number) keep their border-box-top anchor unchanged — they are not text lines,
+ * so the optical-center math doesn't apply.
  *
  * Returns `null` if the block can't be measured (no DOM, no host).
+ *
+ * Exported for the measurement-contract test (heading-text anchor incl. h4–h6,
+ * optical-center alignment, no wrapper/divider chrome). Otherwise an internal
+ * of the registry.
  */
-function measureBlock(
+export function measureBlock(
   editor: Editor,
   pos: number,
   isAtom: boolean,
@@ -196,71 +234,67 @@ function measureBlock(
     const domTop = domRect.top - hostRect.top;
     const height = domRect.height;
 
-    // [data-glyph-anchor] override — NodeView's declared "visual top"
-    // for kinds whose wrapper includes title/label chrome above the
-    // visible pod (titled tex-block, exampleBlock with `(1)` chip
-    // alongside `.par-title-annotation`, etc.). When present, this
-    // single line replaces wrapper-top measurement for both atoms and
-    // prose kinds. Same slot consumed by the grab-handle's
-    // measureHandleAnchorTop — one mechanism, two consumers.
+    // [data-glyph-anchor] override — a NodeView's declared "visual top" for
+    // kinds whose wrapper carries label chrome above the pod (titled tex-block
+    // pod, expex `(n)` number). Consulted for both atoms and the rare non-atom
+    // container that declares it, before the text SSOT.
     const anchorOverride = dom.querySelector(
       "[data-glyph-anchor]",
     ) as HTMLElement | null;
 
-    let measureEl: HTMLElement = dom;
-    if (!isAtom) {
-      if (anchorOverride) {
-        measureEl = anchorOverride;
-      } else if (dom.classList.contains("par-title-wrapper")) {
-        measureEl = dom.querySelector(".par-body-container p, p") ?? dom;
-      } else if (dom.classList.contains("heading-wrapper")) {
-        measureEl = dom.querySelector("h1,h2,h3") ?? dom;
-      } else if (dom.classList.contains("list-title-wrapper")) {
-        measureEl = dom.querySelector("ul > li, ol > li") ?? dom;
-      } else if (dom.tagName === "BLOCKQUOTE") {
-        measureEl =
-          dom.querySelector(
-            ".par-body-container p, :scope > p, :scope > h1, :scope > h2, :scope > h3",
-          ) ?? dom;
-      }
-    }
-
-    let top: number;
-    let measuredHeight = height;
+    // ── Atoms: anchor on the element's own border-box top (no text line). ──
     if (isAtom) {
+      let top = domTop;
+      let measuredHeight = height;
       if (anchorOverride) {
         const overrideRect = anchorOverride.getBoundingClientRect();
         top = overrideRect.top - hostRect.top;
         measuredHeight = overrideRect.height;
-      } else {
-        top = domTop;
       }
-    } else if (measureEl !== dom) {
-      const measureRect = measureEl.getBoundingClientRect();
-      top = measureRect.top - hostRect.top;
-    } else {
-      const coords = editor.view.coordsAtPos(pos + 1);
-      top = coords.top - hostRect.top;
+      return {
+        id,
+        top,
+        domTop,
+        height,
+        lineHeight: measuredHeight,
+        lineCount: 1,
+        isAtom,
+      };
     }
 
-    let lineHeight: number;
-    let lineCount: number;
+    // ── Prose: resolve the first-line text element via the grab-handle SSOT
+    //    (or honor an explicit glyph-anchor override), then anchor on its
+    //    optical cap-band center. ──
+    const target = anchorOverride ?? resolveInlineContextElement(dom);
+    const targetRect = target.getBoundingClientRect();
 
-    if (isAtom) {
-      lineHeight = measuredHeight;
-      lineCount = 1;
+    const style = window.getComputedStyle(target);
+    const lh = parseFloat(style.lineHeight);
+    const lineHeight = Number.isFinite(lh)
+      ? lh
+      : parseFloat(style.fontSize) * 1.2;
+
+    let top: number;
+    if (anchorOverride) {
+      // Declared visual top — center the marker on the override's own line
+      // box (unchanged behavior for titled tex-block / expex `(n)`).
+      top = targetRect.top - hostRect.top;
     } else {
-      const style = window.getComputedStyle(measureEl);
-      const lh = parseFloat(style.lineHeight);
-      lineHeight = Number.isFinite(lh)
-        ? lh
-        : parseFloat(style.fontSize) * 1.2;
-      const measureRect = measureEl.getBoundingClientRect();
-      const pt = parseFloat(style.paddingTop) || 0;
-      const pb = parseFloat(style.paddingBottom) || 0;
-      const contentHeight = measureRect.height - pt - pb;
-      lineCount = Math.max(1, Math.round(contentHeight / lineHeight));
+      // Optical cap-band center of the first text line — the canonical
+      // vertical anchor grab handles use (block-frame.ts `opticalCenterY`).
+      // Store `optical − lineHeight/2` so the grid centers the icon on it.
+      const optical =
+        targetRect.top -
+        hostRect.top +
+        capTopOffset(target) +
+        capHeight(target) / 2;
+      top = optical - lineHeight / 2;
     }
+
+    const pt = parseFloat(style.paddingTop) || 0;
+    const pb = parseFloat(style.paddingBottom) || 0;
+    const contentHeight = targetRect.height - pt - pb;
+    const lineCount = Math.max(1, Math.round(contentHeight / lineHeight));
 
     return { id, top, domTop, height, lineHeight, lineCount, isAtom };
   } catch {
