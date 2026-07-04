@@ -4274,35 +4274,41 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   transform: translateY(-0.5px);
 }
 
-/* Grabbable slider handle for panel-height resizing — the inter-band dividers
-   and the bottom-band/omni edge. The centered grip is HIDDEN at rest (bug sweep
-   #2: a persistent lozenge cluttered the quiet gutter) and fades in on
-   hover/drag (accent + widening), like the bare hover-only .drag-gap line the
-   editor/code splitter keeps — the band strip itself is the hover zone, so the
-   affordance is still discoverable on approach. Scoped to `.band-grip`, so
-   HSplit is unaffected. */
-.drag-gap-h.band-grip {
-  /* Opaque manilla (--background, the canvas) backing so the gutter strip
-     between/below stacked panels reads as the cream desktop — each band a
-     distinct sheet — while still occluding the omni cards showing through
-     behind it. NOT --pod-panel (the warm panel fill), which made the gutter
-     look like panel material bridging the sheets. */
-  background: var(--background);
-}
-.drag-gap-h.band-grip::before {
+/* ── Shared resize-gutter grip (`.band-grip`) — orientation-agnostic ──
+   ONE grip-pill chrome consumed by every resizer in the app: the panel-band
+   dividers + bottom-band/omni edge (horizontal), the panel↔editor gutters,
+   code splitter, and zen margins (vertical), AND the three library resizers.
+   The gutter strip itself is the hover/hit zone; the centered pill is HIDDEN
+   at rest (bug sweep #2: a persistent lozenge cluttered the quiet gutter) and
+   fades in on hover/drag (accent + widening on the SHORT axis).
+
+   The pill lives on `::before` for horizontal gutters and on `::after` for
+   vertical ones — because `.drag-gap-v::before` is already claimed by the
+   gutter's invisible hit-area extension, whereas its `::after` (the old faint
+   1px line) is now repurposed as the pill. One shared rule set carries every
+   property that doesn't depend on orientation; the two per-orientation blocks
+   below differ only in which axis is the pill's long side + which axis widens.
+   Scoped to `.band-grip`, so bare HSplit / editor-split lines are unaffected. */
+.drag-gap-h.band-grip::before,
+.drag-gap-v.band-grip::after {
   content: '';
   position: absolute;
+  border-radius: 999px;
+  background: var(--edge-hover);
+  /* Hidden at rest (bug sweep #2); the hover/drag rules below raise it. */
+  opacity: 0;
+  transition: background 120ms ease, opacity 120ms ease, width 120ms ease,
+    height 120ms ease;
+  pointer-events: none;
+}
+
+/* Horizontal gutter — a wide-short pill (28×4) that widens along its WIDTH. */
+.drag-gap-h.band-grip::before {
   left: 50%;
   top: 50%;
   width: 28px;
   height: 4px;
   transform: translate(-50%, -50%);
-  border-radius: 999px;
-  background: var(--edge-hover);
-  /* Hidden at rest (bug sweep #2); the hover/drag rules below raise it. */
-  opacity: 0;
-  transition: background 120ms ease, opacity 120ms ease, width 120ms ease;
-  pointer-events: none;
 }
 .drag-gap-h.band-grip.hover-preview::before,
 .drag-gap-h.band-grip:hover::before {
@@ -4314,6 +4320,42 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   background: var(--drag-highlight);
   opacity: 1;
   width: 44px;
+}
+
+/* Vertical gutter — the same pill rotated (4×28), widening along its HEIGHT.
+   Overrides the base `.drag-gap-v::after` 1px-line geometry (top/bottom/width/
+   transform) so the strip's sole affordance is now the grip pill. `left` is
+   left to the base `.drag-gap-v::after` (50%) and the toward-editor nudge so
+   the pill lands at the true centre of the padded gutter, same as the old line. */
+.drag-gap-v.band-grip::after {
+  top: 50%;
+  bottom: auto;
+  width: 4px;
+  height: 28px;
+  transform: translate(-50%, -50%);
+}
+.drag-gap-v.band-grip.hover-preview::after,
+.drag-gap-v.band-grip:hover::after {
+  background: var(--drag-highlight);
+  opacity: 1;
+  height: 40px;
+}
+.drag-gap-v.band-grip.dragging::after {
+  background: var(--drag-highlight);
+  opacity: 1;
+  height: 44px;
+}
+
+/* Opaque manilla (--background, the canvas) backing for the STACKED-PANEL band
+   gutters only — so the strip between/below stacked panels reads as the cream
+   desktop (each band a distinct sheet) while occluding the omni cards showing
+   through behind it. NOT --pod-panel (the warm panel fill), which made the
+   gutter look like panel material bridging the sheets. Split out of `.band-grip`
+   proper (which is now a transparent pill everywhere) because the vertical
+   editor gutters and the library resizers must stay invisible at rest — only
+   the two panel-band sites opt in. */
+.band-grip-occlude {
+  background: var(--background);
 }
 
 /* Ambient lift for omni-view cards. The shadow itself is now applied

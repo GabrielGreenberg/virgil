@@ -90,7 +90,7 @@ export function ZenMargin({
       <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-2"}`} />
       <div
         ref={gapRef}
-        className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-2 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
+        className={`drag-gap drag-gap-v band-grip shrink-0 ${side === "left" ? "order-2 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
         style={{ width: 'var(--pod-gap)' }}
         onMouseDown={onMouseDown}
       />

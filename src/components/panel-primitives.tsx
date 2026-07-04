@@ -2562,7 +2562,7 @@ export function BandDivider({
           accent on hover/drag. */}
       <div
         ref={gapRef}
-        className="drag-gap drag-gap-h band-grip w-full h-full"
+        className="drag-gap drag-gap-h band-grip band-grip-occlude w-full h-full"
         onMouseDown={onMouseDown}
       />
     </div>

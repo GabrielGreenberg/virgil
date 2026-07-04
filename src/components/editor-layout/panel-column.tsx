@@ -162,7 +162,7 @@ function BottomEdgeHandle({
       />
       <div
         ref={gapRef}
-        className="drag-gap drag-gap-h band-grip w-full h-full"
+        className="drag-gap drag-gap-h band-grip band-grip-occlude w-full h-full"
         onMouseDown={onMouseDown}
       />
       {/* Lone panel: a manilla fade past the handle into the omni gap, so the
@@ -464,7 +464,7 @@ export function PanelColumn({
       )}
       <div
         ref={gapRef}
-        className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-3 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
+        className={`drag-gap drag-gap-v band-grip shrink-0 ${side === "left" ? "order-3 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
         style={{ width: 'var(--pod-gap)' }}
         onMouseDown={onMouseDown}
       />
