@@ -3257,7 +3257,13 @@ textarea,
   background: #e8f0f8;
 }
 
-.latex-comment.selected {
+/* Node-selection feedback (grab-handle / arrow-nav), matching the block-node
+ * SSOT `.expex-block.ProseMirror-selectednode`. This paints ONLY on a real
+ * NodeSelection — a caret resting inside the comment is a native TextSelection,
+ * so editing shows the ordinary text-selection highlight, never a bespoke box.
+ * (Task 2026-07-03-024: the atom-era `.latex-comment.selected` chrome is retired
+ * in favor of PM-native selection.) */
+.latex-comment.ProseMirror-selectednode {
   outline: 2px solid var(--heading-annotation-border, #a8c4de);
   outline-offset: -1px;
   background: #e0ecf5;
