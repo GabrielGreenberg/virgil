@@ -28,12 +28,12 @@ function makeIndex(): PendingChangeIndex {
   map.set("revision-suggestion:R1", {
     anchorId: "anc-rev",
     onKeep: () => {},
-    onRevert: () => {},
+    onDismiss: () => {},
   });
   map.set("cutter-suggestion:C1", {
     anchorId: "anc-cut",
     onKeep: () => {},
-    onRevert: () => {},
+    onDismiss: () => {},
   });
   return map;
 }

@@ -19,7 +19,8 @@ import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import {
   applySuggestion,
   keepSuggestion,
-  revertSuggestion,
+  dismissSuggestion,
+  type PendingChangeCardDeps,
 } from "@/links/pending-change-actions";
 import { generateEntityId } from "@/lib/uuid";
 import { useDocWriteHandleOrNull } from "../DocPipeline";
@@ -162,40 +163,35 @@ export function RevisionsHost(p: RevisionsHostProps) {
   // two drivers stay byte-identical. The flag + editor-mounted guard stays here;
   // the helper owns the `appliedChange`-presence no-op + the splice/flush/state
   // sequence.
+  const revisionPendingDeps = useCallback(
+    (): PendingChangeCardDeps<RevisionSuggestionCard["status"]> => ({
+      getAppliedChange: (cid) =>
+        p.cards.find(
+          (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
+        )?.appliedChange,
+      setSuggestionStatus: p.setSuggestionStatus,
+      setArchived: p.setArchived,
+      setAppliedChange: p.setAppliedChange,
+      family: "revision-suggestion",
+      acceptedStatus: "accepted",
+      rejectedStatus: "rejected",
+    }),
+    [p],
+  );
   const onKeepSuggestion = useCallback(
     (id: string) => {
       if (!isPendingChangesOn() || !editorInstance) return;
-      keepSuggestion<RevisionSuggestionCard["status"]>(editorInstance, id, docId, {
-        getAppliedChange: (cid) =>
-          p.cards.find(
-            (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
-          )?.appliedChange,
-        setSuggestionStatus: p.setSuggestionStatus,
-        setArchived: p.setArchived,
-        setAppliedChange: p.setAppliedChange,
-        deleteCard: p.deleteCard,
-        acceptedStatus: "accepted",
-      });
+      keepSuggestion(editorInstance, id, docId, revisionPendingDeps());
     },
-    [p, editorInstance, docId],
+    [editorInstance, docId, revisionPendingDeps],
   );
 
   const onRevertSuggestion = useCallback(
     (id: string) => {
       if (!isPendingChangesOn() || !editorInstance) return;
-      revertSuggestion<RevisionSuggestionCard["status"]>(editorInstance, id, docId, {
-        getAppliedChange: (cid) =>
-          p.cards.find(
-            (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
-          )?.appliedChange,
-        setSuggestionStatus: p.setSuggestionStatus,
-        setArchived: p.setArchived,
-        setAppliedChange: p.setAppliedChange,
-        deleteCard: p.deleteCard,
-        acceptedStatus: "accepted",
-      });
+      dismissSuggestion(editorInstance, id, docId, revisionPendingDeps());
     },
-    [p, editorInstance, docId],
+    [editorInstance, docId, revisionPendingDeps],
   );
 
   return (

@@ -183,7 +183,7 @@ export interface OmniHostProps {
   bulkPendingChanges?: {
     count: number;
     onKeepAll: () => void;
-    onRevertAll: () => void;
+    onDismissAll: () => void;
   };
 }
 

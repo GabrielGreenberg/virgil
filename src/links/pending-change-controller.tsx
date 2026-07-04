@@ -24,12 +24,21 @@ import type { PendingChangeFamily } from "@/links/apply-suggestion";
  * stays flat.
  */
 export interface PendingChangeController {
-  /** `isPendingChangesOn() && an editor is mounted` — the Keep/Revert controls
+  /** `isPendingChangesOn() && an editor is mounted` — the applied-card controls
    *  render only when this is true (defensive; the provider is normally present
    *  whenever the flag is on). */
   isOn: boolean;
+  /** COMMIT — Check: finalize the SUGGESTED text (status→accepted, archived). */
   keep(family: PendingChangeFamily, id: string): void;
-  revert(family: PendingChangeFamily, id: string): void;
+  /** COMMIT — Cross: DISMISS-PRESERVES — byte-restore the original + archive the
+   *  card & its comment (status→rejected, archived). Never hard-deletes. */
+  dismiss(family: PendingChangeFamily, id: string): void;
+  /** NON-COMMITTING PREVIEW — flip the LIVE doc to the original (drops the blue
+   *  mark). Leaves card status / `appliedChange` untouched. */
+  previewOriginal(family: PendingChangeFamily, id: string): void;
+  /** NON-COMMITTING PREVIEW — flip the LIVE doc back to the suggested view
+   *  (re-stamps the blue mark). Leaves card status / `appliedChange` untouched. */
+  previewSuggested(family: PendingChangeFamily, id: string): void;
 }
 
 const PendingChangeControllerContext =

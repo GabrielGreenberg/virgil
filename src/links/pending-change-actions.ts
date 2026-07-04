@@ -1,26 +1,35 @@
 /**
- * Phase 1c — the shared Keep / Revert orchestration for an applied pending AI
- * change.
+ * The shared applied-pending-change orchestration — the 3-axis control surface
+ * (SESSION 4) behind every driver (card body, margin-gutter marker, floating
+ * pill, omni bulk):
  *
- * Phase 1b put Apply/Keep/Revert closures inside `revisions-host` /
- * `cutter-host`, where the card surface drives them. Phase 1c adds a SECOND
- * driver — the persistent margin-gutter control (the `pending-change` marker,
- * built in `EditorPane`). To keep the two drivers byte-identical (and avoid a
- * third copy when the floating pill lands), the Keep/Revert side-effect
- * SEQUENCE — splice the doc, text-first `.tex` flush, then flip card state —
- * lives here as two pure functions over an explicit deps bag.
+ *   - COMMIT: `keepSuggestion` (Check — finalize the suggested text) and
+ *     `dismissSuggestion` (Cross — DISMISS-PRESERVES: byte-restore the original
+ *     + archive the card & its comment; NEVER hard-deletes).
+ *   - NON-COMMITTING PREVIEW: `previewOriginal` / `previewSuggested` flip the
+ *     LIVE doc text in place (via the same inverse splices) WITHOUT touching card
+ *     status / archived / appliedChange, recording the direction in the transient
+ *     `pending-preview-store` so a mid-preview commit stays deterministic.
+ *
+ * Keeping all four verbs on ONE sequence over an explicit deps bag is what lets
+ * every surface inherit them without a per-surface copy (the pre-SESSION-4
+ * design already deduped Keep/Revert this way).
  *
  * These do NOT own the flag gate or the editor-mounted check: each caller
- * already guards `isPendingChangesOn() && editorInstance` (the host closures and
- * the EditorPane marker bridge both bail early when the flag is OFF, so flag-OFF
- * stays byte-identical — no pending-change marker is ever emitted, and these are
- * never reached). They DO own the `appliedChange`-presence check, since a stale
- * double-click (Keep after Keep) must no-op rather than re-splice.
+ * already guards `isPendingChangesOn() && editorInstance` (flag-OFF stays
+ * byte-identical — no applied card ever exists, so these are never reached).
+ * They DO own the `appliedChange`-presence check, since a stale double-click
+ * (Keep after Keep) must no-op rather than re-splice.
  *
- * REUSE, don't reinvent: the actual doc mutation is `keepPendingChange` /
- * `revertPendingChange` from `apply-suggestion.ts` (the same functions Phase 1b
- * calls); this module only sequences them with the `.tex` flush and the card
- * state transitions the hosts already performed inline.
+ * COMMIT DETERMINISM: Check / Cross reconcile from the canonical `appliedChange`,
+ * NOT the transient preview — Check re-applies the suggested view before keeping
+ * when the user is mid-preview on the original; Cross's revert splice is
+ * idempotent from either direction.
+ *
+ * REUSE, don't reinvent: the actual doc mutation is `applyPendingChange` /
+ * `keepPendingChange` / `revertPendingChange` from `apply-suggestion.ts`; this
+ * module only sequences them with the `.tex` flush, the preview-dir bookkeeping,
+ * and the card-state transitions.
  */
 
 import type { Editor } from "@tiptap/react";
@@ -32,6 +41,11 @@ import {
 } from "@/links/apply-suggestion";
 import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
 import { getLinkedTextObjectIds, type CardWithLinks } from "@/links/links";
+import {
+  getPreviewDir,
+  resetPreviewDir,
+  setPreviewDir,
+} from "@/links/pending-preview-store";
 
 /** The applied-splice descriptor a `status:"applied"` suggestion card carries
  *  (`RevisionSuggestionCard.appliedChange` ≡ `CutterSuggestionCard.appliedChange`
@@ -45,23 +59,49 @@ export interface AppliedChangeDescriptor {
   appliedAt: string;
 }
 
-/** The card-state mutators + lookup the Keep/Revert sequence drives. Both
+/** The card-state mutators + lookup the commit / preview sequence drives. Both
  *  `useRevisions` and `useCutter` expose exactly this surface (the host
  *  closures already call these), so a host or the EditorPane marker passes its
  *  hook's methods straight through. Generic over the suggestion status union so
  *  each family keeps its own literal type. */
 export interface PendingChangeCardDeps<TStatus extends string = string> {
   /** Resolve the card's applied-splice descriptor by id, or `undefined` when
-   *  the card isn't an applied suggestion (already kept / reverted / wrong
+   *  the card isn't an applied suggestion (already kept / dismissed / wrong
    *  kind). Returning `undefined` makes the action a safe no-op. */
   getAppliedChange: (id: string) => AppliedChangeDescriptor | undefined;
   setSuggestionStatus: (id: string, status: TStatus) => void;
   setArchived: (id: string, archived: boolean) => void;
   setAppliedChange: (id: string, appliedChange: undefined) => void;
-  deleteCard: (id: string) => void;
+  /** The card's suggestion family — needed to RE-STAMP the blue mark when a
+   *  commit / preview re-applies the suggested view (so a cutter change tokens
+   *  `cutter-suggestion:<id>`, a revision `revision-suggestion:<id>`). */
+  family: PendingChangeFamily;
   /** The accepted-status literal for this family (always `"accepted"`; passed
    *  explicitly so the generic status union is satisfied without a cast). */
   acceptedStatus: TStatus;
+  /** The rejected-status literal for this family (always `"rejected"`) — the
+   *  status a DISMISSED-but-preserved suggestion carries. */
+  rejectedStatus: TStatus;
+}
+
+/** Re-apply the suggested splice + blue mark for the applied change `ac` of card
+ *  `id`, from the deps' `family`. Shared by `keepSuggestion`'s reconcile and
+ *  `previewSuggested`. */
+function reapplySuggested<TStatus extends string>(
+  editor: Editor,
+  id: string,
+  ac: AppliedChangeDescriptor,
+  deps: PendingChangeCardDeps<TStatus>,
+): void {
+  applyPendingChange(editor, {
+    anchorUuid: ac.anchorUuid,
+    originalText: ac.originalText,
+    replacement: ac.replacement,
+    mode: ac.mode,
+    cardId: id,
+    anchorId: ac.anchorId,
+    family: deps.family,
+  });
 }
 
 /**
@@ -70,6 +110,11 @@ export interface PendingChangeCardDeps<TStatus extends string = string> {
  * Text-first ordering: splice the doc, flush the `.tex` BEFORE flipping card
  * state, so the finalized splice is on disk ahead of the sidecar status change.
  * No-ops when the card has no `appliedChange` (stale double-Keep).
+ *
+ * RECONCILE: Check always finalizes the SUGGESTED text regardless of the
+ * transient preview. If the user is currently previewing the ORIGINAL, re-apply
+ * the suggested splice (from the canonical `appliedChange`, NOT the transient
+ * doc text) BEFORE `keepPendingChange`, so a mid-preview commit is deterministic.
  */
 export function keepSuggestion<TStatus extends string>(
   editor: Editor,
@@ -79,6 +124,7 @@ export function keepSuggestion<TStatus extends string>(
 ): void {
   const ac = deps.getAppliedChange(id);
   if (!ac) return;
+  if (getPreviewDir(id) === "original") reapplySuggested(editor, id, ac, deps);
   keepPendingChange(editor, {
     anchorUuid: ac.anchorUuid,
     mode: ac.mode,
@@ -86,6 +132,7 @@ export function keepSuggestion<TStatus extends string>(
     originalText: ac.originalText,
     replacement: ac.replacement,
   });
+  resetPreviewDir(id);
   if (docId) void flushPendingForDoc(docId).catch(() => {});
   deps.setSuggestionStatus(id, deps.acceptedStatus);
   deps.setArchived(id, true);
@@ -93,11 +140,18 @@ export function keepSuggestion<TStatus extends string>(
 }
 
 /**
- * Revert (undo) the applied pending change for card `id` — restores the
- * paragraph and deletes the suggestion card. No-ops when there's no
- * `appliedChange` (stale double-Revert).
+ * Dismiss (decline) the applied pending change for card `id` — DISMISS ALWAYS
+ * PRESERVES: byte-restore the original paragraph, then archive the card + its
+ * `explanation` comment so nothing is lost (status→rejected, archived→true).
+ * NEVER `deleteCard`. No-ops when there's no `appliedChange` (stale double-Cross).
+ *
+ * `revertPendingChange` is idempotent from either preview direction: from the
+ * suggested view it removes the mark + restores the original; from an
+ * original-preview (mark already gone, text already original) it no-ops — so
+ * Cross deterministically leaves the ORIGINAL regardless of the transient
+ * preview (`commit reads appliedChange, not the preview`).
  */
-export function revertSuggestion<TStatus extends string>(
+export function dismissSuggestion<TStatus extends string>(
   editor: Editor,
   id: string,
   docId: string | null,
@@ -112,8 +166,58 @@ export function revertSuggestion<TStatus extends string>(
     mode: ac.mode,
     anchorId: ac.anchorId,
   });
+  resetPreviewDir(id);
   if (docId) void flushPendingForDoc(docId).catch(() => {});
-  deps.deleteCard(id);
+  deps.setSuggestionStatus(id, deps.rejectedStatus);
+  deps.setArchived(id, true);
+  deps.setAppliedChange(id, undefined);
+}
+
+/**
+ * NON-COMMITTING preview: show the ORIGINAL in the live doc for card `id` —
+ * restore the pre-splice text + drop the blue mark, WITHOUT touching card status
+ * / `archived` / `appliedChange`. Records the preview direction so the commit
+ * path can reconcile and the card body can render the active segment. No-ops
+ * when there's no `appliedChange`, or when already previewing the original.
+ */
+export function previewOriginal<TStatus extends string>(
+  editor: Editor,
+  id: string,
+  docId: string | null,
+  deps: PendingChangeCardDeps<TStatus>,
+): void {
+  const ac = deps.getAppliedChange(id);
+  if (!ac) return;
+  if (getPreviewDir(id) === "original") return;
+  revertPendingChange(editor, {
+    anchorUuid: ac.anchorUuid,
+    originalText: ac.originalText,
+    replacement: ac.replacement,
+    mode: ac.mode,
+    anchorId: ac.anchorId,
+  });
+  setPreviewDir(id, "original");
+  if (docId) void flushPendingForDoc(docId).catch(() => {});
+}
+
+/**
+ * NON-COMMITTING preview: show the SUGGESTED view in the live doc for card `id`
+ * — re-apply the suggested splice + blue mark, WITHOUT touching card status /
+ * `archived` / `appliedChange`. Records the preview direction. No-ops when
+ * there's no `appliedChange`, or when already previewing the suggestion.
+ */
+export function previewSuggested<TStatus extends string>(
+  editor: Editor,
+  id: string,
+  docId: string | null,
+  deps: PendingChangeCardDeps<TStatus>,
+): void {
+  const ac = deps.getAppliedChange(id);
+  if (!ac) return;
+  if (getPreviewDir(id) === "suggested") return;
+  reapplySuggested(editor, id, ac, deps);
+  setPreviewDir(id, "suggested");
+  if (docId) void flushPendingForDoc(docId).catch(() => {});
 }
 
 // ── Phase 2 — the shared Apply orchestration ──────────────────────────────

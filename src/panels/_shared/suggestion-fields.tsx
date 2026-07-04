@@ -21,6 +21,7 @@ import { useTabIndent } from "@/hooks/useTabIndent";
 import { countWords } from "@/hooks/useWordCount";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
 import { usePendingChangeController } from "@/links/pending-change-controller";
+import { usePreviewDir } from "@/links/pending-preview-store";
 import { richLatexToJson } from "@/lib/footnote-content";
 import type { PanelBodyKey } from "@/lib/panel-typography";
 import type { PanelThemeKey } from "@/lib/panel-theme";
@@ -343,75 +344,188 @@ export function ApplyActionRow({
   );
 }
 
-/** The body of an `applied`-status card — the SURVIVING ORIGINAL-RECORD, now
- *  MINIMAL and surface-agnostic. Renders identically docked, in omni, and in a
- *  float, as three stacked rows:
- *    1. Keep (affirmative) / Revert (quiet) — always visible.
- *    2. an "ORIGINAL" label + chevron disclosure (collapsed by default).
- *    3. only when expanded — the original paragraph rendered as bare read-only
- *       main-text (no card chrome / box), exactly as it reads in the document
- *       (`richLatexToJson` → `BorrowedMainText`, the footnote/archive renderer).
+/** A check (Keep) / cross (Dismiss) glyph for the applied-card commit icons. */
+function CommitGlyph({ kind }: { kind: "check" | "cross" }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="flex-shrink-0"
+      aria-hidden
+    >
+      {kind === "check" ? (
+        <polyline points="20 6 9 17 4 12" />
+      ) : (
+        <>
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+/** One segment of the Original / Suggested preview toggle. */
+function PreviewSegment({
+  label,
+  active,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      aria-label={`Preview ${label.toLowerCase()}`}
+      disabled={disabled}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={`px-2 h-6 text-[11px] font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none ${
+        active
+          ? "bg-accent-light text-accent"
+          : "bg-transparent text-ink-subtle hover:bg-surface-muted-strong hover:text-ink-body"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** The body of an `applied`-status card — the SURVIVING ORIGINAL-RECORD, now a
+ *  3-axis control surface. Renders identically docked, in omni, and in a float,
+ *  as stacked rows:
+ *    1. actions — a NON-committing Original / Suggested preview toggle (flips the
+ *       LIVE doc text in place, no commit) + a Check (keep) / Cross (dismiss)
+ *       icon pair (the two commit decisions).
+ *    2. explanation — the card's `explanation` ("what Claude did and why"),
+ *       ALWAYS visible when present (omitted when empty).
+ *    3. an "Original text" label + chevron disclosure (collapsed by default).
+ *    4. only when expanded — the original paragraph rendered as bare read-only
+ *       main-text (`richLatexToJson` → `BorrowedMainText`).
  *
- *  Keep/Revert route through the `PendingChangeController` context (not per-mount
- *  `onKeep`/`onRevert` callbacks), so the SAME minimal card works on every
- *  surface — omni/float no longer fall back to the legacy field-view. When no
- *  controller is present or it's off, the buttons render disabled (defensive).
- *  `panelKey` picks the per-panel body typography; `family` tags Keep/Revert so
- *  the controller tokens the right in-text mark. (`cardKind`/`themeKey` remain in
- *  the prop type for call-site compatibility but the bare renderer needs neither.) */
+ *  Every action routes through the `PendingChangeController` context (not
+ *  per-mount callbacks), so the SAME card works on every surface — omni/float no
+ *  longer fall back to the legacy field-view. When no controller is present or
+ *  it's off, the controls render disabled (defensive). The active preview segment
+ *  reflects `usePreviewDir(id)` (a transient store, never persisted). `panelKey`
+ *  picks the per-panel body typography; `family` tags every action so the
+ *  controller tokens the right in-text mark. (`cardKind`/`themeKey` remain in the
+ *  prop type for call-site compatibility but the bare renderer needs neither.) */
 export function AppliedRecordBody({
   id,
   originalText,
+  explanation,
   family,
 }: {
   id: string;
   originalText: string;
+  /** The card's `explanation` — "what Claude did and why". Rendered always-on
+   *  above the Original foldout; omitted when empty/whitespace. */
+  explanation?: string;
   cardKind: CardKind;
   panelKey: PanelBodyKey;
   themeKey: PanelThemeKey;
   family: PendingChangeFamily;
 }) {
   const controller = usePendingChangeController();
+  const previewDir = usePreviewDir(id);
   const [showOriginal, setShowOriginal] = useState(false);
   const disabled = !controller || !controller.isOn;
   // The original renders with the FOOTNOTE typography (per the footnote styling
   // guide) — same as footnote/archive card bodies — not the revision panel body.
   const bodyStyle = usePanelBodyStyle("footnote");
+  const hasExplanation = !!explanation && explanation.trim().length > 0;
   return (
     <div
       className="px-3 pt-2 pb-2 space-y-1.5"
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Row 1 — Keep / Revert (always visible), with a thin divider beneath. */}
-      <div className="flex gap-1.5 pb-1.5 border-b border-[var(--border)]">
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={disabled}
-          onClick={(e) => {
-            e.stopPropagation();
-            controller?.revert(family, id);
-          }}
+      {/* Row 1 — actions: the preview toggle (left) + Check / Cross commit icons
+          (right), with a thin divider beneath. */}
+      <div className="flex items-center gap-1.5 pb-1.5 border-b border-[var(--border)]">
+        {/* NON-committing Original / Suggested preview toggle (flips the LIVE
+            doc text so you can compare in place; never commits). */}
+        <div
+          role="group"
+          aria-label="Preview toggle"
+          className="inline-flex rounded-md border border-[var(--border)] overflow-hidden"
         >
-          Revert
-        </Button>
-        <Button
-          variant="warm"
-          size="sm"
-          disabled={disabled}
-          onClick={(e) => {
-            e.stopPropagation();
-            controller?.keep(family, id);
-          }}
-        >
-          Keep
-        </Button>
+          <PreviewSegment
+            label="Original"
+            active={previewDir === "original"}
+            disabled={disabled}
+            onClick={() => controller?.previewOriginal(family, id)}
+          />
+          <PreviewSegment
+            label="Suggested"
+            active={previewDir === "suggested"}
+            disabled={disabled}
+            onClick={() => controller?.previewSuggested(family, id)}
+          />
+        </div>
+        <div className="ml-auto flex items-center gap-1">
+          {/* Check — keep (finalize the suggested text). */}
+          <button
+            type="button"
+            aria-label="Keep change"
+            title="Keep"
+            disabled={disabled}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              controller?.keep(family, id);
+            }}
+            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-emerald-600 hover:bg-emerald-50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          >
+            <CommitGlyph kind="check" />
+          </button>
+          {/* Cross — dismiss (restore the original + archive; never deletes). */}
+          <button
+            type="button"
+            aria-label="Dismiss change"
+            title="Dismiss (restores original, archives the card)"
+            disabled={disabled}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              controller?.dismiss(family, id);
+            }}
+            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-ink-subtle hover:bg-danger-soft hover:text-danger disabled:opacity-40 disabled:pointer-events-none transition-colors"
+          >
+            <CommitGlyph kind="cross" />
+          </button>
+        </div>
       </div>
-      {/* Row 2 — "ORIGINAL" label + chevron disclosure. */}
+      {/* Row 2 — explanation (what Claude did and why), always visible when
+          present, positioned under the actions and above the Original foldout. */}
+      {hasExplanation && (
+        <div
+          data-applied-explanation
+          className="break-words text-ink-body"
+          style={bodyStyle}
+        >
+          {explanation}
+        </div>
+      )}
+      {/* Row 3 — "Original text" label + chevron disclosure. */}
       <button
         type="button"
         aria-expanded={showOriginal}
-        aria-label={showOriginal ? "Hide original" : "Show original"}
+        aria-label={showOriginal ? "Hide original text" : "Show original text"}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
@@ -419,9 +533,9 @@ export function AppliedRecordBody({
         }}
         className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-medium text-[var(--muted)] hover:text-ink-strong cursor-pointer"
       >
-        <span>Original</span> <Chevron expanded={showOriginal} />
+        <span>Original text</span> <Chevron expanded={showOriginal} />
       </button>
-      {/* Row 3 — the original paragraph, bare, as it reads in the main text. */}
+      {/* Row 4 — the original paragraph, bare, as it reads in the main text. */}
       {showOriginal && (
         <BorrowedMainText
           value={richLatexToJson(originalText)}
