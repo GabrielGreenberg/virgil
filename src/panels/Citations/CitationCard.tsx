@@ -1171,6 +1171,78 @@ function CitationKeyRow({
     });
   };
 
+  // The +range / postnote affordance trails the citation display line inline
+  // (per key — this component renders exactly one key). Rendered at META tier
+  // (10px, muted) so it reads as an apparatus control, distinct from the
+  // body-font citation text it trails. When a postnote is set the input is
+  // always visible (its value is the range); the empty "+range" prompt reveals
+  // on row hover so an un-ranged citation stays clean.
+  const pgControl = (
+    <span className="ml-1.5 inline-flex items-center gap-1 align-baseline whitespace-nowrap text-[10px] text-[var(--muted)]">
+      {pgOpen ? (
+        <>
+          <input
+            ref={pgInputRef}
+            type="text"
+            value={pgDraft}
+            onChange={(e) => setPgDraft(e.target.value)}
+            onBlur={commitPg}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitPg();
+                pgInputRef.current?.blur();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setPgDraft(row.postnote || "");
+                setPgOpen(!!row.postnote);
+                pgInputRef.current?.blur();
+              }
+            }}
+            placeholder="range"
+            className="w-14 text-[10px] card-mono border border-edge-subtle rounded px-1 py-0 bg-surface focus:border-edge-strong outline-none"
+          />
+          {!row.postnote && pgDraft === "" && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPgOpen(false);
+              }}
+              className="text-[var(--muted)] hover:text-ink-body p-0.5"
+              data-hint="Close" aria-label="Close"
+            >
+              <svg
+                width="9"
+                height="9"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setPgOpen(true);
+          }}
+          className="text-[10px] tracking-wide text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 transition-opacity"
+          data-hint="Add a page range or locator"
+        >
+          +range
+        </button>
+      )}
+    </span>
+  );
+
   return (
     <li className="group/row flex flex-col gap-0.5">
       {/* Top line: filled = formatted citation. Empty = search input. */}
@@ -1184,15 +1256,17 @@ function CitationKeyRow({
           >
             •
           </span>
-          <div className="flex-1 min-w-0 leading-snug">
+          <div className="flex-1 min-w-0 leading-snug text-ink-body">
+            {/* Citation display is inline so the trailing +range control
+                flows at the END of the line (task 010). */}
             {entry ? (
-              <div className="text-ink-body">
+              <>
                 <span className="font-medium">
                   {fullAuthorsForRow(entry.fields.author || "") || trimmed}
                 </span>
                 {(entry.fields.year || entry.fields.date) && (
                   <>
-                    <span className="text-ink-body">. </span>
+                    <span>. </span>
                     <span className="font-medium">
                       {entry.fields.year || entry.fields.date}
                     </span>
@@ -1200,7 +1274,7 @@ function CitationKeyRow({
                 )}
                 {entry.fields.title && (
                   <>
-                    <span className="text-ink-body">. </span>
+                    <span>. </span>
                     <span className="italic">
                       “{entry.fields.title}”
                     </span>
@@ -1208,20 +1282,21 @@ function CitationKeyRow({
                 )}
                 {venueForRow(entry) && (
                   <>
-                    <span className="text-ink-body">. </span>
+                    <span>. </span>
                     <span>
                       {venueForRow(entry)}
                       {/\.$/.test(venueForRow(entry)) ? "" : "."}
                     </span>
                   </>
                 )}
-              </div>
+              </>
             ) : (
-              <div className="text-danger">
+              <span className="text-danger">
                 <span className="card-mono">{trimmed}</span> — not in your
                 bibliography
-              </div>
+              </span>
             )}
+            {pgControl}
           </div>
         </div>
       ) : (
@@ -1342,67 +1417,7 @@ function CitationKeyRow({
               className="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle"
             />
           )}
-          {pgOpen ? (
-            <span className="flex items-center gap-1">
-              <input
-                ref={pgInputRef}
-                type="text"
-                value={pgDraft}
-                onChange={(e) => setPgDraft(e.target.value)}
-                onBlur={commitPg}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    commitPg();
-                    pgInputRef.current?.blur();
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    setPgDraft(row.postnote || "");
-                    setPgOpen(!!row.postnote);
-                    pgInputRef.current?.blur();
-                  }
-                }}
-                placeholder="range"
-                className="w-14 text-[10px] card-mono border border-edge-subtle rounded px-1 py-0 bg-surface focus:border-edge-strong outline-none"
-              />
-              {!row.postnote && pgDraft === "" && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPgOpen(false);
-                  }}
-                  className="text-[var(--muted)] hover:text-ink-body p-0.5"
-                  data-hint="Close" aria-label="Close"
-                >
-                  <svg
-                    width="9"
-                    height="9"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  >
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              )}
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setPgOpen(true);
-              }}
-              className="text-[10px] tracking-wide text-[var(--muted)] hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle"
-              data-hint="Add a page range or locator"
-            >
-              +range
-            </button>
-          )}
+          {/* +range moved to trail the citation display line above (task 010). */}
           <div className="flex-1" aria-hidden />
           <button
             type="button"
