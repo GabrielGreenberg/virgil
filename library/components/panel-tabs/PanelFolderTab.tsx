@@ -15,15 +15,18 @@ import {
   buildActiveTabStrokePath,
   buildTabFillPath,
   deriveTabWidthFromWrapper,
+  MANILA_RADIUS,
   tabSvgGeometry,
 } from "./folder-path";
 
-// R=10: top-corner radius of the manila-folder tab. DELIBERATELY distinct
-// from the global --pod-radius (8) — the Library tab strip keeps its own
-// slightly rounder manila aesthetic on purpose. It also matches the
-// unifying folder-frame radius in TabbedLibraryPanel so the active tab's
-// corners line up with the panel frame. Do NOT "fix" this to 8 to unify.
-const R = 10;
+// Top-corner radius of the manila-folder tab, from the single geometry SSOT
+// (folder-path.ts). It is the numeric twin of the CSS token
+// `--library-manila-radius` (consumed by the panel-body frame in
+// TabbedLibraryPanel, NavPod, and the list/project headers) — sourcing the tab
+// OUTLINE and the panel FRAME from the same value is what keeps them tangent at
+// the corner instead of drifting into a hairline overshoot. Deliberately
+// rounder than the global --pod-radius (8); do NOT "fix" it to 8 to unify.
+const R = MANILA_RADIUS;
 const S = 12;
 const TAB_H = 32;
 const STROKE = "var(--topbar-border, #cbc3b8)";

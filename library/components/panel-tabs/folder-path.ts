@@ -49,6 +49,28 @@ export type TabPathArgs = {
 export const STROKE_INSET = 0.5;
 
 /**
+ * Manila-folder top-corner radius (px) — the SSOT for the tab silhouette's
+ * rounded top corners. Lives here (the pure geometry module) alongside
+ * {@link ACTIVE_MIN_CONTENT}/{@link STROKE_INSET} so the path builders, the
+ * component, and the geometry tests all read ONE number and it can't drift.
+ *
+ * This is the numeric twin of the CSS token `--library-manila-radius` in
+ * `src/app/globals.css` (task 2026-07-03-013's radius scale), which the
+ * panel-body frame (`TabbedLibraryPanel`), `NavPod`, and the list/project
+ * headers consume for their `border-radius`. The tab OUTLINE (this SVG path)
+ * and the panel FRAME (CSS rounded-rects) are two independent corner
+ * geometries that must tangent at the join; sourcing both from the same value
+ * is what stops them drifting apart and leaving a hairline overshoot at the
+ * corner. The drift between the two representations is locked by
+ * `folder-path.test.ts` (asserts `${MANILA_RADIUS}px` === the CSS token).
+ *
+ * Deliberately rounder than the global `--pod-radius` (8): the Library tab
+ * strip keeps its own slightly-rounder manila aesthetic on purpose. Do NOT
+ * collapse it to 8 to "unify" — the SSOT is this token, not the pod radius.
+ */
+export const MANILA_RADIUS = 10;
+
+/**
  * F#15 floor — the active tab's body never compresses below this width. Lives
  * here (the pure geometry module) so both the component and the geometry tests
  * share one SSOT and the value can't drift. Re-exported from PanelFolderTab for
@@ -120,7 +142,7 @@ export function deriveTabWidthFromWrapper(args: {
  */
 export function buildTabFillPath(args: TabPathArgs): string {
   const { tabW, tabH } = args;
-  const R = args.R ?? 10;
+  const R = args.R ?? MANILA_RADIUS;
   const S = args.S ?? 12;
   const tabLeft = S;
   const tabRight = S + tabW;
@@ -146,7 +168,7 @@ export function buildTabFillPath(args: TabPathArgs): string {
  */
 export function buildActiveTabStrokePath(args: TabPathArgs): string {
   const { tabW, tabH } = args;
-  const R = args.R ?? 10;
+  const R = args.R ?? MANILA_RADIUS;
   const S = args.S ?? 12;
   const tabLeft = S;
   const tabRight = S + tabW;

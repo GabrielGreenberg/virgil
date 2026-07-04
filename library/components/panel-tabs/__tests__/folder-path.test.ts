@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ACTIVE_MIN_CONTENT,
+  MANILA_RADIUS,
   STROKE_INSET,
   buildActiveTabStrokePath,
   buildTabFillPath,
@@ -12,6 +15,9 @@ import {
 // path builders are pure and parameterised, so the tests pin the same numbers.
 const S = 12;
 const TAB_H = 32;
+
+// Repo root, up 4 from library/components/panel-tabs/__tests__.
+const ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 
 describe("F#8 — clipped-stroke SVG gutter geometry", () => {
   it("adds a 1px HORIZONTAL gutter mirroring the vertical svgH = TAB_H + 1 precedent", () => {
@@ -164,5 +170,38 @@ describe("active-tab-always-attached invariant (F#8 seam ↔ F#15 attach guarant
       expect(d.startsWith(`M ${2 * S + tabW} ${TAB_H}`)).toBe(true);
       expect(d.trimEnd().endsWith(`0 ${TAB_H}`)).toBe(true);
     }
+  });
+});
+
+describe("MANILA_RADIUS — one corner-radius SSOT for the tab OUTLINE + panel FRAME (task 2026-07-03-014)", () => {
+  it("the path builders default their top-corner radius to MANILA_RADIUS (no bare literal)", () => {
+    // The tab silhouette's rounded top corners come from the SSOT, not a
+    // duplicated `?? 10`. Omitting R must render the SAME arc as passing
+    // MANILA_RADIUS explicitly — otherwise the tab outline could drift from the
+    // frame's --library-manila-radius.
+    const tabW = 140;
+    expect(buildTabFillPath({ tabW, tabH: TAB_H, S })).toBe(
+      buildTabFillPath({ tabW, tabH: TAB_H, R: MANILA_RADIUS, S }),
+    );
+    expect(buildActiveTabStrokePath({ tabW, tabH: TAB_H, S })).toBe(
+      buildActiveTabStrokePath({ tabW, tabH: TAB_H, R: MANILA_RADIUS, S }),
+    );
+    // And the default arc must literally carry the SSOT radius value.
+    expect(buildTabFillPath({ tabW, tabH: TAB_H, S })).toContain(
+      `A ${MANILA_RADIUS} ${MANILA_RADIUS} 0 0 1`,
+    );
+  });
+
+  it("MANILA_RADIUS matches the CSS token --library-manila-radius in globals.css (no numeric↔CSS drift)", () => {
+    // The tab OUTLINE (this SVG geometry, numeric MANILA_RADIUS) and the panel
+    // FRAME (CSS `border-radius: var(--library-manila-radius)` on the body,
+    // NavPod, and the list/project headers) are two independent corner
+    // geometries that must tangent at the join. Binding them to ONE value is
+    // the deep fix for the "tab outline overruns the pod corner" overshoot
+    // class — this guard fails the build if the two representations diverge.
+    const globals = readFileSync(path.join(ROOT, "src/app/globals.css"), "utf8");
+    const m = globals.match(/--library-manila-radius:\s*(\d+(?:\.\d+)?)px\s*;/);
+    expect(m, "--library-manila-radius must be defined in globals.css").not.toBeNull();
+    expect(Number(m![1])).toBe(MANILA_RADIUS);
   });
 });
