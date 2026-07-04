@@ -304,6 +304,7 @@ function useReaderMenuBarBundle(
     () => ({
       // ── Read state ──────────────────────────────────────────────
       showParTitles: vp.prefs.showParTitles,
+      showCardTitles: vp.prefs.showCardTitles,
       showLatexComments: vp.prefs.showLatexComments,
       showHeadingLabels: vp.prefs.showHeadingLabels,
       omniDimResting: vp.prefs.omniDimResting,
@@ -320,6 +321,7 @@ function useReaderMenuBarBundle(
 
       // ── Toggle setters (all off the same ephemeral `vp`) ────────
       onToggleParTitles: vp.toggleParTitles,
+      onToggleCardTitles: () => vp.toggleViewPref("showCardTitles"),
       onToggleLatexComments: vp.toggleLatexComments,
       toggleHeadingLabels: vp.toggleHeadingLabels,
       onToggleOmniDimResting: () => vp.toggleViewPref("omniDimResting"),

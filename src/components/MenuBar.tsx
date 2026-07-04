@@ -51,6 +51,7 @@ const DIVIDER_WIDTH_LABELS = VIEW_PREF_REGISTRY.dividerWidth.valueLabels as Reco
  *  bag). The id is the existing row id (kept stable for the menu registry). */
 const DISPLAY_ROWS = [
   { id: "par-titles", key: "showParTitles", label: VIEW_PREF_REGISTRY.showParTitles.label },
+  { id: "card-titles", key: "showCardTitles", label: VIEW_PREF_REGISTRY.showCardTitles.label },
   { id: "latex-comments", key: "showLatexComments", label: VIEW_PREF_REGISTRY.showLatexComments.label },
   { id: "heading-labels", key: "showHeadingLabels", label: VIEW_PREF_REGISTRY.showHeadingLabels.label },
   { id: "omni-dim-resting", key: "omniDimResting", label: VIEW_PREF_REGISTRY.omniDimResting.label },
@@ -95,6 +96,8 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   editor: Editor | null;
   showParTitles: boolean;
   onToggleParTitles: () => void;
+  showCardTitles: boolean;
+  onToggleCardTitles: () => void;
   showLatexComments: boolean;
   onToggleLatexComments: () => void;
   showHeadingLabels: boolean;
@@ -548,6 +551,8 @@ function ViewActionRow({ id, label, onRun }: { id: string; label: string; onRun:
 export function ViewMenu({
   showParTitles,
   onToggleParTitles,
+  showCardTitles,
+  onToggleCardTitles,
   showLatexComments,
   onToggleLatexComments,
   showHeadingLabels,
@@ -575,6 +580,7 @@ export function ViewMenu({
   onOpenMarginsMode,
 }: Pick<MenuBarProps,
   | "showParTitles" | "onToggleParTitles"
+  | "showCardTitles" | "onToggleCardTitles"
   | "showLatexComments" | "onToggleLatexComments"
   | "showHeadingLabels" | "onToggleHeadingLabels"
   | "omniDimResting" | "onToggleOmniDimResting"
@@ -702,12 +708,14 @@ export function ViewMenu({
           {(() => {
             const displayChecked: Record<(typeof DISPLAY_ROWS)[number]["key"], boolean> = {
               showParTitles,
+              showCardTitles,
               showLatexComments,
               showHeadingLabels,
               omniDimResting,
             };
             const displayToggle: Record<(typeof DISPLAY_ROWS)[number]["key"], () => void> = {
               showParTitles: onToggleParTitles,
+              showCardTitles: onToggleCardTitles,
               showLatexComments: onToggleLatexComments,
               showHeadingLabels: onToggleHeadingLabels,
               omniDimResting: onToggleOmniDimResting,
@@ -824,6 +832,7 @@ function MenuBarContent({
   orientation,
   onAddComment, onArchive, onCreateFootnote, onAddNote, onAddHighlight, onAddTodo, onCutSelection, onInsertCitation,
   showParTitles, onToggleParTitles,
+  showCardTitles, onToggleCardTitles,
   showLatexComments, onToggleLatexComments,
   showHeadingLabels, onToggleHeadingLabels,
   omniDimResting, onToggleOmniDimResting,
@@ -857,6 +866,8 @@ function MenuBarContent({
     <ViewMenu
       showParTitles={showParTitles}
       onToggleParTitles={onToggleParTitles}
+      showCardTitles={showCardTitles}
+      onToggleCardTitles={onToggleCardTitles}
       showLatexComments={showLatexComments}
       onToggleLatexComments={onToggleLatexComments}
       showHeadingLabels={showHeadingLabels}

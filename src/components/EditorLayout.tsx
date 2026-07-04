@@ -909,7 +909,28 @@ export default function EditorLayout() {
   // now derived read-side from `prefs`, toggled via `toggleParTitles` /
   // `toggleLatexComments`.
   const showParTitles = prefs.showParTitles;
+  const showCardTitles = prefs.showCardTitles;
   const showLatexComments = prefs.showLatexComments;
+
+  // Card +T add-title affordance visibility — the card analog of
+  // `showParTitles`. Unlike paragraph titles (gated by a class on
+  // `.editor-pane-column` via `viewToggleClasses`), cards render in the panel
+  // strips, the omni host, AND body-portaled float popouts — none under that
+  // column — so the gate lives on a body-level `.hide-card-titles` class that
+  // every card surface descends from. Toggled via the generic registry-guarded
+  // setter (the blessed path for new toggles).
+  const toggleCardTitles = useCallback(
+    () => toggleViewPref("showCardTitles"),
+    [toggleViewPref],
+  );
+  // Reflect the pref onto <body> so the CSS gate reaches every card surface,
+  // including popouts portaled outside the React tree. Depends only on the
+  // boolean pref — zero per-keystroke work (keystroke sanctity).
+  useEffect(() => {
+    const cls = "hide-card-titles";
+    document.body.classList.toggle(cls, !showCardTitles);
+    return () => document.body.classList.remove(cls);
+  }, [showCardTitles]);
 
   // Marginalia / divider / heading-label visibility — persisted via
   // ViewPrefs (global, mirrors across windows, rides the personal-prefs
@@ -2530,6 +2551,7 @@ export default function EditorLayout() {
 
   const editorPaneMenuBar: EditorPaneMenuBarBundle = useMemo(() => ({
     showParTitles,
+    showCardTitles,
     showLatexComments,
     showHeadingLabels,
     omniDimResting,
@@ -2542,6 +2564,7 @@ export default function EditorLayout() {
     editorSplit,
     activeSplitPane,
     onToggleParTitles: toggleParTitles,
+    onToggleCardTitles: toggleCardTitles,
     onToggleLatexComments: toggleLatexComments,
     toggleHeadingLabels,
     onToggleOmniDimResting: toggleOmniDimResting,
@@ -2562,6 +2585,7 @@ export default function EditorLayout() {
     onOpenMarginsMode: enterMarginEditMode,
   }), [
     showParTitles,
+    showCardTitles,
     showLatexComments,
     showHeadingLabels,
     omniDimResting,
@@ -2574,6 +2598,7 @@ export default function EditorLayout() {
     editorSplit,
     activeSplitPane,
     toggleParTitles,
+    toggleCardTitles,
     toggleLatexComments,
     toggleHeadingLabels,
     toggleOmniDimResting,

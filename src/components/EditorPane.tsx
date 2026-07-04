@@ -531,6 +531,7 @@ export interface EditorPaneViewPrefs {
 export interface EditorPaneMenuBarBundle {
   // ── Toggle state (read) ────────────────────────────────────────
   showParTitles: boolean;
+  showCardTitles: boolean;
   showLatexComments: boolean;
   showHeadingLabels: boolean;
   omniDimResting: boolean;
@@ -545,6 +546,7 @@ export interface EditorPaneMenuBarBundle {
 
   // ── Toggle setters ─────────────────────────────────────────────
   onToggleParTitles: () => void;
+  onToggleCardTitles: () => void;
   onToggleLatexComments: () => void;
   toggleHeadingLabels: () => void;
   onToggleOmniDimResting: () => void;
@@ -5677,6 +5679,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       onInsertCitation={handleToolbarInsertCitation}
                       showParTitles={menuBar.showParTitles}
                       onToggleParTitles={menuBar.onToggleParTitles}
+                      showCardTitles={menuBar.showCardTitles}
+                      onToggleCardTitles={menuBar.onToggleCardTitles}
                       showLatexComments={menuBar.showLatexComments}
                       onToggleLatexComments={menuBar.onToggleLatexComments}
                       showHeadingLabels={menuBar.showHeadingLabels}

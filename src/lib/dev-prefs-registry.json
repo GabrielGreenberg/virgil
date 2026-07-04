@@ -15,6 +15,7 @@
         "editorTopMargin",
         "editorBottomMargin",
         "showParTitles",
+        "showCardTitles",
         "showLatexComments",
         "showMarginalia",
         "hiddenMarginaliaTypes",

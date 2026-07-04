@@ -284,6 +284,7 @@ describe("useReaderView — menuBar bundle (F#16)", () => {
 
     // Read state present (booleans from the ephemeral engine).
     expect(typeof menuBar.showParTitles).toBe("boolean");
+    expect(typeof menuBar.showCardTitles).toBe("boolean");
     expect(typeof menuBar.showLatexComments).toBe("boolean");
     expect(typeof menuBar.omniDimResting).toBe("boolean");
     expect(menuBar.activeSplitPane).toBe("top");
@@ -297,6 +298,7 @@ describe("useReaderView — menuBar bundle (F#16)", () => {
     // full means a missing one is a compile error; this pins them at runtime).
     for (const member of [
       "onToggleParTitles",
+      "onToggleCardTitles",
       "onToggleLatexComments",
       "toggleHeadingLabels",
       "onToggleOmniDimResting",
