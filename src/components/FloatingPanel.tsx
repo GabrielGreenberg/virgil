@@ -708,7 +708,7 @@ function FloatingPanelInner({
           boxShadow:
             surface === "card"
               ? "var(--card-shadow-ambient)"
-              : "0 10px 30px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",
+              : "var(--shadow-float)",
         };
 
   return createPortal(
