@@ -15,23 +15,23 @@
  * `displayMath` (READ-ONLY atom — decision D, "view & move only": pop out to
  * see the rendered KaTeX large + drag it; the formula is edited on the PAGE
  * via the existing math popover, never in the float), `latexComment`
- * (EDITABLE atom — decision A, "fully editable, first-class": pop out the
- * `%comment`, edit it in the float, it round-trips to the source) and
- * `titleField` (EDITABLE, content-bearing like blockquote — the title/author/
+ * (EDITABLE, content-bearing like blockquote — decision A, "fully editable,
+ * first-class": pop out the `%comment`, edit it in the float, it round-trips to
+ * the source) and `titleField` (EDITABLE, content-bearing — the title/author/
  * date fields; decision C). All but `titleField` were already in the float
  * schema; `titleField` was the lone bodyless kind that was main-only, so its
  * node was PROMOTED into the float stack (L3j — see editor-extensions.ts).
  * The synced node renders itself (blockquote/codeBlock as plain nodes,
- * displayMath via its KaTeX NodeView, latexComment via its `editableAtomView`,
- * titleField via its `.title-field-wrapper` NodeView with the
+ * displayMath via its KaTeX NodeView, latexComment via its editable block
+ * NodeView, titleField via its `.title-field-wrapper` NodeView with the
  * "Title"/"Author"/"Date" annotation).
  *
  * Per-kind config carries `editable` (read-only kinds skip `onUpdate` /
- * write-back and sync main→float only) and `emptyAttrs` (atom kinds seed an
- * attr-based empty fallback, not a content-bearing placeholder). The EDITABLE
- * `latexComment` atom (L3i) is the cross-product of both: one more config row
- * (`editable:true` + `emptyAttrs:{text:""}`) — the whole-node write-back below
- * is already atom-compatible.
+ * write-back and sync main→float only) and `emptyAttrs` (attr-borne ATOM kinds
+ * — only `displayMath` now — seed an attr-based empty fallback, not a
+ * content-bearing placeholder). `latexComment` is content-bearing since the
+ * atom→block remodel (task 017), so it carries NO `emptyAttrs`, like
+ * blockquote/codeBlock.
  *
  * Modeled on `paragraph-body.tsx` (the single-block template) and
  * `list-body.tsx` (the one-body-many-kinds precedent):
@@ -88,14 +88,14 @@ interface SingleBlockKindConfig {
   schemaType: string;
   floatIdPrefix: string;
   sourceKind: FloatSourceKind;
-  /** Editable kinds (blockquote/codeBlock prose, latexComment atom) seed →
+  /** Editable kinds (blockquote/codeBlock/latexComment prose, titleField) seed →
    *  sync → write back on `onUpdate`. Read-only kinds
    *  (displayMath: "view & move only" — decision D; the equation is edited on
    *  the PAGE via the KaTeX popover, never in the float) seed + sync
    *  main→float only, with NO `onUpdate` / write-back. */
   editable: boolean;
-  /** Atom kinds (displayMath, latexComment) carry no child content, so their
-   *  empty seed / missing fallback is attr-based (`{type, attrs}`) — a
+  /** Attr-borne ATOM kinds (only `displayMath` now) carry no child content, so
+   *  their empty seed / missing fallback is attr-based (`{type, attrs}`) — a
    *  content-bearing placeholder would be schema-invalid. Absent → the kind is
    *  a content block whose empty fallback `emptyBlockFor` builds with children. */
   emptyAttrs?: Record<string, unknown>;
@@ -130,22 +130,20 @@ export const SINGLE_BLOCK_CONFIG: Partial<
     editable: false,
     emptyAttrs: { latex: "" },
   },
-  // L3i (bodyless kinds, Chip 3): latexComment is the first EDITABLE ATOM kind
-  // — decision A, "fully editable, first-class." One more config row: an atom
-  // (attr-based `emptyAttrs:{text:""}`, like displayMath) that's also editable
-  // (write-back on onUpdate, like the prose kinds). It renders editable with NO
-  // cardContext flag because the factory adds `LatexComment` BARE (default
-  // cardContext:false → `editableAtomView`) in main AND float; edits round-trip
-  // because that view commits (on blur) via `setNodeMarkup` on the FLOAT editor
-  // → the float's onUpdate → writeBackToMain (whole-atom replace by uuid). No
-  // surface-gate risk (the commit is in-place on its own editor, not a global
-  // main-targeted event like math's click bridge).
+  // L3i (bodyless kinds, Chip 3): latexComment — editable, "fully editable,
+  // first-class" (decision A). Since the atom→block remodel (task 017) it is a
+  // CONTENT-BEARING block (`content: text*`), NOT an attr-borne atom, so — like
+  // blockquote/codeBlock — it carries NO `emptyAttrs`: `emptyBlockFor` builds
+  // `{type:"latexComment", content:[]}`, schema-valid for `text*`. It renders
+  // editable with NO cardContext flag because the factory adds `LatexComment`
+  // BARE (default cardContext:false → the editable block NodeView) in main AND
+  // float; edits round-trip via the float's onUpdate → writeBackToMain
+  // (whole-node `replaceWith` by uuid, rebuilt from `toJSON()`).
   latexComment: {
     schemaType: "latexComment",
     floatIdPrefix: "cmt",
     sourceKind: "latexComment",
     editable: true,
-    emptyAttrs: { text: "" },
   },
   // L3j (bodyless kinds, Chip 4): titleField — the paper's title/author/date
   // fields; the LAST prose-shaped bodyless kind (decision C: include). One more

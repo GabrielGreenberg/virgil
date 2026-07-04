@@ -308,21 +308,21 @@ describe("buildEditorExtensions (FCU factory)", () => {
     expect(mathSurface(floatCtx(), "displayMath")).toBe("float");
   });
 
-  // R2 — the factory also threads `surface` to LatexComment (was added bare), so
-  // the shared editable-atom NodeView suppresses its `.selected` chrome on
-  // floats. The behavioral gate is locked in
-  // tiptap/__tests__/editable-atom-view-surface-gate.test.ts; this proves the
-  // wiring: `.configure({surface})` set the right per-surface value.
-  const latexCommentSurface = (ctx: EditorExtensionsCtx) => {
-    const ext = buildEditorExtensions(ctx).find((e) => e.name === "latexComment");
-    return (ext?.options as { surface?: string } | undefined)?.surface;
-  };
+  // Since the atom→block remodel (task 017) latexComment is a real editable
+  // block with native inline content, so a float's single-node doc rests a
+  // TextSelection inside it (never a NodeSelection on the node) — the
+  // `.selected`-at-rest problem the old `surface` gate guarded against dissolves
+  // natively. LatexComment is now added BARE on both surfaces, with no `surface`
+  // option to thread.
+  const latexCommentExt = (ctx: EditorExtensionsCtx) =>
+    buildEditorExtensions(ctx).find((e) => e.name === "latexComment");
 
-  it("configures latexComment with surface 'main' on the main stack (R2)", () => {
-    expect(latexCommentSurface(mainCtx())).toBe("main");
-  });
-
-  it("configures latexComment with surface 'float' on the float stack (R2)", () => {
-    expect(latexCommentSurface(floatCtx())).toBe("float");
+  it("adds latexComment on both stacks with no per-surface option", () => {
+    expect(latexCommentExt(mainCtx())).toBeDefined();
+    expect(latexCommentExt(floatCtx())).toBeDefined();
+    expect(
+      (latexCommentExt(mainCtx())?.options as { surface?: string } | undefined)
+        ?.surface,
+    ).toBeUndefined();
   });
 });

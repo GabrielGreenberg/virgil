@@ -76,7 +76,7 @@ const CONTENT: Content = {
     },
     { type: "graphicsBlock", attrs: { command: "\\includegraphics{img.png}" } },
     { type: "displayMath", attrs: { latex: "\\sum x" } },
-    { type: "latexComment", attrs: { text: "a comment" } },
+    { type: "latexComment", content: [{ type: "text", text: "a comment" }] },
   ],
 };
 

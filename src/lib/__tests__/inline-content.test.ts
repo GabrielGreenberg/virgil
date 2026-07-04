@@ -142,18 +142,21 @@ describe("atomTextOf — attr-borne atom text registry", () => {
     expect(atomTextOf("inlineMath", { latex: "n+1" })).toBe("n+1");
     expect(atomTextOf("displayMath", { latex: "\\sum x" })).toBe("\\sum x");
     expect(atomTextOf("texBlock", { code: "\\foo" })).toBe("\\foo");
-    expect(atomTextOf("latexComment", { text: "TODO" })).toBe("% TODO");
     expect(atomTextOf("figureBlock", { src: "fig.png" })).toBe("fig.png");
     expect(atomTextOf("graphicsBlock", { src: "g.pdf" })).toBe("g.pdf");
   });
 
-  it("returns null for non-attr-atom kinds (text / citation / labelRef)", () => {
+  it("returns null for non-attr-atom kinds (text / citation / labelRef / latexComment)", () => {
     // citation/labelRef are intentionally NOT in the core table — they are
     // display atoms handled by the flatten path, so getAtomText keeps its
-    // prior behavior of `""` for a selected citation.
+    // prior behavior of `""` for a selected citation. latexComment is no longer
+    // an attr-borne atom either (task 017: atom→editable block with native
+    // inline content), so it too returns null — `flattenInlineText` walks its
+    // text children directly.
     expect(atomTextOf("text", { text: "hi" })).toBeNull();
     expect(atomTextOf("citation", { command: "\\cite{x}" })).toBeNull();
     expect(atomTextOf("paragraph", {})).toBeNull();
+    expect(atomTextOf("latexComment", {})).toBeNull();
   });
 });
 

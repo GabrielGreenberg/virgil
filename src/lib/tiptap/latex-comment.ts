@@ -1,51 +1,73 @@
 import { Node, mergeAttributes } from "@tiptap/react";
-import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
-import { editableAtomView } from "./editable-atom-view";
+import { NodeSelection, TextSelection, Plugin, PluginKey } from "@tiptap/pm/state";
+import type { NodeType, Schema } from "@tiptap/pm/model";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
 import { readDocStructure, readPendingDiff } from "./doc-structure";
 
-// Flag: when a LatexComment is created via input rule, auto-focus it
-let _pendingAutoFocusComment = false;
-
+// `latexComment` is a real editable BLOCK node with native inline (`text*`)
+// content — NOT an atom with its text stashed in an attr + a parallel
+// `contentEditable` channel. Because the comment text is genuine ProseMirror
+// content, PM owns the caret as a TextSelection, and the four atom-era symptoms
+// dissolve natively:
+//   (a) selected/unselected — `.selected` now paints only on a real
+//       NodeSelection (grab-handle / arrow-nav), never while a caret rests
+//       inside; the distinction is native.
+//   (b) type `%` → caret inside immediately — the input rule places a native
+//       TextSelection in the new node; no auto-focus race, no lost keystroke.
+//   (c) Enter — the keymap inserts a paragraph AFTER the comment and lands the
+//       caret there (a LaTeX comment is a single source line, so it never
+//       splits into two comment nodes).
+//   (d) lightning bolt — the caret is a TextSelection, so the SelectionActions
+//       menu's NodeSelection bail no longer hides the bolt.
+//
 // `cardContext`: when true, the input-rule plugins are suppressed and the
-// NodeView renders a static `% text` row. Set by every card-bearing
-// rich-text surface (RichTextField) so latexComment atoms round-trip
-// without being silently dropped, and so typing `% ` in a note body
-// doesn't get auto-transformed into a latexComment atom.
-// `surface`: which editor surface the comment atom is mounted on. A float is a
-// single-node surface, so its atom-only doc rests a NodeSelection on the lone
-// atom and the shared `editableAtomView` would paint `.selected` chrome the
-// page never shows; the view suppresses that chrome on "float" (memo L3h.1's
-// surface gate, generalized to the selection chrome). The
-// `buildEditorExtensions` factory configures this per-surface
-// (`.configure({ surface: isFloat ? "float" : "main" })`), like the math nodes.
-// Default "main" so any stray / non-factory usage behaves like the main surface.
+// NodeView renders a static `% text` row. Set by every card-bearing rich-text
+// surface (RichTextField / borrowed-schema) so latexComment nodes round-trip
+// without being silently dropped, and so typing `% ` in a note body doesn't get
+// auto-transformed into a latexComment.
 export interface LatexCommentOptions {
   cardContext: boolean;
-  surface: "main" | "float";
+}
+
+/** Build a latexComment node holding `text` as native inline content (empty
+ *  content when text is ""). The text lives IN the node, not an attr. */
+function makeComment(nodeType: NodeType, schema: Schema, text: string) {
+  return nodeType.create(null, text ? schema.text(text) : null);
 }
 
 export const LatexComment = Node.create<LatexCommentOptions>({
   name: "latexComment",
   group: "block textObject",
-  atom: true,
+  content: "text*",
+  // A LaTeX comment is raw source text after `%` — no marks (bold/italic/etc.),
+  // which keeps `.tex` serialization a trivial `% ${textContent}` and avoids
+  // emitting meaningless `\textbf{}` inside a comment.
+  marks: "",
+  // Self-contained source line: editing at its edges never merges its text into
+  // adjacent prose (backspace-at-start of an empty comment is handled below).
+  isolating: true,
 
   addOptions() {
     return {
       cardContext: false,
-      surface: "main",
     };
   },
 
   addAttributes() {
     return {
-      text: { default: "" },
       uuid: UUID_ATTR_SPEC.uuid,
     };
   },
 
   parseHTML() {
-    return [{ tag: 'div[data-type="latex-comment"]' }];
+    return [
+      {
+        tag: 'div[data-type="latex-comment"]',
+        // The `% ` prefix is a non-editable widget, not content — only the
+        // `.latex-comment-editable` span holds the real text.
+        contentElement: ".latex-comment-editable",
+      },
+    ];
   },
 
   renderHTML({ HTMLAttributes }) {
@@ -55,23 +77,62 @@ export const LatexComment = Node.create<LatexCommentOptions>({
         "data-type": "latex-comment",
         class: "latex-comment",
       }),
-      `% ${HTMLAttributes.text || ""}`,
+      ["span", { class: "latex-comment-prefix", contenteditable: "false" }, "% "],
+      ["span", { class: "latex-comment-editable" }, 0],
     ];
   },
 
   addKeyboardShortcuts() {
     return {
-      Delete: ({ editor }) => {
-        const { selection } = editor.state;
-        if (selection instanceof NodeSelection && selection.node.type.name === "latexComment") {
-          editor.commands.deleteSelection();
-          return true;
-        }
-        return false;
+      Enter: ({ editor }) => {
+        const { state } = editor;
+        const { selection } = state;
+        if (!(selection instanceof TextSelection)) return false;
+        const { $from } = selection;
+        if ($from.parent.type.name !== "latexComment") return false;
+        // Exit the comment: insert a paragraph immediately after it and land the
+        // caret there (the expex "exit-to-new-line" pattern). Round-trip-safe —
+        // a comment is one `%` source line, so Enter never produces multi-line
+        // (uncommented) comment text.
+        const after = $from.after($from.depth);
+        const paragraph = state.schema.nodes.paragraph.create();
+        const tr = state.tr.insert(after, paragraph);
+        tr.setSelection(TextSelection.create(tr.doc, after + 1));
+        tr.scrollIntoView();
+        editor.view.dispatch(tr);
+        return true;
       },
       Backspace: ({ editor }) => {
         const { selection } = editor.state;
-        if (selection instanceof NodeSelection && selection.node.type.name === "latexComment") {
+        // Whole-node selection (grabbed via the handle / arrow-nav) → delete.
+        if (
+          selection instanceof NodeSelection &&
+          selection.node.type.name === "latexComment"
+        ) {
+          editor.commands.deleteSelection();
+          return true;
+        }
+        // Caret at the very start of an EMPTY comment → dissolve it back to a
+        // plain paragraph (the user backspaced away the `% ` they just typed),
+        // so they're never stuck with a phantom empty comment.
+        if (selection instanceof TextSelection && selection.empty) {
+          const { $from } = selection;
+          if (
+            $from.parent.type.name === "latexComment" &&
+            $from.parentOffset === 0 &&
+            $from.parent.content.size === 0
+          ) {
+            return editor.commands.setNode("paragraph");
+          }
+        }
+        return false;
+      },
+      Delete: ({ editor }) => {
+        const { selection } = editor.state;
+        if (
+          selection instanceof NodeSelection &&
+          selection.node.type.name === "latexComment"
+        ) {
           editor.commands.deleteSelection();
           return true;
         }
@@ -82,9 +143,9 @@ export const LatexComment = Node.create<LatexCommentOptions>({
 
   addProseMirrorPlugins() {
     // Card surfaces shouldn't auto-transform user-typed `% ` into a
-    // latexComment atom — the user might legitimately want a `% `
-    // literal in their note / archive title. The schema still accepts
-    // latexComment for incoming JSONContent so round-tripping works.
+    // latexComment — the user might legitimately want a `% ` literal in their
+    // note / archive title. The schema still accepts latexComment for incoming
+    // JSONContent so round-tripping works.
     if (this.options.cardContext) return [];
     const nodeType = this.type;
     return [
@@ -96,27 +157,46 @@ export const LatexComment = Node.create<LatexCommentOptions>({
             if (text !== "%" && text !== " ") return false;
             const { state } = view;
             const $from = state.doc.resolve(from);
-            const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
+            // Only transform a PARAGRAPH — never re-fire when the caret is
+            // already inside a comment (typing `%`/` ` there is literal now
+            // that comments hold native content).
+            if ($from.parent.type.name !== "paragraph") return false;
+            const textBefore = $from.parent.textBetween(
+              0,
+              $from.parentOffset,
+              undefined,
+              "￼",
+            );
             const combined = textBefore + text;
             if (!combined.match(/^% ?$/)) return false;
 
             const blockStart = $from.start();
             const blockEnd = $from.end();
             const fullText = state.doc.textBetween(blockStart, blockEnd, "", "");
-            const commentText = (fullText.startsWith("%") ? fullText : text + fullText.slice($from.parentOffset)).replace(/^% ?/, "");
-            const tr = state.tr.replaceWith(blockStart - 1, blockEnd + 1, nodeType.create({ text: commentText }));
+            const commentText = (fullText.startsWith("%")
+              ? fullText
+              : text + fullText.slice($from.parentOffset)
+            ).replace(/^% ?/, "");
+            const tr = state.tr.replaceWith(
+              blockStart - 1,
+              blockEnd + 1,
+              makeComment(nodeType, state.schema, commentText),
+            );
+            // Land the caret INSIDE the new comment (native TextSelection), at
+            // the start of its content — no auto-focus hack, no lost keystroke.
+            // The comment node now sits at (blockStart - 1); its content
+            // interior starts one position in, i.e. at blockStart.
+            tr.setSelection(TextSelection.create(tr.doc, blockStart));
             view.dispatch(tr);
-            _pendingAutoFocusComment = !commentText;
             return true;
           },
         },
       }),
-      // Also catch paragraphs that start with "% " via appendTransaction,
-      // in case handleTextInput misses it (e.g. paste, or typing % before
-      // existing text). Gated on the observer's diff: only the blocks
-      // whose content changed (or newly arrived) can possibly start
-      // with "% " now — so we inspect just those instead of every
-      // paragraph in the doc.
+      // Also catch paragraphs that start with "% " via appendTransaction, in
+      // case handleTextInput misses it (e.g. paste). Gated on the observer's
+      // diff: only the blocks whose content changed (or newly arrived) can
+      // possibly start with "% " now — so we inspect just those instead of
+      // every paragraph in the doc (keystroke sanctity).
       new Plugin({
         key: new PluginKey("latexCommentNormalize"),
         appendTransaction(transactions, _oldState, newState) {
@@ -124,8 +204,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
           const pending = readPendingDiff(newState);
           if (!pending) return null;
 
-          // Candidate UUIDs: blocks whose content changed OR brand-new
-          // blocks. We can short-circuit if neither is in play.
+          // Candidate UUIDs: blocks whose content changed OR brand-new blocks.
           const candidateUuids = new Set<string>();
           for (const u of pending.contentChangedUuids) candidateUuids.add(u);
           for (const b of pending.addedBlocks) candidateUuids.add(b.uuid);
@@ -150,9 +229,12 @@ export const LatexComment = Node.create<LatexCommentOptions>({
           // Reverse-sort by pos so each replacement doesn't shift the next.
           changes.sort((a, b) => b.pos - a.pos);
           for (const c of changes) {
-            tr.replaceWith(c.pos, c.pos + c.size, nodeType.create({ text: c.text }));
+            tr.replaceWith(
+              c.pos,
+              c.pos + c.size,
+              makeComment(nodeType, newState.schema, c.text),
+            );
           }
-          _pendingAutoFocusComment = changes.some((c) => !c.text);
           return tr;
         },
       }),
@@ -161,11 +243,10 @@ export const LatexComment = Node.create<LatexCommentOptions>({
 
   addNodeView() {
     const cardContext = this.options.cardContext;
-    const surface = this.options.surface;
     return ({ node, getPos, editor }) => {
-      // Card-context: static `% text` row in muted gray, no click-to-
-      // edit affordance. The node spec is identical to the main-doc
-      // form so JSON round-trips intact.
+      // Card-context: static `% text` row in muted gray, no caret. The node
+      // spec is identical to the main-doc form so JSON round-trips intact (the
+      // content is preserved in the doc model even though the view is static).
       if (cardContext) {
         const dom = document.createElement("div");
         dom.className = "latex-comment latex-comment-card";
@@ -174,35 +255,49 @@ export const LatexComment = Node.create<LatexCommentOptions>({
         dom.style.fontFamily = "var(--font-mono), 'SF Mono', 'Fira Code', monospace";
         dom.style.fontSize = "12px";
         dom.style.padding = "2px 0";
-        dom.textContent = `% ${(node.attrs.text as string) || ""}`;
+        dom.textContent = `% ${node.textContent}`;
         return { dom };
       }
-      const result = editableAtomView({
-        node,
-        getPos,
-        editor,
-        surface,
-        tag: "div",
-        className: "latex-comment",
-        attrName: "text",
-        prefix: "% ",
-        handleBar: true,
+
+      // Editable block view: PM owns the caret via `contentDOM`; the `% ` prefix
+      // is a non-editable widget the caret can't cross; the handle bar
+      // node-selects the whole comment for grab/lift. No editing-mode flag, no
+      // stopPropagation, no blur-commit.
+      const dom = document.createElement("div");
+      dom.className = "latex-comment";
+
+      const bar = document.createElement("div");
+      bar.className = "latex-comment-handle";
+      bar.contentEditable = "false";
+      bar.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const pos = typeof getPos === "function" ? getPos() : undefined;
+        if (pos != null && editor?.view) {
+          const tr = editor.view.state.tr.setSelection(
+            NodeSelection.create(editor.view.state.doc, pos),
+          );
+          editor.view.dispatch(tr);
+          editor.view.focus();
+        }
       });
-      // If this node was just created via input rule, auto-focus
-      if (_pendingAutoFocusComment) {
-        _pendingAutoFocusComment = false;
-        const tryFocus = (attempts: number) => {
-          setTimeout(() => {
-            if (result.dom.isConnected) {
-              result.enterEditMode();
-            } else if (attempts > 0) {
-              tryFocus(attempts - 1);
-            }
-          }, 30);
-        };
-        tryFocus(5);
-      }
-      return result;
+      dom.appendChild(bar);
+
+      const content = document.createElement("div");
+      content.className = "latex-comment-content";
+      dom.appendChild(content);
+
+      const pre = document.createElement("span");
+      pre.className = "latex-comment-prefix";
+      pre.textContent = "% ";
+      pre.contentEditable = "false";
+      content.appendChild(pre);
+
+      const contentDOM = document.createElement("span");
+      contentDOM.className = "latex-comment-editable";
+      content.appendChild(contentDOM);
+
+      return { dom, contentDOM };
     };
   },
 });

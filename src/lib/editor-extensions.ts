@@ -1761,11 +1761,12 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // pass no docIdRef → the event carries `docId: null` (harmless: the orphan
     // web only runs on the main authored panes).
     Footnote.configure({ docIdRef: ctx.docIdRef ?? null }),
-    // Per-surface so the atom's selection chrome stays MAIN-only: a float is a
-    // single-node surface, so its atom-only doc rests a NodeSelection on the
-    // lone comment and the NodeView would paint `.selected` chrome the page
-    // never shows. Mirrors the math surface threading above (memo L3h.1).
-    LatexComment.configure({ surface: isFloat ? "float" : "main" }),
+    // latexComment is a real editable block now (native inline content), so a
+    // float's single-node doc rests a TextSelection inside it, never a
+    // NodeSelection on the node — the `.selected`-at-rest problem the old
+    // `surface` gate guarded against dissolves natively. Added bare on both
+    // surfaces (only `cardContext` still gates it, via borrowed-schema).
+    LatexComment,
     Citation,
     LabelRef,
     // cardContext gates the example's par-title strip (#47): on a card/float
