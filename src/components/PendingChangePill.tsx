@@ -106,7 +106,9 @@ export interface PendingChangeTarget {
 }
 
 /** `kind:id` → target. EditorPane derives this from the applied suggestion
- *  cards; its `size` also gates whether EditorPane mounts the pill at all. */
+ *  cards; its `size` also gates whether EditorPane mounts the pill at all. The
+ *  doc-order sort over these keys (the bulk-bar navigator, task 023) lives in the
+ *  React-free `@/links/pending-change-nav` so it stays unit-testable. */
 export type PendingChangeIndex = Map<string, PendingChangeTarget>;
 
 interface Placement {
