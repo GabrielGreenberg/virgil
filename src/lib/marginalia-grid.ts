@@ -24,6 +24,7 @@ import {
   MARGINALIA_MARGIN_WIDTH,
   MARGINALIA_ICON_SIZE,
   MARGINALIA_INNER_PAD,
+  MARGINALIA_GRID_X_RIGHT,
   ICONS_BLOCK_WIDTH,
   type AnchorNodeMetrics,
   type GridCell,
@@ -58,18 +59,20 @@ function cellAt(
   const y =
     node.top + row * node.lineHeight + (node.lineHeight - MARGINALIA_ICON_SIZE) / 2;
 
-  // Pixel X: icons are inset from the text edge by MARGINALIA_INNER_PAD.
-  // Left margin packs from right (text edge) toward left (outer edge).
-  // Right margin packs from left (text edge) toward right (outer edge).
-  // `ICONS_BLOCK_WIDTH` is the shared icon-block width (both columns + gap),
-  // exported from the right-margin geometry SSOT in marginalia.ts.
+  // Pixel X (container-relative). Left margin packs from right (text edge)
+  // toward left (outer edge). Right margin packs from left (text edge) toward
+  // right (outer edge), starting at `MARGINALIA_GRID_X_RIGHT` — the col0 offset
+  // from the right-lane band SSOT, which sits OUTBOARD of the inboard selection
+  // bolt band (so the bolt no longer paints over the markers). `cell.x` here is
+  // relative to the marker container's left edge (`podRight − MARGIN_WIDTH`),
+  // the SAME reference the pod-anchored bolt uses.
   const x =
     side === "left"
       ? MARGINALIA_MARGIN_WIDTH -
         MARGINALIA_INNER_PAD -
         ICONS_BLOCK_WIDTH +
         col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP)
-      : MARGINALIA_INNER_PAD +
+      : MARGINALIA_GRID_X_RIGHT +
         col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP);
 
   return { col, row, x, y };

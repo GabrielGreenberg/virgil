@@ -6,17 +6,17 @@
  * head line of the current selection (or cursor, when no selection).
  * Clicking it mounts {@link ActionsMenuPanel} at the button's position.
  *
- * Single placement rule: the bolt's left edge sits at `textRight +
- * MARGINALIA_BOLT_LEFT_FROM_TEXT` (the right-margin geometry SSOT). The lane
- * was widened to give the bolt its OWN dedicated band just outboard of the
- * marker grid (`INNER_PAD + ICONS_BLOCK_WIDTH + BOLT_MARKER_GAP`), so the bolt
- * is disjoint from BOTH marker columns AND the scrollbar — fixing the original
- * complaint (a 28px bolt painting over the left marker column) without moving
- * any marker. This replaces both the grid-inner-edge placement and the old
- * `textRight + 6` (straddling the text/grid boundary). See the constant's
- * docstring for the lane geometry. RAF-batched updates on PM
- * `selectionUpdate` / `update` / `focus` / `blur` plus window `scroll` /
- * `resize`.
+ * Single placement rule: the bolt is POD-anchored via
+ * {@link computeBoltLeftFromPod} (the right-margin geometry SSOT), seated in
+ * its INBOARD band — between the text and the marker grid, so the marginalia
+ * markers sit to its RIGHT. Anchoring to `cache.podRight` (not `editorRight`)
+ * makes it margin-invariant (dragging `--editor-pr` wide moves text, markers,
+ * AND bolt together, so it never drifts onto the pod-anchored markers) and
+ * clipped-edge-correct in code view (the pod is inside the code-split clip, so
+ * `podRight` is the visible edge — the bolt no longer pops up over the code
+ * pane). A cramped compressed-split gutter falls back to a scrollbar-tuck; both
+ * regimes live in the pure SSOT fn. RAF-batched updates on PM `selectionUpdate`
+ * / `update` / `focus` / `blur` plus window `scroll` / `resize`.
  *
  * Counterpart triggers:
  *  - {@link SelectionDragHandle} (left side) for the drag-to-lift gesture.
@@ -38,7 +38,7 @@ import {
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 import {
-  MARGINALIA_BOLT_LEFT_FROM_TEXT,
+  computeBoltLeftFromPod,
   MARGINALIA_BOLT_SIZE,
 } from "@/lib/marginalia";
 
@@ -80,7 +80,7 @@ interface Placement {
  * head line's top.
  *
  * Per-keystroke cost: one `coordsAtPos(head)` + arithmetic on cached
- * editor metrics. The `cache` object holds editorRight, scrollTop,
+ * editor metrics. The `cache` object holds podRight, editorRight, scrollTop,
  * scrollBottom — values that only change on resize / layout shift.
  */
 function computePlacement(editor: Editor, cache: EditorViewportCache): Placement {
@@ -106,7 +106,6 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
     return INVISIBLE_PLACEMENT;
   }
 
-  const textRight = cache.editorRight;
   const scrollTop = cache.scrollTop;
   const scrollBottom = cache.scrollBottom;
 
@@ -123,13 +122,16 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
 
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  // Bolt x from the right-margin geometry SSOT (NOT the old standalone
-  // `textRight + 6`, which straddled the text/grid boundary and landed
-  // squarely on the marginalia grid's LEFT column — the user's complaint).
-  // `MARGINALIA_BOLT_LEFT_FROM_TEXT` seats the bolt in its OWN dedicated band
-  // just outboard of the marker grid — disjoint from both marker columns AND
-  // the scrollbar (the lane was widened to make room; see the docstring).
-  let left = textRight + MARGINALIA_BOLT_LEFT_FROM_TEXT;
+  // Bolt x from the right-margin geometry SSOT — POD-anchored, seated in its
+  // INBOARD band between the text and the marker grid (markers to its RIGHT).
+  // Anchoring to `cache.podRight` (not the old text-edge `editorRight`) makes
+  // it margin-invariant AND clipped-edge-correct in code view; the SSOT fn also
+  // handles the cramped compressed-split gutter. Both cache reads are already
+  // measured — no new subscriber, keystroke sanctity preserved.
+  let left = computeBoltLeftFromPod({
+    podRight: cache.podRight,
+    editorRight: cache.editorRight,
+  });
   if (left + BUTTON_SIZE > vw - VIEWPORT_MARGIN) {
     left = Math.max(VIEWPORT_MARGIN, vw - BUTTON_SIZE - VIEWPORT_MARGIN);
   }

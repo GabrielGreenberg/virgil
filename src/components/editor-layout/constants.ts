@@ -28,28 +28,30 @@ export const FLOATING_PANEL_Z_BASE = 1000;
 // left marker column). These constants are the ONE shared lane model that all
 // three derive from, so nothing collides at any margin width.
 //
-// The right margin (widened so all four bands are DISJOINT — backlog #8 +
-// follow-up), measured inward (leftward) from the pod's right edge:
+// The right margin is ONE ordered band list (`RIGHT_LANE_BANDS` in
+// marginalia.ts) so all four elements are DISJOINT by construction. The
+// selection bolt is now INBOARD of the marker grid (between the text and the
+// markers), so the markers sit to its RIGHT (task 2026-07-03-030). Measured
+// inward (leftward) from the pod's right edge:
 //
 //   pod right edge
 //        │
 //        ▼
 //   ┌──────────┐   SCROLLBAR_GUTTER (the scrollbar thumb's footprint)
-//   ├──┐           MARGINALIA_BOLT_SCROLLBAR_GAP (bolt clears the scrollbar)
-//   │⚡│←────────── selection bolt — its OWN band, OUTBOARD of the grid
-//   ├──┘
-//   ├────┐         MARGINALIA_BOLT_MARKER_GAP (bolt clears the marker grid)
-//   │grid│←──────── marker grid (UNCHANGED x; columns nearest the text)
+//   ├──┐           MARKER_SCROLLBAR_GAP (grid clears the scrollbar)
+//   │grid│←──────── marker grid (columns NEAREST the scrollbar now)
 //   └────┘
-//   [INNER_PAD]    gap between the grid's inner edge and the text edge
+//   ├────┐         MARGINALIA_BOLT_MARKER_GAP (bolt clears the marker grid)
+//   │⚡│←────────── selection bolt — its OWN band, INBOARD of the grid
+//   └──┘
+//   [INNER_PAD]    gap between the bolt band's inner edge and the text edge
 //        │
 //   text right edge
 //
 // Consumed by: editor-scrollbar.tsx (thumb width/inset), marginalia.ts
-// (MARGINALIA_OUTER_PAD_RIGHT now spans bolt-gap + bolt + scrollbar-gap +
-// scrollbar; the right margin width + the min-margin floor), and
-// SelectionActionsMenu.tsx (the bolt's x = MARGINALIA_BOLT_LEFT_FROM_TEXT, a
-// dedicated band OUTBOARD of the grid, disjoint from the markers + scrollbar).
+// (RIGHT_LANE_BANDS → the right margin width + the min-margin floor + the grid
+// col x + the bolt x), and SelectionActionsMenu.tsx (the pod-anchored bolt x
+// via `computeBoltLeftFromPod`, seated in the inboard band).
 
 /** Width of the overlay scrollbar thumb, in px. */
 export const SCROLLBAR_THUMB_WIDTH = 6;

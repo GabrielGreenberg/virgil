@@ -340,10 +340,9 @@ export const MARGINALIA_INNER_PAD = 8;
 
 /**
  * Edge length (px) of the square selection-bolt (⚡) button. Hoisted ABOVE the
- * right-margin width derivation because the lane width now reserves a dedicated
- * bolt band outboard of the marker grid (see `MARGINALIA_OUTER_PAD_RIGHT`), so
- * the width formula depends on this. The bolt's lane geometry derives from it,
- * so the one place the button's pixel size lives is here in the right-margin
+ * right-lane band list (`RIGHT_LANE_BANDS`) because the bolt is one of its bands
+ * (the inboard slot), so the lane width + the bolt/grid offsets all depend on
+ * this. The one place the button's pixel size lives is here in the right-margin
  * SSOT (SelectionActionsMenu.tsx imports it for its `width`/`height`). Sized to
  * one menu row's vertical rhythm.
  */
@@ -356,55 +355,129 @@ export const MARGINALIA_BOLT_SIZE = 28;
  */
 export const MARGINALIA_BOLT_MARKER_GAP = MARGINALIA_COL_GAP;
 /**
- * Breathing gap between the bolt band's right edge and the scrollbar gutter —
- * reuses the marker→scrollbar gap (3px) so the bolt clears the scrollbar by the
- * same ratified margin the grid used to.
+ * Clearance the bolt keeps from the scrollbar gutter when it is tucked into a
+ * CRAMPED code-view gutter (the compressed-split fallback in
+ * SelectionActionsMenu — the lane isn't reserved, so the bolt sits against the
+ * scrollbar rather than in its inboard slot). Equal to the ratified
+ * marker→scrollbar gap so the tucked bolt clears the bar by the same margin the
+ * grid does. In the NORMAL (lane-reserved) layout the bolt is INBOARD of the
+ * grid, so it never abuts the scrollbar — this only bites the cramped tuck.
  */
 export const MARGINALIA_BOLT_SCROLLBAR_GAP = MARKER_SCROLLBAR_GAP;
 
-/** Outer padding between the icon column and the panel/viewport edge.
- *
- *  LEFT is widened to 22px to host the heading fold-chevron in that strip
- *  (no scrollbar on the left).
- *
- *  RIGHT is the right-margin geometry SSOT (backlog #8, widened follow-up):
- *  the lane must seat THREE disjoint elements outboard of the marker grid —
- *  the selection bolt (⚡), then the overlay scrollbar — with breathing gaps:
- *
- *    [BOLT_MARKER_GAP 6] [BOLT 28] [BOLT_SCROLLBAR_GAP 3] [SCROLLBAR_GUTTER 9]
- *
- *  = 6 + 28 + 3 + 9 = 46. The old value packed the bolt ON TOP of the outboard
- *  marker column (only 12px of outer-pad, no room for a 28px bolt). Now the
- *  bolt gets its own dedicated band, disjoint from both marker columns AND the
- *  scrollbar. The marker grid's column x-offsets are UNCHANGED — only the lane
- *  (and hence the reserved `--editor-pr`) widens, so the markers don't move. */
+/** Outer padding between the icon column and the panel/viewport edge (LEFT).
+ *  Widened to 22px to host the heading fold-chevron in that strip (no scrollbar
+ *  on the left). The RIGHT side no longer has a single "outer pad" scalar — its
+ *  lane is the ordered `RIGHT_LANE_BANDS` SSOT below (the bolt band is now
+ *  INBOARD of the grid, so the lane isn't a simple [outer][icons][inner]). */
 export const MARGINALIA_OUTER_PAD_LEFT = 22;
-export const MARGINALIA_OUTER_PAD_RIGHT =
-  MARGINALIA_BOLT_MARKER_GAP +
-  MARGINALIA_BOLT_SIZE +
-  MARGINALIA_BOLT_SCROLLBAR_GAP +
-  SCROLLBAR_GUTTER;
 /** Back-compat alias — equal to LEFT, the side whose icon packing
  *  depends on the margin width. */
 export const MARGINALIA_OUTER_PAD = MARGINALIA_OUTER_PAD_LEFT;
 /**
  * Width of the icon block (both columns + the inter-column gap). Exported so
- * the right-margin geometry (and the selection bolt's lane derivation) can
- * compute the grid's inner edge without re-deriving the column math.
- * Layout per side: [OUTER_PAD] col col [INNER_PAD] [text edge]
+ * the left-margin geometry can compute the grid's inner edge without
+ * re-deriving the column math. Layout (left): [OUTER_PAD] col col [INNER_PAD]
+ * [text edge]. (The right side derives its column offsets from the band list.)
  */
 export const ICONS_BLOCK_WIDTH =
   MARGINALIA_COLS * MARGINALIA_ICON_SIZE +
   (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP;
 /**
- * Width of one margin, in pixels. Side-specific because the left margin
- * hosts the fold-chevron in its outer-pad strip and the right margin
- * reserves the scrollbar gutter.
+ * Width of the LEFT margin, in px — the left lane hosts the fold-chevron in its
+ * outer-pad strip and no scrollbar, so it keeps the simple scalar form.
  */
 export const MARGINALIA_MARGIN_WIDTH_LEFT =
   MARGINALIA_OUTER_PAD_LEFT + ICONS_BLOCK_WIDTH + MARGINALIA_INNER_PAD;
-export const MARGINALIA_MARGIN_WIDTH_RIGHT =
-  MARGINALIA_OUTER_PAD_RIGHT + ICONS_BLOCK_WIDTH + MARGINALIA_INNER_PAD;
+
+// ── Right-lane band SSOT ────────────────────────────────────────────────────
+//
+// The right margin seats FOUR chrome elements in ONE ordered lane, measured
+// rightward from the text edge (= the marker container's left edge, which is
+// `podRight − MARGINALIA_MARGIN_WIDTH_RIGHT`) out to the pod's right edge.
+// Expressing the lane as a single ordered band list makes disjointness a
+// STRUCTURAL invariant — sequential, non-overlapping bands cannot collide, so
+// no hand-checked docstring is load-bearing — and gives the bolt x, the marker
+// grid x, the scrollbar x, and the `--editor-pr` floor ONE source.
+//
+// BOLT_PLACEMENT = "inboard": the selection bolt (⚡) is the FIRST band after
+// the inner pad — between the text and the markers — so the marginalia markers
+// sit to its RIGHT (Gabriel, 2026-07-03). The prior design placed the bolt
+// OUTBOARD (at the lane's far edge) AND anchored it to the TEXT edge while the
+// markers are POD-anchored; the two coordinate systems only coincided at the
+// 104px floor, so dragging the right margin wide slid the pod-anchored markers
+// outboard while the text-anchored bolt stayed put → the bolt drifted onto the
+// markers. Seating the bolt inboard AND anchoring it to `podRight` (see
+// SelectionActionsMenu.computePlacement) makes it margin-invariant and, in code
+// view, automatically clipped-edge-correct (the pod is inside the clip).
+//
+//   text edge → [INNER_PAD 8][BOLT 28][BOLT_MARKER_GAP 6][col0 22][COL_GAP 6]
+//               [col1 22][MARKER_SCROLLBAR_GAP 3][SCROLLBAR_GUTTER 9] → pod edge
+//
+// The total is UNCHANGED at 104: the bolt band was already counted in the lane
+// (it just moved from the outer edge to the inboard slot), so the reserved
+// `--editor-pr` floor and the visible margin do NOT change — the markers shift
+// outward by exactly the bolt band, back to abutting the scrollbar (their
+// pre-bolt-band home), and the bolt takes the slot nearest the text.
+export const MARGINALIA_BOLT_PLACEMENT = "inboard" as const;
+
+interface RightLaneBand {
+  /** Stable key for offset lookups + the disjointness test. */
+  readonly key: string;
+  /** Band width in px. */
+  readonly width: number;
+}
+
+/** The ordered right-margin lane, text edge → pod edge. The `col0`/`col1`
+ *  bands ARE the marker columns, so the grid x and the bolt x derive from the
+ *  same list the scrollbar and the lane width do. */
+export const RIGHT_LANE_BANDS: readonly RightLaneBand[] = [
+  { key: "inner-pad", width: MARGINALIA_INNER_PAD },
+  { key: "bolt", width: MARGINALIA_BOLT_SIZE },
+  { key: "bolt-marker-gap", width: MARGINALIA_BOLT_MARKER_GAP },
+  { key: "col0", width: MARGINALIA_ICON_SIZE },
+  { key: "col-gap", width: MARGINALIA_COL_GAP },
+  { key: "col1", width: MARGINALIA_ICON_SIZE },
+  { key: "marker-scrollbar-gap", width: MARKER_SCROLLBAR_GAP },
+  { key: "scrollbar", width: SCROLLBAR_GUTTER },
+];
+
+/** Container-relative left offset (px) of a band = Σ widths before it. Pure;
+ *  throws on an unknown key so a typo can't silently read 0. */
+export function rightLaneOffset(key: string): number {
+  let x = 0;
+  for (const band of RIGHT_LANE_BANDS) {
+    if (band.key === key) return x;
+    x += band.width;
+  }
+  throw new Error(`unknown right-lane band: ${key}`);
+}
+
+/**
+ * Width of the RIGHT margin, in px — the sum of every band. Derived from the
+ * lane list so it cannot drift from the element offsets. (= 104.)
+ */
+export const MARGINALIA_MARGIN_WIDTH_RIGHT = RIGHT_LANE_BANDS.reduce(
+  (sum, band) => sum + band.width,
+  0,
+);
+
+/**
+ * Container-relative x of the marker grid's col0 (right side). Was
+ * `MARGINALIA_INNER_PAD` (8); the inboard bolt band now precedes it, so col0
+ * starts at `INNER_PAD + BOLT + BOLT_MARKER_GAP` (= 42). `cellAt` derives the
+ * right-side column x from this so the grid and the lane never diverge.
+ */
+export const MARGINALIA_GRID_X_RIGHT = rightLaneOffset("col0");
+
+/**
+ * Container-relative x of the selection bolt's LEFT edge (right side) — the
+ * inboard slot, one INNER_PAD off the text edge (= 8). The bolt is pod-anchored
+ * at render time: absolute left = `podRight − MARGINALIA_MARGIN_WIDTH_RIGHT +
+ * MARGINALIA_BOLT_X_RIGHT` (SelectionActionsMenu.computePlacement).
+ */
+export const MARGINALIA_BOLT_X_RIGHT = rightLaneOffset("bolt");
+
 /** Back-compat alias — equal to the LEFT margin width. Callers that care
  *  about side should use the side-specific constants above. */
 export const MARGINALIA_MARGIN_WIDTH = MARGINALIA_MARGIN_WIDTH_LEFT;
@@ -421,7 +494,7 @@ export const MARGINALIA_MARGIN_WIDTH = MARGINALIA_MARGIN_WIDTH_LEFT;
  * read-only Library reader hide markers, so they keep their margin freedom
  * down to 0 and never have this floor imposed.
  *
- *   right = INNER_PAD(8) + ICONS_BLOCK_WIDTH(50) + OUTER_PAD_RIGHT(46) = 104
+ *   right = Σ RIGHT_LANE_BANDS                                       = 104
  *   left  = INNER_PAD(8) + ICONS_BLOCK_WIDTH(50) + OUTER_PAD_LEFT(22)  = 80
  */
 export const MARGINALIA_MIN_MARGIN_RIGHT = MARGINALIA_MARGIN_WIDTH_RIGHT;
@@ -470,32 +543,55 @@ export function resolveHorizontalMargin(
 }
 
 /**
- * X-offset, measured rightward from the text edge (`editorRight`), of the
- * selection bolt's LEFT edge. The bolt is the transient ⚡ affordance shown at
- * the selection head; it lives in the right margin, NOT over the prose.
+ * Absolute viewport x (px) of the selection bolt's LEFT edge — POD-anchored.
  *
- * ── The bolt now has its OWN dedicated band (Option A — widened lane) ───────
- * The earlier design crammed the bolt into a 70px lane already packed with two
- * 22px marker columns + a 9px scrollbar gutter — there was no 28px hole, so the
- * bolt had to overlap the outboard marker column. The lane has since been
- * WIDENED (to 104px) to reserve a dedicated bolt band outboard of the marker
- * grid, so the bolt is disjoint from BOTH columns AND the scrollbar:
+ * The bolt (the transient ⚡ affordance at the selection head; it lives in the
+ * right margin, NOT over the prose) is anchored to `podRight`, not the text
+ * edge, so it tracks the pod-anchored marginalia markers instead of drifting
+ * onto them. Consequences, both for free from the one anchor change:
+ *   - NORMAL view: margin-invariant — dragging `--editor-pr` wide slides text
+ *     AND markers AND bolt together; the bolt stays in its inboard slot.
+ *   - CODE view: the pod sits INSIDE the code-split clip, so `podRight` is the
+ *     VISIBLE (clipped) edge; the bolt follows the shifted margin instead of
+ *     painting under the code pane (which the old text-edge anchor did, because
+ *     `overflowX:clip` had pushed the prose's natural right edge off-screen).
  *
- *   [INNER_PAD 8] [col0 8…30] [gap 30…36] [col1 36…58]   ← markers UNCHANGED
- *   [BOLT_MARKER_GAP 6] [BOLT 64…92] [BOLT_SCROLLBAR_GAP 3] [SCROLLBAR 95…104]
+ * Two regimes, discriminated PURELY by the available right margin
+ * (`podRight − editorRight`) so no `compressed` flag has to be threaded in:
  *
- * The bolt's left edge is anchored just outboard of the marker grid's inner
- * edge: `INNER_PAD + ICONS_BLOCK_WIDTH + BOLT_MARKER_GAP` = 8 + 50 + 6 = 64,
- * so the band spans [64…92]. That is:
- *   - disjoint from col0 (`8…30`) and col1 (`36…58`) — the bolt no longer
- *     paints over ANY marker column (the user's original complaint);
- *   - disjoint from the scrollbar (`95…104` at the min lane) — its right edge
- *     (92) clears the scrollbar's left edge (95) by exactly the
- *     BOLT_SCROLLBAR_GAP (3). For wider-than-min margins the scrollbar tracks
- *     the pod's right edge while the bolt stays fixed-from-text, so the gap
- *     only GROWS — the min lane is the tight case, and it is disjoint.
+ *  - LANE RESERVED (normal markers-on editor, margin ≥ the 104 floor): seat the
+ *    bolt in its inboard slot `podRight − MARGIN_WIDTH_RIGHT + BOLT_X_RIGHT` —
+ *    between the text and the markers, disjoint from both marker columns AND
+ *    the scrollbar by construction (the band SSOT). The slot is FIXED relative
+ *    to the pod, so it's statically reserved and never reflows per selection.
+ *  - CRAMPED (compressed code-split — only a ~48px gutter, lane NOT reserved):
+ *    the inboard slot would land `MARGIN_WIDTH_RIGHT − gutter` px back OVER the
+ *    prose, so instead tuck the bolt against the scrollbar inside whatever
+ *    gutter exists: `podRight − SCROLLBAR_GUTTER − BOLT_SCROLLBAR_GAP − BOLT`.
  *
- * The placement is fully derived from the lane SSOT, not ad-hoc.
+ * The discriminator IS the invariant: use the inboard slot only while it stays
+ * clear of the prose by at least INNER_PAD (`podRight − editorRight ≥
+ * MARGIN_WIDTH_RIGHT`); else fall to the gutter tuck. Pure (no DOM) so the
+ * placement is unit-testable away from the component; the caller (SelectionActi-
+ * onsMenu.computePlacement) supplies the two already-cached viewport metrics.
  */
-export const MARGINALIA_BOLT_LEFT_FROM_TEXT =
-  MARGINALIA_INNER_PAD + ICONS_BLOCK_WIDTH + MARGINALIA_BOLT_MARKER_GAP;
+export function computeBoltLeftFromPod({
+  podRight,
+  editorRight,
+}: {
+  podRight: number;
+  editorRight: number;
+}): number {
+  const inboard =
+    podRight - MARGINALIA_MARGIN_WIDTH_RIGHT + MARGINALIA_BOLT_X_RIGHT;
+  if (inboard >= editorRight + MARGINALIA_INNER_PAD) return inboard;
+  // Cramped code-view gutter — tuck the bolt against the scrollbar so it never
+  // overshoots back over the prose (Gabriel's "unless things get very cramped"
+  // exception; matches the compressed 48px gutter).
+  return (
+    podRight -
+    SCROLLBAR_GUTTER -
+    MARGINALIA_BOLT_SCROLLBAR_GAP -
+    MARGINALIA_BOLT_SIZE
+  );
+}
