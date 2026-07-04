@@ -279,7 +279,19 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
   }, [band, isLegacy, editor, rev.blocks, update]);
 
   const activate = useCallback(
-    (headings: { index: number; level: number }[], totalBlocks: number) => {
+    // `seedBlockIndex` (optional) is the top-level block the CURRENT section
+    // scope should grow from — the innermost active heading, or the doc-start
+    // par-title region (threaded by the caller from the live section-path). When
+    // omitted / unresolvable we fall back to the FIRST section, the historical
+    // default. It resolves through `sectionRange`, NOT `regionForNode`, so a
+    // mid-section caret (a non-heading block) seeds the ENCLOSING section rather
+    // than the bare block, and a doc-start par-title seeds the whole pre-heading
+    // region — matching "focus the section I'm in, one section at a time."
+    (
+      headings: { index: number; level: number }[],
+      totalBlocks: number,
+      seedBlockIndex?: number | null,
+    ) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
       let start: number;
@@ -288,7 +300,11 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
         start = 0;
         end = totalBlocks - 1;
       } else {
-        [start, end] = sectionRange(headings[0].index, headings, totalBlocks);
+        const seed =
+          seedBlockIndex != null && seedBlockIndex >= 0
+            ? seedBlockIndex
+            : headings[0].index;
+        [start, end] = sectionRange(seed, headings, totalBlocks);
       }
       update(() => bandFromIndices(doc, start, end, true, false));
     },

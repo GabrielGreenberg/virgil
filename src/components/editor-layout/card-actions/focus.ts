@@ -18,12 +18,16 @@ export function useFocusActions(deps: {
   focusMode: FocusMode;
   outlineHeadings: FocusHeading[];
   outlineTotalBlocks: number;
+  /** Top-level block index of the CURRENT section to seed focus-mode from when
+   *  it's first enabled — the innermost active heading, or the doc-start
+   *  par-title region, or null when nothing is measured yet (→ first section). */
+  currentSeedBlockIndex: number | null;
 }) {
-  const { focusMode, outlineHeadings, outlineTotalBlocks } = deps;
+  const { focusMode, outlineHeadings, outlineTotalBlocks, currentSeedBlockIndex } = deps;
 
   const handleFocusActivate = useCallback(() => {
-    focusMode.activate(outlineHeadings, outlineTotalBlocks);
-  }, [focusMode, outlineHeadings, outlineTotalBlocks]);
+    focusMode.activate(outlineHeadings, outlineTotalBlocks, currentSeedBlockIndex);
+  }, [focusMode, outlineHeadings, outlineTotalBlocks, currentSeedBlockIndex]);
 
   const handleFocusMoveTo = useCallback((blockIndex: number) => {
     focusMode.moveTo(blockIndex, outlineHeadings, outlineTotalBlocks);
