@@ -95,11 +95,23 @@ function makeApplied(
   };
 }
 
+// A controller stub with all four verbs (keep/dismiss/previewOriginal/
+// previewSuggested), each a spy. `isOn` toggles the defensive disable.
+function makeController(isOn = true) {
+  return {
+    isOn,
+    keep: vi.fn(),
+    dismiss: vi.fn(),
+    previewOriginal: vi.fn(),
+    previewSuggested: vi.fn(),
+  };
+}
+
 // Minimal no-op prop bag. NOTE: onKeep/onRevert are intentionally OMITTED — the
 // omni/float condition. onApply is also omitted (not a pending card).
 function renderApplied(
   card: RevisionSuggestionCardData,
-  controller: { isOn: boolean; keep: (f: string, id: string) => void; revert: (f: string, id: string) => void },
+  controller: ReturnType<typeof makeController>,
 ) {
   return render(
     <PendingChangeControllerProvider value={controller}>
@@ -118,37 +130,66 @@ function renderApplied(
 }
 
 describe("Applied revision-suggestion card — surface parity (omni/float condition)", () => {
-  it("renders Keep + Revert WITHOUT onKeep/onRevert callbacks", () => {
-    renderApplied(makeApplied(), { isOn: true, keep: vi.fn(), revert: vi.fn() });
-    expect(screen.getByText("Keep")).toBeTruthy();
-    expect(screen.getByText("Revert")).toBeTruthy();
+  it("renders the Original/Suggested toggle + Keep/Dismiss commit icons WITHOUT per-mount callbacks", () => {
+    renderApplied(makeApplied(), makeController());
+    expect(screen.getByRole("button", { name: "Preview original" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Preview suggested" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Keep change" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Dismiss change" })).toBeTruthy();
   });
 
-  it("routes Keep/Revert through the controller with the family + id", () => {
-    const keep = vi.fn();
-    const revert = vi.fn();
-    renderApplied(makeApplied(), { isOn: true, keep, revert });
+  it("routes Check (keep) / Cross (dismiss) through the controller with the family + id", () => {
+    const controller = makeController();
+    renderApplied(makeApplied(), controller);
 
-    fireEvent.click(screen.getByText("Keep"));
-    expect(keep).toHaveBeenCalledWith("revision-suggestion", "rs1");
-    expect(revert).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Keep change" }));
+    expect(controller.keep).toHaveBeenCalledWith("revision-suggestion", "rs1");
+    expect(controller.dismiss).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByText("Revert"));
-    expect(revert).toHaveBeenCalledWith("revision-suggestion", "rs1");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss change" }));
+    expect(controller.dismiss).toHaveBeenCalledWith("revision-suggestion", "rs1");
   });
 
-  it("hides the original until the 'Original' chevron is clicked", () => {
-    renderApplied(makeApplied(), { isOn: true, keep: vi.fn(), revert: vi.fn() });
+  it("routes the preview toggle through the controller (non-committing)", () => {
+    const controller = makeController();
+    renderApplied(makeApplied(), controller);
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview original" }));
+    expect(controller.previewOriginal).toHaveBeenCalledWith("revision-suggestion", "rs1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview suggested" }));
+    expect(controller.previewSuggested).toHaveBeenCalledWith("revision-suggestion", "rs1");
+    // The toggle NEVER commits.
+    expect(controller.keep).not.toHaveBeenCalled();
+    expect(controller.dismiss).not.toHaveBeenCalled();
+  });
+
+  it("renders the explanation always-on when present, omits it when empty", () => {
+    const { unmount } = renderApplied(
+      makeApplied({ explanation: "Tightened the clause for concision." }),
+      makeController(),
+    );
+    expect(screen.getByText("Tightened the clause for concision.")).toBeTruthy();
+    unmount();
+
+    // Empty explanation → the field is omitted entirely.
+    renderApplied(makeApplied({ explanation: "" }), makeController());
+    expect(document.querySelector("[data-applied-explanation]")).toBeNull();
+  });
+
+  it("hides the original text until the 'Original text' chevron is clicked", () => {
+    renderApplied(makeApplied(), makeController());
     // Collapsed by default: no rendered original (the stubbed BorrowedMainText).
     expect(screen.queryByTestId("borrowed")).toBeNull();
-    // Click the Original disclosure to expand.
-    fireEvent.click(screen.getByRole("button", { name: "Show original" }));
+    // Click the Original-text disclosure to expand.
+    fireEvent.click(screen.getByRole("button", { name: "Show original text" }));
     expect(screen.getByTestId("borrowed")).toBeTruthy();
   });
 
-  it("disables Keep/Revert when the controller is off (defensive)", () => {
-    renderApplied(makeApplied(), { isOn: false, keep: vi.fn(), revert: vi.fn() });
-    expect((screen.getByText("Keep") as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByText("Revert") as HTMLButtonElement).disabled).toBe(true);
+  it("disables every control when the controller is off (defensive)", () => {
+    renderApplied(makeApplied(), makeController(false));
+    expect((screen.getByRole("button", { name: "Keep change" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Dismiss change" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Preview original" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

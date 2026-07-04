@@ -142,7 +142,7 @@ interface OmniViewPanelProps {
   bulkPendingChanges?: {
     count: number;
     onKeepAll: () => void;
-    onRevertAll: () => void;
+    onDismissAll: () => void;
   };
   // Pin-driven per-card positioning replaces the old global `cardsOffset`
   // and `cardsSilent` props. See `@/components/editor-layout/omni-pin-store`.
@@ -416,14 +416,15 @@ export function OmniOutsideFocusBin({
  * blue ranges can be anywhere in the doc). It's a flow sibling ABOVE the
  * `position:relative` cascade pod (`panelScrollRef`), not inside it, so it
  * cannot desync the absolute-positioned cascade — the cards pack below it. Keep
- * = warm (affirmative), Revert = ghost (quiet), mirroring the pill + the gutter
- * control. Each click drains the WHOLE applied set through the shared
+ * = warm (affirmative), Dismiss = ghost (quiet), mirroring the pill + the gutter
+ * control. Dismiss-all PRESERVES (restores original + archives) every card —
+ * never hard-deletes. Each click drains the WHOLE applied set through the shared
  * `pending-change-actions` sequence the host wired.
  */
 function OmniBulkPendingHeader({
   bulk,
 }: {
-  bulk: { count: number; onKeepAll: () => void; onRevertAll: () => void };
+  bulk: { count: number; onKeepAll: () => void; onDismissAll: () => void };
 }) {
   const label = `${bulk.count} pending change${bulk.count === 1 ? "" : "s"}`;
   return (
@@ -441,11 +442,11 @@ function OmniBulkPendingHeader({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            bulk.onRevertAll();
+            bulk.onDismissAll();
           }}
-          data-hint="Revert every applied change"
+          data-hint="Dismiss every applied change (restores originals, archives the cards)"
         >
-          Revert all
+          Dismiss all
         </Button>
         <Button
           variant="warm"

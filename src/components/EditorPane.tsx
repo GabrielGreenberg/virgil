@@ -272,7 +272,10 @@ import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import {
   keepSuggestion,
-  revertSuggestion,
+  dismissSuggestion,
+  previewOriginal as previewOriginalSuggestion,
+  previewSuggested as previewSuggestedSuggestion,
+  type PendingChangeCardDeps,
 } from "@/links/pending-change-actions";
 import {
   isAppliedPending,
@@ -2483,82 +2486,83 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // applied handler is ever
   // emitted, so these are unreachable — byte-identical OFF). `editor` is the
   // reactive instance the rest of EditorPane threads.
+  // Per-family deps bag for the shared `pending-change-actions` sequence. Built
+  // fresh at ACTION time (a click) so it reads the live cards; its `useCallback`
+  // identity is keystroke-stable (deps: the keystroke-stable hook object), which
+  // is what keeps the controller/index/bulk memos below stable across typing.
+  const revisionPendingDeps = useCallback(
+    (): PendingChangeCardDeps<RevisionSuggestionCard["status"]> => ({
+      getAppliedChange: (cid) =>
+        revisionsHook.cards.find(
+          (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
+        )?.appliedChange,
+      setSuggestionStatus: revisionsHook.setSuggestionStatus,
+      setArchived: revisionsHook.setArchived,
+      setAppliedChange: revisionsHook.setAppliedChange,
+      family: "revision-suggestion",
+      acceptedStatus: "accepted",
+      rejectedStatus: "rejected",
+    }),
+    [revisionsHook],
+  );
+  const cutterPendingDeps = useCallback(
+    (): PendingChangeCardDeps<CutterSuggestionCard["status"]> => ({
+      getAppliedChange: (cid) =>
+        cutterHook.cards.find(
+          (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+        )?.appliedChange,
+      setSuggestionStatus: cutterHook.setSuggestionStatus,
+      setArchived: cutterHook.setArchived,
+      setAppliedChange: cutterHook.setAppliedChange,
+      family: "cutter-suggestion",
+      acceptedStatus: "accepted",
+      rejectedStatus: "rejected",
+    }),
+    [cutterHook],
+  );
+
+  // Per-card COMMIT closures (Check = keep, Cross = dismiss-preserves), threaded
+  // to the gutter marker / pill / omni bulk index. The flag + editor-mounted
+  // guard lives here (flag-OFF: no applied card ever exists, so these are
+  // unreachable — byte-identical OFF).
   const onKeepRevisionPending = useCallback(
     (id: string) => {
       if (!isPendingChangesOn() || !editor) return;
-      keepSuggestion<RevisionSuggestionCard["status"]>(editor, id, docId, {
-        getAppliedChange: (cid) =>
-          revisionsHook.cards.find(
-            (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
-          )?.appliedChange,
-        setSuggestionStatus: revisionsHook.setSuggestionStatus,
-        setArchived: revisionsHook.setArchived,
-        setAppliedChange: revisionsHook.setAppliedChange,
-        deleteCard: revisionsHook.deleteCard,
-        acceptedStatus: "accepted",
-      });
+      keepSuggestion(editor, id, docId, revisionPendingDeps());
     },
-    [editor, docId, revisionsHook],
+    [editor, docId, revisionPendingDeps],
   );
-  const onRevertRevisionPending = useCallback(
+  const onDismissRevisionPending = useCallback(
     (id: string) => {
       if (!isPendingChangesOn() || !editor) return;
-      revertSuggestion<RevisionSuggestionCard["status"]>(editor, id, docId, {
-        getAppliedChange: (cid) =>
-          revisionsHook.cards.find(
-            (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
-          )?.appliedChange,
-        setSuggestionStatus: revisionsHook.setSuggestionStatus,
-        setArchived: revisionsHook.setArchived,
-        setAppliedChange: revisionsHook.setAppliedChange,
-        deleteCard: revisionsHook.deleteCard,
-        acceptedStatus: "accepted",
-      });
+      dismissSuggestion(editor, id, docId, revisionPendingDeps());
     },
-    [editor, docId, revisionsHook],
+    [editor, docId, revisionPendingDeps],
   );
   const onKeepCutterPending = useCallback(
     (id: string) => {
       if (!isPendingChangesOn() || !editor) return;
-      keepSuggestion<CutterSuggestionCard["status"]>(editor, id, docId, {
-        getAppliedChange: (cid) =>
-          cutterHook.cards.find(
-            (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
-          )?.appliedChange,
-        setSuggestionStatus: cutterHook.setSuggestionStatus,
-        setArchived: cutterHook.setArchived,
-        setAppliedChange: cutterHook.setAppliedChange,
-        deleteCard: cutterHook.deleteCard,
-        acceptedStatus: "accepted",
-      });
+      keepSuggestion(editor, id, docId, cutterPendingDeps());
     },
-    [editor, docId, cutterHook],
+    [editor, docId, cutterPendingDeps],
   );
-  const onRevertCutterPending = useCallback(
+  const onDismissCutterPending = useCallback(
     (id: string) => {
       if (!isPendingChangesOn() || !editor) return;
-      revertSuggestion<CutterSuggestionCard["status"]>(editor, id, docId, {
-        getAppliedChange: (cid) =>
-          cutterHook.cards.find(
-            (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
-          )?.appliedChange,
-        setSuggestionStatus: cutterHook.setSuggestionStatus,
-        setArchived: cutterHook.setArchived,
-        setAppliedChange: cutterHook.setAppliedChange,
-        deleteCard: cutterHook.deleteCard,
-        acceptedStatus: "accepted",
-      });
+      dismissSuggestion(editor, id, docId, cutterPendingDeps());
     },
-    [editor, docId, cutterHook],
+    [editor, docId, cutterPendingDeps],
   );
 
-  // The SSOT controller any suggestion-card body reads for its applied
-  // Keep/Revert (docked panel, omni, float, margin) — see
-  // `pending-change-controller`. Reuses the stable `onKeep*Pending` /
-  // `onRevert*Pending` closures above, so its identity is constant across
-  // keystrokes (deps are all stable `useCallback` refs + the reactive
-  // `editor`). Do NOT add `revisionsHook.cards`/`cutterHook.cards` here —
-  // that would break keystroke sanctity for every consuming card body.
+  // The SSOT controller any suggestion-card body reads for its applied-change
+  // controls (docked panel, omni, float, margin) — see
+  // `pending-change-controller`. Commit (keep/dismiss) reuses the stable
+  // per-card closures; the NON-committing preview verbs route by family to the
+  // shared action fns (card-body-only — the pill/bulk stay commit-only). Its
+  // identity is constant across keystrokes (deps are all keystroke-stable
+  // `useCallback` refs + the reactive `editor`/`docId`). Do NOT add
+  // `revisionsHook.cards`/`cutterHook.cards` here — that would break keystroke
+  // sanctity for every consuming card body.
   const pendingController = useMemo<PendingChangeController>(
     () => ({
       isOn: isPendingChangesOn() && !!editor,
@@ -2566,24 +2570,45 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         if (family === "revision-suggestion") onKeepRevisionPending(id);
         else onKeepCutterPending(id);
       },
-      revert: (family, id) => {
-        if (family === "revision-suggestion") onRevertRevisionPending(id);
-        else onRevertCutterPending(id);
+      dismiss: (family, id) => {
+        if (family === "revision-suggestion") onDismissRevisionPending(id);
+        else onDismissCutterPending(id);
+      },
+      previewOriginal: (family, id) => {
+        if (!isPendingChangesOn() || !editor) return;
+        previewOriginalSuggestion(
+          editor,
+          id,
+          docId,
+          family === "revision-suggestion" ? revisionPendingDeps() : cutterPendingDeps(),
+        );
+      },
+      previewSuggested: (family, id) => {
+        if (!isPendingChangesOn() || !editor) return;
+        previewSuggestedSuggestion(
+          editor,
+          id,
+          docId,
+          family === "revision-suggestion" ? revisionPendingDeps() : cutterPendingDeps(),
+        );
       },
     }),
     [
       editor,
+      docId,
+      revisionPendingDeps,
+      cutterPendingDeps,
       onKeepRevisionPending,
-      onRevertRevisionPending,
+      onDismissRevisionPending,
       onKeepCutterPending,
-      onRevertCutterPending,
+      onDismissCutterPending,
     ],
   );
 
   // ── Phase 3 — the floating pill's target index + the omni bulk handlers ──
   // The pill (rendered below, inside the CardStoreProvider) and the omni
-  // Keep-all / Revert-all both need the applied-pending suggestion set. Derive
-  // ONE index — `kind:id` → { anchorId, onKeep, onRevert } — from the applied
+  // Keep-all / Dismiss-all both need the applied-pending suggestion set. Derive
+  // ONE index — `kind:id` → { anchorId, onKeep, onDismiss } — from the applied
   // revision + cutter cards, each routed through the SAME per-card callbacks the
   // gutter uses (so the pill, gutter, and bulk index are byte-identical). The
   // memo is gated on the card arrays + the flag; a plain keystroke bumps neither,
@@ -2598,7 +2623,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       map.set(`revision-suggestion:${r.id}`, {
         anchorId: r.appliedChange.anchorId,
         onKeep: () => onKeepRevisionPending(r.id),
-        onRevert: () => onRevertRevisionPending(r.id),
+        onDismiss: () => onDismissRevisionPending(r.id),
       });
     }
     for (const c of cutterHook.cards) {
@@ -2607,7 +2632,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       map.set(`cutter-suggestion:${c.id}`, {
         anchorId: c.appliedChange.anchorId,
         onKeep: () => onKeepCutterPending(c.id),
-        onRevert: () => onRevertCutterPending(c.id),
+        onDismiss: () => onDismissCutterPending(c.id),
       });
     }
     return map;
@@ -2615,43 +2640,44 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     revisionsHook.cards,
     cutterHook.cards,
     onKeepRevisionPending,
-    onRevertRevisionPending,
+    onDismissRevisionPending,
     onKeepCutterPending,
-    onRevertCutterPending,
+    onDismissCutterPending,
   ]);
 
-  // Bulk Keep-all / Revert-all — iterate the applied AI cards of one family
-  // through the shared per-card sequence. `keepSuggestion`/`revertSuggestion`
+  // Bulk Keep-all / Dismiss-all — iterate the applied AI cards of one family
+  // through the shared per-card sequence. `keepSuggestion`/`dismissSuggestion`
   // re-read the live card by id, so applying them in source order is safe even
   // as each splice shifts later positions (the next id re-resolves its own
-  // appliedChange). Click handlers only — no ticks, no per-keystroke work.
+  // appliedChange). Dismiss-all PRESERVES (archives) every card — never deletes.
+  // Click handlers only — no ticks, no per-keystroke work.
   const keepAllRevisionPending = useCallback(() => {
     if (!isPendingChangesOn()) return;
     for (const id of collectAppliedPendingIds(revisionsHook.cards)) {
       onKeepRevisionPending(id);
     }
   }, [revisionsHook.cards, onKeepRevisionPending]);
-  const revertAllRevisionPending = useCallback(() => {
+  const dismissAllRevisionPending = useCallback(() => {
     if (!isPendingChangesOn()) return;
     for (const id of collectAppliedPendingIds(revisionsHook.cards)) {
-      onRevertRevisionPending(id);
+      onDismissRevisionPending(id);
     }
-  }, [revisionsHook.cards, onRevertRevisionPending]);
+  }, [revisionsHook.cards, onDismissRevisionPending]);
   const keepAllCutterPending = useCallback(() => {
     if (!isPendingChangesOn()) return;
     for (const id of collectAppliedPendingIds(cutterHook.cards)) {
       onKeepCutterPending(id);
     }
   }, [cutterHook.cards, onKeepCutterPending]);
-  const revertAllCutterPending = useCallback(() => {
+  const dismissAllCutterPending = useCallback(() => {
     if (!isPendingChangesOn()) return;
     for (const id of collectAppliedPendingIds(cutterHook.cards)) {
-      onRevertCutterPending(id);
+      onDismissCutterPending(id);
     }
-  }, [cutterHook.cards, onRevertCutterPending]);
+  }, [cutterHook.cards, onDismissCutterPending]);
 
   // The unified bulk affordance threaded to OmniHost → OmniViewPanel: one
-  // Keep-all / Revert-all that drains BOTH families (revision + cutter), plus
+  // Keep-all / Dismiss-all that drains BOTH families (revision + cutter), plus
   // the count so the header only renders when something is applied. Stable
   // unless a family's applied set or a per-family bulk callback changes.
   const omniBulkPendingChanges = useMemo(() => {
@@ -2664,9 +2690,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         keepAllRevisionPending();
         keepAllCutterPending();
       },
-      onRevertAll: () => {
-        revertAllRevisionPending();
-        revertAllCutterPending();
+      onDismissAll: () => {
+        dismissAllRevisionPending();
+        dismissAllCutterPending();
       },
     };
   }, [
@@ -2674,8 +2700,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     cutterHook.cards,
     keepAllRevisionPending,
     keepAllCutterPending,
-    revertAllRevisionPending,
-    revertAllCutterPending,
+    dismissAllRevisionPending,
+    dismissAllCutterPending,
   ]);
 
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
@@ -6603,15 +6629,16 @@ interface PaneRailProps {
    *  its `PageScrollStrip` here so the drag-gap line lands just inboard
    *  of the page-mark navigator. */
   tail?: React.ReactNode;
-  /** Phase 3 — the omni bulk Keep-all / Revert-all affordance for applied
+  /** Phase 3 — the omni bulk Keep-all / Dismiss-all affordance for applied
    *  pending AI changes. Built once in EditorPane from the applied revision +
    *  cutter cards (routed through the shared `pending-change-actions` sequence)
    *  and threaded to OmniHost, which renders it on the side hosting the applied
-   *  cards. Absent / count 0 → no header. */
+   *  cards. Dismiss-all PRESERVES (archives) each card. Absent / count 0 → no
+   *  header. */
   omniBulkPendingChanges?: {
     count: number;
     onKeepAll: () => void;
-    onRevertAll: () => void;
+    onDismissAll: () => void;
   };
 }
 

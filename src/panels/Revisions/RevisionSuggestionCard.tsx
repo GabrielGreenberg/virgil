@@ -169,12 +169,14 @@ export function RevisionSuggestionCard({
       headerTrailing={<RevisionSuggestionTrailing card={card} />}
     >
       {isApplied ? (
-        // Flag-ON applied: the minimal surviving original-record card. Wins over
-        // `compressed` so Keep/Revert are always reachable. Keep/Revert route
-        // through the PendingChangeController context (family-tagged).
+        // Flag-ON applied: the surviving original-record card. Wins over
+        // `compressed` so the preview toggle + commit icons are always reachable.
+        // Every action routes through the PendingChangeController context
+        // (family-tagged); `explanation` surfaces what the AI did and why.
         <AppliedRecordBody
           id={card.id}
           originalText={card.appliedChange?.originalText ?? card.original_text}
+          explanation={card.explanation}
           cardKind="revision-suggestion"
           panelKey="revision"
           themeKey="revision"

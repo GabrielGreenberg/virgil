@@ -18,7 +18,8 @@ import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import {
   applySuggestion,
   keepSuggestion,
-  revertSuggestion,
+  dismissSuggestion,
+  type PendingChangeCardDeps,
 } from "@/links/pending-change-actions";
 import { generateEntityId } from "@/lib/uuid";
 import { useDocWriteHandleOrNull } from "../DocPipeline";
@@ -156,40 +157,35 @@ export function CutterHost(p: CutterHostProps) {
   // Keep / Revert route through the shared `pending-change-actions` sequence
   // (the same one the EditorPane margin-gutter marker calls — Phase 1c), so the
   // card surface and the gutter stay byte-identical.
+  const cutterPendingDeps = useCallback(
+    (): PendingChangeCardDeps<CutterSuggestionCard["status"]> => ({
+      getAppliedChange: (cid) =>
+        p.cards.find(
+          (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+        )?.appliedChange,
+      setSuggestionStatus: p.setSuggestionStatus,
+      setArchived: p.setArchived,
+      setAppliedChange: p.setAppliedChange,
+      family: "cutter-suggestion",
+      acceptedStatus: "accepted",
+      rejectedStatus: "rejected",
+    }),
+    [p],
+  );
   const onKeepSuggestion = useCallback(
     (id: string) => {
       if (!isPendingChangesOn() || !editorInstance) return;
-      keepSuggestion<CutterSuggestionCard["status"]>(editorInstance, id, docId, {
-        getAppliedChange: (cid) =>
-          p.cards.find(
-            (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
-          )?.appliedChange,
-        setSuggestionStatus: p.setSuggestionStatus,
-        setArchived: p.setArchived,
-        setAppliedChange: p.setAppliedChange,
-        deleteCard: p.deleteCard,
-        acceptedStatus: "accepted",
-      });
+      keepSuggestion(editorInstance, id, docId, cutterPendingDeps());
     },
-    [p, editorInstance, docId],
+    [editorInstance, docId, cutterPendingDeps],
   );
 
   const onRevertSuggestion = useCallback(
     (id: string) => {
       if (!isPendingChangesOn() || !editorInstance) return;
-      revertSuggestion<CutterSuggestionCard["status"]>(editorInstance, id, docId, {
-        getAppliedChange: (cid) =>
-          p.cards.find(
-            (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
-          )?.appliedChange,
-        setSuggestionStatus: p.setSuggestionStatus,
-        setArchived: p.setArchived,
-        setAppliedChange: p.setAppliedChange,
-        deleteCard: p.deleteCard,
-        acceptedStatus: "accepted",
-      });
+      dismissSuggestion(editorInstance, id, docId, cutterPendingDeps());
     },
-    [p, editorInstance, docId],
+    [editorInstance, docId, cutterPendingDeps],
   );
 
   return (

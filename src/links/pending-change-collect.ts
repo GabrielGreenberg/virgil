@@ -1,7 +1,7 @@
 /**
  * Phase 3 — pure collectors for the "applied pending AI change" set.
  *
- * Both the omni BULK index (Keep-all / Revert-all) and the floating PILL need
+ * Both the omni BULK index (Keep-all / Dismiss-all) and the floating PILL need
  * to identify which suggestion cards are currently in the `status:"applied"`
  * (spliced-but-not-yet-kept) pending state. The membership rule is a single
  * predicate — `status === "applied"` AND an `appliedChange` descriptor is
@@ -34,7 +34,7 @@ export interface AppliedPendingCard {
 
 /** True iff `card` is an applied, spliced-but-not-yet-kept suggestion — the
  *  exact set the pill targets and Keep-all / Revert-all iterate. A card without
- *  an `appliedChange` (a comment, or an already-kept / reverted / never-applied
+ *  an `appliedChange` (a comment, or an already-kept / dismissed / never-applied
  *  suggestion) is excluded, so the bulk + pill actions never reach the
  *  `pending-change-actions` no-op path. Accepts the broad card union (comment +
  *  suggestion) so callers pass a card array straight through. */
@@ -47,7 +47,7 @@ export function isAppliedPending(
 
 /** Collect the applied-pending suggestion ids from one card array (revision OR
  *  cutter). Order-stable (source order). Used by the omni bulk action to drive
- *  each id through `keepSuggestion` / `revertSuggestion`. */
+ *  each id through `keepSuggestion` / `dismissSuggestion`. */
 export function collectAppliedPendingIds(
   cards: ReadonlyArray<RevisionCard | CutterCard>,
 ): string[] {

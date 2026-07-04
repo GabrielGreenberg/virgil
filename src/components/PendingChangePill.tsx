@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * The Keep / Revert pill for an applied pending AI change — the ONLY in-context
- * Keep/Revert affordance now that the gutter marker's hover chips were removed
+ * The Keep / Dismiss pill for an applied pending AI change — the ONLY in-context
+ * commit affordance now that the gutter marker's hover chips were removed
  * (margin-declutter pass). It's a quiet, EPHEMERAL control that materializes in
  * the LEFT MARGIN, level with the blue change, whenever that change is HOVERED
  * (text mark / margin marker / panel card — the three-surface cardStore halo) or
  * FOCUSED (caret inside the blue range). Same shared `keepSuggestion` /
- * `revertSuggestion` orchestration the card surface uses.
+ * `dismissSuggestion` orchestration the card surface uses.
  *
  * ── Placement (left margin) ───────────────────────────────────────────────────
  * The pill is a `position:fixed` portal. Each event that could move/hide it runs
@@ -59,7 +59,32 @@ import {
 } from "@/hooks/useEditorViewportCache";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
-import { Button } from "@/components/panel-primitives";
+/** A check (Keep) / cross (Dismiss) glyph for the pill's commit icons — mirrors
+ *  the applied-card body's commit icons. */
+function PillGlyph({ kind }: { kind: "check" | "cross" }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {kind === "check" ? (
+        <polyline points="20 6 9 17 4 12" />
+      ) : (
+        <>
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </>
+      )}
+    </svg>
+  );
+}
 
 const VIEWPORT_MARGIN = 8;
 /** How far LEFT of the paragraph's text-column edge the pill's right edge sits,
@@ -69,13 +94,15 @@ const VIEWPORT_MARGIN = 8;
 const GRAB_BAR_CLEARANCE = 28;
 
 /** The applied-pending target the pill currently acts on: the resolved card ref
- *  plus the splice's anchorId (resolves the blue range) and the two Keep/Revert
- *  closures EditorPane built (the SAME `pending-change-actions` sequence the
- *  gutter + card surface use). */
+ *  plus the splice's anchorId (resolves the blue range) and the two commit
+ *  closures EditorPane built — Keep (finalize suggested) and Dismiss
+ *  (restore-original + archive, never delete). SAME `pending-change-actions`
+ *  sequence the gutter + card surface use. The pill is commit-only: the
+ *  non-committing Original/Suggested preview toggle lives on the expanded card. */
 export interface PendingChangeTarget {
   anchorId: string;
   onKeep: () => void;
-  onRevert: () => void;
+  onDismiss: () => void;
 }
 
 /** `kind:id` → target. EditorPane derives this from the applied suggestion
@@ -397,28 +424,34 @@ export function PendingChangePill({
       // selection before the click registers (mirrors the margin bolt).
       onMouseDown={(e) => e.preventDefault()}
     >
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          target.onRevert();
-        }}
-      >
-        Revert
-      </Button>
-      <Button
-        variant="warm"
-        size="sm"
+      {/* Check — keep (finalize the suggested text). */}
+      <button
+        type="button"
+        aria-label="Keep change"
+        title="Keep"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           target.onKeep();
         }}
+        className="inline-flex items-center justify-center h-6 w-6 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors"
       >
-        Keep
-      </Button>
+        <PillGlyph kind="check" />
+      </button>
+      {/* Cross — dismiss (restore original + archive; never deletes). */}
+      <button
+        type="button"
+        aria-label="Dismiss change"
+        title="Dismiss (restores original, archives the card)"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          target.onDismiss();
+        }}
+        className="inline-flex items-center justify-center h-6 w-6 rounded-md text-ink-subtle hover:bg-danger-soft hover:text-danger transition-colors"
+      >
+        <PillGlyph kind="cross" />
+      </button>
     </div>,
     document.body,
   );

@@ -1,20 +1,28 @@
 // @vitest-environment node
 //
-// Phase 1c — the shared Keep / Revert orchestration (pending-change-actions.ts).
+// The shared applied-change orchestration (pending-change-actions.ts).
 //
 // This is the deriver both the card-surface hosts AND the EditorPane
-// margin-gutter marker call, so a unit test here pins the SEQUENCE both drivers
-// share. The heavy collaborators (`apply-suggestion`'s doc splice + the
+// margin-gutter marker / pill call, so a unit test here pins the SEQUENCE all
+// drivers share. The heavy collaborators (`apply-suggestion`'s doc splice + the
 // multi-window `.tex` flush) are mocked — we assert the orchestration, not the
 // (already-tested) splice mechanics:
 //
 //   1. Keep: splices via keepPendingChange, flushes the .tex BEFORE flipping
 //      card state, then status→accepted + archived→true + appliedChange→undefined.
-//   2. Revert: splices via revertPendingChange, flushes, then deletes the card.
+//   2. Dismiss (SESSION 4 — dismiss-PRESERVES): splices via revertPendingChange,
+//      flushes, then status→rejected + archived→true + appliedChange→undefined —
+//      and NEVER hard-deletes the card (no deleteCard in the deps anymore).
 //   3. Both no-op (no splice, no flush, no state change) when the card carries
-//      no appliedChange — a stale double-Keep / double-Revert.
+//      no appliedChange — a stale double-Keep / double-Cross.
 //   4. docId === null skips the flush (offline / not-yet-registered doc) but
 //      still completes the card-state transition.
+//   5. Preview toggle (previewOriginal / previewSuggested): non-committing —
+//      splices + records the preview dir, but NEVER touches card status /
+//      archived / appliedChange.
+//   6. Mid-preview commit determinism: Check reconciles from `appliedChange`
+//      (re-applies the suggested view when previewing original) BEFORE keeping;
+//      Cross is idempotent from either preview direction.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -41,12 +49,19 @@ vi.mock("@/lib/multi-window/pending-saves", () => ({
 
 import {
   keepSuggestion,
-  revertSuggestion,
+  dismissSuggestion,
+  previewOriginal,
+  previewSuggested,
   applySuggestion,
   type AppliedChangeDescriptor,
   type PendingChangeCardDeps,
   type SuggestionLike,
 } from "@/links/pending-change-actions";
+import {
+  getPreviewDir,
+  resetPreviewDir,
+  setPreviewDir,
+} from "@/links/pending-preview-store";
 import type { Editor } from "@tiptap/react";
 
 const editor = {} as Editor;
@@ -60,19 +75,29 @@ const ac: AppliedChangeDescriptor = {
   appliedAt: "2026-06-30T00:00:00.000Z",
 };
 
+const deleteAc: AppliedChangeDescriptor = {
+  ...ac,
+  replacement: "",
+  mode: "delete",
+};
+
 /** A deps bag with vi.fn mutators + a single applied card "c1". The mutators
  *  are typed as the `PendingChangeCardDeps` fields (so the bag satisfies the
- *  generic), and re-read off the returned object as `vi.Mock` in assertions. */
+ *  generic), and re-read off the returned object as `vi.Mock` in assertions.
+ *  `over` swaps in a different appliedChange (e.g. the delete-mode descriptor). */
 function makeDeps(
   hasApplied: boolean,
-): PendingChangeCardDeps<"accepted" | "applied"> {
+  applied: AppliedChangeDescriptor = ac,
+): PendingChangeCardDeps<"accepted" | "applied" | "rejected"> {
   return {
-    getAppliedChange: (id: string) => (hasApplied && id === "c1" ? ac : undefined),
+    getAppliedChange: (id: string) =>
+      hasApplied && id === "c1" ? applied : undefined,
     setSuggestionStatus: vi.fn(),
     setArchived: vi.fn(),
     setAppliedChange: vi.fn(),
-    deleteCard: vi.fn(),
+    family: "revision-suggestion",
     acceptedStatus: "accepted",
+    rejectedStatus: "rejected",
   };
 }
 
@@ -82,6 +107,9 @@ beforeEach(() => {
   flushPendingForDoc.mockClear();
   applyPendingChange.mockClear();
   applyPendingChange.mockImplementation(() => ({ ok: true, anchorId: "anc-applied" }));
+  // The preview store is a REAL module-level store (not mocked) — reset the
+  // test card so each case starts on the default "suggested" direction.
+  resetPreviewDir("c1");
 });
 
 describe("keepSuggestion", () => {
@@ -124,10 +152,10 @@ describe("keepSuggestion", () => {
   });
 });
 
-describe("revertSuggestion", () => {
-  it("splices, flushes, then deletes the card", () => {
+describe("dismissSuggestion (dismiss-PRESERVES)", () => {
+  it("restores the original, flushes, then status→rejected + archived + clears appliedChange — and NEVER deletes", () => {
     const deps = makeDeps(true);
-    revertSuggestion(editor, "c1", "doc-9", deps);
+    dismissSuggestion(editor, "c1", "doc-9", deps);
 
     expect(revertPendingChange).toHaveBeenCalledTimes(1);
     expect(revertPendingChange).toHaveBeenCalledWith(editor, {
@@ -138,16 +166,119 @@ describe("revertSuggestion", () => {
       anchorId: "anc-1",
     });
     expect(flushPendingForDoc).toHaveBeenCalledWith("doc-9");
-    expect(deps.deleteCard).toHaveBeenCalledWith("c1");
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "rejected");
+    expect(deps.setArchived).toHaveBeenCalledWith("c1", true);
+    expect(deps.setAppliedChange).toHaveBeenCalledWith("c1", undefined);
+    // The whole point of SESSION 4: the card + its comment survive.
+    expect(deps).not.toHaveProperty("deleteCard");
   });
 
-  it("no-ops entirely when the card has no appliedChange (stale double-Revert)", () => {
+  it("no-ops entirely when the card has no appliedChange (stale double-Cross)", () => {
     const deps = makeDeps(false);
-    revertSuggestion(editor, "c1", "doc-9", deps);
+    dismissSuggestion(editor, "c1", "doc-9", deps);
 
     expect(revertPendingChange).not.toHaveBeenCalled();
     expect(flushPendingForDoc).not.toHaveBeenCalled();
-    expect(deps.deleteCard).not.toHaveBeenCalled();
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+    expect(deps.setArchived).not.toHaveBeenCalled();
+  });
+
+  it("resets the preview direction back to suggested", () => {
+    setPreviewDir("c1", "original");
+    dismissSuggestion(editor, "c1", "doc-9", makeDeps(true));
+    expect(getPreviewDir("c1")).toBe("suggested");
+  });
+});
+
+// ── SESSION 4 — the non-committing Original / Suggested preview toggle ──────
+describe("previewOriginal / previewSuggested (non-committing)", () => {
+  it("previewOriginal restores the original + records the dir, WITHOUT touching card state", () => {
+    const deps = makeDeps(true);
+    previewOriginal(editor, "c1", "doc-9", deps);
+
+    expect(revertPendingChange).toHaveBeenCalledTimes(1);
+    expect(getPreviewDir("c1")).toBe("original");
+    expect(flushPendingForDoc).toHaveBeenCalledWith("doc-9");
+    // Non-committing: no status / archived / appliedChange change.
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+    expect(deps.setArchived).not.toHaveBeenCalled();
+    expect(deps.setAppliedChange).not.toHaveBeenCalled();
+  });
+
+  it("previewSuggested re-applies the suggested splice + records the dir, WITHOUT touching card state", () => {
+    setPreviewDir("c1", "original");
+    const deps = makeDeps(true);
+    previewSuggested(editor, "c1", "doc-9", deps);
+
+    expect(applyPendingChange).toHaveBeenCalledTimes(1);
+    expect(applyPendingChange).toHaveBeenCalledWith(editor, {
+      anchorUuid: "P1",
+      originalText: "old text",
+      replacement: "new text",
+      mode: "replace",
+      cardId: "c1",
+      anchorId: "anc-1",
+      family: "revision-suggestion",
+    });
+    expect(getPreviewDir("c1")).toBe("suggested");
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+  });
+
+  it("previewOriginal no-ops when already previewing the original (no double-splice)", () => {
+    setPreviewDir("c1", "original");
+    previewOriginal(editor, "c1", "doc-9", makeDeps(true));
+    expect(revertPendingChange).not.toHaveBeenCalled();
+  });
+
+  it("a full round-trip is lossless (original → suggested → original) and never commits", () => {
+    const deps = makeDeps(true);
+    previewOriginal(editor, "c1", "doc-9", deps); // suggested → original
+    previewSuggested(editor, "c1", "doc-9", deps); // original → suggested
+    previewOriginal(editor, "c1", "doc-9", deps); // suggested → original
+    expect(getPreviewDir("c1")).toBe("original");
+    expect(revertPendingChange).toHaveBeenCalledTimes(2);
+    expect(applyPendingChange).toHaveBeenCalledTimes(1);
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+    expect(deps.setAppliedChange).not.toHaveBeenCalled();
+  });
+});
+
+// ── SESSION 4 — mid-preview commit determinism ─────────────────────────────
+describe("commit determinism reads appliedChange, not the transient preview", () => {
+  it("Check while previewing ORIGINAL re-applies the suggested view BEFORE keeping (replace)", () => {
+    setPreviewDir("c1", "original");
+    const deps = makeDeps(true);
+    keepSuggestion(editor, "c1", "doc-9", deps);
+
+    // Reconcile: re-apply the suggested splice, then finalize it.
+    expect(applyPendingChange).toHaveBeenCalledTimes(1);
+    expect(keepPendingChange).toHaveBeenCalledTimes(1);
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "accepted");
+    expect(getPreviewDir("c1")).toBe("suggested");
+  });
+
+  it("Check while previewing SUGGESTED does NOT re-apply (no reconcile needed)", () => {
+    const deps = makeDeps(true); // default preview dir = suggested
+    keepSuggestion(editor, "c1", "doc-9", deps);
+
+    expect(applyPendingChange).not.toHaveBeenCalled();
+    expect(keepPendingChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("Cross while previewing ORIGINAL still restores the original deterministically (delete mode)", () => {
+    setPreviewDir("c1", "original");
+    const deps = makeDeps(true, deleteAc);
+    dismissSuggestion(editor, "c1", "doc-9", deps);
+
+    expect(revertPendingChange).toHaveBeenCalledWith(editor, {
+      anchorUuid: "P1",
+      originalText: "old text",
+      replacement: "",
+      mode: "delete",
+      anchorId: "anc-1",
+    });
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "rejected");
+    expect(getPreviewDir("c1")).toBe("suggested");
   });
 });
 

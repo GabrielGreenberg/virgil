@@ -499,6 +499,55 @@ describe("revertPendingChange — replace mode restores byte-identical original 
       cleanup();
     }
   });
+
+  // SESSION 4 — the non-committing preview toggle drives these same inverse
+  // splices back and forth. Toggling repeatedly must be LOSSLESS: after any
+  // number of original⇄suggested flips, the "original" view byte-matches the
+  // pre-apply serialization and the "suggested" view re-stamps the blue mark
+  // with the SAME anchorId (so the card / pill can still resolve the range).
+  it("preview toggle round-trips (original ⇄ suggested) are lossless (SESSION 4)", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const original = paraInline(editor, PARA_UUID);
+      const apply = () =>
+        applyPendingChange(editor, {
+          anchorUuid: PARA_UUID,
+          originalText: "quick brown fox",
+          replacement: "lazy grey cat",
+          mode: "replace",
+          cardId: CARD_ID,
+          anchorId: ANCHOR_ID,
+          family: "revision-suggestion",
+        });
+      const revert = () =>
+        revertPendingChange(editor, {
+          anchorUuid: PARA_UUID,
+          originalText: "quick brown fox",
+          replacement: "lazy grey cat",
+          mode: "replace",
+          anchorId: ANCHOR_ID,
+        });
+
+      apply(); // auto-applied: suggested + mark
+      const suggested = paraInline(editor, PARA_UUID);
+      expect(suggested).not.toBe(original);
+      expect(markAttrsFor(editor, ANCHOR_ID)).not.toBeNull();
+
+      // Flip original ⇄ suggested three times; every landing byte-matches.
+      for (let i = 0; i < 3; i++) {
+        revert(); // → original view
+        expect(paraInline(editor, PARA_UUID)).toBe(original);
+        expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull();
+
+        apply(); // → suggested view
+        expect(paraInline(editor, PARA_UUID)).toBe(suggested);
+        // Re-stamped with the SAME anchorId, so the pill/card still resolve it.
+        expect(markAttrsFor(editor, ANCHOR_ID)).not.toBeNull();
+      }
+    } finally {
+      cleanup();
+    }
+  });
 });
 
 // ── overlapping-anchor survival (the data-loss fix, 9) ──
