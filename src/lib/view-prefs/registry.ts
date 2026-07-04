@@ -68,6 +68,7 @@ export const VIEW_PREF_REGISTRY = {
   showLatexComments:    { kind: "toggle", scope: "global", default: true, label: "% comments",        menu: "display" },
   showHeadingLabels:    { kind: "toggle", scope: "global", default: true, label: "Labels",            menu: "display" },
   omniDimResting:       { kind: "toggle", scope: "global", default: true, label: "Dim cards at rest",  menu: "display" },
+  cardOutlineChrome:    { kind: "toggle", scope: "global", default: false, label: "Card outline",       menu: "display" },
   // Marginalia
   showMarginalia:       { kind: "toggle", scope: "global", default: true, label: "Show marginalia",   menu: "marginalia" },
   hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: [] as MarginaliaType[], members: ["note", "archive", "todo"] as const,

@@ -3002,10 +3002,17 @@ textarea,
  * (negative offset) so it sits inside the card's own border-radius; we
  * intentionally do NOT override the radius, so the card's outer shape is
  * identical in default/hover/selected states. The selected card's quiet
- * identity comes from its body tint (panel-theme), not a heavier ring. */
-[data-card-key][data-card-hovered="true"],
-[data-card-key][data-card-selected="true"],
-[data-card-key]:hover {
+ * identity comes from its body tint (panel-theme), not a heavier ring.
+ *
+ * OPT-IN (task 026): the colored outline is now gated behind
+ * `body.card-outline-chrome` — the `cardOutlineChrome` View pref (default
+ * OFF). By default the hover/select feedback is the retint/brighten alone;
+ * the retint (bg + neutral edge in panel-primitives) is a disjoint property
+ * set, so it survives with the class absent. The reflect effect lives in
+ * EditorLayout (body-class toggle, keystroke-safe). */
+body.card-outline-chrome [data-card-key][data-card-hovered="true"],
+body.card-outline-chrome [data-card-key][data-card-selected="true"],
+body.card-outline-chrome [data-card-key]:hover {
   outline: 1.5px solid color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   outline-offset: -1.5px;
 }
@@ -3025,8 +3032,8 @@ textarea,
  * (`--link-anchor-color`) is propagated onto the FloatingPanel root via the
  * card floatable's `accentTint` (FloatWindow → FloatingPanel), since the var
  * the inner card stamps does not inherit UP to the `:has()` host. */
-[data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-hovered="true"]),
-[data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-selected="true"]) {
+body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-hovered="true"]),
+body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-selected="true"]) {
   box-shadow:
     var(--card-shadow-ambient),
     0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent)

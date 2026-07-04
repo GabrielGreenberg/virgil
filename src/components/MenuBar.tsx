@@ -55,6 +55,7 @@ const DISPLAY_ROWS = [
   { id: "latex-comments", key: "showLatexComments", label: VIEW_PREF_REGISTRY.showLatexComments.label },
   { id: "heading-labels", key: "showHeadingLabels", label: VIEW_PREF_REGISTRY.showHeadingLabels.label },
   { id: "omni-dim-resting", key: "omniDimResting", label: VIEW_PREF_REGISTRY.omniDimResting.label },
+  { id: "card-outline", key: "cardOutlineChrome", label: VIEW_PREF_REGISTRY.cardOutlineChrome.label },
 ] as const;
 /** Marginalia per-type sub-rows (members + labels from the registry). */
 const MARGINALIA_TYPE_ROWS = VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members.map((type) => ({
@@ -104,6 +105,8 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   onToggleHeadingLabels: () => void;
   omniDimResting: boolean;
   onToggleOmniDimResting: () => void;
+  cardOutlineChrome: boolean;
+  onToggleCardOutline: () => void;
   onOpenPreferences?: () => void;
   editorSplit?: boolean;
   onToggleEditorSplit?: () => void;
@@ -559,6 +562,8 @@ export function ViewMenu({
   onToggleHeadingLabels,
   omniDimResting,
   onToggleOmniDimResting,
+  cardOutlineChrome,
+  onToggleCardOutline,
   onOpenPreferences,
   showMarginalia,
   onToggleMarginalia,
@@ -584,6 +589,7 @@ export function ViewMenu({
   | "showLatexComments" | "onToggleLatexComments"
   | "showHeadingLabels" | "onToggleHeadingLabels"
   | "omniDimResting" | "onToggleOmniDimResting"
+  | "cardOutlineChrome" | "onToggleCardOutline"
   | "onOpenPreferences"
   | "showMarginalia" | "onToggleMarginalia"
   | "hiddenMarginaliaTypes" | "onToggleMarginaliaType"
@@ -712,6 +718,7 @@ export function ViewMenu({
               showLatexComments,
               showHeadingLabels,
               omniDimResting,
+              cardOutlineChrome,
             };
             const displayToggle: Record<(typeof DISPLAY_ROWS)[number]["key"], () => void> = {
               showParTitles: onToggleParTitles,
@@ -719,6 +726,7 @@ export function ViewMenu({
               showLatexComments: onToggleLatexComments,
               showHeadingLabels: onToggleHeadingLabels,
               omniDimResting: onToggleOmniDimResting,
+              cardOutlineChrome: onToggleCardOutline,
             };
             return DISPLAY_ROWS.map((row) => (
               <ViewToggleRow
@@ -836,6 +844,7 @@ function MenuBarContent({
   showLatexComments, onToggleLatexComments,
   showHeadingLabels, onToggleHeadingLabels,
   omniDimResting, onToggleOmniDimResting,
+  cardOutlineChrome, onToggleCardOutline,
   onOpenPreferences,
   editorSplit, onToggleEditorSplit, activeSplitPane,
   showMarginalia, onToggleMarginalia,
@@ -874,6 +883,8 @@ function MenuBarContent({
       onToggleHeadingLabels={onToggleHeadingLabels}
       omniDimResting={omniDimResting}
       onToggleOmniDimResting={onToggleOmniDimResting}
+      cardOutlineChrome={cardOutlineChrome}
+      onToggleCardOutline={onToggleCardOutline}
       onOpenPreferences={onOpenPreferences}
       showMarginalia={showMarginalia}
       onToggleMarginalia={onToggleMarginalia}

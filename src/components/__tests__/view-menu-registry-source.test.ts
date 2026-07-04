@@ -132,3 +132,26 @@ describe("showCardTitles — the page-level card +T pref mirrors showParTitles",
     );
   });
 });
+
+describe("cardOutlineChrome — the OPT-IN card hover/select outline (task 026)", () => {
+  it("is a global Display toggle, registered like its Display siblings", () => {
+    const def = VIEW_PREF_REGISTRY.cardOutlineChrome;
+    expect(def.kind).toBe("toggle");
+    expect(def.scope).toBe("global");
+    expect(def.menu).toBe("display");
+    expect(def.label).toBe("Card outline");
+    // Global → must ride the personal-prefs promotion whitelist.
+    expect(REGISTRY_GLOBAL_KEYS).toContain("cardOutlineChrome");
+  });
+
+  it("defaults OFF (no colored outline is the new default) and is byte-identical with the JSON", () => {
+    // Default `false` = the new no-outline look; toggling ON restores the
+    // colored hover/select outline. Registry default must match the shipped
+    // defaults JSON (release_prefs_snapshot contract).
+    expect(VIEW_PREF_REGISTRY.cardOutlineChrome.default).toBe(false);
+    expect((viewPrefsDefaults as Record<string, unknown>).cardOutlineChrome).toBe(false);
+    expect(VIEW_PREF_REGISTRY.cardOutlineChrome.default).toBe(
+      (viewPrefsDefaults as Record<string, unknown>).cardOutlineChrome,
+    );
+  });
+});
