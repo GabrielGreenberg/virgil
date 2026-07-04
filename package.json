@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:prefs": "node tools/check-prefs-coverage.mjs",
     "check:coherence": "node tools/check-coherence.mjs",
+    "check:radius": "node scripts/check-radius-tokens.mjs",
     "test:coherence": "node tools/check-coherence.smoke.mjs",
     "typecheck": "tsc --noEmit",
     "promote-defaults": "bash tools/sync-defaults.sh",

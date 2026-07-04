@@ -168,7 +168,7 @@ export default function PaperAiRequestsMenu<K extends string>({
               minWidth: 180,
               background: "var(--surface)",
               border: "1px solid var(--border-light)",
-              borderRadius: 6,
+              borderRadius: "var(--radius-md)",
               boxShadow: "var(--pod-shadow)",
               padding: "4px 0",
               zIndex: 100,
@@ -224,7 +224,7 @@ function triggerStyle(disabled: boolean, anyQueued: boolean): CSSProperties {
     color: disabled ? "var(--muted)" : "var(--foreground)",
     background: anyQueued ? "var(--accent-light)" : "transparent",
     border: "1px solid var(--border-light)",
-    borderRadius: 6,
+    borderRadius: "var(--radius-md)",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.55 : 1,
     whiteSpace: "nowrap",
@@ -243,7 +243,7 @@ const countBadgeStyle: CSSProperties = {
   lineHeight: 1,
   color: "white",
   background: "var(--accent)",
-  borderRadius: 8,
+  borderRadius: "var(--pod-radius)",
 };
 
 function itemStyle(disabled: boolean, active: boolean): CSSProperties {

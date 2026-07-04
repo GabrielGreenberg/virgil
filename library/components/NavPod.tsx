@@ -27,7 +27,7 @@ export default function NavPod({ title, children, style }: Props) {
         flexDirection: "column",
         background: "var(--surface)",
         border: "1px solid var(--topbar-border)",
-        borderRadius: 10,
+        borderRadius: "var(--library-manila-radius)",
         overflow: "hidden",
         ...style,
       }}

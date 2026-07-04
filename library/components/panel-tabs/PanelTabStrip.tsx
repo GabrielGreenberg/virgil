@@ -656,7 +656,7 @@ const BackgroundTab = forwardRef<
         cursor: dragProps.draggable ? "grab" : "default",
         outline: isEntryDropTarget ? "2px solid var(--accent)" : "none",
         outlineOffset: isEntryDropTarget ? -2 : 0,
-        borderRadius: 6,
+        borderRadius: "var(--radius-md)",
         background: isEntryDropTarget ? "var(--accent-light)" : "transparent",
         transition: "background 90ms ease",
         paddingLeft: hasPin ? 4 : 0,
@@ -751,7 +751,7 @@ function PinButton({
         justifyContent: "center",
         color: activeColor,
         cursor: "pointer",
-        borderRadius: 3,
+        borderRadius: "var(--radius-xs)",
         padding: 0,
       }}
       onMouseEnter={(e) => {
@@ -811,7 +811,7 @@ function CloseButton({
         lineHeight: 1,
         color: muted ? "var(--muted-light)" : "var(--muted)",
         cursor: "pointer",
-        borderRadius: 3,
+        borderRadius: "var(--radius-xs)",
         fontFamily: "inherit",
         padding: 0,
       }}
@@ -923,7 +923,7 @@ function TabMenuTrigger({
           cursor: "pointer",
           fontFamily: "inherit",
           padding: 0,
-          borderRadius: 3,
+          borderRadius: "var(--radius-xs)",
         }}
         onMouseEnter={(e) => {
           (e.currentTarget as HTMLButtonElement).style.background =
@@ -1002,7 +1002,7 @@ function PanelMenuPopup({
         minWidth: 180,
         background: "var(--surface)",
         border: "1px solid var(--border-light)",
-        borderRadius: 6,
+        borderRadius: "var(--radius-md)",
         boxShadow: "var(--pod-shadow)",
         padding: "4px 0",
         zIndex: 2000,
@@ -1083,7 +1083,7 @@ function AddTabMenu({
         minWidth: 200,
         background: "var(--surface)",
         border: "1px solid var(--border-light)",
-        borderRadius: 6,
+        borderRadius: "var(--radius-md)",
         boxShadow: "var(--pod-shadow)",
         padding: "4px 0",
         zIndex: 2000,

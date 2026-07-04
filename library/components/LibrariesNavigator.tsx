@@ -318,7 +318,7 @@ function NavRow({
             bottom: 4,
             width: 3,
             background: ACCENT,
-            borderRadius: 2,
+            borderRadius: "var(--radius-xs)",
             pointerEvents: "none",
           }}
         />
@@ -418,7 +418,7 @@ function SectionHeader({
             cursor: "pointer",
             fontSize: 16,
             lineHeight: 1,
-            borderRadius: 3,
+            borderRadius: "var(--radius-xs)",
             padding: 0,
             fontFamily: "inherit",
           }}

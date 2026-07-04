@@ -25,7 +25,7 @@ function Pill({ label, tone, title }: PillProps) {
         fontSize: 11,
         lineHeight: "16px",
         padding: "1px 6px",
-        borderRadius: 999,
+        borderRadius: "var(--radius-pill)",
         fontFamily: "var(--mono)",
         whiteSpace: "nowrap",
       }}
@@ -298,7 +298,7 @@ export function Dot({ tone, title }: { tone: Tone; title: string }) {
         display: "inline-block",
         width: 8,
         height: 8,
-        borderRadius: 999,
+        borderRadius: "var(--radius-pill)",
         background: `var(--pill-${tone}-fg)`,
         flexShrink: 0,
       }}

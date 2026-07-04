@@ -21,7 +21,7 @@ export default function DropZone({ dragActive, children }: Props) {
         minHeight: 0,
         outline: dragActive ? "3px dashed var(--accent)" : "none",
         outlineOffset: -8,
-        borderRadius: 4,
+        borderRadius: "var(--radius-sm)",
       }}
     >
       {children}

@@ -20,7 +20,7 @@ const PILL: React.CSSProperties = {
   gap: 6,
   height: 24,
   padding: "0 4px 0 10px",
-  borderRadius: 4,
+  borderRadius: "var(--radius-sm)",
   fontSize: 12,
   fontWeight: 500,
 };

@@ -715,7 +715,7 @@ export default function PaperHeader({
                 color: "var(--foreground)",
                 background: "var(--surface)",
                 border: "1px solid var(--border-light)",
-                borderRadius: 4,
+                borderRadius: "var(--radius-sm)",
                 outline: "none",
               }}
             />
@@ -748,7 +748,7 @@ function ViewToggle({
       style={{
         display: "inline-flex",
         border: "1px solid var(--border-light)",
-        borderRadius: 6,
+        borderRadius: "var(--radius-md)",
         overflow: "hidden",
       }}
     >

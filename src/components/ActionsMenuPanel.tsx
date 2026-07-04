@@ -948,7 +948,7 @@ function BlockTypeGridCell({
       className="flex items-center justify-center"
       style={{
         height: FORMATTING_ROW_H,
-        borderRadius: 4,
+        borderRadius: "var(--radius-sm)",
         background: roving ? "var(--menu-roving-bg)" : "transparent",
       }}
     >
