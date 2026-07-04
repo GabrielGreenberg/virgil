@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/react";
 import type { EditorHandle } from "../../Editor";
 import type { LabelInfo, RefCommand } from "../../LabelRefPopover";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
 
 // Indexed by heading level 0..6 (Part..Subparagraph).
 const HEADING_TYPE_NAMES = ["Part", "Chapter", "Section", "Subsection", "Subsubsection", "Paragraph", "Subparagraph"];
@@ -154,6 +155,18 @@ export function useRefActions(deps: {
           // Continue recursing — nested item lists carry more items.
           return true;
         });
+        // Body-line `\label{…}` (shared SSOT): surface as an Example target
+        // with its number BEFORE the generic text-node scan below dedups it to
+        // a bare "Label". Parent-bound → (N), item-bound → (N+sub).
+        for (const bl of collectExampleBodyLabelsPM(nd)) {
+          const fullNum = bl.subLabel == null ? number : `${number}${bl.subLabel}`;
+          pushUnique({
+            label: bl.key,
+            kind: "example",
+            typeLabel: `Example (${fullNum})`,
+            title: preview,
+          });
+        }
         return true;
       }
 
@@ -474,6 +487,18 @@ export function resolveLabelDisplay(
           return true;
         });
       }
+    }
+    // Body-line `\label{…}` (shared SSOT): a label anywhere in the body binds
+    // to the parent (→ N) or the enclosing item (→ N+sub). Only checked once no
+    // attr-keyed match landed, so explicit tag/label/sub-item keys win.
+    if (!exactNum && !flatSubNum) {
+      for (const bl of collectExampleBodyLabelsPM(nd)) {
+        if (bl.key !== label) continue;
+        if (bl.subLabel == null) exactNum = numAttr;
+        else flatSubNum = `${numAttr}${bl.subLabel}`;
+        break;
+      }
+      if (exactNum || flatSubNum) return false;
     }
     return true;
   });

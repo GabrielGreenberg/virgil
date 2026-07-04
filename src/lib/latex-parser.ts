@@ -3,6 +3,7 @@ import type { VirgilSidecar } from "@/lib/types";
 import { richLatexToJson } from "@/lib/footnote-content";
 import { CITE_NAMES_RE_INLINE, MULTI_CITE_NAMES } from "@/lib/cite-commands";
 import { generateShortId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid";
+import { collectExampleBodyLabelsJSON } from "@/lib/example-refs";
 import {
   extractFigureAttrs,
   extractGraphicsAttrs,
@@ -1220,6 +1221,23 @@ function resolveRefs(node: JSONContent): void {
         m.content?.forEach(walkItems);
       }
       n.content?.forEach(walkItems);
+      // Body-line `\label{…}` (anywhere in the `\ex`/`\pex` body, not just
+      // header-adjacent) is captured via the shared SSOT and bound to the
+      // parent (→ N) or the enclosing item (→ N+sub). Explicit tag/label/
+      // sub-item attr keys already set above win (`!has` guards).
+      for (const bl of collectExampleBodyLabelsJSON(n)) {
+        if (bl.subLabel == null) {
+          if (!exampleMap.has(bl.key)) exampleMap.set(bl.key, entry);
+        } else {
+          if (!exampleMap.has(bl.key)) {
+            exampleMap.set(bl.key, {
+              number: `${num}${bl.subLabel}`,
+              items: new Map<string, string>(),
+            });
+          }
+          if (!entry.items.has(bl.key)) entry.items.set(bl.key, bl.subLabel);
+        }
+      }
     }
     n.content?.forEach(collect);
   }
