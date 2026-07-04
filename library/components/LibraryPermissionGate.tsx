@@ -35,7 +35,7 @@ export default function LibraryPermissionGate({ onGrant, onReset, pickerError }:
             background: "var(--accent)",
             color: "white",
             padding: "8px 16px",
-            borderRadius: 6,
+            borderRadius: "var(--radius-md)",
             border: "none",
             cursor: "pointer",
           }}
@@ -48,7 +48,7 @@ export default function LibraryPermissionGate({ onGrant, onReset, pickerError }:
             background: "transparent",
             color: "var(--muted)",
             padding: "8px 16px",
-            borderRadius: 6,
+            borderRadius: "var(--radius-md)",
             border: "1px solid var(--border-light)",
             cursor: "pointer",
           }}

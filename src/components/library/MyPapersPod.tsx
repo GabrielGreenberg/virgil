@@ -315,7 +315,7 @@ function PaperRow({
             bottom: 4,
             width: 3,
             background: ACCENT,
-            borderRadius: 2,
+            borderRadius: "var(--radius-xs)",
             pointerEvents: "none",
           }}
         />

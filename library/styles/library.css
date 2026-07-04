@@ -53,7 +53,7 @@
   right: 12px;
   bottom: 16px;
   padding: 6px 12px;
-  border-radius: 20px;
+  border-radius: var(--radius-pill);
   background: var(--surface-muted, var(--surface));
   border: 1px solid var(--edge-subtle);
   color: var(--ink-muted);
@@ -300,7 +300,7 @@
   background: var(--pgmark-bg);
   color: var(--pgmark-color);
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   margin-right: 6px;
   vertical-align: 2px;
   user-select: none;
@@ -428,7 +428,7 @@
   min-width: 0;
   padding: 9px 12px;
   border: 1px solid var(--border-light, var(--edge-subtle));
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--background);
   font-size: 14px;
   outline: none;
@@ -443,7 +443,7 @@
   flex-shrink: 0;
   padding: 8px 12px;
   border: 1px solid var(--edge-subtle, var(--border-light));
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--ink-body, var(--foreground));
   font-size: 12px;
@@ -607,7 +607,7 @@
 .lib-dashboard-browseall {
   padding: 5px 10px;
   border: 1px solid var(--edge-subtle, var(--border-light));
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--ink-body, var(--foreground));
   font-size: 11px;
@@ -635,7 +635,7 @@
   align-items: center;
   gap: 0;
   border: 1px solid var(--edge-subtle, var(--border-light));
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   flex-shrink: 0;
 }

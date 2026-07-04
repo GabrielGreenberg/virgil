@@ -65,7 +65,43 @@ Locked aliases (must track each other): `--theme-color`/`--topbar-bg`,
 
 Forbidden in new code: `text-stone-*`, `border-stone-*`,
 `bg-stone-*-with-opacity`, hex literals in components, `bg-blue-*` /
-`bg-emerald-*` / `bg-red-*` in panel chrome.
+`bg-emerald-*` / `bg-red-*` in panel chrome, and **literal corner radii**
+(`borderRadius: 6`, `border-radius: 0.375rem`, `rounded-[6px]`) — use the
+radius scale below. The guard `npm run check:radius` enforces this.
+
+### Radius scale
+
+Corner radii are tokens, the single source of truth — the same rule colors
+already follow. Six steps, defined in `src/app/globals.css :root` and mapped
+onto the Tailwind `rounded-*` utilities via an `@theme` block, so
+`rounded-md` etc. are token-backed and `var(--radius-md)` works in inline
+`style`/CSS. Pick by role, not by eyeballed pixels:
+
+| Token | px | `rounded-*` | Use |
+|---|---|---|---|
+| `--radius-xs` | 3 | `rounded-xs` | in-text/chip micro details: inline marks (highlight, citation/footnote/label/note markers), annotation chips/toggles/delete, `kbd`, scrollbar thumb. |
+| `--radius-sm` | 4 | `rounded-sm` | small controls & inner rows: icon/topbar buttons, color swatches, inner list rows, form inputs inside a popover, drag-handle hit area. |
+| `--radius-md` | 6 | `rounded-md` | primary CONTROL radius: `<Button>`, inputs, segmented controls, copy buttons, tooltips, hint bubbles. |
+| `--pod-radius` | 8 | `rounded-lg` | CARD + POD + MENU tier: cards, sub-pods, dropdown/popover menus, floating menus, editor pod, code / display-math blocks, figure images. |
+| `--panel-radius` | 14 | `rounded-xl` | large PANEL + MODAL tier: sidebar panel pods, docked floating panels, system/font dialogs. |
+| `--radius-pill` | 9999 | `rounded-pill` / `rounded-full` | fully-round capsules: status pills, page-scroll lozenges, pgmark chips, drag-ghost badges. |
+
+**Allowed to stay literal** (the guard permits these): hairline insertion &
+drop-indicator bars (`1px`), perfect circles / dots / avatars (`50%`), and
+intentional flattening resets (`0`).
+
+**Deliberate exceptions** (do NOT collapse into the scale):
+
+- `--library-manila-radius` (10px) — the Library "manila folder" corner. The
+  active-tab SVG silhouette (`library/components/panel-tabs/folder-path.ts`)
+  and the panel body frame tangent at R=10 by design. Named so the tab
+  geometry and the frame read one value; never `--pod-radius`.
+- `folder-path.ts` `R`/`S` sweep constants — path geometry, touched at the
+  geometry layer, never tokenized (guard-allowlisted).
+
+A genuine one-off can carry a `radius-allow` comment on the line to opt out of
+the guard, but reach for that rarely — a new radius almost always belongs to a
+tier above.
 
 ## Typography
 

@@ -871,7 +871,7 @@ export default function LibraryView({
             style={{
               flexShrink: 0,
               padding: "3px 10px",
-              borderRadius: 4,
+              borderRadius: "var(--radius-sm)",
               fontSize: 12,
               fontWeight: 600,
               cursor: "pointer",

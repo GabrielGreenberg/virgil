@@ -341,7 +341,7 @@ export function SplitWithCode({
                   style={{
                     transform: "translate(-50%, -50%)",
                     pointerEvents: "auto",
-                    borderRadius: 6,
+                    borderRadius: "var(--radius-md)",
                     border: "var(--pod-border, 1px solid var(--border))",
                     background: "var(--pod-editor, var(--surface))",
                     boxShadow: "var(--pod-shadow, 0 1px 2px rgba(0,0,0,0.08))",

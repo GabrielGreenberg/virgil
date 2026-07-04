@@ -37,7 +37,7 @@ export default function LibraryFolderPicker({ onPick, pickerError }: Props) {
           background: "var(--accent)",
           color: "white",
           padding: "10px 18px",
-          borderRadius: 6,
+          borderRadius: "var(--radius-md)",
           border: "none",
           fontSize: 14,
           fontWeight: 500,

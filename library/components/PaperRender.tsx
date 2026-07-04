@@ -390,7 +390,7 @@ function PaperReader({
           padding: 16,
           background: "var(--pill-red-bg)",
           color: "var(--pill-red-fg)",
-          borderRadius: 6,
+          borderRadius: "var(--radius-md)",
           fontFamily: "var(--mono)",
           fontSize: 12,
           whiteSpace: "pre-wrap",

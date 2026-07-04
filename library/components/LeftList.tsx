@@ -533,7 +533,7 @@ export default function LeftList({
             width: "100%",
             padding: "6px 10px",
             border: "1px solid var(--border-light)",
-            borderRadius: 4,
+            borderRadius: "var(--radius-sm)",
             background: "var(--background)",
             fontSize: 13,
             outline: "none",
@@ -741,7 +741,7 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
         // AA-safe ink text when this column is the active sort (F#12 tokens).
         background: active ? "var(--control-selected-tint)" : "transparent",
         border: "none",
-        borderRadius: 5,
+        borderRadius: "var(--radius-sm)",
         padding: "6px 8px",
         textAlign: align,
         fontFamily: "var(--mono)",
@@ -914,7 +914,7 @@ function FacetSubBar({
               // same baseline as the other one-line column headers.
               padding: "6px 6px",
               border: "none",
-              borderRadius: 5,
+              borderRadius: "var(--radius-sm)",
               // Selected-column highlight: a taupe fill (not just text colour)
               // with AA-safe ink text (F#12 tokens). Applies to the active facet
               // here and to the active regular header in SortHeader.

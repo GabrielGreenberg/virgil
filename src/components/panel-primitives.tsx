@@ -331,7 +331,7 @@ export function AnchorBadge({
 export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
   return (
     <span
-      className="inline-flex items-center justify-center shrink-0 opacity-60 w-2.5 h-2.5 rounded-[3px]"
+      className="inline-flex items-center justify-center shrink-0 opacity-60 w-2.5 h-2.5 rounded-xs"
       style={{ background: theme.badgeBg, border: `1.5px solid ${theme.badgeBorder}` }}
       data-hint="No anchor in document" aria-label="No anchor in document"
     />

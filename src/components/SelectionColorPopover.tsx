@@ -214,7 +214,7 @@ function Swatch({ id, color, onApply }: SwatchProps) {
       style={{
         width: SWATCH_SIZE,
         height: SWATCH_SIZE,
-        borderRadius: 4,
+        borderRadius: "var(--radius-sm)",
         background: color,
         // The roving-active swatch gets a stronger ring so the active item is
         // unambiguous while arrowing (no focus move).
@@ -262,7 +262,7 @@ function CustomColorInput({ onPickCustom }: CustomColorInputProps) {
         width: SWATCH_SIZE,
         height: SWATCH_SIZE,
         marginLeft: 4,
-        borderRadius: 4,
+        borderRadius: "var(--radius-sm)",
         // Hide the native swatch chrome so the rainbow gradient reads as the
         // "custom" affordance, matching the old visible `+` button.
         background:
@@ -298,7 +298,7 @@ function ClearButton({ onClear }: ClearButtonProps) {
       style={{
         width: SWATCH_SIZE,
         height: SWATCH_SIZE,
-        borderRadius: 4,
+        borderRadius: "var(--radius-sm)",
         background: "transparent",
         border: active ? "2px solid var(--accent-blue)" : "1px solid var(--edge-hover)",
         cursor: "pointer",

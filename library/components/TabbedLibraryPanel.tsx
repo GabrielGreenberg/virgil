@@ -476,7 +476,8 @@ export default function TabbedLibraryPanel({
               ? "var(--background)"
               : "var(--surface)",
             border: "1px solid var(--topbar-border)",
-            borderRadius: "0 0 10px 10px",
+            borderRadius:
+              "0 0 var(--library-manila-radius) var(--library-manila-radius)",
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
@@ -631,8 +632,8 @@ function CentralListHeader({ onDashboard }: { onDashboard: () => void }) {
         alignItems: "center",
         justifyContent: "flex-end",
         padding: "6px 10px",
-        borderTopLeftRadius: 10,
-        borderTopRightRadius: 10,
+        borderTopLeftRadius: "var(--library-manila-radius)",
+        borderTopRightRadius: "var(--library-manila-radius)",
         borderBottom: "1px solid var(--border-light)",
         background: "var(--surface)",
         flexShrink: 0,
@@ -688,8 +689,8 @@ function ProjectHeader({
         // Top corners match the unifying wrapper's R=10 so the header reads
         // as the top of the one continuous folder surface (the wrapper's
         // overflow:hidden also clips to this radius — belt-and-suspenders).
-        borderTopLeftRadius: 10,
-        borderTopRightRadius: 10,
+        borderTopLeftRadius: "var(--library-manila-radius)",
+        borderTopRightRadius: "var(--library-manila-radius)",
         // Flattened from a hard 1px --border seam to a subtle divider: it
         // separates the controls from the catalog list without reading as a
         // separate clipped card edge.

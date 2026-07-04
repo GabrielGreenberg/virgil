@@ -262,7 +262,7 @@ function Header({
           style={{
             background: "transparent",
             border: "1px solid var(--border-light)",
-            borderRadius: 4,
+            borderRadius: "var(--radius-sm)",
             padding: "4px 10px",
             fontSize: 12,
             cursor: "pointer",
@@ -284,7 +284,7 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
       style={{
         display: "inline-flex",
         border: "1px solid var(--border-light)",
-        borderRadius: 6,
+        borderRadius: "var(--radius-md)",
         overflow: "hidden",
       }}
     >
@@ -350,7 +350,7 @@ function Footer({
           style={{
             background: "transparent",
             border: "1px solid var(--border-light)",
-            borderRadius: 4,
+            borderRadius: "var(--radius-sm)",
             padding: "5px 12px",
             fontSize: 12,
             cursor: saving ? "not-allowed" : "pointer",
@@ -367,7 +367,7 @@ function Footer({
             background: "var(--accent)",
             color: "white",
             border: "1px solid var(--accent)",
-            borderRadius: 4,
+            borderRadius: "var(--radius-sm)",
             padding: "5px 14px",
             fontSize: 12,
             cursor: saving ? "wait" : "pointer",
@@ -471,7 +471,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
     <fieldset
       style={{
         border: "1px solid var(--border-light)",
-        borderRadius: 6,
+        borderRadius: "var(--radius-md)",
         padding: "10px 12px 12px",
         margin: 0,
       }}
@@ -605,7 +605,7 @@ function ExtraRows({
             style={{
               background: "transparent",
               border: "1px solid var(--border-light)",
-              borderRadius: 4,
+              borderRadius: "var(--radius-sm)",
               padding: "0 8px",
               fontSize: 12,
               cursor: "pointer",
@@ -623,7 +623,7 @@ function ExtraRows({
           alignSelf: "flex-start",
           background: "transparent",
           border: "1px dashed var(--border-light)",
-          borderRadius: 4,
+          borderRadius: "var(--radius-sm)",
           padding: "4px 10px",
           fontSize: 12,
           cursor: "pointer",
@@ -683,7 +683,7 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "5px 8px",
   border: "1px solid var(--border-light)",
-  borderRadius: 4,
+  borderRadius: "var(--radius-sm)",
   background: "var(--background)",
   fontSize: 13,
   outline: "none",

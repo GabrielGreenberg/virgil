@@ -117,7 +117,7 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
         background: "var(--surface)",
         border: "var(--pod-border)",
         borderLeft: `3px solid ${accent}`,
-        borderRadius: 6,
+        borderRadius: "var(--radius-md)",
         padding: "8px 12px 10px 14px",
         boxShadow: "var(--pod-shadow)",
         fontSize: 13,
@@ -167,7 +167,7 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
             fontSize: 13,
             lineHeight: 1,
             cursor: "pointer",
-            borderRadius: 3,
+            borderRadius: "var(--radius-xs)",
           }}
         >
           ×

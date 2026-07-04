@@ -17,7 +17,7 @@ const texBlockTheme = EditorView.theme({
     fontSize: "13px",
     fontFamily: "var(--font-mono), 'SF Mono', 'Fira Code', monospace",
     backgroundColor: "var(--code-block-bg, rgba(124, 94, 60, 0.04))",
-    borderRadius: "6px",
+    borderRadius: "var(--radius-md)",
     border: "1px solid var(--heading-annotation-border, #a8c4de)",
   },
   "&.cm-focused": {

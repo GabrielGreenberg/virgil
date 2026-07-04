@@ -88,7 +88,7 @@ export default function PagePicker({
           color: "var(--foreground)",
           background: "var(--surface)",
           border: "1px solid var(--border-light)",
-          borderRadius: 4,
+          borderRadius: "var(--radius-sm)",
           outline: "none",
         }}
       />
