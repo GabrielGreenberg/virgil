@@ -175,8 +175,9 @@ E3. **Land it via edit-card (the `update` op), NOT create.** Rewrite the existin
   `linkedTo.panel == "footnotes"` (or a `virtual:footnotes:` id), the user wants
   the *existing* footnote revised — direct-creating a new one would duplicate it.
   Use the `update` op (branch E), not `create_card.py`.
-- Don't fabricate a `\citet{key}` for a bibkey not in `references.bib` — file a
-  `citation` follow-up instead (step 3).
+- **Find-or-surface, never fabricate** ([_find-or-surface.md](_find-or-surface.md)):
+  don't fabricate a `\citet{key}` for a bibkey not in `references.bib` — write
+  the prose without it and file a `citation` follow-up instead (step 3).
 - If `paragraphIds` is empty (direct-create branch only), halt (don't guess an
   anchor from the text). The act-on-existing branch does NOT need `paragraphIds`
   on the request — it resolves the footnote by `cardId` and edits it in place.
