@@ -317,7 +317,7 @@ export function OmniUnanchoredBin({
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium text-ink-muted bg-surface border border-edge-subtle shadow-sm hover-on-light"
+        className="omni-bin-pill w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium"
         data-hint={expanded ? "Collapse unanchored cards" : "Show unanchored cards"}
         aria-label={expanded ? "Collapse unanchored cards" : "Show unanchored cards"}
         aria-expanded={expanded}
@@ -328,7 +328,7 @@ export function OmniUnanchoredBin({
         <span>
           {count} unanchored
         </span>
-        <span className="ml-auto text-ink-muted" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+        <span className="ml-auto" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
       </button>
       {expanded && (
         <div
@@ -381,7 +381,7 @@ export function OmniOutsideFocusBin({
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium text-ink-muted bg-surface border border-edge-subtle shadow-sm hover-on-light"
+        className="omni-bin-pill w-full flex items-center gap-2 px-2 py-1 rounded text-[11px] font-medium"
         data-hint={
           expanded
             ? "Collapse cards outside the focus band"
@@ -390,9 +390,9 @@ export function OmniOutsideFocusBin({
         aria-label={expanded ? "Collapse cards outside focus" : "Show cards outside focus"}
         aria-expanded={expanded}
       >
-        <span aria-hidden="true" className="text-[10px] leading-none">◎</span>
+        <span aria-hidden="true" className="text-[11px] leading-none">◎</span>
         <span>{count} outside focus</span>
-        <span className="ml-auto text-ink-muted" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+        <span className="ml-auto" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
       </button>
       {expanded && (
         <div

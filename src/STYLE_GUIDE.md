@@ -263,6 +263,19 @@ the accent tint. Don't author bespoke padding, hover, or active
 classes for topbar buttons; if you need a new visual state, extend
 `.topbarbtn` so every sibling stays in sync.
 
+**Omni bin pill.** The count-pill controls in the Omni cascade that
+collect cards which can't render inline — the outside-focus band and
+the unanchored bin — share `.omni-bin-pill` (`globals.css`). It's a
+solid, clearly-bounded chip against the white Omni column: tinted
+resting bg (`--surface-muted`) so it separates from the column, a
+perceptible stone-300 edge (`--edge-hover`), readable `--ink-body`
+text, hover deepening one step (bg → `--surface-muted-strong`, border →
+`--edge-strong`). Beware the hover trap: never rest a hover-able pill at
+the same token its hover lands on, or the feedback vanishes. The leading
+glyph stays per-bin (a `◎` vs a `BadgeOrphaned` badge). Reuse this class
+for any future "N collected X" chip rather than re-authoring the faint
+white-on-white recipe.
+
 ## Cards & themes
 
 A theme has five tokens: `accent`, `borderSelected`, `headerDefault`,
