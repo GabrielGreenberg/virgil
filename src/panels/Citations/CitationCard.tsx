@@ -502,7 +502,10 @@ export function CitationCard({
         MIME_CITATION,
         JSON.stringify({ command: cit.command, citationId: cit.id }),
       );
-      e.dataTransfer.effectAllowed = "copy";
+      // "copyMove", not "copy": the editor drop surface shows a "move"
+      // affordance (Editor.tsx dragover); the card merge target still takes
+      // "copy".
+      e.dataTransfer.effectAllowed = "copyMove";
       const ghost = document.createElement("div");
       ghost.textContent =
         plain.length > 80 ? plain.slice(0, 80) + "…" : plain;

@@ -23,6 +23,7 @@ import {
   MIME_FOOTNOTE,
   MIME_TEXT_INSERT,
   isAnchorDrag,
+  isEditorInsertDrag,
 } from "@/lib/marginalia";
 import { getAtomText } from "@/lib/atom-text";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
@@ -575,6 +576,22 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           if (target.closest('[draggable="true"]')) return false;
           event.preventDefault();
           return true;
+        },
+        // Drop affordance for the sanctioned inline-insert drags the
+        // `handleDrop` below accepts (citation / bib card, panel text, footnote
+        // move). Without this the browser derives `dropEffect` from the source's
+        // `effectAllowed` over the contenteditable surface and shows its native
+        // green-plus `copy` cursor. Give these a clean `"move"` affordance
+        // instead — cosmetic only; `handleDrop` is unchanged. The matching
+        // sources advertise `effectAllowed = "copyMove"` so `"move"` isn't reset
+        // to `"none"` here (while `"copy"` still works at the card/panel merge
+        // targets). Non-sanctioned drags fall through to ProseMirror's built-in
+        // `dragover` (which just `preventDefault()`s with the default effect).
+        dragover(_view, event) {
+          if (!isEditorInsertDrag(event.dataTransfer)) return false;
+          event.preventDefault();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+          return false;
         },
       },
       handleDrop(view, event) {

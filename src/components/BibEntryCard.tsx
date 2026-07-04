@@ -362,7 +362,9 @@ export default function BibEntryCard({
     const display = bibEntries ? formatMinimalCitation(entry.key, bibEntries) : entry.key;
     e.dataTransfer.setData("text/plain", cmd);
     e.dataTransfer.setData(MIME_CITATION, JSON.stringify({ command: cmd, bibKey: entry.key }));
-    e.dataTransfer.effectAllowed = "copy";
+    // "copyMove", not "copy": the editor drop surface shows a "move" affordance
+    // (Editor.tsx dragover); the card/panel merge targets still take "copy".
+    e.dataTransfer.effectAllowed = "copyMove";
     attachClampedDragGhost({
       dragStartEvent: e,
       buildGhost: () => {
