@@ -991,9 +991,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // Insert at current cursor position
       if (typeof content === "string") {
         if (content.startsWith("% ")) {
+          const body = content.slice(2);
           editor.chain().focus().insertContent({
             type: "latexComment",
-            attrs: { text: content.slice(2) },
+            content: body ? [{ type: "text", text: body }] : [],
           }).run();
         } else {
           editor.chain().focus().insertContent(content).run();

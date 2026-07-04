@@ -388,7 +388,8 @@ export function richJsonToLatex(json: JSONContent): string {
       return (node.attrs?.code as string) || "";
     }
     if (node.type === "latexComment") {
-      return `% ${(node.attrs?.text as string) || ""}`;
+      const text = (node.content ?? []).map((c) => c.text ?? "").join("");
+      return `% ${text}`;
     }
     if (node.type === "displayMath") {
       return `$$${(node.attrs?.latex as string) || ""}$$`;
@@ -738,7 +739,7 @@ export function richJsonToPlainText(json: JSONContent | unknown): string {
       return source || "[graphic]";
     }
     if (node.type === "latexComment") {
-      const text = (node.attrs?.text as string) || "";
+      const text = (node.content ?? []).map((c) => c.text ?? "").join("");
       return `% ${text}`;
     }
     if (node.type === "displayMath") {

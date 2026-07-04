@@ -154,7 +154,7 @@ function walkDoc(doc: PmNode): WordCounts {
       }
 
       case "latexComment": {
-        const text = node.attrs.text || "";
+        const text = node.textContent;
         if (text) cats.comments.push(text);
         break;
       }
@@ -232,7 +232,7 @@ function getSelectionCounts(editor: Editor): SelectionCounts | null {
         return false;
       }
       case "latexComment": {
-        const text = node.attrs.text || "";
+        const text = node.textContent;
         if (text) parts.push(text);
         return false;
       }

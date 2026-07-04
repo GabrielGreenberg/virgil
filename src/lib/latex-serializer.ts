@@ -365,7 +365,10 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     case "latexComment": {
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
-      return `% ${node.attrs?.text || ""}${anchor}\n`;
+      // Comment text is native inline content now (`content: text*`), not an
+      // `attrs.text` — flatten the text nodes.
+      const text = (node.content ?? []).map((c) => c.text ?? "").join("");
+      return `% ${text}${anchor}\n`;
     }
 
     case "citation": {
@@ -974,7 +977,8 @@ function extractPlainText(node: JSONContent): string {
   if (node.type === "footnote") return richJsonToPlainText(normalizeRichContent(node.attrs?.content));
   if (node.type === "hardBreak") return " ";
   if (node.type === "displayMath") return node.attrs?.latex || "";
-  if (node.type === "latexComment") return node.attrs?.text || "";
+  // latexComment holds its text as native inline content now — fall through to
+  // the generic content-flatten below (no `attrs.text` special-case).
   if (!node.content) return "";
   const sep = node.type === "bulletList" || node.type === "orderedList" ? "; " : "";
   return node.content.map(extractPlainText).join(sep);

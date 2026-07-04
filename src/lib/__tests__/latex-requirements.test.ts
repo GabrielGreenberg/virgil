@@ -513,7 +513,10 @@ describe("serializeToLatex — requirements integration", () => {
         },
         {
           type: "latexComment",
-          attrs: { uuid: "0002", text: "TODO maybe \\autocite{smith} and \\ex here" },
+          attrs: { uuid: "0002" },
+          content: [
+            { type: "text", text: "TODO maybe \\autocite{smith} and \\ex here" },
+          ],
         },
       ],
     };

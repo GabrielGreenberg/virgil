@@ -1751,9 +1751,12 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
       // Strip trailing %!v:xxxx UUID anchor from comment text
       const { text: commentText, uuid: commentUuid } = stripUuidAnchor(rawComment);
+      // latexComment holds its text as native inline content now (`text*`),
+      // not an `attrs.text` — empty comments carry no content child.
       parent.content.push({
         type: "latexComment",
-        attrs: { text: commentText, ...(commentUuid ? { uuid: commentUuid } : {}) },
+        attrs: { ...(commentUuid ? { uuid: commentUuid } : {}) },
+        content: commentText ? [{ type: "text", text: commentText }] : [],
       });
       continue;
     }

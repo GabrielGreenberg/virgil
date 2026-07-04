@@ -52,7 +52,9 @@ const ATOM_TEXT: Record<string, AtomTextExtractor> = {
   texBlock: (a) => (a.code as string) || "",
   displayMath: (a) => (a.latex as string) || "",
   inlineMath: (a) => (a.latex as string) || "",
-  latexComment: (a) => `% ${(a.text as string) || ""}`,
+  // latexComment is NOT here: it's no longer an attr-borne atom — it's an
+  // editable block with native inline content, so `flattenInlineText` walks its
+  // text children directly (and `atomTextOf` returns null for it).
   figureBlock: (a) => (a.src as string) || "",
   graphicsBlock: (a) => (a.src as string) || "",
 };

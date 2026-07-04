@@ -3225,7 +3225,6 @@ textarea,
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.85em;
   font-style: italic;
-  cursor: pointer;
   transition: background 0.15s, outline-color 0.15s;
 }
 
@@ -3257,6 +3256,8 @@ textarea,
   padding: 0.35em 0.75em;
   flex: 1;
   min-width: 0;
+  /* Editable content now holds a real caret — read as text, not a click target. */
+  cursor: text;
 }
 
 .latex-comment-editable {

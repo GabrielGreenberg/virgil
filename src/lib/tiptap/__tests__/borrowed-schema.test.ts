@@ -151,13 +151,14 @@ describe("borrowed-schema (backlog #11)", () => {
     }
   });
 
-  it("registers inline math/displayMath/latexComment BARE (default surface 'main')", () => {
+  it("registers inline math/displayMath BARE (default surface 'main')", () => {
     // The card surfaces historically registered these bare; threading any other
     // surface would be a behavior change. The default surface is "main".
+    // (latexComment dropped its `surface` option in the atom→block remodel,
+    // task 017 — it's a content block now, no `.selected`-at-rest float gate.)
     const exts = buildBorrowedAtomSchema({ includeLabelRefFootnote: true });
     expect(optionFor(exts, "inlineMath")?.surface).toBe("main");
     expect(optionFor(exts, "displayMath")?.surface).toBe("main");
-    expect(optionFor(exts, "latexComment")?.surface).toBe("main");
   });
 
   // ── The cross-surface invariant ─────────────────────────────────────────

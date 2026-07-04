@@ -122,7 +122,7 @@ describe("code-pane-bridge: UUID preservation across parse↔serialize", () => {
     const doc: JSONContent = {
       type: "doc",
       content: [
-        { type: "latexComment", attrs: { uuid: "4444", source: "TODO: review" } },
+        { type: "latexComment", attrs: { uuid: "4444" }, content: [{ type: "text", text: "TODO: review" }] },
         { type: "paragraph", attrs: { uuid: "5555" }, content: [{ type: "text", text: "Body." }] },
       ],
     };

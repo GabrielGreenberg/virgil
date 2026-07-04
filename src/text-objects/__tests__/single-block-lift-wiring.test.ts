@@ -154,13 +154,15 @@ describe("bodyless-kinds Chip 3 — latexComment EDITABLE atom lift wiring (L3i)
     expect((cmtBody as { name?: string }).name).toBe("SingleBlockBody");
   });
 
-  it("is EDITABLE — editable:true + attr-based emptyAttrs (decision A, the atom×editable cross-product)", () => {
-    // The load-bearing decision of this chip: latexComment is "fully editable,
-    // first-class" — pop out the `%comment`, edit it, it round-trips. editable:true
-    // wires onUpdate / write-back (unlike displayMath's read-only mode); emptyAttrs
-    // makes it an atom (attr-based empty seed/fallback, unlike the prose kinds).
+  it("is EDITABLE + content-bearing — editable:true, NO emptyAttrs (post atom→block remodel, task 017)", () => {
+    // latexComment is "fully editable, first-class" — pop out the `%comment`,
+    // edit it, it round-trips (editable:true wires onUpdate / write-back, unlike
+    // displayMath's read-only mode). Since the atom→block remodel it is a
+    // CONTENT-BEARING block (`content: text*`), so it carries NO emptyAttrs:
+    // `emptyBlockFor` builds `{type:"latexComment", content:[]}`, like the prose
+    // kinds (blockquote/codeBlock), not an attr-based atom seed.
     expect(SINGLE_BLOCK_CONFIG.latexComment?.editable).toBe(true);
-    expect(SINGLE_BLOCK_CONFIG.latexComment?.emptyAttrs).toEqual({ text: "" });
+    expect(SINGLE_BLOCK_CONFIG.latexComment?.emptyAttrs).toBeUndefined();
   });
 });
 

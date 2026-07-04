@@ -735,7 +735,11 @@ const DUPLICABLE_BLOCK_KINDS: Array<{ kind: string; json: (uuid: string) => JSON
   },
   {
     kind: "latexComment",
-    json: (uuid) => ({ type: "latexComment", attrs: { uuid, text: "% a comment" } }),
+    json: (uuid) => ({
+      type: "latexComment",
+      attrs: { uuid },
+      content: [{ type: "text", text: "a comment" }],
+    }),
   },
 ];
 

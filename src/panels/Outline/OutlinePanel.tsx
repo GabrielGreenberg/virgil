@@ -598,7 +598,7 @@ function walkBlockJson(node: JSONContent): Record<Category, number> {
         return;
       }
       case "latexComment": {
-        const text = (n.attrs?.text as string) || "";
+        const text = (n.content ?? []).map((c) => c.text ?? "").join("");
         if (text) cats.comments.push(text);
         return;
       }
