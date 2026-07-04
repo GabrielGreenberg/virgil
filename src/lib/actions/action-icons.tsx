@@ -65,7 +65,7 @@ export const CARD_ACTION_PRESENTATION: Readonly<
   footnote: { label: "Footnote", letter: "F", icon: <IconFootnote size={16} /> },
   citation: { label: "Citation", letter: "C", icon: <IconCitation size={16} /> },
   todo: { label: "Todo", letter: "T", icon: <IconTodo size={16} /> },
-  "suggest-edit": { label: "Request revision", letter: "E", icon: <IconRevisions size={16} /> },
+  "suggest-edit": { label: "Request edit", letter: "E", icon: <IconRevisions size={16} /> },
   cutter: { label: "Request cut", letter: "X", icon: <IconCutter size={16} /> },
   report: { label: "Request report", letter: "R", icon: <IconReports size={16} /> },
   duplicate: { label: "Duplicate", letter: "D", icon: <IconDuplicate size={16} />, separator: true },
