@@ -111,18 +111,15 @@ export default function LibraryCentralDashboard({
 function StatsGrid({ stats }: { stats: CatalogStats }) {
   return (
     <div className="lib-dashboard-scroll">
-      {/* Top line (F#1): the size axis — the reference universe + the real
-          documents on disk and how far they've been processed. */}
+      {/* Top line (F#1): the size axis — the reference universe and how far
+          the documents on disk have been processed. The raw sources count is
+          folded into the Indexed card's sub ("of N sources"), so it needs no
+          standalone card. */}
       <Section title="Library">
         <StatCard
           value={stats.bibEntries}
           label="Bibliography"
           sub="references in master.bib"
-        />
-        <StatCard
-          value={stats.sourcesWithFile}
-          label="Sources"
-          sub="documents on disk"
         />
         <StatCard
           value={stats.indexed}
