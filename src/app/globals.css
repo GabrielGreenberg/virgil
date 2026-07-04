@@ -399,6 +399,31 @@ body[data-zen-mode="on"] {
   background-color: var(--surface-muted-strong);
 }
 
+/* ── Omni "collected cards" bin pill ──────────────────────────────
+   Shared recipe for the faint count-pill controls that collect cards
+   which can't cascade inline: the outside-focus band and the unanchored
+   bin (OmniOutsideFocusBin / OmniUnanchoredBin). Both were a white chip
+   on the white Omni column with a ~1:1 border — effectively invisible.
+   This reads as a solid, clearly-bounded control: a tinted resting bg
+   that separates from the white column, a perceptible stone-300 edge,
+   and readable ink-body text. Hover deepens one step (bg + border) so
+   the feedback survives the already-tinted resting state (the hover
+   trap: don't rest at the same token .hover-on-light hovers to). The
+   leading glyph stays per-bin (◎ vs a BadgeOrphaned badge). */
+.omni-bin-pill {
+  color: var(--ink-body);
+  background-color: var(--surface-muted);
+  border: 1px solid var(--edge-hover);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
+}
+.omni-bin-pill:hover {
+  background-color: var(--surface-muted-strong);
+  border-color: var(--edge-strong);
+}
+
 .hover-on-dark {
   transition: background-color 120ms ease-out;
 }
