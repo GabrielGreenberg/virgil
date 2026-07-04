@@ -24,6 +24,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
+import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
 import { UUID_ATTR_SPEC, UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
@@ -1462,6 +1463,21 @@ export function createHeadingWithLabel(
                 }
                 return true;
               });
+              // Body-line `\label{…}` capture (shared SSOT) — parent-bound → N,
+              // item-bound → N+sub. Explicit attr keys above win (`!has`).
+              for (const bl of collectExampleBodyLabelsPM(nd)) {
+                if (bl.subLabel == null) {
+                  if (!exampleMap.has(bl.key)) exampleMap.set(bl.key, entry);
+                } else {
+                  if (!exampleMap.has(bl.key)) {
+                    exampleMap.set(bl.key, {
+                      number: `${parentNum}${bl.subLabel}`,
+                      items: new Map<string, string>(),
+                    });
+                  }
+                  if (!entry.items.has(bl.key)) entry.items.set(bl.key, bl.subLabel);
+                }
+              }
               return false;
             });
 
