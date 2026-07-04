@@ -95,6 +95,7 @@
   "hiddenMarginaliaTypes": [],
   "showHeadingLabels": true,
   "omniDimResting": true,
+  "cardOutlineChrome": false,
   "dividerLevels": [
     2,
     4,

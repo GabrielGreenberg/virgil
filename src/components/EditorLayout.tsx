@@ -952,6 +952,24 @@ export default function EditorLayout() {
     () => toggleViewPref("omniDimResting"),
     [toggleViewPref],
   );
+  // Card outline chrome — the colored hover/select outline is now OPT-IN
+  // (default off: retint/brighten stays, colored edge is gone). Toggled via
+  // the generic registry-guarded setter and reflected to a body class so the
+  // CSS gate reaches every card surface (docked + omni + portaled floats),
+  // exactly like `showCardTitles`.
+  const cardOutlineChrome = prefs.cardOutlineChrome;
+  const toggleCardOutline = useCallback(
+    () => toggleViewPref("cardOutlineChrome"),
+    [toggleViewPref],
+  );
+  // Reflect the opt-in pref onto <body>: the outline rules require
+  // `.card-outline-chrome`, so the default (class absent) is the no-outline
+  // look. Depends only on the boolean — zero per-keystroke work.
+  useEffect(() => {
+    const cls = "card-outline-chrome";
+    document.body.classList.toggle(cls, cardOutlineChrome);
+    return () => document.body.classList.remove(cls);
+  }, [cardOutlineChrome]);
   const dividerLevels = useMemo(
     () => new Set(prefs.dividerLevels),
     [prefs.dividerLevels],
@@ -2556,6 +2574,7 @@ export default function EditorLayout() {
     showLatexComments,
     showHeadingLabels,
     omniDimResting,
+    cardOutlineChrome,
     showMarginalia,
     hiddenMarginaliaTypes,
     hiddenHighlightTypes,
@@ -2569,6 +2588,7 @@ export default function EditorLayout() {
     onToggleLatexComments: toggleLatexComments,
     toggleHeadingLabels,
     onToggleOmniDimResting: toggleOmniDimResting,
+    onToggleCardOutline: toggleCardOutline,
     toggleMarginalia,
     toggleMarginaliaType,
     toggleHighlightType,
@@ -2590,6 +2610,7 @@ export default function EditorLayout() {
     showLatexComments,
     showHeadingLabels,
     omniDimResting,
+    cardOutlineChrome,
     showMarginalia,
     hiddenMarginaliaTypes,
     hiddenHighlightTypes,
@@ -2603,6 +2624,7 @@ export default function EditorLayout() {
     toggleLatexComments,
     toggleHeadingLabels,
     toggleOmniDimResting,
+    toggleCardOutline,
     toggleMarginalia,
     toggleMarginaliaType,
     toggleHighlightType,

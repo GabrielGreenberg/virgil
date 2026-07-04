@@ -199,8 +199,13 @@ export function makeCompressedSummary(content: JSONContent | unknown, lines: num
 
 const CARD_BASE =
   "rounded-lg border transition-colors overflow-hidden";
+// Resting edge softened onto `border-edge-subtle` (task 026 §3a) so cards
+// adopt the panel-subtle look by default — the card's identity comes from its
+// shadow + gap (panel look), not a hard edge. Hover keeps the retint/brighten
+// (a neutral edge-strengthen + muted bg); the COLORED hover/select outline is
+// separate (globals.css, gated behind the `card-outline-chrome` pref).
 const CARD_DEFAULT =
-  "bg-surface border-edge-hover hover:border-edge-strong hover:bg-surface-muted/50";
+  "bg-surface border-edge-subtle hover:border-edge-strong hover:bg-surface-muted/50";
 
 /**
  * Call from arrow-key handlers to clear the stale CSS :hover on the

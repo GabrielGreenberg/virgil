@@ -236,6 +236,8 @@ function makeViewProps(overrides: Partial<ViewMenuProps> = {}): ViewMenuProps {
     onToggleHeadingLabels: vi.fn(),
     omniDimResting: false,
     onToggleOmniDimResting: vi.fn(),
+    cardOutlineChrome: false,
+    onToggleCardOutline: vi.fn(),
     onOpenPreferences: vi.fn(),
     showMarginalia: true,
     onToggleMarginalia: vi.fn(),

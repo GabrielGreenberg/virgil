@@ -550,6 +550,7 @@ export interface EditorPaneMenuBarBundle {
   showLatexComments: boolean;
   showHeadingLabels: boolean;
   omniDimResting: boolean;
+  cardOutlineChrome: boolean;
   showMarginalia: boolean;
   hiddenMarginaliaTypes: Set<import("./MenuBar").MarginaliaType>;
   hiddenHighlightTypes: Set<import("@/hooks/useViewPrefs").HighlightType>;
@@ -565,6 +566,7 @@ export interface EditorPaneMenuBarBundle {
   onToggleLatexComments: () => void;
   toggleHeadingLabels: () => void;
   onToggleOmniDimResting: () => void;
+  onToggleCardOutline: () => void;
   toggleMarginalia: () => void;
   toggleMarginaliaType: (type: import("./MenuBar").MarginaliaType) => void;
   toggleHighlightType: (type: import("@/hooks/useViewPrefs").HighlightType) => void;
@@ -5849,6 +5851,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       onToggleHeadingLabels={menuBar.toggleHeadingLabels}
                       omniDimResting={menuBar.omniDimResting}
                       onToggleOmniDimResting={menuBar.onToggleOmniDimResting}
+                      cardOutlineChrome={menuBar.cardOutlineChrome}
+                      onToggleCardOutline={menuBar.onToggleCardOutline}
                       onOpenPreferences={menuBar.onOpenPreferences}
                       editorSplit={menuBar.editorSplit}
                       onToggleEditorSplit={menuBar.toggleEditorSplit}
