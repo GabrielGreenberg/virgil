@@ -181,7 +181,6 @@ function StatusClusterImpl(props: StatusClusterProps) {
           (like the Virgil-update banner) so a sync failure can't be hidden by
           a collapsed right toolbar. Pure UI: no per-keystroke work. */}
       <SkillSyncControls
-        hasDoc={hasDoc}
         error={skillSyncError}
         notice={skillSyncNotice}
         onResync={onResyncSkills}
@@ -332,6 +331,26 @@ function StatusClusterImpl(props: StatusClusterProps) {
               )}
             </div>
             <div className="border-t border-edge-subtle" />
+            {/* Refresh skills — the manual re-sync (formerly a persistent
+                top-bar icon). An edge action: auto-sync runs on doc-open, so
+                this is only for force-refresh or re-granting FSA permission
+                after a revoked grant. A menu click is still a user gesture, so
+                the permission re-grant path is preserved. Only meaningful with
+                a paper open. Sync failures still surface loudly via the
+                SkillSyncControls banner above, independent of this item. */}
+            {hasDoc && (
+              <button
+                onClick={() => { onResyncSkills(); setHelperMenuOpen(false); }}
+                className="w-full text-left px-3 py-2 hover-on-light flex items-center justify-between gap-3"
+                data-hint="Re-sync the skill bundle to this paper"
+              >
+                <span>Refresh skills</span>
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-ink-muted">
+                  <path d="M2 5.2V12a1.2 1.2 0 0 0 1.2 1.2h9.6A1.2 1.2 0 0 0 14 12V6.2A1.2 1.2 0 0 0 12.8 5H7.4L6 3.2H3.2A1.2 1.2 0 0 0 2 4.4Z" />
+                  <path d="M8 7.2v3.4M6.4 9.2 8 10.8l1.6-1.6" />
+                </svg>
+              </button>
+            )}
             <button
               onClick={() => { onHelperToggle(); setHelperMenuOpen(false); }}
               className="w-full text-left px-3 py-2 hover-on-light flex items-center justify-between gap-3"

@@ -4,11 +4,10 @@ import { memo } from "react";
 import type { SkillSyncError, SkillSyncNotice } from "@/hooks/useFiles";
 
 interface Props {
-  /** Whether a paper is open (gates the persistent Re-sync button). */
-  hasDoc: boolean;
   error: SkillSyncError | null;
   notice: SkillSyncNotice | null;
-  /** Re-run the sync (and Retry from the failure banner). */
+  /** Retry the sync from the failure banner (also the target of the
+   *  "Refresh skills" help-menu item, wired at the StatusCluster call site). */
   onResync: () => void;
   onDismissError: () => void;
   onDismissNotice: () => void;
@@ -26,17 +25,21 @@ const PILL: React.CSSProperties = {
 };
 
 /**
- * Top-bar controls for the per-paper skill-bundle sync. Mirrors the
+ * Top-bar surface for the per-paper skill-bundle sync. Mirrors the
  * "Virgil update — click to refresh" banner idiom (EditorLayout): a loud,
- * dismissible failure banner with Retry, a "skills updated — restart your
- * cowork session" notice, and a persistent manual Re-sync button.
+ * dismissible failure banner with Retry (+ "Grant & retry" on a revoked
+ * permission), and a "skills updated — restart your cowork session" notice.
+ *
+ * Both pieces are CONDITIONAL — they render only when a sync fails or
+ * succeeds, so the happy path (silent, auto-synced on doc-open) carries no
+ * permanent top-bar chrome. The always-available MANUAL re-sync action does
+ * NOT live here: it's a "Refresh skills" item in the Virgil-bar help ("?")
+ * menu (StatusCluster), which reuses this component's `onResync`.
  *
  * Pure presentational — no editor subscription, so it adds zero
- * per-keystroke work (keystroke-sanctity, AGENTS.md). All three pieces
- * are sync-time / explicit-click driven.
+ * per-keystroke work (keystroke-sanctity, AGENTS.md).
  */
 function SkillSyncControls({
-  hasDoc,
   error,
   notice,
   onResync,
@@ -166,28 +169,6 @@ function SkillSyncControls({
             </svg>
           </button>
         </div>
-      )}
-      {hasDoc && (
-        <button
-          onClick={onResync}
-          className="topbarbtn topbarbtn-icon"
-          data-hint="Re-sync skills to this paper"
-          aria-label="Re-sync skills to this paper"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M2 5.2V12a1.2 1.2 0 0 0 1.2 1.2h9.6A1.2 1.2 0 0 0 14 12V6.2A1.2 1.2 0 0 0 12.8 5H7.4L6 3.2H3.2A1.2 1.2 0 0 0 2 4.4Z" />
-            <path d="M8 7.2v3.4M6.4 9.2 8 10.8l1.6-1.6" />
-          </svg>
-        </button>
       )}
     </>
   );

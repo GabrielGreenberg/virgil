@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
 //
 // Pins for the editor-side skill-sync surface (the "make skill sync LOUD +
-// recoverable" chip). SkillSyncControls is the top-bar host for the three
-// fixes:
+// recoverable" chip). SkillSyncControls hosts the two CONDITIONAL top-bar
+// pieces:
 //   Fix 1 — a loud, dismissible FAILURE banner with Retry; permission
 //           wording (+ "Grant & retry") when the failure is a revoked grant.
-//   Fix 2 — a persistent manual "Re-sync skills" button (the one-click
-//           version of a hand-sync), shown whenever a paper is open.
 //   Fix 3 — a reworded SUCCESS notice that leads with the action: restart
 //           the cowork session to pick up the new commands.
+//
+// The manual "Refresh skills" re-sync action is NOT hosted here anymore — it
+// moved into the Virgil-bar help ("?") menu (StatusCluster), reusing this
+// component's `onResync`. So there is no always-on button in this component;
+// it renders nothing unless a sync fails or succeeds.
 //
 // Pure presentational — only a type import from useFiles (erased), so no
 // storage/editor mocks are needed.
@@ -22,35 +25,21 @@ afterEach(cleanup);
 function noop() {}
 
 describe("SkillSyncControls", () => {
-  it("Fix 2: shows a Re-sync button only when a paper is open", () => {
-    const onResync = vi.fn();
-    const { rerender } = render(
+  it("idle (no error, no notice) renders nothing — no always-on button", () => {
+    const { container } = render(
       <SkillSyncControls
-        hasDoc={false}
         error={null}
         notice={null}
-        onResync={onResync}
+        onResync={noop}
         onDismissError={noop}
         onDismissNotice={noop}
       />,
     );
-    expect(
-      screen.queryByRole("button", { name: /re-sync skills/i }),
-    ).toBeNull();
-
-    rerender(
-      <SkillSyncControls
-        hasDoc
-        error={null}
-        notice={null}
-        onResync={onResync}
-        onDismissError={noop}
-        onDismissNotice={noop}
-      />,
-    );
-    const btn = screen.getByRole("button", { name: /re-sync skills/i });
-    fireEvent.click(btn);
-    expect(onResync).toHaveBeenCalledTimes(1);
+    // The manual re-sync now lives in the help menu, so this component is
+    // purely conditional: nothing renders on the happy path.
+    expect(container.querySelector("button")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("Fix 1: a non-permission failure renders a loud alert with Retry", () => {
@@ -58,7 +47,6 @@ describe("SkillSyncControls", () => {
     const onDismissError = vi.fn();
     render(
       <SkillSyncControls
-        hasDoc
         error={{ permission: false, message: "network blew up" }}
         notice={null}
         onResync={onResync}
@@ -82,7 +70,6 @@ describe("SkillSyncControls", () => {
     const onResync = vi.fn();
     render(
       <SkillSyncControls
-        hasDoc
         error={{ permission: true, message: "lost permission" }}
         notice={null}
         onResync={onResync}
@@ -99,7 +86,6 @@ describe("SkillSyncControls", () => {
     const onDismissNotice = vi.fn();
     render(
       <SkillSyncControls
-        hasDoc
         error={null}
         notice={{ version: "0.1.49", filesWritten: 12 }}
         onResync={noop}
@@ -117,21 +103,5 @@ describe("SkillSyncControls", () => {
       screen.getByRole("button", { name: /dismiss skills-updated notice/i }),
     );
     expect(onDismissNotice).toHaveBeenCalledTimes(1);
-  });
-
-  it("renders nothing intrusive when idle with no doc", () => {
-    const { container } = render(
-      <SkillSyncControls
-        hasDoc={false}
-        error={null}
-        notice={null}
-        onResync={noop}
-        onDismissError={noop}
-        onDismissNotice={noop}
-      />,
-    );
-    expect(container.querySelector("button")).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
   });
 });
