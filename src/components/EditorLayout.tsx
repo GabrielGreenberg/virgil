@@ -159,6 +159,7 @@ import { usePreferences } from "@/hooks/usePreferences";
 import { usePreferenceMode } from "@/hooks/usePreferenceMode";
 import { useHelperMode } from "@/hooks/useHelperMode";
 import { useZenMode } from "@/hooks/useZenMode";
+import { useWindowChrome } from "@/hooks/useWindowChrome";
 import PreferenceModePicker from "./PreferenceModePicker";
 import { applyTransforms } from "@/lib/color-transforms";
 import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
@@ -1046,6 +1047,12 @@ export default function EditorLayout() {
   // the ctrl+click picker. Read-only here — the button itself calls toggle().
   const { on: prefModeOn, toggle: togglePrefMode } = usePreferenceMode();
   const helperMode = useHelperMode();
+  // Window chrome geometry (WCO title-bar / display mode). Consumed once here
+  // so the <body data-display-mode> mirror + geometry listeners stay live for
+  // the whole session; the visual bar behaviour itself is pure CSS driven by
+  // the --window-inset-* SSOT (this hook is a window-level, not editor-level,
+  // reactor — exempt from keystroke sanctity like DiskWatcher).
+  useWindowChrome();
   const updateAvailable = useUpdateAvailable();
   // Zen mode — render-gates editor chrome (strips, panels, MenuBar,
   // marginalia, popouts) so the document area appears alone. Top bar

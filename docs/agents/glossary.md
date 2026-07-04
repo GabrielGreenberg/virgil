@@ -276,4 +276,4 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 
 ## Pending terminology
 
-_(Empty. Add entries here when the user uses a term not yet in the glossary.)_
+- **"Fold up / compress the top bar"** / **"the fold chevron"** (user, 2026-07-04) — Chrome's installed-PWA **Window Controls Overlay (WCO)**: the chevron collapses Chrome's own toolbar, growing the app's reserved title-bar strip. Code: WCO is opted into `display_override` in [src/app/manifest.ts](../../src/app/manifest.ts); the app's response lives in the `--window-inset-*` CSS SSOT + the `.virgil-bar` rule (src/app/globals.css) and the [useWindowChrome](../../src/hooks/useWindowChrome.ts) store (display mode + px insets + `getWindowInsetTopPx()`). Under WCO the Virgil bar grows to fill the strip and insets its material to clear the controls. See STYLE_GUIDE "Window insets / WCO title bar".

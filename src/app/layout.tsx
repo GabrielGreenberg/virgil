@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display, Cinzel, Source_Serif_4, Geist_Mono } from "next/font/google";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { Analytics } from "@/components/Analytics";
@@ -44,6 +44,19 @@ export const metadata: Metadata = {
   other: {
     "mobile-web-app-capable": "yes",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // viewport-fit=cover exposes env(safe-area-inset-*) (notch / rounded
+  // corners) to the --window-inset-* SSOT in globals.css, and is the base for
+  // the WCO title-bar insets. color-scheme hints UA controls/scrollbars for
+  // the app's light palette (there is no dark theme). Note: theme-color stays
+  // the manual <meta> below + the runtime writer in EditorLayout (locked to
+  // --topbar-bg) — intentionally NOT declared here, to keep one SSOT for it.
+  viewportFit: "cover",
+  colorScheme: "light",
 };
 
 export default function RootLayout({

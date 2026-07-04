@@ -16,6 +16,7 @@
 
 import { useEffect, useState } from "react";
 import { isDevStorage } from "@/lib/storage-mode";
+import { useWindowChrome } from "@/hooks/useWindowChrome";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -27,10 +28,15 @@ const DISMISSED_KEY = "virgil:install-prompt-dismissed";
 export function InstallPwaPrompt() {
   const [evt, setEvt] = useState<BeforeInstallPromptEvent | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  // Single source of truth for display mode (was a one-shot matchMedia read).
+  // Any installed mode (standalone / WCO / fullscreen) means "this window IS
+  // the PWA", so the install prompt is moot.
+  const { displayMode } = useWindowChrome();
+  const installed = displayMode !== "browser";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.matchMedia("(display-mode: standalone)").matches) return;
+    if (installed) return;
     setDismissed(localStorage.getItem(DISMISSED_KEY) === "1");
     const handler = (e: Event) => {
       e.preventDefault();
@@ -38,7 +44,7 @@ export function InstallPwaPrompt() {
     };
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
-  }, []);
+  }, [installed]);
 
   if (isDevStorage) return null;
   if (!evt || dismissed) return null;

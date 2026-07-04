@@ -190,6 +190,10 @@ export default function SystemDialog({
     >
       <div
         className={`fixed inset-0 ${t.zIndex} ${t.scrim} ${anchorPos ? "" : "flex items-center justify-center"}`}
+        // Keep centered dialogs clear of the OS window-control strip under WCO
+        // (and the notch under safe-area); inert for anchored dialogs and when
+        // the inset is 0 (normal tab).
+        style={{ paddingTop: "var(--window-inset-top, 0px)" }}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}

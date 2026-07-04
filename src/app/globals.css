@@ -51,6 +51,38 @@
   --library-bg: #eae7e2;
   --virgil-bar-text: #78716c;
 
+  /* Window insets — the app's single window-edge inset model (SSOT)
+     ==============================================================
+     Every OS/browser-reserved edge region flows through these vars: app
+     chrome insets to CLEAR them, the bar background BLEEDS under them.
+     All resolve to 0 in a normal browser tab and in the dev preview
+     (env() falls back), so this is a NO-OP outside an installed PWA —
+     verify WCO behavior in a real installed window, not the preview.
+
+       • Window Controls Overlay (installed PWA; display_override in
+         manifest.ts): env(titlebar-area-*) describe the rectangle the OS/
+         browser window controls leave free. These env vars are LIVE —
+         folding Chrome's PWA toolbar grows titlebar-area-height and the
+         CSS recomputes with NO JS, so the Virgil bar tracks the fold.
+       • Safe-area (notch / rounded corners): env(safe-area-inset-*),
+         active only once layout.tsx sets viewport-fit=cover.
+
+     --bar-base-h is the bar's normal content-height floor (was the
+     min-h-[32px] Tailwind literal on TopBar; hoisted to a var so the
+     .virgil-bar rule and any measurement read ONE value). The bar grows
+     to max(--bar-base-h, --window-inset-top) so under WCO it BECOMES the
+     draggable title-bar strip. NOT a promoted pref — lives above the
+     PROMOTE-DEFAULTS block (like --control-selected). */
+  --bar-base-h: 32px;
+  --window-titlebar-h: env(titlebar-area-height, 0px);
+  --window-inset-top: max(env(safe-area-inset-top, 0px), var(--window-titlebar-h));
+  --window-inset-left: max(env(safe-area-inset-left, 0px), env(titlebar-area-x, 0px));
+  --window-inset-right: max(
+    env(safe-area-inset-right, 0px),
+    calc(100vw - (env(titlebar-area-x, 0px) + env(titlebar-area-width, 100vw)))
+  );
+  --window-inset-bottom: env(safe-area-inset-bottom, 0px);
+
   /* Pod system
      --pod-editor is locked to --surface so the editor pod and all
      "paper" surfaces (cards, popovers, inputs) stay identical. */
@@ -4173,10 +4205,52 @@ html {
 
 /* Sidebar split — no visual indicator for focused half */
 
-/* Ambient shadow is applied directly on the Virgil bar as an inset
-   box-shadow — see the .virgil-bar style in EditorLayout.tsx. Inset
-   shadows paint above the bar's own background but below its children,
-   so tabs naturally create a gap in the shadow where they sit. */
+/* The Virgil top bar (div.virgil-bar in TopBar.tsx). Base flex / sticky /
+   z-index stay as Tailwind utilities on the element; this rule owns the
+   window-inset-aware GEOMETRY that Tailwind literals can't express, so the
+   bar can respond to the OS-reserved top strip (WCO title-bar / notch).
+   Under Window Controls Overlay the bar grows to fill the reserved strip
+   and its material insets to clear the window controls — driven by the
+   --window-inset-* SSOT at the top of this file. */
+.virgil-bar {
+  /* Grow to swallow the OS-reserved top strip; floors at --bar-base-h.
+     max(32px, 0px) == 32px in a normal tab, so this is inert off-WCO. */
+  min-height: max(var(--bar-base-h), var(--window-inset-top));
+  /* Keep interactive material clear of the L/R window-control clusters
+     (macOS traffic-lights, Windows min/max/close, Chrome ⋮ / puzzle / the
+     fold chevron). Stacks with each cluster's own 8px inner padding. */
+  padding-left: var(--window-inset-left);
+  padding-right: var(--window-inset-right);
+}
+
+/* Under Window Controls Overlay the exposed bar behaves like a native title
+   bar: you can drag the window by it. Scoped to the WCO display-mode so a
+   normal browser tab is completely unaffected.
+
+   The model is OPT-IN, not an interactive-leaf allowlist: the bar itself
+   drags (including its L/R inset gutters, which sit beside the OS/browser
+   window controls — the natural grab spots), but its content clusters are
+   marked no-drag WHOLESALE via `> *`. app-region is not inherited and a
+   default-`none` child does NOT carve a hole out of a `drag` ancestor — only
+   an explicit `no-drag` does — so an allowlist silently turns any
+   non-semantic clickable child (e.g. a folder-tab `<div onClick>`, whose
+   double-click-to-rename the OS would otherwise eat) into a dead drag zone.
+   Marking the clusters no-drag makes ALL their content interactive by
+   default; hand a region back to dragging with [data-window-drag-zone]. */
+@media (display-mode: window-controls-overlay) {
+  .virgil-bar {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+  .virgil-bar > * {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+  .virgil-bar [data-window-drag-zone] {
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+}
 
 /* Tab swoops removed — DocumentFolderTab now renders each tab as a single
    SVG shape with a continuous border around its full outline, so the
