@@ -13,7 +13,11 @@ import {
 } from "./nest-footnote-children";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { Side } from "@/hooks/useViewPrefs";
-import OmniViewPanel, { type OmniItem, type OmniCategory } from "@/panels/Omni";
+import OmniViewPanel, {
+  type OmniItem,
+  type OmniCategory,
+  type OmniBulkPendingChanges,
+} from "@/panels/Omni";
 import { buildCitationOmniItems } from "@/panels/Citations";
 import { buildFootnoteOmniItems } from "@/panels/Footnotes";
 import { buildNoteOmniItems } from "@/panels/Notes";
@@ -173,18 +177,15 @@ export interface OmniHostProps {
    *  pane. Passed straight through to OmniViewPanel; never fires on a plain
    *  keystroke. */
   onVisibleCardsChange?: (count: number) => void;
-  /** Phase 3 — the omni bulk index for applied pending AI changes (Keep-all /
-   *  Revert-all). EditorPane derives `count` + the two drains from the applied
-   *  revision + cutter cards (routed through the shared `pending-change-actions`
-   *  sequence). The header renders only when this side actually SHOWS an applied
-   *  pending card (computed below from the enabled categories), so it appears
-   *  once — on whichever side hosts the revisions/cutter omni cards. Absent /
-   *  count 0 → no header (flag-OFF never produces applied cards). */
-  bulkPendingChanges?: {
-    count: number;
-    onKeepAll: () => void;
-    onDismissAll: () => void;
-  };
+  /** Phase 3 / task 023 — the applied-pending NAVIGATOR affordance (prev/next
+   *  cursor + Keep-all / Dismiss-all kebab). EditorPane derives the cursor +
+   *  drains from the applied revision + cutter cards (routed through the shared
+   *  `pending-change-actions` sequence). The header renders only when this side
+   *  actually SHOWS an applied pending card (computed below from the enabled
+   *  categories), so it appears once — on whichever side hosts the
+   *  revisions/cutter omni cards. Absent / count 0 → no header (flag-OFF never
+   *  produces applied cards). */
+  bulkPendingChanges?: OmniBulkPendingChanges;
 }
 
 export function OmniHost(p: OmniHostProps) {

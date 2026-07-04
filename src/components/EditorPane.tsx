@@ -210,7 +210,9 @@ import {
 import { resolveStyle } from "@/lib/style-library";
 import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn } from "./editor-layout/panel-column";
-import { PanelChromeProvider } from "./panel-primitives";
+import { PanelChromeProvider, useCycle } from "./panel-primitives";
+import { findEditorScrollFor } from "./editor-layout/layout-scroll";
+import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import FloatingPanel from "./FloatingPanel";
 import { OmniHost } from "./editor-layout/panels/omni-host";
 import { OutlineHost } from "./editor-layout/panels/outline-host";
@@ -242,10 +244,15 @@ import {
   PendingChangePill,
   type PendingChangeIndex,
 } from "./PendingChangePill";
+import { sortAppliedKeysByDocPos } from "@/links/pending-change-nav";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
 import { useSelectionsContext } from "./editor-layout/contexts/selections";
 import { IconBlank } from "./editor-layout/panel-icons";
-import { OmniFilterMenu, DEFAULT_OMNI_CATEGORIES } from "@/panels/Omni/OmniViewPanel";
+import {
+  OmniFilterMenu,
+  DEFAULT_OMNI_CATEGORIES,
+  type OmniBulkPendingChanges,
+} from "@/panels/Omni/OmniViewPanel";
 import MenuBar, {
   type MarginaliaType,
 } from "./MenuBar";
@@ -2681,16 +2688,74 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     }
   }, [cutterHook.cards, onDismissCutterPending]);
 
-  // The unified bulk affordance threaded to OmniHost → OmniViewPanel: one
-  // Keep-all / Dismiss-all that drains BOTH families (revision + cutter), plus
-  // the count so the header only renders when something is applied. Stable
-  // unless a family's applied set or a per-family bulk callback changes.
-  const omniBulkPendingChanges = useMemo(() => {
+  // ── Task 023 — the applied-change NAVIGATOR cursor ──────────────────────────
+  // The prev/next cursor over the applied-pending set in DOC ORDER that powers
+  // the omni bulk bar's ▲/▼ + counter. The doc-order key list is derived off the
+  // card-source `pendingChangeIndex` (which changes only on apply/keep/dismiss —
+  // NEVER on a plain keystroke, and NOT gated on any `docVersion` counter), so
+  // the `sortAppliedKeysByDocPos` doc-walk never runs on the keystroke path.
+  // `useCycle` owns the clamped index (no hand-rolled cursor); each step resolves
+  // the change's LIVE range at click time and scrolls + lights it.
+  const orderedPendingKeys = useMemo(
+    () =>
+      editor ? sortAppliedKeysByDocPos(pendingChangeIndex, editor.state.doc) : [],
+    [pendingChangeIndex, editor],
+  );
+  const navigateToAppliedChange = useCallback(
+    (key: string) => {
+      const ed = editorInstanceRef.current;
+      if (!ed || ed.isDestroyed) return;
+      const target = pendingChangeIndex.get(key);
+      if (!target) return;
+      const range = findLinkedAnchorRange(ed.state.doc, target.anchorId);
+      if (!range) return;
+      // Scroll the change into view + caret-select its start. Inlined from
+      // EditorHandle.scrollToPos (Editor.tsx) — this scope holds the raw editor
+      // (editorInstanceRef), not the EditorHandle, so we reuse its coordsAtPos
+      // scroll math directly rather than thread a second ref.
+      try {
+        ed.commands.setTextSelection(range.from);
+        const coords = ed.view.coordsAtPos(range.from);
+        const scrollEl = findEditorScrollFor(ed.view.dom);
+        if (scrollEl && coords) {
+          const scrollRect = scrollEl.getBoundingClientRect();
+          const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
+          scrollEl.scrollTop = Math.max(0, targetY);
+        }
+      } catch {
+        /* pos out of range — ignore */
+      }
+      // Light the blue range via the shared card-selection halo
+      // (useAnchorHighlightReconciler owns it — no new decoration). Parse the
+      // kind/id from the KEY, not the in-text mark: the blue mark flattens both
+      // families to "revision-suggestion", but the key preserves the true kind.
+      const sep = key.indexOf(":");
+      const kind = key.slice(0, sep) as EntityKind;
+      const id = key.slice(sep + 1);
+      cardStoreInst.select({ kind, id });
+    },
+    [pendingChangeIndex, cardStoreInst],
+  );
+  const {
+    idx: appliedNavIdx,
+    next: appliedNavNext,
+    prev: appliedNavPrev,
+  } = useCycle(orderedPendingKeys, navigateToAppliedChange);
+
+  // The unified bulk affordance threaded to OmniHost → OmniViewPanel: the doc-
+  // order prev/next cursor (▲/▼ + counter) plus one Keep-all / Dismiss-all that
+  // drains BOTH families (revision + cutter), plus the count so the header only
+  // renders when something is applied. Stable unless a family's applied set, the
+  // nav cursor, or a per-family bulk callback changes — none per keystroke.
+  const omniBulkPendingChanges = useMemo<OmniBulkPendingChanges>(() => {
     const count =
       collectAppliedPendingIds(revisionsHook.cards).length +
       collectAppliedPendingIds(cutterHook.cards).length;
     return {
       count,
+      current: appliedNavIdx,
+      onPrev: appliedNavPrev,
+      onNext: appliedNavNext,
       onKeepAll: () => {
         keepAllRevisionPending();
         keepAllCutterPending();
@@ -2703,6 +2768,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   }, [
     revisionsHook.cards,
     cutterHook.cards,
+    appliedNavIdx,
+    appliedNavPrev,
+    appliedNavNext,
     keepAllRevisionPending,
     keepAllCutterPending,
     dismissAllRevisionPending,
@@ -6697,17 +6765,13 @@ interface PaneRailProps {
    *  its `PageScrollStrip` here so the drag-gap line lands just inboard
    *  of the page-mark navigator. */
   tail?: React.ReactNode;
-  /** Phase 3 — the omni bulk Keep-all / Dismiss-all affordance for applied
-   *  pending AI changes. Built once in EditorPane from the applied revision +
-   *  cutter cards (routed through the shared `pending-change-actions` sequence)
-   *  and threaded to OmniHost, which renders it on the side hosting the applied
-   *  cards. Dismiss-all PRESERVES (archives) each card. Absent / count 0 → no
-   *  header. */
-  omniBulkPendingChanges?: {
-    count: number;
-    onKeepAll: () => void;
-    onDismissAll: () => void;
-  };
+  /** Phase 3 / task 023 — the applied-pending NAVIGATOR affordance (prev/next
+   *  cursor + Keep-all / Dismiss-all kebab). Built once in EditorPane from the
+   *  applied revision + cutter cards (routed through the shared
+   *  `pending-change-actions` sequence) and threaded to OmniHost, which renders
+   *  it on the side hosting the applied cards. Dismiss-all PRESERVES (archives)
+   *  each card. Absent / count 0 → no header. */
+  omniBulkPendingChanges?: OmniBulkPendingChanges;
 }
 
 /**

@@ -19,7 +19,14 @@ import {
   CardDisplayProvider,
   OMNI_COMPRESSED_LINES,
 } from "@/components/editor-layout/contexts/card-display";
-import { BadgeOrphaned, CARD_THEMES, Button } from "@/components/panel-primitives";
+import {
+  BadgeOrphaned,
+  CARD_THEMES,
+  PrevNextCounter,
+  ItemMenu,
+  MenuDelete,
+  MenuArchive,
+} from "@/components/panel-primitives";
 import {
   omniPinStore,
   usePinRequest,
@@ -107,6 +114,26 @@ export function migrateOmniCategories(list: unknown): OmniCategory[] {
   return out;
 }
 
+/**
+ * The applied-pending bulk affordance threaded EditorPane → OmniHost →
+ * OmniViewPanel and rendered by `OmniBulkPendingHeader` as a NAVIGATOR (task
+ * 023): a prev/next cursor over the applied changes in doc order, plus a ⋮ kebab
+ * holding Keep-all / Dismiss-all. `count` is the total (also gates whether the
+ * header renders); `current` is the nav cursor (null before the first step, so
+ * `PrevNextCounter` shows the idle total); `onPrev`/`onNext` step + scroll +
+ * light each change; `onKeepAll`/`onDismissAll` drain BOTH families through the
+ * shared `pending-change-actions` sequence. The SSOT for this shape — imported
+ * by OmniHost and EditorPane so the four hops never drift. */
+export interface OmniBulkPendingChanges {
+  count: number;
+  /** The nav cursor's current 0-based index, or null before the first step. */
+  current: number | null;
+  onPrev: () => void;
+  onNext: () => void;
+  onKeepAll: () => void;
+  onDismissAll: () => void;
+}
+
 interface OmniViewPanelProps {
   side: "left" | "right";
   items: OmniItem[];
@@ -134,16 +161,12 @@ interface OmniViewPanelProps {
    *  plain keystroke never recomputes it and this never fires off the
    *  keystroke path (keystroke sanctity). */
   onVisibleCardsChange?: (count: number) => void;
-  /** Phase 3 — the bulk Keep-all / Revert-all affordance for applied pending AI
-   *  changes. When present (count > 0), a small header renders at the top of the
-   *  cascade. The host (OmniHost) only passes this on the side that hosts the
-   *  applied cards, so it appears once. Click handlers route through the shared
-   *  `pending-change-actions` sequence — no per-keystroke work. */
-  bulkPendingChanges?: {
-    count: number;
-    onKeepAll: () => void;
-    onDismissAll: () => void;
-  };
+  /** Phase 3 / task 023 — the applied-pending NAVIGATOR affordance. When present
+   *  (count > 0), a small header renders at the top of the cascade with prev/next
+   *  arrows + a counter + a ⋮ kebab (Keep-all / Dismiss-all). The host (OmniHost)
+   *  only passes this on the side that hosts the applied cards, so it appears
+   *  once. Every handler routes through click paths — no per-keystroke work. */
+  bulkPendingChanges?: OmniBulkPendingChanges;
   // Pin-driven per-card positioning replaces the old global `cardsOffset`
   // and `cardsSilent` props. See `@/components/editor-layout/omni-pin-store`.
 }
@@ -408,58 +431,94 @@ export function OmniOutsideFocusBin({
   );
 }
 
-/**
- * Phase 3 — the omni BULK index header for applied pending AI changes. A small
- * strip at the top of the cascade with the count and Keep-all / Revert-all.
- * `position:sticky; top:0` pins it to the top of the omni column's scroll
- * viewport so it stays reachable as the user scrolls the document (the applied
- * blue ranges can be anywhere in the doc). It's a flow sibling ABOVE the
- * `position:relative` cascade pod (`panelScrollRef`), not inside it, so it
- * cannot desync the absolute-positioned cascade — the cards pack below it. Keep
- * = warm (affirmative), Dismiss = ghost (quiet), mirroring the pill + the gutter
- * control. Dismiss-all PRESERVES (restores original + archives) every card —
- * never hard-deletes. Each click drains the WHOLE applied set through the shared
- * `pending-change-actions` sequence the host wired.
- */
-function OmniBulkPendingHeader({
-  bulk,
+/** One prev/next chevron for the bulk-pending navigator. Up = step to the
+ *  earlier change (▲, doc order), down = the later one (▼). Fires on click (a
+ *  nav gesture — never per keystroke). Disabled when there's nothing to step. */
+function NavArrow({
+  dir,
+  onClick,
+  disabled,
 }: {
-  bulk: { count: number; onKeepAll: () => void; onDismissAll: () => void };
+  dir: "up" | "down";
+  onClick: () => void;
+  disabled: boolean;
 }) {
-  const label = `${bulk.count} pending change${bulk.count === 1 ? "" : "s"}`;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={dir === "up" ? "Previous change" : "Next change"}
+      data-hint={
+        dir === "up" ? "Jump to the previous change" : "Jump to the next change"
+      }
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      className="inline-flex h-5 w-5 items-center justify-center rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors disabled:opacity-30 disabled:pointer-events-none"
+    >
+      <svg
+        width="11"
+        height="11"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {dir === "up" ? (
+          <polyline points="6 15 12 9 18 15" />
+        ) : (
+          <polyline points="6 9 12 15 18 9" />
+        )}
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * Phase 3 / task 023 — the applied-pending NAVIGATOR header. A small sticky
+ * strip at the top of the cascade laid out left→right as
+ * `[▲ prev] [counter "i of N"] [▼ next] ……(spacer)…… [⋮]`, where the ⋮ kebab
+ * holds Keep-all / Dismiss-all. `position:sticky; top:0` pins it to the top of
+ * the omni column's scroll viewport so it stays reachable as the user scrolls
+ * the document (the applied blue ranges can be anywhere in the doc). It's a flow
+ * sibling ABOVE the `position:relative` cascade pod (`panelScrollRef`), not
+ * inside it, so it cannot desync the absolute-positioned cascade — the cards
+ * pack below it.
+ *
+ * ── Reuse (no bespoke machinery) ──────────────────────────────────────────────
+ * `PrevNextCounter` renders the "i of N" / idle-total counter; the ⋮ is
+ * `ItemMenu` (align="right", so no auto-injected text-size row) holding a
+ * `MenuArchive`-styled "Keep all" + a `MenuDelete`-styled "Dismiss all" (both
+ * fire on `onMouseDown`+preventDefault, landing before ItemMenu's click-outside
+ * dismissal). The prev/next cursor (`useCycle`) + doc-order sort
+ * (`sortAppliedKeysByDocPos`) + scroll/select all live in EditorPane; here
+ * they're just wired to the arrows. Dismiss-all PRESERVES (restores original +
+ * archives) every card — never hard-deletes.
+ */
+function OmniBulkPendingHeader({ bulk }: { bulk: OmniBulkPendingChanges }) {
   return (
     <div
-      className="sticky top-0 z-30 mx-2 mb-2 flex items-center gap-2 rounded-md border border-sky-200 bg-surface px-2 py-1.5 shadow-sm"
+      className="sticky top-0 z-30 mx-2 mb-2 flex items-center gap-1.5 rounded-md border border-sky-200 bg-surface px-2 py-1.5 shadow-sm"
       role="group"
-      aria-label="Bulk pending change actions"
+      aria-label="Pending change navigator"
       data-omni-bulk-pending={bulk.count}
     >
-      <span className="text-[11px] font-medium text-ink-muted">{label}</span>
-      <div className="ml-auto flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            bulk.onDismissAll();
-          }}
-          data-hint="Dismiss every applied change (restores originals, archives the cards)"
-        >
-          Dismiss all
-        </Button>
-        <Button
-          variant="warm"
-          size="sm"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            bulk.onKeepAll();
-          }}
-          data-hint="Keep every applied change"
-        >
-          Keep all
-        </Button>
+      <NavArrow dir="up" onClick={bulk.onPrev} disabled={bulk.count === 0} />
+      <PrevNextCounter
+        current={bulk.current}
+        total={bulk.count}
+        label="changes"
+      />
+      <NavArrow dir="down" onClick={bulk.onNext} disabled={bulk.count === 0} />
+      <div className="ml-auto">
+        <ItemMenu align="right">
+          <MenuArchive label="Keep all" onClick={bulk.onKeepAll} />
+          <MenuDelete label="Dismiss all" onClick={bulk.onDismissAll} />
+        </ItemMenu>
       </div>
     </div>
   );
