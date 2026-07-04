@@ -69,8 +69,12 @@ with `/loop /editor/review`.
    4. `kind: "citation"` → `/editor/find-citation <docPath> <id>`
    5. `kind: "report"` → `/editor/answer-report-request <docPath> <id>`
    6. `kind: "note"` → `/editor/answer-note-request <docPath> <id>`
-   7. `kind: "todo"` → `/editor/answer-todo-request <docPath> <id>`
-   8. `kind: "suggestion"` → `/editor/draft-suggestion <docPath> <id>`
+   7. `kind: "highlight"` → `/editor/answer-note-request <docPath> <id>`
+      *(a highlight is a passage the user flagged for attention; it has no
+      body of its own, so the note responder handles it — the anchor +
+      selectedText carry the context)*
+   8. `kind: "todo"` → `/editor/answer-todo-request <docPath> <id>`
+   9. `kind: "suggestion"` → `/editor/draft-suggestion <docPath> <id>`
 
    For card-flag virtual requests (`id` starts with `virtual:`), the
    subskill receives the virtual id; `apply_response.py` knows to clear

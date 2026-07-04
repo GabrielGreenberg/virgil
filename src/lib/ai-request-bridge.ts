@@ -28,6 +28,7 @@ import {
   getActiveHandle,
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
+import { publishAiRequests } from "@/lib/ai-request-events";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
 
@@ -84,13 +85,16 @@ export async function bridgeCardAiRequestFlag(
   const handle = getActiveHandle(docId);
   if (!handle) return;
 
-  let state: AiRequestsState;
+  let state: AiRequestsState | null;
   try {
     state = await readSidecar<AiRequestsState>(docId, "ai-requests.json", EMPTY);
   } catch {
     return;
   }
-  const requests = Array.isArray(state.requests) ? state.requests : [];
+  // Best-effort contract (this module never throws): tolerate a storage backend
+  // that returns null/undefined for a missing sidecar instead of the default —
+  // treat it as an empty queue rather than dereferencing null.
+  const requests = Array.isArray(state?.requests) ? state.requests : [];
 
   const existingIdx = requests.findIndex(
     (r) =>
@@ -140,5 +144,11 @@ export async function bridgeCardAiRequestFlag(
   } catch (err) {
     if (isStalePipelineError(err)) return;
     console.error("Failed to bridge card AI request flag:", err);
+    return;
   }
+  // Announce the authoritative post-write list so the live inbox
+  // (`useAiRequests`) adopts it without a reload/remount (drop D3). Only after a
+  // successful persist — a failed write leaves the on-disk queue unchanged, so
+  // the in-memory inbox must not diverge from it.
+  publishAiRequests(docId, nextRequests);
 }

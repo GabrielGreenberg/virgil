@@ -115,4 +115,15 @@ describe("FootnoteCard AI-request checkbox (BUG #55)", () => {
     fireEvent.click(screen.getByText("AI request"));
     expect(onSetAiRequest).toHaveBeenCalledWith(false);
   });
+
+  // D1 (task 2026-07-03-016) — the affordance is gated on a RESOLVABLE anchor
+  // (`footnoteCanAiRequest`), not merely on being a footnote. A footnote whose
+  // marker position is unresolvable shows NO checkbox even with onSetAiRequest
+  // supplied — the suppression is intentional, not incidental.
+  it("does NOT render the checkbox when the footnote has no resolvable anchor (unresolvable pos)", () => {
+    const unanchored = { ...(FN as object), pos: -1 } as unknown as FootnoteInfo;
+    renderCard({ footnote: unanchored, onSetAiRequest: vi.fn() });
+    fireEvent.click(screen.getByLabelText("Expand card"));
+    expect(screen.queryByText("AI request")).toBeNull();
+  });
 });

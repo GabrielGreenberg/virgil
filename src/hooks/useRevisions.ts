@@ -169,6 +169,20 @@ export function useRevisions(
   const localPristine = usePristineTracker();
   const pristine = externalPristine ?? localPristine;
 
+  // The ONE bridge seam for a revision-comment (task 2026-07-03-016 6b) — the
+  // checkbox toggle AND the default-on-create path both funnel through it, so
+  // the `ai-requests.json` payload shape lives once.
+  const bridgeComment = useCallback(
+    (card: RevisionCommentCard, value: boolean) => {
+      void bridgeCardAiRequestFlag(docId, "revision-comment", card.id, value, {
+        text: card.text || "<revision comment>",
+        paragraphIds: getLinkedTextObjectIds(card),
+        selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
+      });
+    },
+    [docId],
+  );
+
   const addComment = useCallback(
     (
       paragraphId: string | null,
@@ -182,7 +196,10 @@ export function useRevisions(
         createdAt: new Date().toISOString(),
         text: content ? richJsonToPlainText(content) || "" : "",
         content: content ?? emptyRichContent(),
-        aiRequest: false,
+        // task 2026-07-03-016 6b: a comment is an AI request by default; the
+        // inbox bridge follows the same pristine gate as sidecar persistence
+        // (below), so a discarded empty comment never orphans an entry.
+        aiRequest: true,
         selectedText: anchor?.anchorText,
         links: [],
       };
@@ -198,9 +215,12 @@ export function useRevisions(
       // click-away regardless of anchor/paragraph (an anchor isn't user content).
       if (!content) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
+      // Seeded-with-content comments are committed at birth → bridge now; empty
+      // pristine ones bridge on first edit (updateCommentContent/Text).
+      if (content) bridgeComment(card, true);
       return card;
     },
-    [update, pristine],
+    [update, pristine, bridgeComment],
   );
 
   const addSuggestion = useCallback(
@@ -245,6 +265,9 @@ export function useRevisions(
 
   const updateCommentContent = useCallback(
     (id: string, content: JSONContent) => {
+      // A pristine→committed transition bridges the default AI-request flag
+      // (task 2026-07-03-016 6b). Read isPristine BEFORE markDirty clears it.
+      const firstCommit = pristine.isPristine(id);
       pristine.markDirty(id);
       const text = richJsonToPlainText(content) || "";
       update((prev) => ({
@@ -255,12 +278,19 @@ export function useRevisions(
             : c,
         ),
       }));
+      if (firstCommit) {
+        const card = state.cards.find(
+          (c) => c.id === id && c.kind === "comment",
+        ) as RevisionCommentCard | undefined;
+        if (card?.aiRequest) bridgeComment({ ...card, content, text }, true);
+      }
     },
-    [update, pristine],
+    [update, pristine, state.cards, bridgeComment],
   );
 
   const updateCommentText = useCallback(
     (id: string, text: string) => {
+      const firstCommit = pristine.isPristine(id);
       pristine.markDirty(id);
       const content: JSONContent = text
         ? { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] }
@@ -271,8 +301,14 @@ export function useRevisions(
           c.id === id && c.kind === "comment" ? { ...c, content, text } : c,
         ),
       }));
+      if (firstCommit) {
+        const card = state.cards.find(
+          (c) => c.id === id && c.kind === "comment",
+        ) as RevisionCommentCard | undefined;
+        if (card?.aiRequest) bridgeComment({ ...card, content, text }, true);
+      }
     },
-    [update, pristine],
+    [update, pristine, state.cards, bridgeComment],
   );
 
   const setCommentAiRequest = useCallback(
@@ -287,21 +323,9 @@ export function useRevisions(
           c.id === id && c.kind === "comment" ? { ...c, aiRequest: value } : c,
         ),
       }));
-      if (card) {
-        void bridgeCardAiRequestFlag(
-          docId,
-          "revision-comment",
-          id,
-          value,
-          {
-            text: card.text || "<revision comment>",
-            paragraphIds: getLinkedTextObjectIds(card),
-            selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
-          },
-        );
-      }
+      if (card) bridgeComment({ ...card, aiRequest: value }, value);
     },
-    [update, pristine, docId, state.cards],
+    [update, pristine, state.cards, bridgeComment],
   );
 
   const updateSuggestionField = useCallback(

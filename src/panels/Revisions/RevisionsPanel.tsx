@@ -97,7 +97,7 @@ export default function RevisionsPanel({
 
   const onAddOptions = useMemo(
     () => [
-      { label: "Comment", onClick: (rect?: DOMRect) => onAddComment(rect) },
+      { label: "Request", onClick: (rect?: DOMRect) => onAddComment(rect) },
       { label: "Revision", onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
     ],
     [onAddComment, onAddSuggestion],
