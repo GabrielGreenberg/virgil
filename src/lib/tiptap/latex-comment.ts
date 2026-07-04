@@ -9,9 +9,12 @@ import { readDocStructure, readPendingDiff } from "./doc-structure";
 // `contentEditable` channel. Because the comment text is genuine ProseMirror
 // content, PM owns the caret as a TextSelection, and the four atom-era symptoms
 // dissolve natively:
-//   (a) selected/unselected — `.selected` now paints only on a real
-//       NodeSelection (grab-handle / arrow-nav), never while a caret rests
-//       inside; the distinction is native.
+//   (a) selection — the atom-era bespoke `.selected` box is retired; the
+//       `.latex-comment.ProseMirror-selectednode` outline (the block-node SSOT,
+//       matching expex) paints ONLY on a real NodeSelection (grab-handle /
+//       arrow-nav). A caret resting inside is a native TextSelection, so editing
+//       shows the ordinary text-selection highlight — no bespoke box, no
+//       selectNode/deselectNode toggles.
 //   (b) type `%` → caret inside immediately — the input rule places a native
 //       TextSelection in the new node; no auto-focus race, no lost keystroke.
 //   (c) Enter — the keymap inserts a paragraph AFTER the comment and lands the

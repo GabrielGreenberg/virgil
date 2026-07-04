@@ -32,7 +32,7 @@ vi.mock("@/lib/storage", () => {
 import { Editor } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { TextSelection } from "@tiptap/pm/state";
+import { TextSelection, NodeSelection } from "@tiptap/pm/state";
 import { LatexComment } from "@/lib/tiptap/latex-comment";
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
@@ -200,5 +200,94 @@ describe("latexComment — editable-block keymap / input behaviour", () => {
     expect(handled).toBe(true);
     // The comment is gone — dissolved into a plain paragraph.
     expect(allOfType(ed.getJSON(), "latexComment").length).toBe(0);
+  });
+});
+
+// Task 2026-07-03-024 acceptance criteria (on top of the 017 block remodel):
+//   - NATIVE selection: a caret inside a comment is a TextSelection and the
+//     rendered node carries NEITHER the retired bespoke `.selected` class NOR
+//     any node-selection outline — editing shows the ordinary text highlight.
+//     Node-selection (grab-handle) paints the block-node SSOT
+//     `.ProseMirror-selectednode` class (matching expex), never `.selected`.
+//   - NO REFLOW on click: the reflow root cause was the atom-era
+//     `contentEditable` false→true toggle on the SAME text span
+//     (editable-atom-view). The block NodeView never sets `contentEditable` on
+//     its `.latex-comment-editable` content span, so placing a caret inside
+//     cannot flip it — proven structurally here; the visual rect-equality
+//     eyeball is owed against a real (non-jsdom) layout.
+describe("latexComment — native selection + no-reflow (task 024)", () => {
+  let editor: Editor | null = null;
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+  });
+
+  function mount(content: JSONContent): Editor {
+    const element = document.createElement("div");
+    document.body.appendChild(element);
+    editor = new Editor({
+      element,
+      extensions: [StarterKit, LatexComment],
+      content,
+    });
+    return editor;
+  }
+
+  it("a caret inside a comment is a native TextSelection with NO bespoke/node-selection chrome", () => {
+    const ed = mount({
+      type: "doc",
+      content: [{ type: "latexComment", content: [{ type: "text", text: "hello" }] }],
+    });
+    const { pos, node } = findCommentPos(ed);
+    // Caret in the middle of the comment content.
+    ed.commands.setTextSelection(pos + 2);
+    const sel = ed.state.selection;
+    expect(sel instanceof TextSelection).toBe(true);
+    expect(sel instanceof NodeSelection).toBe(false);
+    expect(sel.$from.parent.type.name).toBe("latexComment");
+    // The rendered comment carries no selection chrome while a caret rests inside.
+    const el = ed.view.dom.querySelector(".latex-comment");
+    expect(el).not.toBeNull();
+    expect(el?.classList.contains("selected")).toBe(false);
+    expect(el?.classList.contains("ProseMirror-selectednode")).toBe(false);
+    // Guard the doc-model text survived the caret placement untouched.
+    expect(node.textContent).toBe("hello");
+  });
+
+  it("node-selecting a comment paints the SSOT `.ProseMirror-selectednode`, never the retired `.selected`", () => {
+    const ed = mount({
+      type: "doc",
+      content: [{ type: "latexComment", content: [{ type: "text", text: "grab me" }] }],
+    });
+    const { pos } = findCommentPos(ed);
+    const tr = ed.state.tr.setSelection(
+      NodeSelection.create(ed.state.doc, pos),
+    );
+    ed.view.dispatch(tr);
+    expect(ed.state.selection instanceof NodeSelection).toBe(true);
+    const el = ed.view.dom.querySelector(".latex-comment");
+    // PM applies its default node-selected class (the NodeView defines no
+    // selectNode/deselectNode), which the SSOT CSS targets — NOT `.selected`.
+    expect(el?.classList.contains("ProseMirror-selectednode")).toBe(true);
+    expect(el?.classList.contains("selected")).toBe(false);
+  });
+
+  it("the editable content span never sets contentEditable — no atom-era reflow toggle on caret entry", () => {
+    const ed = mount({
+      type: "doc",
+      content: [{ type: "latexComment", content: [{ type: "text", text: "steady" }] }],
+    });
+    const span = ed.view.dom.querySelector(".latex-comment-editable");
+    expect(span).not.toBeNull();
+    // At rest: the NodeView never wrote a per-node contentEditable channel
+    // (the atom-era `contentEditable="false"` that later flipped to true — the
+    // measured layout shift — is gone by construction).
+    expect(span?.getAttribute("contenteditable")).toBeNull();
+    // Placing a caret inside must not introduce/flip it.
+    const { pos } = findCommentPos(ed);
+    ed.commands.setTextSelection(pos + 1);
+    const spanAfter = ed.view.dom.querySelector(".latex-comment-editable");
+    expect(spanAfter?.getAttribute("contenteditable")).toBeNull();
   });
 });
