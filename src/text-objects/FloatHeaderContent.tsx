@@ -1,6 +1,7 @@
 "use client";
 
 import { PopoutButton } from "@/components/panel-primitives";
+import { JumpChevron } from "@/components/icons/JumpChevron";
 
 /**
  * Shared INNER content of a TextObject float header — the kind label, a
@@ -84,18 +85,7 @@ export function FloatHeaderContent({
         data-hint={`Jump to ${labelNoun}`}
         aria-label={`Jump to ${labelNoun}`}
       >
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="9 6 15 12 9 18" />
-        </svg>
+        <JumpChevron />
       </button>
       <PopoutButton
         isPoppedOut

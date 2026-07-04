@@ -15,15 +15,17 @@
  * the margin pin import it without pulling in `panel-primitives` / card kinds.
  */
 
-/** Default glyph edge in px — matches `CardJumpChevron`'s 10×10 chevron so the
- *  drop control sits flush beside it in the card header. */
-const DEFAULT_SIZE = 10;
+/** Default glyph edge in px — matches `JumpChevron`'s 14×14 chevron so the
+ *  drop control sits flush beside it in the card header. Sits inside a 16px
+ *  (`w-4 h-4`) button in a fixed 24px (`h-6`) header row, so 14 has slack and
+ *  changes neither the button box nor the header height. */
+const DEFAULT_SIZE = 14;
 
 export function DropChevrons({
   size = DEFAULT_SIZE,
   className,
 }: {
-  /** Edge length in px (square). Defaults to 10 to match `CardJumpChevron`. */
+  /** Edge length in px (square). Defaults to 14 to match `JumpChevron`. */
   size?: number;
   className?: string;
 }) {

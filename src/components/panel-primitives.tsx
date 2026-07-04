@@ -31,6 +31,7 @@ import { cardHasContent } from "@/cards/has-content";
 import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable } from "@/cards/predicates";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
 import { DropChevrons } from "./icons/DropChevrons";
+import { JumpChevron } from "./icons/JumpChevron";
 import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import RichTextField from "./RichTextField";
@@ -513,9 +514,7 @@ export function CardJumpChevron({
       data-hint={title}
       aria-label={title}
     >
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <polyline points="9 6 15 12 9 18" />
-      </svg>
+      <JumpChevron />
     </button>
   );
 }
