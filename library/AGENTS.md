@@ -186,9 +186,10 @@ monolithic `deep-index.md` will land iteratively):
 - `/library/di-examples <citekey>` — Step 3.h₁ / 3.h₂: numbered examples, formal-semantics math, user-note processing.
 - `/library/di-validate <citekey>` — Step 3i + Step 9.5: pgmark validator, audit punch-list, outstanding-work classification.
 
-**Shared doctrine include** (not a slash command):
+**Shared doctrine includes** (not slash commands):
 
 - `library/skills/_doctrine.md` — §0.5 Scope doctrine + §Persistence convergence + §9 outstanding-work categories + anti-patterns + self-check. Subskill stubs point readers here for the load-bearing rules.
+- `library/skills/_find-or-surface.md` — the **cross-silo** "find-or-surface, never fabricate, Library-first" doctrine for every citation/bib skill (`authenticate-bib`, `find-citation`, `answer-bib-review`, `draft-footnote`, …). Authored once here; a byte-identical copy lives at `editor/skills/_find-or-surface.md` so the editor bundle ships it too (the two silos land in separate on-disk folders). The copies are kept identical by `library/lib/__tests__/find-or-surface-doctrine.test.ts` — edit **both**.
 
 Edit the source under `library/skills/`; rerun `npm run build:library-bundle` (or `npm run dev` / `npm run build`, which auto-run via `predev` / `prebuild` hooks) to regenerate `.claude/commands/library/` and `public/skill-bundle/`.
 

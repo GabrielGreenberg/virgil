@@ -167,6 +167,16 @@ predev/prebuild alongside the library bundle). Output is just the
 mirror to `.claude/commands/editor/`; we don't yet emit a
 `public/skill-bundle/` for end-user folder sync (see *Future work*).
 
+**Underscore includes.** A leading-underscore skill file (e.g.
+`_find-or-surface.md`) is a shared *include* other skills reference via
+markdown links — it ships in the bundle but is **not** mirrored as a
+slash command (same convention as the library builder). `_find-or-surface.md`
+is the cross-silo "find-or-surface, never fabricate, Library-first"
+doctrine; its canonical copy lives in `library/skills/` and a
+byte-identical copy sits here so the editor bundle carries it. A
+drift-guard test (`library/lib/__tests__/find-or-surface-doctrine.test.ts`)
+keeps the two copies identical — edit **both**.
+
 ## Cowork pattern
 
 Same broker shape as the library:

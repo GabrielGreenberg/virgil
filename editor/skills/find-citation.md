@@ -20,6 +20,13 @@ annotation platform that I can cite in §6"); your job is to identify a
 real source, add it to the bibliography, and surface a `CitationRef`
 card so the user can drag it into the document.
 
+> **Shared doctrine — find-or-surface, never fabricate.** Read
+> [_find-or-surface.md](_find-or-surface.md). Search the user's Virgil
+> Library first, then external authoritative sources; if you can't
+> locate a real match, surface the gap (the step-6 failure path) rather
+> than inventing a citation. The acceptance bar in step 2 is this
+> skill's own; the doctrine is the shared rule behind it.
+
 ## Args
 
 - `<docPath>` — path to the doc folder.
@@ -64,7 +71,17 @@ card so the user can drag it into the document.
    mode in the wild — but that's `answer-bib-review` territory; this
    skill only reads the existing entry, never repairs it.)
 
-2. **Search.** Use Crossref + OpenAlex + Semantic Scholar (in that
+2. **Search.** Per the find-or-surface doctrine, search the user's
+   Virgil Library *first* — they may already own the work, with verified
+   metadata and a settled citekey. If a library is set up (resolve its
+   root via `editor/scripts/library_path.py --get`, or its synced copy
+   under `.virgil/scripts/editor/library_path.py`), scan `master.bib`
+   for an entry matching the description; on a confident hit, reuse that
+   entry verbatim (its citekey and fields) instead of minting a new one.
+   A no-library / no-match falls through to external search — never a
+   blocker.
+
+   Then use Crossref + OpenAlex + Semantic Scholar (in that
    order of preference) to find a real, citable paper that matches the
    request's description. Try the library's authentication helper
    first:
@@ -220,8 +237,10 @@ card so the user can drag it into the document.
 
 ## Failure mode
 
-If you can't confidently find a real source for the description, do
-**not** fabricate. Take the failure path (two-field: status `failed`,
+Surfacing the gap is the find-or-surface doctrine's step 4
+([_find-or-surface.md](_find-or-surface.md)) — the mechanics for this
+skill are: if you can't confidently find a real source for the
+description, take the failure path (two-field: status `failed`,
 result `impossible` — no `.bib` / card write happens):
 ```bash
 python3 editor/scripts/apply_response.py <docPath> complete-only <requestId> --result impossible --note "Could not locate a paper matching <criteria>; user should refine the request."

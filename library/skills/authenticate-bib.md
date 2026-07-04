@@ -46,6 +46,12 @@ All paths in the rest of this skill resolve against the library root.
 
 ---
 
+> **Shared doctrine — find-or-surface, never fabricate.** Read
+> [_find-or-surface.md](_find-or-surface.md). This skill is the
+> verification arm of that doctrine: authenticate against real sources,
+> and let the terminal state (`unverified` / `failed` / `canonical`) be
+> the surfaced gap — never "authenticate" a guess or invent a field.
+
 Run the bib authentication subprocess for ONE citekey. Useful when:
 - A user added an entry to `master.bib` by hand and wants it verified
   without indexing a PDF.

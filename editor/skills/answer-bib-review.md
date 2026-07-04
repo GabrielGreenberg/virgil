@@ -227,7 +227,8 @@ Three modes:
 
 ## Safety
 
-- Don't fabricate fields. If a field can't be verified from a source,
+- **Find-or-surface, never fabricate** ([_find-or-surface.md](_find-or-surface.md)):
+  don't fabricate fields. If a field can't be verified from a source,
   leave it as-is and note in the response which fields are still
   unverified.
 - The DOI is the gold standard — try Crossref-by-DOI first when one

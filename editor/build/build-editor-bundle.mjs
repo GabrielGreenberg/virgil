@@ -115,7 +115,15 @@ async function main() {
 
     filesForManifest.push(src.bundlePath);
     if (src.bundlePath.startsWith("claude-commands/")) {
-      skillNames.push(src.bundlePath.slice("claude-commands/".length));
+      const name = src.bundlePath.slice("claude-commands/".length);
+      // Underscore-prefixed files (e.g. `_find-or-surface.md`) ship in
+      // the bundle but are NOT mirrored as slash commands — they are
+      // shared includes other skills reference via markdown links. This
+      // matches the library builder's convention (build-skill-bundle.mjs)
+      // so the include pattern is symmetric across both silos.
+      if (!name.startsWith("_")) {
+        skillNames.push(name);
+      }
     }
   }
 
