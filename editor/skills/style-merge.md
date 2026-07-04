@@ -20,6 +20,13 @@ preamble, splice their customizations onto the target, rewrite the
 `.tex`, flip the per-doc `document-settings.json` to the new styleId,
 and mark the request `status: "complete"`.
 
+> **Allowable-LaTeX doctrine.** Any LaTeX you splice into the `.tex` body must
+> stick to the vocabulary Virgil renders meaningfully — read
+> [_latex-allowlist.md](_latex-allowlist.md). (Preamble commands are the
+> exception this skill handles explicitly.) Use the tie `~` (never
+> `\textasciitilde{}`) for a non-breaking space; anything outside the allowlist
+> renders as raw grey monospace.
+
 ## Args
 
 - `<docPath>` — absolute or `virgil-data/`-relative path to the

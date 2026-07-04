@@ -10,49 +10,49 @@ The output must be valid LaTeX that `parseLatex()` in Virgil can
 handle. Stick to the vocabulary below; do not introduce commands
 outside this list.
 
+> **Shared allowable-LaTeX doctrine.** The inline command vocabulary —
+> text styling, math, footnotes, **citations**, cross-references, escapes,
+> the tie `~` vs. `\textasciitilde{}` rule, accents — is the cross-silo
+> SSOT in [_latex-allowlist.md](_latex-allowlist.md). Read it first; this
+> file is the **library appendix** that adds only the extraction-specific
+> vocabulary below (document structure, expex numbered examples, the
+> font-strip rule, the minimal preamble, `\pgmark{N}`). Do not re-paraphrase
+> the shared vocabulary here — link to it.
+
 ### Document structure
 
 - `\documentclass{article}`, `\title`, `\author`, `\date`, `\maketitle`
 - `\section`, `\subsection`, `\subsubsection`
 - `\pgmark{N}` (preserved from extraction)
-- `\footnote{…}`
+- `\begin{quote}…\end{quote}` for captions (italicize the body with
+  `\textit{…}` per [_latex-allowlist.md](_latex-allowlist.md))
+- `\begin{itemize}` ... `\end{itemize}` with `\item` entries (used for
+  the bibliography section and any source-document lists)
+- Plain text paragraphs
+
+Inline styling (`\textbf`, `\textit`, `\emph`, `\texttt`, …), math
+(`\[…\]`, `$…$`), footnotes (`\footnote{…}`), and `\thanks{…}` are all in
+the shared allowlist. Two extraction-specific notes on the shared
+commands:
+
 - `\thanks{…}` — title-attached acknowledgements / affiliations.
   Canonical form: `\title{The Paper Title\thanks{Acknowledgement
   text}}`. Never re-attach as orphan-prefix body text or invent
   an `\acknowledgements` section. `audit_deepindex.py` uses a
   brace-balanced extractor so the nested `\thanks{…}` does not
   pollute the title-vs-catalog cross-check (cohenmscoherence memo).
-- `\begin{quote}\textit{…}\end{quote}` for captions
-- `\begin{itemize}` ... `\end{itemize}` with `\item` entries (used for
-  the bibliography section and any source-document lists)
-- `\textbf{…}` for bold (used for author names in bibliography entries)
-- `\textit{…}` for italics (used for journal/book titles)
-- `\[…\]` for display math
-- Plain text paragraphs
+- `\textbf{…}` / `\textit{…}` are the workhorses for bibliography entries
+  (author names in bold, journal/book titles in italics).
 
-### Citations (natbib vocabulary)
+### Citations
 
-- `\cite{key}` / `\cite{key1,key2}` — parenthetical citations.
-  Optional locator: `\cite[p.~75]{key}`, `\cite[pp.~75--80]{key}`.
-- `\citet{key}` — textual citations ("Smith (2008) argues …").
-  Optional locator same as `\cite`. (`\citep{…}` is also accepted by
-  the parser but `\cite{…}` is preferred for parenthetical.)
-- `\citealt{key}` — "Author Year" textual without parens. Use for
-  bare-form footnote lists ("*see* Kehler and Rohde 2017; …").
-- `\citealp{key}` — "Author, Year" without parens. Use inside
-  parenthetical wrappers like `(e.g., …)`, `(see …)`, `(cf. …)` so the
-  result doesn't get nested parens.
-- `\citeauthor{key}` — author surname only, no year. Use for
-  possessives ("Persson's") and any continuation reference where the
-  year is supplied separately.
-- `\citeyear{key}` — year only, no parens. Less common; use when the
-  surrounding prose already supplies parens around the citation slot.
-- `\citeyearpar{key}` — `(Year)`. Pair with `\citeauthor` for
-  possessives, or use alone for continuation back-references where the
-  author was named earlier in the sentence.
-
-All seven `\cite…` commands accept `[locator]{key}` and comma-separated
-multi-key forms.
+Use the natbib / biblatex `\cite…` vocabulary from
+[_latex-allowlist.md](_latex-allowlist.md) (locator + multi-key forms
+included). For extraction, the common picks are `\cite{key}` (parenthetical),
+`\citet{key}` (textual — "Smith (2008) argues …"), `\citealt`/`\citealp`
+(bare and parens-safe forms for footnote lists and `(e.g., …)` wrappers), and
+`\citeauthor`/`\citeyear`/`\citeyearpar` for possessives and split
+author/year references.
 
 ### Numbered examples (expex)
 

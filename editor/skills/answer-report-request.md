@@ -19,6 +19,13 @@ and `report-request` (the user's "ask"). This skill answers a flagged
 Report Request by appending a **Report card authored by AI** to
 `reports.json` — it never mutates the source request in place.
 
+> **Allowable-LaTeX doctrine.** Any LaTeX you compose or edit must stick to
+> the vocabulary Virgil renders meaningfully — read
+> [_latex-allowlist.md](_latex-allowlist.md). In particular use the tie `~`
+> (never `\textasciitilde{}`) for a non-breaking space, plus the `\cite…`
+> family and inline marks it lists; anything outside it renders as raw grey
+> monospace.
+
 ## Args
 
 - `<docPath>` — path to the doc folder.

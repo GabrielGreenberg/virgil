@@ -18,6 +18,13 @@ comment usually asks "is this paragraph really pulling its weight?"
 or "trim this part." Default response is a **CutterSuggestionCard**
 the user can accept (which queues the textual replacement).
 
+> **Allowable-LaTeX doctrine.** Any LaTeX you compose or edit must stick to
+> the vocabulary Virgil renders meaningfully — read
+> [_latex-allowlist.md](_latex-allowlist.md). In particular use the tie `~`
+> (never `\textasciitilde{}`) for a non-breaking space, plus the `\cite…`
+> family and inline marks it lists; anything outside it renders as raw grey
+> monospace.
+
 ## Args
 
 - `<docPath>` — path to the doc folder.

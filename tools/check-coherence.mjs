@@ -9,7 +9,7 @@
  * code→docs, *this* validates the graph's edges, the future dream phase
  * ripples docs→skills.
  *
- * Five checks (see the SKETCH for the full design + staging rationale):
+ * Six checks (see the SKETCH for the full design + staging rationale):
  *
  *   1. edges     (error)  every derives-from path#anchor resolves to a file
  *                         + a heading whose GitHub slug matches; every
@@ -29,6 +29,10 @@
  *                         (apply_response.PANEL_TO_SIDECAR, create_card.ALL_KINDS)
  *                         reconciles with the TS SSOTs (CardKind, PANEL_REGISTRY,
  *                         the …State shapes).
+ *   6. allowlist (error)  the cross-silo _latex-allowlist.md command inventory
+ *                         reconciles with the renderer SSOTs (KNOWN_CITE_COMMANDS
+ *                         + parseInlineContent). Phantom command in the doc =
+ *                         error; renderer command the doc omits = warn.
  *
  * Discovery is self-describing: every *.md whose head carries a
  * `<!-- derives-from: -->` or `<!-- covers-code: -->` comment is a graph
@@ -804,6 +808,117 @@ function pascal(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/* ════════════════════════════════════════════════════════════════════
+ *  CHECK 6 — allowable-LaTeX inventory ↔ renderer SSOT
+ *
+ *  The cross-silo `_latex-allowlist.md` doctrine (editor + library) carries a
+ *  machine-checked ```latex-allowlist``` inventory of the commands Virgil's
+ *  renderer handles. This check keeps that inventory honest against the two
+ *  renderer SSOTs — `KNOWN_CITE_COMMANDS` (src/lib/cite-commands.ts) and the
+ *  `parseInlineContent` inline cases (src/lib/latex-parser.ts). Asymmetry
+ *  (task 2026-07-03-029, decision 2): the doc listing a phantom command the
+ *  renderer can't handle is a hard ERROR; the renderer gaining a command the
+ *  doc omits is a WARN (the doc is a deliberately narrower curated subset).
+ *  `/cleanup-virgil` runs this check.
+ * ════════════════════════════════════════════════════════════════════ */
+const ALLOWLIST_EDITOR = "editor/skills/_latex-allowlist.md";
+const ALLOWLIST_LIBRARY = "library/skills/_latex-allowlist.md";
+const CITE_TS = "src/lib/cite-commands.ts";
+const PARSER_TS = "src/lib/latex-parser.ts";
+
+// Serializer-internal UUID markers — emitted by latex-serializer.ts, not
+// author vocabulary, so they are excluded from the allowlist inventory.
+const ALLOWLIST_INTERNAL_MARKERS = new Set(["vfid", "vcid", "vlid", "vlidend"]);
+// Escape-special commands the parser handles (the escMatch branch) that the
+// alternation extractor below can't fully see — it stops at the first source
+// `{`, so it captures only `textbackslash`. Add the other two explicitly.
+const ALLOWLIST_ESCAPE_SPECIALS = new Set(["textasciitilde", "textasciicircum"]);
+
+/** Parse `KNOWN_CITE_COMMANDS = [ "cite", … ] as const` from cite-commands.ts. */
+function knownCiteCommands() {
+  if (!exists(CITE_TS)) return null;
+  const m = /KNOWN_CITE_COMMANDS\s*=\s*\[([\s\S]*?)\]\s*as const/.exec(read(CITE_TS));
+  if (!m) return null;
+  const out = new Set();
+  for (const sm of m[1].matchAll(/["']([A-Za-z]+)["']/g)) out.add(sm[1]);
+  return out;
+}
+
+/** Extract the inline command names `parseInlineContent()` matches, from the
+ *  parser source. Scoped to the function body so block-level commands don't
+ *  leak in. Handles both `/^\\cmd\{/` literals and `/^\\(a|b|c)…/`
+ *  alternations; the `\v*id` markers are filtered out. */
+function parserInlineCommands() {
+  if (!exists(PARSER_TS)) return null;
+  const src = read(PARSER_TS);
+  const start = src.indexOf("export function parseInlineContent");
+  if (start === -1) return null;
+  const end = src.indexOf("\nfunction extractBraced", start);
+  const body = src.slice(start, end === -1 ? undefined : end);
+  const out = new Set();
+  // In the .ts source a regex `/^\\textbf\{/` is the chars `^ \ \ t e x t …`,
+  // so match `^` + two literal backslashes + an optional `(` + the command
+  // name / alternation group.
+  for (const m of body.matchAll(/\^\\\\(?:\()?([A-Za-z|]+)/g)) {
+    for (const name of m[1].split("|")) {
+      if (name && !ALLOWLIST_INTERNAL_MARKERS.has(name)) out.add(name);
+    }
+  }
+  for (const e of ALLOWLIST_ESCAPE_SPECIALS) out.add(e);
+  return out;
+}
+
+/** Extract the `\command` tokens from the doc's machine-checked
+ *  ```latex-allowlist``` inventory block. */
+function allowlistInventory(md) {
+  const m = /```latex-allowlist\n([\s\S]*?)```/.exec(md);
+  if (!m) return null;
+  const out = new Set();
+  for (const sm of m[1].matchAll(/\\([A-Za-z]+)/g)) out.add(sm[1]);
+  return out;
+}
+
+function checkAllowlist() {
+  if (!exists(ALLOWLIST_EDITOR)) {
+    add("allowlist", "warn", ALLOWLIST_EDITOR, null, "allowable-LaTeX doctrine missing — skipping drift check");
+    return;
+  }
+  const md = read(ALLOWLIST_EDITOR);
+
+  // Silo parity (byte-identical copies). The vitest drift-guard is the
+  // authoritative check; this is a cheap early signal for /cleanup-virgil.
+  if (exists(ALLOWLIST_LIBRARY) && read(ALLOWLIST_LIBRARY) !== md) {
+    add("allowlist", "error", ALLOWLIST_LIBRARY, null,
+      `${ALLOWLIST_LIBRARY} differs from ${ALLOWLIST_EDITOR} — the two silo copies must be byte-identical`);
+  }
+
+  const inv = allowlistInventory(md);
+  if (!inv) {
+    add("allowlist", "warn", ALLOWLIST_EDITOR, null, "no ```latex-allowlist inventory block found — cannot check drift");
+    return;
+  }
+  const cites = knownCiteCommands();
+  const inline = parserInlineCommands();
+  if (!cites) add("allowlist", "warn", CITE_TS, null, "could not parse KNOWN_CITE_COMMANDS");
+  if (!inline) add("allowlist", "warn", PARSER_TS, null, "could not parse parseInlineContent inline commands");
+  const rendered = new Set([...(cites || []), ...(inline || [])]);
+  if (rendered.size === 0) return; // both SSOTs unparseable — warned above.
+
+  // (a) phantom — inventory lists a command the renderer does not handle → ERROR.
+  for (const cmd of [...inv].sort()) {
+    if (!rendered.has(cmd))
+      add("allowlist", "error", ALLOWLIST_EDITOR, null,
+        `inventory lists \\${cmd} which the renderer does not handle (phantom) — absent from KNOWN_CITE_COMMANDS (${CITE_TS}) and parseInlineContent (${PARSER_TS})`);
+  }
+  // (b) omission — renderer gained a command the inventory lost → WARN (the
+  // inventory is a deliberately narrower curated subset, so this is advisory).
+  for (const cmd of [...rendered].sort()) {
+    if (!inv.has(cmd))
+      add("allowlist", "warn", ALLOWLIST_EDITOR, null,
+        `renderer handles \\${cmd} but the inventory omits it — add it or confirm the curated-subset omission`);
+  }
+}
+
 /** Parse a flat Python set literal `NAME = { "a", "b", … }`. */
 function parsePySet(rel, name) {
   if (!exists(rel)) return null;
@@ -896,6 +1011,7 @@ function main() {
   runCheck("concepts", () => checkConcepts());
   runCheck("drift", () => checkDrift(docs));
   runCheck("shadow", () => checkShadow());
+  runCheck("allowlist", () => checkAllowlist());
 
   const errors = findings.filter((f) => f.severity === "error").length;
   const warnings = findings.filter((f) => f.severity === "warn").length;
@@ -919,13 +1035,14 @@ function runCheck(name, fn) {
   }
 }
 
-const CHECK_ORDER = ["edges", "types", "concepts", "drift", "shadow"];
+const CHECK_ORDER = ["edges", "types", "concepts", "drift", "shadow", "allowlist"];
 const CHECK_LABEL = {
   edges: "1 · edges resolve",
   types: "2 · type accounting",
   concepts: "3 · concept → code",
   drift: "4 · drift candidates",
   shadow: "5 · python shadow ↔ ts",
+  allowlist: "6 · allowlist ↔ renderer",
 };
 const GLYPH = { error: "✗", warn: "⚠" };
 
