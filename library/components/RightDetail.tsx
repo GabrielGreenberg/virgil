@@ -20,6 +20,11 @@ import BibEditModal from "./BibEditModal";
 import PaperHeader from "./PaperHeader";
 import PaperRender from "./PaperRender";
 import PdfView from "./PdfView";
+// Shared framed-viewer surface (inset + pod border/radius/shadow), the same
+// component the docs-side compiled-PDF pane renders through — sanctioned
+// cross-silo bridge (see library/CLAUDE.md "Don't"). Backdrop-parameterized:
+// the Library PDF pane uses the warm "manila" backdrop.
+import FramedViewerSurface from "@/components/FramedViewerSurface";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -284,13 +289,13 @@ export default function RightDetail({
           pgmarkPages={pdfPgmarkPages}
           textPodRect={textPodRect}
         />
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <FramedViewerSurface backdrop="manila">
           <PdfView
             handle={handle}
             citekey={entry.citekey}
             onPdfPageStateChange={onPdfPageStateChange}
           />
-        </div>
+        </FramedViewerSurface>
         {editOpen && canEdit && bib && handle && entry.citekey && (
           <BibEditModal
             entry={bib}
