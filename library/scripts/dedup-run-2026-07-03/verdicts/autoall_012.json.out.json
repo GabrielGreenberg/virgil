@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1093/cercor/bhp298", "decision": "same", "rationale": "Identical title, authors, year, DOI; one entry mistyped as book with journal name in publisher field."},
+    {"id": "10.1068/p281059", "decision": "same", "rationale": "Three identical Simons & Chabris 'Gorillas in Our Midst' entries, same DOI/title/authors/pages."},
+    {"id": "the conscious mind", "decision": "same", "rationale": "Chalmers 'The Conscious Mind' 1996, identical title/author/publisher/ISBN."},
+    {"id": "10.1093/oso/9780199241286.003.0009", "decision": "same", "rationale": "Four identical 'Content and Epistemology of Phenomenal Belief' entries, same DOI/title/author/pages."},
+    {"id": "10.1093/acprof:oso/9780195311105.003.0005", "decision": "same", "rationale": "Chalmers 'Consciousness and Its Place in Nature' — same essay; the 2003 Blackwell Guide members are reprints of the same work with an alternate DOI, identical title and author."},
+    {"id": "constructing the world", "decision": "same", "rationale": "Chalmers 'Constructing the World' 2012, identical title/author/publisher/ISBN."},
+    {"id": "10.1088/2058-7058/25/10/16", "decision": "same", "rationale": "Matthew Chalmers 'Musical instruments put in a new light', Physics World, same DOI/title/author/volume/pages."},
+    {"id": "10.1016/0028-3932(92)90059-u", "decision": "same", "rationale": "Charlot et al. mental imagery/CBF paper, identical title/authors/DOI/pages."},
+    {"id": "10.1016/0010-0285(73)90004-2", "decision": "same", "rationale": "Chase & Simon 'Perception in chess', two identical entries, same DOI."},
+    {"id": "10.1037//0033-295x.103.3.566", "decision": "same", "rationale": "Chater 'Reconciling simplicity and likelihood principles', identical title/author/DOI/pages."},
+    {"id": "10.1016/s1364-6613(98)01273-x", "decision": "same", "rationale": "Chater & Oaksford 'Ten years of the rational analysis of cognition', same DOI/title/authors/pages; misleading citekey on one member but fields identical."},
+    {"id": "10.1016/j.tics.2006.05.007", "decision": "same", "rationale": "Chater, Tenenbaum & Yuille 'Probabilistic models of cognition', identical title/authors/DOI/pages."},
+    {"id": "10.1177/1948550611401042", "decision": "same", "rationale": "Meier et al. 'Spatial Metaphor and Real Estate', three identical entries, same DOI."},
+    {"id": "10.1016/0006-8993(94)91906-2", "decision": "same", "rationale": "Chen 'Alterations of protein kinase C isozyme...', both entries have identical title/author/DOI/pages; one citekey misleadingly says 'headdirection' but the bib fields match the same work."},
+    {"id": "how monkeys see the world", "decision": "same", "rationale": "Cheney & Seyfarth 'How Monkeys See the World', identical title/authors/publisher/ISBN."},
+    {"id": "10.1111/1467-9280.00278", "decision": "same", "rationale": "Cheng 'Shepard's Universal Law Supported by Honeybees', identical title/author/DOI/pages."},
+    {"id": "10.1167/5.8.352", "decision": "same", "rationale": "Cheries et al. 'Cues to object persistence in infancy', identical title/authors/DOI; both field-years are 2010."},
+    {"id": "perceiving", "decision": "same", "rationale": "Chisholm 'Perceiving' 1957, two identical entries."},
+    {"id": "10.2307/2105697", "decision": "same", "rationale": "Baylis & Chisholm 'Theory of Knowledge', identical title/authors/DOI."},
+    {"id": "10.1016/0010-0277(91)90033-z", "decision": "same", "rationale": "Choi & Bowerman 'Learning to express motion events in English and Korean', identical title/authors/DOI/pages."},
+    {"id": "the logical structure of linguistic theory", "decision": "same", "rationale": "Chomsky LSLT — 1955 manuscript vs 1975 Plenum publication of the same work; identical title and author."},
+    {"id": "10.1109/tit.1956.1056813", "decision": "same", "rationale": "Chomsky 'Three models for the description of language', identical title/author/DOI/pages."},
+    {"id": "formal properties of grammars", "decision": "same", "rationale": "Chomsky 'Formal Properties of Grammars' 1963; author parse artifact ('Chomsky and Noam') but same work."},
+    {"id": "language and mind", "decision": "same", "rationale": "Chomsky 'Language and Mind' — 1968 first edition vs 1972 enlarged edition of the same work; identical title and author."},
+    {"id": "conditions on transformations", "decision": "same", "rationale": "Chomsky 'Conditions on transformations' 1971, identical title/author/publisher."}
+  ]
+}

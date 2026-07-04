@@ -1,0 +1,129 @@
+{
+ "verdicts": [
+  {
+   "id": "10.5860/choice.42-1247",
+   "decision": "same",
+   "rationale": "Both entries reference Pylyshyn's 'Seeing and Visualizing: It's Not What You Think'. One is the MIT Press book (2006); the other is the Choice Reviews Online catalog notice of that same book (2004, carrying the choice DOI). Same underlying work."
+  },
+  {
+   "id": "10.1007/bf00411887",
+   "decision": "same",
+   "rationale": "All four members are identical: Tichý, 'A counterexample to the Stalnaker-Lewis analysis of counterfactuals', Philosophical Studies 29(4):271-273, 1976, same DOI. Same work."
+  },
+  {
+   "id": "10.1207/s15516709cog0103_2",
+   "decision": "same",
+   "rationale": "Kosslyn & Shwartz, 'A Simulation of Visual Imagery', Cognitive Science 1(3):265-295, 1977. Two members carry a different DOI (10.1016/s0364-0213(77)80020-7) but identical title/authors/journal/volume/pages — same paper, just alternate DOI."
+  },
+  {
+   "id": "10.1007/bf00248853",
+   "decision": "same",
+   "rationale": "Warmbröd, 'Counterfactuals and substitution of equivalent antecedents', J. Philosophical Logic 10(2):267-289, 1981. Third member lacks the DOI but has identical title/author/year/journal/volume/pages. Same work."
+  },
+  {
+   "id": "10.1093/jos/ffp009",
+   "decision": "same",
+   "rationale": "Abusch, 'Presupposition Triggering from Alternatives', Journal of Semantics 27(1):37-80, 2010. Both members identical, same DOI. Same work."
+  },
+  {
+   "id": "10.1007/s10988-008-9025-2",
+   "decision": "same",
+   "rationale": "Amaral, Roberts & Smith, 'Review of The Logic of Conventional Implicatures by Chris Potts', L&P 30(6):707-749, 2007. Both members are the same review article with identical fields and DOI. Same work."
+  },
+  {
+   "id": "the myth of semantic presupposition",
+   "decision": "same",
+   "rationale": "Boër, 'The myth of semantic presupposition', Indiana University Linguistics Club, 1976. All three members identical modulo author-name encoding. Same work."
+  },
+  {
+   "id": "on d trees beans and b accents",
+   "decision": "same",
+   "rationale": "Büring, 'On D-trees, beans and B-accents', L&P 26, 2003, pp. 511-545. Both members same work modulo pagination formatting and name encoding."
+  },
+  {
+   "id": "10.1016/j.tics.2008.02.010",
+   "decision": "same",
+   "rationale": "Call & Tomasello, 'Does the chimpanzee have a theory of mind? 30 years later', Trends in Cognitive Sciences 12(5):187-192, 2008. Both members identical, same DOI. Same work."
+  },
+  {
+   "id": "dialogue games",
+   "decision": "same",
+   "rationale": "L. Carlson, 'Dialogue Games', 1982, same publisher and ISBN. Both members identical. Same work."
+  },
+  {
+   "id": "meaning and grammar",
+   "decision": "same",
+   "rationale": "Chierchia, 'Meaning and grammar', MIT Press, 1990, same ISBN. Both members identical. Same work."
+  },
+  {
+   "id": "10.1177/1461445605054404",
+   "decision": "same",
+   "rationale": "Clark, 'Coordinating with each other in a material world', Discourse Studies 7(4-5):507-525, 2005. Both members identical, same DOI. Same work."
+  },
+  {
+   "id": "10.1016/0010-0277(86)90010-7",
+   "decision": "same",
+   "rationale": "Clark & Wilkes-Gibbs, 'Referring as a collaborative process', Cognition 22(1):1-39, 1986. All three members identical, same DOI. Same work."
+  },
+  {
+   "id": "10.1007/s10988-012-9121-1",
+   "decision": "same",
+   "rationale": "Constant, 'English rise-fall-rise', L&P 35(5):407-442, 2012. Both members identical, same DOI. Same work."
+  },
+  {
+   "id": "10.1016/s0378-2166(01)80001-1",
+   "decision": "same",
+   "rationale": "DeLancey, 'The mirative and evidentiality', Journal of Pragmatics 33(3):369-382, 2001. Both members identical, same DOI. Same work."
+  },
+  {
+   "id": "10.1007/3-540-47979-1_7",
+   "decision": "same",
+   "rationale": "Duygulu et al., 'Object Recognition as Machine Translation', ECCV 2002, pp. 97-112. Both members identical, same DOI. Same work."
+  },
+  {
+   "id": "10.1353/sls.2006.0030",
+   "decision": "same",
+   "rationale": "Fusellier-Souza, 'Emergence and Development of Signed Languages', Sign Language Studies 7(1):30-56, 2006. Both members identical, same DOI. Same work."
+  },
+  {
+   "id": "10.3389/fnhum.2011.00011",
+   "decision": "same",
+   "rationale": "Galantucci & Garrod, 'Experimental Semiotics: A Review', Frontiers in Human Neuroscience 5:11, 2011. Both members identical, same DOI. Same work."
+  },
+  {
+   "id": "10.1075/is.11.1.04gar",
+   "decision": "same",
+   "rationale": "Garrod et al., 'Can iterated learning explain the emergence of graphical symbols?'. Survivor is the 2010 Interaction Studies original; the second is the 2012 Benjamins Current Topics reprint (note explicitly identifies it as a reprint of the 2010 original). Same work, reprinted."
+  },
+  {
+   "id": "10.1016/0010-0277(87)90018-7",
+   "decision": "same",
+   "rationale": "Garrod & Anderson, 'Saying what you mean in dialogue', Cognition 27(2):181-218, 1987. All three members identical, same DOI. Same work."
+  },
+  {
+   "id": "pragmatics",
+   "decision": "same",
+   "rationale": "Gazdar, 'Pragmatics', Academic Press, 1979, same ISBN. Both members identical. Same work."
+  },
+  {
+   "id": "what is an object file british journal for the philosophy of science axx055",
+   "decision": "same",
+   "rationale": "Green, 'What is an object file?', BJPS axx055, 2017. Both members identical. Same work."
+  },
+  {
+   "id": "10.1038/scientificamerican0960-88",
+   "decision": "same",
+   "rationale": "Hockett, 'The Origin of Speech', Scientific American 203(3):88-96, 1960. Both members identical, same DOI. Same work."
+  },
+  {
+   "id": "semantic interpretation in generative grammar",
+   "decision": "same",
+   "rationale": "Jackendoff, 'Semantic interpretation in generative grammar', MIT Press, 1972, same ISBN. Both members identical. Same work."
+  },
+  {
+   "id": "fokus und skalen",
+   "decision": "same",
+   "rationale": "Jacobs, 'Fokus und Skalen', De Gruyter, 1983, same ISBN. Both members identical. Same work."
+  }
+ ]
+}

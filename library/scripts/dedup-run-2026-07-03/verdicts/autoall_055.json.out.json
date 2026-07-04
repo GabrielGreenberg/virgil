@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "the character of natural language semantics", "decision": "same", "rationale": "Same Pietroski 2003 chapter 'The Character of Natural Language Semantics', same year; both incollection in the Barber 2003 volume (booktitle 'A'/'Barber 2003' both refer to it)."},
+  {"id": "10.1111/j.1468-0017.2009.01374.x", "decision": "same", "rationale": "Identical DOI, title, authors, year, volume, pages — same Pietroski et al. 'Meaning of Most' article."},
+  {"id": "10.1006/nimg.2001.0913", "decision": "same", "rationale": "Identical DOI, title, authors, year, volume, pages — same Pinel et al. 2001 NeuroImage article."},
+  {"id": "10.1037//0096-3445.109.3.354", "decision": "same", "rationale": "Identical DOI, title, author, year, volume, number, pages — same Pinker 1980 article."},
+  {"id": "10.3758/bf03197668", "decision": "same", "rationale": "Identical DOI, title, authors, year, volume, pages — same Pinker/Choate/Finke 1984 article."},
+  {"id": "10.1016/0010-0277(88)90032-7", "decision": "same", "rationale": "Identical DOI, title, authors (Pinker & Prince), year, volume, pages — same connectionism paper; type misc vs article is a cosmetic difference."},
+  {"id": "learnability and cognition", "decision": "same", "rationale": "Identical title, authors, year, publisher, ISBN — same Pinker 1989 book."},
+  {"id": "10.1016/j.cognition.2005.04.006", "decision": "same", "rationale": "Identical DOI, title, authors (Jackendoff & Pinker), year, volume, pages — same 2005 reply article."},
+  {"id": "10.1111/j.0268-1064.2005.00274.x", "decision": "same", "rationale": "Identical DOI, title, author, year, volume, pages — same Pinker 2005 'So How Does the Mind Work?' article."},
+  {"id": "10.1371/journal.pcbi.0040027", "decision": "same", "rationale": "Identical DOI, title, authors, year, volume, pages — same Pinto/Cox/DiCarlo 2008 PLoS Comput Biol article."},
+  {"id": "10.1080/026999396380303", "decision": "same", "rationale": "Identical DOI, title, author, year, volume, pages — same Planalp 1996 article."},
+  {"id": "10.1038/317314a0", "decision": "same", "rationale": "Identical DOI, title, authors, year, volume, pages — same Poggio/Torre/Koch 1985 Nature article."},
+  {"id": "conversational storytelling", "decision": "same", "rationale": "Same Polanyi 1985 'Conversational storytelling', same author, year, publisher — one carries the fuller booktitle."},
+  {"id": "10.1016/0042-6989(93)90081-7", "decision": "same", "rationale": "Identical DOI, title, authors (Polat & Sagi), year, volume, pages — same 1993 Vision Research article."},
+  {"id": "10.1037/0096-3445.113.3.426", "decision": "same", "rationale": "Same DOI (double-slash variant), identical title, authors, year, volume, pages — same Pollatsek/Rayner/Collins 1984 article."},
+  {"id": "10.1037/0096-1523.15.3.556", "decision": "same", "rationale": "Identical DOI, title, authors (Boyce, Pollatsek, Rayner), year, volume, pages — same 1989 article."},
+  {"id": "10.1037/0096-1523.16.1.199", "decision": "same", "rationale": "Same DOI (double-slash variant), identical title, authors, year, volume, pages — same Pollatsek/Rayner/Henderson 1990 article."},
+  {"id": "knowledge and justification", "decision": "same", "rationale": "Identical title, author, year, publisher, ISBN — same Pollock 'Knowledge and Justification' book."},
+  {"id": "10.1037//0096-3445.112.4.516", "decision": "same", "rationale": "Identical DOI, title, author, year, volume, pages — same Pomerantz 1983 article."},
+  {"id": "10.1007/s11050-007-9022-y", "decision": "same", "rationale": "Identical DOI, title, author (Portner), year, volume, pages — same 'Imperatives and modals' article."},
+  {"id": "10.1037/h0025953", "decision": "same", "rationale": "Identical DOI, title, authors (Posner & Keele), year, volume, pages — same 1968 'genesis of abstract ideas' article."},
+  {"id": "10.1037/0096-3445.109.2.160", "decision": "same", "rationale": "All three members share identical DOI, title, authors, year, volume, pages — same Posner/Snyder/Davidson 1980 article."},
+  {"id": "10.1146/annurev.ne.13.030190.000325", "decision": "same", "rationale": "Identical DOI, title, authors (Posner & Petersen), year, volume, pages — same 1990 attention-system review."},
+  {"id": "10.1016/b978-0-12-498045-7.50010-4", "decision": "same", "rationale": "Identical DOI, title, authors (Posner & Rothbart), year, booktitle, pages — same 1992 chapter."},
+  {"id": "10.1037/0278-7393.2.5.509", "decision": "same", "rationale": "Identical DOI, title, author (Potter), year, volume, pages — same 1976 short-term conceptual memory article."}
+ ]
+}

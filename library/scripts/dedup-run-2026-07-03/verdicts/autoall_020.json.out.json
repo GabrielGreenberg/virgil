@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.3758/bf03330618", "decision": "same", "rationale": "All three members share identical title, authors, year, journal, volume, pages, and DOI."},
+    {"id": "representation and recognition in vision", "decision": "same", "rationale": "Same Edelman 1999 MIT Press book; one entry adds the MIT Press DOI."},
+    {"id": "10.1163/156856800741072", "decision": "same", "rationale": "Identical title, authors, year, venue, pages, and DOI."},
+    {"id": "10.1093/aristoteliansupp/65.1.161", "decision": "same", "rationale": "Both are Jeffrey & Edgington 'Matter-of-Fact Conditionals' with identical fields and DOI."},
+    {"id": "10.1093/aristoteliansupp/69.1.47", "decision": "same", "rationale": "Both are Read & Edgington 'Conditionals and the Ramsey Test' with identical fields and DOI."},
+    {"id": "10.1093/mind/104.414.235", "decision": "distinct", "rationale": "Two different Edgington works share only the title 'On Conditionals': the 1995 Mind article (DOI 10.1093/mind/104.414.235) vs a 2007 incollection in the Handbook of Philosophical Logic (different DOI 10.1007/978-1-4020-6324-4_3, different year, venue, and pages). Different publications, not the same work."},
+    {"id": "conditionals", "decision": "same", "rationale": "All refer to Woods's 'Conditionals' volume (Edgington's contribution/edition of the same 1997 Clarendon book); consistent title and near-identical ISBN."},
+    {"id": "10.1016/s0031-9384(02)00943-5", "decision": "same", "rationale": "Identical title, author, year, venue, pages, and DOI."},
+    {"id": "10.2307/2185299", "decision": "same", "rationale": "Both are Egan 'Must Psychology Be Individualistic' with identical fields and DOI."},
+    {"id": "10.1007/3-540-60392-1_1", "decision": "same", "rationale": "All three are Egenhofer & Mark 'Naive Geography' with identical fields and DOI."},
+    {"id": "the art of dramatic writing", "decision": "same", "rationale": "Same Egri book 'The Art of Dramatic Writing'; year differs (1946 original vs 1960 reprint) but same work."},
+    {"id": "10.1016/b978-044481714-3/50006-0", "decision": "same", "rationale": "Both are van Eijck & Kamp 'Representing Discourse in Context' with identical fields and DOI."},
+    {"id": "facial action coding system", "decision": "same", "rationale": "Same Ekman 1978 FACS book with identical fields and ISBN."},
+    {"id": "10.1080/02699939208411068", "decision": "same", "rationale": "Both are Ekman 'An argument for basic emotions' with identical fields and DOI."},
+    {"id": "10.1111/j.1467-9280.1992.tb00253.x", "decision": "same", "rationale": "Both are Ekman 'Facial Expressions of Emotion' with identical fields and DOI."},
+    {"id": "unmasking the face", "decision": "same", "rationale": "Same Ekman & Friesen 1975 'Unmasking the Face' book with identical fields and ISBN."},
+    {"id": "10.1038/nature01964", "decision": "same", "rationale": "Both are Ekstrom et al. 'Cellular networks underlying human spatial navigation' with the same DOI and matching fields."},
+    {"id": "10.1016/0042-6989(94)90070-1", "decision": "same", "rationale": "Both are Elder & Zucker 'A measure of closure' with identical fields and DOI."},
+    {"id": "10.1167/2.4.5", "decision": "same", "rationale": "Both are Elder & Goldberg 'Ecological statistics of Gestalt laws' with identical fields and DOI."},
+    {"id": "10.1086/392918", "decision": "same", "rationale": "Both are Elga 'Statistical Mechanics and the Asymmetry of Counterfactual Dependence', Philosophy of Science vol 68; year discrepancy (2000 vs 2001) but same work."},
+    {"id": "10.2307/j.ctv2rh27nk.7", "decision": "distinct", "rationale": "Two genuinely different Emmorey et al. publications share the title 'Bimodal Bilingualism': a 2008 journal article in Bilingualism: Language and Cognition (DOI 10.1017/s1366728907003203, vol 11, pp 43-61) vs a 2009 book chapter in a Gallaudet University Press volume (DOI 10.2307/j.ctv2rh27nk.7, pp 3-43). Different venues, years, pages, and DOIs."},
+    {"id": "a transformational approach to english syntax", "decision": "same", "rationale": "Same Emonds 1976 book with identical fields and ISBN."},
+    {"id": "a mathematical introduction to logic", "decision": "same", "rationale": "Same Enderton title; the two entries are the 1st (1972) and 2nd (2001) editions of the same work, conventionally merged."},
+    {"id": "10.3758/s13414-014-0706-3", "decision": "same", "rationale": "Both are Endress & Potter 'Something from (almost) nothing' with identical fields and DOI."},
+    {"id": "10.1093/cercor/7.2.181", "decision": "same", "rationale": "Both are Engel 'Retinotopic organization in human visual cortex' with identical fields and DOI."}
+  ]
+}

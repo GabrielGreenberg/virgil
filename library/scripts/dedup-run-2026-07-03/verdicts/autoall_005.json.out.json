@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "mindblindness", "decision": "same", "rationale": "Identical Baron-Cohen 1995 Mindblindness (same title/author/year/publisher/ISBN); only citekey suffix differs."},
+    {"id": "10.1007/s11238-007-9064-0", "decision": "same", "rationale": "Both Barrett 'Evolution of Coding in Signaling Games' with identical DOI, title, author, volume/pages."},
+    {"id": "recovering intrinsic scene characteristics from images", "decision": "same", "rationale": "Both Barrow & Tenenbaum 1978 same chapter; only author-name formatting and capitalization differ."},
+    {"id": "10.1038/nn1905", "decision": "same", "rationale": "Both Barry et al. 2007 'Experience-dependent rescaling of entorhinal grids'; shared DOI, same authors and pages."},
+    {"id": "the instability of graded structure implications for the nature of concepts", "decision": "same", "rationale": "Both Barsalou 1987 same title/year; differing publisher field is just a metadata artifact of the same work."},
+    {"id": "10.1017/s0140525x99002149", "decision": "same", "rationale": "Both Barsalou 'Perceptual symbol systems' BBS 1999; shared DOI, identical volume/number/pages."},
+    {"id": "10.1016/s0010-0277(02)00178-6", "decision": "same", "rationale": "Three copies of Barth, Kanwisher & Spelke 2003 with identical DOI, title, authors, and pages."},
+    {"id": "10.1016/j.cognition.2004.09.011", "decision": "same", "rationale": "Four copies of Barth et al. 2006 'Non-symbolic arithmetic' with identical DOI, title, authors, and pages."},
+    {"id": "10.1093/oso/9780195080056.001.0001", "decision": "same", "rationale": "Both Bartsch & Wellman 1995 'Children Talk About The Mind'; shared DOI/ISBN, same work."},
+    {"id": "10.1007/bf00350139", "decision": "same", "rationale": "Three copies of Barwise & Cooper 1981 'Generalized quantifiers and natural language'; identical DOI and fields."},
+    {"id": "10.2307/2026481", "decision": "same", "rationale": "Both Barwise 1981 'Scenes and Other Situations'; identical DOI, journal, volume, pages."},
+    {"id": "situations and attitudes", "decision": "same", "rationale": "Four copies of Barwise & Perry 'Situations and Attitudes'; the 1999 entry is the CSLI reprint of the 1983 MIT Press book, same work."},
+    {"id": "10.2307/2274883", "decision": "same", "rationale": "Both are the same 1989 JSL review item (Barwise) with identical DOI, title, volume, and pages; matching type variance only."},
+    {"id": "heterogeneous logic", "decision": "same", "rationale": "Both Barwise & Etchemendy 'Heterogeneous Logic' chapter; 1995/1996 printings in different anthologies of the same essay."},
+    {"id": "10.1093/oso/9780195104271.003.0005", "decision": "same", "rationale": "All four are Barwise & Etchemendy 'Visual Information and Valid Reasoning'; the 1990 MAA versions and the 1996 Logical Reasoning with Diagrams reprint are the same essay."},
+    {"id": "10.1037//0096-1523.19.3.451", "decision": "same", "rationale": "Both Baylis & Driver 1993 'Visual attention and objects'; identical DOI, journal, volume, pages."},
+    {"id": "the ontology of the photographic image", "decision": "same", "rationale": "Both Bazin 'The ontology of the photographic image' in What is Cinema?; 1967/1971 differ only as printings of the same translated essay."},
+    {"id": "10.1016/b978-044481714-3/50022-9", "decision": "mixed", "rationale": "First two are the Handbook of Logic and Language chapter 'Presupposition' (Beaver 1996/1997) sharing the DOI; but beaver2002presupposition is a separate standalone CSLI book titled 'Presupposition' (2002), a different work pulled in by bare title+author match.", "distinct_members": ["beaver2002presupposition"]},
+    {"id": "presupposition and assertion in dynamic semantics", "decision": "same", "rationale": "The 1995 PhD thesis and the 2001 CSLI book are the same work; the thesis note explicitly says it was revised and published by CSLI in 2001."},
+    {"id": "10.1163/9789004487222_006", "decision": "same", "rationale": "Both Beaver 'Accommodating Topics' in Context-Dependence anthology; shared DOI (year/publisher variance is metadata noise), same essay."},
+    {"id": "10.1002/9781444304176", "decision": "same", "rationale": "Three copies of Beaver & Clark 'Sense and Sensitivity' (Wiley); shared DOI/ISBN, same book."},
+    {"id": "10.1163/9789004253162_004", "decision": "same", "rationale": "Both Beaver 2010 'Have You Noticed...Belly Button Lint' chapter; identical DOI, booktitle, pages."},
+    {"id": "10.1016/0010-0277(94)90018-3", "decision": "same", "rationale": "Both Bechara et al. 1994 'Insensitivity to future consequences'; identical DOI, authors, journal, pages."},
+    {"id": "discovering complexity", "decision": "same", "rationale": "Both Bechtel 'Discovering complexity' (Princeton, ISBN 9780691087627); only citekey year-suffix differs, both dated 1993."},
+    {"id": "10.1080/00048402.2017.1329329", "decision": "same", "rationale": "Both Beck 2018 'Marking the Perception-Cognition Boundary'; identical DOI, journal, volume, pages."}
+  ]
+}

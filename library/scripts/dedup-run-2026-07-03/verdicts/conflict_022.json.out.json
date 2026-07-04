@@ -1,0 +1,66 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1111/nous.12404",
+      "decision": "same",
+      "rationale": "All four members share DOI 10.1111/nous.12404, title 'The Structure of Analog Representation', identical authors (Lee, Myers, Rabin), Noûs 57(1), pp. 209-237. lee2022structure is tagged 'Preprint (forthcoming)' but carries the same DOI/pages — preprint vs published of one work. The two deepIndexed members (lee2023structure, lee2022structure) are the same work."
+    },
+    {
+      "id": "10.5840/protosociology2014318",
+      "decision": "same",
+      "rationale": "Both members share DOI 10.5840/protosociology2014318, title, authors (Lepore & Stone), ProtoSociology vol 31, pp. 75-87. Loser is a hand/Zotero key variant with no indexing. Same work."
+    },
+    {
+      "id": "10.1093/acprof:oso/9780198717188.001.0001",
+      "decision": "same",
+      "rationale": "Both 'Imagination and Convention' by Lepore and Stone, OUP, identical ISBN 9780198797418. Year differs (2014 vs 2015 printing) but it is the same book. Neither is indexed; only survivor has a folder. Same work."
+    },
+    {
+      "id": "10.1002/wcs.1436",
+      "decision": "same",
+      "rationale": "Both share DOI 10.1002/wcs.1436, title 'Bridging views in cinema', authors Levin & Baker, WIREs Cognitive Science 8(5). Loser is an unindexed Zotero-style key. Same work."
+    },
+    {
+      "id": "10.1007/bf00413598",
+      "decision": "mixed",
+      "rationale": "lewis1970general, cambridge1970general, and lewis1972general all share DOI 10.1007/bf00413598, Synthese 22(1-2), pp. 18-67 — the same journal article. lewis1972semantics is a distinct publication: different DOI (10.1007/978-94-010-2557-7_7), an incollection in 'Semantics of Natural Language' (Springer Netherlands), year 1972, pp. 169-218 — the reprinted book-chapter version, not the same bibliographic item. It is unindexed so no real work is lost, but it should not be folded into the journal-article entry.",
+      "distinct_members": ["lewis1972semantics"]
+    },
+    {
+      "id": "counterfactuals",
+      "decision": "same",
+      "rationale": "Both 'Counterfactuals' by David K. Lewis, 1973 — the two simultaneous co-editions (Blackwell UK / Harvard University Press US). Same book. Only survivor is deepIndexed. Same work."
+    },
+    {
+      "id": "10.1111/nous.12085",
+      "decision": "same",
+      "rationale": "Both share DOI 10.1111/nous.12085, title 'Elusive Counterfactuals', author Karen S. Lewis, Noûs 50(2), pp. 286-313. Year differs (2015 vs 2016 print/online) but same DOI. Same work."
+    },
+    {
+      "id": "10.1111/nous.12194",
+      "decision": "same",
+      "rationale": "All three share DOI 10.1111/nous.12194, title 'Counterfactual Discourse in Context', author Karen S. Lewis, Noûs 52(3), pp. 481-507. Losers are key/year variants. Same work."
+    },
+    {
+      "id": "10.1007/s44204-025-00288-6",
+      "decision": "same",
+      "rationale": "Both members are field-identical: DOI 10.1007/s44204-025-00288-6, 'Mnemic scenarios as pictures', Liefke, Asian Journal of Philosophy 4(2). Loser is an unindexed Zotero-style key. Same work."
+    },
+    {
+      "id": "10.1007/978-3-642-74859-2_22",
+      "decision": "same",
+      "rationale": "Both members are field-identical: DOI 10.1007/978-3-642-74859-2_22, 'Enhancement of Spatial Cognition in Deaf Children', same author list and pages. Duplicate import. Same work."
+    },
+    {
+      "id": "10.1073/pnas.0910981106",
+      "decision": "same",
+      "rationale": "Both share DOI 10.1073/pnas.0910981106, 'World Color Survey color naming...', Lindsey & Brown, PNAS 106(47), pp. 19785-19790. Loser is an unindexed Zotero-style key. Same work."
+    },
+    {
+      "id": "10.1093/acprof:oso/9780199272037.003.0012",
+      "decision": "mixed",
+      "rationale": "The survivor lopes2004understanding ('Understanding Pictures', 2004, chapter-level OUP DOI) and lopes1996understanding ('Understanding pictures', 1996, Clarendon Press, ISBN 9780198240976) are different editions/publications of Dominic Lopes' book. BOTH members are independently deepIndexed with folders, so merging would archive real indexed work. Per the two-plus-indexed rule, keep the 1996 edition separate.",
+      "distinct_members": ["lopes1996understanding"]
+    }
+  ]
+}

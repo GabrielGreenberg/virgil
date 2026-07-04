@@ -1,0 +1,66 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1016/0004-3702(93)90015-4",
+      "decision": "mixed",
+      "distinct_members": ["hobbs1988interpretation", "hobbs1990interpretation"],
+      "rationale": "Survivor and hobbsstickelappeltmartin1993interpretation and e1993interpretation are all the 1993 Artificial Intelligence journal article (vol 63, pp 69-142, DOI 10.1016/0004-3702(93)90015-4) — merge OK. But hobbs1988interpretation and hobbs1990interpretation are the SEPARATE 1988 ACL conference paper 'Interpretation as Abduction' (Proc. 26th ACL, pp 95-103, DOI 10.3115/982023.982035) — a distinct, shorter publication. hobbs1988interpretation is deepIndexed (real work) and must not be archived into the journal article."
+    },
+    {
+      "id": "10.1093/arisoc/aow005",
+      "decision": "same",
+      "rationale": "All three are Holroyd 'VIII—What Do We Want from a Model of Implicit Cognition?', Proc. Aristotelian Society vol 116(2), pp 153-179, same DOI 10.1093/arisoc/aow005. Only citekey/type/author-format differences; only the survivor is indexed. True duplicates."
+    },
+    {
+      "id": "10.1038/nn.4247",
+      "decision": "same",
+      "rationale": "Both are Hong et al. 'Explicit information for category-orthogonal object properties...', Nature Neuroscience 19(4), pp 613-622, same DOI 10.1038/nn.4247. Only author-format/citekey differences. Loser not indexed. True duplicate."
+    },
+    {
+      "id": "10.1075/hop.13",
+      "decision": "same",
+      "rationale": "Both are Horn & Ward's Handbook of Pragmatics, same DOI 10.1075/hop.13 and identical note (867 pp.). Year/publisher differ (2023 Wiley-Blackwell vs 2009 John Benjamins) but the shared DOI and title identify the same edited handbook. Only the survivor is indexed; loser not indexed. Merge OK."
+    },
+    {
+      "id": "10.2307/2219508",
+      "decision": "same",
+      "rationale": "Both are Horgan 'Jackson on Physical Information and Qualia', Philosophical Quarterly 34(135), p 147, same DOI 10.2307/2219508, identical fields. The survivor citekey is a JSTOR-URL-style shadow key; horgan1984jackson is the hand key. Both deepIndexed but genuinely the same article — merge OK (consolidates into survivor)."
+    },
+    {
+      "id": "10.3758/s13423-012-0293-z",
+      "decision": "same",
+      "rationale": "Both are Huff & Schwan 'Do not cross the line...', Psychonomic Bulletin & Review 19(6), pp 1065-1072, same DOI. Only author-format/citekey differences. Loser not indexed. True duplicate."
+    },
+    {
+      "id": "impossible objects as nonsense sentences",
+      "decision": "same",
+      "rationale": "Both are Huffman 'Impossible Objects as Nonsense Sentences', Machine Intelligence vol 6. Years differ (1977 vs 1971) and one is incollection vs article, but same title/author/venue/volume identify the same work (a known chapter with variable citation dates). Both deepIndexed but the same work — merge into survivor."
+    },
+    {
+      "id": "art and illusion",
+      "decision": "mixed",
+      "distinct_members": ["gombrich1960art"],
+      "rationale": "All members are Gombrich's Art and Illusion, but two members are independently deepIndexed and represent substantively different editions: survivor illusion1960pictoria (2000 Princeton reprint, ISBN 0691070008) and gombrich1960art (the original 1960 Bollingen/Pantheon edition with Mellon-Lectures note, ISBN 9780714815503). Two-or-more independently indexed distinct editions — keep gombrich1960art separate. The non-indexed variants (gombrich1961art '2nd', Gom56, gombrich1960) are shadow/edition stubs that fold into the survivor."
+    },
+    {
+      "id": "10.3765/salt.v0i0.2889",
+      "decision": "same",
+      "rationale": "Both are Ippolito 'Quantification over Times in Subjunctive Conditionals', SALT, p 127, same DOI 10.3765/salt.v0i0.2889, identical note. Only author-format/journal-field differences. Loser not indexed. True duplicate."
+    },
+    {
+      "id": "10.1017/apa.2017.13",
+      "decision": "same",
+      "rationale": "Both are Isaac 'Digital Images: Content and Compositionality', J. American Philosophical Association 3(1), pp 106-126, same DOI 10.1017/apa.2017.13. Only author-format/citekey differences. Loser not indexed. True duplicate."
+    },
+    {
+      "id": "10.1111/j.1467-9264.2014.00367.x",
+      "decision": "same",
+      "rationale": "All four are Shea 'VI-Exploitable Isomorphism and Structural Representation', Proc. Aristotelian Society 114(2pt2), pp 123-144, same DOI 10.1111/j.1467-9264.2014.00367.x. shea2014exploitable is 'indexed' (real work) but genuinely the same article as survivor — duplicate import under different citekeys. Merge OK; consolidates into survivor."
+    },
+    {
+      "id": "genes mind and culture",
+      "decision": "same",
+      "rationale": "Both are Lumsden 'Genes, mind, and culture' (1981, Harvard University Press, ISBN 9780674344754), identical fields. Only citekey differs (j-prefixed shadow vs hand key). Neither indexed. True duplicate."
+    }
+  ]
+}

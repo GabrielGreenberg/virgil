@@ -1,0 +1,129 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1073/pnas.022638499",
+      "decision": "same",
+      "rationale": "Both members are Mazer et al. 2002 'Spatial frequency and orientation tuning dynamics in area V1', PNAS 99(3):1645-1650, identical DOI and fields."
+    },
+    {
+      "id": "counterfactuals",
+      "decision": "same",
+      "rationale": "Both are Starr's SEP entry 'Counterfactuals' (2019). Survivor citekey maziarz2020counterfactuals is a flagged triage misnomer; content is the same SEP entry by William Starr."
+    },
+    {
+      "id": "10.1523/jneurosci.5317-05.2006",
+      "decision": "same",
+      "rationale": "Both are Mazzoni & Krakauer 2006 'An Implicit Plan Overrides an Explicit Strategy during Visuomotor Adaptation', J Neurosci 26(14):3642-3645, identical DOI."
+    },
+    {
+      "id": "some philosophical problems from the standpoint of artificial intelligence",
+      "decision": "same",
+      "rationale": "All five members are McCarthy & Hayes 1969 'Some Philosophical Problems from the Standpoint of Artificial Intelligence', Machine Intelligence 4; author-string mangling in some entries is a formatting artifact, not a different work."
+    },
+    {
+      "id": "10.1016/0004-3702(80)90011-9",
+      "decision": "same",
+      "rationale": "All three are McCarthy's 'Circumscription—A form of non-monotonic reasoning'. Two share the AI-journal DOI; the third is the 1981 Readings-in-AI reprint with its own DOI, but it is the identical work reprinted, so merging is correct."
+    },
+    {
+      "id": "10.1016/0004-3702(86)90032-9",
+      "decision": "same",
+      "rationale": "Both are McCarthy 1986 'Applications of circumscription to formalizing common-sense knowledge', AI 28(1):89-116, identical DOI."
+    },
+    {
+      "id": "10.1037/0033-295x.88.5.375",
+      "decision": "same",
+      "rationale": "Both are McClelland & Rumelhart 1981 'An interactive activation model of context effects in letter perception: I', Psych Review 88(5):375-407, identical DOI."
+    },
+    {
+      "id": "parallel distributed processing 2 vol set",
+      "decision": "same",
+      "rationale": "Both are Rumelhart, McClelland & PDP Group 'Parallel Distributed Processing - 2 Vol. Set' (1987), MIT Press, same ISBN."
+    },
+    {
+      "id": "the appeal of parallel distributed processing",
+      "decision": "same",
+      "rationale": "Both are McClelland, Rumelhart & Hinton 1986 'The Appeal of Parallel Distributed Processing' in PDP Vol. 1; author typo 'McClelland, I.' is an OCR artifact."
+    },
+    {
+      "id": "10.1037/0278-7393.9.1.146",
+      "decision": "same",
+      "rationale": "Both are McCloskey & Kohl 1983 'Naive physics: The curvilinear impetus principle...', JEP:LMC 9(1):146-156, identical DOI."
+    },
+    {
+      "id": "10.1111/j.0956-7976.2004.00755.x",
+      "decision": "same",
+      "rationale": "All six members are McCrink & Wynn 2004 'Large-Number Addition and Subtraction by 9-Month-Old Infants', Psych Science 15(11):776-781, identical DOI and fields."
+    },
+    {
+      "id": "10.1016/j.cognition.2010.05.003",
+      "decision": "same",
+      "rationale": "Both are McCrink & Spelke 2010 'Core multiplication in childhood', Cognition 116(2):204-216, identical DOI."
+    },
+    {
+      "id": "10.1016/0004-3702(80)90012-0",
+      "decision": "same",
+      "rationale": "All four are McDermott & Doyle 'Non-monotonic logic I', AI 13(1-2):41-72, identical DOI; the mcdermott1982 citekey has year field 1980 and same DOI, just a citekey artifact."
+    },
+    {
+      "id": "10.1037/0278-7393.21.4.803",
+      "decision": "same",
+      "rationale": "Both are Roediger & McDermott 1995 'Creating false memories: Remembering words not presented in lists', JEP:LMC 21(4):803-814, identical DOI."
+    },
+    {
+      "id": "mind and world",
+      "decision": "same",
+      "rationale": "Both are McDowell 'Mind and world', Harvard University Press, same ISBN and year."
+    },
+    {
+      "id": "10.2307/40150042",
+      "decision": "same",
+      "rationale": "Both members are identical: 'The Man Who Loved Attending Funerals and Other Stories', World Literature Today 68(1):185, same DOI."
+    },
+    {
+      "id": "10.2307/2941048",
+      "decision": "same",
+      "rationale": "Both are McGinn 1996 'Another Look at Color', Journal of Philosophy 93(11):537-553, identical DOI."
+    },
+    {
+      "id": "the character of mind",
+      "decision": "same",
+      "rationale": "Both are McGinn 'The Character of Mind', Oxford University Press; differing years (1997/1982) are printing dates of the same book."
+    },
+    {
+      "id": "10.1016/s0092-8674(00)81828-0",
+      "decision": "same",
+      "rationale": "Both are McHugh et al. 1996 'Impaired Hippocampal Representation of Space in CA1-Specific NMDAR1 Knockout Mice', Cell 87(7):1339-1349, identical DOI."
+    },
+    {
+      "id": "10.1007/s11229-009-9582-0",
+      "decision": "same",
+      "rationale": "Both are McLaughlin 2009 'Systematicity redux', Synthese 170(2):251-274, identical DOI."
+    },
+    {
+      "id": "10.1016/0010-0285(86)90016-2",
+      "decision": "same",
+      "rationale": "Both are McNamara 1986 'Mental representations of spatial relations', Cognitive Psychology 18(1):87-121, identical DOI."
+    },
+    {
+      "id": "gesture and thought",
+      "decision": "same",
+      "rationale": "Both are McNeill 'Gesture and Thought', University of Chicago Press; differing years (2005/2010) are printings of the same book."
+    },
+    {
+      "id": "making meaning",
+      "decision": "same",
+      "rationale": "Both are Bordwell 1989 'Making Meaning', Harvard University Press."
+    },
+    {
+      "id": "10.1037/0097-7403.9.2.171",
+      "decision": "same",
+      "rationale": "Both are Meck (& Church) 1983 'Selective adjustment of the speed of internal clock and memory processes', JEP:ABP 9(2):171-201, identical DOI."
+    },
+    {
+      "id": "10.1146/annurev.ps.35.020184.000553",
+      "decision": "same",
+      "rationale": "Both are Medin & Smith 1984 'Concepts and Concept Formation', Annual Review of Psychology 35:113-138, identical DOI."
+    }
+  ]
+}

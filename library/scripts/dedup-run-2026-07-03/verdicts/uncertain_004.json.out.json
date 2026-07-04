@@ -1,0 +1,104 @@
+{
+  "verdicts": [
+    {
+      "id": "bruner1986actual||brunerjerome1986actual",
+      "decision": "same",
+      "rationale": "Both are Jerome Bruner's 1986 Harvard book; b's title 'Actual Minds' is a truncation of 'Actual minds, possible worlds'."
+    },
+    {
+      "id": "burge2005philosophical||burge2007philosophical",
+      "decision": "distinct",
+      "rationale": "Burge Philosophical Essays Volume 1 (2005, Truth Thought Reason) vs Volume 2 (2007, Foundations of Mind) are different volumes."
+    },
+    {
+      "id": "burrough1996geograph||burrough1996objects",
+      "decision": "distinct",
+      "rationale": "a is the whole edited book 'Geographic objects with indeterminate boundaries'; b is a chapter 'Natural objects...' (pp 3-28) within that book."
+    },
+    {
+      "id": "carey2009origin||carey2009origins",
+      "decision": "same",
+      "rationale": "Both are Susan Carey's 'The Origin of Concepts', 2009 Oxford University Press; b drops the leading 'The'."
+    },
+    {
+      "id": "carey2009origins||concepts2009origin",
+      "decision": "same",
+      "rationale": "Both are Susan Carey's 'The Origin of Concepts', 2009 OUP, same ISBN (9780195367638 = 978-0-19-536763-8)."
+    },
+    {
+      "id": "cargile2010language||fodor2008",
+      "decision": "same",
+      "rationale": "a's note states the file is Fodor's LOT 2 (2008, Clarendon); b is Fodor 'LOT 2' 2008 Clarendon. Same book."
+    },
+    {
+      "id": "cargile2010language||fodor2008lot",
+      "decision": "same",
+      "rationale": "a's note states the file is Fodor's LOT 2 (2008, Clarendon); b is Fodor 'LOT 2' 2008 Clarendon. Same book."
+    },
+    {
+      "id": "cargile2010language||fodor2008lot2",
+      "decision": "same",
+      "rationale": "a's note states the file is Fodor's LOT 2 (2008, Clarendon); b is Fodor 'LOT 2' 2008 Clarendon. Same book."
+    },
+    {
+      "id": "carlsonradvansky1994reference||carlsonradvansky1994referenceb",
+      "decision": "same",
+      "rationale": "Same paper 'Reference Frame Activation during Spatial Term Assignment' (b's 'tenD'=term OCR), same authors, 1994, same pages 646-671."
+    },
+    {
+      "id": "carlton1990apsychologically||carlton1990bpsychologically",
+      "decision": "distinct",
+      "rationale": "Part I. Asymmetric objects (pp 127-188) vs Part II. Symmetric objects (pp 189-228), different DOIs; distinct papers in a two-part series."
+    },
+    {
+      "id": "carroll1996theorizing||image1998",
+      "decision": "distinct",
+      "rationale": "'Theorizing the moving image' (1996) vs 'Interpreting the moving image' (1998) are different Carroll books with different ISBNs."
+    },
+    {
+      "id": "casati0000public||casatigiardino2013public",
+      "decision": "same",
+      "rationale": "Same Casati & Giardino chapter 'Public Representation and Indeterminacies of Perspectival Content' in Enacting Images, 2013 (b has OCR 'Indeterminicies')."
+    },
+    {
+      "id": "casati1994holes||casativarzi1994holes",
+      "decision": "same",
+      "rationale": "Both are Casati & Varzi 'Holes and Other Superficialities', MIT Press; 1994/1995 printing difference is trivial."
+    },
+    {
+      "id": "casati1999parts||casativarzi1999parts",
+      "decision": "same",
+      "rationale": "Both are Casati & Varzi 'Parts and Places', 1999 MIT Press/Bradford; b truncates the subtitle."
+    },
+    {
+      "id": "casatiVarzi1999||casativarzi1999parts",
+      "decision": "same",
+      "rationale": "Both are Casati & Varzi 'Parts and Places', 1999 MIT Press/Bradford; b truncates the subtitle."
+    },
+    {
+      "id": "cavada1989posteriora||cavada1989posteriorb",
+      "decision": "distinct",
+      "rationale": "Posterior parietal cortex in rhesus monkey I (pp 393-421) vs II (pp 422-445), same volume; distinct parts of a two-part series."
+    },
+    {
+      "id": "chalmers1995conscious||chalmers1996conscious",
+      "decision": "same",
+      "rationale": "a's note explains it is the 1995 manuscript of the same book published 1996 as 'The Conscious Mind'; same ISBN 9780195105537."
+    },
+    {
+      "id": "chalmers1995conscious||chalmers1996david",
+      "decision": "same",
+      "rationale": "a's note explains it is the 1995 manuscript of the same 1996 'The Conscious Mind'; same ISBN 9780195105537."
+    },
+    {
+      "id": "chalmers2002philosophy||unknown2004philosophy",
+      "decision": "same",
+      "rationale": "Both are Chalmers 'Philosophy of Mind: Classical and Contemporary Readings', year 2002, same ISBN 9780190640859 (b's citekey year 2004 is spurious)."
+    },
+    {
+      "id": "chelazzi1998responses||chelazzi2001responses",
+      "decision": "distinct",
+      "rationale": "1998 Inferior Temporal Cortex (J Neurophysiol) vs 2001 Macaque Area V4 (Cerebral Cortex), different journals/DOIs; distinct studies."
+    }
+  ]
+}

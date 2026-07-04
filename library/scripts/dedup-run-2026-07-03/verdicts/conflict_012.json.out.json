@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1016/j.neuroimage.2016.12.039",
+      "decision": "same",
+      "rationale": "Both members share title, DOI, journal, volume 147, and pages 507-516; differ only in author-name formatting and page-dash style. Duplicate import."
+    },
+    {
+      "id": "10.1080/13506285.2017.1344342",
+      "decision": "same",
+      "rationale": "Both members identical in title, DOI, journal Visual Cognition, vol 25 no 9-10, pages 841-852; only author formatting and dash differ. Duplicate import."
+    },
+    {
+      "id": "10.1111/j.1520-8583.2008.00144.x",
+      "decision": "same",
+      "rationale": "All three are von Fintel 2008 'What is Presupposition Accommodation, Again?' with the same DOI, journal, vol 22 no 1, pages 137-170. Trailing asterisk and case are extraction artifacts. Same work."
+    },
+    {
+      "id": "10.1162/jocn.2010.21417",
+      "decision": "same",
+      "rationale": "Both members identical in title, DOI, JOCN vol 23 no 1, pages 119-136; only author formatting differs. Duplicate import."
+    },
+    {
+      "id": "10.1111/b.9780631229193.2003.00003.x",
+      "decision": "same",
+      "rationale": "Same edited volume, same DOI and pages 3-17; year 2004 vs 2003 is a copyright/imprint discrepancy already noted in the entry. Only the survivor is indexed. Same work."
+    },
+    {
+      "id": "10.1007/bf00485230",
+      "decision": "same",
+      "rationale": "All three are Fodor's 'Special Sciences' in Synthese vol 28 no 2, pages 97-115, same DOI. One is mislabeled phdthesis but retains the journal metadata and DOI; clearly the same article. Same work."
+    },
+    {
+      "id": "the language of thought",
+      "decision": "same",
+      "rationale": "All four are Fodor's 'The Language of Thought'. Crowell 1975 is the original; Harvard entries and the 1979-dated one (noted 'Reprint of 1975 edition') are reprints/editions of the same book, same ISBN across reprints. Only the survivor is indexed, so editions collapse to it. Same work."
+    },
+    {
+      "id": "10.7551/mitpress/5684.001.0001",
+      "decision": "same",
+      "rationale": "All six are Fodor's 'Psychosemantics', MIT Press, same ISBN 9780262560528 and (where present) DOI. Year 1989 on one entry is a reprint artifact. No independently indexed member among the losers. Same work."
+    },
+    {
+      "id": "a theory of content and other essays",
+      "decision": "same",
+      "rationale": "All three members are byte-identical in title, author, year 1990, publisher MIT Press, ISBN 9780585002835. Duplicate imports."
+    },
+    {
+      "id": "lot 2",
+      "decision": "same",
+      "rationale": "All three members identical: Fodor 'LOT 2', 2008, Clarendon Press, ISBN 9780199548774. Duplicate imports."
+    },
+    {
+      "id": "10.16995/glossa.8455",
+      "decision": "same",
+      "rationale": "All three are Francis, Grosz & Patel-Grosz 'THROW', Glossa vol 8 no 1, same DOI. The loser '-Patel-Grosz' is separately indexed but is the identical paper (same DOI/title/authors) under a malformed citekey, i.e. a genuine duplicate import, not a companion. Same work; merge preserves the survivor's deepIndexed folder."
+    },
+    {
+      "id": "10.1017/9781107337961.010",
+      "decision": "same",
+      "rationale": "Both are Friedman's 'Space and Geometry in the B Deduction', 2020, pages 200-228, ISBN 9781107042902. The loser's generic booktitle 'Cambridge University Press eBooks' and slightly different DOI are metadata glitches; identical title, author, pages, and ISBN confirm the same chapter. Same work."
+    }
+  ]
+}

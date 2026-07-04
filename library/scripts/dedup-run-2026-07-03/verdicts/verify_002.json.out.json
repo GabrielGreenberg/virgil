@@ -1,0 +1,52 @@
+{
+  "verdicts": [
+    {
+      "cid": "lot 2 the language of thought revisited",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All four members are Fodor's 'LOT 2: The Language of Thought Revisited', 2008, Clarendon Press. The archived deep-indexed loser (fodor2008lot) carries ISBN 9780199548774, identical to the survivor's ISBN 978-0-19-954877-4. Same title, author, year, publisher, ISBN across all members. The survivor citekey 'cargile2010language' is misleading but its fields unambiguously denote Fodor 2008 LOT 2."
+    },
+    {
+      "cid": "10.4324/9781003615644",
+      "verdict": "different_works",
+      "offending": ["chandler2017semiotics"],
+      "rationale": "The survivor (chandler2025semiotics) carries DOI 10.4324/9781003615644, which Routledge/Taylor & Francis assigns to a NEWER edition of 'Semiotics: The Basics' (dated 2025, described as a greatly extended edition with new content, ISBN 978-1-138-23293-8). The archived deep-indexed loser (chandler2017semiotics) is the 3rd edition (2017/2018), ISBN 978-1-138-23292-1 (9781138232921), with NO DOI in the record. Routledge lists distinct 2nd/3rd/4th/5th editions each 'fully updated' with substantively different content and different ISBNs. Different editions with different ISBNs, different years, and no shared DOI are different scholarly works. Archiving the deep-indexed 3rd-edition folder onto a DOI belonging to a later edition would lose distinct content."
+    },
+    {
+      "cid": "10.2307/414729",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both members are Clark & Gerrig 'Quotations as Demonstrations', Language 66(4):764-805, 1990, sharing the identical DOI 10.2307/414729 plus identical volume, number, pages, and authors. The loser citekey 'america1957quotations' is a mangled auto-generated key but its fields exactly match the survivor's work."
+    },
+    {
+      "cid": "10.1093/pq/pqab054",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three members are Sam Clarke 'Mapping the Visual Icon', The Philosophical Quarterly 72(3):552-577, 2022, sharing the identical DOI 10.1093/pq/pqab054 and identical volume/number/pages. Only citekey and year-in-key vary (2021 advance-access vs 2022 issue), which is a normal citekey artifact for OUP advance-access articles."
+    },
+    {
+      "cid": "the origin of concepts",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Survivor and the archived loser (carey2009origin) are both Susan Carey 'The Origin of Concepts', 2009, Oxford University Press, ISBN 9780199536638 (= 978-0-19-536763-8). Same title, author, year, publisher, ISBN. The non-archived carey2009origins carries a different ISBN (9780199710096, a paperback/reprint variant) but it is not archived so no deep-indexed folder is at risk; the archived member matches the survivor exactly."
+    },
+    {
+      "cid": "complete works",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both members are 'Plato: Complete Works' (ed. Cooper), 1997, Hackett Publishing Company. Survivor ISBN 0-87220-349-2 equals loser ISBN 9780872203495 (same ISBN, different formatting). The survivor citekey year (1993) and truncated title 'Complete works' are artifacts; the fields denote the 1997 Hackett Plato Complete Works."
+    },
+    {
+      "cid": "10.1111/phib.12028",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Survivor (cumming2013creatures) is the published 'Creatures of Darkness', Analytic Philosophy 54(4):379-400, 2013, DOI 10.1111/phib.12028. The archived loser (cumming2010creatures) is an unpublished 2010 manuscript of the same paper (same title, same author Sam/Samuel Cumming); the pre-publication draft circulated (e.g. the Philosophers' Annual 2014 nomination copy). Standard preprint->published relationship of one and the same work."
+    },
+    {
+      "cid": "10.1093/acprof:oso/9780199669592.003.0009",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Survivor (cumming2014discourse) is Cumming's chapter 'Discourse Content' in Metasemantics (OUP, 2014, pp. 214-230), DOI 10.1093/acprof:oso/9780199669592.003.0009. The non-archived cumming2013discourse carries the identical DOI and fields. The archived loser (cumming2009discourse) has the same title and author with no venue/DOI: it is an earlier manuscript of the same long-gestating Metasemantics chapter. No evidence of a separate 2009-published 'Discourse Content' journal article by Cumming was found; the title/author identity plus the volume's known long lead time indicate one and the same work."
+    }
+  ]
+}

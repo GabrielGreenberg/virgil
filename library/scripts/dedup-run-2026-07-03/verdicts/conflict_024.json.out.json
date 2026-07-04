@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "10.48550/arxiv.2505.06191",
+      "decision": "same",
+      "rationale": "Identical title, authors, year, and arXiv DOI. Zotero-style key (Mao2025) vs hand key (mao2025neurosymbolic) for the same preprint."
+    },
+    {
+      "id": "10.1101/2023.05.18.541361",
+      "decision": "same",
+      "rationale": "Same bioRxiv preprint: identical title, authors, year, DOI, and 'Preprint of Margalit2024' note. Only entry type differs (article vs unpublished)."
+    },
+    {
+      "id": "10.1016/j.neuron.2024.04.018",
+      "decision": "same",
+      "rationale": "Identical Neuron 2024 paper: same title, authors, volume/number/pages, and DOI. Only a trailing-initial spacing difference in author (Yamins)."
+    },
+    {
+      "id": "vision",
+      "decision": "same",
+      "rationale": "Both are Marr's 'Vision', 2010 MIT Press edition. Differing ISBNs are print vs online of the same edition; same work."
+    },
+    {
+      "id": "10.1038/s41598-025-99675-5",
+      "decision": "same",
+      "rationale": "Identical Scientific Reports 2025 article: same title, authors, volume/number, and DOI. Zotero key vs hand key."
+    },
+    {
+      "id": "10.1080/0951508042000304199",
+      "decision": "same",
+      "rationale": "Identical Philosophical Psychology 2004 article: same title, author, volume/number/pages, and DOI."
+    },
+    {
+      "id": "seeing doing and knowing",
+      "decision": "same",
+      "rationale": "Identical book 'Seeing, Doing, and Knowing' by Matthen 2005, same publisher and ISBN. Only citekey style differs."
+    },
+    {
+      "id": "10.3765/sp.3.9",
+      "decision": "same",
+      "rationale": "Identical Semantics and Pragmatics 2010 article: same title, author, volume, and DOI. Only author name formatting differs."
+    },
+    {
+      "id": "color",
+      "decision": "same",
+      "rationale": "Identical SEP entry 'Color' by Barry Maund 2015. Only citekey style differs."
+    },
+    {
+      "id": "connectives",
+      "decision": "same",
+      "rationale": "Same Cambridge Handbook of Pragmatics chapter 'Connectives' by Mauri & van der Auwera 2012, same pages and ISBN. Loser adds a chapter DOI; same work."
+    },
+    {
+      "id": "10.1080/09515080500462347",
+      "decision": "same",
+      "rationale": "Identical Philosophical Psychology 2006 article: same title, authors, volume/number/pages, and DOI."
+    },
+    {
+      "id": "understanding comics",
+      "decision": "same",
+      "rationale": "Both are McCloud's 'Understanding Comics'; differ only as printings (1993 Turtleback vs 1994 Harper Paperbacks). Only the survivor is indexed (loser indexed_state=none), so edition rule merges into the indexed survivor."
+    }
+  ]
+}

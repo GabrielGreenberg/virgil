@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "dretske1981||dretske1981knowledge",
+   "decision": "same",
+   "rationale": "Both are Dretske's 'Knowledge and the Flow of Information', 1981. Same title, author, year. Blackwell (UK) vs MIT Press (US) are co-editions of the same book; differing ISBNs reflect the two editions, not distinct works."
+  },
+  {
+   "id": "dretske1981||dretske1983pr",
+   "decision": "distinct",
+   "rationale": "The 1981 book vs the 1983 'Precis of Knowledge and the Flow of Information', a separate short article in Behavioral and Brain Sciences (vol 6, pp 55-63) with its own DOI. The Precis is a distinct publication summarizing the book."
+  },
+  {
+   "id": "dretske1981||dretske1983precis",
+   "decision": "distinct",
+   "rationale": "The 1981 book vs the 1983 BBS Precis article (same DOI as dretske1983pr). Book and precis are distinct works."
+  },
+  {
+   "id": "dretske1981knowledge||dretske1981knowledgea",
+   "decision": "same",
+   "rationale": "Both are Dretske 1981 'Knowledge and the Flow of Information'. MIT Press vs Blackwell are co-editions of the same book; differing ISBNs are edition-level, not distinct works."
+  },
+  {
+   "id": "dretske1981knowledgea||dretske1983pr",
+   "decision": "distinct",
+   "rationale": "The 1981 book vs the 1983 BBS Precis article with its own DOI. Distinct publications."
+  },
+  {
+   "id": "dretske1981knowledgea||dretske1983precis",
+   "decision": "distinct",
+   "rationale": "The 1981 book vs the 1983 BBS Precis article. Distinct publications."
+  },
+  {
+   "id": "dretske2009information||mclaughlin2009oxford",
+   "decision": "distinct",
+   "rationale": "Dretske's chapter 'Information-Theoretic Semantics' (pp 381-393, chapter DOI) vs the whole edited volume 'The Oxford Handbook of Philosophy of Mind' by McLaughlin, Beckermann & Walter. Shared ISBN is the container volume; chapter and book are distinct entries."
+  },
+  {
+   "id": "edelman1965internet||edelmancomputing",
+   "decision": "same",
+   "rationale": "Both are Shimon Edelman, 'Computing the Mind', 2008, Oxford University Press, identical ISBN 978-0-19-532067-1. Note in a confirms the 'Internet FAX' title was a scanner artifact for the same book."
+  },
+  {
+   "id": "egan1992individualism||egan1995computation",
+   "decision": "distinct",
+   "rationale": "Two different Egan papers: 'Individualism, Computation, and Perceptual Content' (Mind 1992, vol 101) vs 'Computation and Content' (Philosophical Review 1995, vol 104). Different titles, journals, years, and DOIs."
+  },
+  {
+   "id": "epstein1995metatheoretical||epstein1995perception",
+   "decision": "distinct",
+   "rationale": "Epstein's chapter 'The Metatheoretical Context' (pp 1-22) vs the book 'Perception of Space and Motion' (Epstein & Rogers, eds). The shared DOI is the chapter's DOI erroneously copied onto the book entry. Chapter and containing book are distinct."
+  },
+  {
+   "id": "euclid1956elements||euclid1956thirteen",
+   "decision": "same",
+   "rationale": "Both are the 1956 Dover edition of Euclid's Elements (Heath translation). Title variants ('Thirteen Books of Euclid's Elements' vs 'Thirteen Books of the Elements'), same year and publisher; b's publisher field captures the Heath/Dover second-edition detail. Same work."
+  },
+  {
+   "id": "euler1761||euler1960lettres",
+   "decision": "same",
+   "rationale": "Both are Euler's 'Lettres a une Princesse d'Allemagne', 1960, Teubner. Same title (minor spelling variant), author, year, publisher. The citekey euler1761 refers to original composition date but the fields describe the 1960 edition."
+  },
+  {
+   "id": "farah1985journal||gonon1988electrophy",
+   "decision": "distinct",
+   "rationale": "'Psychophysical evidence for a shared representational medium for mental images and percepts' (Farah 1985, vol 114) vs 'Electrophysiological evidence...' (Farah, Peronnet, Gonon & Giard 1988, vol 117). Different titles, years, author lists, and DOIs; parallel companion papers, not the same work."
+  },
+  {
+   "id": "farah1985psychophys||gonon1988electrophy",
+   "decision": "distinct",
+   "rationale": "Same distinction as above: Farah 1985 psychophysical paper vs the 1988 electrophysiological paper. Different DOIs and years."
+  },
+  {
+   "id": "farah1985psychophysical||gonon1988electrophy",
+   "decision": "distinct",
+   "rationale": "Farah 1985 psychophysical paper vs 1988 electrophysiological paper. Different titles, years, DOIs. Distinct works."
+  },
+  {
+   "id": "feldman2003||feldman2003visual",
+   "decision": "same",
+   "rationale": "Both are Feldman, 'What is a visual object?', Trends in Cognitive Sciences 2003, vol 7(6):252-256. Entry a's title has the journal citation appended into the title field, but the volume/number/pages match exactly. Same article."
+  },
+  {
+   "id": "feldman2003||feldman2003what",
+   "decision": "same",
+   "rationale": "Both are Feldman 2003 'What is a visual object?', TiCS 7(6):252-256. Same article as feldman2003visual (identical DOI target)."
+  },
+  {
+   "id": "finke1980mental||finke1981journal",
+   "decision": "distinct",
+   "rationale": "'Mental imagery acuity in the peripheral visual field' (Finke & Kosslyn 1980, JEP:HPP, vol 6) vs 'Mapping the visual field in mental imagery' (Finke & Kurtzman 1981, JEP:General, vol 110). Different titles, journals, co-authors, and DOIs."
+  },
+  {
+   "id": "fintel1998a||vonfintel1998presupposition",
+   "decision": "same",
+   "rationale": "Both are von Fintel, 'The presupposition of subjunctive conditionals', 1998, in The Interpretive Tract, pp 29-44 (b has a typo 'presuppositon' and lists 25 as volume vs number). Same chapter."
+  },
+  {
+   "id": "firestone2014enhanced||firestone2015enhanced",
+   "decision": "same",
+   "rationale": "Both are Firestone & Scholl, 'Enhanced visual awareness for morality and pajamas? Perception vs memory in top-down effects', Cognition vol 136, pp 409-416. Entry a scrambled title/journal fields and lists 2014 (online) vs b's 2015 (print), but same volume, pages, and work (DOI 10.1016/j.cognition.2014.10.014)."
+  }
+ ]
+}

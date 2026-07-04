@@ -1,0 +1,155 @@
+{
+  "verdicts": [
+    {
+      "id": "consciousness and the computational mind",
+      "decision": "same",
+      "rationale": "Jackendoff, Consciousness and the Computational Mind. Identical title and ISBN (9780262100373) across all three; year differs only 1987 vs 1990 (printings). Same work."
+    },
+    {
+      "id": "the will to believe",
+      "decision": "same",
+      "rationale": "William James, 'The will to believe' (1897), same title/author/year/publisher/ISBN. Same work; second member simply omits booktitle/pages."
+    },
+    {
+      "id": "10.1017/s030500090000252x",
+      "decision": "same",
+      "rationale": "Johnston & Slobin, locative expressions, JCL 6(3):529-545. All three share the DOI and identical fields. Same work."
+    },
+    {
+      "id": "10.3765/plsa.v6i1.5067",
+      "decision": "same",
+      "rationale": "Kaiser & Grosz, 'Anaphoricity in emoji', PLSA 6(1):1009. Shared DOI, identical fields; only entry type differs (article vs misc). Same work."
+    },
+    {
+      "id": "10.2307/411200",
+      "decision": "same",
+      "rationale": "Katz & Fodor, 'The Structure of a Semantic Theory', Language 39(2):170-210. Shared DOI, identical fields. Same work."
+    },
+    {
+      "id": "a psychology of picture perception",
+      "decision": "same",
+      "rationale": "Kennedy, A Psychology of Picture Perception (1974, Jossey-Bass). Identical title/author/year/publisher. Same work."
+    },
+    {
+      "id": "10.1515/9783111350219.143",
+      "decision": "same",
+      "rationale": "Kiparsky & Kiparsky, 'Fact' (1971). Same authors/title/year; the two members give different anthology reprints (Progress in Linguistics vs Semantics reader) of the same essay. Same underlying work."
+    },
+    {
+      "id": "effects of task demands on the responses of color selective neurons in the inferior temporal cortex",
+      "decision": "same",
+      "rationale": "Koida & Komatsu, Nat Neurosci 10:108-116 (2007). Same title/author/year/volume/pages; trivial formatting differences. Same work."
+    },
+    {
+      "id": "10.3758/bf03197378",
+      "decision": "same",
+      "rationale": "Kraft & Jenkins, 'Memory for lateral orientation...', Memory & Cognition 5(4):397-403. Shared DOI, identical fields. Same work."
+    },
+    {
+      "id": "10.1080/00048408712342731",
+      "decision": "same",
+      "rationale": "Kroon, 'Causal descriptivism', AJP 65(1):1-17. Shared DOI, identical fields. Same work."
+    },
+    {
+      "id": "10.1364/josa.61.000001",
+      "decision": "same",
+      "rationale": "Land & McCann, 'Lightness and Retinex Theory', JOSA 61(1). Shared DOI, identical fields across all three. Same work."
+    },
+    {
+      "id": "10.1145/1015706.1015751",
+      "decision": "same",
+      "rationale": "Lawrence, Rusinkiewicz & Ramamoorthi, 'Efficient BRDF importance sampling', ACM TOG 23(3):496-505. Shared DOI, identical fields; only the free-text note differs. Same work."
+    },
+    {
+      "id": "10.1109/jrproc.1959.287207",
+      "decision": "same",
+      "rationale": "Lettvin, Maturana, McCulloch & Pitts, 'What the Frog's Eye Tells the Frog's Brain'. Three share the DOI (1959 Proc IRE); the fourth (1968 incollection in 'The Mind') is the standard reprint of the same paper. Same work."
+    },
+    {
+      "id": "the elementary structures of kinship",
+      "decision": "same",
+      "rationale": "Lévi-Strauss, The Elementary Structures of Kinship. Same title/author; 1949 (Eyre & Spottiswoode) vs 1969 (Beacon Press) are the original and the English translation of the same work. Same underlying work."
+    },
+    {
+      "id": "10.1111/j.1468-0149.1986.tb01146.x",
+      "decision": "mixed",
+      "rationale": "FALSE MERGE. The DOI/title fields all point to Peter Lewis, 'Antiaesthetics: An Appreciation of the Cow with the Subtile Nose' (Philosophical Books 27, 1986) — but the four citekeys (lewis1986causation, lewis1986counterfactual, lewis1986postscript, lewis1986subjectivists) denote four DISTINCT David Lewis papers (from Philosophical Papers Vol. II). All four were mis-authenticated to the same wrong Crossref record. Survivor lewis1986causation is kept; the other three are genuinely distinct works and must not be archived.",
+      "distinct_members": ["lewis1986counterfactual", "lewis1986postscript", "lewis1986subjectivists"]
+    },
+    {
+      "id": "10.1073/pnas.83.21.8390",
+      "decision": "same",
+      "rationale": "Linsker, 'From basic network principles to neural architecture', PNAS 83(21):8390-8394. Shared DOI, identical fields. Same work."
+    },
+    {
+      "id": "sight and sensibility",
+      "decision": "same",
+      "rationale": "Lopes, Sight and Sensibility (OUP). Identical title/author/publisher/ISBN; year differs only 2005 vs 2006. Same work."
+    },
+    {
+      "id": "10.1037/0033-2909.133.2.273",
+      "decision": "same",
+      "rationale": "Zacks et al., 'Event perception: A mind-brain perspective', Psych Bulletin 133(2):273-293. Shared DOI, identical fields; only note differs. Same work."
+    },
+    {
+      "id": "10.1093/acprof:oso/9780198505006.003.0009",
+      "decision": "same",
+      "rationale": "Maloney, 'Surface Colour Perception and Environmental Constraints', in Colour Perception (2003). Shared DOI, identical fields. Same work."
+    },
+    {
+      "id": "10.1098/rstb.1980.0091",
+      "decision": "same",
+      "rationale": "Marr, 'Visual information processing...', Phil Trans R Soc B 290(1038):199-218. Shared DOI, identical fields. Same work."
+    },
+    {
+      "id": "10.1073/pnas.022638499",
+      "decision": "same",
+      "rationale": "Mazer et al., 'Spatial frequency and orientation tuning dynamics in area V1', PNAS 99(3):1645-1650. Shared DOI, identical fields. Same work."
+    },
+    {
+      "id": "10.2307/40150042",
+      "decision": "same",
+      "rationale": "Both members (mcdowell1994minda/mindb) carry the identical DOI and identical fields, differing only by the a/b suffix. Whatever the record's accuracy, both point to the same entry. Same work."
+    },
+    {
+      "id": "10.1073/pnas.0408550102",
+      "decision": "same",
+      "rationale": "Menzel et al., 'Honey bees navigate according to a map-like spatial memory', PNAS 102(8):3040-3045. Shared DOI, identical author/title/venue; only note formatting differs. Same work."
+    },
+    {
+      "id": "the visual brain in action",
+      "decision": "same",
+      "rationale": "Milner & Goodale, The Visual Brain in Action (1995, OUP). Identical title/author/year/publisher/ISBN. Same work."
+    },
+    {
+      "id": "10.1371/journal.pone.0189813",
+      "decision": "same",
+      "rationale": "Morrison & Reiss, 'Precocious development of self-awareness in dolphins', PLOS ONE 13(1):e0189813. Shared DOI, identical fields. Same work."
+    },
+    {
+      "id": "10.1016/s0010-0277(96)00727-5",
+      "decision": "same",
+      "rationale": "Needham & Baillargeon, 'Object segregation in 8-month-old infants', Cognition 62(2):121-149. Shared DOI, identical fields; citekey years 1997 vs 1998 but both records say year 1997. Same work."
+    },
+    {
+      "id": "10.3758/bf03206495",
+      "decision": "same",
+      "rationale": "Noles, Scholl & Mitroff, 'The persistence of object file representations', Perception & Psychophysics 67(2):324-334. Shared DOI, identical fields. Same work."
+    },
+    {
+      "id": "10.1002/hipo.20115",
+      "decision": "same",
+      "rationale": "O'Keefe & Burgess, 'Dual phase and rate coding in hippocampal place cells', Hippocampus 15(7):853-866. Shared DOI, identical fields. Same work."
+    },
+    {
+      "id": "the measurement of meaning",
+      "decision": "same",
+      "rationale": "Osgood, Suci & Tannenbaum, The Measurement of Meaning (1957). Identical title/author/year/publisher/ISBN across all three. Same work."
+    },
+    {
+      "id": "nonexistent objects",
+      "decision": "same",
+      "rationale": "Parsons, Nonexistent Objects (1980, Yale). Identical title/author/year/publisher/ISBN. Same work."
+    }
+  ]
+}

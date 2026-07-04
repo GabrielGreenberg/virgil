@@ -1,0 +1,129 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1007/978-94-011-3524-5_13",
+      "decision": "same",
+      "rationale": "All three members are identical Smolensky 1991 'Constituent Structure of Connectionist Mental States' with the same DOI, title, author, year, pages."
+    },
+    {
+      "id": "10.1007/bf00653375",
+      "decision": "same",
+      "rationale": "Both are Soames 'Lost innocence', Linguistics and Philosophy vol 8, pp. 59-71. Year differs (1985 vs 1990) but same volume/pages/journal indicate a single work with a citation-year error."
+    },
+    {
+      "id": "10.5840/philtopics198715112",
+      "decision": "same",
+      "rationale": "Both are Soames 'Direct Reference, Propositional Attitudes, and Semantic Content'; the 1988 entry is the reprint in 'Propositions and Attitudes'. Same essay."
+    },
+    {
+      "id": "presupposition",
+      "decision": "same",
+      "rationale": "Both are Soames 'Presupposition' 1989 (Handbook of Philosophical Logic, Reidel). Same work."
+    },
+    {
+      "id": "beyond rigidity",
+      "decision": "same",
+      "rationale": "Both are Soames 'Beyond Rigidity' 2002, same ISBN 9780198033219, OUP. Same book."
+    },
+    {
+      "id": "10.1016/0010-0277(91)90051-5",
+      "decision": "same",
+      "rationale": "Both identical Soja/Carey/Spelke 1991 'Ontological categories guide young children's inductions', same DOI, journal, volume, pages."
+    },
+    {
+      "id": "10.1016/s0019-9958(64)90223-2",
+      "decision": "same",
+      "rationale": "All three are Solomonoff 1964 'A formal theory of inductive inference. Part I', same DOI, journal, volume, pages."
+    },
+    {
+      "id": "10.1111/j.1475-4975.1984.tb00064.x",
+      "decision": "same",
+      "rationale": "Both are Sosa 1984 'Mind-Body Interaction and Supervenient Causation', same DOI, Midwest Studies in Philosophy vol 9, pp. 271-281."
+    },
+    {
+      "id": "understanding coverbal ionic gestures in shape descriptions",
+      "decision": "same",
+      "rationale": "Both are Sowa 2006 'Understanding Coverbal Ionic Gestures in Shape Descriptions', same ISBN, IOS Press."
+    },
+    {
+      "id": "10.1037/0003-066x.55.11.1233",
+      "decision": "distinct",
+      "rationale": "False merge on the title 'core knowledge'. Survivor is Spelke 2000 (single-author, American Psychologist, DOI 10.1037/0003-066x.55.11.1233). The pulled-in member spelke2007core is Spelke & Kinzler 2007 in Developmental Science with a DIFFERENT DOI (10.1111/j.1467-7687.2007.00569.x) — different authors, year, journal, and DOI. Two separate works."
+    },
+    {
+      "id": "irony and the use mention distinction",
+      "decision": "same",
+      "rationale": "Both are Sperber & Wilson 1981 'Irony and the Use-Mention Distinction' (Radical Pragmatics). Same work."
+    },
+    {
+      "id": "10.1016/0010-0277(95)00666-m",
+      "decision": "same",
+      "rationale": "Both identical Sperber 1995 'Relevance theory explains the selection task', same DOI, Cognition vol 57, pp. 31-95."
+    },
+    {
+      "id": "metarepresentations",
+      "decision": "same",
+      "rationale": "Both are Sperber 2000 'Metarepresentations', same ISBN 9780195141146, OUP."
+    },
+    {
+      "id": "relevance",
+      "decision": "same",
+      "rationale": "Both are Wilson & Sperber 1986 'Relevance', same ISBN 9780674754768, Harvard University Press."
+    },
+    {
+      "id": "10.1093/mind/111.443.583",
+      "decision": "same",
+      "rationale": "Both identical Wilson (Sperber & Wilson) 2002 'Truthfulness and Relevance', same DOI, Mind vol 111, pp. 583-632."
+    },
+    {
+      "id": "10.1017/s0022226712000011",
+      "decision": "same",
+      "rationale": "Both identical Sprouse & Almeida 2012 'Assessing the reliability of textbook data in syntax', same DOI, Journal of Linguistics vol 48, pp. 609-652."
+    },
+    {
+      "id": "10.1080/01690965.2012.703782",
+      "decision": "same",
+      "rationale": "Both identical Sprouse & Almeida 2013 'The empirical status of data in syntax: A reply to Gibson and Fedorenko', same DOI, pp. 222-228."
+    },
+    {
+      "id": "the medial temporal lobe",
+      "decision": "same",
+      "rationale": "Both are Squire, Stark & Clark 2004 'The medial temporal lobe', Annu. Rev. Neurosci. vol 27, pp. 279-306. Only a minor middle-initial variation."
+    },
+    {
+      "id": "10.1016/j.cognition.2010.05.005",
+      "decision": "same",
+      "rationale": "Both identical Srinivasan & Carey 2010 'The long and the short of it', same DOI, Cognition vol 116, pp. 217-241."
+    },
+    {
+      "id": "10.1111/j.1468-2958.1984.tb00024.x",
+      "decision": "same",
+      "rationale": "Both identical Stafford & Daly 1984 'Conversational Memory', same DOI, Human Communication Research vol 10, pp. 379-402."
+    },
+    {
+      "id": "10.1007/978-94-009-9117-0_2",
+      "decision": "same",
+      "rationale": "Both are Stalnaker 'A Theory of Conditionals' (IFS/Ifs); year 1968 vs 1981 reflects original vs reprint. Same work, same DOI on survivor."
+    },
+    {
+      "id": "10.1111/j.1755-2567.1970.tb00408.x",
+      "decision": "same",
+      "rationale": "All three are Stalnaker & Thomason 1970 'A semantic analysis of conditional logic', same DOI, Theoria vol 36, pp. 23-42."
+    },
+    {
+      "id": "10.1007/978-94-010-1876-0_11",
+      "decision": "same",
+      "rationale": "Both are Stalnaker 1976 'Indicative Conditionals', same DOI, Boston Studies in the Philosophy of Science, pp. 179-196."
+    },
+    {
+      "id": "10.1007/978-94-009-9117-0_4",
+      "decision": "same",
+      "rationale": "All three are Stalnaker 'A Defense of Conditional Excluded Middle' (IFS/Ifs); year 1980 vs 1981 reflects original vs reprint. Same work."
+    },
+    {
+      "id": "ways a world might be",
+      "decision": "same",
+      "rationale": "Both are Stalnaker 2003 'Ways a world might be', same ISBN 9780199251490, Clarendon. Citekey year 2004 is a keying variant."
+    }
+  ]
+}

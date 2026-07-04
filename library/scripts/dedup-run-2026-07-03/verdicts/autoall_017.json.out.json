@@ -1,0 +1,130 @@
+{
+  "verdicts": [
+    {
+      "id": "mental events",
+      "decision": "same",
+      "rationale": "All three are Davidson's 'Mental Events' (1970/1980 reprint in Essays on Actions and Events). Same title, author (Davidson, Donald), consistent years and pages (207-25)."
+    },
+    {
+      "id": "belief and the basis of meaning",
+      "decision": "same",
+      "rationale": "Both are Davidson's 'Belief and the basis of meaning' (1974). Survivor's note explicitly says originally published in Synthese 27, which matches the second member's journal/volume. Same work, journal-original vs collection-reprint."
+    },
+    {
+      "id": "10.2307/3129898",
+      "decision": "same",
+      "rationale": "Both are Davidson's 'On the Very Idea of a Conceptual Scheme' (1973 APA address / 1984 reprint in Inquiries). Same title and author; the DOI matches the original APA proceedings."
+    },
+    {
+      "id": "10.1177/003682377503900311",
+      "decision": "same",
+      "rationale": "Both members carry identical title (Book Review: Florence in the Forgotten Centuries), author (Davidson, Alastair), volume/number/pages, and DOI. Internally consistent with each other despite a stray misfiled note; the two entries are the same book review."
+    },
+    {
+      "id": "essays on actions and events",
+      "decision": "same",
+      "rationale": "Both are Davidson's 'Essays on Actions and Events' (Clarendon, ISBN 9780199246267). Second is just marked as edition 2 of the same book."
+    },
+    {
+      "id": "10.1111/j.1746-8361.1982.tb01546.x",
+      "decision": "same",
+      "rationale": "All three are Davidson's 'Rational Animals' (1982 Dialectica / 2001 reprint in Subjective, Intersubjective, Objective). Same title and author; DOI matches the Dialectica original shared by first two."
+    },
+    {
+      "id": "10.1007/bf00354336",
+      "decision": "same",
+      "rationale": "Both members identical: 'Weight' by Davidson, Barbara and Pargetter, Robert (Phil Studies 49(2):219-230), same DOI. Same work despite the misleading 'donald' in one citekey."
+    },
+    {
+      "id": "10.1016/j.zefq.2014.09.006",
+      "decision": "same",
+      "rationale": "Both members identical: 'The impact of health economic evaluations in Sweden' (Heintz et al.), same journal, volume, pages, DOI. Same work; the Sinn und Bedeutung booktitle is a spurious leftover field, not a distinguishing feature."
+    },
+    {
+      "id": "10.1007/bf00354523",
+      "decision": "same",
+      "rationale": "Both members identical: Davies & Humberstone 'Two notions of necessity' (Phil Studies 38(1):1-30), same DOI."
+    },
+    {
+      "id": "10.3115/1077146.1077163",
+      "decision": "mixed",
+      "distinct_members": ["hobbs1986commonsens"],
+      "rationale": "Survivor (DOI 10.3115/1077146.1077163, pages 127, HLT '86 Strategic Computing workshop) and hobbs1986commonsens carry DIFFERENT DOIs (the latter is 10.3115/981131.981163, pages 231-240, 24th ACL meeting). These are distinct publications of a related work; matched only on normalized title+author despite distinct DOIs."
+    },
+    {
+      "id": "10.1007/978-94-011-2610-6_9",
+      "decision": "same",
+      "rationale": "Both members identical: Davies 'Aunty's Own Argument for the Language of Thought' (Cognition, Semantics and Philosophy, pp. 235-271), same DOI."
+    },
+    {
+      "id": "10.1093/aristotelian/92.1.21",
+      "decision": "same",
+      "rationale": "Both members identical: Davies 'II—Perceptual Content and Local Supervenience' (Proc. Aristotelian Soc. 92(1):21-46), same DOI."
+    },
+    {
+      "id": "10.1111/phpr.12679",
+      "decision": "same",
+      "rationale": "Both are Will Davies 'Colour Relations in Form' (PPR 102(3):574-594), same DOI; trivial 2020/2021 year jitter (online-first vs print)."
+    },
+    {
+      "id": "implicature",
+      "decision": "same",
+      "rationale": "Both are Wayne A. Davis 'Implicature' (Cambridge UP, 1998, ISBN 9780521623193). Identical."
+    },
+    {
+      "id": "10.3765/salt.v17i0.2966",
+      "decision": "same",
+      "rationale": "Both members identical: Davis, Potts & Speas 'The Pragmatic Values of Evidential Sentences' (SALT 17), same DOI."
+    },
+    {
+      "id": "10.1037//0033-295x.98.4.569",
+      "decision": "same",
+      "rationale": "Both members identical: Dawson 'The how and why of what went where in apparent motion' (Psych Review 98(4):569-603), same DOI."
+    },
+    {
+      "id": "the symbolic species",
+      "decision": "same",
+      "rationale": "All three are Deacon 'The Symbolic Species' (W.W. Norton, ISBN 9780393317541). Identical bar citekey formatting."
+    },
+    {
+      "id": "10.1152/jn.1993.69.4.1118",
+      "decision": "same",
+      "rationale": "Both members identical: DeAngelis, Ohzawa & Freeman 'Spatiotemporal organization... II' (J Neurophysiol 69(4):1118-1135), same DOI. (The 'II' is part of the same paper's title, both members carry it.)"
+    },
+    {
+      "id": "10.1523/jneurosci.19-04-01398.1999",
+      "decision": "same",
+      "rationale": "All three identical: DeAngelis & Newsome 'Organization of Disparity-Selective Neurons in Macaque Area MT' (J Neurosci 19(4):1398-1415), same DOI."
+    },
+    {
+      "id": "10.1145/882262.882354",
+      "decision": "same",
+      "rationale": "Both members identical: DeCarlo et al. 'Suggestive contours for conveying shape' (ACM TOG 22(3):848-855), same DOI."
+    },
+    {
+      "id": "10.1111/1468-0017.00154",
+      "decision": "same",
+      "rationale": "Both are Dehaene 'Précis of The Number Sense' (Mind & Language 16(1):16-36), same DOI. Second member's note confirms same work."
+    },
+    {
+      "id": "10.1016/s1364-6613(03)00055-x",
+      "decision": "same",
+      "rationale": "Both members identical: Dehaene 'The neural basis of the Weber-Fechner law' (Trends Cog Sci 7(4):145-147), same DOI."
+    },
+    {
+      "id": "10.1111/1467-8721.01244",
+      "decision": "same",
+      "rationale": "Both members identical: DeLoache, Pierroutsakos & Uttal 'The Origins of Pictorial Competence' (Curr Dir Psych Sci 12(4):114-118), same DOI."
+    },
+    {
+      "id": "10.1109/cvpr.2009.5206848",
+      "decision": "same",
+      "rationale": "Both are Deng et al. 'ImageNet: A large-scale hierarchical image database' (CVPR 2009, pp. 248-255), same DOI."
+    },
+    {
+      "id": "10.1016/0010-0277(85)90004-6",
+      "decision": "same",
+      "rationale": "Both members identical: Denis 'People's knowledge about images' (Cognition 20(1):49-60), same DOI."
+    }
+  ]
+}

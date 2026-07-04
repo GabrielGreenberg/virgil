@@ -1,0 +1,104 @@
+{
+  "verdicts": [
+    {
+      "id": "searle1975taxonomy||searle1976classification",
+      "decision": "distinct",
+      "rationale": "Different titles ('A taxonomy of illocutionary acts' vs 'A classification of illocutionary acts'), different years (1975 vs 1976), different venues (incollection in 'Language, mind, and knowledge' vs article in Language in Society 5(1):1-23 with DOI). These are two distinct Searle publications, not the same work."
+    },
+    {
+      "id": "searle1983intentionality||searle1983john",
+      "decision": "same",
+      "rationale": "Both are Searle's 1983 book 'Intentionality: An Essay in the Philosophy of Mind', Cambridge University Press, same year. One gives the full subtitle, the other the short title. Same work."
+    },
+    {
+      "id": "searle1983john||searle1984intentiona",
+      "decision": "distinct",
+      "rationale": "searle1983john is the 1983 CUP book 'Intentionality'. searle1984intentiona is a 1984 Synthese journal article 'Intentionality and its place in nature' (vol 61, pp 3-16, DOI 10.1007/bf00485486). Different title, year, and venue - distinct works."
+    },
+    {
+      "id": "sejnowski1987parallel||sejnowski1987pardel",
+      "decision": "same",
+      "rationale": "Both Sejnowski & Rosenberg 1987, Complex Systems vol 1, pp 145-168. The 'Pardel networks' / 'Complex- Systems' variant is an OCR corruption of 'Parallel Networks that Learn to Pronounce English Text'. Same work."
+    },
+    {
+      "id": "sejnowski1987pardel||sejnowskirosenberg1987parallel",
+      "decision": "same",
+      "rationale": "Both Sejnowski & Rosenberg 1987, Complex Systems vol 1, pp 145-168, same NETtalk paper. The 'Pardel'/'Complex- Systems' variant is OCR corruption of the same title. Same work."
+    },
+    {
+      "id": "shannon1948mathematical||shannon1949mathemat",
+      "decision": "distinct",
+      "rationale": "shannon1948mathematical is Shannon's 1948 Bell System Technical Journal article 'A Mathematical Theory of Communication'. shannon1949mathemat is the 1949 book by Shannon AND Weaver (University of Illinois Press). Different authorship (adds Weaver), different type, different venue. Conservatively distinct works though related."
+    },
+    {
+      "id": "shannon1948mathematical||shannon1949mathematical",
+      "decision": "distinct",
+      "rationale": "shannon1948mathematical is the 1948 Bell System Technical Journal article. shannon1949mathematical is the 1949 University of Illinois Press incollection version 'The mathematical theory of communication' (article vs book chapter, different year/venue). Related but distinct bibliographic entries."
+    },
+    {
+      "id": "shea2018represen||shea2020representation",
+      "decision": "distinct",
+      "rationale": "shea2018represen is Shea's book 'Representation in Cognitive Science' (OUP, ISBN 9780198866954). shea2020representation is the journal article 'Representation in Cognitive Science: Replies' (Mind & Language 35(3):402-412, DOI). The 'Replies' article is a symposium response, a distinct work from the book."
+    },
+    {
+      "id": "shea2018representation||shea2020representation",
+      "decision": "distinct",
+      "rationale": "shea2018representation is Shea's book 'Representation in Cognitive Science' (OUP). shea2020representation is the article 'Representation in Cognitive Science: Replies' (Mind & Language 35(3), DOI). The Replies article is distinct from the book itself."
+    },
+    {
+      "id": "shepard1957stimulus||shepard1958stimulus",
+      "decision": "distinct",
+      "rationale": "Different titles and venues: 1957 'Stimulus and Response Generalization: A Stochastic Model...' (Psychometrika 22(4):325-345) vs 1958 'Stimulus and response generalization: Deduction of the generalization gradient from a trace model' (Psychological Review 65(4):242-256). Different DOIs, years, journals - distinct papers."
+    },
+    {
+      "id": "shepard1962aanalysis||shepard1962analysis",
+      "decision": "distinct",
+      "rationale": "These are Part I and Part II of Shepard's MDS paper. Part I (aanalysis): Psychometrika 27(2):125-140, DOI bf02289630. Part II (analysis): Psychometrika 27(3):219-246, DOI bf02289621. Series entries - distinct works with different DOIs and page ranges."
+    },
+    {
+      "id": "shepard1962analysis||shepard1962banalysis",
+      "decision": "distinct",
+      "rationale": "shepard1962analysis is Part II (27(3):219-246, DOI bf02289621); shepard1962banalysis is Part I (27(2):125-140, DOI bf02289630). Different DOIs, page ranges, and part numbers - distinct series entries."
+    },
+    {
+      "id": "shepard1970second||shepard1970secondorder",
+      "decision": "same",
+      "rationale": "Both Shepard & Chipman 1970, 'Second-order isomorphism of internal representations: Shapes of states', pages 1-17. The secondorder variant is an OCR-corrupted duplicate (spacing artifacts, 'Shapes of states' misparsed as publisher). Same work."
+    },
+    {
+      "id": "shimojima2001||shimojima2001graphic",
+      "decision": "same",
+      "rationale": "Both Shimojima 2001, 'The Graphic-Linguistic Distinction', pages 5-27. The graphic variant adds subtitle 'Exploring Alternatives' and is the Artificial Intelligence Review 15(1-2) publication; the other is the reprint collection version. Same underlying work, same author/year/pages. Same work."
+    },
+    {
+      "id": "shin1994a||shin1994logical",
+      "decision": "distinct",
+      "rationale": "shin1994a is the article 'Peirce and the logical status of diagrams' (History and Philosophy of Logic 15(1):45-68, DOI). shin1994logical is the book 'The logical status of diagrams' (CUP, ISBN 9780521461573). Different titles, types, and venues - distinct works."
+    },
+    {
+      "id": "shin1994a||shin1995the",
+      "decision": "distinct",
+      "rationale": "shin1994a is the article 'Peirce and the logical status of diagrams' (History and Philosophy of Logic, DOI). shin1995the is the book 'The logical status of diagrams' (CUP, ISBN). Different titles, types, venues - distinct works."
+    },
+    {
+      "id": "shin1994logical||shin1994peirce",
+      "decision": "distinct",
+      "rationale": "shin1994logical is the book 'The logical status of diagrams' (CUP, ISBN). shin1994peirce is the article 'Peirce and the logical status of diagrams' (History and Philosophy of Logic 15(1):45-68, DOI). Different titles, types, venues - distinct works."
+    },
+    {
+      "id": "shin1994peirce||shin1995the",
+      "decision": "distinct",
+      "rationale": "shin1994peirce is the article 'Peirce and the logical status of diagrams' (History and Philosophy of Logic, DOI). shin1995the is the book 'The logical status of diagrams' (CUP, ISBN). Different titles, types, venues - distinct works."
+    },
+    {
+      "id": "siegel2009visual||siegel2011contents",
+      "decision": "distinct",
+      "rationale": "siegel2009visual is the article 'The Visual Experience of Causation' (Philosophical Quarterly 59(236):519-540, DOI). siegel2011contents is the book 'The Contents of Visual Experience' (2011). Different titles, years, types - distinct works."
+    },
+    {
+      "id": "slee1980individual||slee1980journal",
+      "decision": "same",
+      "rationale": "Both Slee 1980, 'Individual differences in visual imagery ability and the retrieval of visual appearance(s)', Journal of Mental Imagery vol 4, pp 93-113. Author 'Slee, 1' is an OCR corruption of 'Slee, J. A.'. Same work."
+    }
+  ]
+}

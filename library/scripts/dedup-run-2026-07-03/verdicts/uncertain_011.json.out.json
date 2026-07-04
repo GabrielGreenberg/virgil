@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "heidegger1961being||heidegger1962being",
+   "decision": "same",
+   "rationale": "'Being and Time (1' is a truncation of 'Being and Time'; Heidegger, adjacent years (1961/1962) reflect edition/reprint of the same translation."
+  },
+  {
+   "id": "heinze2018principles_ref115||ref112",
+   "decision": "same",
+   "rationale": "Olberg 1983, J. Comp. Physiol. A, vol 152, pp 297-307 identical; 'flip-flopping' vs 'flip-flop' is a trivial title variant of the same paper."
+  },
+  {
+   "id": "heinze2018principles_ref44||ref019",
+   "decision": "distinct",
+   "rationale": "Narendra 2007 'Homing strategies... Melophorus bagoti' is a two-part series: Part I (pp 1798-1803, proportional path-integration) vs Part II (pp 1804-1812, interaction with visual cues). Different pages, different papers."
+  },
+  {
+   "id": "heinze2018principles_ref56||heinze2018principles_ref58",
+   "decision": "distinct",
+   "rationale": "Cheung et al. series: 'general properties of directed walks' (2008, vol 99, 197-217) vs 'the difficulty of moving in a straight line' (2007, vol 97, 47-61). Different titles, years, volumes, pages."
+  },
+  {
+   "id": "heinze2018principles_ref60||vickerstaff2010which",
+   "decision": "same",
+   "rationale": "'Which coordinate system for modelling path integration?' Vickerstaff & Cheung 2010, J. Theor. Biol. vol 263, pp 242-261 in both; b adds DOI/number. Same work."
+  },
+  {
+   "id": "holder1901axiome||holder1901die",
+   "decision": "same",
+   "rationale": "'Die Axiome der Quantität und die Lehre vom Mass/Mas' (truncation), Hölder 1901, vol 53, pp 1-64 identical. Same article."
+  },
+  {
+   "id": "horn1992b||horn1992said",
+   "decision": "same",
+   "rationale": "'The said and the unsaid', Horn 1992, Ohio State University Working Papers in Linguistics vol 40. Same work despite article/book type mismatch."
+  },
+  {
+   "id": "howard2014gippocampus||howard2014hippocampus",
+   "decision": "same",
+   "rationale": "'gippocampus' is an OCR error for 'hippocampus'; identical title otherwise, Howard 2014, Curr. Biol. vol 24, pp 1331-1340. Same paper."
+  },
+  {
+   "id": "image1996||image1998",
+   "decision": "distinct",
+   "rationale": "Carroll 'Theorizing the Moving Image' (1996, ISBN 9780521460491) vs 'Interpreting the Moving Image' (1998, ISBN 9780521589703) are two different books."
+  },
+  {
+   "id": "jablonka2005||jablonka2005evolution",
+   "decision": "same",
+   "rationale": "'Evolution in Four Dimensions', Jablonka & Lamb; a has full subtitle/series (2006 MIT reprint), b is short title (2005). Same book/work."
+  },
+  {
+   "id": "jackson1998from||jackson2001precis",
+   "decision": "distinct",
+   "rationale": "'From Metaphysics to Ethics' (Jackson, book, 2000) vs 'Precis of From Metaphysics to Ethics' (article, 2001, Philosophy and Phenomenological Research, DOI 10.2307/2653540). The précis is a separate published work."
+  },
+  {
+   "id": "jackson1998metaphysic||jackson2001precis",
+   "decision": "distinct",
+   "rationale": "'From Metaphysics to Ethics' (book, 2000) vs 'Precis of From Metaphysics to Ethics' (article, 2001, PPR). Distinct works."
+  },
+  {
+   "id": "jackson1998metaphysics||jackson2001precis",
+   "decision": "distinct",
+   "rationale": "'From Metaphysics to Ethics' (book, 2000) vs 'Precis of From Metaphysics to Ethics' (article, 2001, PPR). Distinct works."
+  },
+  {
+   "id": "jakobson1960closing||jakobson1960linguistics",
+   "decision": "same",
+   "rationale": "'Closing statement: linguistics and poetics' vs 'Linguistics and poetics', Jakobson 1960 — the same famous 1960 essay (pp 350-77), b's title is the short form."
+  },
+  {
+   "id": "james1890chapter||james1890principles",
+   "decision": "distinct",
+   "rationale": "a is 'Chapter 10 of The Principles of Psychology' (a single chapter cited as a unit) vs b the whole book 'The Principles of Psychology'; as bibliographic items they are not the same entry."
+  },
+  {
+   "id": "james1890principl||james1890principles",
+   "decision": "same",
+   "rationale": "'The principles of psychology' (Vol I) vs 'The principles of psychology', James 1890. Same foundational work; volume-part vs whole is a trivial variant here."
+  },
+  {
+   "id": "jameson1991postmode||jameson1991postmodern",
+   "decision": "same",
+   "rationale": "'Postmodernism' vs 'Postmodernism, or, the cultural logic of late capitalism', Jameson ~1990/1991. Same book, b has full subtitle."
+  },
+  {
+   "id": "johnson1987body||johnsonmark1987body",
+   "decision": "same",
+   "rationale": "'The Body in the Mind' (b adds subtitle 'The Bodily Basis of Meaning'), Johnson 1987, University of Chicago Press. Same book."
+  },
+  {
+   "id": "johnston1997unificatio||johnston1998unificatio",
+   "decision": "distinct",
+   "rationale": "'Unification-based multimodal integration' (1997, EACL, DOI 10.3115/979617.979653) vs 'Unification-based multimodal parsing' (1998, ACL, DOI 10.3115/980845.980949). Different papers, venues, DOIs."
+  },
+  {
+   "id": "johnston1997unificatio||johnston1998unification",
+   "decision": "distinct",
+   "rationale": "'Unification-based multimodal integration' (1997, EACL) vs 'Unification-based multimodal parsing' (1998, ACL/COLING-ACL). Different papers, venues, DOIs."
+  }
+ ]
+}

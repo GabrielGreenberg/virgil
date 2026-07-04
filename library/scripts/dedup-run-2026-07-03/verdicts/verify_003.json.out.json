@@ -1,0 +1,52 @@
+{
+  "verdicts": [
+    {
+      "cid": "10.1007/s10988-015-9180-1",
+      "verdict": "confirmed_same",
+      "rationale": "All three members are Davidson, 'Quotation, Demonstration, and Iconicity'. Survivor and Davidson2015 are identical L&P 2015 articles sharing DOI 10.1007/s10988-015-9180-1 (vol 38, no 6, pp 477-520). davidson2014quotation is an 'unpublished' 2014 manuscript with the identical title/author -- the preprint that became this exact 2015 article. Standard preprint/published-version identity; same work.",
+      "offending": []
+    },
+    {
+      "cid": "image and brain the resolution of the imagery debate",
+      "verdict": "confirmed_same",
+      "rationale": "Both members share ISBN 9780262111843, author Kosslyn, year 1994, MIT Press. Confirmed via MIT Press/AbeBooks: ISBN 9780262111843 = Kosslyn, 'Image and Brain: The Resolution of the Imagery Debate' (1994). One member uses the short title 'Image and brain', the other the full title, but the ISBN pins them to one book. Citekey 'debate1996image' is just noise (1996 was the paperback reprint ISBN 9780262611244; fields correctly say 1994 hardcover). Same book.",
+      "offending": []
+    },
+    {
+      "cid": "the imagery debate",
+      "verdict": "confirmed_same",
+      "rationale": "Both members: Tye, 'The Imagery Debate', MIT Press 1991. Loser ISBN 9780262200868 confirmed via MIT Press/PhilPapers as Tye's 'The Imagery Debate' (1991). Survivor citekey 'debate2002bradford' is misleading noise but its fields agree on Tye/1991/MIT Press. Same book.",
+      "offending": []
+    },
+    {
+      "cid": "10.1016/j.tics.2015.07.013",
+      "verdict": "confirmed_same",
+      "rationale": "All four members share DOI 10.1016/j.tics.2015.07.013, identical title 'Arbitrariness, Iconicity, and Systematicity in Language', identical five-author list (Dingemanse, Blasi, Lupyan, Christiansen, Monaghan), Trends in Cognitive Sciences vol 19 no 10 pp 603-615, 2015. Only difference is author-name formatting. Same article.",
+      "offending": []
+    },
+    {
+      "cid": "10.1075/aicr.92.11dra",
+      "verdict": "confirmed_same",
+      "rationale": "All four members share DOI 10.1075/aicr.92.11dra, Drayson, 2015, John Benjamins, pp 273-292. Booktitle varies between the series name 'Advances in Consciousness Research' and the volume title 'The Constitution of Phenomenal Consciousness: Toward a Science and Theory' -- verified that AICR volume 92 IS that Constitution volume, so all variants denote the same chapter. Same work.",
+      "offending": []
+    },
+    {
+      "cid": "10.1093/oxfordhb/9780199262618.003.0023",
+      "verdict": "confirmed_same",
+      "rationale": "Both members: Dretske, 'Information-Theoretic Semantics', 2009, Oxford Handbook of Philosophy of Mind, OUP, pp 381-393, sharing DOI 10.1093/oxfordhb/9780199262618.003.0023. Only difference is one adds an ISBN. Same chapter.",
+      "offending": []
+    },
+    {
+      "cid": "computing the mind how the mind really works",
+      "verdict": "confirmed_same",
+      "rationale": "Both members: Edelman, 'Computing the Mind', 2008, OUP, sharing ISBN 978-0-19-532067-1. Survivor has the full title with subtitle 'How the Mind Really Works'; loser has the short title. Loser citekey 'edelman1965internet' is garbage noise but its fields (Edelman/2008/OUP/same ISBN) confirm identity. Same book.",
+      "offending": []
+    },
+    {
+      "cid": "10.5334/gjgl.1314",
+      "verdict": "confirmed_same",
+      "rationale": "All three members: Esipova, 'On not-at-issueness in pictures', 2021, Glossa, vol 6 no 1, sharing DOI 10.5334/gjgl.1314. Only difference is one includes article number 'pages: 83'. Same article.",
+      "offending": []
+    }
+  ]
+}

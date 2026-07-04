@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1080/09515089708573201", "decision": "same", "rationale": "Identical title, author, year, journal, volume, pages, and shared DOI."},
+  {"id": "10.4324/9780203502013", "decision": "same", "rationale": "Gunlogson 'True to Form' — same title and author; 2003/2004 reflect thesis vs Routledge publication year of the same work."},
+  {"id": "d w griffith and the origins of american narrative film", "decision": "same", "rationale": "Same Gunning book, same publisher; 1991 vs 1994 is original vs reprint year."},
+  {"id": "10.1163/9789004183988_002", "decision": "same", "rationale": "Identical title, author, booktitle, pages, and shared DOI."},
+  {"id": "use conditional meaning", "decision": "same", "rationale": "Identical title, author, year, publisher, and ISBN."},
+  {"id": "10.1145/1476589.1476631", "decision": "same", "rationale": "Guzman 'Decomposition of a visual scene into three-dimensional bodies' — same title/author; 1968 conference paper vs 1969 reprinted book chapter of the same work."},
+  {"id": "10.1037/xge0000053", "decision": "same", "rationale": "Identical title, authors, journal, volume, pages, and shared DOI."},
+  {"id": "10.1111/1468-0017.00230", "decision": "same", "rationale": "Identical title, author, journal, volume, pages, and shared DOI."},
+  {"id": "10.1038/nature03721", "decision": "same", "rationale": "All three members share identical title, author list, journal, volume, pages, and DOI."},
+  {"id": "varieties of realism", "decision": "same", "rationale": "Identical title, author, year, publisher, and ISBN."},
+  {"id": "10.1037/a0035028", "decision": "same", "rationale": "Identical title, authors, journal, volume, pages, and shared DOI."},
+  {"id": "natural syntax", "decision": "same", "rationale": "Identical title, author, year, publisher, and ISBN."},
+  {"id": "iconicity in syntax", "decision": "same", "rationale": "Identical title, author, year, publisher, and ISBN; citekeys differ only by case."},
+  {"id": "10.1167/8.6.497", "decision": "same", "rationale": "Identical title, authors, journal, volume, pages, and shared DOI."},
+  {"id": "10.1111/j.1755-2567.1971.tb00065.x", "decision": "same", "rationale": "Identical title, author, journal, volume, pages, and shared DOI."},
+  {"id": "10.1016/0022-5193(64)90038-4", "decision": "same", "rationale": "Identical title, author, journal, volume, pages, and shared DOI."},
+  {"id": "tense and aspect", "decision": "same", "rationale": "Identical title, authors, booktitle, edition (SEP Fall 2018)."},
+  {"id": "logic and visual information", "decision": "same", "rationale": "Same title and author (Eric Hammer), same 1995 work; article vs book type differ but describe the same CSLI publication."},
+  {"id": "10.1017/s0952523800009482", "decision": "same", "rationale": "Identical title, authors, journal, volume, pages, and shared DOI."},
+  {"id": "deep and surface anaphora", "decision": "same", "rationale": "Identical title (case aside), authors Hankamer and Sag, journal, year, pages."},
+  {"id": "10.1007/bf00627709", "decision": "same", "rationale": "Identical title, authors, journal, volume, pages, and shared DOI."},
+  {"id": "patterns of discovery", "decision": "same", "rationale": "Hanson 'Patterns of Discovery' — same title and author; 1961 vs 1965 are original vs later printing of the same book."},
+  {"id": "10.2307/2214372", "decision": "same", "rationale": "Hansson 'An Analysis of some Deontic Logics' — same title and author; 1969 Nous article and 1971 monograph entry describe the same work."},
+  {"id": "color for philosophers", "decision": "same", "rationale": "Hardin 'Color for Philosophers' — same title, author, publisher (Hackett); 1988 vs 1993 are original vs reprint of the same book."},
+  {"id": "10.1037/xlm0000031", "decision": "same", "rationale": "Identical title, authors, journal, volume, pages, and shared DOI."}
+ ]
+}

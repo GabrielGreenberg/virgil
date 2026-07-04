@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "basic measurement theory", "decision": "same", "rationale": "Identical title, authors (Suppes & Zinnes), year 1963, same Handbook of Mathematical Psychology vol 1; only citekey/capitalization/author-initial variance."},
+    {"id": "10.1098/rspb.1968.0072", "decision": "same", "rationale": "Both share the DOI with identical title, author (Sutherland), year, journal, volume, pages. Only type (inproceedings vs article) differs."},
+    {"id": "10.1353/hph.2006.0072", "decision": "same", "rationale": "Shared DOI, identical title/author/year/journal/pages; second entry just adds a note field."},
+    {"id": "reinforcement learning", "decision": "same", "rationale": "Same title, author (Sutton), year 1998, publisher MIT Press, same ISBN; only a stray journal field differs."},
+    {"id": "10.1002/(sici)1096-9861(20000626)422:2<206::aid-cne5>3.0.co;2-0", "decision": "same", "rationale": "Shared DOI, identical title, authors (Suzuki/Saleem/Tanaka), year, volume, pages; second entry uses abbreviated journal name and initials."},
+    {"id": "10.1093/acprof:oso/9780195393675.003.0004", "decision": "same", "rationale": "Shared DOI, identical title/author/year/booktitle/pages; only citekey differs."},
+    {"id": "10.1088/0954-898x/7/2/002", "decision": "same", "rationale": "Shared DOI, identical title/author/year/journal/volume/pages; only citekey differs."},
+    {"id": "10.1126/science.7134981", "decision": "same", "rationale": "Shared DOI, identical title/authors/year/journal/volume/pages; only type (misc vs article) differs."},
+    {"id": "10.1007/bf00499820", "decision": "same", "rationale": "Shared DOI, identical title/author/year/journal/volume/pages; only citekey differs."},
+    {"id": "10.3389/fpsyg.2011.00358", "decision": "same", "rationale": "Shared DOI, identical title/author/year/journal/volume/pages; only type (misc vs article) differs."},
+    {"id": "lexicalization patterns semantic structure in lexical forms", "decision": "same", "rationale": "Identical title, author (Talmy), year, pages; only citekey suffix differs."},
+    {"id": "10.1075/cilt.50.08tal", "decision": "same", "rationale": "Shared DOI, identical title/author/year/booktitle/pages; only citekey differs."},
+    {"id": "10.1146/annurev.neuro.19.1.109", "decision": "same", "rationale": "Shared DOI, identical title/author/year/volume/pages; second entry uses abbreviated journal name."},
+    {"id": "10.1038/90547", "decision": "same", "rationale": "Shared DOI, identical title, authors (Tsunoda et al.), year, journal, volume, pages; second entry adds a note field."},
+    {"id": "10.1371/journal.pone.0201727", "decision": "same", "rationale": "Shared DOI, identical title, authors (Weissman & Tanner), year, journal, volume, pages; only type differs."},
+    {"id": "on the concept of logical consequence", "decision": "same", "rationale": "Identical title, author (Tarski), year 1956; only type (article vs book) and formatting differ — same essay."},
+    {"id": "head direction cells and the neurophysiological basis for a sense of direction", "decision": "same", "rationale": "Identical title, author (Taube), year 1998, journal, volume, pages 225-256/225-56; second entry adds DOI. Same work."},
+    {"id": "10.1111/j.1468-0017.1986.tb00328.x", "decision": "same", "rationale": "Identical title, author (Tennant), journal Mind & Language, volume 1, pages 302-318; year 1986 vs 1984 is a minor citation discrepancy for the same article."},
+    {"id": "kirihito sanka ode to kirihito part 2", "decision": "same", "rationale": "Same title (Kirihito Sanka Part 2), author (Tezuka), publisher Vertical; 1970 (original serialization) vs 2006 (English edition) — same work, both notes confirm identical provenance."},
+    {"id": "10.3758/bf03212219", "decision": "same", "rationale": "Shared DOI, identical title/author/year/journal/volume/pages; only citekey differs."},
+    {"id": "10.1117/12.321989", "decision": "same", "rationale": "Shared DOI, identical title, authors (Thibault & Borra), year, booktitle, volume, pages; only citekey differs."},
+    {"id": "10.1016/b978-0-12-545850-4.50009-1", "decision": "same", "rationale": "Shared DOI, identical title/author/year/booktitle/pages; only citekey differs."},
+    {"id": "10.1007/978-94-009-6259-0_3", "decision": "same", "rationale": "Shared DOI, identical title 'Combinations of Tense and Modality', author (Thomason); years 1984/2002 are different editions of the Handbook of Philosophical Logic — same chapter."},
+    {"id": "10.7551/mitpress/3839.003.0018", "decision": "same", "rationale": "Shared DOI, identical title/author/year/booktitle/pages; only citekey spelling (accommodation vs accomodation) differs."},
+    {"id": "10.1007/978-94-009-9117-0_15", "decision": "same", "rationale": "All three share the DOI with identical title (A Theory of Conditionals in the Context of Branching Time) and authors (Thomason & Gupta); years 1980/1980/1981 are citation variants of the same IFS chapter."}
+  ]
+}

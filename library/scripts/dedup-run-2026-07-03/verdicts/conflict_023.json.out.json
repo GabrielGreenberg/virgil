@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1162/posc.2009.17.1.5",
+      "decision": "same",
+      "rationale": "Same title, author (name-order variant), year, journal, volume/number/pages, and DOI. Duplicate import; loser not indexed."
+    },
+    {
+      "id": "10.1016/j.pragma.2014.12.013",
+      "decision": "same",
+      "rationale": "Identical title, authors, year, volume, pages, and DOI. Loser is an incollection-typed variant (booktitle=Journal of Pragmatics) of the same article; neither is indexed."
+    },
+    {
+      "id": "iconic gesture semantics",
+      "decision": "same",
+      "rationale": "Same preprint: identical title, authors, year, and note (lingbuzz/007916). Zotero-style key vs hand key."
+    },
+    {
+      "id": "10.1098/rstb.2017.0137",
+      "decision": "same",
+      "rationale": "Identical DOI, title, authors, year, volume/number/pages; journal differs only by abbreviated vs full name. Duplicate."
+    },
+    {
+      "id": "10.1007/s44204-022-00039-x",
+      "decision": "same",
+      "rationale": "Same DOI, title, year, journal, volume/number; author differs only as 'Jack' vs 'Jack C.'. Duplicate."
+    },
+    {
+      "id": "10.1007/s11229-007-9286-2",
+      "decision": "same",
+      "rationale": "Same DOI, title, author, year, journal, volume/number/pages; loser lacks only the 'Preprint (forthcoming)' note. Same work."
+    },
+    {
+      "id": "10.1093/acprof:oso/9780199234950.003.0004",
+      "decision": "same",
+      "rationale": "Identical DOI, title, author, year, booktitle (Relative Truth), and pages. Loser key 'Baranchuk2009' is a mislabeled Zotero import of the same chapter."
+    },
+    {
+      "id": "10.18148/sub/2019.v23i2.600",
+      "decision": "unsure",
+      "rationale": "Both members are deepIndexed with folders (real work at stake). Same title and authors, but survivor is the 2019 Sinn und Bedeutung 23 paper with DOI while loser is a distinct 2025 inproceedings version with no DOI. Cannot confirm identity confidently; keep separate to avoid archiving indexed work."
+    },
+    {
+      "id": "10.1002/9781405198431.wbeal20803",
+      "decision": "same",
+      "rationale": "Identical title, author, year, booktitle, publisher, pages, and DOI. Duplicate folder; neither independently indexed."
+    },
+    {
+      "id": "10.33735/phimisci.2026.12205",
+      "decision": "same",
+      "rationale": "Same DOI, title, year, journal, volume/number, note; author differs only as 'Corey' vs 'Corey J.'. Duplicate."
+    },
+    {
+      "id": "10.1111/nous.12089",
+      "decision": "same",
+      "rationale": "All three share title, volume/number/pages; DOI matches for two and third has identical vol/num/pages. Year 2015 vs 2016 is the Noûs online/print discrepancy. Same article."
+    },
+    {
+      "id": "10.1515/text.1.1988.8.3.243",
+      "decision": "same",
+      "rationale": "Identical title, authors, year, journal, volume/number, and DOI. Duplicate import; neither indexed."
+    }
+  ]
+}

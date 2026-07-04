@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1111/mila.12328",
+      "decision": "same",
+      "rationale": "Identical title, authors, year, journal, volume 36(1), pages 158-185, and DOI; QuiltyDunn2021 is a Zotero-style shadow key of quiltydunn2021polysemy."
+    },
+    {
+      "id": "10.1017/s0140525x22002849",
+      "decision": "same",
+      "rationale": "Same DOI, same three authors, same title (preprint vs published capitalization). Year 2022 vs 2023 and CoS vs CUP publisher are preprint/online-first vs print of the identical BBS target article."
+    },
+    {
+      "id": "10.1111/phpr.12847",
+      "decision": "same",
+      "rationale": "Identical title, authors, year, journal, volume 106(2), pages 273-298, and DOI; loser differs only in hyphen encoding of the author name."
+    },
+    {
+      "id": "10.1038/nature03687",
+      "decision": "same",
+      "rationale": "All three keys share identical title, full author list, year, journal, volume 435(7045), pages 1102-1107, and DOI. quiroga/Quiroga/fried are shadow keys of the same Nature paper."
+    },
+    {
+      "id": "10.1007/978-3-031-91213-9",
+      "decision": "same",
+      "rationale": "Same book title, author, year, and DOI; Raftopoulos2025 differs only in publisher string (Springer vs Springer Nature Switzerland)."
+    },
+    {
+      "id": "10.1007/s11050-012-9087-0",
+      "decision": "same",
+      "rationale": "The 2013 article and Rawlins2013 are identical (same DOI, title, journal, vol 21(2), pp 111-178). The 2008 phdthesis '(Un)Conditionals' by the same author is the dissertation version of the same work; treat as same underlying work."
+    },
+    {
+      "id": "literal meaning",
+      "decision": "same",
+      "rationale": "Both keys have identical title 'Literal Meaning', author Recanati, year 2004, publisher CUP, and ISBN 9780511060984; recanati2002literal is a shadow key of the same book."
+    },
+    {
+      "id": "10.1017/cbo9780511819001.004",
+      "decision": "same",
+      "rationale": "Same chapter title, author, year, booktitle, publisher, pages 52-71, and DOI; survivor merely carries a preprint note. Same work."
+    },
+    {
+      "id": "10.1093/bjps/axp012",
+      "decision": "same",
+      "rationale": "Identical title, author, year, journal, volume 60(2), pages 377-407, and DOI; Rescorla2009 is a shadow key of the same paper."
+    },
+    {
+      "id": "10.1007/s11229-008-9343-5",
+      "decision": "same",
+      "rationale": "Identical title, author, year, journal, volume 169(1), pages 175-200, and DOI; Rescorla2009a is a Zotero-style shadow key of the same Synthese paper."
+    },
+    {
+      "id": "10.1093/jos/ffab005",
+      "decision": "same",
+      "rationale": "Identical title, author, year, journal, volume 38(2), pages 305-340, and DOI; Rett2021 differs only in page-range dash style."
+    },
+    {
+      "id": "philosophy of film and motion pictures",
+      "decision": "same",
+      "rationale": "Both members are deepIndexed but their notes explicitly state the catalog row was repointed and the indexed file is the SAME full anthology (Carroll & Choi 2006), not two distinct works. Same title, year, publisher, and ISBN; both now denote the same anthology book."
+    }
+  ]
+}

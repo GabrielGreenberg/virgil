@@ -1,0 +1,52 @@
+{
+  "verdicts": [
+    {
+      "cid": "languages of art",
+      "verdict": "different_works",
+      "offending": ["goodman1976languages", "goodman1976", "goodman1978languages"],
+      "rationale": "Nelson Goodman's Languages of Art has two substantively distinct editions: the 1968 first edition (Bobbs-Merrill) and the 1976 SECOND edition (originally Hackett, DOI 10.5040/9781350928541 = Bloomsbury reprint), which is a revised edition, not a mere reprint. The survivor goodman1968languages and the only archived deep-indexed member goodman1968iiiiiiiii are BOTH 1968 first-edition, so the actual folder move is safe. But the cluster also folds in three 1976 second-edition entries (goodman1976languages, goodman1976, goodman1978languages -- all carry the distinct Bloomsbury/1976 DOI+ISBN 9781350928541) which denote the revised 2nd edition, a different work. (goodman1969languages is the 1969 OUP UK printing of the first edition -- same content -- and goodman1968 is the bare 1968 first edition, both fine.) Flagging the 1976 members as different works. Note they are depth none/null so no deep-indexed folder is archived for them."
+    },
+    {
+      "cid": "10.1093/bjps/axx055",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All members carry the identical DOI 10.1093/bjps/axx055, title 'What Is an Object File?', authors Green & Quilty-Dunn, journal BJPS vol 72 no 3 pp 665-699. Year varies 2016/2017/2021 but 2017 is the online-first/pre-issue year (axx055 is the article ID before issue assignment) and 2021 is the assigned issue year -- same article. Misleadingly-named citekeys (gottlieb2014neuronal, quiltydunn2021perceptual, greenquiltydunn2017object) all carry the exact same title+DOI, so they are mislabeled duplicates of the same work. Only same-work folders archived."
+    },
+    {
+      "cid": "10.1002/9781394259847.ch26",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three members share DOI 10.1002/9781394259847.ch26, title 'The Perception-Cognition Border' (em-dash vs double-hyphen typographic variant), author Green E. J., booktitle Contemporary Debates in Philosophy of Mind, year 2023, pages 469-493. Same chapter. The only archived member (green2023perception) is depth none, so no deep-indexed folder is lost."
+    },
+    {
+      "cid": "10.3998/ergo.12405314.0005.033",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All members share DOI 10.3998/ergo.12405314.0005.033, title 'Content and Target in Pictorial Representation', author Greenberg Gabriel, journal Ergo vol 5 no 20201214. One citekey says 2019 but its fields state year 2018 like the rest -- same article. Same work."
+    },
+    {
+      "cid": "10.1215/00318108-10697558",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All members share DOI 10.1215/00318108-10697558, title 'The Iconic-Symbolic Spectrum', author Greenberg Gabriel, Philosophical Review vol 132 no 4 pp 579-627, year 2023 in fields. Citekeys embedding 2021 still carry 2023 fields -- same article. Same work."
+    },
+    {
+      "cid": "10.1093/oxfordhb/9780192844118.013.23",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both members share DOI 10.1093/oxfordhb/9780192844118.013.23, title 'Map Semantics and the Geography of Meaning', author Greenberg Gabriel, year 2024, ISBN 9780192844118. The loser is typed 'unpublished' (a preprint stub) but resolves to the same published handbook chapter via identical DOI+ISBN. Same work."
+    },
+    {
+      "cid": "10.1007/s10988-022-09369-8",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All members share DOI 10.1007/s10988-022-09369-8, title 'A semantics of face emoji in discourse', authors Grosz/Greenberg/De Leon/Kaiser, Linguistics and Philosophy vol 46 no 4 pp 905-957, year 2023 (DOI suffix 022 reflects online-first 2022). Author name variant Patrick G. vs Patrick Georg is the same person. Same work."
+    },
+    {
+      "cid": "10.1080/01445349808837293",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All members share DOI 10.1080/01445349808837293, title 'Euler's visual logic', authors Hammer & Shin, History and Philosophy of Logic vol 19 no 1 pp 1-29, year 1998. Publisher variants (Informa UK / Taylor and Francis) are the same corporate entity. Same work."
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1111/mila.12219",
+      "decision": "same",
+      "rationale": "Prosser2019 is a Zotero-style key duplicate of prosser2019shared: identical title, author, year, journal, volume/number, pages, and DOI (10.1111/mila.12219)."
+    },
+    {
+      "id": "10.1111/phpr.12577",
+      "decision": "same",
+      "rationale": "prossernd (misc, note 'MS') and Prosser2020 are both duplicate imports of prosser2020metaphysics — identical title 'The Metaphysics of Mental Files', author, year, journal, vol 100(3), pages 657-676, DOI 10.1111/phpr.12577. Only prosser2020metaphysics is indexed."
+    },
+    {
+      "id": "10.1007/s13164-015-0280-1",
+      "decision": "same",
+      "rationale": "Pryor2016 shares the same DOI (10.1007/s13164-015-0280-1), title 'Mental Graphs', author Pryor, journal, vol 7(2), pages 309-341 as pryor2015mental; the year differs only by online-vs-print (2016 vs 2015 issue). Same work."
+    },
+    {
+      "id": "the meaning of meaning",
+      "decision": "same",
+      "rationale": "putnam1975meaning is the same Putnam 1975 'The Meaning of \"Meaning\"'; the loser cites the original Minnesota Studies vol VII printing while the survivor cites the Mind, Language and Reality reprint — same work, different printing of the same essay. Neither is indexed."
+    },
+    {
+      "id": "10.1037/0033-295x.88.1.16",
+      "decision": "same",
+      "rationale": "All three members (pylyshyn1981the, pylyshyn1981debate, pylyshyn1981psychologi) have identical title, author, year, journal, vol 88(1), pages 16-45, and DOI 10.1037/0033-295x.88.1.16. Hand-key duplicates of one paper; none indexed."
+    },
+    {
+      "id": "computation and cognition",
+      "decision": "same",
+      "rationale": "All six members are 'Computation and Cognition' by Pylyshyn, MIT Press, year 1986, ISBN 9780262660587 — identical fields across every citekey variant (1984/1986 keys are shadow keys, bib year uniformly 1986). Single book; none indexed."
+    },
+    {
+      "id": "seeing and visualizing",
+      "decision": "same",
+      "rationale": "sterelny2000seeing has a misleading citekey but identical bib fields to survivor pylyshyn2003seeing: title 'Seeing and visualizing', author Pylyshyn, year 2003, MIT Press, ISBN 9780262661973. pylyshyn2003seeinga is a shadow key with identical fields. Same book; the indexed loser is a mislabeled duplicate of the deepIndexed survivor."
+    },
+    {
+      "id": "things and places",
+      "decision": "same",
+      "rationale": "pylyshyn1976fm has a misleading citekey but identical bib: title 'Things and Places', author Pylyshyn, year 2007, MIT Press, ISBN 9780262162456 — same book as deepIndexed survivor pylyshyn2007things. pylyshyn2007b likewise identical. Both point at the single 2007 book; the deepIndexed loser is a mislabeled duplicate of the same work."
+    },
+    {
+      "id": "10.3758/s13423-019-01705-7",
+      "decision": "same",
+      "rationale": "Qian2020 is a Zotero-style duplicate of qian2020relation: identical title, authors, year, journal, vol 27(2), pages 341-349, DOI 10.3758/s13423-019-01705-7."
+    },
+    {
+      "id": "10.1111/phpr.12625",
+      "decision": "same",
+      "rationale": "quiltydunn2019a is the preprint/short-form of quilty2020iconic 'Is Iconic Memory Iconic?' — same title, author, journal PPR, vol 101, pages 660-682/660-82; year 2019 vs 2020 reflects online-first vs issue. Same work."
+    },
+    {
+      "id": "iconicity and the format of perception",
+      "decision": "same",
+      "rationale": "quiltydunn2016iconicit is a shadow key of survivor quiltydunn2016iconicity — same title 'Iconicity and the Format of Perception', author Quilty-Dunn, year 2016; the loser merely adds journal/vol/pages (JCS 23, 255-63). Same paper; only the survivor is deepIndexed."
+    },
+    {
+      "id": "10.1111/nous.12285",
+      "decision": "same",
+      "rationale": "All losers are 'Perceptual Pluralism', Quilty-Dunn, Noûs 54(4), pages 807-838, year 2020, DOI 10.1111/nous.12285 (where present). quiltydunn2019perceptual (indexed, manuscript state) and quilty2020perceptual (has_folder) are the pre-publication/import duplicates of the deepIndexed survivor quiltydunn2020perceptual — identical work, so merging them onto the survivor consolidates rather than loses the real indexed version."
+    }
+  ]
+}

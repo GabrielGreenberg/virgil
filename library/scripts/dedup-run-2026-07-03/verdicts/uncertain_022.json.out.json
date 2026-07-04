@@ -1,0 +1,54 @@
+{
+  "verdicts": [
+    {
+      "id": "wittgenstein0000philosophical||wittgenstein1953philosop",
+      "decision": "same",
+      "rationale": "Both are Wittgenstein's 'Philosophical Investigations', 1953. Different publishers (Macmillan/Blackwell) reflect US vs UK issue of the same work."
+    },
+    {
+      "id": "wittgenstein1953investigations||wittgenstein1953philosop",
+      "decision": "same",
+      "rationale": "Both are Wittgenstein's 'Philosophical Investigations', 1953; same work despite publisher variance (Macmillan vs Blackwell)."
+    },
+    {
+      "id": "wittgenstein1961||wittgenstein1961tractatus",
+      "decision": "same",
+      "rationale": "Both 'Tractatus Logico-Philosophicus', Wittgenstein, 1961, Routledge & Kegan Paul. Same work."
+    },
+    {
+      "id": "wollheim1980art||wollheim1980arta",
+      "decision": "same",
+      "rationale": "Both 'Art and Its Objects', Wollheim, 1980, Cambridge University Press. 2nd ed. vs base title, same work."
+    },
+    {
+      "id": "wollheim1980art||wollheim1980seeing",
+      "decision": "same",
+      "rationale": "'Art and its Objects, 2nd ed' and 'Art and its Objects: With Six Supplementary Essays', both 1980. The 2nd edition added the six supplementary essays; same work/edition."
+    },
+    {
+      "id": "wollheim1980arta||wollheim1980seeing",
+      "decision": "same",
+      "rationale": "'Art and Its Objects' and 'Art and its Objects: With Six Supplementary Essays', both Wollheim 1980. Same work."
+    },
+    {
+      "id": "yu2015sketch||yu2017sketchanet",
+      "decision": "same",
+      "rationale": "'Sketch-a-net that beats humans' (2015 arXiv 1501.07873) and 'Sketch-a-Net: A Deep Neural Network that Beats Humans' (2017 IJCV). Preprint and published version of the same paper by overlapping author team."
+    },
+    {
+      "id": "yuille2006||yuille2006vision",
+      "decision": "same",
+      "rationale": "Both 'Vision as Bayesian inference: analysis by synthesis?', Trends in Cognitive Sciences 10(7):301-308, 2006. a's malformed title embeds the same venue/vol/pages; author list matches (Yuille & Kersten)."
+    },
+    {
+      "id": "zeki1983acolour||zeki1983bcolour",
+      "decision": "distinct",
+      "rationale": "Two distinct consecutive papers in Neuroscience 9(4) 1983: 'The reaction of cells...to wavelengths and colours' (pp. 741-765, doi ...90265-8) vs 'The responses of wavelength-selective and colour-coded cells...' (pp. 767-781, doi ...90266-x). Different subtitles, pages, and DOIs."
+    },
+    {
+      "id": "zosh2009beyond||zosh2009what",
+      "decision": "same",
+      "rationale": "Both 'Beyond ‘What’ and ‘How Many’...', Zosh & Feigenson, 2009, Oxford University Press, in 'The Origins of Object Knowledge', pp. 25-51/25-52. Same chapter."
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "verdicts": [
+    {
+      "cid": "10.1093/bjaesthetics/27.3.213",
+      "verdict": "confirmed_same",
+      "rationale": "Both members share DOI 10.1093/bjaesthetics/27.3.213 with identical title (Pictorial Representation: a Matter of Resemblance), author (Neander), year (1987), journal (British Journal of Aesthetics), vol 27, no 3, pp 213-226. Same work.",
+      "offending": []
+    },
+    {
+      "cid": "10.1093/jos/ffac009",
+      "verdict": "confirmed_same",
+      "rationale": "All three share DOI 10.1093/jos/ffac009, same title (Steps towards a Semantics of Dance), Journal of Semantics 39(4):693-748, same four authors. Only difference is a spelling variant of Tejaswini/Tejaswinee Kelkar. Same work.",
+      "offending": []
+    },
+    {
+      "cid": "seeing and visualizing",
+      "verdict": "different_works",
+      "rationale": "The -Pylyshyn entry is an article in 'Choice Reviews Online' with DOI 10.5860/choice.42-1247, which resolves to a Choice book REVIEW of Pylyshyn's book, not the book itself. It is a distinct bibliographic object (a short published review), yet it carries depth=indexed and archived=true, so a real indexed folder would be archived on a DOI that denotes a different work. The book members (survivor 2003 MIT Press, sterelny2000seeing with a mislabeled citekey but Pylyshyn book fields/same ISBN, pylyshyn2003seeinga, and pylyshyn2006seeing as a later printing) are the same book, but the Choice-review entry should not be folded into the book.",
+      "offending": ["-Pylyshyn"]
+    },
+    {
+      "cid": "10.1111/nous.12285",
+      "verdict": "confirmed_same",
+      "rationale": "All members share title (Perceptual Pluralism), author (Quilty-Dunn), Nous 54(4):807-838, 2020, and DOI 10.1111/nous.12285 (the one entry lacking the DOI still matches journal/volume/issue/pages exactly). Author-name hyphen variants are Unicode artifacts. Same work.",
+      "offending": []
+    },
+    {
+      "cid": "philosophy of film and motion pictures",
+      "verdict": "confirmed_same",
+      "rationale": "Both share title (Philosophy of Film and Motion Pictures), Blackwell, 2006, and ISBN 9781405120272 (survivor) / 978-1-4051-2026-5 (loser) which are the paperback and hardcover of the SAME Carroll & Choi anthology (verified via WorldCat/Wiley/Amazon). The survivor's empty author is a metadata miss; the loser correctly lists Carroll & Choi. Same book. (The 'ribeiro' citekey is a mis-attribution, not a different work.)",
+      "offending": []
+    },
+    {
+      "cid": "course in general linguistics",
+      "verdict": "different_works",
+      "rationale": "This cluster conflates distinct English translations of Saussure's Cours. saussure1916courseb has publisher Duckworth, which is the Roy Harris translation (1983) - a substantively different translation with different pagination and translator apparatus. The 1959/1974 members (saussure1959course, desaussure1959course, saussure1974course) are the Wade Baskin translation (Philosophical Library / Bloomsbury printings). These are different translations/editions across years 1916/1959/1974, not one and the same work; the survivor's generic 1916 entry (no translator/publisher) does not disambiguate. Per the different-editions/different-translation red flag, the Harris (Duckworth) entry in particular denotes a different work.",
+      "offending": ["saussure1916courseb"]
+    },
+    {
+      "cid": "the unity of perception",
+      "verdict": "confirmed_same",
+      "rationale": "Both members are Schellenger, The Unity of Perception, Oxford University Press, 2018. The loser adds the OUP book DOI 10.1093/oso/9780198827702.001.0001 and an ISBN, consistent with the same monograph. Same book.",
+      "offending": []
+    },
+    {
+      "cid": "10.1007/s10988-013-9129-1",
+      "verdict": "confirmed_same",
+      "rationale": "schlenker2012iconic (2012, no DOI, no journal, single author listed) is the manuscript/preprint of the article published in 2013 as Iconic Variables in Linguistics and Philosophy 36(2):91-149 (DOI 10.1007/s10988-013-9129-1), by Schlenker, Lamberton & Santoro. A 2012 manuscript preceding the 2013 publication is confirmed; preprint-to-published counts as the same work. The other members all share the DOI. Same work.",
+      "offending": []
+    }
+  ]
+}

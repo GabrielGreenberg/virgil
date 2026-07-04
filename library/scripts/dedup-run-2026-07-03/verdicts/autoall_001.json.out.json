@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "formal pragmatics", "decision": "same", "rationale": "All three: 'Formal pragmatics', Nirit Kadmon, 2001, Blackwell, ISBN 9780631201205 (one lists 'Blackwell Publishing Limited', same publisher)."},
+    {"id": "conventional implicature", "decision": "same", "rationale": "Both are Karttunen & Peters, 'Conventional implicature', Academic Press. Year differs 1975/1979 but this is the same well-known chapter (Syntax and Semantics vol. 11)."},
+    {"id": "presupposition and the delimitation of semantics", "decision": "same", "rationale": "Identical: Kempson 1975 book, Cambridge University Press, same ISBN."},
+    {"id": "10.1073/pnas.0707835105", "decision": "same", "rationale": "Shared DOI; Kirby, Cornish & Smith 2008 PNAS, matching title/volume/pages (abbreviated author/journal in one)."},
+    {"id": "10.3758/bf03342817", "decision": "same", "rationale": "Shared DOI; Krauss & Weinheimer 1964 Psychonomic Science, identical fields."},
+    {"id": "10.1515/9783110852820.361", "decision": "same", "rationale": "Shared DOI; Partee & Rooth 1983 'Generalized Conjunction and Type Ambiguity', identical fields (citekey variant rooth-vs-partee only)."},
+    {"id": "10.1017/s0140525x04000056", "decision": "same", "rationale": "Shared DOI; Pickering & Garrod 2004 BBS, identical fields across all three."},
+    {"id": "10.1007/bf02342617", "decision": "same", "rationale": "Shared DOI; Rooth 1992 'A theory of focus interpretation', identical fields."},
+    {"id": "the strategy of conflict", "decision": "same", "rationale": "Identical: Schelling 1960 book, Harvard University Press, same ISBN."},
+    {"id": "10.1016/0010-0285(89)90008-x", "decision": "same", "rationale": "Shared DOI; Schober & Clark 1989 Cognitive Psychology, identical fields across all three."},
+    {"id": "10.1023/a:1008370902407", "decision": "same", "rationale": "Shared DOI; Schwarzschild 1999 'Givenness', identical fields."},
+    {"id": "sentence prosody intonation stress and phrasing", "decision": "same", "rationale": "All three are Selkirk 'Sentence Prosody: Intonation, Stress and Phrasing', Handbook of Phonological Theory, Blackwell. 1995/1996 is a printing-year variant of the same chapter."},
+    {"id": "10.1073/pnas.0702077104", "decision": "same", "rationale": "Shared DOI; Selten & Warglien 2007 PNAS, identical fields."},
+    {"id": "10.3765/salt.v20i0.2584", "decision": "same", "rationale": "Shared DOI; Simons, Tonhauser, Beaver & Roberts 2010 'What projects and why', SALT 20, identical."},
+    {"id": "mind in society", "decision": "same", "rationale": "Identical: Vygotsky 1978 'Mind in society', Harvard University Press, same ISBN."},
+    {"id": "10.1093/jos/9.4.379", "decision": "same", "rationale": "Shared DOI; Zeevat 1992 'Presupposition and Accommodation in Update Semantics', identical fields across all three."},
+    {"id": "10.1016/s0028-3932(98)00134-1", "decision": "same", "rationale": "Shared DOI; Zackon et al. 1999 Neuropsychologia, identical fields."},
+    {"id": "10.1353/sls.2003.0001", "decision": "same", "rationale": "Shared DOI; Aarons & Morgan 2003 Sign Language Studies, identical fields."},
+    {"id": "10.1152/jn.1997.77.6.3267", "decision": "same", "rationale": "Shared DOI; Salinas & Abbott 1997 'Invariant Visual Responses From Attentional Gain Fields', identical fields."},
+    {"id": "10.1075/bjl.17.02abb", "decision": "same", "rationale": "Shared DOI; Abbott 2003 'Some Notes on Quotation', Belgian Journal of Linguistics, identical fields."},
+    {"id": "10.1111/j.0021-8529.2005.00181.x", "decision": "same", "rationale": "Shared DOI; Abell 2005 'Pictorial Implicature', identical fields."},
+    {"id": "10.1093/acprof:oso/9780199585960.003.0004", "decision": "same", "rationale": "Shared DOI; Abell 2010 'The Epistemic Value of Photographs', identical fields."},
+    {"id": "predicting the presuppositions of soft triggers", "decision": "same", "rationale": "Both Abrusán 2011 'Predicting the presuppositions of soft triggers', Linguistics and Philosophy vol. 34, pp. 491-535; matched by title+year+author (one carries the DOI)."},
+    {"id": "10.1017/cbo9780511736261.014", "decision": "same", "rationale": "Shared DOI; Oliva, Park & Konkle 'Representing, perceiving, and remembering the shape of visual space', identical fields."},
+    {"id": "10.18653/v1/p17-3022", "decision": "same", "rationale": "Shared DOI; Na'aman, Provenza & Montoya 2017 'Varying Linguistic Purposes of Emoji in (Twitter) Context', identical fields across all three."}
+  ]
+}

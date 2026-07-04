@@ -47,8 +47,33 @@ def parse_fields(body: str) -> dict[str, str]:
             out[name] = body[i + 1:j - 1].strip()
             i = j
         elif body[i] == '"':
-            j = body.find('"', i + 1)
-            if j == -1:
+            # Hazard 5(a): a `"`-quoted value's closing quote is the `"` that
+            # appears at brace-depth 0 and is not backslash-escaped. The old
+            # `body.find('"', i+1)` stopped at the FIRST inner quote, so a value
+            # like `title = "He said \"hi\""` (escaped) or one carrying a braced
+            # quote `title = "a {"} b"` truncated at the inner `"` — corrupting
+            # the field name of everything after it and DROPPING the entry's
+            # later fields (e.g. its doi). Walk instead, tracking brace depth and
+            # skipping `\"`, so the value ends at the true delimiter.
+            j = i + 1
+            qdepth = 0
+            while j < len(body):
+                c = body[j]
+                if c == "\\" and j + 1 < len(body):
+                    j += 2  # escaped char (\" or \\) — never a delimiter
+                    continue
+                if c == "{":
+                    qdepth += 1
+                elif c == "}":
+                    if qdepth > 0:
+                        qdepth -= 1
+                elif c == '"' and qdepth == 0:
+                    break
+                j += 1
+            if j >= len(body):
+                # No closing quote — take the rest (matches the old break's
+                # "stop parsing" outcome but keeps whatever value we have).
+                out[name] = body[i + 1:].strip()
                 break
             out[name] = body[i + 1:j].strip()
             i = j + 1
@@ -85,22 +110,57 @@ def parse_bib_text(text: str) -> list[dict]:
     single brace-unbalanced entry overruns to (at most) the next entry boundary
     instead of swallowing the rest of the file. `@string`/`@comment`/
     `@preamble` lack the `{key,` form and are naturally skipped.
+
+    Hazard 5(b): a legitimate value may itself contain a line that LOOKS like a
+    new entry (`@article{fake,` at column 0 inside a `note = {...}` brace group).
+    The naive "cap at the next opener" splitter would treat that inner line as a
+    real boundary, truncate the enclosing entry (dropping its remaining fields —
+    e.g. its doi) and mint a phantom entry. We defend by respecting brace depth:
+    a start that falls INSIDE a previously-accepted, brace-BALANCED entry is
+    spurious and skipped. Containment is preserved — an UNbalanced entry still
+    caps at the next opener, so one bad entry can never swallow the rest.
     """
     entries: list[dict] = []
     starts = list(_BIB_ENTRY_START_RE.finditer(text))
+    consumed_until = 0  # end offset of the last brace-balanced entry
     for idx, m in enumerate(starts):
+        # Skip a `@type{key,` that sits inside a prior balanced entry's brace
+        # span (Hazard 5(b): it was a value, not a real entry).
+        if m.start() < consumed_until:
+            continue
         entry_type = m.group(1).lower()
         citekey = m.group(2).strip()
+        # Cap at the next opener that is NOT already inside this entry. The first
+        # such opener is a genuine sibling; any opener before it (once we prove
+        # this entry balances) was inside a value.
         seg_end = starts[idx + 1].start() if idx + 1 < len(starts) else len(text)
         brace = text.find("{", m.start())
         depth = 1
         j = brace + 1
-        while j < seg_end and depth > 0:
+        # Match braces without the next-opener cap FIRST, so an entry whose value
+        # contains a column-0 `@...{` still balances correctly. If it never
+        # balances (malformed), we fall back to the capped end below.
+        while j < len(text) and depth > 0:
             if text[j] == "{":
                 depth += 1
             elif text[j] == "}":
                 depth -= 1
             j += 1
+        if depth == 0:
+            # Balanced: this is the true end. Mark the span consumed so any
+            # inner `@...{` openers get skipped by the guard above.
+            consumed_until = j
+        else:
+            # Unbalanced: recompute the end capped at the next opener so a single
+            # bad entry is contained to its own segment (the original guarantee).
+            depth = 1
+            j = brace + 1
+            while j < seg_end and depth > 0:
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                j += 1
         raw = text[m.start():j]
         body_start = text.find(",", brace) + 1
         body = text[body_start:(j - 1) if depth == 0 else seg_end]

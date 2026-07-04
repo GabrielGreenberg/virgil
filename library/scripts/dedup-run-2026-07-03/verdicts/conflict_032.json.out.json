@@ -1,0 +1,65 @@
+{
+ "verdicts": [
+  {
+   "id": "not by genes alone",
+   "decision": "same",
+   "rationale": "All four members are the single-volume book 'Not by Genes Alone' by Richerson and Boyd. Year 2006 vs 2008 and ISBN 9780226712123 vs 9780226712130 are hardcover/paperback printings of the same edition; not a substantively different publication. None is indexed."
+  },
+  {
+   "id": "mind body identity privacy and categories",
+   "decision": "same",
+   "rationale": "Both are Rorty's 'Mind-Body Identity, Privacy, and Categories', Review of Metaphysics vol 19, 1965. Same article, author name ordering only differs."
+  },
+  {
+   "id": "10.7551/mitpress/5236.001.0001",
+   "decision": "mixed",
+   "rationale": "'Parallel Distributed Processing' is a two-volume work. The survivor (volume '1 and 2') and rumelhart1988parallel (misc, same DOI) are the combined set. But rumelhart1986mcclelland is explicitly volume 1 (ISBN 9780262181204) and mcclelland1986distributed is volume 2 (ISBN 9780262631129) — distinct individual volumes of the multi-volume work, so they should not be merged into the set entry.",
+   "distinct_members": ["rumelhart1986mcclelland", "mcclelland1986distributed"]
+  },
+  {
+   "id": "10.1111/j.1747-9991.2008.00130.x",
+   "decision": "same",
+   "rationale": "Identical DOI, title, author, journal, volume, issue, pages. Same Philosophy Compass article; loser is a Zotero-style key duplicate."
+  },
+  {
+   "id": "the concept of mind",
+   "decision": "same",
+   "rationale": "Byte-identical fields (title, author, year, publisher, ISBN). Ryle's 'The Concept of Mind'; shadow key duplicate."
+  },
+  {
+   "id": "10.31234/osf.io/28mg4",
+   "decision": "same",
+   "rationale": "Same OSF DOI and title. Survivor is the 2022 'article' preprint, loser the 2021 'unpublished' version — preprint versions of the same work."
+  },
+  {
+   "id": "automatic text processing",
+   "decision": "same",
+   "rationale": "Byte-identical fields. Salton's 'Automatic Text Processing'; duplicate import under a different citekey."
+  },
+  {
+   "id": "10.1523/jneurosci.17-15-05900.1997",
+   "decision": "same",
+   "rationale": "Same title, authors, journal (J. Neurosci.), year 1997, volume 17. The divergent page numbers (5900-5920 vs 272-75) are a citation error in the loser; the DOI-derived cid confirms the same article."
+  },
+  {
+   "id": "10.3765/salt.v24i0.2430",
+   "decision": "same",
+   "rationale": "Same DOI, title, author, SALT vol 24, page 494. Same SALT 2014 proceedings paper; Zotero-style key duplicate."
+  },
+  {
+   "id": "10.5840/jphil20181151030",
+   "decision": "same",
+   "rationale": "Identical DOI and all fields. Same Journal of Philosophy article; hand key vs Zotero-style key."
+  },
+  {
+   "id": "10.4324/9781315851006",
+   "decision": "same",
+   "rationale": "Identical DOI, title, year, publisher, note. Same Routledge reissue of Sartre's 'Sketch for a Theory of the Emotions'; key-style duplicate."
+  },
+  {
+   "id": "10.1111/1468-0068.00369",
+   "decision": "same",
+   "rationale": "Byte-identical fields including DOI. Same Noûs article by Saul; Zotero-style key duplicate."
+  }
+ ]
+}

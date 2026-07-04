@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1093/brain/118.1.49", "decision": "same", "rationale": "Both Beckers & Zeki 1995, identical title/journal/volume/pages/DOI; only bib type differs."},
+  {"id": "10.1038/359636a0", "decision": "same", "rationale": "Both Behrmann/Winocur/Moscovitch 1992 Nature, identical fields and DOI."},
+  {"id": "10.1023/a:1008154927611", "decision": "same", "rationale": "Belhumeur/Kriegman/Yuille 'Bas-Relief Ambiguity'; 1999 IJCV journal version and 1997 conference precursor of the same work, same authors/title."},
+  {"id": "10.1016/s0166-4115(99)80057-0", "decision": "same", "rationale": "Tabossi/Bell/Johnson-Laird 1999 chapter, identical title/pages/DOI; only type differs."},
+  {"id": "10.1037/h0030553", "decision": "same", "rationale": "Beller 1971, identical title/journal/volume/pages/DOI."},
+  {"id": "10.1017/s0142716400009632", "decision": "same", "rationale": "Reilly/McIntire/Bellugi 1990, identical fields and DOI."},
+  {"id": "facing the future", "decision": "same", "rationale": "Belnap/Perloff/Xu 2001 'Facing the Future', identical title/author/publisher/ISBN."},
+  {"id": "10.1038/316439a0", "decision": "same", "rationale": "Hart/Berndt/Caramazza 1985 Nature, identical fields and DOI; survivor citekey 'bemdt' is an OCR typo of Berndt."},
+  {"id": "10.2307/2183530", "decision": "same", "rationale": "Benacerraf 'What Numbers Could not Be'; two 1965 Philosophical Review entries plus the 1983 Benacerraf/Putnam anthology reprint of the same paper."},
+  {"id": "10.1007/s11049-003-4698-2", "decision": "same", "rationale": "Benedicto & Brentari 2004 NLLT, identical title/pages/DOI."},
+  {"id": "10.1561/2200000006", "decision": "same", "rationale": "Bengio 'Learning Deep Architectures for AI', same DOI/title/author; 2007 journal (Found. Trends ML) vs 2009 Now book edition of the same monograph."},
+  {"id": "10.5840/monist197458212", "decision": "same", "rationale": "Bennett 'Depiction and Convention' in The Monist vol 58 pp 255-268; same author/title/volume, minor year (1974 vs 1971) and punctuation discrepancies."},
+  {"id": "10.1093/res/xxv.99.371", "decision": "same", "rationale": "Both 'Short Notices' by Bennett, Rachel 1974, identical fields and DOI."},
+  {"id": "10.1016/s0042-6989(96)00111-3", "decision": "same", "rationale": "Wolfe & Bennett 1997 'Preattentive Object Files', all four members identical."},
+  {"id": "10.1111/1468-0068.00447", "decision": "same", "rationale": "Karen Bennett 2003 Nous exclusion problem, identical fields and DOI."},
+  {"id": "10.1111/j.1933-1592.2010.00431.x", "decision": "same", "rationale": "David J. Bennett 2011 PPR, identical fields and DOI."},
+  {"id": "10.1305/ndjfl/1093635152", "decision": "same", "rationale": "van Benthem 1989 'Logical constants across varying types', identical fields and DOI; trivial page-range formatting difference."},
+  {"id": "language in action", "decision": "same", "rationale": "van Benthem 1991 'Language in Action', same title/author/year/ISBN family; publisher variants (North-Holland/Elsevier) are the same imprint."},
+  {"id": "10.1111/j.0963-7214.2004.01502004.x", "decision": "same", "rationale": "Beran & Beran 2004 Psychological Science, all three members identical."},
+  {"id": "10.1073/pnas.1117465109", "decision": "same", "rationale": "van den Berg et al. 2012 PNAS, all three members identical."},
+  {"id": "a treatise concerning the principles of human knowledge", "decision": "same", "rationale": "Berkeley 'Principles of Human Knowledge' 1710, all three same title/year/ISBN; Klemmt is an editor added on two entries."},
+  {"id": "three dialogues between hylas and philonous", "decision": "same", "rationale": "Berkeley 1713 'Three Dialogues', identical title/author/year/publisher/ISBN."},
+  {"id": "treatise concerning the principles of human knowledge", "decision": "same", "rationale": "Berkeley 'Treatise Concerning the Principles of Human Knowledge'; same work, differing edition years (1713 vs 1734)."},
+  {"id": "semiology of graphics diagrams networks maps", "decision": "same", "rationale": "Bertin 'Semiology of Graphics', same title/author; 1973 vs 1983 are printings of the same Wisconsin Press translation."},
+  {"id": "10.1016/0010-0277(83)90002-1", "decision": "same", "rationale": "Berwick 1983 'The role of grammars in models of language use', identical fields and DOI."}
+ ]
+}

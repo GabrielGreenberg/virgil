@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1371/journal.pone.0092852", "decision": "same", "rationale": "Both entries: Haynie/Bowern/LaPalombara, Sound Symbolism in the Languages of Australia, PLoS ONE 9(4) e92852, same DOI."},
+  {"id": "10.2307/2025472", "decision": "same", "rationale": "Both: Hazen, Counterpart-Theoretic Semantics for Modal Logic, J. Philosophy 76(6) 1979, same DOI."},
+  {"id": "10.1037//0096-1523.23.1.263", "decision": "same", "rationale": "Both: Hazeltine/Prinzmetal/Elliott, Locating illusory conjunctions, JEP:HPP 23(1) 263-277 1997; DOI differs only in double-slash normalization."},
+  {"id": "10.1073/pnas.92.24.11155", "decision": "same", "rationale": "Both: He & Nakayama, Visual attention to surfaces in 3D space, PNAS 92(24) 1995, same DOI."},
+  {"id": "the organization of behavior", "decision": "same", "rationale": "Both: Hebb, The Organization of Behavior, 1949, Wiley; author-format variant only."},
+  {"id": "looking into pictures", "decision": "same", "rationale": "All three: Hecht/Schwartz/Atherton (eds), Looking into pictures, 2003, MIT Press, same ISBN. First entry lacks author but note confirms same 2003 volume."},
+  {"id": "10.1215/00318108-109-4-483", "decision": "same", "rationale": "All three: Heck, Nonconceptual Content and the Space of Reasons, Philosophical Review 109(4) 2000, same DOI."},
+  {"id": "10.2307/1416950", "decision": "same", "rationale": "All three: Heider & Simmel, An Experimental Study of Apparent Behavior, Am. J. Psychology 57(2) 1944, same DOI."},
+  {"id": "10.1111/1468-0378.00055", "decision": "same", "rationale": "Both: Heil, Supervenience Deconstructed, European J. Philosophy 6(2) 1998, same DOI."},
+  {"id": "10.1515/9783110852820.164", "decision": "same", "rationale": "Both: Heim, File Change Semantics and the Familiarity Theory of Definiteness, 1983, De Gruyter, pp 164-189, same DOI."},
+  {"id": "on the projection problem for presuppositions", "decision": "same", "rationale": "All three are Heim's 'On the projection problem for presuppositions': WCCFL 1983 original, its 2002 Formal Semantics reprint (DOI), and a 1990 Pragmatics-anthology reprint. Same underlying work across reprint venues."},
+  {"id": "10.1007/bf00630732", "decision": "same", "rationale": "All four: Heim, E-Type pronouns and donkey anaphora, Linguistics & Philosophy vol 13 pp 137-177; the 1985/1990 year variants are the same L&P paper (same vol/pages)."},
+  {"id": "10.1093/jos/9.3.183", "decision": "same", "rationale": "Both: Heim, Presupposition Projection and the Semantics of Attitude Verbs, J. Semantics 9(3) 183-221; 1982 vs 1992 year differs but same journal/vol/pages, same work."},
+  {"id": "semantics in generative grammar", "decision": "same", "rationale": "Both: Heim (& Kratzer), Semantics in generative grammar, 1998, Blackwell, same ISBN; second entry drops Kratzer but same book."},
+  {"id": "10.1038/nature03526", "decision": "same", "rationale": "Both describe Riley et al., The flight paths of honeybees recruited by the waggle dance, Nature 435 2005, same DOI; survivor citekey is a host-paper reference id but fields match."},
+  {"id": "10.1037/0033-295x.103.3.429", "decision": "same", "rationale": "All three: van der Helm & Leeuwenberg, Goodness of visual regularities, Psych. Review 103(3) 1996, same DOI."},
+  {"id": "handbuch der physiologischen optik", "decision": "same", "rationale": "Both: Helmholtz, Handbuch der physiologischen Optik, 1867, L. Voss, same ISBN."},
+  {"id": "10.1037//0096-1523.20.4.826", "decision": "same", "rationale": "Both: Henderson & Anes, Roles of object-file review and type priming, JEP:HPP 20(4) 1994, same DOI."},
+  {"id": "10.3758/bf03202431", "decision": "same", "rationale": "Both: Henik & Tzelgov, Is three greater than five, Memory & Cognition 10(4) 389-395 1982, same DOI."},
+  {"id": "10.1523/jneurosci.18-04-01583.1998", "decision": "same", "rationale": "Both: Henriques et al., Gaze-Centered Remapping, J. Neuroscience 18(4) 1998, same DOI."},
+  {"id": "10.1086/377665", "decision": "same", "rationale": "Both: Henshilwood & Marean, The Origin of Modern Human Behavior, Current Anthropology 44(5) 2003, same DOI."},
+  {"id": "10.1038/440611a", "decision": "same", "rationale": "Both: Koch & Hepp, Quantum mechanics in the brain, Nature 440(7084) 2006, same DOI."},
+  {"id": "outlines of a theory of the light sense", "decision": "same", "rationale": "All three: Hering, Outlines of a theory of the light sense, 1964, Harvard UP, same ISBN."},
+  {"id": "language and spatial cognition", "decision": "same", "rationale": "All four: Herskovits, Language and Spatial Cognition, 1987, Cambridge UP, same ISBN; duplicate suffixed citekeys."},
+  {"id": "10.1145/344779.345074", "decision": "same", "rationale": "Both: Hertzmann & Zorin, Illustrating smooth surfaces, SIGGRAPH 2000, pp 517-526, same DOI."}
+ ]
+}

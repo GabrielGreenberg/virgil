@@ -1,0 +1,130 @@
+{
+ "verdicts": [
+  {
+   "id": "consciousness",
+   "decision": "same",
+   "rationale": "Both entries are Lycan's 1987 book 'Consciousness' (MIT Press, ISBN 9780262121248) — identical fields, only a citekey spelling variant."
+  },
+  {
+   "id": "10.1007/bf00627400",
+   "decision": "same",
+   "rationale": "Both are Lycan's 'Even and even if' (1991, Linguistics and Philosophy 14(2):115-150), sharing DOI 10.1007/bf00627400 with identical title/author. The misleading 'homuncular' citekey and article/incollection type difference are cosmetic."
+  },
+  {
+   "id": "consciousness and experience",
+   "decision": "same",
+   "rationale": "Both are Lycan's 1996 book 'Consciousness and experience' (MIT Press, ISBN 9780262121972) — identical fields, citekey spelling variant only."
+  },
+  {
+   "id": "representational theories of consciousness",
+   "decision": "same",
+   "rationale": "Both are Lycan's SEP entry 'Representational theories of consciousness'. The 2000 and 2019 years are just different revision dates of the same Stanford Encyclopedia article by the same author."
+  },
+  {
+   "id": "definiteness",
+   "decision": "same",
+   "rationale": "Both are Lyons' 1999 book 'Definiteness' (Cambridge University Press, ISBN 9780511052439) — identical fields, citekey spelling variant only."
+  },
+  {
+   "id": "10.1037/0033-2909.133.2.273",
+   "decision": "same",
+   "rationale": "Both are Zacks et al. 2007 'Event perception: A mind-brain perspective' (Psychological Bulletin 133(2):273-293), sharing DOI and identical author list."
+  },
+  {
+   "id": "connectionism",
+   "decision": "same",
+   "rationale": "Both are Macdonald & Macdonald 1995 'Connectionism' (Blackwell, ISBN 9780631197454) — identical fields, citekey spelling variant only."
+  },
+  {
+   "id": "10.1093/acprof:oso/9780198713241.003.0005",
+   "decision": "same",
+   "rationale": "Both are Machery 2016 'De-Freuding Implicit Attitudes' (Implicit Bias and Philosophy, Vol 1, pp.104-129), sharing DOI with identical title/author/booktitle."
+  },
+  {
+   "id": "10.1037/xlm0000842",
+   "decision": "same",
+   "rationale": "Both are Maciejewski & Klepousniotou 2020 'Disambiguating the ambiguity disadvantage effect' (JEP:LMC 46(9):1682-1700), sharing DOI and identical fields."
+  },
+  {
+   "id": "inattentional blindness",
+   "decision": "mixed",
+   "rationale": "The two books (mack1998inattentional / mack1998, MIT Press, ISBN 9780262632034) are the same 1998 monograph 'Inattentional blindness' (the 2000 year on one is just a reprint). But mack2003inattentio is a DIFFERENT work: the 2003 Current Directions in Psychological Science review article (12(5):180-184, DOI 10.1111/1467-8721.01256), pulled in only via a title+author match. It should not be merged with the book.",
+   "distinct_members": ["mack2003inattentio"]
+  },
+  {
+   "id": "10.1353/sls.1993.0012",
+   "decision": "same",
+   "rationale": "Both are Macken, Perry & Haas 1993 'Richly Grounding Symbols In ASL' (Sign Language Studies 81(1):375-394), sharing DOI and identical fields."
+  },
+  {
+   "id": "the cement of the universe",
+   "decision": "same",
+   "rationale": "Both are Mackie's 'The Cement of the Universe' — the 1974 Clarendon Press and 1980 Oxford University Press printings are the same monograph (different ISBNs reflect hardback vs later paperback issue)."
+  },
+  {
+   "id": "10.1037/0033-295x.99.4.605",
+   "decision": "same",
+   "rationale": "Both are Spelke, Breinlinger, Macomber & Jacobson 1992 'Origins of knowledge' (Psychological Review 99(4):605-632), sharing DOI and identical author list."
+  },
+  {
+   "id": "realism in mathematics",
+   "decision": "same",
+   "rationale": "Both are Maddy's 1990 'Realism in Mathematics' (Oxford University Press, ISBN 9781281980991) — identical fields including year 1990; the '1992' in one citekey is spurious."
+  },
+  {
+   "id": "10.1111/1467-9450.00233",
+   "decision": "same",
+   "rationale": "Both are Maguire 2001 'The retrosplenial contribution to human navigation' (Scand. J. Psychol. 42:225-238), sharing DOI 10.1111/1467-9450.00233; the second is a sparser variant of the same article."
+  },
+  {
+   "id": "10.3998/ergo.4641",
+   "decision": "same",
+   "rationale": "Both are Maier 2023 'Emojis as Pictures' (Ergo 10), sharing DOI and identical title/author/year."
+  },
+  {
+   "id": "10.1006/jmla.1996.0021",
+   "decision": "same",
+   "rationale": "Both are Taylor & Tversky 1996 'Perspective in Spatial Descriptions' (Journal of Memory and Language 35(3):371-391), sharing DOI and identical fields."
+  },
+  {
+   "id": "10.1523/jneurosci.5181-14.2015",
+   "decision": "same",
+   "rationale": "Both are Majaj, Hong, Solomon & DiCarlo 2015 (J. Neuroscience 35(39):13402-13418), sharing DOI and identical author list."
+  },
+  {
+   "id": "10.1037//0278-7393.7.1.15",
+   "decision": "same",
+   "rationale": "Both are Maki 1981 'Categorization and distance effects with spatial linear orders' (JEP:HLM 7(1):15-32); the DOI differs only by a slash-formatting artifact and all substantive fields match."
+  },
+  {
+   "id": "10.1073/pnas.92.18.8135",
+   "decision": "same",
+   "rationale": "Both are Malach et al. 1995 'Object-related activity revealed by fMRI in human occipital cortex' (PNAS 92(18):8135-8139), sharing DOI and identical author list."
+  },
+  {
+   "id": "10.1093/acprof:oso/9780198505006.003.0009",
+   "decision": "same",
+   "rationale": "All three are Maloney 2003 'Surface Colour Perception and Environmental Constraints' (pp.279-306), sharing DOI and identical title/author/pages."
+  },
+  {
+   "id": "10.1111/phpr.12368",
+   "decision": "same",
+   "rationale": "Both are Mandelbaum 2018 'Seeing and Conceptualizing' (PPR 97(2):267-283), sharing DOI and identical fields; the '2017' year on one citekey is a minor pub-date variant, published year is 2018 in both."
+  },
+  {
+   "id": "10.1037/0033-295x.99.4.587",
+   "decision": "same",
+   "rationale": "Both are Mandler 1992 'How to build a baby: II. Conceptual primitives' (Psychological Review 99(4):587-604), sharing DOI and identical fields."
+  },
+  {
+   "id": "10.1037/0278-7393.3.4.386",
+   "decision": "same",
+   "rationale": "Both are Mandler & Ritchey 1977 'Long-term memory for pictures' (JEP:HLM 3(4):386-396), sharing DOI and identical author/title."
+  },
+  {
+   "id": "10.2307/466187",
+   "decision": "same",
+   "rationale": "Both members carry DOI 10.2307/466187 with identical title 'Socialism under the Influence', author Patricia S. Mann, and Social Text 8(19/20):223. The 'rhetorical' citekeys are misleading but the actual bib fields are fully consistent, so both describe the same work."
+  }
+ ]
+}

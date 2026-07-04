@@ -1,0 +1,52 @@
+{
+  "verdicts": [
+    {
+      "cid": "parts of perception",
+      "verdict": "confirmed_same",
+      "rationale": "Both are phdthesis 'Parts of Perception' by Kevin Joseph Lande, 2018 (UCLA/University of California dissertation). Identical title, author, year, type. The 'california2018parts' citekey just encodes the granting institution. Same work.",
+      "offending": []
+    },
+    {
+      "cid": "10.1111/nous.12324",
+      "verdict": "confirmed_same",
+      "rationale": "All four members carry identical DOI 10.1111/nous.12324, title 'Mental structures', author Lande, Noûs vol 55 no 3 pp 649-677. Same shared DOI plus fully consistent fields. Same work.",
+      "offending": []
+    },
+    {
+      "cid": "10.1093/jos/ffp004",
+      "verdict": "confirmed_same",
+      "rationale": "All three share DOI 10.1093/jos/ffp004, title 'A Formal Semantic Analysis of Gesture', authors Lascarides & Stone, Journal of Semantics vol 26 no 4 pp 393-449. Surviving vs loser citekeys differ only by which co-author leads the key. Same work.",
+      "offending": []
+    },
+    {
+      "cid": "10.1111/nous.12404",
+      "verdict": "confirmed_same",
+      "rationale": "All four share DOI 10.1111/nous.12404, title 'The Structure of Analog Representation', authors Lee/Myers/Rabin, Noûs vol 57 no 1 pp 209-237. Only casing/citekey differs. Same work.",
+      "offending": []
+    },
+    {
+      "cid": "things and places how the mind connects with the world",
+      "verdict": "confirmed_same",
+      "rationale": "All four share ISBN 9780262162456, verified as Pylyshyn, 'Things and Places: How the Mind Connects with the World', MIT Press, 2007. The legacy citekeys (levine1984fm, pylyshyn1976fm) are misleading placeholders but every actual bibliographic field (title, author, year, publisher, ISBN) is consistent. Same book.",
+      "offending": []
+    },
+    {
+      "cid": "10.1002/9781405198431.wbeal20803",
+      "verdict": "confirmed_same",
+      "rationale": "Both incollection members share DOI 10.1002/9781405198431.wbeal20803, title 'Multimodal Corporate Communication', author Maier, Encyclopedia of Applied Linguistics, pp 1-7. Identical fields; only the citekey year suffix differs. Same work.",
+      "offending": []
+    },
+    {
+      "cid": "understanding comics",
+      "verdict": "confirmed_same",
+      "rationale": "Both are 'Understanding Comics' by Scott McCloud. They are different printings/editions (1993 Turtleback ISBN 9788440654991 vs 1994 Harper/William Morrow ISBN 9780060976255), verified as reprintings of the same 1993 work. For citation de-duplication these denote the same scholarly work; edition/ISBN variance is expected reprint variation, not a distinct work.",
+      "offending": []
+    },
+    {
+      "cid": "on the pragmatics of counterfactuals",
+      "verdict": "confirmed_same",
+      "rationale": "All members are Sarah Moss, 'On the Pragmatics of Counterfactuals'. The article members share DOI 10.1111/j.1468-0068.2010.00798.x = Noûs vol 46 no 3 pp 561-586 (verified as Moss 2012; the '2010' year on one member is the DOI's early-view year). The 'unpublished' members are the author's pre-publication manuscript of that same paper (author-hosted PDF). Manuscript and published article are the same work. Same work.",
+      "offending": []
+    }
+  ]
+}

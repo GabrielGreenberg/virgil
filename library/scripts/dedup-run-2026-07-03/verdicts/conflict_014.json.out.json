@@ -1,0 +1,66 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1007/s10988-007-9018-6",
+   "decision": "same",
+   "rationale": "Survivor gillies2007counterfactual and Gillies2007 (Zotero-style key) share identical title, author, journal, vol 30/no 3, pages 329-360, and DOI. Duplicate import; merge."
+  },
+  {
+   "id": "10.1215/00318108-2009-002",
+   "decision": "same",
+   "rationale": "gillies2009truthconditions, gillies2008truthconditions, and Gillies2009 all carry the same DOI, title, journal (Phil Review), vol 118/no 3, pages 325-349, year 2009. The '2008' in one citekey is a key artifact; content identical. Same work."
+  },
+  {
+   "id": "10.1007/s10539-017-9562-6",
+   "decision": "same",
+   "rationale": "Survivor and Gladziejewski2017 (Zotero key) share identical title, authors, journal, vol 32/no 3, pages 337-355, and DOI. Duplicate; merge."
+  },
+  {
+   "id": "10.7551/mitpress/4631.003.0009",
+   "decision": "distinct",
+   "distinct_members": ["glasgow1992computational"],
+   "rationale": "Survivor is the 1998 incollection reprint in 'Mind Readings' (MIT Press, DOI 10.7551/mitpress/4631.003.0009). glasgow1992computational is the original 1992 Cognitive Science article, vol 16/no 3, pages 355-394, with a DIFFERENT DOI (10.1207/s15516709cog1603_2). Both are independently deepIndexed. Distinct publications; exclude the 1992 article."
+  },
+  {
+   "id": "10.1007/s13752-017-0276-4",
+   "decision": "same",
+   "rationale": "Survivor and GodfreySmith2017 (Zotero key) share identical title, author, journal, vol 12/no 4, pages 275-286, and DOI. Duplicate; merge."
+  },
+  {
+   "id": "10.4324/9780203943267",
+   "decision": "same",
+   "rationale": "goldinmeadow2005resilience, GoldinMeadow2005 (note 'Preprint (forthcoming)'), and goldinmeadow2003aresilience (shadow key) all carry the same DOI, year 2005, publisher Psychology Press, and isbn. Same book; merge."
+  },
+  {
+   "id": "10.1017/s0140525x15001247",
+   "decision": "same",
+   "rationale": "All five members (goldinmeadow2015gesture, goldinmeadow2017gesture, goldin2017gesture, goldinmeadowbrentari2017gesture, GoldinMeadow2017) share the same DOI, title, authors, journal (BBS), volume 40. Year 2015 vs 2017 reflects online-first vs print-year; the '2017' variants and preprint-noted keys are the same article. Merge."
+  },
+  {
+   "id": "10.1093/cercor/bhr357",
+   "decision": "same",
+   "rationale": "Survivor golomb2011higher and Golomb2012b (Zotero key) share identical title, authors, journal, vol 22/no 12, pages 2794-2810, and DOI. Year 2011 vs 2012 is online-first vs print. Same work; merge."
+  },
+  {
+   "id": "10.1073/pnas.1113168109",
+   "decision": "same",
+   "rationale": "Survivor and Golomb2012a (Zotero key) share identical title, authors, journal (PNAS), vol 109/no 5, pages 1796-1801, and DOI. Duplicate; merge."
+  },
+  {
+   "id": "10.1037/xge0000017",
+   "decision": "same",
+   "rationale": "Survivor and Golomb2014 (Zotero key) share identical title, authors, journal (JEP:General), vol 143/no 6, pages 2262-2278, and DOI. Duplicate; merge."
+  },
+  {
+   "id": "10.32470/ccn.2018.1024-0",
+   "decision": "same",
+   "rationale": "golomb2018representations, Golomb2018, and golomb2018representa share the same DOI, title, author, venue (CCN 2018), and year. Only bib type differs (article/inproceedings/misc). Same work; merge."
+  },
+  {
+   "id": "languages of art",
+   "decision": "mixed",
+   "distinct_members": ["goodman1994languages"],
+   "rationale": "Survivor goodman1968languages (1968 Bobbs-Merrill, deepIndexed, canonical) and goodman1994languages (1994, DOI 10.2307/jj.18254729.34, deepIndexed, has_folder) are two independently-indexed editions with different DOIs and years — exclude the 1994. The remaining edition-variant keys (goodman1976languages, goodman1976, goodman1969languages, goodman1978languages) carry no independent indexing and fold into the survivor as edition shadow keys."
+  }
+ ]
+}

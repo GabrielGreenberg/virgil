@@ -1,0 +1,65 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1017/s1755020320000027",
+      "decision": "same",
+      "rationale": "Pagin2021 is an identical duplicate of survivor pagin2021compositionality (same title, author, year, journal, 14(3):551-591, same DOI). Zotero-style key vs hand key; only survivor indexed."
+    },
+    {
+      "id": "coherence and narrowing",
+      "decision": "same",
+      "rationale": "Pagin2023 (unpublished manuscript Dec 2023) matches survivor stub pagin2023coherence — same title, author, year. Same manuscript; only survivor indexed."
+    },
+    {
+      "id": "vision science",
+      "decision": "same",
+      "rationale": "Palmer2016 and palmer1999 are the same book (Vision Science, Palmer, 1999, MIT Press) as survivor, same ISBN family. Only survivor indexed."
+    },
+    {
+      "id": "philosophical naturalism",
+      "decision": "same",
+      "rationale": "papineau1993david is an identical duplicate of survivor papineau1993 — same title, author, year, publisher, ISBN 9780631189022. Neither indexed."
+    },
+    {
+      "id": "10.1093/0199243824.003.0005",
+      "decision": "same",
+      "rationale": "papineau2006phenomenal (published incollection 2006) is the published version of survivor preprint papineau2002phenomenal — same title, same DOI 10.1093/0199243824.003.0005. Preprint vs published; only survivor indexed."
+    },
+    {
+      "id": "10.1016/j.tics.2014.03.008",
+      "decision": "same",
+      "rationale": "Patel2014 is an identical duplicate of survivor patel2014topographic — same title, authors, 18(7):351-363, same DOI. Only survivor indexed."
+    },
+    {
+      "id": "10.1093/jos/ffac009",
+      "decision": "same",
+      "rationale": "patel2022steps and PatelGrosz2022 are duplicates of survivor patelgrosz2022steps — same title, authors, 39(4):693-748, same DOI. patel2022steps has a folder but is not indexed; only survivor is indexed."
+    },
+    {
+      "id": "10.1515/lingvan-2022-0004",
+      "decision": "same",
+      "rationale": "PatelGrosz2023 matches survivor patelgrosz2023primate — same title, authors, 9(1):63-72, same DOI 10.1515/lingvan-2022-0004. Year 2024 vs 2023 is online-vs-issue date. Only survivor indexed."
+    },
+    {
+      "id": "10.1111/phis.12184",
+      "decision": "same",
+      "rationale": "Pautz2020 is an identical duplicate of survivor pautz2020puzzle — same title, author, 30(1):257-272, same DOI. Only survivor indexed."
+    },
+    {
+      "id": "sense and content",
+      "decision": "same",
+      "rationale": "All five losers are the same Peacocke book Sense and Content (1983/1984, OUP), sharing ISBN 9781280809941 or bare-title variants. Legacy shadow keys and reimports; only survivor row exists as indexed target."
+    },
+    {
+      "id": "10.1093/aesthj/ayp016",
+      "decision": "mixed",
+      "rationale": "Peacocke2009 shares the title 'The Perception of Music: Sources of Significance' but is a DISTINCT publication: journal The Modern Schoolman 86(3):239-260 with a different DOI 10.5840/schoolman2009863/41, whereas the survivor is British Journal of Aesthetics 49(3):257-275, DOI 10.1093/aesthj/ayp016. Different venue, pages, and DOI — do not merge.",
+      "distinct_members": ["Peacocke2009"]
+    },
+    {
+      "id": "10.1007/978-3-031-52231-4_19",
+      "decision": "same",
+      "rationale": "Peacocke2024 is an identical duplicate of survivor peacocke2024two — same title, booktitle, 157-179, same DOI, same chapter. Only survivor indexed."
+    }
+  ]
+}

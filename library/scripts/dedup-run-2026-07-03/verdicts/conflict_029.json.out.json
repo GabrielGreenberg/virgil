@@ -1,0 +1,64 @@
+{
+ "verdicts": [
+  {
+   "id": "animal learning and cognition",
+   "decision": "same",
+   "rationale": "Pearce2008 is the 2nd edition (ISBN ...560, not indexed) and survivor pearce2008animal is the 3rd edition (ISBN ...553, deepIndexed). Different editions, but only ONE member is independently indexed, so per the editions rule they merge into the most-indexed survivor."
+  },
+  {
+   "id": "10.1111/j.1467-9531.2010.01228.x",
+   "decision": "same",
+   "rationale": "Identical DOI, title (loser only has a stray '3. ' section-number prefix), author, journal, volume, number, pages. Zotero-style key vs hand key of the same article; only survivor indexed."
+  },
+  {
+   "id": "10.1007/s10472-011-9247-9",
+   "decision": "same",
+   "rationale": "Identical DOI, title, author, journal, volume/number/pages. Zotero-style key duplicate; only survivor indexed."
+  },
+  {
+   "id": "10.1016/j.tics.2020.10.004",
+   "decision": "same",
+   "rationale": "Byte-for-byte identical fields and DOI. Pure duplicate import under a Zotero-style key."
+  },
+  {
+   "id": "logic of the future writings on existential graphs",
+   "decision": "distinct",
+   "rationale": "'Logic of the future: Writings on existential graphs' is a multi-volume De Gruyter work; the two members carry different years (2020 vs 2021) with no shared DOI, indicating distinct volumes of the multi-volume set rather than one work. Neither is indexed, so no indexed work is at risk, but they should be kept separate."
+  },
+  {
+   "id": "10.1098/rstb.2024.0207",
+   "decision": "same",
+   "rationale": "Identical fields and DOI. Duplicate import under a Zotero-style key."
+  },
+  {
+   "id": "10.1086/426852",
+   "decision": "same",
+   "rationale": "Identical fields and DOI. Duplicate import under a Zotero-style key."
+  },
+  {
+   "id": "10.1093/philmat/nkp020",
+   "decision": "same",
+   "rationale": "Same DOI, title, volume/number/pages, author. Year 2009 (online) vs 2010 (print) is the usual same-article discrepancy; only survivor indexed."
+  },
+  {
+   "id": "10.1007/s11098-010-9543-y",
+   "decision": "same",
+   "rationale": "All five members share the same DOI, title, journal, volume/number/pages. Year 2010 vs 2011 is the online/print discrepancy for one article. Only the survivor is indexed; the rest are shadow/duplicate keys."
+  },
+  {
+   "id": "10.1073/pnas.0707192105",
+   "decision": "same",
+   "rationale": "Identical fields and DOI. Duplicate import under a Zotero-style key."
+  },
+  {
+   "id": "10.1515/tl.2007.011",
+   "decision": "same",
+   "rationale": "All three members share the same DOI, title, author, journal, volume/number/pages. Only the survivor is indexed; the others are duplicate/shadow keys of the same article."
+  },
+  {
+   "id": "particularity and reflexivity in the intentional content of perception",
+   "decision": "same",
+   "rationale": "Same title, author, journal (minor punctuation variant), volume 21, number 56, pages 133--145. Loser adds DOI 10.1387/theoria.533 for the same Theoria article; duplicate import."
+  }
+ ]
+}

@@ -1,0 +1,129 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1186/s41235-019-0177-0",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors (Cohn, Engelen, Schilperoord), year, journal, DOI. Same work."
+    },
+    {
+      "id": "deep dyslexia",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors, year, publisher, ISBN. Same edited volume."
+    },
+    {
+      "id": "10.1098/rstb.1980.0082",
+      "decision": "same",
+      "rationale": "Both members: identical title, author, journal, volume, pages, DOI. Citekey spelling difference (persistences/persistencies) only."
+    },
+    {
+      "id": "10.1017/cbo9780511753466.005",
+      "decision": "same",
+      "rationale": "Both members: identical title, author, booktitle, pages, DOI. Same chapter."
+    },
+    {
+      "id": "imperatives meaning and illocutionary force",
+      "decision": "same",
+      "rationale": "Same title, authors (Condoravdi & Lauer), year, same Empirical Issues in Syntax and Semantics vol 9 venue. Same work."
+    },
+    {
+      "id": "10.1016/b978-1-55860-247-2.50019-x",
+      "decision": "same",
+      "rationale": "All three members: identical title, authors, year, pages, DOI. Same paper."
+    },
+    {
+      "id": "spatial and temporal properties of cone signals in alert macaque primary visual cortex",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors (Conway & Livingstone), year, journal, volume, first page. Same work."
+    },
+    {
+      "id": "10.1146/annurev.psych.49.1.447",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors, journal, volume, pages, DOI. Same Annual Review article."
+    },
+    {
+      "id": "10.1016/b978-0-12-170150-5.50009-3",
+      "decision": "same",
+      "rationale": "All five members: identical title, authors (Cooper & Shepard), year, booktitle, pages, DOI. Same chapter."
+    },
+    {
+      "id": "10.1109/tit.1975.1055458",
+      "decision": "same",
+      "rationale": "Both members: identical title, author, journal, volume, pages, DOI. Citekeys are misleading (montague) but both describe the same IEEE convergence-properties paper."
+    },
+    {
+      "id": "10.1111/1467-8721.ep11509795",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors, journal, volume, pages, DOI. Same work."
+    },
+    {
+      "id": "10.1037//0033-295x.95.1.115",
+      "decision": "same",
+      "rationale": "All three members: identical title, author, journal, volume, pages. DOI double-slash variant only. Same work."
+    },
+    {
+      "id": "10.1523/jneurosci.13-03-01202.1993",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors, journal, volume, pages, DOI. Same work."
+    },
+    {
+      "id": "10.1038/nrn755",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors (Corbetta & Shulman), journal, volume, pages, DOI. Same review."
+    },
+    {
+      "id": "10.1037/emo0000100",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors, year, volume, pages, DOI. Same work."
+    },
+    {
+      "id": "10.1016/0028-3932(68)90021-3",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors (Milner, Corkin, Teuber), journal, volume, pages, DOI. Same H.M. follow-up study."
+    },
+    {
+      "id": "10.1037/0022-3514.83.6.1314",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors, journal, volume, pages, DOI. Same work."
+    },
+    {
+      "id": "descartes",
+      "decision": "same",
+      "rationale": "Same title, author (Cottingham), year, publisher, ISBN. Notes cite differing translation-volume dates but both members are the same Cottingham 'Descartes' book."
+    },
+    {
+      "id": "elements of information theory",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors, year, publisher, ISBN. Edition labeled 'Second' vs '2nd' — same book."
+    },
+    {
+      "id": "the nature of explanation",
+      "decision": "same",
+      "rationale": "Same title, author (Craik), Cambridge University Press. Years differ (1943 original / 1952 reprint) but same work."
+    },
+    {
+      "id": "10.3138/1821-6811-l372-345p",
+      "decision": "same",
+      "rationale": "Both members: identical title, author, journal, volume, pages, DOI. Same article."
+    },
+    {
+      "id": "10.1111/j.1468-0017.1990.tb00159.x",
+      "decision": "same",
+      "rationale": "Both members: identical title, author (Crane), journal, volume, pages, DOI. Same article."
+    },
+    {
+      "id": "10.1093/mind/xcix.394.185",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors (Crane & Mellor), journal, volume, pages, DOI. Same article."
+    },
+    {
+      "id": "elements of mind",
+      "decision": "same",
+      "rationale": "Both members: identical title, author (Crane), year, publisher, ISBN. Same book."
+    },
+    {
+      "id": "10.2307/1913390",
+      "decision": "same",
+      "rationale": "Both members: identical title, authors (Crawford & Sobel), journal, volume, pages, DOI. Same article."
+    }
+  ]
+}

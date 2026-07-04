@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1016/j.tics.2015.07.013",
+      "decision": "same",
+      "rationale": "All four share identical title, authors, year, journal, vol 19(10), pages 603-615, DOI 10.1016/j.tics.2015.07.013. The 'a'/'b' suffix is a duplicate import (note: 'Variant version .1 suffix on file'), not Part I/II. The other two are Zotero-style keys. Same work."
+    },
+    {
+      "id": "10.1007/bf00632602",
+      "decision": "same",
+      "rationale": "Same title, author Roberts, year 1989, journal, vol 12(6), pages 683-721, DOI. Preprint/manuscript vs published, hand key vs Zotero key. Same work."
+    },
+    {
+      "id": "10.1093/acprof:osobl/9780199857999.001.0001",
+      "decision": "same",
+      "rationale": "Same book title, author Donnellan, year 2012, publisher OUP, DOI, ISBN 978-0-19-985799-9. Hand key vs Zotero key. Same work."
+    },
+    {
+      "id": "10.1101/2022.09.06.506403",
+      "decision": "same",
+      "rationale": "Identical title, authors, year, publisher openRxiv, DOI. Hand key vs Zotero key for the same bioRxiv preprint. Same work."
+    },
+    {
+      "id": "discourse relations ritualized situations and modal interpretation",
+      "decision": "same",
+      "rationale": "Identical manuscript: same title, author Dowell, year 2024, same note (forthcoming in Discourse and Coherence). Hand key vs Zotero key. Same work."
+    },
+    {
+      "id": "10.1075/aicr.92.11dra",
+      "decision": "same",
+      "rationale": "All share DOI 10.1075/aicr.92.11dra and pages 273-292. Survivor carries the full subtitle 'An introduction'; losers drop it but same DOI+same page range = same book chapter. The 'a'/'b' pair is a duplicate import, not companion papers. Same work."
+    },
+    {
+      "id": "10.1093/oxfordhb/9780199262618.003.0023",
+      "decision": "same",
+      "rationale": "Both deepIndexed but identical: same title, author Dretske, year 2009, booktitle, pages 381-393, DOI. Loser just adds ISBN. Hand key vs Zotero-style key. Same work."
+    },
+    {
+      "id": "10.1073/pnas.1322355111",
+      "decision": "same",
+      "rationale": "Identical title, authors, year, journal PNAS, vol 111(15), DOI. Hand key vs Zotero key. Same work."
+    },
+    {
+      "id": "drawing systems",
+      "decision": "same",
+      "rationale": "Same book 'Drawing systems', Dubery, 1972, publisher Studio Vista, identical ISBN 9780289701409. Loser citekey duberywillats reflects co-authorship but same ISBN = same book. Same work."
+    },
+    {
+      "id": "10.1201/9780203009543",
+      "decision": "same",
+      "rationale": "Same book, year 2003, DOI, ISBN 9780415307260, same note. Publisher variant (Taylor & Francis / CRC Press) is the same imprint. Hand key vs Zotero key. Same work."
+    },
+    {
+      "id": "10.1145/508530.508550",
+      "decision": "same",
+      "rationale": "Identical title, author Durand, year 2002, proceedings, pages 111-124, DOI. Hand key vs Zotero key. Same work."
+    },
+    {
+      "id": "10.1111/papq.12159",
+      "decision": "same",
+      "rationale": "Same title, author Echeverri, journal Pacific Philosophical Quarterly, vol 98(S1), pages 146-173, DOI 10.1111/papq.12159. Year differs (2016 online vs 2017 print) but same DOI = same article. Same work."
+    }
+  ]
+}

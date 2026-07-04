@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1017/s0022226707004768", "decision": "same", "rationale": "Both members identical title, authors, year, journal, pages, DOI (Body as subject, Meir et al. 2007)."},
+    {"id": "10.1162/neco.1997.9.4.777", "decision": "same", "rationale": "Both identical: SEEMORE, Mel 1997, Neural Computation, same DOI/pages."},
+    {"id": "10.1126/science.897687", "decision": "same", "rationale": "All three identical (Meltzoff & Moore 1977 imitation of facial/manual gestures), same DOI."},
+    {"id": "10.2307/1130058", "decision": "same", "rationale": "Both identical: Newborn Infants Imitate Adult Facial Gestures, Meltzoff & Moore 1983, same DOI."},
+    {"id": "10.1167/4.7.2", "decision": "same", "rationale": "Both identical: Meng & Tong 2004, Journal of Vision, same DOI."},
+    {"id": "10.1073/pnas.0408550102", "decision": "same", "rationale": "Both identical author list, title, DOI (Menzel et al. 2005 honey bees). Second entry mistyped as inproceedings but is the same PNAS article."},
+    {"id": "information relevance and social decisionmaking some principles and results of decision theoretic semantics", "decision": "same", "rationale": "Same title, author (Merin), year 1999, CSLI Logic Language and Computation; article vs incollection but same work."},
+    {"id": "10.1017/s0140525x07000891", "decision": "same", "rationale": "Both identical: Merker 2007 Consciousness without a cerebral cortex, BBS, same DOI. Second citekey mislabels year 2009 but fields are 2007 same work."},
+    {"id": "film language", "decision": "same", "rationale": "Metz, Film Language, same title/publisher. 1974 English translation vs 1968 original French edition of the same work; commonly merged."},
+    {"id": "10.7551/mitpress/1551.001.0001", "decision": "same", "rationale": "Both Being No One, Metzinger 2003, MIT Press, same DOI."},
+    {"id": "10.1037/h0035700", "decision": "same", "rationale": "Both identical fields: Role of details in long-term recognition, Nelson/Metzler/Reed 1974, same DOI. Second citekey (metzlershepard...transformational) is a misleading label but the actual bib fields describe the same work."},
+    {"id": "10.1037/h0031564", "decision": "same", "rationale": "Both identical: Meyer & Schvaneveldt 1971 facilitation, same DOI."},
+    {"id": "10.1080/10862967509547120", "decision": "same", "rationale": "Both identical: Meyer 1975 Identification of the Structure of Prose, same DOI."},
+    {"id": "10.1007/s11229-017-1657-8", "decision": "same", "rationale": "Both identical: Millar Smelling objects, Synthese, same DOI/pages (year 2019)."},
+    {"id": "10.2307/1419559", "decision": "same", "rationale": "All three identical fields: Plans and the Structure of Behavior, Miller/Galanter/Pribram, same DOI."},
+    {"id": "language and perception", "decision": "same", "rationale": "All six identical: Miller 1976 Language and perception, same publisher/ISBN."},
+    {"id": "10.1146/annurev.neuro.24.1.167", "decision": "same", "rationale": "Both identical: Miller & Cohen 2001 Integrative Theory of Prefrontal Cortex, same DOI."},
+    {"id": "10.2307/2185132", "decision": "same", "rationale": "Both identical: Millikan 1986 Thoughts Without Laws, Philosophical Review, same DOI."},
+    {"id": "in defense of proper functions", "decision": "same", "rationale": "All four have title In Defense of Proper Functions, Millikan 1989, Philosophy of Science 288-302. Fields consistent despite citekey millikan1989biosemantics being a misleading label (actual fields are the proper-functions paper, not Biosemantics)."},
+    {"id": "beyond concepts", "decision": "same", "rationale": "Both identical: Millikan Beyond Concepts, OUP, same ISBN."},
+    {"id": "the visual brain in action", "decision": "same", "rationale": "Both identical: Milner (& Goodale) 1995 The visual brain in action, same publisher/ISBN."},
+    {"id": "10.1016/0166-2236(83)90190-x", "decision": "same", "rationale": "Both identical: Mishkin/Ungerleider/Macko 1983 Object vision and spatial vision, same DOI."},
+    {"id": "10.1152/jn.1999.82.1.131", "decision": "same", "rationale": "Both same: Missal/Vogels/Li/Orban 1999 Shape Interactions in Macaque IT Neurons, same DOI/volume/pages."},
+    {"id": "10.1038/354152a0", "decision": "same", "rationale": "Both identical: Sakai & Miyashita 1991 Neural organization for long-term memory of paired associates, Nature, same DOI."},
+    {"id": "10.1146/annurev.ne.16.030193.001333", "decision": "same", "rationale": "Both same: Miyashita 1993 Inferior Temporal Cortex, Annu Rev Neurosci, same DOI/volume/pages."}
+  ]
+}

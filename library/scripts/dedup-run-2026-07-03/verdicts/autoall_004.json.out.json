@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.3758/bf03214143", "decision": "same", "rationale": "Identical title, authors, year, journal, volume/number/pages, and shared DOI."},
+    {"id": "10.1016/0010-0285(71)90015-6", "decision": "same", "rationale": "Identical title, author, year, and shared DOI; only entry type differs."},
+    {"id": "sense and sensibilia", "decision": "same", "rationale": "Same Austin work 'Sense and Sensibilia'; year differs (1956 vs 1964 edition) but title/author/publisher match."},
+    {"id": "10.1093/acprof:oso/9780198245537.001.0001", "decision": "same", "rationale": "Same Austin book 'How To Do Things With Words'; three editions (1962/1970/1975) of one work."},
+    {"id": "10.1002/j.1538-7305.1961.tb03987.x", "decision": "same", "rationale": "All three identical title/author/year and shared DOI; only entry types differ."},
+    {"id": "10.1037/0096-1523.26.2.834", "decision": "same", "rationale": "Identical title, authors, year, pages, and shared DOI."},
+    {"id": "10.1023/a:1008203301671", "decision": "same", "rationale": "Identical title, author, year, and shared DOI."},
+    {"id": "a cognitive theory of consciousness", "decision": "same", "rationale": "Same Baars book; identical title/author/year (1988) and ISBN despite one citekey saying 1989."},
+    {"id": "linguistic communication and speech acts", "decision": "same", "rationale": "Same Bach (& Harnish) book; identical title, year, publisher, ISBN."},
+    {"id": "thought and reference", "decision": "same", "rationale": "Same Bach book 'Thought and Reference'; identical ISBN, 1987 vs 1994 editions of one work."},
+    {"id": "10.1111/j.1468-0017.1994.tb00220.x", "decision": "same", "rationale": "All three carry 'Conversational Impliciture' 1994 with matching author/pages and shared DOI; stale citekey bach1987acommunicat but fields are consistent."},
+    {"id": "10.3758/bf03202530", "decision": "same", "rationale": "Identical title, authors (Bacon & Wallach), year, and shared DOI."},
+    {"id": "10.1016/s0079-7421(08)60452-1", "decision": "mixed", "rationale": "Survivor is the 1974 Baddeley & Hitch chapter 'Working Memory' (DOI, incollection). Member baddeley1986working is a different work: the 1986 solo Baddeley monograph 'Working memory' (Clarendon Press, own ISBN, no shared DOI) — matched only on normalized title.", "distinct_members": ["baddeley1986working"]},
+    {"id": "10.3115/980845.980860", "decision": "same", "rationale": "Same FrameNet paper; identical title/authors/year and shared DOI; only booktitle formatting differs."},
+    {"id": "10.1177/105971239900700203", "decision": "same", "rationale": "Identical title, authors, year, pages, and shared DOI; only note text differs."},
+    {"id": "10.1007/s10988-017-9204-0", "decision": "same", "rationale": "Identical title, author, year, and shared DOI."},
+    {"id": "10.1016/b978-1-55860-332-5.50011-0", "decision": "same", "rationale": "All three identical title/authors/year and shared DOI."},
+    {"id": "10.1126/science.171.3973.818", "decision": "same", "rationale": "Identical title, authors (Ball & Tronick), year, and shared DOI."},
+    {"id": "10.1207/s15516709cog0603_1", "decision": "same", "rationale": "All three identical title/authors (Feldman & Ballard)/year and shared DOI."},
+    {"id": "10.1017/s0140525x00021555", "decision": "same", "rationale": "Same Ballard paper 'Cortical connections and parallel processing'; member is a 1987 reprint in a different volume (different DOI) of the same 1986 article with identical title/author."},
+    {"id": "10.1093/oxfordhb/9780199262618.003.0018", "decision": "same", "rationale": "Identical title, author, year, and shared DOI."},
+    {"id": "10.1007/s11229-009-9585-x", "decision": "same", "rationale": "Identical title, author, year, and shared DOI; only citekey capitalization differs."},
+    {"id": "10.1038/nrn1476", "decision": "same", "rationale": "Identical title, author (Bar), year, and shared DOI."},
+    {"id": "saccade related activity in the lateral intraparietal area", "decision": "distinct", "rationale": "Part I/II companion papers wrongly merged on shared main title: barash1991saccadea is 'I. Temporal properties' (pp. 1095-1108) and barash1991saccadeb is 'II. Spatial properties' (pp. 1109-1124) — two distinct papers, no shared DOI."},
+    {"id": "10.1017/cbo9780511626197.034", "decision": "same", "rationale": "Identical title, author (Barlow), year, booktitle, pages, and shared DOI."}
+  ]
+}

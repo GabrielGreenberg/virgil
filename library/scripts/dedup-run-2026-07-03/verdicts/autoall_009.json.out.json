@@ -1,0 +1,124 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1515/9783110261325.21",
+   "decision": "same",
+   "rationale": "All three are Brentari's '3. Phonology' (Sign Language, De Gruyter, pp. 21-54, 2012) sharing the same DOI. brentari2012when carries stray NLLT journal fields but the title/author/DOI/pages are consistent."
+  },
+  {
+   "id": "there is no convincing evidence for operant or classical conditioning in adult humans",
+   "decision": "same",
+   "rationale": "Same Brewer 1974 chapter, identical title and booktitle (Cognition and the Symbolic Processes)."
+  },
+  {
+   "id": "visual areas in macaque cortex measured using functional magnetic resonance imaging",
+   "decision": "same",
+   "rationale": "Identical Brewer et al. 2002 J. Neurosci. paper, vol 22, pp 10416, differing only in author-initial spacing and abbreviation."
+  },
+  {
+   "id": "10.1111/j.1468-0378.2006.00220.x",
+   "decision": "same",
+   "rationale": "Two identical copies of Brewer 'Perception and Content' (EJP 14(2):165-181, 2006) sharing the DOI."
+  },
+  {
+   "id": "10.1016/j.neuron.2005.11.026",
+   "decision": "same",
+   "rationale": "Two identical copies of Brincat & Connor 'Dynamic Shape Synthesis in Posterior Inferotemporal Cortex' (Neuron 49(1):17-24) sharing the DOI."
+  },
+  {
+   "id": "10.1007/978-94-007-6001-1_26",
+   "decision": "same",
+   "rationale": "Same Brogaard 2014 chapter 'Seeing as a Non-Experiental Mental State', identical title/pages/DOI."
+  },
+  {
+   "id": "10.1111/tops.12221",
+   "decision": "same",
+   "rationale": "Same Brogaard & Gatzia 'Is Color Experience Cognitively Penetrable?' (Topics in Cog Sci 9(1):193-214) sharing the DOI."
+  },
+  {
+   "id": "10.1016/0004-3702(81)90028-x",
+   "decision": "same",
+   "rationale": "Both are Brooks 1981 'Symbolic reasoning among 3-D models and 2-D images' (Artificial Intelligence 17:285-348); the citekey brooks1991aintelligence is misleading but all fields and DOI match the 1981 work."
+  },
+  {
+   "id": "friday s footprint",
+   "decision": "same",
+   "rationale": "Identical Leslie Brothers 'Friday's Footprint' (OUP 1997, same ISBN)."
+  },
+  {
+   "id": "politeness",
+   "decision": "same",
+   "rationale": "Both are Brown & Levinson 'Politeness' (Cambridge 1987, identical ISBN 9780511813085)."
+  },
+  {
+   "id": "10.1152/jn.1981.46.2.369",
+   "decision": "same",
+   "rationale": "Same Bruce, Desimone & Gross 1981 paper on STS polysensory neurons; identical fields and DOI."
+  },
+  {
+   "id": "10.1177/026565908500100113",
+   "decision": "same",
+   "rationale": "Both refer to Bruner's 'Child's Talk: Learning to Use Language'; one is the book (Norton 1983), the other the same work carrying the review DOI/journal metadata, but they denote the same underlying work."
+  },
+  {
+   "id": "10.2307/1417965",
+   "decision": "same",
+   "rationale": "Two identical copies of Brunswik & Kamiya 'Ecological Cue-Validity of Proximity...' (Am. J. Psych. 66(1):20, 1953) sharing the DOI."
+  },
+  {
+   "id": "theory of language",
+   "decision": "same",
+   "rationale": "Both are Bühler's 'Theory of Language' (Benjamins); the 1934 original and 1990 translation are the same work."
+  },
+  {
+   "id": "the deictic field of language and deictic words",
+   "decision": "same",
+   "rationale": "Same Bühler 'The deictic field of language and deictic words' chapter (pp. 9-30, Wiley 1982), consistent across both entries."
+  },
+  {
+   "id": "h r",
+   "decision": "same",
+   "rationale": "Identical Bullock 1977 entries (title 'H., R', Freeman); garbled but the two members match each other exactly."
+  },
+  {
+   "id": "10.1093/cercor/5.3.247",
+   "decision": "same",
+   "rationale": "Same Bulthoff, Edelman & Tarr 'How Are Three-Dimensional Objects Represented in the Brain?' (Cereb. Cortex 5(3):247-260) sharing the DOI."
+  },
+  {
+   "id": "10.2307/2025348",
+   "decision": "same",
+   "rationale": "Two identical copies of Burge 'Demonstrative Constructions, Reference, and Truth' (J. Phil. 71(7):205, 1974) sharing the DOI."
+  },
+  {
+   "id": "10.1111/j.1475-4975.1979.tb00374.x",
+   "decision": "same",
+   "rationale": "Both are Burge 'Individualism and the Mental' (Midwest Studies 4:73-121, 1979) sharing the DOI."
+  },
+  {
+   "id": "russell s problem and intentional identity",
+   "decision": "same",
+   "rationale": "Same Burge 1983 'Russell's Problem and Intentional Identity'; one entry merely lacks booktitle/pages but matches."
+  },
+  {
+   "id": "10.1111/j.1468-0114.1989.tb00384.x",
+   "decision": "same",
+   "rationale": "Same Burge 'Individuation and Causation in Psychology' (Pacific Phil. Quarterly 70(4):303-322, 1989) sharing the DOI."
+  },
+  {
+   "id": "10.1093/oso/9780198239291.003.0007",
+   "decision": "same",
+   "rationale": "Both are Burge 'Mind-Body Causation and Explanatory Practice'; burge2007philosophy is the 2007 reprint in Foundations of Mind (different DOI/pages) but the same essay, grouped by title."
+  },
+  {
+   "id": "10.1111/j.1933-1592.2003.tb00316.x",
+   "decision": "same",
+   "rationale": "Same Burge 2003 'Social Anti-Individualism, Objective Reference' (PPR 67(3):682-690) sharing the DOI."
+  },
+  {
+   "id": "intentional properties and causation",
+   "decision": "same",
+   "rationale": "Both are Burge 2007 'Intentional properties and causation' (from Foundations of Mind); identical title/author/year."
+  }
+ ]
+}

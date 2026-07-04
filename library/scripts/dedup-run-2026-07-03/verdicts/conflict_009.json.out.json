@@ -1,0 +1,65 @@
+{
+  "verdicts": [
+    {
+      "id": "the imagery debate",
+      "decision": "same",
+      "rationale": "Both members are Tye, 'The Imagery Debate', 1991, MIT Press (same ISBN). Two deepIndexed members but they are the same book indexed twice under different citekeys; safe to merge."
+    },
+    {
+      "id": "10.1145/987657.987661",
+      "decision": "same",
+      "rationale": "Identical title, authors, year, and DOI (10.1145/987657.987661). Loser is an unindexed duplicate import; merge OK."
+    },
+    {
+      "id": "the number sense",
+      "decision": "mixed",
+      "rationale": "1997 first edition (ISBN 9780195110043) and 2011 revised edition (ISBN 9780199753871) are substantively different publications 14 years apart. None are indexed, but to preserve the distinct-edition boundary the 2011 members are excluded from the merge into the 1997 survivor.",
+      "distinct_members": ["dehaene2011number", "dehaene2011"]
+    },
+    {
+      "id": "consciousness explained",
+      "decision": "same",
+      "rationale": "All are Dennett, 'Consciousness Explained', 1991. Losers are the UK Allen Lane imprint of the same year's work; only the survivor is indexed. Same book, different imprint; merge OK."
+    },
+    {
+      "id": "10.1093/mind/fzp149",
+      "decision": "same",
+      "rationale": "Same title, author, journal, volume/number/pages, and DOI. Loser is a Zotero-key duplicate; merge OK."
+    },
+    {
+      "id": "meditations on first philosophy with selections from the objections and replies",
+      "decision": "same",
+      "rationale": "Fields are identical (same title, author, 1986 Cambridge edition, same ISBN and note). Descartes2013 is a Zotero-style key for the same work; merge OK."
+    },
+    {
+      "id": "10.1152/jn.00358.2002",
+      "decision": "same",
+      "rationale": "Same title, authors, journal, and DOI (10.1152/jn.00358.2002). Loser adds volume/pages but is the same article; merge OK."
+    },
+    {
+      "id": "10.1016/j.tics.2007.06.010",
+      "decision": "same",
+      "rationale": "Same title, authors, journal, volume/number/pages, and DOI. Loser is a Zotero-key duplicate; merge OK."
+    },
+    {
+      "id": "10.1016/j.neuron.2012.01.010",
+      "decision": "same",
+      "rationale": "All three share title, authors, journal, volume/number/pages, and DOI (10.1016/j.neuron.2012.01.010). Losers are duplicate imports; merge OK."
+    },
+    {
+      "id": "10.1080/00455091.2002.10716517",
+      "decision": "same",
+      "rationale": "Same title, author, journal, volume/number/pages, and DOI. Loser is a Zotero-key duplicate; merge OK."
+    },
+    {
+      "id": "10.1093/bjaesthetics/43.1.39",
+      "decision": "same",
+      "rationale": "Identical title, author, journal, volume/number/pages, and DOI. Loser is a Zotero-key duplicate; merge OK."
+    },
+    {
+      "id": "10.1002/lnc3.361",
+      "decision": "same",
+      "rationale": "Same title, author, journal, volume/number/pages, and DOI (10.1002/lnc3.361). Loser is a Zotero-key duplicate; merge OK."
+    }
+  ]
+}

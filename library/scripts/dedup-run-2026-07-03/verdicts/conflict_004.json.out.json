@@ -1,0 +1,65 @@
+{
+  "verdicts": [
+    {
+      "id": "iconic arithmetic vol",
+      "decision": "distinct",
+      "rationale": "Both entries have the truncated title 'Iconic arithmetic, vol' (Bricken, Unary Press) but different years: 2019 vs 2021. This is a known multi-volume work (Iconic Arithmetic Vol I 2019, Vol II 2021); the 'vol' fragment plus distinct years indicates different volumes of a multi-volume set, which must be kept separate. Neither is indexed, so stakes are low, but they are distinct publications.",
+      "distinct_members": ["bricken2021iconic"]
+    },
+    {
+      "id": "10.5840/philtopics201644217",
+      "decision": "same",
+      "rationale": "Identical DOI, title 'Depiction, Pictorial Experience, and Vision Science', author Briscoe, year 2016, Phil Topics 44(2):43-81. Briscoe2016 is a Zotero-style key duplicate of the hand key briscoe2016depiction. Only the survivor is deepIndexed."
+    },
+    {
+      "id": "10.1093/acprof:oso/9780199756018.001.0001",
+      "decision": "same",
+      "rationale": "Identical DOI, title 'Does Perception Have Content?', author Brogaard, year 2014, OUP. Brogaard2014 is a Zotero-style duplicate of brogaard2014does. Only the survivor is deepIndexed."
+    },
+    {
+      "id": "10.1080/00048402.2014.948463",
+      "decision": "same",
+      "rationale": "All three share DOI 10.1080/00048402.2014.948463, title 'Maps and Absent Symbols', author Bronner, AJP 93(1):43-59. bronner2015maps and Bronner2015 are year-shadow/Zotero duplicates of bronner2014maps (the 2015 year is the online-vs-print discrepancy for the same article). Only survivor is deepIndexed."
+    },
+    {
+      "id": "10.1093/oso/9780199207688",
+      "decision": "same",
+      "rationale": "Same book 'Textbook of evolutionary psychiatry', author Brune/Brüne, 2008, OUP, ISBN 9780199207688. The two keys differ only by citekey spelling (brown2008textbook vs brune2008textbook) and diacritic encoding; brune2008textbook is a duplicate import. Neither indexed."
+    },
+    {
+      "id": "10.1080/00048402.2024.2412243",
+      "decision": "same",
+      "rationale": "All three share DOI 10.1080/00048402.2024.2412243, title 'The Priority Map', author Buehler, AJP 103(1):235-260. buehler2024priority (year-shadow key, has_folder) and Buehler2025 (Zotero key) are duplicates of the deepIndexed survivor buehler2025priority. Only survivor is indexed; the folder on buehler2024priority is not independently indexed."
+    },
+    {
+      "id": "10.2307/2185131",
+      "decision": "same",
+      "rationale": "All three share DOI 10.2307/2185131, title 'Individualism and Psychology', Burge, Phil Review 95(1):3, 1986. burge1986tyler and burge1986philosophi are duplicate/shadow keys of the deepIndexed survivor burge1986individualism (the 'Preprint (forthcoming)' note is a stray artifact). Only survivor is indexed."
+    },
+    {
+      "id": "10.1111/j.1933-1592.2003.tb00307.x",
+      "decision": "same",
+      "rationale": "Identical DOI, title 'Perceptual Entitlement', Burge, PPR 67(3):503-548, 2003. Burge2003 is a Zotero-key duplicate of burge2003perceptual. Only survivor is deepIndexed."
+    },
+    {
+      "id": "perceptual objectivity",
+      "decision": "same",
+      "rationale": "Both are 'Perceptual Objectivity' by Burge, 2009. Survivor burge2009perceptual (deepIndexed) has sparse fields but the loser Burge2009 supplies the full metadata (Phil Review 118(3):285-324, DOI 10.1215/00318108-2009-001) for the same work — a Zotero-key duplicate. Only survivor is indexed."
+    },
+    {
+      "id": "10.1111/phpr.12136",
+      "decision": "same",
+      "rationale": "burge2014, burge2014a (empty shadow key), and burge2014replyblock all correspond to DOI 10.1111/phpr.12136, 'Reply to Block: Adaptation and the Upper Border of Perception', Burge, PPR 89(3):573-583, 2014. The empty burge2014a is a legacy alias; burge2014replyblock is a misc-type duplicate. Same work. None indexed."
+    },
+    {
+      "id": "10.1111/phpr.12093",
+      "decision": "same",
+      "rationale": "burge2014reply, burge2014b (empty shadow key), and burge2014breply all correspond to DOI 10.1111/phpr.12093, 'Reply to Rescorla and Peacocke...', Burge, PPR 88(2):485-501, 2014. Empty burge2014b is a legacy alias; burge2014breply is a misc-type duplicate. Same work. None indexed."
+    },
+    {
+      "id": "10.1093/oso/9780198871002.003.0009",
+      "decision": "same",
+      "rationale": "Identical DOI, title 'The Iconic Nature of Perception', Burge, in 'Perception: First Form of Mind', OUP, pp.293-364, Chapter 9, 2022. Burge2022 is a Zotero-key duplicate of the deepIndexed burge2022iconic. Only survivor is indexed."
+    }
+  ]
+}

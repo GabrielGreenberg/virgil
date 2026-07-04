@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "the nature of mental states", "decision": "same", "rationale": "All are Putnam 'The Nature of Mental States'; the 1975 reprint in Mind, Language and Reality plus 1967 originals — same work across editions."},
+  {"id": "reason truth and history", "decision": "same", "rationale": "Identical Putnam 'Reason, Truth and History', same year/publisher/ISBN."},
+  {"id": "representation and reality", "decision": "same", "rationale": "Identical Putnam 'Representation and Reality', same year/publisher/ISBN across all three."},
+  {"id": "10.1037/h0034650", "decision": "same", "rationale": "Identical Pylyshyn 1973 'What the mind's eye tells the mind's brain', shared DOI and all fields."},
+  {"id": "10.1037//0033-295x.86.4.383", "decision": "same", "rationale": "Identical Pylyshyn 1979 'Validating computational models', shared DOI and all fields."},
+  {"id": "10.1163/156856888x00122", "decision": "same", "rationale": "Pylyshyn & Storm 'Tracking multiple independent targets', same DOI/volume/pages; the 1998 year on one is a typo for 1988."},
+  {"id": "rules and representation chomsky and representational realism", "decision": "same", "rationale": "Identical Pylyshyn 1991 'Rules and representation: Chomsky and representational realism'."},
+  {"id": "10.1080/13506289408402294", "decision": "same", "rationale": "Identical Trick & Pylyshyn 1994 'Cueing and counting', shared DOI and all fields."},
+  {"id": "10.1080/13506280344000518", "decision": "same", "rationale": "Identical Pylyshyn 2004 'Some puzzling findings in MOT: I', shared DOI and all fields."},
+  {"id": "10.1080/13506280544000200", "decision": "same", "rationale": "Both members are Pylyshyn 2006 'Some puzzling findings in MOT: II' — same Part II, shared DOI and all fields."},
+  {"id": "the empirical case for bare demonstratives in vision", "decision": "same", "rationale": "Pylyshyn 'The Empirical Case for Bare Demonstratives in Vision' in the Lepore Festschrift; 2008/2009 dates and pages 254-274/255-274 are the same chapter."},
+  {"id": "10.1111/phis.12185", "decision": "same", "rationale": "Quilty-Dunn 2020 'Concepts and predication from perception to cognition', shared DOI; one is just marked forthcoming."},
+  {"id": "10.2307/2181906", "decision": "same", "rationale": "Quine 1951 'Two Dogmas of Empiricism', shared DOI and identical fields."},
+  {"id": "10.4159/9780674042469", "decision": "same", "rationale": "Quine 'Mathematical Logic' across editions (1940/1951), same title and publisher; same work."},
+  {"id": "word and object", "decision": "same", "rationale": "Quine 'Word and Object' across MIT Press editions (1960/1964/1969); same book."},
+  {"id": "quantifiers and propositional attitudes", "decision": "same", "rationale": "Quine 'Quantifiers and Propositional Attitudes' — 1956 J. Phil original and 1966 reprint in The Ways of Paradox; same essay."},
+  {"id": "ontological relativity and other essays", "decision": "same", "rationale": "Quine 'Ontological Relativity and Other Essays', 1968/1969 Columbia UP; same book."},
+  {"id": "10.1007/978-94-017-1466-2_2", "decision": "same", "rationale": "Quine 'Natural Kinds' — the essay in the Hempel Festschrift, also reprinted in Ontological Relativity and in Naming, Necessity and Natural Kinds; same underlying essay."},
+  {"id": "10.1007/bf00484806", "decision": "same", "rationale": "Quine 'Methodological reflections on current linguistic theory', shared DOI; 1970 Synthese original and 1972 Reidel reprint of same paper."},
+  {"id": "10.1037/0033-2909.129.5.643", "decision": "same", "rationale": "Identical Quinlan 2003 'Visual feature integration theory', shared DOI and all fields."},
+  {"id": "10.2307/357731", "decision": "same", "rationale": "Both members are the identical Beauvais review record of Quirk et al's Comprehensive Grammar, shared DOI and all fields."},
+  {"id": "a comprehensive grammar of the english language", "decision": "same", "rationale": "Identical Quirk, Greenbaum, Leech & Svartvik 1985 book, same publisher/ISBN."},
+  {"id": "10.1007/978-3-030-10445-0_4", "decision": "same", "rationale": "Identical Raftopoulos 2019 chapter, shared DOI and all fields across all three."},
+  {"id": "truth and probability", "decision": "same", "rationale": "Ramsey 'Truth and Probability', same essay (1926 original / 1965 reprint in Foundations of Mathematics), same pages 156-98."},
+  {"id": "general propositions and causality", "decision": "same", "rationale": "Ramsey 'General Propositions and Causality' across editions of his collected essays (1929/1931/1950); same essay."}
+ ]
+}

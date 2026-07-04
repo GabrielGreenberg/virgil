@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.3758/bf03197524", "decision": "same", "rationale": "Both entries share title, author (Palmer), year 1975, volume/number/pages, and DOI. Same Memory & Cognition article, one typed incollection the other article."},
+    {"id": "10.1016/0010-0285(77)90016-0", "decision": "same", "rationale": "Three identical entries (title, Palmer, 1977, vol 9(4), 441-474, same DOI). Same Cognitive Psychology article."},
+    {"id": "fundamental aspects of cognitive representation", "decision": "same", "rationale": "Same title 'Fundamental Aspects of Cognitive Representation', 1978, Palmer. Second entry's author 'Palmer and S' is garbled but clearly the same Palmer chapter."},
+    {"id": "modality and the english modals", "decision": "same", "rationale": "Same work 'Modality and the English Modals' by F. R. Palmer. Two editions (1979 Routledge / 1990 Longman) of the same book; title matches."},
+    {"id": "10.1016/0010-0285(80)90012-2", "decision": "same", "rationale": "Three identical entries (title, Palmer, 1980, vol 12(3), 285-305, same DOI). Same 'What makes triangles point' article."},
+    {"id": "10.1016/b978-0-12-084320-6.50015-3", "decision": "same", "rationale": "Two identical entries: same title, Palmer, 1983, Human and Machine Vision, 269-339, same DOI."},
+    {"id": "10.1108/eb049057", "decision": "same", "rationale": "Two identical entries: same title, Palmer Pamela, 1989, RSR 17(2), 63-92, same DOI."},
+    {"id": "affective neuroscience", "decision": "same", "rationale": "Same book 'Affective Neuroscience' by Jaak Panksepp, 1998, Oxford UP. One carries ISBN, the other the OUP DOI; consistent."},
+    {"id": "representation and explanation", "decision": "same", "rationale": "Same title 'Representation and Explanation', Papineau (D./David), both year 1984, Philosophy of Science vol 51, 550-572. Second gives DOI; consistent work."},
+    {"id": "10.1093/cercor/bht418", "decision": "same", "rationale": "Same title, authors (Park, Konkle, Oliva), 2015, Cerebral Cortex 25(7), 1792-1805, same DOI. Citekey year 2014 vs 2015 but fields identical."},
+    {"id": "nonexistent objects", "decision": "same", "rationale": "Two identical entries: 'Nonexistent objects', Terence Parsons, 1980, Yale UP, same ISBN."},
+    {"id": "10.1002/9780470751305.ch4", "decision": "same", "rationale": "Same work 'Toward the Logic of Tense and Aspect in English' by Bennett (& Partee). Survivor is the 2004 reprint in Compositionality in Formal Semantics (with chapter DOI); member is the original 1978 IULC edition. Same intellectual work."},
+    {"id": "10.1007/bf00627707", "decision": "same", "rationale": "Two identical entries: 'Nominal and temporal anaphora', Partee, 1984, L&P 7(3), 243-286, same DOI."},
+    {"id": "10.1002/9780470751305", "decision": "same", "rationale": "Same book 'Compositionality in Formal Semantics', Partee, 2004. One carries the Wiley DOI, other the ISBN; consistent."},
+    {"id": "10.1016/j.cogpsych.2009.06.001", "decision": "same", "rationale": "Same title, authors (Pauen, Träuble), 2009, Cognitive Psychology 59(3), 275-295, same DOI."},
+    {"id": "10.1093/acprof:oso/9780195386196.003.0010", "decision": "same", "rationale": "Three identical entries: 'Why Explain Visual Experience in Terms of Content?', Pautz, 2010, Perceiving the World, 254-309, same DOI."},
+    {"id": "10.4324/9781315733029-3", "decision": "same", "rationale": "Two identical entries: 'Experiences Are Representations', Pautz, 2017, 23-42, same DOI."},
+    {"id": "10.1093/aristoteliansupp/60.1.1", "decision": "same", "rationale": "Three entries, same title 'Analogue Content', Peacocke, 1986, Aristotelian Society Suppl vol 60, same DOI. Minor page 1-17 vs 1-18 formatting."},
+    {"id": "a study of concepts", "decision": "same", "rationale": "Three entries: 'A study of concepts', Christopher Peacocke, MIT Press, same ISBN. One citekey says 1993 but all fields are the 1992 book."},
+    {"id": "10.1093/0199241406.003.0004", "decision": "same", "rationale": "Same essay 'Conscious Attitudes, Attention, and Self-Knowledge' by Peacocke, reprinted in two volumes (Knowing Our Own Minds 2000 with DOI; Privileged Access 2003 without). Same work."},
+    {"id": "10.1111/phpr.12092", "decision": "same", "rationale": "Two identical entries: 'Perception, Biology, Action, and Knowledge', Peacocke, 2014, PPR 88(2), 477-484, same DOI."},
+    {"id": "10.1016/s0079-7421(08)60566-6", "decision": "same", "rationale": "Two identical entries: 'Structural and Probabilistic Causality', Pearl, 1996, 393-435, same DOI."},
+    {"id": "10.1023/a:1005233831499", "decision": "same", "rationale": "Two identical entries: 'Probabilities Of Causation', Pearl, 1999, Synthese 121, 93-149, same DOI."},
+    {"id": "geographic and manipulable space in two tamil linguistic systems", "decision": "same", "rationale": "Two identical entries, same title, Eric Pederson, 1993, MPI Cognitive Anthropology Research Group. Only type differs (book vs incollection)."},
+    {"id": "collected papers of charles sanders peirce", "decision": "same", "rationale": "Same multi-volume work 'Collected Papers of Charles Sanders Peirce', Harvard UP. Volumes/printings dated differently (1960 vs 1974) but same work/author/publisher."}
+  ]
+}

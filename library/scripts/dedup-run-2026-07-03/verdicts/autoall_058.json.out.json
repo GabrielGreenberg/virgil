@@ -1,0 +1,129 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1075/cilt.77.11ram",
+      "decision": "same",
+      "rationale": "Both entries are Ramsey (1991) 'Proto-Korean and the Origin of Korean Accent', same booktitle/journal, pages 215-238, shared DOI 10.1075/cilt.77.11ram. (Odd citekeys but identical work.)"
+    },
+    {
+      "id": "the thinking computer",
+      "decision": "same",
+      "rationale": "Identical: Raphael 1976 'The thinking computer', W. H. Freeman, ISBN 9780716707226. Same work, duplicate citekeys."
+    },
+    {
+      "id": "a theory of justice",
+      "decision": "same",
+      "rationale": "Rawls 'A Theory of Justice' — 1971 original vs 1999 revised edition. Same canonical work in two editions; standard to merge."
+    },
+    {
+      "id": "direct reference",
+      "decision": "same",
+      "rationale": "Recanati 'Direct Reference' — 1993 Blackwell (ISBN 9780631181545) and 1997 Blackwell paperback reprint (ISBN 9780631206347). Same work, different printings."
+    },
+    {
+      "id": "10.1023/a:1015267930510",
+      "decision": "same",
+      "rationale": "Both Recanati 2002 'Unarticulated Constituents', Linguistics and Philosophy 25(3):299-345, shared DOI. Identical."
+    },
+    {
+      "id": "10.1098/rspb.2013.0683",
+      "decision": "same",
+      "rationale": "Both Narendra, Gourmaud, Zeil 2013 'Mapping the navigational knowledge of individually foraging ants, Myrmecia croslandi', Proc. R. Soc. B 280:20130683, shared DOI. Same work (one lacks DOI field but identical bib)."
+    },
+    {
+      "id": "10.1126/science.1135531",
+      "decision": "same",
+      "rationale": "Both Heinze & Homberg 2007 'Maplike Representation of Celestial E-Vector Orientations...', Science 315(5814):995-997, shared DOI. Identical."
+    },
+    {
+      "id": "honeybee navigation en route to the goal visual flight control and odometry",
+      "decision": "same",
+      "rationale": "Both Srinivasan, Zhang, Lehrer, Collett 1996 'Honeybee Navigation En Route to the Goal', J. Exp. Biol. 199:237-244. Same work (one has DOI 10.1242/jeb.199.1.237, both identical otherwise)."
+    },
+    {
+      "id": "10.21825/philosophica.82606",
+      "decision": "same",
+      "rationale": "Both Reinhart 1981 'Pragmatics and Linguistics: an analysis of Sentence Topics', Philosophica 27:53-94, shared DOI. Identical."
+    },
+    {
+      "id": "10.1016/0004-3702(80)90014-4",
+      "decision": "same",
+      "rationale": "Both Reiter 1980 'A logic for default reasoning', Artificial Intelligence 13(1-2):81-132, shared DOI. Identical."
+    },
+    {
+      "id": "10.1016/0004-3702(89)90008-8",
+      "decision": "same",
+      "rationale": "Both Reiter & Mackworth 1989 'A logical framework for depiction and image interpretation', AI 41(2):125-155, shared DOI. Identical."
+    },
+    {
+      "id": "10.1037/0096-1523.5.3.522",
+      "decision": "same",
+      "rationale": "Both Shulman, Remington, McLean 1979 'Moving attention through visual space', JEP:HPP 5(3):522-526, shared DOI. Same work (citekeys differ by first-author choice)."
+    },
+    {
+      "id": "10.1037/0033-295x.102.1.101",
+      "decision": "same",
+      "rationale": "Both Rensink & Enns 1995 'Preemption effects in visual search', Psychological Review 102(1):101-130, shared DOI. Identical."
+    },
+    {
+      "id": "10.1080/135062800394667",
+      "decision": "same",
+      "rationale": "Both Rensink 2000 'The Dynamic Representation of Scenes', Visual Cognition 7(1-3):17-42, shared DOI. Same work (one flagged as preprint note, misspelled citekey rensnik)."
+    },
+    {
+      "id": "10.1016/j.tics.2004.11.006",
+      "decision": "same",
+      "rationale": "Both Simons & Rensink 2005 'Change blindness: past, present, and future', TICS 9(1):16-20, shared DOI. Identical."
+    },
+    {
+      "id": "10.1093/oso/9780198871217.003.0010",
+      "decision": "same",
+      "rationale": "All three are Rett 2021 'A comparison of expressives and miratives', same booktitle, pages 191-215, shared DOI. Triplicate of one work."
+    },
+    {
+      "id": "10.2307/2214218",
+      "decision": "same",
+      "rationale": "All three are Rey 1995 'A Not \"Merely Empirical\" Argument for a Language of Thought', Philosophical Perspectives 9, shared DOI (third lacks DOI but identical title/author/year). Same work."
+    },
+    {
+      "id": "10.1007/s10988-008-9027-0",
+      "decision": "same",
+      "rationale": "Both Reyle, Rossdeutscher, Kamp 'Ups and downs in the theory of temporal reference'. Survivor is the 2007 published L&P article (30(5):565-635, DOI); member is the 2000 Stuttgart working-paper version. Same work, preprint vs published."
+    },
+    {
+      "id": "10.2307/2185391",
+      "decision": "same",
+      "rationale": "Both Richard 1987 'Quantification and Leibniz's Law', The Philosophical Review 96(4):555, shared DOI. Identical."
+    },
+    {
+      "id": "propositional attitudes",
+      "decision": "same",
+      "rationale": "Identical: Mark Richard 1990 'Propositional attitudes', Cambridge University Press, ISBN 9780521388191. Duplicate citekeys."
+    },
+    {
+      "id": "the philosophy of rhetoric",
+      "decision": "same",
+      "rationale": "Identical: I. A. Richards 1936 'The philosophy of rhetoric', Oxford University Press, ISBN 9780415217316. Duplicate citekeys."
+    },
+    {
+      "id": "10.1364/josaa.3.001483",
+      "decision": "same",
+      "rationale": "Both Richards, Dawson, Whittington 1986 'Encoding contour shape by curvature extrema', JOSA A 3(9):1483, shared DOI. Identical."
+    },
+    {
+      "id": "10.1037/0096-1523.5.1.13",
+      "decision": "same",
+      "rationale": "Both Richman, Mitchell, Reznick 1979 'Mental travel: Some reservations', JEP:HPP 5(1):13-18, shared DOI. Same work (citekeys differ by first-author choice)."
+    },
+    {
+      "id": "10.1016/s0896-6273(00)80824-7",
+      "decision": "same",
+      "rationale": "All three are Riesenhuber & Poggio 1999 'Are Cortical Models Really Bound by the Binding Problem?', Neuron 24(1):87-93, shared DOI. Triplicate of one work."
+    },
+    {
+      "id": "10.1038/81479",
+      "decision": "same",
+      "rationale": "Both Riesenhuber & Poggio 2000 'Models of object recognition', Nature Neuroscience 3:1199-1204. Same work (one has DOI 10.1038/81479, both identical otherwise)."
+    }
+  ]
+}

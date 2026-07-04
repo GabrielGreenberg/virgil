@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1364/josa.61.000001", "decision": "same", "rationale": "All three share DOI, title 'Lightness and Retinex Theory', Land & McCann 1971, JOSA 61(1)."},
+    {"id": "10.1038/scientificamerican1277-108", "decision": "same", "rationale": "All 'The Retinex Theory of Color Vision', Land 1977, Sci Am 237(6); two share DOI, third matches title+year+author."},
+    {"id": "10.1073/pnas.80.16.5163", "decision": "same", "rationale": "Both share DOI, identical title/author/year (Land 1983 PNAS)."},
+    {"id": "10.1017/s0140525x00029733", "decision": "same", "rationale": "Identical records, shared DOI (Landau & Jackendoff 1993 BBS)."},
+    {"id": "10.1007/978-94-011-3212-1", "decision": "same", "rationale": "Both 'Structures for Semantics', Landman 1991 (year field 1991 in both); same monograph."},
+    {"id": "10.1075/la.55.10lan", "decision": "same", "rationale": "Both same DOI, same title 'Predicate-argument mismatches and the Adjectival Theory of indefinites', author Landman, pages 211-237."},
+    {"id": "10.1016/0042-6989(94)00176-m", "decision": "same", "rationale": "Identical records, shared DOI (Landy et al. 1995 Vision Research)."},
+    {"id": "10.1111/j.1551-6708.1987.tb00863.x", "decision": "same", "rationale": "All 'Why a Diagram is (Sometimes) Worth Ten Thousand Words', Larkin & Simon; four 1987 Cog Sci with DOI, two are the 1987 paper republished in the 1995 Diagrammatic Reasoning volume (same work reprinted)."},
+    {"id": "10.1007/bf01063877", "decision": "same", "rationale": "All three identical, shared DOI (Larson & Ludlow 1993 'Interpreted logical forms')."},
+    {"id": "10.7551/mitpress/4076.001.0001", "decision": "same", "rationale": "All 'Knowledge of Meaning', 1995, MIT Press; survivor has full Larson & Segal authorship, others dropped Segal but same book."},
+    {"id": "10.1007/bf00986208", "decision": "same", "rationale": "All same DOI/title/year; the techreport member is the DYANA preprint of the same Lascarides & Asher 1993 work."},
+    {"id": "10.1075/gest.9.2.01las", "decision": "same", "rationale": "All three share DOI, 'Discourse coherence and gesture interpretation', Lascarides & Stone 2009 Gesture."},
+    {"id": "10.1093/acprof:oso/9780199233151.003.0008", "decision": "same", "rationale": "Both same DOI, 'Are we studying consciousness yet?', Lau 2008."},
+    {"id": "concepts and cognitive science", "decision": "same", "rationale": "Both 'Concepts and Cognitive Science', Laurence & Margolis 1999, Concepts: Core Readings; trivial page-range/case variation."},
+    {"id": "10.1093/acprof:oso/9780195179675.003.0013", "decision": "same", "rationale": "All three share DOI, 'Number and Natural Language', Laurence & Margolis 2005."},
+    {"id": "10.1145/1015706.1015751", "decision": "same", "rationale": "Both same DOI, 'Efficient BRDF importance sampling using a factored representation', Lawrence/Rusinkiewicz/Ramamoorthi 2004."},
+    {"id": "10.3758/bf03214318", "decision": "same", "rationale": "Both same DOI, 'Temporal numerosity estimates for word lists', Lawrence 1971."},
+    {"id": "10.1016/s0001-6918(98)00052-3", "decision": "same", "rationale": "Identical records, shared DOI (Lawson 1999 Acta Psychologica)."},
+    {"id": "10.1037/0096-1523.1.2.95", "decision": "same", "rationale": "Both same DOI, 'Chronometric analysis of the method of loci', Lea 1975, JEP:HPP 1(2):95-104."},
+    {"id": "relative clauses licensing and the nature of the derivation", "decision": "same", "rationale": "Both 'Relative Clauses, Licensing and the Nature of the Derivation', Lebeaux; same intellectual work cited with year/venue drift (1990 NELS vs 1992 book), title+author match."},
+    {"id": "10.1016/j.cogpsych.2005.07.002", "decision": "same", "rationale": "Both same DOI, 'Re-visiting the competence/performance debate in the acquisition of the counting principles', Le Corre et al. 2006."},
+    {"id": "10.1364/josaa.20.001434", "decision": "same", "rationale": "Both same DOI, 'Hierarchical Bayesian inference in the visual cortex', Lee & Mumford 2003."},
+    {"id": "10.1080/17470210802303826", "decision": "same", "rationale": "Identical records, shared DOI (Leek et al. 2009 QJEP)."},
+    {"id": "10.2307/410759", "decision": "same", "rationale": "Both same DOI, 'Rules for English Pronominalization', Lees & Klima 1963 Language 39(1)."},
+    {"id": "10.4324/9780203647028", "decision": "same", "rationale": "Both 'Introducing Social Semiotics', van Leeuwen, Routledge; same DOI, trivial 2004/2005 year drift."}
+  ]
+}

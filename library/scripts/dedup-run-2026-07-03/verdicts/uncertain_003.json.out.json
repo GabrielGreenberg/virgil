@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "bazin1967cinema||bazin1967what",
+   "decision": "same",
+   "rationale": "Both are Bazin's 'What is Cinema?', 1967, University of California Press. 'b' just annotates the 2-volume set. Same work."
+  },
+  {
+   "id": "beaver1995presupposition||beaver1997presupposition",
+   "decision": "distinct",
+   "rationale": "'a' is Beaver's 1995 PhD thesis 'Presupposition and Assertion in Dynamic Semantics'; 'b' is a separate 1996 handbook chapter 'Presupposition' in Handbook of Logic and Language, pp. 939-1008. Different works."
+  },
+  {
+   "id": "beaver2001presupposition||beaver2002presupposition",
+   "decision": "unsure",
+   "rationale": "'a' is the 2001 CSLI book 'Presupposition and assertion in dynamic semantics' (with ISBN). 'b' is titled only 'Presupposition', CSLI 2002 — different title and year; could be the same book mis-titled or a distinct entry. Not confident enough to merge."
+  },
+  {
+   "id": "behrmann1998||behrmann1998object",
+   "decision": "same",
+   "rationale": "Same title, authors (Behrmann, Zemel, Mozer), 1998, J. Exp. Psychol.: HPP 24(4):1011-1036. 'a' has a mangled title with journal text spliced in but is clearly the same article."
+  },
+  {
+   "id": "biederman1982scene||biedermanetal1982scene",
+   "decision": "same",
+   "rationale": "Identical title, authors, 1982, Cognitive Psychology 14(2):143-177, DOI 10.1016/0010-0285(82)90007-x. Same work."
+  },
+  {
+   "id": "biederman1982scene||mezzanotte1982scene",
+   "decision": "same",
+   "rationale": "Same article — identical title, authors, year, volume/issue/pages, and DOI 10.1016/0010-0285(82)90007-x. 'b' is just typed as misc under a co-author citekey."
+  },
+  {
+   "id": "biederman1982scene||rabinowitz1982scene",
+   "decision": "same",
+   "rationale": "Same article — identical title, authors, year, volume/issue/pages, and DOI 10.1016/0010-0285(82)90007-x. 'b' is a co-author-keyed duplicate."
+  },
+  {
+   "id": "blakemore1970lateral||blakemore1972lateral",
+   "decision": "distinct",
+   "rationale": "Different papers: 'a' is the 1970 Nature paper on the human visual system (Blakemore, Carpenter, Georgeson); 'b' is the 1972 Exp. Brain Res. paper on the cat's visual cortex (Blakemore, Tobin). Different co-authors, journals, and DOIs."
+  },
+  {
+   "id": "block1980readings||block1981readings",
+   "decision": "distinct",
+   "rationale": "Volume 1 (1980) vs Volume 2 (1981) of 'Readings in Philosophy of Psychology'. Different volumes are distinct works."
+  },
+  {
+   "id": "block1981imagery||block1982imagery",
+   "decision": "unsure",
+   "rationale": "Both titled 'Imagery' by/ed. Block, but different publishers (MIT Press 1981 with ISBN vs Springer US 1980 with DOI) and different years. Possibly the same edited volume under two publishers, or genuinely distinct; not confident enough to merge."
+  },
+  {
+   "id": "boer1985knowing||boer1986knowing",
+   "decision": "same",
+   "rationale": "Both 'Knowing Who' by Boër and Lycan, MIT Press; the 1985/1986 split is a one-year date discrepancy for the same book (MIT Press 1986)."
+  },
+  {
+   "id": "bordwell1986classical||bordwellstaigerthompson1985classical",
+   "decision": "unsure",
+   "rationale": "'b' is the 1985 Columbia UP book 'The Classical Hollywood Cinema'. 'a' is a Poetics Today 1986 entry (JSTOR, vol 7(1), p179, DOI 10.2307/1772109) — likely a review/notice of the book rather than the book itself. Same underlying title but different bibliographic item; not confident they should merge."
+  },
+  {
+   "id": "bordwell2001film||bordwellthompson2004film",
+   "decision": "same",
+   "rationale": "Both 'Film Art: An Introduction', Bordwell & Thompson, 2003, McGraw-Hill, same ISBN 9780072874617 (7th ed). Same work."
+  },
+  {
+   "id": "bordwell2013film||bordwellthompson2010film",
+   "decision": "distinct",
+   "rationale": "Different editions of 'Film Art: An Introduction': 'b' is the Ninth Edition (2010); 'a' is the 2013 edition (10th). Distinct editions."
+  },
+  {
+   "id": "bordwelletal1985classical||bordwellstaigerthompson1985classical",
+   "decision": "same",
+   "rationale": "Both 'The Classical Hollywood Cinema', Bordwell/Staiger/Thompson, 1985, Columbia UP. Same book."
+  },
+  {
+   "id": "bordwellthompson2010film||bordwellthompson2012film",
+   "decision": "unsure",
+   "rationale": "'a' is Film Art Ninth Edition (2010); 'b' is Film Art 2012 (edition unspecified). 2012 is not a standard new-edition year (9th=2010, 10th=2013), so 'b' may be a reprint of the 9th or a different entry. Not confident enough to merge."
+  },
+  {
+   "id": "bravo2009specificity||bravo2012task",
+   "decision": "distinct",
+   "rationale": "'a' is 'The specificity of the search template' (J. Vision 2009, 9(1):34); 'b' is 'Task Demands Determine the Specificity of the Search Template' (2012, different journal/volume). Different papers."
+  },
+  {
+   "id": "bressan2018systemisers||villmoare2019sexual",
+   "decision": "distinct",
+   "rationale": "Entirely different papers (Bressan on systemisers/maths vs Villmoare et al. on Homo erectus footprints), different authors, titles, and journals. They only share the placeholder/truncated DOI '10.1038/', which is erroneous."
+  },
+  {
+   "id": "briscoe2016multisensory||briscoe2017multisensory",
+   "decision": "distinct",
+   "rationale": "Part I (2016, Phil Compass 11(2):121-133, DOI ...12227) vs Part II (2017, 12(12):e12423, DOI ...12423) of the same series. Distinct papers with different DOIs."
+  },
+  {
+   "id": "brownsteinsaul2016implicit||brownsteinsaul2016moral",
+   "decision": "distinct",
+   "rationale": "'a' is the combined 'Implicit Bias and Philosophy, Volumes 1 and 2' (ISBN 9780198766186); 'b' is 'Implicit Bias and Philosophy, Volume 2' only (ISBN 9780198766179). Different scope and ISBNs."
+  }
+ ]
+}

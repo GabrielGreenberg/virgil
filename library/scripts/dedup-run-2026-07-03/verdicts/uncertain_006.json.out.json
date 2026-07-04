@@ -1,0 +1,104 @@
+{
+ "verdicts": [
+  {
+   "id": "cooper1993plato||cooper1997plato",
+   "decision": "same",
+   "rationale": "Both are Plato: Complete Works, ed. Cooper, 1997, Hackett; ISBN 0-87220-349-2 == 9780872203495."
+  },
+  {
+   "id": "creary1975review||hillcreary1975review",
+   "decision": "same",
+   "rationale": "Same review of Lewis's Counterfactuals: identical authors, journal (Philosophy of Science), vol 42, no 3, pp 341-344, DOI 10.1086/288656. The b 'title' is just the reviewed-book header string."
+  },
+  {
+   "id": "curby2007visual||curby2009visual",
+   "decision": "distinct",
+   "rationale": "Different papers: 'advantage for faces' (2007, Psychonomic Bulletin & Review, DOI 10.3758/bf03196811) vs 'advantage for objects of expertise' (2009, JEP:HPP, extra author Glazek, DOI 10.1037/0096-1523.35.1.94)."
+  },
+  {
+   "id": "currie1995image||curriegregory1995image",
+   "decision": "same",
+   "rationale": "Same book Image and Mind by Gregory Currie, 1995, CUP; b title has trailing OCR noise ('. Film')."
+  },
+  {
+   "id": "darwin1871descent||darwin1874descent",
+   "decision": "distinct",
+   "rationale": "1st edition (1871, J. Murray, DOI 10.5962/bhl.title.2092) vs explicitly '2nd ed' (1874). Different editions of the Descent of Man."
+  },
+  {
+   "id": "darwin1871descent||darwin1874descenta",
+   "decision": "distinct",
+   "rationale": "1st edition (1871) vs explicitly '2nd ed' (1874). Different editions."
+  },
+  {
+   "id": "debate1996image||kosslyn1996image",
+   "decision": "same",
+   "rationale": "Both Kosslyn's Image and Brain (subtitle 'The Resolution of the Imagery Debate'), 1994, MIT Press; identical ISBN 9780262111843."
+  },
+  {
+   "id": "dematteo1977visual||dematteo1977visusal",
+   "decision": "same",
+   "rationale": "Same DeMatteo chapter 'Visual Imagery and Visual Analogues in American Sign Language', 1977, pp 109-137; b has typo 'Visusal'."
+  },
+  {
+   "id": "dennett1982styles||dennett1983styles",
+   "decision": "same",
+   "rationale": "Same article 'Styles of Mental Representation', Proceedings of the Aristotelian Society vol 83, pp 213-226; year 1982 vs 1983 is a one-off metadata discrepancy, b confirmed by DOI 10.1093/aristotelian/83.1.213."
+  },
+  {
+   "id": "dennett1998brainchild||dennett1998brainchildren",
+   "decision": "same",
+   "rationale": "Same book Brainchildren: Essays on Designing Minds, Dennett, 1998, MIT Press; a has spurious OCR co-authors and a different ISBN printing."
+  },
+  {
+   "id": "deregowski1980illusion||deregowski1980illusions",
+   "decision": "same",
+   "rationale": "Same Deregowski book (Illusions, Patterns and Pictures: A Cross-Cultural Perspective), 1980, Academic Press; b title truncated and subtitle leaked into publisher field."
+  },
+  {
+   "id": "desig1981philosophy||haugeland1981amind",
+   "decision": "same",
+   "rationale": "Same anthology Mind Design (ed. Haugeland), 1981, MIT Press; ISBN 0-262-08110-5 == 9780262081108. a lacks the editor field."
+  },
+  {
+   "id": "desimone1984||desimone1984stimulus",
+   "decision": "same",
+   "rationale": "Same article 'Stimulus-selective properties of inferior temporal neurons in the macaque', Desimone et al., 1984, J. Neurosci. vol 4, pp 2051-2062."
+  },
+  {
+   "id": "desimone1984||desimone1984stimulusselective",
+   "decision": "same",
+   "rationale": "Same Desimone et al. 1984 J. Neurosci. article, vol 4, pp 2051-2062; b confirmed by DOI."
+  },
+  {
+   "id": "desimone1984||gross1984stimulus",
+   "decision": "same",
+   "rationale": "Same Desimone et al. 1984 article (identical author list, title, vol 4, pp 2051-2062, DOI 10.1523/jneurosci.04-08-02051.1984); differs only in citekey/type."
+  },
+  {
+   "id": "diagrams1994shin||shin1994a",
+   "decision": "distinct",
+   "rationale": "Different works: Shin's book 'The Logical Status of Diagrams' (CUP, 1994) vs her journal article 'Peirce and the logical status of diagrams' (History and Philosophy of Logic 15(1):45-68, DOI 10.1080/01445349408837224)."
+  },
+  {
+   "id": "diagrams1994shin||shin1994peirce",
+   "decision": "distinct",
+   "rationale": "Book 'The Logical Status of Diagrams' (CUP, 1994) vs journal article 'Peirce and the logical status of diagrams' (H&PL 15(1):45-68). Distinct works."
+  },
+  {
+   "id": "dinse1992topographi||recanzone1992topographic",
+   "decision": "same",
+   "rationale": "Same article 'Topographic reorganization of the hand representation in cortical area 3b...', Recanzone et al., 1992, J. Neurophysiol. vol 67, pp 1031-1056."
+  },
+  {
+   "id": "dostrovsky1971hippocampu||okeefe1971hippocampus",
+   "decision": "same",
+   "rationale": "Same O'Keefe & Dostrovsky 1971 article 'The hippocampus as a spatial map. Preliminary evidence...', Brain Research vol 34, pp 171-175; b has subtitle leaked into journal field."
+  },
+  {
+   "id": "dowty1990thematic||dowty1991thematic",
+   "decision": "same",
+   "rationale": "Same Dowty article 'Thematic Proto-Roles and Argument Selection', Language vol 67 no 3 pp 547-619; year 1990 is an error (b DOI 10.2307/415037 confirms 1991)."
+  }
+ ]
+}

@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1075/pbns.12.04ste", "decision": "same", "rationale": "Both members: 'Focusing and background operators', von Stechow, 1991, same DOI and booktitle."},
+  {"id": "categorization and naming in children", "decision": "same", "rationale": "Both identical: Markman, 'Categorization and Naming in Children', 1989, same ISBN."},
+  {"id": "10.1145/258734.258894", "decision": "same", "rationale": "Both 'Real-time nonphotorealistic rendering', same author list, same SIGGRAPH '97 DOI."},
+  {"id": "10.1080/13546780244000015", "decision": "same", "rationale": "Both 'Conditional reasoning with causal premises', Quinn & Markovits 2002, same DOI/vol/pages."},
+  {"id": "10.1371/journal.pone.0286568", "decision": "same", "rationale": "Both La Roche-Cotard Neanderthal engravings paper, identical author list and DOI."},
+  {"id": "10.1126/science.968482", "decision": "same", "rationale": "Both 'Cooperative Computation of Stereo Disparity', Marr & Poggio 1976, same DOI."},
+  {"id": "10.1016/0004-3702(77)90013-3", "decision": "same", "rationale": "All three are Marr's 'Artificial Intelligence: A Personal View'; marr1981artificial is the Mind Design (1981) reprint of the same 1977 work."},
+  {"id": "10.1098/rspb.1977.0080", "decision": "same", "rationale": "Both fields describe 'Analysis of occluding contour', Marr 1977, same DOI/vol/pages; the marrnishihara citekey label is misleading but the bib fields match."},
+  {"id": "10.1098/rspb.1978.0020", "decision": "same", "rationale": "All three 'Representation and recognition of the spatial organization of three-dimensional shapes', Marr & Nishihara 1978, same DOI."},
+  {"id": "10.1098/rspb.1979.0029", "decision": "same", "rationale": "Both 'A computational theory of human stereo vision', Marr & Poggio 1979, same DOI."},
+  {"id": "10.1098/rstb.1980.0091", "decision": "same", "rationale": "Both 'Visual information processing...', Marr 1980, same DOI/vol/pages."},
+  {"id": "10.1098/rspb.1981.0001", "decision": "same", "rationale": "Both 'Directional selectivity and its use in early visual processing', Marr & Ullman 1981, same DOI."},
+  {"id": "10.2307/1422820", "decision": "same", "rationale": "All five identical: 'Vision', Blake & Marr, 1983 review in Am. J. Psychology, same DOI/vol/pages."},
+  {"id": "10.1098/rspb.1982.0024", "decision": "same", "rationale": "Both 'Representation and recognition of the movements of shapes', Marr & Vaina 1982, same DOI."},
+  {"id": "10.2307/323804", "decision": "same", "rationale": "Both 'Plutarch', Martin & Gianakaris 1971, same DOI/vol/pages."},
+  {"id": "10.2307/2220143", "decision": "same", "rationale": "Both 'Dispositions and Conditionals', Martin C.B. 1994, same DOI/vol/pages."},
+  {"id": "10.1111/1468-0017.00205", "decision": "same", "rationale": "All four 'The Transparency of Experience', Martin 2002, same DOI/vol/pages."},
+  {"id": "10.1023/b:phil.0000033751.66949.97", "decision": "same", "rationale": "All five 'The Limits of Self-Awareness', Martin 2004, same DOI/vol/pages."},
+  {"id": "10.1080/17470919.2019.1675758", "decision": "same", "rationale": "Both 'The value of a real face...', Weiß, Mussel & Hewig 2020, same DOI/vol/pages."},
+  {"id": "10.2307/2219243", "decision": "same", "rationale": "Both 'Conversational Maxims and Some Philosophical Problems', Martinich 1980, same DOI."},
+  {"id": "10.1007/s13164-009-0018-z", "decision": "same", "rationale": "Both 'On the Diversity of Auditory Objects', Matthen 2010, same DOI/vol/pages."},
+  {"id": "10.1007/978-94-009-8947-4", "decision": "same", "rationale": "Both 'Autopoiesis and Cognition', Maturana & Varela 1980, same DOI."},
+  {"id": "10.1016/j.tins.2006.04.001", "decision": "same", "rationale": "Both 'Feature-based attention in visual cortex', Maunsell & Treue 2006, same DOI."},
+  {"id": "10.7551/mitpress/4337.003.0005", "decision": "same", "rationale": "Both 'Conjoint Representations and the Mental Capacity for Multiple Simultaneous Perspectives', Mausfeld 2003, same DOI."},
+  {"id": "animal signals", "decision": "same", "rationale": "All three 'Animal signals', John Maynard Smith, 2003, same ISBN."}
+ ]
+}

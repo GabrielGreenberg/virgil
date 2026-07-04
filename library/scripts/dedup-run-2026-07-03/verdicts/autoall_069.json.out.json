@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1111/j.0963-7214.2004.01501004.x", "decision": "same", "rationale": "Identical title, authors, year, journal, volume/issue/pages, and shared DOI."},
+  {"id": "10.1007/bf00248150", "decision": "same", "rationale": "Veltman 'Defaults in update semantics'; 1996 JPL article and 1990 incollection are the same work in two venues."},
+  {"id": "linguistics in philosophy", "decision": "same", "rationale": "Identical Vendler 'Linguistics in philosophy' 1967, Cornell UP."},
+  {"id": "symbolic logic", "decision": "same", "rationale": "Venn 'Symbolic Logic' 1971 Burt Franklin, same edition (2nd/2d)."},
+  {"id": "10.1038/nn1553", "decision": "same", "rationale": "Identical Vishwanath/Girshick/Banks title, authors, venue, and shared DOI."},
+  {"id": "10.1162/08989290152001871", "decision": "same", "rationale": "Identical Vogels et al title, authors, venue, and shared DOI."},
+  {"id": "10.1038/nn767", "decision": "same", "rationale": "Same 'Inferotemporal neurons represent low-dimensional configurations' Op de Beeck/Wagemans/Vogels 2001, shared DOI."},
+  {"id": "would you believe it the king of france is back", "decision": "same", "rationale": "von Fintel 'Would you believe it? The King of France is back!' incollection in Descriptions and Beyond; 2003/2004 dating same work."},
+  {"id": "10.1007/978-1-4020-8354-9_6", "decision": "same", "rationale": "All three are von Fintel & Iatridou 'How to Say Ought in Foreign'; two share DOI, third is the same work as a manuscript."},
+  {"id": "thought and language", "decision": "same", "rationale": "Vygotsky 'Thought and language' MIT Press; 1934/1962 are same work across editions/translation."},
+  {"id": "10.1073/pnas.0701644104", "decision": "same", "rationale": "Identical Winawer et al 'Russian blues' title, authors, venue, shared DOI."},
+  {"id": "10.1037/a0029334", "decision": "same", "rationale": "All three identical 'A century of Gestalt psychology II' Wagemans et al, shared DOI."},
+  {"id": "10.1007/978-94-009-9065-4", "decision": "same", "rationale": "All three Dowty/Wall/Peters 'Introduction to Montague Semantics', shared DOI."},
+  {"id": "10.1016/s0301-0082(96)00054-8", "decision": "same", "rationale": "Wallis & Rolls 'Invariant Face and Object Recognition', same venue and shared DOI."},
+  {"id": "10.5840/monist197458216", "decision": "same", "rationale": "Both members are Walton 'Are Representations Symbols?' 1974 Monist, shared DOI (survivor citekey label is misleading but fields match)."},
+  {"id": "generating semantic descriptions from drawings of scenes with shadows", "decision": "same", "rationale": "Identical Waltz 1972 MIT AI Lab report."},
+  {"id": "understanding line drawings of scenes with shadows", "decision": "same", "rationale": "Identical Waltz 1975 incollection in Psychology of Computer Vision."},
+  {"id": "10.1016/j.visres.2010.08.004", "decision": "same", "rationale": "Wandell & Winawer 'Imaging retinotopic maps', same venue and shared DOI."},
+  {"id": "10.1006/jvlc.1993.1020", "decision": "same", "rationale": "Wang & Lee 'Visual Reasoning: its Formal Semantics and Applications', identical fields and shared DOI."},
+  {"id": "10.1093/brain/107.3.829", "decision": "same", "rationale": "Warrington & Shallice 'Category Specific Semantic Impairments', identical fields and shared DOI."},
+  {"id": "psychology of reasoning", "decision": "same", "rationale": "Identical Wason 'Psychology of reasoning' 1972 Batsford."},
+  {"id": "structuring mind", "decision": "same", "rationale": "Identical Watzl 'Structuring Mind' 2017 OUP."},
+  {"id": "10.1111/1467-9213.00224", "decision": "same", "rationale": "Weatherson 'Indicative and Subjunctive Conditionals', identical fields and shared DOI."},
+  {"id": "10.3115/982023.982037", "decision": "same", "rationale": "Both Webber 'Discourse deixis' 1988 ACL proceedings, shared DOI (volume metadata differs only)."},
+  {"id": "10.7551/mitpress/3650.001.0001", "decision": "same", "rationale": "Wegner 'The Illusion of Conscious Will' MIT Press; 2002/2003 dating same book."}
+ ]
+}

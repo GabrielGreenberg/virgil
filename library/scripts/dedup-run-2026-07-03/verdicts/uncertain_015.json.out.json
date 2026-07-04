@@ -1,0 +1,104 @@
+{
+  "verdicts": [
+    {
+      "id": "lyons1977semantic||lyons1977semantics",
+      "decision": "same",
+      "rationale": "Both Lyons, John, 'Semantics', 1977, Cambridge UP. A's title 'Semantics, vol' is a truncated volume marker; neither carries a distinguishing volume number. Same author/year/publisher (B adds ISBN). Same work."
+    },
+    {
+      "id": "maienborn2011adverbs||maienbornschafer2011adverbs",
+      "decision": "same",
+      "rationale": "Identical chapter 'Adverbs and adverbials', Maienborn & Schafer, 2011, de Gruyter, pages 1390-1420, in the HSK Semantics handbook. A carries the DOI. Clearly the same incollection."
+    },
+    {
+      "id": "makebelieve1990||walton1990mimesisd",
+      "decision": "distinct",
+      "rationale": "A is Walton's 1990 book 'Mimesis as Make-Believe' (Harvard UP). B is a corrupted article entry: its journal field reveals it is actually Walton's 2002 JAAC article 'Depiction, Perception, and Imagination' (vol 60, pp 27-40), with the book title leaked into the title field. Different works."
+    },
+    {
+      "id": "mandler1984stories||mandlermatter1984stories",
+      "decision": "same",
+      "rationale": "Both Mandler 1984 'Stories, Scripts, and Scenes: Aspects of Schema Theory' (Erlbaum). B's title is truncated to 'Stories' with the subtitle 'Aspects of Schema Theory' leaked into the publisher field. Same book."
+    },
+    {
+      "id": "markman1989categoriza||markman1989categorization",
+      "decision": "distinct",
+      "rationale": "A is Markman's 1989 book 'Categorization and Naming in Children' (MIT Press). B is a 1989 journal article 'Categorization and Naming in Young Children: Problems in Induction' (Merrill-Palmer Quarterly, vol 39, pp 133-160). Different titles, different venues; book vs article."
+    },
+    {
+      "id": "markman1989categorization||markman1989categorizing",
+      "decision": "distinct",
+      "rationale": "Same pair as above reversed: A is the Merrill-Palmer Quarterly article 'Categorization and Naming in Young Children: Problems in Induction' (vol 39, pp 133-160); B is the MIT Press book 'Categorization and Naming in Children'. Different works."
+    },
+    {
+      "id": "marr1978representi||marr1978representing",
+      "decision": "same",
+      "rationale": "Both Marr 1978 'Representing visual information' (Academic Press); B carries the fuller subtitle 'a computational approach'. Same author/year/publisher. Same work."
+    },
+    {
+      "id": "maunsell2002role||maunsell2004role",
+      "decision": "distinct",
+      "rationale": "A is 'The role of attention in visual processing' (Maunsell & Cook, 2002, Phil Trans R Soc B, with DOI). B is 'The role of attention in visual cerebral cortex' (Maunsell, 2004, in 'The visual neurosciences', MIT Press). Different titles, years, and venues."
+    },
+    {
+      "id": "mccawley1981everything||mccawley1981what",
+      "decision": "same",
+      "rationale": "Both McCawley's University of Chicago Press book on logic for linguists. A has the full title 'Everything that linguists have always wanted to know about logic...'; B has the shortened variant 'What Linguists Have Always Wanted to Know about Logic...'. Year 1980 vs 1981 is within the same edition window. Same book."
+    },
+    {
+      "id": "mcclelland1986distribu||mcclelland1986distributed",
+      "decision": "same",
+      "rationale": "Identical ISBN 9780262631129, same authors (Rumelhart, McClelland, and the PDP Research Group), same year 1987. Both 'Parallel Distributed Processing' (A adds '- 2 Vol. Set'). Same physical item."
+    },
+    {
+      "id": "mcclelland1986distribu||rumelhart1986mcclelland",
+      "decision": "distinct",
+      "rationale": "A is the '2 Vol. Set' (ISBN 9780262631129). B is explicitly volume 1 ('volume: 1', ISBN 9780262181204) of PDP. Different ISBNs and set-vs-single-volume; merging would archive a distinct volume-level entry."
+    },
+    {
+      "id": "mcclelland1986distribu||rumelhart1986parallel",
+      "decision": "unsure",
+      "rationale": "B (volume '1 and 2', DOI 10.7551/mitpress/5236) is the complete 2-volume set, matching A's '2 Vol. Set' at the work level, but A is an incollection with pages 77-109 (a chapter-level cite) and a different ISBN (9780262631129 vs 9780262181204). Chapter-vs-whole-set ambiguity makes a confident merge unsafe."
+    },
+    {
+      "id": "mcclelland1986distribu||rumelhart1988parallel",
+      "decision": "unsure",
+      "rationale": "B is a corrupted misc entry (garbled 'journal: New York: IEEE', no ISBN) carrying the whole-set DOI 10.7551/mitpress/5236. A is the 2-vol set cited as an incollection chapter (pp 77-109). Whole-work vs chapter-level ambiguity plus B's corruption; not confident enough to merge."
+    },
+    {
+      "id": "mcclelland1986distribu||rumelhartmcclelland1986parallel",
+      "decision": "distinct",
+      "rationale": "A is the '2 Vol. Set' (ISBN 9780262631129). B is explicitly 'Parallel Distributed Processing, Vol. 1' (ISBN 9780262680530). Vol 1 is not the same as the complete set, and the ISBNs differ. Distinct volume-level entries."
+    },
+    {
+      "id": "mcclelland1986distributed||mcclelland1986processi",
+      "decision": "same",
+      "rationale": "Identical ISBN 9780262631129, same authors, same year 1987, both 'Parallel Distributed Processing' (B adds '- 2 Vol. Set'). Same physical item."
+    },
+    {
+      "id": "mcclelland1986distributed||rumelhartmcclelland1986parallel",
+      "decision": "distinct",
+      "rationale": "A (ISBN 9780262631129) vs B explicitly 'Parallel Distributed Processing, Vol. 1' (ISBN 9780262680530). B is a specific single volume with a different ISBN. Distinct entries."
+    },
+    {
+      "id": "mcclelland1986processi||rumelhart1986mcclelland",
+      "decision": "distinct",
+      "rationale": "A is the '2 Vol. Set' (ISBN 9780262631129). B is explicitly volume 1 ('volume: 1', ISBN 9780262181204). Set vs single volume with different ISBNs; distinct."
+    },
+    {
+      "id": "mcclelland1986processi||rumelhart1986parallel",
+      "decision": "same",
+      "rationale": "A is 'Parallel Distributed Processing - 2 Vol. Set' (book). B is volume '1 and 2' with the canonical MIT Press PDP set DOI 10.7551/mitpress/5236.001.0001 (book). Both denote the complete 2-volume PDP work; the ISBN difference reflects different printings of the same set. Same work."
+    },
+    {
+      "id": "mcclelland1986processi||rumelhart1988parallel",
+      "decision": "same",
+      "rationale": "A is the '2 Vol. Set' (book). B carries the whole-set DOI 10.7551/mitpress/5236.001.0001 for the complete PDP work; its misc type and garbled fields are metadata-quality artifacts. Both denote the whole 2-volume PDP work. Same work."
+    },
+    {
+      "id": "mcclelland1986processi||rumelhartmcclelland1986parallel",
+      "decision": "distinct",
+      "rationale": "A is the '2 Vol. Set' (ISBN 9780262631129). B is explicitly 'Parallel Distributed Processing, Vol. 1' (ISBN 9780262680530). Complete set vs a single volume with distinct ISBN; distinct entries."
+    }
+  ]
+}

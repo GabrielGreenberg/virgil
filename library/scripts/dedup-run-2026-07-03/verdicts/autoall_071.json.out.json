@@ -1,0 +1,129 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1126/science.8036517",
+   "decision": "same",
+   "rationale": "All three members share DOI 10.1126/science.8036517 with identical title, authors (Wilson & McNaughton), year, journal, volume, and pages. Same work."
+  },
+  {
+   "id": "learning structural descriptions from examples",
+   "decision": "distinct",
+   "rationale": "Title-only match (no DOI). Members differ in year (1970 techreport 'MAC TR-76' vs 1975 incollection) and type. The 1970 MIT AI-Lab technical report and the 1975 book chapter in 'The Psychology of Computer Vision' are distinct publications, not the same work."
+  },
+  {
+   "id": "philosophical investigations",
+   "decision": "same",
+   "rationale": "All four are editions/printings of Wittgenstein's Philosophical Investigations (1953 Macmillan, 1958, 2009 Wiley-Blackwell). Same underlying work, different editions/years; acceptable to merge as the same work."
+  },
+  {
+   "id": "10.1242/jeb.02657",
+   "decision": "same",
+   "rationale": "Both members share DOI 10.1242/jeb.02657, identical title (desert ant odometer), same authors (Wittlinger, Wehner, Wolf), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1017/s0140525x15002587",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1017/s0140525x15002587 with identical title 'Memory colours affect colour appearance', same authors, year, journal, volume. Same work."
+  },
+  {
+   "id": "10.1002/9781119170174.epcn213",
+   "decision": "same",
+   "rationale": "Both members are Wolfe 'Visual Search'. The survivor carries the DOI; the 1996 member is an earlier printing of the same chapter (different booktitle/year but same author and title). Rule matched on normalized title+author; treating as same work is appropriate."
+  },
+  {
+   "id": "seeing as seeing in and pictorial representation",
+   "decision": "unsure",
+   "rationale": "Title-only match (no DOI), garbled OCR journal fields. Years differ (1980 vs 1996) and volume/pages differ (56/217-26 vs 77/131-47); vol 77 pp 131-47 collides with Wollheim's 2003 Aristotelian Society piece. Cannot confidently tell whether these are the same reprinted essay or conflated distinct items."
+  },
+  {
+   "id": "painting as an art",
+   "decision": "same",
+   "rationale": "Both members are Wollheim, 'Painting as an art', 1987, Princeton, same ISBN. Identical bibliographic data. Same work."
+  },
+  {
+   "id": "10.1111/1467-8349.00106",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1111/1467-8349.00106, identical title/author/year/volume/pages. Same work (Wollheim 2003 Aristotelian Society Supplementary Volume)."
+  },
+  {
+   "id": "10.7551/mitpress/4337.003.0004",
+   "decision": "same",
+   "rationale": "Both share DOI 10.7551/mitpress/4337.003.0004, identical title 'In Defense of Seeing-In', author, year, booktitle, pages. Same work."
+  },
+  {
+   "id": "10.1016/j.tics.2006.05.003",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1016/j.tics.2006.05.003, identical title 'Bayesian decision theory in sensorimotor control', same authors (Kording & Wolpert), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1201/b13490-15",
+   "decision": "same",
+   "rationale": "Both members share DOI 10.1201/b13490-15 with identical title 'Interventional bronchoscopy', author (Wood, Robert), year, booktitle, pages. The stray 'note' fields referencing a Wood & Spelke numerical-cognition paper are scrambled artifacts, but the two members are internally consistent with each other. Same work."
+  },
+  {
+   "id": "10.1111/j.1467-7687.2005.00404.x",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1111/j.1467-7687.2005.00404.x, identical title 'Infants' enumeration of actions', same authors (Wood & Spelke), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1016/j.cognition.2004.06.007",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1016/j.cognition.2004.06.007, identical title 'Chronometric studies of numerical cognition', same authors, year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1038/17605",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1038/17605, identical title 'The global record of memory in hippocampal neuronal activity', same authors, year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1016/s0896-6273(00)00071-4",
+   "decision": "same",
+   "rationale": "All three share DOI 10.1016/s0896-6273(00)00071-4 with identical title, authors (Wood, Dudchenko, Robitsek, Eichenbaum), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1073/pnas.192579399",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1073/pnas.192579399, identical title 'Shape perception reduces activity in human primary visual cortex', same author set (Murray, Kersten, Olshausen, Schrater, Woods), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1016/0010-0277(90)90003-3",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1016/0010-0277(90)90003-3, identical title 'Children's understanding of counting', author (Wynn), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1016/0010-0285(92)90008-p",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1016/0010-0285(92)90008-p, identical title 'Children's acquisition of the number words and the counting system', author, year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1038/358749a0",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1038/358749a0, identical title 'Addition and subtraction by human infants', author (Wynn), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1006/cogp.1996.0005",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1006/cogp.1996.0005, identical title 'Infants' Metaphysics: The Case of Numerical Identity', authors (Xu & Carey), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1111/1468-0017.00052",
+   "decision": "same",
+   "rationale": "Both share DOI 10.1111/1468-0017.00052, identical title 'From Lot's Wife to a Pillar of Salt', author (Xu), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.1016/s0010-0277(99)00066-9",
+   "decision": "same",
+   "rationale": "All four share DOI 10.1016/s0010-0277(99)00066-9, identical title 'Large number discrimination in 6-month-old infants', authors (Xu & Spelke), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.3758/bf03194770",
+   "decision": "same",
+   "rationale": "Both share DOI 10.3758/bf03194770, identical title 'Encoding color and shape from different parts of an object in visual short-term memory', author (Xu, Yaoda), year, volume, pages. Same work."
+  },
+  {
+   "id": "10.2307/2108052",
+   "decision": "same",
+   "rationale": "Both share DOI 10.2307/2108052, identical title 'Is Conceivability a Guide to Possibility?', author (Yablo), year, volume, pages. Same work."
+  }
+ ]
+}

@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.7551/mitpress/4117.003.0024", "decision": "same", "rationale": "Both members share identical title, author (Goldin-Meadow), year 2003, booktitle, pages, and DOI. The 'pointing' citekey is misleading but fields are identical."},
+  {"id": "readings in philosophy and cognitive science", "decision": "same", "rationale": "Identical title, author (Goldman), year 1993, publisher, ISBN; one just has an 'unknown' citekey."},
+  {"id": "10.3758/bf03202504", "decision": "same", "rationale": "Identical title, authors, year, journal, volume/number/pages, and DOI."},
+  {"id": "10.1037//0096-1523.26.1.86", "decision": "same", "rationale": "Three entries with identical title, author (Goldstone), year, journal, volume/number/pages, and DOI."},
+  {"id": "meditations on a hobby horse", "decision": "same", "rationale": "Gombrich's 'Meditations on a hobby horse' — 1951 incollection and 1963 Phaidon book edition of the same essay/work by the same author."},
+  {"id": "the story of art", "decision": "same", "rationale": "Gombrich 'The Story of Art' — 1950 and 1989 editions of the same book, same author."},
+  {"id": "10.1038/320748a0", "decision": "same", "rationale": "Identical title, authors (Goodale/Pelisson/Prablanc), year, Nature, volume/number/pages, and DOI."},
+  {"id": "10.1038/349154a0", "decision": "same", "rationale": "Identical title, authors, year, Nature, volume/number/pages, and DOI."},
+  {"id": "10.1016/s0960-9822(00)00132-9", "decision": "same", "rationale": "Same Goodale 1994 Current Biology paper, same title, year, volume, pages 604-610, and DOI; author lists differ only in one omitting Bülthoff."},
+  {"id": "the visual brain in action oxford psychology series", "decision": "same", "rationale": "Identical title, authors (Milner & Goodale), year 1996, publisher, ISBN."},
+  {"id": "10.1007/bf00229860", "decision": "same", "rationale": "Identical title, authors, year, journal, volume/number, and DOI."},
+  {"id": "10.1162/089892998563824", "decision": "same", "rationale": "Three entries with identical title, authors (Haffenden & Goodale), year, journal, volume/number/pages, and DOI."},
+  {"id": "10.1016/s0010-0277(98)00017-1", "decision": "same", "rationale": "Both are Goodale & Humphrey 'The objects of action and perception' — identical title and authors. The second member is a reprint in an MIT Press edited volume (year 1999, its own DOI) but is the same underlying work, as its note confirms Cognition 67:181-207."},
+  {"id": "sight unseen", "decision": "same", "rationale": "Three entries with identical title (Sight Unseen), authors (Goodale & Milner), year, publisher, ISBN."},
+  {"id": "10.2307/2019988", "decision": "same", "rationale": "Goodman 'The Problem of Counterfactual Conditionals' — 1947 JPhil article and its 1946/reprint incollection in Fact, Fiction, and Forecast; same title and author, same work."},
+  {"id": "the structure of appearance", "decision": "same", "rationale": "Goodman 'The Structure of Appearance' — 1951, 1966, and 1977 editions of the same book, same author."},
+  {"id": "fact fiction and forecast", "decision": "same", "rationale": "Goodman 'Fact, Fiction, and Forecast' — 1954 and 1979 editions of the same book, same author."},
+  {"id": "languages of art an approach to a theory of symbols", "decision": "same", "rationale": "Identical title, author (Goodman), year 1968; same book."},
+  {"id": "conversational organization", "decision": "same", "rationale": "Identical title, author (Charles Goodwin), year 1981, publisher, ISBN."},
+  {"id": "10.1207/s15516709cog1703_1", "decision": "same", "rationale": "Identical title, authors (Gordon/Grosz/Gilliom), year, journal, volume/number/pages, and DOI."},
+  {"id": "10.1126/science.1094492", "decision": "same", "rationale": "Three entries with identical title (Numerical Cognition Without Words), author (Gordon), year 2004, Science, volume/number/pages, and DOI."},
+  {"id": "10.3758/pp.70.4.667", "decision": "same", "rationale": "Identical title, authors (Gordon/Vollmer/Frankl), year, journal, volume/number/pages, and DOI."},
+  {"id": "10.1037/0278-7393.26.1.136", "decision": "same", "rationale": "Same Gordon & Irwin 2000 paper on object continuity; same title, authors, year; second member encodes journal info in the publisher field but is the same work."},
+  {"id": "10.2307/2025108", "decision": "same", "rationale": "Both are Grandy 1973 'Reference, Meaning, and Belief', Journal of Philosophy vol 70, same DOI."},
+  {"id": "10.1093/bjps/axv042", "decision": "same", "rationale": "Three entries for Green 'A Layered View of Shape Perception', BJPS 68(2), same DOI; citekeys vary but all fields match."}
+ ]
+}

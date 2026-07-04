@@ -1,0 +1,65 @@
+{
+ "verdicts": [
+  {
+   "id": "10.1016/j.neuroimage.2006.10.017",
+   "decision": "same",
+   "rationale": "Harrison2007 is a byte-identical duplicate import of harrison2007extraclassical: same title, authors, year, NeuroImage vol 34(3), pp 1199-1208, same DOI. Loser not indexed."
+  },
+  {
+   "id": "10.1038/s41562-016-0036",
+   "decision": "same",
+   "rationale": "Harvey2017 duplicates harvey2017network exactly: same title, authors, Nature Human Behaviour vol 1(2), same DOI. Loser not indexed."
+  },
+  {
+   "id": "10.1016/j.actpsy.2003.07.003",
+   "decision": "same",
+   "rationale": "Hatfield2003 is field-identical to hatfield2003representation (same title, author, Acta Psychologica 114(3):355-378, same DOI). Loser not indexed."
+  },
+  {
+   "id": "10.4324/9780429301629-9",
+   "decision": "distinct",
+   "distinct_members": ["haugeland1991representational"],
+   "rationale": "Same essay 'Representational Genera' but two distinct publications: 1991 original in 'Philosophy and Connectionist Theory' (Erlbaum, pp 61-91) vs 2019 reprint in 'Philosophy And The Computer' (Routledge, pp 105-134, own DOI). BOTH are deepIndexed with folders — merging would archive real indexed work on a substantively different publication. Keep separate."
+  },
+  {
+   "id": "10.1038/s41467-023-37737-w",
+   "decision": "same",
+   "rationale": "hawkins2023visual duplicates hawkins2023disentangling: identical title, authors, Nat Commun 14(1), same DOI (loser just adds page 2199). Loser indexed_state none."
+  },
+  {
+   "id": "10.1080/15326900701221363",
+   "decision": "same",
+   "rationale": "Healey2007 is field-identical to healey2007graphical (same title, authors, Cognitive Science 31(2):285-309, same DOI). Loser not indexed."
+  },
+  {
+   "id": "10.4324/9780203022290",
+   "decision": "same",
+   "rationale": "Heil2019 vs heil2019philosophy: same title, author, publisher, same DOI; years differ (2012 vs 2019) suggesting different editions, but the loser is indexed_state none and only the survivor is deepIndexed, so merge into the most-indexed per edition rule."
+  },
+  {
+   "id": "10.1016/j.cub.2018.04.058",
+   "decision": "same",
+   "rationale": "Heinze2018 is byte-identical to heinze2018principles (same title, authors, Current Biology 28(17):R1043-R1058, same DOI). Loser not indexed."
+  },
+  {
+   "id": "10.1111/mila.12500",
+   "decision": "same",
+   "rationale": "Henderson2024 duplicates henderson2024shared (same title, authors, Mind & Language 39(4):454-471, same DOI; only a unicode hyphen differs in an author name). Loser not indexed."
+  },
+  {
+   "id": "10.1111/j.0029-4624.2005.00542.x",
+   "decision": "same",
+   "rationale": "hiddleston1977causal is the preprint ('forthcoming in Nous') of hiddleston2005causal, the published Nous article of the same title/author. Preprint vs published = same work per rubric; merge into the DOI-bearing published survivor."
+  },
+  {
+   "id": "on the coherence and structure of discourse",
+   "decision": "same",
+   "rationale": "hobbs1985b (techreport CSLI-85-37) is the published form of hobbs1985coherence (same title, author, year); the tech report and the manuscript are the same work. Loser not indexed."
+  },
+  {
+   "id": "literature and cognition",
+   "decision": "same",
+   "rationale": "notes1990literature and hobbs1990literature are the same book: same title 'Literature and cognition', author Hobbs, 1990, CSLI (Lecture Notes 21); the two ISBNs (9780937073537 / 0937073539) are the ISBN-13 and ISBN-10 of the same volume. Merge under the canonical hand key."
+  }
+ ]
+}

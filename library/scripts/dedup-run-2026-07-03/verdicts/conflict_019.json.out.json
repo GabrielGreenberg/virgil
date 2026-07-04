@@ -1,0 +1,65 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1093/mind/fzaa011",
+      "decision": "same",
+      "rationale": "Both entries are 'The Structure of Bias' by Gabbrielle M Johnson, Mind 129(516):1193-1236, DOI 10.1093/mind/fzaa011. Johnson2020 is a Zotero-style key duplicate of the deepIndexed survivor."
+    },
+    {
+      "id": "how we reason",
+      "decision": "same",
+      "rationale": "All four are the book 'How We Reason' by Johnson-Laird (OUP). The 2006/2009 years and differing ISBNs are printings/editions of the same book. Only the survivor is deepIndexed; no second member is independently indexed, so the edition rule folds them into the survivor."
+    },
+    {
+      "id": "functional anatomy of macaque striate cortex ii retinotopic organization",
+      "decision": "same",
+      "rationale": "Both are the same 'Part II. Retinotopic Organization' article by Tootell et al., J Neuroscience 8(5):1531-1568, 1988 (same DOI). Both members are Part II, not I vs II. Only the survivor is deepIndexed."
+    },
+    {
+      "id": "10.1177/0093650219838959",
+      "decision": "same",
+      "rationale": "Both are 'Exploring the Effects of Violating the 180-Degree Rule...' by Kachkovski et al., Communication Research, DOI 10.1177/0093650219838959. Kachkovski2019 is a Zotero-style key with fuller fields; same work."
+    },
+    {
+      "id": "10.1093/jos/ffh027",
+      "decision": "same",
+      "rationale": "Identical fields (title, authors, year, journal, volume, number, pages, DOI 10.1093/jos/ffh027). Kanazawa2005 is a Zotero-style duplicate of the deepIndexed survivor."
+    },
+    {
+      "id": "10.1075/fos.20.27kap",
+      "decision": "same",
+      "rationale": "Despite misleading citekeys (kaplan1977demonstratives, kaplan1989logic, etc.), every member shares the same title 'On transcribing junkie voices', author Kaplan Charles D., booktitle, pages 355-364, and DOI 10.1075/fos.20.27kap. All are shadow/duplicate keys of the one deepIndexed work."
+    },
+    {
+      "id": "10.1093/czoolo/57.4.453",
+      "decision": "same",
+      "rationale": "Both are Gisela Kaplan, 'Pointing gesture in a bird...', Current Zoology 57(4):453-467, DOI 10.1093/czoolo/57.4.453. Kaplan2011 is a Zotero-style duplicate."
+    },
+    {
+      "id": "10.1016/s0959-4388(03)00042-4",
+      "decision": "same",
+      "rationale": "Identical fields: Kersten & Yuille, 'Bayesian models of object perception', Curr Opin Neurobiol 13(2):150-158, same DOI. Zotero-style duplicate."
+    },
+    {
+      "id": "10.1007/bf00209915",
+      "decision": "same",
+      "rationale": "Both are Kjorup, 'Pictorial speech acts', Erkenntnis 12(1), DOI 10.1007/bf00209915. pictorialspeechacts1978 is a title-derived duplicate key of the deepIndexed survivor."
+    },
+    {
+      "id": "10.1111/j.1520-8583.2006.00108.x",
+      "decision": "same",
+      "rationale": "Identical fields: Kment, 'Counterfactuals and the Analysis of Necessity', Philosophical Perspectives 20(1):237-302, same DOI. Kment2006 is a Zotero-style duplicate."
+    },
+    {
+      "id": "10.1111/j.1746-8361.2007.01124.x",
+      "decision": "same",
+      "rationale": "Both are Koksvik, 'Conservation of Energy is Relevant to Physicalism', Dialectica 61(4):573-582, DOI 10.1111/j.1746-8361.2007.01124.x. Koksvik2007 is a Zotero-style duplicate."
+    },
+    {
+      "id": "image and mind",
+      "decision": "mixed",
+      "distinct_members": ["1996-"],
+      "rationale": "Survivor kosslyn1980image and kosslyn1980language are the same 1980 Harvard UP book (same ISBN 9780674443655) — merge OK. But member '1996-' is a distinct work: an article 'Image and Mind' in Poetics Today 3(1):198, 1982, DOI 10.2307/1772225 (JSTOR) — a book REVIEW of the Kosslyn book, not the book itself. It is independently indexed (indexed_state 'indexed', has folder), so merging it would archive real work. Exclude it."
+    }
+  ]
+}

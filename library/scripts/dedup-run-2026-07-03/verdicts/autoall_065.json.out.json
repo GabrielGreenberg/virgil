@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1111/j.1475-4975.1977.tb00027.x", "decision": "same", "rationale": "All three members share the same DOI and identical title/author/year/pages (Stampe, Toward a Causal Theory of Linguistic Representation, Midwest Studies 1977)."},
+    {"id": "10.1007/bf00170175", "decision": "same", "rationale": "Both members share the DOI and identical title/author/year (Stander, Cooperative hunting in lions, 1992)."},
+    {"id": "10.1111/1468-0017.00130", "decision": "same", "rationale": "Both members share the DOI and identical title/authors/pages (Stanley & Szabó, On Quantifier Domain Restriction, 2000). 'breply' citekey suffix is cosmetic; fields are identical."},
+    {"id": "10.1093/jos/13.2.87", "decision": "same", "rationale": "Both share the DOI and identical title/author/year (von Stechow, The different readings of wieder, 1996)."},
+    {"id": "10.1016/b978-044481714-3/50021-7", "decision": "same", "rationale": "Both share the DOI and identical title/author/booktitle/pages (Steedman, Temporality, 1997)."},
+    {"id": "10.1007/bf00485377", "decision": "same", "rationale": "Both share the DOI and identical title/author/pages (Stein, Eudoxos and Dedekind, Synthese 1990); second just adds a note field."},
+    {"id": "10.1016/s0042-6989(00)00086-9", "decision": "same", "rationale": "Both share the DOI and identical title/authors/pages (Steinman et al., Phi is not beta, Vision Research 2000)."},
+    {"id": "10.1207/s15516709cog1901_3", "decision": "same", "rationale": "Both share the DOI and identical title/authors/pages (Stenning & Oberlander, A Cognitive Theory of Graphical and Linguistic Reasoning, 1995)."},
+    {"id": "10.3758/s13414-019-01801-9", "decision": "same", "rationale": "All three share the DOI and identical title/authors/pages (Stepper, Rolke & Hein, 2020). The a/b citekey suffixes are disambiguators but the fields describe one identical paper."},
+    {"id": "10.1007/bf00336800", "decision": "same", "rationale": "Both share the DOI and identical title/author/pages (Stevens, Slant-tilt, Biological Cybernetics 1983)."},
+    {"id": "10.1080/01690969408402130", "decision": "same", "rationale": "Both share the DOI and identical title/authors/pages (Stevenson, Crawley & Kleinman, Thematic roles, focus, 1994)."},
+    {"id": "from folk psychology to cognitive science", "decision": "same", "rationale": "All four members are the same Stich book (From Folk Psychology to Cognitive Science, MIT Press) with identical ISBN and title/author/year."},
+    {"id": "10.1093/brain/120.3.535", "decision": "same", "rationale": "Both share the DOI and identical title/author/pages (Stoerig, Blindsight in man and monkey, Brain 1997)."},
+    {"id": "10.1111/phpe.12033", "decision": "same", "rationale": "Both share the DOI and identical title/authors/pages (Stojnic, Stone & Lepore, Deixis even Without Pointing, 2013)."},
+    {"id": "sign language structure", "decision": "same", "rationale": "Both members are the same Stokoe 1960 book (Sign language structure, University of Buffalo) with identical ISBN and title/author."},
+    {"id": "individuals", "decision": "same", "rationale": "Both members are the same Strawson book (Individuals, 1959, Routledge) with identical ISBN and title/author."},
+    {"id": "persons", "decision": "same", "rationale": "All three members are the same Strawson 1958 chapter 'Persons' (booktitle Individuals, Bobbs-Merrill), identical fields."},
+    {"id": "10.1111/j.1755-2567.1964.tb00404.x", "decision": "same", "rationale": "Both share the DOI and identical title/author/pages (Strawson, Identifying reference and truth-values, Theoria 1964)."},
+    {"id": "10.2307/2183301", "decision": "same", "rationale": "Both entries are Strawson's 'Intention and Convention in Speech Acts'. The first is the 1964 Philosophical Review original; the second is a 1971 reprint in book form with no DOI. Same underlying work, so merging is appropriate."},
+    {"id": "gesturecraft", "decision": "same", "rationale": "Both members are Streeck's 'Gesturecraft' (2009, John Benjamins), same title/author/year. The second identifies it as vol. 2 of the Gesture Studies series with a DOI, but it is the same book."},
+    {"id": "10.1080/0269859032000169442", "decision": "same", "rationale": "Both share the DOI and identical title/author/year (Suárez, Scientific representation: against similarity and isomorphism, 2003)."},
+    {"id": "10.1038/23703", "decision": "same", "rationale": "Both share the DOI and identical title/authors/pages (Sugase et al., Global and fine information coded by single neurons, Nature 1999)."},
+    {"id": "machine interpretation of line drawings", "decision": "same", "rationale": "Both members are the same Sugihara 1986 book (Machine interpretation of line drawings, MIT Press) with identical ISBN and title/author."},
+    {"id": "how many seats in a chair the derivation of nouns and verbs in american sign language", "decision": "same", "rationale": "Both members are Supalla & Newport 1978, 'How many seats in a chair?', identical title/authors/year/pages."},
+    {"id": "10.2307/2284742", "decision": "same", "rationale": "Both members share the DOI and identical title/authors/year (Good & Suppes, A Probabilistic Theory of Causality, JASA 1972). The 'suppes1970' citekey prefix is inaccurate but both entries carry the same corrected fields."}
+  ]
+}

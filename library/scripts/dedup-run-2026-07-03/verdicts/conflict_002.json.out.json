@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1016/j.cub.2015.06.003",
+      "decision": "same",
+      "rationale": "Identical DOI, title, journal, volume/number/pages; only author-name and page-dash formatting differ."
+    },
+    {
+      "id": "10.1111/j.1468-0017.2009.01362.x",
+      "decision": "same",
+      "rationale": "Identical DOI, title, journal, volume/number/pages; only author-name and page-dash formatting differ."
+    },
+    {
+      "id": "rhetoric of the image",
+      "decision": "same",
+      "rationale": "Both 'Rhetoric of the image', Barthes 1977, pages 32-51, Fontana; booktitle 'Image, Music, Text' vs 'Image-Music-Text' is the same collection with punctuation variance."
+    },
+    {
+      "id": "hyperproof",
+      "decision": "same",
+      "rationale": "All 'Hyperproof', Barwise (& Etchemendy) 1994, CSLI, matching ISBN; the incollection-typed and shadow '-Barwise' keys are the same book."
+    },
+    {
+      "id": "multimodal film analysis",
+      "decision": "same",
+      "rationale": "Same book 'Multimodal Film Analysis' by Bateman & Schmidt; loser differs only as an edition/printing variant (2012 Routledge vs 2013 Taylor & Francis). Neither member is indexed (both 'none'), so merge into survivor is safe."
+    },
+    {
+      "id": "the frege reader",
+      "decision": "same",
+      "rationale": "All 'The Frege reader' 1997, Blackwell, identical ISBN 9780631194446; keys differ only by author-slug convention."
+    },
+    {
+      "id": "10.1146/annurev-linguistics-011516-033952",
+      "decision": "same",
+      "rationale": "Identical DOI, title, journal, volume/number/pages; only author-name and page-dash formatting differ."
+    },
+    {
+      "id": "10.1093/mind/fzs077",
+      "decision": "same",
+      "rationale": "Identical DOI, title, journal, volume/number/pages, and author; a plain Zotero-key vs hand-key duplicate."
+    },
+    {
+      "id": "10.1093/bjps/axu014",
+      "decision": "same",
+      "rationale": "All share DOI 10.1093/bjps/axu014, title 'Analogue Magnitude Representations', same journal/volume/number/pages; the '.1'-suffix variants are duplicate file versions of one article, not distinct works."
+    },
+    {
+      "id": "10.5840/jphil2019116621",
+      "decision": "same",
+      "rationale": "Identical DOI, title, journal, volume/number/pages, and author; Zotero-key vs hand-key duplicate."
+    },
+    {
+      "id": "10.22201/iifs.18704905e.2023.1410",
+      "decision": "same",
+      "rationale": "Identical DOI, title, journal, volume/number/pages, and author; Zotero-key vs hand-key duplicate."
+    },
+    {
+      "id": "10.1093/0199258872.001.0001",
+      "decision": "same",
+      "rationale": "Identical DOI, title, publisher, ISBN, and author; Zotero-key vs hand-key duplicate."
+    }
+  ]
+}

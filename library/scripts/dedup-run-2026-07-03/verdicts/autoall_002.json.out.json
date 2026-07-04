@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.2307/1130324", "decision": "same", "rationale": "Both entries are 'Symbolic Gesturing in Normal Infants', Acredolo & Goodwyn 1988, Child Development 59(2):450, same DOI. Only the bibtex type differs (incollection vs article)."},
+    {"id": "10.1007/bf02106548", "decision": "same", "rationale": "Both members carry identical fields: 'Organizational conflict and mental health service system effectiveness', Grusky & Adams 1994, same DOI. Citekeys mention 'fodorian' but both bib records describe the same (mental-health) work identically, so the two members are the same entry."},
+    {"id": "10.1098/rstb.2007.2087", "decision": "same", "rationale": "Same title/authors (Schacter & Addis). Second member is a reprint in the edited volume 'Mental Processes in the Human Brain' with a chapter DOI; its note explicitly cites the 2007 Phil. Trans. R. Soc. B original. Same underlying work."},
+    {"id": "10.1126/science.8266102", "decision": "same", "rationale": "Identical fields: 'Perceptual Organization and the Judgment of Brightness', Adelson 1993, Science 262(5142):2042-2044, same DOI."},
+    {"id": "10.1364/josaa.2.000284", "decision": "same", "rationale": "Both 'Spatiotemporal energy models for the perception of motion', Adelson & Bergen 1985, JOSA A vol 2, p.284. Same work; second is an abbreviated citation."},
+    {"id": "10.1017/cbo9780511586279.007", "decision": "same", "rationale": "Identical: 'Aspect, agreement and measure phrases in Scottish Gaelic', Adger 1996, same booktitle/pages/DOI."},
+    {"id": "10.1016/s0960-9822(95)00133-3", "decision": "same", "rationale": "All four members are 'Size-contrast illusions deceive the eye but not the hand', Aglioti/DeSouza/Goodale 1995, Current Biology 5(6):679-685, same DOI."},
+    {"id": "10.1073/pnas.80.18.5776", "decision": "same", "rationale": "Both 'Shape recognition and inferior temporal neurons', Schwartz/Desimone/Albright/Gross 1983, PNAS 80:5776-5778, same DOI."},
+    {"id": "10.1016/0004-3702(80)90042-9", "decision": "same", "rationale": "Both 'Analyzing intention in utterances', Allen & Perrault 1980, Artificial Intelligence 15(3):143-178, same DOI. Second just adds a reprint note."},
+    {"id": "film theory and philosophy", "decision": "same", "rationale": "Both 'Film Theory and Philosophy', Allen & Smith, same publisher and ISBN 9780198159889."},
+    {"id": "10.1038/323806a0", "decision": "same", "rationale": "Both 'Mapping human visual cortex with positron emission tomography', Fox et al. 1986, Nature 323(6091):806-809, same DOI."},
+    {"id": "themes from kaplan", "decision": "same", "rationale": "Both 'Themes from Kaplan', 1989 Oxford edited volume (Almog/Perry/Wettstein). First member's note documents it was resolved from a review to the volume itself; both now describe the same book."},
+    {"id": "10.1007/s11050-008-9027-1", "decision": "same", "rationale": "Both 'Innocent exclusion in an Alternative Semantics', Alonso-Ovalle, NLS 16(2):115-128, same DOI. Citekeys differ only by a truncated suffix."},
+    {"id": "10.18148/sub/2021.v25i0.922", "decision": "same", "rationale": "Both 'If pictures are stative, what does this mean for discourse interpretation?', Altshuler & Schlöder 2021, SuB 25:19-36, same DOI."},
+    {"id": "10.1016/j.tics.2005.05.009", "decision": "same", "rationale": "Both 'Tracking multiple targets with multifocal attention', Cavanagh & Alvarez 2005, TiCS 9(7):349-354, same DOI."},
+    {"id": "10.1167/7.13.14", "decision": "same", "rationale": "Both 'How many objects can you track?', Alvarez & Franconeri 2007, Journal of Vision 7(13):14, same DOI."},
+    {"id": "10.1016/0378-2166(92)90048-g", "decision": "same", "rationale": "Both 'Interjections: The universal yet neglected part of speech', Ameka 1992, Journal of Pragmatics 18(2-3):101-118, same DOI."},
+    {"id": "10.1016/0010-0277(90)90006-6", "decision": "same", "rationale": "Both 'Components of high-level vision...', Kosslyn/Flynn/Amsterdam/Wang 1990, Cognition 34(3):203-277, same DOI."},
+    {"id": "10.3765/salt.v14i0.2913", "decision": "same", "rationale": "Both 'Shifty Operators in Changing Contexts', Anand & Nevins 2004, SALT 14:20, same DOI."},
+    {"id": "10.1126/science.4048942", "decision": "same", "rationale": "Both 'Encoding of Spatial Location by Posterior Parietal Neurons', Andersen/Essick/Siegel 1985, Science 230(4724):456-458, same DOI."},
+    {"id": "10.1002/cne.902960106", "decision": "same", "rationale": "Both 'Corticocortical connections... inferior parietal lobule', Andersen et al. 1990, J. Comp. Neurol. 296:65-113, same DOI."},
+    {"id": "coordinate transformations and motor planning in posterior parietal cortex", "decision": "same", "rationale": "Both 'Coordinate transformations and motor planning in posterior parietal cortex', Andersen 1995, MIT Press, pp.519-532."},
+    {"id": "10.1093/cercor/5.5.457", "decision": "same", "rationale": "Both 'Encoding of Intention and Spatial Location in the Posterior Parietal Cortex', Andersen 1995, Cerebral Cortex 5(5):457-469, same DOI."},
+    {"id": "10.1037/0033-295x.85.4.249", "decision": "same", "rationale": "Both 'Arguments concerning representations for mental imagery', Anderson 1978, Psychological Review 85(4):249-277, same DOI."},
+    {"id": "the reality of illusion", "decision": "same", "rationale": "All three members are 'The reality of illusion', Joseph Anderson 1996, Southern Illinois University Press, ISBN 9780809320004 (one member has a stray year=1997 but identical title/author/publisher/ISBN)."}
+  ]
+}

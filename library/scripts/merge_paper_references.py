@@ -154,19 +154,59 @@ def is_transient(entry: dict) -> tuple[bool, str]:
 # ── duplicate detection ───────────────────────────────────────────────
 
 
-def find_duplicate(entry: dict, master: dict, catalog_index: dict) -> dict | None:
+def build_work_index(master: dict):
+    """Build a `work_identity.WorkIndex` over the whole master.bib ONCE per run.
+
+    Threaded into `find_duplicate` so the O(N) per-entry re-scan of master is
+    replaced by a single index build + near-linear candidate lookups. Lazily
+    imports `work_identity` at call time to avoid any import-cycle surprise and
+    to keep the module importable even where the core isn't on the path.
+    """
+    import work_identity as wi
+
+    records = [
+        {"citekey": ck, "type": m.get("type", "misc"), "fields": m.get("fields", {})}
+        for ck, m in master.items()
+    ]
+    return wi.WorkIndex(records)
+
+
+def find_duplicate(
+    entry: dict,
+    master: dict,
+    catalog_index: dict,
+    *,
+    work_index=None,
+) -> dict | None:
     """Locate a master.bib entry that already represents this work.
 
-    Stages, first match wins:
-      1. Exact citekey match (NFC-normalized).
-      2. DOI exact match (normalized).
-      3. ISBN exact match (normalized, books only).
-      4. Fuzzy: normalized-title + year + first-author-surname.
+    Resolution order (first match wins):
+      1. Exact citekey match (NFC-normalized) — cheap and authoritative.
+      2. Work-identity `classify` via a shared `WorkIndex`:
+           * a `same` verdict → duplicate found (returns the shaped record);
+           * an `uncertain` verdict → routed to the report's `manual_review`
+             bucket (this function returns None so the caller processes the
+             entry as no-dup, but the ambiguity is recorded);
+           * `distinct` → no dup.
 
-    Returns the master entry dict (with extra `citekey` and `bib_state`
-    keys merged in from the catalog) or None.
+    This WIDENS the old bespoke 4-stage matcher: the previous fuzzy stage
+    required an EXACT (title, year, surname) triple, so year-drift (reprints,
+    preprint vs published) and fuzzy title variants slipped through. Delegating
+    to `work_identity` catches those (Rules C/D + the E/F uncertain tiers).
+
+    `work_index` is a `WorkIndex` built ONCE per run (via `build_work_index`)
+    and threaded in — the function no longer re-reads/re-scans master per entry.
+    When omitted (legacy callers / tests), it is built from `master` on demand.
+
+    Returns the master entry dict (with extra `citekey` and `bib_state` keys
+    merged in from the catalog) or None. On an `uncertain` hit, records a
+    `manual_review` note against the module-level `_UNCERTAIN_SINK` list if the
+    caller registered one (`main()` points it at the run's Report).
     """
+    import work_identity as wi
+
     e_fields = entry.get("fields", {})
+    e_type = entry.get("type", "misc")
     e_ck = entry.get("citekey", "")
 
     # Build a uniform lookup record per master citekey.
@@ -181,39 +221,50 @@ def find_duplicate(entry: dict, master: dict, catalog_index: dict) -> dict | Non
             "bib_state": bib.get("state", "none"),
         }
 
-    # 1. Exact citekey.
+    # 1. Exact citekey — keep the cheap authoritative short-circuit.
     for ck in master:
         if citekey_matches(ck, e_ck):
             return _shape(ck)
 
-    # 2. DOI.
-    e_doi = _normalize_doi(e_fields.get("doi", ""))
-    if e_doi:
-        for ck, m in master.items():
-            if _normalize_doi(m["fields"].get("doi", "")) == e_doi:
-                return _shape(ck)
+    # 2. Work-identity delegation via the shared index.
+    if work_index is None:
+        work_index = build_work_index(master)
 
-    # 3. ISBN (book-shaped types only).
-    e_isbn = _normalize_isbn(e_fields.get("isbn", ""))
-    if e_isbn and entry.get("type") in ("book", "incollection", "inbook"):
-        for ck, m in master.items():
-            if m["type"] in ("book", "incollection", "inbook"):
-                if _normalize_isbn(m["fields"].get("isbn", "")) == e_isbn:
-                    return _shape(ck)
+    matches = work_index.find(e_fields, e_type, exclude_ck=e_ck)
+    best_same = None
+    best_uncertain = None
+    for ck, verdict in matches:
+        if ck not in master:
+            # Defensive: the index may hold catalog-only rows in other callers;
+            # here it's built from master so this should not happen. Skip if so.
+            continue
+        if verdict.relation == "same" and best_same is None:
+            best_same = (ck, verdict)
+        elif verdict.relation == "uncertain" and best_uncertain is None:
+            best_uncertain = (ck, verdict)
 
-    # 4. Fuzzy: title + year + first-author-surname.
-    e_title = _norm_title(e_fields.get("title", ""))
-    e_year = (e_fields.get("year") or "").strip()
-    e_surname = _first_author_surname(e_fields.get("author", ""))
-    if e_title and e_year and e_surname:
-        for ck, m in master.items():
-            m_title = _norm_title(m["fields"].get("title", ""))
-            m_year = (m["fields"].get("year") or "").strip()
-            m_surname = _first_author_surname(m["fields"].get("author", ""))
-            if (m_title == e_title and m_year == e_year and m_surname == e_surname):
-                return _shape(ck)
+    if best_same is not None:
+        return _shape(best_same[0])
+
+    if best_uncertain is not None and _UNCERTAIN_SINK is not None:
+        ck, verdict = best_uncertain
+        _UNCERTAIN_SINK.append({
+            "type": "uncertain_work_match",
+            "paper_entry": e_ck,
+            "master_entry": ck,
+            "confidence": verdict.confidence,
+            "reasons": list(verdict.reasons),
+        })
 
     return None
+
+
+#: Optional module-level sink for `uncertain` verdicts surfaced by
+#: `find_duplicate`. The top-level `main()` points this at the run's Report so
+#: fuzzy-but-not-certain matches land in the `manual_review` bucket instead of
+#: being silently treated as no-dup. Kept module-level (not a param) so the
+#: function's return contract — `dict | None` — is unchanged for every caller.
+_UNCERTAIN_SINK: list | None = None
 
 
 # ── field merging + auth-result application ───────────────────────────
@@ -417,26 +468,20 @@ def _upsert_catalog_row(library: Path, citekey: str, bib_status: dict,
         # Merge prior fieldChanges so they accumulate across runs (same
         # behavior as /authenticate-bib).
         prior_changes: list = []
-        row_exists = False
         for e in catalog.get("entries", []):
             if citekey_matches(e.get("citekey", ""), citekey):
                 prior_changes = ((e.get("bib") or {}).get("fieldChanges") or [])
-                row_exists = True
                 break
         merged_bib = dict(bib_status)
         merged_bib["fieldChanges"] = prior_changes + list(bib_status.get("fieldChanges", []))
         write_fields = {k: v for k, v in top.items() if v not in (None, "", [])}
-        # F4W-3: this is a TRUE holding (paper_has_holdings passed above), so its
-        # catalog row must carry pdf.present == True — otherwise the merge mints
-        # the row with upsert_catalog_entry's default pdf:{present:False}, the
-        # exact stale flag the prune then has to defend against. upsert_catalog_entry
-        # does a SHALLOW e.update(fields) on an existing row, so passing `pdf` would
-        # REPLACE the whole pdf object and clobber richer metadata (filename /
-        # pageCount / format). So only inject pdf:{present:True} when NO row exists
-        # yet (the default would otherwise be present:False); a pre-existing row
-        # keeps its own — correct — pdf object untouched.
-        if not row_exists:
-            write_fields["pdf"] = {"present": True}
+        # This is a TRUE holding (paper_has_holdings passed above), so its catalog
+        # row must carry pdf.present == True — otherwise the merge would mint the row
+        # with upsert_catalog_entry's default pdf:{present:False}, the exact stale
+        # flag the prune then has to defend against. upsert_catalog_entry deep-merges
+        # nested dicts on an existing row, so this patch preserves any richer pdf
+        # metadata (filename / pageCount / format) already on the row.
+        write_fields["pdf"] = {"present": True}
         upsert_catalog_entry(catalog, citekey, **write_fields)
         # upsert_catalog_entry returns the row; re-find it to set bib.
         for e in catalog.get("entries", []):
@@ -833,11 +878,20 @@ def main(argv: list[str] | None = None) -> int:
         for e in catalog.get("entries", [])
     }
 
+    # Route uncertain work-matches from find_duplicate into manual_review.
+    global _UNCERTAIN_SINK
+    _UNCERTAIN_SINK = report.manual_review
+
     # Re-read master.bib for each entry so parallel runs see each other's writes.
     TERMINAL_STATES = ("authenticated", "canonical", "manuscript")
     for entry in paper_entries:
         master = read_master_bib(library / "master.bib")
-        dup = find_duplicate(entry, master, catalog_index)
+        # Build the WorkIndex once per entry-view of master. master is re-read
+        # each iteration (parallel runs may have written), so the index tracks
+        # it; within a single find_duplicate call the index is reused across all
+        # candidate comparisons (no per-candidate re-scan).
+        work_index = build_work_index(master)
+        dup = find_duplicate(entry, master, catalog_index, work_index=work_index)
         if dup is None:
             _process_no_dup(library=library, entry=entry, dry_run=args.dry_run, report=report)
         elif dup["bib_state"] in TERMINAL_STATES:

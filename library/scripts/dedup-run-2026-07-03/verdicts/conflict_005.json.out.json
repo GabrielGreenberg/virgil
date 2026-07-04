@@ -1,0 +1,64 @@
+{
+ "verdicts": [
+  {
+   "id": "origins of objectivity",
+   "decision": "same",
+   "rationale": "All three are Burge, 'Origins of Objectivity', 2010, Oxford University Press. Differing ISBNs are hardback vs paperback of the same book; only the survivor is indexed."
+  },
+  {
+   "id": "spatial memory how egocentric and allocentric combine",
+   "decision": "same",
+   "rationale": "Both are Burgess 2006, Trends in Cognitive Sciences vol 10 no 12; loser adds DOI/pages for the same article. Only survivor indexed."
+  },
+  {
+   "id": "10.1017/cbo9780511819001.007",
+   "decision": "same",
+   "rationale": "Identical fields: Camp 2009 'A language of baboon thought?', same DOI, same pages 108-127. Both are deepIndexed duplicate imports of the one work; merging is correct."
+  },
+  {
+   "id": "10.1093/oso/9780198732570.003.0002",
+   "decision": "same",
+   "rationale": "All three are Camp 2018 'Why Maps Are Not Propositional', pages 19-45. Loser booktitle 'Non-Propositional Intentionality' is the real book (survivor lists generic 'OUP eBooks'); survivor DOI confirms. Only survivor indexed."
+  },
+  {
+   "id": "10.1007/s10539-011-9292-0",
+   "decision": "same",
+   "rationale": "All four share DOI 10.1007/s10539-011-9292-0, title 'A teleosemantic approach to information in the brain', author Rosa Cao. The 'carey2012teleosemantic' key is misleading but the fields (Rosa Cao, same DOI) prove it is the same work. Only survivor indexed."
+  },
+  {
+   "id": "10.1016/j.cogsys.2024.101244",
+   "decision": "same",
+   "rationale": "Both are Cao & Yamins 2024 'Explanatory models in neuroscience, Part 1', same DOI. Both members are 'Part 1' (not Part 1 vs Part 2). Only survivor indexed."
+  },
+  {
+   "id": "10.1093/acprof:oso/9780199231195.001.0001",
+   "decision": "same",
+   "rationale": "All three are Cappelen & Lepore 2007 'Language Turned on Itself', OUP, same DOI. The 'cappelenlepore2005language' key carries year field 2007 and matching ISBN; same book. Only survivor indexed."
+  },
+  {
+   "id": "10.1016/j.visres.2011.04.012",
+   "decision": "same",
+   "rationale": "Both are Carrasco 2011 'Visual attention: The past 25 years', Vision Research vol 51 no 13, same DOI. Only survivor indexed."
+  },
+  {
+   "id": "10.1111/j.1468-0017.2004.00258.x",
+   "decision": "same",
+   "rationale": "Both are Carruthers 2004 'Practical Reasoning in a Modular Mind', same DOI; '2004-Carruthers.1' is a legacy year-author shadow key. Only survivor indexed."
+  },
+  {
+   "id": "10.7551/mitpress/5256.001.0001",
+   "decision": "same",
+   "rationale": "Both are Casati & Varzi 1999 'Parts and Places: The Structures of Spatial Representation', MIT Press. Only survivor indexed."
+  },
+  {
+   "id": "10.1146/annurev-vision-121219-081745",
+   "decision": "same",
+   "rationale": "Both are Castelhano & Krzys 2020 'Rethinking Space', Annual Review of Vision Science vol 6 no 1, same DOI. Only survivor indexed."
+  },
+  {
+   "id": "10.1016/0010-0277(88)90031-5",
+   "decision": "same",
+   "rationale": "All five are Fodor & Pylyshyn 1988 'Connectionism and cognitive architecture: A critical analysis', Cognition vol 28, same DOI. Only survivor indexed; the rest are duplicate imports under various hand/Zotero keys."
+  }
+ ]
+}

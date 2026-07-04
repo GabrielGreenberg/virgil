@@ -1,0 +1,52 @@
+{
+  "verdicts": [
+    {
+      "cid": "10.1038/s41467-023-37737-w",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both members: identical title, authors (Hawkins/Sano/Goodman/Fan), year 2023, Nature Communications vol 14 no 1, and shared DOI 10.1038/s41467-023-37737-w. Loser only adds pages 2199. Same article."
+    },
+    {
+      "cid": "10.1111/j.0029-4624.2005.00542.x",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Survivor is Hiddleston's 'A Causal Theory of Counterfactuals' in Nous (2005), DOI 10.1111/j.0029-4624.2005.00542.x. Loser is an 'unpublished' manuscript with identical title/author dated 2003 — a normal preprint of the 2005 Nous article (Hiddleston's dissertation was 2001; there is no distinct 1977 work — the '1977' citekey is spurious). Same scholarly work at manuscript vs published stage."
+    },
+    {
+      "cid": "literature and cognition",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both: 'Literature and cognition' by Jerry R. Hobbs, 1990, CSLI Lecture Notes 21. ISBN-10 0937073539 (loser) converts exactly to ISBN-13 9780937073537 (survivor) — same book."
+    },
+    {
+      "cid": "10.2307/2219508",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both members identical in every field: 'Jackson on Physical Information and Qualia' by Horgan, 1984, Philosophical Quarterly vol 34 no 135 p147, shared DOI 10.2307/2219508. Same article."
+    },
+    {
+      "cid": "impossible objects as nonsense sentences",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both: Huffman, 'Impossible Objects as Nonsense Sentences,' Machine Intelligence volume 6. Authoritative record (Semantic Scholar / doc.ic.ac.uk MI6) confirms a single work, pp. 295-323. The year discrepancy (survivor 1977 vs loser 1971) is a metadata error on one entry, not two distinct works — only one Huffman paper bears this title. Same work."
+    },
+    {
+      "cid": "10.1111/j.1467-9264.2014.00367.x",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All four members: 'VI-Exploitable Isomorphism and Structural Representation' by Nicholas Shea, 2014, Proceedings of the Aristotelian Society vol 114 no 2pt2 pp123-144, shared DOI 10.1111/j.1467-9264.2014.00367.x. Same article under variant citekeys/spacing."
+    },
+    {
+      "cid": "functional anatomy of macaque striate cortex ii retinotopic organization",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "Both members: Tootell/Switkes/Silverman/Hamilton, 'Functional anatomy of macaque striate cortex. II. Retinotopic organization,' J Neurosci 1988 vol 8 no 5 pp1531-1568 (loser carries DOI 10.1523/jneurosci.08-05-01531.1988, confirmed authoritative). Both are Part II (not I-vs-II), same year 1988 in the fields (survivor citekey '1986' is spurious), same pages. Same article."
+    },
+    {
+      "cid": "10.1093/oso/9780198847472.001.0001",
+      "verdict": "confirmed_same",
+      "offending": [],
+      "rationale": "All three members: Kulvicki, 'Modeling the Meanings of Pictures' (full title '...: Depiction and the Philosophy of Language'), OUP 2020, ISBN 9780198847472, DOI 10.1093/oso/9780198847472.001.0001. Loser 'kulvicki2020modelling' uses the British-spelling short title but shares the ISBN and publisher/year — same book."
+    }
+  ]
+}

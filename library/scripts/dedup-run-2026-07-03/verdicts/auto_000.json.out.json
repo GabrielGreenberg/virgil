@@ -1,0 +1,155 @@
+{
+ "verdicts": [
+  {
+   "id": "10.5860/choice.42-1247",
+   "decision": "same",
+   "rationale": "Both refer to Pylyshyn's book 'Seeing and Visualizing: It's Not What You Think'. The 2004 entry is the Choice review DOI for the book; the 2006 entry is the MIT Press book itself. Same underlying work."
+  },
+  {
+   "id": "10.1007/3-540-47979-1_7",
+   "decision": "same",
+   "rationale": "Identical DOI, title, authors, year, venue (ECCV 2002, pages 97-112). Same paper."
+  },
+  {
+   "id": "10.1515/9783110852820.361",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Generalized Conjunction and Type Ambiguity', authors Partee & Rooth, year 1983, pages 361-383. Same chapter."
+  },
+  {
+   "id": "10.1111/j.0021-8529.2005.00181.x",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Pictorial Implicature', author Abell, year, journal, volume/number/pages. Same article."
+  },
+  {
+   "id": "10.1038/323806a0",
+   "decision": "same",
+   "rationale": "Identical DOI, title, full author list, year, Nature vol 323, pages 806-809. Only bib type differs (misc vs article). Same paper."
+  },
+  {
+   "id": "10.1167/10.5.26",
+   "decision": "same",
+   "rationale": "Identical DOI, title, authors, journal, volume/number/pages. Same article."
+  },
+  {
+   "id": "10.1007/s10988-015-9185-9",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'The problem of lexical innovation', author Armstrong, journal Ling & Phil, vol/num/pages. Same article."
+  },
+  {
+   "id": "10.1037/0096-1523.26.2.834",
+   "decision": "same",
+   "rationale": "Identical DOI, title, authors Awh & Pashler, journal, volume/number/pages. Same article."
+  },
+  {
+   "id": "10.1093/oxfordhb/9780199262618.003.0018",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Phenomenal Concepts', author Balog, booktitle, pages 292-312. Same chapter."
+  },
+  {
+   "id": "10.2307/2026481",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Scenes and Other Situations', author Barwise, J. Phil vol 78 no 7. Same article."
+  },
+  {
+   "id": "10.1093/brain/118.1.49",
+   "decision": "same",
+   "rationale": "Identical DOI, title, authors Beckers & Zeki, Brain vol 118, pages 49-60. Only bib type differs. Same article."
+  },
+  {
+   "id": "10.1111/j.1933-1592.2010.00431.x",
+   "decision": "same",
+   "rationale": "Identical DOI, title, author Bennett, PPR vol 83 no 2, pages 345-365. Same article."
+  },
+  {
+   "id": "10.1037/0012-1649.29.4.711",
+   "decision": "same",
+   "rationale": "Identical DOI, title, authors, year 1993, Developmental Psychology vol 29 no 4, pages 711-721. Citekey says 1991 but fields agree on 1993. Same article."
+  },
+  {
+   "id": "10.1111/phpr.12135",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Seeing-As in the Light of Vision Science', author Block, PPR vol 89 no 3. Same article."
+  },
+  {
+   "id": "the classical hollywood cinema",
+   "decision": "same",
+   "rationale": "Same book 'The Classical Hollywood Cinema' by Bordwell, Staiger & Thompson. The 1985 Columbia University Press is the original edition; the 1988 Routledge is a reprint. Same underlying work."
+  },
+  {
+   "id": "10.1515/9783110261325.21",
+   "decision": "same",
+   "rationale": "All three members carry the same DOI, title '3. Phonology', author Brentari, year 2012, pages 21-54. Metadata is garbled relative to the survivor citekey, but the three members are the same work per their shared DOI/title/pages."
+  },
+  {
+   "id": "h r",
+   "decision": "same",
+   "rationale": "Identical fields: truncated title 'H., R', author Bullock, T, 1977, Freeman. Same book."
+  },
+  {
+   "id": "10.1037/0003-066x.53.5.533",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Adaptations, exaptations, and spandrels', identical author list, American Psychologist vol 53 no 5, pages 533-548. Same article."
+  },
+  {
+   "id": "10.1093/0199243816.003.0005",
+   "decision": "same",
+   "rationale": "All three members share DOI, title 'Sortals', author Campbell, book Reference and Consciousness, pages 61-83. Same chapter."
+  },
+  {
+   "id": "10.1038/nn1194",
+   "decision": "mixed",
+   "rationale": "Two members (carrasco2004attention, carrascolingread2004attention) are the 2004 Nature Neuroscience article 'Attention alters appearance' (Carrasco, Ling & Read), DOI 10.1038/nn1194. But carrasco2019attention is a distinct 2019 reprint in the volume 'Blockheads!' (MIT Press), sole author Carrasco, with a DIFFERENT DOI 10.7551/mitpress/9196.003.0006. Different venue, year, author list, and DOI — it is a separate publication that should not be merged into the 2004 article cluster.",
+   "distinct_members": ["carrasco2019attention"]
+  },
+  {
+   "id": "10.1093/cercor/bhp298",
+   "decision": "same",
+   "rationale": "Both members share DOI, title, authors, year 2010, Cerebral Cortex. Second entry has garbled type/publisher but same DOI/title. Same article."
+  },
+  {
+   "id": "10.1111/1467-9280.00278",
+   "decision": "same",
+   "rationale": "Identical DOI, title, author Cheng, Psychological Science vol 11 no 5, pages 403-408. Same article."
+  },
+  {
+   "id": "10.2307/2185417",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Knowledge of Language...', authors Hornstein & Chomsky, year 1988, Phil Review vol 97 no 4. Same review article."
+  },
+  {
+   "id": "10.2307/2025900",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Eliminative Materialism and the Propositional Attitudes', author Churchland, J. Phil vol 78, pages 67-90. Same article."
+  },
+  {
+   "id": "using language",
+   "decision": "same",
+   "rationale": "Identical title 'Using language', author Herbert H. Clark, year 1996, Cambridge University Press, same ISBN. Same book."
+  },
+  {
+   "id": "10.1186/s41235-019-0177-0",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'The grammar of emoji?...', authors Cohn, Engelen & Schilperoord, year 2019, same journal/volume. Same article."
+  },
+  {
+   "id": "10.1016/0028-3932(68)90021-3",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Further analysis of the hippocampal amnesic syndrome...', authors Milner, Corkin & Teuber, Neuropsychologia vol 6, pages 215-234. Same article."
+  },
+  {
+   "id": "10.1152/jn.1998.80.5.2657",
+   "decision": "same",
+   "rationale": "Identical DOI, title, full author list, J. Neurophysiology vol 80 no 5, pages 2657-2670. Same article."
+  },
+  {
+   "id": "the transfiguration of the commonplace",
+   "decision": "same",
+   "rationale": "Identical title, author Danto, year 1981, Harvard University Press, same ISBN. Same book."
+  },
+  {
+   "id": "10.1007/978-94-011-2610-6_9",
+   "decision": "same",
+   "rationale": "Identical DOI, title 'Aunty's Own Argument for the Language of Thought', author Davies, book Cognition Semantics and Philosophy, pages 235-271. Same chapter."
+  }
+ ]
+}

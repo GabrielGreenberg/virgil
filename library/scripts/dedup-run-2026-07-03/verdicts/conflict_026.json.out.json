@@ -1,0 +1,64 @@
+{
+  "verdicts": [
+    {
+      "id": "10.7551/mitpress/4124.001.0001",
+      "decision": "same",
+      "rationale": "Both members are Millikan 1984 'Language, Thought, and Other Biological Categories', same author, year, ISBN 9780262631150. Loser lacks DOI but is otherwise identical; hand-key vs Zotero-key duplicate of the same book."
+    },
+    {
+      "id": "10.1093/mind/fzp157",
+      "decision": "same",
+      "rationale": "Identical title, author, year 2010, Mind 119(473):43-81, same DOI. millikan2010knowing vs Zotero-style Millikan2010 are the same article."
+    },
+    {
+      "id": "10.1111/phpe.12004",
+      "decision": "same",
+      "rationale": "Identical title, author, 2012, Philosophical Perspectives 26(1):217-234, same DOI. Duplicate under hand-key vs Zotero-key."
+    },
+    {
+      "id": "10.1146/annurev.neuro.31.061307.090723",
+      "decision": "same",
+      "rationale": "Identical title, authors, 2008, Annual Review of Neuroscience 31(1):69-89, same DOI. Survivor deepIndexed, loser is an unindexed Zotero-key duplicate of the same article."
+    },
+    {
+      "id": "on the pragmatics of counterfactuals",
+      "decision": "same",
+      "rationale": "All four members are Moss 'On the Pragmatics of Counterfactuals'. Survivor (indexed) is the unpublished manuscript; moss2010pragmatics (indexed) is the published Noûs 46(3):561-586 version (DOI 10.1111/j.1468-0068.2010.00798.x); Moss2012 and Moss2012a are further duplicates of the published/manuscript versions. Preprint vs published of the same paper is merge-OK; no Part I/II or companion split."
+    },
+    {
+      "id": "10.1073/pnas.85.14.5287",
+      "decision": "same",
+      "rationale": "All three are Müller & Wehner 1988 'Path integration in desert ants, Cataglyphis fortis', PNAS 85(14):5287-5290, same DOI. ref144 and heinze2018principles_ref126 are reference-extracted shadow keys of the same article."
+    },
+    {
+      "id": "10.1007/s13164-016-0314-3",
+      "decision": "same",
+      "rationale": "Identical title, authors (Murez & Recanati), 2016, RoPP 7(2):265-281, same DOI. Hand-key vs Zotero-key duplicate."
+    },
+    {
+      "id": "10.1007/s10988-019-09289-0",
+      "decision": "same",
+      "rationale": "Identical title, authors (Murray & Starr), 2021, Linguistics and Philosophy 44(2):425-474, same DOI and note. Duplicate under two citekeys."
+    },
+    {
+      "id": "10.1007/s11098-025-02453-2",
+      "decision": "same",
+      "rationale": "Identical title, 2026, Philosophical Studies 183(2):455-479, same DOI. Author differs only by 'and others' vs the full author list; same article."
+    },
+    {
+      "id": "what is it like to be a bat",
+      "decision": "same",
+      "rationale": "All three are Nagel 'What Is It Like to Be a Bat?', Philosophical Review 83(4):435-450. nagel1974thomas carries the article's JSTOR DOI (10.2307/2183914); Nagel1974's year 2024 + collection DOI is a misfiled reprint of the same 1974 article (note confirms a misfiled PDF), matching vol/number/pages. Same paper."
+    },
+    {
+      "id": "10.1111/j.0021-8529.2004.0160.x",
+      "decision": "same",
+      "rationale": "Identical fields (Nanay 2004 'Taking Twofoldness Seriously', JAAC 62(3):285-289), same DOI. Duplicate under hand-key vs Zotero-key."
+    },
+    {
+      "id": "10.1007/s11098-017-0860-2",
+      "decision": "same",
+      "rationale": "Identical fields (Nanay 2018 'Threefoldness', Philosophical Studies 175(1):163-182), same DOI. Duplicate under two citekeys."
+    }
+  ]
+}

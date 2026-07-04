@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1038/83945", "decision": "same", "rationale": "Both members share DOI 10.1038/83945 with identical title, authors (Holcombe & Cavanagh), year, journal, volume, and pages."},
+  {"id": "10.1080/13506280444000625", "decision": "same", "rationale": "Same title 'Memory for object position in natural scenes', Hollingworth 2005, Visual Cognition v12(6) pp1003-1016; second member lacks DOI but title/year/author/volume/pages match."},
+  {"id": "10.1080/13506280500193818", "decision": "same", "rationale": "Both members share DOI with identical title, author, year, journal, volume, and pages."},
+  {"id": "10.1037/0096-3445.137.1.163", "decision": "same", "rationale": "Both members share DOI with identical title, authors, year, journal, volume, and pages (type misc vs article only)."},
+  {"id": "10.1093/acprof:oso/9780198713241.003.0004", "decision": "same", "rationale": "Both members share DOI with identical title 'The Heterogeneity of Implicit Bias', authors, year, booktitle, and pages."},
+  {"id": "neural networks and physical systems with emergent collective computational abilities", "decision": "same", "rationale": "Hopfield 1982 PNAS v79 same work; one lacks DOI, other carries canonical 10.1073/pnas.79.8.2554; title/author/year/volume match."},
+  {"id": "10.7551/mitpress/4337.003.0011", "decision": "same", "rationale": "Both members share DOI with identical title 'Perspective, Convention, and Compromise', Hopkins 2003, same booktitle and pages."},
+  {"id": "10.1007/s11097-012-9287-6", "decision": "same", "rationale": "Both members share DOI with identical title, author, year, journal, volume, and pages."},
+  {"id": "10.1016/0166-4328(95)00196-4", "decision": "same", "rationale": "Both members share DOI with identical title, author, year, journal, volume, and pages."},
+  {"id": "10.1093/mind/102.408.555", "decision": "same", "rationale": "All three members share DOI with identical title 'From Supervenience to Superdupervenience', Horgan 1993, Mind v102(408) pp555-586."},
+  {"id": "10.1111/j.1933-1592.2002.tb00195.x", "decision": "same", "rationale": "Both members share DOI with identical title 'The Salem Witch Project', Horgan & Tammelleo 2002, same volume and pages."},
+  {"id": "10.1016/0146-664x(74)90022-7", "decision": "same", "rationale": "All three members share DOI with identical title 'Determining lightness from an image', Horn 1974, same volume and pages."},
+  {"id": "10.1093/oso/9780198238744.003.0006", "decision": "same", "rationale": "Both members share DOI with identical title 'Pick a Theory...', Horn, year 2000, same journal/pages; citekey holds a stale 1984 label but entry data matches its partner."},
+  {"id": "10.1016/s0378-2166(99)00053-3", "decision": "same", "rationale": "Both members share DOI with identical title 'From if to iff', Horn 2000, Journal of Pragmatics v32(3) pp289-326."},
+  {"id": "10.4324/9780203206966.ch1_5", "decision": "same", "rationale": "Same 'Implicature' by Horn 2004, pp3-28; one is the Handbook of Pragmatics chapter with DOI, other the same reprint without DOI; title/author/year/pages consistent."},
+  {"id": "as time goes by", "decision": "same", "rationale": "Same book 'As Time Goes By', Norbert Hornstein, 1990, MIT Press, identical ISBN 9780262081917."},
+  {"id": "agency and deontic logic", "decision": "same", "rationale": "Same book 'Agency and Deontic Logic', John F. Horty, 2000, OUP, identical ISBN 9780195134612."},
+  {"id": "anaphora", "decision": "same", "rationale": "Same book 'Anaphora', Yan Huang, 2000, OUP, identical ISBN 9780198235286."},
+  {"id": "10.1113/jphysiol.1962.sp006837", "decision": "same", "rationale": "All three members share DOI with identical title, authors (Hubel & Wiesel), year, journal, volume, and pages."},
+  {"id": "10.1152/jn.1965.28.2.229", "decision": "same", "rationale": "Both members share DOI with identical title, authors, year, journal, volume, and pages."},
+  {"id": "10.1038/225041a0", "decision": "same", "rationale": "Both members share DOI with identical title 'Stereoscopic Vision in Macaque Monkey', Hubel & Wiesel 1970, Nature v225, pp41-42."},
+  {"id": "10.1002/cne.901580304", "decision": "same", "rationale": "Both members share DOI with identical title 'Sequence regularity...', Hubel & Wiesel 1974, pp267-293."},
+  {"id": "10.1002/cne.901580305", "decision": "same", "rationale": "Both members share DOI with identical title 'Uniformity of monkey striate cortex', Hubel & Wiesel 1974, v158 pp295-305; distinct companion paper from cne.901580304 (pp267-293) but that is a different cluster."},
+  {"id": "10.1098/rspb.1977.0085", "decision": "same", "rationale": "All four members share DOI with identical title 'Ferrier lecture - Functional architecture of macaque monkey visual cortex', Hubel & Wiesel 1977, v198(1130) pp1-59."},
+  {"id": "the cambridge grammar of the english language", "decision": "same", "rationale": "All three members are the same book by Huddleston & Pullum, 2002, CUP, identical ISBN 9780521431460."}
+ ]
+}

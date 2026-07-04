@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.2478/disp-2010-0009", "decision": "same", "rationale": "All three 'Origins of Perception' by Burge in Disputatio; 2010/2011 discrepancy reflects the standard Disputatio publication-date lag, same work."},
+    {"id": "10.1007/978-3-319-72478-2_5", "decision": "same", "rationale": "Identical title, author, booktitle, pages, and DOI for Burge's 'Iconic Representation'."},
+    {"id": "10.1016/j.cognition.2004.01.001", "decision": "same", "rationale": "Identical title, authors, journal, volume, pages, and DOI (Burgess et al. 2004)."},
+    {"id": "binding theory", "decision": "same", "rationale": "Büring 'Binding Theory' CUP; 2004 vs 2005 is the same book, publication-year variant."},
+    {"id": "10.3758/bf03205006", "decision": "same", "rationale": "Identical fields for Busey, Brady & Cutting 1990."},
+    {"id": "10.1037/0003-066x.53.5.533", "decision": "same", "rationale": "Identical fields for Buss et al. 1998 'Adaptations, exaptations, and spandrels'; different citekeys just pick different lead authors."},
+    {"id": "10.1016/0749-596x(89)90013-2", "decision": "same", "rationale": "Identical fields for Byrne & Johnson-Laird 1989 'Spatial reasoning'."},
+    {"id": "10.1215/00318108-110-2-199", "decision": "same", "rationale": "Identical fields for Byrne 2001 'Intentionalism Defended'."},
+    {"id": "10.1017/s0140525x03000013", "decision": "same", "rationale": "Identical fields for Byrne & Hilbert 2003 'Color realism and color science'."},
+    {"id": "10.1016/j.cognition.2013.05.006", "decision": "same", "rationale": "Identical fields for Cacchione 2013 'The foundations of object permanence'."},
+    {"id": "there is no special problem about scientific representation", "decision": "same", "rationale": "Same title Callender & Cohen 2006, same year and pages; second entry adds DOI/journal."},
+    {"id": "10.1098/rstb.2013.0293", "decision": "same", "rationale": "All three are Kendon 2014 'Semiotic diversity in utterance production'; misleading survivor citekey but fields and DOI all match."},
+    {"id": "10.1016/s0010-0285(02)00502-9", "decision": "same", "rationale": "Both Gershkoff-Stowe & Goldin-Meadow 2002 'Is there a natural order...', identical fields and DOI."},
+    {"id": "10.1111/j.0031-8094.2004.00348.x", "decision": "same", "rationale": "Identical fields for Camp 2004 'The Generality Constraint and Categorial Restrictions'."},
+    {"id": "contextualism metaphor and what is said", "decision": "same", "rationale": "Identical Camp 2006 'Contextualism, Metaphor, and What is Said', Mind & Language 21(3)."},
+    {"id": "10.1111/j.1520-8583.2007.00124.x", "decision": "same", "rationale": "Identical fields for Camp 2007 'Thinking with Maps'."},
+    {"id": "10.1111/j.1933-1592.2009.00245.x", "decision": "same", "rationale": "Identical fields for Camp 2009 'Putting Thoughts to Work'."},
+    {"id": "body and mind", "decision": "same", "rationale": "Identical Campbell (Keith) 1970 'Body and mind', same publisher and ISBN."},
+    {"id": "10.1109/mtas.1987.5010141", "decision": "same", "rationale": "Both entries carry identical fields (Carl M. Campbell 1987 'Tamper-Proof Black Boxes'); they merge consistently with each other regardless of citekey slug."},
+    {"id": "past space and self", "decision": "same", "rationale": "Identical Campbell (John) 'Past, space, and self' 1995, same publisher and ISBN."},
+    {"id": "10.1093/0199243816.003.0005", "decision": "same", "rationale": "All three 'Sortals' by Campbell 2002 in Reference and Consciousness, same pages and DOI."},
+    {"id": "berkeley s puzzle", "decision": "same", "rationale": "Campbell & Cassam 'Berkeley's Puzzle' 2014 OUP; only author order differs between entries."},
+    {"id": "10.1068/p5727", "decision": "same", "rationale": "Identical fields for Cant et al. 2008 'Independent Processing of Form, Colour, and Texture'."},
+    {"id": "10.1093/mind/106.423.429", "decision": "same", "rationale": "Identical fields for Cappelen (& Lepore) 1997 'Varieties of quotation'."},
+    {"id": "insensitive semantics", "decision": "same", "rationale": "Identical Cappelen (& Lepore) 2005 'Insensitive semantics', same publisher and ISBN."}
+  ]
+}

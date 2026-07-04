@@ -1,0 +1,65 @@
+{
+  "verdicts": [
+    {
+      "id": "10.1007/s10992-013-9300-8",
+      "decision": "same",
+      "rationale": "All three members share the authoritative DOI 10.1007/s10992-013-9300-8. starr2013new's differing title ('A New Theory of Conditionals...') is a metadata mislabel on the same DOI; Starr2014's 2013/2014 year gap is online-vs-print. Same publication."
+    },
+    {
+      "id": "a uniform theory of conditionals chapter 3",
+      "decision": "same",
+      "rationale": "Two identical unpublished manuscript entries (same title, author, year, note); only the survivor is indexed. Duplicate import."
+    },
+    {
+      "id": "10.1167/jov.22.4.11",
+      "decision": "same",
+      "rationale": "Identical fields and shared DOI; loser is a Zotero-style key duplicate, not indexed."
+    },
+    {
+      "id": "10.1111/b.9780631217756.2002.00014.x",
+      "decision": "same",
+      "rationale": "Same title and same DOI for the Blackwell Guide; 2003/2002 year variance is print-vs-online. Loser not indexed. Same book."
+    },
+    {
+      "id": "10.1111/phpr.12307",
+      "decision": "same",
+      "rationale": "Same DOI; titles differ only by HTML italic markup on 'Modus Ponens'. Duplicate."
+    },
+    {
+      "id": "10.1111/nous.12220",
+      "decision": "same",
+      "rationale": "Three entries for 'Content in a Dynamic Context', same journal/volume/number/pages; two share DOI 10.1111/nous.12220 and the 2016 legacy key matches vol/num/pages. Only survivor indexed. Same work."
+    },
+    {
+      "id": "10.1007/s13164-014-0213-4",
+      "decision": "same",
+      "rationale": "Identical 'Meaning and Demonstration' fields and shared DOI; loser is a hand-key duplicate, not indexed."
+    },
+    {
+      "id": "10.1057/s41599-018-0111-y",
+      "decision": "same",
+      "rationale": "Identical fields and shared DOI; Zotero-style key duplicate, not indexed."
+    },
+    {
+      "id": "a mark of the mental",
+      "decision": "same",
+      "rationale": "Three entries for Neander's 'A Mark of the Mental' (2017, MIT Press). The isbn/doi variants (9780262036146 print vs 9780262339865 online) are two formats of the same book. Same work despite two indexed members."
+    },
+    {
+      "id": "10.1016/j.tics.2006.05.009",
+      "decision": "same",
+      "rationale": "Identical fields and shared DOI; loser is a name-swapped Zotero-style duplicate, not indexed."
+    },
+    {
+      "id": "10.1111/j.1933-1592.2010.00359.x",
+      "decision": "same",
+      "rationale": "Identical 'The Spatial Content of Experience' fields and shared DOI; loser not indexed. Duplicate."
+    },
+    {
+      "id": "the visual display of quantitative information",
+      "decision": "mixed",
+      "rationale": "tufte2001visual (2nd ed., 2001) and tufte1983visual (1st ed., 1983, Graphics Press) are distinct editions of Tufte's book; the 2nd edition is a substantively revised publication and BOTH members are independently indexed, so the 1983 first edition must be kept separate.",
+      "distinct_members": ["tufte1983visual"]
+    }
+  ]
+}

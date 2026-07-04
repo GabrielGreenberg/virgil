@@ -1,0 +1,104 @@
+{
+  "verdicts": [
+    {
+      "id": "lakoff1987womenb||lakoffgeorge1987women",
+      "decision": "same",
+      "rationale": "Both George Lakoff, 1987, University of Chicago Press. b's title 'Women' is truncated at the first comma of 'Women, fire, and dangerous things'. Same book."
+    },
+    {
+      "id": "lakoff1989more||lakoffetal1989more",
+      "decision": "same",
+      "rationale": "Both 'More than Cool Reason' (b adds subtitle 'A Field Guide to Poetic Metaphor' and coauthor Turner), 1989, University of Chicago Press. Same Lakoff & Turner book."
+    },
+    {
+      "id": "lakoff1999philosophy||lakoffetal1999philosophy",
+      "decision": "same",
+      "rationale": "Both 'Philosophy in the Flesh' (b adds subtitle and coauthor Johnson), 1999, Basic Books. Same Lakoff & Johnson book."
+    },
+    {
+      "id": "lakoffetal1999philosophy||lakoffjohnson1999philosophy",
+      "decision": "same",
+      "rationale": "Both 'Philosophy in the Flesh', Lakoff & Johnson, 1999, Basic Books. Same book, differing only in title fullness and author formatting."
+    },
+    {
+      "id": "lambert1990||lambert1990neues",
+      "decision": "unsure",
+      "rationale": "a is 'Neues Organon I' (explicit volume I) while b is 'Neues Organon' with no volume marker. Lambert's Neues Organon is a multi-volume work; b could be the whole work, vol I, or a different volume. Risk of Part I vs full/other volume; cannot confidently merge."
+    },
+    {
+      "id": "landman1989agroups||landman1989bgroups",
+      "decision": "distinct",
+      "rationale": "'Groups, I' vs 'Groups, II' — explicitly Part I vs Part II with different issue numbers (5 vs 6), pages (559-605 vs 723-744), and DOIs. Two separate papers."
+    },
+    {
+      "id": "langacker1987foundation||langacker1987foundations",
+      "decision": "same",
+      "rationale": "Both 'Foundations of (Cognitive) Grammar', Langacker, 1987, Stanford University Press. a title truncated at 'vol'; same volume-1 work."
+    },
+    {
+      "id": "langacker1987foundation||langacker1987foundations1",
+      "decision": "same",
+      "rationale": "a 'Foundations of Cognitive Grammar, vol' (truncated) vs b 'Foundations of cognitive grammar. Vol. 1, Theoretical prerequisites', Langacker, 1987, Stanford. Same volume-1 book."
+    },
+    {
+      "id": "langacker1987foundations||langacker1987foundations1",
+      "decision": "same",
+      "rationale": "Both 'Foundations of cognitive grammar' (b specifies Vol. 1, Theoretical prerequisites), Langacker, 1987, Stanford University Press. Same volume-1 book."
+    },
+    {
+      "id": "langacker1998conceptual||langacker1999grammar",
+      "decision": "distinct",
+      "rationale": "a 'Conceptualization, symbolization, and grammar' (incollection, 1998, Erlbaum) vs b 'Grammar and conceptualization' (book, 2000, Mouton de Gruyter). Different titles, different types, different publishers/years. Distinct works."
+    },
+    {
+      "id": "laurence2012scope||margolis2012scope",
+      "decision": "same",
+      "rationale": "Both 'The Scope of the Conceptual' (a prefixed with chapter number '13.'), Margolis & Laurence, 2012, Oxford Handbook of Philosophy of Cognitive Science. Same chapter."
+    },
+    {
+      "id": "leslie1982perception||leslie1984spatiotemporal",
+      "decision": "distinct",
+      "rationale": "'The Perception of Causality in Infants' (1982, Perception 11(2), 173-186) vs 'Spatiotemporal Continuity and the Perception of Causality in Infants' (1984, Perception 13(3), 287-305). Different years, volumes, pages, and DOIs. Two distinct papers."
+    },
+    {
+      "id": "levelt1984perceptual||levelt1984perceptualb",
+      "decision": "same",
+      "rationale": "'Some perceptual limitations in talking about space' vs '...on talking about space', Levelt, 1984. in/on is a trivial variant; same chapter (b adds pages 323-358)."
+    },
+    {
+      "id": "levelt1984perceptual||levelt1984perceptualc",
+      "decision": "same",
+      "rationale": "Same chapter as the b/c variants: 'Some perceptual limitations in/on talking about space', Levelt, 1984. Identical work."
+    },
+    {
+      "id": "levelt1984perceptual||levelt1984perceptuallirnitations",
+      "decision": "same",
+      "rationale": "b title 'Some perceptuallirnitations in talking about space' is an OCR corruption of 'perceptual limitations', Levelt, 1984. Same chapter."
+    },
+    {
+      "id": "levine1984fm||pylyshyn1976fm",
+      "decision": "same",
+      "rationale": "Despite mismatched citekeys, both entries are Pylyshyn, 'Things and Places' (a adds subtitle 'How the Mind Connects with the World'), 2007, MIT Press, ISBN 9780262162456. Same book."
+    },
+    {
+      "id": "levine1984fm||pylyshyn2007b",
+      "decision": "same",
+      "rationale": "Both Pylyshyn 'Things and Places', 2007, MIT Press, ISBN 9780262162456. Same book (a has the full subtitle)."
+    },
+    {
+      "id": "levine1984fm||pylyshyn2007things",
+      "decision": "same",
+      "rationale": "Both Pylyshyn 'Things and Places', 2007, The MIT Press, ISBN 9780262162456. Same book."
+    },
+    {
+      "id": "lewis1972counterfactuals||lewis1973counterf",
+      "decision": "distinct",
+      "rationale": "a 'Counterfactuals and Comparative Possibility' (incollection/article, Journal of Philosophical Logic vol 2, 57-85, with DOI) vs b 'Counterfactuals' (Lewis's 1973 book, Blackwell). An article vs the book; distinct works."
+    },
+    {
+      "id": "lewis1972counterfactuals||lewis1973counterfactuals",
+      "decision": "distinct",
+      "rationale": "a 'Counterfactuals and Comparative Possibility' (article, Journal of Philosophical Logic vol 2, 57-85) vs b 'Counterfactuals' (Lewis's 1973 book, Harvard University Press, ISBN). Article vs book; distinct works."
+    }
+  ]
+}

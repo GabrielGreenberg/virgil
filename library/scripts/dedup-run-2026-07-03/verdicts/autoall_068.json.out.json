@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "10.1093/mind/lix.236.433", "decision": "same", "rationale": "All three are Turing 'Computing Machinery and Intelligence', Mind 1950, LIX(236), 433-460, sharing the DOI. Third is an incollection reprint of the same work."},
+    {"id": "10.1126/science.185.4157.1124", "decision": "same", "rationale": "Both are Tversky & Kahneman 'Judgment under Uncertainty: Heuristics and Biases'. Member 2 (1975, Springer volume, DOI 10.1007/978-94-010-1834-0_8) is a reprint of the 1974 Science paper — same intellectual work."},
+    {"id": "10.1017/cbo9780511809477.009", "decision": "same", "rationale": "Both 'Causal schemas in judgments under uncertainty', Tversky & Kahneman 1982, same booktitle/pages/DOI."},
+    {"id": "10.1016/0010-0285(81)90016-5", "decision": "same", "rationale": "Both 'Distortions in memory for maps', Barbara Tversky 1981, identical fields and DOI."},
+    {"id": "10.1126/science.7455683", "decision": "same", "rationale": "Both 'The Framing of Decisions and the Psychology of Choice', Tversky & Kahneman 1981, identical fields and DOI."},
+    {"id": "10.1016/s0079-7421(08)60122-x", "decision": "same", "rationale": "Both 'Spatial Mental Models', Barbara Tversky 1991, same pages and DOI."},
+    {"id": "10.1007/3-540-45460-8_6", "decision": "same", "rationale": "Both 'Some Ways that Maps and Diagrams Communicate', Barbara Tversky 2000, same pages and DOI."},
+    {"id": "10.2307/1423571", "decision": "same", "rationale": "All three are 'Solving the Two Big Problems of Consciousness', Hardcastle & Tye 1997, Am. J. Psychology 110(3):468, same DOI."},
+    {"id": "10.7551/mitpress/5211.003.0011", "decision": "same", "rationale": "Both 'In Defense of Representationalism: Reply to Commentaries', Tye 2005, same booktitle/pages/DOI."},
+    {"id": "the admissible contents of visual experience", "decision": "same", "rationale": "Both 'The Admissible Contents of Visual Experience', Tye. Member 1 is a 2009 preprint, member 2 the 2011 published incollection version — same work."},
+    {"id": "10.1007/s10071-003-0204-9", "decision": "same", "rationale": "Both 'Disposition to recognize goals in infant chimpanzees', Uller 2004, Animal Cognition 7(3), same DOI."},
+    {"id": "10.1109/34.99234", "decision": "same", "rationale": "Both 'Recognition by linear combinations of models', Ullman & Basri 1991, IEEE TPAMI 13(10), same DOI."},
+    {"id": "10.1016/0959-4388(94)90066-3", "decision": "same", "rationale": "Both 'What and where in the human brain', Ungerleider & Haxby 1994, Curr Opin Neurobiol 4:157-165. Member 2 omits DOI but title/authors/year/volume/pages match."},
+    {"id": "10.1016/0042-6989(82)90113-4", "decision": "same", "rationale": "Both 'Spatial frequency selectivity of cells in macaque visual cortex', De Valois et al. 1982, same DOI."},
+    {"id": "10.1016/j.neuropsychologia.2005.05.004", "decision": "same", "rationale": "Both are the same double-dissociation fMRI study, Valyear et al. 2006, Neuropsychologia 44(2), same DOI."},
+    {"id": "10.1017/s002222670000058x", "decision": "same", "rationale": "Both 'Discourse structure, topicality and questioning', Van Kuppevelt 1995, J. Linguistics 31(1), same DOI."},
+    {"id": "10.1111/j.1467-7687.2006.00508.x", "decision": "same", "rationale": "Both 'Six-month-old infants use analog magnitudes to represent duration', VanMarle & Wynn 2006, Dev Sci 9(5), same DOI."},
+    {"id": "10.1016/0042-6989(84)90041-5", "decision": "same", "rationale": "Both are the same striate-cortex visual-field study, Van Essen/Newsome/Maunsell 1984, Vision Research 24(5), same DOI."},
+    {"id": "10.1126/science.1734518", "decision": "same", "rationale": "Both 'Information Processing in the Primate Visual System', Van Essen/Anderson/Felleman 1992, Science 255(5043), same DOI."},
+    {"id": "10.1016/s0042-6989(01)00045-1", "decision": "same", "rationale": "Both 'Mapping visual cortex in monkeys and humans using surface-based atlases', Van Essen et al. 2001, same DOI."},
+    {"id": "10.1111/j.1475-4975.1986.tb00494.x", "decision": "same", "rationale": "Both 'Two Concepts of Possible Worlds', van Inwagen 1986, Midwest Studies 11:185-213, same DOI."},
+    {"id": "10.1111/1467-9280.03451", "decision": "same", "rationale": "Both 'Attentive Tracking of Objects Versus Substances', vanMarle & Scholl 2003, Psych Sci 14(5), same DOI."},
+    {"id": "10.1023/b:ling.0000004548.98658.8f", "decision": "same", "rationale": "Both 'Questioning to Resolve Decision Problems', van Rooy 2003, Linguistics and Philosophy 26(6), same DOI."},
+    {"id": "10.1111/1468-0068.36.s1.6", "decision": "same", "rationale": "Both 'On Logical Relativity', Varzi 2002, Noûs 36, pages 197-219. Member 2 omits DOI but title/author/year/volume/pages match."},
+    {"id": "10.1037/0096-3445.123.3.316", "decision": "same", "rationale": "Both 'Grouped locations and object-based attention: Comment on Egly, Driver, and Rafal (1994)', Vecera 1994, JEP:General 123(3), same DOI."}
+  ]
+}

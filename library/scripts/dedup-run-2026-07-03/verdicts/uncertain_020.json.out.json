@@ -1,0 +1,104 @@
+{
+  "verdicts": [
+    {
+      "id": "sorensen2001vagueness||sorensen2002vagueness",
+      "decision": "distinct",
+      "rationale": "'Vagueness and Contradiction' (Sorensen, OUP monograph) vs 'Vagueness' (Sorensen's SEP encyclopedia entry, online). Different works."
+    },
+    {
+      "id": "soto2007automatic||soto2008automati",
+      "decision": "distinct",
+      "rationale": "'Automatic guidance of visual attention from verbal working memory' (JEP:HPP 2007, 2 authors) vs 'Automatic guidance of attention from working memory' (Trends Cog Sci 2008 review, 4 authors). Different DOIs, different journals, different papers."
+    },
+    {
+      "id": "spelke1998nativism||spelke1998nativismb",
+      "decision": "distinct",
+      "rationale": "'Nativism, empiricism, and the origins of knowledge' (Infant Behavior & Development, Spelke alone) vs 'Nativism, empiricism, and the development of knowledge' (Handbook of Child Psychology chapter, Spelke & Newport). Different titles, venues, and authorship."
+    },
+    {
+      "id": "spence2011crossmodal||spence2012crossmodal",
+      "decision": "distinct",
+      "rationale": "'Crossmodal correspondences: a tutorial review' (2011, Spence alone) vs 'Crossmodal Correspondences: Innate or Learned?' (2012, Spence & Deroy, i-Perception). Different papers."
+    },
+    {
+      "id": "sperber1995relevance||sperberwilson1995relevance",
+      "decision": "same",
+      "rationale": "'Relevance, 2nd ed' (Sperber & Wilson, Blackwell 1995) and 'Relevance: Communication and Cognition' 2nd ed (Blackwell 1995) are the same book."
+    },
+    {
+      "id": "sperber1995selection||sperberwilson1995relevance",
+      "decision": "distinct",
+      "rationale": "'Relevance theory explains the selection task' (Cognition article) vs 'Relevance: Communication and Cognition' (the Blackwell book). Different works."
+    },
+    {
+      "id": "sperber1995selectionb||sperberwilson1995relevance",
+      "decision": "distinct",
+      "rationale": "'Relevance theory explains the selection task' (Cognition article) vs 'Relevance: Communication and Cognition' (the Blackwell book). Different works."
+    },
+    {
+      "id": "sperber2000metarepres||sperber2000metarepresb",
+      "decision": "distinct",
+      "rationale": "'Metarepresentations in an Evolutionary Perspective' (a chapter, pp 117-137) vs 'Metarepresentations' (the whole edited volume). Chapter vs containing book are distinct works."
+    },
+    {
+      "id": "sperber2000metarepres||sperberwilson2000metarepresentations",
+      "decision": "distinct",
+      "rationale": "'Metarepresentations in an Evolutionary Perspective' (chapter, pp 117-137) vs 'Metarepresentations' (the whole edited volume). Chapter vs containing book are distinct works."
+    },
+    {
+      "id": "spratling2013predictive||spratling2016predictive",
+      "decision": "distinct",
+      "rationale": "'Predictive Coding' (Encyclopedia of Computational Neuroscience entry, 2015) vs 'Predictive coding as a model of cognition' (Cognitive Processing article, 2016). Different works and DOIs."
+    },
+    {
+      "id": "squire1987memory||squire1988memory",
+      "decision": "distinct",
+      "rationale": "'Memory and brain' (Squire, OUP book 1987) vs 'Memory: brain systems and behavior' (Squire & Zola-Morgan, Trends in Neurosciences article 1988). Different works."
+    },
+    {
+      "id": "stalnaker1978assertion||stalnaker1979assertion",
+      "decision": "same",
+      "rationale": "Both are Stalnaker's 'Assertion' (Syntax and Semantics 9, Academic Press). The 1978/1979 dates are variant citations for the same classic paper."
+    },
+    {
+      "id": "starr2013conditionals||starr2013new",
+      "decision": "distinct",
+      "rationale": "'Conditionals, Meaning and Content: The Inquisitive Theory of If' vs 'A New Theory of Conditionals: Time, Inference & Causality'. Shared DOI is a placeholder/erroneous copy; titles are entirely different works."
+    },
+    {
+      "id": "starr2013conditionals||starr2013uniform",
+      "decision": "distinct",
+      "rationale": "'Conditionals, Meaning and Content: The Inquisitive Theory of If' vs 'A Uniform Theory of Conditionals'. The shared DOI genuinely belongs to the 'Uniform Theory' paper; the 'Inquisitive Theory of If' has an erroneously copied DOI. Distinct titles/works."
+    },
+    {
+      "id": "starr2013uniform||starr2014uniform",
+      "decision": "same",
+      "rationale": "'A Uniform Theory of Conditionals' (published J Philos Logic) vs 'A Uniform Theory of Conditionals (Chapter 3)' (dissertation/manuscript companion). Same work, published vs manuscript version."
+    },
+    {
+      "id": "stojnic2017discourse||stojnicstonelepore2017discourse",
+      "decision": "same",
+      "rationale": "'Discourse and logical form: pronouns, attention and coherence' vs 'Discourse and logical form' — same authors (Stojnić, Stone, Lepore), same journal, same volume/number/pages (Linguistics and Philosophy 40(5):519-547). Same paper."
+    },
+    {
+      "id": "supalla1978how||supalla1978many",
+      "decision": "same",
+      "rationale": "'How many seats in a chair?...' vs 'How many seats in a chear?...' (typo). Same authors (Supalla & Newport), same year, same pages 91-132. Same chapter."
+    },
+    {
+      "id": "supalla1978many||supallanewport1978seats",
+      "decision": "same",
+      "rationale": "Same title (with 'chear' typo variant), same authors, same booktitle (Understanding Language through Sign Language Research), same pages 91-132, same year. Same chapter."
+    },
+    {
+      "id": "talmy1985force||talmy1988force",
+      "decision": "same",
+      "rationale": "'Force dynamics in language and thought' (pp 49-100) vs 'Force Dynamics in Language and Cognition' (Cognitive Science 12(1):49-100, 1988). Identical page range 49-100 and near-identical title identify Talmy's classic force-dynamics paper; the 1985 date/title variant is the same work."
+    },
+    {
+      "id": "tan1996emotion||taned1996emotion",
+      "decision": "same",
+      "rationale": "'Emotion and the structure of narrative film' (Ed S. Tan, Erlbaum, 1995) vs 'Emotion and the Structure of Narrative Film. Film as an Emotion Machine' (Tan, Lawrence Erlbaum, 1996). Same book, minor year/subtitle variance."
+    }
+  ]
+}

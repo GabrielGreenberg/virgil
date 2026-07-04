@@ -1,0 +1,29 @@
+{
+ "verdicts": [
+  {"id": "10.1016/j.neuroscience.2005.03.003", "decision": "same", "rationale": "Both members: identical title, author (Thompson, K.W.), year, journal, volume, pages, DOI."},
+  {"id": "10.1037/a0014547", "decision": "same", "rationale": "Both members: identical title, authors, year, journal, volume, pages, DOI. Same ASL form/meaning paper."},
+  {"id": "10.1037/a0019339", "decision": "same", "rationale": "Both members: identical title, authors, year, journal, volume, pages, DOI. Same BSL iconicity paper."},
+  {"id": "10.5334/gjgl.872", "decision": "same", "rationale": "Both members: identical title, authors, year, journal, DOI; only type differs (article vs misc)."},
+  {"id": "10.1016/s0002-9394(14)72148-8", "decision": "same", "rationale": "Both members share the same title 'Speed of processing in the human visual system' and same authors (Thorpe, Fize, Marlot) — the landmark 1996 paper. Member thorpe1996 carries a corrupted journal/DOI/pages (an American Journal of Ophthalmology collision) but describes the same work as thorpe1996speed (Nature 381:520-522). Same underlying work; merge is correct."},
+  {"id": "10.1007/3-540-55966-3_21", "decision": "same", "rationale": "Both members: identical title, authors, year, pages, DOI; only type differs (incollection vs misc)."},
+  {"id": "10.1037/0096-1523.20.3.478", "decision": "same", "rationale": "Both members: identical title, authors, year, journal, volume, pages, DOI."},
+  {"id": "10.1016/j.tics.2004.01.006", "decision": "same", "rationale": "Both members: identical title, author, year, journal, volume, pages, DOI."},
+  {"id": "10.1093/deafed/enm045", "decision": "same", "rationale": "Same title, author (Tolar), year 2008, same journal (abbreviated form), same page range 225-240. Same work; second entry is a sparser copy."},
+  {"id": "natural history of human thinking", "decision": "same", "rationale": "Both members: identical title, author (Tomasello), year, publisher, ISBN."},
+  {"id": "10.1093/oso/9780195060232.003.0002", "decision": "same", "rationale": "Same title 'The Psychological Foundations of Culture', same authors (Tooby, Cosmides), year 1992, publisher OUP. One is the incollection with DOI, other a book-level copy of the same chapter."},
+  {"id": "10.1016/s1364-6613(98)01171-1", "decision": "same", "rationale": "Both members: identical title, authors, year, journal, volume, pages, DOI."},
+  {"id": "10.1075/tsl.6.14clo", "decision": "same", "rationale": "Same title 'Conditional markers', same author (Traugott), year 1985, same DOI. One is incollection with pages, other a sparser book copy."},
+  {"id": "10.1080/00455091.1985.10716416", "decision": "same", "rationale": "Both members: identical title, author, year, journal, volume, pages, DOI."},
+  {"id": "10.1093/mind/113.449.57", "decision": "same", "rationale": "All eight members: identical title, author, year, journal, volume, pages, DOI. Duplicate copies of 'The Silence of the Senses'."},
+  {"id": "10.1016/s0734-189x(85)80004-9", "decision": "same", "rationale": "Both members: identical title, author, year, journal, volume, pages, DOI."},
+  {"id": "10.1038/scientificamerican1186-114b", "decision": "same", "rationale": "Both members: identical title, author, year, journal, volume, pages, DOI."},
+  {"id": "10.1080/02724988843000104", "decision": "same", "rationale": "Both members: identical title, author, year 1988, journal, volume, pages, DOI. One is flagged as preprint but same work."},
+  {"id": "feature binding attention and object perception", "decision": "same", "rationale": "Same title, same author (Treisman, A.). One entry as 1998 Phil Trans article, other as 1999 OUP book — same underlying work with minor year/venue metadata divergence."},
+  {"id": "10.1037/0033-295x.101.1.80", "decision": "same", "rationale": "All three members: identical title, authors, year, journal, volume, pages, DOI."},
+  {"id": "faces and objects in macaque cerebral cortex", "decision": "same", "rationale": "Same title, same authors (Tsao et al.), year 2003, Nat Neurosci, vol 6, pages 989-995. Second entry has garbled author-list formatting but same work."},
+  {"id": "mechanisms of face perception", "decision": "same", "rationale": "Both members: identical title, authors, year, journal, volume, pages. Same review."},
+  {"id": "10.1006/cogp.1999.0715", "decision": "same", "rationale": "Both members: identical title, author, year, journal, volume, pages, DOI."},
+  {"id": "10.1016/s0166-4115(08)62776-4", "decision": "same", "rationale": "Both members: identical title, author, year, booktitle, pages, DOI."},
+  {"id": "10.1126/science.2296719", "decision": "same", "rationale": "Both members: identical title, authors, year, journal, volume, pages, DOI; only type differs (misc vs article)."}
+ ]
+}

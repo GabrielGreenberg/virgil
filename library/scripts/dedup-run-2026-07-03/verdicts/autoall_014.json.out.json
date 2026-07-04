@@ -1,0 +1,29 @@
+{
+  "verdicts": [
+    {"id": "on the contrary", "decision": "same", "rationale": "Both members: 'On the contrary' by Paul M. Churchland, 1998, MIT Press, same ISBN 9780262032544."},
+    {"id": "plato s camera", "decision": "same", "rationale": "Both members: 'Plato's Camera' by Paul M. Churchland, 2013, MIT Press, same ISBN 9780262525183."},
+    {"id": "adverbs and functional heads", "decision": "same", "rationale": "Both members: 'Adverbs and functional heads' by Guglielmo Cinque, 1999, OUP, same ISBN 9780195115277."},
+    {"id": "10.1590/s0100-60452011000200001", "decision": "same", "rationale": "Both members: 'Varieties of the generality constraint' by Clapp & Duhau, 2011, Manuscrito 34(2), same DOI."},
+    {"id": "10.1016/0022-0965(73)90060-x", "decision": "same", "rationale": "Both members: 'Asymmetries in the acquisition of polar adjectives' by Klatzky, Clark & Macken, 1973, same DOI/volume/pages. Citekey stub is misleading but bib fields match."},
+    {"id": "10.2307/412745", "decision": "same", "rationale": "Both members: 'When Nouns Surface as Verbs' by Clark & Clark, 1979, Language 55(4), same DOI."},
+    {"id": "10.1037/0096-3445.113.1.121", "decision": "same", "rationale": "All three members: 'On the pretense theory of irony' by Clark & Gerrig, 1984, JEP:General 113(1), same DOI."},
+    {"id": "10.1207/s15516709cog1302_7", "decision": "same", "rationale": "Both members: 'Contributing to Discourse' by Clark & Schaefer, 1989, Cognitive Science 13(2), same DOI."},
+    {"id": "microcognition", "decision": "same", "rationale": "Both members: 'Microcognition' by Andy Clark, 1989, MIT Press, same ISBN."},
+    {"id": "associative engines", "decision": "same", "rationale": "Both members: 'Associative Engines' by Andy Clark, 1993, MIT Press, same ISBN."},
+    {"id": "using language", "decision": "same", "rationale": "Both members: 'Using language' by Herbert H. Clark, 1996, Cambridge UP, same ISBN. Citekey Clark1995 is just a stub; fields match."},
+    {"id": "10.1016/s0010-0277(97)00010-3", "decision": "same", "rationale": "Both members: 'Conceptual perspective and lexical choice in acquisition' by Eve V Clark, 1997, Cognition 64(1), same DOI."},
+    {"id": "10.1111/j.1467-9280.1997.tb00427.x", "decision": "same", "rationale": "Both members: 'To See or not to See' by Rensink, O'Regan & Clark, 1997, Psychological Science 8(5), same DOI."},
+    {"id": "10.1017/cbo9780511554360.005", "decision": "same", "rationale": "Both members: 'Information theory, complexity and linguistic descriptions' by Robin Clark, 2001, same DOI/pages. Citekey 'unsupervis' is a misleading stub but fields match."},
+    {"id": "10.2307/3182592", "decision": "same", "rationale": "Both members: 'Visual Experience and Motor Action: Are the Bonds Too Tight?' by Andy Clark, 2001, Phil Review 110(4). Different DOIs (JSTOR 10.2307/3182592 vs Duke publisher 10.1215/00318108-110-4-495) resolve to the same article; title/author/volume/issue all match."},
+    {"id": "surfing uncertainty prediction action and embodied mind", "decision": "same", "rationale": "Both members: 'Surfing uncertainty' by Andy Clark, 2016, OUP, same ISBN."},
+    {"id": "10.1038/nature05575", "decision": "same", "rationale": "Both members: 'Planning for the future by western scrub-jays' by Raby, Alexis, Dickinson & Clayton, 2007, Nature 445, same DOI."},
+    {"id": "the shamans of prehistory", "decision": "same", "rationale": "Both members: 'The Shamans of prehistory' by Jean Clottes, 1998, Harry N. Abrams, same ISBN. Citekeys differ only in Clottes/Lewis-Williams spelling."},
+    {"id": "10.1075/sll.3.2.04cog", "decision": "same", "rationale": "Both members: 'A model of signed language classifier predicates' by Cogill-Koez, 2000, Sign Language & Linguistics 3(2), same DOI."},
+    {"id": "10.2307/2016947", "decision": "same", "rationale": "Both members: 'An Introduction to Logic and Scientific Method' by Cohen & Nagel, 1934, J. Philosophy 31(8), same DOI."},
+    {"id": "10.1007/978-94-010-1713-8_3", "decision": "same", "rationale": "Both members: 'Some Remarks on Grice's Views about the Logical Particles of Natural Language' by L. Jonathan Cohen, 1971. One chapter w/ DOI, one book (Reidel); same work, same title/author/year."},
+    {"id": "10.1016/s0364-0213(79)80006-3", "decision": "same", "rationale": "Both members: 'Elements of a plan-based theory of speech acts' by Cohen & Perrault, 1979, Cognitive Science 3(3), same DOI."},
+    {"id": "10.1037//0096-1523.17.4.891", "decision": "same", "rationale": "Both members: 'Density effects in conjunction search' by Cohen & Ivry, 1991, JEP:HPP 17(4), same DOI."},
+    {"id": "contemporary debates in philosophy of mind", "decision": "same", "rationale": "Both members: 'Contemporary debates in philosophy of mind' by McLaughlin & Cohen, 2007, Blackwell, same ISBN."},
+    {"id": "10.1111/j.1533-6077.2010.00185.x", "decision": "same", "rationale": "Both members: 'Perception and Computation' by Jonathan Cohen, 2010, Philosophical Issues 20(1), same DOI."}
+  ]
+}
