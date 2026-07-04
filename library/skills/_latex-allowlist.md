@@ -1,0 +1,155 @@
+<!-- Canonical ALLOWABLE-LaTeX doctrine for every `.tex`-writing skill in
+     BOTH silos (editor + library). "Allowable" means: renders MEANINGFULLY
+     in Virgil, not as raw grey monospace. The vocabulary below is grounded
+     in the renderer's own inline SSOT — `parseInlineContent`
+     (`src/lib/latex-parser.ts`) plus the `KNOWN_CITE_COMMANDS` registry
+     (`src/lib/cite-commands.ts`). Do not hand-extend it; extend the parser
+     first, then this list.
+
+     SSOT: this file is the single source of truth. A byte-identical copy
+     lives at `library/skills/_latex-allowlist.md` so the editor and library
+     bundles (separate on-disk folders) each carry a local copy for their
+     skills' `[_latex-allowlist.md](_latex-allowlist.md)` links to resolve.
+     The two copies are kept identical by a drift-guard test
+     (`library/lib/__tests__/latex-allowlist-doctrine.test.ts`) — edit BOTH,
+     or the test fails. A separate coherence check
+     (`tools/check-coherence.mjs`, check #6 "allowlist") keeps the Command
+     inventory below honest against the renderer SSOT; `/cleanup-virgil`
+     runs it. Do not paraphrase this doctrine back into a skill; link to it.
+
+     Not a slash command — the leading underscore filters it out of the
+     command mirror in both build scripts. -->
+
+## Allowable-LaTeX doctrine (load-bearing)
+
+Every skill that composes or edits `.tex` — the citation/footnote/suggestion
+family, the card writers, style-merge, the library extraction pipeline —
+emits LaTeX into a document Virgil renders **without compiling**. Virgil
+interprets a curated set of inline commands and renders them meaningfully;
+**anything outside that set falls through to raw grey monospace** (the
+`latexCommand` fallback). So the rule, stated **here once** and referenced,
+never re-paraphrased:
+
+**Write only commands Virgil renders. When a plain character will do, prefer
+the plain character.** Concretely, the single most common slip:
+
+- The LaTeX **tie / non-breaking space is `~`** (a literal tilde character).
+  Write `ex.~14`, `Fig.~3`, `p.~75`, `Smith~(2008)` — a plain `~`, which is
+  the correct LaTeX source for a keep-together space.
+- **Never** write `\textasciitilde{}` to mean a tie. `\textasciitilde{}` is
+  the escape for a *literal printed tilde glyph* (e.g. a URL or a math
+  "approximately"); it is **not** a non-breaking space, and using it for one
+  is the exact drift this doctrine exists to prevent.
+
+> **Render caveat (`~`).** Virgil today renders a bare `~` as a *literal
+> tilde glyph*, not yet as a keep-together space (no nbsp mapping in the
+> parser). Authoring `~` is still correct — the source is right and it
+> round-trips — and the render-side `~`→non-breaking-space mapping is a
+> tracked sibling fix. Do not "work around" it by emitting
+> `\textasciitilde{}`; that pollutes the source with the wrong command.
+
+The same principle governs the rest: use `--`/`---` for en/em dashes (not
+`\textendash`/`\textemdash`), `` `` ``/`''` for curly quotes, and the accent
+commands below for diacritics — all of which Virgil maps to real Unicode
+glyphs.
+
+## What Virgil renders
+
+### Text styling (inline marks)
+
+- `\textbf{…}` — bold.
+- `\textit{…}`, `\emph{…}` — italic.
+- `\underline{…}` — underline.
+- `\texttt{…}` — monospace / code span (typographic transforms suppressed
+  inside).
+- `\verb|…|` — inline verbatim (any single non-letter delimiter).
+- `\textcolor[HTML]{RRGGBB}{…}` — coloured text. Only the `[HTML]{RRGGBB}`
+  form renders as a colour mark; named-colour `\textcolor{red}{…}` round-trips
+  as plain text.
+
+### Math
+
+- `$…$` — inline math. `$$…$$` — display math. `\(…\)` / `\[…\]` — the
+  same, LaTeX-native delimiters. Math content is preserved verbatim.
+
+### Footnotes
+
+- `\footnote{…}` — a footnote. Its body may itself contain the inline
+  vocabulary here (marks, cites, refs, math).
+- `\thanks{…}` — title-attached acknowledgement; threads through the
+  footnote apparatus.
+
+### Citations (natbib + biblatex)
+
+Use a `\cite…` command from the registry below. All accept an optional
+locator and comma-separated multi-key forms: `\cite[p.~75]{key}`,
+`\citet[pp.~75--80]{key1,key2}`. The tie in `p.~75` / `pp.~75--80` is a
+plain `~` (see the doctrine above), never `\textasciitilde{}`.
+
+- **natbib:** `\cite`, `\citet`, `\citep`, `\citealt`, `\citealp`,
+  `\citeauthor`, `\citeyear`, `\citeyearpar`, `\citetext`, `\citenum`.
+- **biblatex (singular):** `\textcite`, `\parencite`, `\autocite`,
+  `\footcite`, `\smartcite`, `\fullcite`, `\footfullcite`, `\citetitle`,
+  `\citedate`, `\citeurl`, `\nocite`.
+- **biblatex (multi-cite** `\cmd[pre][post]{k1}[pre][post]{k2}`**):**
+  `\cites`, `\textcites`, `\parencites`, `\autocites`, `\footcites`,
+  `\smartcites`.
+
+Prefer `\cite{…}` for a plain parenthetical and `\citet{…}` for a textual
+("Smith (2008) argues …") citation.
+
+### Cross-references
+
+- `\ref{label}` — a reference to a `\label{…}`.
+- `\getref{label}` / `\getfullref{label.sub}` — Virgil's resolved-reference
+  commands.
+
+### Text macros & symbols
+
+- `\ldots` / `\dots` — an ellipsis (…).
+- `\LaTeX` / `\TeX` — the logos.
+- Escaped literals: `\&`, `\%`, `\$`, `\#`, `\_`, `\{`, `\}`, and
+  `\textbackslash{}` (a literal `\`), `\textasciicircum{}` (a literal `^`),
+  `\textasciitilde{}` (a literal `~` glyph — **not** a tie; see above).
+- `\\` — a hard line break.
+
+### Accents & special letters
+
+LaTeX accent commands (`\'e`, `` \`a ``, `\"o`, `\^i`, `\~n`, `\c{c}`,
+`\v{s}`, `\.z`, `\u{a}`, `\H{o}`, …) and special-letter commands (`\ss`,
+`\o`, `\O`, `\ae`, `\AE`, `\aa`, `\AA`, `\l`, `\L`, `\oe`, `\OE`, …) render
+as the composed Unicode glyph. Prefer them (or the literal Unicode
+character) over any font/encoding hackery.
+
+## Command inventory
+
+The machine-checked canonical list. Every entry here is verified against the
+renderer SSOT by `tools/check-coherence.mjs` (check #6): a command listed
+here that the renderer does **not** handle is a hard error; a cite command
+the parser gained but this list lost is a drift warning. (Accents /
+special-letters are documented in prose above, not enumerated here — the
+parser matches them by table, not by a fixed command name.)
+
+```latex-allowlist
+# inline marks & text
+\textbf \textit \emph \underline \texttt \verb \textcolor
+\footnote \thanks
+\ref \getref \getfullref
+\ldots \dots \LaTeX \TeX
+\textbackslash \textasciitilde \textasciicircum
+# citations (natbib)
+\cite \citet \citep \citealt \citealp \citeauthor \citeyear \citeyearpar \citetext \citenum
+# citations (biblatex singular)
+\textcite \parencite \autocite \footcite \smartcite \fullcite \footfullcite \citetitle \citedate \citeurl \nocite
+# citations (biblatex multi-cite)
+\cites \textcites \parencites \autocites \footcites \smartcites
+```
+
+## What NOT to emit
+
+- No `\textasciitilde{}` for a tie — use `~`.
+- No commands outside the inventory above (they render as raw grey
+  monospace). If you genuinely need one, that is a signal to extend the
+  Virgil renderer + this list, not to smuggle the command into a document.
+- No `\usepackage`/preamble commands in body prose — preamble requirements
+  are injected separately (`latex-requirements.ts`).

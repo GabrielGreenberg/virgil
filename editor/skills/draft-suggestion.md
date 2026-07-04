@@ -19,6 +19,13 @@ a **RevisionSuggestionCard** with `author: "ai"`, `status: "pending"`.
 The user accepts or rejects in the editor; never edit the .tex from
 this skill.
 
+> **Allowable-LaTeX doctrine.** Any LaTeX you compose or edit must stick to
+> the vocabulary Virgil renders meaningfully — read
+> [_latex-allowlist.md](_latex-allowlist.md). In particular use the tie `~`
+> (never `\textasciitilde{}`) for a non-breaking space, plus the `\cite…`
+> family and inline marks it lists; anything outside it renders as raw grey
+> monospace.
+
 ## Args
 
 - `<docPath>` — path to the doc folder.

@@ -23,6 +23,13 @@ sidecar edit (and, for a footnote, the `.tex \footnote{}` body) land **atomicall
 under the editing pen**, with the audit notification + version bump. This skill
 is **mechanical**: the new body/value is supplied by you/chat, not composed here.
 
+> **Allowable-LaTeX doctrine.** Any LaTeX in a `--body`/`--field` you land
+> must stick to the vocabulary Virgil renders meaningfully — read
+> [_latex-allowlist.md](_latex-allowlist.md). In particular use the tie `~`
+> (never `\textasciitilde{}`) for a non-breaking space, plus the `\cite…`
+> family and inline marks it lists; anything outside it renders as raw grey
+> monospace.
+
 ## Args
 
 - `<docPath>` — the paper folder.

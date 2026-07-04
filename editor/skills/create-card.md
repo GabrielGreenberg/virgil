@@ -56,6 +56,13 @@ system/derived kinds `ai` (the Task itself), `error` (lint-derived, unpersisted)
 range marker with no body). See [cards.md](../../docs/workspace/cards.md) for the
 full reasoning.
 
+> **Allowable-LaTeX doctrine.** Any LaTeX in a `--body`/`--citekey` you land
+> must stick to the vocabulary Virgil renders meaningfully — read
+> [_latex-allowlist.md](_latex-allowlist.md). In particular use the tie `~`
+> (never `\textasciitilde{}`) for a non-breaking space, plus the `\cite…`
+> family and inline marks it lists; anything outside it renders as raw grey
+> monospace.
+
 ## Args
 
 - `<docPath>` — the paper folder.
