@@ -24,6 +24,7 @@ import {
 } from "@/lib/stack/stack-drop-target";
 import { WINDOW_DRAG_BLOCK_SELECTOR } from "@/lib/drag-blocklist";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
+import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
 
 /**
  * Floating-shell resize clamps — the single source of truth for how small
@@ -330,7 +331,9 @@ function FloatingPanelInner({
         const maxX = window.innerWidth - 60;
         const maxY = window.innerHeight - 40;
         const nx = Math.max(-latestPosRef.current.width + 60, Math.min(maxX, s.origX + dx));
-        const ny = Math.max(0, Math.min(maxY, s.origY + dy));
+        // Clamp the top to the OS-reserved strip (WCO title bar) instead of 0,
+        // so a panel dragged to the top can't tuck under the window controls.
+        const ny = Math.max(getWindowInsetTopPx(), Math.min(maxY, s.origY + dy));
         setPos((p) => ({ ...p, x: nx, y: ny }));
         // Stack-drop affordance: when a card/block float drags over the
         // StackIcon, light up its illuminated ring. The icon component

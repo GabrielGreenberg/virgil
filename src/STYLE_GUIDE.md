@@ -909,6 +909,32 @@ tier **`zIndex: 2000`** (matching `DragHandleMenu` / `ActionsMenuPanel`).
 in the Library tab, away from the editor's floating overlays — port it if
 that ever changes.
 
+**Window insets / WCO title bar.** The bar's geometry is inset-aware. One
+variable family — `--window-inset-{top,right,bottom,left}` (globals.css,
+"Window insets" block) — is the SSOT for every OS/browser-reserved edge: it
+reads the live `env(titlebar-area-*)` (Window Controls Overlay, opted into via
+`app/manifest.ts`) and `env(safe-area-inset-*)` (notch; needs `viewport-fit=cover`,
+set in the `viewport` export in `app/layout.tsx`). All resolve to **0 in a
+normal browser tab**, so consuming them is a no-op off-install. The `.virgil-bar`
+rule uses them to (a) grow the bar — `min-height: max(--bar-base-h,
+--window-inset-top)` — so it BECOMES the reserved title-bar strip when Chrome's
+PWA toolbar folds up, and (b) inset its material (`padding-left/right`) so the
+tabs/buttons clear the window controls. Under `@media (display-mode:
+window-controls-overlay)` the bar is `-webkit-app-region: drag` (a native
+window-drag handle); its content clusters are marked `no-drag` **wholesale**
+(`.virgil-bar > *`) — an opt-in model, not an interactive-leaf allowlist, so a
+non-semantic clickable child (e.g. a folder-tab `<div onClick>`) can't silently
+become a dead drag region — and empty filler opts back into dragging with
+`[data-window-drag-zone]`. Reactive state
+(display mode, px insets, `body[data-display-mode]`) lives in
+[`useWindowChrome`](hooks/useWindowChrome.ts) — a window-level store (exempt from
+keystroke sanctity, like `DiskWatcher`); imperative JS clamps read
+`getWindowInsetTopPx()`. **Any new top-anchored chrome should keep clear of
+`--window-inset-top` rather than assuming `y=0`** (dialogs and floating panels
+already do). WCO only resolves in an installed PWA — to eyeball it off-install
+set `localStorage['virgil:wco-debug']='1'` (or append `?wco-debug`), which
+injects synthetic insets.
+
 ## Library tab — double-tab pattern
 
 Each open document renders a paired DocTab + LibraryTab in the Virgil

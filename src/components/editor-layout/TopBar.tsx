@@ -30,14 +30,17 @@ function TopBarImpl({ zenModeOn, tabStrip, statusCluster }: TopBarProps) {
     <div
       // Preference-mode: the VIRGIL top bar. topbarBackground is locked to the
       // PWA/browser theme-color, so changing it updates both the in-app bar and
-      // the browser chrome. min-height gives the docked MenuBar breathing room
-      // inside the bar without pushing the tabs taller. In zen mode the bar's
-      // background and bottom border drop out so it visually melts into the
-      // canvas, but the height stays so the Zen toggle keeps the same Y
-      // position in both modes.
+      // the browser chrome. The bar's min-height + window-inset padding now
+      // live in the `.virgil-bar` rule (globals.css) so it can grow to fill the
+      // OS-reserved title-bar strip under Window Controls Overlay; the floor is
+      // --bar-base-h (32px). In zen mode the bar's background and bottom border
+      // drop out so it visually melts into the canvas, but the height stays so
+      // the Zen toggle keeps the same Y position in both modes.
+      // data-bar-h mirrors the base-height FLOOR (32) for the color-picker
+      // integration; the live box can be taller under WCO.
       data-prefs="topbarBackground,topbarBackgroundBottom,virgilBarText"
       data-bar-h="32"
-      className={`virgil-bar flex items-center min-h-[32px] sticky top-0 z-30 ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
+      className={`virgil-bar flex items-center sticky top-0 z-30 ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
       style={{
         color: "var(--virgil-bar-text)",
         background: zenModeOn
@@ -52,7 +55,10 @@ function TopBarImpl({ zenModeOn, tabStrip, statusCluster }: TopBarProps) {
           whole group; the MenuBar is also gated off in zen, so dropping the
           sentinel is safe. The flex spacer below keeps the right-group buttons
           (incl. Zen toggle) right-aligned. */}
-      {zenModeOn ? <div className="flex-1" /> : <TabStrip {...tabStrip} />}
+      {/* data-window-drag-zone: under WCO the bar's content clusters are
+          no-drag; this empty zen spacer hands the middle back to window-drag
+          so zen mode still has a native title-bar grab area. */}
+      {zenModeOn ? <div className="flex-1" data-window-drag-zone /> : <TabStrip {...tabStrip} />}
 
       <StatusCluster {...statusCluster} />
     </div>
