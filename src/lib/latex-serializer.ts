@@ -97,9 +97,16 @@ function escapeLatex(
   // Don't escape backslashes — they're intentional LaTeX commands.
   // The editor preserves raw LaTeX, so we only escape the few chars
   // that would break LaTeX if they appeared as literal text.
-  // We also don't escape {, }, $ since those are part of LaTeX syntax.
+  // `$` IS escaped here (→ `\$`): a bare `$` in a plain-text node is re-read
+  // as an inline-math delimiter by the parser (`$…$` → inlineMath), so leaving
+  // it raw silently converts prose like `costs $5, $10` into a math atom on the
+  // next save→reload. Genuine inline math never reaches escapeLatex — it is a
+  // separate `inlineMath` node serialized directly as `$${latex}$` — and the
+  // parser un-escapes `\$` back to a literal `$`, so this closes the round-trip.
+  // We still don't escape {, } since those are structural LaTeX syntax the
+  // editor emits and re-reads verbatim.
   const escaped = text
-    .replace(/(?<!\\)([&%#_])/g, "\\$1")
+    .replace(/(?<!\\)([&%#$_])/g, "\\$1")
     .replace(/~/g, "\\textasciitilde{}")
     .replace(/\^/g, "\\textasciicircum{}")
     .replace(/“/g, "``")
