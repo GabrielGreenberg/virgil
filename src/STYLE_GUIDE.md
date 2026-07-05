@@ -973,10 +973,16 @@ dropdowns with `createPortal(..., document.body)`, position them from the
 trigger's `getBoundingClientRect()` via `useFloatingMenuPosition`
 (`src/hooks/useFloatingMenuPosition.ts`), and give them the chrome-menu
 tier **`zIndex: 2000`** (matching `DragHandleMenu` / `ActionsMenuPanel`).
-`TabPlusMenu` (the "+") and the Help (`?`) menu follow this; the
-`MyPapersPod` "Add paper" menu still renders inline `absolute` but lives
-in the Library tab, away from the editor's floating overlays — port it if
-that ever changes.
+The cleanest way to satisfy all three is to render the dropdown through the
+shared `<Menu>`/`MenuProvider` primitive (`src/components/menu/`), which
+already body-portals, positions via `useFloatingMenuPosition`, and rides
+`OPEN_CHROME_MENU_Z` — see `ExternalChangeBadge` and `CollabStatusPill`'s
+kebab menus, the two topbar status-cluster dropdowns, for the reference
+wiring (`excludeRefs={[wrapEl]}` to exempt the outside trigger,
+`trackAnchor` off the kebab ref). `TabPlusMenu` (the "+") and the Help
+(`?`) menu also follow this rule; the `MyPapersPod` "Add paper" menu still
+renders inline `absolute` but lives in the Library tab, away from the
+editor's floating overlays — port it if that ever changes.
 
 **Window insets / WCO title bar.** The bar's geometry is inset-aware. One
 variable family — `--window-inset-{top,right,bottom,left}` (globals.css,

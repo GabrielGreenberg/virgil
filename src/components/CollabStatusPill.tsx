@@ -20,9 +20,41 @@
  *   when collab is off.
  */
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState, type ReactNode } from "react";
 import { formatRelativeShort } from "@/lib/collab";
 import { useCollabContext } from "@/hooks/useCollab";
+import { MenuProvider } from "./menu/MenuProvider";
+import { useMenuItem } from "./menu/useMenuItem";
+import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
+
+// Anchor the kebab dropdown below its trigger, flipping above when the topbar
+// sits near the viewport bottom. Matches ExternalChangeBadge (the sibling
+// topbar kebab) so the two dropdowns behave identically.
+const MENU_PLACEMENTS: FloatingMenuPlacement[] = [
+  { side: "below", align: "end" },
+  { side: "above", align: "end" },
+];
+
+/** The one interactive row of the collab kebab — "Edit identity…". Registers
+ *  into the provider (via `useMenuItem`) so it gains arrow-nav + the roving
+ *  active highlight for free, matching every other `<Menu>` list item. */
+function EditIdentityRow({ onSelect }: { onSelect: () => void }) {
+  const { active, getItemProps } = useMenuItem({
+    id: "edit-identity",
+    region: "list",
+    run: onSelect,
+  });
+  return (
+    <button
+      {...getItemProps()}
+      type="button"
+      className="w-full text-left px-3 py-1.5 text-[11px] text-ink-body hover-on-light"
+      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
+    >
+      Edit identity…
+    </button>
+  );
+}
 
 interface CollabStatusPillProps {
   /** Called when the user wants to set up / enter collaborator mode. */
@@ -69,17 +101,33 @@ function CollabStatusPill({
   // during active collaboration) — only this memoized pill re-renders.
   const collab = useCollabContext();
   const [menuOpen, setMenuOpen] = useState(false);
-  const ref = useRef<HTMLDivElement | null>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  // The pill wrapper is held in STATE (not a ref) so it can be handed to the
+  // menu provider's `excludeRefs` without reading a ref during render — the
+  // kebab trigger lives outside the body-portaled menu, so it must be exempt
+  // from click-outside or the toggle click would self-close the menu.
+  const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
+  const kebabRef = useRef<HTMLButtonElement | null>(null);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!ref.current) return;
-      if (!ref.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [menuOpen]);
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    setAnchorRect(null);
+  }, []);
+
+  const toggleMenu = useCallback(() => {
+    setMenuOpen((o) => {
+      const next = !o;
+      setAnchorRect(
+        next ? (kebabRef.current?.getBoundingClientRect() ?? null) : null,
+      );
+      return next;
+    });
+  }, []);
+
+  const trackAnchor = useCallback(
+    () => kebabRef.current?.getBoundingClientRect() ?? null,
+    [],
+  );
 
   // ── Icon variant ──────────────────────────────────────────────────
   if (variant === "icon") {
@@ -144,9 +192,53 @@ function CollabStatusPill({
   );
   const partnerColor = collab.partnerColor;
   const dotColor = DOT_COLORS[pen.status] ?? "#888";
+  const pendingNames =
+    collab.pen.requestedBy.length > 0 && iHavePen
+      ? collab.pen.requestedBy.map((r) => r.name).join(", ")
+      : null;
+
+  const menu: ReactNode =
+    menuOpen && anchorRect && typeof document !== "undefined" ? (
+      <MenuProvider
+        id="collab-status-menu"
+        layout="list"
+        role="menu"
+        portal
+        anchorRect={anchorRect}
+        placements={MENU_PLACEMENTS}
+        gap={4}
+        trackAnchor={trackAnchor}
+        // The kebab trigger lives outside the portaled menu, so exempt the pill
+        // wrapper from click-outside (else the toggle click self-closes it).
+        excludeRefs={[wrapEl]}
+        onClose={closeMenu}
+        ariaLabel="Collaborator options"
+        containerClassName="min-w-[11rem] max-w-[260px] py-1"
+        // Body-portaled at the menu primitive's CHROME_Z (z:2000 tier) so the
+        // sticky topbar's z-30 stacking context can't clip the dropdown.
+        containerStyle={{
+          background: "var(--pod-editor)",
+          border: "var(--pod-border)",
+          boxShadow: "var(--pod-shadow)",
+          borderRadius: "var(--pod-radius)",
+        }}
+      >
+        <EditIdentityRow
+          onSelect={() => {
+            closeMenu();
+            onEditIdentity();
+          }}
+        />
+        {pendingNames && (
+          <div className="px-3 py-1 text-[10px] text-ink-faint border-t border-edge-subtle">
+            Pending request: {pendingNames}
+          </div>
+        )}
+      </MenuProvider>
+    ) : null;
 
   return (
-    <div ref={ref} className="relative flex items-center gap-1">
+    <div ref={setWrapEl} className="relative flex items-center gap-1">
       <div
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] text-ink-body bg-surface border border-edge-subtle max-w-[260px] truncate"
         style={partnerColor && !iHavePen ? { borderColor: partnerColor } : undefined}
@@ -171,12 +263,17 @@ function CollabStatusPill({
         </button>
       )}
       {/* Kebab: the only home for "Edit identity" now that the icon
-          button is a pure toggle. Renders next to the pen action.
-          Menu is portaled-style — uses a high z-index and positions
-          itself from the wrapping ref so the topbar's own stacking
-          context doesn't clip it. */}
+          button is a pure toggle. Renders next to the pen action. The
+          dropdown body-portals via MenuProvider at the chrome-menu tier
+          (OPEN_CHROME_MENU_Z) — the Virgil bar is `sticky z-30`, which
+          establishes a stacking context that would trap an inline
+          `absolute` dropdown BELOW floating panels / popped cards
+          (z-1200+), no matter its own z-index (STYLE_GUIDE portal rule).
+          Portaling to document.body escapes that trap. */}
       <button
-        onClick={() => setMenuOpen((v) => !v)}
+        ref={kebabRef}
+        type="button"
+        onClick={toggleMenu}
         data-hint="Collaborator options"
         aria-label="Collaborator options"
         aria-haspopup="menu"
@@ -189,24 +286,7 @@ function CollabStatusPill({
           <circle cx="19" cy="12" r="1.6" />
         </svg>
       </button>
-      {menuOpen && (
-        <div className="absolute top-full right-0 mt-1 z-[1000] w-44 rounded-md border border-edge-subtle bg-surface shadow-lg py-1">
-          <button
-            onClick={() => {
-              setMenuOpen(false);
-              onEditIdentity();
-            }}
-            className="w-full text-left px-3 py-1.5 text-[11px] text-ink-body hover-on-light"
-          >
-            Edit identity…
-          </button>
-          {collab.pen.requestedBy.length > 0 && iHavePen && (
-            <div className="px-3 py-1 text-[10px] text-ink-faint border-t border-edge-subtle">
-              Pending request: {collab.pen.requestedBy.map((r) => r.name).join(", ")}
-            </div>
-          )}
-        </div>
-      )}
+      {menu}
     </div>
   );
 }
