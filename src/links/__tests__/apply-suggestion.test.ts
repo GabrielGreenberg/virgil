@@ -49,6 +49,7 @@ import {
   applyPendingChange,
   revertPendingChange,
   keepPendingChange,
+  insertParagraphAfter,
 } from "@/links/apply-suggestion";
 import {
   reapplyPendingMarks,
@@ -1037,5 +1038,79 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
     const comment: PendingMarkCardLike = { id: "c3", kind: "comment", status: "applied" };
     const ids = pendingMarkAnchorIds([applied, pending, comment]);
     expect([...ids]).toEqual(["anc-1"]);
+  });
+});
+
+// ── insertParagraphAfter — the non-destructive "Insert below" primitive (11) ──
+//
+// Behind the retired 4-field AI fallback: instead of splicing the (possibly
+// returned / re-anchored) original, drop the suggestion as a NEW sibling
+// paragraph directly after the anchor. The contract the UI leans on:
+//   - the anchored paragraph's serialized `.tex` line is BYTE-UNCHANGED,
+//   - EXACTLY one new `%!v:` anchor line appears (the new paragraph, its uuid
+//     minted by BlockUuidBackfill — not hand-minted),
+//   - the new paragraph carries the inserted text,
+//   - a bad uuid is a safe no-op (false, doc untouched).
+
+/** Count the `%!v:` block anchors in a serialized body. */
+function countAnchors(tex: string): number {
+  return (tex.match(/%!v:/g) || []).length;
+}
+
+/** The serialized `.tex` line carrying block `uuid` (or null). */
+function texLineFor(tex: string, uuid: string): string | null {
+  return tex.split("\n").find((l) => l.includes(`%!v:${uuid}`)) ?? null;
+}
+
+describe("insertParagraphAfter — non-destructive insert below (11)", () => {
+  it("inserts a new sibling paragraph, original line byte-unchanged, exactly one new %!v: line", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const beforeTex = serializeBodyOnly(editor.state.doc.toJSON());
+      const beforeAnchors = countAnchors(beforeTex);
+      const beforeFoxLine = texLineFor(beforeTex, PARA_UUID);
+      const beforeFoxInline = paraInline(editor, PARA_UUID);
+      expect(beforeFoxLine).not.toBeNull();
+
+      const ok = insertParagraphAfter(
+        editor,
+        PARA_UUID,
+        "A brand new sentence.",
+      );
+      expect(ok).toBe(true);
+
+      const afterTex = serializeBodyOnly(editor.state.doc.toJSON());
+      // The anchored paragraph's inline serialization is UNTOUCHED (pure insert).
+      expect(paraInline(editor, PARA_UUID)).toBe(beforeFoxInline);
+      // Its whole serialized line survives byte-for-byte.
+      expect(texLineFor(afterTex, PARA_UUID)).toBe(beforeFoxLine);
+      // EXACTLY one new anchor appeared (the new paragraph's minted uuid).
+      expect(countAnchors(afterTex)).toBe(beforeAnchors + 1);
+      // The inserted text is present, as a distinct paragraph after the anchor.
+      expect(afterTex).toContain("A brand new sentence.");
+      // The new paragraph carries a REAL, non-null uuid (BlockUuidBackfill minted
+      // it — the id is neither of the two pre-existing block uuids).
+      const newAnchor = (afterTex.match(/%!v:([0-9a-f]+)/g) || [])
+        .map((m) => m.replace("%!v:", ""))
+        .find((u) => u !== PARA_UUID && u !== CITE_PARA_UUID);
+      expect(newAnchor).toBeTruthy();
+      expect(findNodeByUuid(editor, newAnchor as string)?.node.textContent).toBe(
+        "A brand new sentence.",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("is a safe no-op (false, doc untouched) when the anchor uuid does not resolve", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const beforeTex = serializeBodyOnly(editor.state.doc.toJSON());
+      const ok = insertParagraphAfter(editor, "dead", "Should not appear.");
+      expect(ok).toBe(false);
+      expect(serializeBodyOnly(editor.state.doc.toJSON())).toBe(beforeTex);
+    } finally {
+      cleanup();
+    }
   });
 });

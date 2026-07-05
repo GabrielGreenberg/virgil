@@ -264,6 +264,43 @@ function spliceParagraphInner(
 }
 
 /**
+ * Insert a NEW paragraph directly AFTER the block anchored by `anchorUuid`,
+ * carrying the parsed `inlineLatex` as its content. Pure insert — the anchored
+ * block's own range `[pos, pos+nodeSize)` is never touched, so the original
+ * paragraph survives byte-for-byte; the new paragraph lands at the boundary
+ * right after it. Returns false (no-op) when the uuid doesn't resolve.
+ *
+ * The inserted paragraph carries NO `uuid` attr: `BlockUuidBackfill`
+ * (block-uuid-backfill.ts) mints a fresh, collision-free `%!v:` id in its
+ * `appendTransaction` — the keystroke-safe path for programmatic insertion —
+ * so we must NOT hand-mint one (that would risk a collision the backfill can't
+ * detect). This is the non-destructive "Insert below" primitive behind the
+ * retired 4-field AI fallback: the suggestion is dropped as a sibling paragraph
+ * rather than spliced over the (possibly returned / re-anchored) original.
+ *
+ * `parseInlineContent` yields a single paragraph's worth of inline nodes; a
+ * multi-paragraph `suggested_text` would need block-splitting first (out of
+ * scope — the AI fallback replacement is single-paragraph by construction).
+ */
+export function insertParagraphAfter(
+  editor: Editor,
+  anchorUuid: string,
+  inlineLatex: string,
+): boolean {
+  const hit = findNodeByUuid(editor, anchorUuid);
+  if (!hit) return false;
+  const insertPos = hit.pos + hit.node.nodeSize;
+  const content = parseInlineContent(inlineLatex);
+  // insertContentAt dispatches a ReplaceStep that inserts a bare paragraph;
+  // BlockUuidBackfill (registered right after DocStructureObserver) backfills
+  // its uuid in the same transaction batch.
+  return editor
+    .chain()
+    .insertContentAt(insertPos, { type: "paragraph", content })
+    .run();
+}
+
+/**
  * Apply a pending AI change.
  *
  * - **replace**: stale-guard `originalText`, splice `originalText → replacement`

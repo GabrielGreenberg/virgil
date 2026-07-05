@@ -95,8 +95,8 @@ function makeApplied(
   };
 }
 
-// A controller stub with all four verbs (keep/dismiss/previewOriginal/
-// previewSuggested), each a spy. `isOn` toggles the defensive disable.
+// A controller stub with all five verbs (keep/dismiss/previewOriginal/
+// previewSuggested/insertBelow), each a spy. `isOn` toggles the defensive disable.
 function makeController(isOn = true) {
   return {
     isOn,
@@ -104,6 +104,7 @@ function makeController(isOn = true) {
     dismiss: vi.fn(),
     previewOriginal: vi.fn(),
     previewSuggested: vi.fn(),
+    insertBelow: vi.fn(),
   };
 }
 

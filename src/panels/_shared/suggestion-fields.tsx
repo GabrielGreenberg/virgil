@@ -549,6 +549,116 @@ export function AppliedRecordBody({
   );
 }
 
+/** The body of a `pending`-status AI suggestion card — the RETIRED-4-FIELD
+ *  replacement. An AI card never shows the editable `original_text` /
+ *  `suggested_text` / `explanation` / `user_text` grid (that grid is the
+ *  legitimate composition surface for a HUMAN draft only). Instead this mirrors
+ *  {@link AppliedRecordBody}'s minimal read-only shape — an "Insert below" action
+ *  row, the always-on `explanation`, and the Original-text foldout — carrying the
+ *  ONE verb an un-appliable AI suggestion needs: drop `suggested_text` as a new
+ *  paragraph below the anchor.
+ *
+ *  Every action routes through the shared `PendingChangeController` context (like
+ *  AppliedRecordBody), so the SAME card renders on every surface (docked / omni /
+ *  float) without per-mount callbacks. Insert-below is hidden when there's no
+ *  `suggested_text` to insert (a cutter/delete cut, or an empty revision) — a
+ *  quiet notice takes its place. When no controller is present or it's off, the
+ *  button renders disabled (defensive). */
+export function PendingAiRecordBody({
+  id,
+  originalText,
+  suggestedText,
+  explanation,
+  family,
+}: {
+  id: string;
+  originalText: string;
+  /** The card's `suggested_text` — what Insert-below drops as a new paragraph.
+   *  Blank (a delete/empty cut) → the action is replaced by a quiet notice. */
+  suggestedText: string;
+  /** The card's `explanation` — "what Claude drafted and why". Always-on above
+   *  the Original foldout; omitted when empty/whitespace. */
+  explanation?: string;
+  family: PendingChangeFamily;
+}) {
+  const controller = usePendingChangeController();
+  const [showOriginal, setShowOriginal] = useState(false);
+  const disabled = !controller || !controller.isOn;
+  // Original renders with the FOOTNOTE typography (per the footnote styling
+  // guide) — matching AppliedRecordBody.
+  const bodyStyle = usePanelBodyStyle("footnote");
+  const hasExplanation = !!explanation && explanation.trim().length > 0;
+  const canInsert = suggestedText.trim().length > 0;
+  return (
+    <div
+      className="px-3 pt-2 pb-2 space-y-1.5"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Row 1 — action: Insert below (right), thin divider beneath. When there
+          is nothing to insert (delete/empty cut), a quiet notice stands in. */}
+      <div className="flex items-center gap-1.5 pb-1.5 border-b border-[var(--border)] min-h-[28px]">
+        {canInsert ? (
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              variant="warm"
+              size="sm"
+              disabled={disabled}
+              data-hint="Insert the suggestion as a new paragraph below"
+              data-hint-pos="above"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                controller?.insertBelow(family, id);
+              }}
+            >
+              Insert below
+            </Button>
+          </div>
+        ) : (
+          <span className="text-[11px] text-ink-subtle italic">
+            No replacement text to insert.
+          </span>
+        )}
+      </div>
+      {/* Row 2 — explanation (what Claude drafted and why), always visible when
+          present, above the Original foldout. */}
+      {hasExplanation && (
+        <div
+          data-applied-explanation
+          className="break-words text-ink-body"
+          style={bodyStyle}
+        >
+          {explanation}
+        </div>
+      )}
+      {/* Row 3 — "Original text" label + chevron disclosure (collapsed default). */}
+      <button
+        type="button"
+        aria-expanded={showOriginal}
+        aria-label={showOriginal ? "Hide original text" : "Show original text"}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowOriginal((v) => !v);
+        }}
+        className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-medium text-[var(--muted)] hover:text-ink-strong cursor-pointer"
+      >
+        <span>Original text</span> <Chevron expanded={showOriginal} />
+      </button>
+      {/* Row 4 — the original paragraph, bare, as it reads in the main text. */}
+      {showOriginal && (
+        <BorrowedMainText
+          value={richLatexToJson(originalText)}
+          instanceKey={`pending-ai-original:${id}`}
+          variant="footnote"
+          className="break-words"
+          bodyStyle={bodyStyle}
+        />
+      )}
+    </div>
+  );
+}
+
 /** The body of a `stale`-status card: a quiet notice that the paragraph drifted
  *  since the suggestion was drafted, with Dismiss (delete) and a disabled
  *  "Re-draft" affordance (a later phase will re-draft). No doc mutation. */
