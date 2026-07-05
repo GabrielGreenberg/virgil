@@ -606,6 +606,43 @@ function serializeExampleGloss(node: JSONContent): string {
 }
 
 /**
+ * The internal Virgil marker commands the serializer emits inline to round-trip
+ * structure that has no LaTeX of its own: linked-anchor range boundaries
+ * (`\vlid` / `\vlidend`, {@link serializeInlineSequence}), citation ids
+ * (`\vcid`) and footnote ids (`\vfid`) (the atom emit sites at :360/:376 and
+ * :665/:671). These are NOT real LaTeX — they are private sentinels the parser
+ * (`parseInlineContent` / `applyLinkedAnchorBoundaries`) reads back to
+ * re-materialize anchors + atoms. Single-sourced here (alongside the emit
+ * sites) so any consumer that must treat serialized text as trusted-marker-free
+ * — notably the pending-change applicator's splice guard
+ * (`containsInternalMarker`) — never drifts from the set the serializer
+ * actually produces. Longest-first so the regex alternation matches `\vlidend`
+ * before its `\vlid` prefix.
+ */
+export const INTERNAL_MARKER_COMMANDS = [
+  "vlidend",
+  "vlid",
+  "vcid",
+  "vfid",
+] as const;
+
+const INTERNAL_MARKER_REGEX = new RegExp(
+  `\\\\(?:${INTERNAL_MARKER_COMMANDS.join("|")})\\b`,
+);
+
+/**
+ * True if `text` contains any internal Virgil marker command
+ * (`\vlid` / `\vlidend` / `\vcid` / `\vfid`). Used to refuse REPARSING
+ * untrusted text (e.g. a suggestion's `replacement`): concatenating a marker
+ * into a paragraph's serialized inline LaTeX and reparsing it would mint a
+ * phantom `linkedAnchor` / citation / footnote atom that no card owns — the
+ * write-side mirror of the applicator's `originalText` verbatim guard.
+ */
+export function containsInternalMarker(text: string): boolean {
+  return INTERNAL_MARKER_REGEX.test(text);
+}
+
+/**
  * Walk a sequence of inline nodes, emitting `\vlid{id}` / `\vlidend{id}`
  * marker transitions around the `linkedAnchor` marks on text. Block-
  * local: anchors still open at the end of the sequence are closed with
