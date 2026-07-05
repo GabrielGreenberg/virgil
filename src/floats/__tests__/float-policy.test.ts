@@ -20,6 +20,7 @@ import {
   DOCKED_CARD_BORDER,
   DOCKED_CARD_HEADER_H,
   DOCKED_CARD_SEPARATOR_H,
+  DRAGGABLE_DIALOG_Z,
   DROP_INDICATOR_Z,
   FLOAT_Z_BASE,
   FLOATING_PANEL_Z_BASE,
@@ -121,6 +122,16 @@ describe("editor stacking tiers (BUG #50: margin bolt below floats)", () => {
     // The other half of the split: the menu the bolt opens (CHROME_Z in the
     // <Menu> primitive) must still compose on top of floats — never demoted.
     expect(OPEN_CHROME_MENU_Z).toBeGreaterThan(FLOAT_Z_BASE);
+  });
+
+  it("places a draggable tool window just above floats but below open menus (task 033)", () => {
+    // A scrimless SystemDialog variant="draggable" (Preferences window) rides the
+    // float band, above popped cards yet below a chrome menu opened from inside it
+    // — and far below the modal tier. Derived from FLOAT_Z_BASE, not a magic number.
+    expect(DRAGGABLE_DIALOG_Z).toBeGreaterThan(FLOAT_Z_BASE);
+    expect(DRAGGABLE_DIALOG_Z).toBeLessThan(OPEN_CHROME_MENU_Z);
+    expect(DRAGGABLE_DIALOG_Z).toBeLessThan(MODAL_SCRIM_Z);
+    expect(DRAGGABLE_DIALOG_Z).toBe(FLOAT_Z_BASE + 5);
   });
 
   it("keeps the resting trigger above the docked-panel band (still clickable)", () => {
