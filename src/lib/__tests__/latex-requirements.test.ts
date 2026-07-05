@@ -17,6 +17,7 @@ import {
 } from "@/lib/style-library";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
+import { projectLiveLatex, VERBATIM_ENVS_NARROW } from "@/lib/latex-lexer";
 
 // The v1 seed preamble — pre-baseline generation, missing graphicx / natbib /
 // expex and four of the seven shims. Byte-identical to the frozen legacy
@@ -209,6 +210,82 @@ describe("detectBodyRequirements — inert LaTeX (comments + verbatim)", () => {
       "% \\begin{verbatim}\n\\includegraphics{fig.png}\n",
     );
     expect(req.has("graphicx")).toBe(true);
+  });
+});
+
+// The P3 lexer unification: detectBodyRequirements now delegates its
+// comment/verbatim projection to the shared projectLiveLatex(NARROW). This
+// pins the projection byte-for-byte against the exact output the former
+// inline projectDetectableBody produced, so detection + the drift gate +
+// requirements-injection ORDER are unaffected. Each pair is
+// [rawInput, expectedNarrowProjection] where the expected value is what the
+// pre-refactor implementation emitted.
+describe("projectLiveLatex — byte-identical to the former projectDetectableBody (NARROW family)", () => {
+  const CORPUS: Array<[string, string]> = [
+    // fast path: nothing inert
+    ["Just some plain text.", "Just some plain text."],
+    ["\\ex\nHello.\n\\xe", "\\ex\nHello.\n\\xe"],
+    // %-comment tails
+    [
+      "Live prose.\n% TODO maybe \\autocite{smith} here\n% \\ex commented example",
+      "Live prose.\n\n",
+    ],
+    [
+      "Real text. % reminder: switch to \\parencite{x}\n",
+      "Real text. \n",
+    ],
+    // escaped \% keeps the tail live
+    [
+      "Growth was 40\\% \\autocite{smith2020}.",
+      "Growth was 40\\% \\autocite{smith2020}.",
+    ],
+    // verbatim contents dropped, prose after resumes
+    [
+      "\\begin{verbatim}\n\\ex An example line\n\\includegraphics{x}\n\\end{verbatim}\nProse after.",
+      "\n\n\n\nProse after.",
+    ],
+    [
+      "\\begin{verbatim*}\n\\ex inert\n\\end{verbatim*}\n\\parencite{live}",
+      "\n\n\n\\parencite{live}",
+    ],
+    // unterminated verbatim swallows to EOF
+    [
+      "Prose.\n\\begin{verbatim}\n\\ex still inert\n\\autocite{x}",
+      "Prose.\n\n\n",
+    ],
+    // commented \begin{verbatim} does not hide following live code
+    [
+      "% \\begin{verbatim}\n\\includegraphics{fig.png}\n",
+      "\n\\includegraphics{fig.png}\n",
+    ],
+    // same-line verbatim pair
+    [
+      "before \\begin{verbatim}inner\\end{verbatim} after",
+      "before  after",
+    ],
+  ];
+
+  it.each(CORPUS)(
+    "projects %j identically",
+    (input, expected) => {
+      const out = projectLiveLatex(input, { envs: VERBATIM_ENVS_NARROW });
+      expect(out).toBe(expected);
+    },
+  );
+
+  it("detectBodyRequirements is unchanged by the delegation (spot checks)", () => {
+    // The observable contract: detection over the delegated projection is
+    // identical to what the inert-LaTeX suite above asserts.
+    expect(
+      detectBodyRequirements(
+        "\\begin{verbatim}\n\\ex\n\\end{verbatim}\n\\parencite{k}",
+      ).has("biblatex"),
+    ).toBe(true);
+    expect(
+      detectBodyRequirements(
+        "\\begin{verbatim}\n\\ex\n\\end{verbatim}\n\\parencite{k}",
+      ).has("expex"),
+    ).toBe(false);
   });
 });
 

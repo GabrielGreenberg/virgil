@@ -28,6 +28,7 @@ import {
   NATBIB_ONLY_CITE_COMMANDS,
   SHARED_CITE_COMMANDS,
 } from "@/lib/cite-commands";
+import { projectLiveLatex, VERBATIM_ENVS_NARROW } from "@/lib/latex-lexer";
 
 export type LatexRequirementKind = "package" | "shim";
 
@@ -180,16 +181,6 @@ const SHARED_NON_KERNEL_RE = familyRe(
   ),
 );
 
-const VERBATIM_BEGIN_RE = /\\begin\{verbatim\*?\}/;
-const VERBATIM_END_RE = /\\end\{verbatim\*?\}/;
-
-/** Strip a line's `%`-comment tail. A `%` starts a comment unless escaped
- *  (`\%`); an even run of backslashes before it (`\\%` = linebreak + comment)
- *  does not escape it. */
-function stripCommentTail(line: string): string {
-  return line.replace(/((?:^|[^\\])(?:\\\\)*)%.*$/, "$1");
-}
-
 /**
  * Project the serialized body down to its DETECTABLE LaTeX: drop
  * `%`-comment tails (respecting `\%`) and the contents of
@@ -197,46 +188,19 @@ function stripCommentTail(line: string): string {
  * inert to the compiler, so a `\autocite` in a TODO comment or an `\ex`
  * inside a verbatim listing must not drive package injection (injecting
  * biblatex/expex into a doc that never runs them can BREAK a previously
- * compiling paper). Line-based single pass; an unterminated
- * `\begin{verbatim}` (mid-edit) swallows to the end of the body, matching
- * how TeX would lex it.
+ * compiling paper). An unterminated `\begin{verbatim}` (mid-edit) swallows
+ * to the end of the body, matching how TeX would lex it.
+ *
+ * Delegates to the lexer's `projectLiveLatex` with the NARROW verbatim family
+ * and inline-verb OFF, so the output is byte-identical to the former inline
+ * implementation — the drift gate and requirements-injection ORDER depend on
+ * this. The requirements side deliberately keeps the NARROW family (see the
+ * P3 design fork F1): widening it could change which packages get injected
+ * for docs that put cite/expex commands inside lstlisting/minted, altering
+ * saved .tex bytes.
  */
 function projectDetectableBody(bodyLatex: string): string {
-  if (!bodyLatex.includes("%") && !VERBATIM_BEGIN_RE.test(bodyLatex)) {
-    return bodyLatex; // fast path: nothing inert to strip
-  }
-  const out: string[] = [];
-  let inVerbatim = false;
-  for (const rawLine of bodyLatex.split("\n")) {
-    // Comments only exist outside verbatim (inside, `%` is literal — and
-    // the content is dropped wholesale anyway).
-    let line = inVerbatim ? rawLine : stripCommentTail(rawLine);
-    let kept = "";
-    // Walk the line through verbatim open/close transitions so same-line
-    // `\begin{verbatim}…\end{verbatim}` pairs are handled too.
-    for (;;) {
-      if (inVerbatim) {
-        const end = VERBATIM_END_RE.exec(line);
-        if (!end) {
-          line = "";
-          break;
-        }
-        inVerbatim = false;
-        line = line.slice(end.index + end[0].length);
-        continue;
-      }
-      const begin = VERBATIM_BEGIN_RE.exec(line);
-      if (!begin) {
-        kept += line;
-        break;
-      }
-      kept += line.slice(0, begin.index);
-      inVerbatim = true;
-      line = line.slice(begin.index + begin[0].length);
-    }
-    out.push(kept);
-  }
-  return out.join("\n");
+  return projectLiveLatex(bodyLatex, { envs: VERBATIM_ENVS_NARROW });
 }
 
 /**

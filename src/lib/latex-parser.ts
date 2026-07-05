@@ -14,6 +14,7 @@ import {
   matchSpecialLetter,
   dashesToGlyphs,
 } from "@/lib/latex-typography";
+import { extractBraced, findMatchingGloss } from "@/lib/latex-lexer";
 
 interface ParseContext {
   pos: number;
@@ -785,22 +786,6 @@ export function parseInlineContent(
   return nodes;
 }
 
-function extractBraced(
-  text: string,
-  startOfBrace: number
-): { content: string; end: number } | null {
-  if (text[startOfBrace] !== "{") return null;
-  let depth = 1;
-  let i = startOfBrace + 1;
-  while (i < text.length && depth > 0) {
-    if (text[i] === "{" && text[i - 1] !== "\\") depth++;
-    if (text[i] === "}" && text[i - 1] !== "\\") depth--;
-    i++;
-  }
-  if (depth !== 0) return null;
-  return { content: text.slice(startOfBrace + 1, i - 1), end: i };
-}
-
 function unescapeLatex(text: string): string {
   return text;
 }
@@ -1563,7 +1548,9 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
         if (close !== -1) ctx.pos = close + 1;
       }
       const bodyStart = ctx.pos;
-      const endIdx = ctx.src.indexOf("\\endgl", bodyStart);
+      // Boundary/comment-aware, depth-counted terminator (a bare indexOf
+      // would stop at a commented or nested `\endgl`, or at `\endglpreamble`).
+      const endIdx = findMatchingGloss(ctx.src, bodyStart);
       const bodyText =
         endIdx !== -1 ? ctx.src.slice(bodyStart, endIdx) : ctx.src.slice(bodyStart);
       ctx.pos = endIdx !== -1 ? endIdx + "\\endgl".length : ctx.src.length;
@@ -2201,7 +2188,9 @@ function splitPexBody(
     // \begin{xlist} … \end{xlist} so their internal \a markers don't get
     // confused with ours at the current tier.
     if (body.startsWith("\\begingl", pos)) {
-      const endIdx = body.indexOf("\\endgl", pos + "\\begingl".length);
+      // Depth-counted, boundary/comment-aware terminator so a nested/commented
+      // `\endgl` inside the gloss doesn't prematurely end the skip.
+      const endIdx = findMatchingGloss(body, pos + "\\begingl".length);
       pos = endIdx === -1 ? body.length : endIdx + "\\endgl".length;
       continue;
     }
@@ -2237,6 +2226,24 @@ function splitPexBody(
       body[pos + 1] !== undefined &&
       /[a-z]/.test(body[pos + 1])
     ) {
+      // A spaced accent (`\v s`, `\d t`) or a special letter (`\i`, `\o`,
+      // `\l`) is NOT an `\a`-style item marker. Consume it as inline item
+      // text BEFORE the item-marker `after`-char test — otherwise `\v s`
+      // would be read as item marker `\v` + content `s`, silently deleting
+      // the accent and corrupting item structure. Reuse the shared accent
+      // matchers (SSOT) rather than a parallel table. Strictly subtractive:
+      // this only suppresses FALSE `\a` splits; a real `\a` never matches
+      // matchAccent/matchSpecialLetter, so its slice is unchanged.
+      const accent = matchAccent(body, pos);
+      if (accent) {
+        pos = accent.end;
+        continue;
+      }
+      const special = matchSpecialLetter(body, pos);
+      if (special) {
+        pos = special.end;
+        continue;
+      }
       const after = body[pos + 2];
       // Real part markers are `\a<tag>`, `\a[opts]`, `\a\label`, or `\a`
       // at end of line followed by content. Anything else (letter, `{`,
