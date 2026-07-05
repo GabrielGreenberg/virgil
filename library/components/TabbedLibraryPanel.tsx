@@ -475,7 +475,11 @@ export default function TabbedLibraryPanel({
             background: isPaper(activeLibrary)
               ? "var(--background)"
               : "var(--surface)",
-            border: "1px solid var(--topbar-border)",
+            // The page-edge outline is now the single owner of the under-tab
+            // seam (task 048 dropped the strip's inset-shadow seam). Toned onto
+            // --library-edge (a tint of --library-bg) so it harmonizes with the
+            // library field instead of the old warm --topbar-border.
+            border: "1px solid var(--library-edge)",
             borderRadius:
               "0 0 var(--library-manila-radius) var(--library-manila-radius)",
             overflow: "hidden",

@@ -57,6 +57,17 @@ The token scales:
   `bg-blue-*`.
 - **Footnote rust** (footnote, cut, error): `--footnote-50/100/200/300/500`.
 - **Warm amber** (citation, bib, quote): `--amber-50/100/200/500`.
+- **Library edge** (`--library-edge`): the SSOT for every Library-surface
+  page edge — tab silhouette strokes, the panel/body frame border, NavPod.
+  DERIVED, not a literal: `color-mix(in oklab, var(--library-bg) 82%, #000)`,
+  so it is a darker tint of the library field *by construction* and can never
+  drift into a warm-on-cool clash (the failure mode when these edges rode the
+  top-bar token `--topbar-border` over the promoted cool `--library-bg`; task
+  048). Any new Library-surface edge consumes THIS token, never
+  `--topbar-border`; a guard in `folder-path.test.ts` fails the build if a
+  `library/` source re-grabs `--topbar-border`. The general pattern: an edge
+  token that must harmonize with a surface should be `color-mix`-derived FROM
+  that surface's var, not a hand-picked hex that a future retone can desync.
 
 Locked aliases (must track each other): `--theme-color`/`--topbar-bg`,
 `--main-tab-bg`/`--background`, `--pod-editor`/`--surface`,
