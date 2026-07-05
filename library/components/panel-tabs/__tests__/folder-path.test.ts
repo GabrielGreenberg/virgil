@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -203,5 +203,49 @@ describe("MANILA_RADIUS — one corner-radius SSOT for the tab OUTLINE + panel F
     const m = globals.match(/--library-manila-radius:\s*(\d+(?:\.\d+)?)px\s*;/);
     expect(m, "--library-manila-radius must be defined in globals.css").not.toBeNull();
     expect(Number(m![1])).toBe(MANILA_RADIUS);
+  });
+});
+
+// Recursively collect library/ source files (excluding tests) whose contents
+// include `needle`. Used to enforce that no library-surface chrome consumes the
+// top-bar token after the task-048 re-pairing.
+function libFilesContaining(needle: string): string[] {
+  const libDir = path.join(ROOT, "library");
+  const entries = readdirSync(libDir, { recursive: true }) as string[];
+  const hits: string[] = [];
+  for (const entry of entries) {
+    const rel = String(entry);
+    if (rel.includes("__tests__")) continue; // tests reference the token in prose
+    if (!/\.(tsx?|css)$/.test(rel)) continue; // skips directories + non-source
+    const content = readFileSync(path.join(libDir, rel), "utf8");
+    if (content.includes(needle)) hits.push(rel);
+  }
+  return hits;
+}
+
+describe("library edge token — --library-edge re-pairing (task 2026-07-05-048)", () => {
+  it("--library-edge is defined in globals.css and DERIVED from --library-bg (can't drift to a warm-on-cool clash)", () => {
+    const globals = readFileSync(path.join(ROOT, "src/app/globals.css"), "utf8");
+    const m = globals.match(/--library-edge:\s*([^;]+);/);
+    expect(m, "--library-edge must be defined in globals.css").not.toBeNull();
+    // The deep fix: --library-edge's VALUE references var(--library-bg), so it
+    // is a function of the library surface — it tracks whichever --library-bg is
+    // live (the descriptive #eae7e2 or the promoted cool #ddeaee) and can never
+    // re-introduce the warm-taupe-on-cool clash task 048 removed. Defining it as
+    // a literal color (like the retired --topbar-border pairing) would fail this.
+    expect(m![1]).toContain("var(--library-bg)");
+  });
+
+  it("no library-surface chrome consumes --topbar-border (every library edge rides --library-edge)", () => {
+    // The strip seam, tab stroke, body/page frame, and NavPod all used to draw
+    // their edge in the top-bar token --topbar-border, which clashed over the
+    // library field. Task 048 re-pointed them at --library-edge; this guard
+    // fails the build if any library source re-grabs the top-bar token.
+    const offenders = libFilesContaining("var(--topbar-border)");
+    expect(
+      offenders,
+      `Library edges must derive from --library-edge, not the top-bar token ` +
+        `--topbar-border (task 048). Offending file(s): ${offenders.join(", ")}`,
+    ).toEqual([]);
   });
 });

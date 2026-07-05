@@ -57,6 +57,16 @@
   --tab-bg: #dcdbd7;
   --main-tab-bg: var(--background);
   --library-bg: #eae7e2;
+  /* Library page-edge chrome (tab silhouettes, panel/body frame, NavPod).
+     DERIVED from --library-bg by construction — a low-contrast darker tint —
+     so it can never drift into a warm-on-cool clash the way the top-bar token
+     --topbar-border did (task 048). Defined ONCE here: because it references
+     var(--library-bg), it resolves against whichever --library-bg is live
+     (the PROMOTE-DEFAULTS block's cool #ddeaee overrides the descriptive value
+     above on the same :root), so it auto-tracks both blocks and every future
+     retone with NO second definition to keep in sync. Library-surface edges
+     must consume THIS token, never --topbar-border. */
+  --library-edge: color-mix(in oklab, var(--library-bg) 82%, #000);
   --virgil-bar-text: #78716c;
 
   /* Window insets — the app's single window-edge inset model (SSOT)

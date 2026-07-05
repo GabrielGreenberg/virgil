@@ -26,7 +26,11 @@ export default function NavPod({ title, children, style }: Props) {
         display: "flex",
         flexDirection: "column",
         background: "var(--surface)",
-        border: "1px solid var(--topbar-border)",
+        // Library page-edge chrome → --library-edge (a tint of --library-bg),
+        // not the top-bar token --topbar-border, so this pod's frame + title
+        // divider read as the same harmonious library edge as the tab strip and
+        // body frame instead of a warm-taupe-on-cool clash (task 048).
+        border: "1px solid var(--library-edge)",
         borderRadius: "var(--library-manila-radius)",
         overflow: "hidden",
         ...style,
@@ -39,7 +43,7 @@ export default function NavPod({ title, children, style }: Props) {
           fontSize: 13,
           fontWeight: 500,
           color: "var(--foreground)",
-          borderBottom: "1px solid var(--topbar-border)",
+          borderBottom: "1px solid var(--library-edge)",
         }}
       >
         {title}
