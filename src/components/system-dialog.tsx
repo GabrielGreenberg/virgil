@@ -44,6 +44,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Button, type ButtonVariant } from "./panel-primitives";
+import { MODAL_SCRIM_Z } from "@/floats/float-policy";
 
 /* ── Tokens ──────────────────────────────────────────────────────────
    The one object you edit to re-skin every system dialog. Tailwind-class
@@ -51,9 +52,12 @@ import { Button, type ButtonVariant } from "./panel-primitives";
 */
 export const SYSTEM_DIALOG_TOKENS = {
   scrim: "bg-[var(--overlay-scrim)]",
-  zIndex: "z-[10000]",
+  /** Modal stacking tier. Applied via inline style (not a Tailwind class) so
+   *  it reads from the {@link MODAL_SCRIM_Z} SSOT in float-policy.ts rather
+   *  than a bare arbitrary-z literal — see the scrim `<div>` below. */
+  zIndex: MODAL_SCRIM_Z,
   surface:
-    "bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl",
+    "bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-[var(--shadow-float)]",
   maxWidth: {
     sm: "max-w-[340px]",
     md: "max-w-[380px]",
@@ -189,11 +193,11 @@ export default function SystemDialog({
       value={{ labelledBy, describedBy, registerAutoFocus, autoFocusRef }}
     >
       <div
-        className={`fixed inset-0 ${t.zIndex} ${t.scrim} ${anchorPos ? "" : "flex items-center justify-center"}`}
+        className={`fixed inset-0 ${t.scrim} ${anchorPos ? "" : "flex items-center justify-center"}`}
         // Keep centered dialogs clear of the OS window-control strip under WCO
         // (and the notch under safe-area); inert for anchored dialogs and when
-        // the inset is 0 (normal tab).
-        style={{ paddingTop: "var(--window-inset-top, 0px)" }}
+        // the inset is 0 (normal tab). zIndex reads the MODAL_SCRIM_Z SSOT.
+        style={{ zIndex: t.zIndex, paddingTop: "var(--window-inset-top, 0px)" }}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}

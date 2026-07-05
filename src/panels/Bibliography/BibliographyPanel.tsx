@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
-import { ItemMenu, PANEL, clearStaleHover } from "@/components/panel-primitives";
+import { Button, ItemMenu, PANEL, clearStaleHover } from "@/components/panel-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
@@ -808,7 +808,7 @@ function BibliographyPanel({
       )}
 
       {conflictDecision && (
-        <div className="px-3 py-2 border-b border-amber-200 bg-amber-50/50">
+        <div className="px-3 py-2 border-b border-[var(--amber-200)] bg-[var(--amber-50)]/50">
           <div className="text-[11px] text-ink-body mb-1.5">
             <span className="font-mono text-ink-muted">
               {conflictDecision.libraryEntry.key}
@@ -816,40 +816,44 @@ function BibliographyPanel({
             is already in your bib with different fields.
           </div>
           <div className="flex flex-wrap gap-1.5">
-            <button
+            <Button
+              variant="warm"
+              size="sm"
               onClick={handleConflictReplace}
-              className="text-[10px] text-white bg-amber-600 hover:bg-amber-700 px-2 py-1 rounded"
               data-hint="Overwrite local fields with the library version (citekey unchanged)"
             >
               Replace with library
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={dismissConflict}
-              className="text-[10px] text-ink-body bg-surface border border-edge-subtle hover-on-light px-2 py-1 rounded"
               data-hint="Keep your existing local entry as-is"
             >
               Keep yours
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleConflictNewCitekey}
-              className="text-[10px] text-ink-body bg-surface border border-edge-subtle hover-on-light px-2 py-1 rounded"
               data-hint="Add the library entry alongside under an auto-suffixed citekey"
             >
               Save under new citekey
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="warm"
+              size="sm"
               onClick={handleConflictRequestMerge}
-              className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 px-2 py-1 rounded"
               data-hint="File an AI bib-review request to merge both versions and authenticate"
             >
               Request AI merge &amp; authentication
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
       {showRequestForm && (
-        <div className="px-3 py-2 border-b border-[var(--border-light)] bg-amber-50/30">
+        <div className="px-3 py-2 border-b border-[var(--border-light)] bg-[var(--amber-50)]/30">
           <div className="flex items-center gap-1.5 mb-1.5">
             <span className="text-[10px] font-medium text-ink-subtle uppercase tracking-wide">
               Request entry
@@ -878,22 +882,24 @@ function BibliographyPanel({
             rows={3}
           />
           <div className="flex justify-end gap-1.5 mt-1.5">
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setShowRequestForm(false);
                 setRequestText("");
               }}
-              className="text-[10px] text-ink-subtle hover:text-ink-body px-2 py-1 rounded"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="warm"
+              size="sm"
               onClick={handleSubmitRequest}
               disabled={!requestText.trim()}
-              className="text-[10px] text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-40 px-2 py-1 rounded"
             >
               Submit
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -909,7 +915,7 @@ function BibliographyPanel({
         {entryRequests.map((req) => (
           <div
             key={req.id}
-            className="mx-1 mb-1.5 rounded-md border border-amber-200 bg-amber-50/40 px-3 py-2"
+            className="mx-1 mb-1.5 rounded-md border border-[var(--amber-200)] bg-[var(--amber-50)]/40 px-3 py-2"
           >
             <div className="flex items-start justify-between gap-2">
               <p className="text-xs text-ink-body whitespace-pre-wrap">

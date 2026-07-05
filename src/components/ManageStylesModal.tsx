@@ -378,20 +378,18 @@ export default function ManageStylesModal({
                 Delete <strong>{styles.find((s) => s.id === confirmDeleteId)?.name}</strong>? This can&apos;t be undone.
               </span>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
+                <SystemDialogButton
+                  variant="secondary"
                   onClick={() => setConfirmDeleteId(null)}
-                  className="text-[11px] px-2 py-1 hover:bg-surface rounded"
                 >
                   Cancel
-                </button>
-                <button
-                  type="button"
+                </SystemDialogButton>
+                <SystemDialogButton
+                  variant="danger"
                   onClick={() => handleDelete(confirmDeleteId)}
-                  className="text-[11px] px-2 py-1 rounded text-white bg-[var(--danger,#b91c1c)] hover:opacity-90"
                 >
                   Delete
-                </button>
+                </SystemDialogButton>
               </div>
             </div>
           )}

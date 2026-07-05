@@ -54,8 +54,16 @@ export { FLOATING_PANEL_Z_BASE };
  *                                       menu, e.g. the ActionsMenuPanel that the
  *                                       margin bolt opens, MUST stay on top of
  *                                       everything INCLUDING floats)
- *   drop-mode indicator         9999   (the blue insertion bar — above floats
- *                                       and ghosts during a move, Issue-11)
+ *   drop-mode indicator         9999   (DROP_INDICATOR_Z — the blue insertion
+ *                                       bar; above floats and ghosts during a
+ *                                       move, Issue-11)
+ *   modal scrim + dialogs      10000   (MODAL_SCRIM_Z — the SystemDialog
+ *                                       backdrop and every centered dialog;
+ *                                       above the drop indicator so an open
+ *                                       modal is never pierced by a stale bar)
+ *   hint / tooltip bubble      10010   (HINT_Z — data-hint bubbles; one above
+ *                                       the modal tier so a hint on a modal
+ *                                       control shows over the dialog)
  *
  * The load-bearing split: a RESTING trigger and the OPEN menu it spawns live in
  * DIFFERENT tiers. The bolt-at-rest is demoted below floats (so floats occlude
@@ -83,6 +91,28 @@ export const RESTING_MARGIN_TRIGGER_Z = FLOAT_Z_BASE - 1;
  * (below floats) vs open-menu (above floats) split can never drift.
  */
 export const OPEN_CHROME_MENU_Z = 2000;
+
+/**
+ * The modal / tooltip z-scale — the top of the ladder, ABOVE every float and
+ * open chrome menu. These three tiers were previously bare literals scattered
+ * across `system-dialog.tsx` (`z-[10000]`), `drop-mode/Indicator.tsx` (`9999`),
+ * and `globals.css` (`.hint-bubble` `10010`); named here so the ordering
+ * (drop-indicator < modal < hint) is one SSOT the ordering-invariant test pins,
+ * and so they can't silently be re-typed as drifting magic numbers.
+ *
+ *   DROP_INDICATOR_Z  9999   the blue insertion bar during a move (Issue-11);
+ *                            above floats/ghosts but below an open modal.
+ *   MODAL_SCRIM_Z    10000   the SystemDialog backdrop + every centered dialog.
+ *   HINT_Z           10010   data-hint tooltip bubbles; one above the modal
+ *                            tier so a hint on a modal control still shows.
+ *
+ * `HINT_Z` has no TS consumer (the only site is the `.hint-bubble` CSS rule,
+ * which can't import TS) — it lives here purely as the documented SSOT the CSS
+ * literal mirrors and the ordering test guards.
+ */
+export const DROP_INDICATOR_Z = 9999;
+export const MODAL_SCRIM_Z = 10000;
+export const HINT_Z = 10010;
 
 /**
  * Shared "how tall can a popout be" policy — the maximum height of any
