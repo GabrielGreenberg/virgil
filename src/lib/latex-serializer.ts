@@ -223,7 +223,20 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const inner = serializeInlineSequence(node.content || []);
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
-      return `\\begin{verbatim}\n${inner}\n\\end{verbatim}${anchor}\n\n`;
+      // A body line reading `\end{verbatim}` would otherwise close the
+      // environment early (the parser's `findMatchingEnd` matches the
+      // literal string). Escape it to a private form that breaks the
+      // delimiter substring; the parser un-escapes it on the way back in.
+      // Mirrors the `texBlock` `%!vtex:end` → `%!v tex:end` sentinel guard.
+      // The `%` is injected here, AFTER `escapeLatex` ran on `inner`, so it
+      // stays raw (not `\%`) and reverses cleanly. Verbatim bodies containing
+      // a literal `\end{verbatim}` are uncompilable in raw LaTeX anyway, so
+      // preserving Virgil's representation losslessly is strictly better.
+      const escaped = inner.replace(
+        /\\end\{verbatim\}/g,
+        "\\end{verbatim%!v-esc}",
+      );
+      return `\\begin{verbatim}\n${escaped}\n\\end{verbatim}${anchor}\n\n`;
     }
 
     case "texBlock": {
@@ -717,11 +730,38 @@ function serializeInline(node: JSONContent): string {
   return "";
 }
 
+/**
+ * Collapse runs of 3+ newlines down to a single blank-line separator —
+ * EXCEPT inside `verbatim` environments, whose bodies are byte-preserving.
+ * Verbatim blocks are pulled out behind placeholders, the collapse runs on
+ * the remaining prose, then the blocks are spliced back intact. A body line
+ * reading `\end{verbatim}` is escaped (`%!v-esc`) at emit time, so the
+ * non-greedy match always stops at the block's real terminator even when the
+ * body itself contains a literal `\begin{verbatim}`.
+ */
+const VERBATIM_BLOCK_RE = /\\begin\{verbatim\}\n[\s\S]*?\n\\end\{verbatim\}/g;
+function collapseBlankRuns(s: string): string {
+  const blocks: string[] = [];
+  // Stash each verbatim block behind a placeholder that carries no newline
+  // (so the collapse pass can't touch it) and cannot collide with real prose
+  // (`@@` + a reserved tag). Restore is index-guarded — an unmatched token is
+  // left verbatim rather than turning into "undefined".
+  const stashed = s.replace(VERBATIM_BLOCK_RE, (m) => {
+    blocks.push(m);
+    return `@@VBTSTASH:${blocks.length - 1}@@`;
+  });
+  const collapsed = stashed.replace(/\n{3,}/g, "\n\n");
+  return collapsed.replace(/@@VBTSTASH:(\d+)@@/g, (whole, i) => {
+    const block = blocks[Number(i)];
+    return block === undefined ? whole : block;
+  });
+}
+
 export function serializeToLatex(
   doc: JSONContent,
   options?: { preamble?: string; postamble?: string },
 ): string {
-  const body = serializeNode(doc).replace(/\n{3,}/g, "\n\n").trim();
+  const body = collapseBlankRuns(serializeNode(doc)).trim();
   // Requirements pass runs on EVERY serialize — including the no-options
   // DEFAULT_PREAMBLE fallback — so a body that emits expex / graphicx /
   // tikz / cite commands always has the matching \usepackage (and every
@@ -741,7 +781,7 @@ export function serializeToLatex(
 }
 
 export function serializeBodyOnly(doc: JSONContent): string {
-  return serializeNode(doc).replace(/\n{3,}/g, "\n\n").trim();
+  return collapseBlankRuns(serializeNode(doc)).trim();
 }
 
 /**

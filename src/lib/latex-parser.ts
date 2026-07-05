@@ -1581,8 +1581,18 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       const env = beginMatch[1];
       const optArg = beginMatch[2] || "";
       ctx.pos += beginMatch[0].length;
-      // Find the matching \end{env}, accounting for nested \begin{env}/\end{env}
-      const envEnd = findMatchingEnd(ctx.src, ctx.pos, env);
+      // Find the matching \end{env}. For most envs we depth-count so nested
+      // same-name environments pair correctly. `verbatim` is the exception:
+      // it is non-nestable and its body is LITERAL, so the correct terminator
+      // is the FIRST `\end{verbatim}` — depth-counting is actively wrong here,
+      // since a literal `\begin{verbatim}` in the body would bump the counter
+      // and swallow the real close. The serializer escapes any body
+      // `\end{verbatim}` (→ `\end{verbatim%!v-esc}`), so the first literal
+      // `\end{verbatim}` we find is guaranteed to be the block's true end.
+      const envEnd =
+        env === "verbatim"
+          ? ctx.src.indexOf(`\\end{${env}}`, ctx.pos)
+          : findMatchingEnd(ctx.src, ctx.pos, env);
       const envContent =
         envEnd !== -1
           ? ctx.src.slice(ctx.pos, envEnd)
@@ -1609,9 +1619,20 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
       switch (env) {
         case "verbatim": {
+          // Verbatim is byte-preserving. Undo ONLY the serializer's single
+          // wrapping `\n` on each side (`\begin{verbatim}\n${inner}\n\end…`),
+          // not all edge whitespace — a blunt `.trim()` would drop first-line
+          // indentation, trailing whitespace, and leading/trailing blank
+          // lines every cycle. Then un-escape any `\end{verbatim%!v-esc}`
+          // sentinel the serializer emitted to protect a body line that reads
+          // `\end{verbatim}` from terminating the block early.
+          let text = envContent;
+          if (text.startsWith("\n")) text = text.slice(1);
+          if (text.endsWith("\n")) text = text.slice(0, -1);
+          text = text.replace(/\\end\{verbatim%!v-esc\}/g, "\\end{verbatim}");
           const codeNode: JSONContent = {
             type: "codeBlock",
-            content: [{ type: "text", text: envContent.trim() }],
+            content: [{ type: "text", text }],
           };
           if (envUuid) {
             codeNode.attrs = { uuid: envUuid };
