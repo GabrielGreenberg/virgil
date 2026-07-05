@@ -622,6 +622,40 @@ Reach for these instead of hand-rolling a one-off modal.
 
 Don't nest modals. Use a popover for transients over a modal.
 
+### Menus
+
+`<Menu>`/`MenuProvider` (`src/components/menu/`) is the **canonical dropdown /
+context-menu primitive** — the menu-side sibling of `SystemDialog`. Reach for it
+for any command menu, kebab, or anchored dropdown; don't hand-roll a portal +
+`z-[9999]` + a bespoke `document.addEventListener('mousedown')` closer. One
+`MenuProvider` owns, per open menu:
+
+- **positioning** — the single `useFloatingMenuPosition` call (measured, viewport-
+  clamped, `placements` tried in order, RAF-coalesced `trackAnchor` re-anchor);
+- **portal** — body-portaled by default (escapes the sticky-bar / stacking-context
+  trap above), or docked inline with `portal={false}` (MenuBar's own context);
+- **z-tier** — `OPEN_CHROME_MENU_Z` (2000), so it composes above the float layer;
+- **dismissal** — one mousedown-outside + Escape controller (`useMenuDismiss`),
+  with `excludeRefs` to exempt an outside trigger and nested popovers;
+- **keyboard / roving nav** — one `useMenuKeyboard` controller; items opt in via
+  `useMenuItem` (or `<MenuItemsFromRegistry>`) to gain arrow-nav + the roving
+  active highlight. Items never take `.focus()` (roving `aria-activedescendant`
+  only) so the editor caret never moves.
+
+**`ItemMenu`** (the three-dot card/panel menu in `panel-primitives.tsx`, used by
+all 8 card panels + `CardViewModeMenu`) is **folded onto this primitive** — it's a
+thin shell that keeps its `align` + `children` API and the auto-injected
+`PanelTextSizeRow` row, but delegates portal / positioning / dismiss / z / Escape
+to `MenuProvider` (retiring its old `fixed z-[9999]` portal + hand-rolled
+mousedown closer). Its arbitrary button children render opaquely (they keep their
+`onMouseDown`+`preventDefault` fire-before-close pattern; a wrapping
+`onClick`→close preserves the old "any click inside dismisses" semantics + the
+stopPropagation fence against the card header). Opaque children still work without
+per-item registration — wrap them in `useMenuItem` when a menu wants roving nav.
+
+The sticky-bar topbar kebabs (`ExternalChangeBadge`, `CollabStatusPill`) are the
+reference wiring for the body-portal case — see the **Top bar** portal rule below.
+
 ### Z-index ladder
 
 The float/menu tiers are named constants in `src/floats/float-policy.ts`
