@@ -4291,6 +4291,7 @@ html {
      SECOND line one pixel higher (padding-box bottom under box-sizing:
      border-box) → the doubled edge; removed. Its far-left terminus is the
      native macOS window corner (no CSS radius exists to change). */
+}
 
 /* Tab swoops removed — DocumentFolderTab now renders each tab as a single
    SVG shape with a continuous border around its full outline, so the
