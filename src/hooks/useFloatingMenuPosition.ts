@@ -41,6 +41,10 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import {
+  recordScrollPlacement,
+  SCROLL_PORTAL_FLOATING_MENU,
+} from "@/lib/scroll-reposition-probe";
 
 export type FloatingMenuSide = "above" | "below" | "left-of" | "right-of";
 export type FloatingMenuAlign = "start" | "center" | "end";
@@ -295,6 +299,10 @@ export function useFloatingMenuPosition(
       chosenSide = last.side;
     }
     const next = chosen;
+    // Scroll-anchor stability probe (task 042): one record per coalesced frame
+    // — the trackAnchor scroll listener above is RAF-gated, so a scroll gesture
+    // yields ≤1 distinct top/frame here.
+    recordScrollPlacement(SCROLL_PORTAL_FLOATING_MENU, next.top);
     setPos((prev) =>
       prev && prev.left === next.left && prev.top === next.top ? prev : next,
     );
