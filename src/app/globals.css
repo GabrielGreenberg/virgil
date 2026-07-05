@@ -4272,24 +4272,6 @@ html {
     -webkit-app-region: drag;
     app-region: drag;
   }
-  /* Leftmost active tab (the pinned Library folder): continue its top-outline
-     line leftward under the window-controls gutter so it doesn't stop abruptly
-     at the traffic-light inset. A purely decorative 1px rule (no fill, no
-     layout impact): anchored right:100% to the tab's own left edge and drawn
-     in the tab border color, extending under the gutter. The width overshoots
-     to the window edge (inset + the "+" button / strip-pad lead-in); the part
-     past x=0 is off-screen. pointer-events:none so it never steals the
-     traffic-light hit area. WCO-only — absent entirely in a normal tab. */
-  .virgil-bar [data-outline-bleed-left]::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    right: 100%;
-    width: calc(var(--window-inset-left) + 34px);
-    height: 1px;
-    background: var(--topbar-border);
-    pointer-events: none;
-  }
 }
 
 /* Tab swoops removed — DocumentFolderTab now renders each tab as a single

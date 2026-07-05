@@ -160,7 +160,6 @@ function TabStripImpl(props: TabStripProps) {
               fill="var(--library-bg)"
               dataPrefs="libraryBg,topbarBorder"
               title="Library"
-              outlineBleedLeft
               onClick={() => {}}
             >
               <IconLibrary />
