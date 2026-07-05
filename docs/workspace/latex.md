@@ -1,4 +1,4 @@
-<!-- last-verified: ad9cb6b0 2026-07-04 -->
+<!-- last-verified: 76ca7ff5 2026-07-05 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-typography.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -125,12 +125,20 @@ multi-key keys are accepted.
 
 ## Emitting LaTeX as a skill — the curated subset
 
-`parseLatex()` accepts **more** than a skill should emit. The library deep-index
-skills constrain their *output* to a curated subset (document structure, the core
-`\cite…` forms, expex examples, a minimal preamble) — see
-[library/skills/_latex-output.md](../../library/skills/_latex-output.md). Keep the
-asymmetry in mind: **read** expecting the full vocabulary + opaque passthrough;
-**write** within the curated subset so the output stays clean and portable.
+`parseLatex()` accepts **more** than a skill should emit. The canonical
+allowable-LaTeX doctrine every `.tex`-writing skill consults is
+**`_latex-allowlist.md`**, shipped byte-identical in both silos
+([editor/skills/_latex-allowlist.md](../../editor/skills/_latex-allowlist.md) /
+[library/skills/_latex-allowlist.md](../../library/skills/_latex-allowlist.md)) and
+grounded in the renderer's own inline SSOT (`parseInlineContent` +
+`KNOWN_CITE_COMMANDS`, machine-checked by `check:coherence` check #6). It prescribes
+the inline marks, math, footnotes, cross-refs, escapes, accents, and the full
+`\cite…` vocabulary — e.g. the tie `~`, forbidding `\textasciitilde{}` for a
+non-breaking space. The library `_latex-output.md` now folds its shared inline/cite
+vocabulary into a link to the allowlist and stays the library appendix (structure,
+expex, fonts, preamble, pgmark). Keep the asymmetry in mind: **read** expecting the
+full vocabulary + opaque passthrough; **write** within the curated subset so the
+output stays clean and portable.
 
 ## Rules for skills
 
