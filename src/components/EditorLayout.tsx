@@ -185,8 +185,7 @@ import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
 import { serializeCiteCommand } from "@/lib/bib-parser";
 import { generateShortId } from "@/lib/uuid";
-import MathPopover from "./MathPopover";
-import FigurePopover from "./FigurePopover";
+import NodeEditPopover from "./NodeEditPopover";
 import { extractFigureAttrs, extractGraphicsAttrs } from "@/lib/figures/parse-attrs";
 import { parseInlineContent as parseInlineLatexForCaption } from "@/lib/latex-parser";
 import TexFilePickerModal from "./TexFilePickerModal";
@@ -4232,18 +4231,20 @@ export default function EditorLayout() {
         />
       )}
       {activeMath && (
-        <MathPopover
+        <NodeEditPopover
+          family="math"
           kind={activeMath.kind}
-          latex={activeMath.latex}
+          value={activeMath.latex}
           anchorRect={activeMath.rect}
           onSave={(newLatex) => handleMathSave(activeMath.editor, activeMath.pos, newLatex)}
           onClose={() => setActiveMath(null)}
         />
       )}
       {activeFigure && (
-        <FigurePopover
+        <NodeEditPopover
+          family="figure"
           kind={activeFigure.kind}
-          raw={activeFigure.raw}
+          value={activeFigure.raw}
           anchorRect={activeFigure.rect}
           onSave={(newText) => handleFigureSave(activeFigure.editor, activeFigure.pos, newText)}
           onClose={() => setActiveFigure(null)}

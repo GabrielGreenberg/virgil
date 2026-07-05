@@ -167,7 +167,7 @@ A Task is a Card with lifecycle states the other kinds don't share (see [Cowork 
 ---
 
 ## Cowork pattern
-<!-- covers-code: src/lib/ai-request-bridge.ts, src/hooks/useDocNotificationStream.ts, src/hooks/useCollab.ts, src/lib/collab.ts, editor/scripts/apply_response.py, editor/scripts/_common.py, editor/scripts/create_card.py, editor/scripts/list_requests.py, editor/skills -->
+<!-- covers-code: src/lib/ai-request-bridge.ts, src/hooks/useCollab.ts, src/lib/collab.ts, editor/scripts/apply_response.py, editor/scripts/_common.py, editor/scripts/create_card.py, editor/scripts/list_requests.py, editor/skills -->
 
 *Conceptual; frozen in `EDITOR_SKILLS_V1.html` §5–9 and §12. Virgil calls no model itself — an external agent (Claude) reads the same `.tex`/`.bib` and writes JSON sidecars; the app polls and surfaces them. The skill set is currently the `editor/` bundle. The v1 redesign (mechanical primitives + chat-composed generative work) is specced in `EDITOR_SKILLS_V1.html`; its **mechanical substrate** — the `apply_response.py` contract (atomic multi-file writes, the pen, the named subcommands, the two-field status, per-Task safety levels) — is now **built and validated end-to-end through the footnote kind** (the per-subsection notes below mark what shipped vs what's still pending). Breadth across the remaining kinds, and the UI affordances, are in progress.*
 
@@ -211,7 +211,7 @@ Skills never write files directly. They call `apply_response.py`, which owns the
 
 ### The loop, end to end
 
-The agent writes `<sidecar>.json` (the new/changed card) + `ai-requests.json` (Task created or status flipped) atomically; [src/hooks/useDocNotificationStream.ts](../../src/hooks/useDocNotificationStream.ts) polls `virgil/notifications.json` and toasts the completion. The inbox doubles as the audit log — every change registers a completed entry, so there is one place to see what landed.
+The agent writes `<sidecar>.json` (the new/changed card) + `ai-requests.json` (Task created or status flipped) atomically, and appends a completion entry to `virgil/notifications.json`. (A client-side hook that would poll and toast these was never wired to a UI host and has been removed — task 033.) The inbox doubles as the audit log — every change registers a completed entry, so there is one place to see what landed.
 
 ---
 

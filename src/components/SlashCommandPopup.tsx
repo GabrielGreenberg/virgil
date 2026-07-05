@@ -18,6 +18,7 @@ import type { Editor } from "@tiptap/react";
 import { useSlashPopupState } from "@/lib/slash-popup-store";
 import { executeSlashSelectionAt } from "@/lib/tiptap/slash-popup";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 
 const POPUP_WIDTH = 180;
 const VIEWPORT_MARGIN = 8;
@@ -107,7 +108,10 @@ export function SlashCommandPopup({
         left,
         top,
         width: POPUP_WIDTH,
-        zIndex: 1000,
+        // Caret popup rides the open-chrome-menu tier (task 033), promoted off
+        // the old ad-hoc `1000` so a popped card / lifted overlay can't occlude
+        // it — matches NodeEditPopover + the <Menu> primitive.
+        zIndex: OPEN_CHROME_MENU_Z,
       }}
       onMouseDown={(e) => {
         // Prevent the editor from losing focus when clicking a row.
