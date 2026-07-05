@@ -4241,6 +4241,15 @@ html {
   .virgil-bar {
     -webkit-app-region: drag;
     app-region: drag;
+    /* The browser/OS chrome (the WCO control strip + window corners) is
+       painted by the theme-color meta, which the web platform allows to be a
+       SOLID color only — so a gradient bar can never seam-match it under WCO.
+       Flatten the bar to its top color here (== theme-color, locked to
+       --topbar-bg) so the installed title bar reads as one continuous fill;
+       a normal browser tab keeps the user's gradient untouched. Overriding
+       the custom property on the element re-resolves the inline
+       linear-gradient() in TopBar.tsx to a single stop. */
+    --topbar-bg-bottom: var(--topbar-bg);
   }
   .virgil-bar > * {
     -webkit-app-region: no-drag;
