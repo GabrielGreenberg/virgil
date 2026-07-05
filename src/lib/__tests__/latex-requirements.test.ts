@@ -70,6 +70,22 @@ describe("detectBodyRequirements — detection matrix", () => {
     );
   });
 
+  it("a nested example tier pins BOTH expex and the xlist env definition", () => {
+    // `xlist` is not an expex environment (expex v5.1b defines none); Virgil
+    // emits it as its nested tier and must supply the definition.
+    const req = detectBodyRequirements(
+      "\\pex\n\\a Outer.\n\\begin{xlist}\n\\a inner\n\\end{xlist}\n\\xe",
+    );
+    expect(req).toContain("expex");
+    expect(req).toContain("xlistenv");
+  });
+
+  it("a doc with no nested tier does NOT pin xlistenv", () => {
+    expect(detectBodyRequirements("\\pex\n\\a One.\n\\xe")).not.toContain(
+      "xlistenv",
+    );
+  });
+
   it("does not false-positive on longer command names sharing a prefix", () => {
     expect(detectBodyRequirements("\\example{foo} and \\pexample")).not.toContain(
       "expex",
@@ -227,6 +243,34 @@ describe("ensurePreambleRequirements — injection", () => {
     const once = ensurePreambleRequirements(LEGACY_CLASSIC_V1, req);
     const twice = ensurePreambleRequirements(once, req);
     expect(twice).toBe(once);
+  });
+
+  it("injects the xlist environment definition when a nested tier is required", () => {
+    const out = ensurePreambleRequirements(
+      LEGACY_CLASSIC_V1,
+      new Set(["expex", "xlistenv"]),
+    );
+    expect(out).toContain("\\newenvironment{xlist}{\\pex}{\\xe}");
+    // exactly one, before \begin{document}
+    expect(countOccurrences(out, "\\newenvironment{xlist}")).toBe(1);
+    expect(out.indexOf("\\newenvironment{xlist}")).toBeLessThan(
+      out.indexOf("\\begin{document}"),
+    );
+    // and idempotent
+    const twice = ensurePreambleRequirements(out, new Set(["expex", "xlistenv"]));
+    expect(twice).toBe(out);
+  });
+
+  it("does not re-inject xlist when the preamble already defines it", () => {
+    const preamble = `\\documentclass{article}
+\\usepackage{expex}
+\\newenvironment{xlist}{\\pex}{\\xe}
+
+\\begin{document}
+
+`;
+    const out = ensurePreambleRequirements(preamble, new Set(["expex", "xlistenv"]));
+    expect(countOccurrences(out, "\\newenvironment{xlist}")).toBe(1);
   });
 
   it("accepts \\usepackage with options as satisfying", () => {
@@ -466,6 +510,39 @@ describe("serializeToLatex — requirements integration", () => {
   it("exampleBlock doc + current classic preamble → still exactly ONE \\usepackage{expex}", () => {
     const out = serializeToLatex(exampleDoc, { preamble: CLASSIC_PREAMBLE });
     expect(countOccurrences(out, "\\usepackage{expex}")).toBe(1);
+  });
+
+  it("a nested-example round-trip injects the xlist env definition (else it fails to compile)", () => {
+    // Parse a real nested example (a `\begin{xlist}` sub-tier inside a `\pex`),
+    // then serialize with a bare preamble. The saved .tex MUST carry a live
+    // `\newenvironment{xlist}` — without it, `\begin{xlist}` is a fatal
+    // "Environment xlist undefined" (expex has no xlist environment).
+    const nested = `\\documentclass{article}
+\\usepackage{expex}
+
+\\begin{document}
+
+\\pex\\label{ex:x}
+\\a Outer one.
+\\a Outer two, with a sublist:
+\\begin{xlist}
+\\a inner one.
+\\a inner two.
+\\end{xlist}
+\\xe
+
+\\end{document}
+`;
+    const parsed = parseLatex(nested);
+    const out = serializeToLatex(parsed, { preamble: LEGACY_CLASSIC_V1 });
+    // The nested tier survives the round-trip …
+    expect(out).toContain("\\begin{xlist}");
+    // … and the definition that makes it compile is injected exactly once.
+    expect(out).toContain("\\newenvironment{xlist}{\\pex}{\\xe}");
+    expect(countOccurrences(out, "\\newenvironment{xlist}")).toBe(1);
+    expect(out.indexOf("\\newenvironment{xlist}")).toBeLessThan(
+      out.indexOf("\\begin{document}"),
+    );
   });
 
   it("double-serialize through the real save loop is byte-stable", () => {

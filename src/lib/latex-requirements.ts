@@ -98,6 +98,22 @@ export const LATEX_REQUIREMENTS: LatexRequirement[] = [
   packageReq("natbib"),
   packageReq("biblatex"),
   packageReq("tikz"),
+  // `xlist` is how Virgil serializes a nested example tier (latex-serializer.ts)
+  // and how it parses one back (latex-parser.ts). It is NOT an expex
+  // environment — despite the comments elsewhere calling it one, current expex
+  // (CTAN v5.1b) defines no `xlist`; the name comes from gb4e. So a Virgil doc
+  // with a nested example (`\begin{xlist}` inside a `\pex`) is a FATAL compile
+  // error ("Environment xlist undefined") unless we define it. Define it in
+  // terms of expex's own nesting primitive: a nested `\pex … \xe` inside an
+  // `\a` item is the sanctioned expex way to make a sublist, so `xlist` ==
+  // `{\pex}{\xe}`. Injected only when the body actually uses `\begin{xlist}`
+  // (which also pins the expex package via the same detector).
+  {
+    id: "xlistenv",
+    kind: "shim",
+    injectLine: "\\newenvironment{xlist}{\\pex}{\\xe}",
+    satisfiedRe: /\\(?:new|renew)environment\{xlist\}/,
+  },
   ...SHIM_COMMAND_NAMES.map(shimReq),
 ];
 
@@ -130,6 +146,9 @@ const BODY_DETECTORS: Array<{ id: string; re: RegExp }> = [
     id: "expex",
     re: /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z])|\\begin\{xlist\}/,
   },
+  // A nested example tier needs the `xlist` environment defined (see the
+  // `xlistenv` requirement); expex itself does not provide it.
+  { id: "xlistenv", re: /\\begin\{xlist\}/ },
   { id: "graphicx", re: /\\includegraphics(?![a-zA-Z])/ },
   { id: "tikz", re: /\\begin\{tikzpicture\}/ },
   { id: "xcolor", re: /\\textcolor(?![a-zA-Z])/ },
