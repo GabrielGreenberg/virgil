@@ -298,6 +298,9 @@ export function insertSuggestionBelow<TStatus extends string>(
     removeLinkedAnchor(editor, s.appliedChange.anchorId);
     deps.setAppliedChange(id, undefined);
   }
+  // Symmetric with keep/dismiss: clear any transient preview-direction state for
+  // this id before it archives, so the three landing verbs leave no residue.
+  resetPreviewDir(id);
   if (docId) void flushPendingForDoc(docId).catch(() => {});
   deps.setSuggestionStatus(id, deps.acceptedStatus);
   deps.setArchived(id, true);
