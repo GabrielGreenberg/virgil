@@ -4,10 +4,14 @@ import { describe, expect, it } from "vitest";
 import {
   ACTIVE_MIN_CONTENT,
   MANILA_RADIUS,
+  STRIP_SIDE_PAD,
   STROKE_INSET,
   buildActiveTabStrokePath,
+  buildFramePath,
   buildTabFillPath,
   deriveTabWidthFromWrapper,
+  firstTabSwoopFootX,
+  frameTopCornerStartX,
   tabSvgGeometry,
 } from "../folder-path";
 
@@ -203,6 +207,61 @@ describe("MANILA_RADIUS — one corner-radius SSOT for the tab OUTLINE + panel F
     const m = globals.match(/--library-manila-radius:\s*(\d+(?:\.\d+)?)px\s*;/);
     expect(m, "--library-manila-radius must be defined in globals.css").not.toBeNull();
     expect(Number(m![1])).toBe(MANILA_RADIUS);
+  });
+});
+
+describe("task 2026-07-05-047 — body-frame corner tucks under the tab swoop foot (no wing)", () => {
+  it("frameTopCornerStartX === firstTabSwoopFootX — the no-wing geometric invariant", () => {
+    // The body frame is laid out inset by STRIP_SIDE_PAD and its outline path is
+    // stroked with the same half-pixel STROKE_INSET as the tab silhouette, so
+    // its rounded TOP corner BEGINS exactly at the first tab's left swoop foot —
+    // never in the bare gutter beside the tabs (the "wing" e63ee738 squared the
+    // corners to hide). Binding both to the one STRIP_SIDE_PAD SSOT is what makes
+    // "no wing" a durable invariant instead of an owed pixel-eyeball.
+    expect(frameTopCornerStartX()).toBe(firstTabSwoopFootX());
+    expect(frameTopCornerStartX()).toBe(STRIP_SIDE_PAD + STROKE_INSET);
+  });
+
+  it("the strip padding AND the body-frame inset both consume the STRIP_SIDE_PAD SSOT (can't drift)", () => {
+    // If either side re-hardcodes the inset, the frame corner drifts off the
+    // swoop foot and the wing returns. Guard that both sources read the symbol.
+    const strip = readFileSync(
+      path.join(ROOT, "library/components/panel-tabs/PanelTabStrip.tsx"),
+      "utf8",
+    );
+    const body = readFileSync(
+      path.join(ROOT, "library/components/TabbedLibraryPanel.tsx"),
+      "utf8",
+    );
+    expect(strip).toContain("STRIP_SIDE_PAD");
+    expect(body).toContain("STRIP_SIDE_PAD");
+  });
+
+  it("buildFramePath is a closed rounded rect with all four corners at MANILA_RADIUS (tangent to the tab arcs)", () => {
+    const d = buildFramePath({ w: 320, h: 480 });
+    expect(d).toContain("Z"); // closed page silhouette
+    // Exactly four corner arcs, each at the SSOT radius — so the frame arc and
+    // the tab-outline arc are provably one curvature, never a hairline overshoot.
+    const arcs = d.match(
+      new RegExp(`A ${MANILA_RADIUS} ${MANILA_RADIUS} 0 0 1`, "g"),
+    );
+    expect(arcs).toHaveLength(4);
+    // The path's leftmost/topmost ink sits at the half-pixel STROKE_INSET, so in
+    // panel space (body inset by STRIP_SIDE_PAD) the corner lands on the swoop
+    // foot: STROKE_INSET + STRIP_SIDE_PAD === firstTabSwoopFootX().
+    expect(d.startsWith(`M ${STROKE_INSET + MANILA_RADIUS} ${STROKE_INSET}`)).toBe(
+      true,
+    );
+  });
+
+  it("clamps the radius on a degenerate (tiny) measured box so the path never self-crosses", () => {
+    // A 0-height first paint or a very narrow panel must still yield a valid,
+    // non-self-intersecting closed path (2*R would otherwise exceed the box).
+    const d = buildFramePath({ w: 6, h: 6 });
+    expect(d).toContain("Z");
+    expect(d).not.toContain("NaN");
+    // radius clamped to (6 − 2*0.5)/2 = 2.5.
+    expect(d).toContain("A 2.5 2.5");
   });
 });
 
