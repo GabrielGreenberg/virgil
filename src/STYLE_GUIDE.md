@@ -585,6 +585,35 @@ as a darker shade of the paper. Destructive confirms use `variant="danger"`.
 and discard-unsaved. Anchors near the source element, not screen
 center.
 
+### Positioning variants — one shell, principled variety
+
+`SystemDialog` has a `variant` axis so surfaces that predate it fold onto the
+one SSOT instead of hand-rolling `fixed z-[9999] bg-surface rounded-lg shadow-xl`.
+Every variant shares the portal, the `SYSTEM_DIALOG_TOKENS` chrome, Esc/focus/
+`role="dialog"` wiring, and outside-click-to-close; they differ only in scrim,
+placement, and z-tier. This is the positioning taxonomy — reach for the variant
+that matches the surface, don't reinvent the shell:
+
+| surface | `variant` | scrim | z-tier |
+| --- | --- | --- | --- |
+| modal / global-centered (confirm, alert, prompt, standalone modal) | `"modal"` (default) | yes | `MODAL_SCRIM_Z` |
+| draggable tool window (Preferences) | `"draggable"` | no | `DRAGGABLE_DIALOG_Z` |
+| anchored popover at a point (preference-mode picker) | `"anchored"` | no | `MODAL_SCRIM_Z` |
+| context menu / anchored dropdown (`ItemMenu`, help menu) | *use `<Menu>`* | no | `OPEN_CHROME_MENU_Z` |
+| caret / selection popup (`NodeEditPopover`, slash, citation) | *use `useFloatingMenuPosition`* | no | `OPEN_CHROME_MENU_Z` |
+| resting margin trigger (bolt, pill) | — | no | `RESTING_MARGIN_TRIGGER_Z` |
+
+- **`variant="draggable"`** — scrimless window dragged by its header. SystemDialog
+  owns the drag (one `useDragPosition`); wire a custom header strip as the grab
+  handle with **`useSystemDialogDrag()`** (`{ onMouseDown, dragging }`). Pass
+  `ignoreOutsideSelector` so clicking the topbar trigger doesn't close-then-reopen.
+- **`variant="anchored"`** — scrimless popover pinned at a viewport point via
+  `at={{x,y}}` (or `anchorRef`), measured and clamped inside the viewport before
+  it paints. Pass `outsideClickGuard` to keep a modifier gesture from dismissing
+  (e.g. ctrl+click-to-retarget).
+- `FloatingPanel`-hosted tool windows (Fonts) keep their resizable shell but should
+  derive header/surface chrome from `SYSTEM_DIALOG_TOKENS`, not bespoke literals.
+
 **Imperative dialogs.** `useSystemDialog()` (from
 `src/components/system-dialog-host.tsx`, provider mounted app-wide) exposes
 `alert` / `confirm` / `prompt` — promise-returning replacements for the
@@ -606,6 +635,7 @@ number. Full ladder, low → high:
 | docked panel band | 1000 | `FLOATING_PANEL_Z_BASE` |
 | resting margin trigger | 1199 | `RESTING_MARGIN_TRIGGER_Z` |
 | float layer (popped cards, lift overlay) | 1200 | `FLOAT_Z_BASE` |
+| draggable tool window (`SystemDialog variant="draggable"`) | 1205 | `DRAGGABLE_DIALOG_Z` |
 | open chrome menu (`<Menu>` CHROME_Z, sticky-bar dropdowns) | 2000 | `OPEN_CHROME_MENU_Z` |
 | drop-mode indicator | 9999 | `DROP_INDICATOR_Z` |
 | modal scrim + centered dialogs | 10000 | `MODAL_SCRIM_Z` |

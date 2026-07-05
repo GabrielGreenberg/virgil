@@ -74,7 +74,8 @@
  *    in collect(), then render headers when depth transitions.
  */
 
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import SystemDialog from "./system-dialog";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { usePreferences } from "@/hooks/usePreferences";
 import {
@@ -156,16 +157,6 @@ function collect(startEl: Element | null): {
   return { prefKeys, panelKeys };
 }
 
-// ── Popover positioning ──────────────────────────────────────────────────
-
-/** Clamp {x,y} so a popover of given size stays inside the viewport. */
-function clampToViewport(x: number, y: number, w: number, h: number) {
-  const pad = 8;
-  const vx = Math.max(pad, Math.min(window.innerWidth - w - pad, x));
-  const vy = Math.max(pad, Math.min(window.innerHeight - h - pad, y));
-  return { x: vx, y: vy };
-}
-
 // ── Per-panel color row ──────────────────────────────────────────────────
 
 function PanelColorRow({ panelKey }: { panelKey: PanelThemeKey }) {
@@ -212,7 +203,6 @@ export default function PreferenceModePicker() {
   const { on: prefModeOn } = usePreferenceMode();
   const { prefs, updatePref } = usePreferences();
   const [selection, setSelection] = useState<Selection | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
 
   // Build a flat synthetic tree from the collected pref keys. Each key
   // becomes a top-level leaf in the popover. We lose the group structure
@@ -258,58 +248,29 @@ export default function PreferenceModePicker() {
     if (!prefModeOn) setSelection(null);
   }, [prefModeOn]);
 
-  // Dismiss on Esc.
-  useEffect(() => {
-    if (!selection) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setSelection(null);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [selection]);
-
-  // Dismiss on outside click.
-  useEffect(() => {
-    if (!selection) return;
-    const onDown = (e: MouseEvent) => {
-      if (!popoverRef.current) return;
-      if (popoverRef.current.contains(e.target as Node)) return;
-      // Preserve the ctrl+click-to-retarget behaviour: if the user
-      // ctrl+clicks somewhere else while the popover is open, let the
-      // main interceptor re-collect for the new target. Here we just
-      // dismiss on plain clicks outside.
-      if (!isModified(e)) setSelection(null);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [selection, isModified]);
-
   if (!selection) return null;
 
-  // Popover size is approximate — we estimate before clamping and let
-  // content determine final height. 320×360 is a reasonable default.
-  const approxW = 340;
-  const approxH = Math.min(
-    360,
-    (selection.prefKeys.length + selection.panelKeys.length) * 44 + 80,
-  );
-  const { x, y } = clampToViewport(selection.x + 8, selection.y + 8, approxW, approxH);
   const totalCount = selection.prefKeys.length + selection.panelKeys.length;
 
+  // Scrimless anchored SystemDialog: it owns the portal, surface chrome, Esc,
+  // and outside-click-to-close (measured + viewport-clamped at the click point).
+  // The `outsideClickGuard` preserves ctrl+click-to-retarget: a modifier click
+  // outside doesn't dismiss — the capture-phase interceptor above re-collects.
   return (
-    <div
-      ref={popoverRef}
-      className="fixed z-[10000] bg-surface border border-edge-subtle rounded-lg shadow-xl"
-      style={{ left: x, top: y, width: approxW, maxHeight: 400 }}
-      onClick={(e) => e.stopPropagation()}
-      role="dialog"
-      aria-label="Edit preferences"
+    <SystemDialog
+      open
+      variant="anchored"
+      at={{ x: selection.x + 8, y: selection.y + 8 }}
+      onClose={() => setSelection(null)}
+      outsideClickGuard={isModified}
+      labelledBy="pref-mode-picker-title"
+      frameClassName="w-[340px] max-h-[400px] flex flex-col"
     >
-      <div className="flex items-center justify-between px-3 py-2 border-b border-edge-subtle">
-        <span className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-edge-subtle shrink-0">
+        <span
+          id="pref-mode-picker-title"
+          className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider"
+        >
           Edit preferences
         </span>
         <button
@@ -320,7 +281,7 @@ export default function PreferenceModePicker() {
           ✕
         </button>
       </div>
-      <div className="overflow-y-auto px-1 py-2" style={{ maxHeight: 350 }}>
+      <div className="overflow-y-auto px-1 py-2 flex-1">
         {totalCount === 0 ? (
           <div className="px-3 py-2 text-xs text-ink-muted italic">
             No editable preferences at this spot.
@@ -340,9 +301,9 @@ export default function PreferenceModePicker() {
           </>
         )}
       </div>
-      <div className="px-3 py-1.5 border-t border-edge-subtle text-[10px] text-ink-muted">
+      <div className="px-3 py-1.5 border-t border-edge-subtle text-[10px] text-ink-muted shrink-0">
         Esc to close • ctrl+click elsewhere to retarget
       </div>
-    </div>
+    </SystemDialog>
   );
 }

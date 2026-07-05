@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useState, useRef } from "react";
 import type { EditorPreferences, PreferencePreset } from "@/hooks/usePreferences";
 import type { GlobalTransforms } from "@/lib/color-transforms";
 import { PREFERENCES_TREE } from "@/lib/preferences-tree";
-import { useDragPosition } from "@/hooks/useDragPosition";
 import PreferenceTree from "./PreferenceTree";
 import SmartPreferences from "./SmartPreferences";
-import { SYSTEM_DIALOG_TOKENS } from "./system-dialog";
+import SystemDialog, { useSystemDialogDrag } from "./system-dialog";
 
 interface PreferencesModalProps {
   prefs: EditorPreferences;
@@ -158,6 +157,35 @@ function PresetBar({
   );
 }
 
+// ─── Header (drag handle) ───────────────────────────────────────────────────────
+// Rendered as a child of SystemDialog so it sits INSIDE the dialog's provider and
+// can read the drag handler via useSystemDialogDrag (SystemDialog owns the drag).
+
+function PreferencesHeader({ onClose }: { onClose: () => void }) {
+  const { onMouseDown, dragging } = useSystemDialogDrag();
+  return (
+    <div
+      className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)] select-none shrink-0"
+      onMouseDown={onMouseDown}
+      style={{ cursor: dragging ? "grabbing" : "grab" }}
+    >
+      <h2 id="preferences-modal-title" className="text-sm font-semibold text-ink-body">
+        Preferences
+      </h2>
+      <button
+        onClick={onClose}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="iconbtn-md"
+        data-hint="Close" aria-label="Close"
+      >
+        <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <path d="M3 3l8 8M11 3l-8 8" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 
 export default function PreferencesModal({
@@ -172,62 +200,22 @@ export default function PreferencesModal({
   onLoadPreset,
   onDeletePreset,
 }: PreferencesModalProps) {
-  const { position, onMouseDown: onDragStart, panelRef, isDraggingRef } = useDragPosition();
-
-  // Click-outside-to-close (deferred by one frame to avoid the opening click)
-  useEffect(() => {
-    let mounted = true;
-    requestAnimationFrame(() => {
-      if (!mounted) return;
-      const handler = (e: MouseEvent) => {
-        if (isDraggingRef.current) return;
-        const target = e.target as Element | null;
-        // Skip closing when the click is on the topbar trigger
-        // button (or its SVG children). Without this guard, mousedown
-        // closes the modal and the same gesture's click flips
-        // `preferencesOpen` back to true via the button's toggle —
-        // the modal stays open and the user sees a flicker.
-        if (target && target.closest?.('[data-hint="Preferences"]')) return;
-        if (panelRef.current && !panelRef.current.contains(target as Node)) {
-          onClose();
-        }
-      };
-      document.addEventListener("mousedown", handler);
-      // Store cleanup for the effect teardown
-      cleanupRef.current = () => document.removeEventListener("mousedown", handler);
-    });
-    const cleanupRef = { current: () => {} };
-    return () => { mounted = false; cleanupRef.current(); };
-  }, [onClose, isDraggingRef, panelRef]);
-
+  // Scrimless draggable SystemDialog: it owns the portal, surface chrome
+  // (SYSTEM_DIALOG_TOKENS), the DRAGGABLE_DIALOG_Z tier (retiring the old bare
+  // z-[9999] that collided with the drop indicator), the drag (grab the header),
+  // Esc, and outside-click-to-close. `ignoreOutsideSelector` preserves the
+  // topbar-trigger guard: clicking the Preferences button doesn't close-then-
+  // reopen (the same gesture would otherwise flip `preferencesOpen` back on).
   return (
-    <div
-      ref={panelRef}
-      className={`fixed z-[9999] ${SYSTEM_DIALOG_TOKENS.surface} w-full max-w-[560px] max-h-[85vh] flex flex-col`}
-      style={
-        position
-          ? { top: position.y, left: position.x }
-          : { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
-      }
+    <SystemDialog
+      open
+      variant="draggable"
+      onClose={onClose}
+      ignoreOutsideSelector='[data-hint="Preferences"]'
+      labelledBy="preferences-modal-title"
+      frameClassName="w-full max-w-[560px] max-h-[85vh] flex flex-col"
     >
-      {/* Header — drag handle */}
-      <div
-        className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)] select-none"
-        onMouseDown={onDragStart}
-        style={{ cursor: isDraggingRef.current ? "grabbing" : "grab" }}
-      >
-        <h2 className="text-sm font-semibold text-ink-body">Preferences</h2>
-        <button
-          onClick={onClose}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="iconbtn-md"
-          data-hint="Close" aria-label="Close"
-        >
-          <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M3 3l8 8M11 3l-8 8" />
-          </svg>
-        </button>
-      </div>
+      <PreferencesHeader onClose={onClose} />
 
       {/* Presets + Global Sliders (sticky) */}
       <div className="px-5 py-3 border-b border-[var(--border)] space-y-3 bg-[var(--surface)]">
@@ -291,6 +279,6 @@ export default function PreferencesModal({
           Reset to defaults
         </button>
       </div>
-    </div>
+    </SystemDialog>
   );
 }
