@@ -4247,10 +4247,24 @@ html {
 }
 
 /* Under Window Controls Overlay the exposed bar behaves like a native title
-   bar: you can drag the window by it. Scoped to the WCO display-mode so a
-   normal browser tab is completely unaffected.
+   bar: you can drag the window by it.
 
-   The model is OPT-IN, not an interactive-leaf allowlist: the bar itself
+   GATE — :root[data-display-mode="window-controls-overlay"], NOT
+   @media (display-mode: window-controls-overlay).
+   --------------------------------------------------------------------------
+   `data-display-mode` is the app's single reactive source of truth for the
+   window display mode (useWindowChrome.ts mirrors it onto <html>; a pre-paint
+   bootstrap in layout.tsx sets it flash-free from the real matchMedia before
+   first paint, so the installed PWA gets identical first-frame behaviour to
+   the old media query). Keying the WCO chrome off that SSOT instead of the
+   raw media query means it renders wherever the SSOT says WCO — including the
+   dev preview under ?wco-debug, which FORCES the attribute (the media query
+   can never match off an installed window). This is what makes WCO chrome —
+   the flatten, the drag regions, and the bottom-outline fix below — finally
+   reproducible and testable outside a real install. A normal browser tab has
+   data-display-mode="browser", so it is completely unaffected.
+
+   The drag model is OPT-IN, not an interactive-leaf allowlist: the bar itself
    drags (including its L/R inset gutters, which sit beside the OS/browser
    window controls — the natural grab spots), but its content clusters are
    marked no-drag WHOLESALE via `> *`. app-region is not inherited and a
@@ -4260,37 +4274,44 @@ html {
    double-click-to-rename the OS would otherwise eat) into a dead drag zone.
    Marking the clusters no-drag makes ALL their content interactive by
    default; hand a region back to dragging with [data-window-drag-zone]. */
-@media (display-mode: window-controls-overlay) {
-  .virgil-bar {
-    -webkit-app-region: drag;
-    app-region: drag;
-    /* The browser/OS chrome (the WCO control strip + window corners) is
-       painted by the theme-color meta, which the web platform allows to be a
-       SOLID color only — so a gradient bar can never seam-match it under WCO.
-       Flatten the bar to its top color here (== theme-color, locked to
-       --topbar-bg) so the installed title bar reads as one continuous fill;
-       a normal browser tab keeps the user's gradient untouched. Overriding
-       the custom property on the element re-resolves the inline
-       linear-gradient() in TopBar.tsx to a single stop. */
-    --topbar-bg-bottom: var(--topbar-bg);
-  }
-  .virgil-bar > * {
-    -webkit-app-region: no-drag;
-    app-region: no-drag;
-  }
-  .virgil-bar [data-window-drag-zone] {
-    -webkit-app-region: drag;
-    app-region: drag;
-  }
-  /* The bar's bottom boundary has ONE owner: the Tailwind border-b on
-     .virgil-bar (TopBar.tsx) — a single 1px --topbar-border line in the
-     element's BORDER box, spanning the full width incl. the gutter, painted
-     in the bar's own z-30 context (above the content/rails below), and
-     locally overpainted by an active tab's cover-rect so the tab still
-     merges bottom-lessly into its pod. A previous WCO ::after here added a
-     SECOND line one pixel higher (padding-box bottom under box-sizing:
-     border-box) → the doubled edge; removed. Its far-left terminus is the
-     native macOS window corner (no CSS radius exists to change). */
+:root[data-display-mode="window-controls-overlay"] .virgil-bar {
+  -webkit-app-region: drag;
+  app-region: drag;
+  /* The browser/OS chrome (the WCO control strip + window corners) is
+     painted by the theme-color meta, which the web platform allows to be a
+     SOLID color only — so a gradient bar can never seam-match it under WCO.
+     Flatten the bar to its top color here (== theme-color, locked to
+     --topbar-bg) so the installed title bar reads as one continuous fill;
+     a normal browser tab keeps the user's gradient untouched. Overriding
+     the custom property on the element re-resolves the inline
+     linear-gradient() in TopBar.tsx to a single stop. */
+  --topbar-bg-bottom: var(--topbar-bg);
+  /* MISSING-OUTLINE FIX (the "no bottom line under the traffic-light gutter"
+     defect). The bar's bottom boundary has ONE owner: the Tailwind border-b
+     on .virgil-bar (TopBar.tsx) — a single 1px --topbar-border line in the
+     element's BORDER box, spanning the full width incl. the gutter. Off-WCO
+     that is enough. But under WCO the bar grows to exactly the OS titlebar
+     strip (border box == --window-inset-top), so the seam lands precisely on
+     the strip's bottom edge (y = --window-inset-top) — and the browser clips
+     web content's last row at that edge inside the window-control gutter,
+     eating the taupe line under the macOS traffic-lights.
+     Fix: grow the bar's border box by exactly 1px so the seam drops just
+     BELOW the strip edge into the un-clipped content area. The blue material
+     is unchanged — the content/padding box still fills --window-inset-top and
+     still seam-matches the solid theme-color strip; ONLY the 1px border-b
+     moves down 1px. Still one owner, no positioned pseudo (a prior WCO
+     ::after landed a SECOND line one padding-box pixel higher → the doubled
+     edge; removed). The active-tab cover-rect merge is relative to the border
+     and shifts down with it, so tabs still merge bottom-lessly. */
+  min-height: max(var(--bar-base-h), calc(var(--window-inset-top) + 1px));
+}
+:root[data-display-mode="window-controls-overlay"] .virgil-bar > * {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+:root[data-display-mode="window-controls-overlay"] .virgil-bar [data-window-drag-zone] {
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 /* Tab swoops removed — DocumentFolderTab now renders each tab as a single
