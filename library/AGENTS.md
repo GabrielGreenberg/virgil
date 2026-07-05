@@ -82,7 +82,7 @@ Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writ
   - `.virgil/queue/<citekey>.json`, `.virgil/queue/<citekey>-bibedit.json`, `.virgil/queue/<citekey>-deepindex.json` (legacy `-richindex.json` accepted on read), `.virgil/queue/pending-reviews.json`
   - `.virgil/notifications/inbox.json`
   - `.virgil/logs/<citekey>/*.log`
-  - `.virgil/memos/<YYYY-MM-DD>-<slug>.md` — dev memos (see below)
+  - `.virgil/memos/<YYYY-MM-DD>-<slug>.md` — library memos (see below)
   - `.virgil/scripts/*.py` — Python pipeline (after first skill-bundle sync)
   - `.virgil/.skill-bundle-version.json`
   - `.virgil/libraries/<slug>.json` — per-custom-library manifest. Slim
@@ -142,17 +142,27 @@ the old or the new contents, never a partially-written file.
 
 ## Memo discipline
 
-Skills that write markdown memos as part of their work follow a fixed convention:
+Skills that write markdown memos as part of their work follow a fixed convention.
+This is the **library-memo** stream of Virgil's three-stream memo model — the
+one the operational manifest states canonically at
+[docs/workspace/memos.md](../docs/workspace/memos.md) (shipped to every folder at
+`.claude/virgil/memos.md`):
 
-- **Dev memos** (skill retros, ideas for improving the pipeline, notes about
-  what went wrong this run) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`. These
-  are *about the system*, not about a paper.
+- **Library memos** (notes about this pipeline — extraction retros, indexing-flow
+  ideas, what went wrong this run) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`. These
+  are *about the library pipeline*, not about a paper.
 - **Paper-specific reports / analyses** → `papers/<citekey>/notes/<slug>.md`.
   Co-located with the paper so the user finds them when browsing.
+- A **reflection** — a note about *Virgil's skill set itself* — is a dev-loop
+  note, **not** a library memo. It belongs to the DEV-only `/editor:reflect`
+  stream (sink outside any paper/library folder), and must never be filed under
+  `.virgil/memos/`.
+- The retired term "dev memo" once overloaded the library-memo and reflection
+  streams and misrouted reflections — don't reintroduce it as a routing label.
 - Never drop a markdown file at the library root or directly inside
   `papers/<citekey>/` (that level is reserved for source + extracted artifacts).
 
-Skills that explicitly carry this reminder in their prompts: `/library/index-paper`, `/library/deep-index`, `/library/triage-pdf`, `/library/triage-pending`, `/library/ai-requests`. The convention also lives in the workspace `CLAUDE.md` template at [library/scripts/skill-bundle-template/CLAUDE.md](library/scripts/skill-bundle-template/CLAUDE.md).
+Skills that explicitly carry this reminder in their prompts: `/library/index-paper`, `/library/deep-index`, `/library/triage-pdf`, `/library/triage-pending`, `/library/ai-requests`, `/library/fuse-alternate`. The convention also lives in the workspace `CLAUDE.md` template at [library/scripts/skill-bundle-template/CLAUDE.md](library/scripts/skill-bundle-template/CLAUDE.md).
 
 Skill-development memos (the per-citekey critique memos written by `/library/iterate-skill` subagents) are a separate channel and do **not** go to `~/Virgil-Library/.virgil/memos/`. They land under `library/dev/iterations/<YYYY-MM-DD>-<skill>/<citekey>.md` in the repo (gitignored). Those memos are about the skill markdown, not about the library; keeping them in the repo lets `iterate-skill` correlate them with skill versions via git history.
 

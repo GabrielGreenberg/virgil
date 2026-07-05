@@ -88,15 +88,35 @@ To poll continuously: `/loop /editor:review`.
 
 ## Where to put files you create
 
-Skills sometimes write a memo or a report. Use these conventions:
+Skills sometimes write a markdown memo. There are **three** memo streams and
+they **never mix** — route by what the note is *about*, not by where you happen
+to be running:
 
-- **Dev memos** (skill improvements, retros, ideas) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`
-  inside the **library** folder (resolved via `library_path.py`). About the
-  pipeline, not a paper.
-- **Paper-specific reports** → `<paper-folder>/notes/<slug>.md` (when inside
-  a paper) or `<library>/papers/<citekey>/notes/<slug>.md` (when reaching from
-  the library). Co-located with the paper.
-- When in doubt, ask the user before writing a file you can't classify.
+- **Cowork memo** — a note *about this paper's content* (an ambiguity worth
+  surfacing, a decision you made while editing) →
+  `<docPath>/.virgil/memos/<YYYY-MM-DD>-<slug>.md`, inside the paper folder.
+- **Library memo** — a note *about the library pipeline* (an extraction retro,
+  a triage call, an indexing-flow idea) →
+  `~/Virgil-Library/.virgil/memos/<YYYY-MM-DD>-<slug>.md`, inside the library
+  folder (resolved via `library_path.py`).
+- **Reflection** — a note *about Virgil's skill set itself* (how a skill
+  behaved, a tooling improvement) is **not** a `.virgil/memos/` file. It is a
+  dev-loop reflection: DEV mode only, handled by `/editor:reflect`, which writes
+  it to Virgil's dev-loop reflection sink **outside** any paper or library
+  folder. **Never file a reflection under `.virgil/memos/`.** Outside DEV mode
+  there is nowhere to put one — skip it, don't fall back to `.virgil/memos/`.
+
+The one decision rule: the words *reflect / reflection* **always** mean the
+dev-loop stream — never `.virgil/memos/`. The full routing rule ships to this
+folder at [`.claude/virgil/memos.md`](.claude/virgil/memos.md).
+
+Reports are separate from memos:
+
+- **Paper-specific reports / analyses** → `<paper-folder>/notes/<slug>.md` (when
+  inside a paper) or `<library>/papers/<citekey>/notes/<slug>.md` (when reaching
+  from the library). Co-located with the paper.
+
+When in doubt, ask the user before writing a file you can't classify.
 
 ---
 

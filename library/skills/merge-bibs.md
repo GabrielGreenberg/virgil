@@ -470,7 +470,7 @@ EOF
 fi
 ```
 
-If `manual_review > 0`, write a dev memo so the user can find the
+If `manual_review > 0`, write a library memo so the user can find the
 items later. Skip the memo entirely otherwise.
 
 ```bash

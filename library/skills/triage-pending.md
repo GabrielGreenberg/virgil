@@ -45,8 +45,10 @@ Drain `unsorted/` in one batch. Use this instead of invoking
 sources to triage — `/triage-pdf` is the per-file workflow; this is the
 batch equivalent.
 
-> **Where any memo you write goes.** Dev memos (skill retros, ideas for
-> improving this pipeline) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
+> **Where any memo you write goes.** Library memos (notes about this
+> pipeline — retros, indexing-flow ideas) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
+> A reflection about Virgil's *skill set* is a dev-loop note, **not** a library
+> memo — never file a reflection under `.virgil/memos/` (see `.claude/virgil/memos.md`).
 > Paper-specific notes → `papers/<citekey>/notes/<slug>.md`.
 > Never drop a markdown file at the library root.
 

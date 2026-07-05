@@ -59,6 +59,9 @@ Judging what LaTeX Virgil will accept or preserve
 Recognizing or mirroring a user editing action (a button, key, drag, or decoration)
   load: actions.md, cards.md
 
+Writing a memo, note, or reflection (deciding which stream it belongs to)
+  load: memos.md
+
 A "how do I…" / "what is…" UX question from the user
   load: nothing here; consult the UX library (.claude/virgil-ux/) — forthcoming
 ```
@@ -78,6 +81,7 @@ A "how do I…" / "what is…" UX question from the user
 | [anchoring.md](anchoring.md) | Card→text linkage in full (Anchors AND Atom links); what invalidates each. | ✅ |
 | [actions.md](actions.md) | The editing surface: decorations, structural ops, card actions, keyboard. | ✅ |
 | [gardening.md](gardening.md) | Cleanup conventions; orphan handling; the never-touch deny-list. | ✅ |
+| [memos.md](memos.md) | The three memo streams (cowork / library / reflection) + the one routing rule; "dev memo" is retired. | ✅ |
 
 ## The write path (every kind shares it)
 

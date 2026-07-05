@@ -188,8 +188,8 @@ Once the loop exits:
 The memos written by subagents live at
 `library/dev/iterations/<YYYY-MM-DD>-<skill>/<citekey>.md`. This dir is
 gitignored — memos are dev-time scratch. Do NOT route them to
-`~/Virgil-Library/.virgil/memos/` (which is for cowork dev memos *about
-the library*, not about Virgil's skill markdown). Do NOT write them to
+`~/Virgil-Library/.virgil/memos/` (which is for library memos *about the
+library pipeline*, not about Virgil's skill markdown). Do NOT write them to
 `papers/<citekey>/notes/` either (that's for paper-specific reports the
 user reads).
 
