@@ -38,6 +38,10 @@ import {
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 import {
+  recordScrollPlacement,
+  SCROLL_PORTAL_SELECTION_BOLT,
+} from "@/lib/scroll-reposition-probe";
+import {
   computeBoltLeftFromPod,
   MARGINALIA_BOLT_SIZE,
 } from "@/lib/marginalia";
@@ -219,6 +223,9 @@ export function SelectionActionsMenu({
       const next = ed && !ed.isDestroyed
         ? computePlacement(ed, cacheRef.current)
         : INVISIBLE_PLACEMENT;
+      // Scroll-anchor stability probe (task 042): one record per coalesced
+      // frame — a stable RAF-gated portal reports ≤1 distinct top/frame.
+      recordScrollPlacement(SCROLL_PORTAL_SELECTION_BOLT, next.top);
       setPlacement((prev) => (placementsEqual(prev, next) ? prev : next));
     };
     const update = () => {
