@@ -31,6 +31,14 @@
   --control-selected: #8a7355;
   --control-selected-tint: #efe9e0;
   --control-selected-ink: #6b5840;
+  /* Fill for the affirmative (primary) button on dialogs, prompts, and
+     confirms. Aliases --control-selected — the SAME low-chroma warm taupe
+     the toggle "on" state uses — so a solid affirmative button reads as "a
+     darker shade of the paper" rather than the saturated brown sticker
+     --accent paints. Decoupled from --accent on purpose: --accent stays the
+     user-overridable link / selection / mark / CTA accent; this is the
+     button-fill aesthetic. White label text clears AA (4.5:1) on the taupe. */
+  --btn-primary: var(--control-selected);
   /* Blue accent for drop-mode placement indicators (paragraph-side
      bar, between-blocks line, inline-cursor). Distinct from --accent
      so the gesture reads as "placing a popped item" rather than
@@ -271,7 +279,11 @@
      color/combobox), so the cursor looks the same everywhere + future menus
      inherit it. */
   --menu-roving-bg: rgba(37, 99, 235, 0.14);
-  --overlay-scrim: rgba(0, 0, 0, 0.3); /* modal scrim */
+  /* Modal scrim — a warm-neutral translucent derived from --ink-strong
+     (#292524, a stone/umber near-black) rather than a cool pure black, so
+     every modal's backdrop reads warm against the manila canvas instead of
+     graphite. The ONE un-warmed token in this otherwise stone-mapped block. */
+  --overlay-scrim: rgba(41, 37, 36, 0.3);
 
   /* Borders */
   --edge-subtle: #e7e5e4;   /* card/input border, menu divider (≈ stone-200) */
@@ -386,6 +398,7 @@ body[data-zen-mode="on"] {
      border-edge-subtle, ring-drag-target, etc.). */
   --color-accent: var(--accent);
   --color-accent-light: var(--accent-light);
+  --color-btn-primary: var(--btn-primary);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --color-surface-muted-strong: var(--surface-muted-strong);
@@ -4336,7 +4349,11 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
 
 .hint-bubble {
   position: fixed;
-  z-index: 10010; /* above modals (10000) so hints on modal controls show */
+  /* HINT_Z — above modals (MODAL_SCRIM_Z = 10000) so a hint on a modal
+     control shows over the dialog. SSOT for this tier lives in
+     src/floats/float-policy.ts (HINT_Z); CSS can't import TS, so this literal
+     mirrors it — keep both in sync. */
+  z-index: 10010;
   display: inline-flex;
   align-items: center;
   gap: 6px;

@@ -20,8 +20,11 @@ import {
   DOCKED_CARD_BORDER,
   DOCKED_CARD_HEADER_H,
   DOCKED_CARD_SEPARATOR_H,
+  DROP_INDICATOR_Z,
   FLOAT_Z_BASE,
   FLOATING_PANEL_Z_BASE,
+  HINT_Z,
+  MODAL_SCRIM_Z,
   OPEN_CHROME_MENU_Z,
   POPOUT_MAX_VH,
   RESTING_MARGIN_TRIGGER_Z,
@@ -153,5 +156,66 @@ describe("BUG #50 consumer wiring", () => {
     );
     expect(src).toContain("OPEN_CHROME_MENU_Z");
     expect(src).toContain("const CHROME_Z = OPEN_CHROME_MENU_Z");
+  });
+});
+
+// Task 032 — the modal / tooltip z-scale (the top of the ladder). These pin the
+// ordering (open menu < drop indicator < modal scrim < hint) and the exact
+// values so the three formerly-bare literals can never drift apart or re-cross.
+describe("modal / tooltip stacking tiers (task 032)", () => {
+  it("orders open-menu < drop-indicator < modal-scrim < hint", () => {
+    expect(OPEN_CHROME_MENU_Z).toBeLessThan(DROP_INDICATOR_Z);
+    expect(DROP_INDICATOR_Z).toBeLessThan(MODAL_SCRIM_Z);
+    expect(MODAL_SCRIM_Z).toBeLessThan(HINT_Z);
+  });
+
+  it("pins the exact tier values (the SSOT the CSS mirror + inline styles read)", () => {
+    expect(DROP_INDICATOR_Z).toBe(9999);
+    expect(MODAL_SCRIM_Z).toBe(10000);
+    expect(HINT_Z).toBe(10010);
+  });
+
+  it("keeps a modal strictly above an in-flight drop indicator", () => {
+    // A drop bar left painting during a gesture must never pierce an open modal.
+    expect(MODAL_SCRIM_Z).toBeGreaterThan(DROP_INDICATOR_Z);
+  });
+
+  it("keeps a hint bubble above the modal tier so hints on modal controls show", () => {
+    expect(HINT_Z).toBeGreaterThan(MODAL_SCRIM_Z);
+  });
+});
+
+// Consumer-wiring pins for the task-032 tiers — the named constant is read at
+// each site, never a resurrected bare literal. Source-text asserts in the
+// spirit of the BUG #50 wiring pins above.
+describe("task 032 consumer wiring", () => {
+  const HERE = path.dirname(fileURLToPath(import.meta.url));
+  const SRC = path.resolve(HERE, "../.."); // src/
+
+  it("SystemDialog's scrim reads MODAL_SCRIM_Z, not a bare z-[10000]", () => {
+    const src = readFileSync(
+      path.join(SRC, "components/system-dialog.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("MODAL_SCRIM_Z");
+    expect(src).toContain('from "@/floats/float-policy"');
+    expect(src).not.toContain("z-[10000]");
+  });
+
+  it("the drop-mode indicator reads DROP_INDICATOR_Z, not a bare 9999", () => {
+    const src = readFileSync(
+      path.join(SRC, "components/drop-mode/Indicator.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("DROP_INDICATOR_Z");
+    expect(src).toContain('from "@/floats/float-policy"');
+    expect(src).not.toContain("zIndex: 9999");
+  });
+
+  it("the .hint-bubble CSS literal still mirrors HINT_Z (CSS can't import TS)", () => {
+    const css = readFileSync(path.join(SRC, "app/globals.css"), "utf8");
+    // The SSOT is HINT_Z; the CSS rule mirrors its value. If HINT_Z moves, this
+    // fails until the mirror is updated.
+    expect(css).toContain(`z-index: ${HINT_Z}`);
   });
 });

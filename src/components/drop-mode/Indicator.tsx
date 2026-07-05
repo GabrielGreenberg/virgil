@@ -10,6 +10,7 @@
 
 import { createPortal } from "react-dom";
 import { useDropSession } from "./controller";
+import { DROP_INDICATOR_Z } from "@/floats/float-policy";
 
 export function DropModeIndicator() {
   const session = useDropSession();
@@ -39,7 +40,7 @@ export function DropModeIndicator() {
         width: p.rect.width,
         height: p.rect.height,
         pointerEvents: "none",
-        zIndex: 9999,
+        zIndex: DROP_INDICATOR_Z,
         background: "var(--accent-blue, #2563eb)",
         borderRadius: 1,
       }}

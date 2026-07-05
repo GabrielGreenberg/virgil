@@ -563,17 +563,56 @@ gets `data-helper-mode="on"` and `HintLayer` drops the hover delay to 0 so every
 
 ## Modals
 
-`<SystemDialog size>` — three sizes: `sm` 360, `md` 480, `lg` 640. No
-`xl`, no fullscreen.
+`<SystemDialog size>` — five sizes: `sm` 340, `md` 380, `lg` 520,
+`xl` 720, `full` `min(96vw,1100px)`. All chrome lives in one object,
+`SYSTEM_DIALOG_TOKENS` (`src/components/system-dialog.tsx`) — edit it
+to re-skin every dialog at once.
 
-Anatomy: title row (40px) + body + footer button row. Backdrop is
-`bg-overlay-scrim`, click-to-dismiss.
+Anatomy: header (title + optional subtitle) + body + footer button row.
+Surface is `bg-surface`, `rounded-xl`, `border`, and the detached-float
+shadow token `--shadow-float` (not a raw `shadow-xl`). Title is
+`text-sm font-semibold text-ink-body`. Backdrop is `bg-[var(--overlay-scrim)]`
+(a warm-neutral translucent derived from `--ink-strong`, not cool black),
+click-to-dismiss.
+
+Buttons render through the `Button` primitive (`<SystemDialogButton>` maps
+the legacy `primary/secondary/danger/accent` names onto it). The affirmative
+button is `variant="primary"`, filled with **`--btn-primary`** (aliases the
+taupe `--control-selected`, NOT the saturated `--accent` brown) so it reads
+as a darker shade of the paper. Destructive confirms use `variant="danger"`.
 
 `<ConfirmDialog>` is a `sm` modal pre-wired for delete-with-content
 and discard-unsaved. Anchors near the source element, not screen
 center.
 
+**Imperative dialogs.** `useSystemDialog()` (from
+`src/components/system-dialog-host.tsx`, provider mounted app-wide) exposes
+`alert` / `confirm` / `prompt` — promise-returning replacements for the
+native `window.*` dialogs that render through the same `SystemDialog` chrome.
+Reach for these instead of hand-rolling a one-off modal.
+
 Don't nest modals. Use a popover for transients over a modal.
+
+### Z-index ladder
+
+The float/menu tiers are named constants in `src/floats/float-policy.ts`
+(one SSOT, pinned by `float-policy.test.ts`); the modal/tooltip tiers were
+formerly bare literals and now join them. Derive from a symbol, never a magic
+number. Full ladder, low → high:
+
+| tier | z | constant |
+| --- | --- | --- |
+| content / editor prose | 0–99 | (local) |
+| docked panel band | 1000 | `FLOATING_PANEL_Z_BASE` |
+| resting margin trigger | 1199 | `RESTING_MARGIN_TRIGGER_Z` |
+| float layer (popped cards, lift overlay) | 1200 | `FLOAT_Z_BASE` |
+| open chrome menu (`<Menu>` CHROME_Z, sticky-bar dropdowns) | 2000 | `OPEN_CHROME_MENU_Z` |
+| drop-mode indicator | 9999 | `DROP_INDICATOR_Z` |
+| modal scrim + centered dialogs | 10000 | `MODAL_SCRIM_Z` |
+| hint / tooltip bubble | 10010 | `HINT_Z` |
+
+`HINT_Z` has no TS consumer — the only site is the `.hint-bubble` CSS rule
+(CSS can't import TS), which mirrors the value; the test guards the mirror.
 
 ## Drag
 

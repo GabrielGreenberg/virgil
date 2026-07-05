@@ -1338,7 +1338,7 @@ const BUTTON_BASE =
 
 const BUTTON_VARIANT: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent text-white hover:brightness-95",
+    "bg-btn-primary text-white hover:brightness-95",
   secondary:
     "bg-surface text-ink-body border border-edge-hover hover:bg-surface-muted-strong hover:border-edge-strong",
   warm:
