@@ -24,6 +24,7 @@ import {
   FIELD_ORDER,
   FieldBlock,
   FieldTitleRow,
+  PendingAiRecordBody,
   StaleNotice,
   SuggestionTrailing,
   type SuggestionField,
@@ -208,34 +209,35 @@ export function CutterSuggestionCard({
             )}
           </div>
         </div>
+      ) : card.author === "ai" ? (
+        // Flag-agnostic: an AI-drafted pending suggestion NEVER shows the 4-field
+        // grid — it shows the minimal Insert-below body (retires the fallback).
+        <PendingAiRecordBody
+          id={card.id}
+          originalText={card.original_text}
+          suggestedText={card.suggested_text}
+          explanation={card.explanation}
+          family="cutter-suggestion"
+        />
       ) : (
       <div
         className={`px-3 pt-2 pb-2 space-y-2.5${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* This branch is HUMAN-authored only (AI cards render the minimal
+            Insert-below body above), so `original_text` is the sole read-only
+            field and the AI-only `instructions` field never applies. */}
         {FIELD_ORDER.map((field) => (
           <FieldBlock
             key={field}
             field={field}
             value={card[field]}
             onChange={(v) => onUpdateField(card.id, field, v)}
-            readOnly={
-              field === "original_text" ||
-              (card.author === "ai" && field !== "user_text")
-            }
+            readOnly={field === "original_text"}
             kindHint={field === "original_text" ? anchorKind : null}
             panelKey="cut"
           />
         ))}
-
-        {card.author === "ai" && (
-          <FieldBlock
-            field="instructions"
-            value={card.instructions}
-            onChange={(v) => onUpdateField(card.id, "instructions", v)}
-            panelKey="cut"
-          />
-        )}
 
         {isPending &&
           (pendingChangesOn && onApply ? (

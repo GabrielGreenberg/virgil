@@ -39,6 +39,12 @@ export interface PendingChangeController {
   /** NON-COMMITTING PREVIEW — flip the LIVE doc back to the suggested view
    *  (re-stamps the blue mark). Leaves card status / `appliedChange` untouched. */
   previewSuggested(family: PendingChangeFamily, id: string): void;
+  /** THIRD LANDING VERB — Insert below: drop the suggestion's `suggested_text`
+   *  as a NEW paragraph directly below the anchor (non-destructive — the original
+   *  is untouched), then retire the card (accepted + archived). The escape hatch
+   *  behind the retired 4-field AI fallback. No-ops for an empty `suggested_text`
+   *  (a delete/empty cut). */
+  insertBelow(family: PendingChangeFamily, id: string): void;
 }
 
 const PendingChangeControllerContext =

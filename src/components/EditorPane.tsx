@@ -287,7 +287,9 @@ import {
   dismissSuggestion,
   previewOriginal as previewOriginalSuggestion,
   previewSuggested as previewSuggestedSuggestion,
+  insertSuggestionBelow,
   type PendingChangeCardDeps,
+  type InsertBelowCardDeps,
 } from "@/links/pending-change-actions";
 import {
   isAppliedPending,
@@ -2568,6 +2570,68 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [editor, docId, cutterPendingDeps],
   );
 
+  // ── Insert-below deps + closures (the retired-4-field AI fallback verb) ──
+  // The minimal AI-pending card body's "Insert below" routes here through the
+  // controller. Each deps bag resolves the live suggestion by id at ACTION time
+  // (a click) — suggested text + Mode-A anchor + any applied descriptor — so the
+  // insert reads current cards. `useCallback([hook])` keeps its identity
+  // keystroke-stable (the hook object is), which keeps the controller memo stable
+  // across typing.
+  const revisionInsertDeps = useCallback(
+    (): InsertBelowCardDeps<RevisionSuggestionCard["status"]> => ({
+      getSuggestion: (cid) => {
+        const s = revisionsHook.cards.find(
+          (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
+        );
+        if (!s) return undefined;
+        return {
+          suggestedText: s.suggested_text,
+          anchorUuid: getLinkedTextObjectIds(s)[0],
+          appliedChange: s.appliedChange,
+        };
+      },
+      setSuggestionStatus: revisionsHook.setSuggestionStatus,
+      setArchived: revisionsHook.setArchived,
+      setAppliedChange: revisionsHook.setAppliedChange,
+      acceptedStatus: "accepted",
+    }),
+    [revisionsHook],
+  );
+  const cutterInsertDeps = useCallback(
+    (): InsertBelowCardDeps<CutterSuggestionCard["status"]> => ({
+      getSuggestion: (cid) => {
+        const s = cutterHook.cards.find(
+          (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+        );
+        if (!s) return undefined;
+        return {
+          suggestedText: s.suggested_text,
+          anchorUuid: getLinkedTextObjectIds(s)[0],
+          appliedChange: s.appliedChange,
+        };
+      },
+      setSuggestionStatus: cutterHook.setSuggestionStatus,
+      setArchived: cutterHook.setArchived,
+      setAppliedChange: cutterHook.setAppliedChange,
+      acceptedStatus: "accepted",
+    }),
+    [cutterHook],
+  );
+  const onInsertBelowRevisionPending = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editor) return;
+      insertSuggestionBelow(editor, id, docId, revisionInsertDeps());
+    },
+    [editor, docId, revisionInsertDeps],
+  );
+  const onInsertBelowCutterPending = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editor) return;
+      insertSuggestionBelow(editor, id, docId, cutterInsertDeps());
+    },
+    [editor, docId, cutterInsertDeps],
+  );
+
   // The SSOT controller any suggestion-card body reads for its applied-change
   // controls (docked panel, omni, float, margin) — see
   // `pending-change-controller`. Commit (keep/dismiss) reuses the stable
@@ -2606,6 +2670,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           family === "revision-suggestion" ? revisionPendingDeps() : cutterPendingDeps(),
         );
       },
+      insertBelow: (family, id) => {
+        if (family === "revision-suggestion") onInsertBelowRevisionPending(id);
+        else onInsertBelowCutterPending(id);
+      },
     }),
     [
       editor,
@@ -2616,6 +2684,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       onDismissRevisionPending,
       onKeepCutterPending,
       onDismissCutterPending,
+      onInsertBelowRevisionPending,
+      onInsertBelowCutterPending,
     ],
   );
 
