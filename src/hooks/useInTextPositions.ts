@@ -95,6 +95,32 @@ const MIN_GAP = 4; // small extra gap between entries beyond their height
 const DEFAULT_ENTRY_HEIGHT = 60; // fallback before entries are rendered
 
 /**
+ * Height a card contributes to the cascade, given its freshly-read height this
+ * pass (`measured`, present only when the card is inside the ±NEAR_ZONE_PX
+ * measurement band) and its last real height RETAINED across the viewport gate
+ * (`retained`). A card's rendered height is scroll-invariant, so a height read
+ * once — while in-zone — stays truthful after the card scrolls out of the band.
+ *
+ * The retained real height therefore ALWAYS beats `DEFAULT_ENTRY_HEIGHT`: the
+ * near-zone gate substitutes the 60px placeholder for out-of-zone cards, and a
+ * 120–200px card packed into a 60px slot makes the cascade pile the NEXT card
+ * on top of it — the "render overlapped, then de-overlap ~500ms later" jump
+ * (task 043). Feeding the cascade the retained truth means the first pass after
+ * scroll-into-view is already correct: no overlapping frame, no snap.
+ *
+ * This is the card-side twin of task 041's `parked` last-good-metrics idea
+ * (`useMarginaliaRegistry.ts`) — "retain real geometry across the viewport
+ * gate" ported from marker metrics to the card height input. Only the fallback
+ * order differs: fresh read → retained real → placeholder.
+ */
+export function retainedEntryHeight(
+  measured: number | undefined,
+  retained: number | undefined,
+): number {
+  return measured ?? retained ?? DEFAULT_ENTRY_HEIGHT;
+}
+
+/**
  * Settle-loop tuning. The post-mount rAF stabilization loop re-measures
  * after layout settles (web-font swap, KaTeX/expex/figure NodeView mount).
  * It is self-terminating: it stops the FIRST frame the editor's
@@ -195,7 +221,7 @@ export interface Pinned {
 }
 
 /** Per-item measurement consumed by the pure cascade resolver. */
-interface NaturalEntry {
+export interface NaturalEntry {
   /** Pod-relative top from `coordsAtPos(pos).top - podRect.top`,
    *  clamped to 0 (negative values appear when an unanchored block sits
    *  above the pod). */
@@ -213,7 +239,7 @@ interface NaturalEntry {
  * This is the hot path on every pin change. NO DOM reads — operates
  * entirely on numbers measured separately.
  */
-function resolveCascade(
+export function resolveCascade(
   natural: Map<string, NaturalEntry>,
   items: ReadonlyArray<PositionItem>,
   pinned: Pinned | null,
@@ -350,6 +376,15 @@ export function useInTextPositions(
   const [editorContentHeight, setEditorContentHeight] = useState(0);
   const panelScrollRef = useRef<HTMLDivElement>(null);
   const naturalRef = useRef<Map<string, NaturalEntry>>(new Map());
+  // Last REAL (in-zone getBoundingClientRect) card height per id, RETAINED
+  // across the ±NEAR_ZONE_PX viewport gate. A card's rendered height is
+  // scroll-invariant, so once read it stays truthful after scrolling out — so
+  // the next out-of-zone pass reuses it instead of the 60px placeholder that
+  // would pack the following card on top of it (the overlap-then-snap of task
+  // 043). Card-side twin of task 041's `parked` (useMarginaliaRegistry.ts),
+  // consumed via `retainedEntryHeight`. Cleared only on genuine disable/empty
+  // (alongside `naturalRef`); pruned to the live item set each measure.
+  const realHeightRef = useRef<Map<string, number>>(new Map());
   const [measureVersion, setMeasureVersion] = useState(0);
   const computeRafRef = useRef(0);
   // Settle loop bookkeeping — armed once per mount/enable, self-terminating.
@@ -410,6 +445,10 @@ export function useInTextPositions(
         naturalRef.current = new Map();
         setMeasureVersion((v) => v + 1);
       }
+      // Genuine disable/empty (NOT a hide — that returns above): drop the
+      // retained heights alongside the naturals so a later re-enable measures
+      // from truth rather than reusing stale geometry.
+      realHeightRef.current.clear();
       setEditorContentHeight(0);
       return;
     }
@@ -461,14 +500,24 @@ export function useInTextPositions(
         continue; // skip items with invalid positions
       }
 
+      // Read the live height ONLY when in-zone (the perf gate: out-of-zone
+      // cards skip the getBoundingClientRect layout read). A real read is
+      // RETAINED so any later out-of-zone pass reuses the truthful height
+      // instead of the 60px placeholder — the card-side twin of 041's `parked`.
       const inViewport = coordsTop >= viewTop && coordsTop <= viewBottom;
-      let height: number = DEFAULT_ENTRY_HEIGHT;
+      let measuredHeight: number | undefined;
       if (inViewport) {
         const selector =
           typeof entry === "string" ? `[${entry}="${item.id}"]` : entry(item.id);
         const el = panelEl.querySelector(selector) as HTMLElement | null;
-        if (el) height = el.getBoundingClientRect().height;
+        if (el) measuredHeight = el.getBoundingClientRect().height;
       }
+      if (measuredHeight !== undefined)
+        realHeightRef.current.set(item.id, measuredHeight);
+      const height = retainedEntryHeight(
+        measuredHeight,
+        realHeightRef.current.get(item.id),
+      );
 
       raws.push({ preClampTop, height, pos });
       // The committed natural retains the historical ≥0 clamp (negative
@@ -493,6 +542,17 @@ export function useInTextPositions(
     // (the settle loop then corrects it) rather than render a blank column.
     if (naturalRef.current.size > 0 && isDegenerateMeasure(raws)) {
       return;
+    }
+
+    // Bound the retained-height cache to the live item set: a card removed from
+    // the list drops its cached height (reuse is O(cards), so the cache stays
+    // ~item-sized even on a churny ~500-card doc). Only when it has grown past
+    // the item count, so a steady-state deck pays nothing.
+    if (realHeightRef.current.size > items.length) {
+      const live = new Set(items.map((it) => it.id));
+      for (const id of realHeightRef.current.keys()) {
+        if (!live.has(id)) realHeightRef.current.delete(id);
+      }
     }
 
     // Only bump measureVersion if measurements *actually* changed.
@@ -528,6 +588,7 @@ export function useInTextPositions(
         naturalRef.current = new Map();
         setMeasureVersion((v) => v + 1);
       }
+      realHeightRef.current.clear();
       return;
     }
 
