@@ -328,6 +328,36 @@ describe("ensurePreambleRequirements — injection", () => {
     expect(out).toContain("\\usepackage{tikz}");
   });
 
+  it("a commented-out \\usepackage does NOT false-satisfy a live requirement", () => {
+    // Body detection strips comments (projectDetectableBody), so the
+    // satisfaction test must too — else a `% \usepackage{tikz}` suppresses the
+    // real injection and the saved .tex has \begin{tikzpicture} with no tikz.
+    const preamble = `\\documentclass{article}
+% \\usepackage{tikz}
+
+\\begin{document}
+
+`;
+    const out = ensurePreambleRequirements(preamble, new Set(["tikz"]));
+    // A live (uncommented) \usepackage{tikz} line is injected; the comment is
+    // left intact (matching by line so the comment's substring isn't counted).
+    expect(out).toMatch(/^\\usepackage\{tikz\}$/m);
+    expect(out).toContain("% \\usepackage{tikz}");
+  });
+
+  it("a commented bib package does NOT gate out the other family's injection", () => {
+    // The mutual-exclusivity check runs on the inert-stripped preamble too, so
+    // a commented `% \usepackage{biblatex}` no longer suppresses natbib.
+    const preamble = `\\documentclass{article}
+% \\usepackage{biblatex}
+
+\\begin{document}
+
+`;
+    const out = ensurePreambleRequirements(preamble, new Set(["natbib"]));
+    expect(out).toContain("\\usepackage{natbib}");
+  });
+
   it("never injects natbib when the preamble already carries biblatex (and vice versa)", () => {
     const biblatexPreamble = `\\documentclass{article}
 \\usepackage[style=apa]{biblatex}
@@ -540,6 +570,34 @@ describe("serializeToLatex — requirements integration", () => {
     };
     const out = serializeToLatex(tikzDoc);
     expect(countOccurrences(out, "\\usepackage{tikz}")).toBe(1);
+  });
+
+  it("commented-only \\usepackage{tikz} + tikzpicture body → real tikz still injected", () => {
+    // End-to-end: a preamble whose ONLY tikz mention is commented, plus a body
+    // that uses \begin{tikzpicture}, must save with a LIVE \usepackage{tikz}
+    // (else the .tex fails to compile).
+    const tikzDoc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "texBlock",
+          attrs: {
+            uuid: "0003",
+            code: "\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}",
+          },
+        },
+      ],
+    };
+    const preamble = `\\documentclass{article}
+% \\usepackage{tikz}
+
+\\begin{document}
+
+`;
+    const out = serializeToLatex(tikzDoc, { preamble });
+    // Live (uncommented) injection present; the comment line still there too.
+    expect(out).toMatch(/^\\usepackage\{tikz\}$/m);
+    expect(out).toContain("% \\usepackage{tikz}");
   });
 });
 
