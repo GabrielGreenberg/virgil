@@ -4282,26 +4282,15 @@ html {
     -webkit-app-region: drag;
     app-region: drag;
   }
-  /* Continuous bottom outline. In the installed WCO window the plain
-     border-b drops out under the left window-controls gutter (the system
-     corner with the traffic lights), so the manila canvas below loses its
-     top framing there while it reads fine on the right. This forces an
-     explicit 1px hairline across the WHOLE bar bottom — a decorative
-     pointer-events:none pseudo sitting BEHIND the tabs (z-index:0 < the
-     active tab's z-index:10) so an active tab still merges down into its
-     content over it. WCO-only: a normal browser tab keeps just border-b. */
-  .virgil-bar::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 1px;
-    background: var(--topbar-border);
-    pointer-events: none;
-    z-index: 0;
-  }
-}
+  /* The bar's bottom boundary has ONE owner: the Tailwind border-b on
+     .virgil-bar (TopBar.tsx) — a single 1px --topbar-border line in the
+     element's BORDER box, spanning the full width incl. the gutter, painted
+     in the bar's own z-30 context (above the content/rails below), and
+     locally overpainted by an active tab's cover-rect so the tab still
+     merges bottom-lessly into its pod. A previous WCO ::after here added a
+     SECOND line one pixel higher (padding-box bottom under box-sizing:
+     border-box) → the doubled edge; removed. Its far-left terminus is the
+     native macOS window corner (no CSS radius exists to change). */
 
 /* Tab swoops removed — DocumentFolderTab now renders each tab as a single
    SVG shape with a continuous border around its full outline, so the
