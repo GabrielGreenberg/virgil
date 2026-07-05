@@ -304,7 +304,13 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     }
 
     case "blockquote": {
-      const inner = (node.content || []).map((n) => serializeNode(n, true)).join("");
+      // Join child paragraphs with a `\n\n` block separator: under
+      // `suppressChildUuids` the paragraph branch returns bare `inner` with no
+      // trailing break, so joining with "" fuses consecutive paragraphs into
+      // one on re-parse (the parser only splits the quote body on `\n\n`). The
+      // separator preserves the hard paragraph break inside a multi-paragraph
+      // quote; a single-paragraph quote is byte-unchanged (single-element join).
+      const inner = (node.content || []).map((n) => serializeNode(n, true)).join("\n\n");
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       return `\\begin{quote}\n${inner}\\end{quote}${anchor}\n\n`;
