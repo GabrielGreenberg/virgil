@@ -268,22 +268,32 @@ export function ensurePreambleRequirements(
   const effective = new Set<string>(ALWAYS_REQUIRED_IDS);
   for (const id of required) effective.add(id);
 
+  // Test satisfaction against the inert-stripped preamble, NOT the raw text, so
+  // a commented-out `% \usepackage{tikz}` never false-satisfies a live
+  // requirement — the SAME comment-inertness notion the body-detection side
+  // uses (`projectDetectableBody`). Without this the round-trip is asymmetric:
+  // `detectBodyRequirements` strips comments and sees `\begin{tikzpicture}`,
+  // but a commented `% \usepackage{tikz}` would suppress the injection, saving
+  // a `.tex` that fails to compile. The raw `preamble` is still what we slice +
+  // inject into below, so byte positions of the live text are untouched.
+  const scannable = projectDetectableBody(preamble);
+
   if (
     effective.has("natbib") &&
-    REQUIREMENT_BY_ID.get("biblatex")!.satisfiedRe.test(preamble)
+    REQUIREMENT_BY_ID.get("biblatex")!.satisfiedRe.test(scannable)
   ) {
     effective.delete("natbib");
   }
   if (
     effective.has("biblatex") &&
-    REQUIREMENT_BY_ID.get("natbib")!.satisfiedRe.test(preamble)
+    REQUIREMENT_BY_ID.get("natbib")!.satisfiedRe.test(scannable)
   ) {
     effective.delete("biblatex");
   }
 
   // Registry order = packages first, then shims.
   const missing = LATEX_REQUIREMENTS.filter(
-    (r) => effective.has(r.id) && !r.satisfiedRe.test(preamble),
+    (r) => effective.has(r.id) && !r.satisfiedRe.test(scannable),
   );
   if (missing.length === 0) return preamble;
 

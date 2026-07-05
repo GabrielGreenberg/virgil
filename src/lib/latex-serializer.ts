@@ -129,7 +129,11 @@ function serializeTitleField(node: JSONContent): string {
   const uuid = node.attrs?.uuid as string | null;
   const anchor = uuid ? ` %!v:${uuid}` : "";
   if (node.attrs?.isToday) {
-    return `\\${field}{\\today}${anchor}\n`;
+    // Interpolate rawPrefix exactly as the non-today branch below does — the
+    // parser strips a sizing/weight prefix (`\small`, `\Large`, …) into
+    // rawPrefix even on the \today path (latex-parser.ts), so dropping it here
+    // silently rewrites `\date{\small\today}` → `\date{\today}` on round-trip.
+    return `\\${field}{${rawPrefix}\\today}${anchor}\n`;
   }
   const inner = serializeInlineSequence(node.content || []);
   return `\\${field}{${rawPrefix}${inner}}${anchor}\n`;
