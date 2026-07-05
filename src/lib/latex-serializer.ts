@@ -105,8 +105,23 @@ function escapeLatex(
   // parser un-escapes `\$` back to a literal `$`, so this closes the round-trip.
   // We still don't escape {, } since those are structural LaTeX syntax the
   // editor emits and re-reads verbatim.
+  //
+  // `[` / `]` are escaped SYMMETRICALLY as `{[}` / `{]}` (task 037's `$` twin).
+  // A literal prose `[` that abuts a preceding `\\` hard-break or a
+  // `\command` is otherwise re-read as an OPTIONAL ARGUMENT: `\\[Note]` reads
+  // as a line-break of length `Note`, and `\cmd[Note]` folds `[Note]` into the
+  // command atom (the parser's optional-arg absorber). Wrapping the bracket in
+  // its own brace group (`{[}`) neutralizes both — a braced `[` can never begin
+  // an optional arg — while still rendering as a plain `[`. We deliberately do
+  // NOT use `\[` (that starts DISPLAY MATH, silently turning `[Note]` into a
+  // math block on reload). Genuine structural brackets (`\begin{figure}[t]`,
+  // `\ex[exno=3]`, real `\\[2em]` lengths) live on latexCommand/texBlock/example
+  // paths that bypass escapeLatex, so only prose text is touched. The parser
+  // collapses `{[}`/`{]}` back to a bare `[`/`]`, closing the round-trip.
   const escaped = text
     .replace(/(?<!\\)([&%#$_])/g, "\\$1")
+    .replace(/\[/g, "{[}")
+    .replace(/\]/g, "{]}")
     .replace(/~/g, "\\textasciitilde{}")
     .replace(/\^/g, "\\textasciicircum{}")
     .replace(/“/g, "``")
