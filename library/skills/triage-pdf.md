@@ -55,8 +55,10 @@ Supported source kinds:
 - **`.tex`** — already LaTeX. Passthrough copy into `papers/<citekey>/main.tex`; queue index. Defaults to `@unpublished` unless a DOI is present.
 - **`.bib`** — multi-entry fan-out. Each entry becomes a **bib-only catalog row** (no source file, `pdf.present=false`, `indexed.state="none"`, `bib.state="unverified"`); the apply step queues `kind: "authenticate"` per entry. The source `.bib` is deleted from `unsorted/` after fan-out (or parked under `_pending/` on parse failure). The library viewer already handles bib-only entries natively (PDF view shows "No PDF on disk", text view stays dormant).
 
-> **Where any memo you write goes.** Dev memos (skill retros, ideas for
-> improving this pipeline) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
+> **Where any memo you write goes.** Library memos (notes about this
+> pipeline — retros, indexing-flow ideas) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
+> A reflection about Virgil's *skill set* is a dev-loop note, **not** a library
+> memo — never file a reflection under `.virgil/memos/` (see `.claude/virgil/memos.md`).
 > Paper-specific notes → `papers/<citekey>/notes/<slug>.md`.
 > Never drop a markdown file at the library root.
 

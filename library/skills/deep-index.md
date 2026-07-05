@@ -80,8 +80,10 @@ under `.virgil/scripts/library/` resolves against the cwd the bootstrap
 set. If the bootstrap printed "No library set up", honour its exit code
 and stop — don't try to recover by hand.
 
-> **Where any memo you write goes.** Dev memos (skill retros, ideas for
-> improving this pipeline) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
+> **Where any memo you write goes.** Library memos (notes about this
+> pipeline — retros, indexing-flow ideas) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
+> A reflection about Virgil's *skill set* is a dev-loop note, **not** a library
+> memo — never file a reflection under `.virgil/memos/` (see `.claude/virgil/memos.md`).
 > Paper-specific analyses or reports → `papers/<citekey>/notes/<slug>.md`.
 > Never drop a markdown file at the library root.
 
