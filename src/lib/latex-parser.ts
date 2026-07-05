@@ -214,6 +214,25 @@ export function parseInlineContent(
       continue;
     }
 
+    // Protected prose brackets: `{[}` / `{]}` → literal `[` / `]` (task 037's
+    // `$` twin, serializer side in `escapeLatex`). The serializer wraps a prose
+    // `[`/`]` in its own brace group so it can't be absorbed as a LaTeX optional
+    // argument (`\\[len]`, `\cmd[opt]`); here we unwrap it back to a bare glyph
+    // in the buffer, so adjacent letters stay one text node. Not gated on
+    // `inCode`: inline-code (`\texttt`) prose is escaped the same way and must
+    // round-trip identically. Genuine structural brackets never reach this
+    // inline scanner as the literal triple `{[}` — they live on latexCommand /
+    // texBlock / example paths.
+    if (
+      text[i] === "{" &&
+      text[i + 2] === "}" &&
+      (text[i + 1] === "[" || text[i + 1] === "]")
+    ) {
+      buffer += text[i + 1];
+      i += 3;
+      continue;
+    }
+
     // Display math: $$...$$  (checked BEFORE single-$ — longest-first).
     // Its content is LITERAL math and must NEVER reach the dash/accent buffer
     // (memo §A "Critical exclusions": math stays literal). Preserving it as a
@@ -721,9 +740,20 @@ export function parseInlineContent(
             break;
           }
         }
-        // Consume {braced} args (up to 2)
+        // Consume {braced} args (up to 2) — but NEVER a protected prose
+        // bracket group `{[}`/`{]}` (the `escapeLatex` sentinel for a literal
+        // `[`/`]`). Those are prose that merely ABUTS the command, not an
+        // argument to it: breaking here lets the command atom close and returns
+        // control to the top-of-loop `{[}`→`[` unwrap, so `\cmd{[}x{]}` keeps
+        // `[x]` as literal prose instead of folding `[` into the command.
         let braceCount = 0;
         while (i < text.length && text[i] === "{" && braceCount < 2) {
+          if (
+            (text[i + 1] === "[" || text[i + 1] === "]") &&
+            text[i + 2] === "}"
+          ) {
+            break;
+          }
           const inner = extractBraced(text, i);
           if (inner) {
             cmdText += "{" + inner.content + "}";
