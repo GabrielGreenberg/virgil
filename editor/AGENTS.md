@@ -283,22 +283,27 @@ absolute, both work.
   "ai"`, `status: "pending"` instead of editing in place.
 - Direct-create kinds (footnote, citation) insert without
   a suggestion wrapper — the user can delete if unwanted.
-- **Reflection (DEV mode) — the one shared seam.** When `VIRGIL_DEV=1`, reflect
-  after completing **any** skill: invoke `/editor/reflect <docPath> <skill>
-  <taskId>` to write a tiered dev-dream memo (the "day" capture layer of the
-  self-improvement loop — EDITOR_SKILLS_V1 §14; subsystem SSOT
-  [editor/dev/README.md](dev/README.md)). This is **one convention, not a
-  per-skill step** — every current and future skill inherits reflection from
-  this single rule; do not copy a "now write a memo" step into individual skill
-  files. The umbrella [`/editor/review`](skills/review.md) **enforces** it for
-  each subskill it dispatches; a directly-invoked skill reflects under this
-  convention. Reflection consumes the Task's already-stamped two-field `result`
-  (it does not re-derive the outcome), is read-only on the paper, and writes
-  only to the gitignored `editor/dev/memos/`. Outside DEV mode it is a no-op
-  (the script gates on `_common.dev_mode_enabled`), so it never runs — and
-  cannot be turned on — in an end-user session. This is **distinct** from the
-  per-paper "Memo discipline" below: that channel is cowork memos *about a
-  paper*; this one is memos *about the skill set itself*.
+- **Reflection (DEV mode) — the one shared seam.** When `VIRGIL_DEV=1`, a
+  tiered dev-dream memo is written for **every** skill (the "day" capture layer
+  of the self-improvement loop — EDITOR_SKILLS_V1 §14; subsystem SSOT
+  [editor/dev/README.md](dev/README.md)). The **floor is automatic and needs no
+  agent action**: `apply_response` (the one writeback chokepoint) fires
+  `reflect.py` best-effort after every commit, so a correctly-classified memo
+  lands even for a directly-invoked skill in a paper-cowork session. On top of
+  that floor you *enrich*: invoke `/editor/reflect <docPath> <skill> <taskId>
+  --memo-json …` (same `<skill>` the writeback used, so it merges) to add the
+  four qualitative buckets; the umbrella [`/editor/review`](skills/review.md)
+  does this for each subskill it dispatches. This is **one seam, not a per-skill
+  step** — do not copy a "now write a memo" step into individual skill files.
+  Reflection consumes the Task's already-stamped two-field `result` (it does not
+  re-derive the outcome), is read-only on the paper, and writes only to the
+  machine-global dev sink (`~/.virgil-dev/memos`, `VIRGIL_DEV_MEMOS_DIR`
+  overrides). Outside DEV mode it is a no-op (both the tail-trigger and the
+  script gate on `_common.dev_mode_enabled`), so it never runs — and cannot be
+  turned on — in an end-user session, even though the scripts ship to every
+  paper folder. This is **distinct** from the per-paper "Memo discipline" below:
+  that channel is cowork memos *about a paper*; this one is memos *about the
+  skill set itself*.
 - Memo discipline (the **cowork-memo / paper-note** channel): notes *about a
   paper* go under `<docPath>/.virgil/memos/<YYYY-MM-DD>-<slug>.md`,
   paper-specific reports under `<docPath>/notes/<slug>.md`. Only

@@ -72,13 +72,12 @@ from _common import (
     atomic_write,
     dev_mode_enabled,
     die,
+    memos_root as _shared_memos_root,
     read_json,
     resolve_doc,
     sidecar,
+    source_repo_root,
 )
-
-# repo root = scripts/ → editor/ → <root>
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 # ---------------------------------------------------------------------------
@@ -162,16 +161,22 @@ def _now_parts() -> tuple[str, str, str]:
 
 
 def _memos_root() -> Path:
-    env = os.environ.get("VIRGIL_DEV_MEMOS_DIR", "").strip()
-    return Path(env).expanduser().resolve() if env else REPO_ROOT / "editor/dev/memos"
+    # The one machine-global sink (shared with dream.py) — resolves the same
+    # from a repo checkout OR a synced paper's .virgil/scripts/editor/ copy.
+    return _shared_memos_root()
 
 
 def _skill_sha(skill: str) -> str:
-    """Best-effort `git rev-parse HEAD:editor/skills/<skill>.md`, short. Never
-    fatal — an uncommitted or unknown skill records 'uncommitted'."""
+    """Best-effort `git rev-parse HEAD:editor/skills/<skill>.md`, short, against
+    the Virgil SOURCE repo (resolved independently of `__file__`, so it still
+    works when this script runs from a synced paper copy). Never fatal — a repo
+    we can't find records 'unknown'; an uncommitted/unknown skill 'uncommitted'."""
+    repo = source_repo_root()
+    if repo is None:
+        return "unknown"
     try:
         out = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "rev-parse", "--short",
+            ["git", "-C", str(repo), "rev-parse", "--short",
              f"HEAD:editor/skills/{skill}.md"],
             capture_output=True, text=True, timeout=10,
         )
@@ -473,7 +478,7 @@ def main(argv: list[str]) -> int:
 
     rel = target
     try:
-        rel = target.relative_to(REPO_ROOT)
+        rel = target.relative_to(memos_root)
     except ValueError:
         pass
     action = "updated" if existing_path is not None else "wrote"

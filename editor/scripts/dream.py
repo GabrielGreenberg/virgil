@@ -56,7 +56,13 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import atomic_write, dev_mode_enabled
+from _common import (
+    atomic_write,
+    dev_mode_enabled,
+    digests_root as _shared_digests_root,
+    memos_root as _shared_memos_root,
+    source_repo_root,
+)
 
 # Reuse the chip-17 memo reader + its vocab — do NOT reinvent a parser.
 from reflect import (  # noqa: E402  (sibling module in editor/scripts/)
@@ -69,9 +75,6 @@ from reflect import (  # noqa: E402  (sibling module in editor/scripts/)
     TIER_UNREMARKABLE,
     _parse_memo,
 )
-
-# repo root = scripts/ → editor/ → <root>
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Result-lenses the dream audits (design §4; README "What chip 18 consumes").
 LENS_REJECTION = "rejectionCorpus"      # result: rejected
@@ -104,22 +107,26 @@ def _now_iso_date() -> tuple[str, str]:
 
 
 def _memos_root() -> Path:
-    env = os.environ.get("VIRGIL_DEV_MEMOS_DIR", "").strip()
-    return Path(env).expanduser().resolve() if env else REPO_ROOT / "editor/dev/memos"
+    # The one machine-global sink (shared with reflect.py) — resolves the same
+    # from a repo checkout OR a synced paper's .virgil/scripts/editor/ copy, so
+    # the dream reads exactly where reflect wrote.
+    return _shared_memos_root()
 
 
 def _digests_root() -> Path:
-    env = os.environ.get("VIRGIL_DREAM_DIGESTS_DIR", "").strip()
-    return (Path(env).expanduser().resolve() if env
-            else REPO_ROOT / "editor/dev/dream-digests")
+    return _shared_digests_root()
 
 
 def _dream_sha() -> str:
-    """Best-effort `git rev-parse HEAD:editor/skills/dream.md`, short. Never
-    fatal (mirrors reflect._skill_sha)."""
+    """Best-effort `git rev-parse HEAD:editor/skills/dream.md`, short, against the
+    Virgil SOURCE repo (resolved independently of `__file__`). Never fatal
+    (mirrors reflect._skill_sha)."""
+    repo = source_repo_root()
+    if repo is None:
+        return "unknown"
     try:
         out = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "rev-parse", "--short",
+            ["git", "-C", str(repo), "rev-parse", "--short",
              "HEAD:editor/skills/dream.md"],
             capture_output=True, text=True, timeout=10,
         )
@@ -278,8 +285,8 @@ def cmd_select(_argv: list[str]) -> int:
         "memosRoot": str(memos_root),
         "since": (marker[0] if marker else None),
         "sinceMemo": (marker[1] if marker else None),
-        "lastDigest": (str(last_digest.relative_to(REPO_ROOT))
-                       if last_digest and _is_under(last_digest, REPO_ROOT)
+        "lastDigest": (str(last_digest.relative_to(_digests_root()))
+                       if last_digest and _is_under(last_digest, _digests_root())
                        else (str(last_digest) if last_digest else None)),
         "bootstrap": marker is None,           # no prior dream → first dream
         "memoCount": len(recs),
@@ -457,8 +464,8 @@ def cmd_digest(argv: list[str]) -> int:
     atomic_write([(target, _render_digest(fm, report, summ, recs))])
 
     rel = target
-    if _is_under(target, REPO_ROOT):
-        rel = target.relative_to(REPO_ROOT)
+    if _is_under(target, digests_root):
+        rel = target.relative_to(digests_root)
     print(f"Done: dreamed over {len(recs)} memo(s) "
           f"(acted {fm['acted']}, proposed {fm['proposed']}, refused {fm['refused']}). "
           f"wrote {rel}")

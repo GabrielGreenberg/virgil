@@ -14,6 +14,14 @@ frozen spec: `EDITOR_SKILLS_V1.html` §14 · conceptual home:
 > [The dream phase](#the-dream-phase-night-half)). Chip 19 put `/editor/iterate-virgil-editor`
 > on the **same engine** — one critique-memo shape, one reader, one boundary
 > guard — see [The unified engine](#the-unified-engine-iterations-and-memos-chip-19).
+> The **cowork-capture** pass wired the capture layer to actually fire for
+> *paper-directed cowork sessions* (cwd = a paper folder, **not** the repo, which
+> is where most editing happens and where nothing was captured before): an
+> `apply_response` tail-trigger writes the memo mechanically for every writeback,
+> and all three streams resolve **one machine-global sink** (`~/.virgil-dev`), so
+> the repo-side dream reads exactly where a paper-folder `reflect` wrote — see
+> [The dev-loop sink](#the-dev-loop-sink) and
+> [Capture without the agent remembering](#capture-without-the-agent-remembering-the-tail-trigger).
 > The remaining work is the Phase-8 UI.
 
 ## The loop, in one picture
@@ -40,16 +48,36 @@ case-insensitive). The single read is
 nothing re-implements the rule.
 
 Why an env var and not a `document-settings.json` flag (the spec left it open):
-it is truly per-session, has **no UI surface and no on-disk presence**, and so
-**cannot ship to an end user**. An end-user paper folder may carry the (inert)
-`reflect` skill + script via the normal bundle sync, but the gate stays off —
-so **no memo is ever written outside a dev session.** OFF is the default and the
-safe failure mode (a typo'd export never silently turns capture on).
+it has **no UI surface and no on-disk presence**, and so **cannot ship to an end
+user**. The `reflect` skill + script AND the `apply_response` tail-trigger ship
+to every paper folder via the normal bundle sync, but the runtime gate stays off
+unless `VIRGIL_DEV` is truthy — so **no memo is ever written outside a dev
+session.** OFF is the default and the safe failure mode (a typo'd export never
+silently turns capture on).
 
 ```bash
-VIRGIL_DEV=1 claude        # a dev session: skills reflect
+VIRGIL_DEV=1 claude        # a one-off dev session: skills reflect
 claude                     # a normal session: reflection is a no-op
 ```
+
+**Making every session a dev session — the config for cowork capture.** A
+paper-directed cowork session's cwd is a *paper folder outside the repo*, so the
+repo's project `.claude/settings.local.json` toggle never reaches it. To capture
+those sessions (where most real editing happens), set the toggle **and** the sink
+pin at **user scope** — the only settings scope that reaches an out-of-repo cwd —
+in `~/.claude/settings.json`:
+
+```jsonc
+"env": {
+  "VIRGIL_DEV": "1",
+  "VIRGIL_DEV_HOME": "/Users/<you>/.virgil-dev",   // the one machine-global sink
+  "VIRGIL_REPO_ROOT": "/Users/<you>/…/virgil"       // best-effort skillSha lookups
+}
+```
+
+`VIRGIL_`-namespaced and read **only** by these dev-loop scripts, so it is inert
+in every non-Virgil session and, via the runtime gate, in end-user Virgil
+sessions too.
 
 ## The capture mechanism — one shared seam
 
@@ -64,13 +92,80 @@ inherits reflection from a single edit, and any future skill inherits it free.
 - **[`reflect.py`](../scripts/reflect.py)** — gates on `VIRGIL_DEV`, reads the
   Task's already-stamped `result`, derives the tier, and writes/merges the memo.
   Read-only on the paper (it only reads the Task queue) — it writes **only** to
-  `editor/dev/memos/`, so it needs no pen and no `apply_response` contract.
+  the machine-global sink (below), so it needs no pen and no `apply_response`
+  contract.
 - **The convention** lives once in
   [editor/AGENTS.md → Skill conventions](../AGENTS.md) ("Reflection (DEV
   mode)"): *in DEV mode, reflect after completing any skill.* The umbrella
   [`/editor/review`](../skills/review.md) **enforces** it for every subskill it
-  dispatches, so "every skill reflects" is true by construction, not by hoping
-  each subagent remembers.
+  dispatches. But a convention only fires when the agent (or the umbrella)
+  remembers — which a **direct** skill invocation in a paper-cowork session does
+  not. So the convention is now the *enrichment ceiling*, not the floor; the
+  floor is the tail-trigger.
+
+### Capture without the agent remembering (the tail-trigger)
+
+The one place **every** mutating skill passes through is
+[`apply_response.py`](../scripts/apply_response.py) — the sanctioned writeback
+chokepoint. So its two commit finalizers, **`cmd_write`** (every write path,
+incl. `complete-only`) and **`_mutation_commit`** (every card mutation), are the
+one place to guarantee a memo. Right after `commit_under_pen`, each fires
+`_reflect_tail` → [`_common.spawn_reflection`](../scripts/_common.py) —
+**DEV-gated, best-effort** (the commit already succeeded and is never undone).
+This is the deep-unified seam, *not* a per-skill bolt-on: two calls at the two
+finalizers, and every current and future skill inherits capture free.
+
+- **The finalizers, NOT `main()`.** Placing the trigger in the CLI entry would
+  miss `create_card.py`, which calls `run_write_subcommand` **in-process**
+  (never spawning the CLI) — so the entire card-creation responder family
+  (footnote/citation/note/todo/report) would get no memo. Both the CLI and the
+  in-process path funnel through `cmd_write`, so that is where it lives.
+- **It sidesteps the skills' markdown script-paths.** `spawn_reflection` invokes
+  `reflect.py` by its **sibling path** (`Path(__file__).parent / "reflect.py"`),
+  so it resolves from a synced paper's `.virgil/scripts/editor/` copy — even
+  though 21 of 23 skill markdowns still hardcode the repo-root `editor/scripts/`
+  form (a separate, pre-existing robustness item the floor does not depend on).
+- **The skill name comes from the Task, not the op.** A write names its skill
+  from the **Task's `kind`** (`_KIND_SKILL`: `suggestion → draft-suggestion`,
+  `footnote → draft-footnote`, …) — reliably present on the request row, unlike
+  a top-level op key that direct-CLI ops omit. A mutation names it from the op
+  label every caller stamps in `extra` (`_OP_SKILL`: `archive → archive-card`).
+  Both match the name the umbrella/convention reflection uses (the umbrella
+  dispatches by the *same* request kind), so the two **merge** into the *same*
+  `(skill, taskId)` memo (idempotent — tier only rises, buckets fill,
+  `reflectedAt` kept) rather than duplicating it.
+- **Two independent gates keep it inert for end users**: `spawn_reflection`
+  returns before spawning unless `VIRGIL_DEV` is on, and `reflect.py` itself
+  re-checks the gate. A shipped-but-inert trigger writes nothing for a user.
+
+> **Known granularity artifact.** A skill that makes *two* writebacks for one
+> logical action (draft-footnote's revise-existing = `update` then
+> `complete-task`) yields two memos — one `edit-card` (the mechanical update leg,
+> Task-less) plus the correctly-labelled `draft-footnote` (which merges with the
+> umbrella). Both are individually true; the `edit-card` entry is minor
+> dev-corpus granularity, not a mislabel. Collapsing it would require the skill
+> to complete in one writeback — a skill-markdown change, tracked separately.
+
+The tail-trigger writes the correctly-classified **frontmatter floor** (skill /
+taskId / result / tier / paragraphIds); the four qualitative buckets are filled
+in later by the convention when the agent reflects. Floor + ceiling, one memo.
+
+### The dev-loop sink
+
+Memos (reflect), digests (dream), and iterations (iterate) resolve **one
+machine-global home**, `~/.virgil-dev/` (override the base with `VIRGIL_DEV_HOME`;
+each stream also has its own `VIRGIL_DEV_MEMOS_DIR` / `VIRGIL_DREAM_DIGESTS_DIR` /
+`VIRGIL_DEV_ITERATIONS_DIR` pin). Resolved once in
+[`_common`](../scripts/_common.py) (`dev_home` / `memos_root` / `digests_root` /
+`iterations_root`) — reflect and dream import the **same** resolver, never a
+duplicated default. This is the load-bearing invariant: **the writer (reflect)
+and the reader (dream) must resolve identically**, or the dream reads an empty
+dir with no error. A machine-global *absolute* default (not a `REPO_ROOT`-
+relative one) is what makes them agree from **any** cwd — a repo checkout, a git
+worktree, or a synced paper's `.virgil/scripts/editor/` copy (where a
+`__file__`-relative root would otherwise land *inside* the paper's `.virgil/`).
+That decoupling from any one checkout is exactly what lets a paper-directed
+session's memo reach the dream.
 
 ### It consumes the contract — it does not re-derive the outcome
 
@@ -83,12 +178,17 @@ of the contract, not new per-skill machinery.
 
 ## The memo
 
-Path: `editor/dev/memos/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md` — **gitignored**
-(see [.gitignore](../../.gitignore)), repo-side. It is the sibling of
-`editor/dev/iterations/` and is **distinct** from the per-paper cowork memo
+Path: `~/.virgil-dev/memos/<YYYY-MM-DD>/<HH-MM-SS>-<skill>.md` (the machine-global
+[sink](#the-dev-loop-sink); `VIRGIL_DEV_MEMOS_DIR` overrides). It is the sibling
+of `~/.virgil-dev/iterations/` and is **distinct** from the per-paper cowork memo
 stream (`<docPath>/.virgil/memos/`) and the library memo stream
 (`~/Virgil-Library/.virgil/memos/`). The three streams never mix — different
-audience, different consumer.
+audience, different consumer. (The home moved off the old repo-side
+`editor/dev/memos/` — whose `REPO_ROOT`-relative default diverged between a
+paper-folder writer and the repo-side reader — to the machine-global sink both
+now share. The in-repo `editor/dev/{memos,dream-digests,iterations}/` `.gitkeep`
+dirs are retained only as the documented shape; they are no longer the resolved
+root.)
 
 ### Frontmatter (what the dream reads mechanically)
 

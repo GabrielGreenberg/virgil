@@ -56,8 +56,9 @@ final-sandbox-state, rendered as body sections AFTER the four buckets (unknown
 rides the `result` frontmatter field; `stream: iterations` labels the stream so
 it is never confused with a contract result (the dream never reads iterations/).
 
-Env overrides (test seams; never set in prod):
-  VIRGIL_DEV_ITERATIONS_DIR  iterations root (default: <repo>/editor/dev/iterations)
+Env overrides:
+  VIRGIL_DEV_ITERATIONS_DIR  iterations root (default: ~/.virgil-dev/iterations,
+                             via _common.iterations_root / VIRGIL_DEV_HOME)
   VIRGIL_ITERATE_NOW         ISO timestamp for reflectedAt + the filename clock
 
 CLI (for the runner subagent + the loop driver):
@@ -75,7 +76,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from _common import atomic_write
+from _common import atomic_write, iterations_root as _shared_iterations_root
 
 # The shared READER + the bucket/tier VOCABULARY — reused, not re-implemented.
 from reflect import (  # noqa: E402  (sibling module in editor/scripts/)
@@ -110,9 +111,6 @@ __all__ = [
     "RoutedEdits", "route_edits",
 ]
 
-# repo root = scripts/ → editor/ → <root>
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
 # iterate's critique severities (the old vocabulary the runner still emits).
 SEVERITY_BLOCK = "block"
 SEVERITY_NICE = "nice-to-have"
@@ -146,9 +144,9 @@ def _now_parts() -> tuple[str, str, str]:
 
 
 def _iterations_root() -> Path:
-    env = os.environ.get("VIRGIL_DEV_ITERATIONS_DIR", "").strip()
-    return (Path(env).expanduser().resolve() if env
-            else REPO_ROOT / "editor/dev/iterations")
+    # Shared machine-global home (VIRGIL_DEV_ITERATIONS_DIR overrides) — one
+    # dev-loop home for memos / digests / iterations, resolved via _common.
+    return _shared_iterations_root()
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +450,7 @@ def cmd_write_iteration_memo(argv: list[str]) -> int:
     target = write_iteration_memo(critique)
     rel = target
     try:
-        rel = target.relative_to(REPO_ROOT)
+        rel = target.relative_to(_iterations_root())
     except ValueError:
         pass
     fm, _ = _parse_memo(target.read_text(encoding="utf-8"))

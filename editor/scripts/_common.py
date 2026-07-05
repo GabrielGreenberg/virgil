@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -396,6 +397,114 @@ def dev_mode_enabled() -> bool:
     typo'd or forgotten export never silently turns capture on (or, worse, on
     in a context that ships to a user)."""
     return os.environ.get(DEV_MODE_ENV, "").strip().lower() in _DEV_TRUE_TOKENS
+
+
+# ---------------------------------------------------------------------------
+# Dev-loop sink — the one machine-global home for dev-dream artifacts
+#
+# The capture layer (reflect.py), the dream (dream.py), and iterate
+# (dev_loop.py) must ALL resolve the memo / digest / iteration roots
+# identically, from ANY cwd — a repo checkout, a git worktree, or a *synced
+# paper folder* (where the scripts run from `<paper>/.virgil/scripts/editor/`
+# and a `__file__`-relative REPO_ROOT would land *inside* the paper's
+# `.virgil/`). So the roots default to a machine-global home (`~/.virgil-dev`),
+# NOT a REPO_ROOT-relative path: the writer (reflect) and the reader (dream)
+# then agree even when no env var is set — the one hard invariant, since a
+# silent divergence makes the dream read an empty dir with no error. Each root
+# still honors its explicit env override first (the test seam + the user pin).
+#
+# This is what lets a paper-directed cowork session accumulate memos the
+# repo-side dream can later consume: memos land in the shared home regardless of
+# which checkout (if any) the running script physically lives in.
+# ---------------------------------------------------------------------------
+
+DEV_HOME_ENV = "VIRGIL_DEV_HOME"
+_DEV_HOME_DEFAULT = Path.home() / ".virgil-dev"
+SOURCE_REPO_ENV = "VIRGIL_REPO_ROOT"
+
+
+def _dir_override(env_name: str) -> Path | None:
+    """Resolve a dev-dir env override to an ABSOLUTE, cwd-INDEPENDENT path, or
+    None if unset. A relative value is anchored to `$HOME`, never to `cwd` — the
+    writer (paper-folder cwd) and reader (repo cwd) must resolve the SAME dir, so
+    `Path.resolve()` alone (which anchors a relative path to cwd) would silently
+    diverge them. Absolute values pass through `.resolve()` unchanged."""
+    env = os.environ.get(env_name, "").strip()
+    if not env:
+        return None
+    p = Path(env).expanduser()
+    return (p if p.is_absolute() else Path.home() / p).resolve()
+
+
+def dev_home() -> Path:
+    """The machine-global root for dev-dream artifacts (memos / digests /
+    iterations). `VIRGIL_DEV_HOME` overrides; default `~/.virgil-dev`. Always
+    absolute and cwd-independent, so every session resolves the same home."""
+    return _dir_override(DEV_HOME_ENV) or _DEV_HOME_DEFAULT
+
+
+def memos_root() -> Path:
+    """Where reflect writes and the dream reads the capture memos.
+    `VIRGIL_DEV_MEMOS_DIR` overrides (test seam + user pin); else
+    `dev_home()/memos`."""
+    return _dir_override("VIRGIL_DEV_MEMOS_DIR") or dev_home() / "memos"
+
+
+def digests_root() -> Path:
+    """Where the dream writes its morning digests and reads the since-last-dream
+    marker. `VIRGIL_DREAM_DIGESTS_DIR` overrides; else `dev_home()/dream-digests`."""
+    return _dir_override("VIRGIL_DREAM_DIGESTS_DIR") or dev_home() / "dream-digests"
+
+
+def iterations_root() -> Path:
+    """Where iterate-virgil-editor writes its synthesized-stress-test memos.
+    `VIRGIL_DEV_ITERATIONS_DIR` overrides; else `dev_home()/iterations`."""
+    return _dir_override("VIRGIL_DEV_ITERATIONS_DIR") or dev_home() / "iterations"
+
+
+def source_repo_root() -> Path | None:
+    """Best-effort location of the Virgil SOURCE repo — for the reflect / dream
+    `git rev-parse HEAD:editor/skills/<skill>.md` sha lookups, which must hit the
+    real source tree, NOT a paper's `.virgil/` (where a `__file__`-relative
+    REPO_ROOT lands from a synced copy). Resolution: `VIRGIL_REPO_ROOT` env →
+    walk up from this file for a dir containing `editor/skills` → None (the
+    caller records 'unknown'). Never raises."""
+    env = os.environ.get(SOURCE_REPO_ENV, "").strip()
+    if env:
+        p = Path(env).expanduser().resolve()
+        if (p / "editor" / "skills").is_dir():
+            return p
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "editor" / "skills").is_dir():
+            return parent
+    return None
+
+
+def spawn_reflection(doc: Path, skill: str, task_id: str = "-", *, timeout: int = 20) -> None:
+    """Best-effort DEV-mode capture: fire `/editor/reflect` for a just-completed
+    skill so a memo lands for EVERY writeback — the mechanical "day" floor that
+    makes paper-cowork sessions accumulate dev-dream memos without relying on the
+    agent to remember. No-op unless `VIRGIL_DEV` is on; never raises (all errors
+    swallowed). It runs `reflect.py` **synchronously but time-bounded** (blocks
+    the caller up to `timeout` s). It fires from a commit finalizer AFTER
+    `commit_under_pen` (the write is durable) but BEFORE the caller prints its
+    result JSON — so it can never perturb the committed contract result; it only
+    adds a bounded tail latency before the caller sees stdout, in a DEV session.
+    `reflect.py` is a sibling of this module, so it resolves from a synced paper
+    folder too — sidestepping the skills' markdown script-paths. The four
+    qualitative buckets are enriched later via the reflection convention; this
+    writes the correctly-classified frontmatter floor."""
+    if not dev_mode_enabled():
+        return
+    try:
+        script = Path(__file__).resolve().parent / "reflect.py"
+        subprocess.run(
+            [sys.executable, str(script), str(doc), skill, task_id],
+            capture_output=True, text=True, timeout=timeout,
+            cwd=str(script.parent),
+        )
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
