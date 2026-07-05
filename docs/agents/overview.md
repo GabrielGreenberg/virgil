@@ -48,7 +48,7 @@ The Library tab is its own self-contained tree at the repo root, sibling to `src
 
 ## Sibling subsystem: `editor/`
 
-Editor-side skill bundle (companion to `library/`): the `/editor/review` umbrella plus per-kind subskills that fulfill `ai-requests.json` entries. Self-contained under `editor/` (skills, Python helpers, build script). Wired into the Virgil app via [src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts) (collapses per-card `aiRequest:true` flags into the unified queue) and [src/hooks/useDocNotificationStream.ts](../../src/hooks/useDocNotificationStream.ts) (toasts skill completions). Built into `public/skill-bundle/` at `predev`/`prebuild` alongside the library bundle. Detailed map in [editor/AGENTS.md](../../editor/AGENTS.md).
+Editor-side skill bundle (companion to `library/`): the `/editor/review` umbrella plus per-kind subskills that fulfill `ai-requests.json` entries. Self-contained under `editor/` (skills, Python helpers, build script). Wired into the Virgil app via [src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts) (collapses per-card `aiRequest:true` flags into the unified queue). (Skills also append completion entries to a per-doc `notifications.json`; the client-side toaster hook that would surface them was never wired and has been removed — task 033.) Built into `public/skill-bundle/` at `predev`/`prebuild` alongside the library bundle. Detailed map in [editor/AGENTS.md](../../editor/AGENTS.md).
 
 ## Core user-facing concepts
 

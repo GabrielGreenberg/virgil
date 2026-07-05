@@ -198,13 +198,14 @@ Editor frontend                 Claude (separate session)
   │ notifications.json            │   • status flip
   │ version.txt                   │   • notification
   │                               │   • version bump
-  ◄ polls notifications + version
-    via useDocNotificationStream
+  ◄ reloads sidecars on version bump
 ```
 
 The frontend never invokes Claude directly. It writes intent files;
-Claude drains; the frontend polls for completion notifications and
-reloads sidecars.
+Claude drains; the frontend reloads sidecars on a version bump.
+(Completion entries are still appended to `notifications.json`, but the
+client-side toaster hook that would surface them was never wired and has
+been removed — task 033.)
 
 ## Bridge: card flags → ai-requests.json
 
@@ -323,7 +324,7 @@ Three modifications + two new files in the main app:
 | [src/lib/types.ts](../src/lib/types.ts) | Extended `AiRequest` with `paragraphIds`, `selectedText`, `linkedTo`. Added `DocNotification`, `DocNotificationsInbox`. |
 | [src/lib/ai-request-bridge.ts](../src/lib/ai-request-bridge.ts) | New. `bridgeCardAiRequestFlag()` keeps `ai-requests.json` in sync with card-level flags. |
 | [src/hooks/useNotes.ts](../src/hooks/useNotes.ts), [useTodos.ts](../src/hooks/useTodos.ts), [useCutter.ts](../src/hooks/useCutter.ts), [useRevisions.ts](../src/hooks/useRevisions.ts) | Each `setXAiRequest` callback now invokes the bridge. |
-| [src/hooks/useDocNotificationStream.ts](../src/hooks/useDocNotificationStream.ts) | New. 6-second poll of `<docPath>/virgil/notifications.json`; emits new items for the consumer to toast. Not yet wired to a UI host — toasting is a follow-up. |
+| ~~`src/hooks/useDocNotificationStream.ts`~~ | Was a 6-second poll of `<docPath>/virgil/notifications.json` that emitted items for a consumer to toast. Never wired to a UI host; **removed (task 033)**. `notifications.json` is still appended on every completion (see `DocNotification` in [src/lib/types.ts](../src/lib/types.ts)); surfacing it is future work. |
 
 ## Cross-cutting with the Library
 
@@ -382,10 +383,11 @@ skill — call `get_para_context.py`.
   paralleling `library/lib/skill-sync.ts`. The build would emit a
   `public/skill-bundle/editor/` and the editor would copy it into the
   doc's `.claude/` and `.virgil/scripts/` on first open.
-- **Notification toaster UI.** `useDocNotificationStream` polls and
-  surfaces items but isn't wired to a host. The host should be
-  per-doc (Editor.tsx or EditorPane.tsx); see how `LibraryView.tsx`
-  consumes the library version for the precedent.
+- **Notification toaster UI.** `notifications.json` is appended on every
+  completion but nothing surfaces it (the never-wired
+  `useDocNotificationStream` poller was removed — task 033). A future
+  toaster host should be per-doc (Editor.tsx or EditorPane.tsx); see how
+  `LibraryView.tsx` consumes the library version for the precedent.
 - **Workspace template `<docPath>/.claude/CLAUDE.md`.** Per-doc
   workspace guide so a fresh Claude Code session opened in a paper
   folder loads the right context.
