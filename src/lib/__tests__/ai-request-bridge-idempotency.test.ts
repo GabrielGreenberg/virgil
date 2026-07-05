@@ -150,9 +150,8 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
   });
 
   it("non-terminal non-pending statuses still count as OPEN (update, not re-file)", async () => {
-    // The open-request match is `status !== "complete" && status !== "failed"`
-    // — e.g. a request a skill already marked in-flight must not be duplicated
-    // by a re-toggle.
+    // The open-request match now delegates to `isRequestOpen` — e.g. a request
+    // a skill already marked in-flight must not be duplicated by a re-toggle.
     seeded.state = { requests: [linkedRequest({ status: "submitted" as AiRequest["status"] })] };
     await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "nudge" });
 
@@ -161,5 +160,64 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
     expect(reqs).toHaveLength(1);
     expect(reqs[0].id).toBe("req-existing");
     expect(reqs[0].text).toBe("nudge");
+  });
+
+  // --- answered L3 proposal: `in-progress` + `resultId` (task 043) ---
+  //
+  // An L3 (safetyLevel 3 / propose) responder leaves its request `in-progress`
+  // while stamping `resultId` the moment its proposal card lands, and clears the
+  // source card's `aiRequest` flag in the same commit. The drain
+  // (`list_requests.py`) treats such a row as ANSWERED (the user owns
+  // accept/reject now). The bridge must agree, or the two drift: a re-request is
+  // swallowed (M1) and a toggle-off orphans the proposal's `resultId` (M2).
+
+  it("(d) in-progress+resultId, value=true files a FRESH pending request (drain sees it) — M1", async () => {
+    seeded.state = {
+      requests: [linkedRequest({ status: "in-progress", resultId: "card-proposal-1" })],
+    };
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, {
+      text: "please try again",
+      paragraphIds: ["p-2"],
+    });
+
+    expect(written).toHaveLength(1);
+    const reqs = written[0].data.requests;
+    expect(reqs).toHaveLength(2);
+    // The answered proposal is untouched — its resultId pointer survives.
+    expect(reqs[0].id).toBe("req-existing");
+    expect(reqs[0].status).toBe("in-progress");
+    expect(reqs[0].resultId).toBe("card-proposal-1");
+    expect(reqs[0].text).toBe("original text");
+    // The re-request is a fresh, drain-visible pending row.
+    const fresh = reqs[1];
+    expect(fresh.id).not.toBe("req-existing");
+    expect(fresh.status).toBe("pending");
+    expect(fresh.resultId).toBeUndefined();
+    expect(fresh.text).toBe("please try again");
+    expect(fresh.linkedTo).toEqual({ panel: "todos", cardId: "card-1" });
+  });
+
+  it("(e) in-progress+resultId, value=false is a pure no-op — resultId survives — M2", async () => {
+    seeded.state = {
+      requests: [linkedRequest({ status: "in-progress", resultId: "card-proposal-1" })],
+    };
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" });
+    // Answered ⇒ not open ⇒ nothing to drop ⇒ no write. The accept/reject flow
+    // and the proposal card's origin pointer keep their `resultId`.
+    expect(written).toHaveLength(0);
+  });
+
+  it("(f) in-progress WITHOUT resultId still counts as OPEN → update-in-place (no regression)", async () => {
+    // A skill mid-flight (its proposal card hasn't landed yet) has no resultId,
+    // so it is still open — a re-toggle updates in place, never duplicates.
+    seeded.state = { requests: [linkedRequest({ status: "in-progress" })] };
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "still working?" });
+
+    expect(written).toHaveLength(1);
+    const reqs = written[0].data.requests;
+    expect(reqs).toHaveLength(1);
+    expect(reqs[0].id).toBe("req-existing");
+    expect(reqs[0].status).toBe("in-progress");
+    expect(reqs[0].text).toBe("still working?");
   });
 });
