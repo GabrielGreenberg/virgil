@@ -62,6 +62,42 @@ export function getPdfTeXEngine(): Promise<PdfTeXEngine> {
 }
 
 /**
+ * Force the module-level engine singleton to be discarded so the NEXT
+ * `getPdfTeXEngine()` boots a fresh worker.
+ *
+ * `getPdfTeXEngine` only nulls `enginePromise` on an INITIAL boot failure — a
+ * worker that hangs or crashes AFTER a successful boot is never reset, so the
+ * `Busy` singleton throws forever and only a page reload recovers. The
+ * CompileService calls this after a compile timeout / worker-error rejection so
+ * it can reboot cleanly on the next compile.
+ *
+ * Best-effort and fire-and-forget: if the singleton has a resolved engine we
+ * `closeWorker()` it (posts 'grace', drops the worker ref); we then null the
+ * promise unconditionally. A still-pending boot promise is simply dropped —
+ * its worker, if any, is orphaned but harmless once the next boot supersedes
+ * it. Never throws.
+ */
+export function resetPdfTeXEngine(): void {
+  const pending = enginePromise;
+  enginePromise = null;
+  if (!pending) return;
+  // Best-effort: close the worker if the engine already resolved. We don't
+  // await here — reset must be synchronous so the service can immediately
+  // trigger a reboot on the next call.
+  void pending
+    .then((engine) => {
+      try {
+        engine.closeWorker();
+      } catch {
+        // A dead worker may already be gone; ignore.
+      }
+    })
+    .catch(() => {
+      // The engine never booted — nothing to close.
+    });
+}
+
+/**
  * Write a file into the engine's memfs, auto-creating any parent
  * directories. The engine doesn't do this for you — it silently writes
  * nothing if the parent dir is missing.

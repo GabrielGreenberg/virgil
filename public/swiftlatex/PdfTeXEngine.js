@@ -105,8 +105,19 @@ var PdfTeXEngine = /** @class */ (function () {
                                     }
                                     else {
                                         _this.latexWorkerStatus = EngineStatus.Error;
-                                        reject();
+                                        // PATCHED (virgil): reject with an Error, not bare reject().
+                                        // A bare reject() surfaces as "Compile failed: undefined";
+                                        // an Error carries a real message up to the CompileService.
+                                        // Must survive re-vendoring the worker.
+                                        reject(new Error('SwiftLaTeX worker failed to boot'));
                                     }
+                                };
+                                // PATCHED (virgil): a worker load/runtime error during boot must
+                                // reject the boot promise (upstream leaves onerror unset here, so a
+                                // failed boot hangs forever). Must survive re-vendoring.
+                                _this.latexWorker.onerror = function (err) {
+                                    _this.latexWorkerStatus = EngineStatus.Error;
+                                    reject(err instanceof Error ? err : new Error('SwiftLaTeX worker error during boot'));
                                 };
                             })];
                     case 1:
@@ -138,7 +149,7 @@ var PdfTeXEngine = /** @class */ (function () {
                         this.checkEngineStatus();
                         this.latexWorkerStatus = EngineStatus.Busy;
                         start_compile_time = performance.now();
-                        return [4 /*yield*/, new Promise(function (resolve, _) {
+                        return [4 /*yield*/, new Promise(function (resolve, reject) {
                                 _this.latexWorker.onmessage = function (ev) {
                                     var data = ev['data'];
                                     var cmd = data['cmd'];
@@ -157,6 +168,21 @@ var PdfTeXEngine = /** @class */ (function () {
                                         nice_report.pdf = pdf;
                                     }
                                     resolve(nice_report);
+                                };
+                                // PATCHED (virgil): capture `reject` (executor param above was `_`)
+                                // and wire the worker's error channels to it, so a worker crash /
+                                // uncaught error settles the in-flight compile instead of hanging
+                                // the promise forever (upstream leaves these as silent no-ops, which
+                                // is why a dead worker permanently wedges the spinner). The
+                                // CompileService catches this rejection and reboots the engine.
+                                // Must survive re-vendoring the worker.
+                                _this.latexWorker.onerror = function (err) {
+                                    _this.latexWorkerStatus = EngineStatus.Error;
+                                    reject(err instanceof Error ? err : new Error('SwiftLaTeX worker error during compile'));
+                                };
+                                _this.latexWorker.onmessageerror = function () {
+                                    _this.latexWorkerStatus = EngineStatus.Error;
+                                    reject(new Error('SwiftLaTeX worker message error during compile'));
                                 };
                                 _this.latexWorker.postMessage({ 'cmd': 'compilelatex' });
                                 console.log('Engine compilation start');
