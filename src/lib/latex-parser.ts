@@ -2525,9 +2525,22 @@ function tokenizeGlossCells(text: string): JSONContent[] {
         i = src.length;
       }
     } else {
-      // Non-whitespace run up to next space
+      // Non-whitespace run up to the next top-level space. A `{...}` group
+      // opened mid-token (e.g. after `\textbf`) is consumed to its matching
+      // brace so a space *inside* the argument (`\textbf{a b}`) doesn't sever
+      // the cell — only a brace-depth-0 space terminates the token. Mirrors
+      // expex, which splits aligned words on brace-depth-0 spaces only.
       const start = i;
-      while (i < src.length && !/\s/.test(src[i])) i++;
+      while (i < src.length && !/\s/.test(src[i])) {
+        if (src[i] === "{") {
+          const inner = extractBraced(src, i);
+          if (inner) {
+            i = inner.end;
+            continue;
+          }
+        }
+        i++;
+      }
       token = src.slice(start, i);
     }
     cells.push({

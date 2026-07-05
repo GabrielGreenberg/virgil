@@ -593,16 +593,33 @@ function serializeExampleItem(node: JSONContent): string {
   return `${idMarker}\\a${tagStr}${labelStr} ${body}\n`;
 }
 
+/** True if `s` has a whitespace char at brace depth 0 — i.e. a space that
+ *  expex would treat as a column separator. Whitespace *inside* a `{...}`
+ *  group (e.g. a command's braced argument) is already protected, so it
+ *  doesn't count. `\{`/`\}` are literal, not group delimiters. */
+function hasTopLevelWhitespace(s: string): boolean {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "{" && s[i - 1] !== "\\") depth++;
+    else if (c === "}" && s[i - 1] !== "\\") depth = Math.max(0, depth - 1);
+    else if (depth === 0 && /\s/.test(c)) return true;
+  }
+  return false;
+}
+
 function glossCellToText(cell: JSONContent): string {
   // One cell = inline content; preserve any backslash commands verbatim.
-  // Plain text tokens are whitespace-joined; wrap in braces if the
-  // serialized form contains a top-level space.
+  // Plain text tokens are whitespace-joined; wrap in braces only if the
+  // serialized form has a space at brace depth 0.
   const inner = serializeExampleInlineChildren(cell.content);
   const trimmed = inner.trim();
   if (!trimmed) return "{}";
-  // If the cell contains whitespace at top level, we must brace it so
-  // expex doesn't split it into multiple columns.
-  if (/\s/.test(trimmed)) return `{${trimmed}}`;
+  // Brace only when a top-level (brace-depth-0) space is present, so expex
+  // doesn't split the cell into multiple columns. A whitespace-bearing run
+  // already wrapped by a command's braces — `\textbf{a b}` — needs no
+  // redundant outer group, and the brace-aware parser re-reads it as one cell.
+  if (hasTopLevelWhitespace(trimmed)) return `{${trimmed}}`;
   return trimmed;
 }
 
