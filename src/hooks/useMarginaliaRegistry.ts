@@ -92,6 +92,21 @@ const MAX_OBSERVE_RETRIES = 5;
 
 interface RegistryState {
   cache: Map<string, AnchorNodeMetrics>;
+  /**
+   * Last-good metrics for blocks that scrolled OUT of the near-zone (genuine
+   * viewport-leave). Kept OUT of `cache` so `getMetrics` still returns `null`
+   * for them — the render gate stays viewport-scoped (an off-screen block isn't
+   * painted, and the painted-marker set stays bounded to the near-zone). On
+   * re-entry the parked value is reused when the fresh re-measure is within ε of
+   * it, so a block that did NOT reflow while off-screen re-enters at a
+   * byte-identical Y (no scroll-jump); a real reflow (beyond ε) commits the
+   * fresh measurement instead. Reaped when the block leaves the doc. This is the
+   * "positioned but not painted" state that decouples the metrics cache from the
+   * visibility gate (task 041) — the cache used to double as both, so a
+   * viewport-leave deleted the position and forced a from-scratch re-measure on
+   * every re-entry, which surfaced any pending off-screen reflow as a snap.
+   */
+  parked: Map<string, AnchorNodeMetrics>;
   observed: Map<string, HTMLElement>;
   /**
    * The set of live anchorable uuids as of the last `syncObservedSet`. Drives
@@ -161,6 +176,7 @@ interface RegistryState {
 function emptyState(): RegistryState {
   return {
     cache: new Map(),
+    parked: new Map(),
     observed: new Map(),
     lastUuidSet: new Set(),
     attached: new Set(),
@@ -300,6 +316,43 @@ export function measureBlock(
   } catch {
     return null;
   }
+}
+
+/**
+ * Sub-pixel tolerance (CSS px) for treating two measurements as the SAME
+ * position. A block whose remeasured geometry differs from a prior value by
+ * less than this is NOT re-committed (and fires no `notify()`) — the difference
+ * is imperceptible DPR/layout wobble, and churning the cache on it causes the
+ * marginalia markers to twitch on scroll and re-pack their overflow pills for no
+ * visible gain. A genuine reflow moves a marker by whole pixels, well past this.
+ */
+const POSITION_EPSILON_PX = 0.5;
+
+/**
+ * True when `a` and `b` describe the same marker position to within
+ * {@link POSITION_EPSILON_PX}. `lineCount` and `isAtom` must match EXACTLY: a
+ * line-count change alters the grid's row capacity (`marginalia-grid.ts`) and
+ * MUST re-pack, so it is never absorbed as wobble. The continuous geometry
+ * fields (`top`/`domTop`/`height`/`lineHeight`) tolerate sub-pixel drift.
+ *
+ * Used for three decisions in the registry, all sharing this one notion of
+ * "meaningfully moved": (1) whether a parked block re-enters at its old Y
+ * (reuse) or a fresh one (real reflow), and (2)/(3) whether an in-viewport
+ * re-measure (`onIntersection` / `flushRecompute`) is worth re-committing +
+ * notifying at all.
+ */
+function metricsWithinEpsilon(
+  a: AnchorNodeMetrics,
+  b: AnchorNodeMetrics,
+): boolean {
+  return (
+    a.lineCount === b.lineCount &&
+    a.isAtom === b.isAtom &&
+    Math.abs(a.top - b.top) < POSITION_EPSILON_PX &&
+    Math.abs(a.domTop - b.domTop) < POSITION_EPSILON_PX &&
+    Math.abs(a.height - b.height) < POSITION_EPSILON_PX &&
+    Math.abs(a.lineHeight - b.lineHeight) < POSITION_EPSILON_PX
+  );
 }
 
 function resolveHost(editor: Editor | null | undefined): HTMLElement | null {
@@ -457,14 +510,7 @@ export function useMarginaliaRegistry(
           continue;
         }
         const prev = state.cache.get(uuid);
-        if (
-          !prev ||
-          prev.top !== next.top ||
-          prev.domTop !== next.domTop ||
-          prev.height !== next.height ||
-          prev.lineHeight !== next.lineHeight ||
-          prev.lineCount !== next.lineCount
-        ) {
+        if (!prev || !metricsWithinEpsilon(prev, next)) {
           state.cache.set(uuid, next);
           changed = true;
         }
@@ -549,6 +595,12 @@ export function useMarginaliaRegistry(
         if (resolveDomForUuid(editor, uuid)) droppedStillLive = true;
         state.attached.delete(uuid);
         if (state.cache.delete(uuid)) changed = true;
+        // A block leaving the doc must also drop its parked (off-screen) metrics
+        // so a later uuid collision can't reuse a dead position, and the map
+        // stays bounded by live doc blocks. (A transient walk-exclusion of a
+        // still-live block clears parked harmlessly — it re-parks on its next
+        // genuine viewport-leave.)
+        state.parked.delete(uuid);
       }
 
       // Attach observers for any live uuid that ISN'T already attached. The
@@ -678,16 +730,21 @@ export function useMarginaliaRegistry(
             uuid,
           );
           if (!next) continue;
+          // Re-entry after a genuine viewport-leave: prefer the PARKED position.
+          // If the block did not meaningfully reflow while off-screen, the fresh
+          // re-measure is within ε of the parked value → commit the parked value
+          // verbatim so the marker re-enters at a byte-identical Y (no
+          // scroll-jump, no overflow-pill re-pack). A real reflow (beyond ε)
+          // commits the fresh measurement. The measure still runs, so an
+          // off-screen self-resize (async NodeView sizing, font swap, image
+          // decode) is caught here rather than reused stale.
+          const parked = state.parked.get(uuid);
+          const committed =
+            parked && metricsWithinEpsilon(parked, next) ? parked : next;
+          if (parked) state.parked.delete(uuid);
           const prev = state.cache.get(uuid);
-          if (
-            !prev ||
-            prev.top !== next.top ||
-            prev.domTop !== next.domTop ||
-            prev.height !== next.height ||
-            prev.lineHeight !== next.lineHeight ||
-            prev.lineCount !== next.lineCount
-          ) {
-            state.cache.set(uuid, next);
+          if (!prev || !metricsWithinEpsilon(prev, committed)) {
+            state.cache.set(uuid, committed);
             changed = true;
           }
         } else {
@@ -750,10 +807,21 @@ export function useMarginaliaRegistry(
             scheduleObserveRetry();
             // Do NOT drop the cache — the block is still live; stale-but-close
             // metrics beat a culled marker for the frame until re-measure.
-          } else if (state.cache.delete(uuid)) {
-            // Genuine viewport-leave (or a detach of an already-gone block):
-            // drop the cache so an off-screen block resolves to `null`.
-            changed = true;
+          } else {
+            const cached = state.cache.get(uuid);
+            if (cached) {
+              // Genuine viewport-leave (still connected) vs a detach of an
+              // already-gone block. Either way drop from `cache` so the
+              // off-screen block resolves to `null` (un-painted). For a genuine
+              // viewport-leave, PARK the last-good metrics: the same DOM element
+              // is still observed and will re-enter on scroll-back, and reusing
+              // the parked Y then keeps the marker from jumping (task 041). A
+              // detach (element gone from the doc) parks nothing — there's no
+              // element to re-enter, and `syncObservedSet` reaps it.
+              if (!detached) state.parked.set(uuid, cached);
+              state.cache.delete(uuid);
+              changed = true;
+            }
           }
         }
       }
@@ -850,6 +918,7 @@ export function useMarginaliaRegistry(
       state.resizeObserver = null;
       state.observed.clear();
       state.cache.clear();
+      state.parked.clear();
       state.lastUuidSet = new Set();
       state.attached.clear();
       state.pendingObserve.clear();
