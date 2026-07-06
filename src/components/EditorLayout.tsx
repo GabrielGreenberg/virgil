@@ -10,7 +10,6 @@ import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
-import { readPdf } from "@/lib/storage";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
 import { useTransientAnchorCleanup } from "@/text-objects/useTransientAnchorCleanup";
 import { type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
@@ -216,6 +215,8 @@ const EMPTY_AI_REQUESTS: PaneState["aiRequests"] = [];
 import { hasFsaSupport } from "@/lib/fsa-support";
 import { queryRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
+import { useSystemDialog } from "@/components/system-dialog-host";
+import { asBibFamily, type BibFamilyConflict } from "@/lib/bib-family";
 import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
 import { DocPermissionGate } from "./DocPermissionGate";
 import { RecentPapersList } from "./RecentPapersList";
@@ -379,6 +380,35 @@ export default function EditorLayout() {
   // watcher's stable snapshot — NOT any editor subscription — so this adds zero
   // per-keystroke work.
   const [externalChangeActive, setExternalChangeActive] = useState(false);
+
+  // Save-time bib-family conflict warning (P4). When the family the body needs
+  // (an `\autocite` under a natbib baseline, or the symmetric case) conflicts
+  // with the family the preamble hard-loads, the serializer surfaces a
+  // BibFamilyConflict. Per the locked decision we WARN, never rewrite — reuse
+  // the low-tone systemDialog (same soft surface as the PDF-persistence and
+  // skill-sync notices), NOT a danger modal. Debounced by a signature ref so a
+  // burst of code-view serializes doesn't re-alert on the same conflict.
+  const systemDialog = useSystemDialog();
+  const lastBibConflictKeyRef = useRef<string | null>(null);
+  const handleBibFamilyConflict = useCallback(
+    (conflict: BibFamilyConflict) => {
+      const key = `${conflict.declared}->${conflict.preambleHas}`;
+      if (lastBibConflictKeyRef.current === key) return;
+      lastBibConflictKeyRef.current = key;
+      const needs = conflict.declared === "biblatex" ? "biblatex" : "natbib";
+      const has = conflict.preambleHas;
+      void systemDialog.alert({
+        title: "Bibliography package mismatch",
+        message:
+          `This document uses ${needs}-family citation commands, but the preamble loads ${has}. ` +
+          `Your commands and preamble are left unchanged — switch the preamble to \\usepackage{${needs}} ` +
+          `(or adjust the commands) so the bibliography compiles.`,
+        tone: "default",
+      });
+    },
+    [systemDialog],
+  );
+
   useEffect(() => { setDevStorage(isDevStorage); }, []);
   useEffect(() => { setOpfsOk(opfsAvailable()); }, []);
   const exampleAvailable = opfsOk && !devStorage;
@@ -403,31 +433,16 @@ export default function EditorLayout() {
   // `\documentclass` doesn't define one of the sectioning commands used
   // (e.g. `\chapter` inside `article`). Mount `docClassDialog` near the
   // other root-level dialogs so it overlays everything.
+  // P6: EditorLayout owns only the PDF-VIEW toggle. The PDF STATE
+  // (bytes / blob URL / stale / last-compile-time) is owned SOLELY by the
+  // per-doc EditorPane and bubbled up via `paneState` — the viewer below reads
+  // `paneState?.pdfBlobUrl` / `paneState?.pdfStale`. The former dead parallel
+  // copies here (pdfBlobUrl / lastCompileTime / pdfStale / latestPdfBytes) were
+  // never populated by any compile and have been removed.
   const [pdfView, setPdfView] = useState(false);
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
-  const [lastCompileTime, setLastCompileTime] = useState<number | null>(null);
-  // See EditorPane.tsx for the rationale — `lastEditTime` is a ref so
-  // typing doesn't force a per-keystroke EditorLayout re-render. The
-  // `pdfStale` boolean carries the only observable signal React needs.
-  const lastEditTimeRef = useRef<number | null>(null);
-  const [pdfStale, setPdfStale] = useState(false);
-  const pdfStaleRef = useRef(false);
-  pdfStaleRef.current = pdfStale;
-  const lastCompileTimeRef = useRef<number | null>(null);
-  lastCompileTimeRef.current = lastCompileTime;
-  const latestPdfBytes = useRef<Uint8Array | null>(null);
 
   useEffect(() => {
     setPdfView(false);
-    setLastCompileTime(null);
-    setPdfStale(false);
-    lastEditTimeRef.current = null;
-    latestPdfBytes.current = null;
-    return () => {
-      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      setPdfBlobUrl(null);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDocId]);
 
   // `promptDocClassMismatch` feeds EditorPane's live `useLatexCompile`
@@ -1456,13 +1471,10 @@ export default function EditorLayout() {
   const [codeEditorText, setCodeEditorText] = useState<string | null>(null);
   const handleCodeEditorTextChange = useCallback((text: string) => {
     setCodeEditorText(text);
-    // Write the edit timestamp to the ref (no re-render). Flip
-    // pdfStale false→true once per compile cycle, mirroring the
-    // visual-editor onUpdate handler below.
-    lastEditTimeRef.current = Date.now();
-    if (lastCompileTimeRef.current != null && !pdfStaleRef.current) {
-      setPdfStale(true);
-    }
+    // P6: PDF-stale tracking is now owned SOLELY by EditorPane. A code-view
+    // edit round-trips through the code-pane bridge into TipTap (a real
+    // `view.dispatch`), which fires EditorPane's `editor.on('update')` stale
+    // tracker — so we no longer mirror the pdfStale bump here.
   }, []);
   const knownBibKeys = useMemo(
     () => bibEntries.map((e) => e.key),
@@ -3208,25 +3220,14 @@ export default function EditorLayout() {
     setPdfView(false);
   }, []);
 
-  const switchToPdfView = useCallback(async () => {
-    if (latestPdfBytes.current) {
-      const blob = new Blob([latestPdfBytes.current.buffer as ArrayBuffer], { type: "application/pdf" });
-      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      setPdfBlobUrl(URL.createObjectURL(blob));
-    } else if (currentDocId) {
-      const bytes = await readPdf(currentDocId);
-      if (bytes) {
-        const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/pdf" });
-        if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-        setPdfBlobUrl(URL.createObjectURL(blob));
-      } else {
-        setPdfBlobUrl(null);
-      }
-    }
+  // P6: a PURE view toggle — no disk read, no blob creation. The viewer renders
+  // the active pane's bubbled `paneState.pdfBlobUrl`; the pane's own cold-start
+  // effect seeds that from disk once when it has no in-memory bytes.
+  const switchToPdfView = useCallback(() => {
     if (currentDocId) activateDocPane(currentDocId);
     setCodeView(false);
     setPdfView(true);
-  }, [currentDocId, pdfBlobUrl, activateDocPane]);
+  }, [currentDocId, activateDocPane]);
 
   const switchFromPdfView = useCallback(() => {
     setPdfView(false);
@@ -3239,7 +3240,7 @@ export default function EditorLayout() {
   // `setEditor` on every parent render and infinite-looping.
   const togglePdfView = useCallback(() => {
     if (pdfView) switchFromPdfView();
-    else void switchToPdfView();
+    else switchToPdfView();
   }, [pdfView, switchFromPdfView, switchToPdfView]);
   const toggleCodeView = useCallback(() => {
     if (codeView) switchToVisualView();
@@ -3375,25 +3376,12 @@ export default function EditorLayout() {
     };
   }, [prefs]);
 
-  // Card-source derivations (marginalia markers, footnotes, citations, archive
-  // order) now key off `rev.*` from `useStructuralRevisions` above — they
-  // recompute only on structural change, not per keystroke. The only thing
-  // still riding `editor.on('update')` here is O(1) pdfStale tracking: stamp a
-  // timestamp ref each edit and flip `pdfStale` false→true at most once per
-  // compile cycle. Keystroke-sanctity permitted subscriber — see AGENTS.md.
-  useEffect(() => {
-    if (!editorInstance) return;
-    const onUpdate = () => {
-      lastEditTimeRef.current = Date.now();
-      if (lastCompileTimeRef.current != null && !pdfStaleRef.current) {
-        setPdfStale(true);
-      }
-    };
-    editorInstance.on("update", onUpdate);
-    return () => {
-      editorInstance.off("update", onUpdate);
-    };
-  }, [editorInstance]);
+  // P6: the PDF-stale tracker that used to ride `editor.on('update')` here was
+  // a DUPLICATE of EditorPane's (EditorPane.tsx:~939), which is the single
+  // owner of pdfStale. It has been removed — a code-view edit round-trips
+  // through the bridge into TipTap and fires EditorPane's tracker, so stale
+  // detection is fully covered by the per-doc pane. (Removed from the
+  // keystroke-sanctity allowlist accordingly — see AGENTS.md.)
 
   // Track focus on the canonical editor — interactions with the top pane
   // mark it active so panels route their jumps there.
@@ -3956,6 +3944,8 @@ export default function EditorLayout() {
                             compileLog={paneState?.compileLog ?? null}
                             compileStatus={paneState?.compileStatus ?? null}
                             isCompiling={paneState?.isCompiling ?? false}
+                            bibFamily={asBibFamily(citationsHook.bibPackage)}
+                            onBibFamilyConflict={handleBibFamilyConflict}
                           />
                           {errorsSidebarOpen ? (
                             <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">
@@ -4050,9 +4040,13 @@ export default function EditorLayout() {
           backdrop="dark"
           paddingBottom={zenModeOn ? 4 : 'var(--pod-gap)'}
         >
-          {pdfBlobUrl ? (
+          {/* P6: the viewer reads the active pane's bubbled PDF state — the
+              single source of truth. `pdfBlobUrl` is the fresh-compile blob OR
+              the pane's cold-start disk seed; `pdfStale` is owned solely by the
+              pane's edit-vs-compile tracker (now a live value, not dead code). */}
+          {paneState?.pdfBlobUrl ? (
             <iframe
-              src={pdfBlobUrl}
+              src={paneState.pdfBlobUrl}
               className="w-full h-full border-none"
               style={{ borderRadius: 'var(--pod-radius)' }}
               title="Compiled PDF"
@@ -4065,7 +4059,7 @@ export default function EditorLayout() {
               </div>
             </div>
           )}
-          {pdfStale && pdfBlobUrl && (
+          {paneState?.pdfStale && paneState?.pdfBlobUrl && (
             <div className="absolute top-3 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow flex items-center gap-1.5 z-10">
               <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
               PDF is out of date

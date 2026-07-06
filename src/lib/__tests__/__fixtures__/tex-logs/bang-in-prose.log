@@ -1,0 +1,8 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.24
+(./main.tex
+Rendering a listing that contains shell-style lines:
+! this is a bang line inside a verbatim listing, not a TeX error
+!! double bang, still prose
+The factorial operator n! appears in the math below.
+)
+Output written on main.pdf (1 page, 9001 bytes).

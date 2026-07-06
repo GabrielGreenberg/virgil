@@ -128,6 +128,7 @@ import { useAiRequestCardMigration } from "@/hooks/useAiRequestCardMigration";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { useDocument } from "@/hooks/useDocument";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
+import { readPdf } from "@/lib/storage";
 import { useEditorUIState } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
 import { useWordCount } from "@/hooks/useWordCount";
@@ -1833,6 +1834,44 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     onDocumentClassMismatch,
     onCompileSuccess: handleCompileSuccess,
   });
+
+  // Cold-start PDF seed (P6). EditorPane is the SOLE PDF-state owner + viewer
+  // feeder: the viewer renders the bubbled `pdfBlobUrl`. When PDF view is
+  // entered for a doc that hasn't compiled THIS session (no in-memory bytes),
+  // lazily read the last-persisted PDF from disk ONCE and promote it into the
+  // same `latestPdfBytes`/`pdfBlobUrl` state — so there's still exactly one
+  // authoritative state, just seeded from disk instead of compile. Guarded on
+  // docId so a doc switch mid-await can't flash a stale doc's PDF into the new
+  // viewer. (KeepAliveSlot hides the pane via display:none, never unmounting,
+  // so in-memory bytes survive the view toggle — no re-read after a compile.)
+  useEffect(() => {
+    if (!pdfView || !docId) return;
+    if (latestPdfBytes.current) return; // already seeded (compile or prior read)
+    let cancelled = false;
+    const seededDocId = docId;
+    void (async () => {
+      try {
+        const bytes = await readPdf(seededDocId);
+        // Bail if the doc changed or a compile landed bytes while we awaited.
+        if (cancelled || seededDocId !== docId || latestPdfBytes.current) return;
+        if (!bytes) return;
+        latestPdfBytes.current = bytes;
+        const blob = new Blob([bytes.buffer as ArrayBuffer], {
+          type: "application/pdf",
+        });
+        setPdfBlobUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(blob);
+        });
+      } catch {
+        // Cold-start disk read is best-effort — a missing/unreadable PDF just
+        // leaves the "No compiled PDF" empty state.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pdfView, docId]);
 
   // Word counts — surfaces in the WordCount panel below. Cheap to
   // compute even when the panel isn't open.
@@ -5372,6 +5411,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     expandedErrorIds={expandedErrorIds}
                     expandError={expandError}
                     toggleErrorExpanded={toggleErrorExpanded}
+                    compileLog={compileHook.lastLog}
+                    compileStatus={compileHook.lastStatus}
+                    isCompiling={compileHook.isCompiling}
                     searchState={searchState}
                     setSearchState={setSearchState}
                     setSearchHighlightRange={setSearchHighlightRange}
@@ -5449,6 +5491,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       expandedErrorIds={expandedErrorIds}
                       expandError={expandError}
                       toggleErrorExpanded={toggleErrorExpanded}
+                      compileLog={compileHook.lastLog}
+                      compileStatus={compileHook.lastStatus}
+                      isCompiling={compileHook.isCompiling}
                       searchState={searchState}
                       setSearchState={setSearchState}
                       setSearchHighlightRange={setSearchHighlightRange}
@@ -6487,6 +6532,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         expandedErrorIds={expandedErrorIds}
                         expandError={expandError}
                         toggleErrorExpanded={toggleErrorExpanded}
+                        compileLog={compileHook.lastLog}
+                        compileStatus={compileHook.lastStatus}
+                        isCompiling={compileHook.isCompiling}
                         searchState={searchState}
                         setSearchState={setSearchState}
                         setSearchHighlightRange={setSearchHighlightRange}
@@ -7330,6 +7378,12 @@ interface PaneRailBodyProps {
   expandedErrorIds: Set<string>;
   expandError: (id: string) => void;
   toggleErrorExpanded: (id: string) => void;
+  /** Raw compile log/status surfaced as the docked Errors panel's footer
+   *  disclosure (P5) — the raw log is reachable from the docked panel, not just
+   *  code view. Sourced from EditorPane's own `useLatexCompile`. */
+  compileLog: string | null;
+  compileStatus: number | null;
+  isCompiling: boolean;
   searchState: SearchPanelState;
   setSearchState: React.Dispatch<React.SetStateAction<SearchPanelState>>;
   setSearchHighlightRange: React.Dispatch<React.SetStateAction<{ from: number; to: number } | null>>;
@@ -7406,6 +7460,9 @@ function PaneRailBody({
   expandedErrorIds,
   expandError,
   toggleErrorExpanded,
+  compileLog,
+  compileStatus,
+  isCompiling,
   searchState,
   setSearchState,
   setSearchHighlightRange,
@@ -7636,6 +7693,9 @@ function PaneRailBody({
         expandedIds={expandedErrorIds}
         onExpand={expandError}
         onToggleExpanded={toggleErrorExpanded}
+        compileLog={compileLog}
+        compileStatus={compileStatus}
+        isCompiling={isCompiling}
       />
     );
   }

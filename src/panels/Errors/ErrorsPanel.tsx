@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { PANEL, PrevNextCounter } from "@/components/panel-primitives";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import CompileLogDisclosure from "@/components/CompileLogDisclosure";
 import type { LatexError } from "@/lib/latex-errors";
 import { ErrorCard, errorTitle } from "./ErrorCard";
 
@@ -33,6 +34,13 @@ export interface ErrorsPanelProps {
   expandedIds: Set<string>;
   onExpand: (id: string) => void;
   onToggleExpanded: (id: string) => void;
+  /** Raw pdfTeX log from the last compile — rendered as a collapsible footer
+   *  disclosure so the raw log is reachable from the DOCKED panel, not just
+   *  code view. Undefined → no footer (e.g. the code-view sidebar mount, which
+   *  already has its own drawer). */
+  compileLog?: string | null;
+  compileStatus?: number | null;
+  isCompiling?: boolean;
 }
 
 function ErrorsPanel({
@@ -47,6 +55,9 @@ function ErrorsPanel({
   expandedIds,
   onExpand,
   onToggleExpanded,
+  compileLog,
+  compileStatus,
+  isCompiling,
 }: ErrorsPanelProps) {
   const [filter, setFilter] = useState("");
 
@@ -128,12 +139,26 @@ function ErrorsPanel({
       </div>
     ) : undefined;
 
+  // Raw-log footer disclosure — only when the host threads the compile log
+  // through (the docked panel). The code-view sidebar leaves it undefined
+  // because it already renders the drawer beneath the CodeEditor.
+  const footer =
+    compileLog !== undefined ? (
+      <CompileLogDisclosure
+        log={compileLog}
+        status={compileStatus ?? null}
+        isCompiling={isCompiling ?? false}
+        openMaxHeight="240px"
+      />
+    ) : undefined;
+
   return (
     <CardListPanel<LatexError>
       kind="errors"
       count={visible.length}
       headerExtras={headerExtras}
       panelExtras={panelExtras}
+      footer={footer}
       items={filtered}
       getId={(e) => e.id}
       selectedId={selectedId}

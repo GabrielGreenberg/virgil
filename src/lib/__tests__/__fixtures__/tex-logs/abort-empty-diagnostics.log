@@ -1,0 +1,6 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.24 (TeX Live 2023)
+restricted \write18 enabled.
+entering extended mode
+kpathsea: Running mktexfmt swiftlatexpdftex.fmt
+mktexfmt: could not fetch format from mirror
+Fatal: engine aborted before entering the document body.

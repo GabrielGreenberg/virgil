@@ -1,0 +1,6 @@
+# Vendored SwiftLaTeX binary assets (P1 offline core bundle + WASM/format).
+# Mark them binary so git never applies text/EOL normalization on re-vendoring
+# (the build script scripts/build-tex-bundle.mjs rewrites texbundle/ wholesale).
+public/swiftlatex/texbundle/** binary
+public/swiftlatex/*.fmt binary
+public/swiftlatex/*.wasm binary

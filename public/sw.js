@@ -15,7 +15,19 @@
 // "Update available" banner in the Virgil bar. This keeps existing tabs
 // stable across silent background SW installs and lets the user pick
 // their refresh moment. See src/components/ServiceWorkerRegistration.tsx.
-const CACHE_NAME = "virgil-v5";
+const CACHE_NAME = "virgil-v7";
+
+// Same-origin curated TeX assets (P1 offline-assets). The main thread fetches
+// these in `provisionEngine` to seed the worker's kpse cache; precaching them
+// here makes that seed fetch itself offline-durable. The worker's OWN
+// cross-origin sync XHR to the mirror is NOT — and cannot be — SW-intercepted
+// (that's what the IndexedDB write-through cache + curated seed are for). We
+// precache the base `.fmt` and, if it exists, a `texbundle-manifest.json`
+// listing the curated core bundle (written by scripts/build-tex-bundle.mjs);
+// each listed path is precached too. Missing entries are tolerated — a cold /
+// lighter deploy simply precaches less.
+const TEX_ASSET_PRECACHE = ["./swiftlatex/swiftlatexpdftex.fmt"];
+const TEX_BUNDLE_MANIFEST = "./swiftlatex/texbundle/manifest.json";
 
 // Cross-origin hosts whose responses we deliberately cache so they keep
 // working offline. Google Fonts is on the allowlist because the Fonts…
@@ -37,10 +49,56 @@ const IS_DEV =
 // the user has opened the app online at least once.
 const OFFLINE_FALLBACK = new URL("./", self.location.href).href;
 
-self.addEventListener("install", () => {
+self.addEventListener("install", (event) => {
   // Do NOT skipWaiting() here. The new SW sits in "waiting" until the
   // user clicks the in-app update banner, which posts SKIP_WAITING.
+  //
+  // Precache the same-origin curated TeX assets so the main-thread seed fetch
+  // (provisionEngine) is offline-durable. In dev we never cache. Best-effort:
+  // a failed precache must NOT abort the install (the SW still works for
+  // everything else, and the mirror/write-through path still applies).
+  if (IS_DEV) return;
+  event.waitUntil(precacheTexAssets());
 });
+
+async function precacheTexAssets() {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const paths = [...TEX_ASSET_PRECACHE];
+    // Optionally fold in the texbundle manifest's listed asset paths.
+    try {
+      const manifestUrl = new URL(TEX_BUNDLE_MANIFEST, self.location.href).href;
+      const resp = await fetch(manifestUrl, { cache: "no-store" });
+      if (resp.ok) {
+        const manifest = await resp.json();
+        const listed = Array.isArray(manifest)
+          ? manifest
+          : Array.isArray(manifest && manifest.paths)
+            ? manifest.paths
+            : [];
+        for (const p of listed) if (typeof p === "string") paths.push(p);
+        // Cache the manifest itself too so a reload can re-read it offline.
+        await cache.put(manifestUrl, resp.clone());
+      }
+    } catch {
+      // No texbundle manifest (lighter deploy) — precache just the base .fmt.
+    }
+    await Promise.all(
+      paths.map(async (p) => {
+        try {
+          const url = new URL(p, self.location.href).href;
+          const resp = await fetch(url, { cache: "no-store" });
+          if (resp.ok) await cache.put(url, resp.clone());
+        } catch {
+          // Individual asset unreachable at install — the runtime fetch
+          // handler will cache it on the first successful online load.
+        }
+      }),
+    );
+  } catch {
+    // caches unavailable — nothing to precache; ignore.
+  }
+}
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(

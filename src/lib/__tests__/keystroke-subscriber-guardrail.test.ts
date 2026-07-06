@@ -57,7 +57,7 @@ const SRC = path.resolve(HERE, "../.."); // src/
 // bug, not this list.
 const PERMITTED_KEYSTROKE_SUBSCRIBERS: Record<string, string> = {
   "components/EditorLayout.tsx":
-    "Four O(1) subscribers: activity-presence counter bump (docChanged-gated); section-path recompute main + mirror ('update', the coordsAtPos doc-walk is RAF-coalesced to one frame + perf-flag gated); PDF-stale bump ('update', stamps a timestamp ref at most once per compile cycle).",
+    "Three O(1) subscribers: activity-presence counter bump (docChanged-gated); section-path recompute main + mirror ('update', the coordsAtPos doc-walk is RAF-coalesced to one frame + perf-flag gated). (The PDF-stale bump was removed in P6 — pdfStale is now owned solely by EditorPane.)",
   "components/EditorMirror.tsx":
     "RAF-deferred mirror replay — the transaction handler only schedules a frame.",
   "components/EditorPane.tsx":
