@@ -76,21 +76,13 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
 
 ## Procedure
 
-> **Path resolution.** The `reflect.py` / `get_para_context.py` invocations below
-> use `$scripts_editor`, which resolves to the scripts' synced location in a paper
-> folder (`.virgil/scripts/editor`) or the repo checkout (`editor/scripts`) — set
-> it once at the start:
-> ```bash
-> scripts_editor=""
-> for candidate in .virgil/scripts/editor editor/scripts; do
->   [ -d "$candidate" ] && { scripts_editor="$candidate"; break; }
-> done
-> ```
-> `apply_response` already fires this reflection **mechanically** for every
-> writeback (the "day" capture floor — a memo lands for the Task even if you do
-> nothing), so a manual `/editor/reflect` call here **enriches** that same
-> `(skill, taskId)` memo with the four qualitative buckets rather than being the
-> only record. Pass the same `<skill>` the writeback used so the two merge.
+> **Enrichment, not duplication.** `apply_response` already fires this reflection
+> **mechanically** for every writeback (the "day" capture floor — a memo lands for
+> the Task even if you do nothing), so a manual `/editor/reflect` call here
+> **enriches** that same `(skill, taskId)` memo with the four qualitative buckets
+> rather than being the only record. Pass the same `<skill>` the writeback used so
+> the two merge. (Script paths below are written repo-relative; the bundle build
+> rewrites them for a synced paper folder — see editor/AGENTS.md → Folder layout.)
 
 1. **Reflect on the run.** Before composing, recall: where was the skill
    markdown ambiguous? where did you ask the user or make a low-confidence A/B
@@ -105,7 +97,7 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
    When reflecting on a run you did not personally execute (the umbrella
    dispatched it to a subagent) or after the fact, ground the memo in the
    worked-on text with the para-context helper:
-   `python3 "$scripts_editor/get_para_context.py" <docPath> <uuid>` (the Task's
+   `python3 editor/scripts/get_para_context.py <docPath> <uuid>` (the Task's
    `paragraphIds`, which the memo also records in frontmatter).
 
 2. **Judge your confidence.** If you were genuinely unsure you did the right
@@ -115,7 +107,7 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
    does the gate, the `result`→tier classification, and the write:
 
    ```bash
-   python3 "$scripts_editor/reflect.py" <docPath> <skill> <taskId> \
+   python3 editor/scripts/reflect.py <docPath> <skill> <taskId> \
      --memo-json '{
        "buckets": {
          "issues":       "<ambiguities / where you asked / a near-miss Don'\''t-rule, or empty>",
@@ -138,7 +130,7 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
    promotes the tier to `flagged`, preserving the analytic buckets:
 
    ```bash
-   python3 "$scripts_editor/reflect.py" <docPath> <skill> <taskId> --tag "<their note>"
+   python3 editor/scripts/reflect.py <docPath> <skill> <taskId> --tag "<their note>"
    ```
 
 5. **Echo the script's `Done:` line.** It reports the tier and the memo path.
