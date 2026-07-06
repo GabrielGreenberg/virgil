@@ -160,6 +160,7 @@ from _common import (
     read_json,
     resolve_doc,
     sidecar,
+    spawn_reflection,
     version_bumped,
 )
 
@@ -820,6 +821,69 @@ def _complete_bib_review(doc: Path, txn: "_Txn", bibkey: str, *, rtype: str | No
 
 
 # ---------------------------------------------------------------------------
+# Dev-dream day-capture — the reflect tail on every writeback.
+#
+# apply_response is the single writeback chokepoint EVERY editor skill funnels
+# through — the CLI paths AND create_card.py's in-process run_write_subcommand —
+# so the two commit finalizers (cmd_write, _mutation_commit) are the one place a
+# memo is guaranteed for every completed skill (the "day" floor that makes
+# paper-cowork sessions accumulate dev-dream memos). The contract is
+# skill-agnostic, so we name the skill structurally: a write from the Task's
+# `kind` (reliably present on the request row — NOT the top-level op key, which
+# direct-CLI ops omit); a mutation from the op label each caller stamps in
+# `extra`. Both match the real skill name the umbrella/convention reflection
+# uses, so the two MERGE into the same (skill, taskId) memo instead of
+# duplicating. This is a LABEL derivation, not new contract state.
+# ---------------------------------------------------------------------------
+
+# Task `kind` → responder skill. (No `comment` / `*-comment` entries: a bridged
+# cutter/revision-comment reply rides on a `kind: "suggestion"` row — those are
+# disambiguated by the source panel in `_write_skill`, so a bare "suggestion"
+# here is a *native* draft-suggestion.)
+_KIND_SKILL = {
+    "footnote": "draft-footnote", "citation": "find-citation",
+    "note": "answer-note-request", "todo": "answer-todo-request",
+    "report": "answer-report-request", "report-request": "answer-report-request",
+    "suggestion": "draft-suggestion", "revision-suggestion": "draft-suggestion",
+    "bib-review": "answer-bib-review",
+}
+# Source-card panel → responder skill. Names the answer-* skill for a card-flag
+# reply (a `virtual:<panel>:<cardId>` id carries no kind) and disambiguates a
+# bridged comment (kind "suggestion" + linkedTo.panel cutter/revisions).
+_PANEL_SKILL = {
+    "notes": "answer-note-request", "todos": "answer-todo-request",
+    "cutter": "answer-cutter-comment", "revisions": "answer-revision-comment",
+    "footnotes": "draft-footnote", "citations": "find-citation",
+    "reports": "answer-report-request",
+}
+_OP_SKILL = {
+    "update": "edit-card", "archive": "archive-card", "restore": "restore-card",
+    "move": "move-card", "link": "link-cards",
+    "accept": "accept-suggestion", "reject": "reject-suggestion",
+}
+
+
+def _write_skill(kind: str | None, panel: str | None) -> str:
+    """Name the responder skill for a write, from the Task kind + the source-card
+    panel. The panel is load-bearing on the card-flag paths: a bridged
+    cutter/revision comment reaches here as kind='suggestion' (disambiguate by
+    panel), and a `virtual:<panel>:` card-flag reply carries no kind at all."""
+    if kind == "suggestion" and panel in ("cutter", "revisions"):
+        return _PANEL_SKILL[panel]
+    if kind:
+        return _KIND_SKILL.get(kind, kind)
+    if panel in _PANEL_SKILL:
+        return _PANEL_SKILL[panel]
+    return "apply"
+
+
+def _reflect_tail(doc: Path, skill: str, request_id: str | None) -> None:
+    """Fire the dev-dream capture for a completed writeback (DEV-gated +
+    best-effort inside spawn_reflection). Task-less writebacks key on '-'."""
+    spawn_reflection(doc, skill, request_id or "-")
+
+
+# ---------------------------------------------------------------------------
 # The unified write transaction
 # ---------------------------------------------------------------------------
 
@@ -854,6 +918,7 @@ def cmd_write(
     is_virtual = isinstance(request_id, str) and request_id.startswith("virtual:")
 
     txn = _Txn(doc)
+    reflect_kind: str | None = None  # the Task kind → names the dev-dream memo's skill
 
     # 1. The card itself → its panel sidecar.
     if panel and card is not None:
@@ -895,6 +960,7 @@ def cmd_write(
         ar["requests"].append(req)
         txn.mark(ar_path)
         request_id = new_id
+        reflect_kind = req["kind"]
     elif is_virtual:
         parts = request_id.split(":", 2)
         if len(parts) != 3:
@@ -908,6 +974,7 @@ def cmd_write(
             else (None, None)
         )
         if req is not None:
+            reflect_kind = req.get("kind")
             req["status"] = status
             if result is not None:
                 req["result"] = result
@@ -919,7 +986,7 @@ def cmd_write(
             txn.mark(ar_path)
             linked = req.get("linkedTo")
         elif _complete_bib_review(doc, txn, request_id, rtype=op.get("bibReviewType")):
-            pass  # a bib-review row (keyed by bibKey), not an ai-request id
+            reflect_kind = "bib-review"  # a bib-review row (keyed by bibKey), not an ai-request id
         else:
             if not isinstance(ar, dict) or "requests" not in ar:
                 die("ai-requests.json missing or malformed")
@@ -955,6 +1022,13 @@ def cmd_write(
     txn.add_raw(vpath, vcontent)
 
     commit_under_pen(doc, txn.writes())
+    # Dev-dream day-capture floor: reflect on THIS writeback (the one chokepoint
+    # BOTH the CLI and create_card.py's in-process run_write_subcommand pass
+    # through). The skill is named from the Task kind + the source-card panel
+    # (`linked` — set for a virtual card-flag id or a bridged linkedTo), so it
+    # matches the umbrella/convention reflection and merges into the same
+    # (skill, taskId) memo. DEV-gated + best-effort inside.
+    _reflect_tail(doc, _write_skill(reflect_kind, (linked or {}).get("panel")), request_id)
     return {"ok": True, "version": vnum, "requestId": request_id, "status": status, "result": result}
 
 
@@ -1088,6 +1162,10 @@ def _mutation_commit(
     txn.add_raw(vpath, vcontent)
 
     commit_under_pen(doc, txn.writes())
+    # Dev-dream day-capture floor: reflect on this mutation. The skill is named
+    # from the op label every caller stamps in `extra` (accept → accept-suggestion,
+    # archive → archive-card, …). DEV-gated + best-effort inside.
+    _reflect_tail(doc, _OP_SKILL.get((extra or {}).get("op") or "", "card-op"), request_id)
     out = {"ok": True, "version": vnum, "summary": summary}
     if extra:
         out.update(extra)
