@@ -19,6 +19,17 @@ description: |
 
 # /editor/reflect $ARGUMENTS
 
+<!-- CENTRAL DESIGN PRINCIPLE — the lens every reflection is written through.
+     Verbatim from editor/skills/_dev-loop-principle.md (SSOT). The editor bundle
+     does not transclude, so this is inlined; the drift guard
+     editor/skills/__tests__/dev-loop-principle.test.ts keeps it in sync — edit
+     the SSOT, not this copy. -->
+> **(CENTRAL DESIGN PRINCIPLE)** I want unified, deep, architectural solutions that capture a range of related phenomena--- avoid superficial, surgical patches.  Whenever reasonable, consider the deepest possible solution to the problem that will also improve the app.
+
+Capture friction so the night pass can act on the *class*, not the one-off:
+when you note a rough edge, note the **pattern** behind it (which skills, which
+shared fork) so `/editor/dream` can reach for the deepest unified fix.
+
 Write one **dev-dream reflection memo** about a skill invocation you just
 completed. This is the capture half of the developer self-improvement loop
 (design: [MEMO_DEV_DREAM_DESIGN.md](../../MEMO_DEV_DREAM_DESIGN.md); subsystem

@@ -15,6 +15,18 @@ description: |
 
 # /editor/dream $ARGUMENTS
 
+<!-- CENTRAL DESIGN PRINCIPLE — read first, honor on every skill edit this pass.
+     Verbatim from editor/skills/_dev-loop-principle.md (SSOT). The editor bundle
+     does not transclude, so this is inlined; the drift guard
+     editor/skills/__tests__/dev-loop-principle.test.ts keeps it in sync — edit
+     the SSOT, not this copy. -->
+> **(CENTRAL DESIGN PRINCIPLE)** I want unified, deep, architectural solutions that capture a range of related phenomena--- avoid superficial, surgical patches.  Whenever reasonable, consider the deepest possible solution to the problem that will also improve the app.
+
+Every fix this pass ripples into the skill set: prefer the **deepest unified
+change that retires the whole pattern class**, not a surgical per-skill patch —
+*within* the scope guard, the acts-vs-proposes routing, and the three hard
+boundaries below (they are never weakened by this principle).
+
 The **night** half of the dev-dream loop. The day half — [`/editor/reflect`](reflect.md),
 chip 17 — drops a tiered memo into `editor/dev/memos/` after every skill that
 runs under DEV mode. This skill is the overnight pass that **consumes** those
@@ -124,7 +136,13 @@ This is the judgment the scripts can't do. Over the selected memos:
 - Ground anything unclear in the text: `python3 editor/scripts/get_para_context.py <docPath> <uuid>`
   with the memo's `paragraphIds`.
 
-Turn each pattern into a concrete **proposed change** object:
+Turn each pattern into a concrete **proposed change** object. Honor the CENTRAL
+DESIGN PRINCIPLE at this exact step: reach for the **deepest unified fix that
+retires the whole pattern class** (the shared fork behind the cluster, the one
+SSOT the scattered wording should collapse to) rather than a surgical
+one-memo/one-skill patch — while still routing it through the scope guard and
+the three boundaries below, which the principle never overrides. (Refinement:
+"deep" ≠ "broadest blast radius"; match the fix to the pattern's *true* scope.)
 
 ```json
 { "summary": "tighten the anchor-lookup wording in draft-footnote",
