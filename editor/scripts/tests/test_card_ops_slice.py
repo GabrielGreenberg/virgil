@@ -76,6 +76,30 @@ def out_of(r):
     return json.loads(r.stdout) if r.stdout.strip().startswith("{") else {}
 
 
+LIST = str(SCRIPTS / "list_requests.py")
+
+
+def open_requests(doc):
+    """Run the real drain (list_requests.py) and return its open-request rows
+    (one JSON object per stdout line)."""
+    r = run(LIST, str(doc))
+    return [json.loads(ln) for ln in r.stdout.splitlines()
+            if ln.strip().startswith("{")]
+
+
+def surfaces(rows, card_id, panel):
+    """True iff any drain row references (panel, card_id) — on EITHER leg: the
+    bridged `linkedTo` row (Leg A) or the `virtual:<panel>:<cardId>` unbridged
+    card-flag fallback (Leg B)."""
+    for row in rows:
+        lk = row.get("linkedTo") or {}
+        if lk.get("cardId") == card_id:
+            return True
+        if row.get("id") == f"virtual:{panel}:{card_id}":
+            return True
+    return False
+
+
 def text_of_content(card):
     """Pull the first text run out of a JSONContent body."""
     return (card.get("content", {}).get("content", [{}])[0]
@@ -91,6 +115,7 @@ FN = "f001"                                      # footnotes.json (a real \footn
 CIT = "cc01"                                     # citations.json (atom-bearing)
 CUTTER_B = "fe55c27a-5c73-42f2-aed6-c81329f2655f"  # cutter.json suggestion, Mode B (5505)
 NATIVE_ARCH = "ba034527-6a92-4324-a133-7ba069fb11b4"  # archive.json snippet (no origin)
+FLAGGED_TODO = "ea401798-8d6b-4b4e-9b58-c48ae02437e2"  # todos.json aiRequest:true + an OPEN bridged ai-requests row
 
 
 # ───────────────────────────────── card_by_id (the shared §13 lookup) ─────
@@ -199,6 +224,47 @@ r = op(sb, "restore", {"cardId": NATIVE_ARCH})
 check(r.returncode != 0 and ("origin" in r.stderr or "originalPanel" in r.stderr),
       "refuses restoring a snippet we didn't archive (no originalPanel/originalCard)")
 check(by_id(sb, "archive.json", "snippets", NATIVE_ARCH) is not None, "the native snippet is left untouched")
+
+
+# ─────────────────────── archive RESOLVES the AI request (task 049) ────────
+# Archiving a flagged card is the missing terminal transition alongside answer
+# (019) and delete: it must close BOTH drain legs — the bridged ai-requests row
+# (Leg A) AND the unbridged card-flag fallback (Leg B) — and stay resolved
+# through a restore. FLAGGED_TODO carries aiRequest:true + an OPEN bridged row.
+print("\n=== archive resolves the AI request — both drain legs closed ===")
+sb = sandbox()
+check(surfaces(open_requests(sb), FLAGGED_TODO, "todos"),
+      "precondition: the flagged todo surfaces as an OPEN request before archive")
+r = op(sb, "archive", {"cardId": FLAGGED_TODO})
+check(r.returncode == 0, f"archive flagged todo exited 0 (stderr={r.stderr.strip()[:120]})")
+check(not surfaces(open_requests(sb), FLAGGED_TODO, "todos"),
+      "archived todo surfaces on NEITHER drain leg (request resolved)")
+row = next((x for x in load(sb, "ai-requests.json")["requests"]
+            if (x.get("linkedTo") or {}).get("cardId") == FLAGGED_TODO), None)
+check(row is not None and row.get("status") == "complete",
+      "bridged row flipped terminal (status=complete), not deleted (Leg A closed)")
+snip = by_id(sb, "archive.json", "snippets", FLAGGED_TODO)
+check(snip is not None and snip["originalCard"].get("aiRequest") is False,
+      "archived snapshot lowered aiRequest so restore stays resolved (Leg B)")
+
+print("\n=== restore stays resolved — un-archiving does NOT re-open the request ===")
+r = op(sb, "restore", {"cardId": FLAGGED_TODO})
+check(r.returncode == 0, f"restore flagged todo exited 0 (stderr={r.stderr.strip()[:120]})")
+check(by_id(sb, "todos.json", "items", FLAGGED_TODO).get("aiRequest") is False,
+      "restored todo comes back UNflagged")
+check(not surfaces(open_requests(sb), FLAGGED_TODO, "todos"),
+      "a re-drain after restore does not re-surface the request")
+
+print("\n=== guard: archiving an UNflagged card writes no spurious terminal row ===")
+sb = sandbox()
+before = load(sb, "ai-requests.json")["requests"]
+before_done = sum(1 for x in before if x.get("status") == "complete")
+r = op(sb, "archive", {"cardId": NOTE})  # NOTE is not aiRequest-flagged
+check(r.returncode == 0, "archive unflagged note exited 0")
+after = load(sb, "ai-requests.json")["requests"]
+check(len(after) == len(before), "ai-requests row count unchanged (no new row)")
+check(sum(1 for x in after if x.get("status") == "complete") == before_done,
+      "no request flipped terminal by an unflagged archive (guarded no-op)")
 
 
 # ───────────────────────────────── move (re-anchor) ───────────────────────

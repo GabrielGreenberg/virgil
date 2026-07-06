@@ -17,6 +17,7 @@ import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE, TAB_DT_
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { PanelFolderTab } from "./PanelFolderTab";
+import { STRIP_SIDE_PAD } from "./folder-path";
 
 // F#15 inactive-tab floor: inactive tabs absorb the squeeze first and
 // ellipsize their names down to this width before the active tab compresses.
@@ -376,7 +377,10 @@ export function PanelTabStrip({
         // tab read as PURE library field — no chrome there (task 048); the page
         // outline lives ONLY under the tabs (each inactive tab's own silhouette
         // stroke + the active tab's fill-bridge merging into the body edge).
-        padding: "0 4px 1px",
+        // Horizontal pad is the STRIP_SIDE_PAD SSOT (folder-path.ts): the body
+        // frame below insets by the SAME constant so its rounded top corners
+        // tuck exactly under the outermost tabs' swoop feet (task 047 no-wing).
+        padding: `0 ${STRIP_SIDE_PAD}px 1px`,
         marginBottom: -1,
         // The strip + the (transparent) inactive tabs sit on the LIBRARY
         // backdrop (--library-bg) so unselected tabs read as part of the

@@ -4994,6 +4994,41 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     ],
   );
 
+  // The resolve twin of `setArchivedForKind`. Archiving a flagged card is a
+  // TERMINAL request transition, so it must funnel into the SAME resolve step as
+  // answer (task 019) and delete (deleteReportCard / the atom-delete path) — the
+  // missing third leg. Each flag-bearing kind's bridge-clearing setter lowers the
+  // card's `aiRequest` flag (the `list_unbridged_card_flags` leg) AND drops the
+  // open `ai-requests.json` row (the `isRequestOpen` leg) in one call, so an
+  // archived request surfaces on NEITHER drain leg. The bridge's `value=false`
+  // path early-returns when no open linked row matches, so an unflagged card is a
+  // natural no-op (no spurious terminal row). Dispatch is on the CardKind (not the
+  // panel) because note vs highlight share the `notes` panel but own distinct
+  // setters; kinds with no aiRequest routing (citation, the suggestion family,
+  // plain report) fall through to a no-op.
+  const clearAiRequestForKind = useCallback(
+    (kind: CardKind, id: string) => {
+      switch (kind) {
+        case "note": notesHook.setNoteAiRequest(id, false); break;
+        case "highlight": notesHook.setHighlightAiRequest(id, false); break;
+        case "todo": todosHook.setAiRequest(id, false); break;
+        case "report-request": reportsHook.setRequestAiRequest(id, false); break;
+        case "revision-comment": revisionsHook.setCommentAiRequest(id, false); break;
+        case "cutter-comment": cutterHook.setCommentAiRequest(id, false); break;
+        case "footnote": footnotesHook.setFootnoteAiRequest(id, false); break;
+      }
+    },
+    [
+      notesHook.setNoteAiRequest,
+      notesHook.setHighlightAiRequest,
+      todosHook.setAiRequest,
+      reportsHook.setRequestAiRequest,
+      revisionsHook.setCommentAiRequest,
+      cutterHook.setCommentAiRequest,
+      footnotesHook.setFootnoteAiRequest,
+    ],
+  );
+
   // Archiving an atom-bearing card: splice its `\footnote`/`\cite` marker out of
   // the doc (mirrors the delete path's atom removal, incl. the footnote
   // orphan-suppress latch) and flag the sidecar ref archived. Its content is
@@ -5023,8 +5058,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         innerRef.current?.deleteCitation(id);
         citationsHook.setArchived(id, true);
       }
+      // Terminal transition: the atom is spliced out, so any pending AI request
+      // on it is moot — resolve it (footnote clears its flag + drops the bridged
+      // row; citation has no aiRequest routing, so this is a no-op there).
+      clearAiRequestForKind(kind, id);
     },
-    [docId, footnotesHook.setArchived, citationsHook.setArchived],
+    [
+      docId,
+      footnotesHook.setArchived,
+      citationsHook.setArchived,
+      clearAiRequestForKind,
+    ],
   );
 
   // Pending atom-archive confirm ({kind,id} while the dialog is open).
@@ -5053,10 +5097,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         return;
       }
       // Non-atom kinds: a pure flag toggle (no doc mutation, no confirm).
+      // Archiving (the INTO-archived transition) also resolves any pending AI
+      // request on the card; unarchiving does NOT re-open it (restore stays
+      // resolved — archiving is a deliberate set-aside).
+      if (!currentlyArchived) clearAiRequestForKind(kind, id);
       setArchivedForKind(kind, id, !currentlyArchived);
     },
     [
       setArchivedForKind,
+      clearAiRequestForKind,
       spliceAndArchiveAtom,
       viewPrefs?.prefs.suppressArchiveAtomWarning,
     ],
