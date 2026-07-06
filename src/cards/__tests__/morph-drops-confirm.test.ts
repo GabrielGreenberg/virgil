@@ -9,7 +9,7 @@ import { subscribeCardLifecycle, type CardLifecycleSignal } from "../lifecycle/c
 // Importing the morphs barrel registers every converter onto CARD_REGISTRY +
 // runs the boot assertions — so the converter↔drops pin below sees real transforms.
 import { applyCardMorph } from "../morphs";
-import type { ReportCard, ReportRequestCard } from "@/lib/types";
+import type { ReportCard, ReportRequestCard, UserNote, HighlightCard } from "@/lib/types";
 
 /**
  * T4 §3.2 — the morph confirm copy is GENERATED from `morph.drops`, so it can
@@ -63,10 +63,17 @@ describe("morphConfirmMessage — generated from drops, direction-correct", () =
     expect(copy!.title).toBe("Change to Report?");
   });
 
-  it("note ↔ highlight mentions the body + title", () => {
+  it("note → highlight mentions the body + title (that direction really drops them)", () => {
     const copy = morphConfirmMessage("note");
     expect(copy!.message).toContain("the body");
     expect(copy!.message).toContain("the title");
+  });
+
+  it("highlight → note needs NO confirm copy (REP-F6-03: a highlight has no body/title to drop)", () => {
+    // The reverse direction is NOT "the body and the title" — that copy was
+    // direction-blind (a mirror-copy of note.morph.drops). A highlight carries
+    // no user content, so the morph is lossless → no confirm dialog at all.
+    expect(morphConfirmMessage("highlight")).toBeNull();
   });
 
   it("a non-lossy morph (comment ↔ suggestion) needs no confirm copy", () => {
@@ -159,5 +166,54 @@ describe("converter ↔ drops pin (the real salvage drops exactly what drops nam
     // kept: the body carries across
     expect(out.text).toBe("ask text");
     expect(CARD_REGISTRY["report-request"].morph!.drops).toEqual(["aiRequest"]);
+  });
+
+  it("note → highlight drops the body (content) + title, keeps id/anchor/aiRequest", () => {
+    const note: UserNote = {
+      kind: "note",
+      id: "n1",
+      title: "My title",
+      content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "body" }] }] },
+      createdAt: "t",
+      aiRequest: true,
+      links: [],
+    };
+    const out = applyCardMorph("note", note) as unknown as HighlightCard;
+    expect(out.kind).toBe("highlight");
+    // dropped: a highlight shape has no title / rich body field
+    expect("title" in out).toBe(false);
+    expect("content" in out).toBe(false);
+    // kept: id, anchor links, aiRequest carry across (NOT in drops)
+    expect(out.id).toBe("n1");
+    expect(out.aiRequest).toBe(true);
+    // the dropped set names exactly body + title (direction-correct)
+    expect([...CARD_REGISTRY.note.morph!.drops].sort()).toEqual(["body", "title"]);
+  });
+
+  it("highlight → note drops NOTHING user-authored (drops: [], lossless) — no confirm", () => {
+    // REP-F6-03: the symmetric `drops:["body","title"]` this pair used to carry
+    // was direction-blind — a highlight has no body/title, so the converter
+    // discards no user content. The pin below fails if `highlight.morph.drops`
+    // regains a phantom field that the converter doesn't actually drop.
+    const highlight: HighlightCard = {
+      kind: "highlight",
+      id: "h1",
+      createdAt: "t",
+      highlightColor: null,
+      aiRequest: true,
+      links: [],
+    };
+    const out = applyCardMorph("highlight", highlight) as unknown as UserNote;
+    expect(out.kind).toBe("note");
+    // the note is seeded EMPTY — no user content is fabricated, none is lost
+    expect(out.title).toBe("");
+    // kept: id, anchor links, aiRequest carry across
+    expect(out.id).toBe("h1");
+    expect(out.aiRequest).toBe(true);
+    // the only field a highlight has that a note lacks is `highlightColor` (a
+    // v1-always-null tint, NOT user content) — correctly not named in drops.
+    expect(CARD_REGISTRY.highlight.morph!.drops).toEqual([]);
+    // and therefore the generated confirm copy is null (nothing to warn about).
+    expect(morphConfirmMessage("highlight")).toBeNull();
   });
 });

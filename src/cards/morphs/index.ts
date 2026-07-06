@@ -172,8 +172,11 @@ registerCardMorph("report-request", (card) =>
  * survives. highlight → note starts the note with an EMPTY body — the
  * highlight's excerpt is a snapshot string, not editable rich body, so it is
  * NOT carried into the note body; the text-range anchor still rides across.
- * Both directions are marked `lossy` in the registry, so the confirm fires
- * on either flip (driven by `morph.lossy` at the call site). */
+ * Only note → highlight is `lossy` (it drops the body + title); the confirm
+ * fires on that flip alone (generated from `morph.drops`). highlight → note is
+ * `lossy: false` / `drops: []` — nothing user-authored is lost — so it flips
+ * silently, like comment⇄suggestion. (Symmetric `drops` on the highlight side
+ * used to lie in the confirm — the REP-F6-03 direction-blind class.) */
 
 function noteToHighlight(n: UserNote): HighlightCard {
   return {

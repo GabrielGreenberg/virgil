@@ -213,9 +213,12 @@ describe("morph-remap generalizes to a non-revision pair (cutter)", () => {
       lossy: true,
       drops: ["aiRequest"],
     });
-    // note→highlight is lossy both ways too (R14).
+    // note⇄highlight is lossy in ONE direction only (R14 / REP-F6-03): note →
+    // highlight drops the body + title, but highlight → note is lossless (a
+    // highlight has no user content), so its `morph.to` SSOT rides a non-lossy
+    // facet with no confirm.
     expect(CARD_REGISTRY.note.morph?.lossy).toBe(true);
-    expect(CARD_REGISTRY.highlight.morph?.lossy).toBe(true);
+    expect(CARD_REGISTRY.highlight.morph?.lossy).toBe(false);
   });
 });
 
