@@ -22,9 +22,6 @@ import type { Link, LinkKind } from "./_shared/types";
 export interface LinkRegistryEntry {
   kind: LinkKind;
   label: string;
-  /** Per-kind folder path, relative to repo root. Used by Cowork to
-   *  navigate directly to a kind's implementation. */
-  folder: string;
   /** Structural shape of the anchor — drives resolver dispatch. */
   anchorType: "inline-atom" | "anchor";
   /** In-editor marker style. */
@@ -56,7 +53,6 @@ export const LINK_REGISTRY: Record<LinkKind, LinkRegistryEntry> = {
   footnote: {
     kind: "footnote",
     label: "Footnote",
-    folder: "src/links/Footnote",
     anchorType: "inline-atom",
     marker: "atom-node",
     connector: "on-select",
@@ -74,7 +70,6 @@ export const LINK_REGISTRY: Record<LinkKind, LinkRegistryEntry> = {
   citation: {
     kind: "citation",
     label: "Citation",
-    folder: "src/links/Citation",
     anchorType: "inline-atom",
     marker: "atom-node",
     connector: "on-select",
@@ -92,7 +87,6 @@ export const LINK_REGISTRY: Record<LinkKind, LinkRegistryEntry> = {
   anchor: {
     kind: "anchor",
     label: "Anchor",
-    folder: "src/links/Anchor",
     anchorType: "anchor",
     marker: "margin-icon",
     connector: "none",

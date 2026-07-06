@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { DEFAULT_PRINT_OPTIONS, type PrintOptions } from "@/lib/print";
 import { computeColumnSpawnRect } from "@/components/editor-layout/spawn-position";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
+import type { PanelKind } from "@/panels/_shared/types";
 import { getWindowId } from "@/lib/multi-window/window-id";
 import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
 import { DEFAULT_OMNI_CATEGORIES, migrateOmniCategories, type OmniCategory } from "@/panels/Omni/OmniViewPanel";
@@ -30,7 +31,13 @@ export type DividerLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 /** Heading-divider drawing width. */
 export type DividerWidth = "full" | "mid" | "text";
 
-export type PanelId = "notes" | "revisions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "reports" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
+/** Every persisted panel slot: the canonical `PanelKind` set (the registry
+ *  SSOT) plus the layout-only `"blank"` sentinel. PINNED to `PanelKind` (was a
+ *  hand-typed parallel union) so a panel added to / removed from the registry
+ *  flows here automatically and the two can never diverge silently — the
+ *  unchecked `as PanelId` casts at the `PanelKind→PanelId` boundaries in
+ *  EditorPane would otherwise mask a missing member (audit-059). */
+export type PanelId = PanelKind | "blank";
 
 /** Card kinds whose linked-anchor highlights are togglable from the
  *  Highlights menu. Values match the prefix of `data-link-card`. */
