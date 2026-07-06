@@ -144,4 +144,25 @@ describe("cardHasContent — registry-driven walker classifies every kind", () =
     expect(cardHasContent("todo", { text: "buy milk" })).toBe(true);
     expect(cardHasContent("todo", { text: "  " })).toBe(false);
   });
+
+  it("task 067: a todo counts its `notes` field too (notes-only todo HAS content)", () => {
+    // Facet 1 — the descriptor omitted `notes`, so a title-cleared, notes-only
+    // todo (reachable: `text` is clearable, `notes` independently editable)
+    // read as empty and deleted with NO confirm → silent data loss.
+    expect(cardHasContent("todo", { text: "", notes: "kept" })).toBe(true);
+    // a title AND notes still counts
+    expect(cardHasContent("todo", { text: "task", notes: "detail" })).toBe(true);
+    // a genuinely pristine todo (blank text + notes) stays no-content → the
+    // pristine-skip contract (useTodos.ts) is preserved: it deletes silently.
+    expect(cardHasContent("todo", { text: "", notes: "" })).toBe(false);
+    expect(cardHasContent("todo", { text: "  ", notes: "  " })).toBe(false);
+  });
+
+  it("task 067: the `todo` descriptor names BOTH user-typed fields", () => {
+    // Regression pin — the confirm SSOT must see every user field on the record
+    // (§T4 3.1). Guards against a future edit dropping `notes` back out.
+    const c = CARD_REGISTRY.todo.content;
+    expect(c).not.toBeNull();
+    expect(new Set(c!.textFields)).toEqual(new Set(["text", "notes"]));
+  });
 });
