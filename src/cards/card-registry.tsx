@@ -349,10 +349,15 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
-    // highlight → note seeds an EMPTY note body (the highlight has no body to
-    // carry), so the user's highlight tint is the only thing lost on the way out
-    // (note → highlight). The note's body/title are what drop.
-    morph: { to: "note", lossy: true, drops: ["body", "title"] },
+    // highlight → note is NON-destructive: a highlight has no body/title to
+    // drop (`content: null` above), and the converter seeds an empty note body +
+    // title while preserving id/anchor/aiRequest — only `highlightColor` (a
+    // v1-always-null tint, not user content) is discarded. So `drops: []` /
+    // `lossy: false` → no confirm (like comment⇄suggestion). The REVERSE
+    // direction (note → highlight) is where body/title genuinely drop; that
+    // facet lives on `note.morph`. Symmetric `drops` here was direction-blind
+    // (REP-F6-03) and produced a confirm that lied ("drops the body and title").
+    morph: { to: "note", lossy: false, drops: [] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,
