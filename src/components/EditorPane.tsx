@@ -2270,6 +2270,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       addCitation: (seed) =>
         citationsHook.addCitation(seed.command, undefined, true),
       upsertBibEntry: (entry) => citationsHook.addBibEntry(entry),
+      // Re-attach a bib annotation on a cross-doc bib/citation pull (task
+      // 069). Annotations live in the per-doc `annotations.json` sidecar, not
+      // on the BibEntry, so the stack snapshot carries them separately and the
+      // pull re-homes them here. `setAnnotation` resolves key→uid internally;
+      // when the just-upserted entry isn't resolvable yet it buckets by key
+      // and re-homes onto `byUid` once the entry parses (orphan safety net).
+      setAnnotation: (key, html) => annotationsHook.setAnnotation(key, html),
     };
   }, [
     notesHook,
@@ -2279,6 +2286,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     cutterHook,
     footnotesHook,
     citationsHook,
+    annotationsHook,
   ]);
   // Fallback `ViewPrefs` snapshot for the (now theoretical) case where
   // NO `viewPrefs` bundle is supplied at all. Both real surfaces pass one

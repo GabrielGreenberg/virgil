@@ -50,8 +50,26 @@ export type StackCardSnapshot =
   | { cardKind: "note"; data: UserNote }
   | { cardKind: "highlight"; data: HighlightCard }
   | { cardKind: "footnote"; data: FootnoteRef }
-  | { cardKind: "citation"; data: CitationRef; bibEntries?: BibEntry[] }
-  | { cardKind: "bibliography"; data: BibEntry }
+  | {
+      cardKind: "citation";
+      data: CitationRef;
+      bibEntries?: BibEntry[];
+      /** User-authored annotations for the side-channelled `bibEntries`,
+       *  keyed by citekey. Annotations live in a per-doc `annotations.json`
+       *  sidecar (NOT on the `BibEntry`), so they must ride the snapshot or a
+       *  cross-doc pull drops them silently. Only non-empty entries are
+       *  carried; absent ⇒ none of the referenced entries had a note. */
+      bibAnnotations?: Record<string, string>;
+    }
+  | {
+      cardKind: "bibliography";
+      data: BibEntry;
+      /** User-authored annotation for this entry (the bib-review note),
+       *  resolved from the per-doc `annotations.json` sidecar at snapshot
+       *  time. Carried so a cross-doc pull can re-attach it; absent/empty ⇒
+       *  the entry had no annotation. */
+      annotation?: string;
+    }
   | { cardKind: "example"; data: ExampleRef }
   | { cardKind: "todo"; data: TodoItem }
   | { cardKind: "archive"; data: ArchivedSnippet }

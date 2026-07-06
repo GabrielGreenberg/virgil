@@ -468,7 +468,10 @@ registerCardFloatable("bib", (id, ctx: CardFloatCtx) => {
     bareWindow: true, // bespoke in-body header until Stage 6
     canJump: false,
     jumpToSource: () => {},
-    snapshotForStack: (source) => snapshotCard("bibliography", entry, source),
+    snapshotForStack: (source) =>
+      snapshotCard("bibliography", entry, source, {
+        getAnnotation: ctx.getAnnotation,
+      }),
     renderBody: () => (
       <BibEntryCard
         entry={entry}
@@ -504,6 +507,7 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
     snapshotForStack: (source) =>
       snapshotCard("citation", cit, source, {
         getBibEntry: (k) => ctx.bibEntries.find((e) => e.key === k),
+        getAnnotation: ctx.getAnnotation,
       }),
     renderBody: () => (
       <CitationCard

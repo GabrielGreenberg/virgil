@@ -314,6 +314,12 @@ export function snapshotTextObject(
 export interface CardSnapshotCtx {
   /** Resolve a bib citekey to its full entry (for citations). */
   getBibEntry?: (key: string) => BibEntry | undefined;
+  /** Resolve a bib entry's user-authored annotation (the bib-review note)
+   *  by citekey. Annotations live in a separate per-doc `annotations.json`
+   *  sidecar, NOT on the `BibEntry` — so bibliography/citation snapshots must
+   *  pull them through here or a cross-doc pull loses them silently. Returns
+   *  "" / undefined when the entry has no annotation. */
+  getAnnotation?: (key: string) => string | undefined;
 }
 
 /** Build a card snapshot for a given kind. The card record is deep-
@@ -343,22 +349,37 @@ export function snapshotCard(
     case "citation": {
       const cit = cloned as unknown as CitationRef;
       const bibEntries: BibEntry[] = [];
+      const bibAnnotations: Record<string, string> = {};
       if (ctx?.getBibEntry && Array.isArray(cit.keys)) {
         for (const k of cit.keys) {
           const e = ctx.getBibEntry(k);
-          if (e) bibEntries.push(deepClone(e));
+          if (e) {
+            bibEntries.push(deepClone(e));
+            // Carry the entry's annotation (keyed by its own citekey) so the
+            // pull can re-attach it in the destination doc's sidecar.
+            const ann = ctx.getAnnotation?.(e.key);
+            if (ann) bibAnnotations[e.key] = ann;
+          }
         }
       }
       card = {
         cardKind,
         data: cit,
         ...(bibEntries.length > 0 ? { bibEntries } : {}),
+        ...(Object.keys(bibAnnotations).length > 0 ? { bibAnnotations } : {}),
       };
       break;
     }
-    case "bibliography":
-      card = { cardKind, data: cloned as unknown as BibEntry };
+    case "bibliography": {
+      const entry = cloned as unknown as BibEntry;
+      const annotation = ctx?.getAnnotation?.(entry.key);
+      card = {
+        cardKind,
+        data: entry,
+        ...(annotation ? { annotation } : {}),
+      };
       break;
+    }
     case "example":
       card = { cardKind, data: cloned as unknown as ExampleRef };
       break;

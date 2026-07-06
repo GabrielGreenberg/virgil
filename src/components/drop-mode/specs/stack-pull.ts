@@ -231,11 +231,19 @@ function applyCardDrop(
     placement.kind === "paragraph-side" ? placement.paragraphId : null;
 
   // Citation — upsert bib sidecars first so the destination doc can
-  // resolve cite keys.
+  // resolve cite keys, then re-attach their user-authored annotations
+  // (which live in a per-doc sidecar, not on the BibEntry, so they'd be
+  // dropped by a cross-doc pull otherwise).
   if (card.cardKind === "citation") {
     const entries = "bibEntries" in card ? card.bibEntries : undefined;
     if (entries) {
       for (const e of entries) stack.upsertBibEntry(e);
+    }
+    const anns = "bibAnnotations" in card ? card.bibAnnotations : undefined;
+    if (anns) {
+      for (const [key, html] of Object.entries(anns)) {
+        if (html) stack.setAnnotation?.(key, html);
+      }
     }
   }
 
@@ -262,6 +270,12 @@ function applyCardDrop(
       return;
     case "bibliography":
       stack.upsertBibEntry(card.data);
+      // Re-attach the user-authored annotation carried by the snapshot so a
+      // cross-doc pull doesn't silently lose it. Only fires when the snapshot
+      // carried one, so a same-doc pull writes nothing spurious.
+      if ("annotation" in card && card.annotation) {
+        stack.setAnnotation?.(card.data.key, card.annotation);
+      }
       return;
     case "todo":
       stack.addTodo(paragraphId, { text: card.data.text });

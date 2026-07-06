@@ -262,6 +262,13 @@ export interface StackPullApi {
   addCitation: (seed: CitationRef) => CitationRef;
   /** Upsert a bib entry. No-op when the key already exists. */
   upsertBibEntry: (entry: BibEntry) => void;
+  /** Re-attach a user-authored bib annotation (the bib-review note) in the
+   *  destination doc's per-doc `annotations.json` sidecar, keyed by citekey.
+   *  Called after `upsertBibEntry` on a bibliography/citation pull so the
+   *  note survives a cross-doc round-trip (annotations don't ride the
+   *  `BibEntry`). No-op / omitted when the pulled snapshot carried no
+   *  annotation, so a same-doc pull writes nothing spurious. */
+  setAnnotation?: (key: string, html: string) => void;
 }
 
 /**
