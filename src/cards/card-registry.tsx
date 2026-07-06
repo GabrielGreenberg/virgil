@@ -430,9 +430,11 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "todo",
     // permanent: Mode-A paragraph-anchored, no text-range anchor for the cascade to reach.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
-    // A todo's content is its `text` line (the `notes` field is a secondary
-    // scratch field; the existing confirm gated on `text` alone — preserved).
-    content: { bodyField: null, textFields: ["text"], aiPrefilledFields: [] },
+    // A todo has TWO user-typed fields: the `text` title line AND the free-text
+    // `notes` textarea (TodoRow). Both must be visible to the has-content confirm
+    // (SSOT §T4 3.1) — a `text:"" notes:"…"` todo is reachable, so gating on
+    // `text` alone silently lost a notes-only todo on delete (task 067).
+    content: { bodyField: null, textFields: ["text", "notes"], aiPrefilledFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",

@@ -9,6 +9,8 @@ import {
   CardTitleInput,
   AiRequestCheckbox,
 } from "@/components/panel-primitives";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { cardHasContent } from "@/cards/has-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -83,6 +85,7 @@ export function TodoRow({
   isPoppedOut?: boolean;
 }) {
   const [notes, setNotes] = useState(item.notes);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const popped = usePoppedCards();
   const cardKey = popKey("todo", item.id);
@@ -92,6 +95,19 @@ export function TodoRow({
   const commitNotes = useCallback(() => {
     if (notes !== item.notes) onUpdateNotes(item.id, notes);
   }, [notes, item.notes, item.id, onUpdateNotes]);
+
+  // Delete-with-confirm — route the todo trash + panel Delete/Backspace through
+  // the `cardHasContent` SSOT like every sibling panel (task 067 facet 2; todo
+  // was the lone anchored-body panel whose trash skipped the content gate). Use
+  // the LIVE local `notes` (committed on blur only) so typing-then-trashing
+  // without first blurring the textarea still trips the confirm.
+  const tryDelete = useCallback(() => {
+    if (cardHasContent("todo", { ...item, notes })) {
+      setConfirmOpen(true);
+    } else {
+      onDelete(item.id);
+    }
+  }, [item, notes, onDelete]);
 
   const onToggleFromCtx = onTogglePopout
     ?? (popped
@@ -104,6 +120,7 @@ export function TodoRow({
   const compressed = !isExpanded && !isPoppedOut;
 
   const card = (
+    <>
     <PanelCard
       ref={cardRef}
       data-todo-entry={item.id}
@@ -119,7 +136,7 @@ export function TodoRow({
       isCollapsed={compressed}
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
-      onTrashClick={() => onDelete(item.id)}
+      onTrashClick={tryDelete}
       extraCardClass=""
       className="focus:outline-none"
       tabIndex={isSelected ? 0 : -1}
@@ -141,7 +158,7 @@ export function TodoRow({
         if (!selected) return;
         if (e.key === "Delete" || e.key === "Backspace") {
           e.preventDefault();
-          onDelete(item.id);
+          tryDelete();
         }
       }}
       kind="todo"
@@ -184,6 +201,16 @@ export function TodoRow({
         )}
       </div>
     </PanelCard>
+    <ConfirmDialog
+      open={confirmOpen}
+      message="This item has text. Delete it?"
+      confirmLabel="Delete"
+      tone="danger"
+      anchorRef={cardRef}
+      onConfirm={() => { setConfirmOpen(false); onDelete(item.id); }}
+      onCancel={() => setConfirmOpen(false)}
+    />
+    </>
   );
   return card;
 }
