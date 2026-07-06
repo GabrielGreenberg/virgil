@@ -227,21 +227,42 @@ function countUuidAncestors(el: HTMLElement, root: HTMLElement | null): number {
 const DEFAULT_HANDLE_GAP_PX = 10;
 const DEFAULT_TRACK_WIDTH_PX = 20;
 
+/** Document-root font-size in px — the base a `rem`-authored token resolves
+ *  against (CSS `rem` = root em). Falls back to the editor's nominal 16px when
+ *  the root font-size is unreadable (SSR / stub). O(1) — one computed-style read. */
+function rootFontSizePx(): number {
+  if (typeof document === "undefined") return 16;
+  const raw = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  return Number.isFinite(raw) && raw > 0 ? raw : 16;
+}
+
 /**
- * Resolve a margin length custom property to px against a font size. The
- * tokens are authored in `em` (`--margin-handle-gap` / `--margin-track-width`)
- * so they scale with the labeled text; `getComputedStyle` does NOT resolve a
- * custom property's `em` to px (it returns the literal "0.625em"), so we
- * resolve it here against the block's own `font-size`. A px value passes
- * through (forward-compat). O(1) — reads an already-fetched computed style.
+ * Resolve a margin length custom property to px. The tokens are authored in `em`
+ * (`--margin-handle-gap` / `--margin-track-width`) so they scale with the labeled
+ * text; `getComputedStyle` does NOT resolve a custom property's `em` to px (it
+ * returns the literal "0.625em"), so we resolve it here against the block's own
+ * `font-size`. A `rem` token resolves against the DOCUMENT-ROOT font-size instead
+ * (CSS semantics) — and MUST be matched before the `em` branch, since
+ * `"1.25rem".endsWith("em")` is `true` and would otherwise mis-scale a rem token
+ * against the block font-size. A px value passes through (forward-compat). O(1) —
+ * reads an already-fetched computed style (+ one root read only for the rem path).
+ *
+ * Exported for the geometry-SSOT interpreter-hardening regression test (it asserts
+ * a `rem` token resolves against root font-size, not the block font-size — the same
+ * "for-test" export convention as {@link resolveMarkerLeft}). Otherwise an internal
+ * of `resolveBlockFrame`.
  */
-function resolveMarginEm(
+export function resolveMarginEm(
   cs: CSSStyleDeclaration,
   fontSizePx: number,
   varName: string,
   fallbackPx: number,
 ): number {
   const raw = cs.getPropertyValue(varName).trim();
+  if (raw.endsWith("rem")) {
+    const factor = parseFloat(raw);
+    return Number.isFinite(factor) ? factor * rootFontSizePx() : fallbackPx;
+  }
   if (raw.endsWith("em")) {
     const factor = parseFloat(raw);
     return Number.isFinite(factor) ? factor * fontSizePx : fallbackPx;

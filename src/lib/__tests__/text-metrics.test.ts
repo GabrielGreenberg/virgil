@@ -215,6 +215,48 @@ describe("capTopOffset (with stubbed canvas)", () => {
     }
   });
 
+  it("misses cache on font-style — an italic element doesn't collide with a non-italic sibling", () => {
+    // The cache key must include font-style: the `ctx.font` string prepends
+    // "italic " for an italic element, so the measurement differs. Return
+    // DISTINCT metrics per call to prove the italic element receives its OWN
+    // metrics, not the normal element's cached ones.
+    let call = 0;
+    measureTextSpy.mockImplementation((_text: string) => {
+      call += 1;
+      return {
+        actualBoundingBoxAscent: 10 + call, // capHeight 11 (normal), 12 (italic)
+        fontBoundingBoxAscent: 13,
+        fontBoundingBoxDescent: 3,
+        width: 10,
+      };
+    });
+    const normal = document.createElement("p");
+    const italic = document.createElement("p");
+    for (const el of [normal, italic]) {
+      el.style.fontFamily = "Serif";
+      el.style.fontSize = "16px";
+      el.style.fontWeight = "400";
+      el.style.lineHeight = "24px";
+      document.body.appendChild(el);
+    }
+    italic.style.fontStyle = "italic"; // only difference
+    try {
+      // offset = (24 - 16)/2 + (ascent 13 - capHeight)
+      //   normal: 4 + (13 - 11) = 6 ; italic: 4 + (13 - 12) = 5
+      const normalOffset = capTopOffset(normal);
+      const italicOffset = capTopOffset(italic);
+      // Two measurements — the italic element MISSED the (normal) cache entry.
+      expect(measureTextSpy).toHaveBeenCalledTimes(2);
+      // And it got its OWN metrics, not the normal sibling's.
+      expect(normalOffset).toBeCloseTo(6, 5);
+      expect(italicOffset).toBeCloseTo(5, 5);
+      expect(italicOffset).not.toBeCloseTo(normalOffset, 5);
+    } finally {
+      normal.remove();
+      italic.remove();
+    }
+  });
+
   it("falls back to fontSize * 1.2 when line-height is 'normal'", () => {
     const el = document.createElement("p");
     el.style.fontFamily = "Serif";
