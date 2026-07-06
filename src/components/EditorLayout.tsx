@@ -215,6 +215,8 @@ const EMPTY_AI_REQUESTS: PaneState["aiRequests"] = [];
 import { hasFsaSupport } from "@/lib/fsa-support";
 import { queryRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
+import { useSystemDialog } from "@/components/system-dialog-host";
+import { asBibFamily, type BibFamilyConflict } from "@/lib/bib-family";
 import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
 import { DocPermissionGate } from "./DocPermissionGate";
 import { RecentPapersList } from "./RecentPapersList";
@@ -378,6 +380,35 @@ export default function EditorLayout() {
   // watcher's stable snapshot — NOT any editor subscription — so this adds zero
   // per-keystroke work.
   const [externalChangeActive, setExternalChangeActive] = useState(false);
+
+  // Save-time bib-family conflict warning (P4). When the family the body needs
+  // (an `\autocite` under a natbib baseline, or the symmetric case) conflicts
+  // with the family the preamble hard-loads, the serializer surfaces a
+  // BibFamilyConflict. Per the locked decision we WARN, never rewrite — reuse
+  // the low-tone systemDialog (same soft surface as the PDF-persistence and
+  // skill-sync notices), NOT a danger modal. Debounced by a signature ref so a
+  // burst of code-view serializes doesn't re-alert on the same conflict.
+  const systemDialog = useSystemDialog();
+  const lastBibConflictKeyRef = useRef<string | null>(null);
+  const handleBibFamilyConflict = useCallback(
+    (conflict: BibFamilyConflict) => {
+      const key = `${conflict.declared}->${conflict.preambleHas}`;
+      if (lastBibConflictKeyRef.current === key) return;
+      lastBibConflictKeyRef.current = key;
+      const needs = conflict.declared === "biblatex" ? "biblatex" : "natbib";
+      const has = conflict.preambleHas;
+      void systemDialog.alert({
+        title: "Bibliography package mismatch",
+        message:
+          `This document uses ${needs}-family citation commands, but the preamble loads ${has}. ` +
+          `Your commands and preamble are left unchanged — switch the preamble to \\usepackage{${needs}} ` +
+          `(or adjust the commands) so the bibliography compiles.`,
+        tone: "default",
+      });
+    },
+    [systemDialog],
+  );
+
   useEffect(() => { setDevStorage(isDevStorage); }, []);
   useEffect(() => { setOpfsOk(opfsAvailable()); }, []);
   const exampleAvailable = opfsOk && !devStorage;
@@ -3913,6 +3944,8 @@ export default function EditorLayout() {
                             compileLog={paneState?.compileLog ?? null}
                             compileStatus={paneState?.compileStatus ?? null}
                             isCompiling={paneState?.isCompiling ?? false}
+                            bibFamily={asBibFamily(citationsHook.bibPackage)}
+                            onBibFamilyConflict={handleBibFamilyConflict}
                           />
                           {errorsSidebarOpen ? (
                             <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">

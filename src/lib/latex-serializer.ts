@@ -8,6 +8,55 @@ import {
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
 import { typographyToLatex } from "@/lib/latex-typography";
+import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
+import { classifyCiteFamily } from "@/lib/bib-family";
+import {
+  createRequirementCollector,
+  TIKZ_RE,
+  type RequirementCollector,
+} from "@/lib/latex-requirement-collector";
+
+// -----------------------------------------------------------------------------
+// Requirement collection — side channel (P4, requirements by emission).
+//
+// The requirement declared at each emit-site is pushed into a module-scoped
+// ACTIVE collector rather than threaded through every serializeNode signature.
+// Serialization is fully synchronous and single-threaded, so a module-level
+// "current collector" is safe: `serializeToLatex` sets it before its walk and
+// clears it after, and the body-only / single-paragraph projections leave it
+// null (a `need()` on a null collector is a no-op). This keeps collection
+// STRICTLY side-channel — no byte of emitted output changes.
+// -----------------------------------------------------------------------------
+let activeCollector: RequirementCollector | null = null;
+
+/** Declare a package/shim requirement adjacent to the bytes an emit-site
+ *  writes. No-op when no collector is active (body-only projections). */
+function need(id: string): void {
+  activeCollector?.need(id);
+}
+
+/** Declare the bib family a cite command pins, adjacent to its emit. */
+function needBibFamily(fam: BibFamily | null): void {
+  activeCollector?.needBibFamily(fam);
+}
+
+/** Run the shared tikz/bib/expex/graphicx vocabulary over a raw-passthrough
+ *  block's OWN bytes (texBlock code, figure extras) and declare accordingly —
+ *  co-locating even raw-passthrough detection with its emitter. */
+function declareFromRawLatex(raw: string): void {
+  if (!raw) return;
+  if (TIKZ_RE.test(raw)) need("tikz");
+  if (/\\includegraphics(?![a-zA-Z])/.test(raw)) need("graphicx");
+  if (/\\textcolor(?![a-zA-Z])/.test(raw)) need("xcolor");
+  if (
+    /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z])|\\begin\{xlist\}/.test(
+      raw,
+    )
+  ) {
+    need("expex");
+  }
+  if (/\\begin\{xlist\}/.test(raw)) need("xlistenv");
+}
 
 // The classic preset is the historical default — used as the fallback
 // when a doc has no preserved preamble and the caller didn't pass one.
@@ -82,6 +131,7 @@ function serializeMarks(
         const hex = c.replace(/^#/, "").toUpperCase();
         if (/^[0-9A-F]{6}$/.test(hex)) {
           result = `\\textcolor[HTML]{${hex}}{${result}}`;
+          need("xcolor"); // declared adjacent to the \textcolor byte emit
         }
         break;
       }
@@ -273,6 +323,11 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // the block early.
       const uuid = (node.attrs?.uuid as string) || "";
       const rawCode = (node.attrs?.code as string) || "";
+      // Raw passthrough is unmodeled: run the shared vocabulary over its OWN
+      // bytes so tikz/graphicx/xcolor/expex used inside a texBlock declare
+      // their package at the emit-site (co-located with the fallback detector's
+      // vocabulary, so declared and detected can't diverge).
+      declareFromRawLatex(rawCode);
       const escaped = rawCode.replace(/%!vtex:end/g, "%!v tex:end");
       return `%!vtex:begin ${uuid}\n${escaped}\n%!vtex:end ${uuid}\n\n`;
     }
@@ -288,6 +343,9 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const uuid = node.attrs?.uuid as string | null;
       const label = (node.attrs?.label as string) ?? "";
       const extras = ((node.attrs?.extras as string) ?? "").replace(/\s+$/, "");
+      // `extras` is raw passthrough (\includegraphics, TikZ, pgfplots) — run the
+      // shared vocabulary over it so its packages declare at the emit-site.
+      declareFromRawLatex(extras);
       const captionChild = (node.content || []).find(
         (c) => c.type === "figureCaption",
       );
@@ -319,6 +377,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const command = (node.attrs?.command as string) ?? "";
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
+      need("graphicx"); // \includegraphics is graphicx-bound
       return `${command}${anchor}\n\n`;
     }
 
@@ -419,7 +478,10 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     case "citation": {
       const cid = node.attrs?.citationId as string | undefined;
       const idMarker = cid ? `\\vcid{${cid}}` : "";
-      return `${idMarker}${node.attrs?.command || ""}`;
+      const command = (node.attrs?.command as string) || "";
+      // Declare the bib family this cite command pins, adjacent to its emit.
+      needBibFamily(classifyCiteFamily(command));
+      return `${idMarker}${command}`;
     }
 
     case "labelRef":
@@ -458,8 +520,16 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 function serializeLabelRef(node: JSONContent): string {
   const label = node.attrs?.label || "";
   const cmd = (node.attrs?.refCommand as string) || "ref";
-  if (cmd === "getref") return `\\getref{${label}}`;
-  if (cmd === "getfullref") return `\\getfullref{${label}}`;
+  // \getref / \getfullref are expex reference commands (matched by the expex
+  // fallback detector too); declare adjacent to the emit. Plain \ref is kernel.
+  if (cmd === "getref") {
+    need("expex");
+    return `\\getref{${label}}`;
+  }
+  if (cmd === "getfullref") {
+    need("expex");
+    return `\\getfullref{${label}}`;
+  }
   return `\\ref{${label}}`;
 }
 
@@ -487,6 +557,8 @@ function serializeExampleBlockBodyParagraphs(
 }
 
 function serializeExampleBlock(node: JSONContent): string {
+  // An example block emits `\ex`/`\pex … \xe` — an expex construct.
+  need("expex");
   const kind = node.attrs?.kind === "multi" ? "pex" : "ex";
   const uuid = node.attrs?.uuid as string | null;
   const idMarker = uuid ? `\\vexid{${uuid}}` : "";
@@ -517,6 +589,7 @@ function serializeExampleBlock(node: JSONContent): string {
       // verbatim command (mirrors serializeExampleItem's graphicsBlock branch;
       // the generic graphicsBlock serializer adds a trailing blank line we
       // don't want inside the example).
+      need("graphicx"); // \includegraphics is graphicx-bound
       pieces.push({
         type: "graphicsBlock",
         text: (child.attrs?.command as string) ?? "",
@@ -571,6 +644,8 @@ function serializeExampleBlock(node: JSONContent): string {
 }
 
 function serializeExampleItem(node: JSONContent): string {
+  // An `\a` item is an expex construct.
+  need("expex");
   const uuid = node.attrs?.uuid as string | null;
   const idMarker = uuid ? `\\vxid{${uuid}}` : "";
   const tag = (node.attrs?.tag as string) || "";
@@ -587,6 +662,7 @@ function serializeExampleItem(node: JSONContent): string {
       // trailing blank-line we don't want inside an item, so just emit
       // the command).
       const command = (child.attrs?.command as string) ?? "";
+      need("graphicx"); // \includegraphics is graphicx-bound
       pieces.push(command);
     } else if (child.type === "displayMath") {
       // Display math `\[…\]` inside the item body (Feature A1). Emit the
@@ -602,7 +678,14 @@ function serializeExampleItem(node: JSONContent): string {
     } else if (child.type === "exampleGloss") {
       pieces.push(serializeExampleGloss(child).trimEnd());
     } else if (child.type === "exampleItemList") {
-      // Nested tier of \a items — wrap in expex's xlist environment.
+      // Nested tier of \a items — wrap in the `xlist` environment. This is the
+      // key P4 decoupling site: emitting `\begin{xlist}` REQUIRES both expex
+      // (the `\pex`/`\xe` the env expands to) and the `xlistenv` definition
+      // (expex ships no `xlist`), declared adjacent to the bytes — so a nested
+      // tier can never emit without both requirements, independent of the
+      // fallback regex.
+      need("expex");
+      need("xlistenv");
       const nestedItems = (child.content || []).filter(
         (c) => c.type === "exampleItem",
       );
@@ -649,6 +732,8 @@ function glossCellToText(cell: JSONContent): string {
 }
 
 function serializeExampleGloss(node: JSONContent): string {
+  // A gloss emits `\begingl … \endgl` — an expex construct.
+  need("expex");
   const rows = node.content || [];
   const lines: string[] = [];
   for (const row of rows) {
@@ -768,7 +853,9 @@ function serializeInline(node: JSONContent): string {
   if (node.type === "citation") {
     const cid = node.attrs?.citationId as string | undefined;
     const idMarker = cid ? `\\vcid{${cid}}` : "";
-    return `${idMarker}${node.attrs?.command || ""}`;
+    const command = (node.attrs?.command as string) || "";
+    needBibFamily(classifyCiteFamily(command));
+    return `${idMarker}${command}`;
   }
   if (node.type === "labelRef") {
     return serializeLabelRef(node);
@@ -808,17 +895,66 @@ function collapseBlankRuns(s: string): string {
 
 export function serializeToLatex(
   doc: JSONContent,
-  options?: { preamble?: string; postamble?: string },
+  options?: {
+    preamble?: string;
+    postamble?: string;
+    /**
+     * The AUTHORITATIVE per-doc bib family (from the virgil settings sidecar /
+     * useCitations). When supplied it OVERRIDES the body-derived family guess —
+     * so a doc whose user has chosen biblatex ensures biblatex even if a lone
+     * shared cite would otherwise default to natbib. Optional; backward
+     * compatible (unset → body-derived family, today's behavior).
+     */
+    bibFamily?: BibFamily | null;
+    /**
+     * Called once at serialize time when the family the body needs conflicts
+     * with the family the preamble hard-loads (natbib baseline + `\autocite`,
+     * or the symmetric case). Per the locked decision we WARN, never rewrite —
+     * the save path renders this as a soft notice. Fires at most once.
+     */
+    onRequirementConflict?: (conflict: BibFamilyConflict) => void;
+  },
 ): string {
-  const body = collapseBlankRuns(serializeNode(doc)).trim();
+  // Seed a per-serialize collector and set it as the active side channel for
+  // the walk. Cleared in `finally` so body-only projections never see it.
+  const collector = createRequirementCollector();
+  const prevCollector = activeCollector;
+  activeCollector = collector;
+  let body: string;
+  try {
+    body = collapseBlankRuns(serializeNode(doc)).trim();
+  } finally {
+    activeCollector = prevCollector;
+  }
+
   // Requirements pass runs on EVERY serialize — including the no-options
   // DEFAULT_PREAMBLE fallback — so a body that emits expex / graphicx /
   // tikz / cite commands always has the matching \usepackage (and every
   // `\v*id` shim) by the time the .tex hits disk. `||` (not `??`): an
   // empty-string preamble falls back to the default, as before.
+  //
+  // The DECLARED set (collector.ids, from emit-sites) is UNIONed with the
+  // FALLBACK detector (detectBodyRequirements, for hand-typed raw LaTeX). The
+  // two never subtract, so the result is a superset-improvement over the old
+  // detector-only set — byte-stable for existing docs (the emit-sites declare
+  // exactly what the regexes were catching, plus previously-missed cases).
+  const required = detectBodyRequirements(body);
+  for (const id of collector.ids) required.add(id);
+
+  // Bib family: prefer the authoritative per-doc choice; else the family the
+  // cite emit-sites declared. The declared/authoritative family is reconciled
+  // against the preamble by ensurePreambleRequirements (inject the RIGHT
+  // family; warn — never delete — on a hard conflict).
+  const declaredFamily: BibFamily | null =
+    options?.bibFamily ?? collector.bibFamily;
+
   const rawPreamble = ensurePreambleRequirements(
     options?.preamble || DEFAULT_PREAMBLE,
-    detectBodyRequirements(body),
+    required,
+    {
+      declaredBibFamily: declaredFamily,
+      onBibFamilyConflict: options?.onRequirementConflict,
+    },
   );
   // Re-inject preamble-sourced \title/\author/\date right before
   // \begin{document}. They live in the doc tree (so the editor can show

@@ -18,6 +18,7 @@ import {
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
+import { asBibFamily, type BibFamily } from "@/lib/bib-family";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { FolderPickResult, PickedFigureFile } from "@/lib/storage-fsa";
 import type { WritePdfResult } from "@/lib/storage-types";
@@ -139,6 +140,18 @@ async function fetchJsonIfExists<T>(url: string): Promise<T | null> {
 
 async function putText(url: string, body: string): Promise<void> {
   await fetch(url, { method: "PUT", body }).catch(() => {});
+}
+
+/**
+ * Read the authoritative per-doc bib family off the citations sidecar (dev
+ * mirror of storage-fsa's `readDocBibFamily`). Missing sidecar / no valid
+ * family → null → the serializer falls back to the body-derived family.
+ */
+async function readDevDocBibFamily(docId: string): Promise<BibFamily | null> {
+  const raw = await fetchJsonIfExists<{ bibPackage?: unknown }>(
+    `${API}/doc/${docId}/virgil/citations.json`,
+  );
+  return asBibFamily(raw?.bibPackage);
 }
 
 /**
@@ -354,15 +367,19 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   // Parity with storage-fsa's writeReStampedTexOnLoad: an existing doc keeps
   // its verbatim delimiters; only a brand-new / empty doc (no
   // \begin{document}) seeds a preamble, from the doc's selected style.
-  let serializeOpts: { preamble?: string; postamble?: string } | undefined =
-    delimiters ?? undefined;
+  const bibFamily = await readDevDocBibFamily(docId);
+  const serializeOpts: {
+    preamble?: string;
+    postamble?: string;
+    bibFamily?: BibFamily | null;
+  } = { ...(delimiters ?? {}), bibFamily };
   if (!delimiters) {
     const rawSettings = await fetchJson<unknown>(
       `${API}/doc/${docId}/virgil/document-settings.json`,
       { styleId: DEFAULT_STYLE_ID },
     );
     const settings = migrateDocumentSettings(rawSettings);
-    serializeOpts = { preamble: resolveStyle(settings.styleId).preamble };
+    serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
   }
   const newLatex = serializeToLatex(content, serializeOpts);
   const writebackHandle = getActiveHandle(docId);
@@ -435,16 +452,22 @@ export async function writeDocBundle(
       );
 
     const newSidecar = extractSidecarData(content);
-    // Brand-new docs (no \begin{document}) seed their preamble from the
-    // doc's selected style; existing docs keep their verbatim preamble.
-    let serializeOpts: { preamble?: string } | undefined = delimiters ?? undefined;
+    // Authoritative per-doc bib family from the citations sidecar; missing →
+    // null → body-derived fallback. For a brand-new doc (no \begin{document})
+    // also seed the preamble from the selected style.
+    const bibFamily = await readDevDocBibFamily(h.docId);
+    const serializeOpts: {
+      preamble?: string;
+      postamble?: string;
+      bibFamily?: BibFamily | null;
+    } = { ...(delimiters ?? {}), bibFamily };
     if (!delimiters) {
       const rawSettings = await fetchJson<unknown>(
         `${API}/doc/${h.docId}/virgil/document-settings.json`,
         { styleId: DEFAULT_STYLE_ID },
       );
       const settings = migrateDocumentSettings(rawSettings);
-      serializeOpts = { preamble: resolveStyle(settings.styleId).preamble };
+      serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
     }
     const latex = serializeToLatex(content, serializeOpts);
 

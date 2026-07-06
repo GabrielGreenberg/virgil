@@ -29,6 +29,12 @@ import {
   SHARED_CITE_COMMANDS,
 } from "@/lib/cite-commands";
 import { projectLiveLatex, VERBATIM_ENVS_NARROW } from "@/lib/latex-lexer";
+import {
+  reconcileBibFamily,
+  type BibFamily,
+  type BibFamilyConflict,
+} from "@/lib/bib-family";
+import { TIKZ_RE } from "@/lib/latex-requirement-collector";
 
 export type LatexRequirementKind = "package" | "shim";
 
@@ -151,7 +157,11 @@ const BODY_DETECTORS: Array<{ id: string; re: RegExp }> = [
   // `xlistenv` requirement); expex itself does not provide it.
   { id: "xlistenv", re: /\\begin\{xlist\}/ },
   { id: "graphicx", re: /\\includegraphics(?![a-zA-Z])/ },
-  { id: "tikz", re: /\\begin\{tikzpicture\}/ },
+  // Broadened, shared tikz vocabulary (tikzpicture | tikzcd | \tikz inline |
+  // pgfplots | \begin{axis}) — the SAME predicate the emit-site declarations
+  // use (latex-requirement-collector.ts), so the fallback detector and the
+  // co-located declaration can never diverge.
+  { id: "tikz", re: TIKZ_RE },
   { id: "xcolor", re: /\\textcolor(?![a-zA-Z])/ },
 ];
 
@@ -241,12 +251,30 @@ export function detectBodyRequirements(bodyLatex: string): Set<string> {
  * injected before shims; the shims + xcolor are ensured on every call
  * regardless of `required` (see ALWAYS_REQUIRED_IDS).
  *
- * Mutual exclusivity: if the preamble already carries one bib package
- * family, the other is never injected — the user's choice wins.
+ * Bib-family reconciliation (P4 — the fix for the fatal silent-delete): the
+ * bib family is a single per-document AUTHORITATIVE choice reconciled with —
+ * never silently contradicted by — what the preamble hard-loads. When the
+ * body needs a family the preamble already loads, that's satisfied. When the
+ * body needs a family the preamble DOESN'T load, we inject the RIGHT family.
+ * When the preamble hard-loads the OTHER family, we do NOT delete the needed
+ * family (the old bug: deleting biblatex under a natbib baseline produced a
+ * `.tex` with undefined `\autocite`) and do NOT co-load (fatal) — we surface a
+ * `BibFamilyConflict` via `opts.onBibFamilyConflict` and leave the user's
+ * commands + preamble verbatim (locked decision: warn, never rewrite).
+ *
+ * `opts.declaredBibFamily` is the authoritative/declared family (from the
+ * serializer's cite emit-sites or the per-doc setting). When present it drives
+ * reconciliation; when absent, the family already folded into `required`
+ * (natbib/biblatex from the fallback detector) is used as the declared family
+ * so behavior is unchanged for callers that don't pass it.
  */
 export function ensurePreambleRequirements(
   preamble: string,
   required: Set<string>,
+  opts?: {
+    declaredBibFamily?: BibFamily | null;
+    onBibFamilyConflict?: (conflict: BibFamilyConflict) => void;
+  },
 ): string {
   const effective = new Set<string>(ALWAYS_REQUIRED_IDS);
   for (const id of required) effective.add(id);
@@ -261,18 +289,28 @@ export function ensurePreambleRequirements(
   // inject into below, so byte positions of the live text are untouched.
   const scannable = projectDetectableBody(preamble);
 
-  if (
-    effective.has("natbib") &&
-    REQUIREMENT_BY_ID.get("biblatex")!.satisfiedRe.test(scannable)
-  ) {
-    effective.delete("natbib");
-  }
-  if (
-    effective.has("biblatex") &&
-    REQUIREMENT_BY_ID.get("natbib")!.satisfiedRe.test(scannable)
-  ) {
-    effective.delete("biblatex");
-  }
+  // Resolve which bib family the body/authoritative choice needs. Prefer the
+  // explicit declared family; else derive from what `required` already carries
+  // (the fallback detector puts exactly one of natbib/biblatex in there).
+  const declaredFamily: BibFamily | null =
+    opts?.declaredBibFamily ??
+    (effective.has("natbib")
+      ? "natbib"
+      : effective.has("biblatex")
+        ? "biblatex"
+        : null);
+
+  // Reconcile against the preamble's loaded family — inject the RIGHT family,
+  // never delete a needed one; warn on a hard conflict.
+  const reconcile = reconcileBibFamily(declaredFamily, scannable);
+  // Drop BOTH families from the effective set first, then re-add only the
+  // effective (reconciled) one — so we never inject the wrong family, and never
+  // co-load two. A conflict yields effectiveFamily === null → neither injected
+  // (the user's preamble family stays; the warning is surfaced).
+  effective.delete("natbib");
+  effective.delete("biblatex");
+  if (reconcile.effectiveFamily) effective.add(reconcile.effectiveFamily);
+  if (reconcile.conflict) opts?.onBibFamilyConflict?.(reconcile.conflict);
 
   // Registry order = packages first, then shims.
   const missing = LATEX_REQUIREMENTS.filter(

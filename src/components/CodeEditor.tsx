@@ -16,6 +16,7 @@ import {
   createCodePaneBridge,
   type CodePaneBridge,
 } from "@/lib/code-pane-bridge";
+import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
 import {
   TEX_DELIMITERS_CHANGED_EVENT,
   TEX_DELIMITERS_WILL_CHANGE_EVENT,
@@ -111,6 +112,15 @@ interface CodeEditorProps {
   compileLog?: string | null;
   compileStatus?: number | null;
   isCompiling?: boolean;
+  /**
+   * The authoritative per-doc bib family (from useCitations, bubbled through
+   * paneState). Threaded into the code-view serialize so the mirror reconciles
+   * the family exactly like the disk-save path (P4).
+   */
+  bibFamily?: BibFamily | null;
+  /** Fired when the family the body needs conflicts with the family the
+   *  code-view preamble loads — the shell renders a soft notice. */
+  onBibFamilyConflict?: (conflict: BibFamilyConflict) => void;
 }
 
 export default function CodeEditor({
@@ -124,6 +134,8 @@ export default function CodeEditor({
   compileLog = null,
   compileStatus = null,
   isCompiling = false,
+  bibFamily = null,
+  onBibFamilyConflict,
 }: CodeEditorProps) {
   const [value, setValue] = useState<string | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -134,6 +146,12 @@ export default function CodeEditor({
   // per view/editor pair) never rebuilds on a prop identity change.
   const persistDelimitersRef = useRef(persistDelimiters);
   persistDelimitersRef.current = persistDelimiters;
+  // Latest-refs so the once-constructed bridge reads the CURRENT authoritative
+  // family / conflict handler without rebuilding when they change identity.
+  const bibFamilyRef = useRef(bibFamily);
+  bibFamilyRef.current = bibFamily;
+  const onBibFamilyConflictRef = useRef(onBibFamilyConflict);
+  onBibFamilyConflictRef.current = onBibFamilyConflict;
   const scrolledRef = useRef(false);
   const [parseError, setParseError] = useState<string | null>(null);
   // Flipped to true by `onCreateEditor` once CodeMirror hands us its
@@ -257,6 +275,8 @@ export default function CodeEditor({
         postambleRef.current = d.postamble;
         persistDelimitersRef.current?.(d);
       },
+      getBibFamily: () => bibFamilyRef.current ?? null,
+      onBibFamilyConflict: (c) => onBibFamilyConflictRef.current?.(c),
     });
     bridgeRef.current = bridge;
     return () => {

@@ -18,6 +18,7 @@ import {
 import { serializeToLatex } from "@/lib/latex-serializer";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { projectLiveLatex, VERBATIM_ENVS_NARROW } from "@/lib/latex-lexer";
+import type { BibFamilyConflict } from "@/lib/bib-family";
 
 // The v1 seed preamble — pre-baseline generation, missing graphicx / natbib /
 // expex and four of the seven shims. Byte-identical to the frozen legacy
@@ -104,6 +105,20 @@ describe("detectBodyRequirements — detection matrix", () => {
     expect(
       detectBodyRequirements("\\textcolor[HTML]{FF0000}{red}"),
     ).toContain("xcolor");
+  });
+
+  // P4: the broadened, SHARED tikz vocabulary — the fallback detector uses the
+  // exact same TIKZ_RE the emit-site declarations use.
+  it("detects the broadened tikz family: \\tikz inline / tikzcd / pgfplots \\begin{axis}", () => {
+    expect(
+      detectBodyRequirements("\\tikz \\draw (0,0) -- (1,1);"),
+    ).toContain("tikz");
+    expect(
+      detectBodyRequirements("\\begin{tikzcd} A \\to B \\end{tikzcd}"),
+    ).toContain("tikz");
+    expect(
+      detectBodyRequirements("\\begin{axis}\\addplot {x};\\end{axis}"),
+    ).toContain("tikz");
   });
 
   it("classifies cite commands by family", () => {
@@ -422,6 +437,21 @@ describe("ensurePreambleRequirements — injection", () => {
     expect(countOccurrences(out, "natbib")).toBe(1);
   });
 
+  it("\\RequirePackage{biblatex} satisfies biblatex and gates natbib out (P4 load-form coverage)", () => {
+    const preamble = `\\documentclass{article}
+\\RequirePackage[style=apa]{biblatex}
+
+\\begin{document}
+
+`;
+    // biblatex is already loaded via \RequirePackage → nothing injected.
+    const outBib = ensurePreambleRequirements(preamble, new Set(["biblatex"]));
+    expect(outBib).not.toContain("\\usepackage{biblatex}");
+    // …and a natbib-family body must NOT co-load natbib (conflict → no inject).
+    const outNat = ensurePreambleRequirements(preamble, new Set(["natbib"]));
+    expect(outNat).not.toContain("\\usepackage{natbib}");
+  });
+
   it("a biblatex wrapper package (biblatex-chicago) satisfies biblatex AND gates natbib out", () => {
     const preamble = `\\documentclass{article}
 \\usepackage[authordate]{biblatex-chicago}
@@ -503,6 +533,89 @@ describe("ensurePreambleRequirements — injection", () => {
       new Set(["biblatex"]),
     );
     expect(out2).not.toContain("\\usepackage{biblatex}");
+  });
+});
+
+describe("ensurePreambleRequirements — bib-family reconciliation (P4: warn, never rewrite)", () => {
+  const natbibBaseline = `\\documentclass{article}
+\\usepackage{natbib}
+
+\\begin{document}
+
+`;
+  const biblatexBaseline = `\\documentclass{article}
+\\usepackage[style=apa]{biblatex}
+
+\\begin{document}
+
+`;
+  const bareBaseline = `\\documentclass{article}
+\\usepackage{amsmath}
+
+\\begin{document}
+
+`;
+
+  it("declared biblatex under a natbib baseline → biblatex NOT injected, natbib NOT deleted, CONFLICT surfaced (the old fatal case)", () => {
+    let conflict: BibFamilyConflict | undefined;
+    const out = ensurePreambleRequirements(natbibBaseline, new Set(["biblatex"]), {
+      declaredBibFamily: "biblatex",
+      onBibFamilyConflict: (c) => {
+        conflict = c;
+      },
+    });
+    // Never co-load the incompatible family, never delete the user's natbib.
+    expect(out).not.toContain("\\usepackage{biblatex}");
+    expect(countOccurrences(out, "natbib")).toBe(1);
+    // The conflict is surfaced so the save path can warn.
+    expect(conflict).toEqual({ declared: "biblatex", preambleHas: "natbib" });
+  });
+
+  it("symmetric: declared natbib under a biblatex baseline → conflict, no natbib injection, biblatex kept", () => {
+    let conflict: BibFamilyConflict | undefined;
+    const out = ensurePreambleRequirements(biblatexBaseline, new Set(["natbib"]), {
+      declaredBibFamily: "natbib",
+      onBibFamilyConflict: (c) => {
+        conflict = c;
+      },
+    });
+    expect(out).not.toContain("\\usepackage{natbib}");
+    expect(countOccurrences(out, "biblatex")).toBe(1);
+    expect(conflict).toEqual({ declared: "natbib", preambleHas: "biblatex" });
+  });
+
+  it("declared family injected (the RIGHT one) when the preamble loads NO family — no conflict", () => {
+    let fired = false;
+    const out = ensurePreambleRequirements(bareBaseline, new Set(["biblatex"]), {
+      declaredBibFamily: "biblatex",
+      onBibFamilyConflict: () => {
+        fired = true;
+      },
+    });
+    expect(out).toContain("\\usepackage{biblatex}");
+    expect(out).not.toContain("\\usepackage{natbib}");
+    expect(fired).toBe(false);
+  });
+
+  it("authoritative family OVERRIDES a body-derived guess (declared wins over `required`)", () => {
+    // `required` carries natbib (a body guess), but the authoritative choice is
+    // biblatex → biblatex is what gets ensured.
+    const out = ensurePreambleRequirements(bareBaseline, new Set(["natbib"]), {
+      declaredBibFamily: "biblatex",
+    });
+    expect(out).toContain("\\usepackage{biblatex}");
+    expect(out).not.toContain("\\usepackage{natbib}");
+  });
+
+  it("no conflict callback fires on a satisfied same-family preamble", () => {
+    let fired = false;
+    ensurePreambleRequirements(natbibBaseline, new Set(["natbib"]), {
+      declaredBibFamily: "natbib",
+      onBibFamilyConflict: () => {
+        fired = true;
+      },
+    });
+    expect(fired).toBe(false);
   });
 });
 
@@ -709,6 +822,137 @@ describe("serializeToLatex — requirements integration", () => {
     expect(out).not.toContain("\\usepackage{expex}");
   });
 
+  it("nested-xlist exampleItem DECLARES expex + xlistenv at the emit-site (P4 decoupling)", () => {
+    // A `\pex` whose `\a` item carries a nested exampleItemList emits
+    // `\begin{xlist}` — and the emit-site declares BOTH expex and xlistenv
+    // adjacent to those bytes. We build the JSON directly (not via parse) so the
+    // requirement comes from the serializer's co-located declaration, proving it
+    // is decoupled from the after-the-fact detector regex.
+    const nestedDoc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "exampleBlock",
+          attrs: { uuid: "ex01", kind: "multi" },
+          content: [
+            {
+              type: "exampleItemList",
+              content: [
+                {
+                  type: "exampleItem",
+                  attrs: { uuid: "it01" },
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Outer with a sublist:" }],
+                    },
+                    {
+                      type: "exampleItemList",
+                      content: [
+                        {
+                          type: "exampleItem",
+                          attrs: { uuid: "it02" },
+                          content: [
+                            {
+                              type: "paragraph",
+                              content: [{ type: "text", text: "inner one." }],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const out = serializeToLatex(nestedDoc, { preamble: LEGACY_CLASSIC_V1 });
+    expect(out).toContain("\\begin{xlist}");
+    // Both requirements are present exactly once from the emit-site declaration.
+    expect(countOccurrences(out, "\\usepackage{expex}")).toBe(1);
+    expect(countOccurrences(out, "\\newenvironment{xlist}{\\pex}{\\xe}")).toBe(1);
+  });
+
+  it("\\autocite under a natbib baseline → biblatex requirement PRESERVED + conflict surfaced (never a natbib-only preamble with undefined \\autocite)", () => {
+    const autociteDoc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { uuid: "0001" },
+          content: [
+            { type: "text", text: "As shown " },
+            {
+              type: "citation",
+              attrs: { citationId: "c1", command: "\\autocite{smith2020}" },
+            },
+            { type: "text", text: "." },
+          ],
+        },
+      ],
+    };
+    const natbibPreamble = `\\documentclass{article}
+\\usepackage{natbib}
+
+\\begin{document}
+
+`;
+    let conflict: BibFamilyConflict | undefined;
+    // The user has chosen biblatex (authoritative), the preamble is natbib.
+    const out = serializeToLatex(autociteDoc, {
+      preamble: natbibPreamble,
+      bibFamily: "biblatex",
+      onRequirementConflict: (c) => {
+        conflict = c;
+      },
+    });
+    // The user's \autocite is kept verbatim; natbib is NOT deleted; biblatex is
+    // NOT co-loaded (co-loading is equally fatal). The conflict is surfaced.
+    expect(out).toContain("\\autocite{smith2020}");
+    expect(out).not.toContain("\\usepackage{biblatex}");
+    expect(countOccurrences(out, "natbib")).toBe(1);
+    expect(conflict).toEqual({ declared: "biblatex", preambleHas: "natbib" });
+  });
+
+  it("symmetric: \\citep under a biblatex baseline → conflict, natbib not injected, user command kept", () => {
+    const citepDoc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { uuid: "0001" },
+          content: [
+            {
+              type: "citation",
+              attrs: { citationId: "c1", command: "\\citep{smith2020}" },
+            },
+          ],
+        },
+      ],
+    };
+    const biblatexPreamble = `\\documentclass{article}
+\\usepackage[style=apa]{biblatex}
+
+\\begin{document}
+
+`;
+    let conflict: BibFamilyConflict | undefined;
+    const out = serializeToLatex(citepDoc, {
+      preamble: biblatexPreamble,
+      bibFamily: "natbib",
+      onRequirementConflict: (c) => {
+        conflict = c;
+      },
+    });
+    expect(out).toContain("\\citep{smith2020}");
+    expect(out).not.toContain("\\usepackage{natbib}");
+    expect(countOccurrences(out, "biblatex")).toBe(1);
+    expect(conflict).toEqual({ declared: "natbib", preambleHas: "biblatex" });
+  });
+
   it("no-options path injects needs-driven packages (tikz via texBlock)", () => {
     const tikzDoc: JSONContent = {
       type: "doc",
@@ -724,6 +968,21 @@ describe("serializeToLatex — requirements integration", () => {
     };
     const out = serializeToLatex(tikzDoc);
     expect(countOccurrences(out, "\\usepackage{tikz}")).toBe(1);
+  });
+
+  it("tikzcd / pgfplots in a texBlock inject tikz via the emit-site's raw-bytes declaration", () => {
+    for (const code of [
+      "\\begin{tikzcd} A \\to B \\end{tikzcd}",
+      "\\begin{axis}\\addplot {x};\\end{axis}",
+      "\\tikz \\draw (0,0) -- (1,1);",
+    ]) {
+      const doc: JSONContent = {
+        type: "doc",
+        content: [{ type: "texBlock", attrs: { uuid: "t1", code } }],
+      };
+      const out = serializeToLatex(doc);
+      expect(countOccurrences(out, "\\usepackage{tikz}")).toBe(1);
+    }
   });
 
   it("commented-only \\usepackage{tikz} + tikzpicture body → real tikz still injected", () => {
