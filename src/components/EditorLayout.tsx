@@ -32,11 +32,8 @@ import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
 import { collabClaimScope } from "@/cards/predicates";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
-import { useLatexLint } from "@/hooks/useLatexLint";
-import { mergeLatexErrors, type LatexError } from "@/lib/latex-errors";
-import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
+import type { LatexError } from "@/lib/latex-errors";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
-import { pruneExpanded } from "@/panels/Errors/expansion";
 import { IconErrors } from "./editor-layout/panel-icons";
 import PrintDialog from "./PrintDialog";
 import FontsDialog from "./FontsDialog";
@@ -212,6 +209,11 @@ const EMPTY_CUTTER: PaneState["cutterCards"] = [];
 const EMPTY_TODOS: PaneState["todoItems"] = [];
 const EMPTY_ARCHIVE: PaneState["archiveSnippets"] = [];
 const EMPTY_AI_REQUESTS: PaneState["aiRequests"] = [];
+// Stable empties for the shell's diagnostics fallbacks (read from paneState in
+// the code-view Errors sidebar + badge; the pane owns the real state now).
+const EMPTY_ERR_SET: Set<string> = new Set();
+const EMPTY_ERR_MAP: Map<string, string> = new Map();
+const EMPTY_LATEX_ERRORS_L: LatexError[] = [];
 import { hasFsaSupport } from "@/lib/fsa-support";
 import { queryRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
@@ -360,6 +362,8 @@ export default function EditorLayout() {
   const paneState: PaneState | null = currentDocId
     ? paneStateByDocId[currentDocId] ?? null
     : null;
+  const paneStateRef = useRef(paneState);
+  paneStateRef.current = paneState;
 
   // SSR-safe mirror of `isDevStorage`. The runtime check requires `window`
   // (iframe + FSA detection), so we start false on the server and update
@@ -1334,7 +1338,9 @@ export default function EditorLayout() {
   // `searchHighlightRange`/`searchState` were never written (the producer is on
   // the other side of the boundary). EditorPane now OWNS them; the live
   // highlight range bubbles up via `paneState.searchHighlightRange`
-  // (SR-F3-01/F8-01). EditorLayout reads it back below for `effectiveHighlightRange`.
+  // (SR-F3-01/F8-01). EditorLayout reads it back below to gate `highlightText`
+  // (the search vs. comment-highlight preference); the error-highlight range now
+  // lives entirely in EditorPane (`useDiagnostics`).
   const searchHighlightRange = paneState?.searchHighlightRange ?? null;
 
   // The SearchHost cross-panel jump (`openItemInPanel`) used to live here as a
@@ -1447,8 +1453,6 @@ export default function EditorLayout() {
   const [codeViewLine, setCodeViewLine] = useState<number | undefined>(undefined);
   const [codeViewParagraphId, setCodeViewParagraphId] = useState<string | null>(null);
   const codeEditorHandleRef = useRef<CodeEditorHandle | null>(null);
-  const pendingScrollText = useRef<string | null>(null);
-  const pendingParagraphId = useRef<string | null>(null);
 
   // Route Cmd/Ctrl+P to our Print dialog instead of the browser's bare
   // print sheet. Falls through to the browser when there's no active
@@ -1465,96 +1469,7 @@ export default function EditorLayout() {
     return () => window.removeEventListener("keydown", onKey);
   }, [currentDocId, codeView, pdfView]);
 
-  // Mirrored LaTeX text from the CodeEditor — fed to the live lint hook
-  // and to the Errors panel for snippet/paragraph derivation. Persists
-  // across view switches so the Errors panel stays populated when the
-  // user returns to rich-text view.
-  const [codeEditorText, setCodeEditorText] = useState<string | null>(null);
-  const handleCodeEditorTextChange = useCallback((text: string) => {
-    setCodeEditorText(text);
-    // P6: PDF-stale tracking is now owned SOLELY by EditorPane. A code-view
-    // edit round-trips through the code-pane bridge into TipTap (a real
-    // `view.dispatch`), which fires EditorPane's `editor.on('update')` stale
-    // tracker — so we no longer mirror the pdfStale bump here.
-  }, []);
-  const knownBibKeys = useMemo(
-    () => bibEntries.map((e) => e.key),
-    [bibEntries],
-  );
-  const lintErrors = useLatexLint({
-    text: codeEditorText,
-    knownBibKeys,
-  });
-  const allLatexErrors: LatexError[] = useMemo(
-    () => mergeLatexErrors(lintErrors, paneState?.compileErrors ?? []),
-    [lintErrors, paneState?.compileErrors],
-  );
-  const jumpToLineInCode = useCallback(
-    (line: number, column?: number) => {
-      codeEditorHandleRef.current?.scrollToLine?.(line, column);
-    },
-    [],
-  );
   const [errorsSidebarOpen, setErrorsSidebarOpen] = useState(false);
-
-  // Errors panel: selection + session dismissals. Dismissals are keyed
-  // by error.id and reset when the error list changes materially (new
-  // lint run may regenerate equivalent ids — that's fine, we want the
-  // error to re-surface if it's still present).
-  const [selectedErrorId, setSelectedErrorId] = useState<string | null>(null);
-  const [dismissedErrorIds, setDismissedErrorIds] = useState<Set<string>>(
-    () => new Set(),
-  );
-  // Position range currently highlighted for the selected error. Scoped
-  // to the containing paragraph, narrowed to the offending key when one
-  // appears in the paragraph's plain text. Null when no selection or no
-  // resolvable location.
-  const [errorHighlightRange, setErrorHighlightRange] = useState<{
-    from: number;
-    to: number;
-  } | null>(null);
-  // Error-card expansion (R5). Since the diagnostics unification, this is
-  // the SINGLE expansion set for every error surface: the code-view sidebar
-  // here AND EditorPane's docked panel + omni mirror (threaded down via the
-  // `expandedErrorIds`/`expandError`/`toggleErrorExpanded` props). One owner,
-  // one list — expanding a card on any surface expands it everywhere.
-  const [expandedErrorIds, setExpandedErrorIds] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const expandError = useCallback((id: string) => {
-    setExpandedErrorIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
-  }, []);
-  const toggleErrorExpanded = useCallback((id: string) => {
-    setExpandedErrorIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-  const dismissError = useCallback((id: string) => {
-    setDismissedErrorIds((prev) => {
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-    setSelectedErrorId((cur) => (cur === id ? null : cur));
-    // Prune the dismissed card's expansion alongside (A4 deferred #4).
-    setExpandedErrorIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }, []);
-  // Prune dead expansion ids when the error list changes. `pruneExpanded`
-  // is identity-stable and no-ops on an empty list (the transient
-  // mid-compile empty list must not wipe expansion).
-  useEffect(() => {
-    setExpandedErrorIds((prev) =>
-      pruneExpanded(prev, allLatexErrors.map((e) => e.id)),
-    );
-  }, [allLatexErrors]);
 
   // Click-away: clear the card SELECTION (the halo) when the user clicks
   // outside any anchored surface. Per N1 (A4), expansion is a separate axis —
@@ -1583,243 +1498,34 @@ export default function EditorLayout() {
         : defaultCardStore
       ).clearSelection();
       setSelectedBibKey(null);
-      setSelectedErrorId(null);
+      paneStateRef.current?.setSelectedErrorId?.(null);
     };
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
-  // Resolve `error.id → paragraphUuid` when the error's line falls inside
-  // a UUID-tagged paragraph block. Drives the margin markers and the
-  // "jump to in text" target label.
-  const paragraphByErrorId = useMemo(() => {
-    const m = new Map<string, string>();
-    if (!codeEditorText) return m;
-    const ranges = findParagraphUuids(codeEditorText);
-    if (ranges.length === 0) return m;
-    for (const err of allLatexErrors) {
-      const uuid = paragraphForLine(ranges, err.line);
-      if (uuid) m.set(err.id, uuid);
-    }
-    return m;
-  }, [codeEditorText, allLatexErrors]);
-
-  // Snippet per error (one trimmed source line), computed once from the
-  // latest LaTeX text. Shared with ErrorsHost via props and used by
-  // jumpToError to seed the editor highlight.
-  const errorSnippets = useMemo(() => {
-    const m = new Map<string, string>();
-    if (!codeEditorText) return m;
-    const lines = codeEditorText.split("\n");
-    for (const err of allLatexErrors) {
-      if (err.line <= 0 || err.line > lines.length) continue;
-      const raw = lines[err.line - 1].trim();
-      if (!raw) continue;
-      m.set(err.id, raw.length > 140 ? raw.slice(0, 140) + "\u2026" : raw);
-    }
-    return m;
-  }, [codeEditorText, allLatexErrors]);
-
-  // Compute the rich-text range to highlight for an error.
-  // Strategy:
-  //   1. If `err.detail` (the offending key, e.g. "missingKey") is
-  //      present as plain text in any text node, pin the range to that
-  //      occurrence. Handles ref/cite undefined errors exactly.
-  //   2. Else if the error's paragraph UUID resolves in the doc, scope
-  //      to the whole paragraph. Handles structural errors.
-  //   3. Else return null (no clean way to pin the error to a range).
-  // Paragraph UUIDs can drift across view switches (rich-text re-parse
-  // may regenerate them), so the text-first path is the robust one.
-  const computeErrorHighlightRange = useCallback(
-    (err: LatexError): { from: number; to: number } | null => {
-      const ed = editorRef.current?.getEditor();
-      if (!ed) return null;
-
-      if (err.detail) {
-        let hit: { from: number; to: number } | null = null;
-        ed.state.doc.descendants((node, pos) => {
-          if (hit) return false;
-          if (!node.isText || !node.text) return true;
-          const i = node.text.indexOf(err.detail!);
-          if (i !== -1) {
-            hit = { from: pos + i, to: pos + i + err.detail!.length };
-            return false;
-          }
-          return true;
-        });
-        if (hit) return hit;
-      }
-
-      const paraId = paragraphByErrorId.get(err.id);
-      if (paraId) {
-        let paraFrom: number | null = null;
-        let paraTo: number | null = null;
-        ed.state.doc.descendants((node, pos) => {
-          if (paraFrom !== null) return false;
-          if (node.attrs?.uuid === paraId) {
-            paraFrom = pos + 1;
-            paraTo = pos + node.nodeSize - 1;
-            return false;
-          }
-          return true;
-        });
-        if (paraFrom !== null && paraTo !== null) {
-          return { from: paraFrom, to: paraTo };
-        }
-      }
-
-      return null;
-    },
-    [paragraphByErrorId],
-  );
-
-  // Jump to the error's location — MODE-AWARE (Chip C). In code view we
-  // STAY in code and scroll the CodeMirror pane to the error line; in PDF
-  // view we leave for the visual editor and let the pending-scroll
-  // mechanism scroll there once it mounts; in the visual editor we
-  // highlight the offending range + scroll the mapped paragraph into view.
-  const jumpToError = useCallback(
-    (err: LatexError) => {
-      setSelectedErrorId(err.id);
-      if (codeView) {
-        // STAY in code view — scroll the CodeMirror pane to the error line.
-        codeEditorHandleRef.current?.scrollToLine?.(err.line, err.column);
-        return;
-      }
-      if (pdfView) {
-        // Leave PDF for the visual editor, then scroll there once it mounts
-        // (the post-switch pending-scroll effect handles it).
-        pendingParagraphId.current = paragraphByErrorId.get(err.id) ?? null;
-        pendingScrollText.current = errorSnippets.get(err.id) ?? null;
-        setPdfView(false);
-        return;
-      }
-      // Visual editor: highlight the offending range + scroll the paragraph.
-      const range = computeErrorHighlightRange(err);
-      setErrorHighlightRange(range);
-      const paraId = paragraphByErrorId.get(err.id);
-      if (paraId) {
-        try {
-          editorRef.current?.scrollToParagraphId(paraId);
-        } catch {
-          /* ignore */
-        }
-      }
-    },
-    [codeView, pdfView, paragraphByErrorId, errorSnippets, computeErrorHighlightRange],
-  );
-
-  // Keep the error-highlight range in sync with the current selection.
-  // Runs when the selection, the error list, or the editor mount state
-  // (`editorInstance`) changes.
-  useEffect(() => {
-    if (!selectedErrorId) {
-      setErrorHighlightRange(null);
-      return;
-    }
-    const err = allLatexErrors.find((e) => e.id === selectedErrorId);
-    setErrorHighlightRange(err ? computeErrorHighlightRange(err) : null);
-  }, [selectedErrorId, allLatexErrors, computeErrorHighlightRange, editorInstance]);
+  // Code-view sidebar jump: stay in code, scroll the CodeMirror pane to the
+  // error line, and select the card (selection lives in EditorPane now).
+  const codeJump = useCallback((err: LatexError) => {
+    paneStateRef.current?.setSelectedErrorId?.(err.id);
+    codeEditorHandleRef.current?.scrollToLine?.(err.line, err.column);
+  }, []);
+  // Stable feed for CodeEditor's onTextChange while the code view is open — routes
+  // the raw CodeMirror text into the active pane's sourceText (no longer the sole
+  // source; the pane serializes TipTap otherwise).
+  const handleCodeEditorTextChange = useCallback((text: string) => {
+    paneStateRef.current?.setSourceText?.(text);
+  }, []);
+  // Marker-click selection now routes to the bubbled per-doc setter.
+  const setSelectedErrorIdBridge = useCallback((id: string | null) => {
+    paneStateRef.current?.setSelectedErrorId?.(id);
+  }, []);
 
   // Paragraph navigation history (back/forward) — ref-based to avoid stale closures
   const paraHistoryRef = useRef<{ stack: string[]; idx: number }>({ stack: [], idx: -1 });
   const currentParaRef = useRef<string | null>(null);
   const navigatingRef = useRef(false);
   const [paraNavVersion, setParaNavVersion] = useState(0); // bump to re-render toolbar
-
-  // Scroll TipTap to position after returning from code view
-  useEffect(() => {
-    if (!editorInstance) return;
-
-    // Prefer paragraph UUID for scroll sync
-    const paraId = pendingParagraphId.current;
-    if (paraId) {
-      pendingParagraphId.current = null;
-      pendingScrollText.current = null; // clear text fallback
-      const doScroll = () => {
-        try {
-          editorRef.current?.scrollToParagraphId(paraId);
-        } catch { /* ignore */ }
-      };
-      setTimeout(doScroll, 200);
-      setTimeout(doScroll, 500);
-      return;
-    }
-
-    // Fallback: text-based matching (for edge cases where UUID isn't available)
-    if (!pendingScrollText.current) return;
-    const snippet = pendingScrollText.current;
-    pendingScrollText.current = null;
-
-    // Extract meaningful words from the LaTeX lines — strip all commands/braces
-    const cleaned = snippet
-      .replace(/\\[a-zA-Z]+\*?/g, " ")     // strip command names
-      .replace(/\[[^\]]*\]/g, " ")          // strip optional args
-      .replace(/[{}\\$~^_&%#]/g, " ")       // strip special chars
-      .replace(/\s+/g, " ")
-      .trim();
-
-    // Get words long enough to be meaningful (avoid matching "the", "and", etc.)
-    const words = cleaned.split(" ").filter((w) => w.length > 3);
-    if (words.length < 2) return;
-
-    const docText = editorInstance.state.doc.textBetween(
-      0, editorInstance.state.doc.content.size, "\n"
-    );
-
-    // Use regex with .*? between words — same approach as V→C (tolerates formatting differences)
-    let matchIdx = -1;
-    for (let len = Math.min(words.length, 6); len >= 2; len--) {
-      // Escape regex special chars in each word
-      const escaped = words.slice(0, len).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-      const pattern = escaped.join("[\\s\\S]{0,30}");
-      try {
-        const re = new RegExp(pattern);
-        const match = re.exec(docText);
-        if (match) {
-          matchIdx = match.index;
-          break;
-        }
-      } catch { /* invalid regex — try shorter */ }
-    }
-
-    if (matchIdx < 0) return;
-
-    // Convert text offset to ProseMirror doc position
-    let pos = 0;
-    let textOffset = 0;
-    editorInstance.state.doc.descendants((node, nodePos) => {
-      if (pos > 0) return false;
-      if (node.isText) {
-        const len = (node.text || "").length;
-        if (textOffset + len > matchIdx) {
-          pos = nodePos + (matchIdx - textOffset);
-          return false;
-        }
-        textOffset += len;
-      } else if (node.isBlock && textOffset > 0) {
-        textOffset += 1; // \n separator
-      }
-      return true;
-    });
-
-    if (pos > 0) {
-      const doScroll = () => {
-        try {
-          editorInstance.commands.setTextSelection(pos);
-          const coords = editorInstance.view.coordsAtPos(pos);
-          const scrollEl = findEditorScrollFor(editorInstance.view.dom);
-          if (scrollEl && coords) {
-            const scrollRect = scrollEl.getBoundingClientRect();
-            const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 150;
-            scrollEl.scrollTop = Math.max(0, targetY);
-          }
-        } catch { /* pos out of range */ }
-      };
-      setTimeout(doScroll, 200);
-      setTimeout(doScroll, 500);
-    }
-  }, [editorInstance]);
 
   // Track active paragraph and build navigation history
   // Model: stack always includes current position, idx points to where we are now.
@@ -2678,7 +2384,7 @@ export default function EditorLayout() {
     getOmniEnabled,
     setSelectedFootnoteId,
     setSelectedCitationId,
-    setSelectedErrorId,
+    setSelectedErrorId: setSelectedErrorIdBridge,
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
@@ -3450,9 +3156,8 @@ export default function EditorLayout() {
   // the functions through a latest-ref + stable wrappers so `vbar` changes ONLY
   // when a DISPLAY value the bar actually paints (aiDot/isCompiling/pdfStale/
   // pdfView/codeView/pdfBlobUrl/aiRequests) changes. The wrappers always invoke
-  // the current pane function, so behavior is unchanged.
-  const paneStateRef = useRef(paneState);
-  paneStateRef.current = paneState;
+  // the current pane function, so behavior is unchanged. (`paneStateRef` is
+  // declared once near the `paneState` derivation above and reused here.)
   const stableCompilePdf = useCallback(() => paneStateRef.current?.compilePdf?.(), []);
   const stableSwitchToPdfView = useCallback(() => paneStateRef.current?.switchToPdfView?.(), []);
   const stableSwitchFromPdfView = useCallback(() => paneStateRef.current?.switchFromPdfView?.(), []);
@@ -3709,7 +3414,7 @@ export default function EditorLayout() {
   }
 
   // Search range highlight takes priority — skip text-based highlight when active
-  const highlightText = searchHighlightRange || errorHighlightRange
+  const highlightText = searchHighlightRange
     ? null
     : !visibleHighlightKinds.has("comment")
       ? null
@@ -3722,14 +3427,8 @@ export default function EditorLayout() {
               currentSuggestion.status === "pending"
             ? currentSuggestion.original_text
             : null;
-  // Range-based highlights — search wins over error (search is an explicit
-  // user action, error highlight is derived from selection). `searchHighlightRange`
-  // is now the live value bubbled up from EditorPane (the owner); `errorHighlightRange`
-  // is still EditorLayout's own (compile-derived) and bubbles DOWN via this prop.
-  // EditorPane re-applies the same `search ?? error` preference on its side, so
-  // passing the combined range here is idempotent — EditorPane's local search
-  // range and this bubbled copy are the same value.
-  const effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange;
+  // Error badge count — read from the per-doc owner (EditorPane) via paneState.
+  const errorCount = paneState?.latexErrors.length ?? 0;
   // OmniView aggregates several child panels on one side. Omni is now the
   // perpetual backdrop behind each side's band stack, so the side-of-panel
   // lookups must include its children. A kind docked as its own band wins
@@ -3894,27 +3593,7 @@ export default function EditorLayout() {
                             isActive ? handleAiWindowClose : undefined
                           }
                           highlightText={isActive ? highlightText : undefined}
-                          highlightRange={
-                            isActive ? effectiveHighlightRange : undefined
-                          }
                           onDocumentClassMismatch={promptDocClassMismatch}
-                          latexErrors={isActive ? allLatexErrors : undefined}
-                          paragraphByErrorId={
-                            isActive ? paragraphByErrorId : undefined
-                          }
-                          errorSnippets={isActive ? errorSnippets : undefined}
-                          selectedErrorId={isActive ? selectedErrorId : undefined}
-                          setSelectedErrorId={setSelectedErrorId}
-                          dismissedErrorIds={
-                            isActive ? dismissedErrorIds : undefined
-                          }
-                          dismissError={dismissError}
-                          expandedErrorIds={
-                            isActive ? expandedErrorIds : undefined
-                          }
-                          expandError={expandError}
-                          toggleErrorExpanded={toggleErrorExpanded}
-                          onJumpToError={isActive ? jumpToError : undefined}
                         />
                       </EditorChromeProvider>
                     }
@@ -3960,17 +3639,17 @@ export default function EditorLayout() {
                                 ×
                               </button>
                               <ErrorsHost
-                                errors={allLatexErrors}
-                                selectedId={selectedErrorId}
-                                onSelect={setSelectedErrorId}
-                                dismissedIds={dismissedErrorIds}
-                                onDismiss={dismissError}
-                                onJump={jumpToError}
-                                snippets={errorSnippets}
-                                paragraphByErrorId={paragraphByErrorId}
-                                expandedIds={expandedErrorIds}
-                                onExpand={expandError}
-                                onToggleExpanded={toggleErrorExpanded}
+                                errors={paneState?.latexErrors ?? EMPTY_LATEX_ERRORS_L}
+                                selectedId={paneState?.selectedErrorId ?? null}
+                                onSelect={setSelectedErrorIdBridge}
+                                dismissedIds={paneState?.dismissedErrorIds ?? EMPTY_ERR_SET}
+                                onDismiss={paneState?.dismissError ?? noop}
+                                onJump={codeJump}
+                                snippets={paneState?.errorSnippets ?? EMPTY_ERR_MAP}
+                                paragraphByErrorId={paneState?.paragraphByErrorId ?? EMPTY_ERR_MAP}
+                                expandedIds={paneState?.expandedErrorIds ?? EMPTY_ERR_SET}
+                                onExpand={paneState?.expandError ?? noop}
+                                onToggleExpanded={paneState?.toggleErrorExpanded ?? noop}
                               />
                             </div>
                           ) : (
@@ -3978,16 +3657,16 @@ export default function EditorLayout() {
                               type="button"
                               onClick={() => setErrorsSidebarOpen(true)}
                               className="w-7 shrink-0 border-l border-edge-subtle bg-surface flex items-start justify-center pt-3 hover-on-light relative text-ink-muted hover:text-ink-body"
-                              data-hint={`Show errors (${allLatexErrors.length})`}
+                              data-hint={`Show errors (${errorCount})`}
                               aria-label="Show errors panel"
                             >
                               <IconErrors active={false} />
-                              {allLatexErrors.length > 0 && (
+                              {errorCount > 0 && (
                                 <span
                                   className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] leading-[14px] tabular-nums text-white text-center"
                                   style={{ backgroundColor: "var(--danger)" }}
                                 >
-                                  {allLatexErrors.length > 99 ? "99+" : allLatexErrors.length}
+                                  {errorCount > 99 ? "99+" : errorCount}
                                 </span>
                               )}
                             </button>

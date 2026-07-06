@@ -55,9 +55,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type Dispatch,
   type RefObject,
-  type SetStateAction,
 } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import VirgilEditor, { type EditorHandle } from "./Editor";
@@ -131,6 +129,9 @@ import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { readPdf } from "@/lib/storage";
 import { useEditorUIState } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
+import { useLatexSource } from "@/hooks/useLatexSource";
+import { useDiagnostics } from "@/hooks/useDiagnostics";
+import { asBibFamily } from "@/lib/bib-family";
 import { useWordCount } from "@/hooks/useWordCount";
 import { useTodos } from "@/hooks/useTodos";
 import { useArchive } from "@/hooks/useArchive";
@@ -671,6 +672,23 @@ export interface PaneState {
   // owner instead of a dead duplicate. The producer→editor path no longer
   // crosses the component boundary in the wrong direction (SR-F3-01/F8-01).
   searchHighlightRange: { from: number; to: number } | null;
+  // Diagnostics (P5 item 4): EditorPane is now the single per-doc owner of the
+  // lint+compile error surface. The shell reads these for its code-view Errors
+  // sidebar + error badge, routes marker/click-away selection through
+  // `setSelectedErrorId`, and feeds `setSourceText` from the CodeEditor mirror
+  // while the code view is open.
+  latexErrors: LatexError[];
+  selectedErrorId: string | null;
+  setSelectedErrorId: (id: string | null) => void;
+  dismissedErrorIds: Set<string>;
+  dismissError: (id: string) => void;
+  expandedErrorIds: Set<string>;
+  expandError: (id: string) => void;
+  toggleErrorExpanded: (id: string) => void;
+  errorSnippets: Map<string, string>;
+  paragraphByErrorId: Map<string, string>;
+  jumpToErrorVisual: (err: LatexError) => void;
+  setSourceText: (text: string) => void;
   // Code-pane preamble commit (`useDocument.saveWithDelimiters`): persists
   // the live doc with caller-supplied .tex delimiters through the SAME
   // handle + "bundle" write queue the autosaver uses. Bubbled because
@@ -728,8 +746,6 @@ export interface EditorPaneProps {
 
   /** Search-bar / link-jump highlight forwarded straight through. */
   highlightText?: string | null;
-  /** Position-based highlight (search panel). */
-  highlightRange?: { from: number; to: number } | null;
 
   /**
    * Fires once the live TipTap `Editor` instance is ready. The Library
@@ -819,27 +835,6 @@ export interface EditorPaneProps {
   aiWindowOpen?: boolean;
   onAiWindowClose?: () => void;
 
-  /**
-   * Error state — owned by EditorLayout (the single owner across all
-   * four error surfaces) and threaded down here so the docked
-   * ErrorsPanel + omni mirror read the SAME selection / expansion /
-   * dismissal / snippet / paragraph-mapping state the code-view
-   * sidebar and margin markers already use. The Library Reader omits
-   * these (it never compiles); EditorPane falls back to empties so the
-   * error surfaces render nothing rather than crashing.
-   */
-  latexErrors?: LatexError[];
-  paragraphByErrorId?: Map<string, string>;
-  errorSnippets?: Map<string, string>;
-  selectedErrorId?: string | null;
-  setSelectedErrorId?: Dispatch<SetStateAction<string | null>>;
-  dismissedErrorIds?: Set<string>;
-  dismissError?: (id: string) => void;
-  expandedErrorIds?: Set<string>;
-  expandError?: (id: string) => void;
-  toggleErrorExpanded?: (id: string) => void;
-  onJumpToError?: (err: LatexError) => void;
-
   // Note: paragraph / heading / example popout handlers used to be
   // optional props here (added during the 7.6 partial). Step 7.6
   // collapses them — they're now derived locally from
@@ -847,16 +842,6 @@ export interface EditorPaneProps {
   // Both surfaces now pass the bundle (the Reader via the ephemeral
   // `useReaderViewPrefs()`), so popouts wire automatically in each.
 }
-
-// Stable empty defaults for the (optional) error-state props. The Library
-// Reader omits them; falling back to shared frozen identities keeps the
-// memos that depend on them from re-running on each render.
-const EMPTY_LATEX_ERRORS: LatexError[] = [];
-const EMPTY_STRING_MAP: Map<string, string> = new Map();
-const EMPTY_STRING_SET: Set<string> = new Set();
-// `noop` is the existing module-scope stable no-op (declared above for
-// PaneState stubs); reused here for the optional error-prop defaults.
-const noopSetSelectedErrorId: Dispatch<SetStateAction<string | null>> = () => {};
 
 // Phase 5d: `memo`-wrapped so that, in the multi-doc keep-alive cascade, a
 // warm paper↔paper switch re-renders ONLY the newly-active pane — the inactive
@@ -874,7 +859,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     chrome = FULL_CHROME,
     onUpdate,
     highlightText = null,
-    highlightRange = null,
     onEditorReady,
     onPaneStateChange,
     onDocumentClassMismatch,
@@ -889,26 +873,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     menuBar,
     aiWindowOpen = false,
     onAiWindowClose,
-    latexErrors = EMPTY_LATEX_ERRORS,
-    paragraphByErrorId = EMPTY_STRING_MAP,
-    errorSnippets = EMPTY_STRING_MAP,
-    selectedErrorId = null,
-    setSelectedErrorId = noopSetSelectedErrorId,
-    dismissedErrorIds = EMPTY_STRING_SET,
-    dismissError = noop,
-    expandedErrorIds = EMPTY_STRING_SET,
-    expandError = noop,
-    toggleErrorExpanded = noop,
-    onJumpToError = noop,
   },
   ref,
 ) {
-  // Error state is owned by EditorLayout (single owner) and arrives via the
-  // props above. Local aliases keep every downstream reference (docked
-  // ErrorsPanel mount, omni host, margin-marker builder) untouched: they were
-  // written against `allLatexErrors` / `handleJumpToError` as the local names.
-  const allLatexErrors = latexErrors;
-  const handleJumpToError = onJumpToError;
   const innerRef = useRef<EditorHandle>(null);
   useImperativeHandle(ref, () => innerRef.current as EditorHandle);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -1835,6 +1802,45 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     onCompileSuccess: handleCompileSuccess,
   });
 
+  // ── Diagnostics (P5 item 4) — EditorPane is the single per-doc owner. ──────
+  // `sourceText` serializes the LIVE TipTap doc (independent of the code view),
+  // so lint / snippets / jump-anchors populate even when the code pane is never
+  // opened — the fix for "diagnostics empty until code view is opened once".
+  const { sourceText, setSourceText } = useLatexSource({
+    editor,
+    docId,
+    codeViewActive: codeView,
+    // Thread the authoritative bib family so `sourceText`'s preamble matches the
+    // compiler's / code-pane's bibFamily-aware serialization (line-number parity
+    // when the family injects a \usepackage). A getter, read at serialize time.
+    getBibFamily: () => asBibFamily(citationsHook.bibPackage),
+  });
+  const knownBibKeys = useMemo(
+    () => citationsHook.bibEntries.map((e) => e.key),
+    [citationsHook.bibEntries],
+  );
+  const {
+    allLatexErrors,
+    selectedErrorId,
+    setSelectedErrorId,
+    dismissedErrorIds,
+    dismissError,
+    expandedErrorIds,
+    expandError,
+    toggleErrorExpanded,
+    errorSnippets,
+    paragraphByErrorId,
+    errorHighlightRange,
+    jumpToErrorVisual,
+  } = useDiagnostics({
+    editor,
+    editorHandleRef: innerRef,
+    sourceText,
+    compileErrors: compileHook.compileErrors,
+    knownBibKeys,
+  });
+  const handleJumpToError = jumpToErrorVisual;
+
   // Cold-start PDF seed (P6). EditorPane is the SOLE PDF-state owner + viewer
   // feeder: the viewer renders the bubbled `pdfBlobUrl`. When PDF view is
   // entered for a doc that hasn't compiled THIS session (no in-memory bytes),
@@ -2409,21 +2415,21 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [cardStoreInst],
   );
 
-  // Ref mirror so the error marker's toggle reads the live (prop) selection
-  // without putting `selectedErrorId` back into the marker memo's deps (errors
-  // aren't cardStore-backed, so they can't use `cardStore.isSelected`). The
-  // prop is owned by EditorLayout; the ref tracks its latest value each render.
+  // Ref mirror so the error marker's toggle reads the live selection without
+  // putting `selectedErrorId` back into the marker memo's deps (errors aren't
+  // cardStore-backed, so they can't use `cardStore.isSelected`). Selection now
+  // lives HERE (`useDiagnostics`); the ref tracks its latest value each render.
   const selectedErrorIdRef = useRef(selectedErrorId);
   selectedErrorIdRef.current = selectedErrorId;
   const handleErrorMarkerClick = useCallback(
     (errorId: string, clickY?: number) => {
       const next = selectedErrorIdRef.current === errorId ? null : errorId;
-      // Selection is owned by EditorLayout. We DON'T set it locally — the
-      // window-level bridge (event-bridges/marker-clicks.ts) routes this event
-      // to EditorLayout's `setSelectedErrorId`, which flows the new selection
-      // back down through the `selectedErrorId` prop (avoids a double-set /
-      // split-brain). EditorLayout also syncs the text highlight + vbar popover
-      // and opens the errors panel on its docked side. The bridge is
+      // Selection is owned locally (`useDiagnostics`) and bubbled up via
+      // paneState. We still dispatch the window-level event: the shell's bridge
+      // (event-bridges/marker-clicks.ts) does the panel-open side-effect and
+      // routes the new selection back to the bubbled `paneState.setSelectedErrorId`
+      // (which is this pane's own setter). EditorLayout also syncs the vbar
+      // popover and opens the errors panel on its docked side. The bridge is
       // window-level and mounted unconditionally by EditorLayout (the Reader
       // renders inside it too); in the Reader this event is currently
       // unreachable — compileErrors is never populated there.
@@ -4171,15 +4177,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const [pendingCitationCreate, setPendingCitationCreate] = useState<string | null>(null);
   const [pendingCitationMode, setPendingCitationMode] = useState<"anchored" | "unanchored">("anchored");
 
-  // Errors panel state. The full lint+compile pipeline lives in
-  // EditorLayout (lint needs `codeEditorText` from CodeMirror, which
-  // hasn't moved here yet). For now compile errors flow through;
-  // lint stays empty until that piece lands.
-  // (Error state moved earlier — see the block before the
-  // marginaliaMarkers useMemo. `errorSnippets` / `paragraphByErrorId`
-  // remain empty maps; codeEditorText-based mapping lands when code
-  // view moves into EditorPane.)
-
   // SearchHost state — `searchState` survives panel close/reopen.
   // `openItemInPanel` swaps to the target panel and reuses the
   // side-aware setter so cross-panel jumps land where the user has
@@ -4429,12 +4426,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     if (!searchPanelOpen) setSearchHighlightRange(null);
   }, [searchPanelOpen]);
 
-  // The range fed to the editor's highlight overlay. Search wins over the
-  // error range bubbled down from EditorLayout (`highlightRange` prop) — a
-  // search highlight is an explicit user action; the error range is derived
-  // from selection. EditorPane owns search; EditorLayout still owns the error
-  // range and passes it down (the seam that bubbles the OTHER direction).
-  const effectiveHighlightRange = searchHighlightRange ?? highlightRange;
+  // The range fed to the editor's highlight overlay. EditorPane now owns BOTH
+  // the search range and the error range locally (`useDiagnostics` supplies
+  // `errorHighlightRange`; search still originates in `SearchHost` here). Search
+  // wins — a search highlight is an explicit user action; the error range is
+  // derived from selection.
+  const effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange;
 
   // SearchHost cross-panel jump — select the target item AND dock its panel
   // into the live `dockStack` so the jump actually surfaces it. Caller supplies
@@ -4766,6 +4763,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       updateRequestText: aiRequestsHook.updateRequestText,
       deleteRequest: aiRequestsHook.deleteRequest,
       saveWithDelimiters: docHook.saveWithDelimiters,
+      latexErrors: allLatexErrors,
+      selectedErrorId,
+      setSelectedErrorId,
+      dismissedErrorIds,
+      dismissError,
+      expandedErrorIds,
+      expandError,
+      toggleErrorExpanded,
+      errorSnippets,
+      paragraphByErrorId,
+      jumpToErrorVisual,
+      setSourceText,
     });
   }, [
     onPaneStateChange,
@@ -4801,6 +4810,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     aiRequestsHook.updateRequestText,
     aiRequestsHook.deleteRequest,
     docHook.saveWithDelimiters,
+    allLatexErrors,
+    selectedErrorId,
+    setSelectedErrorId,
+    dismissedErrorIds,
+    dismissError,
+    expandedErrorIds,
+    expandError,
+    toggleErrorExpanded,
+    errorSnippets,
+    paragraphByErrorId,
+    jumpToErrorVisual,
+    setSourceText,
   ]);
 
   // ── Anchored-card hover/selection bridges + highlight painters ────
@@ -6446,7 +6467,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       // / pagehide) are unaffected — they don't route through here.
                       if (isVisibleRef.current) docHook.onUpdate(editor, tx);
                     }}
-                    highlightText={highlightText}
+                    highlightText={errorHighlightRange ? null : highlightText}
                     highlightRange={effectiveHighlightRange}
                     editable={editable}
                     onEditorReady={handleEditorReady}
@@ -6912,7 +6933,7 @@ interface PaneRailProps {
   // Errors panel
   latexErrors: LatexError[];
   selectedErrorId: string | null;
-  setSelectedErrorId: React.Dispatch<React.SetStateAction<string | null>>;
+  setSelectedErrorId: (id: string | null) => void;
   dismissedErrorIds: Set<string>;
   onDismissError: (id: string) => void;
   onJumpToError: (err: LatexError) => void;
@@ -7369,7 +7390,7 @@ interface PaneRailBodyProps {
   setSelectedNoteId: React.Dispatch<React.SetStateAction<string | null>>;
   latexErrors: LatexError[];
   selectedErrorId: string | null;
-  setSelectedErrorId: React.Dispatch<React.SetStateAction<string | null>>;
+  setSelectedErrorId: (id: string | null) => void;
   dismissedErrorIds: Set<string>;
   onDismissError: (id: string) => void;
   onJumpToError: (err: LatexError) => void;
