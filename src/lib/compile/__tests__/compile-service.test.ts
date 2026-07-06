@@ -8,8 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // error), or hangs forever (to exercise the timeout).
 
 type PassBehavior =
-  | { kind: "ok"; log: string; pdf: Uint8Array }
-  | { kind: "fail"; log: string }
+  | { kind: "ok"; log: string; pdf: Uint8Array; offlineMisses?: string[] }
+  | { kind: "fail"; log: string; offlineMisses?: string[] }
   | { kind: "reject"; error: Error }
   | { kind: "hang" };
 
@@ -19,6 +19,7 @@ const writtenFiles: Array<{ path: string; data: string | Uint8Array }> = [];
 let bootShouldFail = false;
 const resetSpy = vi.fn();
 const closeWorkerSpy = vi.fn();
+const setOfflineSpy = vi.fn();
 
 function makeFakeEngine() {
   return {
@@ -29,15 +30,21 @@ function makeFakeEngine() {
     }),
     setEngineMainFile: vi.fn(),
     closeWorker: closeWorkerSpy,
+    setOffline: (v: boolean) => setOfflineSpy(v),
     compileLaTeX: vi.fn(() => {
       engineCalls.compileLaTeX++;
       const behavior = passQueue.shift() ?? { kind: "ok" as const, log: "", pdf: new Uint8Array([1]) };
       if (behavior.kind === "hang") return new Promise(() => {});
       if (behavior.kind === "reject") return Promise.reject(behavior.error);
       if (behavior.kind === "fail") {
-        return Promise.resolve({ status: 1, log: behavior.log });
+        return Promise.resolve({ status: 1, log: behavior.log, offlineMisses: behavior.offlineMisses });
       }
-      return Promise.resolve({ status: 0, log: behavior.log, pdf: behavior.pdf });
+      return Promise.resolve({
+        status: 0,
+        log: behavior.log,
+        pdf: behavior.pdf,
+        offlineMisses: behavior.offlineMisses,
+      });
     }),
   };
 }
@@ -67,6 +74,14 @@ vi.mock("@/lib/swiftlatex", () => ({
   },
 }));
 
+// Mock the P1 tex-assets layer so the service's write-through call is a no-op
+// in tests (its real body touches idb-keyval, undefined in the node env). We
+// spy so we can assert the service DOES drain new assets after a good pass.
+const captureNewAssetsSpy = vi.fn(async (_engine: unknown) => {});
+vi.mock("@/lib/tex-assets", () => ({
+  captureNewAssets: (engine: unknown) => captureNewAssetsSpy(engine),
+}));
+
 // Import AFTER the mock is registered.
 import { CompileService } from "@/lib/compile/compile-service";
 import type { PaperFile } from "@/lib/storage-fsa";
@@ -91,6 +106,8 @@ beforeEach(() => {
   bootShouldFail = false;
   resetSpy.mockClear();
   closeWorkerSpy.mockClear();
+  captureNewAssetsSpy.mockClear();
+  setOfflineSpy.mockClear();
 });
 
 afterEach(() => {
@@ -121,6 +138,45 @@ describe("CompileService — happy path", () => {
     expect(result.ranPasses).toBe(2);
     // The FINAL pass's PDF is retained.
     expect(new TextDecoder().decode(result.pdf!)).toBe("P2");
+  });
+});
+
+describe("CompileService — P1 offline-asset wiring", () => {
+  it("pushes connectivity into the worker (setOffline) before compiling", async () => {
+    passQueue = [{ kind: "ok", log: "", pdf: enc("PDF") }];
+    const svc = new CompileService();
+    await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex" });
+    expect(setOfflineSpy).toHaveBeenCalledTimes(1);
+    // navigator is undefined in the node test env → treated as online.
+    expect(setOfflineSpy).toHaveBeenCalledWith(false);
+  });
+
+  it("drains new assets (captureNewAssets) after a successful pass", async () => {
+    passQueue = [{ kind: "ok", log: "", pdf: enc("PDF") }];
+    const svc = new CompileService();
+    await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex" });
+    expect(captureNewAssetsSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces offlineMisses on the result and marks the compile degraded", async () => {
+    passQueue = [
+      { kind: "ok", log: "", pdf: enc("PDF"), offlineMisses: ["tikz.sty", "tikz.sty", "pgf.sty"] },
+    ];
+    const svc = new CompileService();
+    const result = await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex" });
+    expect(result.pdf).toBeDefined();
+    expect(result.status).toBe("degraded");
+    expect(result.offlineMisses).toBeDefined();
+    // Deduped across passes (Set-backed).
+    expect([...result.offlineMisses!].sort()).toEqual(["pgf.sty", "tikz.sty"]);
+  });
+
+  it("leaves offlineMisses undefined on a clean online compile", async () => {
+    passQueue = [{ kind: "ok", log: "", pdf: enc("PDF") }];
+    const svc = new CompileService();
+    const result = await svc.compile({ files: texFile("Hi."), mainTexFilename: "main.tex" });
+    expect(result.status).toBe("ok");
+    expect(result.offlineMisses).toBeUndefined();
   });
 });
 

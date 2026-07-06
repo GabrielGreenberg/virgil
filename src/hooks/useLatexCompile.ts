@@ -12,8 +12,9 @@ import {
   type DocumentClassMismatch,
 } from "@/lib/document-class";
 import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
-import type { LatexError } from "@/lib/latex-errors";
+import { makeErrorId, type LatexError } from "@/lib/latex-errors";
 import { compileService } from "@/lib/compile/compile-service";
+import type { CompileResult } from "@/lib/compile/compile-types";
 import type { CompileStatus } from "@/lib/compile/compile-types";
 import { decodeTexBytes } from "@/lib/compile/decode-source";
 import { useSystemDialog } from "@/components/system-dialog-host";
@@ -153,10 +154,12 @@ export function useLatexCompile(
         result.status === "ok" || result.status === "degraded" ? 0 : 1;
       setLastStatus(numericStatus);
 
+      const offlineErrors = offlineMissErrors(result);
+
       if ((result.status === "ok" || result.status === "degraded") && result.pdf) {
         // A PDF exists. Surface any warning-level diagnostics (degraded keeps
-        // them) but never block the PDF.
-        setCompileErrors(result.diagnostics ?? []);
+        // them) plus any offline-package misses, but never block the PDF.
+        setCompileErrors([...(result.diagnostics ?? []), ...offlineErrors]);
         const pdfBytes = result.pdf;
         if (handle) {
           try {
@@ -173,12 +176,15 @@ export function useLatexCompile(
         onCompileSuccess?.(pdfBytes);
 
         // A degraded compile still produced a PDF; warn (but don't alert as
-        // an error) when a later pass failed or the bibtex stage broke.
+        // an error) when a later pass failed, the bibtex stage broke, or a
+        // package was unavailable offline.
         if (result.status === "degraded") {
           const reason =
-            result.bibtexStatus === "failed"
-              ? "The bibliography step failed — citations may show as [?]."
-              : "A later compile pass failed — cross-references or the ToC may be stale.";
+            offlineErrors.length > 0
+              ? `${offlineErrors.length === 1 ? "A package was" : `${offlineErrors.length} packages were`} unavailable offline — some content may be missing.`
+              : result.bibtexStatus === "failed"
+                ? "The bibliography step failed — citations may show as [?]."
+                : "A later compile pass failed — cross-references or the ToC may be stale.";
           void systemDialog.alert({
             title: "Compiled with warnings",
             message: `${reason} See the Errors panel for details.`,
@@ -189,7 +195,7 @@ export function useLatexCompile(
       }
 
       // No usable PDF. Distinguish the failure kinds for a clear message.
-      setCompileErrors(result.diagnostics ?? []);
+      setCompileErrors([...(result.diagnostics ?? []), ...offlineErrors]);
       console.error(
         `[compile] SwiftLaTeX ${result.status} (ranPasses=${result.ranPasses})\n\n${result.log}`,
       );
@@ -208,6 +214,36 @@ export function useLatexCompile(
   }, [docId, handle, isCompiling, onDocumentClassMismatch, onCompileSuccess, systemDialog]);
 
   return { compile, isCompiling, lastLog, lastStatus, compileErrors, clearCompileErrors };
+}
+
+/**
+ * Turn the compile result's `offlineMisses` into `LatexError` entries so each
+ * unavailable package renders cleanly in the Errors panel (ruleId
+ * 'offline-package' → "Package unavailable offline" title) instead of a cryptic
+ * format error or a hang. Deduped; line 0 (no source location).
+ */
+function offlineMissErrors(result: CompileResult): LatexError[] {
+  const misses = result.offlineMisses;
+  if (!misses || misses.length === 0) return [];
+  const seen = new Set<string>();
+  const errors: LatexError[] = [];
+  for (const raw of misses) {
+    const pkg = raw.replace(/\.(sty|def|cls|tex|tfm|cfg|ltx)$/i, "");
+    if (seen.has(pkg)) continue;
+    seen.add(pkg);
+    const message = `Package ${pkg} unavailable offline`;
+    errors.push({
+      id: makeErrorId({ source: "compile", line: 0, message }),
+      source: "compile",
+      severity: "error",
+      line: 0,
+      message,
+      detail:
+        "This package hasn't been cached yet. Connect to the internet and compile once to make it available offline.",
+      ruleId: "offline-package",
+    });
+  }
+  return errors;
 }
 
 /** Map a non-PDF CompileResult status to a user-facing alert. */

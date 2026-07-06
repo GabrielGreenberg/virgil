@@ -41,6 +41,8 @@ export function errorTitle(err: LatexError): string {
         return "Unbalanced math";
       case "parse-failure":
         return "Parse error";
+      case "offline-package":
+        return "Package unavailable offline";
       default:
         return err.ruleId.replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase());
     }

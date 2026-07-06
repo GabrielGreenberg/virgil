@@ -42,6 +42,7 @@
  */
 
 import { getPdfTeXEngine, resetPdfTeXEngine, writeEngineFile } from "@/lib/swiftlatex";
+import { captureNewAssets } from "@/lib/tex-assets";
 import { parseTexLog } from "@/lib/parse-tex-log";
 import { applyRequirementsToFile } from "@/lib/compile/apply-requirements-to-file";
 import { decodeTexBytes } from "@/lib/compile/decode-source";
@@ -177,11 +178,28 @@ class CompileService {
     }
     engine.setEngineMainFile(mainTexFilename);
 
+    // P1 offline-assets: push connectivity into the worker so an UNCACHED
+    // package lookup fails fast (records a miss + returns 0) instead of hanging
+    // on a synchronous cross-origin XHR that ignores its timeout. provisionEngine
+    // already did this at boot; refresh it here in case connectivity changed
+    // between boot and this compile. Best-effort (older/faked engines may lack it).
+    try {
+      const online =
+        typeof navigator !== "undefined" ? navigator.onLine !== false : true;
+      engine.setOffline?.(!online);
+    } catch {
+      // ignore — never fail a compile on the offline knob.
+    }
+
     // 5. Multi-pass loop with last-good retention.
     let lastGood: { pdf: Uint8Array; log: string; pass: number } | null = null;
     let lastLog = "";
     let ranPasses = 0;
     let hardFailure = false;
+    // P1: packages the worker could not resolve while offline (union across
+    // passes). Surfaced on the result so the hook can render each as a
+    // "package X unavailable offline" LatexError.
+    const offlineMisses = new Set<string>();
 
     for (let pass = 1; pass <= passPlan.passes; pass++) {
       if (signal?.aborted) {
@@ -223,6 +241,15 @@ class CompileService {
       // After the first successful compile, mark the engine warm.
       this.booted = true;
 
+      // P1: accumulate any offline package misses the worker reported.
+      for (const miss of result.offlineMisses ?? []) offlineMisses.add(miss);
+
+      // P1: write-through the assets the worker fetched this pass to the
+      // persistent IndexedDB cache (offline-after-first-online-fetch). Only NEW
+      // entries are dumped (worker tracks a delta), and it's best-effort — a
+      // cache write never fails the compile.
+      await captureNewAssets(engine);
+
       if (result.status === 0 && result.pdf) {
         lastGood = { pdf: new Uint8Array(result.pdf), log: lastLog, pass };
         // Once the reference-resolution driver is satisfied we still run the
@@ -237,12 +264,15 @@ class CompileService {
 
     // 6. Assemble the result.
     const bibtexStatus: BibtexStatus = detectBibtexFailure(lastLog);
+    const misses = offlineMisses.size > 0 ? [...offlineMisses] : undefined;
 
     if (lastGood) {
       const diagnostics = hardFailure
         ? parseTexLog(lastLog)
         : parseTexLog(lastLog).filter((d) => d.severity !== "error");
-      const degraded = hardFailure || bibtexStatus === "failed";
+      // An offline miss makes even a produced PDF degraded (a package the doc
+      // asked for was unavailable, so the output may be missing content).
+      const degraded = hardFailure || bibtexStatus === "failed" || !!misses;
       return {
         status: degraded ? "degraded" : "ok",
         pdf: lastGood.pdf,
@@ -250,6 +280,7 @@ class CompileService {
         ranPasses,
         bibtexStatus,
         diagnostics,
+        offlineMisses: misses,
       };
     }
 
@@ -260,6 +291,7 @@ class CompileService {
       ranPasses,
       bibtexStatus,
       diagnostics: parseTexLog(lastLog),
+      offlineMisses: misses,
     };
   }
 

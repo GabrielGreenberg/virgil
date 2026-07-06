@@ -75,6 +75,8 @@ var CompileResult = /** @class */ (function () {
         this.pdf = undefined;
         this.status = -254;
         this.log = 'No log';
+        // PATCHED (virgil): packages the worker could not resolve while offline.
+        this.offlineMisses = [];
     }
     return CompileResult;
 }());
@@ -167,6 +169,11 @@ var PdfTeXEngine = /** @class */ (function () {
                                         var pdf = new Uint8Array(data['pdf']);
                                         nice_report.pdf = pdf;
                                     }
+                                    // PATCHED (virgil): surface the offline-miss set the worker
+                                    // recorded (kpse lookups it skipped while offline) so the
+                                    // CompileService can report "package X unavailable offline".
+                                    // Must survive re-vendoring the worker.
+                                    nice_report.offlineMisses = data['offlineMisses'] || [];
                                     resolve(nice_report);
                                 };
                                 // PATCHED (virgil): capture `reject` (executor param above was `_`)
@@ -271,6 +278,51 @@ var PdfTeXEngine = /** @class */ (function () {
         // after a single call. Drop that line so the engine stays usable.
         if (this.latexWorker !== undefined) {
             this.latexWorker.postMessage({ 'cmd': 'settexliveurl', 'url': url });
+        }
+    };
+    // PATCHED (virgil): TeX-asset provisioning surface (P1 offline-assets).
+    // These three methods drive the additive worker cases (seedcache /
+    // dumpnewcache / setoffline) so the main-thread tex-assets layer can seed
+    // the kpse cache before compile, write-through freshly fetched assets to
+    // IndexedDB, and put the worker in fail-fast offline mode. Must survive
+    // re-vendoring the worker (they mirror the existing postMessage method
+    // style; nothing here reaches into worker internals directly).
+    //
+    // seedCache(cacheKey, fileid, src): fire-and-forget — write bytes into the
+    // worker's memfs and register them in texlive200_cache so a later kpse
+    // lookup for `cacheKey` is byte-identical to a real mirror fetch.
+    PdfTeXEngine.prototype.seedCache = function (cacheKey, fileid, src) {
+        if (this.latexWorker !== undefined) {
+            var buf = src instanceof Uint8Array ? src.buffer : src;
+            this.latexWorker.postMessage({ 'cmd': 'seedcache', 'cacheKey': cacheKey, 'fileid': fileid, 'src': buf });
+        }
+    };
+    // dumpNewCache(): request/response round-trip returning the cacheKey ->
+    // {fileid, bytes} entries added to texlive200_cache since the last dump.
+    // Installs a temporary onmessage handler, restores the no-op after.
+    PdfTeXEngine.prototype.dumpNewCache = function () {
+        var _this = this;
+        return new Promise(function (resolve) {
+            if (_this.latexWorker === undefined) {
+                resolve([]);
+                return;
+            }
+            _this.latexWorker.onmessage = function (ev) {
+                var data = ev['data'];
+                if (data['cmd'] !== 'dumpnewcache')
+                    return;
+                _this.latexWorker.onmessage = function (_) { };
+                resolve(data['entries'] || []);
+            };
+            _this.latexWorker.postMessage({ 'cmd': 'dumpnewcache' });
+        });
+    };
+    // setOffline(value): fire-and-forget — flip the worker's offline flag so
+    // uncached kpse lookups fail fast (return 0 + record miss) instead of
+    // hanging on a synchronous cross-origin XHR that ignores its timeout.
+    PdfTeXEngine.prototype.setOffline = function (value) {
+        if (this.latexWorker !== undefined) {
+            this.latexWorker.postMessage({ 'cmd': 'setoffline', 'value': !!value });
         }
     };
     PdfTeXEngine.prototype.closeWorker = function () {

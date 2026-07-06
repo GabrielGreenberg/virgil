@@ -13,6 +13,8 @@
  * move to a local helper process (e.g. Tectonic) — see docs.
  */
 
+import { provisionEngine } from "@/lib/tex-assets";
+
 const TEXLIVE_ENDPOINT = "https://texlive.texlyre.org/";
 
 // Hand-rolled <script> tags bypass Next's automatic basePath prefixing, so we
@@ -51,6 +53,11 @@ export function getPdfTeXEngine(): Promise<PdfTeXEngine> {
       const engine = new window.PdfTeXEngine();
       await engine.loadEngine();
       engine.setTexliveEndpoint(TEXLIVE_ENDPOINT);
+      // P1 offline-assets: seed the worker's kpse cache from the curated core
+      // bundle + the persistent IndexedDB write-through cache, and push
+      // navigator.onLine into the worker, BEFORE the first compile. Best-effort
+      // — a failure degrades to today's mirror-fetch path.
+      await provisionEngine(engine);
       return engine;
     })().catch((err) => {
       // Reset on failure so a retry can try again.
