@@ -567,13 +567,20 @@ export function resolveHorizontalMargin(
  *  - CRAMPED (compressed code-split — only a ~48px gutter, lane NOT reserved):
  *    the inboard slot would land `MARGIN_WIDTH_RIGHT − gutter` px back OVER the
  *    prose, so instead tuck the bolt against the scrollbar inside whatever
- *    gutter exists: `podRight − SCROLLBAR_GUTTER − BOLT_SCROLLBAR_GAP − BOLT`.
+ *    gutter exists — `podRight − SCROLLBAR_GUTTER − BOLT_SCROLLBAR_GAP − BOLT` —
+ *    but FLOORED at the prose edge (`editorRight + INNER_PAD`). That gutter tuck
+ *    is a fixed pod-offset that ignores `editorRight`, so below a ~48px margin it
+ *    would itself land back over the prose; the floor makes prose-clearance
+ *    structural in this branch too, so the bolt degrades toward the scrollbar as
+ *    the margin narrows but never starts left of the text (task 045).
  *
- * The discriminator IS the invariant: use the inboard slot only while it stays
- * clear of the prose by at least INNER_PAD (`podRight − editorRight ≥
- * MARGIN_WIDTH_RIGHT`); else fall to the gutter tuck. Pure (no DOM) so the
- * placement is unit-testable away from the component; the caller (SelectionActi-
- * onsMenu.computePlacement) supplies the two already-cached viewport metrics.
+ * Prose-clearance is the invariant in BOTH regimes: the inboard slot is taken
+ * only while it clears the prose by at least INNER_PAD (`podRight − editorRight ≥
+ * MARGIN_WIDTH_RIGHT`), and the cramped tuck is `Math.max`-floored at
+ * `editorRight + INNER_PAD` — so `boltLeft ≥ editorRight + INNER_PAD` holds for
+ * every right margin. Pure (no DOM) so the placement is unit-testable away from
+ * the component; the caller (SelectionActionsMenu.computePlacement) supplies the
+ * two already-cached viewport metrics.
  */
 export function computeBoltLeftFromPod({
   podRight,
@@ -585,13 +592,19 @@ export function computeBoltLeftFromPod({
   const inboard =
     podRight - MARGINALIA_MARGIN_WIDTH_RIGHT + MARGINALIA_BOLT_X_RIGHT;
   if (inboard >= editorRight + MARGINALIA_INNER_PAD) return inboard;
-  // Cramped code-view gutter — tuck the bolt against the scrollbar so it never
-  // overshoots back over the prose (Gabriel's "unless things get very cramped"
-  // exception; matches the compressed 48px gutter).
-  return (
+  // Cramped code-view gutter — tuck the bolt against the scrollbar, but FLOOR it
+  // at the prose edge so it never overshoots back over the text. The gutter tuck
+  // (`podRight − SCROLLBAR_GUTTER − BOLT_SCROLLBAR_GAP − BOLT`) is a fixed
+  // pod-offset that ignores `editorRight`, so below a ~48px right margin it lands
+  // LEFT of the prose edge; `Math.max` makes prose-clearance structural — the
+  // bolt slides toward the scrollbar as the margin narrows but stops at
+  // `editorRight + INNER_PAD`, degrading gracefully instead of painting over the
+  // last selected words (task 045). At the 48px gutter the two are equal.
+  return Math.max(
     podRight -
-    SCROLLBAR_GUTTER -
-    MARGINALIA_BOLT_SCROLLBAR_GAP -
-    MARGINALIA_BOLT_SIZE
+      SCROLLBAR_GUTTER -
+      MARGINALIA_BOLT_SCROLLBAR_GAP -
+      MARGINALIA_BOLT_SIZE,
+    editorRight + MARGINALIA_INNER_PAD,
   );
 }

@@ -298,6 +298,33 @@ describe("right-margin geometry SSOT — the bolt is POD-anchored (margin-invari
       editorRight + MARGINALIA_INNER_PAD,
     );
   });
+
+  // Task 045: the cramped tuck is a fixed pod-offset (`podRight − 40`) that
+  // ignores `editorRight`, so below the 48px gutter it overshoots back OVER the
+  // prose. The invariant `boltLeft ≥ editorRight + INNER_PAD` must hold across
+  // the WHOLE cramped range down to the min right margin (24) — not just at 48
+  // where it held only with equality (that gap is why the overshoot shipped).
+  // Reachable with the lane unreserved: zen mode (margin floored at MARGIN_MIN
+  // = 24) and compressed code-split with a persisted right margin < 48.
+  it.each([MARGIN_MIN.right, 32, 40, CODE_VIEW_GUTTER_PX])(
+    "CRAMPED bolt clears the prose edge at right margin = %i (never left of editorRight + INNER_PAD)",
+    (rightMargin) => {
+      const podRight = 1000;
+      const editorRight = podRight - rightMargin; // text edge = podRight − margin
+      const boltLeft = computeBoltLeftFromPod({ podRight, editorRight });
+      // Structural prose-clearance: the bolt's LEFT edge is never left of the
+      // prose edge + INNER_PAD, so its 28px body can't paint over the selection.
+      expect(boltLeft).toBeGreaterThanOrEqual(
+        editorRight + MARGINALIA_INNER_PAD,
+      );
+    },
+  );
+
+  // MARGIN_MIN.right is the actual floor the reachable paths clamp to, so pin it
+  // (a drift there would reopen the overshoot band from the bottom).
+  it("MARGIN_MIN.right is the cramped floor this guards (24)", () => {
+    expect(MARGIN_MIN.right).toBe(24);
+  });
 });
 
 describe("right-margin geometry SSOT — min-margin floor (gated on marker visibility)", () => {
