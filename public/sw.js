@@ -15,7 +15,7 @@
 // "Update available" banner in the Virgil bar. This keeps existing tabs
 // stable across silent background SW installs and lets the user pick
 // their refresh moment. See src/components/ServiceWorkerRegistration.tsx.
-const CACHE_NAME = "virgil-v6";
+const CACHE_NAME = "virgil-v7";
 
 // Same-origin curated TeX assets (P1 offline-assets). The main thread fetches
 // these in `provisionEngine` to seed the worker's kpse cache; precaching them
