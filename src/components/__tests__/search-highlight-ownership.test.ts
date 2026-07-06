@@ -10,11 +10,17 @@
 // highlight, no scroll.
 //
 // The fix makes EditorPane the single owner: it renders the highlight from its
-// own local (`effectiveHighlightRange = searchHighlightRange ?? highlightRange`)
+// own local (`effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange`)
 // and bubbles the live range up via `PaneState.searchHighlightRange`;
 // EditorLayout DELETES its dead `useState` and reads the value back from
 // `paneState`. These are source-level guards (the components can't be unit-
 // mounted) that fail if the orphan is re-introduced.
+//
+// P5 item 4 update: the ERROR range is now ALSO owned locally in EditorPane
+// (`useDiagnostics` supplies `errorHighlightRange`), so the merge reads the
+// local error range instead of a bare `highlightRange` prop bubbled DOWN from
+// EditorLayout — that cross-boundary seam (the very thing the old comment
+// flagged) is gone. EditorPane now owns BOTH sides of the merge.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -34,10 +40,12 @@ describe("EditorPane owns the search highlight", () => {
   });
 
   it("renders its own search highlight (search ?? error) into the editor", () => {
-    // The editor's highlightRange prop must read the effective range, not the
-    // bare error-range prop bubbled down from EditorLayout.
+    // The editor's highlightRange prop must read the effective range. Both sides
+    // of the merge are now EditorPane-local: `searchHighlightRange` (SearchHost)
+    // and `errorHighlightRange` (useDiagnostics) — no error-range prop is bubbled
+    // DOWN from EditorLayout anymore (P5 item 4).
     expect(EDITOR_PANE).toContain(
-      "const effectiveHighlightRange = searchHighlightRange ?? highlightRange;",
+      "const effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange;",
     );
     expect(EDITOR_PANE).toContain("highlightRange={effectiveHighlightRange}");
   });

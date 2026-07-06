@@ -203,9 +203,11 @@ export function useMarkerClickBridges(deps: {
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
-  /** Shell-side error selection (drives the error highlight + the vbar
-   *  errors popover). Synced from margin error-marker clicks. */
-  setSelectedErrorId: Dispatch<SetStateAction<string | null>>;
+  /** Error selection setter. Now routes to the per-doc owner in EditorPane
+   *  (bubbled up via `paneState.setSelectedErrorId`); the shell passes a stable
+   *  `setSelectedErrorIdBridge` wrapper. Called value-only (never an updater),
+   *  so a plain `(id) => void` suffices. Synced from margin error-marker clicks. */
+  setSelectedErrorId: (id: string | null) => void;
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
   setActiveRefCommand: Dispatch<SetStateAction<"ref" | "getref" | "getfullref">>;
