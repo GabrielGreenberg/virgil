@@ -43,6 +43,13 @@ pen**, with the audit notification + version bump. Fully reversible by
    **plus** `originalPanel` and the verbatim `originalCard` — the origin record
    `restore-card` reads for a lossless return. Prints `{ok, version,
    op:"archive", cardId, originalPanel}`.
+   - **Archiving a flagged card RESOLVES its AI request** (the terminal
+     transition alongside answer and delete): if the card had `aiRequest: true`,
+     the op closes its open `ai-requests.json` row (flips it terminal) **and**
+     lowers the flag on the archived snapshot, so the request stops surfacing in
+     `list_requests.py` / `/editor/review` on either leg. A `restore` brings the
+     card back **unflagged** — un-archiving does not re-open the request. On an
+     unflagged card this is a guarded no-op. See task 2026-07-05-049.
 
 ## Applicability (derived from the manifest)
 
