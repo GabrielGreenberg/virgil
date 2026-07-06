@@ -78,6 +78,91 @@ export const MANILA_RADIUS = 10;
  */
 export const ACTIVE_MIN_CONTENT = 116;
 
+/**
+ * The tab strip's horizontal padding (px), on BOTH sides — the SSOT for how far
+ * the tabs are inset from the panel's edge. Lives here (the pure geometry
+ * module) so the strip AND the body-frame drawer read ONE number and can't
+ * drift. Consumed by {@link PanelTabStrip} (its `padding`) and by the body
+ * frame's horizontal inset in {@link TabbedLibraryPanel}.
+ *
+ * This inset is the whole reason the body-frame's rounded top corners used to
+ * grow "wings": the body ran full-width (corner at panel-x 0) while the tabs
+ * were inset by this pad, so a rounded top-left corner arced out in the bare
+ * gutter LEFT of the first tab (task e63ee738 squared the corners to hide it).
+ * Task 047 instead insets the body frame by exactly this pad, so the corner arc
+ * BEGINS under the first tab's swoop foot — {@link frameTopCornerStartX} ===
+ * {@link firstTabSwoopFootX} — and there is no gutter to wing into.
+ */
+export const STRIP_SIDE_PAD = 4;
+
+/**
+ * Panel-x of the FIRST tab's LEFT swoop foot (its outermost fill ink). The tab
+ * wrapper sits flush against the strip's left padding ({@link STRIP_SIDE_PAD}),
+ * and the fill path's left swoop foot is at local x=0 shifted right by the
+ * half-pixel {@link STROKE_INSET}. This is the x the body-frame's top-left
+ * corner must tuck under so it never wings into the gutter.
+ */
+export function firstTabSwoopFootX(pad: number = STRIP_SIDE_PAD): number {
+  return pad + STROKE_INSET;
+}
+
+/**
+ * Panel-x where the body-frame's rounded top corner begins (its leftmost ink).
+ * The body is inset horizontally by {@link STRIP_SIDE_PAD} and its frame path is
+ * stroked with the same {@link STROKE_INSET} half-pixel, so this MUST equal
+ * {@link firstTabSwoopFootX} — the unit-tested "no-wing" invariant (task 047):
+ * the corner lives UNDER the first tab's swoop, never in the 4px gutter.
+ */
+export function frameTopCornerStartX(pad: number = STRIP_SIDE_PAD): number {
+  return pad + STROKE_INSET;
+}
+
+/**
+ * Closed path for the tabbed panel BODY frame — a rounded rectangle whose four
+ * corners share {@link MANILA_RADIUS} with the tab silhouette (so tab arc and
+ * frame arc are tangent at the join by construction, never a hairline overshoot
+ * from two slightly-different radii). Task 047 promotes the body's outline from
+ * a CSS `border` into this single SVG-stroke owner.
+ *
+ * `w`/`h` are the body's measured CSS box. The path is drawn inset by
+ * {@link STROKE_INSET} on all sides — (i,i) → (w−i, h−i) — so the 1px stroke,
+ * which SVG centres on its coordinate, lands its OUTER edge on the box edge
+ * (the same half-pixel crispness technique the tab paths use). The frame's
+ * horizontal tuck under the tab swoop feet (the "no-wing" property) comes from
+ * the body being laid out inset by {@link STRIP_SIDE_PAD}; this builder just
+ * draws the rounded rect that fills that already-inset box.
+ */
+export function buildFramePath(args: {
+  w: number;
+  h: number;
+  r?: number;
+  strokeInset?: number;
+}): string {
+  const r = args.r ?? MANILA_RADIUS;
+  const i = args.strokeInset ?? STROKE_INSET;
+  const x0 = i;
+  const y0 = i;
+  const x1 = args.w - i;
+  const y1 = args.h - i;
+  // Clamp the radius so a very short/narrow body can't produce a self-crossing
+  // path (arcs would overlap if 2*r exceeded the box). Manila bodies are always
+  // far larger than 2*MANILA_RADIUS, but the guard keeps the path valid at any
+  // transient measured size (e.g. a 0-height first paint).
+  const rr = Math.max(0, Math.min(r, (x1 - x0) / 2, (y1 - y0) / 2));
+  return [
+    `M ${x0 + rr} ${y0}`,
+    `H ${x1 - rr}`,
+    `A ${rr} ${rr} 0 0 1 ${x1} ${y0 + rr}`,
+    `V ${y1 - rr}`,
+    `A ${rr} ${rr} 0 0 1 ${x1 - rr} ${y1}`,
+    `H ${x0 + rr}`,
+    `A ${rr} ${rr} 0 0 1 ${x0} ${y1 - rr}`,
+    `V ${y0 + rr}`,
+    `A ${rr} ${rr} 0 0 1 ${x0 + rr} ${y0}`,
+    `Z`,
+  ].join(" ");
+}
+
 export type TabSvgGeometry = {
   /** Viewport / element width including the 1px horizontal stroke gutter. */
   svgW: number;
