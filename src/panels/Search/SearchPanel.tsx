@@ -21,6 +21,7 @@ import {
   SCOPE_PANEL,
   SCOPE_COLOR,
   SCOPE_ORDER,
+  SCOPE_TO_CARD_THEME,
   compileQuery,
   buildUuidPosMap,
 } from "@/lib/search-sources";
@@ -858,24 +859,6 @@ function ScopeChip({
     </button>
   );
 }
-
-/** Map a search-result scope to the card theme it should wear on selection.
- *  This makes the selected border track the source kind: footnote hits
- *  select red, note hits emerald, citation hits amber, etc. — uniform
- *  with each kind's own panel. mainText results have no source kind, so
- *  they fall through to the revision/purple theme. */
-const SCOPE_TO_CARD_THEME: Record<SearchScope, keyof typeof CARD_THEMES> = {
-  mainText:     "revision",
-  footnotes:    "footnote",
-  notes:        "note",
-  citations:    "citation",
-  todos:        "todo",
-  archive:      "archive",
-  cuts:         "cut",
-  revisions:    "revision",
-  bibliography: "bib",
-  reports:      "report",
-};
 
 function ResultCard({
   idx,

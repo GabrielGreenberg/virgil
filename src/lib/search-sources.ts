@@ -9,6 +9,7 @@
 import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/core";
 import { richJsonToPlainText } from "./footnote-content";
+import { DEFAULT_PANEL_COLORS, type PanelThemeKey } from "./panel-theme";
 import { resolveAnchorRange, getLinkedTextObjectIds, getTextAnchor } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
 import type {
@@ -107,19 +108,40 @@ export const SCOPE_PANEL: Partial<Record<SearchScope, string>> = {
   bibliography: "bibliography",
 };
 
-/** Light theme color for chip dot + card left-border (matches CARD_THEMES). */
-export const SCOPE_COLOR: Record<SearchScope, string> = {
-  mainText: "transparent",
-  footnotes: "#b45757",
-  notes: "#15803d",
-  citations: "#d4a843",
-  todos: "#a8a29e",
-  archive: "#7191b0",
-  cuts: "#b45757",
-  reports: "#6366f1",
-  revisions: "#78716c",
-  bibliography: "#6b6245",
+/** Map a search-result scope to the card theme (panel-theme key) it wears.
+ *  This makes the selected border + scope accent track the source kind:
+ *  footnote hits red, note hits emerald, citation hits amber, etc. — uniform
+ *  with each kind's own panel. mainText results have no source kind, so they
+ *  fall through to the revision/purple theme (but render transparent below).
+ *  This is the SSOT for the scope→kind correspondence; SearchPanel imports it
+ *  for the selected-card theme and SCOPE_COLOR derives its accent from it. */
+export const SCOPE_TO_CARD_THEME: Record<SearchScope, PanelThemeKey> = {
+  mainText:     "revision",
+  footnotes:    "footnote",
+  notes:        "note",
+  citations:    "citation",
+  todos:        "todo",
+  archive:      "archive",
+  cuts:         "cut",
+  reports:      "report",
+  revisions:    "revision",
+  bibliography: "bib",
 };
+
+/** Light-theme accent for the chip dot + result-card left border + scope label.
+ *  DERIVED from the theme SSOT so it can never drift: each scope wears its card
+ *  kind's accent (`DEFAULT_PANEL_COLORS[SCOPE_TO_CARD_THEME[scope]]`), the same
+ *  source `PanelCard`/marginalia use — so a panel-color edit ripples here
+ *  automatically. `mainText` has no source kind, so it stays transparent.
+ *  Pinned by `scope-color-theme.test.ts` (audit-058). */
+export const SCOPE_COLOR: Record<SearchScope, string> = Object.fromEntries(
+  (Object.keys(SCOPE_TO_CARD_THEME) as SearchScope[]).map((scope) => [
+    scope,
+    scope === "mainText"
+      ? "transparent"
+      : DEFAULT_PANEL_COLORS[SCOPE_TO_CARD_THEME[scope]],
+  ]),
+) as Record<SearchScope, string>;
 
 /** Default order of scope chips in the panel. */
 export const SCOPE_ORDER: SearchScope[] = [
