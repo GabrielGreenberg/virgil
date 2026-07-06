@@ -14,6 +14,7 @@ import {
   matchSpecialLetter,
   dashesToGlyphs,
 } from "@/lib/latex-typography";
+import { extractBraced, findMatchingGloss } from "@/lib/latex-lexer";
 
 interface ParseContext {
   pos: number;
@@ -211,6 +212,25 @@ export function parseInlineContent(
     if (text[i] === "'" && text[i + 1] === "'") {
       buffer += "”";
       i += 2;
+      continue;
+    }
+
+    // Protected prose brackets: `{[}` / `{]}` → literal `[` / `]` (task 037's
+    // `$` twin, serializer side in `escapeLatex`). The serializer wraps a prose
+    // `[`/`]` in its own brace group so it can't be absorbed as a LaTeX optional
+    // argument (`\\[len]`, `\cmd[opt]`); here we unwrap it back to a bare glyph
+    // in the buffer, so adjacent letters stay one text node. Not gated on
+    // `inCode`: inline-code (`\texttt`) prose is escaped the same way and must
+    // round-trip identically. Genuine structural brackets never reach this
+    // inline scanner as the literal triple `{[}` — they live on latexCommand /
+    // texBlock / example paths.
+    if (
+      text[i] === "{" &&
+      text[i + 2] === "}" &&
+      (text[i + 1] === "[" || text[i + 1] === "]")
+    ) {
+      buffer += text[i + 1];
+      i += 3;
       continue;
     }
 
@@ -721,9 +741,20 @@ export function parseInlineContent(
             break;
           }
         }
-        // Consume {braced} args (up to 2)
+        // Consume {braced} args (up to 2) — but NEVER a protected prose
+        // bracket group `{[}`/`{]}` (the `escapeLatex` sentinel for a literal
+        // `[`/`]`). Those are prose that merely ABUTS the command, not an
+        // argument to it: breaking here lets the command atom close and returns
+        // control to the top-of-loop `{[}`→`[` unwrap, so `\cmd{[}x{]}` keeps
+        // `[x]` as literal prose instead of folding `[` into the command.
         let braceCount = 0;
         while (i < text.length && text[i] === "{" && braceCount < 2) {
+          if (
+            (text[i + 1] === "[" || text[i + 1] === "]") &&
+            text[i + 2] === "}"
+          ) {
+            break;
+          }
           const inner = extractBraced(text, i);
           if (inner) {
             cmdText += "{" + inner.content + "}";
@@ -753,22 +784,6 @@ export function parseInlineContent(
 
   flush();
   return nodes;
-}
-
-function extractBraced(
-  text: string,
-  startOfBrace: number
-): { content: string; end: number } | null {
-  if (text[startOfBrace] !== "{") return null;
-  let depth = 1;
-  let i = startOfBrace + 1;
-  while (i < text.length && depth > 0) {
-    if (text[i] === "{" && text[i - 1] !== "\\") depth++;
-    if (text[i] === "}" && text[i - 1] !== "\\") depth--;
-    i++;
-  }
-  if (depth !== 0) return null;
-  return { content: text.slice(startOfBrace + 1, i - 1), end: i };
 }
 
 function unescapeLatex(text: string): string {
@@ -1533,7 +1548,9 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
         if (close !== -1) ctx.pos = close + 1;
       }
       const bodyStart = ctx.pos;
-      const endIdx = ctx.src.indexOf("\\endgl", bodyStart);
+      // Boundary/comment-aware, depth-counted terminator (a bare indexOf
+      // would stop at a commented or nested `\endgl`, or at `\endglpreamble`).
+      const endIdx = findMatchingGloss(ctx.src, bodyStart);
       const bodyText =
         endIdx !== -1 ? ctx.src.slice(bodyStart, endIdx) : ctx.src.slice(bodyStart);
       ctx.pos = endIdx !== -1 ? endIdx + "\\endgl".length : ctx.src.length;
@@ -1581,8 +1598,18 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       const env = beginMatch[1];
       const optArg = beginMatch[2] || "";
       ctx.pos += beginMatch[0].length;
-      // Find the matching \end{env}, accounting for nested \begin{env}/\end{env}
-      const envEnd = findMatchingEnd(ctx.src, ctx.pos, env);
+      // Find the matching \end{env}. For most envs we depth-count so nested
+      // same-name environments pair correctly. `verbatim` is the exception:
+      // it is non-nestable and its body is LITERAL, so the correct terminator
+      // is the FIRST `\end{verbatim}` — depth-counting is actively wrong here,
+      // since a literal `\begin{verbatim}` in the body would bump the counter
+      // and swallow the real close. The serializer escapes any body
+      // `\end{verbatim}` (→ `\end{verbatim%!v-esc}`), so the first literal
+      // `\end{verbatim}` we find is guaranteed to be the block's true end.
+      const envEnd =
+        env === "verbatim"
+          ? ctx.src.indexOf(`\\end{${env}}`, ctx.pos)
+          : findMatchingEnd(ctx.src, ctx.pos, env);
       const envContent =
         envEnd !== -1
           ? ctx.src.slice(ctx.pos, envEnd)
@@ -1609,9 +1636,20 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
       switch (env) {
         case "verbatim": {
+          // Verbatim is byte-preserving. Undo ONLY the serializer's single
+          // wrapping `\n` on each side (`\begin{verbatim}\n${inner}\n\end…`),
+          // not all edge whitespace — a blunt `.trim()` would drop first-line
+          // indentation, trailing whitespace, and leading/trailing blank
+          // lines every cycle. Then un-escape any `\end{verbatim%!v-esc}`
+          // sentinel the serializer emitted to protect a body line that reads
+          // `\end{verbatim}` from terminating the block early.
+          let text = envContent;
+          if (text.startsWith("\n")) text = text.slice(1);
+          if (text.endsWith("\n")) text = text.slice(0, -1);
+          text = text.replace(/\\end\{verbatim%!v-esc\}/g, "\\end{verbatim}");
           const codeNode: JSONContent = {
             type: "codeBlock",
-            content: [{ type: "text", text: envContent.trim() }],
+            content: [{ type: "text", text }],
           };
           if (envUuid) {
             codeNode.attrs = { uuid: envUuid };
@@ -2150,7 +2188,9 @@ function splitPexBody(
     // \begin{xlist} … \end{xlist} so their internal \a markers don't get
     // confused with ours at the current tier.
     if (body.startsWith("\\begingl", pos)) {
-      const endIdx = body.indexOf("\\endgl", pos + "\\begingl".length);
+      // Depth-counted, boundary/comment-aware terminator so a nested/commented
+      // `\endgl` inside the gloss doesn't prematurely end the skip.
+      const endIdx = findMatchingGloss(body, pos + "\\begingl".length);
       pos = endIdx === -1 ? body.length : endIdx + "\\endgl".length;
       continue;
     }
@@ -2186,6 +2226,24 @@ function splitPexBody(
       body[pos + 1] !== undefined &&
       /[a-z]/.test(body[pos + 1])
     ) {
+      // A spaced accent (`\v s`, `\d t`) or a special letter (`\i`, `\o`,
+      // `\l`) is NOT an `\a`-style item marker. Consume it as inline item
+      // text BEFORE the item-marker `after`-char test — otherwise `\v s`
+      // would be read as item marker `\v` + content `s`, silently deleting
+      // the accent and corrupting item structure. Reuse the shared accent
+      // matchers (SSOT) rather than a parallel table. Strictly subtractive:
+      // this only suppresses FALSE `\a` splits; a real `\a` never matches
+      // matchAccent/matchSpecialLetter, so its slice is unchanged.
+      const accent = matchAccent(body, pos);
+      if (accent) {
+        pos = accent.end;
+        continue;
+      }
+      const special = matchSpecialLetter(body, pos);
+      if (special) {
+        pos = special.end;
+        continue;
+      }
       const after = body[pos + 2];
       // Real part markers are `\a<tag>`, `\a[opts]`, `\a\label`, or `\a`
       // at end of line followed by content. Anything else (letter, `{`,
@@ -2504,9 +2562,22 @@ function tokenizeGlossCells(text: string): JSONContent[] {
         i = src.length;
       }
     } else {
-      // Non-whitespace run up to next space
+      // Non-whitespace run up to the next top-level space. A `{...}` group
+      // opened mid-token (e.g. after `\textbf`) is consumed to its matching
+      // brace so a space *inside* the argument (`\textbf{a b}`) doesn't sever
+      // the cell — only a brace-depth-0 space terminates the token. Mirrors
+      // expex, which splits aligned words on brace-depth-0 spaces only.
       const start = i;
-      while (i < src.length && !/\s/.test(src[i])) i++;
+      while (i < src.length && !/\s/.test(src[i])) {
+        if (src[i] === "{") {
+          const inner = extractBraced(src, i);
+          if (inner) {
+            i = inner.end;
+            continue;
+          }
+        }
+        i++;
+      }
       token = src.slice(start, i);
     }
     cells.push({

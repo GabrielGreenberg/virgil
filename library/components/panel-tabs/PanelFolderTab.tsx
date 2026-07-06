@@ -29,7 +29,12 @@ import {
 const R = MANILA_RADIUS;
 const S = 12;
 const TAB_H = 32;
-const STROKE = "var(--topbar-border, #cbc3b8)";
+// The tab silhouette's outline. Uses --library-edge (a darker tint of
+// --library-bg, defined in globals.css) so the manila edges harmonize with the
+// library field instead of the old --topbar-border warm taupe, which clashed
+// warm-on-cool over the promoted cool --library-bg (task 048). The fallback is
+// a cool blue-gray tint of the same family, never the retired warm token.
+const STROKE = "var(--library-edge, #b3c0c4)";
 
 
 type WrapperProps = {

@@ -128,6 +128,7 @@ import { useAiRequestCardMigration } from "@/hooks/useAiRequestCardMigration";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { useDocument } from "@/hooks/useDocument";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
+import { readPdf } from "@/lib/storage";
 import { useEditorUIState } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
 import { useWordCount } from "@/hooks/useWordCount";
@@ -287,7 +288,9 @@ import {
   dismissSuggestion,
   previewOriginal as previewOriginalSuggestion,
   previewSuggested as previewSuggestedSuggestion,
+  insertSuggestionBelow,
   type PendingChangeCardDeps,
+  type InsertBelowCardDeps,
 } from "@/links/pending-change-actions";
 import {
   isAppliedPending,
@@ -1832,6 +1835,44 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     onCompileSuccess: handleCompileSuccess,
   });
 
+  // Cold-start PDF seed (P6). EditorPane is the SOLE PDF-state owner + viewer
+  // feeder: the viewer renders the bubbled `pdfBlobUrl`. When PDF view is
+  // entered for a doc that hasn't compiled THIS session (no in-memory bytes),
+  // lazily read the last-persisted PDF from disk ONCE and promote it into the
+  // same `latestPdfBytes`/`pdfBlobUrl` state — so there's still exactly one
+  // authoritative state, just seeded from disk instead of compile. Guarded on
+  // docId so a doc switch mid-await can't flash a stale doc's PDF into the new
+  // viewer. (KeepAliveSlot hides the pane via display:none, never unmounting,
+  // so in-memory bytes survive the view toggle — no re-read after a compile.)
+  useEffect(() => {
+    if (!pdfView || !docId) return;
+    if (latestPdfBytes.current) return; // already seeded (compile or prior read)
+    let cancelled = false;
+    const seededDocId = docId;
+    void (async () => {
+      try {
+        const bytes = await readPdf(seededDocId);
+        // Bail if the doc changed or a compile landed bytes while we awaited.
+        if (cancelled || seededDocId !== docId || latestPdfBytes.current) return;
+        if (!bytes) return;
+        latestPdfBytes.current = bytes;
+        const blob = new Blob([bytes.buffer as ArrayBuffer], {
+          type: "application/pdf",
+        });
+        setPdfBlobUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return URL.createObjectURL(blob);
+        });
+      } catch {
+        // Cold-start disk read is best-effort — a missing/unreadable PDF just
+        // leaves the "No compiled PDF" empty state.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pdfView, docId]);
+
   // Word counts — surfaces in the WordCount panel below. Cheap to
   // compute even when the panel isn't open.
   const wordCountHook = useWordCount(editor);
@@ -2568,6 +2609,68 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [editor, docId, cutterPendingDeps],
   );
 
+  // ── Insert-below deps + closures (the retired-4-field AI fallback verb) ──
+  // The minimal AI-pending card body's "Insert below" routes here through the
+  // controller. Each deps bag resolves the live suggestion by id at ACTION time
+  // (a click) — suggested text + Mode-A anchor + any applied descriptor — so the
+  // insert reads current cards. `useCallback([hook])` keeps its identity
+  // keystroke-stable (the hook object is), which keeps the controller memo stable
+  // across typing.
+  const revisionInsertDeps = useCallback(
+    (): InsertBelowCardDeps<RevisionSuggestionCard["status"]> => ({
+      getSuggestion: (cid) => {
+        const s = revisionsHook.cards.find(
+          (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
+        );
+        if (!s) return undefined;
+        return {
+          suggestedText: s.suggested_text,
+          anchorUuid: getLinkedTextObjectIds(s)[0],
+          appliedChange: s.appliedChange,
+        };
+      },
+      setSuggestionStatus: revisionsHook.setSuggestionStatus,
+      setArchived: revisionsHook.setArchived,
+      setAppliedChange: revisionsHook.setAppliedChange,
+      acceptedStatus: "accepted",
+    }),
+    [revisionsHook],
+  );
+  const cutterInsertDeps = useCallback(
+    (): InsertBelowCardDeps<CutterSuggestionCard["status"]> => ({
+      getSuggestion: (cid) => {
+        const s = cutterHook.cards.find(
+          (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+        );
+        if (!s) return undefined;
+        return {
+          suggestedText: s.suggested_text,
+          anchorUuid: getLinkedTextObjectIds(s)[0],
+          appliedChange: s.appliedChange,
+        };
+      },
+      setSuggestionStatus: cutterHook.setSuggestionStatus,
+      setArchived: cutterHook.setArchived,
+      setAppliedChange: cutterHook.setAppliedChange,
+      acceptedStatus: "accepted",
+    }),
+    [cutterHook],
+  );
+  const onInsertBelowRevisionPending = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editor) return;
+      insertSuggestionBelow(editor, id, docId, revisionInsertDeps());
+    },
+    [editor, docId, revisionInsertDeps],
+  );
+  const onInsertBelowCutterPending = useCallback(
+    (id: string) => {
+      if (!isPendingChangesOn() || !editor) return;
+      insertSuggestionBelow(editor, id, docId, cutterInsertDeps());
+    },
+    [editor, docId, cutterInsertDeps],
+  );
+
   // The SSOT controller any suggestion-card body reads for its applied-change
   // controls (docked panel, omni, float, margin) — see
   // `pending-change-controller`. Commit (keep/dismiss) reuses the stable
@@ -2606,6 +2709,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           family === "revision-suggestion" ? revisionPendingDeps() : cutterPendingDeps(),
         );
       },
+      insertBelow: (family, id) => {
+        if (family === "revision-suggestion") onInsertBelowRevisionPending(id);
+        else onInsertBelowCutterPending(id);
+      },
     }),
     [
       editor,
@@ -2616,6 +2723,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       onDismissRevisionPending,
       onKeepCutterPending,
       onDismissCutterPending,
+      onInsertBelowRevisionPending,
+      onInsertBelowCutterPending,
     ],
   );
 
@@ -4885,6 +4994,41 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     ],
   );
 
+  // The resolve twin of `setArchivedForKind`. Archiving a flagged card is a
+  // TERMINAL request transition, so it must funnel into the SAME resolve step as
+  // answer (task 019) and delete (deleteReportCard / the atom-delete path) — the
+  // missing third leg. Each flag-bearing kind's bridge-clearing setter lowers the
+  // card's `aiRequest` flag (the `list_unbridged_card_flags` leg) AND drops the
+  // open `ai-requests.json` row (the `isRequestOpen` leg) in one call, so an
+  // archived request surfaces on NEITHER drain leg. The bridge's `value=false`
+  // path early-returns when no open linked row matches, so an unflagged card is a
+  // natural no-op (no spurious terminal row). Dispatch is on the CardKind (not the
+  // panel) because note vs highlight share the `notes` panel but own distinct
+  // setters; kinds with no aiRequest routing (citation, the suggestion family,
+  // plain report) fall through to a no-op.
+  const clearAiRequestForKind = useCallback(
+    (kind: CardKind, id: string) => {
+      switch (kind) {
+        case "note": notesHook.setNoteAiRequest(id, false); break;
+        case "highlight": notesHook.setHighlightAiRequest(id, false); break;
+        case "todo": todosHook.setAiRequest(id, false); break;
+        case "report-request": reportsHook.setRequestAiRequest(id, false); break;
+        case "revision-comment": revisionsHook.setCommentAiRequest(id, false); break;
+        case "cutter-comment": cutterHook.setCommentAiRequest(id, false); break;
+        case "footnote": footnotesHook.setFootnoteAiRequest(id, false); break;
+      }
+    },
+    [
+      notesHook.setNoteAiRequest,
+      notesHook.setHighlightAiRequest,
+      todosHook.setAiRequest,
+      reportsHook.setRequestAiRequest,
+      revisionsHook.setCommentAiRequest,
+      cutterHook.setCommentAiRequest,
+      footnotesHook.setFootnoteAiRequest,
+    ],
+  );
+
   // Archiving an atom-bearing card: splice its `\footnote`/`\cite` marker out of
   // the doc (mirrors the delete path's atom removal, incl. the footnote
   // orphan-suppress latch) and flag the sidecar ref archived. Its content is
@@ -4914,8 +5058,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         innerRef.current?.deleteCitation(id);
         citationsHook.setArchived(id, true);
       }
+      // Terminal transition: the atom is spliced out, so any pending AI request
+      // on it is moot — resolve it (footnote clears its flag + drops the bridged
+      // row; citation has no aiRequest routing, so this is a no-op there).
+      clearAiRequestForKind(kind, id);
     },
-    [docId, footnotesHook.setArchived, citationsHook.setArchived],
+    [
+      docId,
+      footnotesHook.setArchived,
+      citationsHook.setArchived,
+      clearAiRequestForKind,
+    ],
   );
 
   // Pending atom-archive confirm ({kind,id} while the dialog is open).
@@ -4944,10 +5097,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         return;
       }
       // Non-atom kinds: a pure flag toggle (no doc mutation, no confirm).
+      // Archiving (the INTO-archived transition) also resolves any pending AI
+      // request on the card; unarchiving does NOT re-open it (restore stays
+      // resolved — archiving is a deliberate set-aside).
+      if (!currentlyArchived) clearAiRequestForKind(kind, id);
       setArchivedForKind(kind, id, !currentlyArchived);
     },
     [
       setArchivedForKind,
+      clearAiRequestForKind,
       spliceAndArchiveAtom,
       viewPrefs?.prefs.suppressArchiveAtomWarning,
     ],
@@ -5253,6 +5411,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     expandedErrorIds={expandedErrorIds}
                     expandError={expandError}
                     toggleErrorExpanded={toggleErrorExpanded}
+                    compileLog={compileHook.lastLog}
+                    compileStatus={compileHook.lastStatus}
+                    isCompiling={compileHook.isCompiling}
                     searchState={searchState}
                     setSearchState={setSearchState}
                     setSearchHighlightRange={setSearchHighlightRange}
@@ -5330,6 +5491,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       expandedErrorIds={expandedErrorIds}
                       expandError={expandError}
                       toggleErrorExpanded={toggleErrorExpanded}
+                      compileLog={compileHook.lastLog}
+                      compileStatus={compileHook.lastStatus}
+                      isCompiling={compileHook.isCompiling}
                       searchState={searchState}
                       setSearchState={setSearchState}
                       setSearchHighlightRange={setSearchHighlightRange}
@@ -6368,6 +6532,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         expandedErrorIds={expandedErrorIds}
                         expandError={expandError}
                         toggleErrorExpanded={toggleErrorExpanded}
+                        compileLog={compileHook.lastLog}
+                        compileStatus={compileHook.lastStatus}
+                        isCompiling={compileHook.isCompiling}
                         searchState={searchState}
                         setSearchState={setSearchState}
                         setSearchHighlightRange={setSearchHighlightRange}
@@ -7211,6 +7378,12 @@ interface PaneRailBodyProps {
   expandedErrorIds: Set<string>;
   expandError: (id: string) => void;
   toggleErrorExpanded: (id: string) => void;
+  /** Raw compile log/status surfaced as the docked Errors panel's footer
+   *  disclosure (P5) — the raw log is reachable from the docked panel, not just
+   *  code view. Sourced from EditorPane's own `useLatexCompile`. */
+  compileLog: string | null;
+  compileStatus: number | null;
+  isCompiling: boolean;
   searchState: SearchPanelState;
   setSearchState: React.Dispatch<React.SetStateAction<SearchPanelState>>;
   setSearchHighlightRange: React.Dispatch<React.SetStateAction<{ from: number; to: number } | null>>;
@@ -7287,6 +7460,9 @@ function PaneRailBody({
   expandedErrorIds,
   expandError,
   toggleErrorExpanded,
+  compileLog,
+  compileStatus,
+  isCompiling,
   searchState,
   setSearchState,
   setSearchHighlightRange,
@@ -7517,6 +7693,9 @@ function PaneRailBody({
         expandedIds={expandedErrorIds}
         onExpand={expandError}
         onToggleExpanded={toggleErrorExpanded}
+        compileLog={compileLog}
+        compileStatus={compileStatus}
+        isCompiling={isCompiling}
       />
     );
   }

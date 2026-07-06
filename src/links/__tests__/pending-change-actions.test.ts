@@ -37,14 +37,29 @@ const applyPendingChange = vi.fn<
 const flushPendingForDoc = vi.fn<(docId: unknown) => Promise<void>>(() =>
   Promise.resolve(),
 );
+// insertParagraphAfter (the non-destructive insert primitive) + removeLinkedAnchor
+// (the applied-teardown) are mocked so the `insertSuggestionBelow` orchestration
+// test asserts the SEQUENCE without a real editor/doc. Default: a successful insert.
+const insertParagraphAfter = vi.fn<
+  (editor: unknown, uuid: unknown, latex: unknown) => boolean
+>(() => true);
+const removeLinkedAnchor = vi.fn<(editor: unknown, anchorId: unknown) => void>();
 
 vi.mock("@/links/apply-suggestion", () => ({
   keepPendingChange: (...a: unknown[]) => keepPendingChange(a[0], a[1]),
   revertPendingChange: (...a: unknown[]) => revertPendingChange(a[0], a[1]),
   applyPendingChange: (...a: unknown[]) => applyPendingChange(a[0], a[1]),
+  insertParagraphAfter: (...a: unknown[]) =>
+    insertParagraphAfter(a[0], a[1], a[2]),
 }));
 vi.mock("@/lib/multi-window/pending-saves", () => ({
   flushPendingForDoc: (...a: unknown[]) => flushPendingForDoc(a[0]),
+}));
+// Partial-mock links: keep the real getLinkedTextObjectIds (the applySuggestion
+// tests rely on it) but stub removeLinkedAnchor (no real editor here).
+vi.mock("@/links/links", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/links/links")>()),
+  removeLinkedAnchor: (...a: unknown[]) => removeLinkedAnchor(a[0], a[1]),
 }));
 
 import {
@@ -53,8 +68,10 @@ import {
   previewOriginal,
   previewSuggested,
   applySuggestion,
+  insertSuggestionBelow,
   type AppliedChangeDescriptor,
   type PendingChangeCardDeps,
+  type InsertBelowCardDeps,
   type SuggestionLike,
 } from "@/links/pending-change-actions";
 import {
@@ -107,6 +124,9 @@ beforeEach(() => {
   flushPendingForDoc.mockClear();
   applyPendingChange.mockClear();
   applyPendingChange.mockImplementation(() => ({ ok: true, anchorId: "anc-applied" }));
+  insertParagraphAfter.mockClear();
+  insertParagraphAfter.mockImplementation(() => true);
+  removeLinkedAnchor.mockClear();
   // The preview store is a REAL module-level store (not mocked) — reset the
   // test card so each case starts on the default "suggested" direction.
   resetPreviewDir("c1");
@@ -378,5 +398,136 @@ describe("applySuggestion", () => {
     expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
     expect(deps.setAppliedChange).not.toHaveBeenCalled();
     expect(result).toEqual({ outcome: "skipped" });
+  });
+});
+
+// ── insertSuggestionBelow — the third landing verb (retires the 4-field fallback) ──
+//
+// The escape hatch behind the retired AI 4-field grid: drop `suggested_text` as
+// a new paragraph below the anchor (non-destructive), then retire the card.
+// The heavy collaborators (insertParagraphAfter's real doc insert, removeLinkedAnchor,
+// the .tex flush) are mocked — we assert the SEQUENCE.
+
+/** An InsertBelow deps bag whose `getSuggestion` returns a fixed record (or
+ *  undefined for the not-found case). `applied` toggles the auto-applied-first
+ *  teardown branch. */
+function makeInsertDeps(
+  suggestion:
+    | {
+        suggestedText: string;
+        anchorUuid: string | undefined;
+        appliedChange: AppliedChangeDescriptor | undefined;
+      }
+    | undefined,
+): InsertBelowCardDeps<"accepted" | "applied" | "rejected"> {
+  return {
+    getSuggestion: (id: string) => (id === "c1" ? suggestion : undefined),
+    setSuggestionStatus: vi.fn(),
+    setArchived: vi.fn(),
+    setAppliedChange: vi.fn(),
+    acceptedStatus: "accepted",
+  };
+}
+
+describe("insertSuggestionBelow", () => {
+  it("inserts below the anchor, flushes, then flips status→accepted + archived (never-applied pending card)", () => {
+    const deps = makeInsertDeps({
+      suggestedText: "A fresh paragraph.",
+      anchorUuid: "P1",
+      appliedChange: undefined,
+    });
+    const ok = insertSuggestionBelow(editor, "c1", "doc-9", deps);
+
+    expect(ok).toBe(true);
+    expect(insertParagraphAfter).toHaveBeenCalledWith(editor, "P1", "A fresh paragraph.");
+    // No blue-mark teardown for a never-applied card.
+    expect(removeLinkedAnchor).not.toHaveBeenCalled();
+    expect(deps.setAppliedChange).not.toHaveBeenCalled();
+    expect(flushPendingForDoc).toHaveBeenCalledWith("doc-9");
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "accepted");
+    expect(deps.setArchived).toHaveBeenCalledWith("c1", true);
+  });
+
+  it("tears down the blue mark + descriptor first when the card was auto-applied", () => {
+    const deps = makeInsertDeps({
+      suggestedText: "A fresh paragraph.",
+      anchorUuid: "P1",
+      appliedChange: ac, // anchorId "anc-1"
+    });
+    const ok = insertSuggestionBelow(editor, "c1", "doc-9", deps);
+
+    expect(ok).toBe(true);
+    expect(insertParagraphAfter).toHaveBeenCalledWith(editor, "P1", "A fresh paragraph.");
+    expect(removeLinkedAnchor).toHaveBeenCalledWith(editor, "anc-1");
+    expect(deps.setAppliedChange).toHaveBeenCalledWith("c1", undefined);
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "accepted");
+    expect(deps.setArchived).toHaveBeenCalledWith("c1", true);
+  });
+
+  it("refuses (false, no insert, no state change) when suggested_text is blank", () => {
+    const deps = makeInsertDeps({
+      suggestedText: "   ",
+      anchorUuid: "P1",
+      appliedChange: undefined,
+    });
+    const ok = insertSuggestionBelow(editor, "c1", "doc-9", deps);
+
+    expect(ok).toBe(false);
+    expect(insertParagraphAfter).not.toHaveBeenCalled();
+    expect(flushPendingForDoc).not.toHaveBeenCalled();
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+    expect(deps.setArchived).not.toHaveBeenCalled();
+  });
+
+  it("refuses (false) when the anchor uuid is missing", () => {
+    const deps = makeInsertDeps({
+      suggestedText: "A fresh paragraph.",
+      anchorUuid: undefined,
+      appliedChange: undefined,
+    });
+    const ok = insertSuggestionBelow(editor, "c1", "doc-9", deps);
+
+    expect(ok).toBe(false);
+    expect(insertParagraphAfter).not.toHaveBeenCalled();
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+  });
+
+  it("refuses (false, no card change) when the insert itself fails (dead anchor)", () => {
+    insertParagraphAfter.mockImplementation(() => false);
+    const deps = makeInsertDeps({
+      suggestedText: "A fresh paragraph.",
+      anchorUuid: "P1",
+      appliedChange: undefined,
+    });
+    const ok = insertSuggestionBelow(editor, "c1", "doc-9", deps);
+
+    expect(ok).toBe(false);
+    expect(insertParagraphAfter).toHaveBeenCalledTimes(1);
+    expect(flushPendingForDoc).not.toHaveBeenCalled();
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+    expect(deps.setArchived).not.toHaveBeenCalled();
+  });
+
+  it("no-ops when the card can't be resolved", () => {
+    const deps = makeInsertDeps(undefined);
+    const ok = insertSuggestionBelow(editor, "c1", "doc-9", deps);
+
+    expect(ok).toBe(false);
+    expect(insertParagraphAfter).not.toHaveBeenCalled();
+    expect(deps.setSuggestionStatus).not.toHaveBeenCalled();
+  });
+
+  it("skips the flush when docId is null but still completes the card transition", () => {
+    const deps = makeInsertDeps({
+      suggestedText: "A fresh paragraph.",
+      anchorUuid: "P1",
+      appliedChange: undefined,
+    });
+    const ok = insertSuggestionBelow(editor, "c1", null, deps);
+
+    expect(ok).toBe(true);
+    expect(flushPendingForDoc).not.toHaveBeenCalled();
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "accepted");
+    expect(deps.setArchived).toHaveBeenCalledWith("c1", true);
   });
 });

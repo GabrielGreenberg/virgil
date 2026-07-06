@@ -158,14 +158,37 @@ editor/
 │                               (iterate's boundary-guard adoption). NOT a second
 │                               parser/guard — the named door onto the shared ones
 ├── build/
-│   └── build-editor-bundle.mjs mirrors skills/ → .claude/commands/editor/
+│   ├── build-editor-bundle.mjs  emits the paper bundle + mirrors skills/ →
+│   │                            .claude/commands/editor/ (see below)
+│   └── __tests__/               guardrail for the paper-path rewrite
 └── AGENTS.md                   ← this file
 ```
 
 The build script runs via `npm run build:editor-bundle` (and on
-predev/prebuild alongside the library bundle). Output is just the
-mirror to `.claude/commands/editor/`; we don't yet emit a
-`public/skill-bundle/` for end-user folder sync (see *Future work*).
+predev/prebuild alongside the library bundle). It emits **two** outputs:
+
+1. **`public/skill-bundle/editor/`** — the shipped paper bundle
+   (`claude-commands/*.md` + `scripts/*`), stitched into the meta-manifest
+   by `scripts/build-meta-bundle.mjs` and synced into each Virgil paper folder
+   by [skill-sync.ts](../library/lib/skill-sync.ts) (`diskPathFor` maps
+   `claude-commands/X.md → .claude/commands/editor/X.md` and
+   `scripts/X.py → .virgil/scripts/editor/X.py`).
+2. **`.claude/commands/editor/*.md`** — the repo dev mirror, surfacing the
+   slash commands in a session opened in this repo.
+
+**Paper-path rewrite (the one build-time transform).** Skill sources invoke
+helpers repo-relative — `python3 editor/scripts/X.py` — which is correct for
+the **dev mirror** (cwd = repo root). But a **synced paper folder** inverts the
+nesting: helpers land at `.virgil/scripts/editor/X.py` with the paper root as
+cwd. Rather than thread a dual-path resolver through every skill, the build
+rewrites `editor/scripts/` → `.virgil/scripts/editor/` **once, at the bundle
+boundary**, for the paper bundle's command markdowns only (the dev mirror is
+written from unrewritten source). So skills stay natural — write the
+repo-relative form and it is paper-correct for free (`rewriteScriptPathsForPaper`
+in the builder; idempotent; pinned by `build/__tests__/`). A skill that already
+carries its own dual-path resolver (`answer-bib-review`, `sync-bib-to-library`)
+still works: the rewrite touches only the `editor/scripts/` path prefix, leaving
+the no-slash `editor/scripts` fallback candidate in those loops intact.
 
 **Underscore includes.** A leading-underscore skill file (e.g.
 `_find-or-surface.md`) is a shared *include* other skills reference via
@@ -382,12 +405,15 @@ skill — call `get_para_context.py`.
 
 ## Future work (intentionally deferred)
 
-- **End-user folder sync.** Today the build only mirrors to
-  `.claude/commands/editor/` in the repo. For end users running
-  Claude Code in their own paper folder, we need a sync mechanism
-  paralleling `library/lib/skill-sync.ts`. The build would emit a
-  `public/skill-bundle/editor/` and the editor would copy it into the
-  doc's `.claude/` and `.virgil/scripts/` on first open.
+- **End-user folder sync — landed.** The build now emits
+  `public/skill-bundle/editor/`, `scripts/build-meta-bundle.mjs` folds it into
+  the meta-manifest, and [skill-sync.ts](../library/lib/skill-sync.ts) copies it
+  into each paper folder's `.claude/commands/editor/` + `.virgil/scripts/editor/`
+  (`diskPathFor`). The paper/repo path mismatch this created — helpers land at
+  `.virgil/scripts/editor/` in a paper but `editor/scripts/` in the repo — is
+  resolved by the build-time paper-path rewrite (see *Folder layout* above), so
+  every skill's helper invocations resolve in a synced paper without per-skill
+  boilerplate.
 - **Notification toaster UI.** `notifications.json` is appended on every
   completion but nothing surfaces it (the never-wired
   `useDocNotificationStream` poller was removed — task 033). A future

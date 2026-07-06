@@ -57,6 +57,17 @@ The token scales:
   `bg-blue-*`.
 - **Footnote rust** (footnote, cut, error): `--footnote-50/100/200/300/500`.
 - **Warm amber** (citation, bib, quote): `--amber-50/100/200/500`.
+- **Library edge** (`--library-edge`): the SSOT for every Library-surface
+  page edge — tab silhouette strokes, the panel/body frame border, NavPod.
+  DERIVED, not a literal: `color-mix(in oklab, var(--library-bg) 82%, #000)`,
+  so it is a darker tint of the library field *by construction* and can never
+  drift into a warm-on-cool clash (the failure mode when these edges rode the
+  top-bar token `--topbar-border` over the promoted cool `--library-bg`; task
+  048). Any new Library-surface edge consumes THIS token, never
+  `--topbar-border`; a guard in `folder-path.test.ts` fails the build if a
+  `library/` source re-grabs `--topbar-border`. The general pattern: an edge
+  token that must harmonize with a surface should be `color-mix`-derived FROM
+  that surface's var, not a hand-picked hex that a future retone can desync.
 
 Locked aliases (must track each other): `--theme-color`/`--topbar-bg`,
 `--main-tab-bg`/`--background`, `--pod-editor`/`--surface`,
@@ -585,6 +596,35 @@ as a darker shade of the paper. Destructive confirms use `variant="danger"`.
 and discard-unsaved. Anchors near the source element, not screen
 center.
 
+### Positioning variants — one shell, principled variety
+
+`SystemDialog` has a `variant` axis so surfaces that predate it fold onto the
+one SSOT instead of hand-rolling `fixed z-[9999] bg-surface rounded-lg shadow-xl`.
+Every variant shares the portal, the `SYSTEM_DIALOG_TOKENS` chrome, Esc/focus/
+`role="dialog"` wiring, and outside-click-to-close; they differ only in scrim,
+placement, and z-tier. This is the positioning taxonomy — reach for the variant
+that matches the surface, don't reinvent the shell:
+
+| surface | `variant` | scrim | z-tier |
+| --- | --- | --- | --- |
+| modal / global-centered (confirm, alert, prompt, standalone modal) | `"modal"` (default) | yes | `MODAL_SCRIM_Z` |
+| draggable tool window (Preferences) | `"draggable"` | no | `DRAGGABLE_DIALOG_Z` |
+| anchored popover at a point (preference-mode picker) | `"anchored"` | no | `MODAL_SCRIM_Z` |
+| context menu / anchored dropdown (`ItemMenu`, help menu) | *use `<Menu>`* | no | `OPEN_CHROME_MENU_Z` |
+| caret / selection popup (`NodeEditPopover`, slash, citation) | *use `useFloatingMenuPosition`* | no | `OPEN_CHROME_MENU_Z` |
+| resting margin trigger (bolt, pill) | — | no | `RESTING_MARGIN_TRIGGER_Z` |
+
+- **`variant="draggable"`** — scrimless window dragged by its header. SystemDialog
+  owns the drag (one `useDragPosition`); wire a custom header strip as the grab
+  handle with **`useSystemDialogDrag()`** (`{ onMouseDown, dragging }`). Pass
+  `ignoreOutsideSelector` so clicking the topbar trigger doesn't close-then-reopen.
+- **`variant="anchored"`** — scrimless popover pinned at a viewport point via
+  `at={{x,y}}` (or `anchorRef`), measured and clamped inside the viewport before
+  it paints. Pass `outsideClickGuard` to keep a modifier gesture from dismissing
+  (e.g. ctrl+click-to-retarget).
+- `FloatingPanel`-hosted tool windows (Fonts) keep their resizable shell but should
+  derive header/surface chrome from `SYSTEM_DIALOG_TOKENS`, not bespoke literals.
+
 **Imperative dialogs.** `useSystemDialog()` (from
 `src/components/system-dialog-host.tsx`, provider mounted app-wide) exposes
 `alert` / `confirm` / `prompt` — promise-returning replacements for the
@@ -592,6 +632,40 @@ native `window.*` dialogs that render through the same `SystemDialog` chrome.
 Reach for these instead of hand-rolling a one-off modal.
 
 Don't nest modals. Use a popover for transients over a modal.
+
+### Menus
+
+`<Menu>`/`MenuProvider` (`src/components/menu/`) is the **canonical dropdown /
+context-menu primitive** — the menu-side sibling of `SystemDialog`. Reach for it
+for any command menu, kebab, or anchored dropdown; don't hand-roll a portal +
+`z-[9999]` + a bespoke `document.addEventListener('mousedown')` closer. One
+`MenuProvider` owns, per open menu:
+
+- **positioning** — the single `useFloatingMenuPosition` call (measured, viewport-
+  clamped, `placements` tried in order, RAF-coalesced `trackAnchor` re-anchor);
+- **portal** — body-portaled by default (escapes the sticky-bar / stacking-context
+  trap above), or docked inline with `portal={false}` (MenuBar's own context);
+- **z-tier** — `OPEN_CHROME_MENU_Z` (2000), so it composes above the float layer;
+- **dismissal** — one mousedown-outside + Escape controller (`useMenuDismiss`),
+  with `excludeRefs` to exempt an outside trigger and nested popovers;
+- **keyboard / roving nav** — one `useMenuKeyboard` controller; items opt in via
+  `useMenuItem` (or `<MenuItemsFromRegistry>`) to gain arrow-nav + the roving
+  active highlight. Items never take `.focus()` (roving `aria-activedescendant`
+  only) so the editor caret never moves.
+
+**`ItemMenu`** (the three-dot card/panel menu in `panel-primitives.tsx`, used by
+all 8 card panels + `CardViewModeMenu`) is **folded onto this primitive** — it's a
+thin shell that keeps its `align` + `children` API and the auto-injected
+`PanelTextSizeRow` row, but delegates portal / positioning / dismiss / z / Escape
+to `MenuProvider` (retiring its old `fixed z-[9999]` portal + hand-rolled
+mousedown closer). Its arbitrary button children render opaquely (they keep their
+`onMouseDown`+`preventDefault` fire-before-close pattern; a wrapping
+`onClick`→close preserves the old "any click inside dismisses" semantics + the
+stopPropagation fence against the card header). Opaque children still work without
+per-item registration — wrap them in `useMenuItem` when a menu wants roving nav.
+
+The sticky-bar topbar kebabs (`ExternalChangeBadge`, `CollabStatusPill`) are the
+reference wiring for the body-portal case — see the **Top bar** portal rule below.
 
 ### Z-index ladder
 
@@ -606,6 +680,7 @@ number. Full ladder, low → high:
 | docked panel band | 1000 | `FLOATING_PANEL_Z_BASE` |
 | resting margin trigger | 1199 | `RESTING_MARGIN_TRIGGER_Z` |
 | float layer (popped cards, lift overlay) | 1200 | `FLOAT_Z_BASE` |
+| draggable tool window (`SystemDialog variant="draggable"`) | 1205 | `DRAGGABLE_DIALOG_Z` |
 | open chrome menu (`<Menu>` CHROME_Z, sticky-bar dropdowns) | 2000 | `OPEN_CHROME_MENU_Z` |
 | drop-mode indicator | 9999 | `DROP_INDICATOR_Z` |
 | modal scrim + centered dialogs | 10000 | `MODAL_SCRIM_Z` |
@@ -943,10 +1018,16 @@ dropdowns with `createPortal(..., document.body)`, position them from the
 trigger's `getBoundingClientRect()` via `useFloatingMenuPosition`
 (`src/hooks/useFloatingMenuPosition.ts`), and give them the chrome-menu
 tier **`zIndex: 2000`** (matching `DragHandleMenu` / `ActionsMenuPanel`).
-`TabPlusMenu` (the "+") and the Help (`?`) menu follow this; the
-`MyPapersPod` "Add paper" menu still renders inline `absolute` but lives
-in the Library tab, away from the editor's floating overlays — port it if
-that ever changes.
+The cleanest way to satisfy all three is to render the dropdown through the
+shared `<Menu>`/`MenuProvider` primitive (`src/components/menu/`), which
+already body-portals, positions via `useFloatingMenuPosition`, and rides
+`OPEN_CHROME_MENU_Z` — see `ExternalChangeBadge` and `CollabStatusPill`'s
+kebab menus, the two topbar status-cluster dropdowns, for the reference
+wiring (`excludeRefs={[wrapEl]}` to exempt the outside trigger,
+`trackAnchor` off the kebab ref). `TabPlusMenu` (the "+") and the Help
+(`?`) menu also follow this rule; the `MyPapersPod` "Add paper" menu still
+renders inline `absolute` but lives in the Library tab, away from the
+editor's floating overlays — port it if that ever changes.
 
 **Window insets / WCO title bar.** The bar's geometry is inset-aware. One
 variable family — `--window-inset-{top,right,bottom,left}` (globals.css,
@@ -958,21 +1039,26 @@ normal browser tab**, so consuming them is a no-op off-install. The `.virgil-bar
 rule uses them to (a) grow the bar — `min-height: max(--bar-base-h,
 --window-inset-top)` — so it BECOMES the reserved title-bar strip when Chrome's
 PWA toolbar folds up, and (b) inset its material (`padding-left/right`) so the
-tabs/buttons clear the window controls. Under `@media (display-mode:
-window-controls-overlay)` the bar is `-webkit-app-region: drag` (a native
+tabs/buttons clear the window controls. WCO chrome is gated on the SSOT
+selector `:root[data-display-mode="window-controls-overlay"]` (NOT a raw
+`@media (display-mode: …)`): the bar is `-webkit-app-region: drag` (a native
 window-drag handle); its content clusters are marked `no-drag` **wholesale**
 (`.virgil-bar > *`) — an opt-in model, not an interactive-leaf allowlist, so a
 non-semantic clickable child (e.g. a folder-tab `<div onClick>`) can't silently
 become a dead drag region — and empty filler opts back into dragging with
-`[data-window-drag-zone]`. Reactive state
-(display mode, px insets, `body[data-display-mode]`) lives in
+`[data-window-drag-zone]`. It also nudges the bar's bottom seam 1px below the
+OS titlebar-strip edge (`min-height: max(--bar-base-h, calc(--window-inset-top
++ 1px))`) so the `border-b` isn't clipped in the traffic-light gutter. Reactive
+state (display mode, px insets) lives in
 [`useWindowChrome`](hooks/useWindowChrome.ts) — a window-level store (exempt from
-keystroke sanctity, like `DiskWatcher`); imperative JS clamps read
-`getWindowInsetTopPx()`. **Any new top-anchored chrome should keep clear of
-`--window-inset-top` rather than assuming `y=0`** (dialogs and floating panels
-already do). WCO only resolves in an installed PWA — to eyeball it off-install
-set `localStorage['virgil:wco-debug']='1'` (or append `?wco-debug`), which
-injects synthetic insets.
+keystroke sanctity, like `DiskWatcher`) that mirrors `data-display-mode` onto
+`<html>`; a pre-paint bootstrap in `layout.tsx` seeds it flash-free. Imperative
+JS clamps read `getWindowInsetTopPx()`. **Any new top-anchored chrome should
+keep clear of `--window-inset-top` rather than assuming `y=0`** (dialogs and
+floating panels already do). Because the gate is the `data-display-mode` SSOT,
+WCO chrome now renders in the dev preview too — set
+`localStorage['virgil:wco-debug']='1'` (or append `?wco-debug`), which forces
+the attribute AND injects synthetic insets.
 
 ## Library tab — double-tab pattern
 

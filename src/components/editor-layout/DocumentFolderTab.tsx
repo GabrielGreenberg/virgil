@@ -16,10 +16,6 @@ type Props = {
   title?: string;
   /** Forwarded for color-picker integration. */
   dataPrefs?: string;
-  /** When true, extend the tab's top outline leftward under the WCO
-   *  window-controls gutter (set on the leftmost active tab so its outline
-   *  doesn't stop abruptly at the traffic-light inset). WCO-only via CSS. */
-  outlineBleedLeft?: boolean;
   /** Tab content (icon, label, close button). Width is auto-measured. */
   children: ReactNode;
 };
@@ -44,7 +40,6 @@ function DocumentFolderTabImpl({
   onClick,
   title,
   dataPrefs,
-  outlineBleedLeft,
   children,
 }: Props) {
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -74,7 +69,6 @@ function DocumentFolderTabImpl({
   return (
     <div
       data-prefs={dataPrefs}
-      data-outline-bleed-left={outlineBleedLeft ? "" : undefined}
       className="relative shrink-0 cursor-default self-end"
       style={{
         width: svgW,

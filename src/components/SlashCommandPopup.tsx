@@ -19,6 +19,10 @@ import { useSlashPopupState } from "@/lib/slash-popup-store";
 import { executeSlashSelectionAt } from "@/lib/tiptap/slash-popup";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
+import {
+  recordScrollPlacement,
+  SCROLL_PORTAL_SLASH_POPUP,
+} from "@/lib/scroll-reposition-probe";
 
 const POPUP_WIDTH = 180;
 const VIEWPORT_MARGIN = 8;
@@ -52,6 +56,8 @@ export function SlashCommandPopup({
     const update = () => {
       try {
         const c = view.coordsAtPos(state.slashPos);
+        // Scroll-anchor stability probe (task 042): one record per coalesced frame.
+        recordScrollPlacement(SCROLL_PORTAL_SLASH_POPUP, c.top);
         setCoords({ left: c.left, top: c.top, bottom: c.bottom });
       } catch {
         setCoords(null);

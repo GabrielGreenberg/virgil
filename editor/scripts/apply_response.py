@@ -341,6 +341,45 @@ class _Txn:
                 self.mark(path)
                 break
 
+    def close_linked_request(self, linked: dict, *, result: str) -> bool:
+        # Flip the FIRST OPEN `ai-requests.json` row linked to `linked`
+        # ({panel, cardId}) to a terminal status — the by-`linkedTo` twin of
+        # cmd_write's by-`request_id` completion (the task 019 resolve SSOT).
+        # Needed by a terminal card transition that carries NO driving requestId
+        # (a user-initiated archive): `_mutation_commit` resolves a row by
+        # request_id ONLY, so without this the bridged row is left dangling OPEN
+        # (Leg A) even after the card is archived. Mirrors
+        # list_requests.isRequestOpen (terminal, or answered-L3 = closed) so it
+        # closes exactly the rows the drain still counts open. Returns True iff a
+        # row was closed — the guard: an unflagged / already-resolved card
+        # matches nothing and writes no spurious terminal row.
+        panel = linked.get("panel")
+        card_id = linked.get("cardId")
+        if not panel or not card_id:
+            return False
+        ar_path = sidecar(self.doc, "ai-requests.json")
+        ar = self.jget(ar_path, None)
+        if not isinstance(ar, dict) or not isinstance(ar.get("requests"), list):
+            return False
+        for r in ar["requests"]:
+            if not isinstance(r, dict):
+                continue
+            lk = r.get("linkedTo")
+            if not (isinstance(lk, dict)
+                    and lk.get("panel") == panel
+                    and lk.get("cardId") == card_id):
+                continue
+            status = r.get("status")
+            if status in (STATUS_COMPLETE, STATUS_FAILED):
+                continue
+            if status == STATUS_IN_PROGRESS and r.get("resultId"):
+                continue
+            r["status"] = STATUS_COMPLETE
+            r["result"] = result
+            self.mark(ar_path)
+            return True
+        return False
+
     # --- existing-card mutation primitives (used by the §10 ops) -----------
 
     def card_ref(self, filename: str, list_key: str, card_id: str) -> dict | None:
@@ -1239,10 +1278,25 @@ def cmd_archive(doc: Path, op: dict) -> dict:
         die("an example lives in the .tex, not a card store — it can't be archived")
 
     original = hit.card  # a detached snapshot (read by card_by_id, not the txn)
+    # Terminal-transition resolve, Leg B (restore): archiving a flagged card
+    # resolves its AI request, just like answer (019) and delete. The LIVE card
+    # is about to be removed (so its `aiRequest` flag stops surfacing on the
+    # unbridged-card-flag leg by itself), but the verbatim snapshot rides into
+    # `originalCard` — so lower the flag ON THE SNAPSHOT, else cmd_restore's
+    # re-append (:1213) brings the card back flagged and re-opens the request.
+    # Guarded: only a genuinely-flagged card is cloned+cleared.
+    if isinstance(original, dict) and original.get("aiRequest"):
+        original = {**original, "aiRequest": False}
     txn = _Txn(doc)
     panel = txn.remove_card(card_id)
     if panel is None:
         die(f"could not remove {card_id} from {hit.panel}.json")
+    # Terminal-transition resolve, Leg A (bridged row): a user archive has no
+    # requestId, so `_mutation_commit`'s request_id-only flip can't reach the
+    # open `ai-requests.json` row bridged to this card — close it here by its
+    # `linkedTo`, or it dangles OPEN forever. No-op (guarded) when unflagged.
+    txn.close_linked_request({"panel": panel, "cardId": card_id},
+                             result=RESULT_AUTO_APPLIED)
     snippet = {
         "id": card_id,
         "title": _archive_title(original, kind),

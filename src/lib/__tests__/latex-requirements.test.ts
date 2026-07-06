@@ -17,6 +17,8 @@ import {
 } from "@/lib/style-library";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
+import { projectLiveLatex, VERBATIM_ENVS_NARROW } from "@/lib/latex-lexer";
+import type { BibFamilyConflict } from "@/lib/bib-family";
 
 // The v1 seed preamble — pre-baseline generation, missing graphicx / natbib /
 // expex and four of the seven shims. Byte-identical to the frozen legacy
@@ -70,6 +72,22 @@ describe("detectBodyRequirements — detection matrix", () => {
     );
   });
 
+  it("a nested example tier pins BOTH expex and the xlist env definition", () => {
+    // `xlist` is not an expex environment (expex v5.1b defines none); Virgil
+    // emits it as its nested tier and must supply the definition.
+    const req = detectBodyRequirements(
+      "\\pex\n\\a Outer.\n\\begin{xlist}\n\\a inner\n\\end{xlist}\n\\xe",
+    );
+    expect(req).toContain("expex");
+    expect(req).toContain("xlistenv");
+  });
+
+  it("a doc with no nested tier does NOT pin xlistenv", () => {
+    expect(detectBodyRequirements("\\pex\n\\a One.\n\\xe")).not.toContain(
+      "xlistenv",
+    );
+  });
+
   it("does not false-positive on longer command names sharing a prefix", () => {
     expect(detectBodyRequirements("\\example{foo} and \\pexample")).not.toContain(
       "expex",
@@ -87,6 +105,20 @@ describe("detectBodyRequirements — detection matrix", () => {
     expect(
       detectBodyRequirements("\\textcolor[HTML]{FF0000}{red}"),
     ).toContain("xcolor");
+  });
+
+  // P4: the broadened, SHARED tikz vocabulary — the fallback detector uses the
+  // exact same TIKZ_RE the emit-site declarations use.
+  it("detects the broadened tikz family: \\tikz inline / tikzcd / pgfplots \\begin{axis}", () => {
+    expect(
+      detectBodyRequirements("\\tikz \\draw (0,0) -- (1,1);"),
+    ).toContain("tikz");
+    expect(
+      detectBodyRequirements("\\begin{tikzcd} A \\to B \\end{tikzcd}"),
+    ).toContain("tikz");
+    expect(
+      detectBodyRequirements("\\begin{axis}\\addplot {x};\\end{axis}"),
+    ).toContain("tikz");
   });
 
   it("classifies cite commands by family", () => {
@@ -196,6 +228,82 @@ describe("detectBodyRequirements — inert LaTeX (comments + verbatim)", () => {
   });
 });
 
+// The P3 lexer unification: detectBodyRequirements now delegates its
+// comment/verbatim projection to the shared projectLiveLatex(NARROW). This
+// pins the projection byte-for-byte against the exact output the former
+// inline projectDetectableBody produced, so detection + the drift gate +
+// requirements-injection ORDER are unaffected. Each pair is
+// [rawInput, expectedNarrowProjection] where the expected value is what the
+// pre-refactor implementation emitted.
+describe("projectLiveLatex — byte-identical to the former projectDetectableBody (NARROW family)", () => {
+  const CORPUS: Array<[string, string]> = [
+    // fast path: nothing inert
+    ["Just some plain text.", "Just some plain text."],
+    ["\\ex\nHello.\n\\xe", "\\ex\nHello.\n\\xe"],
+    // %-comment tails
+    [
+      "Live prose.\n% TODO maybe \\autocite{smith} here\n% \\ex commented example",
+      "Live prose.\n\n",
+    ],
+    [
+      "Real text. % reminder: switch to \\parencite{x}\n",
+      "Real text. \n",
+    ],
+    // escaped \% keeps the tail live
+    [
+      "Growth was 40\\% \\autocite{smith2020}.",
+      "Growth was 40\\% \\autocite{smith2020}.",
+    ],
+    // verbatim contents dropped, prose after resumes
+    [
+      "\\begin{verbatim}\n\\ex An example line\n\\includegraphics{x}\n\\end{verbatim}\nProse after.",
+      "\n\n\n\nProse after.",
+    ],
+    [
+      "\\begin{verbatim*}\n\\ex inert\n\\end{verbatim*}\n\\parencite{live}",
+      "\n\n\n\\parencite{live}",
+    ],
+    // unterminated verbatim swallows to EOF
+    [
+      "Prose.\n\\begin{verbatim}\n\\ex still inert\n\\autocite{x}",
+      "Prose.\n\n\n",
+    ],
+    // commented \begin{verbatim} does not hide following live code
+    [
+      "% \\begin{verbatim}\n\\includegraphics{fig.png}\n",
+      "\n\\includegraphics{fig.png}\n",
+    ],
+    // same-line verbatim pair
+    [
+      "before \\begin{verbatim}inner\\end{verbatim} after",
+      "before  after",
+    ],
+  ];
+
+  it.each(CORPUS)(
+    "projects %j identically",
+    (input, expected) => {
+      const out = projectLiveLatex(input, { envs: VERBATIM_ENVS_NARROW });
+      expect(out).toBe(expected);
+    },
+  );
+
+  it("detectBodyRequirements is unchanged by the delegation (spot checks)", () => {
+    // The observable contract: detection over the delegated projection is
+    // identical to what the inert-LaTeX suite above asserts.
+    expect(
+      detectBodyRequirements(
+        "\\begin{verbatim}\n\\ex\n\\end{verbatim}\n\\parencite{k}",
+      ).has("biblatex"),
+    ).toBe(true);
+    expect(
+      detectBodyRequirements(
+        "\\begin{verbatim}\n\\ex\n\\end{verbatim}\n\\parencite{k}",
+      ).has("expex"),
+    ).toBe(false);
+  });
+});
+
 describe("ensurePreambleRequirements — injection", () => {
   it("always ensures xcolor + all 7 shims (legacy ensureVirgilCommands behavior)", () => {
     const out = ensurePreambleRequirements(LEGACY_CLASSIC_V1, NONE);
@@ -227,6 +335,34 @@ describe("ensurePreambleRequirements — injection", () => {
     const once = ensurePreambleRequirements(LEGACY_CLASSIC_V1, req);
     const twice = ensurePreambleRequirements(once, req);
     expect(twice).toBe(once);
+  });
+
+  it("injects the xlist environment definition when a nested tier is required", () => {
+    const out = ensurePreambleRequirements(
+      LEGACY_CLASSIC_V1,
+      new Set(["expex", "xlistenv"]),
+    );
+    expect(out).toContain("\\newenvironment{xlist}{\\pex}{\\xe}");
+    // exactly one, before \begin{document}
+    expect(countOccurrences(out, "\\newenvironment{xlist}")).toBe(1);
+    expect(out.indexOf("\\newenvironment{xlist}")).toBeLessThan(
+      out.indexOf("\\begin{document}"),
+    );
+    // and idempotent
+    const twice = ensurePreambleRequirements(out, new Set(["expex", "xlistenv"]));
+    expect(twice).toBe(out);
+  });
+
+  it("does not re-inject xlist when the preamble already defines it", () => {
+    const preamble = `\\documentclass{article}
+\\usepackage{expex}
+\\newenvironment{xlist}{\\pex}{\\xe}
+
+\\begin{document}
+
+`;
+    const out = ensurePreambleRequirements(preamble, new Set(["expex", "xlistenv"]));
+    expect(countOccurrences(out, "\\newenvironment{xlist}")).toBe(1);
   });
 
   it("accepts \\usepackage with options as satisfying", () => {
@@ -301,6 +437,21 @@ describe("ensurePreambleRequirements — injection", () => {
     expect(countOccurrences(out, "natbib")).toBe(1);
   });
 
+  it("\\RequirePackage{biblatex} satisfies biblatex and gates natbib out (P4 load-form coverage)", () => {
+    const preamble = `\\documentclass{article}
+\\RequirePackage[style=apa]{biblatex}
+
+\\begin{document}
+
+`;
+    // biblatex is already loaded via \RequirePackage → nothing injected.
+    const outBib = ensurePreambleRequirements(preamble, new Set(["biblatex"]));
+    expect(outBib).not.toContain("\\usepackage{biblatex}");
+    // …and a natbib-family body must NOT co-load natbib (conflict → no inject).
+    const outNat = ensurePreambleRequirements(preamble, new Set(["natbib"]));
+    expect(outNat).not.toContain("\\usepackage{natbib}");
+  });
+
   it("a biblatex wrapper package (biblatex-chicago) satisfies biblatex AND gates natbib out", () => {
     const preamble = `\\documentclass{article}
 \\usepackage[authordate]{biblatex-chicago}
@@ -328,6 +479,36 @@ describe("ensurePreambleRequirements — injection", () => {
     expect(out).toContain("\\usepackage{tikz}");
   });
 
+  it("a commented-out \\usepackage does NOT false-satisfy a live requirement", () => {
+    // Body detection strips comments (projectDetectableBody), so the
+    // satisfaction test must too — else a `% \usepackage{tikz}` suppresses the
+    // real injection and the saved .tex has \begin{tikzpicture} with no tikz.
+    const preamble = `\\documentclass{article}
+% \\usepackage{tikz}
+
+\\begin{document}
+
+`;
+    const out = ensurePreambleRequirements(preamble, new Set(["tikz"]));
+    // A live (uncommented) \usepackage{tikz} line is injected; the comment is
+    // left intact (matching by line so the comment's substring isn't counted).
+    expect(out).toMatch(/^\\usepackage\{tikz\}$/m);
+    expect(out).toContain("% \\usepackage{tikz}");
+  });
+
+  it("a commented bib package does NOT gate out the other family's injection", () => {
+    // The mutual-exclusivity check runs on the inert-stripped preamble too, so
+    // a commented `% \usepackage{biblatex}` no longer suppresses natbib.
+    const preamble = `\\documentclass{article}
+% \\usepackage{biblatex}
+
+\\begin{document}
+
+`;
+    const out = ensurePreambleRequirements(preamble, new Set(["natbib"]));
+    expect(out).toContain("\\usepackage{natbib}");
+  });
+
   it("never injects natbib when the preamble already carries biblatex (and vice versa)", () => {
     const biblatexPreamble = `\\documentclass{article}
 \\usepackage[style=apa]{biblatex}
@@ -352,6 +533,89 @@ describe("ensurePreambleRequirements — injection", () => {
       new Set(["biblatex"]),
     );
     expect(out2).not.toContain("\\usepackage{biblatex}");
+  });
+});
+
+describe("ensurePreambleRequirements — bib-family reconciliation (P4: warn, never rewrite)", () => {
+  const natbibBaseline = `\\documentclass{article}
+\\usepackage{natbib}
+
+\\begin{document}
+
+`;
+  const biblatexBaseline = `\\documentclass{article}
+\\usepackage[style=apa]{biblatex}
+
+\\begin{document}
+
+`;
+  const bareBaseline = `\\documentclass{article}
+\\usepackage{amsmath}
+
+\\begin{document}
+
+`;
+
+  it("declared biblatex under a natbib baseline → biblatex NOT injected, natbib NOT deleted, CONFLICT surfaced (the old fatal case)", () => {
+    let conflict: BibFamilyConflict | undefined;
+    const out = ensurePreambleRequirements(natbibBaseline, new Set(["biblatex"]), {
+      declaredBibFamily: "biblatex",
+      onBibFamilyConflict: (c) => {
+        conflict = c;
+      },
+    });
+    // Never co-load the incompatible family, never delete the user's natbib.
+    expect(out).not.toContain("\\usepackage{biblatex}");
+    expect(countOccurrences(out, "natbib")).toBe(1);
+    // The conflict is surfaced so the save path can warn.
+    expect(conflict).toEqual({ declared: "biblatex", preambleHas: "natbib" });
+  });
+
+  it("symmetric: declared natbib under a biblatex baseline → conflict, no natbib injection, biblatex kept", () => {
+    let conflict: BibFamilyConflict | undefined;
+    const out = ensurePreambleRequirements(biblatexBaseline, new Set(["natbib"]), {
+      declaredBibFamily: "natbib",
+      onBibFamilyConflict: (c) => {
+        conflict = c;
+      },
+    });
+    expect(out).not.toContain("\\usepackage{natbib}");
+    expect(countOccurrences(out, "biblatex")).toBe(1);
+    expect(conflict).toEqual({ declared: "natbib", preambleHas: "biblatex" });
+  });
+
+  it("declared family injected (the RIGHT one) when the preamble loads NO family — no conflict", () => {
+    let fired = false;
+    const out = ensurePreambleRequirements(bareBaseline, new Set(["biblatex"]), {
+      declaredBibFamily: "biblatex",
+      onBibFamilyConflict: () => {
+        fired = true;
+      },
+    });
+    expect(out).toContain("\\usepackage{biblatex}");
+    expect(out).not.toContain("\\usepackage{natbib}");
+    expect(fired).toBe(false);
+  });
+
+  it("authoritative family OVERRIDES a body-derived guess (declared wins over `required`)", () => {
+    // `required` carries natbib (a body guess), but the authoritative choice is
+    // biblatex → biblatex is what gets ensured.
+    const out = ensurePreambleRequirements(bareBaseline, new Set(["natbib"]), {
+      declaredBibFamily: "biblatex",
+    });
+    expect(out).toContain("\\usepackage{biblatex}");
+    expect(out).not.toContain("\\usepackage{natbib}");
+  });
+
+  it("no conflict callback fires on a satisfied same-family preamble", () => {
+    let fired = false;
+    ensurePreambleRequirements(natbibBaseline, new Set(["natbib"]), {
+      declaredBibFamily: "natbib",
+      onBibFamilyConflict: () => {
+        fired = true;
+      },
+    });
+    expect(fired).toBe(false);
   });
 });
 
@@ -436,6 +700,39 @@ describe("serializeToLatex — requirements integration", () => {
   it("exampleBlock doc + current classic preamble → still exactly ONE \\usepackage{expex}", () => {
     const out = serializeToLatex(exampleDoc, { preamble: CLASSIC_PREAMBLE });
     expect(countOccurrences(out, "\\usepackage{expex}")).toBe(1);
+  });
+
+  it("a nested-example round-trip injects the xlist env definition (else it fails to compile)", () => {
+    // Parse a real nested example (a `\begin{xlist}` sub-tier inside a `\pex`),
+    // then serialize with a bare preamble. The saved .tex MUST carry a live
+    // `\newenvironment{xlist}` — without it, `\begin{xlist}` is a fatal
+    // "Environment xlist undefined" (expex has no xlist environment).
+    const nested = `\\documentclass{article}
+\\usepackage{expex}
+
+\\begin{document}
+
+\\pex\\label{ex:x}
+\\a Outer one.
+\\a Outer two, with a sublist:
+\\begin{xlist}
+\\a inner one.
+\\a inner two.
+\\end{xlist}
+\\xe
+
+\\end{document}
+`;
+    const parsed = parseLatex(nested);
+    const out = serializeToLatex(parsed, { preamble: LEGACY_CLASSIC_V1 });
+    // The nested tier survives the round-trip …
+    expect(out).toContain("\\begin{xlist}");
+    // … and the definition that makes it compile is injected exactly once.
+    expect(out).toContain("\\newenvironment{xlist}{\\pex}{\\xe}");
+    expect(countOccurrences(out, "\\newenvironment{xlist}")).toBe(1);
+    expect(out.indexOf("\\newenvironment{xlist}")).toBeLessThan(
+      out.indexOf("\\begin{document}"),
+    );
   });
 
   it("double-serialize through the real save loop is byte-stable", () => {
@@ -525,6 +822,137 @@ describe("serializeToLatex — requirements integration", () => {
     expect(out).not.toContain("\\usepackage{expex}");
   });
 
+  it("nested-xlist exampleItem DECLARES expex + xlistenv at the emit-site (P4 decoupling)", () => {
+    // A `\pex` whose `\a` item carries a nested exampleItemList emits
+    // `\begin{xlist}` — and the emit-site declares BOTH expex and xlistenv
+    // adjacent to those bytes. We build the JSON directly (not via parse) so the
+    // requirement comes from the serializer's co-located declaration, proving it
+    // is decoupled from the after-the-fact detector regex.
+    const nestedDoc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "exampleBlock",
+          attrs: { uuid: "ex01", kind: "multi" },
+          content: [
+            {
+              type: "exampleItemList",
+              content: [
+                {
+                  type: "exampleItem",
+                  attrs: { uuid: "it01" },
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Outer with a sublist:" }],
+                    },
+                    {
+                      type: "exampleItemList",
+                      content: [
+                        {
+                          type: "exampleItem",
+                          attrs: { uuid: "it02" },
+                          content: [
+                            {
+                              type: "paragraph",
+                              content: [{ type: "text", text: "inner one." }],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const out = serializeToLatex(nestedDoc, { preamble: LEGACY_CLASSIC_V1 });
+    expect(out).toContain("\\begin{xlist}");
+    // Both requirements are present exactly once from the emit-site declaration.
+    expect(countOccurrences(out, "\\usepackage{expex}")).toBe(1);
+    expect(countOccurrences(out, "\\newenvironment{xlist}{\\pex}{\\xe}")).toBe(1);
+  });
+
+  it("\\autocite under a natbib baseline → biblatex requirement PRESERVED + conflict surfaced (never a natbib-only preamble with undefined \\autocite)", () => {
+    const autociteDoc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { uuid: "0001" },
+          content: [
+            { type: "text", text: "As shown " },
+            {
+              type: "citation",
+              attrs: { citationId: "c1", command: "\\autocite{smith2020}" },
+            },
+            { type: "text", text: "." },
+          ],
+        },
+      ],
+    };
+    const natbibPreamble = `\\documentclass{article}
+\\usepackage{natbib}
+
+\\begin{document}
+
+`;
+    let conflict: BibFamilyConflict | undefined;
+    // The user has chosen biblatex (authoritative), the preamble is natbib.
+    const out = serializeToLatex(autociteDoc, {
+      preamble: natbibPreamble,
+      bibFamily: "biblatex",
+      onRequirementConflict: (c) => {
+        conflict = c;
+      },
+    });
+    // The user's \autocite is kept verbatim; natbib is NOT deleted; biblatex is
+    // NOT co-loaded (co-loading is equally fatal). The conflict is surfaced.
+    expect(out).toContain("\\autocite{smith2020}");
+    expect(out).not.toContain("\\usepackage{biblatex}");
+    expect(countOccurrences(out, "natbib")).toBe(1);
+    expect(conflict).toEqual({ declared: "biblatex", preambleHas: "natbib" });
+  });
+
+  it("symmetric: \\citep under a biblatex baseline → conflict, natbib not injected, user command kept", () => {
+    const citepDoc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { uuid: "0001" },
+          content: [
+            {
+              type: "citation",
+              attrs: { citationId: "c1", command: "\\citep{smith2020}" },
+            },
+          ],
+        },
+      ],
+    };
+    const biblatexPreamble = `\\documentclass{article}
+\\usepackage[style=apa]{biblatex}
+
+\\begin{document}
+
+`;
+    let conflict: BibFamilyConflict | undefined;
+    const out = serializeToLatex(citepDoc, {
+      preamble: biblatexPreamble,
+      bibFamily: "natbib",
+      onRequirementConflict: (c) => {
+        conflict = c;
+      },
+    });
+    expect(out).toContain("\\citep{smith2020}");
+    expect(out).not.toContain("\\usepackage{natbib}");
+    expect(countOccurrences(out, "biblatex")).toBe(1);
+    expect(conflict).toEqual({ declared: "natbib", preambleHas: "biblatex" });
+  });
+
   it("no-options path injects needs-driven packages (tikz via texBlock)", () => {
     const tikzDoc: JSONContent = {
       type: "doc",
@@ -540,6 +968,49 @@ describe("serializeToLatex — requirements integration", () => {
     };
     const out = serializeToLatex(tikzDoc);
     expect(countOccurrences(out, "\\usepackage{tikz}")).toBe(1);
+  });
+
+  it("tikzcd / pgfplots in a texBlock inject tikz via the emit-site's raw-bytes declaration", () => {
+    for (const code of [
+      "\\begin{tikzcd} A \\to B \\end{tikzcd}",
+      "\\begin{axis}\\addplot {x};\\end{axis}",
+      "\\tikz \\draw (0,0) -- (1,1);",
+    ]) {
+      const doc: JSONContent = {
+        type: "doc",
+        content: [{ type: "texBlock", attrs: { uuid: "t1", code } }],
+      };
+      const out = serializeToLatex(doc);
+      expect(countOccurrences(out, "\\usepackage{tikz}")).toBe(1);
+    }
+  });
+
+  it("commented-only \\usepackage{tikz} + tikzpicture body → real tikz still injected", () => {
+    // End-to-end: a preamble whose ONLY tikz mention is commented, plus a body
+    // that uses \begin{tikzpicture}, must save with a LIVE \usepackage{tikz}
+    // (else the .tex fails to compile).
+    const tikzDoc: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "texBlock",
+          attrs: {
+            uuid: "0003",
+            code: "\\begin{tikzpicture}\\draw (0,0) -- (1,1);\\end{tikzpicture}",
+          },
+        },
+      ],
+    };
+    const preamble = `\\documentclass{article}
+% \\usepackage{tikz}
+
+\\begin{document}
+
+`;
+    const out = serializeToLatex(tikzDoc, { preamble });
+    // Live (uncommented) injection present; the comment line still there too.
+    expect(out).toMatch(/^\\usepackage\{tikz\}$/m);
+    expect(out).toContain("% \\usepackage{tikz}");
   });
 });
 

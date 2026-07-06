@@ -114,6 +114,36 @@ Hello.
     expect(out).not.toMatch(/\\title\{Second\}/);
   });
 
+  it("preserves a sizing prefix on the \\today path (\\date{\\small\\today})", () => {
+    // The parser strips `\small` into rawPrefix AND sets isToday=true; the
+    // serializer's isToday branch must re-emit the prefix or `\small` is lost.
+    const withPrefix = `\\documentclass{article}
+
+\\date{\\small\\today}
+
+\\begin{document}
+\\maketitle
+\\end{document}
+`;
+    const doc = parseLatex(withPrefix);
+    const delimiters = extractPreambleAndPostamble(withPrefix);
+    const out = serializeToLatex(doc, delimiters ?? undefined);
+
+    const beginDoc = out.indexOf("\\begin{document}");
+    expect(out.slice(0, beginDoc)).toMatch(/\\date\{\\small\\today\}/);
+  });
+
+  it("leaves a prefix-free \\date{\\today} unchanged (no spurious rawPrefix)", () => {
+    const doc = parseLatex(ARTICLE_TEX);
+    const delimiters = extractPreambleAndPostamble(ARTICLE_TEX);
+    const out = serializeToLatex(doc, delimiters ?? undefined);
+    const beginDoc = out.indexOf("\\begin{document}");
+    const preambleSlice = out.slice(0, beginDoc);
+    expect(preambleSlice).toMatch(/\\date\{\\today\}/);
+    // The bare form must NOT gain a phantom prefix.
+    expect(preambleSlice).not.toMatch(/\\date\{\\[a-zA-Z]+\\today\}/);
+  });
+
   it("orders title fields canonically: title → author → date", () => {
     // Source has them in reverse order; serializer must emit canonically.
     const reversed = `\\documentclass{article}

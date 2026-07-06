@@ -25,6 +25,14 @@
  * `\vlid{…}` markers, an `originalText` that was clipped mid-marker can't match
  * verbatim — so the stale guard ALSO naturally refuses a marker-straddling span.
  *
+ * That protects the READ span. The WRITE span is guarded symmetrically: a
+ * `replacement` is refused (same `{ ok:false, reason:"stale" }`, doc untouched)
+ * when it CONTAINS any internal marker token (`containsInternalMarker`), because
+ * concatenating one into the paragraph serialization and reparsing it would mint
+ * a phantom `linkedAnchor` / citation / footnote atom that no card owns. Both
+ * sides of the splice thus refuse suspicious marker text — the applicator only
+ * ever reparses marker text it emitted itself.
+ *
  * REUSE, don't reinvent: `findNodeByUuid` + `editStructuredNodeByUuid`
  * (structural-edit.ts) address + replace the paragraph by uuid;
  * `serializeParagraphInline` (latex-serializer.ts) + `parseInlineContent`
@@ -38,7 +46,10 @@ import {
   findNodeByUuid,
   editStructuredNodeByUuid,
 } from "@/lib/tiptap/structural-edit";
-import { serializeParagraphInline } from "@/lib/latex-serializer";
+import {
+  serializeParagraphInline,
+  containsInternalMarker,
+} from "@/lib/latex-serializer";
 import {
   parseInlineContent,
   applyLinkedAnchorBoundaries,
@@ -264,6 +275,43 @@ function spliceParagraphInner(
 }
 
 /**
+ * Insert a NEW paragraph directly AFTER the block anchored by `anchorUuid`,
+ * carrying the parsed `inlineLatex` as its content. Pure insert — the anchored
+ * block's own range `[pos, pos+nodeSize)` is never touched, so the original
+ * paragraph survives byte-for-byte; the new paragraph lands at the boundary
+ * right after it. Returns false (no-op) when the uuid doesn't resolve.
+ *
+ * The inserted paragraph carries NO `uuid` attr: `BlockUuidBackfill`
+ * (block-uuid-backfill.ts) mints a fresh, collision-free `%!v:` id in its
+ * `appendTransaction` — the keystroke-safe path for programmatic insertion —
+ * so we must NOT hand-mint one (that would risk a collision the backfill can't
+ * detect). This is the non-destructive "Insert below" primitive behind the
+ * retired 4-field AI fallback: the suggestion is dropped as a sibling paragraph
+ * rather than spliced over the (possibly returned / re-anchored) original.
+ *
+ * `parseInlineContent` yields a single paragraph's worth of inline nodes; a
+ * multi-paragraph `suggested_text` would need block-splitting first (out of
+ * scope — the AI fallback replacement is single-paragraph by construction).
+ */
+export function insertParagraphAfter(
+  editor: Editor,
+  anchorUuid: string,
+  inlineLatex: string,
+): boolean {
+  const hit = findNodeByUuid(editor, anchorUuid);
+  if (!hit) return false;
+  const insertPos = hit.pos + hit.node.nodeSize;
+  const content = parseInlineContent(inlineLatex);
+  // insertContentAt dispatches a ReplaceStep that inserts a bare paragraph;
+  // BlockUuidBackfill (registered right after DocStructureObserver) backfills
+  // its uuid in the same transaction batch.
+  return editor
+    .chain()
+    .insertContentAt(insertPos, { type: "paragraph", content })
+    .run();
+}
+
+/**
  * Apply a pending AI change.
  *
  * - **replace**: stale-guard `originalText`, splice `originalText → replacement`
@@ -275,11 +323,24 @@ function spliceParagraphInner(
  *   pending-delete preview). `keepPendingChange` later removes the text.
  *
  * Returns `{ ok:false, reason:"stale" }` WITHOUT touching the doc when
- * `originalText` isn't present verbatim (also covers a marker-straddling span).
+ * `originalText` isn't present verbatim (also covers a marker-straddling span),
+ * or when `replacement` carries an internal marker token (the write-side mirror
+ * of that guard — it would reparse into a phantom anchor / atom).
  */
 export function applyPendingChange(editor: Editor, args: ApplyArgs): ApplyResult {
   const { anchorUuid, originalText, replacement, mode, cardId, anchorId, family } =
     args;
+
+  // Write-side mirror of the `originalText` verbatim guard: refuse a
+  // `replacement` that embeds any internal Virgil marker (`\vlid` / `\vlidend`
+  // / `\vcid` / `\vfid`). Splicing it into the serialized paragraph and
+  // reparsing would mint a phantom `linkedAnchor` / citation / footnote atom no
+  // card owns (a `\vlid{id}` reusing a colocated anchor's id even splits its
+  // range into two marks Keep/Revert can't fully unset). A well-behaved
+  // suggestion never emits these — so a marker-bearing one lands as `stale`,
+  // the correct non-destructive outcome. Trivially passes for a delete
+  // (replacement === ""), but guarded unconditionally so both verbs are safe.
+  if (containsInternalMarker(replacement)) return { ok: false, reason: "stale" };
 
   const located = locateSpan(editor, anchorUuid, originalText);
   if (!located) return { ok: false, reason: "stale" };

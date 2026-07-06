@@ -88,7 +88,7 @@ function resolveLineHeightPx(cs: CSSStyleDeclaration, fontSizePx: number): numbe
  * element governing the first line — for wrappers, descend first via
  * `resolveInlineContextElement`.
  *
- * Cached by `(fontFamily | fontSize | fontWeight | lineHeight)`. The SINGLE
+ * Cached by `(fontFamily | fontSize | fontWeight | fontStyle | lineHeight)`. The SINGLE
  * source for both {@link capTopOffset} and {@link capHeight}, so the two
  * can never drift and a consumer that needs both pays one measurement.
  * Returns null if no document/canvas is available (SSR safety) or if the
@@ -100,7 +100,11 @@ function measureFontMetrics(el: HTMLElement): CapTopMetrics | null {
   const fontSizePx = parseFloat(cs.fontSize);
   if (!Number.isFinite(fontSizePx) || fontSizePx <= 0) return null;
   const lineHeightPx = resolveLineHeightPx(cs, fontSizePx);
-  const key = `${cs.fontFamily}|${fontSizePx}|${cs.fontWeight}|${lineHeightPx}`;
+  // Key on EVERY input the measurement depends on. The `ctx.font` string below
+  // prepends "italic " for an italic element, so `fontStyle` flips the measured
+  // metrics — an italic first-line target must not share a cache entry with a
+  // non-italic sibling of otherwise-identical (family | size | weight | lineHeight).
+  const key = `${cs.fontFamily}|${fontSizePx}|${cs.fontWeight}|${cs.fontStyle}|${lineHeightPx}`;
   const cached = FONT_METRICS_CACHE.get(key);
   if (cached !== undefined) return cached;
 

@@ -29,6 +29,7 @@ import {
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
 import { publishAiRequests } from "@/lib/ai-request-events";
+import { isRequestOpen } from "@/lib/ai-request-open";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
 
@@ -101,10 +102,14 @@ export async function bridgeCardAiRequestFlag(
       r.linkedTo &&
       r.linkedTo.panel === link.panel &&
       r.linkedTo.cardId === link.cardId &&
-      // Open == not terminal. Both v1 terminal statuses count as "done" so a
-      // re-toggle after completion/failure files a fresh request.
-      r.status !== "complete" &&
-      r.status !== "failed",
+      // Match only requests the drain still considers OPEN. `isRequestOpen` is
+      // the SSOT mirror of the Python drain rule (`list_requests.py`): a
+      // terminal (`complete`/`failed`) row OR an answered L3 proposal
+      // (`in-progress`+`resultId`) is closed, so a re-toggle files a FRESH
+      // request instead of matching a row the drain will never re-serve — and a
+      // value=false toggle can't delete an answered row out from under the
+      // accept/reject flow that depends on its `resultId` (task 043).
+      isRequestOpen(r),
   );
 
   let nextRequests: AiRequest[];

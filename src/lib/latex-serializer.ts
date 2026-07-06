@@ -8,6 +8,55 @@ import {
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
 import { typographyToLatex } from "@/lib/latex-typography";
+import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
+import { classifyCiteFamily } from "@/lib/bib-family";
+import {
+  createRequirementCollector,
+  TIKZ_RE,
+  type RequirementCollector,
+} from "@/lib/latex-requirement-collector";
+
+// -----------------------------------------------------------------------------
+// Requirement collection — side channel (P4, requirements by emission).
+//
+// The requirement declared at each emit-site is pushed into a module-scoped
+// ACTIVE collector rather than threaded through every serializeNode signature.
+// Serialization is fully synchronous and single-threaded, so a module-level
+// "current collector" is safe: `serializeToLatex` sets it before its walk and
+// clears it after, and the body-only / single-paragraph projections leave it
+// null (a `need()` on a null collector is a no-op). This keeps collection
+// STRICTLY side-channel — no byte of emitted output changes.
+// -----------------------------------------------------------------------------
+let activeCollector: RequirementCollector | null = null;
+
+/** Declare a package/shim requirement adjacent to the bytes an emit-site
+ *  writes. No-op when no collector is active (body-only projections). */
+function need(id: string): void {
+  activeCollector?.need(id);
+}
+
+/** Declare the bib family a cite command pins, adjacent to its emit. */
+function needBibFamily(fam: BibFamily | null): void {
+  activeCollector?.needBibFamily(fam);
+}
+
+/** Run the shared tikz/bib/expex/graphicx vocabulary over a raw-passthrough
+ *  block's OWN bytes (texBlock code, figure extras) and declare accordingly —
+ *  co-locating even raw-passthrough detection with its emitter. */
+function declareFromRawLatex(raw: string): void {
+  if (!raw) return;
+  if (TIKZ_RE.test(raw)) need("tikz");
+  if (/\\includegraphics(?![a-zA-Z])/.test(raw)) need("graphicx");
+  if (/\\textcolor(?![a-zA-Z])/.test(raw)) need("xcolor");
+  if (
+    /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z])|\\begin\{xlist\}/.test(
+      raw,
+    )
+  ) {
+    need("expex");
+  }
+  if (/\\begin\{xlist\}/.test(raw)) need("xlistenv");
+}
 
 // The classic preset is the historical default — used as the fallback
 // when a doc has no preserved preamble and the caller didn't pass one.
@@ -82,6 +131,7 @@ function serializeMarks(
         const hex = c.replace(/^#/, "").toUpperCase();
         if (/^[0-9A-F]{6}$/.test(hex)) {
           result = `\\textcolor[HTML]{${hex}}{${result}}`;
+          need("xcolor"); // declared adjacent to the \textcolor byte emit
         }
         break;
       }
@@ -97,9 +147,31 @@ function escapeLatex(
   // Don't escape backslashes — they're intentional LaTeX commands.
   // The editor preserves raw LaTeX, so we only escape the few chars
   // that would break LaTeX if they appeared as literal text.
-  // We also don't escape {, }, $ since those are part of LaTeX syntax.
+  // `$` IS escaped here (→ `\$`): a bare `$` in a plain-text node is re-read
+  // as an inline-math delimiter by the parser (`$…$` → inlineMath), so leaving
+  // it raw silently converts prose like `costs $5, $10` into a math atom on the
+  // next save→reload. Genuine inline math never reaches escapeLatex — it is a
+  // separate `inlineMath` node serialized directly as `$${latex}$` — and the
+  // parser un-escapes `\$` back to a literal `$`, so this closes the round-trip.
+  // We still don't escape {, } since those are structural LaTeX syntax the
+  // editor emits and re-reads verbatim.
+  //
+  // `[` / `]` are escaped SYMMETRICALLY as `{[}` / `{]}` (task 037's `$` twin).
+  // A literal prose `[` that abuts a preceding `\\` hard-break or a
+  // `\command` is otherwise re-read as an OPTIONAL ARGUMENT: `\\[Note]` reads
+  // as a line-break of length `Note`, and `\cmd[Note]` folds `[Note]` into the
+  // command atom (the parser's optional-arg absorber). Wrapping the bracket in
+  // its own brace group (`{[}`) neutralizes both — a braced `[` can never begin
+  // an optional arg — while still rendering as a plain `[`. We deliberately do
+  // NOT use `\[` (that starts DISPLAY MATH, silently turning `[Note]` into a
+  // math block on reload). Genuine structural brackets (`\begin{figure}[t]`,
+  // `\ex[exno=3]`, real `\\[2em]` lengths) live on latexCommand/texBlock/example
+  // paths that bypass escapeLatex, so only prose text is touched. The parser
+  // collapses `{[}`/`{]}` back to a bare `[`/`]`, closing the round-trip.
   const escaped = text
-    .replace(/(?<!\\)([&%#_])/g, "\\$1")
+    .replace(/(?<!\\)([&%#$_])/g, "\\$1")
+    .replace(/\[/g, "{[}")
+    .replace(/\]/g, "{]}")
     .replace(/~/g, "\\textasciitilde{}")
     .replace(/\^/g, "\\textasciicircum{}")
     .replace(/“/g, "``")
@@ -122,7 +194,11 @@ function serializeTitleField(node: JSONContent): string {
   const uuid = node.attrs?.uuid as string | null;
   const anchor = uuid ? ` %!v:${uuid}` : "";
   if (node.attrs?.isToday) {
-    return `\\${field}{\\today}${anchor}\n`;
+    // Interpolate rawPrefix exactly as the non-today branch below does — the
+    // parser strips a sizing/weight prefix (`\small`, `\Large`, …) into
+    // rawPrefix even on the \today path (latex-parser.ts), so dropping it here
+    // silently rewrites `\date{\small\today}` → `\date{\today}` on round-trip.
+    return `\\${field}{${rawPrefix}\\today}${anchor}\n`;
   }
   const inner = serializeInlineSequence(node.content || []);
   return `\\${field}{${rawPrefix}${inner}}${anchor}\n`;
@@ -223,7 +299,20 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const inner = serializeInlineSequence(node.content || []);
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
-      return `\\begin{verbatim}\n${inner}\n\\end{verbatim}${anchor}\n\n`;
+      // A body line reading `\end{verbatim}` would otherwise close the
+      // environment early (the parser's `findMatchingEnd` matches the
+      // literal string). Escape it to a private form that breaks the
+      // delimiter substring; the parser un-escapes it on the way back in.
+      // Mirrors the `texBlock` `%!vtex:end` → `%!v tex:end` sentinel guard.
+      // The `%` is injected here, AFTER `escapeLatex` ran on `inner`, so it
+      // stays raw (not `\%`) and reverses cleanly. Verbatim bodies containing
+      // a literal `\end{verbatim}` are uncompilable in raw LaTeX anyway, so
+      // preserving Virgil's representation losslessly is strictly better.
+      const escaped = inner.replace(
+        /\\end\{verbatim\}/g,
+        "\\end{verbatim%!v-esc}",
+      );
+      return `\\begin{verbatim}\n${escaped}\n\\end{verbatim}${anchor}\n\n`;
     }
 
     case "texBlock": {
@@ -234,6 +323,11 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // the block early.
       const uuid = (node.attrs?.uuid as string) || "";
       const rawCode = (node.attrs?.code as string) || "";
+      // Raw passthrough is unmodeled: run the shared vocabulary over its OWN
+      // bytes so tikz/graphicx/xcolor/expex used inside a texBlock declare
+      // their package at the emit-site (co-located with the fallback detector's
+      // vocabulary, so declared and detected can't diverge).
+      declareFromRawLatex(rawCode);
       const escaped = rawCode.replace(/%!vtex:end/g, "%!v tex:end");
       return `%!vtex:begin ${uuid}\n${escaped}\n%!vtex:end ${uuid}\n\n`;
     }
@@ -249,6 +343,9 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const uuid = node.attrs?.uuid as string | null;
       const label = (node.attrs?.label as string) ?? "";
       const extras = ((node.attrs?.extras as string) ?? "").replace(/\s+$/, "");
+      // `extras` is raw passthrough (\includegraphics, TikZ, pgfplots) — run the
+      // shared vocabulary over it so its packages declare at the emit-site.
+      declareFromRawLatex(extras);
       const captionChild = (node.content || []).find(
         (c) => c.type === "figureCaption",
       );
@@ -280,11 +377,18 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const command = (node.attrs?.command as string) ?? "";
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
+      need("graphicx"); // \includegraphics is graphicx-bound
       return `${command}${anchor}\n\n`;
     }
 
     case "blockquote": {
-      const inner = (node.content || []).map((n) => serializeNode(n, true)).join("");
+      // Join child paragraphs with a `\n\n` block separator: under
+      // `suppressChildUuids` the paragraph branch returns bare `inner` with no
+      // trailing break, so joining with "" fuses consecutive paragraphs into
+      // one on re-parse (the parser only splits the quote body on `\n\n`). The
+      // separator preserves the hard paragraph break inside a multi-paragraph
+      // quote; a single-paragraph quote is byte-unchanged (single-element join).
+      const inner = (node.content || []).map((n) => serializeNode(n, true)).join("\n\n");
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       return `\\begin{quote}\n${inner}\\end{quote}${anchor}\n\n`;
@@ -374,7 +478,10 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     case "citation": {
       const cid = node.attrs?.citationId as string | undefined;
       const idMarker = cid ? `\\vcid{${cid}}` : "";
-      return `${idMarker}${node.attrs?.command || ""}`;
+      const command = (node.attrs?.command as string) || "";
+      // Declare the bib family this cite command pins, adjacent to its emit.
+      needBibFamily(classifyCiteFamily(command));
+      return `${idMarker}${command}`;
     }
 
     case "labelRef":
@@ -413,8 +520,16 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 function serializeLabelRef(node: JSONContent): string {
   const label = node.attrs?.label || "";
   const cmd = (node.attrs?.refCommand as string) || "ref";
-  if (cmd === "getref") return `\\getref{${label}}`;
-  if (cmd === "getfullref") return `\\getfullref{${label}}`;
+  // \getref / \getfullref are expex reference commands (matched by the expex
+  // fallback detector too); declare adjacent to the emit. Plain \ref is kernel.
+  if (cmd === "getref") {
+    need("expex");
+    return `\\getref{${label}}`;
+  }
+  if (cmd === "getfullref") {
+    need("expex");
+    return `\\getfullref{${label}}`;
+  }
   return `\\ref{${label}}`;
 }
 
@@ -442,6 +557,8 @@ function serializeExampleBlockBodyParagraphs(
 }
 
 function serializeExampleBlock(node: JSONContent): string {
+  // An example block emits `\ex`/`\pex … \xe` — an expex construct.
+  need("expex");
   const kind = node.attrs?.kind === "multi" ? "pex" : "ex";
   const uuid = node.attrs?.uuid as string | null;
   const idMarker = uuid ? `\\vexid{${uuid}}` : "";
@@ -472,6 +589,7 @@ function serializeExampleBlock(node: JSONContent): string {
       // verbatim command (mirrors serializeExampleItem's graphicsBlock branch;
       // the generic graphicsBlock serializer adds a trailing blank line we
       // don't want inside the example).
+      need("graphicx"); // \includegraphics is graphicx-bound
       pieces.push({
         type: "graphicsBlock",
         text: (child.attrs?.command as string) ?? "",
@@ -526,6 +644,8 @@ function serializeExampleBlock(node: JSONContent): string {
 }
 
 function serializeExampleItem(node: JSONContent): string {
+  // An `\a` item is an expex construct.
+  need("expex");
   const uuid = node.attrs?.uuid as string | null;
   const idMarker = uuid ? `\\vxid{${uuid}}` : "";
   const tag = (node.attrs?.tag as string) || "";
@@ -542,6 +662,7 @@ function serializeExampleItem(node: JSONContent): string {
       // trailing blank-line we don't want inside an item, so just emit
       // the command).
       const command = (child.attrs?.command as string) ?? "";
+      need("graphicx"); // \includegraphics is graphicx-bound
       pieces.push(command);
     } else if (child.type === "displayMath") {
       // Display math `\[…\]` inside the item body (Feature A1). Emit the
@@ -557,7 +678,14 @@ function serializeExampleItem(node: JSONContent): string {
     } else if (child.type === "exampleGloss") {
       pieces.push(serializeExampleGloss(child).trimEnd());
     } else if (child.type === "exampleItemList") {
-      // Nested tier of \a items — wrap in expex's xlist environment.
+      // Nested tier of \a items — wrap in the `xlist` environment. This is the
+      // key P4 decoupling site: emitting `\begin{xlist}` REQUIRES both expex
+      // (the `\pex`/`\xe` the env expands to) and the `xlistenv` definition
+      // (expex ships no `xlist`), declared adjacent to the bytes — so a nested
+      // tier can never emit without both requirements, independent of the
+      // fallback regex.
+      need("expex");
+      need("xlistenv");
       const nestedItems = (child.content || []).filter(
         (c) => c.type === "exampleItem",
       );
@@ -573,20 +701,39 @@ function serializeExampleItem(node: JSONContent): string {
   return `${idMarker}\\a${tagStr}${labelStr} ${body}\n`;
 }
 
+/** True if `s` has a whitespace char at brace depth 0 — i.e. a space that
+ *  expex would treat as a column separator. Whitespace *inside* a `{...}`
+ *  group (e.g. a command's braced argument) is already protected, so it
+ *  doesn't count. `\{`/`\}` are literal, not group delimiters. */
+function hasTopLevelWhitespace(s: string): boolean {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "{" && s[i - 1] !== "\\") depth++;
+    else if (c === "}" && s[i - 1] !== "\\") depth = Math.max(0, depth - 1);
+    else if (depth === 0 && /\s/.test(c)) return true;
+  }
+  return false;
+}
+
 function glossCellToText(cell: JSONContent): string {
   // One cell = inline content; preserve any backslash commands verbatim.
-  // Plain text tokens are whitespace-joined; wrap in braces if the
-  // serialized form contains a top-level space.
+  // Plain text tokens are whitespace-joined; wrap in braces only if the
+  // serialized form has a space at brace depth 0.
   const inner = serializeExampleInlineChildren(cell.content);
   const trimmed = inner.trim();
   if (!trimmed) return "{}";
-  // If the cell contains whitespace at top level, we must brace it so
-  // expex doesn't split it into multiple columns.
-  if (/\s/.test(trimmed)) return `{${trimmed}}`;
+  // Brace only when a top-level (brace-depth-0) space is present, so expex
+  // doesn't split the cell into multiple columns. A whitespace-bearing run
+  // already wrapped by a command's braces — `\textbf{a b}` — needs no
+  // redundant outer group, and the brace-aware parser re-reads it as one cell.
+  if (hasTopLevelWhitespace(trimmed)) return `{${trimmed}}`;
   return trimmed;
 }
 
 function serializeExampleGloss(node: JSONContent): string {
+  // A gloss emits `\begingl … \endgl` — an expex construct.
+  need("expex");
   const rows = node.content || [];
   const lines: string[] = [];
   for (const row of rows) {
@@ -603,6 +750,43 @@ function serializeExampleGloss(node: JSONContent): string {
     }
   }
   return `\\begingl\n${lines.join("\n")}\n\\endgl\n`;
+}
+
+/**
+ * The internal Virgil marker commands the serializer emits inline to round-trip
+ * structure that has no LaTeX of its own: linked-anchor range boundaries
+ * (`\vlid` / `\vlidend`, {@link serializeInlineSequence}), citation ids
+ * (`\vcid`) and footnote ids (`\vfid`) (the atom emit sites at :360/:376 and
+ * :665/:671). These are NOT real LaTeX — they are private sentinels the parser
+ * (`parseInlineContent` / `applyLinkedAnchorBoundaries`) reads back to
+ * re-materialize anchors + atoms. Single-sourced here (alongside the emit
+ * sites) so any consumer that must treat serialized text as trusted-marker-free
+ * — notably the pending-change applicator's splice guard
+ * (`containsInternalMarker`) — never drifts from the set the serializer
+ * actually produces. Longest-first so the regex alternation matches `\vlidend`
+ * before its `\vlid` prefix.
+ */
+export const INTERNAL_MARKER_COMMANDS = [
+  "vlidend",
+  "vlid",
+  "vcid",
+  "vfid",
+] as const;
+
+const INTERNAL_MARKER_REGEX = new RegExp(
+  `\\\\(?:${INTERNAL_MARKER_COMMANDS.join("|")})\\b`,
+);
+
+/**
+ * True if `text` contains any internal Virgil marker command
+ * (`\vlid` / `\vlidend` / `\vcid` / `\vfid`). Used to refuse REPARSING
+ * untrusted text (e.g. a suggestion's `replacement`): concatenating a marker
+ * into a paragraph's serialized inline LaTeX and reparsing it would mint a
+ * phantom `linkedAnchor` / citation / footnote atom that no card owns — the
+ * write-side mirror of the applicator's `originalText` verbatim guard.
+ */
+export function containsInternalMarker(text: string): boolean {
+  return INTERNAL_MARKER_REGEX.test(text);
 }
 
 /**
@@ -669,7 +853,9 @@ function serializeInline(node: JSONContent): string {
   if (node.type === "citation") {
     const cid = node.attrs?.citationId as string | undefined;
     const idMarker = cid ? `\\vcid{${cid}}` : "";
-    return `${idMarker}${node.attrs?.command || ""}`;
+    const command = (node.attrs?.command as string) || "";
+    needBibFamily(classifyCiteFamily(command));
+    return `${idMarker}${command}`;
   }
   if (node.type === "labelRef") {
     return serializeLabelRef(node);
@@ -680,19 +866,95 @@ function serializeInline(node: JSONContent): string {
   return "";
 }
 
+/**
+ * Collapse runs of 3+ newlines down to a single blank-line separator —
+ * EXCEPT inside `verbatim` environments, whose bodies are byte-preserving.
+ * Verbatim blocks are pulled out behind placeholders, the collapse runs on
+ * the remaining prose, then the blocks are spliced back intact. A body line
+ * reading `\end{verbatim}` is escaped (`%!v-esc`) at emit time, so the
+ * non-greedy match always stops at the block's real terminator even when the
+ * body itself contains a literal `\begin{verbatim}`.
+ */
+const VERBATIM_BLOCK_RE = /\\begin\{verbatim\}\n[\s\S]*?\n\\end\{verbatim\}/g;
+function collapseBlankRuns(s: string): string {
+  const blocks: string[] = [];
+  // Stash each verbatim block behind a placeholder that carries no newline
+  // (so the collapse pass can't touch it) and cannot collide with real prose
+  // (`@@` + a reserved tag). Restore is index-guarded — an unmatched token is
+  // left verbatim rather than turning into "undefined".
+  const stashed = s.replace(VERBATIM_BLOCK_RE, (m) => {
+    blocks.push(m);
+    return `@@VBTSTASH:${blocks.length - 1}@@`;
+  });
+  const collapsed = stashed.replace(/\n{3,}/g, "\n\n");
+  return collapsed.replace(/@@VBTSTASH:(\d+)@@/g, (whole, i) => {
+    const block = blocks[Number(i)];
+    return block === undefined ? whole : block;
+  });
+}
+
 export function serializeToLatex(
   doc: JSONContent,
-  options?: { preamble?: string; postamble?: string },
+  options?: {
+    preamble?: string;
+    postamble?: string;
+    /**
+     * The AUTHORITATIVE per-doc bib family (from the virgil settings sidecar /
+     * useCitations). When supplied it OVERRIDES the body-derived family guess —
+     * so a doc whose user has chosen biblatex ensures biblatex even if a lone
+     * shared cite would otherwise default to natbib. Optional; backward
+     * compatible (unset → body-derived family, today's behavior).
+     */
+    bibFamily?: BibFamily | null;
+    /**
+     * Called once at serialize time when the family the body needs conflicts
+     * with the family the preamble hard-loads (natbib baseline + `\autocite`,
+     * or the symmetric case). Per the locked decision we WARN, never rewrite —
+     * the save path renders this as a soft notice. Fires at most once.
+     */
+    onRequirementConflict?: (conflict: BibFamilyConflict) => void;
+  },
 ): string {
-  const body = serializeNode(doc).replace(/\n{3,}/g, "\n\n").trim();
+  // Seed a per-serialize collector and set it as the active side channel for
+  // the walk. Cleared in `finally` so body-only projections never see it.
+  const collector = createRequirementCollector();
+  const prevCollector = activeCollector;
+  activeCollector = collector;
+  let body: string;
+  try {
+    body = collapseBlankRuns(serializeNode(doc)).trim();
+  } finally {
+    activeCollector = prevCollector;
+  }
+
   // Requirements pass runs on EVERY serialize — including the no-options
   // DEFAULT_PREAMBLE fallback — so a body that emits expex / graphicx /
   // tikz / cite commands always has the matching \usepackage (and every
   // `\v*id` shim) by the time the .tex hits disk. `||` (not `??`): an
   // empty-string preamble falls back to the default, as before.
+  //
+  // The DECLARED set (collector.ids, from emit-sites) is UNIONed with the
+  // FALLBACK detector (detectBodyRequirements, for hand-typed raw LaTeX). The
+  // two never subtract, so the result is a superset-improvement over the old
+  // detector-only set — byte-stable for existing docs (the emit-sites declare
+  // exactly what the regexes were catching, plus previously-missed cases).
+  const required = detectBodyRequirements(body);
+  for (const id of collector.ids) required.add(id);
+
+  // Bib family: prefer the authoritative per-doc choice; else the family the
+  // cite emit-sites declared. The declared/authoritative family is reconciled
+  // against the preamble by ensurePreambleRequirements (inject the RIGHT
+  // family; warn — never delete — on a hard conflict).
+  const declaredFamily: BibFamily | null =
+    options?.bibFamily ?? collector.bibFamily;
+
   const rawPreamble = ensurePreambleRequirements(
     options?.preamble || DEFAULT_PREAMBLE,
-    detectBodyRequirements(body),
+    required,
+    {
+      declaredBibFamily: declaredFamily,
+      onBibFamilyConflict: options?.onRequirementConflict,
+    },
   );
   // Re-inject preamble-sourced \title/\author/\date right before
   // \begin{document}. They live in the doc tree (so the editor can show
@@ -704,7 +966,7 @@ export function serializeToLatex(
 }
 
 export function serializeBodyOnly(doc: JSONContent): string {
-  return serializeNode(doc).replace(/\n{3,}/g, "\n\n").trim();
+  return collapseBlankRuns(serializeNode(doc)).trim();
 }
 
 /**

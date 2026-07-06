@@ -36,6 +36,18 @@ import TabbedLibraryPanel, { type EntryActions } from "./TabbedLibraryPanel";
 import LibrariesNavigator from "./LibrariesNavigator";
 import { queueBibReview, queueDelete, queueImportBib, queuePaperReview } from "@library/lib/bib-edit";
 
+/**
+ * The Library-tab desktop **field** surface (the chrome the folder panels sit on:
+ * outer canvas, the grid behind the resize drag-gaps, and each panel-column wrapper).
+ * This is library material — NOT the warm doc/paper manila (`--background`), which is
+ * reserved for genuine paper/page content (the folder-tab page fill in
+ * `TabbedLibraryPanel`, the reader `.tex` page, the framed PDF). The navigator column
+ * and each panel's own padding band already resolve to `--library-bg`; this constant
+ * names that field-vs-page invariant in one place so the field can't drift back to
+ * manila. See task 052.
+ */
+const LIBRARY_FIELD_BG = "var(--library-bg)";
+
 interface Props {
   handle: FileSystemDirectoryHandle;
   onReset: () => void;
@@ -842,7 +854,7 @@ export default function LibraryView({
         flex: 1,
         minHeight: 0,
         width: "100%",
-        background: "var(--background)",
+        background: LIBRARY_FIELD_BG,
       }}
     >
       {/* Loud, dismissible skill-sync failure banner. A failed/stale skill
@@ -919,7 +931,7 @@ export default function LibraryView({
             gridTemplateRows: "1fr",
             height: "100%",
             minHeight: 0,
-            background: "var(--background)",
+            background: LIBRARY_FIELD_BG,
           }}
         >
           {showNavigator && (
@@ -994,7 +1006,7 @@ export default function LibraryView({
               minHeight: 0,
               minWidth: 0,
               position: "relative",
-              background: "var(--background)",
+              background: LIBRARY_FIELD_BG,
             }}
           >
             {renderPanel("left")}
@@ -1013,7 +1025,7 @@ export default function LibraryView({
               minHeight: 0,
               minWidth: 0,
               position: "relative",
-              background: "var(--background)",
+              background: LIBRARY_FIELD_BG,
             }}
           >
             {renderPanel("right")}

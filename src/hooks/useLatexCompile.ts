@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { drainDoc, flushDoc, getTexFilename, readPaperFolder, writeTex, writePdf, pdfFilenameFromTex } from "@/lib/storage";
-import { getPdfTeXEngine, writeEngineFile } from "@/lib/swiftlatex";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { drainDoc, flushDoc, getTexFilename, readPaperFolder, writeTex, writePdf } from "@/lib/storage";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -13,8 +12,11 @@ import {
   type DocumentClassMismatch,
 } from "@/lib/document-class";
 import { dispatchTexDelimitersChanged } from "@/lib/tex-delimiters-event";
-import type { LatexError } from "@/lib/latex-errors";
-import { parseTexLog } from "@/lib/parse-tex-log";
+import { makeErrorId, type LatexError } from "@/lib/latex-errors";
+import { compileService } from "@/lib/compile/compile-service";
+import type { CompileResult } from "@/lib/compile/compile-types";
+import type { CompileStatus } from "@/lib/compile/compile-types";
+import { decodeTexBytes } from "@/lib/compile/decode-source";
 import { useSystemDialog } from "@/components/system-dialog-host";
 
 /**
@@ -31,28 +33,16 @@ export type DocumentClassMismatchHandler = (
   | { kind: "cancel" }
 >;
 
-// SwiftLaTeX bundles bibtex but not biber, so biblatex users get rewritten to
-// backend=bibtex. This loses some biblatex features (Unicode sorting, a few
-// style options) but covers the vast majority of papers.
-function rewriteBiblatexBackend(text: string): string {
-  return text.replace(
-    /\\usepackage(?:\[([^\]]*)\])?\{biblatex\}/g,
-    (match, opts?: string) => {
-      if (!opts) return "\\usepackage[backend=bibtex]{biblatex}";
-      if (/\bbackend\s*=\s*bibtex\b/.test(opts)) return match;
-      if (/\bbackend\s*=\s*biber\b/.test(opts)) {
-        return `\\usepackage[${opts.replace(/\bbackend\s*=\s*biber\b/, "backend=bibtex")}]{biblatex}`;
-      }
-      if (/\bbackend\s*=/.test(opts)) return match;
-      return `\\usepackage[${opts.trim()},backend=bibtex]{biblatex}`;
-    },
-  );
-}
-
 /**
  * Compile the active document with SwiftLaTeX's pdfTeX engine and open
  * the resulting PDF in a new browser window. On failure the full log is
  * dumped to the console and a short alert is shown.
+ *
+ * This hook is now a THIN SHELL over the CompileService (src/lib/compile) — it
+ * owns no engine, memfs, pass loop, or TextDecoder. It drains the doc, resolves
+ * the documentclass-mismatch fork (the one path that still writes to disk),
+ * hands the files to `compileService.compile()`, and maps the rich typed
+ * `CompileResult` back onto the hook's existing outputs.
  */
 export interface UseLatexCompileResult {
   compile: () => Promise<void>;
@@ -85,6 +75,12 @@ export function useLatexCompile(
   const [lastLog, setLastLog] = useState<string | null>(null);
   const [lastStatus, setLastStatus] = useState<number | null>(null);
   const [compileErrors, setCompileErrors] = useState<LatexError[]>([]);
+  // Per-run salt so a diagnostic's React key is unique across compiles: the
+  // same logical error compiled twice gets a NEW id, and `pruneDismissed`
+  // (P5) then re-surfaces a re-occurring error instead of leaving it hidden by
+  // a stale dismissal. A monotonic ref counter — deterministic within a run
+  // (NOT Date.now()/Math.random(), which would remount cards mid-session).
+  const runSaltRef = useRef(0);
 
   const clearCompileErrors = useCallback(() => {
     setLastLog(null);
@@ -95,6 +91,8 @@ export function useLatexCompile(
   const compile = useCallback(async () => {
     if (!docId || isCompiling) return;
     setIsCompiling(true);
+    // Bump the per-run salt once at the top of each compile.
+    const salt = `r${++runSaltRef.current}:`;
     try {
       // Flush any pending React debounce + queued writes so the engine
       // sees the user's latest edits, even if they hit Compile mid-edit.
@@ -112,109 +110,89 @@ export function useLatexCompile(
       if (onDocumentClassMismatch) {
         const mainTexFile = files.find((f) => f.path === texFilename);
         if (mainTexFile) {
-          const mainTexText = new TextDecoder().decode(mainTexFile.bytes);
-          const mismatch = detectDocumentClassMismatch(mainTexText);
-          if (mismatch) {
-            const resolution = await onDocumentClassMismatch(mismatch);
-            if (resolution.kind === "cancel") return;
-            if (resolution.kind === "switch") {
-              const rewritten = rewriteDocumentClass(mainTexText, resolution.newClass);
-              if (!handle) return;
-              try {
-                await writeTex(handle, rewritten);
-              } catch (err) {
-                if (isStalePipelineError(err)) return;
-                throw err;
+          // Fatal decode: a non-UTF-8 main .tex must not be persisted
+          // U+FFFD-corrupted on the documentclass-rewrite path. If the file
+          // isn't valid UTF-8 we skip the mismatch check (can't rewrite it
+          // safely) and let the compile proceed on raw bytes.
+          const decoded = decodeTexBytes(mainTexFile.bytes);
+          if ("text" in decoded) {
+            const mainTexText = decoded.text;
+            const mismatch = detectDocumentClassMismatch(mainTexText);
+            if (mismatch) {
+              const resolution = await onDocumentClassMismatch(mismatch);
+              if (resolution.kind === "cancel") return;
+              if (resolution.kind === "switch") {
+                const rewritten = rewriteDocumentClass(mainTexText, resolution.newClass);
+                if (!handle) return;
+                try {
+                  await writeTex(handle, rewritten);
+                } catch (err) {
+                  if (isStalePipelineError(err)) return;
+                  throw err;
+                }
+                await flushDoc(docId);
+                // The rewrite replaced the \documentclass line — i.e. the
+                // on-disk PREAMBLE — out of band from the code pane's bridge
+                // closure. Tell an open CodeEditor to re-read + resync (same
+                // contract as useDocumentStyle.setStyle and the external
+                // Reload), or a later code-pane preamble edit would persist
+                // the OLD documentclass back over the switch the user just
+                // confirmed. No code pane open → free no-op.
+                dispatchTexDelimitersChanged(docId);
+                files = await readPaperFolder(docId);
               }
-              await flushDoc(docId);
-              // The rewrite replaced the \documentclass line — i.e. the
-              // on-disk PREAMBLE — out of band from the code pane's bridge
-              // closure. Tell an open CodeEditor to re-read + resync (same
-              // contract as useDocumentStyle.setStyle and the external
-              // Reload), or a later code-pane preamble edit would persist
-              // the OLD documentclass back over the switch the user just
-              // confirmed. No code pane open → free no-op.
-              dispatchTexDelimitersChanged(docId);
-              files = await readPaperFolder(docId);
+              // "compile-anyway" falls through with the original files.
             }
-            // "compile-anyway" falls through with the original files.
           }
         }
       }
 
-      const engine = await getPdfTeXEngine();
-      engine.flushCache();
-
-      const createdDirs = new Set<string>();
-      const textExts = new Set([
-        "tex",
-        "bib",
-        "sty",
-        "cls",
-        "bst",
-        "tikz",
-        "md",
-        "txt",
-        "cfg",
-        "def",
-        "ltx",
-      ]);
-
-      const decoder = new TextDecoder();
-      const decoded = new Map<string, string>();
-      for (const f of files) {
-        const ext = f.path.split(".").pop()?.toLowerCase() ?? "";
-        if (textExts.has(ext)) decoded.set(f.path, decoder.decode(f.bytes));
-      }
-
-      const BIB_RE =
-        /\\usepackage\{natbib\}|\\bibliography\{|\\addbibresource\{|\\usepackage(?:\[[^\]]*\])?\{biblatex\}/;
-      const BIBLATEX_RE = /\\usepackage(?:\[[^\]]*\])?\{biblatex\}/;
-      let hasBibliography = false;
-      let hasBiblatex = false;
-      for (const text of decoded.values()) {
-        if (!hasBibliography && BIB_RE.test(text)) hasBibliography = true;
-        if (!hasBiblatex && BIBLATEX_RE.test(text)) hasBiblatex = true;
-        if (hasBibliography && hasBiblatex) break;
-      }
-
-      if (hasBiblatex) {
-        for (const [path, text] of decoded) {
-          const rewritten = rewriteBiblatexBackend(text);
-          if (rewritten !== text) {
-            decoded.set(path, rewritten);
-            console.warn(
-              `[compile] biber is not available in the browser; rewrote \\usepackage{biblatex} in ${path} to use backend=bibtex`,
-            );
-          }
-        }
-      }
-
-      const pdfFilename = pdfFilenameFromTex(texFilename);
-      for (const f of files) {
-        if (f.path === pdfFilename) continue;
-        const text = decoded.get(f.path);
-        const data = text !== undefined ? text : f.bytes;
-        writeEngineFile(engine, f.path, data, createdDirs);
-      }
-
-      engine.setEngineMainFile(texFilename);
-
-      const passes = hasBibliography ? 3 : 1;
-      let result = await engine.compileLaTeX();
-      for (let i = 1; i < passes && result.status === 0; i++) {
-        result = await engine.compileLaTeX();
-      }
+      // Hand off to the CompileService — it owns the engine, requirement
+      // injection (in-memory only), the multi-pass loop, timeout + recovery,
+      // and byte-first file feeding.
+      const result = await compileService.compile({
+        files,
+        mainTexFilename: texFilename,
+      });
 
       setLastLog(result.log ?? "");
-      setLastStatus(result.status);
+      // Map the rich status onto the numeric lastStatus the UI expects:
+      // ok/degraded → 0 (a PDF exists); everything else → non-zero.
+      const numericStatus =
+        result.status === "ok" || result.status === "degraded" ? 0 : 1;
+      setLastStatus(numericStatus);
 
-      if (result.status === 0 && result.pdf) {
-        setCompileErrors([]);
-        const pdfBytes = new Uint8Array(result.pdf);
+      const offlineErrors = offlineMissErrors(result, salt);
+
+      if ((result.status === "ok" || result.status === "degraded") && result.pdf) {
+        // A PDF exists. Surface any warning-level diagnostics (degraded keeps
+        // them) plus any offline-package misses, but never block the PDF.
+        setCompileErrors([...saltDiagnostics(result.diagnostics, salt), ...offlineErrors]);
+        const pdfBytes = result.pdf;
+        // Best-effort persistence (P6). `writePdf` now returns a structured
+        // result: `written` (nothing to do), `skipped` (library/read-only — the
+        // in-memory viewer still shows the PDF), or `failed` (the write was
+        // attempted and rejected). A stale-pipeline abort still THROWS, so we
+        // keep the silent-drop catch. Crucially, `onCompileSuccess` fires for
+        // EVERY successful compile — including library papers and after a
+        // `failed`/`skipped` persistence — so the viewer never shows "No
+        // compiled PDF" for a compile that actually produced one.
         if (handle) {
           try {
-            await writePdf(handle, pdfBytes);
+            const persist = await writePdf(handle, pdfBytes);
+            if (persist?.status === "failed") {
+              console.warn("[compile] PDF persistence failed:", persist.error);
+              // Non-blocking soft notice — reuse the low-tone systemDialog (the
+              // same soft surface as the skill-sync / external-change badge),
+              // NOT a danger modal: the compile SUCCEEDED and the in-memory PDF
+              // is fully usable; only saving to disk failed.
+              void systemDialog.alert({
+                title: "PDF not saved",
+                message:
+                  "The PDF compiled and is shown, but it couldn't be saved to disk. Your last saved copy on disk is unchanged.",
+                tone: "default",
+              });
+            }
           } catch (err) {
             if (isStalePipelineError(err)) {
               // Pipeline ended mid-compile — drop the .pdf write
@@ -225,18 +203,33 @@ export function useLatexCompile(
           }
         }
         onCompileSuccess?.(pdfBytes);
-      } else {
-        const parsed = parseTexLog(result.log ?? "");
-        setCompileErrors(parsed);
-        console.error(
-          `[compile] SwiftLaTeX failed (status=${result.status})\n\n${result.log}`,
-        );
-        void systemDialog.alert({
-          title: "Compile failed",
-          message: `Status ${result.status}. See the Errors panel or compile-log drawer for details.`,
-          tone: "danger",
-        });
+
+        // A degraded compile still produced a PDF; warn (but don't alert as
+        // an error) when a later pass failed, the bibtex stage broke, or a
+        // package was unavailable offline.
+        if (result.status === "degraded") {
+          const reason =
+            offlineErrors.length > 0
+              ? `${offlineErrors.length === 1 ? "A package was" : `${offlineErrors.length} packages were`} unavailable offline — some content may be missing.`
+              : result.bibtexStatus === "failed"
+                ? "The bibliography step failed — citations may show as [?]."
+                : "A later compile pass failed — cross-references or the ToC may be stale.";
+          void systemDialog.alert({
+            title: "Compiled with warnings",
+            message: `${reason} See the Errors panel for details.`,
+            tone: "default",
+          });
+        }
+        return;
       }
+
+      // No usable PDF. Distinguish the failure kinds for a clear message.
+      setCompileErrors([...saltDiagnostics(result.diagnostics, salt), ...offlineErrors]);
+      console.error(
+        `[compile] SwiftLaTeX ${result.status} (ranPasses=${result.ranPasses})\n\n${result.log}`,
+      );
+      const { title, message } = failureMessage(result.status, result.log);
+      void systemDialog.alert({ title, message, tone: "danger" });
     } catch (err) {
       console.error("[compile] error:", err);
       void systemDialog.alert({
@@ -250,4 +243,89 @@ export function useLatexCompile(
   }, [docId, handle, isCompiling, onDocumentClassMismatch, onCompileSuccess, systemDialog]);
 
   return { compile, isCompiling, lastLog, lastStatus, compileErrors, clearCompileErrors };
+}
+
+/**
+ * Re-mint the compile-service's diagnostics ids with this run's salt so their
+ * React keys are unique across compiles (the id changes each run, so a stale
+ * dismissal from an earlier run can be pruned and a re-occurring error
+ * re-surfaces). The parser already assigned per-parse ordinals; we fold the
+ * salt into a fresh, still-collision-free id built from the same parts.
+ */
+function saltDiagnostics(
+  diagnostics: LatexError[] | undefined,
+  salt: string,
+): LatexError[] {
+  if (!diagnostics || diagnostics.length === 0) return [];
+  return diagnostics.map((d, ordinal) => ({
+    ...d,
+    id: makeErrorId({
+      source: d.source,
+      line: d.line,
+      column: d.column,
+      message: d.message,
+      ordinal,
+      salt,
+    }),
+  }));
+}
+
+/**
+ * Turn the compile result's `offlineMisses` into `LatexError` entries so each
+ * unavailable package renders cleanly in the Errors panel (ruleId
+ * 'offline-package' → "Package unavailable offline" title) instead of a cryptic
+ * format error or a hang. Deduped; line 0 (no source location). Salted +
+ * ordinal-tagged so the line-0 ids never collide.
+ */
+function offlineMissErrors(result: CompileResult, salt: string): LatexError[] {
+  const misses = result.offlineMisses;
+  if (!misses || misses.length === 0) return [];
+  const seen = new Set<string>();
+  const errors: LatexError[] = [];
+  let ordinal = 0;
+  for (const raw of misses) {
+    const pkg = raw.replace(/\.(sty|def|cls|tex|tfm|cfg|ltx)$/i, "");
+    if (seen.has(pkg)) continue;
+    seen.add(pkg);
+    const message = `Package ${pkg} unavailable offline`;
+    errors.push({
+      id: makeErrorId({ source: "compile", line: 0, message, ordinal: ordinal++, salt }),
+      source: "compile",
+      severity: "error",
+      line: 0,
+      message,
+      detail:
+        "This package hasn't been cached yet. Connect to the internet and compile once to make it available offline.",
+      ruleId: "offline-package",
+    });
+  }
+  return errors;
+}
+
+/** Map a non-PDF CompileResult status to a user-facing alert. */
+function failureMessage(
+  status: CompileStatus,
+  _log: string,
+): { title: string; message: string } {
+  switch (status) {
+    case "timeout":
+      return {
+        title: "Compile timed out",
+        message:
+          "The compile took too long and was stopped. The engine has been reset — try compiling again.",
+      };
+    case "boot-failed":
+      return {
+        title: "Compile engine failed to start",
+        message:
+          "The LaTeX engine could not be started. Check your network connection and try again.",
+      };
+    default:
+      // "failed" (and, defensively, an ok/degraded result that somehow carried
+      // no pdf) fall through to the generic message.
+      return {
+        title: "Compile failed",
+        message: "See the Errors panel or compile-log drawer for details.",
+      };
+  }
 }

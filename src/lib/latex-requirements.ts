@@ -28,6 +28,13 @@ import {
   NATBIB_ONLY_CITE_COMMANDS,
   SHARED_CITE_COMMANDS,
 } from "@/lib/cite-commands";
+import { projectLiveLatex, VERBATIM_ENVS_NARROW } from "@/lib/latex-lexer";
+import {
+  reconcileBibFamily,
+  type BibFamily,
+  type BibFamilyConflict,
+} from "@/lib/bib-family";
+import { TIKZ_RE } from "@/lib/latex-requirement-collector";
 
 export type LatexRequirementKind = "package" | "shim";
 
@@ -98,6 +105,22 @@ export const LATEX_REQUIREMENTS: LatexRequirement[] = [
   packageReq("natbib"),
   packageReq("biblatex"),
   packageReq("tikz"),
+  // `xlist` is how Virgil serializes a nested example tier (latex-serializer.ts)
+  // and how it parses one back (latex-parser.ts). It is NOT an expex
+  // environment — despite the comments elsewhere calling it one, current expex
+  // (CTAN v5.1b) defines no `xlist`; the name comes from gb4e. So a Virgil doc
+  // with a nested example (`\begin{xlist}` inside a `\pex`) is a FATAL compile
+  // error ("Environment xlist undefined") unless we define it. Define it in
+  // terms of expex's own nesting primitive: a nested `\pex … \xe` inside an
+  // `\a` item is the sanctioned expex way to make a sublist, so `xlist` ==
+  // `{\pex}{\xe}`. Injected only when the body actually uses `\begin{xlist}`
+  // (which also pins the expex package via the same detector).
+  {
+    id: "xlistenv",
+    kind: "shim",
+    injectLine: "\\newenvironment{xlist}{\\pex}{\\xe}",
+    satisfiedRe: /\\(?:new|renew)environment\{xlist\}/,
+  },
   ...SHIM_COMMAND_NAMES.map(shimReq),
 ];
 
@@ -130,8 +153,15 @@ const BODY_DETECTORS: Array<{ id: string; re: RegExp }> = [
     id: "expex",
     re: /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z])|\\begin\{xlist\}/,
   },
+  // A nested example tier needs the `xlist` environment defined (see the
+  // `xlistenv` requirement); expex itself does not provide it.
+  { id: "xlistenv", re: /\\begin\{xlist\}/ },
   { id: "graphicx", re: /\\includegraphics(?![a-zA-Z])/ },
-  { id: "tikz", re: /\\begin\{tikzpicture\}/ },
+  // Broadened, shared tikz vocabulary (tikzpicture | tikzcd | \tikz inline |
+  // pgfplots | \begin{axis}) — the SAME predicate the emit-site declarations
+  // use (latex-requirement-collector.ts), so the fallback detector and the
+  // co-located declaration can never diverge.
+  { id: "tikz", re: TIKZ_RE },
   { id: "xcolor", re: /\\textcolor(?![a-zA-Z])/ },
 ];
 
@@ -161,16 +191,6 @@ const SHARED_NON_KERNEL_RE = familyRe(
   ),
 );
 
-const VERBATIM_BEGIN_RE = /\\begin\{verbatim\*?\}/;
-const VERBATIM_END_RE = /\\end\{verbatim\*?\}/;
-
-/** Strip a line's `%`-comment tail. A `%` starts a comment unless escaped
- *  (`\%`); an even run of backslashes before it (`\\%` = linebreak + comment)
- *  does not escape it. */
-function stripCommentTail(line: string): string {
-  return line.replace(/((?:^|[^\\])(?:\\\\)*)%.*$/, "$1");
-}
-
 /**
  * Project the serialized body down to its DETECTABLE LaTeX: drop
  * `%`-comment tails (respecting `\%`) and the contents of
@@ -178,46 +198,19 @@ function stripCommentTail(line: string): string {
  * inert to the compiler, so a `\autocite` in a TODO comment or an `\ex`
  * inside a verbatim listing must not drive package injection (injecting
  * biblatex/expex into a doc that never runs them can BREAK a previously
- * compiling paper). Line-based single pass; an unterminated
- * `\begin{verbatim}` (mid-edit) swallows to the end of the body, matching
- * how TeX would lex it.
+ * compiling paper). An unterminated `\begin{verbatim}` (mid-edit) swallows
+ * to the end of the body, matching how TeX would lex it.
+ *
+ * Delegates to the lexer's `projectLiveLatex` with the NARROW verbatim family
+ * and inline-verb OFF, so the output is byte-identical to the former inline
+ * implementation — the drift gate and requirements-injection ORDER depend on
+ * this. The requirements side deliberately keeps the NARROW family (see the
+ * P3 design fork F1): widening it could change which packages get injected
+ * for docs that put cite/expex commands inside lstlisting/minted, altering
+ * saved .tex bytes.
  */
 function projectDetectableBody(bodyLatex: string): string {
-  if (!bodyLatex.includes("%") && !VERBATIM_BEGIN_RE.test(bodyLatex)) {
-    return bodyLatex; // fast path: nothing inert to strip
-  }
-  const out: string[] = [];
-  let inVerbatim = false;
-  for (const rawLine of bodyLatex.split("\n")) {
-    // Comments only exist outside verbatim (inside, `%` is literal — and
-    // the content is dropped wholesale anyway).
-    let line = inVerbatim ? rawLine : stripCommentTail(rawLine);
-    let kept = "";
-    // Walk the line through verbatim open/close transitions so same-line
-    // `\begin{verbatim}…\end{verbatim}` pairs are handled too.
-    for (;;) {
-      if (inVerbatim) {
-        const end = VERBATIM_END_RE.exec(line);
-        if (!end) {
-          line = "";
-          break;
-        }
-        inVerbatim = false;
-        line = line.slice(end.index + end[0].length);
-        continue;
-      }
-      const begin = VERBATIM_BEGIN_RE.exec(line);
-      if (!begin) {
-        kept += line;
-        break;
-      }
-      kept += line.slice(0, begin.index);
-      inVerbatim = true;
-      line = line.slice(begin.index + begin[0].length);
-    }
-    out.push(kept);
-  }
-  return out.join("\n");
+  return projectLiveLatex(bodyLatex, { envs: VERBATIM_ENVS_NARROW });
 }
 
 /**
@@ -258,32 +251,70 @@ export function detectBodyRequirements(bodyLatex: string): Set<string> {
  * injected before shims; the shims + xcolor are ensured on every call
  * regardless of `required` (see ALWAYS_REQUIRED_IDS).
  *
- * Mutual exclusivity: if the preamble already carries one bib package
- * family, the other is never injected — the user's choice wins.
+ * Bib-family reconciliation (P4 — the fix for the fatal silent-delete): the
+ * bib family is a single per-document AUTHORITATIVE choice reconciled with —
+ * never silently contradicted by — what the preamble hard-loads. When the
+ * body needs a family the preamble already loads, that's satisfied. When the
+ * body needs a family the preamble DOESN'T load, we inject the RIGHT family.
+ * When the preamble hard-loads the OTHER family, we do NOT delete the needed
+ * family (the old bug: deleting biblatex under a natbib baseline produced a
+ * `.tex` with undefined `\autocite`) and do NOT co-load (fatal) — we surface a
+ * `BibFamilyConflict` via `opts.onBibFamilyConflict` and leave the user's
+ * commands + preamble verbatim (locked decision: warn, never rewrite).
+ *
+ * `opts.declaredBibFamily` is the authoritative/declared family (from the
+ * serializer's cite emit-sites or the per-doc setting). When present it drives
+ * reconciliation; when absent, the family already folded into `required`
+ * (natbib/biblatex from the fallback detector) is used as the declared family
+ * so behavior is unchanged for callers that don't pass it.
  */
 export function ensurePreambleRequirements(
   preamble: string,
   required: Set<string>,
+  opts?: {
+    declaredBibFamily?: BibFamily | null;
+    onBibFamilyConflict?: (conflict: BibFamilyConflict) => void;
+  },
 ): string {
   const effective = new Set<string>(ALWAYS_REQUIRED_IDS);
   for (const id of required) effective.add(id);
 
-  if (
-    effective.has("natbib") &&
-    REQUIREMENT_BY_ID.get("biblatex")!.satisfiedRe.test(preamble)
-  ) {
-    effective.delete("natbib");
-  }
-  if (
-    effective.has("biblatex") &&
-    REQUIREMENT_BY_ID.get("natbib")!.satisfiedRe.test(preamble)
-  ) {
-    effective.delete("biblatex");
-  }
+  // Test satisfaction against the inert-stripped preamble, NOT the raw text, so
+  // a commented-out `% \usepackage{tikz}` never false-satisfies a live
+  // requirement — the SAME comment-inertness notion the body-detection side
+  // uses (`projectDetectableBody`). Without this the round-trip is asymmetric:
+  // `detectBodyRequirements` strips comments and sees `\begin{tikzpicture}`,
+  // but a commented `% \usepackage{tikz}` would suppress the injection, saving
+  // a `.tex` that fails to compile. The raw `preamble` is still what we slice +
+  // inject into below, so byte positions of the live text are untouched.
+  const scannable = projectDetectableBody(preamble);
+
+  // Resolve which bib family the body/authoritative choice needs. Prefer the
+  // explicit declared family; else derive from what `required` already carries
+  // (the fallback detector puts exactly one of natbib/biblatex in there).
+  const declaredFamily: BibFamily | null =
+    opts?.declaredBibFamily ??
+    (effective.has("natbib")
+      ? "natbib"
+      : effective.has("biblatex")
+        ? "biblatex"
+        : null);
+
+  // Reconcile against the preamble's loaded family — inject the RIGHT family,
+  // never delete a needed one; warn on a hard conflict.
+  const reconcile = reconcileBibFamily(declaredFamily, scannable);
+  // Drop BOTH families from the effective set first, then re-add only the
+  // effective (reconciled) one — so we never inject the wrong family, and never
+  // co-load two. A conflict yields effectiveFamily === null → neither injected
+  // (the user's preamble family stays; the warning is surfaced).
+  effective.delete("natbib");
+  effective.delete("biblatex");
+  if (reconcile.effectiveFamily) effective.add(reconcile.effectiveFamily);
+  if (reconcile.conflict) opts?.onBibFamilyConflict?.(reconcile.conflict);
 
   // Registry order = packages first, then shims.
   const missing = LATEX_REQUIREMENTS.filter(
-    (r) => effective.has(r.id) && !r.satisfiedRe.test(preamble),
+    (r) => effective.has(r.id) && !r.satisfiedRe.test(scannable),
   );
   if (missing.length === 0) return preamble;
 

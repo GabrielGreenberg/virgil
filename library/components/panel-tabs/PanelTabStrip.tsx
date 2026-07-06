@@ -17,6 +17,7 @@ import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE, TAB_DT_
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { PanelFolderTab } from "./PanelFolderTab";
+import { STRIP_SIDE_PAD } from "./folder-path";
 
 // F#15 inactive-tab floor: inactive tabs absorb the squeeze first and
 // ellipsize their names down to this width before the active tab compresses.
@@ -371,25 +372,31 @@ export function PanelTabStrip({
         // top border — covering it under the active tab so the tab merges into
         // the page with NO seam line — without changing the strip's outer
         // footprint. The overflowY:hidden scroll-clip would otherwise eat that
-        // 1px; the padding keeps it inside the clip box. The strip stays
-        // transparent (--library-bg) elsewhere, so the body's top border still
-        // shows through under the inactive tabs (the page outline continues).
-        padding: "0 4px 1px",
+        // 1px; the padding keeps it inside the clip box. The strip bg is the
+        // solid --library-bg, so the inter-tab gaps and the tail past the last
+        // tab read as PURE library field — no chrome there (task 048); the page
+        // outline lives ONLY under the tabs (each inactive tab's own silhouette
+        // stroke + the active tab's fill-bridge merging into the body edge).
+        // Horizontal pad is the STRIP_SIDE_PAD SSOT (folder-path.ts): the body
+        // frame below insets by the SAME constant so its rounded top corners
+        // tuck exactly under the outermost tabs' swoop feet (task 047 no-wing).
+        padding: `0 ${STRIP_SIDE_PAD}px 1px`,
         marginBottom: -1,
         // The strip + the (transparent) inactive tabs sit on the LIBRARY
         // backdrop (--library-bg) so unselected tabs read as part of the
         // library background; only the active tab's manila fill (--surface /
         // --background for paper) and the body pop as the white "page".
         background: "var(--library-bg)",
-        // Full-width baseline seam (Chrome-tab style): an INSET bottom shadow
-        // paints a 1px --topbar-border line along the strip's inner bottom edge,
-        // above the bg but below the tabs. Unlike a border-bottom it is NOT
-        // clipped by overflowX/Y:hidden (inset shadows render inside the padding
-        // box), so it survives the F#15 scroll-clip. The active tab's white
-        // fill-bridge paints over it under itself (seamless merge); the inactive
-        // tabs and the gaps between/after tabs keep the line, so the page outline
-        // runs CONTINUOUSLY across the whole strip.
-        boxShadow: "inset 0 -1px 0 var(--topbar-border)",
+        // No strip-wide baseline seam. A former inset bottom-shadow seam in the
+        // --topbar-border token (inset 0 -1px 0) painted a 1px line
+        // across the WHOLE strip — including the inter-tab gaps and the tail — so
+        // the outline ran continuously. But --topbar-border (warm taupe #cbc3b8)
+        // clashed hard over the cool --library-bg field, showing as a discolored
+        // stripe in the gaps (task 048). Dropped: the gaps are now blank library
+        // field, and the surviving page edges (tab strokes, body frame, NavPod)
+        // are re-toned onto --library-edge — a tint of --library-bg that cannot
+        // drift from it. The active-tab merge is unaffected: it rides the
+        // fill-bridge + body border, not this shadow.
         flexShrink: 0,
         // F#15: the strip itself must be able to shrink to its panel column
         // (which is min-width:0), so tabs SHARE the width Chrome-style instead

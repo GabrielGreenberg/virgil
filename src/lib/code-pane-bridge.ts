@@ -124,6 +124,22 @@ export interface CreateCodePaneBridgeOptions {
    * (writeDocBundle with the `delimiters` override).
    */
   persistDelimiters?: (d: { preamble: string; postamble: string }) => void;
+  /**
+   * A getter for the authoritative per-doc bib family, threaded into the
+   * TipTap→code serialize so the code-view mirror reconciles the family the
+   * same way the disk-save path does (P4). A getter (not a value) so the
+   * bridge — constructed once per view/editor pair — always reads the CURRENT
+   * family without rebuilding when the user changes it. Optional; unset →
+   * body-derived family (today's behavior).
+   */
+  getBibFamily?: () => import("@/lib/bib-family").BibFamily | null;
+  /**
+   * Called when the family the body needs conflicts with the family the
+   * code-view preamble hard-loads. Reuses the save-time soft-notice surface.
+   */
+  onBibFamilyConflict?: (
+    conflict: import("@/lib/bib-family").BibFamilyConflict,
+  ) => void;
 }
 
 export function createCodePaneBridge(
@@ -261,7 +277,12 @@ export function createCodePaneBridge(
     let latex: string;
     try {
       const json = editor.getJSON();
-      latex = serializeToLatex(json, { preamble, postamble });
+      latex = serializeToLatex(json, {
+        preamble,
+        postamble,
+        bibFamily: opts.getBibFamily?.() ?? null,
+        onRequirementConflict: opts.onBibFamilyConflict,
+      });
     } catch (err) {
       // Serialization should never fail under normal use; log and bail.
       console.error("[code-pane-bridge] serialize failed:", err);

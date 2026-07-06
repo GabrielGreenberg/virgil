@@ -49,6 +49,7 @@ import {
   applyPendingChange,
   revertPendingChange,
   keepPendingChange,
+  insertParagraphAfter,
 } from "@/links/apply-suggestion";
 import {
   reapplyPendingMarks,
@@ -172,6 +173,28 @@ function paraNode(editor: Editor, uuid: string) {
 function paraInline(editor: Editor, uuid: string): string {
   const n = paraNode(editor, uuid);
   return n ? serializeParagraphInline(n.toJSON()) : "";
+}
+
+/** Count nodes of a given type across the whole doc. */
+function countNodeType(editor: Editor, typeName: string): number {
+  let n = 0;
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === typeName) n++;
+    return true;
+  });
+  return n;
+}
+
+/** Count distinct text runs carrying ANY `linkedAnchor` mark across the doc. */
+function countLinkedAnchorRuns(editor: Editor): number {
+  let n = 0;
+  editor.state.doc.descendants((node) => {
+    if (node.isText && node.marks.some((m) => m.type.name === "linkedAnchor")) {
+      n++;
+    }
+    return true;
+  });
+  return n;
 }
 
 // ── tests ──
@@ -300,6 +323,63 @@ describe("applyPendingChange — replace mode", () => {
       expect(res).toEqual({ ok: false, reason: "stale" });
       expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull();
       expect(paraInline(editor, PARA_UUID)).toBe(before);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a replacement embedding \\vlid/\\vlidend markers → stale, no phantom anchor (3c)", () => {
+    const { editor, cleanup } = mount();
+    try {
+      // The WRITE-side mirror of tests 3 / 3b: a `replacement` that embeds
+      // internal linked-anchor markers (here reusing ANCHOR_ID to exercise the
+      // worst case — a phantom range sharing a colocated anchor's id) must be
+      // refused BEFORE any splice, so no phantom `linkedAnchor` mark is minted
+      // and the paragraph is byte-unchanged.
+      const before = paraInline(editor, PARA_UUID);
+      const anchorsBefore = countLinkedAnchorRuns(editor);
+      const res = applyPendingChange(editor, {
+        anchorUuid: PARA_UUID,
+        originalText: "quick brown fox",
+        replacement: `lazy \\vlid{${ANCHOR_ID}}grey\\vlidend{${ANCHOR_ID}} cat`,
+        mode: "replace",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
+      });
+      expect(res).toEqual({ ok: false, reason: "stale" });
+      // Doc byte-unchanged: no splice happened.
+      expect(paraInline(editor, PARA_UUID)).toBe(before);
+      // No linkedAnchor mark (phantom or otherwise) was produced.
+      expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull();
+      expect(countLinkedAnchorRuns(editor)).toBe(anchorsBefore);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("refuses a replacement embedding a \\vcid marker → stale, no phantom atom (3d)", () => {
+    const { editor, cleanup } = mount();
+    try {
+      // Same guard for the atom variant: a `\vcid{…}` (or `\vfid{…}`) in the
+      // replacement would reparse into a phantom citation / footnote atom no
+      // card owns. Refused → the plain paragraph gains no citation node.
+      const before = paraInline(editor, PARA_UUID);
+      const citesBefore = countNodeType(editor, "citation");
+      const res = applyPendingChange(editor, {
+        anchorUuid: PARA_UUID,
+        originalText: "quick brown fox",
+        replacement: "lazy \\vcid{c1}\\citet{foo} cat",
+        mode: "replace",
+        cardId: CARD_ID,
+        anchorId: ANCHOR_ID,
+        family: "revision-suggestion",
+      });
+      expect(res).toEqual({ ok: false, reason: "stale" });
+      expect(paraInline(editor, PARA_UUID)).toBe(before);
+      expect(markAttrsFor(editor, ANCHOR_ID)).toBeNull();
+      // No new citation atom materialized in the doc.
+      expect(countNodeType(editor, "citation")).toBe(citesBefore);
     } finally {
       cleanup();
     }
@@ -1037,5 +1117,79 @@ describe("reapplyPendingMarks — reload re-stamp (10)", () => {
     const comment: PendingMarkCardLike = { id: "c3", kind: "comment", status: "applied" };
     const ids = pendingMarkAnchorIds([applied, pending, comment]);
     expect([...ids]).toEqual(["anc-1"]);
+  });
+});
+
+// ── insertParagraphAfter — the non-destructive "Insert below" primitive (11) ──
+//
+// Behind the retired 4-field AI fallback: instead of splicing the (possibly
+// returned / re-anchored) original, drop the suggestion as a NEW sibling
+// paragraph directly after the anchor. The contract the UI leans on:
+//   - the anchored paragraph's serialized `.tex` line is BYTE-UNCHANGED,
+//   - EXACTLY one new `%!v:` anchor line appears (the new paragraph, its uuid
+//     minted by BlockUuidBackfill — not hand-minted),
+//   - the new paragraph carries the inserted text,
+//   - a bad uuid is a safe no-op (false, doc untouched).
+
+/** Count the `%!v:` block anchors in a serialized body. */
+function countAnchors(tex: string): number {
+  return (tex.match(/%!v:/g) || []).length;
+}
+
+/** The serialized `.tex` line carrying block `uuid` (or null). */
+function texLineFor(tex: string, uuid: string): string | null {
+  return tex.split("\n").find((l) => l.includes(`%!v:${uuid}`)) ?? null;
+}
+
+describe("insertParagraphAfter — non-destructive insert below (11)", () => {
+  it("inserts a new sibling paragraph, original line byte-unchanged, exactly one new %!v: line", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const beforeTex = serializeBodyOnly(editor.state.doc.toJSON());
+      const beforeAnchors = countAnchors(beforeTex);
+      const beforeFoxLine = texLineFor(beforeTex, PARA_UUID);
+      const beforeFoxInline = paraInline(editor, PARA_UUID);
+      expect(beforeFoxLine).not.toBeNull();
+
+      const ok = insertParagraphAfter(
+        editor,
+        PARA_UUID,
+        "A brand new sentence.",
+      );
+      expect(ok).toBe(true);
+
+      const afterTex = serializeBodyOnly(editor.state.doc.toJSON());
+      // The anchored paragraph's inline serialization is UNTOUCHED (pure insert).
+      expect(paraInline(editor, PARA_UUID)).toBe(beforeFoxInline);
+      // Its whole serialized line survives byte-for-byte.
+      expect(texLineFor(afterTex, PARA_UUID)).toBe(beforeFoxLine);
+      // EXACTLY one new anchor appeared (the new paragraph's minted uuid).
+      expect(countAnchors(afterTex)).toBe(beforeAnchors + 1);
+      // The inserted text is present, as a distinct paragraph after the anchor.
+      expect(afterTex).toContain("A brand new sentence.");
+      // The new paragraph carries a REAL, non-null uuid (BlockUuidBackfill minted
+      // it — the id is neither of the two pre-existing block uuids).
+      const newAnchor = (afterTex.match(/%!v:([0-9a-f]+)/g) || [])
+        .map((m) => m.replace("%!v:", ""))
+        .find((u) => u !== PARA_UUID && u !== CITE_PARA_UUID);
+      expect(newAnchor).toBeTruthy();
+      expect(findNodeByUuid(editor, newAnchor as string)?.node.textContent).toBe(
+        "A brand new sentence.",
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("is a safe no-op (false, doc untouched) when the anchor uuid does not resolve", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const beforeTex = serializeBodyOnly(editor.state.doc.toJSON());
+      const ok = insertParagraphAfter(editor, "dead", "Should not appear.");
+      expect(ok).toBe(false);
+      expect(serializeBodyOnly(editor.state.doc.toJSON())).toBe(beforeTex);
+    } finally {
+      cleanup();
+    }
   });
 });

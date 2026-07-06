@@ -12,6 +12,10 @@ export default defineConfig({
     // Per-file envs via the // @vitest-environment jsdom comment.
     // Default is node so pure-logic tests are fast.
     environment: "node",
-    include: ["src/**/__tests__/**/*.test.{ts,tsx}", "library/**/__tests__/**/*.test.{ts,tsx}"],
+    include: [
+      "src/**/__tests__/**/*.test.{ts,tsx}",
+      "library/**/__tests__/**/*.test.{ts,tsx}",
+      "editor/**/__tests__/**/*.test.{ts,tsx}",
+    ],
   },
 });

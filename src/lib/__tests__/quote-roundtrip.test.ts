@@ -112,3 +112,61 @@ describe("LaTeX double-quote round-trip", () => {
     expect(out).toContain("(see ``page 4'')");
   });
 });
+
+describe("LaTeX quote ENVIRONMENT round-trip (blockquote)", () => {
+  function blockquoteFrom(json: any): any | null {
+    for (const c of json.content || []) {
+      if (c.type === "blockquote") return c;
+    }
+    return null;
+  }
+
+  it("round-trips a multi-paragraph blockquote as TWO paragraphs (not one merged)", () => {
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "blockquote",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "One" }] },
+            { type: "paragraph", content: [{ type: "text", text: "Two" }] },
+          ],
+        },
+      ],
+    };
+    const out = serializeBody(doc as any);
+    // Serialized body must carry a block separator between the two paragraphs.
+    expect(out).toContain("One\n\nTwo");
+
+    const reparsed = parseBody(out);
+    const bq = blockquoteFrom(reparsed);
+    expect(bq).not.toBeNull();
+    const paras = (bq.content || []).filter((n: any) => n.type === "paragraph");
+    expect(paras).toHaveLength(2);
+    expect(gather(paras[0])).toBe("One");
+    expect(gather(paras[1])).toBe("Two");
+  });
+
+  it("keeps a single-paragraph blockquote as ONE paragraph (no regression)", () => {
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "blockquote",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Solo quote." }] },
+          ],
+        },
+      ],
+    };
+    const out = serializeBody(doc as any);
+    expect(out).toContain("\\begin{quote}\nSolo quote.\\end{quote}");
+
+    const reparsed = parseBody(out);
+    const bq = blockquoteFrom(reparsed);
+    expect(bq).not.toBeNull();
+    const paras = (bq.content || []).filter((n: any) => n.type === "paragraph");
+    expect(paras).toHaveLength(1);
+    expect(gather(paras[0])).toBe("Solo quote.");
+  });
+});

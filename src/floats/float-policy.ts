@@ -28,6 +28,18 @@ export const FLOAT_DEFAULT_SIZE = { w: 360, h: 280 } as const;
  */
 export const FLOAT_Z_BASE = 1200;
 
+/**
+ * Paint z-index for a scrimless **draggable tool window** — a `SystemDialog`
+ * rendered with `variant="draggable"` (the Preferences window; conceptually the
+ * band FontsDialog's FloatingPanel also lives in). Sits just ABOVE the float
+ * card layer so a tool window the user dragged out composes over popped cards,
+ * but strictly BELOW {@link OPEN_CHROME_MENU_Z} (so a chrome menu opened from
+ * inside the window stacks on top) and far below the modal tier. Replaces the
+ * bare `z-[9999]` PreferencesModal used to hardcode — which collided with
+ * {@link DROP_INDICATOR_Z} (task 033).
+ */
+export const DRAGGABLE_DIALOG_Z = FLOAT_Z_BASE + 5;
+
 // Re-exported so panel z-stacking and the float band reference one symbol.
 export { FLOATING_PANEL_Z_BASE };
 

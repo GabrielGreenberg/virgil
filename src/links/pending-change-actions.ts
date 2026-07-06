@@ -37,10 +37,15 @@ import {
   applyPendingChange,
   keepPendingChange,
   revertPendingChange,
+  insertParagraphAfter,
   type PendingChangeFamily,
 } from "@/links/apply-suggestion";
 import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
-import { getLinkedTextObjectIds, type CardWithLinks } from "@/links/links";
+import {
+  getLinkedTextObjectIds,
+  removeLinkedAnchor,
+  type CardWithLinks,
+} from "@/links/links";
 import {
   getPreviewDir,
   resetPreviewDir,
@@ -218,6 +223,88 @@ export function previewSuggested<TStatus extends string>(
   reapplySuggested(editor, id, ac, deps);
   setPreviewDir(id, "suggested");
   if (docId) void flushPendingForDoc(docId).catch(() => {});
+}
+
+// ── Insert-below — the third landing verb (retires the 4-field AI fallback) ──
+//
+// When an AI suggestion can't auto-apply in place (the anchored paragraph was
+// "returned" — cut/re-inserted or re-parsed on the writeback, so its resolvable
+// text drifted), the pending card used to fall back to the retired 4-field
+// revision grid. Gabriel never wants that grid for AI cards. Insert-below is the
+// escape hatch: drop the `suggested_text` as a NEW paragraph directly below the
+// anchor (non-destructive — the original is never spliced), then retire the card
+// (`accepted` + `archived`) so it leaves the active list and can't recycle
+// through the auto-apply `pending` filter.
+
+/** The card-state mutators + suggestion lookup `insertSuggestionBelow` drives.
+ *  A focused sibling of {@link PendingChangeCardDeps}: the insert needs the
+ *  card's replacement text + Mode-A anchor (not just its applied descriptor), so
+ *  it resolves the whole suggestion by id. Generic over the family's status
+ *  union so each family keeps its literal type. */
+export interface InsertBelowCardDeps<TStatus extends string = string> {
+  /** Resolve the pending suggestion by id → its replacement text, its Mode-A
+   *  anchor uuid (the first linked paragraph), and any applied-splice descriptor
+   *  (present only if the card was auto-applied first). `undefined` = not found /
+   *  wrong kind → the action is a safe no-op. */
+  getSuggestion: (id: string) =>
+    | {
+        suggestedText: string;
+        anchorUuid: string | undefined;
+        appliedChange: AppliedChangeDescriptor | undefined;
+      }
+    | undefined;
+  setSuggestionStatus: (id: string, status: TStatus) => void;
+  setArchived: (id: string, archived: boolean) => void;
+  setAppliedChange: (id: string, appliedChange: undefined) => void;
+  /** The accepted-status literal for this family (always `"accepted"`). */
+  acceptedStatus: TStatus;
+}
+
+/**
+ * Insert the suggestion's `suggested_text` as a NEW paragraph directly below its
+ * anchored paragraph, then retire the card.
+ *
+ * Non-destructive: the original paragraph is never spliced — {@link
+ * insertParagraphAfter} only inserts a sibling after it, and `BlockUuidBackfill`
+ * mints the new paragraph's `%!v:` id. Returns false (no doc/card mutation) when:
+ *   - the card isn't resolvable,
+ *   - `suggested_text` is blank (a delete/empty cut — nothing to insert), or
+ *   - the anchor uuid doesn't resolve in the live doc.
+ *
+ * On success: if the card had been auto-applied first (an `appliedChange` → a
+ * live blue mark), drop that mark + clear the descriptor BEFORE finalizing, so
+ * no `pending-ai-change` mark lingers; then flush the `.tex` and flip the card to
+ * `accepted` + `archived` (drops it from the auto-apply `pending` filter, so it
+ * can't recycle). Text-first ordering mirrors {@link keepSuggestion}.
+ */
+export function insertSuggestionBelow<TStatus extends string>(
+  editor: Editor,
+  id: string,
+  docId: string | null,
+  deps: InsertBelowCardDeps<TStatus>,
+): boolean {
+  const s = deps.getSuggestion(id);
+  if (!s) return false;
+  // Nothing to insert (a cutter/delete cut, or an empty revision) → refuse.
+  if (s.suggestedText.trim() === "") return false;
+  if (!s.anchorUuid) return false;
+
+  const inserted = insertParagraphAfter(editor, s.anchorUuid, s.suggestedText);
+  if (!inserted) return false;
+
+  // If the card was auto-applied first, tear down its blue mark + descriptor so
+  // nothing lingers (no-op for a never-applied pending card — the common case).
+  if (s.appliedChange) {
+    removeLinkedAnchor(editor, s.appliedChange.anchorId);
+    deps.setAppliedChange(id, undefined);
+  }
+  // Symmetric with keep/dismiss: clear any transient preview-direction state for
+  // this id before it archives, so the three landing verbs leave no residue.
+  resetPreviewDir(id);
+  if (docId) void flushPendingForDoc(docId).catch(() => {});
+  deps.setSuggestionStatus(id, deps.acceptedStatus);
+  deps.setArchived(id, true);
+  return true;
 }
 
 // ── Phase 2 — the shared Apply orchestration ──────────────────────────────

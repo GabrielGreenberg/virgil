@@ -41,6 +41,7 @@ import type {
   TodoItem,
   UserNote,
 } from "@/lib/types";
+import { isRequestOpen } from "@/lib/ai-request-open";
 
 /** Only these two kinds convert (see module header). */
 const CONVERTIBLE_KINDS = new Set(["note", "todo"]);
@@ -71,11 +72,15 @@ export interface MigrationResult {
   relinkedRequests: AiRequest[];
 }
 
-/** A request is convertible iff it is an UNLINKED, non-terminal note/todo. */
+/** A request is convertible iff it is an UNLINKED, still-open note/todo.
+ *  "Open" is the shared `isRequestOpen` SSOT (the drain's rule) — for an
+ *  unlinked note/todo it coincides with "non-terminal" (an unlinked request
+ *  never carries an L3 `in-progress`+`resultId`), but routing through the
+ *  helper keeps this from re-drifting from the bridge/drain predicate. */
 function isConvertible(r: AiRequest): boolean {
   if (r.linkedTo) return false;
   if (!CONVERTIBLE_KINDS.has(r.kind)) return false;
-  return r.status !== "complete" && r.status !== "failed";
+  return isRequestOpen(r);
 }
 
 /** Legacy `draft`/`submitted` normalize to `pending` (the v1 open value the

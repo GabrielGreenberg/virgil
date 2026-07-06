@@ -7,6 +7,11 @@
  * compile so the user can pick a compatible class from a dropdown.
  */
 
+import {
+  projectLiveLatex,
+  VERBATIM_ENVS_FULL,
+} from "@/lib/latex-lexer";
+
 export type SectioningCommand =
   | "part"
   | "chapter"
@@ -33,24 +38,54 @@ export interface DocumentClassMismatch {
   suggestions: string[];
 }
 
-const DOCUMENTCLASS_RE =
-  /\\documentclass(?:\s*\[([^\]]*)\])?\s*\{([^}]+)\}/;
+const DOCUMENTCLASS_RE_G =
+  /\\documentclass(?:\s*\[([^\]]*)\])?\s*\{([^}]+)\}/g;
 
 /**
- * Pull the first `\documentclass{...}` (with optional `[options]`) out
- * of a LaTeX source. Returns null if none is present — e.g. a bare
- * snippet without a preamble.
+ * Whether the `\documentclass` at raw offset `matchStart` is LIVE (not inside
+ * a `%`-comment or a verbatim-family environment). Determined by projecting
+ * the source's comment/verbatim inertness away and checking whether a
+ * `\documentclass` still begins at the projected image of `matchStart`.
+ *
+ * `projectLiveLatex` only ever REMOVES bytes (comment tails, verbatim
+ * contents) and preserves every live byte in order, so the live prefix length
+ * is `projectLiveLatex(latex.slice(0, matchStart)).length`. If a
+ * `\documentclass` starts there in the full projection, the raw match is live.
+ */
+function isLiveDocumentClass(latex: string, matchStart: number): boolean {
+  const projected = projectLiveLatex(latex, {
+    envs: VERBATIM_ENVS_FULL,
+    inlineVerb: true,
+  });
+  const liveStart = projectLiveLatex(latex.slice(0, matchStart), {
+    envs: VERBATIM_ENVS_FULL,
+    inlineVerb: true,
+  }).length;
+  return projected.startsWith("\\documentclass", liveStart);
+}
+
+/**
+ * Pull the first LIVE `\documentclass{...}` (with optional `[options]`) out
+ * of a LaTeX source, skipping any that are commented out or inside a
+ * verbatim-family environment. Returns null if none is present — e.g. a bare
+ * snippet without a preamble, or one whose only `\documentclass` is
+ * commented. `matchStart`/`matchEnd` are RAW byte offsets so
+ * `rewriteDocumentClass` can splice the live class in place.
  */
 export function extractDocumentClass(latex: string): DocumentClassInfo | null {
-  const m = latex.match(DOCUMENTCLASS_RE);
-  if (!m) return null;
-  const matchStart = m.index ?? 0;
-  return {
-    className: m[2].trim(),
-    options: m[1] ?? null,
-    matchStart,
-    matchEnd: matchStart + m[0].length,
-  };
+  DOCUMENTCLASS_RE_G.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = DOCUMENTCLASS_RE_G.exec(latex)) !== null) {
+    const matchStart = m.index;
+    if (!isLiveDocumentClass(latex, matchStart)) continue;
+    return {
+      className: m[2].trim(),
+      options: m[1] ?? null,
+      matchStart,
+      matchEnd: matchStart + m[0].length,
+    };
+  }
+  return null;
 }
 
 /**
@@ -101,40 +136,20 @@ function isKnownClass(name: string): boolean {
  * flagging them would be a false positive.
  */
 export function findSectioningCommands(latex: string): Set<SectioningCommand> {
-  const stripped = stripCommentsAndVerbatim(latex);
+  // Project comments + the FULL verbatim family + inline `\verb` away via the
+  // shared lexer. The boundary-correct inline-verb matcher fixes the former
+  // `/\\verb\*?(.)[\s\S]*?\1/` bug that mis-lexed `\verbatim`/`\verbdef` as
+  // `\verb` + delimiter and swallowed a following real `\section`.
+  const stripped = projectLiveLatex(latex, {
+    envs: VERBATIM_ENVS_FULL,
+    inlineVerb: true,
+  });
   const re = /\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\b\*?\s*[\{\[]/g;
   const found = new Set<SectioningCommand>();
   for (const m of stripped.matchAll(re)) {
     found.add(m[1] as SectioningCommand);
   }
   return found;
-}
-
-function stripCommentsAndVerbatim(latex: string): string {
-  // Drop %-comments (respecting escaped \%).
-  let out = "";
-  for (const line of latex.split("\n")) {
-    let i = 0;
-    while (i < line.length) {
-      const ch = line[i];
-      if (ch === "\\" && i + 1 < line.length) {
-        out += ch + line[i + 1];
-        i += 2;
-        continue;
-      }
-      if (ch === "%") break;
-      out += ch;
-      i++;
-    }
-    out += "\n";
-  }
-  // Drop verbatim environments — a conservative pass; nested verbatims
-  // aren't a thing so this is safe.
-  out = out.replace(/\\begin\{(verbatim\*?|lstlisting|minted)\}[\s\S]*?\\end\{\1\}/g, "");
-  // Drop \verb|…| and \verb*|…| inline runs. Delimiter is the char after
-  // \verb (commonly | or !).
-  out = out.replace(/\\verb\*?(.)[\s\S]*?\1/g, "");
-  return out;
 }
 
 /**

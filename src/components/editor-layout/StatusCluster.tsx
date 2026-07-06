@@ -455,9 +455,12 @@ function StatusClusterImpl(props: StatusClusterProps) {
         )}
         Compile
       </button>
-      {/* PDF view toggle — same indirection trap as code view: EditorPane
-          unmounts in PDF view so paneState's mirror goes stale. Read local
-          `pdfView` directly. */}
+      {/* PDF view toggle. Read local `pdfView` directly for the toggle's own
+          pressed state (the view flag lives at the shell level). NOTE (P6):
+          EditorPane is NOT unmounted in PDF view — KeepAliveSlot hides it via
+          `display:none`, so paneState keeps bubbling. That's exactly why the
+          PDF viewer and the `vbar.pdfStale` dot below can read the pane's live
+          state instead of a shell-owned disk read. */}
       <button
         onClick={onTogglePdfView}
         disabled={!currentDocId}

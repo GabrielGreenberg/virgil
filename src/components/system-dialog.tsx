@@ -28,6 +28,18 @@
  *   - role=dialog, aria-modal=true, aria-labelledby/aria-describedby
  *   - requestAnimationFrame-deferred focus on the autoFocus button
  *   - Optional anchor positioning near a source element
+ *
+ * Positioning variants (`variant` prop) — one shell, principled positioning
+ * VARIETY (task 033). Every variant shares the portal, the SYSTEM_DIALOG_TOKENS
+ * chrome, Esc/focus/role wiring, and outside-click-to-close; they differ only in
+ * scrim + placement + z-tier:
+ *   - "modal"     (default) — scrim + centered (or near `anchorRef`); MODAL_SCRIM_Z.
+ *   - "draggable" — scrimless tool window, drag-positioned by its header (wire the
+ *                   header strip with {@link useSystemDialogDrag}); DRAGGABLE_DIALOG_Z.
+ *   - "anchored"  — scrimless popover pinned at a viewport point (`at`) or near
+ *                   `anchorRef`, clamped to the viewport; MODAL_SCRIM_Z.
+ * The scrimless variants close on outside mousedown (skip via `ignoreOutsideSelector`
+ * for the trigger button, or `outsideClickGuard` for a modifier gesture).
  */
 
 import {
@@ -39,12 +51,14 @@ import {
   useRef,
   useState,
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import { Button, type ButtonVariant } from "./panel-primitives";
-import { MODAL_SCRIM_Z } from "@/floats/float-policy";
+import { MODAL_SCRIM_Z, DRAGGABLE_DIALOG_Z } from "@/floats/float-policy";
+import { useDragPosition } from "@/hooks/useDragPosition";
 
 /* ── Tokens ──────────────────────────────────────────────────────────
    The one object you edit to re-skin every system dialog. Tailwind-class
@@ -91,19 +105,53 @@ interface DialogCtxValue {
   describedBy?: string;
   registerAutoFocus: (el: HTMLButtonElement | null) => void;
   autoFocusRef: RefObject<HTMLButtonElement | null>;
+  variant: SystemDialogVariant;
+  /** variant="draggable": grab handler + live cursor state for a header strip. */
+  beginDrag: (e: React.MouseEvent) => void;
+  dragging: boolean;
 }
 
 const DialogCtx = createContext<DialogCtxValue | null>(null);
 
+/**
+ * Wire a custom header strip as the drag handle of a `variant="draggable"`
+ * SystemDialog. Returns `{ onMouseDown, dragging }` (both inert outside a
+ * draggable dialog). Spread `onMouseDown` onto the header element and use
+ * `dragging` for the grab/grabbing cursor.
+ */
+export function useSystemDialogDrag(): {
+  onMouseDown: ((e: React.MouseEvent) => void) | undefined;
+  dragging: boolean;
+} {
+  const ctx = useContext(DialogCtx);
+  return {
+    onMouseDown: ctx?.variant === "draggable" ? ctx.beginDrag : undefined,
+    dragging: ctx?.dragging ?? false,
+  };
+}
+
 /* ── SystemDialog ─────────────────────────────────────────────────── */
+
+export type SystemDialogVariant = "modal" | "draggable" | "anchored";
 
 export interface SystemDialogProps {
   open: boolean;
-  /** Called on Esc, backdrop click, or programmatic close. Omit for non-dismissable. */
+  /** Called on Esc, backdrop/outside click, or programmatic close. Omit for non-dismissable. */
   onClose?: () => void;
   size?: SystemDialogSize;
+  /** Positioning + scrim policy. Default "modal" (centered, scrim). */
+  variant?: SystemDialogVariant;
   /** Position the dialog near this element instead of dead-center. */
   anchorRef?: RefObject<HTMLElement | null>;
+  /** variant="anchored": pin the frame at this viewport point (clamped to the
+   *  viewport). Takes precedence over `anchorRef`. */
+  at?: { x: number; y: number } | null;
+  /** Scrimless variants: skip outside-click-close when the click matches this
+   *  CSS selector (e.g. the trigger button that toggles the dialog open). */
+  ignoreOutsideSelector?: string;
+  /** Scrimless variants: return true to suppress outside-click-close for this
+   *  event (e.g. ctrl+click-to-retarget in the preference picker). */
+  outsideClickGuard?: (e: MouseEvent) => boolean;
   /** DOM id of the title element — set aria-labelledby. */
   labelledBy?: string;
   /** DOM id of the description element — set aria-describedby. */
@@ -117,7 +165,11 @@ export default function SystemDialog({
   open,
   onClose,
   size = "sm",
+  variant = "modal",
   anchorRef,
+  at,
+  ignoreOutsideSelector,
+  outsideClickGuard,
   labelledBy,
   describedBy,
   frameClassName = "",
@@ -129,6 +181,18 @@ export default function SystemDialog({
   >(null);
   const [mounted, setMounted] = useState(false);
 
+  const scrimless = variant !== "modal";
+
+  // Draggable shell: SystemDialog OWNS the drag (one useDragPosition), exposing
+  // the grab handler to a header strip via context (useSystemDialogDrag). The
+  // frame ref doubles as the outside-click "inside?" boundary for every variant.
+  const {
+    position: dragPos,
+    onMouseDown: beginDrag,
+    panelRef,
+    isDraggingRef,
+  } = useDragPosition();
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -137,11 +201,14 @@ export default function SystemDialog({
     autoFocusRef.current = el;
   }, []);
 
-  // Position + focus + keyboard wiring
+  // Focus + keyboard wiring (shared by every variant). anchorRef positioning is
+  // the MODAL variant's near-element placement (scrim stays); the scrimless
+  // "anchored" variant computes its own point-clamped position in the layout
+  // effect below.
   useEffect(() => {
     if (!open) return;
 
-    if (anchorRef?.current) {
+    if (variant === "modal" && anchorRef?.current) {
       const rect = anchorRef.current.getBoundingClientRect();
       const vw = window.innerWidth;
       const dialogWidth = 340;
@@ -175,7 +242,77 @@ export default function SystemDialog({
       cancelAnimationFrame(handle);
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, onClose, anchorRef]);
+  }, [open, onClose, anchorRef, variant]);
+
+  // Point-anchored placement for the scrimless "anchored" variant. The frame
+  // renders `visibility:hidden` until this effect measures it and clamps to the
+  // viewport, so the popover only ever paints at its final clamped position (no
+  // unclamped flash — just a one-frame delay before it appears).
+  const [anchoredPos, setAnchoredPos] = useState<
+    { top: number; left: number } | null
+  >(null);
+  useEffect(() => {
+    if (!open || !mounted || variant !== "anchored") {
+      setAnchoredPos(null);
+      return;
+    }
+    const el = panelRef.current;
+    const w = el?.offsetWidth ?? 340;
+    const h = el?.offsetHeight ?? 360;
+    const pad = 8;
+    let x: number;
+    let y: number;
+    if (at) {
+      x = at.x;
+      y = at.y;
+    } else if (anchorRef?.current) {
+      const r = anchorRef.current.getBoundingClientRect();
+      x = r.left;
+      y = r.bottom + 8;
+    } else {
+      x = (window.innerWidth - w) / 2;
+      y = (window.innerHeight - h) / 2;
+    }
+    setAnchoredPos({
+      left: Math.max(pad, Math.min(window.innerWidth - w - pad, x)),
+      top: Math.max(pad, Math.min(window.innerHeight - h - pad, y)),
+    });
+  }, [open, mounted, variant, at, anchorRef, panelRef]);
+
+  // Outside-click-to-close for scrimless variants (the modal variant closes via
+  // its backdrop instead). rAF-armed so the opening mousedown on the trigger
+  // doesn't immediately re-close; skips drags, in-frame clicks, the trigger
+  // selector, and any caller guard (e.g. a modifier retarget gesture).
+  useEffect(() => {
+    if (!open || !mounted || !scrimless || !onClose) return;
+    let armed = false;
+    const raf = requestAnimationFrame(() => {
+      armed = true;
+    });
+    const handler = (e: MouseEvent) => {
+      if (!armed || isDraggingRef.current) return;
+      const target = e.target as Element | null;
+      if (panelRef.current && target && panelRef.current.contains(target)) return;
+      if (ignoreOutsideSelector && target?.closest?.(ignoreOutsideSelector))
+        return;
+      if (outsideClickGuard?.(e)) return;
+      onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("mousedown", handler);
+    };
+  }, [
+    open,
+    mounted,
+    scrimless,
+    onClose,
+    ignoreOutsideSelector,
+    outsideClickGuard,
+    isDraggingRef,
+    panelRef,
+  ]);
 
   const handleBackdrop = useCallback(
     (e: React.MouseEvent) => {
@@ -188,10 +325,58 @@ export default function SystemDialog({
 
   const t = SYSTEM_DIALOG_TOKENS;
 
+  const ctxValue: DialogCtxValue = {
+    labelledBy,
+    describedBy,
+    registerAutoFocus,
+    autoFocusRef,
+    variant,
+    beginDrag,
+    dragging: isDraggingRef.current,
+  };
+
+  // ── Scrimless variants (draggable / anchored) ──────────────────────
+  // No backdrop; the frame IS the portal root, positioned fixed. role=dialog on
+  // the frame itself (no aria-modal — these are non-modal surfaces).
+  if (scrimless) {
+    const zIndex =
+      variant === "draggable" ? DRAGGABLE_DIALOG_Z : MODAL_SCRIM_Z;
+    let placement: CSSProperties;
+    if (variant === "draggable") {
+      placement = dragPos
+        ? { position: "fixed", top: dragPos.y, left: dragPos.x }
+        : {
+            position: "fixed",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+          };
+    } else {
+      // anchored: hidden until the effect clamps against the measured frame
+      placement = anchoredPos
+        ? { position: "fixed", top: anchoredPos.top, left: anchoredPos.left }
+        : { position: "fixed", top: 0, left: 0, visibility: "hidden" };
+    }
+    return createPortal(
+      <DialogCtx.Provider value={ctxValue}>
+        <div
+          ref={panelRef}
+          className={`${t.surface} ${frameClassName}`}
+          style={{ ...placement, zIndex }}
+          role="dialog"
+          aria-labelledby={labelledBy}
+          aria-describedby={describedBy}
+        >
+          {children}
+        </div>
+      </DialogCtx.Provider>,
+      document.body,
+    );
+  }
+
+  // ── Modal variant (default) — scrim + centered/anchored frame ──────
   return createPortal(
-    <DialogCtx.Provider
-      value={{ labelledBy, describedBy, registerAutoFocus, autoFocusRef }}
-    >
+    <DialogCtx.Provider value={ctxValue}>
       <div
         className={`fixed inset-0 ${t.scrim} ${anchorPos ? "" : "flex items-center justify-center"}`}
         // Keep centered dialogs clear of the OS window-control strip under WCO

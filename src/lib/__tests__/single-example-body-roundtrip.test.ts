@@ -171,3 +171,44 @@ describe("Feature A2 — single `\\ex` body block-level round-trip", () => {
     expect(findAll(block, "exampleGloss")).toHaveLength(1);
   });
 });
+
+describe("Task 038 — aligned gloss cell brace-awareness", () => {
+  const glossCells = (tex: string): JSONContent[] => {
+    const row = findAll(parseBody(tex), "alignedGlossRow")[0];
+    return (row?.content || []).filter((c) => c.type === "glossCell");
+  };
+
+  it("parses a braced command with an internal space as ONE cell", () => {
+    // `\textbf{a b}` must stay one cell — the space is inside the command's
+    // braces, at brace depth 1. The old brace-unaware else-branch split it
+    // into three garbage cells (`\textbf{a`, `b}`, `foo`).
+    const tex = `\\ex\n\\begingl\n\\gla \\textbf{a b} foo //\n\\endgl\n\\xe`;
+    expect(glossCells(tex)).toHaveLength(2);
+  });
+
+  it("parses a braced \\textsc command with an internal space as ONE cell", () => {
+    const tex = `\\ex\n\\begingl\n\\glb \\textsc{Foo Bar} x //\n\\endgl\n\\xe`;
+    expect(glossCells(tex)).toHaveLength(2);
+  });
+
+  it("round-trips `\\textbf{a b}` as one cell with no redundant outer braces", () => {
+    // Both members at once: the parser keeps `\textbf{a b}` intact (member 1)
+    // and the serializer does NOT re-wrap it to `{\textbf{a b}}` (member 2),
+    // because the only whitespace is inside the command's own braces.
+    const tex = `\\ex\n\\begingl\n\\gla \\textbf{a b} foo //\n\\endgl\n\\xe`;
+    const back = serializeBody(parseBody(tex));
+    expect(back).toContain("\\gla \\textbf{a b} foo //");
+    expect(back).not.toContain("{\\textbf{a b}}");
+  });
+
+  it("still braces a plain multi-word cell (top-level space) on round-trip", () => {
+    // Regression guard: a genuine brace-depth-0 space (`{a b}` → cell text
+    // `a b`) must be re-braced so expex doesn't split it into two columns.
+    const tex = `\\ex\n\\begingl\n\\gla {a b} c //\n\\endgl\n\\xe`;
+    const doc = parseBody(tex);
+    expect(findAll(doc, "alignedGlossRow")[0].content!.filter(
+      (c) => c.type === "glossCell",
+    )).toHaveLength(2);
+    expect(serializeBody(doc)).toContain("\\gla {a b} c //");
+  });
+});

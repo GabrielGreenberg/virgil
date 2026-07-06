@@ -59,6 +59,10 @@ import {
 } from "@/hooks/useEditorViewportCache";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
+import {
+  recordScrollPlacement,
+  SCROLL_PORTAL_PENDING_PILL,
+} from "@/lib/scroll-reposition-probe";
 /** A check (Keep) / cross (Dismiss) glyph for the pill's commit icons — mirrors
  *  the applied-card body's commit icons. */
 function PillGlyph({ kind }: { kind: "check" | "cross" }) {
@@ -339,6 +343,8 @@ export function PendingChangePill({
         indexRef.current,
       );
       const next = computePlacement(ed, cacheRef.current, targetKey, indexRef.current);
+      // Scroll-anchor stability probe (task 042): one record per coalesced frame.
+      recordScrollPlacement(SCROLL_PORTAL_PENDING_PILL, next.top);
       setPlacement((prev) => (placementsEqual(prev, next) ? prev : next));
     };
     const update = () => {

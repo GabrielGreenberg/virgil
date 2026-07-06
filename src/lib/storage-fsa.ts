@@ -53,8 +53,10 @@ import {
   assertNotSuperseded,
   getActiveHandle,
   isActive,
+  isStalePipelineError,
   type DocWriteHandle,
 } from "@/lib/multi-window/doc-pipeline";
+import type { WritePdfResult } from "@/lib/storage-types";
 import {
   DOCUMENT_TEMPLATES,
   DEFAULT_TEMPLATE_ID,
@@ -62,6 +64,12 @@ import {
 } from "@/lib/document-templates";
 import { getLibraryHandle } from "@library/lib/library-folder";
 import { stampDiskFingerprint, fingerprintOf } from "@/lib/disk-ledger";
+import {
+  detectPreambleBibFamily,
+  detectCommandBibFamily,
+  asBibFamily,
+  type BibFamily,
+} from "@/lib/bib-family";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -510,7 +518,16 @@ async function writeReStampedTexOnLoad(
     const meta = await getDocMetaOrThrow(h.docId);
     const virgil = await getVirgilSubdir(docHandle);
 
-    let serializeOpts: { preamble?: string } | undefined = delimiters ?? undefined;
+    // Authoritative per-doc bib family: read from the citations sidecar (the
+    // existing user-settable SSOT, seeded from detection on load). A missing
+    // sidecar → null → the serializer falls back to the body-derived family
+    // (today's behavior). Never overrides the user's stored choice.
+    const bibFamily = await readDocBibFamily(virgil);
+    const serializeOpts: {
+      preamble?: string;
+      postamble?: string;
+      bibFamily?: BibFamily | null;
+    } = { ...(delimiters ?? {}), bibFamily };
     if (!delimiters) {
       const rawSettings = await safeReadJson<unknown>(
         virgil,
@@ -518,7 +535,7 @@ async function writeReStampedTexOnLoad(
         { styleId: DEFAULT_STYLE_ID },
       );
       const settings = migrateDocumentSettings(rawSettings);
-      serializeOpts = { preamble: resolveStyle(settings.styleId).preamble };
+      serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
     }
     const latex = serializeToLatex(content, serializeOpts);
 
@@ -583,7 +600,15 @@ export async function writeDocBundle(
     // seed the preamble from the doc's currently-selected style instead
     // of the historical hardcoded fallback. Existing docs keep their
     // verbatim preamble.
-    let serializeOpts: { preamble?: string } | undefined = delimiters ?? undefined;
+    // Authoritative per-doc bib family from the citations sidecar (the
+    // user-settable SSOT). Missing → null → body-derived fallback. Never
+    // overrides the user's stored choice.
+    const bibFamily = await readDocBibFamily(virgil);
+    const serializeOpts: {
+      preamble?: string;
+      postamble?: string;
+      bibFamily?: BibFamily | null;
+    } = { ...(delimiters ?? {}), bibFamily };
     if (!delimiters) {
       const rawSettings = await safeReadJson<unknown>(
         virgil,
@@ -591,7 +616,7 @@ export async function writeDocBundle(
         { styleId: DEFAULT_STYLE_ID },
       );
       const settings = migrateDocumentSettings(rawSettings);
-      serializeOpts = { preamble: resolveStyle(settings.styleId).preamble };
+      serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
     }
     const latex = serializeToLatex(content, serializeOpts);
 
@@ -663,17 +688,42 @@ async function resolveBibFilename(docId: string): Promise<string> {
 
 export type BibPackage = "natbib" | "biblatex";
 
-/** Detect natbib vs biblatex from preamble + command usage in the .tex source. */
+/**
+ * Detect natbib vs biblatex from preamble + command usage in the .tex source.
+ *
+ * Preamble load wins first (via bib-family's `detectPreambleBibFamily`, which
+ * recognizes `\usepackage` AND `\RequirePackage`, comma-lists, options, and
+ * wrapper packages like `biblatex-chicago` — the previous regex missed
+ * `\RequirePackage{biblatex}`, seeding the wrong family). Falls back to the
+ * command-family classifier over the source (again the SSOT buckets, so a new
+ * cite command is classified consistently everywhere). Defaults to natbib
+ * (Virgil's baseline) when nothing pins a family.
+ */
 export function detectBibPackage(tex: string): BibPackage {
-  if (/\\usepackage(\[.*?\])?\{biblatex\}/.test(tex)) return "biblatex";
-  if (/\\usepackage(\[.*?\])?\{natbib\}/.test(tex)) return "natbib";
-  if (/\\(textcite|parencite|autocite|footcite|textcites|parencites|cites)\b/.test(tex)) {
-    return "biblatex";
-  }
-  if (/\\(citet|citep|citealt|citealp|citeyearpar)\b/.test(tex)) {
-    return "natbib";
-  }
+  const loaded = detectPreambleBibFamily(tex);
+  if (loaded) return loaded;
+  const byCommand = detectCommandBibFamily(tex);
+  if (byCommand) return byCommand;
   return "natbib";
+}
+
+/**
+ * Read the authoritative per-doc bib family off the citations sidecar
+ * (`virgil/citations.json`), the existing user-settable SSOT (seeded from
+ * `detectBibPackage` on load by useCitations, and never overridden by detection
+ * once set). Returns `null` when the sidecar is absent or carries no valid
+ * family — so a brand-new doc falls back to the serializer's body-derived
+ * family (today's behavior), never forcing the wrong package.
+ */
+async function readDocBibFamily(
+  virgil: FileSystemDirectoryHandle,
+): Promise<BibFamily | null> {
+  const raw = await safeReadJson<{ bibPackage?: unknown }>(
+    virgil,
+    "citations.json",
+    {},
+  );
+  return asBibFamily(raw?.bibPackage);
 }
 
 export interface BibReadResult {
@@ -734,14 +784,32 @@ export async function getPdfFilename(docId: string): Promise<string> {
   return pdfFilenameFromTex(meta.texFilename);
 }
 
-export async function writePdf(h: DocWriteHandle, pdfBytes: Uint8Array): Promise<void> {
+export async function writePdf(
+  h: DocWriteHandle,
+  pdfBytes: Uint8Array,
+): Promise<WritePdfResult> {
+  // Library/read-only papers never persist. `enqueueDocWrite` also guards this
+  // (it resolves `undefined` for library docs), but we return an EXPLICIT
+  // `skipped` so the caller can distinguish "intentionally not persisted" from
+  // a success — the viewer still shows the in-memory bytes either way.
+  if (h.docId.startsWith(LIBRARY_PAPER_PREFIX)) return { status: "skipped" };
   return enqueueDocWrite(h, "pdf", async () => {
-    const docHandle = await requireDocHandle(h.docId);
-    const filename = await getPdfFilename(h.docId);
-    const fh = await docHandle.getFileHandle(filename, { create: true });
-    const writable = await fh.createWritable();
-    await writable.write(pdfBytes.buffer as ArrayBuffer);
-    await writable.close();
+    try {
+      const docHandle = await requireDocHandle(h.docId);
+      const filename = await getPdfFilename(h.docId);
+      const fh = await docHandle.getFileHandle(filename, { create: true });
+      const writable = await fh.createWritable();
+      await writable.write(pdfBytes.buffer as ArrayBuffer);
+      await writable.close();
+      return { status: "written" } as WritePdfResult;
+    } catch (err) {
+      // A stale/superseded pipeline still throws so the compile hook's
+      // `isStalePipelineError` catch can drop it silently. A genuine IO
+      // failure resolves to `failed` so it never throws past the caller —
+      // the compile succeeded; only persistence didn't.
+      if (isStalePipelineError(err)) throw err;
+      return { status: "failed", error: err } as WritePdfResult;
+    }
   });
 }
 

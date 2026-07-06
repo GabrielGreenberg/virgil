@@ -1,0 +1,6 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.24
+(./main.tex
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `\somemacro' on input line 88.
+)
+Output written on main.pdf (1 page, 4242 bytes).
