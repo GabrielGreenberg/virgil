@@ -74,6 +74,8 @@ const PERMITTED_KEYSTROKE_SUBSCRIBERS: Record<string, string> = {
     "Fold-aware OmniHost tick: a single getMeta(sectionFoldingPluginKey) check — bumps ONLY on a fold-meta tx, returns immediately on a plain keystroke.",
   "hooks/useEditorUIState.ts":
     "Section-fold persister: gated via the shared transactionTouchesFold predicate (fold-meta or docChanged) — O(1) per tx.",
+  "hooks/useLatexSource.ts":
+    "Diagnostics source feed (P5 item 4): a debounced serialize-on-update — the handler only resets a timer (O(1)); the O(doc) serializeToLatex fires in the debounced callback, off the keystroke path. Suppressed while the code view feeds sourceText directly (CodeEditor.onTextChange).",
   "hooks/useWordCount.ts":
     "300 ms debounce, then the full doc walk — the per-keystroke cost is just the timer reset (O(1)).",
   "lib/code-pane-bridge.ts":
