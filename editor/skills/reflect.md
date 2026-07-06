@@ -4,10 +4,12 @@ description: |
   invocation. This is the "day" capture layer of the self-improvement loop
   (EDITOR_SKILLS_V1 §14). Triggers ONLY in a DEV-mode session (VIRGIL_DEV=1):
   as the automatic follow-up the editor/AGENTS.md convention attaches to every
-  completed skill, or on an explicit "reflect on that", "capture a reflection",
-  "log a reflection", "reflect on this run", or "/editor/reflect" from a Virgil
-  maintainer (the after-the-fact "put this in the reflection: <note>" tag path
-  routes here too). NOTE: "dev memo" is NOT a trigger — that term is retired and
+  completed skill, or on an explicit "log a dev reflection", "log this as a dev
+  reflection", "dev reflection", "dev-dream reflection", "reflect on that",
+  "capture a reflection", "log a reflection", "reflect on this run", or
+  "/editor/reflect" from a Virgil maintainer (the after-the-fact "put this in the
+  reflection: <note>" tag path routes here too). NOTE: "dev memo" is NOT a
+  trigger — that term is retired and
   names nothing now (it used to label the per-paper channel). Reads the Task's
   already-classified status/result, derives the tier, and writes a 4-bucket
   memo to editor/dev/memos/<date>/. NO-OP outside DEV mode. Does NOT trigger
@@ -40,12 +42,15 @@ unset it writes nothing and exits 0, so an accidental invocation in a non-dev
 step copied into other skill files — the one convention is the whole seam.
 
 **Explicit triggers — the unambiguous set.** Besides the automatic follow-up, a
-maintainer kicks off a reflection by saying "reflect on that", "capture a
-reflection", "log a reflection", "reflect on this run", or "/editor/reflect" —
-plus the after-the-fact "put this in the reflection: …" tag path (step 4). The
-words *reflect/reflection* **always** mean this dev-loop note. **"dev memo" is
-not a trigger** and names nothing: it used to title the per-paper channel, and
-that overload is exactly what misrouted reflections into `<docPath>/.virgil/memos/`.
+maintainer kicks off a reflection by saying **"log a dev reflection"** / **"log
+this as a dev reflection"** / **"dev reflection"** / **"dev-dream reflection"**
+(the recommended, least-ambiguous cues — the "dev"/"dev-dream" qualifier names
+this loop unmistakably), or "reflect on that", "capture a reflection", "log a
+reflection", "reflect on this run", or "/editor/reflect" — plus the after-the-fact
+"put this in the reflection: …" tag path (step 4). The words *reflect/reflection*
+**always** mean this dev-loop note. **"dev memo" is not a trigger** and names
+nothing: it used to title the per-paper channel, and that overload is exactly
+what misrouted reflections into `<docPath>/.virgil/memos/`.
 
 **Memo routing rule — one decision rule, stated identically in
 [editor/AGENTS.md](../AGENTS.md) ("Memo routing rule") so either file
