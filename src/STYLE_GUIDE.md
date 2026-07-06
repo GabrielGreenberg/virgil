@@ -312,6 +312,18 @@ A card renders via `<PanelCard theme={…} selected={…}>`. The frame
 across themes; only the colors differ. **Every card has a theme.** A
 card without a theme is a bug.
 
+**No bespoke card headers.** Pass `kind` (+ `kindLabelOverride` when the
+registry label differs from the card's overline, e.g. `bib` →
+"Bibliography item") so PanelCard renders the ONE unified header —
+`[drag] OVERLINE [headerTrailing] [drop?] [jump?/X?]` — and thread small
+per-card controls (jump target, occurrence counter, "Add") through the
+narrow `headerTrailing` slot, multi-line meta (library chips / status) as
+a body meta row, and popout/close through `onTogglePopout`. Never
+hand-roll a header `<div>` or an absolute top-right control cluster inside
+a PanelCard (the shape `BibEntryCard` carried until task 055, the last
+offender). A stacked bespoke header competes with the title for width and
+drifts from the standard chrome.
+
 Card chrome colors come from theme tokens (`theme.accent`,
 `theme.titleColor`, …), never raw Tailwind palette literals
 (`text-sky-500`). This holds for the system themes too (`aiRequest`,

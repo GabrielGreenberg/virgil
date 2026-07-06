@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { PanelCard, PANEL, Chevron, TargetIcon, Button, CardPopoutButton, CardDragHandle, cardTitleStyle } from "./panel-primitives";
+import { PanelCard, PANEL, Chevron, Button, CardTargetIcon, cardTitleStyle } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -608,13 +608,89 @@ export default function BibEntryCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(popKey, anchor)
       : undefined);
 
-  // Docked cards no longer render a pop-out button (drag the card header
-  // out instead). The X close button on a popped float is rendered
-  // manually below — see the cluster block — because BibEntryCard's
-  // top-right slot is already occupied by the target/occurrence cluster
-  // and we don't want PanelCard's auto-positioned X to fight it.
-  const showCluster = (!!onToggleFromCtx && isPoppedOut) || showTargetIcon;
   const compressed = !isSelected && !isPoppedOut;
+
+  // TITLE dialect — design-system-fixed; the per-panel body-font picker
+  // (`bibBodyStyle`) applies to the publication-details body row, never to
+  // this title line. Rendered inside the body now (not a bespoke header) so
+  // the card reads through the unified card-standard header like every other
+  // kind (task 055 — retiring the last hand-rolled panel-card header).
+  const titleLine = (
+    <div
+      className="min-w-0 leading-snug"
+      style={{ ...cardTitleStyle(theme), overflowWrap: "anywhere" }}
+      data-hint={headerText} aria-label={headerText}
+    >
+      {author && <span className="font-semibold">{author}</span>}
+      {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}
+      {year && <span className="font-semibold">{year}</span>}
+      {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
+      {title && <span className="italic">{title}</span>}
+    </div>
+  );
+
+  // Trailing header chrome — the standard narrow slot between the kind label
+  // and the jump/X chrome (PanelCard `headerTrailing`). Retires the bespoke
+  // absolute top-right cluster. Each control stops propagation so it never
+  // trips the header's click-to-select activation; buttons are auto-excluded
+  // from the header drag-lift (`INTERACTIVE_CONTROL_SELECTOR`).
+  const headerTrailing = (
+    <>
+      {addAction ? (
+        <span
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        >
+          {addAction.alreadyAdded ? (
+            <span className="text-[10px] text-ink-muted">Added</span>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); addAction.onAdd(); }}
+              className="text-[10px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded"
+            >
+              Add
+            </button>
+          )}
+        </span>
+      ) : null}
+      {hasOccCounter && (
+        <span
+          className="inline-flex items-center gap-0.5 text-[10px] text-ink-muted"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); occurrenceInfo!.onCycle(-1); }}
+            className="hover:text-ink-body flex items-center"
+            data-hint="Previous occurrence" aria-label="Previous occurrence"
+          >
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <span className="card-mono tabular-nums">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); occurrenceInfo!.onCycle(1); }}
+            className="hover:text-ink-body flex items-center"
+            data-hint="Next occurrence" aria-label="Next occurrence"
+          >
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </span>
+      )}
+      {showTargetIcon && (
+        <CardTargetIcon
+          selected={isSelected}
+          onClick={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
+          title="Jump to citation"
+        />
+      )}
+    </>
+  );
 
   const card = (
     <PanelCard
@@ -624,141 +700,49 @@ export default function BibEntryCard({
       selected={isSelected}
       isPoppedOut={isPoppedOut}
       cardKey={popKey}
+      // Unified card-standard header: [drag] BIBLIOGRAPHY ITEM [trailing] [X].
+      // `bib` resolves to "Bibliography" in the registry, so override the label
+      // to the "Bibliography item" the card reads as (uppercased by the
+      // overline). Bib is `droppable:false`, so no drop button renders.
+      kind="bib"
+      kindLabelOverride="Bibliography item"
+      headerTrailing={headerTrailing}
+      // Docked: no pop-out button (header drag-lift is the only path). Popped:
+      // PanelCard renders the standard X from this same handler.
+      onTogglePopout={onToggleFromCtx}
+      // Selection IS the expansion axis here (compressed = !selected), so a
+      // header click toggles selection just like a body click.
+      onHeaderActivate={onClick}
       isCollapsed={compressed}
       extraCardClass={`cursor-pointer${draggable ? " cursor-grab active:cursor-grabbing" : ""}${!isCited ? " opacity-60" : ""}`}
       draggable={draggable}
       onDragStart={draggable ? handleDragStart : undefined}
       onClick={onClick}
     >
-      {/* Header — a vertical stack of layers (text → libraries → status) so a
-          narrow card no longer forces the title to vertical-truncate against a
-          trailing chip row. pr-14 reserves space for the absolute top-right
-          control stack (target + popout cluster, occurrence counter below). */}
-      <div
-        className="flex flex-col gap-1 pl-3 pr-14 py-1.5"
-        style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
-      >
-        {/* Layer 1 — text: author · year · title (full width, wraps naturally). */}
-        <div className="flex items-center gap-2">
-          <CardDragHandle />
-          {/* TITLE dialect — design-system-fixed; the per-panel body-font
-              picker (`bibBodyStyle`) applies to the publication-details body
-              row, never to this header line. */}
-          <div
-            className="flex-1 min-w-0 leading-snug"
-            style={{
-              ...cardTitleStyle(theme),
-              overflowWrap: "anywhere",
-            }}
-            data-hint={headerText} aria-label={headerText}
-          >
-            {author && <span className="font-semibold">{author}</span>}
-            {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}
-            {year && <span className="font-semibold">{year}</span>}
-            {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
-            {title && <span className="italic">{title}</span>}
-          </div>
-          {addAction ? (
+      {compressed ? (
+        <div className="px-3 py-1.5">{titleLine}</div>
+      ) : (
+        /* Body — keeps the roomier `cardInner` (px-4 py-3) rather than the
+           ratified `cardBody` (px-3): the title + library meta + multi-pod
+           publication-details / BibTeX-fields / annotations layout reads
+           better with the extra breathing room (backlog #28 exemption). */
+        <div className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
+          {titleLine}
+          {/* Library membership chips + verification / processing-tier status
+              row — a standard body meta row under the title (was header layers
+              2+3). */}
+          {headerMeta ? (
             <div
-              className="shrink-0"
+              className="mt-2 flex flex-col gap-1"
               onClick={(e) => e.stopPropagation()}
               draggable={false}
               onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
             >
-              {addAction.alreadyAdded ? (
-                <span className="text-[10px] text-ink-muted py-0.5">Added</span>
-              ) : (
-                <button
-                  onClick={addAction.onAdd}
-                  className="text-[10px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded"
-                >
-                  Add
-                </button>
-              )}
+              {headerMeta}
             </div>
           ) : null}
+          <div className="mt-2">{bodyContent}</div>
         </div>
-        {/* Layers 2 + 3 — library membership chips, then the verification /
-            processing-tier status row. The outer header's pr-14 already
-            bounds this block clear of the absolute top-right control cluster
-            (no own right reserve needed). pl-[18px] aligns the meta under the
-            title text: drag-handle box (10px svg + 2×2px pad − 4px -ml-1 =
-            10px) + gap-2 (8px) = 18px. */}
-        {headerMeta ? (
-          <div
-            className="flex flex-col gap-1 pl-[18px]"
-            onClick={(e) => e.stopPropagation()}
-            draggable={false}
-            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          >
-            {headerMeta}
-          </div>
-        ) : null}
-      </div>
-
-      {/* Top-right control stack: target + popout in a cluster, with the
-          occurrence counter stacked below when there is more than one ref. */}
-      {(showCluster || hasOccCounter) && (
-        <div
-          className="absolute top-1.5 right-1.5 z-10 flex flex-col items-start gap-1"
-          onClick={(e) => e.stopPropagation()}
-          draggable={false}
-          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        >
-          {showCluster && (
-            <div className="flex items-center gap-1">
-              {showTargetIcon && (
-                <div className={`transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}>
-                  <TargetIcon
-                    onClick={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
-                    title="Jump to citation"
-                  />
-                </div>
-              )}
-              {/* X close button only on the popped-out float — docked
-                  cards lift off via the header drag gesture instead. */}
-              {onToggleFromCtx && isPoppedOut && (
-                <CardPopoutButton isPoppedOut onClick={onToggleFromCtx} />
-              )}
-            </div>
-          )}
-          {hasOccCounter && (
-            <div className="flex items-center gap-1 text-xs text-ink-muted">
-              <div className="flex flex-col items-center leading-none w-6">
-                <button onClick={() => occurrenceInfo!.onCycle(-1)} className="hover:text-ink-body flex items-center justify-center" data-hint="Previous occurrence" aria-label="Previous occurrence">
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="6 15 12 9 18 15" />
-                  </svg>
-                </button>
-                <button onClick={() => occurrenceInfo!.onCycle(1)} className="hover:text-ink-body flex items-center justify-center" data-hint="Next occurrence" aria-label="Next occurrence">
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </button>
-              </div>
-              <span className="font-mono">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {!compressed && (
-        <>
-          {/* Separator */}
-          <div
-            className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-            style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
-          />
-
-          {/* Body — keeps the roomier `cardInner` (px-4 py-3) rather than the
-              ratified `cardBody` (px-3): the multi-pod publication-details +
-              BibTeX-fields + annotations layout reads better with the extra
-              breathing room. Exempted in PANEL.cardBody's doc-comment
-              (backlog #28). */}
-          <div className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
-            {bodyContent}
-          </div>
-        </>
       )}
     </PanelCard>
   );
