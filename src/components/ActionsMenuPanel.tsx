@@ -449,8 +449,14 @@ export function ActionsMenuPanel({
             to: range.to,
             paragraphId: paragraphUuid,
           };
+    // Task 061: thread the live `view` so the card rows' `applies()` can
+    // resolve the caret's CONTAINING block kind for this gesture ref (a
+    // `cursor`/`selection` has no TextObject kind of its own). Before this, the
+    // gesture ref short-circuited to "allow", so the lightning bolt let you add
+    // a citation to a `titleField` / footnote to a codeBlock — the SAME
+    // corruption the grab-bar already greyed out. Now all four surfaces agree.
     const disabled =
-      entry.applies({ ref: applyRef, canEdit } as ActionContext) === "disabled";
+      entry.applies({ ref: applyRef, canEdit, view: editor.view } as ActionContext) === "disabled";
     return {
       id: entry.id,
       label: entry.label,

@@ -8,6 +8,11 @@ import { generateShortId } from "@/lib/uuid";
 // previously made NO card at all — this is the bug fix: both the full and the
 // bare branch now land at the SAME registry `citation.run` as menu + slash.
 import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
+// Task 061: the cross-surface applicability SSOT — the typed `\cite{}` input
+// rule must honor the SAME curated per-kind action set the menus consult, so a
+// citation atom can't land in a `titleField` / non-prose block where the
+// curated set greys `citation` out. Resolved by the block kind at the caret.
+import { blockKindAllowsAction } from "@/text-objects/text-object-registry";
 
 // Flag: when a bare \cite is typed, signal the panel to open
 let _pendingCitationCreate: string | null = null;
@@ -139,6 +144,14 @@ export const Citation = Node.create<CitationOptions>({
 
             const { state } = view;
             const $from = state.doc.resolve(from);
+            // Task 061: refuse the synchronous citation-atom insert when the
+            // caret's containing block greys `citation` out (a `titleField` —
+            // whose text round-trips into `\title{…}` and re-expands under
+            // `\maketitle` — or any non-prose block). Covers BOTH the full
+            // `\cite{key}` and bare `\cite ` branches (they share `$from`).
+            if (!blockKindAllowsAction($from.parent.type.name, "citation")) {
+              return false;
+            }
             const textBefore = $from.parent.textBetween(
               Math.max(0, $from.parentOffset - 120),
               $from.parentOffset,

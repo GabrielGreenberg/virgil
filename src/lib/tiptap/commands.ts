@@ -25,6 +25,12 @@ import {
   type ActionId,
 } from "@/lib/actions/action-registry";
 import { paragraphUuidAt } from "@/links/links";
+// Task 061: the cross-surface applicability SSOT — the slash `/cite` · `/footnote`
+// commands honor the SAME curated per-kind set the menus consult. `/cite` also
+// rides the bridge's `applies()` gate, but bail HERE too (symmetry with the
+// `view.editable` early-return); `/footnote` inserts its atom synchronously
+// BEFORE the bridge call, so its gate MUST be here to prevent an orphan atom.
+import { blockKindAllowsAction } from "@/text-objects/text-object-registry";
 
 export interface VirgilCommand {
   /** The command name without backslash (e.g. "section") */
@@ -142,6 +148,10 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // here too so we never even open the popover). `view.editable` mirrors
       // `collab.canEditMainText`.
       if (!view.editable) return;
+      // Task 061: refuse when the caret's containing block greys `citation` out
+      // (a `titleField` / non-prose block). Mirrors the bridge `applies()` gate;
+      // bailing here avoids even opening the create popover.
+      if (!blockKindAllowsAction(view.state.selection.$from.parent.type.name, "citation")) return;
       // Citation creation popover (deferred-commit): `/cite` no longer inserts a
       // blank `\cite{}` atom + pristine card up front. It routes through the
       // registry's `citation.run` (surface "slash") with NO payload, which opens
@@ -158,6 +168,11 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // refuse before the synchronous atom insert.
       if (!view.editable) return;
       const { state } = view;
+      // Task 061: refuse the synchronous footnote-atom insert when the caret's
+      // containing block greys `footnote` out (a non-prose block). MUST gate
+      // here — the atom is inserted below BEFORE the bridge's `applies()` gate
+      // runs, so relying on the bridge alone would leave an orphan atom.
+      if (!blockKindAllowsAction(state.selection.$from.parent.type.name, "footnote")) return;
       const footnoteNodeType = state.schema.nodes.footnote;
       if (!footnoteNodeType) return;
       const existing = new Set<string>();

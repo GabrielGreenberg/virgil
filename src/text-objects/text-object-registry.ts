@@ -1032,6 +1032,50 @@ export function textObjectForNode(node: PMNode): TextObjectRef | null {
 }
 
 /**
+ * Does a block KIND's curated action set permit `action`?
+ *
+ * The cross-surface applicability SSOT for the GESTURE surfaces. The grab-bar
+ * gates a card action via a kind-bearing `TextObjectRef` → its curated set
+ * (`TEXT_OBJECT_REGISTRY[kind].actions`). The other three surfaces (slash,
+ * typed `\cite{}`/`\footnote{}`, and the lightning cursor/selection probe)
+ * carry a bare caret with NO kind, so they resolve the caret's CONTAINING
+ * block kind and consult the SAME set here — making all four agree, so an
+ * inline-atom insert (citation / footnote / suggest-edit) can never land in a
+ * `titleField` / non-prose block the curated set greys out.
+ *
+ * A block whose PM node name IS a `TextObjectKind` twin
+ * (`isTextObjectKind(node.type.name)`) resolves straight to its curated set. A
+ * block with no twin (e.g. `maketitleMarker`, list/quote containers with no
+ * caret of their own) has no curated policy → allow (defensive), matching the
+ * historic gesture-ref default (`kindAllowsCardAction`'s cursor/selection
+ * short-circuit).
+ */
+export function blockKindAllowsAction(
+  blockNodeName: string,
+  action: DragHandleAction,
+): boolean {
+  if (!isTextObjectKind(blockNodeName)) return true;
+  return (
+    TEXT_OBJECT_REGISTRY[blockNodeName].actions as ReadonlyArray<DragHandleAction>
+  ).includes(action);
+}
+
+/**
+ * Resolve the textblock containing `pos` and test its curated set — the
+ * position-based entry point for `blockKindAllowsAction`, used by the slash /
+ * typed / lightning surfaces whose ref is a bare caret. `pos` is clamped into
+ * the doc so a stale or borderline caret can't throw.
+ */
+export function posBlockAllowsAction(
+  doc: PMNode,
+  pos: number,
+  action: DragHandleAction,
+): boolean {
+  const clamped = Math.max(0, Math.min(pos, doc.content.size));
+  return blockKindAllowsAction(doc.resolve(clamped).parent.type.name, action);
+}
+
+/**
  * Construct the canonical float key for a TextObject — the
  * `float:textobject:<kind>:<id>` grammar emitted by `buildFloatKey`
  * (the text-object sibling of `float:card:<kind>:<id>`). Centralized
