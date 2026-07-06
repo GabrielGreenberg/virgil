@@ -20,7 +20,7 @@
  * fully local (search already originates in `EditorPane`).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { RefObject } from "react";
 import type { Editor } from "@tiptap/react";
 import { useLatexLint } from "@/hooks/useLatexLint";
@@ -311,4 +311,30 @@ export function useDiagnostics({
       jumpToErrorVisual,
     ],
   );
+}
+
+// ── Distribution (context) ─────────────────────────────────────────────────
+// Now that the single per-doc owner is LOCAL to `EditorPane` (`useDiagnostics`
+// mounts there), the error surfaces read the bundle from context instead of an
+// ~11-prop fan-out hand-threaded through every rail call site. `EditorPane`
+// wraps its render subtree in `DiagnosticsProvider value={diagnostics}` (the
+// bundle is already an identity-stable `useMemo`, so the Provider value only
+// re-identifies when a member actually changes — the keep-alive/memo contract
+// holds), and the rail sub-components (`PaneRail` → `OmniHost`, `PaneRailBody`
+// → `ErrorsHost`) consume it via `useDiagnosticsContext()`. The upward
+// `paneState` bubble to the shell's code-view Errors sidebar is unchanged — it
+// still reads the same owner's state, so selection/dismissal/expansion stays
+// one set across all surfaces.
+const DiagnosticsContext = createContext<UseDiagnostics | null>(null);
+
+export const DiagnosticsProvider = DiagnosticsContext.Provider;
+
+export function useDiagnosticsContext(): UseDiagnostics {
+  const ctx = useContext(DiagnosticsContext);
+  if (ctx === null) {
+    throw new Error(
+      "useDiagnosticsContext must be used within a <DiagnosticsProvider>",
+    );
+  }
+  return ctx;
 }

@@ -130,7 +130,7 @@ import { readPdf } from "@/lib/storage";
 import { useEditorUIState } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
 import { useLatexSource } from "@/hooks/useLatexSource";
-import { useDiagnostics } from "@/hooks/useDiagnostics";
+import { useDiagnostics, DiagnosticsProvider, useDiagnosticsContext } from "@/hooks/useDiagnostics";
 import { asBibFamily } from "@/lib/bib-family";
 import { useWordCount } from "@/hooks/useWordCount";
 import { useTodos } from "@/hooks/useTodos";
@@ -1819,6 +1819,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () => citationsHook.bibEntries.map((e) => e.key),
     [citationsHook.bibEntries],
   );
+  // The whole bundle is retained (`diagnostics`) so it can be provided ONCE via
+  // `DiagnosticsProvider` to the rail sub-components (see `useDiagnosticsContext`),
+  // instead of hand-threading its ~11 members through every rail call site. The
+  // destructured members below feed EditorPane's own local consumers — the error
+  // marker/marginalia memos, the `errorHighlightRange` overlay, and the upward
+  // `paneState` bubble to the shell's code-view Errors sidebar.
+  const diagnostics = useDiagnostics({
+    editor,
+    editorHandleRef: innerRef,
+    sourceText,
+    compileErrors: compileHook.compileErrors,
+    knownBibKeys,
+  });
   const {
     allLatexErrors,
     selectedErrorId,
@@ -1832,14 +1845,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     paragraphByErrorId,
     errorHighlightRange,
     jumpToErrorVisual,
-  } = useDiagnostics({
-    editor,
-    editorHandleRef: innerRef,
-    sourceText,
-    compileErrors: compileHook.compileErrors,
-    knownBibKeys,
-  });
-  const handleJumpToError = jumpToErrorVisual;
+  } = diagnostics;
 
   // Cold-start PDF seed (P6). EditorPane is the SOLE PDF-state owner + viewer
   // feeder: the viewer renders the bubbled `pdfBlobUrl`. When PDF view is
@@ -2317,13 +2323,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     placements ?? viewPrefs?.prefs.placements ?? [];
 
   // Error state (selection / dismissals / expansion / snippets /
-  // paragraph mapping / jump) is OWNED by EditorLayout — the single owner
-  // across all four error surfaces — and arrives via props (destructured +
-  // aliased to `allLatexErrors` / `handleJumpToError` at the top of the
-  // component). EditorLayout owns expansion pruning too, so the local
-  // `pruneExpanded` effect that used to live here is gone. `compileHook`
-  // still drives the PDF + bubbles `compileErrors` up via `paneState` (B1);
-  // its `.compileErrors` is no longer read locally for the error surfaces.
+  // paragraph mapping / jump) is OWNED locally by `useDiagnostics` (P5 item 4)
+  // — the single owner across all four error surfaces — and reaches the rail
+  // sub-components through `DiagnosticsProvider` (destructured above as
+  // `diagnostics`). `useDiagnostics` owns expansion + dismissal pruning too, so
+  // the local `pruneExpanded` effect that used to live here is gone.
+  // `compileHook` still drives the PDF and its `compileErrors` merge into the
+  // owned surface inside `useDiagnostics`; the shell reads the result via the
+  // upward `paneState` bubble (B1).
 
   // ── Confirm-dialog instance backing the shared `deleteMarginItem` ──
   // Surfaces the "This item has text. Delete it?" warning when the user
@@ -5148,6 +5155,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // other — share one interaction store. Mounted INSIDE EditorPane so it covers
     // both the main-app mount and the Library Reader mount.
     <CardStoreProvider store={cardStoreInst}>
+    <DiagnosticsProvider value={diagnostics}>
     <PendingChangeControllerProvider value={pendingController}>
     <EditorChromeProvider value={{ ...chrome, menuBar }}>
       <EditorRefProvider
@@ -5421,17 +5429,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     onDeleteCitation={handleDeleteCitation}
                     selectedNoteId={selectedNoteId}
                     setSelectedNoteId={setSelectedNoteId}
-                    latexErrors={allLatexErrors}
-                    selectedErrorId={selectedErrorId}
-                    setSelectedErrorId={setSelectedErrorId}
-                    dismissedErrorIds={dismissedErrorIds}
-                    onDismissError={dismissError}
-                    onJumpToError={handleJumpToError}
-                    errorSnippets={errorSnippets}
-                    paragraphByErrorId={paragraphByErrorId}
-                    expandedErrorIds={expandedErrorIds}
-                    expandError={expandError}
-                    toggleErrorExpanded={toggleErrorExpanded}
                     compileLog={compileHook.lastLog}
                     compileStatus={compileHook.lastStatus}
                     isCompiling={compileHook.isCompiling}
@@ -5501,17 +5498,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       onDeleteCitation={handleDeleteCitation}
                       selectedNoteId={selectedNoteId}
                       setSelectedNoteId={setSelectedNoteId}
-                      latexErrors={allLatexErrors}
-                      selectedErrorId={selectedErrorId}
-                      setSelectedErrorId={setSelectedErrorId}
-                      dismissedErrorIds={dismissedErrorIds}
-                      onDismissError={dismissError}
-                      onJumpToError={handleJumpToError}
-                      errorSnippets={errorSnippets}
-                      paragraphByErrorId={paragraphByErrorId}
-                      expandedErrorIds={expandedErrorIds}
-                      expandError={expandError}
-                      toggleErrorExpanded={toggleErrorExpanded}
                       compileLog={compileHook.lastLog}
                       compileStatus={compileHook.lastStatus}
                       isCompiling={compileHook.isCompiling}
@@ -5646,17 +5632,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
                 viewPrefs={effectiveViewPrefs}
-                latexErrors={allLatexErrors}
-                selectedErrorId={selectedErrorId}
-                setSelectedErrorId={setSelectedErrorId}
-                dismissedErrorIds={dismissedErrorIds}
-                onDismissError={dismissError}
-                onJumpToError={handleJumpToError}
-                errorSnippets={errorSnippets}
-                paragraphByErrorId={paragraphByErrorId}
-                expandedErrorIds={expandedErrorIds}
-                expandError={expandError}
-                toggleErrorExpanded={toggleErrorExpanded}
                 searchState={searchState}
                 setSearchState={setSearchState}
                 setSearchHighlightRange={setSearchHighlightRange}
@@ -6542,17 +6517,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         onDeleteCitation={handleDeleteCitation}
                         selectedNoteId={selectedNoteId}
                         setSelectedNoteId={setSelectedNoteId}
-                        latexErrors={allLatexErrors}
-                        selectedErrorId={selectedErrorId}
-                        setSelectedErrorId={setSelectedErrorId}
-                        dismissedErrorIds={dismissedErrorIds}
-                        onDismissError={dismissError}
-                        onJumpToError={handleJumpToError}
-                        errorSnippets={errorSnippets}
-                        paragraphByErrorId={paragraphByErrorId}
-                        expandedErrorIds={expandedErrorIds}
-                        expandError={expandError}
-                        toggleErrorExpanded={toggleErrorExpanded}
                         compileLog={compileHook.lastLog}
                         compileStatus={compileHook.lastStatus}
                         isCompiling={compileHook.isCompiling}
@@ -6768,17 +6732,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
                 viewPrefs={effectiveViewPrefs}
-                latexErrors={allLatexErrors}
-                selectedErrorId={selectedErrorId}
-                setSelectedErrorId={setSelectedErrorId}
-                dismissedErrorIds={dismissedErrorIds}
-                onDismissError={dismissError}
-                onJumpToError={handleJumpToError}
-                errorSnippets={errorSnippets}
-                paragraphByErrorId={paragraphByErrorId}
-                expandedErrorIds={expandedErrorIds}
-                expandError={expandError}
-                toggleErrorExpanded={toggleErrorExpanded}
                 searchState={searchState}
                 setSearchState={setSearchState}
                 setSearchHighlightRange={setSearchHighlightRange}
@@ -6853,6 +6806,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       </EditorRefProvider>
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
+    </DiagnosticsProvider>
     </CardStoreProvider>
   );
 }));
@@ -6930,18 +6884,8 @@ interface PaneRailProps {
   onDeleteCitation: (id: string) => void;
   selectedNoteId: string | null;
   setSelectedNoteId: React.Dispatch<React.SetStateAction<string | null>>;
-  // Errors panel
-  latexErrors: LatexError[];
-  selectedErrorId: string | null;
-  setSelectedErrorId: (id: string | null) => void;
-  dismissedErrorIds: Set<string>;
-  onDismissError: (id: string) => void;
-  onJumpToError: (err: LatexError) => void;
-  errorSnippets: Map<string, string>;
-  paragraphByErrorId: Map<string, string>;
-  expandedErrorIds: Set<string>;
-  expandError: (id: string) => void;
-  toggleErrorExpanded: (id: string) => void;
+  // Errors surface (`ErrorsHost` / `OmniHost`) reads the diagnostics bundle from
+  // `DiagnosticsProvider` via `useDiagnosticsContext()`, not from props.
   // Search panel
   searchState: SearchPanelState;
   setSearchState: React.Dispatch<React.SetStateAction<SearchPanelState>>;
@@ -7116,17 +7060,6 @@ function PaneRail({
   onDeleteCitation,
   selectedNoteId,
   setSelectedNoteId,
-  latexErrors,
-  selectedErrorId,
-  setSelectedErrorId,
-  dismissedErrorIds,
-  onDismissError,
-  onJumpToError,
-  errorSnippets,
-  paragraphByErrorId,
-  expandedErrorIds,
-  expandError,
-  toggleErrorExpanded,
   searchState,
   setSearchState,
   setSearchHighlightRange,
@@ -7145,6 +7078,11 @@ function PaneRail({
   // Updated only when the visible count flips (structurally memoized upstream),
   // so it's off the keystroke path.
   const [omniCardCount, setOmniCardCount] = useState(0);
+
+  // The diagnostics bundle (single per-doc owner in `EditorPane`) reaches the
+  // omni error mirror via context, not an 11-prop fan-out. Called before the
+  // `!viewPrefs` early-out to honour the rules of hooks.
+  const diagnostics = useDiagnosticsContext();
 
   // `examples` arrives as a prop — derived reactively in the EditorPane body
   // (keyed on the `editor` state, not a ref) and threaded down like
@@ -7228,17 +7166,17 @@ function PaneRail({
           setRevisionSuggestionStatus={revisionsHook.setSuggestionStatus}
           convertRevisionCard={revisionsHook.convertCard}
           deleteRevisionCard={revisionsHook.deleteCard}
-          latexErrors={latexErrors}
-          paragraphByErrorId={paragraphByErrorId}
-          errorSnippets={errorSnippets}
-          dismissedErrorIds={dismissedErrorIds}
-          dismissError={onDismissError}
-          jumpToError={onJumpToError}
-          selectedErrorId={selectedErrorId}
-          setSelectedErrorId={setSelectedErrorId}
-          expandedErrorIds={expandedErrorIds}
-          expandError={expandError}
-          toggleErrorExpanded={toggleErrorExpanded}
+          latexErrors={diagnostics.allLatexErrors}
+          paragraphByErrorId={diagnostics.paragraphByErrorId}
+          errorSnippets={diagnostics.errorSnippets}
+          dismissedErrorIds={diagnostics.dismissedErrorIds}
+          dismissError={diagnostics.dismissError}
+          jumpToError={diagnostics.jumpToErrorVisual}
+          selectedErrorId={diagnostics.selectedErrorId}
+          setSelectedErrorId={diagnostics.setSelectedErrorId}
+          expandedErrorIds={diagnostics.expandedErrorIds}
+          expandError={diagnostics.expandError}
+          toggleErrorExpanded={diagnostics.toggleErrorExpanded}
           cutterCards={cutterHook.cards}
           updateCutterCommentContent={cutterHook.updateCommentContent}
           setCutterCommentAiRequest={cutterHook.setCommentAiRequest}
@@ -7388,17 +7326,11 @@ interface PaneRailBodyProps {
   onDeleteCitation: (id: string) => void;
   selectedNoteId: string | null;
   setSelectedNoteId: React.Dispatch<React.SetStateAction<string | null>>;
-  latexErrors: LatexError[];
-  selectedErrorId: string | null;
-  setSelectedErrorId: (id: string | null) => void;
-  dismissedErrorIds: Set<string>;
-  onDismissError: (id: string) => void;
-  onJumpToError: (err: LatexError) => void;
-  errorSnippets: Map<string, string>;
-  paragraphByErrorId: Map<string, string>;
-  expandedErrorIds: Set<string>;
-  expandError: (id: string) => void;
-  toggleErrorExpanded: (id: string) => void;
+  // Errors surface (`ErrorsHost`) reads the diagnostics bundle from
+  // `DiagnosticsProvider` via `useDiagnosticsContext()`, not from props. The
+  // compile log/status below stay explicit props (NOT part of the diagnostics
+  // bundle) — this is what keeps the omni mirror excluded from the compile feed
+  // by omission (`OmniHost` never receives them).
   /** Raw compile log/status surfaced as the docked Errors panel's footer
    *  disclosure (P5) — the raw log is reachable from the docked panel, not just
    *  code view. Sourced from EditorPane's own `useLatexCompile`. */
@@ -7470,17 +7402,6 @@ function PaneRailBody({
   onDeleteCitation,
   selectedNoteId,
   setSelectedNoteId,
-  latexErrors,
-  selectedErrorId,
-  setSelectedErrorId,
-  dismissedErrorIds,
-  onDismissError,
-  onJumpToError,
-  errorSnippets,
-  paragraphByErrorId,
-  expandedErrorIds,
-  expandError,
-  toggleErrorExpanded,
   compileLog,
   compileStatus,
   isCompiling,
@@ -7493,6 +7414,11 @@ function PaneRailBody({
   unanchoredFootnotes,
   onDeleteUnanchoredFootnote,
 }: PaneRailBodyProps) {
+  // The diagnostics bundle (single per-doc owner in `EditorPane`) reaches the
+  // docked Errors panel via context, not an 11-prop fan-out. Called before the
+  // per-`panelKind` branch returns to honour the rules of hooks; only the
+  // `errors` branch reads it. The compile log/status stay explicit props.
+  const diagnostics = useDiagnosticsContext();
   if (panelKind === "outline") {
     // Single OutlineHost path. Both the main app AND the Library Reader now
     // pass `viewPrefs` (the Reader via `useReaderViewPrefs()` in ephemeral
@@ -7703,17 +7629,17 @@ function PaneRailBody({
   if (panelKind === "errors") {
     return (
       <ErrorsHost
-        errors={latexErrors}
-        selectedId={selectedErrorId}
-        onSelect={setSelectedErrorId}
-        dismissedIds={dismissedErrorIds}
-        onDismiss={onDismissError}
-        onJump={onJumpToError}
-        snippets={errorSnippets}
-        paragraphByErrorId={paragraphByErrorId}
-        expandedIds={expandedErrorIds}
-        onExpand={expandError}
-        onToggleExpanded={toggleErrorExpanded}
+        errors={diagnostics.allLatexErrors}
+        selectedId={diagnostics.selectedErrorId}
+        onSelect={diagnostics.setSelectedErrorId}
+        dismissedIds={diagnostics.dismissedErrorIds}
+        onDismiss={diagnostics.dismissError}
+        onJump={diagnostics.jumpToErrorVisual}
+        snippets={diagnostics.errorSnippets}
+        paragraphByErrorId={diagnostics.paragraphByErrorId}
+        expandedIds={diagnostics.expandedErrorIds}
+        onExpand={diagnostics.expandError}
+        onToggleExpanded={diagnostics.toggleErrorExpanded}
         compileLog={compileLog}
         compileStatus={compileStatus}
         isCompiling={isCompiling}
