@@ -68,8 +68,29 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${inter.variable} ${playfair.variable} ${cinzel.variable} ${sourceSerif.variable} ${geistMono.variable} h-full antialiased`}
+      // The bootstrap script below stamps data-display-mode onto <html> before
+      // React hydrates, so the server-rendered markup (no attribute) differs
+      // from the first client DOM. That divergence is intentional and safe —
+      // silence the hydration warning for this attribute the way theme
+      // bootstraps do.
+      suppressHydrationWarning
     >
       <head>
+        {/* Flash-free window display-mode bootstrap. Stamps
+            html[data-display-mode] from the real matchMedia (and ?wco-debug)
+            BEFORE first paint, so the WCO chrome CSS
+            (:root[data-display-mode="window-controls-overlay"] in globals.css)
+            applies on the installed PWA's very first frame with no flash — the
+            pre-paint twin of useWindowChrome's _compute(), which then keeps the
+            attribute live across display-mode changes. This is the single SSOT
+            that replaced the old @media (display-mode: …) gate, so the same
+            selector renders in the dev preview under ?wco-debug too. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var d=document.documentElement;var dbg=false;try{dbg=localStorage.getItem('virgil:wco-debug')==='1';}catch(e){}dbg=dbg||location.search.indexOf('wco-debug')!==-1;var m=function(q){return typeof window.matchMedia==='function'&&window.matchMedia(q).matches;};var mode=dbg?'window-controls-overlay':m('(display-mode: window-controls-overlay)')?'window-controls-overlay':m('(display-mode: fullscreen)')?'fullscreen':m('(display-mode: standalone)')?'standalone':'browser';d.setAttribute('data-display-mode',mode);}catch(e){}})();",
+          }}
+        />
         <meta name="theme-color" content="#e5e4e1" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=7" />
         {/* Picker-pool fonts for the Fonts… dialog. Loaded by their real

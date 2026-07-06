@@ -17,8 +17,12 @@
  *   • `getWindowInsetTopPx()` — an imperative px reading of the reserved top
  *     strip for JS clamps (e.g. FloatingPanel drag), computed from the live
  *     WCO title-bar rect.
- *   • a `data-display-mode` mirror on <body> so display-mode-conditional CSS
- *     can branch without duplicating the media query everywhere.
+ *   • a `data-display-mode` mirror on <html> (documentElement) so
+ *     display-mode-conditional CSS can branch off ONE SSOT selector
+ *     (`:root[data-display-mode="…"]`) instead of a raw @media query that the
+ *     dev preview / ?wco-debug can never enter. A pre-paint bootstrap in
+ *     layout.tsx seeds the same attribute before first paint (flash-free);
+ *     this hook keeps it live and, under debug, forces WCO.
  *
  * Architecture mirrors useZenMode.ts / usePreferenceMode.ts — module-scoped
  * state, pub/sub via useSyncExternalStore, a <body> attribute mirror.
@@ -275,7 +279,14 @@ export function useWindowChrome(): WindowChrome {
 
   useEffect(() => {
     if (typeof document === "undefined") return;
-    document.body.setAttribute("data-display-mode", state.displayMode);
+    // Mirror onto <html> (documentElement), NOT <body>: the pre-paint
+    // bootstrap in layout.tsx sets this same attribute on <html> before the
+    // body exists, so the two writers must target the same element for the
+    // WCO CSS (:root[data-display-mode="..."]) to stay flash-free on load and
+    // live thereafter. This hook keeps it current across display-mode changes
+    // and, under ?wco-debug, forces "window-controls-overlay" so the preview
+    // renders WCO chrome.
+    document.documentElement.setAttribute("data-display-mode", state.displayMode);
     // Re-assert the debug vars after any change (a resize can re-run compute).
     _applyDebugVars();
   }, [state.displayMode, state.wcoVisible, state.insets]);

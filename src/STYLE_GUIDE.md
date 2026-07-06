@@ -1039,21 +1039,26 @@ normal browser tab**, so consuming them is a no-op off-install. The `.virgil-bar
 rule uses them to (a) grow the bar — `min-height: max(--bar-base-h,
 --window-inset-top)` — so it BECOMES the reserved title-bar strip when Chrome's
 PWA toolbar folds up, and (b) inset its material (`padding-left/right`) so the
-tabs/buttons clear the window controls. Under `@media (display-mode:
-window-controls-overlay)` the bar is `-webkit-app-region: drag` (a native
+tabs/buttons clear the window controls. WCO chrome is gated on the SSOT
+selector `:root[data-display-mode="window-controls-overlay"]` (NOT a raw
+`@media (display-mode: …)`): the bar is `-webkit-app-region: drag` (a native
 window-drag handle); its content clusters are marked `no-drag` **wholesale**
 (`.virgil-bar > *`) — an opt-in model, not an interactive-leaf allowlist, so a
 non-semantic clickable child (e.g. a folder-tab `<div onClick>`) can't silently
 become a dead drag region — and empty filler opts back into dragging with
-`[data-window-drag-zone]`. Reactive state
-(display mode, px insets, `body[data-display-mode]`) lives in
+`[data-window-drag-zone]`. It also nudges the bar's bottom seam 1px below the
+OS titlebar-strip edge (`min-height: max(--bar-base-h, calc(--window-inset-top
++ 1px))`) so the `border-b` isn't clipped in the traffic-light gutter. Reactive
+state (display mode, px insets) lives in
 [`useWindowChrome`](hooks/useWindowChrome.ts) — a window-level store (exempt from
-keystroke sanctity, like `DiskWatcher`); imperative JS clamps read
-`getWindowInsetTopPx()`. **Any new top-anchored chrome should keep clear of
-`--window-inset-top` rather than assuming `y=0`** (dialogs and floating panels
-already do). WCO only resolves in an installed PWA — to eyeball it off-install
-set `localStorage['virgil:wco-debug']='1'` (or append `?wco-debug`), which
-injects synthetic insets.
+keystroke sanctity, like `DiskWatcher`) that mirrors `data-display-mode` onto
+`<html>`; a pre-paint bootstrap in `layout.tsx` seeds it flash-free. Imperative
+JS clamps read `getWindowInsetTopPx()`. **Any new top-anchored chrome should
+keep clear of `--window-inset-top` rather than assuming `y=0`** (dialogs and
+floating panels already do). Because the gate is the `data-display-mode` SSOT,
+WCO chrome now renders in the dev preview too — set
+`localStorage['virgil:wco-debug']='1'` (or append `?wco-debug`), which forces
+the attribute AND injects synthetic insets.
 
 ## Library tab — double-tab pattern
 
