@@ -8,7 +8,13 @@ export type LatexErrorSource = "lint" | "compile";
 export type LatexErrorSeverity = "error" | "warning" | "info";
 
 export interface LatexError {
-  /** Stable id for React keys: `${source}:${line}:${col}:${hash(message)}`. */
+  /**
+   * Stable id for React keys. Formerly `${source}:${line}:${col}:${hash}` —
+   * which collided catastrophically at line 0 (every no-line record hashed to
+   * the same tuple). It now also folds in a per-parse ordinal (and, for compile
+   * records, a per-run salt) via `makeErrorId`, so two records with an identical
+   * (source, line, col, message) tuple still get distinct ids.
+   */
   id: string;
   source: LatexErrorSource;
   severity: LatexErrorSeverity;
@@ -21,6 +27,14 @@ export interface LatexError {
   detail?: string;
   /** Lint rule id or compile-pattern label. */
   ruleId?: string;
+  /**
+   * The input file the diagnostic came from, when the log's `( ... )`
+   * file-nesting resolved one (e.g. `chapters/intro.tex` for a cross-file
+   * error). Undefined for the main file / when no file was open. Carried from
+   * `parseTexLog`; used so a cross-file error doesn't land on the wrong line of
+   * the main editor.
+   */
+  file?: string;
 }
 
 /**
@@ -41,15 +55,36 @@ export function mergeLatexErrors(
   );
 }
 
+/**
+ * Mint a collision-free id for a diagnostic. The human-readable prefix
+ * (`source:line:col:msgHash`) is kept for debuggability, but two components
+ * are appended so ids can never clash — the old djb2-only form collided
+ * whenever (source, line, col, message) matched, which happened constantly at
+ * line 0 (the whole no-line class hashed to one key), breaking React keys and
+ * making dismiss/select target every matching card at once:
+ *
+ *   - `ordinal` — a per-PARSE counter (the caller bumps it for each record it
+ *     emits in a single parse/lint pass), so two identical tuples within one
+ *     pass still differ.
+ *   - `salt` — an optional per-RUN token (a monotonic compile-run counter),
+ *     so the same logical error across two compiles gets a NEW id. That is
+ *     deliberate: `pruneDismissed` drops any dismissed id absent from the live
+ *     set, so a re-occurring error re-surfaces on the next run rather than
+ *     staying permanently hidden. Use a deterministic per-run counter, NOT
+ *     Date.now()/Math.random(), or cards remount mid-session.
+ */
 export function makeErrorId(parts: {
   source: LatexErrorSource;
   line: number;
   column?: number;
   message: string;
+  ordinal?: number;
+  salt?: string;
 }): string {
   let h = 5381;
   for (let i = 0; i < parts.message.length; i++) {
     h = ((h << 5) + h + parts.message.charCodeAt(i)) | 0;
   }
-  return `${parts.source}:${parts.line}:${parts.column ?? 0}:${(h >>> 0).toString(36)}`;
+  const base = `${parts.source}:${parts.line}:${parts.column ?? 0}:${(h >>> 0).toString(36)}`;
+  return `${base}#${parts.salt ?? ""}${parts.ordinal ?? 0}`;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { drainDoc, flushDoc, getTexFilename, readPaperFolder, writeTex, writePdf } from "@/lib/storage";
 import {
   getActiveHandle,
@@ -75,6 +75,12 @@ export function useLatexCompile(
   const [lastLog, setLastLog] = useState<string | null>(null);
   const [lastStatus, setLastStatus] = useState<number | null>(null);
   const [compileErrors, setCompileErrors] = useState<LatexError[]>([]);
+  // Per-run salt so a diagnostic's React key is unique across compiles: the
+  // same logical error compiled twice gets a NEW id, and `pruneDismissed`
+  // (P5) then re-surfaces a re-occurring error instead of leaving it hidden by
+  // a stale dismissal. A monotonic ref counter — deterministic within a run
+  // (NOT Date.now()/Math.random(), which would remount cards mid-session).
+  const runSaltRef = useRef(0);
 
   const clearCompileErrors = useCallback(() => {
     setLastLog(null);
@@ -85,6 +91,8 @@ export function useLatexCompile(
   const compile = useCallback(async () => {
     if (!docId || isCompiling) return;
     setIsCompiling(true);
+    // Bump the per-run salt once at the top of each compile.
+    const salt = `r${++runSaltRef.current}:`;
     try {
       // Flush any pending React debounce + queued writes so the engine
       // sees the user's latest edits, even if they hit Compile mid-edit.
@@ -154,16 +162,37 @@ export function useLatexCompile(
         result.status === "ok" || result.status === "degraded" ? 0 : 1;
       setLastStatus(numericStatus);
 
-      const offlineErrors = offlineMissErrors(result);
+      const offlineErrors = offlineMissErrors(result, salt);
 
       if ((result.status === "ok" || result.status === "degraded") && result.pdf) {
         // A PDF exists. Surface any warning-level diagnostics (degraded keeps
         // them) plus any offline-package misses, but never block the PDF.
-        setCompileErrors([...(result.diagnostics ?? []), ...offlineErrors]);
+        setCompileErrors([...saltDiagnostics(result.diagnostics, salt), ...offlineErrors]);
         const pdfBytes = result.pdf;
+        // Best-effort persistence (P6). `writePdf` now returns a structured
+        // result: `written` (nothing to do), `skipped` (library/read-only — the
+        // in-memory viewer still shows the PDF), or `failed` (the write was
+        // attempted and rejected). A stale-pipeline abort still THROWS, so we
+        // keep the silent-drop catch. Crucially, `onCompileSuccess` fires for
+        // EVERY successful compile — including library papers and after a
+        // `failed`/`skipped` persistence — so the viewer never shows "No
+        // compiled PDF" for a compile that actually produced one.
         if (handle) {
           try {
-            await writePdf(handle, pdfBytes);
+            const persist = await writePdf(handle, pdfBytes);
+            if (persist?.status === "failed") {
+              console.warn("[compile] PDF persistence failed:", persist.error);
+              // Non-blocking soft notice — reuse the low-tone systemDialog (the
+              // same soft surface as the skill-sync / external-change badge),
+              // NOT a danger modal: the compile SUCCEEDED and the in-memory PDF
+              // is fully usable; only saving to disk failed.
+              void systemDialog.alert({
+                title: "PDF not saved",
+                message:
+                  "The PDF compiled and is shown, but it couldn't be saved to disk. Your last saved copy on disk is unchanged.",
+                tone: "default",
+              });
+            }
           } catch (err) {
             if (isStalePipelineError(err)) {
               // Pipeline ended mid-compile — drop the .pdf write
@@ -195,7 +224,7 @@ export function useLatexCompile(
       }
 
       // No usable PDF. Distinguish the failure kinds for a clear message.
-      setCompileErrors([...(result.diagnostics ?? []), ...offlineErrors]);
+      setCompileErrors([...saltDiagnostics(result.diagnostics, salt), ...offlineErrors]);
       console.error(
         `[compile] SwiftLaTeX ${result.status} (ranPasses=${result.ranPasses})\n\n${result.log}`,
       );
@@ -217,23 +246,50 @@ export function useLatexCompile(
 }
 
 /**
+ * Re-mint the compile-service's diagnostics ids with this run's salt so their
+ * React keys are unique across compiles (the id changes each run, so a stale
+ * dismissal from an earlier run can be pruned and a re-occurring error
+ * re-surfaces). The parser already assigned per-parse ordinals; we fold the
+ * salt into a fresh, still-collision-free id built from the same parts.
+ */
+function saltDiagnostics(
+  diagnostics: LatexError[] | undefined,
+  salt: string,
+): LatexError[] {
+  if (!diagnostics || diagnostics.length === 0) return [];
+  return diagnostics.map((d, ordinal) => ({
+    ...d,
+    id: makeErrorId({
+      source: d.source,
+      line: d.line,
+      column: d.column,
+      message: d.message,
+      ordinal,
+      salt,
+    }),
+  }));
+}
+
+/**
  * Turn the compile result's `offlineMisses` into `LatexError` entries so each
  * unavailable package renders cleanly in the Errors panel (ruleId
  * 'offline-package' → "Package unavailable offline" title) instead of a cryptic
- * format error or a hang. Deduped; line 0 (no source location).
+ * format error or a hang. Deduped; line 0 (no source location). Salted +
+ * ordinal-tagged so the line-0 ids never collide.
  */
-function offlineMissErrors(result: CompileResult): LatexError[] {
+function offlineMissErrors(result: CompileResult, salt: string): LatexError[] {
   const misses = result.offlineMisses;
   if (!misses || misses.length === 0) return [];
   const seen = new Set<string>();
   const errors: LatexError[] = [];
+  let ordinal = 0;
   for (const raw of misses) {
     const pkg = raw.replace(/\.(sty|def|cls|tex|tfm|cfg|ltx)$/i, "");
     if (seen.has(pkg)) continue;
     seen.add(pkg);
     const message = `Package ${pkg} unavailable offline`;
     errors.push({
-      id: makeErrorId({ source: "compile", line: 0, message }),
+      id: makeErrorId({ source: "compile", line: 0, message, ordinal: ordinal++, salt }),
       source: "compile",
       severity: "error",
       line: 0,

@@ -97,6 +97,9 @@ export const importFigureFile = backend.importFigureFile;
 
 // Re-export types (these are the same in both backends).
 export type { DocBundle, BibReadResult, BibPackage, FolderPickResult, PaperFile, PickedFigureFile, FileStat } from "@/lib/storage-fsa";
+// Best-effort compiled-PDF persistence result (P6). Shared leaf type so both
+// backends and the compile hook import one definition.
+export type { WritePdfResult } from "@/lib/storage-types";
 
 // Re-export the pipeline handle type so storage callers don't need to
 // import from the multi-window subdirectory.

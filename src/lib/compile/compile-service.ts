@@ -196,6 +196,10 @@ class CompileService {
     let lastLog = "";
     let ranPasses = 0;
     let hardFailure = false;
+    // Numeric pdfTeX status of the LAST pass we ran — fed to parseTexLog so its
+    // synthetic-fallback (status!=0 && 0 records) fires. Defaults non-zero so a
+    // loop that never runs a pass is treated as a failure.
+    let lastPassStatus = 1;
     // P1: packages the worker could not resolve while offline (union across
     // passes). Surfaced on the result so the hook can render each as a
     // "package X unavailable offline" LatexError.
@@ -238,6 +242,7 @@ class CompileService {
 
       ranPasses = pass;
       lastLog = result.log ?? "";
+      lastPassStatus = result.status;
       // After the first successful compile, mark the engine warm.
       this.booted = true;
 
@@ -267,9 +272,12 @@ class CompileService {
     const misses = offlineMisses.size > 0 ? [...offlineMisses] : undefined;
 
     if (lastGood) {
+      // A PDF exists (status 0 for the fallback's purposes — never synthesize an
+      // abort card when we have output). On a later-pass failure keep the errors;
+      // on a clean run keep only warnings.
       const diagnostics = hardFailure
-        ? parseTexLog(lastLog)
-        : parseTexLog(lastLog).filter((d) => d.severity !== "error");
+        ? parseTexLog(lastLog, lastPassStatus)
+        : parseTexLog(lastLog, 0).filter((d) => d.severity !== "error");
       // An offline miss makes even a produced PDF degraded (a package the doc
       // asked for was unavailable, so the output may be missing content).
       const degraded = hardFailure || bibtexStatus === "failed" || !!misses;
@@ -284,13 +292,15 @@ class CompileService {
       };
     }
 
-    // No PDF at all → failed.
+    // No PDF at all → failed. Pass the non-zero status so parseTexLog
+    // synthesizes a compile-abort card when the log yielded no records (the
+    // xlist/abort/network case) — the panel then always matches the alert.
     return {
       status: "failed",
       log: lastLog,
       ranPasses,
       bibtexStatus,
-      diagnostics: parseTexLog(lastLog),
+      diagnostics: parseTexLog(lastLog, lastPassStatus || 1),
       offlineMisses: misses,
     };
   }

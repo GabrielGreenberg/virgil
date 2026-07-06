@@ -1,0 +1,14 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.24
+(./main.tex
+LaTeX2e <2023-11-01>
+(./preamble.tex) [preamble loaded]
+(./chapters/intro.tex
+! Undefined control sequence.
+l.42 \badcommand
+                {arg}
+)
+(./chapters/methods.tex
+Chapter text is fine here.
+)
+)
+No pages of output.

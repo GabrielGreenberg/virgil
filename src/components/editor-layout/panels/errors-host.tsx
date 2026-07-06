@@ -22,6 +22,12 @@ export interface ErrorsHostProps {
   expandedIds: Set<string>;
   onExpand: (id: string) => void;
   onToggleExpanded: (id: string) => void;
+  /** Raw compile log surfaced as the panel's footer disclosure so it's
+   *  reachable from the docked panel, not just code view. Optional — omit for
+   *  mounts that don't want the footer. */
+  compileLog?: string | null;
+  compileStatus?: number | null;
+  isCompiling?: boolean;
 }
 
 export function ErrorsHost(p: ErrorsHostProps) {
@@ -43,6 +49,9 @@ export function ErrorsHost(p: ErrorsHostProps) {
       expandedIds={p.expandedIds}
       onExpand={p.onExpand}
       onToggleExpanded={p.onToggleExpanded}
+      compileLog={p.compileLog}
+      compileStatus={p.compileStatus}
+      isCompiling={p.isCompiling}
     />
   );
 }

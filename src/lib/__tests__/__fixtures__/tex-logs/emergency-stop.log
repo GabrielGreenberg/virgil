@@ -1,0 +1,19 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.24
+(./main.tex
+! LaTeX Error: \begin{document} ended by \end{itemize}.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+Type  H <return>  for immediate help.
+ ...
+
+l.310 \end{itemize}
+
+! Emergency stop.
+ ...
+
+l.310 \end{itemize}
+
+*** (job aborted, no legal \end found)
+
+Here is how much of TeX's memory you used:
+==> Fatal error occurred, no output PDF file produced!

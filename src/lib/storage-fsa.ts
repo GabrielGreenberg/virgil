@@ -53,8 +53,10 @@ import {
   assertNotSuperseded,
   getActiveHandle,
   isActive,
+  isStalePipelineError,
   type DocWriteHandle,
 } from "@/lib/multi-window/doc-pipeline";
+import type { WritePdfResult } from "@/lib/storage-types";
 import {
   DOCUMENT_TEMPLATES,
   DEFAULT_TEMPLATE_ID,
@@ -734,14 +736,32 @@ export async function getPdfFilename(docId: string): Promise<string> {
   return pdfFilenameFromTex(meta.texFilename);
 }
 
-export async function writePdf(h: DocWriteHandle, pdfBytes: Uint8Array): Promise<void> {
+export async function writePdf(
+  h: DocWriteHandle,
+  pdfBytes: Uint8Array,
+): Promise<WritePdfResult> {
+  // Library/read-only papers never persist. `enqueueDocWrite` also guards this
+  // (it resolves `undefined` for library docs), but we return an EXPLICIT
+  // `skipped` so the caller can distinguish "intentionally not persisted" from
+  // a success — the viewer still shows the in-memory bytes either way.
+  if (h.docId.startsWith(LIBRARY_PAPER_PREFIX)) return { status: "skipped" };
   return enqueueDocWrite(h, "pdf", async () => {
-    const docHandle = await requireDocHandle(h.docId);
-    const filename = await getPdfFilename(h.docId);
-    const fh = await docHandle.getFileHandle(filename, { create: true });
-    const writable = await fh.createWritable();
-    await writable.write(pdfBytes.buffer as ArrayBuffer);
-    await writable.close();
+    try {
+      const docHandle = await requireDocHandle(h.docId);
+      const filename = await getPdfFilename(h.docId);
+      const fh = await docHandle.getFileHandle(filename, { create: true });
+      const writable = await fh.createWritable();
+      await writable.write(pdfBytes.buffer as ArrayBuffer);
+      await writable.close();
+      return { status: "written" } as WritePdfResult;
+    } catch (err) {
+      // A stale/superseded pipeline still throws so the compile hook's
+      // `isStalePipelineError` catch can drop it silently. A genuine IO
+      // failure resolves to `failed` so it never throws past the caller —
+      // the compile succeeded; only persistence didn't.
+      if (isStalePipelineError(err)) throw err;
+      return { status: "failed", error: err } as WritePdfResult;
+    }
   });
 }
 

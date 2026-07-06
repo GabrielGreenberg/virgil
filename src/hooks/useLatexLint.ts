@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LatexError } from "@/lib/latex-errors";
 import { makeErrorId } from "@/lib/latex-errors";
+import { createOrdinalMinter } from "@/lib/diagnostics-store";
 import { runSyntaxChecks } from "@/lib/syntax-check";
 
 export interface UseLatexLintOptions {
@@ -65,6 +66,13 @@ export function useLatexLint({
 }
 
 async function runLint(text: string, bibKeys?: Set<string>): Promise<LatexError[]> {
+  // One ordinal minter for the whole pass so every id is unique even when two
+  // records share an identical (source, line, col, message) tuple — the line-0
+  // collision class (parse-failure + a line-0 stylistic warning both hashing to
+  // the same key before). We re-mint at the end so syntax-check's own ids join
+  // the same ordinal sequence.
+  const minter = createOrdinalMinter();
+
   // The pure-text syntactic checker runs first and synchronously — it
   // doesn't need the unified-latex bundle, so any structural errors
   // surface immediately even if the dynamic import below is slow.
@@ -114,22 +122,47 @@ async function runLint(text: string, bibKeys?: Set<string>): Promise<LatexError[
       })
       .filter((x): x is LatexError => x !== null);
 
-    return [...syntaxErrors, ...stylisticErrors];
+    return remintOrdinals([...syntaxErrors, ...stylisticErrors], minter);
   } catch (err) {
     // unified-latex pipeline threw — still return the pure-text syntax
     // errors so the user isn't left without any feedback.
     const message =
       err instanceof Error ? err.message : "LaTeX parse failed";
-    return [
-      ...syntaxErrors,
-      {
-        id: makeErrorId({ source: "lint", line: 0, message }),
-        source: "lint",
-        severity: "error",
-        line: 0,
-        message: `Parse error: ${message}`,
-        ruleId: "parse-failure",
-      },
-    ];
+    return remintOrdinals(
+      [
+        ...syntaxErrors,
+        {
+          id: makeErrorId({ source: "lint", line: 0, message }),
+          source: "lint",
+          severity: "error",
+          line: 0,
+          message: `Parse error: ${message}`,
+          ruleId: "parse-failure",
+        },
+      ],
+      minter,
+    );
   }
+}
+
+/**
+ * Re-mint every id in a lint pass with a shared ordinal minter so no two
+ * records collide — the ordinal is the only thing that distinguishes two
+ * line-0 records with the same message (e.g. a parse-failure alongside a line-0
+ * stylistic warning). Preserves order.
+ */
+function remintOrdinals(
+  errors: LatexError[],
+  minter: ReturnType<typeof createOrdinalMinter>,
+): LatexError[] {
+  return errors.map((e) => ({
+    ...e,
+    id: makeErrorId({
+      source: e.source,
+      line: e.line,
+      column: e.column,
+      message: e.message,
+      ordinal: minter.next(),
+    }),
+  }));
 }

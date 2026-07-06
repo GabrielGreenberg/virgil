@@ -20,6 +20,7 @@ import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { FolderPickResult, PickedFigureFile } from "@/lib/storage-fsa";
+import type { WritePdfResult } from "@/lib/storage-types";
 import { ALL_SIDECAR_FILENAMES } from "@/lib/sidecar-files";
 
 import {
@@ -537,17 +538,33 @@ export async function getPdfFilename(docId: string): Promise<string> {
   return pdfFilenameFromTex(texFilename);
 }
 
-export async function writePdf(h: DocWriteHandle, pdfBytes: Uint8Array): Promise<void> {
+export async function writePdf(
+  h: DocWriteHandle,
+  pdfBytes: Uint8Array,
+): Promise<WritePdfResult> {
   // Read-only library-paper docs never persist (parity with storage-fsa).
-  if (isLibraryPaper(h.docId)) return;
+  if (isLibraryPaper(h.docId)) return { status: "skipped" };
   assertActive(h);
   const filename = await getPdfFilename(h.docId);
   assertNotSuperseded(h);
-  await fetch(`${API}/doc/${h.docId}/${filename}`, {
-    method: "PUT",
-    body: pdfBytes.buffer as ArrayBuffer,
-    headers: { "Content-Type": "application/octet-stream" },
-  });
+  try {
+    const resp = await fetch(`${API}/doc/${h.docId}/${filename}`, {
+      method: "PUT",
+      body: pdfBytes.buffer as ArrayBuffer,
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    // Previously fire-and-forget: a rejected PUT silently reported success.
+    // Now we inspect resp.ok so a server-side failure surfaces as `failed`.
+    if (!resp.ok) {
+      return {
+        status: "failed",
+        error: new Error(`PUT ${filename} → ${resp.status}`),
+      };
+    }
+    return { status: "written" };
+  } catch (err) {
+    return { status: "failed", error: err };
+  }
 }
 
 export async function readPdf(docId: string): Promise<Uint8Array | null> {

@@ -51,7 +51,7 @@ The keystroke-sanctity sweep allows these direct subscriptions, because each is 
 - `useEditorUIState.ts` (transaction subscriber persists section folds, gated via the shared `transactionTouchesFold` predicate — fold-meta or docChanged; the last-paragraph saver rides `selectionUpdate`, 400 ms debounce)
 - `useWordCount.ts` (300 ms debounce, then full doc walk)
 - `EditorLayout.tsx` activity-presence bumper (`:898`, `on('transaction')`, docChanged-gated counter increment)
-- `EditorLayout.tsx` + `EditorPane.tsx` PDF-stale bump (`EditorLayout:3392` / `EditorPane:946`, `on('update')`; O(1): stamp a timestamp ref, flip `pdfStale` at most once per compile cycle)
+- `EditorPane.tsx` PDF-stale bump (`EditorPane:~939`, `on('update')`; O(1): stamp a timestamp ref, flip `pdfStale` at most once per compile cycle). EditorPane is the SOLE owner of `pdfStale` (P6); the former duplicate `EditorLayout` bump was removed — a code-view edit round-trips through the code-pane bridge into TipTap and fires this same tracker.
 - `EditorPane.tsx` Outline-panel doc tick (`:968`, `on('update')`; a debounced 300 ms timer reset + one counter bump — the doc-walk happens later inside the `outlineContent` memo, off the keystroke path)
 - `EditorLayout.tsx` section-path recompute, main pane (`:2192`, `on('update')`; the handler only `cancelAnimationFrame`+`requestAnimationFrame` — the doc-walk/`coordsAtPos` is RAF-coalesced to one frame, plus a perf-flag gate)
 - `EditorLayout.tsx` section-path recompute, mirror pane (`:2296`, same RAF-coalesced pattern scoped to the mirror view)
