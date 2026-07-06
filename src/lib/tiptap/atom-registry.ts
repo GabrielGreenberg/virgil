@@ -39,6 +39,28 @@ export interface AtomMeta {
    * float-header (by-id) drop path for the Card-bearing kinds.
    */
   idAttr: string | null;
+  /**
+   * The ProseMirror `NodeSpec.selectable` the atom's node MUST declare — the
+   * SSOT for a per-kind behavioral facet that otherwise lives only as a
+   * hand-set (or unset) flag in each node file, free to drift.
+   *
+   * `false` for footnote / citation / ref: a `NodeSelection` resting on the
+   * leaf triggers a ~100px `scrollIntoView` jump, and the Card (not the atom)
+   * is the selection surface. `InlineAtomGrab` intercepts *plain* mousedown so
+   * PM never rests a NodeSelection there — but it bails on modifier-clicks and
+   * on read-only surfaces, where PM's own mousedown runs; `selectable:false` is
+   * what kills the jump on those paths.
+   *
+   * `true` for inline-math ONLY: its NodeView legitimately needs the
+   * `NodeSelection` — `selectNode()`/`deselectNode()` paint the `.selected`
+   * chrome and drive the single-node-float selection (math.ts). Do NOT blanket
+   * these to `false`: the audit's adversarial pass refuted that (it would
+   * silently break inlineMath's chrome).
+   *
+   * Pinned by `atom-selectable-parity.test.ts`, which asserts the live schema's
+   * effective selectability matches this facet for every kind, so it can't drift.
+   */
+  selectable: boolean;
   /** Human label (confirm copy / future UI). */
   label: string;
 }
@@ -50,6 +72,7 @@ export const ATOM_REGISTRY: Record<AtomKind, AtomMeta> = {
     domType: "footnote",
     domClass: "footnote-marker",
     idAttr: "footnoteId",
+    selectable: false,
     label: "Footnote",
   },
   citation: {
@@ -58,6 +81,7 @@ export const ATOM_REGISTRY: Record<AtomKind, AtomMeta> = {
     domType: "citation",
     domClass: "citation-node",
     idAttr: "citationId",
+    selectable: false,
     label: "Citation",
   },
   ref: {
@@ -66,6 +90,7 @@ export const ATOM_REGISTRY: Record<AtomKind, AtomMeta> = {
     domType: "label-ref",
     domClass: "label-ref-node",
     idAttr: null,
+    selectable: false,
     label: "Cross-reference",
   },
   "inline-math": {
@@ -74,6 +99,7 @@ export const ATOM_REGISTRY: Record<AtomKind, AtomMeta> = {
     domType: "inline-math",
     domClass: "inline-math",
     idAttr: null,
+    selectable: true,
     label: "Inline math",
   },
 };
