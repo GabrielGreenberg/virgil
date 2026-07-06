@@ -1,4 +1,4 @@
-<!-- last-verified: 76ca7ff5 2026-07-05 -->
+<!-- last-verified: 19ecd88b 2026-07-06 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-typography.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -85,17 +85,22 @@ and trust it to round-trip. But text inside a grey `latexCommand` block is opaqu
 - **Mark → command:** bold→`\textbf`, italic→`\emph`, underline→`\underline`,
   code→`\texttt`, textColor→`\textcolor[HTML]{HEX}{}`; `latexCommand`→raw
   passthrough; `linkedAnchor`→no command (wrapped by `\vlid`/`\vlidend`).
-- **`escapeLatex` escapes only** `& % # _` (when not already backslash-prefixed),
-  `~`→`\textasciitilde{}`, `^`→`\textasciicircum{}`, and smart quotes. It
-  **deliberately does not escape** `\ { } $` — those stay live LaTeX syntax the
-  editor preserves. So plain text a skill inserts as a Card body is escaped for
-  those six, but braces/backslashes/dollars you write are treated as real LaTeX.
+- **`escapeLatex` escapes** `& % # _ $` (when not already backslash-prefixed),
+  `[`→`{[}` / `]`→`{]}`, `~`→`\textasciitilde{}`, `^`→`\textasciicircum{}`, and
+  smart quotes. `$` is escaped (→`\$`) so a literal prose `$` isn't re-read as an
+  inline-math delimiter (task 037); `[`/`]` are brace-wrapped so they can't begin
+  a LaTeX optional arg (task 046, the `$`-twin). It **deliberately does not
+  escape** `\ { }` — those stay live LaTeX syntax the editor preserves. So plain
+  text a skill inserts as a Card body is escaped for those specials, but
+  braces/backslashes you write are treated as real LaTeX.
   With `{ typography }` set it also runs `typographyToLatex` after char-escaping,
   reverse-mapping directly-typed glyphs (é, –, —, …) back to canonical LaTeX
   commands (the smart-quote precedent), suppressed inside code spans.
 - **Preamble:** with none supplied, `CLASSIC_PREAMBLE` is the default;
-  `ensureVirgilCommands` tops up the seven `\v*` no-ops (`\vfid \vcid \vbid
-  \vexid \vxid \vlid \vlidend`) + `\usepackage{xcolor}` on every save
+  `ensurePreambleRequirements` (`src/lib/latex-requirements.ts`, the old
+  `ensureVirgilCommands`) tops up the seven `\v*` no-op shims (`SHIM_COMMAND_NAMES`:
+  `\vfid \vcid \vbid \vexid \vxid \vlid \vlidend`) + any body-detected packages
+  led by `\usepackage{xcolor}` on every save
   ([identity.md → injected macros](identity.md#the-injected-macros)). `\vbid` is
   the lone macro that never appears in this `.tex` body — it marks a `.bib`
   entry's durable surrogate uid (a `\vbid{<uid>}` line before each block, minted
@@ -144,8 +149,8 @@ output stays clean and portable.
 
 1. **Preserve the raw source.** Don't normalize or reflow LaTeX you didn't change
    — `unescapeLatex` is a deliberate no-op, and the editor keeps text verbatim.
-2. **Don't escape `\ { } $`.** They're live syntax; only the six specials above
-   are escaped.
+2. **Don't escape `\ { }`.** They're live syntax; the specials above (incl. `$`
+   and `[`/`]`) are escaped for you.
 3. **Emit `\[…\]`, not `$$…$$`,** for display math in a `.tex` you write.
 4. **Stay in the curated output subset** when composing LaTeX; rely on the opaque
    fallbacks only for source you're passing through unchanged.

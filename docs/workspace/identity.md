@@ -1,4 +1,4 @@
-<!-- last-verified: 76ca7ff5 2026-07-05 -->
+<!-- last-verified: 19ecd88b 2026-07-06 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
@@ -124,9 +124,10 @@ matches are skipped — so a skill should not rely on recovery for duplicated te
 
 The `\v*` markers are no-op macros, so a `.tex` still compiles outside Virgil.
 `CLASSIC_PREAMBLE` (`src/lib/document-styles.ts`) seeds `\providecommand` no-ops
-for `\vfid` / `\vcid` / `\vexid` (+ `\usepackage{xcolor}`); `ensureVirgilCommands`
-(`src/lib/latex-serializer.ts`) tops up **all seven** (`\vfid` `\vcid` `\vbid`
-`\vexid` `\vxid` `\vlid` `\vlidend`) on every save, even against a user-authored
+for `\vfid` / `\vcid` / `\vexid` (+ `\usepackage{xcolor}`); `ensurePreambleRequirements`
+(`src/lib/latex-requirements.ts`, formerly `ensureVirgilCommands`) tops up **all seven**
+(`SHIM_COMMAND_NAMES`: `\vfid` `\vcid` `\vbid` `\vexid` `\vxid` `\vlid` `\vlidend`) on
+every save, even against a user-authored
 preamble — `\vbid` is declared in the `.tex` preamble (so a `.bib` `\input` or a
 raw-LaTeX open never breaks) even though the marker itself only lives in the
 `.bib`. These names are **reserved** — the full never-override deny-list (macros,

@@ -1,4 +1,4 @@
-<!-- last-verified: 76ca7ff5 2026-07-05 -->
+<!-- last-verified: 19ecd88b 2026-07-06 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -23,7 +23,8 @@ Every name Virgil reserves, such that authoring over it corrupts the round-trip.
 **Never define, override, or hand-author any of these.**
 
 **Injected LaTeX macros** — seven no-op entity-id macros plus one package, owned by
-the serializer (`ensureVirgilCommands` + `CLASSIC_PREAMBLE`), topped up on **every
+`ensurePreambleRequirements` (`src/lib/latex-requirements.ts`, formerly
+`ensureVirgilCommands`) + `CLASSIC_PREAMBLE`, topped up on **every
 save** even against a user preamble:
 
 ```
