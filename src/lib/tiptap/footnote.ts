@@ -19,6 +19,11 @@ import { FOOTNOTE_RE_FULL } from "@/lib/footnote-commands";
 // one typed entrypoint into the registry's `footnote.run`, which now applies
 // the SAME pristine + pinned lifecycle the menu's Footnote gets.
 import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
+// Task 061: the cross-surface applicability SSOT — the typed `\footnote{}`
+// input rule honors the SAME curated per-kind set the menus consult. Footnote
+// IS allowed in a `titleField` (see TITLE_FIELD_ACTIONS) but NOT in a non-prose
+// block, resolved by the caret's containing block kind.
+import { blockKindAllowsAction } from "@/text-objects/text-object-registry";
 
 // Options accepted by the Footnote extension. `idGenerator` lets a host
 // (e.g. the Library Reader) substitute a different ID strategy for newly
@@ -128,6 +133,13 @@ export const Footnote = Node.create<FootnoteOptions>({
             if (text !== "}") return false;
             const { state } = view;
             const $from = state.doc.resolve(from);
+            // Task 061: refuse the synchronous footnote-atom insert when the
+            // caret's containing block greys `footnote` out (a non-prose block —
+            // codeBlock / displayMath / figure / graphics). A `titleField`
+            // permits footnotes, so this stays allowed there.
+            if (!blockKindAllowsAction($from.parent.type.name, "footnote")) {
+              return false;
+            }
             const textBefore = $from.parent.textBetween(
               Math.max(0, $from.parentOffset - 200),
               $from.parentOffset,

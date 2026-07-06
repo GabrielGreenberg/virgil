@@ -197,10 +197,61 @@ function publishHandle(editor: Editor, prefs: ViewPrefs): void {
           focusCard: focusCard as (key: string) => void,
         } as unknown as ActionContext["panelRouting"],
       };
+      // Task 061: mirror EditorPane's bridge — consult `applies()` and no-op on
+      // "disabled" (e.g. the caret in a codeBlock for footnote) BEFORE run().
+      if (spec.applies(ctx) === "disabled") return;
       void spec.run(ctx);
     },
   };
   setEditorActionsHandle(handle);
+}
+
+/** Mount a real main editor whose FIRST top-level block is `blockType`, holding
+ *  `text`, with the caret at the END of that block's text — for the task-061
+ *  per-kind applicability cases. A trailing empty paragraph keeps the doc
+ *  schema-valid. */
+function mountInBlock(
+  blockType: "titleField" | "codeBlock",
+  text: string,
+): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const block =
+    blockType === "titleField"
+      ? {
+          type: "titleField",
+          attrs: { field: "title", uuid: "title-A" },
+          content: text ? [{ type: "text", text }] : [],
+        }
+      : {
+          type: "codeBlock",
+          attrs: { uuid: "code-A" },
+          content: text ? [{ type: "text", text }] : [],
+        };
+  const editor = new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx()),
+    content: {
+      type: "doc",
+      content: [
+        block,
+        { type: "paragraph", attrs: { uuid: "para-A" }, content: [] },
+      ],
+    },
+  });
+  let caret: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (caret === null && node.type.name === blockType) {
+      caret = pos + 1 + node.content.size;
+    }
+    return true;
+  });
+  if (caret === null) throw new Error(`no ${blockType} mounted`);
+  editor.view.dispatch(
+    editor.state.tr.setSelection(TextSelection.create(editor.state.doc, caret)),
+  );
+  return editor;
 }
 
 /** Drive the REAL typed input rule: invoke the footnote plugin's
@@ -468,5 +519,67 @@ describe("virgil-footnote-created is retired (zero emitters)", () => {
     } finally {
       window.removeEventListener("virgil-footnote-created", spy);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (Task 061) Per-kind applicability across surfaces. Footnote's curated set
+// (unlike citation) PERMITS a titleField (TITLE_FIELD_ACTIONS keeps footnote)
+// but a non-prose block (codeBlock) greys it out. So the contract is asymmetric
+// from citation: refuse in codeBlock, ALLOW in a titleField, allow in prose.
+// ---------------------------------------------------------------------------
+
+describe("task 061 — footnote applicability is per containing-block kind", () => {
+  it("TYPED \\footnote{body} in a codeBlock is a NO-OP (no atom, no throw)", () => {
+    const editor = mountInBlock("codeBlock", "\\footnote{hello}".slice(0, -1));
+    publishHandle(editor, prefsWith("left", "shown"));
+
+    let handled = true;
+    expect(() => {
+      handled = typeChar(editor, "}");
+    }).not.toThrow();
+    expect(handled).toBe(false);
+    expect(footnoteAtoms(editor)).toHaveLength(0);
+    expect(createFootnote).not.toHaveBeenCalled();
+  });
+
+  it("SLASH \\footnote in a codeBlock is a NO-OP (no atom, no card)", () => {
+    const editor = mountInBlock("codeBlock", "");
+    publishHandle(editor, prefsWith("left", "shown"));
+
+    COMMAND_MAP.get("footnote")!.action(editor.view, "\\footnote");
+
+    expect(footnoteAtoms(editor)).toHaveLength(0);
+    expect(createFootnote).not.toHaveBeenCalled();
+  });
+
+  it("POSITIVE — TYPED \\footnote{body} in a titleField IS allowed (footnote ∈ TITLE_FIELD_ACTIONS)", () => {
+    const editor = mountInBlock("titleField", "\\footnote{hello}".slice(0, -1));
+    publishHandle(editor, prefsWith("left", "shown"));
+
+    const handled = typeChar(editor, "}");
+    expect(handled).toBe(true);
+    expect(footnoteAtoms(editor)).toHaveLength(1);
+    expect(createFootnote).toHaveBeenCalledTimes(1);
+  });
+
+  it("POSITIVE — SLASH \\footnote in a titleField IS allowed (atom + card)", () => {
+    const editor = mountInBlock("titleField", "");
+    publishHandle(editor, prefsWith("left", "shown"));
+
+    COMMAND_MAP.get("footnote")!.action(editor.view, "\\footnote");
+
+    expect(footnoteAtoms(editor)).toHaveLength(1);
+    expect(createFootnote).toHaveBeenCalledTimes(1);
+  });
+
+  it("POSITIVE — TYPED \\footnote{body} in a prose paragraph still inserts + registers", () => {
+    const editor = mountEditor("\\footnote{hello}".slice(0, -1));
+    publishHandle(editor, prefsWith("left", "shown"));
+
+    const handled = typeChar(editor, "}");
+    expect(handled).toBe(true);
+    expect(footnoteAtoms(editor)).toHaveLength(1);
+    expect(createFootnote).toHaveBeenCalledTimes(1);
   });
 });

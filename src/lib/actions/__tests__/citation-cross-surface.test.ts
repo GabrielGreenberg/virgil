@@ -206,10 +206,61 @@ function publishHandle(editor: Editor, prefs: ViewPrefs): void {
           focusCard: focusCard as (key: string) => void,
         } as unknown as ActionContext["panelRouting"],
       };
+      // Task 061: mirror EditorPane's bridge — consult `applies()` and no-op on
+      // "disabled" (e.g. the caret in a titleField for citation) BEFORE run().
+      if (spec.applies(ctx) === "disabled") return;
       void spec.run(ctx);
     },
   };
   setEditorActionsHandle(handle);
+}
+
+/** Mount a real main editor whose FIRST top-level block is `blockType`, holding
+ *  `text`, with the caret at the END of that block's text — for the task-061
+ *  per-kind applicability cases (caret in a titleField / codeBlock). A trailing
+ *  empty paragraph keeps the doc schema-valid. */
+function mountInBlock(
+  blockType: "titleField" | "codeBlock",
+  text: string,
+): Editor {
+  const element = document.createElement("div");
+  document.body.appendChild(element);
+  const block =
+    blockType === "titleField"
+      ? {
+          type: "titleField",
+          attrs: { field: "title", uuid: "title-A" },
+          content: text ? [{ type: "text", text }] : [],
+        }
+      : {
+          type: "codeBlock",
+          attrs: { uuid: "code-A" },
+          content: text ? [{ type: "text", text }] : [],
+        };
+  const editor = new Editor({
+    element,
+    editable: true,
+    extensions: buildEditorExtensions(mainCtx()),
+    content: {
+      type: "doc",
+      content: [
+        block,
+        { type: "paragraph", attrs: { uuid: "para-A" }, content: [] },
+      ],
+    },
+  });
+  let caret: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (caret === null && node.type.name === blockType) {
+      caret = pos + 1 + node.content.size;
+    }
+    return true;
+  });
+  if (caret === null) throw new Error(`no ${blockType} mounted`);
+  editor.view.dispatch(
+    editor.state.tr.setSelection(TextSelection.create(editor.state.doc, caret)),
+  );
+  return editor;
 }
 
 /** Drive the REAL typed input rule: simulate `text` being typed at the caret by
@@ -488,5 +539,81 @@ describe("soft-route into omni (backlog #2)", () => {
     expect(expandLeft).toHaveBeenCalledTimes(1);
     expect(expandRight).not.toHaveBeenCalled();
     expect(clearBlankIfSet).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (Task 061) Per-kind applicability across surfaces — a citation atom must NOT
+// land where the curated set greys `citation` out (titleField / non-prose
+// block). The gate is the SAME `TEXT_OBJECT_REGISTRY[kind].actions` set the
+// grab-bar consults, resolved from the caret's containing block kind. Proves
+// the negative contract for the TYPED and SLASH surfaces + the positive (prose)
+// control, so the fix can't over-refuse.
+// ---------------------------------------------------------------------------
+
+describe("task 061 — citation applicability is per containing-block kind", () => {
+  it("TYPED \\cite{key} in a titleField is a NO-OP (no atom, no card)", () => {
+    const editor = mountInBlock("titleField", "\\cite{smith}".slice(0, -1));
+    publishHandle(editor, prefsWith("right", "shown"));
+
+    const handled = typeChar(editor, "}");
+    // The input rule declines — no citation recognized in a title.
+    expect(handled).toBe(false);
+    expect(citationAtoms(editor)).toHaveLength(0);
+    expect(createCitation).not.toHaveBeenCalled();
+  });
+
+  it("TYPED \\cite{key} in a codeBlock is a NO-OP (no atom, no throw)", () => {
+    const editor = mountInBlock("codeBlock", "\\cite{smith}".slice(0, -1));
+    publishHandle(editor, prefsWith("right", "shown"));
+
+    let handled = true;
+    expect(() => {
+      handled = typeChar(editor, "}");
+    }).not.toThrow();
+    expect(handled).toBe(false);
+    expect(citationAtoms(editor)).toHaveLength(0);
+    expect(createCitation).not.toHaveBeenCalled();
+  });
+
+  it("SLASH \\cite in a titleField is a NO-OP (popover never opens)", () => {
+    const editor = mountInBlock("titleField", "");
+    publishHandle(editor, prefsWith("right", "shown"));
+
+    COMMAND_MAP.get("cite")!.action(editor.view, "\\cite");
+
+    expect(openAtomCreate).not.toHaveBeenCalled();
+    expect(citationAtoms(editor)).toHaveLength(0);
+    expect(createCitation).not.toHaveBeenCalled();
+  });
+
+  it("SLASH \\cite in a codeBlock is a NO-OP (popover never opens)", () => {
+    const editor = mountInBlock("codeBlock", "");
+    publishHandle(editor, prefsWith("right", "shown"));
+
+    COMMAND_MAP.get("cite")!.action(editor.view, "\\cite");
+
+    expect(openAtomCreate).not.toHaveBeenCalled();
+    expect(citationAtoms(editor)).toHaveLength(0);
+  });
+
+  it("POSITIVE control — TYPED \\cite{key} in a prose paragraph still inserts + registers", () => {
+    // Same block-kind gate must NOT over-refuse the prose case.
+    const editor = mountEditor("\\cite{smith}".slice(0, -1));
+    publishHandle(editor, prefsWith("right", "shown"));
+
+    const handled = typeChar(editor, "}");
+    expect(handled).toBe(true);
+    expect(citationAtoms(editor)).toHaveLength(1);
+    expect(createCitation).toHaveBeenCalledTimes(1);
+  });
+
+  it("POSITIVE control — SLASH \\cite in a prose paragraph still opens the popover", () => {
+    const editor = mountEditor("");
+    publishHandle(editor, prefsWith("right", "shown"));
+
+    COMMAND_MAP.get("cite")!.action(editor.view, "\\cite");
+    expect(openAtomCreate).toHaveBeenCalledTimes(1);
+    expect(openAtomCreate).toHaveBeenCalledWith("citation");
   });
 });

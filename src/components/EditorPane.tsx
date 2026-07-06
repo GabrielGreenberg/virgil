@@ -3696,6 +3696,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             selectExample: deps.setSelectedExampleId,
           },
         };
+        // Task 061: the PM-land surfaces (slash / typed) must honor the SAME
+        // per-kind applicability the menus consult — the bridge is where the
+        // gesture ref (the `CursorRef` synthesized above) meets the registry. A
+        // `"disabled"` verdict (e.g. `/cite` with the caret in a `titleField`,
+        // or `/footnote` in a non-prose block) no-ops the whole action: no card
+        // registration, no popover open, no soft-route — matching the grab-bar
+        // grey-out. `applies()` resolves the caret's containing block kind for
+        // cursor refs (`cardActionAllowedForCtx`), the cross-surface enforcement
+        // point. Non-card actions (ref / example / wrappers) return "ok" for a
+        // caret, so they're unaffected.
+        if (spec.applies(ctx) === "disabled") return;
         void spec.run(ctx);
       },
     };

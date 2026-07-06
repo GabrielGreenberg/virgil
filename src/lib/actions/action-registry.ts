@@ -179,6 +179,7 @@ import {
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
+  posBlockAllowsAction,
 } from "@/text-objects/text-object-registry";
 import {
   getSectionRangeByUuid,
@@ -930,8 +931,41 @@ function cardApplies(
   ctx: ActionContext,
   selection: ActionSelectionMode | undefined,
 ): "ok" | "disabled" | "absent" {
-  const base: "ok" | "disabled" = kindAllowsCardAction(ctx.ref, id) ? "ok" : "disabled";
+  const base: "ok" | "disabled" = cardActionAllowedForCtx(id, ctx) ? "ok" : "disabled";
   return gateApplies({ selection }, ctx, base);
+}
+
+/**
+ * The per-context applicability base for a card row — the cross-surface
+ * unification (task 061).
+ *
+ *   - A kind-bearing `TextObjectRef` (the grab-bar) reads its curated set
+ *     directly via `kindAllowsCardAction` — UNCHANGED.
+ *   - A GESTURE ref (a bare `cursor` / `selection` from the slash, typed, and
+ *     lightning surfaces) has no TextObject kind, so it resolves the caret's
+ *     CONTAINING block kind and consults the SAME curated set
+ *     (`posBlockAllowsAction`). This is what stops `/cite` · `\cite{}` (and the
+ *     footnote twins) from inserting an inline atom into a `titleField` /
+ *     non-prose block — matching the grey-out the grab-bar already shows.
+ *
+ * Defensive: a probe that didn't thread a live `view` (the minimal
+ * `{ ref, canEdit }` context the grab/lightning menu-decoration passes) falls
+ * back to the historic "allow", so it degrades to prior behavior rather than
+ * throwing — the same short-circuit `kindAllowsCardAction` gave gesture refs
+ * before this change.
+ */
+function cardActionAllowedForCtx(id: CardActionId, ctx: ActionContext): boolean {
+  const ref = ctx.ref;
+  if (ref.kind !== "cursor" && ref.kind !== "selection") {
+    return kindAllowsCardAction(ref, id);
+  }
+  const doc = ctx.view?.state?.doc;
+  // No live view threaded (the minimal `{ ref, canEdit }` menu-decoration ctx),
+  // or a non-PM mock doc (unit-test probe) → historic gesture-ref "allow", so we
+  // degrade to prior behavior rather than throw on a doc without `resolve`.
+  if (!doc || typeof doc.resolve !== "function") return true;
+  const pos = ref.kind === "cursor" ? ref.pos : ref.from;
+  return posBlockAllowsAction(doc, pos, id as DragHandleAction);
 }
 
 /**
@@ -1102,6 +1136,14 @@ function citationRun(ctx: ActionContext): void {
     ctx.dispatch?.("citation", ctx.ref);
     return;
   }
+  // Defense-in-depth (task 061): a `cursor` ref reaching run() means a PM
+  // surface (slash `/cite`, or the popover commit) invoked us. The bridge
+  // already gates on `applies()`, but re-check the caret's containing block
+  // kind against the curated set here too — so an inline citation atom can
+  // never be created in a `titleField` / non-prose block even via a future
+  // surface that forgets to consult `applies()`. Same discipline as the
+  // wrapper toggles' `selectionIsListable` self-guard.
+  if (!posBlockAllowsAction(ctx.view.state.doc, ctx.ref.pos, "citation")) return;
   // Surfaces 3 & 4 (slash / typed / popover) — a `CursorRef`. TWO sub-cases,
   // discriminated by the payload:
   //
@@ -1210,6 +1252,11 @@ function footnoteRun(ctx: ActionContext): void {
     ctx.dispatch?.("footnote", ctx.ref);
     return;
   }
+  // Defense-in-depth (task 061): re-check the caret's containing block kind
+  // against the curated set (footnote IS allowed in a titleField — see
+  // TITLE_FIELD_ACTIONS — but NOT in a non-prose block). Belt-and-suspenders
+  // with the bridge's `applies()` gate, mirroring `citationRun`.
+  if (!posBlockAllowsAction(ctx.view.state.doc, ctx.ref.pos, "footnote")) return;
   // Surfaces 3 & 4 (slash / typed): the PM caller inserted the atom already
   // (passing its `footnoteId`). ADOPT it — register the panel card with the
   // SAME `footnoteId` so the card and the in-doc atom share an identity, and
