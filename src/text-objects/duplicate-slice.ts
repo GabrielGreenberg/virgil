@@ -1,9 +1,9 @@
 /**
  * Generic doc-slice duplicator. Walks a ProseMirror slice and:
  *
- *   1. Remints every TextObject node's `uuid` attr (using `generateShortId`
- *      for kinds with `sourceMarker.idLength === 4`, otherwise
- *      `generateEntityId`). Driven by [TEXT_OBJECT_REGISTRY](./text-object-registry.ts).
+ *   1. Remints every TextObject node's `uuid` attr with a fresh 4-hex
+ *      short id (`generateShortId`) — the format EVERY TextObject kind
+ *      persists in `.tex` source. Driven by [TEXT_OBJECT_REGISTRY](./text-object-registry.ts).
  *      Invariant: every TextObject node leaves the walker with a fresh
  *      uuid, even if the source node was missing one (emits diagnostic).
  *
@@ -32,10 +32,7 @@
  */
 
 import { Slice, Fragment, type Node as PMNode } from "@tiptap/pm/model";
-import {
-  TEXT_OBJECT_REGISTRY,
-  isTextObjectKind,
-} from "./text-object-registry";
+import { isTextObjectKind } from "./text-object-registry";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { generateEntityId, generateShortId } from "@/lib/uuid";
@@ -54,15 +51,41 @@ function inlineAtomCardEntry(
   return INLINE_ATOM_CARDS[typeName] ?? null;
 }
 
-/** Remint a TextObject node's identity. Short-id kinds (exampleBlock,
- *  exampleItem, etc. — anything declaring `sourceMarker.idLength === 4`)
- *  get a fresh short id; everything else gets a fresh entity id. */
-function mintUuidForKind(kind: string): string {
-  if (!isTextObjectKind(kind)) return generateEntityId();
-  const meta = TEXT_OBJECT_REGISTRY[kind];
-  return meta.sourceMarker?.idLength === 4
-    ? generateShortId()
-    : generateEntityId();
+/** Remint a TextObject node's identity.
+ *
+ *  INVARIANT: **every** TextObject kind persists its id as a 4-hex short id
+ *  in the `.tex` source — so all of them mint a `generateShortId()`. The id
+ *  round-trips one of three ways, all 4-hex:
+ *    • the ` %!v:xxxx` anchor (paragraph, heading, bulletList, orderedList,
+ *      blockquote, codeBlock, displayMath, figureBlock, graphicsBlock,
+ *      listItem, latexComment) — matched 4-hex-only by `NODE_UUID_REGEX`;
+ *    • a `\vXid{xxxx}` short-id command (exampleBlock `\vexid`, exampleItem
+ *      `\vxid`, linkedRange `\vlid`);
+ *    • the `%!vtex:begin/end xxxx` sentinel (texBlock).
+ *  `titleField` persists NO source id (it round-trips via the preamble and
+ *  is re-minted short by `block-uuid-backfill` on load), so a short id is
+ *  the consistent, harmless choice there too.
+ *
+ *  There is therefore NO TextObject kind that should mint a 36-char entity
+ *  id. The old `meta.sourceMarker?.idLength === 4` proxy was the bug (task
+ *  064): only exampleBlock/exampleItem/linkedRange declare a `sourceMarker`,
+ *  so the other 13 kinds fell to the `else` and got a `crypto.randomUUID()`
+ *  that the 4-hex `%!v:` anchor truncates on the next save+reload — losing
+ *  the clone's identity AND leaking the raw `%!v:<uuid>` marker into the
+ *  block's own visible text. `sourceMarker` describes the persistence
+ *  *mechanism*, not the id *format*; conflating them was the fork.
+ *
+ *  Pinned by `__tests__/duplicate-slice-idformat.test.ts`, which asserts the
+ *  4-hex mint for every kind in `TEXT_OBJECT_REGISTRY` — so a future kind
+ *  that genuinely needed a long id would fail loudly here (a conscious
+ *  decision) rather than silently corrupting its round-trip.
+ *
+ *  The `!isTextObjectKind` fallback keeps `generateEntityId()` for any non-
+ *  TextObject node routed here; the sole caller already guards on
+ *  `isTextObjectKind`, and inline-atom (footnote/citation) clones remint
+ *  their own short ids on the atom path above, so it is a defensive branch. */
+export function mintUuidForKind(kind: string): string {
+  return isTextObjectKind(kind) ? generateShortId() : generateEntityId();
 }
 
 /** Tagged diagnostic codes emitted by the duplicate walker. */
