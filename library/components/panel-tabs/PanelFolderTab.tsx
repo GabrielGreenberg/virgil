@@ -57,11 +57,27 @@ type Props = {
   /** Renders as data-tab-id on the outer wrapper so DOM-traversal-based
    * drop resolution can identify which tab a target belongs to. */
   dataTabId?: string;
+  /** Task 053 — tuck the LEFT/RIGHT swoop foot onto the body's rounded top
+   *  corner so the outer swoop of an edge tab flows into the page frame instead
+   *  of poking past it and notching. Set by the strip for the first tab (left)
+   *  and a flush-right last tab (right); interior feet stay untucked. */
+  tuckLeftFoot?: boolean;
+  tuckRightFoot?: boolean;
 };
 
 export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
   function PanelFolderTab(
-    { active, fill, onClick, title, children, wrapperProps, dataTabId },
+    {
+      active,
+      fill,
+      onClick,
+      title,
+      children,
+      wrapperProps,
+      dataTabId,
+      tuckLeftFoot,
+      tuckRightFoot,
+    },
     forwardedRef,
   ) {
     const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -115,10 +131,35 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
     const { svgW, svgH, inset } = tabSvgGeometry({ tabW, tabH: TAB_H, S });
     // Natural (uncompressed) canvas width — the flex preferred + max size.
     const naturalSvgW = tabSvgGeometry({ tabW: naturalTabW, tabH: TAB_H, S }).svgW;
-    const fillPath = buildTabFillPath({ tabW, tabH: TAB_H, R, S });
+    const fillPath = buildTabFillPath({
+      tabW,
+      tabH: TAB_H,
+      R,
+      S,
+      tuckLeft: tuckLeftFoot,
+      tuckRight: tuckRightFoot,
+    });
     const strokePath = active
-      ? buildActiveTabStrokePath({ tabW, tabH: TAB_H, R, S })
+      ? buildActiveTabStrokePath({
+          tabW,
+          tabH: TAB_H,
+          R,
+          S,
+          tuckLeft: tuckLeftFoot,
+          tuckRight: tuckRightFoot,
+        })
       : null;
+    // The 1px seam bridge covers ONLY the tab's FLAT-BODY span, so the tab merges
+    // into the page there — but the swoop-foot VALLEYS (where each foot dips down)
+    // are left UNBRIDGED, so the body's top-edge frame stroke shows under them and
+    // each foot visibly lands on the page edge instead of floating (task 053).
+    // A TUCKED foot lands on a body CORNER: keep the bridge starting at that
+    // corner's tangent (R + inset) so the corner arc stays exposed, exactly as
+    // before. An UNTUCKED foot dips into a valley: stop the bridge at the flat
+    // body's vertical side (x = S on the left, x = S + tabW on the right) so the
+    // valley beyond it shows the page edge.
+    const bridgeLeft = tuckLeftFoot ? R + inset : S;
+    const bridgeRight = tuckRightFoot ? 2 * S + tabW - R + inset : S + tabW;
 
     const { style: extraStyle, ...restWrapperProps } = wrapperProps ?? {};
 
@@ -179,7 +220,13 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
           <g transform={`translate(${inset}, ${inset})`}>
             <path d={fillPath} fill={fill} stroke="none" />
           </g>
-          <rect x="0" y={TAB_H} width={svgW} height="1" fill={fill} />
+          <rect
+            x={bridgeLeft}
+            y={TAB_H}
+            width={Math.max(0, bridgeRight - bridgeLeft)}
+            height="1"
+            fill={fill}
+          />
           <g transform={`translate(${inset}, ${inset})`}>
             {strokePath ? (
               <path

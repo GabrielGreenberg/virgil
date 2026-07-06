@@ -222,25 +222,57 @@ export function deriveTabWidthFromWrapper(args: {
 }
 
 /**
+ * Foot-tuck geometry (task 053). An OUTER swoop foot that lands on the body's
+ * rounded top corner (the first tab's LEFT foot, or a flush-right last tab's
+ * RIGHT foot) pokes past the corner and opens the reported notch: the body's
+ * top corner recedes inward by {@link MANILA_RADIUS}, while the foot flares all
+ * the way to the tab-box edge and meets the base with a HORIZONTAL tangent
+ * against the body's VERTICAL edge below — a 90° mismatch.
+ *
+ * The tuck slides that whole side of the tab INWARD by exactly `R` — the top
+ * corner, the vertical side, AND the swoop foot all shift, so the foot lands on
+ * the body corner's TOP (both horizontal-tangent there) and the swoop flows
+ * into the corner arc. Crucially the swoop keeps its FULL radius `S`, so the
+ * tucked foot is the SAME shape as an untucked/interior foot — just repositioned
+ * — not a shrunken hook. Interior feet (between tabs) are NEVER tucked; they
+ * interlock with the neighbouring tab's foot, not a body corner.
+ */
+type FootTuck = {
+  /** Tuck the LEFT side onto the body's top-left corner. */
+  tuckLeft?: boolean;
+  /** Tuck the RIGHT side onto the body's top-right corner. */
+  tuckRight?: boolean;
+};
+
+/**
  * Closed path describing the entire tab silhouette. Use for fill, and as
  * stroke for inactive tabs.
  */
-export function buildTabFillPath(args: TabPathArgs): string {
+export function buildTabFillPath(args: TabPathArgs & FootTuck): string {
   const { tabW, tabH } = args;
   const R = args.R ?? MANILA_RADIUS;
   const S = args.S ?? 12;
   const tabLeft = S;
   const tabRight = S + tabW;
+  // Slide the tucked side inward by R (full swoop radius preserved).
+  const lShift = args.tuckLeft ? R : 0;
+  const rShift = args.tuckRight ? R : 0;
+  const lFootX = lShift; //           left foot
+  const lEdgeX = tabLeft + lShift; //  left vertical side
+  const lCornerX = tabLeft + R + lShift; // top edge's left end (after TL corner)
+  const rFootX = tabRight + S - rShift; //  right foot
+  const rEdgeX = tabRight - rShift; //      right vertical side
+  const rCornerX = tabRight - R - rShift; // top edge's right end (before TR corner)
   return [
-    `M ${tabLeft + R} 0`,
-    `H ${tabRight - R}`,
-    `A ${R} ${R} 0 0 1 ${tabRight} ${R}`,
+    `M ${lCornerX} 0`,
+    `H ${rCornerX}`,
+    `A ${R} ${R} 0 0 1 ${rEdgeX} ${R}`,
     `V ${tabH - S}`,
-    `A ${S} ${S} 0 0 0 ${tabRight + S} ${tabH}`,
-    `H 0`,
-    `A ${S} ${S} 0 0 0 ${tabLeft} ${tabH - S}`,
+    `A ${S} ${S} 0 0 0 ${rFootX} ${tabH}`,
+    `H ${lFootX}`,
+    `A ${S} ${S} 0 0 0 ${lEdgeX} ${tabH - S}`,
     `V ${R}`,
-    `A ${R} ${R} 0 0 1 ${tabLeft + R} 0`,
+    `A ${R} ${R} 0 0 1 ${lCornerX} 0`,
     `Z`,
   ].join(" ");
 }
@@ -251,20 +283,28 @@ export function buildTabFillPath(args: TabPathArgs): string {
  * swoop feet. Use as stroke for active tabs so the bottom merges into the
  * canvas's top border without a redundant closing line.
  */
-export function buildActiveTabStrokePath(args: TabPathArgs): string {
+export function buildActiveTabStrokePath(args: TabPathArgs & FootTuck): string {
   const { tabW, tabH } = args;
   const R = args.R ?? MANILA_RADIUS;
   const S = args.S ?? 12;
   const tabLeft = S;
   const tabRight = S + tabW;
+  const lShift = args.tuckLeft ? R : 0;
+  const rShift = args.tuckRight ? R : 0;
+  const lFootX = lShift;
+  const lEdgeX = tabLeft + lShift;
+  const lCornerX = tabLeft + R + lShift;
+  const rFootX = tabRight + S - rShift;
+  const rEdgeX = tabRight - rShift;
+  const rCornerX = tabRight - R - rShift;
   return [
-    `M ${tabRight + S} ${tabH}`,
-    `A ${S} ${S} 0 0 1 ${tabRight} ${tabH - S}`,
+    `M ${rFootX} ${tabH}`,
+    `A ${S} ${S} 0 0 1 ${rEdgeX} ${tabH - S}`,
     `V ${R}`,
-    `A ${R} ${R} 0 0 0 ${tabRight - R} 0`,
-    `H ${tabLeft + R}`,
-    `A ${R} ${R} 0 0 0 ${tabLeft} ${R}`,
+    `A ${R} ${R} 0 0 0 ${rCornerX} 0`,
+    `H ${lCornerX}`,
+    `A ${R} ${R} 0 0 0 ${lEdgeX} ${R}`,
     `V ${tabH - S}`,
-    `A ${S} ${S} 0 0 1 0 ${tabH}`,
+    `A ${S} ${S} 0 0 1 ${lFootX} ${tabH}`,
   ].join(" ");
 }

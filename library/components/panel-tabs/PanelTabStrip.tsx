@@ -116,6 +116,14 @@ export function PanelTabStrip({
   const [entryDragOverTabId, setEntryDragOverTabId] = useState<string | null>(
     null,
   );
+  // Task 053 — whether the ACTIVE tab's right foot is flush against the body's
+  // top-right corner (its wrapper's right edge coincides with the body's right
+  // edge). The left is reliably `i === 0` (first tab always sits at the strip
+  // pad === body inset), but "flush right" can't be read from the tab INDEX: a
+  // single narrow tab is last yet NOT flush-right (trailing space), while a
+  // multi-tab strip pushes the active last tab flush via the grow-to-fill
+  // inactive tabs. So the right foot is measured, not inferred.
+  const [activeFlushRight, setActiveFlushRight] = useState(false);
 
   const stripRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -142,6 +150,53 @@ export function PanelTabStrip({
       strip.scrollLeft -= stripRect.left - elRect.left;
     }
   }, [activeId, tabs.length]);
+
+  // Task 053 — measure whether the active tab's right foot sits on the body's
+  // top-right corner, so its swoop can tuck into the corner (the mirror of the
+  // first tab's left foot). The body is inset from the panel by STRIP_SIDE_PAD
+  // on both sides, so "flush right" is: active-tab wrapper right ≈ panel right −
+  // pad. RAF-coalesced + equality-gated; re-runs on selection / tab-count change
+  // and on any resize. Library chrome, not a doc-keystroke subscriber.
+  useEffect(() => {
+    const panel = panelRef?.current;
+    if (!panel) {
+      setActiveFlushRight(false);
+      return;
+    }
+    let raf = 0;
+    const measure = () => {
+      const el = tabRefs.current.get(activeId);
+      if (!el) {
+        setActiveFlushRight((prev) => (prev ? false : prev));
+        return;
+      }
+      const t = el.getBoundingClientRect();
+      const p = panel.getBoundingClientRect();
+      const flush = Math.abs(t.right - (p.right - STRIP_SIDE_PAD)) <= 2;
+      setActiveFlushRight((prev) => (prev === flush ? prev : flush));
+    };
+    const schedule = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        measure();
+      });
+    };
+    schedule();
+    const ro = new ResizeObserver(schedule);
+    ro.observe(panel);
+    if (stripRef.current) ro.observe(stripRef.current);
+    // Also observe the ACTIVE tab itself: on selection the strip's own size is
+    // stable (tabs redistribute WITHIN it), so only the active tab's width
+    // change signals "it just became flush-right" — without this the measure
+    // can read a stale pre-activation width and miss the tuck.
+    const activeEl = tabRefs.current.get(activeId);
+    if (activeEl) ro.observe(activeEl);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [activeId, tabs.length, panelRef]);
 
   const startEditing = (id: string, label: string) => {
     setEditingId(id);
@@ -452,6 +507,14 @@ export function PanelTabStrip({
                 fill={activeFill}
                 title={tab.label}
                 dataTabId={tab.id}
+                // Task 053 — only the ACTIVE tab has a swoop silhouette
+                // (inactive tabs are flat), so it's the only one whose outer
+                // feet can notch a body corner. LEFT: the first tab always sits
+                // flush against the body's top-left corner (strip pad === body
+                // inset), so tuck it (immediate, no measure). RIGHT: measured —
+                // tuck only when the active tab is genuinely flush-right.
+                tuckLeftFoot={i === 0}
+                tuckRightFoot={activeFlushRight}
                 wrapperProps={{
                   ...dragProps,
                   style: {

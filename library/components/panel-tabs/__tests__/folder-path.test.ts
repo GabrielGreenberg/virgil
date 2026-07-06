@@ -254,6 +254,44 @@ describe("task 2026-07-05-047 — body-frame corner tucks under the tab swoop fo
     );
   });
 
+  it("tuckLeft slides the left side in by R with a FULL-radius swoop (task 053) — same foot shape as untucked, repositioned", () => {
+    const S = 12;
+    const R = 10;
+    const untucked = buildTabFillPath({ tabW: 116, tabH: TAB_H, R, S });
+    const tucked = buildTabFillPath({ tabW: 116, tabH: TAB_H, R, S, tuckLeft: true });
+    // Untucked: the left foot flares to the tab-box edge (x=0) with the full
+    // swoop radius S up to the vertical side at x=S.
+    expect(untucked).toContain(`H 0 A ${S} ${S} 0 0 0 ${S} ${TAB_H - S}`);
+    // Tucked: foot at x=R (the body corner's top), the SAME full radius S up to
+    // a vertical side shifted right by R (x=S+R) — the foot is the same shape as
+    // the right foot, just moved onto the corner, NOT a shrunken hook.
+    expect(tucked).toContain(`H ${R} A ${S} ${S} 0 0 0 ${S + R} ${TAB_H - S}`);
+    // The whole left side slides in by R: the top-left corner + top-edge start.
+    expect(tucked.startsWith(`M ${S + 2 * R} 0`)).toBe(true);
+    expect(tucked).toContain(`A ${R} ${R} 0 0 1 ${S + 2 * R} 0`);
+    // The RIGHT foot is untouched when only tuckLeft is set (interior/exposed).
+    expect(tucked).toContain(`A ${S} ${S} 0 0 0 ${2 * S + 116} ${TAB_H}`);
+  });
+
+  it("tuckRight mirrors the slide onto the right side; both sides slide in with full radius", () => {
+    const S = 12;
+    const R = 10;
+    const both = buildTabFillPath({ tabW: 80, tabH: TAB_H, R, S, tuckLeft: true, tuckRight: true });
+    // Right foot pulled in to (2S+tabW) − R, still full radius S.
+    expect(both).toContain(`A ${S} ${S} 0 0 0 ${2 * S + 80 - R} ${TAB_H}`);
+    // Left foot pulled in to x=R, full radius S.
+    expect(both).toContain(`H ${R} A ${S} ${S} 0 0 0 ${S + R} ${TAB_H - S}`);
+  });
+
+  it("the active stroke path slides the same way (task 053) so the visible outline matches the fill", () => {
+    const S = 12;
+    const R = 10;
+    const stroke = buildActiveTabStrokePath({ tabW: 116, tabH: TAB_H, R, S, tuckLeft: true });
+    // Left swoop of the OPEN active stroke ends at the tucked foot (x=R) with the
+    // full radius S — identical flare to an untucked foot.
+    expect(stroke.trimEnd().endsWith(`A ${S} ${S} 0 0 1 ${R} ${TAB_H}`)).toBe(true);
+  });
+
   it("clamps the radius on a degenerate (tiny) measured box so the path never self-crosses", () => {
     // A 0-height first paint or a very narrow panel must still yield a valid,
     // non-self-intersecting closed path (2*R would otherwise exceed the box).
