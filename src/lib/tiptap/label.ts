@@ -8,6 +8,12 @@ export const LabelRef = Node.create({
   group: "inline",
   inline: true,
   atom: true,
+  // See ATOM_REGISTRY (ref.selectable): opt out of the PM-default NodeSelection
+  // to kill the ~100px scrollIntoView jump on modifier-click / read-only click,
+  // exactly as footnote/citation do. \ref owns no NodeSelection chrome, so it
+  // was selectable only because the flag was unset. Pinned by
+  // atom-selectable-parity.test.ts.
+  selectable: false,
 
   addAttributes() {
     return {
