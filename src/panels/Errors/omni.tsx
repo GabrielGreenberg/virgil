@@ -47,6 +47,15 @@ export function buildErrorOmniItems(a: BuildArgs): OmniItem[] {
     items.push({
       id: omniId,
       pos,
+      // Paragraph-anchored errors enroll in the SAME live-pos engine as every
+      // other paragraph-anchored omni kind (note/todo/report): `anchorUuid`
+      // lets `buildParagraphAnchorMap`/`useLivePosResolver` re-resolve a LIVE
+      // position from the DocStructureObserver snapshot each transaction, so an
+      // edit in an earlier paragraph no longer leaves the error on a STALE
+      // baked `pos` (OMNI-F1-02) that mis-bins it in a collapsed section or the
+      // focus band. `free` errors (`paraId == null`) carry no anchor intent, so
+      // they get no `anchorUuid` and keep `pos: null` — unchanged.
+      anchorUuid: paraId ?? undefined,
       anchorState,
       content: (
         <ErrorCard
