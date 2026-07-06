@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { PanelCard, PANEL, Chevron, Button, CardTargetIcon, cardTitleStyle } from "./panel-primitives";
+import { PanelCard, PANEL, Chevron, Button, CardJumpTarget, cardTitleStyle } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -395,9 +395,9 @@ export default function BibEntryCard({
   };
 
   const hasOccCounter = occurrenceInfo && occurrenceInfo.total > 1;
-  // Target icon is always rendered (when the entry is cited) so its
-  // hover/selected opacity states can fade in/out without layout shift.
-  const showTargetIcon = !!onJump;
+  // The jump-to-citation chevron is always rendered (when the entry is cited)
+  // so its hover/selected opacity states can fade in/out without layout shift.
+  const showJumpTarget = !!onJump;
 
   // Header: author · year · title (single line, truncates).
   const headerText = [author, year, title].filter(Boolean).join(" · ");
@@ -682,8 +682,8 @@ export default function BibEntryCard({
           </button>
         </span>
       )}
-      {showTargetIcon && (
-        <CardTargetIcon
+      {showJumpTarget && (
+        <CardJumpTarget
           selected={isSelected}
           onClick={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
           title="Jump to citation"

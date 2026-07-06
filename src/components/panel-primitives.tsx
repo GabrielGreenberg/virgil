@@ -757,11 +757,20 @@ export function CardTitleInput({
   );
 }
 
-/* ── Target icon wrapper with selection-aware opacity ────────────── */
+/* ── Jump-target wrapper with selection-aware opacity ────────────── */
 
-/** Wraps a TargetIcon with consistent opacity: full when selected, subdued otherwise.
- *  Pass `disabled` for unanchored items (very faint, non-functional). */
-export function CardTargetIcon({
+/** Wraps the canonical `CardJumpChevron` (the single `>` jump-glyph SSOT) in
+ *  bib's selection-aware opacity envelope: full when selected, subdued (60%)
+ *  otherwise, very faint (30%) when disabled.
+ *
+ *  Bib is the one card that shows its jump affordance INLINE on cited entries
+ *  (with a 60→100 fade on selection), rather than only when popped out via the
+ *  `canJump`/`CardJumpChevron` path every other card uses — hence this bespoke
+ *  wrapper. It only supplies the opacity envelope; the button shell + `>` glyph
+ *  come from the shared `CardJumpChevron`, so bib now renders the same jump
+ *  glyph as everywhere else (formerly the pre-SSOT boxed-arrow `TargetIcon`).
+ *  Pass `disabled` for unanchored items (very faint). */
+export function CardJumpTarget({
   selected,
   disabled,
   onClick,
@@ -778,7 +787,7 @@ export function CardTargetIcon({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
     >
-      <TargetIcon onClick={onClick} title={title ?? (disabled ? "Not anchored in document" : "Jump to in text")} />
+      <CardJumpChevron onClick={onClick} title={title ?? (disabled ? "Not anchored in document" : "Jump to in text")} />
     </div>
   );
 }
@@ -2814,76 +2823,3 @@ export function MenuArchive({
   );
 }
 
-/* ── Target icon ──────────────────────────────────────────────────── */
-
-/**
- * Small target/bullseye button shown in the top-right of a *selected*
- * panel card. Clicking it jumps the editor to the element's anchor in
- * the document. Clicking the surrounding card only selects; jump is
- * always done through this button.
- *
- * The button stops propagation so parent card click handlers don't also
- * fire their own select behavior.
- */
-/** Target icon with a file/page shape and an arrow pointing into it. */
-export function TargetFileIcon({
-  onClick,
-  title = "Jump to in text",
-  className,
-}: {
-  onClick: (e: React.MouseEvent) => void;
-  title?: string;
-  className?: string;
-}) {
-  return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onClick(e); }}
-      onMouseDown={(e) => e.stopPropagation()}
-      draggable={false}
-      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className={`iconbtn-md iconbtn-on-dark ${className ?? ""}`}
-      data-hint="Jump to text"
-      data-hint-pos="above"
-    >
-      <svg width="16" height="16" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        {/* Page outline (shifted right so arrow stem is visible) */}
-        <path d="M16 2H8a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-        <path d="M16 2v6h6" />
-        {/* Arrow from left into center of page */}
-        <line x1="-2" y1="15" x2="14" y2="15" />
-        <polyline points="11 12 14 15 11 18" />
-      </svg>
-    </button>
-  );
-}
-
-/** Target icon with a rounded pod/card shape and an arrow pointing into it. */
-export function TargetIcon({
-  onClick,
-  title = "Jump to in text",
-  className,
-}: {
-  onClick: (e: React.MouseEvent) => void;
-  title?: string;
-  className?: string;
-}) {
-  return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onClick(e); }}
-      onMouseDown={(e) => e.stopPropagation()}
-      draggable={false}
-      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className={`iconbtn-md iconbtn-on-dark ${className ?? ""}`}
-      data-hint="Jump to text"
-      data-hint-pos="above"
-    >
-      <svg width="16" height="16" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        {/* Rounded pod/card outline (same bounding box as the file icon) */}
-        <rect x="6" y="2" width="16" height="20" rx="3" ry="3" />
-        {/* Arrow from left into center of pod */}
-        <line x1="-2" y1="12" x2="14" y2="12" />
-        <polyline points="11 9 14 12 11 15" />
-      </svg>
-    </button>
-  );
-}

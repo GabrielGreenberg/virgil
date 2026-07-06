@@ -569,7 +569,7 @@ Below-center by default. Override with a zone ancestor or explicit attribute:
 | Right icon strip | Left of element | `[data-strip-side="right"]` ancestor |
 | Card-level buttons (inside scroll) | Above | `data-hint-pos="above"` on element |
 
-Card-level buttons (`CardTrashButton`, `TargetIcon`, drag handles) should use
+Card-level buttons (`CardTrashButton`, `CardJumpChevron`, drag handles) should use
 `data-hint-pos="above"` to avoid clipping by the panel's scroll boundary.
 
 ### Helper mode
