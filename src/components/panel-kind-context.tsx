@@ -4,29 +4,14 @@ import { createContext, useContext, type CSSProperties, type ReactNode } from "r
 import type { PanelKind } from "@/panels/_shared/types";
 import {
   DEFAULT_PANEL_TYPOGRAPHY,
+  PANEL_KIND_TO_BODY_KEY,
   type PanelBodyKey,
 } from "@/lib/panel-typography";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 
-/** Map from PanelKind (the canonical panel id) to the matching body-text
- *  typography key. Panels missing from this map have no card body text
- *  whose size can be tuned (Outline, Search, WordCount, Errors, Omni). */
-const KIND_TO_BODY_KEY: Partial<Record<PanelKind, PanelBodyKey>> = {
-  notes: "note",
-  footnotes: "footnote",
-  archive: "archive",
-  cutter: "cut",
-  revisions: "revision",
-  todo: "todo",
-  reports: "report",
-  citations: "citation",
-  bibliography: "bib",
-  examples: "example",
-};
-
 export function bodyKeyForKind(kind: PanelKind | null | undefined): PanelBodyKey | null {
   if (!kind) return null;
-  return KIND_TO_BODY_KEY[kind] ?? null;
+  return PANEL_KIND_TO_BODY_KEY[kind] ?? null;
 }
 
 const PanelKindContext = createContext<PanelKind | null>(null);
@@ -40,7 +25,7 @@ export function PanelKindProvider({ kind, children }: { kind: PanelKind; childre
 export function useEnclosingPanelBodyKey(): PanelBodyKey | null {
   const kind = useContext(PanelKindContext);
   if (!kind) return null;
-  return KIND_TO_BODY_KEY[kind] ?? null;
+  return PANEL_KIND_TO_BODY_KEY[kind] ?? null;
 }
 
 /** Returns inline CSS variables (`--panel-body-fontsize`, etc.) for the

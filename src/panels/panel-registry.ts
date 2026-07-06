@@ -2,10 +2,9 @@
  * Single source of truth for panel↔card taxonomy.
  *
  * Every panel in the app is declared here. The registry maps `PanelKind`
- * to display label, optional card kind + popout-key prefix, omni
- * eligibility, and the per-panel folder path. Other systems
- * (`EditorLayout` chrome, `OmniViewPanel` filter, `popKey()` helper) read
- * from here instead of maintaining their own tables.
+ * to display label, optional card kind + popout-key prefix, and omni
+ * eligibility. Other systems (`EditorLayout` chrome, `OmniViewPanel` filter,
+ * `popKey()` helper) read from here instead of maintaining their own tables.
  *
  * Popout key prefixes are intentionally the same strings used today by
  * `useViewPrefs.poppedOutCards` (persisted to localStorage). Don't
@@ -31,9 +30,6 @@ export interface CardLink {
 export interface PanelRegistryEntry {
   kind: PanelKind;
   label: string;
-  /** Per-panel folder path (relative to repo root). Used by Cowork to
-   *  navigate directly to a panel's source. */
-  folder: string;
   card: CardLink | null;
   /** Whether this panel's items appear in the Omni view. */
   omniEligible: boolean;
@@ -47,7 +43,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   notes: {
     kind: "notes",
     label: "Notes",
-    folder: "src/panels/Notes",
     // Polymorphic — hosts both `note` and `highlight` card kinds. Membership
     // is registry-derived (`cardKindsForPanel("notes")` in cards/predicates.ts,
     // each kind declares its panel in CARD_REGISTRY); `card` stays null.
@@ -59,7 +54,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   footnotes: {
     kind: "footnotes",
     label: "Footnotes",
-    folder: "src/panels/Footnotes",
     card: { kind: "footnote", keyPrefix: "footnote", themeKey: "footnote" },
     omniEligible: true,
     omniSide: "left",
@@ -68,7 +62,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   citations: {
     kind: "citations",
     label: "Citations",
-    folder: "src/panels/Citations",
     card: { kind: "citation", keyPrefix: "citation", themeKey: "citation" },
     omniEligible: true,
     omniSide: "left",
@@ -77,7 +70,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   bibliography: {
     kind: "bibliography",
     label: "Bibliography",
-    folder: "src/panels/Bibliography",
     card: { kind: "bib", keyPrefix: "bib", themeKey: "bib" },
     omniEligible: false,
     omniSide: null,
@@ -86,7 +78,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   reports: {
     kind: "reports",
     label: "Reports",
-    folder: "src/panels/Reports",
     // Polymorphic — hosts both `report` and `report-request` card kinds.
     // Membership is registry-derived (`cardKindsForPanel("reports")` in
     // cards/predicates.ts); `card` stays null.
@@ -98,7 +89,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   examples: {
     kind: "examples",
     label: "Examples",
-    folder: "src/panels/Examples",
     card: { kind: "example", keyPrefix: "example", themeKey: "example" },
     omniEligible: true,
     omniSide: "left",
@@ -107,7 +97,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   todo: {
     kind: "todo",
     label: "Todo List",
-    folder: "src/panels/Todo",
     card: { kind: "todo", keyPrefix: "todo", themeKey: "todo" },
     omniEligible: true,
     omniSide: "right",
@@ -116,7 +105,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   archive: {
     kind: "archive",
     label: "Archived Text",
-    folder: "src/panels/Archive",
     card: { kind: "archive", keyPrefix: "archive", themeKey: "archive" },
     omniEligible: true,
     omniSide: "right",
@@ -125,7 +113,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   revisions: {
     kind: "revisions",
     label: "Revisions",
-    folder: "src/panels/Revisions",
     card: { kind: "revision-comment", keyPrefix: "revision", themeKey: "revision" },
     omniEligible: true,
     omniSide: "right",
@@ -134,7 +121,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   cutter: {
     kind: "cutter",
     label: "Cutter",
-    folder: "src/panels/Cutter",
     // Polymorphic — hosts both `cutter-comment` and `cutter-suggestion`
     // card kinds. The shared marker/theme/typography for the panel still
     // live under the legacy "cut" keys (see CARD_KEY_PREFIXES below,
@@ -147,7 +133,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   outline: {
     kind: "outline",
     label: "Outline",
-    folder: "src/panels/Outline",
     card: null,
     omniEligible: false,
     omniSide: null,
@@ -156,7 +141,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   search: {
     kind: "search",
     label: "Search",
-    folder: "src/panels/Search",
     card: null,
     omniEligible: false,
     omniSide: null,
@@ -165,7 +149,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   wordcount: {
     kind: "wordcount",
     label: "Word Count",
-    folder: "src/panels/WordCount",
     card: null,
     omniEligible: false,
     omniSide: null,
@@ -174,7 +157,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   errors: {
     kind: "errors",
     label: "Errors",
-    folder: "src/panels/Errors",
     card: { kind: "error", keyPrefix: "error", themeKey: "error" },
     omniEligible: true,
     omniSide: "right",
@@ -183,7 +165,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   omni: {
     kind: "omni",
     label: "Omni-view",
-    folder: "src/panels/Omni",
     card: null,
     omniEligible: false,
     omniSide: null,

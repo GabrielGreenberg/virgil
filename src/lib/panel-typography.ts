@@ -14,6 +14,7 @@
  */
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
+import type { PanelKind } from "@/panels/_shared/types";
 
 export type PanelBodyKey =
   | "footnote"
@@ -167,6 +168,26 @@ const PANEL_BODY_PRIMARY_KIND: Record<PanelBodyKey, CardKind> = {
   report:   "report",
   example:  "example",
 };
+
+/** `PanelKind → PanelBodyKey`, DERIVED by inverting `PANEL_BODY_PRIMARY_KIND`
+ *  through each primary kind's owning panel (`CARD_REGISTRY[kind].panel`, the
+ *  registry SSOT). Panels absent here have no card body text whose size can be
+ *  tuned (Outline, Search, WordCount, Errors, Omni). This REPLACES the hand-kept
+ *  `KIND_TO_BODY_KEY` in `panel-kind-context` — deriving from the same source as
+ *  `DEFAULT_PANEL_TYPOGRAPHY`/`PANEL_BODY_TIER` means adding a body-tunable panel
+ *  (a new `PANEL_BODY_PRIMARY_KIND` row) automatically produces its `PanelKind`
+ *  entry, so the two can no longer drift (audit-059). The inversion is 1:1 — each
+ *  primary kind owns a distinct panel — and `panel-kind-body-key.test.ts` pins
+ *  the map + fails loudly if any body key's primary kind loses its owning panel. */
+export const PANEL_KIND_TO_BODY_KEY: Partial<Record<PanelKind, PanelBodyKey>> =
+  (() => {
+    const map: Partial<Record<PanelKind, PanelBodyKey>> = {};
+    for (const key of Object.keys(PANEL_BODY_PRIMARY_KIND) as PanelBodyKey[]) {
+      const panel = CARD_REGISTRY[PANEL_BODY_PRIMARY_KIND[key]].panel;
+      if (panel) map[panel] = key;
+    }
+    return map;
+  })();
 
 /** Each panel-body row's visual TIER (its primary kind's `CardMeta.bodyClass`).
  *  The tier picks which doc-relative base font size a row's *default* tracks
