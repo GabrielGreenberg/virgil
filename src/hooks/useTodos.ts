@@ -217,14 +217,22 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
    * `useNotes.bindAnchor` so a future todo-duplicate path can reuse it via
    * the card-lifecycle registry. */
   const bindAnchor = useCallback(
-    (id: string, _paragraphId: string, anchorId: string, anchorText: string) => {
+    (id: string, paragraphId: string, anchorId: string, anchorText: string) => {
       update((prev) => {
         const todo = prev.items.find((i) => i.id === id);
         if (!todo) return prev;
         if (getTextAnchor(todo)?.anchorId === anchorId) return prev;
         return {
           items: prev.items.map((i) =>
-            i.id === id ? setTextAnchorLink(i, "todo", anchorId, anchorText) : i,
+            i.id === id
+              ? setTextAnchorLink(
+                  i,
+                  "todo",
+                  anchorId,
+                  anchorText,
+                  paragraphId ? [paragraphId] : undefined,
+                )
+              : i,
           ),
         };
       });

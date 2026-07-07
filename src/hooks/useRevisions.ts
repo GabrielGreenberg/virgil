@@ -547,7 +547,7 @@ export function useRevisions(
    *  card. Called by the duplicate dispatcher's post-insert walker.
    *  Idempotent — see CardLifecycle.bindAnchor doc. */
   const bindAnchor = useCallback(
-    (id: string, _paragraphId: string, anchorId: string, anchorText: string) => {
+    (id: string, paragraphId: string, anchorId: string, anchorText: string) => {
       update((prev) => {
         const card = prev.cards.find((c) => c.id === id);
         if (!card) return prev;
@@ -557,7 +557,15 @@ export function useRevisions(
         return {
           ...prev,
           cards: prev.cards.map((c) =>
-            c.id === id ? setTextAnchorLink(c, kind, anchorId, anchorText) : c,
+            c.id === id
+              ? setTextAnchorLink(
+                  c,
+                  kind,
+                  anchorId,
+                  anchorText,
+                  paragraphId ? [paragraphId] : undefined,
+                )
+              : c,
           ),
         };
       });
