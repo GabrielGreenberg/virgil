@@ -11,7 +11,12 @@
  *      `citationId`) and clones the matching sidecar entry via
  *      [card-lifecycle-registry](../panels/card-lifecycle-registry.tsx).
  *      `INLINE_ATOM_CARDS` is the only kind-aware data here — a 2-entry
- *      lookup table; adding a new inline-atom card kind is one line.
+ *      lookup table; adding a new inline-atom card kind is one line. This
+ *      also descends into an atom's `attrs.content` JSONContent blob (the
+ *      footnote body — a place PM's `node.content` traversal can't reach) and
+ *      re-identifies the atoms nested there via the same rule, so a `\cite`
+ *      inside a footnote gets a fresh citationId + cloned CitationRef instead
+ *      of stranding the clone on the source's identity (task 080).
  *
  *   3. Remints every `linkedAnchor` mark's `anchorId` + clones the
  *      sidecar entry the mark points at (`linkCard` → `cardKind:cardId`).
@@ -32,11 +37,13 @@
  */
 
 import { Slice, Fragment, type Node as PMNode } from "@tiptap/pm/model";
+import type { JSONContent } from "@tiptap/react";
 import { isTextObjectKind } from "./text-object-registry";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { generateEntityId, generateShortId } from "@/lib/uuid";
 import { linkCardKey, parseLinkCardKey } from "@/links/link-registry";
+import { remintNestedAtomIds } from "@/lib/inline-content";
 
 /** Inline-atom card lookup — node-type-name → { CardKind, id-attr-name }.
  *  Only the schema's sidecar-bearing inline atoms appear here. */
@@ -228,6 +235,39 @@ function transformNode(
       }
       newAttrs[atom.idAttr] = cloned ?? generateShortId();
     }
+  }
+
+  // An inline atom whose body is a JSONContent blob (the footnote's
+  // `attrs.content`) hides FURTHER inline atoms that the `node.content`
+  // traversal above never reaches — a `\cite` nested in the footnote body
+  // (`content: { default: null }`, so `node.content.size` is 0). Re-identify
+  // them the SAME way the top-level atom branch does: clone each nested atom's
+  // sidecar and rewrite its id in the cloned blob. Without this the clone's
+  // nested cite keeps the SOURCE's citationId with no cloned CitationRef,
+  // stranding two footnotes on one citation identity (duplicate-id sidecar +
+  // a delete that strikes both — task 080). Gated on the blob's presence, not
+  // on the footnote kind, so any future content-blob-bearing atom inherits it.
+  const contentBlob = newAttrs.content;
+  if (contentBlob && typeof contentBlob === "object") {
+    const { content: reminted } = remintNestedAtomIds(
+      contentBlob as JSONContent,
+      (typeName, oldNestedId) => {
+        const nestedAtom = inlineAtomCardEntry(typeName);
+        // inlineMath / labelRef and the like carry no cloneable sidecar
+        // identity — leave them untouched (their attrs are safe to share).
+        if (!nestedAtom) return null;
+        const clonedNested =
+          lifecycle.get(nestedAtom.cardKind)?.clone(oldNestedId) ?? null;
+        if (clonedNested == null) {
+          diag?.warn("orphan-inline-atom", {
+            cardKind: nestedAtom.cardKind,
+            sourceId: oldNestedId,
+          });
+        }
+        return clonedNested;
+      },
+    );
+    newAttrs.content = reminted;
   }
 
   // INVARIANT: every TextObject node leaves the walker with a fresh
