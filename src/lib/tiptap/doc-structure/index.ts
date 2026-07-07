@@ -67,6 +67,8 @@ export {
 
 export { inspectSteps } from "./step-inspector";
 
+export { touchedBlockPositions } from "./diff-blocks";
+
 export {
   EMPTY_DIFF,
   isEmptyDiff,

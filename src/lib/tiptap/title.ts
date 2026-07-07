@@ -1,11 +1,26 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
-import { readPendingDiff } from "./doc-structure";
+import { readDocStructure, readPendingDiff, touchedBlockPositions } from "./doc-structure";
 
 /**
  * Clears parTitle (and uuid) from empty paragraphs.
  * This prevents stranded titles when a paragraph is split (e.g. Enter at start).
+ *
+ * Keystroke-sanctity (AGENTS.md): this never walks the whole doc. It consumes
+ * the structural diff and inspects only the blocks the transaction touched
+ * (via `touchedBlockPositions`), plus their immediate siblings so the
+ * Enter-at-start split case still fires in either direction. A split copies
+ * `parTitle` onto the new paragraph, then the block-uuid backfill runs as a
+ * trailing transaction and re-uuids the duplicate — so `pendingDiff` describes
+ * the re-uuid, not the split. If the stranded empty paragraph is the re-uuid'd
+ * one it is a direct `addedBlocks` entry; if it kept its uuid it is the sibling
+ * of the re-uuid'd content block. Scanning siblings covers both. Cost is
+ * O(edit-size), never O(#blocks): a plain in-paragraph keystroke inspects
+ * exactly the one typed block plus its two neighbours. The invariant "no empty
+ * titled paragraph survives an edit" is held incrementally, so restricting to
+ * the edit site is behaviour-preserving — a lingering empty-titled paragraph
+ * can only ever appear where the edit happened.
  */
 export const EmptyParagraphTitleCleaner = Extension.create({
   name: "emptyParagraphTitleCleaner",
@@ -17,30 +32,35 @@ export const EmptyParagraphTitleCleaner = Extension.create({
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
-          // Gate: parTitle-cleanup only matters for paragraphs whose
-          // content just changed (typing) or blocks newly added. Pure
-          // selection moves and non-paragraph edits skip.
           const pending = readPendingDiff(newState);
-          if (pending) {
-            const couldMatter =
-              pending.addedBlocks.length > 0 ||
-              pending.contentChangedUuids.size > 0;
-            if (!couldMatter) return null;
+          if (!pending) return null;
+          // Gate: parTitle-cleanup only matters when a paragraph's content
+          // changed (typing/deleting) or a block was added (split/paste).
+          // Pure selection moves and non-paragraph edits skip.
+          if (
+            pending.addedBlocks.length === 0 &&
+            pending.contentChangedUuids.size === 0
+          ) {
+            return null;
           }
 
           const { doc, schema } = newState;
           const paragraphType = schema.nodes.paragraph;
+          const structure = readDocStructure(newState);
           let tr: typeof newState.tr | null = null;
 
-          doc.forEach((node, pos) => {
-            if (node.type !== paragraphType) return;
-            if (!node.attrs.parTitle) return;
-            // If paragraph has no text content, clear its title and uuid
+          // Only the touched blocks (and their neighbours) can have just
+          // become an empty titled paragraph — never the whole doc.
+          for (const pos of touchedBlockPositions(pending, structure, doc, true)) {
+            const node = doc.nodeAt(pos);
+            if (!node || node.type !== paragraphType) continue;
+            if (!node.attrs.parTitle) continue;
+            // If paragraph has no text content, clear its title and uuid.
             if (node.textContent.trim() === "") {
               if (!tr) tr = newState.tr;
               tr.setNodeMarkup(pos, undefined, { ...node.attrs, parTitle: null, uuid: null });
             }
-          });
+          }
 
           return tr;
         },
