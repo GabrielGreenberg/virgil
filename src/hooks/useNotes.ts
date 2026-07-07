@@ -44,6 +44,10 @@ function migrateNote(raw: unknown): UserNote {
     createdAt: r.createdAt!,
     aiRequest: !!r.aiRequest,
     links: migrateCardLinks("note", raw),
+    // Task 076: `originalAnchor` (the Mode-B restore hint) is persisted state —
+    // carry it through load so it survives a reload (the field-by-field rebuild
+    // used to drop it, the same envelope-drop class as the clone path).
+    ...(r.originalAnchor ? { originalAnchor: r.originalAnchor } : {}),
   };
 }
 
@@ -52,11 +56,18 @@ function migrateHighlight(raw: unknown): HighlightCard {
   return {
     kind: "highlight",
     id: r.id!,
+    // Task 076: an archived highlight must load back archived — the rebuild
+    // used to drop `archived`, so it un-archived on reload (and
+    // persistMigrationOnLoad then re-wrote the stripped record). Sibling of the
+    // note migrator's `archived` carry, uncovered by card-archived-persist.
+    archived: r.archived,
     createdAt: r.createdAt!,
     highlightColor:
       typeof r.highlightColor === "string" ? r.highlightColor : null,
     aiRequest: !!r.aiRequest,
     links: migrateCardLinks("highlight", raw),
+    // Task 076: carry the Mode-B restore hint through load (see migrateNote).
+    ...(r.originalAnchor ? { originalAnchor: r.originalAnchor } : {}),
   };
 }
 
@@ -472,6 +483,11 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         createdAt: new Date().toISOString(),
         aiRequest: false,
         links: [],
+        // Task 076: carry the record-level envelope fields the morph converters
+        // already preserve (morphs/index.ts). Duplicating an archived note must
+        // stay archived; `originalAnchor` (the Mode-B restore hint) survives.
+        ...(source.archived ? { archived: source.archived } : {}),
+        ...(source.originalAnchor ? { originalAnchor: source.originalAnchor } : {}),
       };
       update((prev) => ({ cards: [...prev.cards, clone] }));
       return clone.id;
@@ -492,6 +508,10 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         highlightColor: source.highlightColor,
         aiRequest: false,
         links: [],
+        // Task 076: same envelope-drop fix as cloneNote — an archived highlight
+        // clones archived; `originalAnchor` (the Mode-B restore hint) survives.
+        ...(source.archived ? { archived: source.archived } : {}),
+        ...(source.originalAnchor ? { originalAnchor: source.originalAnchor } : {}),
       };
       update((prev) => ({ cards: [...prev.cards, clone] }));
       return clone.id;

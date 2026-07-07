@@ -68,6 +68,38 @@ describe("archived flag survives reload (migrate carry-through)", () => {
     expect(byId["n-active"].archived).toBeFalsy();
   });
 
+  it("notes.json: an archived HIGHLIGHT loads back archived + keeps originalAnchor (task 076)", async () => {
+    // The highlight migrate SHAPE differs from the note one (no title/content)
+    // and used to drop BOTH `archived` (→ un-archived on reload) and
+    // `originalAnchor` (the Mode-B restore hint). Same envelope-drop class.
+    beginDocPipeline("doc-h");
+    const originalAnchor = {
+      droppedAt: "2026-02-02T00:00:00.000Z",
+      anchorId: "anc-h",
+      textSnapshot: "span",
+      paragraphIds: ["p-h"],
+    };
+    mockRead.mockResolvedValue({
+      cards: [
+        {
+          kind: "highlight",
+          id: "h-arch",
+          archived: true,
+          highlightColor: null,
+          originalAnchor,
+          ...base,
+        },
+        { kind: "highlight", id: "h-active", highlightColor: null, ...base },
+      ],
+    });
+    const { result } = renderHook(() => useNotes("doc-h"));
+    await waitFor(() => expect(result.current.cards.length).toBe(2));
+    const byId = Object.fromEntries(result.current.cards.map((c) => [c.id, c]));
+    expect(byId["h-arch"].archived).toBe(true);
+    expect(byId["h-arch"].originalAnchor).toEqual(originalAnchor);
+    expect(byId["h-active"].archived).toBeFalsy();
+  });
+
   it("todos.json: an archived todo loads back archived", async () => {
     beginDocPipeline("doc-t");
     mockRead.mockResolvedValue({
