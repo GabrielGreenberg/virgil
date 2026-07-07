@@ -470,3 +470,89 @@ export function removeCitationFromJsonContent(
   const next = prune(json) ?? json;
   return { content: next, removed };
 }
+
+/** The id attrs an inline atom carries. Re-identifying an atom means replacing
+ *  whichever of these currently holds the old id (plus the unified `linkId`
+ *  mirror, kept in lock-step so an identity-cascade-managed atom stays unified). */
+const ATOM_ID_ATTRS = ["citationId", "footnoteId", "linkId"] as const;
+
+export interface RemintedAtom {
+  typeName: string;
+  oldId: string;
+  newId: string;
+}
+
+/**
+ * Return a deep copy of a JSONContent blob (e.g. a footnote body) with every
+ * nested inline-atom id re-minted via `remint` — the WRITE-side twin of
+ * {@link removeCitationFromJsonContent}. For each node carrying an atom id
+ * (`citationId` / `footnoteId`, or the unified `linkId`), calls
+ * `remint(typeName, oldId)`; a non-null return replaces the id attr(s), a null
+ * (or an unchanged id) leaves the atom untouched — for atom kinds with no
+ * cloneable sidecar identity (`inlineMath` / `labelRef`) or when the caller
+ * declines. Recurses into `content` arrays AND into any atom's own
+ * `attrs.content` literal, so a `\cite` inside a footnote inside … is reached
+ * the same way `inlineAtoms` reads it.
+ *
+ * WHY THIS EXISTS: an inline atom's identity can hide inside a footnote's
+ * `attrs.content` blob — the one place `doc.descendants()` won't enter. The
+ * duplicate-slice walker re-identifies every TOP-LEVEL atom (clone sidecar +
+ * remint id) but treated the footnote as an opaque atom and copied its body
+ * verbatim, so a footnote-nested `\cite` kept the SOURCE's citationId with no
+ * cloned CitationRef — two footnotes stranded on one citation identity, a
+ * duplicate-id sidecar, and a delete that struck both (task 080). This lets the
+ * walker re-identify a footnote-nested atom the SAME way it does a top-level one.
+ *
+ * Pure — never mutates the input; returns the original reference untouched when
+ * nothing was reminted so callers can skip a no-op write.
+ */
+export function remintNestedAtomIds(
+  blob: JSONContent,
+  remint: (typeName: string, oldId: string) => string | null,
+): { content: JSONContent; remapped: RemintedAtom[] } {
+  const remapped: RemintedAtom[] = [];
+
+  const walk = (node: JSONContent): JSONContent => {
+    let out = node;
+
+    // 1. Re-identify this node if it is an atom carrying an id the caller wants
+    //    reminted. `idOf` reads linkId ?? citationId ?? footnoteId.
+    const attrs = node.attrs as Record<string, unknown> | undefined;
+    if (attrs && node.type) {
+      const oldId = idOf(attrs);
+      if (oldId) {
+        const newId = remint(node.type, oldId);
+        if (newId && newId !== oldId) {
+          const nextAttrs: Record<string, unknown> = { ...attrs };
+          for (const key of ATOM_ID_ATTRS) {
+            if (nextAttrs[key] === oldId) nextAttrs[key] = newId;
+          }
+          out = { ...out, attrs: nextAttrs };
+          remapped.push({ typeName: node.type, oldId, newId });
+        }
+      }
+    }
+
+    // 2. Descend into this atom's own content blob (a footnote body), if any —
+    //    symmetric with `inlineAtoms`' descend-into-`attrs.content`.
+    const nested = out.attrs?.content;
+    if (nested && typeof nested === "object") {
+      const rewritten = walk(nested as JSONContent);
+      if (rewritten !== nested) {
+        out = { ...out, attrs: { ...out.attrs, content: rewritten } };
+      }
+    }
+
+    // 3. Recurse into structural children (doc → paragraph → citation …).
+    if (Array.isArray(out.content)) {
+      const kids = out.content.map(walk);
+      if (kids.some((k, i) => k !== (out.content as JSONContent[])[i])) {
+        out = { ...out, content: kids };
+      }
+    }
+
+    return out;
+  };
+
+  return { content: walk(blob), remapped };
+}
