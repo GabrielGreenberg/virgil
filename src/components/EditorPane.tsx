@@ -263,6 +263,7 @@ import {
   getTextAnchor,
   createLinkedAnchor,
   updateLinkedAnchorCard,
+  restampLinkedAnchorForKind,
   paragraphUuidAt,
   captureParagraphSnapshot,
   type CardWithLinks,
@@ -1254,6 +1255,35 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       const morph = CARD_REGISTRY[fromCardKind].morph;
       if (!morph) return; // non-morphing kind — defensive no-op
       const toCardKind = morph.to;
+      // Capture the card's Mode-B text-range anchorId BEFORE the mutation. A
+      // morph carries `links` across UNCHANGED, so the anchorId is stable; we
+      // read it now (while the source card is still in its FROM-kind sidecar) to
+      // restamp the in-doc mark below. Mode-A cards return null → no restamp.
+      const morphAnchorId = ((): string | null => {
+        let cards: readonly CardWithLinks[];
+        switch (fromCardKind) {
+          case "note":
+          case "highlight":
+            cards = notesHookRaw.cards;
+            break;
+          case "revision-comment":
+          case "revision-suggestion":
+            cards = revisionsHookRaw.cards;
+            break;
+          case "cutter-comment":
+          case "cutter-suggestion":
+            cards = cutterHookRaw.cards;
+            break;
+          case "report":
+          case "report-request":
+            cards = reportsHookRaw.cards;
+            break;
+          default:
+            return null;
+        }
+        const card = cards.find((c) => c.id === id);
+        return card ? getTextAnchor(card)?.anchorId ?? null : null;
+      })();
       // The morph chokepoint now routes through `runCardLifecycleEvent` (T4
       // §3.3): the confirm copy is GENERATED from `morph.drops` (never
       // direction-blind — REP-F6-03), the aiRequest inbox is UNBRIDGED when the
@@ -1302,6 +1332,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         },
       );
       if (!committed) return;
+      // Restamp the in-doc `linkedAnchor` mark so its kind-DERIVED presentation
+      // (tintColor band + `data-link-card` spine token) matches the NEW card
+      // kind IMMEDIATELY. The sidecar `mutate` above flips only the JSON record;
+      // without this the mark keeps its old tint + token until a full reload
+      // restamps it via `reapplyModeBAnchors` — so a note→highlight morph
+      // painted an INVISIBLE highlight (amber band absent), and every morph left
+      // a stale token (task 2026-07-06-073). Generic off `toCardKind` — same
+      // `defaultTintForLinkedAnchorKind` SSOT the create + reload paths use.
+      if (morphAnchorId) {
+        const ed = editorInstanceRef.current;
+        if (ed) restampLinkedAnchorForKind(ed, morphAnchorId, toCardKind, id);
+      }
       viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
     },
     [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, docId],
