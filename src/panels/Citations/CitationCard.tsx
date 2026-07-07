@@ -306,15 +306,28 @@ export function CitationCard({
    *  writes (the panel echoes them back through cit.command). */
   const lastWrittenRef = useRef(cit.command);
 
-  useEffect(() => {
-    if (cit.command === lastWrittenRef.current) return;
-    const fresh = parseCiteCommand(cit.command);
-    setRows(rowsFromCommand(cit.command));
+  /** The single resync SSOT: rebuild every piece of local UI state
+   *  (`rows` / `type` / `starred` / `capitalized`) from a command string and
+   *  stamp `lastWrittenRef`. EVERY path that changes `cit.command` WITHOUT
+   *  going through the row mutators must funnel through here — otherwise the
+   *  local state drifts stale and the next `persist()` re-serializes from it,
+   *  silently clobbering the change (task 078). The row mutators keep their own
+   *  invariant ("setRows alongside persist"); this covers the two paths that
+   *  bypass them: the external panel echo (the effect below) and the raw "Code"
+   *  input commit. */
+  const syncLocalFromCommand = useCallback((command: string) => {
+    const fresh = parseCiteCommand(command);
+    setRows(rowsFromCommand(command));
     setType(fresh?.type || "cite");
     setStarred(fresh?.starred ?? false);
     setCapitalized(fresh?.capitalized ?? false);
-    lastWrittenRef.current = cit.command;
-  }, [cit.command]);
+    lastWrittenRef.current = command;
+  }, []);
+
+  useEffect(() => {
+    if (cit.command === lastWrittenRef.current) return;
+    syncLocalFromCommand(cit.command);
+  }, [cit.command, syncLocalFromCommand]);
 
   /** Serialize and emit. If validRows is empty, emit "" (won't survive
    *  in the parent store but the draft flow uses this to know it's empty). */
@@ -582,9 +595,19 @@ export function CitationCard({
       lastWrittenRef.current = v;
       onUpdateCitation(cit.id, v);
     }
+    if (v !== null) {
+      // The Code input bypasses the row mutators, so on commit it must resync
+      // the local rows/type/flags from the committed command (task 078).
+      // Without this the body state stays stale and the next control's
+      // `persist()` re-serializes from it — silently dropping the code edit.
+      // Safe even when no write fired above (the debounce already echoed the
+      // same command): this is exactly what the stale-guard effect would have
+      // done had the code path not stamped `lastWrittenRef`.
+      syncLocalFromCommand(v);
+    }
     codeDraftRef.current = null;
     setCodeDraft(null);
-  }, [cit.command, cit.id, onUpdateCitation]);
+  }, [cit.command, cit.id, onUpdateCitation, syncLocalFromCommand]);
 
   const updateCodeDraft = useCallback(
     (v: string) => {
