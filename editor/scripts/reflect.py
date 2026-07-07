@@ -119,11 +119,28 @@ def _max_tier(a: str, b: str) -> str:
     return a if TIER_ORDER.get(a, 0) >= TIER_ORDER.get(b, 0) else b
 
 
-def _default_seed(result: str | None, status: str | None) -> dict[str, str]:
+# Skills whose terminal result *is* the user's executed decision, not a judgment
+# on an artifact the skill authored. reject-suggestion completing with
+# result=rejected is its SUCCESS path (it did the rejection the user asked for) —
+# so it must not inherit the alignment-mismatch seed meant for the draft-* skill
+# that authored the turned-down artifact. accept-suggestion is its sibling
+# (result=accepted, an unremarkable tier that never reaches the rejected branch)
+# and is listed to name the decision-executor class, not because it can trip it.
+_DECISION_EXECUTOR_SKILLS = {"reject-suggestion", "accept-suggestion"}
+
+
+def _default_seed(
+    result: str | None, status: str | None, skill: str | None = None
+) -> dict[str, str]:
     """A canned bucket note for a signal-bearing outcome, used only when the
     agent left that bucket empty — so a terse reflect call on a rejected /
     refused / errored Task still produces a non-empty, dream-readable memo."""
     if result == "rejected":
+        if skill in _DECISION_EXECUTOR_SKILLS:
+            # This skill EXECUTED the user's rejection — success, not a mismatch.
+            # Seed nothing rather than a false "drafted didn't match" alignment
+            # note that would pollute the dream's rejection-corpus lens.
+            return {}
         return {"alignment": "User rejected the drafted proposal (result: "
                 "rejected) — what was drafted did not match what the user wanted."}
     if result == "refused":
@@ -436,7 +453,7 @@ def main(argv: list[str]) -> int:
     # The three analytic buckets: this run's reflection wins; on a pure-tag run
     # (no buckets supplied) the prior bodies are preserved. Seed a canned note
     # for a signal-bearing outcome only where still empty.
-    seed = _default_seed(result, status)
+    seed = _default_seed(result, status, a.skill)
     buckets: dict = {}
     for key in ("issues", "streamlining", "alignment"):
         body = (in_buckets.get(key) or "").strip()
