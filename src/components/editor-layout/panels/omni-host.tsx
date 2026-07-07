@@ -41,6 +41,7 @@ import type { Transaction } from "@tiptap/pm/state";
 import type {
   ArchivedSnippet,
   OrphanedFootnote,
+  FootnoteRef,
   RevisionCard,
   CutterCard,
 } from "@/lib/types";
@@ -75,6 +76,12 @@ export interface OmniHostProps {
   handleEditOrphan: (id: string, newContent: unknown) => void;
   handleDeleteOrphan: (id: string) => void;
   handleEditOrphanTitle: (id: string, title: string) => void;
+  /** Task 077: atomless footnote refs (archive-born `FootnoteRef`), plus the
+   *  ref-delete handler (removes only the sidecar ref — no atom to splice). Edit
+   *  reuses `handleEditFootnote` (the docked panel wires the same handler). The
+   *  builder filters archived refs out, so this may carry the full ref list. */
+  unanchoredFootnotes: FootnoteRef[];
+  onDeleteUnanchoredFootnote: (id: string) => void;
   /** BUG #55: per-footnote AI-request flags + toggle (from the footnotes.json
    *  sidecar via EditorPane). */
   footnoteAiRequests: Record<string, boolean>;
@@ -451,6 +458,11 @@ export function OmniHost(p: OmniHostProps) {
     ...buildFootnoteOmniItems({
       footnotes: p.footnotes,
       orphanedFootnotes: p.orphanedFootnotes,
+      // Task 077: surface active unanchored refs in Omni too. The builder filters
+      // archived out; edit reuses handleEditFootnote (same as the docked panel).
+      unanchoredFootnotes: p.unanchoredFootnotes,
+      onEditUnanchored: p.handleEditFootnote,
+      onDeleteUnanchored: p.onDeleteUnanchoredFootnote,
       selectedFootnoteId,
       setSelectedFootnoteId: setFootnoteInOmni,
       scrollToFootnote,
@@ -598,7 +610,7 @@ export function OmniHost(p: OmniHostProps) {
   ];
   }, [
     // Data arrays
-    p.footnotes, p.orphanedFootnotes,
+    p.footnotes, p.orphanedFootnotes, p.unanchoredFootnotes,
     p.citations, p.citationPositionMap, p.bibEntries, p.bibPackage,
     p.notesCards,
     p.sortedArchiveSnippets, p.anchoredIds,
@@ -624,6 +636,7 @@ export function OmniHost(p: OmniHostProps) {
     // Footnote handlers
     p.handleEditFootnote, p.handleDeleteFootnote, p.handleEditFootnoteTitle,
     p.handleEditOrphan, p.handleDeleteOrphan, p.handleEditOrphanTitle,
+    p.onDeleteUnanchoredFootnote,
     // #55b: the footnote AI-request flag lives in a SEPARATE `footnoteAiRequests`
     // map (not carried by `p.footnotes`, unlike note/todo whose flag rides their
     // card array), so without these deps the omni checkbox wouldn't re-render on

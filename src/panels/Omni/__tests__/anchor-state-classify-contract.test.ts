@@ -132,7 +132,7 @@ describe("omni builder anchorState classification", () => {
     expect(orphaned.pos).toBeNull();
   });
 
-  it("Footnotes: live footnote → anchored; orphaned footnote → orphaned", () => {
+  it("Footnotes: live → anchored; orphaned → orphaned; active unanchored ref → present orphaned/null; archived ref → absent", () => {
     const items = buildFootnoteOmniItems({
       footnotes: [
         {
@@ -149,6 +149,28 @@ describe("omni builder anchorState classification", () => {
           orphanedAt: "2026-01-01T00:00:00.000Z",
         },
       ],
+      // Task 077: the third card kind — atomless archive-born `FootnoteRef`s.
+      // An unarchive leaves an ACTIVE unanchored ref (`archived:false,
+      // unanchored:true`); an archived ref stays out of Omni (docked
+      // Archives-view only).
+      unanchoredFootnotes: [
+        {
+          id: "fn-unanchored",
+          unanchored: true,
+          archived: false,
+          content: { type: "doc", content: [] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "fn-archived",
+          unanchored: true,
+          archived: true,
+          content: { type: "doc", content: [] },
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      onEditUnanchored: noop,
+      onDeleteUnanchored: noop,
       selectedFootnoteId: null,
       setSelectedFootnoteId: noopId,
       scrollToFootnote: noop,
@@ -168,6 +190,14 @@ describe("omni builder anchorState classification", () => {
     expect(live.pos).toBe(17);
     expect(orphan.anchorState).toBe("orphaned");
     expect(orphan.pos).toBeNull();
+    // Active unanchored ref: present, pos null, orphaned (doctrine-neutral —
+    // matches the sibling Citations unanchored ref; task 056 may flip to "free").
+    const unanchored = items.find((i) => i.id.endsWith("fn-unanchored"))!;
+    expect(unanchored).toBeDefined();
+    expect(unanchored.pos).toBeNull();
+    expect(unanchored.anchorState).toBe("orphaned");
+    // Archived ref: dropped from Omni (parity with the docked Archives view).
+    expect(items.find((i) => i.id.endsWith("fn-archived"))).toBeUndefined();
   });
 
   it("Errors: no source paragraph → free; resolved → anchored; unresolved paragraph → orphaned", () => {
