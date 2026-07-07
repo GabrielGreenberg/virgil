@@ -1704,14 +1704,23 @@ export function setParagraphLinks<T extends CardWithLinks>(
 }
 
 /** Set a Mode B text-range anchor on the card. Preserves existing
- *  paragraph anchors. */
+ *  paragraph anchors.
+ *
+ *  `explicitTextObjectIds`, when provided, is used as the new link's
+ *  `textObjectIds` instead of the card's own `getLinkedTextObjectIds`.
+ *  The create path leaves it undefined (the card already carries its
+ *  containing-paragraph link, so the fallback reads it). The clone path
+ *  passes the known containing paragraph id here, because a freshly-cloned
+ *  card has `links: []` — without it the Mode-B link would be written with
+ *  `textObjectIds: []` and the card would mis-bin as `free` in omni. */
 export function setTextAnchorLink<T extends CardWithLinks>(
   card: T,
   cardKind: CardKind,
   anchorId: string,
   anchorText: string,
+  explicitTextObjectIds?: string[],
 ): T {
-  const textObjectIds = getLinkedTextObjectIds(card);
+  const textObjectIds = explicitTextObjectIds ?? getLinkedTextObjectIds(card);
   const next = makeAnchorLink(cardKind, card.id, "linkedRange", textObjectIds, {
     anchorId,
     textSnapshot: anchorText,

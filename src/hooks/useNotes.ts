@@ -504,7 +504,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
    *  for every linkedAnchor mark inside the cloned slice. Idempotent:
    *  if the card already carries this anchorId, no-op. */
   const bindAnchor = useCallback(
-    (id: string, _paragraphId: string, anchorId: string, anchorText: string) => {
+    (id: string, paragraphId: string, anchorId: string, anchorText: string) => {
       update((prev) => {
         const card = prev.cards.find((c) => c.id === id);
         if (!card) return prev;
@@ -513,7 +513,15 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         const kind = card.kind === "highlight" ? "highlight" : "note";
         return {
           cards: prev.cards.map((c) =>
-            c.id === id ? setTextAnchorLink(c, kind, anchorId, anchorText) : c,
+            c.id === id
+              ? setTextAnchorLink(
+                  c,
+                  kind,
+                  anchorId,
+                  anchorText,
+                  paragraphId ? [paragraphId] : undefined,
+                )
+              : c,
           ),
         };
       });
