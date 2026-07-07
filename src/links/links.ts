@@ -30,7 +30,11 @@ import {
   linkCardKey,
   parseLinkCardKey,
 } from "./link-registry";
-import { legacyDataKindForCardKind } from "@/cards/legacy-token-crosswalk";
+import {
+  legacyDataKindForCardKind,
+  legacyMarkKindForCardKind,
+  defaultTintForLinkedAnchorKind,
+} from "@/cards/legacy-token-crosswalk";
 import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
 
 // Re-exports so callers import everything from one module.
@@ -999,6 +1003,64 @@ export function updateLinkedAnchorCard(
       linkKind: "anchor",
       linkCard: `${cardKind}:${cardId}`,
       tintColor,
+    })
+    .setTextSelection(range.from)
+    .run();
+}
+
+/**
+ * Restamp a `linkedAnchor` mark's KIND-DERIVED presentation — the legacy `kind`
+ * attr, the `data-link-card` spine token, AND the persistent `tintColor` band —
+ * to match a NEW spine `CardKind`. The SSOT for "the owning card's kind changed
+ * (a MORPH), so make its in-doc mark agree."
+ *
+ * Unlike `updateLinkedAnchorCard` (which PRESERVES the mark's kind + tint so a
+ * note sibling over a highlight doesn't dim the yellow), this AUTHORITATIVELY
+ * re-derives all three kind-driven attrs from `cardKind`, using the SAME
+ * `defaultTintForLinkedAnchorKind` SSOT the create + reload
+ * (`reapply-mode-b-anchors`) paths use. So a note→highlight morph paints the
+ * amber band IMMEDIATELY (no reload) and a highlight→note morph clears it —
+ * closing the "a morph mutates the sidecar but not the mark, so kind-derived
+ * mark presentation goes stale until reload" class (task 2026-07-06-073).
+ *
+ * `addToHistory: false` — a morph's sidecar flip is not an editor-undoable edit,
+ * so the mark correction rides outside the undo stack (no torn half-undo where
+ * Ctrl+Z reverts the tint but leaves the card morphed).
+ */
+export function restampLinkedAnchorForKind(
+  editor: Editor,
+  anchorId: string,
+  cardKind: CardKind,
+  cardId: string,
+): void {
+  const range = resolveTextRangeByAnchorId(editor, anchorId);
+  if (!range) return;
+  // Legacy mark-kind attr for the target (note/highlight are identity; both
+  // revision spine kinds fold to "revision"). Fall back to the spine string for
+  // a mark-less kind (unreachable — callers guard on getTextAnchor).
+  const kind = legacyMarkKindForCardKind(cardKind) ?? cardKind;
+  // data-link-card spine token (`legacyDataKind` == the spine CardKind string
+  // for every mark-carrying kind — see the crosswalk).
+  const spineToken = legacyDataKindForCardKind(cardKind) ?? cardKind;
+  editor
+    .chain()
+    // Load/lifecycle correction: not an undoable user edit (mirrors the reload
+    // reconcile's addToHistory:false re-stamp).
+    .command(({ tr }) => {
+      tr.setMeta("addToHistory", false);
+      return true;
+    })
+    .setTextSelection(range)
+    .setMark("linkedAnchor", {
+      anchorId,
+      kind,
+      linkId: anchorId,
+      linkKind: "anchor",
+      linkCard: `${spineToken}:${cardId}`,
+      // The SAME kind-derived tint SSOT the create + reload paths read, so the
+      // morphed mark's band is byte-identical to a created/reloaded one (amber
+      // for highlight, null — no band — for every other kind).
+      tintColor: defaultTintForLinkedAnchorKind(kind),
     })
     .setTextSelection(range.from)
     .run();

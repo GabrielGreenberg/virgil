@@ -167,6 +167,34 @@ const LEGACY_MARK_KIND_TO_CARD_KIND: Record<string, CardKind> = {
   "report-request": "report-request",
 };
 
+/** Spine `CardKind` → the legacy `linkedAnchor.kind` mark-attr token (the
+ *  INVERSE of `LEGACY_MARK_KIND_TO_CARD_KIND`). The mark's `kind` attr lives in
+ *  the LEGACY namespace, so a card MORPH must re-derive it from the NEW spine
+ *  kind to stop the mark lying about the old one — see
+ *  `restampLinkedAnchorForKind` (links.ts). Both revision spine kinds collapse
+ *  to the single legacy mark kind `"revision"` (the reapply pass stamps both as
+ *  "revision"), so this is not a strict bijection — hence a hand-declared table,
+ *  dev-pinned below against the forward map. `null` for kinds that never carry a
+ *  `linkedAnchor` mark (footnote/citation/example/archive/bib/error). */
+const CARD_KIND_TO_LEGACY_MARK_KIND: Partial<Record<CardKind, string>> = {
+  note: "note",
+  highlight: "highlight",
+  todo: "todo",
+  "revision-comment": "revision",
+  "revision-suggestion": "revision",
+  "cutter-comment": "cutter-comment",
+  "cutter-suggestion": "cutter-suggestion",
+  report: "report",
+  "report-request": "report-request",
+};
+
+/** The legacy `linkedAnchor.kind` mark-attr token a spine `CardKind` paints, or
+ *  `null` if the kind never carries a mark. Single source for the card-morph
+ *  mark restamp (`restampLinkedAnchorForKind`). */
+export function legacyMarkKindForCardKind(kind: CardKind): string | null {
+  return CARD_KIND_TO_LEGACY_MARK_KIND[kind] ?? null;
+}
+
 /**
  * The `data-link-card` token a `linkedAnchor` mark falls back to when it carries
  * NO explicit `linkCard` — i.e. a mark re-stamped by the once-per-doc
@@ -247,5 +275,18 @@ if (process.env.NODE_ENV !== "production") {
         `data-paragraph-kind token the CSS rule reads), got ` +
         `"${LEGACY_TOKEN_CROSSWALK["cutter-comment"].cssToken}".`,
     );
+  }
+  // Pin CARD_KIND_TO_LEGACY_MARK_KIND as the faithful inverse of
+  // LEGACY_MARK_KIND_TO_CARD_KIND: every legacy mark kind must round-trip
+  // (markKind → spine → markKind). If a future edit adds a mark kind to one map
+  // but not the other, the morph restamp would stamp a stale/absent kind.
+  for (const [markKind, spine] of Object.entries(LEGACY_MARK_KIND_TO_CARD_KIND)) {
+    if (CARD_KIND_TO_LEGACY_MARK_KIND[spine] !== markKind) {
+      console.error(
+        `[legacy-token-crosswalk] CARD_KIND_TO_LEGACY_MARK_KIND["${spine}"] must be ` +
+          `"${markKind}" (the inverse of LEGACY_MARK_KIND_TO_CARD_KIND), got ` +
+          `"${CARD_KIND_TO_LEGACY_MARK_KIND[spine]}".`,
+      );
+    }
   }
 }
