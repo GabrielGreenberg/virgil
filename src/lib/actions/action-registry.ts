@@ -356,7 +356,10 @@ export interface ActionSurfaces {
   grab?: boolean;
   /** Lightning-bolt menu (`ActionsMenuPanel`: action list + formatting grid). */
   lightning?: boolean;
-  /** Slash command (`VIRGIL_COMMANDS`). `slashName` names the command. */
+  /** The slash surface (`VIRGIL_COMMANDS`) can REACH this row. `slashName` names
+   *  the primary command; a row a MANY-to-one alias group targets (the
+   *  structural wrappers `\list`/`\itemize` → bullet-list, `\quote`/`\quotation`
+   *  → blockquote) also lists its extra names in `slashAliases`. */
   slash?: boolean;
   /** Typed-LaTeX input rule (`\cite{}` / `\footnote{}`). `inputRulePattern`
    *  names the trigger. */
@@ -692,8 +695,18 @@ export interface ActionSpec {
    *  `assertActionCoverage`. */
   surfaces: ActionSurfaces;
   /** Slash-command name WITHOUT the backslash (e.g. "section", "cite"),
-   *  present iff `surfaces.slash`. Matches a `VIRGIL_COMMAND_NAMES` entry. */
+   *  present iff `surfaces.slash`. Matches a `VIRGIL_COMMAND_NAMES` entry. The
+   *  PRIMARY name — a row a MANY-to-one alias group reaches carries its extra
+   *  names in `slashAliases`. */
   slashName?: string;
+  /** Extra slash-command names (WITHOUT the backslash) that ALIAS onto this row
+   *  through the many-to-one bridge — e.g. `itemize` → bullet-list, `quotation`
+   *  → blockquote (`list`/`quote` being the respective `slashName` primaries).
+   *  Present only on the structural-wrapper rows the five `\list`/`\itemize`/
+   *  `\enumerate`/`\quote`/`\quotation` commands fan into. Each entry matches a
+   *  `VIRGIL_COMMAND_NAMES` entry and is reconciled by `assertActionCoverage`
+   *  alongside `slashName`, so a mis-mapped alias can't drift silently. */
+  slashAliases?: string[];
   /** The typed-LaTeX input-rule trigger, present iff `surfaces.typed`
    *  (citation / footnote). The RegExp the plugin matches against the text
    *  before the caret. */
@@ -2363,16 +2376,29 @@ function formatToggleRow(
   id: FormatActionId,
   label: string,
   chainCmd: (chain: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>,
-  opts: { wrapper?: boolean } = {},
+  opts: {
+    wrapper?: boolean;
+    /** The structural WRAPPER rows (bullet-list / ordered-list / blockquote) are
+     *  ALSO reachable via slash (`\list`/`\enumerate`/`\quote` + the two `itemize`/
+     *  `quotation` aliases), routed through the bridge from `commands.ts`. Passing
+     *  this makes the surface map TRUTHFUL: the row claims `surfaces.slash` and
+     *  names its command(s), so `assertActionCoverage` reconciles all five live
+     *  names against it (task 062). The MARK toggles omit it — a mark is not a
+     *  slash command. */
+    slash?: { name: string; aliases?: string[] };
+  } = {},
 ): ActionSpec {
   const isWrapper = opts.wrapper === true;
+  const slash = opts.slash;
   return {
     id,
     label,
     category: "format",
     selection: "ignored",
     backbone: "tiptap-chain",
-    surfaces: { lightning: true },
+    surfaces: slash ? { lightning: true, slash: true } : { lightning: true },
+    ...(slash ? { slashName: slash.name } : {}),
+    ...(slash?.aliases ? { slashAliases: slash.aliases } : {}),
     applies: isWrapper ? wrapperApplies : formatApplies,
     run: (ctx) => {
       if (isCollabReadOnly(ctx)) return; // uniform collab gate — no-op
@@ -2387,14 +2413,17 @@ function formatToggleRow(
 
 /** The four MARK toggles + the three list/quote WRAPPER toggles. The wrappers
  *  pass `{ wrapper: true }` so they grey + no-op on non-listable blocks (Bug
- *  #1); the marks stay unconditionally applicable. */
+ *  #1) AND `{ slash: … }` so the surface map records the slash commands that
+ *  reach them (task 062): `\list` (+ alias `itemize`) → bullet-list,
+ *  `\enumerate` → ordered-list, `\quote` (+ alias `quotation`) → blockquote.
+ *  The marks stay unconditionally applicable and slash-less. */
 const BOLD_ACTION_ROW = formatToggleRow("bold", "Bold", (c) => c.toggleBold());
 const ITALIC_ACTION_ROW = formatToggleRow("italic", "Italic", (c) => c.toggleItalic());
 const STRIKE_ACTION_ROW = formatToggleRow("strike", "Strikethrough", (c) => c.toggleStrike());
 const CODE_ACTION_ROW = formatToggleRow("code", "Inline code", (c) => c.toggleCode());
-const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: true });
-const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: true });
-const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote(), { wrapper: true });
+const BULLET_LIST_ACTION_ROW = formatToggleRow("bullet-list", "Bullet list", (c) => c.toggleBulletList(), { wrapper: true, slash: { name: "list", aliases: ["itemize"] } });
+const ORDERED_LIST_ACTION_ROW = formatToggleRow("ordered-list", "Numbered list", (c) => c.toggleOrderedList(), { wrapper: true, slash: { name: "enumerate" } });
+const BLOCKQUOTE_ACTION_ROW = formatToggleRow("blockquote", "Blockquote", (c) => c.toggleBlockquote(), { wrapper: true, slash: { name: "quote", aliases: ["quotation"] } });
 
 /**
  * The text-color row (CHIP 6b). Unlike the toggles, this opens the
@@ -2810,14 +2839,17 @@ const EXPECTED_ACTION_IDS: readonly ActionId[] = [
  * `chapter/section/subsection/subsubsection` fan out to the four discrete
  * heading ids (see the HEADING ID SCHEME note on `BlockActionId`).
  *
- * Bug sweep #6: the 5 structural-wrapper commands ALIAS onto existing FORMAT
- * rows (`bullet-list`/`ordered-list`/`blockquote`) — `\list`/`\itemize` both →
- * bullet-list, `\quote`/`\quotation` both → blockquote. Unlike the 1:1 slash
- * surfaces, these are a MANY-to-one alias group reached through the bridge
- * (`runAction`), so the target rows keep their `lightning`-only `surfaces` (no
- * per-row `slashName` could be 1:1 across two aliases); the slash reconciliation
- * below skips a row that doesn't own the slash surface, so this mapping just
- * pins that every alias resolves to a real action id.
+ * The 5 structural-wrapper commands ALIAS onto existing FORMAT rows
+ * (`bullet-list`/`ordered-list`/`blockquote`) — `\list`/`\itemize` both →
+ * bullet-list, `\quote`/`\quotation` both → blockquote. This is a MANY-to-one
+ * alias group reached through the bridge (`runAction`).
+ *
+ * Task 062 (option A — make the map TRUTHFUL): each target row NOW claims
+ * `surfaces.slash` with a PRIMARY `slashName` (`list`/`enumerate`/`quote`) and
+ * lists its second name in `slashAliases` (`itemize`/`quotation`). So the slash
+ * reconciliation below no longer skips these rows — it pins each of the five
+ * live names to a slash-claiming row that names it (primary OR alias), giving
+ * the wrappers the same typo-catching guard every 1:1 slash command has.
  */
 const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
   title: "title",
@@ -2900,14 +2932,28 @@ const BLOCK_IDS_WITH_SLASH: ReadonlySet<BlockActionId> = new Set<BlockActionId>(
 
 /**
  * The 8 format ids — the slice CHIP 6b populates, completing the GRID fold. Each
- * is `category: "format"`, `backbone: "tiptap-chain"`, and LIGHTNING-ONLY (the
- * grid; no slash/typed/grab — a mark toggle is not a slash command or an input
- * rule, and the keyboard bindings are owned by StarterKit, not this registry).
- * Moves these ids from EXPECTED-PENDING to COVERED so step (4) doesn't flag the
- * new rows as out-of-order. Typed against `FormatActionId` so a drift trips the
- * typechecker.
+ * is `category: "format"`, `backbone: "tiptap-chain"`, and on the lightning grid.
+ * The five MARK toggles (bold/italic/strike/code/text-color) are lightning-ONLY
+ * (a mark is not a slash command or input rule; StarterKit owns the keybindings).
+ * The three structural WRAPPER toggles (in `FORMAT_IDS_WITH_SLASH`) ALSO own the
+ * slash surface as of task 062. Moves these ids from EXPECTED-PENDING to COVERED
+ * so step (4) doesn't flag the new rows as out-of-order. Typed against
+ * `FormatActionId` so a drift trips the typechecker.
  */
 const COVERED_FORMAT_IDS: readonly FormatActionId[] = FORMAT_ACTION_IDS;
+
+/**
+ * The format ids that ALSO own the SLASH surface (task 062) — the three
+ * structural WRAPPER rows the five `\list`/`\itemize`/`\enumerate`/`\quote`/
+ * `\quotation` commands fan into (many-to-one). Each row must claim
+ * `surfaces.slash` + a `slashName` (primary), and carries its second name in
+ * `slashAliases`; the reconciliation below pins every live name to one of these
+ * rows. The other five format ids (the mark toggles) are lightning-only and must
+ * NOT claim slash. Mirrors `BLOCK_IDS_WITH_SLASH` so the assertion partitions the
+ * slice instead of blanket-forbidding slash on every format row.
+ */
+const FORMAT_IDS_WITH_SLASH: ReadonlySet<FormatActionId> =
+  new Set<FormatActionId>(["bullet-list", "ordered-list", "blockquote"]);
 
 /**
  * The single ATOM id — `ref` — the slice CHIP 7a populates. `category: "atom"`,
@@ -3148,9 +3194,12 @@ export function assertActionCoverage(): string[] {
   // registry). Each format row must be `category: "format"`, declare
   // `backbone: "tiptap-chain"` (the explicit record that it is backbone-less —
   // a pure `editor.chain()` call, no Virgil SSOT), claim `surfaces.lightning`
-  // (every format cell is a grid cell), and never claim slash/typed/grab/keyboard
-  // (a mark toggle is not a slash command or an input rule; its keybindings are
-  // owned by StarterKit, not this registry).
+  // (every format cell is a grid cell), and never claim typed/grab/keyboard
+  // (a mark toggle is not an input rule; its keybindings are owned by StarterKit,
+  // not this registry). PARTITIONED on `FORMAT_IDS_WITH_SLASH` (task 062): the
+  // three structural WRAPPER rows ALSO own the slash surface (`\list`/`\enumerate`/
+  // `\quote` + aliases, reconciled below) so they MUST claim slash + a slashName;
+  // the five MARK rows must NOT claim slash (a mark is not a slash command).
   for (const id of COVERED_FORMAT_IDS) {
     const row = VIRGIL_ACTION_REGISTRY[id];
     if (!row) {
@@ -3175,14 +3224,28 @@ export function assertActionCoverage(): string[] {
         `[actions] format id "${id}" must set surfaces.lightning (every format cell is a grid cell)`,
       );
     }
-    if (
-      row.surfaces.grab ||
-      row.surfaces.slash ||
-      row.surfaces.typed ||
-      row.surfaces.keyboard
-    ) {
+    if (row.surfaces.grab || row.surfaces.typed || row.surfaces.keyboard) {
       problems.push(
-        `[actions] format id "${id}" claims a grab/slash/typed/keyboard surface it does not expose`,
+        `[actions] format id "${id}" claims a grab/typed/keyboard surface it does not expose`,
+      );
+    }
+    if (FORMAT_IDS_WITH_SLASH.has(id)) {
+      // the structural WRAPPERS (bullet-list / ordered-list / blockquote) own the
+      // slash surface — must claim it + name it (primary; aliases reconciled below).
+      if (!row.surfaces.slash) {
+        problems.push(
+          `[actions] format id "${id}" must set surfaces.slash (the wrapper owns the slash surface)`,
+        );
+      }
+      if (!row.slashName) {
+        problems.push(
+          `[actions] format id "${id}" sets surfaces.slash but is missing slashName`,
+        );
+      }
+    } else if (row.surfaces.slash || row.slashName || row.slashAliases) {
+      // a MARK toggle is not a slash command — it must claim no slash surface/name.
+      problems.push(
+        `[actions] format id "${id}" prematurely claims the slash surface (a mark toggle is not a slash command)`,
       );
     }
   }
@@ -3313,8 +3376,13 @@ export function assertActionCoverage(): string[] {
   // surface, so for each name we pin the row ↔ name correspondence: the target
   // row must exist, claim `surfaces.slash`, and name the same command — so a
   // typed `\<name>` can never silently land on a row that forgot to claim slash
-  // OR named a different command. (The `!row || !row.surfaces.slash` skip below
-  // is now defensive only — no live name should hit it.)
+  // OR named a different command. Task 062 extends this to the MANY-to-one alias
+  // group: a live name may match the row's primary `slashName` OR any of its
+  // `slashAliases` (`\itemize` → bullet-list's `["itemize"]`, `\quotation` →
+  // blockquote's `["quotation"]`). This closes the last drift hole — a mis-mapped
+  // alias in `SLASH_NAME_TO_ACTION_ID`, or a typo'd `slashAliases` entry, now
+  // trips here instead of passing silently. (The `!row || !row.surfaces.slash`
+  // skip below is defensive only — no live name should hit it.)
   for (const name of VIRGIL_COMMAND_NAMES) {
     const id = SLASH_NAME_TO_ACTION_ID[name];
     if (!id) {
@@ -3333,9 +3401,12 @@ export function assertActionCoverage(): string[] {
     // Not-yet-migrated (no row, or a row that hasn't opted into slash) →
     // expected-pending; its surface checks land with its chip.
     if (!row || !row.surfaces.slash) continue;
-    if (row.slashName !== name) {
+    // The primary name plus any alias names the row claims. A live command must
+    // match ONE of them (many-to-one for the structural wrappers, 1:1 otherwise).
+    const claimedNames = [row.slashName, ...(row.slashAliases ?? [])];
+    if (!claimedNames.includes(name)) {
       problems.push(
-        `[actions] slash command "\\${name}" maps to "${id}", whose slashName is "${row.slashName ?? "(unset)"}" (expected "${name}")`,
+        `[actions] slash command "\\${name}" maps to "${id}", whose slashName/aliases are ${JSON.stringify(claimedNames.filter(Boolean))} (expected to include "${name}")`,
       );
     }
   }
