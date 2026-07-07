@@ -1,6 +1,6 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { readPendingDiff } from "./doc-structure";
+import { readDocStructure, readPendingDiff, touchedBlockPositions } from "./doc-structure";
 
 /** \ref{label} — inline cross-reference rendered as a clickable pod. */
 export const LabelRef = Node.create({
@@ -87,9 +87,22 @@ export const LabelRef = Node.create({
   },
 });
 
+const LABEL_ONLY_PARAGRAPH = /^\\label\{([^}]*)\}$/;
+
 /**
  * Absorbs \label{...} paragraphs that immediately follow a heading into
  * the heading's label attribute, and removes the paragraph.
+ *
+ * Keystroke-sanctity (AGENTS.md): this never walks the whole doc. It consumes
+ * the structural diff and inspects only the blocks the transaction touched
+ * (via `touchedBlockPositions`). An absorption is a heading+following-paragraph
+ * pair, so either end can trigger it — the pair is discovered from whichever
+ * side the diff names:
+ *   - a touched HEADING (a `\label`-bearing follower may now match it), or
+ *   - a touched PARAGRAPH that just became `^\label{…}$` (typed) or was added
+ *     (pasted), whose preceding sibling is a heading.
+ * Cost is O(edit-size), never O(#blocks): a plain in-paragraph keystroke
+ * inspects exactly the one typed block.
  */
 export const LabelHandler = Extension.create({
   name: "labelHandler",
@@ -101,57 +114,86 @@ export const LabelHandler = Extension.create({
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
-          // Gate: this plugin's job is to absorb `\label{...}` paragraphs
-          // that follow headings. It only matters when a paragraph's
-          // text content was touched (typing) or when blocks were added
-          // (paste). Pure-text edits in non-paragraph blocks, or
-          // selection-only transactions, skip.
           const pending = readPendingDiff(newState);
-          if (pending) {
-            const couldMatter =
-              pending.addedBlocks.length > 0 ||
-              pending.contentChangedUuids.size > 0 ||
-              pending.changedHeadings.length > 0;
-            if (!couldMatter) return null;
+          if (!pending) return null;
+          // Gate: this plugin's job is to absorb `\label{...}` paragraphs
+          // that follow headings. It only matters when a paragraph's text
+          // was touched (typing), blocks were added (paste), or a heading
+          // changed. Selection-only transactions skip.
+          if (
+            pending.addedBlocks.length === 0 &&
+            pending.contentChangedUuids.size === 0 &&
+            pending.changedHeadings.length === 0
+          ) {
+            return null;
           }
 
           const { doc, schema } = newState;
           const headingType = schema.nodes.heading;
           const paragraphType = schema.nodes.paragraph;
+          const structure = readDocStructure(newState);
 
-          const changes: Array<{
-            headingPos: number;
-            headingAttrs: Record<string, unknown>;
-            label: string;
-            paraPos: number;
-            paraSize: number;
-          }> = [];
+          // Deduped by the label paragraph's position — a heading/paragraph
+          // pair can surface from BOTH ends when both are in the touched set.
+          const changes = new Map<
+            number,
+            {
+              headingPos: number;
+              headingAttrs: Record<string, unknown>;
+              label: string;
+              paraPos: number;
+              paraSize: number;
+            }
+          >();
 
-          doc.forEach((node, pos) => {
-            if (node.type !== headingType) return;
-            const nextPos = pos + node.nodeSize;
-            if (nextPos >= doc.content.size) return;
-            const nextNode = doc.nodeAt(nextPos);
-            if (!nextNode || nextNode.type !== paragraphType) return;
-            const text = nextNode.textContent;
-            const match = text.match(/^\\label\{([^}]*)\}$/);
+          // Record an absorption for the heading at `headingNode`/`headingPos`
+          // and the following label paragraph at `paraPos`, if the label differs.
+          const consider = (
+            headingNode: ReturnType<typeof doc.nodeAt>,
+            headingPos: number,
+            paraNode: ReturnType<typeof doc.nodeAt>,
+            paraPos: number,
+          ) => {
+            if (!headingNode || headingNode.type !== headingType) return;
+            if (!paraNode || paraNode.type !== paragraphType) return;
+            const match = paraNode.textContent.match(LABEL_ONLY_PARAGRAPH);
             if (!match) return;
             const label = match[1];
-            if (node.attrs.label === label) return;
-            changes.push({
-              headingPos: pos,
-              headingAttrs: node.attrs,
+            if (headingNode.attrs.label === label) return;
+            changes.set(paraPos, {
+              headingPos,
+              headingAttrs: headingNode.attrs,
               label,
-              paraPos: nextPos,
-              paraSize: nextNode.nodeSize,
+              paraPos,
+              paraSize: paraNode.nodeSize,
             });
-          });
+          };
 
-          if (changes.length === 0) return null;
+          for (const pos of touchedBlockPositions(pending, structure, doc)) {
+            const node = doc.nodeAt(pos);
+            if (!node) continue;
+            if (node.type === headingType) {
+              // Heading touched → its immediate following paragraph may be a
+              // label to absorb.
+              const nextPos = pos + node.nodeSize;
+              if (nextPos < doc.content.size) {
+                consider(node, pos, doc.nodeAt(nextPos), nextPos);
+              }
+            } else if (node.type === paragraphType) {
+              // Paragraph touched → if it's a label paragraph, its preceding
+              // sibling may be the heading that should absorb it.
+              const prev = doc.resolve(pos).nodeBefore;
+              if (prev) consider(prev, pos - prev.nodeSize, node, pos);
+            }
+          }
 
-          // Process in reverse order so deletions don't shift earlier positions
+          if (changes.size === 0) return null;
+
+          // Process in reverse position order so deletions don't shift earlier
+          // positions.
+          const ordered = [...changes.values()].sort((a, b) => b.headingPos - a.headingPos);
           const tr = newState.tr;
-          for (const c of [...changes].reverse()) {
+          for (const c of ordered) {
             tr.setNodeMarkup(c.headingPos, undefined, { ...c.headingAttrs, label: c.label });
             tr.delete(c.paraPos, c.paraPos + c.paraSize);
           }
