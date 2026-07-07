@@ -30,13 +30,29 @@
  */
 
 import { Fragment, Slice } from "@tiptap/pm/model";
-import type { Node as PMNode, Schema } from "@tiptap/pm/model";
+import type { MarkType, Node as PMNode, Schema } from "@tiptap/pm/model";
 
 /**
- * Walk the doc for text nodes whose marks include a `linkedAnchor` with the
- * matching `anchorId`. Returns the bounding range `[firstMarkedStart,
- * lastMarkedEnd)`, which may include unmarked gaps inside (e.g. a paragraph
- * break between two marked spans).
+ * THE single anchor-range walker for the whole codebase. Walk the doc for text
+ * nodes carrying a `linkedAnchor` (or, if `markType` is given, that exact mark)
+ * with the matching `anchorId`, and return the BOUNDING range
+ * `[firstMarkedStart, lastMarkedEnd)`.
+ *
+ * The bounding span is deliberately the FULL extent even when the marked text
+ * is INTERRUPTED: a highlight/note/cutter/revision over `"text \cite{x} more"`
+ * is stored as two marked runs (before/after the inline atom) sharing one
+ * `anchorId`, and a cross-block Highlight marks a run in every block it spans.
+ * Any unmarked interior gap (e.g. the atom, or a paragraph break) is included —
+ * which is correct for every caller: `unsetMark` over the span only clears
+ * where the mark is actually present, and jump-to / source-range / reanchor
+ * want the full extent. Returning only the first contiguous run truncated
+ * atom-split and cross-block anchors, leaving a stale tint on runs 2..N when a
+ * card was deleted and reading short for jump-to (task 071).
+ *
+ * SSOT: `resolveTextRangeByAnchorId` (src/links/links.ts) and the drag-handle
+ * range/bounds lookups fold onto this so no fourth copy can re-drift; the
+ * float / lift-overlay / drop-spec / stack-snapshot / pending-change-nav paths
+ * already resolved through here.
  *
  * Returns null when no text carries the mark — typically because the range
  * was deleted or the doc was reloaded before sidecar reanchoring restored it.
@@ -44,13 +60,16 @@ import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 export function findLinkedAnchorRange(
   doc: PMNode,
   anchorId: string,
+  markType?: MarkType,
 ): { from: number; to: number } | null {
   let from = -1;
   let to = -1;
   doc.descendants((node, pos) => {
     if (!node.isText) return true;
     const hasMark = node.marks.some(
-      (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
+      (m) =>
+        (markType ? m.type === markType : m.type.name === "linkedAnchor") &&
+        m.attrs.anchorId === anchorId,
     );
     if (hasMark) {
       if (from === -1) from = pos;

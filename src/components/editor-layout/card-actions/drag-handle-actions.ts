@@ -24,7 +24,7 @@
 
 import { useCallback, type RefObject } from "react";
 import type { Editor } from "@tiptap/react";
-import type { Node as PMNode, MarkType, Slice } from "@tiptap/pm/model";
+import type { Node as PMNode, Slice } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import {
   createDuplicateDiagnostics,
@@ -45,6 +45,7 @@ import {
   updateLinkedAnchorCard,
   type LinkedAnchorKind,
 } from "@/links/links";
+import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { cardPopKey } from "@/panels/panel-registry";
@@ -938,7 +939,7 @@ function outerRangeFor(
   if (meta.isRange) {
     const markType = ed.state.schema.marks.linkedAnchor;
     if (!markType) return null;
-    return findLinkedRangeBounds(ed.state.doc, ref.id, markType);
+    return findLinkedAnchorRange(ed.state.doc, ref.id, markType);
   }
 
   if (ref.kind === "heading") {
@@ -1018,7 +1019,7 @@ function resolveRefRange(
     // linkedRange — walk the doc for the linkedAnchor mark with this id.
     const markType = ed.state.schema.marks.linkedAnchor;
     if (!markType) return null;
-    const bounds = findLinkedRangeBounds(ed.state.doc, ref.id, markType);
+    const bounds = findLinkedAnchorRange(ed.state.doc, ref.id, markType);
     if (!bounds) return null;
     return { selectionKind: "text", from: bounds.from, to: bounds.to };
   }
@@ -1066,28 +1067,6 @@ function resolveRefRange(
   return result;
 }
 
-function findLinkedRangeBounds(
-  doc: PMNode,
-  anchorId: string,
-  markType: MarkType,
-): { from: number; to: number } | null {
-  let from = -1;
-  let to = -1;
-  doc.descendants((node, pos) => {
-    if (!node.isText) return true;
-    const has = node.marks.some(
-      (m) => m.type === markType && m.attrs.anchorId === anchorId,
-    );
-    if (has) {
-      if (from < 0) from = pos;
-      to = pos + node.nodeSize;
-    }
-    return true;
-  });
-  if (from < 0) return null;
-  return { from, to };
-}
-
 /**
  * Post-Duplicate walker — for every freshly-cloned `linkedAnchor` mark
  * inside the just-inserted slice, look up the card via the new
@@ -1129,7 +1108,7 @@ function rewireClonedAnchors(
       if (!bind) continue;
       const paragraphId = paragraphUuidAt(doc, pos);
       if (!paragraphId) continue;
-      const anchorRange = findAnchorIdRange(doc, anchorId);
+      const anchorRange = findLinkedAnchorRange(doc, anchorId);
       const anchorText = anchorRange
         ? doc.textBetween(anchorRange.from, anchorRange.to, " ")
         : "";
@@ -1137,30 +1116,6 @@ function rewireClonedAnchors(
     }
     return true;
   });
-}
-
-/** Locate the full span of a `linkedAnchor` mark by `anchorId`, scanning
- *  only inside a region we already know contains it. Cheaper than a
- *  whole-doc walk for the rewireup post-insert path. */
-function findAnchorIdRange(
-  doc: PMNode,
-  anchorId: string,
-): { from: number; to: number } | null {
-  let from = -1;
-  let to = -1;
-  doc.descendants((node, pos) => {
-    if (!node.isText) return true;
-    const has = node.marks.some(
-      (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
-    );
-    if (has) {
-      if (from < 0) from = pos;
-      to = pos + node.nodeSize;
-    }
-    return true;
-  });
-  if (from < 0) return null;
-  return { from, to };
 }
 
 /**
