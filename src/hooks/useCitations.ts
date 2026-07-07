@@ -201,12 +201,20 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
           // Entry already in state. If we're (re)anchoring an
           // unanchored entry — i.e. dragging an unanchored card into
           // the editor — clear the unanchored flag so syncFromEditor
-          // won't resurrect it on next reload.
+          // won't resurrect it on next reload. Also clear `archived`:
+          // `setArchived` sets `archived`+`unanchored` JOINTLY (archiving
+          // splices the atom out), so re-anchoring an ARCHIVED card must
+          // un-set BOTH — the citation is now a live in-text reference,
+          // neither archived nor an unanchored draft. Clearing only
+          // `unanchored` (task 079) left it filed in the archive tray while
+          // anchored in the prose.
           if (isUnanchored(existing) && !markUnanchored) {
             return {
               ...prev,
               citations: prev.citations.map((c) =>
-                c.id === ref.id ? { ...c, unanchored: undefined } : c,
+                c.id === ref.id
+                  ? { ...c, unanchored: undefined, archived: undefined }
+                  : c,
               ),
             };
           }
