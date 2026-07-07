@@ -66,6 +66,7 @@ import {
   CARD_ACTION_PRESENTATION,
   CARD_ACTION_ORDER,
 } from "@/lib/actions/action-icons";
+import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap/commands";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
 
 // ---------------------------------------------------------------------------
@@ -429,12 +430,22 @@ describe("example block row (CHIP 5c)", () => {
 
 // ---------------------------------------------------------------------------
 // (4d) CHIP 6b — the 8 FORMAT rows' shape: category 'format', backbone
-//      'tiptap-chain' (the DECLARED record that they are backbone-less), and
-//      LIGHTNING-ONLY (no grab/slash/typed/keyboard).
+//      'tiptap-chain' (the DECLARED record that they are backbone-less), on the
+//      lightning grid. Task 062: the three structural WRAPPER rows (bullet-list/
+//      ordered-list/blockquote) ALSO own the slash surface; the five mark
+//      toggles stay lightning-only.
 // ---------------------------------------------------------------------------
 
+// The three wrappers' slash names — the many-to-one alias group the five
+// `\list`/`\itemize`/`\enumerate`/`\quote`/`\quotation` commands fan into.
+const WRAPPER_SLASH: Record<string, { name: string; aliases?: string[] }> = {
+  "bullet-list": { name: "list", aliases: ["itemize"] },
+  "ordered-list": { name: "enumerate" },
+  blockquote: { name: "quote", aliases: ["quotation"] },
+};
+
 describe("format rows (CHIP 6b — completes the grid fold)", () => {
-  it("each format row is category 'format', backbone 'tiptap-chain', lightning-only", () => {
+  it("each format row is category 'format', backbone 'tiptap-chain', on the lightning grid, never grab/typed/keyboard", () => {
     for (const id of FORMAT_IDS) {
       const r = row(id);
       expect(r.id).toBe(id);
@@ -442,12 +453,27 @@ describe("format rows (CHIP 6b — completes the grid fold)", () => {
       expect(r.backbone).toBe("tiptap-chain");
       expect(r.surfaces.lightning).toBe(true);
       expect(r.surfaces.grab).toBeFalsy();
-      expect(r.surfaces.slash).toBeFalsy();
       expect(r.surfaces.typed).toBeFalsy();
       expect(r.surfaces.keyboard).toBeFalsy();
-      // No slash command name / input-rule pattern on a format row.
-      expect(r.slashName).toBeUndefined();
+      // No input-rule pattern on any format row (StarterKit owns the marks).
       expect(r.inputRulePattern).toBeUndefined();
+    }
+  });
+
+  it("the MARK toggles are slash-less; the three structural WRAPPERS own slash (task 062)", () => {
+    for (const id of FORMAT_IDS) {
+      const r = row(id);
+      const slash = WRAPPER_SLASH[id];
+      if (slash) {
+        expect(r.surfaces.slash, `${id}.slash`).toBe(true);
+        expect(r.slashName, `${id}.slashName`).toBe(slash.name);
+        expect(r.slashAliases, `${id}.slashAliases`).toEqual(slash.aliases);
+      } else {
+        // a mark toggle (bold/italic/strike/code/text-color) is not a slash command
+        expect(r.surfaces.slash, `${id}.slash`).toBeFalsy();
+        expect(r.slashName, `${id}.slashName`).toBeUndefined();
+        expect(r.slashAliases, `${id}.slashAliases`).toBeUndefined();
+      }
     }
   });
 
@@ -506,6 +532,49 @@ describe("ref + title-field rows (CHIP 7a — completes the SSOT)", () => {
 
 describe("assertActionCoverage (COMPLETE SSOT — CHIP 7a)", () => {
   it("reports NO problems (every ActionId has a row; zero pending)", () => {
+    expect(assertActionCoverage()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (6) task 062 — the many-to-one slash alias group is reconciled by the SSOT.
+//     Every live `\list`/`\itemize`/`\enumerate`/`\quote`/`\quotation` command
+//     resolves to a wrapper row that CLAIMS slash and NAMES it (primary or
+//     alias); a mis-mapped/typo'd alias trips assertActionCoverage.
+// ---------------------------------------------------------------------------
+
+describe("list/quote slash alias reconciliation (task 062)", () => {
+  it("all 5 wrapper commands are live AND each is named (primary or alias) by its wrapper row", () => {
+    for (const [id, { name, aliases }] of Object.entries(WRAPPER_SLASH)) {
+      const r = row(id as ActionId);
+      expect(r.surfaces.slash, `${id}.slash`).toBe(true);
+      const claimed = [r.slashName, ...(r.slashAliases ?? [])];
+      for (const n of [name, ...(aliases ?? [])]) {
+        // the command is a REAL live slash command …
+        expect(VIRGIL_COMMAND_NAMES, `${n} is live`).toContain(n);
+        // … and the wrapper row names it (so the forward reconciliation matches).
+        expect(claimed, `${id} names ${n}`).toContain(n);
+      }
+    }
+  });
+
+  it("a typo'd alias trips assertActionCoverage (the drift guard that was silently defeated before)", () => {
+    // Before task 062 the 5 wrapper commands passed THROUGH the reconciliation's
+    // `!row.surfaces.slash` skip — a mis-mapped alias never tripped. Now the live
+    // name `\itemize` must match bullet-list's slashName/aliases; a typo breaks it.
+    const bullet = VIRGIL_ACTION_REGISTRY["bullet-list"]!;
+    const original = bullet.slashAliases;
+    try {
+      (bullet as { slashAliases?: string[] }).slashAliases = ["itemizeX"]; // typo
+      const problems = assertActionCoverage();
+      expect(
+        problems.some((p) => p.includes("\\itemize") && p.includes("bullet-list")),
+        `expected a drift problem for \\itemize; got ${JSON.stringify(problems)}`,
+      ).toBe(true);
+    } finally {
+      (bullet as { slashAliases?: string[] }).slashAliases = original;
+    }
+    // Restored — the assertion is green again (no leakage into the SSOT test above).
     expect(assertActionCoverage()).toEqual([]);
   });
 });

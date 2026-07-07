@@ -415,11 +415,33 @@ describe("(B) selection-mode taxonomy: format is 'ignored' (stays ok at a caret)
       expect(row.category).toBe("format");
       expect(row.backbone).toBe("tiptap-chain");
       expect(row.surfaces.lightning).toBe(true);
-      // The keyboard surface is FALSE on the row (StarterKit owns the chords).
+      // The keyboard/typed/grab surfaces are FALSE on every format row (StarterKit
+      // owns the chords; no format toggle is an input rule or a grab-handle action).
       expect(row.surfaces.keyboard ?? false).toBe(false);
-      expect(row.surfaces.slash ?? false).toBe(false);
       expect(row.surfaces.typed ?? false).toBe(false);
       expect(row.surfaces.grab ?? false).toBe(false);
+    }
+  });
+
+  it("the MARK toggles are slash-less; the structural WRAPPERS own the slash surface (task 062)", () => {
+    // Marks are lightning-only — a bold/italic/strike/code/text-color toggle is
+    // not a slash command.
+    for (const row of [BOLD, ITALIC, STRIKE, CODE, TEXT_COLOR]) {
+      expect(row.surfaces.slash ?? false, `${row.id}.slash`).toBe(false);
+      expect(row.slashName, `${row.id}.slashName`).toBeUndefined();
+      expect(row.slashAliases, `${row.id}.slashAliases`).toBeUndefined();
+    }
+    // The three wrappers claim slash with a primary name; two carry an alias for
+    // the second live command (`\itemize` → bullet-list, `\quotation` → blockquote).
+    const WRAPPER_SLASH: ReadonlyArray<{ row: ActionSpec; name: string; aliases?: string[] }> = [
+      { row: BULLET, name: "list", aliases: ["itemize"] },
+      { row: ORDERED, name: "enumerate" },
+      { row: BLOCKQUOTE, name: "quote", aliases: ["quotation"] },
+    ];
+    for (const { row, name, aliases } of WRAPPER_SLASH) {
+      expect(row.surfaces.slash, `${row.id}.slash`).toBe(true);
+      expect(row.slashName, `${row.id}.slashName`).toBe(name);
+      expect(row.slashAliases, `${row.id}.slashAliases`).toEqual(aliases);
     }
   });
 
