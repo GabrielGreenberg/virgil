@@ -5689,6 +5689,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 onEditFootnote={handleEditFootnote}
                 onEditFootnoteTitle={handleEditFootnoteTitle}
                 onDeleteFootnote={handleDeleteFootnote}
+                unanchoredFootnotes={unanchoredFootnoteRefs}
+                onDeleteUnanchoredFootnote={footnotesHook.deleteFootnote}
                 onDeleteCitation={handleDeleteCitation}
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
@@ -6789,6 +6791,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 onEditFootnote={handleEditFootnote}
                 onEditFootnoteTitle={handleEditFootnoteTitle}
                 onDeleteFootnote={handleDeleteFootnote}
+                unanchoredFootnotes={unanchoredFootnoteRefs}
+                onDeleteUnanchoredFootnote={footnotesHook.deleteFootnote}
                 onDeleteCitation={handleDeleteCitation}
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
@@ -6943,6 +6947,12 @@ interface PaneRailProps {
    *  entry (the hard-delete contract). Threaded like `onDeleteFootnote`
    *  so the rail's panel slots don't reach for the bare sidecar filter. */
   onDeleteCitation: (id: string) => void;
+  /** Task 077: atomless footnote refs (archive-born `FootnoteRef`) + ref-delete,
+   *  threaded to the OmniHost so active unanchored footnotes surface in Omni (they
+   *  already render in the docked panel via PaneRailBody). Edit reuses
+   *  `onEditFootnote` (same as the docked panel). */
+  unanchoredFootnotes: FootnoteRef[];
+  onDeleteUnanchoredFootnote: (id: string) => void;
   selectedNoteId: string | null;
   setSelectedNoteId: React.Dispatch<React.SetStateAction<string | null>>;
   // Errors surface (`ErrorsHost` / `OmniHost`) reads the diagnostics bundle from
@@ -7118,6 +7128,8 @@ function PaneRail({
   onEditFootnote,
   onEditFootnoteTitle,
   onDeleteFootnote,
+  unanchoredFootnotes,
+  onDeleteUnanchoredFootnote,
   onDeleteCitation,
   selectedNoteId,
   setSelectedNoteId,
@@ -7185,6 +7197,10 @@ function PaneRail({
           handleEditOrphan={viewPrefs.onEditOrphan}
           handleDeleteOrphan={viewPrefs.onDeleteOrphan}
           handleEditOrphanTitle={viewPrefs.onEditOrphanTitle}
+          // Task 077: thread the atomless footnote refs + ref-delete into Omni so
+          // active unanchored footnotes surface there, not just in the docked panel.
+          unanchoredFootnotes={unanchoredFootnotes}
+          onDeleteUnanchoredFootnote={onDeleteUnanchoredFootnote}
           footnoteAiRequests={footnoteAiRequests}
           setFootnoteAiRequest={setFootnoteAiRequest}
           citations={citationsHook.citations}
