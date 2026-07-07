@@ -21,6 +21,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 import { countWords } from "@/hooks/useWordCount";
 import { findInlineAtomPosDeep } from "@/lib/inline-content";
+import { findLinkedAnchorRange } from "@/lib/linked-anchor-range";
 import type { Link, LinkResolution } from "./_shared/types";
 import { normalizeParagraphText } from "./_shared/normalize-text";
 import { generateEntityId } from "@/lib/uuid";
@@ -762,29 +763,22 @@ export function paragraphTextByUuid(editor: Editor, uuid: string): string | null
   return node ? node.textContent : null;
 }
 
+/**
+ * Full span `[firstMarkedPos, lastMarkedEnd)` of the `linkedAnchor` carrying
+ * `anchorId`. Delegates to the codebase SSOT walker `findLinkedAnchorRange`
+ * (src/lib/linked-anchor-range.ts) so atom-split (a mark interrupted by an
+ * inline atom) and cross-block anchors resolve to their WHOLE span, not just
+ * the first contiguous run (task 071). Every caller here — resolveLink's
+ * textRange branch, removeLinkedAnchorMark, resolveAnchorRange,
+ * removeTransientAnchor, updateLinkedAnchorCard, apply-linked-anchors — hands
+ * the range to nodesBetween / setTextSelection / unsetMark and wants the full
+ * extent.
+ */
 export function resolveTextRangeByAnchorId(
   editor: Editor,
   anchorId: string,
 ): { from: number; to: number } | null {
-  let from: number | null = null;
-  let to: number | null = null;
-  editor.state.doc.descendants((node, pos) => {
-    if (to !== null) return false;
-    if (!node.isText) return true;
-    const has = node.marks.some(
-      (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
-    );
-    const end = pos + node.nodeSize;
-    if (has) {
-      if (from === null) from = pos;
-      to = end;
-    } else if (from !== null && to === null) {
-      to = pos;
-    }
-    return true;
-  });
-  if (from === null || to === null) return null;
-  return { from, to };
+  return findLinkedAnchorRange(editor.state.doc, anchorId);
 }
 
 function removeLinkedAnchorMark(editor: Editor, anchorId: string): void {
