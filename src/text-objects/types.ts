@@ -255,12 +255,30 @@ export interface TextObjectMeta {
    *  `orderedList`) overrides this. */
   parentKind?: TextObjectKind;
 
-  /** Whether the underlying node is a ProseMirror atom — affects
-   *  selection mode (NodeSelection vs TextSelection) and position math
-   *  (DOM rect vs `coordsAtPos`). figureBlock is NOT an atom
-   *  (`content: "figureCaption?"`); only `texBlock`/`graphicsBlock`/
-   *  `displayMath`/`latexComment` are. */
-  isAtomBlock: boolean;
+  /** SELECTION-MODE facet — whether the grab-handle / Duplicate / ref-resolve
+   *  treat this block as a whole-node `NodeSelection` (true) rather than dropping
+   *  a caret / inner text range inside it (false). TRUE iff the schema node is a
+   *  real ProseMirror atom with no editable caret: `texBlock`/`graphicsBlock`/
+   *  `displayMath`. `latexComment` is a CONTENT-bearing block since the
+   *  task-017 atom→block remodel (`content: "text*"`), so it is **false** — a
+   *  duplicated comment lands caret-ready and ref-resolve returns its inner text
+   *  range. Pinned to the live schema's `isAtom` by
+   *  `block-atom-facet-parity.test.ts` so it can't drift from the schema again.
+   *  (Was the selection half of the former conflated `isAtomBlock`.) */
+  selectsAsNode: boolean;
+
+  /** LIFECYCLE / GATING facet — whether this is a MEANINGFUL, non-trivially-
+   *  losable block: one that (a) is BLOCKED from nonsensical heading-conversion
+   *  and block-insert-at gating (a `% comment` / equation is a nonsensical
+   *  heading target; `setBlockType` inside an `isolating` atom is a no-op), and
+   *  (b) is treated as meaningful by the empty-content archive bail (an empty
+   *  `% ` comment stays archivable) and feeds `MEANINGFUL_BLOCK_ATOM_NODE_NAMES`.
+   *  TRUE for `texBlock`/`graphicsBlock`/`displayMath`/`latexComment`.
+   *  `figureBlock` is meaningful-for-destructive-confirm but must stay "ok" for
+   *  the block/heading gates, so it is **false** here and is added SEPARATELY to
+   *  `MEANINGFUL_BLOCK_ATOM_NODE_NAMES`. (Was the gating half of the former
+   *  conflated `isAtomBlock`.) */
+  isMeaningfulBlockAtom: boolean;
 
   /** Whether this kind is a mark-backed range (only `linkedRange`). */
   isRange: boolean;

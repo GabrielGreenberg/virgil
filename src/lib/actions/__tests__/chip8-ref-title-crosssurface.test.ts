@@ -335,7 +335,8 @@ describe("REF: applies() per-kind taxonomy (oracle: ok on text/atom kinds, disab
 
   // The oracle's ok-kinds for ref include the prose/list/heading/example kinds and
   // the atom-bearing/atom-only labelRef. blockApplies returns "ok" for every kind
-  // whose TEXT_OBJECT_REGISTRY entry is isAtomBlock:false.
+  // whose TEXT_OBJECT_REGISTRY entry is isMeaningfulBlockAtom:false (task 066 —
+  // the GATING facet split out of the former conflated isAtomBlock).
   const OK_KINDS = [
     "paragraph",
     "heading",
@@ -347,20 +348,22 @@ describe("REF: applies() per-kind taxonomy (oracle: ok on text/atom kinds, disab
     "exampleItem",
     "exampleBlock",
     "titleField",
-    "figureBlock", // NOTE: isAtomBlock:false → "ok" (see the discrepancy test below)
+    "figureBlock", // NOTE: isMeaningfulBlockAtom:false → "ok" (see the discrepancy test below)
     "linkedRange",
   ] as const;
   for (const kind of OK_KINDS) {
-    it(`ok for a ${kind} ref (isAtomBlock:false → blockApplies "ok")`, () => {
+    it(`ok for a ${kind} ref (isMeaningfulBlockAtom:false → blockApplies "ok")`, () => {
       const editor = mountParagraph("see ");
       expect(row.applies!(applyCtx(editor, { kind, id: "x" }))).toBe("ok");
     });
   }
 
-  // The oracle's disabled-kinds: the isAtomBlock block kinds (no caret to insert at).
+  // The oracle's disabled-kinds: the meaningful block-atom kinds — a nonsensical
+  // block-insert target (latexComment stays disabled here even though it now has
+  // an editable caret; the GATING facet, not the selection facet, drives this).
   const DISABLED_KINDS = ["displayMath", "texBlock", "graphicsBlock", "latexComment"] as const;
   for (const kind of DISABLED_KINDS) {
-    it(`disabled for a ${kind} ref (isAtomBlock:true → blockApplies "disabled")`, () => {
+    it(`disabled for a ${kind} ref (isMeaningfulBlockAtom:true → blockApplies "disabled")`, () => {
       const editor = mountParagraph("see ");
       expect(row.applies!(applyCtx(editor, { kind, id: "x" }))).toBe("disabled");
     });
@@ -373,10 +376,10 @@ describe("REF: applies() per-kind taxonomy (oracle: ok on text/atom kinds, disab
     ).toBe("disabled");
   });
 
-  it("DISCREPANCY: figureBlock applies 'ok' (isAtomBlock:false), NOT 'disabled' as the REF_ACTION_ROW jsdoc claims", () => {
+  it("DISCREPANCY: figureBlock applies 'ok' (isMeaningfulBlockAtom:false), NOT 'disabled' as the REF_ACTION_ROW jsdoc claims", () => {
     // Oracle row 52 concern (2): the jsdoc on REF_ACTION_ROW says "figure /
-    // displayMath … 'disabled'", but figureBlock.isAtomBlock is FALSE in
-    // TEXT_OBJECT_REGISTRY, so blockApplies returns "ok". LIVE CODE IS TRUTH:
+    // displayMath … 'disabled'", but figureBlock.isMeaningfulBlockAtom is FALSE
+    // in TEXT_OBJECT_REGISTRY, so blockApplies returns "ok". LIVE CODE IS TRUTH:
     // we assert the live behavior ("ok") and flag the doc/jsdoc as the thing to
     // correct. (This is a doc/comment discrepancy, not a product behavior bug.)
     const editor = mountParagraph("see ");

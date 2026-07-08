@@ -87,6 +87,16 @@ const NON_PROSE_BLOCK_ACTIONS: ReadonlyArray<DragHandleAction> =
     (a) => a !== "footnote" && a !== "citation" && a !== "suggest-edit",
   );
 
+// A non-prose block whose node is `marks: ""` (only `latexComment`) additionally
+// drops `highlight`: Highlight wraps the live range in a `linkedAnchor` MARK, but
+// a `marks: ""` node rejects `setMark`, so on a text-bearing comment the action
+// silently no-ops (a menu-honesty bug — see task 066). Greying it makes the dead
+// affordance visibly disabled. NOTE: the true atom blocks
+// (displayMath/texBlock/graphicsBlock) KEEP highlight — they have no text so it
+// clean early-breaks, a deliberate pinned no-op (action-coverage-assertion.test).
+const MARKLESS_BLOCK_ACTIONS: ReadonlyArray<DragHandleAction> =
+  NON_PROSE_BLOCK_ACTIONS.filter((a) => a !== "highlight");
+
 const TITLE_FIELD_ACTIONS: ReadonlyArray<DragHandleAction> = [
   "highlight",
   "note",
@@ -255,7 +265,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   paragraph: {
     label: "Paragraph",
     isSubObject: false,
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
@@ -274,7 +285,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   heading: {
     label: "Heading",
     isSubObject: false,
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
@@ -408,7 +420,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   bulletList: {
     label: "Bullet list",
     isSubObject: false,
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
@@ -432,7 +445,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   orderedList: {
     label: "Ordered list",
     isSubObject: false,
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
@@ -461,7 +475,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   blockquote: {
     label: "Block quote",
     isSubObject: false,
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: PROSE_ACTIONS,
@@ -474,7 +489,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   codeBlock: {
     label: "Code block",
     isSubObject: false,
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
@@ -487,7 +503,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   displayMath: {
     label: "Display math",
     isSubObject: false,
-    isAtomBlock: true,
+    selectsAsNode: true,
+    isMeaningfulBlockAtom: true,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
@@ -516,7 +533,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   titleField: {
     label: "Title field",
     isSubObject: false,
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: TITLE_FIELD_ACTIONS,
@@ -532,10 +550,20 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   latexComment: {
     label: "LaTeX comment",
     isSubObject: false,
-    isAtomBlock: true,
+    // SELECTION facet: latexComment is a CONTENT-bearing block (`content:
+    // "text*"`, task-017 atom→block remodel), NOT a PM atom — so it resolves to
+    // an inner TEXT range / caret (a duplicated comment lands caret-ready, not
+    // fully node-selected). This is the one kind where the two facets DIVERGE.
+    selectsAsNode: false,
+    // GATING facet: a `% comment` is STILL a meaningful block atom — it stays a
+    // nonsensical heading / block-convert target, and the empty-content archive
+    // bail treats it as meaningful (an empty `% ` line stays archivable).
+    isMeaningfulBlockAtom: true,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: NON_PROSE_BLOCK_ACTIONS,
+    // marks:"" → Highlight (a linkedAnchor MARK) can't apply; use the
+    // highlight-less list so the dead action greys out (task 066).
+    actions: MARKLESS_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
     // L3i (bodyless kinds, Chip 3): latexComment lifts through the two-mode
     // gesture into an EDITABLE SingleBlockBody float (decision A, "fully
@@ -549,7 +577,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // Atom in the schema, but `selectable: false` — selection mechanics
     // route around it. Still classified as atom-block for grab-handle
     // positioning math.
-    isAtomBlock: true,
+    selectsAsNode: true,
+    isMeaningfulBlockAtom: true,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 280 },
@@ -590,7 +619,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isSubObject: false,
     // NOT an atom — `content: "figureCaption?"` (figure-block.ts).
     // Drag-handle uses TextSelection rather than NodeSelection here.
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     // L3n (the FINAL kind migration): figureBlock drags through the same
@@ -617,7 +647,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   graphicsBlock: {
     label: "Graphic",
     isSubObject: false,
-    isAtomBlock: true,
+    selectsAsNode: true,
+    isMeaningfulBlockAtom: true,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     // L3n: graphicsBlock (an atom, no caption) shares FigureBody — its float is
@@ -643,7 +674,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   exampleBlock: {
     label: "Example",
     isSubObject: false,
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: NON_PROSE_BLOCK_ACTIONS,
@@ -681,7 +713,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "List item",
     isSubObject: true,
     parentKind: "bulletList",
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,
     chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
@@ -743,7 +776,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     label: "Example item",
     isSubObject: true,
     parentKind: "exampleBlock",
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: false,
     // Chip-2 chrome geometry: the handle hugs this item's MEASURED
     // `.expex-item-marker` (`a./b.`) left edge — `block-frame.ts`
@@ -781,7 +815,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
   linkedRange: {
     label: "Linked range",
     isSubObject: false,
-    isAtomBlock: false,
+    selectsAsNode: false,
+    isMeaningfulBlockAtom: false,
     isRange: true,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     actions: LINKED_RANGE_ACTIONS,
