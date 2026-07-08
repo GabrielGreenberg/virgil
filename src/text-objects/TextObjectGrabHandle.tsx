@@ -74,7 +74,7 @@ import {
   textObjectPopoutKey,
 } from "./text-object-registry";
 import { resolveBlockFrame } from "./block-frame";
-import { computeHandleLeftEdge } from "./handle-layout";
+import { computeHandleLeftEdge, resolveHandleMarkerLeft } from "./handle-layout";
 import { useLiftHost } from "./LiftHost";
 import type {
   SelectionRef,
@@ -396,16 +396,23 @@ function computePlacement(
   const frame = resolveBlockFrame(anchorDom, editor, cache);
 
   // ---- Horizontal: hug the block's MEASURED marker one uniform gap left ----
-  // A TextObject hugs its `markerLeft` (text / bullet band / `(n)` / `a.`); a
-  // SELECTION labels its text (not the block's marker), so it anchors to the
-  // block's `contentLeft`. computeHandleLeftEdge applies the shared em gap +
-  // handle width and floors at the editor column so a deeply-indented block on
-  // a narrow viewport never pushes the handle off-screen-left.
+  // BOTH a TextObject handle and a SELECTION handle hug the block's `markerLeft`
+  // (text / bullet band / `(n)` / `a.`): the selection handle is a positional
+  // REPLACEMENT of its containing block's text-object handle — it takes the same
+  // gutter slot (task 092), via `resolveHandleMarkerLeft`. For a markerless
+  // block `markerLeft === contentLeft`, so this is a no-op for plain paragraphs;
+  // for a marker-bearing block it keeps the selection grip in the gutter left of
+  // the bullet instead of over it. computeHandleLeftEdge then applies the shared
+  // em gap + handle width and floors at the editor column so a deeply-indented
+  // block on a narrow viewport never pushes the handle off-screen-left.
   // (editorColumnLeft is the .ProseMirror outside-left edge; the floor inset is
   // --margin-col-handle-inset via cache.marginInset.)
   const editorColumnLeft = editor.view.dom.getBoundingClientRect().left;
   const left = computeHandleLeftEdge({
-    markerLeft: ref.kind === "selection" ? frame.contentLeft : frame.markerLeft,
+    markerLeft: resolveHandleMarkerLeft(
+      frame,
+      ref.kind === "selection" ? "selection" : "text-object",
+    ),
     gapPx: frame.gapPx,
     editorColumnLeft,
     baselineInset: cache.marginInset,

@@ -89,8 +89,10 @@ export interface BlockFrame {
    * The block's text content-left in viewport coords (= `firstLineRect.left`).
    * For a markerless block (paragraph / heading / blockquote / codeBlock /
    * titleField / framed atom) this IS the marker reference; exposed separately
-   * from {@link markerLeft} so a selection handle (which labels text, not a
-   * marker) and the drop indicator (chip 4a) can anchor to text-start.
+   * from {@link markerLeft} so the drop indicator (chip 4a) can anchor to
+   * text-start. (Grab handles — text-object AND selection — hug {@link markerLeft},
+   * not this: the selection handle takes the same gutter slot as its block's
+   * text-object handle. See `handle-layout.ts#resolveHandleMarkerLeft`, task 092.)
    */
   contentLeft: number;
   /**
