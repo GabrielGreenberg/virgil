@@ -1,4 +1,4 @@
-<!-- last-verified: 71e366c2 2026-07-07 -->
+<!-- last-verified: 947d65f0 2026-07-08 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
@@ -66,7 +66,7 @@ decide *which* blocks get one:
   the anchor).
 - **`listItem`s** each get their own id (so an anchor can pin a single line).
 - **Headings** and **titleFields** always get one; a **non-empty paragraph**
-  outside a container gets one; **atom blocks** (displayMath, latexComment,
+  outside a container gets one; the **standalone blocks** (displayMath, latexComment,
   codeBlock, exampleBlock, figureBlock, graphicsBlock) always get one.
 
 `src/lib/latex-paragraph-map.ts` maps `.tex` line numbers ↔ paragraph ids by

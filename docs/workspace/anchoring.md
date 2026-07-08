@@ -1,4 +1,4 @@
-<!-- last-verified: 71e366c2 2026-07-07 -->
+<!-- last-verified: 947d65f0 2026-07-08 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -163,6 +163,15 @@ hit; rewrite `textObjectIds[0]` or convert a relocated Mode-B on a snapshot hit)
   is built via the shared `legacyKindToCardKindString` so it is byte-identical to
   create-time. A trailing `reapOrphanLinkedAnchors` pass (load-order- and
   read-error-gated) drops only marks with no live owning card.
+- **Live card-morph restamp (no reload needed).** A card morph
+  (`convertCardWithRemap`) flips only the sidecar record, so the in-doc
+  `linkedAnchor` mark kept its stale `tintColor` / `data-link-card` token until a
+  full reload re-stamped it. `restampLinkedAnchorForKind`
+  ([src/links/links.ts](../../src/links/links.ts)) closes that gap: after the
+  sidecar mutate commits it restamps the mark's kind-derived presentation (legacy
+  `kind` attr, `data-link-card` token, `tintColor`) from the NEW spine kind via the
+  same `defaultTintForLinkedAnchorKind` SSOT the create + reload paths use — so a
+  note→highlight morph paints immediately (task 073).
 - **Mint-race close.** [src/lib/anchor-mint-signal.ts](../../src/lib/anchor-mint-signal.ts)
   tags a uuid-mint transaction (`ANCHOR_MINT_META`); the autosave subscriber forces an
   **immediate** doc-bundle flush so the paragraph uuid lands on the card's fast clock,

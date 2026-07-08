@@ -1,4 +1,4 @@
-<!-- last-verified: 71e366c2 2026-07-07 -->
+<!-- last-verified: 947d65f0 2026-07-08 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -45,7 +45,7 @@ once below and the variants point at it.
 ### The action vocabulary: `VIRGIL_ACTION_REGISTRY`
 
 The SSOT for the action vocabulary is **`VIRGIL_ACTION_REGISTRY`** in
-[action-registry.ts:2637](../../src/lib/actions/action-registry.ts) — the single
+[action-registry.ts:2718](../../src/lib/actions/action-registry.ts) — the single
 registry every surface reads off (CHIP 3 inverted the old dependency: the array
 `MENU_ENTRIES` is **deleted**, and the two live menus now render FROM the
 registry via `cardActionRows("grab" | "lightning")`). The card-action slice is
@@ -121,8 +121,10 @@ vocabulary; the per-kind allowed subset is `TEXT_OBJECT_REGISTRY[kind].actions`
 which each row's `applies()` gate consults. When the menu opens for a given
 TextObject kind, the entries outside that set render **greyed-out**
 (visible-disabled), not filtered away, so the menu shape is stable across kinds.
-The four action sets are `PROSE_ACTIONS` / `NON_PROSE_BLOCK_ACTIONS` /
-`TITLE_FIELD_ACTIONS` / `LINKED_RANGE_ACTIONS`.
+The five action sets are `PROSE_ACTIONS` / `NON_PROSE_BLOCK_ACTIONS` /
+`MARKLESS_BLOCK_ACTIONS` (drops Highlight — a `marks: ""` node like `latexComment`
+rejects the `linkedAnchor` mark; task 066) / `TITLE_FIELD_ACTIONS` /
+`LINKED_RANGE_ACTIONS`.
 
 ### The formatting vocabulary: the 4×4 grid
 
@@ -384,9 +386,14 @@ the operational form of the Atom's "text-bound mobility"
 **Block drop adapters** ([drop-adapters.ts](../../src/text-objects/drop-adapters.ts))
 — `topLevelDropAdapter`, `listItemDropAdapter`, `exampleItemDropAdapter`,
 `blockIntoExpexDropAdapter` — decide, per source kind and target, whether a
-dropped block lands directly or is wrapped. The expex case lets `paragraph` /
-`displayMath` / `graphicsBlock` land inside an `exampleItem` (schema-driven via
-the drop target's `canDropDirect` / `canWrapHere`).
+dropped block lands directly, is wrapped, or is **rejected** (a `{ kind: "no-op" }`
+DropAction — task 065). The three sub-object wrap adapters share one
+wrap-validity gate, `DropTarget.canPlaceHere(kind)` (computed once in
+`textObjectDropSpec.applyDrop` via `canDropDirectAt`), and no-op the drop when the
+fabricated wrapper would be invalid at the TRUE immediate parent — killing the
+cross-kind-into-foreign-container-gap duplicate-uuid corruption. The expex case
+lets `paragraph` / `displayMath` / `graphicsBlock` land inside an `exampleItem`
+(schema-driven via the drop target's `canDropDirect` / `canPlaceHere`).
 
 ---
 
