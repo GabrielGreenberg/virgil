@@ -14,7 +14,7 @@
  * card's per-card `archived` flag hides it from a panel's active view.
  */
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { CardArchiveView } from "@/hooks/useViewPrefs";
 import type { PanelKind } from "./types";
 
@@ -68,4 +68,31 @@ export function filterByArchiveView<T>(
   if (view === "all") return items;
   const wantArchived = view === "archived";
   return items.filter((it) => !!getArchived(it) === wantArchived);
+}
+
+/**
+ * The archive-view-filtered slice of a panel's item list — the EXACT derivation
+ * `CardListPanel` renders (`filterByArchiveView` under the panel's current
+ * view). A panel that ALSO drives a keyboard cycle over its items must feed the
+ * cycle THIS list, not the raw one, so the nav-set cannot desync from the
+ * render-set (arrow-stepping onto an archived, off-screen card). Both the panel
+ * (for its cycle) and `CardListPanel` (for rendering) call this single hook, so
+ * the two sets are one derivation.
+ *
+ * `getArchived` omitted ⇒ the panel has no archivable cards; the list passes
+ * through unchanged. Memoized on `[items, view, getArchived]`, so pass a stable
+ * `getArchived` (a module const or `useCallback`) to keep the result
+ * identity-stable for the cycle across plain re-renders.
+ */
+export function useArchiveVisibleItems<T>(
+  panel: PanelKind,
+  items: T[],
+  getArchived?: (item: T) => boolean,
+): T[] {
+  const { getView } = useCardArchiveView();
+  const view = getView(panel);
+  return useMemo(
+    () => (getArchived ? filterByArchiveView(items, view, getArchived) : items),
+    [items, view, getArchived],
+  );
 }

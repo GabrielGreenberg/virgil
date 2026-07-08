@@ -6,7 +6,7 @@ import {
   ItemMenu,
   PANEL,
   useCycle,
-  clearStaleHover,
+  useListNavKeys,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
@@ -51,21 +51,7 @@ function ExamplesPanel(props: ExamplesPanelProps) {
     if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
   }, [selectedId, examples, cycleIdx, setCycleIdx]);
 
-  const handleNavKeys = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (examples.length === 0) return;
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        cycleNext();
-        clearStaleHover(e.currentTarget as HTMLElement);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        cyclePrev();
-        clearStaleHover(e.currentTarget as HTMLElement);
-      }
-    },
-    [examples, cycleNext, cyclePrev],
-  );
+  const handleNavKeys = useListNavKeys(examples.length, cycleNext, cyclePrev);
 
   return (
     <CardListPanel
