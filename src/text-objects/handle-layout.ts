@@ -23,11 +23,38 @@
  *  marker, so its left edge is `markerLeft − gapPx − HANDLE_WIDTH`. */
 export const HANDLE_WIDTH = 12;
 
+/**
+ * The block X a grab handle hugs, for BOTH the text-object handle and the
+ * selected-text handle. Convention (task 092): the selection handle is a
+ * positional REPLACEMENT of its containing block's text-object handle — it
+ * takes the SAME gutter slot — so both hug the block's measured `markerLeft`.
+ *
+ * For a markerless block (paragraph / heading / blockquote / …) `markerLeft ===
+ * contentLeft`, so this is a no-op for plain paragraphs. For a marker-bearing
+ * block (a `listItem` bullet band, an `exampleItem` `(n)`/`a.`) `markerLeft <
+ * contentLeft`, so anchoring the selection handle here places its grip in the
+ * gutter LEFT of the marker — the same slot as the text-object handle — instead
+ * of OVER the bullet (the reported symptom of the old `contentLeft` fork).
+ *
+ * `refKind` is accepted so the single X-anchor decision lives in ONE guarded
+ * place rather than being re-forked at the call site; it is intentionally unused
+ * — no kind branches the anchor. Any future per-kind fork (e.g. `contentLeft`
+ * for selections) must happen HERE, where the placement test guards it.
+ */
+export function resolveHandleMarkerLeft(
+  frame: { markerLeft: number },
+  _refKind: "selection" | "text-object",
+): number {
+  return frame.markerLeft;
+}
+
 /** Inputs to {@link computeHandleLeftEdge} — the block's measured marker and
  *  resolved gap (from `block-frame.ts`) plus the narrow-viewport floor. */
 export interface HandleLayoutInput {
-  /** The block's MEASURED marker-left from `block-frame.ts` (a selection,
-   *  which labels text not a marker, passes its `contentLeft` instead). */
+  /** The block's MEASURED marker-left from `block-frame.ts`. BOTH a text-object
+   *  handle and a selection handle pass this (see {@link resolveHandleMarkerLeft}
+   *  — the selection handle takes the same gutter slot as the block's
+   *  text-object handle). */
   markerLeft: number;
   /** The block's `--margin-handle-gap` resolved (em → px) against its font,
    *  from `block-frame.ts`. */
