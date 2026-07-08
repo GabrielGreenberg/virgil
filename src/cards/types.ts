@@ -111,7 +111,7 @@ export interface CardLifecycleCapability {
  *  `REP-F6-03` class) AND the lifecycle unbridge decision: `"aiRequest"` in the
  *  list is the declarative trigger to clear the orphaned `ai-requests.json`
  *  entry on morph (the C8 lossy-morph-leak class). */
-export type MorphDropField = "title" | "byline" | "aiRequest" | "body" | "keys";
+export type MorphDropField = "title" | "byline" | "aiRequest" | "body" | "keys" | "formatting";
 
 /** Declarative content model (T4 §3.1). The single descriptor `cardHasContent`
  *  walks — both the panel-trash and margin-marker delete-confirm read it, so a
