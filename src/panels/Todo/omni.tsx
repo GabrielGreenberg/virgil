@@ -5,6 +5,7 @@ import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { TodoRow } from "./TodoRow";
 import { getLinkedTextObjectIds } from "@/links/links";
+import { resolveAnchorState } from "@/links/anchor-state";
 
 interface BuildArgs {
   todoItems: TodoItem[];
@@ -32,7 +33,8 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
       items.push({
         id: baseId,
         pos: null,
-        anchorState: "free",
+        // Unlinked (no paragraph anchor) — a deliberately-free card.
+        anchorState: resolveAnchorState(null, { unanchored: true }),
         content: (
           <TodoRow
             key={baseId}
@@ -59,7 +61,9 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
           id: omniId,
           pos,
           anchorUuid: pid,
-          anchorState: pos == null ? "orphaned" : "anchored",
+          // Linked to a paragraph — no free intent: resolved pos ⇒ anchored,
+          // lost pos ⇒ orphaned.
+          anchorState: resolveAnchorState(pos, null),
           content: (
             <TodoRow
               key={omniId}

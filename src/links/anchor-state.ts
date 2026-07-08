@@ -22,9 +22,17 @@
 // surface (citations, examples, the future inline kinds, T1's float/selection
 // re-point, T5's omni fold/focus filter) without re-implementing the rule.
 //
-// Scope note (W0c): this slice creates the primitive + its truth table only.
-// Later waves flip the `pos == null ? …` call sites onto it; they are NOT
-// rewired here.
+// Adoption (task 056): all 10 omni builders now call `resolveAnchorState`
+// instead of an inline formula — the three formula families (the 2-way
+// `pos == null ? "orphaned" : "anchored"`, Errors' inline 3-way, and the
+// hardcoded free/orphan literals) collapsed into this one SSOT. Kinds with a
+// deliberate-free concept (citation/footnote `unanchored`, the unlinked
+// note/todo/cutter/report/revision/archive card, an error with no source
+// paragraph) pass `{ unanchored }`; kinds that are intrinsically in-text
+// (examples, live/orphaned footnotes) pass `null`. The A5 contract test
+// (`anchor-state-classify-contract.test.ts`) pins the free/orphaned split per
+// builder. Any new builder MUST derive `anchorState` from this function — the
+// grep-guard in that test's sibling enforces no inline `anchorState:` ternary.
 
 /**
  * The three states a card's anchor can be in.

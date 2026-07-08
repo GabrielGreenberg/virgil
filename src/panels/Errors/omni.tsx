@@ -3,6 +3,7 @@
 import type { LatexError } from "@/lib/latex-errors";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
+import { resolveAnchorState } from "@/links/anchor-state";
 import { ErrorCard, errorTitle } from "./ErrorCard";
 
 interface BuildArgs {
@@ -39,10 +40,12 @@ export function buildErrorOmniItems(a: BuildArgs): OmniItem[] {
     const omniId = cardPopKey("error", err.id);
     const paraId = a.paragraphByErrorId.get(err.id) ?? null;
     const pos = a.findParagraphPos(paraId);
-    // No resolved source paragraph ⇒ the error has no anchor intent (free).
-    // A resolved paragraph that no longer maps to a live pos ⇒ orphaned.
-    const anchorState =
-      paraId == null ? "free" : pos == null ? "orphaned" : "anchored";
+    // No resolved source paragraph ⇒ the error carries deliberate-free intent
+    // (`free`). A resolved paragraph that no longer maps to a live pos ⇒
+    // orphaned; a live pos ⇒ anchored. The free-condition (`paraId == null`) is
+    // threaded through the SSOT as `unanchored` so the 3-way lives in
+    // `resolveAnchorState`, not an inline formula.
+    const anchorState = resolveAnchorState(pos, { unanchored: paraId == null });
 
     items.push({
       id: omniId,
