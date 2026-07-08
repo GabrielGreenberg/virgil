@@ -1,5 +1,7 @@
 "use client";
 
+import LibraryPaneFill from "./LibraryPaneFill";
+
 interface Props {
   onGrant: () => void;
   onReset: () => void;
@@ -10,17 +12,7 @@ interface Props {
 
 export default function LibraryPermissionGate({ onGrant, onReset, pickerError }: Props) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100%",
-        gap: 12,
-        padding: 32,
-      }}
-    >
+    <LibraryPaneFill center style={{ gap: 12, padding: 32 }}>
       <h2 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 500 }}>
         Permission needed
       </h2>
@@ -71,6 +63,6 @@ export default function LibraryPermissionGate({ onGrant, onReset, pickerError }:
           {pickerError}
         </p>
       ) : null}
-    </div>
+    </LibraryPaneFill>
   );
 }

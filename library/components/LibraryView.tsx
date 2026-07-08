@@ -30,6 +30,7 @@ import type { SyncResult } from "@library/lib/skill-sync";
 import type { SkillSyncError } from "@library/hooks/useLibraryHandle";
 import type { NotificationItem } from "@library/lib/queue";
 import DropZone from "./DropZone";
+import LibraryPaneFill from "./LibraryPaneFill";
 
 import Toaster from "./Toaster";
 import TabbedLibraryPanel, { type EntryActions } from "./TabbedLibraryPanel";
@@ -842,21 +843,11 @@ export default function LibraryView({
   ) : null;
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        // `flex: 1, minHeight: 0` is more robust than `height: 100%` when
-        // mounted inside Virgil's nested flex tree — height: 100% collapses
-        // when an ancestor doesn't have an explicit height. Combined with
-        // `width: 100%` so the column extends to the full pane width.
-        flex: 1,
-        minHeight: 0,
-        width: "100%",
-        background: LIBRARY_FIELD_BG,
-      }}
-    >
+    // Pane-fill (flex:1 / minWidth:0 / minHeight:0 / width:100%) is now the
+    // shared SSOT in LibraryPaneFill — the same box every pre-load state uses,
+    // so the loaded view and its splash siblings fill the pane identically
+    // (task 085; the original inline-fill comment moved onto the wrapper).
+    <LibraryPaneFill ref={containerRef} style={{ background: LIBRARY_FIELD_BG }}>
       {/* Loud, dismissible skill-sync failure banner. A failed/stale skill
           sync must never again silently strand the library on old skills —
           so the bare console.error in useLibraryHandle now surfaces here
@@ -1033,6 +1024,6 @@ export default function LibraryView({
         </div>
       </DropZone>
       <Toaster items={allToasts} />
-    </div>
+    </LibraryPaneFill>
   );
 }
