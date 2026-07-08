@@ -130,6 +130,13 @@ export interface LibraryViewSession {
     // the default entry point; the heavy virtualized list mounts only when the
     // user explicitly clicks Browse). Persists the user's last explicit choice.
     centralViewMode?: "dashboard" | "list";
+    // First-time PDF-drop intro notice. Absent/false ⇒ the post-drop notice
+    // shows after each successful file import; once the user checks "Don't
+    // show again" it flips true and the notice never reappears. A UI pref
+    // (sibling of centralViewMode), so it rides the same global `layout`
+    // slice rather than a new top-level field — no emptySession /
+    // normalizeSession churn (normalizeLayout spreads raw as-is).
+    pdfDropIntroDismissed?: boolean;
   };
 }
 
@@ -937,6 +944,29 @@ export function useCentralViewMode(): {
     [],
   );
   return { centralViewMode, setCentralViewMode };
+}
+
+/**
+ * First-time PDF-drop intro notice, global slice. `dismissed` is false until
+ * the user checks "Don't show again" on the post-drop notice, after which it
+ * stays true across reloads (persisted in the shared `layout` blob, exactly
+ * like centralViewMode). The Library shows the notice after a successful file
+ * import only while this is false.
+ */
+export function usePdfDropIntroDismissed(): {
+  dismissed: boolean;
+  setDismissed: (v: boolean) => void;
+} {
+  const getSnap = useCallback(
+    () => ensureInit().layout.pdfDropIntroDismissed === true,
+    [],
+  );
+  const dismissed = useSyncExternalStore(subscribe, getSnap, getSnap);
+  const setDismissed = useCallback(
+    (v: boolean) => setLayout({ pdfDropIntroDismissed: v }),
+    [],
+  );
+  return { dismissed, setDismissed };
 }
 
 /** Global cited-only toggle (survives the ProjectLibraryProvider remount). */

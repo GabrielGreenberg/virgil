@@ -108,6 +108,9 @@ interface Props {
    *  beside "Change folder…" in the Central library's "⋮" menu (left panel
    *  only) — the one-click version of a manual skill re-sync. */
   onResync?: () => void;
+  /** True while an OS file is dragged over the Library. Forwarded to the tab
+   *  strip so the Central tab lights up as the drop-ready target (task 089). */
+  fileDragActive?: boolean;
 }
 
 export default function TabbedLibraryPanel({
@@ -140,6 +143,7 @@ export default function TabbedLibraryPanel({
   onResync,
   showAddTab = false,
   showRecent = false,
+  fileDragActive = false,
 }: Props) {
   const project = useProjectLibrary();
   // Central-library landing view ("dashboard" | "list"). Global slice; default
@@ -499,6 +503,7 @@ export default function TabbedLibraryPanel({
         panelRef={panelRef}
         showAddTab={showAddTab}
         showRecent={showRecent}
+        fileDragActive={fileDragActive}
       />
       {activeLibrary ? (
         // Body region = the "page". Its outline is a single SVG-stroke frame
