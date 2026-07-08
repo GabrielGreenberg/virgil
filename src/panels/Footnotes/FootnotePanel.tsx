@@ -8,10 +8,11 @@ import {
   ItemMenu,
   PANEL,
   useCycle,
-  clearStaleHover,
+  useListNavKeys,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import {
@@ -117,37 +118,32 @@ function FootnotePanel({
     },
     [onSelect, onScrollToMarker],
   );
+  // The keyboard cycle iterates the SAME set CardListPanel renders. Archived
+  // atomless refs filter out of the Active view; feed the cycle the archive-
+  // filtered list (via the shared hook, same accessor CardListPanel gets) so
+  // ArrowUp/Down never steps onto an archived, off-screen ref card (M1).
+  const getFnArchived = useCallback(
+    (it: FootnoteItem) => (it.kind === "ref" ? !!it.data.archived : false),
+    [],
+  );
+  const visibleItems = useArchiveVisibleItems("footnotes", items, getFnArchived);
   const {
     idx: cycleIdx,
     next: cycleNext,
     prev: cyclePrev,
     setIdx: setCycleIdx,
-  } = useCycle(items, onActivateItem);
+  } = useCycle(visibleItems, onActivateItem);
 
   useEffect(() => {
     if (!selectedId) {
       if (cycleIdx != null) setCycleIdx(null);
       return;
     }
-    const i = items.findIndex((it) => itemId(it) === selectedId);
+    const i = visibleItems.findIndex((it) => itemId(it) === selectedId);
     if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
-  }, [selectedId, items, cycleIdx, setCycleIdx]);
+  }, [selectedId, visibleItems, cycleIdx, setCycleIdx]);
 
-  const handleNavKeys = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (items.length === 0) return;
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        cycleNext();
-        clearStaleHover(e.currentTarget as HTMLElement);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        cyclePrev();
-        clearStaleHover(e.currentTarget as HTMLElement);
-      }
-    },
-    [items, cycleNext, cyclePrev],
-  );
+  const handleNavKeys = useListNavKeys(visibleItems.length, cycleNext, cyclePrev);
 
   return (
     <CardListPanel
@@ -170,7 +166,7 @@ function FootnotePanel({
       getId={itemId}
       // Bug sweep #3: archived atomless refs filter into the Archives view; live
       // anchored footnotes + orphans + unanchored-but-active refs stay in Active.
-      getArchived={(it) => (it.kind === "ref" ? !!it.data.archived : false)}
+      getArchived={getFnArchived}
       selectedId={selectedId}
       onSelect={onSelect}
       emptyState={

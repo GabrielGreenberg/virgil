@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
-import { Button, ItemMenu, PANEL, clearStaleHover } from "@/components/panel-primitives";
+import { Button, ItemMenu, PANEL, useListNavKeys } from "@/components/panel-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
@@ -375,26 +375,9 @@ function BibliographyPanel({
     navigateToEntry(displayedEntries[prev].key);
   }, [displayedEntries, selectedIdx, navigateToEntry]);
 
-  const handleNavKeys = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (displayedEntries.length === 0) return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) {
-        return;
-      }
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        goNext();
-        clearStaleHover(e.currentTarget as HTMLElement);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        goPrev();
-        clearStaleHover(e.currentTarget as HTMLElement);
-      }
-    },
-    [displayedEntries, goNext, goPrev],
-  );
+  // Shared list-nav handler (the editable-target guard + ArrowUp/Down cycling
+  // this panel first grew inline is now the SSOT in `useListNavKeys`).
+  const handleNavKeys = useListNavKeys(displayedEntries.length, goNext, goPrev);
 
   const handleExportCited = useCallback(() => {
     const seen = new Set<string>();

@@ -17,7 +17,7 @@ import {
 } from "@/components/editor-layout/contexts/card-display";
 import { Panel } from "./Panel";
 import type { PanelKind } from "./types";
-import { useCardArchiveView, filterByArchiveView } from "./card-archive-view";
+import { useArchiveVisibleItems } from "./card-archive-view";
 
 export interface CardListPanelProps<T> {
   kind: PanelKind;
@@ -91,11 +91,7 @@ export function CardListPanel<T>({
   // cards, so every item shows. Pure derivation — recomputes only when items or
   // the mode change (an archive toggle / view switch), never on a keystroke
   // (the `archived` flag lives in sidecar state, not the doc).
-  const { getView } = useCardArchiveView();
-  const view = getView(kind);
-  const visibleItems = getArchived
-    ? filterByArchiveView(items, view, getArchived)
-    : items;
+  const visibleItems = useArchiveVisibleItems(kind, items, getArchived);
   // The header badge reflects what's actually shown in the current view.
   const shownCount = getArchived ? visibleItems.length : count;
 

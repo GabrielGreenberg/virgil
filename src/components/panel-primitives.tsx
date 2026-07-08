@@ -21,7 +21,7 @@
  *  </div>
  */
 
-import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
+import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { useDragGap } from "@/hooks/useDragGap";
 import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
@@ -223,6 +223,56 @@ export function clearStaleHover(container: HTMLElement | null) {
     document.removeEventListener("pointermove", restore);
   };
   document.addEventListener("pointermove", restore);
+}
+
+/**
+ * True when a keyboard event originated inside an editable control — a text
+ * `<input>`, `<textarea>`, `<select>`, or a `contentEditable` region. Cardful
+ * list panels use this to NOT hijack ArrowUp/Down for card-cycling while the
+ * caret sits in a card's own field (the Code box, a +range/postnote input, the
+ * "Add from library…" search), so the arrows move the caret instead.
+ */
+export function isEditableEventTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+/**
+ * Shared ArrowUp/Down list-navigation keydown handler for cardful list panels
+ * (Citations / Footnotes / Examples / Bibliography). ArrowDown → `next`,
+ * ArrowUp → `prev`, each followed by `clearStaleHover` on the scroll body.
+ *
+ * Events originating from an editable target are ignored (see
+ * `isEditableEventTarget`) so arrows edit text inside a card's inputs rather
+ * than cycling cards out from under the caret. This "don't steal arrows inside
+ * inputs" law lived in four near-identical per-panel copies (one of which
+ * lacked the guard); lifting it here makes it a single SSOT every list panel
+ * inherits. No-op when `count` is 0.
+ */
+export function useListNavKeys(
+  count: number,
+  next: () => void,
+  prev: () => void,
+): (e: ReactKeyboardEvent) => void {
+  return useCallback(
+    (e: ReactKeyboardEvent) => {
+      if (count === 0) return;
+      if (isEditableEventTarget(e.target)) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        next();
+        clearStaleHover(e.currentTarget as HTMLElement);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        prev();
+        clearStaleHover(e.currentTarget as HTMLElement);
+      }
+    },
+    [count, next, prev],
+  );
 }
 
 /* ── EditableCard — shared card for RichTextField-bearing panels ──── */

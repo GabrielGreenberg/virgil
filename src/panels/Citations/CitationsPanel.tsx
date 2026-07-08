@@ -6,10 +6,11 @@ import {
   ItemMenu,
   PANEL,
   useCycle,
-  clearStaleHover,
+  useListNavKeys,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import type { NestedContainerInfo } from "@/components/editor-layout/panels/nest-footnote-children";
@@ -198,36 +199,39 @@ function CitationsPanel({
     },
     [jumpToCitation, panelScrollRef],
   );
+
+  // The keyboard cycle must iterate the SAME set the panel renders. CardListPanel
+  // filters its list to the archive view (Active / Archives / All); feed the
+  // cycle that filtered list too, via the shared hook, so ArrowUp/Down never
+  // steps onto an archived, off-screen citation (M1). `getCitArchived` is stable
+  // so `visibleCitations` stays identity-stable for the cycle across renders,
+  // and CardListPanel receives the same accessor so both derive one set.
+  const getCitArchived = useCallback((c: CitationRef) => !!c.archived, []);
+  const visibleCitations = useArchiveVisibleItems(
+    "citations",
+    orderedCitations,
+    getCitArchived,
+  );
   const {
     idx: cycleIdx,
     next: cycleNext,
     prev: cyclePrev,
     setIdx: setCycleIdx,
-  } = useCycle(orderedCitations, onActivateCitation);
+  } = useCycle(visibleCitations, onActivateCitation);
 
   useEffect(() => {
     if (!selectedId) {
       if (cycleIdx != null) setCycleIdx(null);
       return;
     }
-    const i = orderedCitations.findIndex((c) => c.id === selectedId);
+    const i = visibleCitations.findIndex((c) => c.id === selectedId);
     if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
-  }, [selectedId, orderedCitations, cycleIdx, setCycleIdx]);
+  }, [selectedId, visibleCitations, cycleIdx, setCycleIdx]);
 
-  const handleNavKeys = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (orderedCitations.length === 0) return;
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        cycleNext();
-        clearStaleHover(e.currentTarget as HTMLElement);
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        cyclePrev();
-        clearStaleHover(e.currentTarget as HTMLElement);
-      }
-    },
-    [orderedCitations, cycleNext, cyclePrev],
+  const handleNavKeys = useListNavKeys(
+    visibleCitations.length,
+    cycleNext,
+    cyclePrev,
   );
 
   const sharedCardProps = {
@@ -361,7 +365,7 @@ function CitationsPanel({
       }
       items={orderedCitations}
       getId={(c) => c.id}
-      getArchived={(c) => !!c.archived}
+      getArchived={getCitArchived}
       selectedId={selectedId}
       onSelect={onSelect}
       emptyState={
