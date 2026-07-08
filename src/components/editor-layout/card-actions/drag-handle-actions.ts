@@ -395,7 +395,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
         }
         case "suggest-edit": {
           const anchor = wantRangeAnchor ? createAnchor(ed, "revision") : undefined;
-          const card = cardCreation.createRevisionComment({
+          const card = cardCreation.createRevisionRequest({
             paragraphId,
             anchor,
             targetKind,

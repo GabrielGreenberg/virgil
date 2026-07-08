@@ -5,7 +5,7 @@ import type {
   HighlightCard,
   CutterCommentCard,
   CutterSuggestionCard,
-  RevisionCommentCard,
+  RevisionRequestCard,
   RevisionSuggestionCard,
   ReportCard,
   ReportRequestCard,
@@ -76,7 +76,7 @@ export interface CardCreationDeps {
     content?: JSONContent,
     anchor?: AnchorRef,
     targetKind?: TextObjectKind,
-  ) => RevisionCommentCard;
+  ) => RevisionRequestCard;
   addRevisionSuggestion: (
     paragraphId: string | null,
     originalText?: string,
@@ -216,14 +216,14 @@ export interface CardCreationApi {
     mode?: CardCreateMode;
     targetKind?: TextObjectKind;
   } & AutoFocusOpt) => ReportRequestCard;
-  createRevisionComment: (opts: {
+  createRevisionRequest: (opts: {
     paragraphId?: string | null;
     content?: JSONContent;
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
     targetKind?: TextObjectKind;
-  } & AutoFocusOpt) => RevisionCommentCard;
+  } & AutoFocusOpt) => RevisionRequestCard;
   createRevisionSuggestion: (opts: {
     paragraphId?: string | null;
     originalText?: string;
@@ -522,8 +522,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     [addReportRequest, setSelectedReportCardId, finishCreate],
   );
 
-  const createRevisionComment = useCallback<
-    CardCreationApi["createRevisionComment"]
+  const createRevisionRequest = useCallback<
+    CardCreationApi["createRevisionRequest"]
   >(
     (opts) => {
       const card = addRevisionComment(
@@ -658,7 +658,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       createCutterSuggestion,
       createReport,
       createReportRequest,
-      createRevisionComment,
+      createRevisionRequest,
       createRevisionSuggestion,
       createTodo,
       createFootnote,
@@ -673,7 +673,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       createCutterSuggestion,
       createReport,
       createReportRequest,
-      createRevisionComment,
+      createRevisionRequest,
       createRevisionSuggestion,
       createTodo,
       createFootnote,

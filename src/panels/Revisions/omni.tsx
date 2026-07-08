@@ -3,14 +3,14 @@
 import type { Editor } from "@tiptap/react";
 import type {
   RevisionCard,
-  RevisionCommentCard as RevisionCommentCardData,
+  RevisionRequestCard as RevisionRequestCardData,
   RevisionSuggestionCard as RevisionSuggestionCardData,
 } from "@/lib/types";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { resolveAnchorState } from "@/links/anchor-state";
-import { RevisionCommentCard } from "./RevisionCommentCard";
+import { RevisionRequestCard } from "./RevisionRequestCard";
 import { RevisionSuggestionCard } from "./RevisionSuggestionCard";
 
 interface BuildArgs {
@@ -72,9 +72,9 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
           extraDataAttrs={{ "data-omni-entry": omniId }}
         />
       ) : (
-        <RevisionCommentCard
+        <RevisionRequestCard
           key={omniId}
-          card={card as RevisionCommentCardData}
+          card={card as RevisionRequestCardData}
           selected={isSelected}
           editor={a.editor}
           onUpdateContent={a.updateCommentContent}

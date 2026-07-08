@@ -20,7 +20,7 @@
 import { emptyRichContent, normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent } from "@tiptap/react";
 import type {
-  RevisionCommentCard,
+  RevisionRequestCard,
   RevisionSuggestionCard,
   CutterCommentCard,
   CutterSuggestionCard,
@@ -49,7 +49,7 @@ function richFromText(text: string): JSONContent {
  * Extracted verbatim from the old inline `useRevisions.convertCard` salvage
  * (the revisions seed). Non-destructive both ways (lossy: false). */
 
-function revisionCommentToSuggestion(c: RevisionCommentCard): RevisionSuggestionCard {
+function revisionRequestToSuggestion(c: RevisionRequestCard): RevisionSuggestionCard {
   return {
     kind: "suggestion",
     id: c.id,
@@ -66,7 +66,7 @@ function revisionCommentToSuggestion(c: RevisionCommentCard): RevisionSuggestion
   };
 }
 
-function revisionSuggestionToComment(s: RevisionSuggestionCard): RevisionCommentCard {
+function revisionSuggestionToRequest(s: RevisionSuggestionCard): RevisionRequestCard {
   const bodyText = s.user_text || s.suggested_text || "";
   return {
     kind: "comment",
@@ -81,10 +81,10 @@ function revisionSuggestionToComment(s: RevisionSuggestionCard): RevisionComment
 }
 
 registerCardMorph("revision-comment", (card) =>
-  revisionCommentToSuggestion(card as RevisionCommentCard),
+  revisionRequestToSuggestion(card as RevisionRequestCard),
 );
 registerCardMorph("revision-suggestion", (card) =>
-  revisionSuggestionToComment(card as RevisionSuggestionCard),
+  revisionSuggestionToRequest(card as RevisionSuggestionCard),
 );
 
 /* ── Cutter: comment ⇄ suggestion ─────────────────────────────────────

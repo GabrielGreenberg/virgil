@@ -7,7 +7,7 @@ import type {
   RevisionsState,
   RevisionsTracker,
   RevisionCard,
-  RevisionCommentCard,
+  RevisionRequestCard,
   RevisionSuggestionCard,
 } from "@/lib/types";
 import {
@@ -47,8 +47,8 @@ function migrateTracker(raw: unknown): RevisionsTracker | null {
   return { target, setAt };
 }
 
-function migrateCommentRecord(raw: unknown): RevisionCommentCard | null {
-  const r = (raw ?? {}) as Partial<RevisionCommentCard> & {
+function migrateRequestRecord(raw: unknown): RevisionRequestCard | null {
+  const r = (raw ?? {}) as Partial<RevisionRequestCard> & {
     authorId?: string;
     resolved?: boolean;
     turns?: Array<{ text?: string }>;
@@ -113,7 +113,7 @@ function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
 function migrateCard(raw: unknown): RevisionCard | null {
   const r = (raw ?? {}) as { kind?: string };
   if (r.kind === "suggestion") return migrateSuggestionRecord(raw);
-  return migrateCommentRecord(raw);
+  return migrateRequestRecord(raw);
 }
 
 function migrateRevisions(raw: unknown): RevisionsState {
@@ -147,7 +147,7 @@ function migrateRevisions(raw: unknown): RevisionsState {
     const seen = new Set<string>();
     const cards: RevisionCard[] = [];
     for (const raw of sources) {
-      const c = migrateCommentRecord(raw);
+      const c = migrateRequestRecord(raw);
       if (!c || seen.has(c.id)) continue;
       seen.add(c.id);
       cards.push(c);
@@ -176,7 +176,7 @@ export function useRevisions(
   // checkbox toggle AND the default-on-create path both funnel through it, so
   // the `ai-requests.json` payload shape lives once.
   const bridgeComment = useCallback(
-    (card: RevisionCommentCard, value: boolean, mode: AiRequestSyncMode = "toggle") => {
+    (card: RevisionRequestCard, value: boolean, mode: AiRequestSyncMode = "toggle") => {
       void bridgeCardAiRequestFlag(
         docId,
         "revision-comment",
@@ -200,7 +200,7 @@ export function useRevisions(
       anchor?: { anchorId: string; anchorText: string },
       targetKind?: import("@/text-objects/types").TextObjectKind,
     ) => {
-      let card: RevisionCommentCard = {
+      let card: RevisionRequestCard = {
         kind: "comment",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
@@ -291,7 +291,7 @@ export function useRevisions(
       if (firstCommit) {
         const card = state.cards.find(
           (c) => c.id === id && c.kind === "comment",
-        ) as RevisionCommentCard | undefined;
+        ) as RevisionRequestCard | undefined;
         if (card?.aiRequest) bridgeComment({ ...card, content, text }, true);
       }
     },
@@ -314,7 +314,7 @@ export function useRevisions(
       if (firstCommit) {
         const card = state.cards.find(
           (c) => c.id === id && c.kind === "comment",
-        ) as RevisionCommentCard | undefined;
+        ) as RevisionRequestCard | undefined;
         if (card?.aiRequest) bridgeComment({ ...card, content, text }, true);
       }
     },
@@ -326,7 +326,7 @@ export function useRevisions(
       pristine.markDirty(id);
       const card = state.cards.find(
         (c) => c.id === id && c.kind === "comment",
-      ) as RevisionCommentCard | undefined;
+      ) as RevisionRequestCard | undefined;
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
@@ -501,7 +501,7 @@ export function useRevisions(
     (sourceId: string): string | null => {
       const source = state.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "comment") return null;
-      const clone: RevisionCommentCard = {
+      const clone: RevisionRequestCard = {
         kind: "comment",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),

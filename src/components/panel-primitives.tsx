@@ -1274,7 +1274,7 @@ export function EditableCard({
 
 /* ── AiRequestCheckbox — centralized "AI request" checkbox ──────────
  * Single source of truth for the per-card "AI request" toggle. Used by
- * NoteCard, TodoRow, CutterCommentCard, RevisionCommentCard. Update the
+ * NoteCard, TodoRow, CutterCommentCard, RevisionRequestCard. Update the
  * markup or styling here to change every consumer at once. */
 export function AiRequestCheckbox({
   checked,
