@@ -37,7 +37,7 @@ export type StackCardKind =
   | "example"
   | "todo"
   | "archive"
-  | "revision-comment"   // RevisionCommentCard (disk kind: "comment")
+  | "revision-comment"   // RevisionRequestCard (disk kind: "comment")
   | "revision-suggestion"
   | "cutter-comment"
   | "cutter-suggestion";

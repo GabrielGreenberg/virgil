@@ -74,7 +74,7 @@ export interface ClaudeSuggestion {
 // panel additionally tracks a per-document "revisions accepted" counter
 // (see RevisionsTracker), in lieu of Cutter's word-count goal.
 
-export interface RevisionCommentCard {
+export interface RevisionRequestCard {
   kind: "comment";
   id: string;
   createdAt: string;
@@ -126,7 +126,7 @@ export interface RevisionSuggestionCard {
   links: Link[];
 }
 
-export type RevisionCard = RevisionCommentCard | RevisionSuggestionCard;
+export type RevisionCard = RevisionRequestCard | RevisionSuggestionCard;
 
 export interface RevisionsTracker {
   /** Optional target number of accepted revisions to aim for. */

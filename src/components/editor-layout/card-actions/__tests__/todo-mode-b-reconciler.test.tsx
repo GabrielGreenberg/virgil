@@ -187,7 +187,7 @@ function useStack(editor: Editor) {
     createCitation: () => ({ id: nextId() }),
     createCutterComment: () => ({ id: nextId() }),
     createReportRequest: () => ({ id: nextId() }),
-    createRevisionComment: () => ({ id: nextId() }),
+    createRevisionRequest: () => ({ id: nextId() }),
     createArchiveSnippet: () => ({ id: nextId() }),
   };
 

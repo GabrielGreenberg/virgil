@@ -31,7 +31,7 @@ import { CutterCommentCard, CutterSuggestionCard, CutterSuggestionTrailing } fro
 import { TodoRow, TodoDoneToggle } from "@/panels/Todo";
 import { CitationCard } from "@/panels/Citations";
 import {
-  RevisionCommentCard,
+  RevisionRequestCard,
   RevisionSuggestionCard,
   RevisionSuggestionTrailing,
 } from "@/panels/Revisions";
@@ -565,7 +565,7 @@ registerCardFloatable("revision-comment", (id, ctx: CardFloatCtx) => {
     canJump,
     jumpToSource: () => ctx.editorRef.current?.jumpToCard(card, null),
     renderBody: () => (
-      <RevisionCommentCard
+      <RevisionRequestCard
         card={card}
         selected={ctx.selectedCommentId === card.id}
         onUpdateContent={ctx.updateRevisionCommentContent}

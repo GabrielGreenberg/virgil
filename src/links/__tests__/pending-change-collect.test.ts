@@ -62,7 +62,7 @@ function pendingRevision(id: string): RevisionCard {
   } as RevisionCard;
 }
 
-function revisionComment(id: string): RevisionCard {
+function revisionRequest(id: string): RevisionCard {
   return {
     kind: "comment",
     id,
@@ -103,7 +103,7 @@ describe("isAppliedPending", () => {
   });
 
   it("is false for a comment (no status / appliedChange)", () => {
-    expect(isAppliedPending(revisionComment("rc1"))).toBe(false);
+    expect(isAppliedPending(revisionRequest("rc1"))).toBe(false);
   });
 
   it("is false for a non-applied suggestion status", () => {
@@ -119,7 +119,7 @@ describe("isAppliedPending", () => {
 describe("collectAppliedPendingIds", () => {
   it("collects exactly the applied ids, in source order, across a mixed array", () => {
     const cards: RevisionCard[] = [
-      revisionComment("c0"),
+      revisionRequest("c0"),
       appliedRevision("r1", "a1"),
       pendingRevision("p0"),
       appliedRevision("r2", "a2"),
@@ -128,7 +128,7 @@ describe("collectAppliedPendingIds", () => {
   });
 
   it("returns [] when nothing is applied", () => {
-    expect(collectAppliedPendingIds([pendingRevision("p1"), revisionComment("c1")])).toEqual([]);
+    expect(collectAppliedPendingIds([pendingRevision("p1"), revisionRequest("c1")])).toEqual([]);
   });
 });
 

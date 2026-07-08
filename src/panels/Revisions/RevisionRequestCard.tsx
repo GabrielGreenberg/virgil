@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import type { Editor, JSONContent } from "@tiptap/react";
-import type { RevisionCommentCard as RevisionCommentCardData } from "@/lib/types";
+import type { RevisionRequestCard as RevisionRequestCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
   EditableCard,
@@ -18,7 +18,7 @@ import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { normalizeRichContent } from "@/lib/footnote-content";
 
-export function RevisionCommentCard({
+export function RevisionRequestCard({
   card,
   selected,
   onUpdateContent,
@@ -33,7 +33,7 @@ export function RevisionCommentCard({
   editor,
   extraDataAttrs,
 }: {
-  card: RevisionCommentCardData;
+  card: RevisionRequestCardData;
   selected: boolean;
   onUpdateContent: (id: string, content: JSONContent) => void;
   onSetAiRequest: (id: string, value: boolean) => void;
@@ -130,9 +130,9 @@ export function RevisionCommentCard({
       value={card.content}
       variant={bodyVariantForCardKind("revision-comment")}
       panelKey="revision"
-      placeholder="Comment text…"
+      placeholder="Request text…"
       onChange={handleChange}
-      dataAttr={{ name: "revision-comment-entry", value: card.id }}
+      dataAttr={{ name: "revision-request-entry", value: card.id }}
       extraDataAttrs={{
         "data-pristine-card-id": card.id,
         "data-card-key": cardKey,

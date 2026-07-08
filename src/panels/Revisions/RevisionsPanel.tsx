@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type {
   RevisionCard,
-  RevisionCommentCard as RevisionCommentCardData,
+  RevisionRequestCard as RevisionRequestCardData,
   RevisionsTracker,
   RevisionSuggestionCard as RevisionSuggestionCardData,
 } from "@/lib/types";
@@ -14,19 +14,19 @@ import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
-import { RevisionCommentCard } from "./RevisionCommentCard";
+import { RevisionRequestCard } from "./RevisionRequestCard";
 import { RevisionSuggestionCard } from "./RevisionSuggestionCard";
 import { RevisionsTrackerStrip } from "./RevisionsTracker";
 
 type Item =
-  | { kind: "comment"; id: string; createdAt: string; data: RevisionCommentCardData }
+  | { kind: "comment"; id: string; createdAt: string; data: RevisionRequestCardData }
   | { kind: "suggestion"; id: string; createdAt: string; data: RevisionSuggestionCardData };
 
 export default function RevisionsPanel({
   cards,
   tracker,
   onSetTrackerTarget,
-  onAddComment,
+  onAddRequest,
   onAddSuggestion,
   onUpdateCommentContent,
   onSetCommentAiRequest,
@@ -47,7 +47,7 @@ export default function RevisionsPanel({
   cards: RevisionCard[];
   tracker: RevisionsTracker | null;
   onSetTrackerTarget: (target: number | null) => void;
-  onAddComment: (anchorRect?: DOMRect) => RevisionCommentCardData;
+  onAddRequest: (anchorRect?: DOMRect) => RevisionRequestCardData;
   onAddSuggestion: (anchorRect?: DOMRect) => RevisionSuggestionCardData;
   onUpdateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   onSetCommentAiRequest: (id: string, value: boolean) => void;
@@ -97,10 +97,10 @@ export default function RevisionsPanel({
 
   const onAddOptions = useMemo(
     () => [
-      { label: "Request", onClick: (rect?: DOMRect) => onAddComment(rect) },
+      { label: "Request", onClick: (rect?: DOMRect) => onAddRequest(rect) },
       { label: "Revision", onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
     ],
-    [onAddComment, onAddSuggestion],
+    [onAddRequest, onAddSuggestion],
   );
 
   return (
@@ -158,7 +158,7 @@ export default function RevisionsPanel({
           );
         }
         return (
-          <RevisionCommentCard
+          <RevisionRequestCard
             card={it.data}
             selected={selected}
             editor={editor}

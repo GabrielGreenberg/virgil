@@ -5,7 +5,7 @@ import type { JSONContent } from "@tiptap/react";
 import RevisionsPanel from "@/panels/Revisions";
 import type {
   RevisionCard,
-  RevisionCommentCard,
+  RevisionRequestCard,
   RevisionsTracker,
   RevisionSuggestionCard,
 } from "@/lib/types";
@@ -89,7 +89,7 @@ function buildSuggestionPrompt(s: RevisionSuggestionCard): string {
 export function RevisionsHost(p: RevisionsHostProps) {
   const { editorInstance, editorRef } = useEditorRefContext();
   const { selectedCommentId, setSelectedCommentId } = useSelectionsContext();
-  const { createRevisionComment, createRevisionSuggestion } =
+  const { createRevisionRequest, createRevisionSuggestion } =
     useCardCreationContext();
   const { addAiRequest } = useAiRequestsContext();
   const recentlyAddedId = useRecentlyAddedId("revision");
@@ -99,9 +99,9 @@ export function RevisionsHost(p: RevisionsHostProps) {
   discardRef.current = p.discardPristine;
   useEffect(() => () => discardRef.current(), []);
 
-  const onAddComment = useCallback(
-    (rect?: DOMRect): RevisionCommentCard => createRevisionComment({ anchorRect: rect }),
-    [createRevisionComment],
+  const onAddRequest = useCallback(
+    (rect?: DOMRect): RevisionRequestCard => createRevisionRequest({ anchorRect: rect }),
+    [createRevisionRequest],
   );
   const onAddSuggestion = useCallback(
     (rect?: DOMRect): RevisionSuggestionCard => createRevisionSuggestion({ anchorRect: rect }),
@@ -199,7 +199,7 @@ export function RevisionsHost(p: RevisionsHostProps) {
       cards={p.cards}
       tracker={p.tracker}
       onSetTrackerTarget={p.setTrackerTarget}
-      onAddComment={onAddComment}
+      onAddRequest={onAddRequest}
       onAddSuggestion={onAddSuggestion}
       onUpdateCommentContent={p.updateCommentContent}
       onSetCommentAiRequest={p.setCommentAiRequest}

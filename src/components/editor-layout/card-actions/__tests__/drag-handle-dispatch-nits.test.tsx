@@ -175,7 +175,7 @@ function makeHarness(editor: Editor): Harness {
       createHighlightCalls.push({ anchor: opts.anchor });
       return { id: nextId() };
     },
-    createRevisionComment: captureCreate(createRevisionCalls),
+    createRevisionRequest: captureCreate(createRevisionCalls),
     // createFootnote returns `{ footnoteId }`, not `{ id }`; capture the
     // anchoring opts the same way but mint the expected shape.
     createFootnote: (opts: {
