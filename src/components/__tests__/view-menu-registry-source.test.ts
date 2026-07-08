@@ -8,8 +8,10 @@
 //   1. The ViewMenu has NO hand-rolled `useState` feeding a view toggle's
 //      checked/onToggle — the disclosure `useState`s (expand/collapse) are the
 //      only allowed ones; every PREF row is registry/prop-driven.
-//   2. REGISTRY_GLOBAL_KEYS ⊆ the dev-prefs promotion whitelist (so every
-//      global view pref participates in the personal-prefs promotion pipeline).
+//   2. The dev-prefs promotion whitelist matches the registry's `promote` flag
+//      both ways: every PROMOTED global key is whitelisted, and every key flagged
+//      `promote: false` is NOT (its shipped default is frozen at the registry
+//      value — the showParTitles drift, task 057).
 //   3. Every menu-bearing registry entry's label (+ per-value/member labels)
 //      appears verbatim in the MenuBar source (the menu renders from the
 //      registry, so a renamed label can't drift out of sync silently).
@@ -20,6 +22,7 @@ import path from "node:path";
 import {
   VIEW_PREF_REGISTRY,
   REGISTRY_GLOBAL_KEYS,
+  REGISTRY_PROMOTED_GLOBAL_KEYS,
 } from "@/lib/view-prefs/registry";
 import devPrefsRegistry from "@/lib/dev-prefs-registry.json";
 import viewPrefsDefaults from "@/hooks/useViewPrefs.defaults.json";
@@ -48,15 +51,27 @@ describe("ViewMenu — no hand-rolled useState feeds a view toggle", () => {
   });
 });
 
-describe("REGISTRY_GLOBAL_KEYS ⊆ promotion whitelist", () => {
-  it("every global registry key is in the dev-prefs-registry whitelist", () => {
-    const promotable = devPrefsRegistry.promotable.find(
-      (p) => p.storageKey === "virgil-view-prefs/global" && p.strategy === "whitelist",
-    );
+describe("promotion whitelist ⇔ registry `promote` flag", () => {
+  const promotable = devPrefsRegistry.promotable.find(
+    (p) => p.storageKey === "virgil-view-prefs/global" && p.strategy === "whitelist",
+  );
+  const whitelist = new Set((promotable as { whitelist: string[] } | undefined)?.whitelist ?? []);
+
+  it("every PROMOTED global registry key is in the dev-prefs-registry whitelist", () => {
     expect(promotable).toBeTruthy();
-    const whitelist = new Set((promotable as { whitelist: string[] }).whitelist);
-    const missing = REGISTRY_GLOBAL_KEYS.filter((k) => !whitelist.has(k));
+    const missing = REGISTRY_PROMOTED_GLOBAL_KEYS.filter((k) => !whitelist.has(k));
     expect(missing).toEqual([]);
+  });
+
+  it("every `promote: false` global key is ABSENT from the whitelist (drift-proof, task 057)", () => {
+    // A frozen pref must not sit on the promotion whitelist, or a promote-defaults
+    // run would re-fold Gabriel's personal snapshot over its shipped default and
+    // re-drift it (the exact showParTitles regression this closes).
+    const optedOut = REGISTRY_GLOBAL_KEYS.filter(
+      (k) => !REGISTRY_PROMOTED_GLOBAL_KEYS.includes(k),
+    );
+    const leaked = optedOut.filter((k) => whitelist.has(k));
+    expect(leaked).toEqual([]);
   });
 });
 
@@ -120,17 +135,8 @@ describe("showCardTitles — the page-level card +T pref mirrors showParTitles",
     // invariant enforced generically above; pinned explicitly here).
     expect(REGISTRY_GLOBAL_KEYS).toContain("showCardTitles");
   });
-
-  it("registry default is byte-identical with useViewPrefs.defaults.json (release-snapshot contract)", () => {
-    // The promotion pipeline is byte-stable against the JSON; a divergence here
-    // is the release_prefs_snapshot gotcha. Default `true` also preserves the
-    // current always-on `+T` behavior (the affordance shows unless toggled off).
-    expect(VIEW_PREF_REGISTRY.showCardTitles.default).toBe(true);
-    expect((viewPrefsDefaults as Record<string, unknown>).showCardTitles).toBe(true);
-    expect(VIEW_PREF_REGISTRY.showCardTitles.default).toBe(
-      (viewPrefsDefaults as Record<string, unknown>).showCardTitles,
-    );
-  });
+  // Registry↔JSON default byte-identity is now asserted generically for EVERY
+  // key below ("registry ↔ shipped-defaults byte-identity"), not pinned per-key.
 });
 
 describe("cardOutlineChrome — the OPT-IN card hover/select outline (task 026)", () => {
@@ -142,16 +148,31 @@ describe("cardOutlineChrome — the OPT-IN card hover/select outline (task 026)"
     expect(def.label).toBe("Card outline");
     // Global → must ride the personal-prefs promotion whitelist.
     expect(REGISTRY_GLOBAL_KEYS).toContain("cardOutlineChrome");
-  });
-
-  it("defaults OFF (no colored outline is the new default) and is byte-identical with the JSON", () => {
-    // Default `false` = the new no-outline look; toggling ON restores the
-    // colored hover/select outline. Registry default must match the shipped
-    // defaults JSON (release_prefs_snapshot contract).
+    // Default OFF (no colored outline); byte-identity with the JSON is asserted
+    // generically below.
     expect(VIEW_PREF_REGISTRY.cardOutlineChrome.default).toBe(false);
-    expect((viewPrefsDefaults as Record<string, unknown>).cardOutlineChrome).toBe(false);
-    expect(VIEW_PREF_REGISTRY.cardOutlineChrome.default).toBe(
-      (viewPrefsDefaults as Record<string, unknown>).cardOutlineChrome,
-    );
   });
+});
+
+describe("registry ↔ shipped-defaults byte-identity (release-snapshot contract)", () => {
+  // ONE generic guard replacing the former per-key byte-identity pins (task 057).
+  // At runtime DEFAULT_PREFS spreads REGISTRY_DEFAULTS first, then the JSON LAST,
+  // so the JSON value WINS. If the JSON diverges from a registry-declared default,
+  // a brand-new user silently gets a value the registry never intended — the
+  // showParTitles drift (a promoted personal snapshot flipped the shipped default
+  // true→false while the registry still declared true, and nothing caught it
+  // because byte-identity was pinned by hand, one key at a time, and this key was
+  // never pinned). Assert equality for EVERY registry key the JSON carries, so any
+  // future drift of this class fails CI — not just the three keys once pinned.
+  const json = viewPrefsDefaults as Record<string, unknown>;
+  for (const [key, def] of Object.entries(VIEW_PREF_REGISTRY)) {
+    // Keys the JSON legitimately omits fall back to REGISTRY_DEFAULTS at runtime
+    // (e.g. bibFilter — window-scope, panel-local — is correctly absent). Skip
+    // them; only keys the JSON actually ships must match byte-for-byte.
+    if (!(key in json)) continue;
+    it(`${key}: registry default equals useViewPrefs.defaults.json`, () => {
+      const registryDefault = def.kind === "set" ? [...def.default] : def.default;
+      expect(json[key]).toEqual(registryDefault);
+    });
+  }
 });
