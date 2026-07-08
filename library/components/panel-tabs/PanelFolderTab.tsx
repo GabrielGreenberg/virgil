@@ -16,6 +16,7 @@ import {
   buildTabFillPath,
   deriveTabWidthFromWrapper,
   MANILA_RADIUS,
+  TAB_TOP_GUTTER,
   tabSvgGeometry,
 } from "./folder-path";
 
@@ -128,7 +129,7 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
       return () => ro.disconnect();
     }, []);
 
-    const { svgW, svgH, inset } = tabSvgGeometry({ tabW, tabH: TAB_H, S });
+    const { svgW, svgH, inset, insetY } = tabSvgGeometry({ tabW, tabH: TAB_H, S });
     // Natural (uncompressed) canvas width — the flex preferred + max size.
     const naturalSvgW = tabSvgGeometry({ tabW: naturalTabW, tabH: TAB_H, S }).svgW;
     const fillPath = buildTabFillPath({
@@ -194,10 +195,12 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
           height: svgH,
           zIndex: active ? 10 : 1,
           // The active tab overlaps the body's top border by 1px so its 1px
-          // fill bridge (svgH = TAB_H + 1) paints over that border segment —
-          // the tab merges seamlessly into the page while the body's top
-          // border continues, uncovered, under the inactive tabs to either
-          // side. Active only; inactive tabs sit flush on the strip baseline.
+          // fill bridge (the bottom-most SVG row, y = svgH − 1) paints over that
+          // border segment — the tab merges seamlessly into the page while the
+          // body's top border continues, uncovered, under the inactive tabs to
+          // either side. Active only; inactive tabs sit flush on the strip
+          // baseline. (The tab's own top gutter — TAB_TOP_GUTTER — grows svgH at
+          // the TOP, so this bottom overlap is unaffected.)
           marginBottom: active ? -1 : 0,
           ...extraStyle,
         }}
@@ -217,17 +220,21 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
           shapeRendering="geometricPrecision"
           aria-hidden
         >
-          <g transform={`translate(${inset}, ${inset})`}>
+          <g transform={`translate(${inset}, ${insetY})`}>
             <path d={fillPath} fill={fill} stroke="none" />
           </g>
           <rect
             x={bridgeLeft}
-            y={TAB_H}
+            // The seam bridge sits on the bottom-most SVG pixel row (below the
+            // shifted fill's bottom edge at TAB_H + insetY), overlapping the
+            // body's top border. Expressed as svgH − 1 so it tracks the top
+            // gutter (which grows svgH) without a separate offset.
+            y={svgH - 1}
             width={Math.max(0, bridgeRight - bridgeLeft)}
             height="1"
             fill={fill}
           />
-          <g transform={`translate(${inset}, ${inset})`}>
+          <g transform={`translate(${inset}, ${insetY})`}>
             {strokePath ? (
               <path
                 d={strokePath}
@@ -249,7 +256,10 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
             gap: 6,
             padding: "0 8px 0 14px",
             left: S,
-            top: 0,
+            // Follow the tab body down by the top gutter so the label stays
+            // vertically centred in the manila shape (the fill/stroke shifted
+            // down by TAB_TOP_GUTTER; without this the label would ride 1px high).
+            top: TAB_TOP_GUTTER,
             // Span the tab body's flat top [S, S + tabW] exactly (width tabW).
             // svgW carries the F#8 +1px horizontal stroke gutter, so the content
             // width is svgW − 2*S − 1 (=== tabW) — subtracting the gutter here

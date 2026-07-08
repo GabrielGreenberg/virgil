@@ -6,6 +6,7 @@ import {
   MANILA_RADIUS,
   STRIP_SIDE_PAD,
   STROKE_INSET,
+  TAB_TOP_GUTTER,
   buildActiveTabStrokePath,
   buildFramePath,
   buildTabFillPath,
@@ -24,12 +25,13 @@ const TAB_H = 32;
 const ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 
 describe("F#8 — clipped-stroke SVG gutter geometry", () => {
-  it("adds a 1px HORIZONTAL gutter mirroring the vertical svgH = TAB_H + 1 precedent", () => {
+  it("adds a 1px HORIZONTAL gutter mirroring the vertical bottom-stroke precedent", () => {
     const tabW = 120;
     const { svgW, svgH } = tabSvgGeometry({ tabW, tabH: TAB_H, S });
-    // Vertical gutter (pre-existing): height is tabH + 1 so the bottom stroke
-    // fits inside overflow:hidden.
-    expect(svgH).toBe(TAB_H + 1);
+    // Vertical height carries BOTH the pre-existing +1 bottom gutter AND the
+    // task-087 top gutter, so the bottom stroke fits inside overflow:hidden and
+    // the top stroke clears the strip's flush top clip.
+    expect(svgH).toBe(TAB_H + 1 + TAB_TOP_GUTTER);
     // Horizontal gutter (F#8, the new bit): width is the raw path extent
     // (2*S + tabW) PLUS 1 so the right swoop foot doesn't bleed past the edge.
     expect(svgW).toBe(2 * S + tabW + 1);
@@ -59,6 +61,39 @@ describe("F#8 — clipped-stroke SVG gutter geometry", () => {
       const { svgW } = tabSvgGeometry({ tabW, tabH: TAB_H, S });
       expect(svgW - (2 * S + tabW)).toBe(1);
     }
+  });
+});
+
+describe("task 2026-07-07-087 — symmetric TOP stroke gutter (top-edge outline no longer clipped)", () => {
+  it("reserves a full-pixel top gutter so the top stroke clears the SVG's (and strip's) top clip", () => {
+    const { insetY, svgH } = tabSvgGeometry({ tabW: 120, tabH: TAB_H, S });
+    // The y translate shifts the path down by STROKE_INSET + TAB_TOP_GUTTER, so
+    // the top stroke (path y=0 → rendered at insetY, centred, spanning
+    // [insetY-0.5, insetY+0.5]) leaves a full TAB_TOP_GUTTER clear ABOVE it.
+    expect(insetY).toBe(STROKE_INSET + TAB_TOP_GUTTER);
+    const topStrokeOuterEdge = insetY - 0.5; // the stroke's topmost device row
+    expect(topStrokeOuterEdge).toBeGreaterThanOrEqual(TAB_TOP_GUTTER);
+    // svgH grows by exactly the top gutter over the old (tabH + 1) bottom-only
+    // height, so the bottom stroke still fits AND the top gutter is real space.
+    expect(svgH).toBe(TAB_H + 1 + TAB_TOP_GUTTER);
+  });
+
+  it("keeps the X inset a bare half-pixel — the gutter is a Y-only concern", () => {
+    // The horizontal crispness technique is unchanged; only the vertical axis
+    // gains the extra top cushion. inset (x) stays STROKE_INSET; insetY (y) adds
+    // the gutter. Guards against a future edit collapsing them back to one value.
+    const g = tabSvgGeometry({ tabW: 100, tabH: TAB_H, S });
+    expect(g.inset).toBe(STROKE_INSET);
+    expect(g.insetY).toBe(STROKE_INSET + TAB_TOP_GUTTER);
+    expect(g.insetY - g.inset).toBe(TAB_TOP_GUTTER);
+  });
+
+  it("the bottom stroke still fits inside svgH after the top shift (no bottom clip regression)", () => {
+    const { insetY, svgH } = tabSvgGeometry({ tabW: 90, tabH: TAB_H, S });
+    // Bottom ink at path y=TAB_H → rendered at TAB_H + insetY, the 1px stroke's
+    // outer (lower) edge at +0.5. That must stay <= svgH (no clip).
+    const bottomStrokeOuterEdge = TAB_H + insetY + 0.5;
+    expect(bottomStrokeOuterEdge).toBeLessThanOrEqual(svgH);
   });
 });
 
