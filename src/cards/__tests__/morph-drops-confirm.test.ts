@@ -76,9 +76,24 @@ describe("morphConfirmMessage — generated from drops, direction-correct", () =
     expect(morphConfirmMessage("highlight")).toBeNull();
   });
 
-  it("a non-lossy morph (comment ↔ suggestion) needs no confirm copy", () => {
-    expect(morphConfirmMessage("revision-comment")).toBeNull();
-    expect(morphConfirmMessage("cutter-comment")).toBeNull();
+  it("comment → suggestion warns it drops the rich formatting (both pairs — 074)", () => {
+    // The comment shape holds a rich `content` (citations, math, marks, multi-
+    // paragraph); the suggestion shape has no home for it, so the outbound morph
+    // flattens it to plain text. The declaration used to lie (`drops: []`) and
+    // flip silently; now it names `formatting` so the generated confirm fires.
+    for (const from of ["revision-comment", "cutter-comment"] as const) {
+      const copy = morphConfirmMessage(from);
+      expect(copy).not.toBeNull();
+      expect(copy!.message).toContain("the rich formatting");
+    }
+  });
+
+  it("suggestion → comment needs NO confirm copy (the reverse direction is genuinely lossless)", () => {
+    // Only the comment side has a rich body; a suggestion → comment morph seeds
+    // the body from the plain-text mirror and loses nothing user-authored, so it
+    // stays silent (asymmetric drops — REP-F6-03 direction-correctness).
+    expect(morphConfirmMessage("revision-suggestion")).toBeNull();
+    expect(morphConfirmMessage("cutter-suggestion")).toBeNull();
   });
 });
 
@@ -109,7 +124,7 @@ describe("runCardLifecycleEvent — morph", () => {
     expect(cap.signals).toHaveLength(0);
   });
 
-  it("a non-lossy morph (comment→suggestion) skips the confirm but still mutates + signals", async () => {
+  it("a comment→suggestion morph now confirms the rich-body flatten, then mutates + signals (074)", async () => {
     const { d, confirm, mutate } = deps();
     const ok = await runCardLifecycleEvent(
       { type: "morph", fromKind: "revision-comment", id: "c1" },
@@ -117,10 +132,25 @@ describe("runCardLifecycleEvent — morph", () => {
     );
     cap.stop();
     expect(ok).toBe(true);
-    expect(confirm).not.toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledOnce();
     expect(mutate).toHaveBeenCalledOnce();
     expect(cap.signals).toEqual([
       { type: "card-morphed", fromKind: "revision-comment", toKind: "revision-suggestion", id: "c1" },
+    ]);
+  });
+
+  it("the reverse suggestion→comment morph skips the confirm but still mutates + signals", async () => {
+    const { d, confirm, mutate } = deps();
+    const ok = await runCardLifecycleEvent(
+      { type: "morph", fromKind: "revision-suggestion", id: "s1" },
+      d,
+    );
+    cap.stop();
+    expect(ok).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(mutate).toHaveBeenCalledOnce();
+    expect(cap.signals).toEqual([
+      { type: "card-morphed", fromKind: "revision-suggestion", toKind: "revision-comment", id: "s1" },
     ]);
   });
 });

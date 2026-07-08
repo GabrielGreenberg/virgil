@@ -512,10 +512,15 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
-    // comment ⇄ suggestion is a non-destructive salvage both ways (the body
-    // text rides into `user_text` on the way out, back into the body on the
-    // way in), so neither direction is lossy.
-    morph: { to: "revision-suggestion", lossy: false, drops: [] },
+    // comment → suggestion carries only the PLAIN body text (`c.text` →
+    // `user_text`); the suggestion shape has no rich-body field, so the comment's
+    // rich `content` (citation atoms, inline math, marks, multi-paragraph) is
+    // flattened away — round-tripping back rebuilds a single flat paragraph. So
+    // the OUTBOUND direction is lossy: declare `formatting` in `drops` so the
+    // generated confirm warns before the flatten (074). The REVERSE (suggestion →
+    // comment) seeds the body from the plain mirror and loses nothing user-
+    // authored → stays non-lossy/silent (declared on `revision-suggestion.morph`).
+    morph: { to: "revision-suggestion", lossy: true, drops: ["formatting"] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,
@@ -538,8 +543,10 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
-    // Same non-destructive comment ⇄ suggestion salvage as the revision pair.
-    morph: { to: "cutter-suggestion", lossy: false, drops: [] },
+    // Same outbound-lossy comment → suggestion flatten as the revision pair: the
+    // rich `content` has no home on the suggestion shape, so `formatting` drops
+    // and the confirm warns. The REVERSE stays silent (`cutter-suggestion.morph`).
+    morph: { to: "cutter-suggestion", lossy: true, drops: ["formatting"] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,

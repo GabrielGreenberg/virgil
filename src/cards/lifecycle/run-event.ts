@@ -92,6 +92,7 @@ function describeDrops(drops: readonly string[]): string {
     aiRequest: "the AI-request flag",
     body: "the body",
     keys: "the cite keys",
+    formatting: "the rich formatting — citations, math, and lists",
   };
   const parts = drops.map((d) => LABELS[d] ?? d);
   if (parts.length === 1) return parts[0];
