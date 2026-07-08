@@ -719,6 +719,12 @@ Three categories.
    ellipsis text. Drop indicator: ProseMirror native cursor.
 3. **Selection drag** (selection chip → panel). MIME:
    `MIME_SELECTION_ANCHOR`. Ghost: small chip with selection excerpt.
+4. **Card-merge discriminator** (`MIME_BIB_MERGE`). A bib-entry drag
+   carries this *alongside* `MIME_CITATION` so a merge target's drop
+   ring lights only when the drop would actually merge. Rule: **a drop
+   ring must gate on a type the drop handler will accept** — `dragover`
+   can read `types` but not `getData`, so when one MIME serves two
+   payloads, split it rather than lighting a ring the drop rejects.
 
 Drop targets get a 2px dashed amber outline (`--ring-drag-target`)
 plus a 12% fill — universal across paragraph drops, panel drops, card

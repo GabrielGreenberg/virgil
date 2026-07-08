@@ -219,6 +219,7 @@ The MIME constants live in [src/lib/marginalia.ts](../../src/lib/marginalia.ts).
 
 - **`ANCHOR_DRAG_TYPES`** (vertical drop indicator suppress-set): now the lone residual `MIME_MARGINALIA_MOVE` — no live code produces it, kept only so `isAnchorDrag` stays a guard for any future native paragraph-anchor drag that opts back in.
 - **Inline-insert** (no vertical indicator): citation, archive (restore), footnote, text-insert.
+- **Card-merge discriminator** (`MIME_BIB_MERGE`): a `BibEntryCard` drag advertises this *alongside* `MIME_CITATION` so a `CitationCard`'s drop ring lights iff the drop would actually merge (a bib-entry drag, payload `{ bibKey }`) and never for a citation card's own atom-move drag (which carries `MIME_CITATION` alone). `dragover` sees `types` but not `getData`, so a distinct type is the only way the ring can predict the drop. Card-merge target only — kept out of `EDITOR_INSERT_DRAG_TYPES` and `ANCHOR_DRAG_TYPES`.
 
 When a card kind is re-anchorable via the drop button, declare the `droppable` + `dropPlacement` facets on its `CARD_REGISTRY` entry and register its `dropSpec` (see `src/cards/types.ts` `CardMeta`) — these are facets on existing kinds, not new card kinds. For a genuinely new inline-insert DnD payload, add the `MIME_*` constant and keep it out of `ANCHOR_DRAG_TYPES`.
 

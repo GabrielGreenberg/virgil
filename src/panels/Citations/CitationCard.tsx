@@ -27,7 +27,7 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import BibEntryCard from "@/components/BibEntryCard";
-import { MIME_CITATION } from "@/lib/marginalia";
+import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
@@ -533,7 +533,11 @@ export function CitationCard({
 
   const handleCardDragOver = useCallback(
     (e: React.DragEvent) => {
-      if (!e.dataTransfer.types.includes(MIME_CITATION)) return;
+      // Light the ring ONLY for a mergeable bib-entry drag — the `MIME_BIB_MERGE`
+      // discriminator. A citation card's own atom-move drag carries `MIME_CITATION`
+      // alone, so it no longer lights a "drop here" ring that `handleCardDrop`
+      // would then silently reject.
+      if (!e.dataTransfer.types.includes(MIME_BIB_MERGE)) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
       if (!isDropTarget) setIsDropTarget(true);
@@ -549,33 +553,39 @@ export function CitationCard({
 
   const handleCardDrop = useCallback(
     (e: React.DragEvent) => {
-      const data = e.dataTransfer.getData(MIME_CITATION);
+      // The merge path accepts the bib-entry discriminator only (a `\cite` atom
+      // move carries `MIME_CITATION` alone and is handled by the editor, never
+      // merged onto a card).
+      const data = e.dataTransfer.getData(MIME_BIB_MERGE);
       if (!data) return;
-      let parsed: { command?: string; bibKey?: string; citationId?: string };
+      let parsed: { bibKey?: string };
       try {
         parsed = JSON.parse(data);
       } catch {
         return;
       }
-      if (!parsed.bibKey) return;
+      const bibKey = parsed.bibKey;
+      if (!bibKey) return;
       e.preventDefault();
       e.stopPropagation();
       setIsDropTarget(false);
-      setRows((prev) => {
-        if (prev.some((r) => r.key === parsed.bibKey)) return prev;
-        // If the only row is empty, fill it instead of adding a new row.
-        const allEmpty = prev.every((r) => !r.key.trim());
-        const next = allEmpty
-          ? [{ id: nextRowId(), key: parsed.bibKey! }]
-          : [...prev, { id: nextRowId(), key: parsed.bibKey! }];
-        // Re-derive the command shape for the merged row set (T6-C16).
-        const nextType = derivePlural(type, next, bibPackage);
-        if (nextType !== type) setType(nextType);
-        persist({ rows: next, type: nextType });
-        return next;
-      });
+      // Compute `next` from the closure `rows` and call `setRows`/`setType`/
+      // `persist` at EVENT time — never a parent setState (`persist` →
+      // `onUpdateCitation`) from inside the `setRows` updater. Matches the
+      // sibling mutators' discipline (`setRowKey`/`setRowPostnote`/`removeRow`).
+      if (rows.some((r) => r.key === bibKey)) return; // already present — no-op
+      // If the only row is empty, fill it instead of adding a new row.
+      const allEmpty = rows.every((r) => !r.key.trim());
+      const next = allEmpty
+        ? [{ id: nextRowId(), key: bibKey }]
+        : [...rows, { id: nextRowId(), key: bibKey }];
+      // Re-derive the command shape for the merged row set (T6-C16).
+      const nextType = derivePlural(type, next, bibPackage);
+      setRows(next);
+      if (nextType !== type) setType(nextType);
+      persist({ rows: next, type: nextType });
     },
-    [persist, bibPackage, type],
+    [rows, persist, bibPackage, type],
   );
 
   /* ── Code line (raw LaTeX editor) ────────────────────────────────── */
