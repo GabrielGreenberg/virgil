@@ -51,8 +51,13 @@ export interface CardListPanelProps<T> {
   /** When provided, the "+" button opens a small dropdown of choices
    *  instead of firing `onAdd`. Used by panels hosting more than one
    *  card kind (Cutter: Comment / Suggestion). Each option's `onClick`
-   *  receives the trigger button's bounding rect. */
-  onAddOptions?: { label: string; onClick: (anchorRect?: DOMRect) => void }[];
+   *  receives the trigger button's bounding rect. A `disabled` option
+   *  renders greyed-out and is inert. */
+  onAddOptions?: {
+    label: string;
+    onClick: (anchorRect?: DOMRect) => void;
+    disabled?: boolean;
+  }[];
   headerLeading?: ReactNode;
   headerExtras?: ReactNode;
   panelExtras?: ReactNode;
