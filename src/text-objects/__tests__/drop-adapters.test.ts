@@ -55,6 +55,33 @@ describe("listItemDropAdapter", () => {
     );
     expect(result).toEqual({ kind: "wrap", parentKind: "bulletList" });
   });
+
+  it("still wraps when canPlaceHere accepts the fresh list (real top-level gap)", () => {
+    // Task 065 — the gate is a strict addition: where the fresh list fits
+    // (doc/blockquote/listItem parents accept a bulletList), the wrap is
+    // unchanged from pre-065.
+    const result = listItemDropAdapter(
+      { kind: "listItem", id: "x1", sourceContext: { parentKind: "bulletList" } },
+      { kind: "top-level", canPlaceHere: (k) => k === "bulletList" },
+    );
+    expect(result).toEqual({ kind: "wrap", parentKind: "bulletList" });
+  });
+
+  it("NO-OPS a cross-kind drop into a foreign container's item gap (task 065)", () => {
+    // A listItem dropped in the between-items gap of a multi-item exampleBlock:
+    // classifyParentAt collapses to "exampleBlock", but the TRUE immediate parent
+    // is `exampleItemList` (content `exampleItem+`), which rejects a bulletList.
+    // The wrap would split the container + duplicate a uuid, so reject instead.
+    const result = listItemDropAdapter(
+      { kind: "listItem", id: "x1", sourceContext: { parentKind: "bulletList" } },
+      {
+        kind: "inside-incompatible-parent",
+        parentKind: "exampleBlock",
+        canPlaceHere: () => false, // neither bulletList nor orderedList fits here
+      },
+    );
+    expect(result).toEqual({ kind: "no-op" });
+  });
 });
 
 describe("exampleItemDropAdapter", () => {
@@ -81,6 +108,29 @@ describe("exampleItemDropAdapter", () => {
     );
     expect(result).toEqual({ kind: "wrap", parentKind: "exampleBlock" });
   });
+
+  it("still wraps when canPlaceHere accepts the fresh exampleBlock (real top-level gap)", () => {
+    const result = exampleItemDropAdapter(
+      { kind: "exampleItem", id: "x1", sourceContext: { parentKind: "exampleBlock" } },
+      { kind: "top-level", canPlaceHere: (k) => k === "exampleBlock" },
+    );
+    expect(result).toEqual({ kind: "wrap", parentKind: "exampleBlock" });
+  });
+
+  it("NO-OPS a cross-kind drop into a foreign container's item gap (task 065)", () => {
+    // The symmetric corruption: an exampleItem dropped in the between-items gap
+    // of a multi-item bulletList. Immediate parent `bulletList` (content
+    // `listItem+`) rejects a fresh exampleBlock; wrapping would split the list.
+    const result = exampleItemDropAdapter(
+      { kind: "exampleItem", id: "x1", sourceContext: { parentKind: "exampleBlock" } },
+      {
+        kind: "inside-incompatible-parent",
+        parentKind: "bulletList",
+        canPlaceHere: () => false, // exampleBlock does not fit inside a bulletList
+      },
+    );
+    expect(result).toEqual({ kind: "no-op" });
+  });
 });
 
 describe("blockIntoExpexDropAdapter", () => {
@@ -91,12 +141,13 @@ describe("blockIntoExpexDropAdapter", () => {
   const KINDS: TextObjectKind[] = ["graphicsBlock", "paragraph", "displayMath"];
   for (const kind of KINDS) {
     describe(`${kind}`, () => {
-      it("wraps in a fresh exampleItem when the parent REJECTS a bare block but ACCEPTS an exampleItem (canDropDirect false + canWrapHere) — case a", () => {
+      it("wraps in a fresh exampleItem when the parent REJECTS a bare block but ACCEPTS an exampleItem (canDropDirect false + canPlaceHere('exampleItem')) — case a", () => {
         // The multi between-items gap: immediate parent exampleItemList (content
         // `exampleItem+`) rejects a bare block (canDropDirect=false) but ACCEPTS an
-        // exampleItem (canWrapHere=true) → wrap. REGRESSION TRAP — this case and the
-        // single-body case below BOTH classify as parentKind "exampleBlock";
-        // canDropDirect separates those two, and canWrapHere (A2 edge-fix) keeps the
+        // exampleItem (canPlaceHere('exampleItem')=true) → wrap. REGRESSION TRAP —
+        // this case and the single-body case below BOTH classify as parentKind
+        // "exampleBlock"; canDropDirect separates those two, and the shared
+        // canPlaceHere gate (task 065; formerly the bespoke canWrapHere) keeps the
         // wrap from firing at a non-expex rejected position where an exampleItem is
         // ALSO invalid (that drops-direct — covered by the real-schema lock).
         const result = blockIntoExpexDropAdapter(
@@ -105,7 +156,7 @@ describe("blockIntoExpexDropAdapter", () => {
             kind: "inside-incompatible-parent",
             parentKind: "exampleBlock",
             canDropDirect: false,
-            canWrapHere: true,
+            canPlaceHere: (k) => k === "exampleItem",
           },
         );
         expect(result).toEqual({ kind: "wrap", parentKind: "exampleItem" });

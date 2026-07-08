@@ -393,3 +393,80 @@ describe("textObjectDropSpec commit — sibling reorder from an item-boundary in
     expect(result.child(3).child(0).textContent).toBe("keep");
   });
 });
+
+// ── 4. task 065 — cross-kind sub-object into a foreign container's item gap ──
+//
+// The corruption class this fixes: a sub-object dropped into the between-items
+// gap of a FOREIGN container. `classifyParentAt` collapses the insert position
+// onto the visible container kind (it skips the unregistered `exampleItemList`),
+// so the pre-065 sub-object adapters fabricated a wrap (`bulletList` /
+// `exampleBlock`) that is valid one level up but INVALID at the true immediate
+// parent — ProseMirror then split the foreign container to fit it, tearing one
+// example/list into two nodes both carrying the SAME uuid (a duplicate-uuid
+// corruption that cascades into card-anchor / selection / float-key confusion).
+//
+// Resolved decision (Gabriel via catcher): option (a) — reject/no-op the invalid
+// drop. The `canPlaceHere` gate now makes both sub-object adapters no-op here, so
+// `applyDrop` dispatches NOTHING (no splitting insert). These two cases lock both
+// directions end-to-end through the real `applyDrop` + the real expex-shaped
+// schema (the `exampleItemList` wrapper above), the harness that reproduced the
+// split. Pre-fix, each dispatched a container-splitting tr; post-fix, neither
+// dispatches.
+describe("textObjectDropSpec commit — cross-kind sub-object into a foreign gap NO-OPS (task 065)", () => {
+  it("listItem into a between-exampleItems gap is REJECTED (no split, no duplicate uuid)", () => {
+    const d = doc(
+      bulletList("L", li("one", "a"), li("two", "b")),
+      exBlock("E", exItem("alpha", "ea"), exItem("beta", "eb")),
+    );
+    const { editor, dispatched, ctx } = mockEditor(d);
+    const exItems = findByType(d, "exampleItem");
+    // Insert at the boundary BEFORE "beta" — immediate parent `exampleItemList`
+    // (content `exampleItem+`), which rejects a bare `bulletList`.
+    const insertPos = exItems[1].pos;
+    const KEY = "textobject:listItem:a";
+
+    // The drop is genuinely attempted at this position (not skipped as inside
+    // the source range) …
+    expect(
+      textObjectDropSpec.classifyDrop(betweenBlocks(editor, insertPos), KEY, ctx),
+    ).toEqual({ kind: "apply" });
+    // … yet the adapter no-ops it: nothing is dispatched, so the exampleBlock is
+    // never split and no uuid is duplicated.
+    textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), KEY, ctx);
+    expect(dispatched).toHaveLength(0);
+
+    // The source doc is untouched: still exactly one exampleBlock (uuid "E") with
+    // two items, and the original bulletList intact.
+    const exBlocks = findByType(d, "exampleBlock");
+    expect(exBlocks).toHaveLength(1);
+    expect(exBlocks[0].uuid).toBe("E");
+    expect(findByType(d, "exampleItem")).toHaveLength(2);
+    expect(findByType(d, "bulletList")).toHaveLength(1);
+  });
+
+  it("exampleItem into a between-listItems gap is REJECTED (symmetric case)", () => {
+    const d = doc(
+      bulletList("L", li("one", "a"), li("two", "b")),
+      exBlock("E", exItem("alpha", "ea"), exItem("beta", "eb")),
+    );
+    const { editor, dispatched, ctx } = mockEditor(d);
+    const items = findByType(d, "listItem");
+    // Insert at the boundary BEFORE "two" — immediate parent `bulletList`
+    // (content `listItem+`), which rejects a bare `exampleBlock`.
+    const insertPos = items[1].pos;
+    const KEY = "textobject:exampleItem:ea";
+
+    expect(
+      textObjectDropSpec.classifyDrop(betweenBlocks(editor, insertPos), KEY, ctx),
+    ).toEqual({ kind: "apply" });
+    textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), KEY, ctx);
+    expect(dispatched).toHaveLength(0);
+
+    // The bulletList is never split into two lists sharing uuid "L".
+    const lists = findByType(d, "bulletList");
+    expect(lists).toHaveLength(1);
+    expect(lists[0].uuid).toBe("L");
+    expect(findByType(d, "listItem")).toHaveLength(2);
+    expect(findByType(d, "exampleBlock")).toHaveLength(1);
+  });
+});

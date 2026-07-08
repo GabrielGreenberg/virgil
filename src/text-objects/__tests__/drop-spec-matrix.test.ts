@@ -70,6 +70,19 @@ describe("drop-spec matrix (via TEXT_OBJECT_REGISTRY.dropAdapter)", () => {
       );
       expect(r).toEqual({ kind: "wrap", parentKind: "orderedList" });
     });
+
+    it("no-ops into a foreign container's item gap when the fresh list is invalid there (task 065)", () => {
+      const r = adapt(
+        "listItem",
+        { parentKind: "bulletList" },
+        {
+          kind: "inside-incompatible-parent",
+          parentKind: "exampleBlock",
+          canPlaceHere: () => false,
+        },
+      );
+      expect(r).toEqual({ kind: "no-op" });
+    });
   });
 
   describe("exampleItem", () => {
@@ -95,6 +108,19 @@ describe("drop-spec matrix (via TEXT_OBJECT_REGISTRY.dropAdapter)", () => {
       );
       expect(r).toEqual({ kind: "wrap", parentKind: "exampleBlock" });
     });
+
+    it("no-ops into a foreign container's item gap when a fresh exampleBlock is invalid there (task 065)", () => {
+      const r = adapt(
+        "exampleItem",
+        { parentKind: "exampleBlock" },
+        {
+          kind: "inside-incompatible-parent",
+          parentKind: "bulletList",
+          canPlaceHere: () => false,
+        },
+      );
+      expect(r).toEqual({ kind: "no-op" });
+    });
   });
 
   describe("graphicsBlock (Feature A0/A1/A2 — picture into expex, schema-driven)", () => {
@@ -111,7 +137,7 @@ describe("drop-spec matrix (via TEXT_OBJECT_REGISTRY.dropAdapter)", () => {
       expect(r).toEqual({ kind: "drop-direct" });
     });
 
-    it("between items (parent rejects the bare block but accepts an exampleItem — canDropDirect false + canWrapHere) wraps in a fresh exampleItem (case a)", () => {
+    it("between items (parent rejects the bare block but accepts an exampleItem — canDropDirect false + canPlaceHere('exampleItem')) wraps in a fresh exampleItem (case a)", () => {
       const r = adapt(
         "graphicsBlock",
         {},
@@ -119,7 +145,7 @@ describe("drop-spec matrix (via TEXT_OBJECT_REGISTRY.dropAdapter)", () => {
           kind: "inside-incompatible-parent",
           parentKind: "exampleBlock",
           canDropDirect: false,
-          canWrapHere: true,
+          canPlaceHere: (k) => k === "exampleItem",
         },
       );
       expect(r).toEqual({ kind: "wrap", parentKind: "exampleItem" });

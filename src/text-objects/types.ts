@@ -127,19 +127,34 @@ export type DropTarget = (
    *  reads it, to choose drop-direct vs. wrap: it separates a single example's
    *  widened body (`true` → drop-direct) from the multi between-items gap
    *  (`false` → wrap) — two positions that both classify as `parentKind:
-   *  "exampleBlock"`. Optional + read by that one adapter, so every other
-   *  adapter (and the `parentKind` discriminant they use) is byte-unchanged. */
+   *  "exampleBlock"`. A convenience alias for `canPlaceHere(sourceKind)` (the
+   *  spec computes it against the moved node's own type); retained as a named
+   *  boolean so the expex adapter reads it directly. Optional + read by that one
+   *  adapter, so every other adapter (and the `parentKind` discriminant they
+   *  use) is byte-unchanged. */
   canDropDirect?: boolean;
-  /** Feature A2 edge-fix — schema validity of the `exampleItem` WRAP target at the
-   *  SAME insert point (`canDropDirectAt(insertPos, exampleItem)`), computed in
-   *  `textObjectDropSpec.applyDrop`. Only `blockIntoExpexDropAdapter` reads it: the
-   *  exampleItem wrap fires iff the bare block is rejected here (`canDropDirect ===
-   *  false`) AND the wrap itself is valid here (`canWrapHere`). `exampleItem` is
-   *  valid only inside an `exampleItemList`, so this is true exactly at the multi
-   *  between-items gap; elsewhere a rejected bare block drops-direct (matching A1)
-   *  rather than wrapping into a here-invalid exampleItem. Optional + read by that
-   *  one adapter, so every other adapter is byte-unchanged. */
-  canWrapHere?: boolean;
+  /** The SINGLE "is this wrap valid at the TRUE immediate parent?" gate, shared
+   *  by all three wrap adapters (task 065). Given a `TextObjectKind`, reports
+   *  whether a bare node of that kind is schema-valid at the immediate insert
+   *  parent (`canDropDirectAt(insertPos, schema.nodes[kind])`), computed in
+   *  `textObjectDropSpec.applyDrop`. Each wrap adapter asks it about the node it
+   *  is about to FABRICATE:
+   *    • `blockIntoExpexDropAdapter` → `canPlaceHere("exampleItem")` (the between-
+   *      items wrap): true exactly at the multi between-items gap (immediate
+   *      parent `exampleItemList`), false elsewhere, so a rejected bare block
+   *      drops-direct rather than fabricating a here-invalid exampleItem.
+   *    • `listItemDropAdapter` → `canPlaceHere("bulletList"|"orderedList")`; and
+   *    • `exampleItemDropAdapter` → `canPlaceHere("exampleBlock")`.
+   *  For the two sub-object adapters this is what stops a cross-kind drop into a
+   *  foreign container's item gap (a `listItem` into an `exampleItemList` gap,
+   *  or an `exampleItem` into a `bulletList` gap) from fabricating a wrap that is
+   *  invalid at the real immediate parent — which ProseMirror would otherwise fit
+   *  by SPLITTING the foreign container, tearing one example/list into two with a
+   *  duplicate uuid. When the wrap is invalid here the adapter no-ops the drop.
+   *  Optional: a direct adapter caller that omits it keeps the pre-065 wrap
+   *  behavior (used by the unit tests that assert the wrap shape in isolation);
+   *  `applyDrop` always supplies it in production. */
+  canPlaceHere?: (kind: TextObjectKind) => boolean;
 };
 
 /**
@@ -150,7 +165,13 @@ export type DropAction =
   /** Drop the text-object directly (no wrapping). */
   | { kind: "drop-direct" }
   /** Wrap in a fresh single-item parent of this kind before inserting. */
-  | { kind: "wrap"; parentKind: TextObjectKind };
+  | { kind: "wrap"; parentKind: TextObjectKind }
+  /** Reject the drop — insert nothing. Returned by a wrap adapter when the
+   *  wrap it would fabricate is invalid at the TRUE immediate insert parent
+   *  (see `DropTarget.canPlaceHere`), so that a cross-kind sub-object dropped
+   *  into a foreign container's item gap no-ops instead of splitting the
+   *  container. `applyDrop` returns early without dispatching a transaction. */
+  | { kind: "no-op" };
 
 // ---------------------------------------------------------------------------
 // Transport (drag payload)

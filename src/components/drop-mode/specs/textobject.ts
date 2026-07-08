@@ -71,27 +71,37 @@ export const textObjectDropSpec: DropSpec = {
     const canDropDirect = sourceType
       ? canDropDirectAt(targetEditor, placement.insertPos, sourceType)
       : undefined;
-    // Feature A2 edge-fix — schema validity of the exampleItem WRAP target at the
-    // SAME insert point (the generic `canDropDirectAt`, now over `exampleItem`).
-    // `blockIntoExpexDropAdapter` wraps only when a bare block is rejected here
-    // (`canDropDirect === false`) AND an exampleItem is accepted here
-    // (`canWrapHere`) — true exactly at the multi between-items gap (immediate
-    // parent `exampleItemList`). Outside expex, a rejected bare block whose
-    // exampleItem wrap is ALSO invalid (e.g. a `displayMath` at a `listItem`'s
-    // index 0) drops-direct, matching A1, instead of fabricating an invalid wrap.
-    const exampleItemType = targetEditor.state.schema.nodes.exampleItem;
-    const canWrapHere = exampleItemType
-      ? canDropDirectAt(targetEditor, placement.insertPos, exampleItemType)
-      : undefined;
+    // Task 065 — the ONE wrap-validity gate, shared by all three wrap adapters.
+    // Given a kind, reports whether a bare node of that kind is schema-valid at
+    // the TRUE immediate insert parent (`canDropDirectAt` over the resolved node
+    // type). Each wrap adapter asks it about the node it is about to fabricate:
+    // `blockIntoExpexDropAdapter` → `exampleItem` (the A2 edge-fix, formerly the
+    // bespoke `canWrapHere` boolean — true exactly at the multi between-items
+    // gap, immediate parent `exampleItemList`); `listItemDropAdapter` →
+    // `bulletList`/`orderedList`; `exampleItemDropAdapter` → `exampleBlock`. The
+    // last two use it to REJECT a cross-kind sub-object dropped into a foreign
+    // container's item gap, which would otherwise fabricate a here-invalid wrap
+    // that ProseMirror fits by splitting the container (duplicate uuid). Cheap:
+    // a single `canReplaceWith` at the resolved index, computed lazily per call.
+    const schema = targetEditor.state.schema;
+    const canPlaceHere = (kind: TextObjectKind): boolean => {
+      const nodeType = schema.nodes[kind];
+      return nodeType
+        ? canDropDirectAt(targetEditor, placement.insertPos, nodeType)
+        : false;
+    };
     const target: DropTarget = {
       ...classifyDropTarget(src.kind, targetParentKind),
       canDropDirect,
-      canWrapHere,
+      canPlaceHere,
     };
     const action = TEXT_OBJECT_REGISTRY[src.kind].dropAdapter(
       { kind: src.kind, id: src.id, sourceContext: src.sourceContext },
       target,
     );
+    // A wrap adapter returns `no-op` when the wrap it would fabricate is invalid
+    // at the true immediate parent (task 065) — reject the drop, insert nothing.
+    if (action.kind === "no-op") return;
 
     // Build the node(s) to insert. For drop-direct: the original
     // collected nodes. For wrap: wrap each top-level source node in a
