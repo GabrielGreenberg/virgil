@@ -29,24 +29,46 @@ export type TabPathArgs = {
  * SVG canvas geometry for a folder tab (shared by F#8 + F#15).
  *
  * The path's outermost ink lives at x ∈ [0, 2*S + tabW] and y ∈ [0, tabH].
- * Both the fill and stroke groups are shifted by `(STROKE_INSET, STROKE_INSET)`
- * (a half-pixel) so the 1px stroke, which SVG centres on its path coordinate,
+ * The fill and stroke groups are shifted by `(STROKE_INSET, STROKE_INSET +
+ * TAB_TOP_GUTTER)` so the 1px stroke, which SVG centres on its path coordinate,
  * lands its OUTER edge on an integer device-boundary instead of bleeding a
- * half-pixel out of the viewport.
+ * half-pixel out of the viewport — and, on the y axis, a full pixel BELOW the
+ * viewport's top edge (see the top gutter below).
  *
- * Because the path is shifted right+down by that half-pixel, the viewport must
- * be 1 CSS px taller AND 1 CSS px wider than the raw path extent, or the right
- * swoop foot (at x = 2*S + tabW → x + 0.5 after the shift) and the bottom
- * stroke (at y = tabH → y + 0.5) would clip against `overflow: hidden`.
+ * Because the path is shifted right+down, the viewport must be taller AND wider
+ * than the raw path extent, or the right swoop foot (at x = 2*S + tabW → x + 0.5
+ * after the shift) and the bottom stroke (at y = tabH → y + insetY) would clip
+ * against `overflow: hidden`:
  *
- *   svgH = tabH + 1   (the pre-existing vertical gutter — F#8 mirrors it)
- *   svgW = 2*S + tabW + 1   (the new horizontal gutter — F#8)
+ *   svgW = 2*S + tabW + 1        (horizontal stroke gutter — F#8)
+ *   svgH = tabH + 1 + TAB_TOP_GUTTER   (bottom gutter + symmetric top gutter)
  *
- * The +1 is a full CSS pixel (2 device px @2×DPR), so it never half-clips at
- * any DPR; only the 0.5 shift is DPR-sensitive, and it is the same technique
- * already proven on the vertical axis.
+ * The bottom gutter is the pre-existing +1 (the 0.5 shift + the stroke's lower
+ * half-pixel). The TOP gutter (task 087) reserves an ADDITIONAL full pixel ABOVE
+ * the top stroke so it is never flush at the SVG's — nor the strip's — top clip
+ * boundary. The strip bottom-aligns the tabs under `overflowY:hidden` with
+ * asymmetric `padding: 0 … 1px` (top 0), so a top stroke flush at y≈0 was being
+ * clipped by the strip (worse at DPR 2, which ate the top device row). Reserving
+ * the gutter in the geometry SSOT makes the tab self-protecting regardless of
+ * the strip's clip — the top edge now gets the same 1px cushion the bottom
+ * always had, unifying "both strokes get a gutter" in this one module.
+ *
+ * Every +1 is a full CSS pixel (2 device px @2×DPR), so it never half-clips at
+ * any DPR; only the 0.5 shift is DPR-sensitive, the same technique proven on the
+ * horizontal axis.
  */
 export const STROKE_INSET = 0.5;
+
+/**
+ * Top stroke gutter (px) — the symmetric twin of the tab SVG's pre-existing
+ * BOTTOM gutter (the `+1` baked into `svgH`). Reserving a full CSS pixel above
+ * the top stroke keeps the active tab's top-edge outline off the strip's flush
+ * top clip boundary (`padding-top:0` + `overflowY:hidden`), which was eating it
+ * — worst at DPR 2. Lives here in the geometry SSOT so the path shift, the SVG
+ * height, the component's fill-bridge / content-overlay offsets, and the tests
+ * all read ONE number and can't drift. (Task 2026-07-07-087.)
+ */
+export const TAB_TOP_GUTTER = 1;
 
 /**
  * Manila-folder top-corner radius (px) — the SSOT for the tab silhouette's
@@ -166,10 +188,19 @@ export function buildFramePath(args: {
 export type TabSvgGeometry = {
   /** Viewport / element width including the 1px horizontal stroke gutter. */
   svgW: number;
-  /** Viewport / element height including the 1px vertical stroke gutter. */
+  /**
+   * Viewport / element height including BOTH vertical stroke gutters — the
+   * pre-existing +1 bottom gutter and the {@link TAB_TOP_GUTTER} top gutter.
+   */
   svgH: number;
-  /** The shared (x, y) translate applied to both fill and stroke groups. */
+  /** The X translate applied to both fill and stroke groups (half-pixel crispness). */
   inset: number;
+  /**
+   * The Y translate applied to both fill and stroke groups: {@link STROKE_INSET}
+   * PLUS {@link TAB_TOP_GUTTER}, so the top stroke sits a full pixel below the
+   * viewport's top edge (never flush at the strip's top clip boundary).
+   */
+  insetY: number;
 };
 
 export function tabSvgGeometry(args: {
@@ -180,8 +211,9 @@ export function tabSvgGeometry(args: {
   const S = args.S ?? 12;
   return {
     svgW: 2 * S + args.tabW + 1,
-    svgH: args.tabH + 1,
+    svgH: args.tabH + 1 + TAB_TOP_GUTTER,
     inset: STROKE_INSET,
+    insetY: STROKE_INSET + TAB_TOP_GUTTER,
   };
 }
 
