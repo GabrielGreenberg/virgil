@@ -24,12 +24,25 @@ import type {
 export type ViewPrefScope = "global" | "window";
 export type ViewPrefMenuGroup = "display" | "marginalia" | "highlights" | "dividers";
 
+/**
+ * `promote` — whether a *global* pref participates in the personal-prefs
+ * promotion pipeline (the `dev-prefs-registry.json` whitelist). Defaults to
+ * `true` (every global pref promotes). Set `promote: false` to FREEZE a pref's
+ * shipped default at its registry `default`: a `/cleanup-virgil` promote-defaults
+ * run then can't fold Gabriel's personal snapshot over it and silently drift the
+ * shipped value (the `showParTitles` regression — task 057). The registry is
+ * thus the SSOT for BOTH the default value AND whether it promotes;
+ * `view-menu-registry-source.test.ts` cross-checks the JSON whitelist against
+ * this flag in both directions. Ignored for `window`-scope prefs (they never
+ * promote regardless).
+ */
 interface ToggleDef<D extends boolean = boolean> {
   kind: "toggle";
   scope: ViewPrefScope;
   default: D;
   label: string;
   menu: ViewPrefMenuGroup;
+  promote?: boolean;
 }
 interface EnumDef<V extends string> {
   kind: "enum";
@@ -39,6 +52,7 @@ interface EnumDef<V extends string> {
   label: string;
   menu?: ViewPrefMenuGroup;
   valueLabels: Record<V, string>;
+  promote?: boolean;
 }
 interface SetDef<E extends string | number> {
   kind: "set";
@@ -48,6 +62,7 @@ interface SetDef<E extends string | number> {
   polarity: "present" | "hidden";
   label: string;
   menu?: ViewPrefMenuGroup;
+  promote?: boolean;
   memberLabels: Record<string, string>;
 }
 export type ViewPrefDef = ToggleDef | EnumDef<string> | SetDef<string | number>;
@@ -63,7 +78,10 @@ export type ViewPrefDef = ToggleDef | EnumDef<string> | SetDef<string | number>;
  */
 export const VIEW_PREF_REGISTRY = {
   // Display group (flat toggles)
-  showParTitles:        { kind: "toggle", scope: "global", default: true, label: "Paragraph titles", menu: "display" },
+  // promote:false — ship default frozen at the registry value (task 057). A prior
+  // promote-defaults folded Gabriel's personal snapshot and drifted this true→false;
+  // opting out of promotion makes the registry the durable SSOT so it can't recur.
+  showParTitles:        { kind: "toggle", scope: "global", default: true, label: "Paragraph titles", menu: "display", promote: false },
   showCardTitles:       { kind: "toggle", scope: "global", default: true, label: "Card titles",       menu: "display" },
   showLatexComments:    { kind: "toggle", scope: "global", default: true, label: "% comments",        menu: "display" },
   showHeadingLabels:    { kind: "toggle", scope: "global", default: true, label: "Labels",            menu: "display" },
@@ -127,6 +145,17 @@ export const REGISTRY_GLOBAL_KEYS = Object.entries(VIEW_PREF_REGISTRY)
     [K in ViewPrefKey]: (typeof VIEW_PREF_REGISTRY)[K]["scope"] extends "global" ? K : never;
   }[ViewPrefKey]
 >;
+
+/** The global registry keys that PARTICIPATE in the personal-prefs promotion
+ *  pipeline — every global key except those flagged `promote: false` (frozen to
+ *  their registry default, task 057). This is the SSOT the dev-prefs whitelist
+ *  must match; `view-menu-registry-source.test.ts` enforces both directions
+ *  (promoted keys ⊆ whitelist; opted-out keys ∉ whitelist). */
+export const REGISTRY_PROMOTED_GLOBAL_KEYS = REGISTRY_GLOBAL_KEYS.filter(
+  // `as const satisfies` narrows each entry's literal type, so `promote` is only
+  // present on entries that declare it; read it through the union type.
+  (k) => (VIEW_PREF_REGISTRY[k] as ViewPrefDef).promote !== false,
+);
 
 /** All registry keys, in declaration order. */
 export const VIEW_PREF_KEYS = Object.keys(VIEW_PREF_REGISTRY) as ViewPrefKey[];
