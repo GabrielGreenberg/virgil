@@ -63,12 +63,13 @@ class ResizeObserverStub {
 import { Schema, type Node as PMNode } from "@tiptap/pm/model";
 import { EditorState, type Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { citationCommandOrNull } from "@/lib/bib-parser";
 import { citationDropSpec } from "@/panels/Citations/drop-spec";
 import { CitationCard } from "@/panels/Citations/CitationCard";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
+import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
 import type { CitationRef } from "@/lib/types";
 import type { DropCtx, Placement } from "@/components/drop-mode/types";
 
@@ -198,4 +199,99 @@ describe("FOLD 3 — keyless-citation predicate symmetry (button ⇔ commandFor 
       expect(specWouldAnchor(command)).toBe(true);
     });
   }
+});
+
+// ── task 083 — drop-path hygiene ─────────────────────────────────────────
+//
+// The "drop here" ring must PREDICT the drop: it lights iff `handleCardDrop`
+// would accept. Two drags share the single `MIME_CITATION` type — a bib-entry
+// (payload `{ command, bibKey }`, MERGEABLE) and a citation card's own
+// atom-move (payload `{ command, citationId }`, NOT mergeable). `dragover` can
+// read `types` but not `getData`, so the fix gives the mergeable drag a
+// distinct `MIME_BIB_MERGE` discriminator and gates the ring on it. This
+// exercises the real CitationCard render for both drags, over both handlers.
+//
+// TEETH: revert the ring gate to `MIME_CITATION` and the citation-over-card
+// case lights a ring the drop then rejects (RED). Point `handleCardDrop` back
+// at `MIME_CITATION` and the citation-payload drop starts merging a `citationId`
+// as if it were a `bibKey` (RED on the no-op case).
+
+/** A minimal fake DataTransfer — `dragover` reads only `types`; the drop reads
+ *  `getData`. jsdom's DataTransfer is too thin, so we hand-roll both. */
+function fakeDT(payload: Record<string, string>): DataTransfer {
+  return {
+    types: Object.keys(payload),
+    getData: (t: string) => payload[t] ?? "",
+    setData: () => {},
+    dropEffect: "",
+    effectAllowed: "",
+  } as unknown as DataTransfer;
+}
+
+/** A bib-entry drag: BOTH the inline-insert MIME and the merge discriminator. */
+const bibEntryDT = () =>
+  fakeDT({
+    [MIME_CITATION]: JSON.stringify({ command: "\\cite{smith2020}", bibKey: "smith2020" }),
+    [MIME_BIB_MERGE]: JSON.stringify({ bibKey: "smith2020" }),
+  });
+
+/** A citation card's own atom-move drag: `MIME_CITATION` alone, no merge key. */
+const citationAtomDT = () =>
+  fakeDT({
+    [MIME_CITATION]: JSON.stringify({ command: "\\cite{jones2019}", citationId: "other-cite" }),
+  });
+
+function renderCard(command = "") {
+  cardStore.collapse({ kind: "citation", id: CITE_ID });
+  cardStore.clearSelection();
+  const cit: CitationRef = {
+    id: CITE_ID,
+    command,
+    keys: [],
+    createdAt: "2026-06-16T00:00:00.000Z",
+  };
+  const onUpdateCitation = vi.fn();
+  const props: CitationCardProps = {
+    citation: cit,
+    isDraft: true,
+    isSelected: false,
+    bibEntries: [],
+    bibPackage: "natbib",
+    getDisplayText: () => "",
+    onSelect: vi.fn(),
+    onJump: vi.fn(),
+    onUpdateCitation,
+  };
+  const { container } = render(<CitationCard {...props} />);
+  const cardEl = container.querySelector("[data-card]") as HTMLElement;
+  return { container, cardEl, onUpdateCitation };
+}
+
+describe("task 083 — citation drop ring predicts the drop (bib-entry merge only)", () => {
+  it("bib-entry drag lights the drop-target ring", () => {
+    const { container, cardEl } = renderCard();
+    expect(container.querySelector(".ring-drag-target")).toBeNull();
+    fireEvent.dragOver(cardEl, { dataTransfer: bibEntryDT() });
+    expect(container.querySelector(".ring-drag-target")).not.toBeNull();
+  });
+
+  it("a citation card's own atom-move drag does NOT light the ring (no false promise)", () => {
+    const { container, cardEl } = renderCard();
+    fireEvent.dragOver(cardEl, { dataTransfer: citationAtomDT() });
+    expect(container.querySelector(".ring-drag-target")).toBeNull();
+  });
+
+  it("bib-entry drop merges the key (the real drop path still lands)", () => {
+    const { cardEl, onUpdateCitation } = renderCard();
+    fireEvent.drop(cardEl, { dataTransfer: bibEntryDT() });
+    expect(onUpdateCitation).toHaveBeenCalledTimes(1);
+    // Merged command carries the dropped bib key.
+    expect(onUpdateCitation.mock.calls[0][1]).toContain("smith2020");
+  });
+
+  it("a citation-payload drop is a silent no-op (no merge, no parent write)", () => {
+    const { cardEl, onUpdateCitation } = renderCard();
+    fireEvent.drop(cardEl, { dataTransfer: citationAtomDT() });
+    expect(onUpdateCitation).not.toHaveBeenCalled();
+  });
 });

@@ -8,7 +8,7 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { MIME_CITATION } from "@/lib/marginalia";
+import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { popKey as buildPopKey } from "@/panels/panel-registry";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
@@ -362,6 +362,12 @@ export default function BibEntryCard({
     const display = bibEntries ? formatMinimalCitation(entry.key, bibEntries) : entry.key;
     e.dataTransfer.setData("text/plain", cmd);
     e.dataTransfer.setData(MIME_CITATION, JSON.stringify({ command: cmd, bibKey: entry.key }));
+    // Also advertise the card-merge discriminator so a CitationCard's drop ring
+    // lights ONLY for a bib-entry drag (which merges), never for another
+    // citation card's atom-move drag (MIME_CITATION alone). `dragover` can read
+    // `types` but not `getData`, so the distinct type is the only signal the
+    // ring can predict the drop from. See MIME_BIB_MERGE in marginalia.ts.
+    e.dataTransfer.setData(MIME_BIB_MERGE, JSON.stringify({ bibKey: entry.key }));
     // "copyMove", not "copy": the editor drop surface shows a "move" affordance
     // (Editor.tsx dragover); the card/panel merge targets still take "copy".
     e.dataTransfer.effectAllowed = "copyMove";

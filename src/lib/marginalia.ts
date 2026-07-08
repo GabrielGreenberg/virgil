@@ -81,6 +81,16 @@ export const MIME_MARGINALIA_MOVE = "application/x-virgil-marginalia-move";
 
 /** Drag a citation to insert it inline. */
 export const MIME_CITATION = "application/x-virgil-citation";
+/**
+ * Drag a bibliography entry ONTO a citation card to merge its key in. Carried
+ * *in addition to* `MIME_CITATION` on a `BibEntryCard` drag (the same drag can
+ * still be dropped into prose as an inline `\cite`). A `CitationCard`'s own
+ * atom-move drag carries `MIME_CITATION` alone — so the citation-card drop ring
+ * gates on THIS type, lighting iff the drop would actually merge (a bib-entry
+ * drag), never on a citation-card-over-citation-card drag. Card-merge target
+ * only — deliberately NOT in `EDITOR_INSERT_DRAG_TYPES` or `ANCHOR_DRAG_TYPES`.
+ */
+export const MIME_BIB_MERGE = "application/x-virgil-bib-merge";
 /** Drag an archive card to restore its text into the document. */
 export const MIME_ARCHIVE = "application/x-virgil-archive-id";
 /** Drag a footnote to move it to a new position. */
