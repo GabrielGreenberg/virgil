@@ -63,7 +63,7 @@ To poll continuously: `/loop /editor:review`.
 - `/editor:draft-footnote` / `/editor:draft-quotation` / `/editor:draft-suggestion`
   — produce per-kind cards in response to AI requests.
 - `/editor:answer-note-request` / `/editor:answer-todo-request` /
-  `/editor:answer-cutter-comment` / `/editor:answer-revision-comment` /
+  `/editor:answer-cutter-comment` / `/editor:answer-revision-request` /
   `/editor:answer-bib-review` — respond to flagged comments / todo requests.
 - `/editor:find-citation` — find an authoritative source for a citation request.
 - `/editor:sync-bib-to-library` — diff `references.bib` against your library

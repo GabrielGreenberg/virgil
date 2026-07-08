@@ -1,29 +1,29 @@
 ---
 description: |
-  Respond to a comment the user flagged in Virgil's Revisions panel.
-  Triggers on: "answer my revision comment", "respond to the revision
-  question on this paragraph", "address my comment in revisions", or
+  Respond to a request the user flagged in Virgil's Revisions panel.
+  Triggers on: "answer my revision request", "respond to the revision
+  question on this paragraph", "address my request in revisions", or
   when the request asks for follow-up on a previously logged revision
-  exchange. Drafts a sibling revision-comment card (or a revision-
+  exchange. Drafts a sibling revision-request card (or a revision-
   suggestion card if the user asked for an actual doc edit). Does NOT
   trigger for cuts (use answer-cutter-comment) or general notes
   (use answer-note-request). Args: <docPath> <requestId>.
 ---
 
-# /editor/answer-revision-comment $ARGUMENTS
+# /editor/answer-revision-request $ARGUMENTS
 
-Resolve one AI request originating from a Revisions-panel comment with
+Resolve one AI request originating from a Revisions-panel request with
 `aiRequest: true`. The Revisions panel holds two polymorphic card
 kinds: `comment` and `suggestion` (parallel to Cutter — see
-`src/lib/types.ts:76`). This skill responds to a flagged comment by
+`src/lib/types.ts:76`). This skill responds to a flagged request by
 appending a **sibling card** to `revisions.json` — never mutates the
-source comment in place.
+source request in place.
 
 > **Note:** Earlier drafts of this skill assumed a per-card `turns[]`
 > dialogue model. That model was retired in favor of sibling-card
 > threading (`migrateRevisions` in `src/hooks/useRevisions.ts:104`
 > drops legacy turns on read). Treat the panel as a flat list of
-> linked comments + suggestions.
+> linked requests + suggestions.
 
 > **Allowable-LaTeX doctrine.** Any LaTeX you compose or edit must stick to
 > the vocabulary Virgil renders meaningfully — read
@@ -40,9 +40,9 @@ source comment in place.
 
 ## Procedure
 
-1. **Load.** Source comment from `<docPath>/virgil/revisions.json`
+1. **Load.** Source request from `<docPath>/virgil/revisions.json`
    `cards[]` via `linkedTo.cardId`. Pull paragraph context for the
-   comment's anchor:
+   request's anchor:
    ```bash
    python3 editor/scripts/get_para_context.py <docPath> <uuid> --neighbors=2
    ```
@@ -53,23 +53,23 @@ source comment in place.
    ```
 
 2. **Choose your response shape.** The determining axis is whether
-   resolving the comment requires a `.tex` mutation. Decide in order:
-   - **(a)** Does the comment ask to *change document prose*
+   resolving the request requires a `.tex` mutation. Decide in order:
+   - **(a)** Does the request ask to *change document prose*
      (rephrase a sentence, tighten a paragraph, swap the lede)? →
      emit a **RevisionSuggestionCard**. See `/editor/draft-suggestion`
      for the schema.
-   - **(b)** Else (the comment is a question, a take, a meta-remark)
-     → emit a sibling **RevisionCommentCard** with
+   - **(b)** Else (the request is a question, a take, a meta-remark)
+     → emit a sibling **RevisionRequestCard** with
      `aiRequest: false`, anchored to the same paragraphs.
 
-3. **Compose.** Read the source comment carefully. Match the
+3. **Compose.** Read the source request carefully. Match the
    conversational tone of any other revision cards anchored to the
    same paragraph. Keep it under ~200 words.
 
 4. **Build the result card.**
 
-   For path (b) — sibling RevisionCommentCard
-   (`RevisionCommentCard`, `src/lib/types.ts`):
+   For path (b) — sibling RevisionRequestCard
+   (`RevisionRequestCard`, `src/lib/types.ts`):
    ```json
    { "kind": "comment",
      "id": "<new-uuid>",
@@ -86,7 +86,7 @@ source comment in place.
      "links": [{
         "id": "<new-link-uuid>",
         "kind": "anchor",
-        "anchor": { ...COPIED VERBATIM from the source comment's first-link anchor... },
+        "anchor": { ...COPIED VERBATIM from the source request's first-link anchor... },
         "target": {
            "type": "card",
            "ref": {"kind": "comment", "id": "<new-uuid>"}
@@ -95,10 +95,10 @@ source comment in place.
      }]
    }
    ```
-   **The link anchor (both paths):** copy the source comment's first-link
+   **The link anchor (both paths):** copy the source request's first-link
    `anchor` object **verbatim** — it is already in the canonical on-disk
    `LinkAnchor` shape (`type: "textObject"` + `textObjectIds` + `margin`,
-   plus `textRange` if the comment is Mode B; SSOT
+   plus `textRange` if the request is Mode B; SSOT
    `src/links/_shared/types.ts`,
    [anchoring.md](../../docs/workspace/anchoring.md)). Copying preserves the
    mode, paragraph id(s), and margin in one move; do **not** hand-rebuild it
@@ -115,7 +115,7 @@ source comment in place.
    `aiOriginRequestId: <requestId>` (load-bearing — `accept-suggestion`
    reads it) if the id doesn't start with `virtual:`.
 
-   Don't mutate the source comment's top-level `text` / `content`
+   Don't mutate the source request's top-level `text` / `content`
    fields — those are the originating framing. The bridge clears
    `aiRequest` via `clearSourceFlag: true`.
 
@@ -128,7 +128,7 @@ source comment in place.
      ```bash
      python3 editor/scripts/apply_response.py <docPath> complete-task --propose '<op-json>'
      ```
-   - **Path (b) — sibling comment → terminal create.** A comment is not a
+   - **Path (b) — sibling request → terminal create.** A request is not a
      proposal (nothing to accept), so it lands as a **direct create**:
      `complete-task` completes the Task now (`status: complete`,
      `result: direct-created`).
@@ -142,18 +142,18 @@ source comment in place.
    { "requestId": "<requestId>",
      "panel": "revisions",
      "card": { ...the new card... },
-     "summary": "Replied to revision comment <cardId>",
+     "summary": "Replied to revision request <cardId>",
      "clearSourceFlag": true
    }
    ```
-   `clearSourceFlag: true` flips the source comment's `aiRequest` to `false`.
+   `clearSourceFlag: true` flips the source request's `aiRequest` to `false`.
 
 6. **Reply.** On success:
    - Path (a) — suggestion (awaiting review):
      ```
      Done: drafted revision suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, notifications, version).
      ```
-   - Path (b) — sibling comment (created):
+   - Path (b) — sibling request (created):
      ```
      Done: replied to revision <cardId> for request <requestId>. Output: revisions.json (+ ai-requests.json status=complete, notifications, version).
      ```
@@ -162,7 +162,7 @@ source comment in place.
 
 If a sibling reply card with `aiOriginRequestId == <requestId>` already exists
 (path a — the proposal carries that back-pointer) **or** the request is already
-`status: "complete"` (path b — the comment completed the Task), skip with:
+`status: "complete"` (path b — the reply card completed the Task), skip with:
 ```
 Skipped <requestId> (already answered).
 ```
@@ -175,7 +175,7 @@ belt-and-suspenders against a duplicate dispatch, no longer the only defense.)
 
 ## Safety
 
-- Never edit the source comment in place. Always create a sibling
+- Never edit the source request in place. Always create a sibling
   card.
 - Never mutate `document.tex` from this skill — even on path (a),
   the suggestion card carries the proposed replacement and the user

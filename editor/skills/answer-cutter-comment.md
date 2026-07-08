@@ -5,8 +5,8 @@ description: |
   the comment on this cut", "address my question about this excerpt"
   — when the user is asking Virgil to follow up on something they
   noted on a Cutter card. Drafts a suggestion card responding to the
-  comment's request. Does NOT trigger for revision comments (use
-  answer-revision-comment) or general notes (use answer-note-request).
+  comment's request. Does NOT trigger for revision requests (use
+  answer-revision-request) or general notes (use answer-note-request).
   Args: <docPath> <requestId>.
 ---
 

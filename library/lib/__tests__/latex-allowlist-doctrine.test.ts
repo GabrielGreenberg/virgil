@@ -38,7 +38,7 @@ const REFERENCING_SKILLS = [
   "editor/skills/answer-note-request.md",
   "editor/skills/answer-report-request.md",
   "editor/skills/answer-cutter-comment.md",
-  "editor/skills/answer-revision-comment.md",
+  "editor/skills/answer-revision-request.md",
   "editor/skills/answer-todo-request.md",
   "editor/skills/answer-bib-review.md",
   "editor/skills/create-card.md",
