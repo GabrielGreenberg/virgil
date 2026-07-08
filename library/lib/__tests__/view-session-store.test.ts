@@ -285,6 +285,25 @@ describe("view-session-store — colOrder normalization (F#13)", () => {
   });
 });
 
+describe("view-session-store — pdfDropIntroDismissed slice (task 089)", () => {
+  it("defaults to absent (notice shows) and setLayout persists the opt-out", () => {
+    // Absent by default → the consumer treats it as "not dismissed".
+    expect(getSession().layout.pdfDropIntroDismissed).toBeUndefined();
+
+    setLayout({ pdfDropIntroDismissed: true });
+    flushNow();
+    const raw = JSON.parse(localStorage.getItem(VIEW_SESSION_KEY) as string);
+    expect(raw.layout.pdfDropIntroDismissed).toBe(true);
+  });
+
+  it("survives a simulated reload (persisted across the singleton drop)", () => {
+    setLayout({ pdfDropIntroDismissed: true });
+    flushNow();
+    __resetViewSessionForTests();
+    expect(getSession().layout.pdfDropIntroDismissed).toBe(true);
+  });
+});
+
 describe("view-session-store — idempotent seed", () => {
   it("running getSession() twice does not overwrite the blob or delete legacy keys", () => {
     localStorage.setItem(PAPER_PINNED_KEY, JSON.stringify(["paper:p1"]));

@@ -15,6 +15,7 @@ import {
   usePanelSelection,
   useLayoutPrefs,
   useLibraryViewSessionFlush,
+  usePdfDropIntroDismissed,
   migrateLegacyLayoutSizes,
 } from "@library/lib/view-session-store";
 import {
@@ -30,6 +31,7 @@ import type { SyncResult } from "@library/lib/skill-sync";
 import type { SkillSyncError } from "@library/hooks/useLibraryHandle";
 import type { NotificationItem } from "@library/lib/queue";
 import DropZone from "./DropZone";
+import PdfDropIntroDialog from "./PdfDropIntroDialog";
 import LibraryPaneFill from "./LibraryPaneFill";
 
 import Toaster from "./Toaster";
@@ -124,6 +126,13 @@ export default function LibraryView({
   const { byFile: unsortedBibByFile, reload: reloadUnsortedBib } =
     useUnsortedBibEntries(handle);
   const dropPdf = useDropPdf(handle);
+  // First-time post-drop intro notice. Shown after a successful file import
+  // until the user opts out via "Don't show again" (persisted, task 089).
+  const { dismissed: pdfIntroDismissed, setDismissed: setPdfIntroDismissed } =
+    usePdfDropIntroDismissed();
+  const [dropIntro, setDropIntro] = useState<{ fileNames: string[] } | null>(
+    null,
+  );
   const notifications = useNotificationStream(handle);
   const setupStatus = useSetupStatus(handle);
   // Request-state dots: ONE shared 6 s queue/inbox poll for BOTH panels
@@ -546,11 +555,18 @@ export default function LibraryView({
 
   const onFiles = useCallback(
     async (files: File[]) => {
-      await dropPdf(files);
+      const results = await dropPdf(files);
       void refreshCatalogStore();
       void reloadUnsorted();
+      // Surface the first-time intro notice only when at least one source
+      // actually imported (dropPdf filters non-source files + reports per-file
+      // ok/error), and only while the user hasn't opted out for good.
+      const imported = results.filter((r) => r.ok).map((r) => r.name);
+      if (imported.length > 0 && !pdfIntroDismissed) {
+        setDropIntro({ fileNames: imported });
+      }
     },
-    [dropPdf, reloadUnsorted],
+    [dropPdf, reloadUnsorted, pdfIntroDismissed],
   );
 
   // Primitive entry-action helpers. TabbedLibraryPanel composes these into
@@ -811,6 +827,9 @@ export default function LibraryView({
       // 3-column inline mode hides them — the navigator owns those affordances.
       showAddTab={!showNavigator}
       showRecent={!showNavigator}
+      // Light the Central tab as the drop-ready target during an OS-file drag
+      // (task 089). The container-level drop handler still ingests the file.
+      fileDragActive={dragActive}
     />
     );
   };
@@ -1024,6 +1043,15 @@ export default function LibraryView({
         </div>
       </DropZone>
       <Toaster items={allToasts} />
+      {dropIntro && (
+        <PdfDropIntroDialog
+          fileNames={dropIntro.fileNames}
+          onClose={(dontShowAgain) => {
+            if (dontShowAgain) setPdfIntroDismissed(true);
+            setDropIntro(null);
+          }}
+        />
+      )}
     </LibraryPaneFill>
   );
 }

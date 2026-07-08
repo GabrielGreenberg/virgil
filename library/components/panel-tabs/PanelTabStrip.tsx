@@ -14,6 +14,7 @@ import {
 import { createPortal, flushSync } from "react-dom";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
+import { isCentral } from "@library/lib/library-store";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { PanelFolderTab } from "./PanelFolderTab";
@@ -86,6 +87,12 @@ type Props = {
   /** Surface closed customs/projects in the AddTabMenu's "Recent" section.
    *  Only meaningful when showAddTab is also true. */
   showRecent?: boolean;
+  /** True while an OS file is being dragged over the Library (gated on the
+   *  dataTransfer `"Files"` type upstream in LibraryView). When set, the
+   *  Central tab renders the shared drop-target highlight as a drop-ready
+   *  affordance — the file itself is ingested by LibraryView's container-level
+   *  drop handler, so this strip only owns the visual box. */
+  fileDragActive?: boolean;
 };
 
 export function PanelTabStrip({
@@ -103,6 +110,7 @@ export function PanelTabStrip({
   panelRef,
   showAddTab = false,
   showRecent = false,
+  fileDragActive = false,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
@@ -480,6 +488,12 @@ export function PanelTabStrip({
         const isEditing = tab.id === editingId;
         const isDragging = tab.id === draggingId;
         const isEntryDropTarget = tab.id === entryDragOverTabId;
+        // An OS-file drag over the Library lights the Central tab as the
+        // drop-ready target (task 089). It shares the entry-drop highlight
+        // vocabulary — one "this tab is the current drop target" treatment,
+        // regardless of the payload kind (row entry vs OS file).
+        const isFileDropTarget = fileDragActive && isCentral(tab.id);
+        const isDropTarget = isEntryDropTarget || isFileDropTarget;
 
         const setRef = (el: HTMLElement | null) => {
           if (el) tabRefs.current.set(tab.id, el);
@@ -519,11 +533,14 @@ export function PanelTabStrip({
                   ...dragProps,
                   style: {
                     opacity: isDragging ? 0.5 : 1,
-                    outline: isEntryDropTarget
+                    outline: isDropTarget
                       ? "2px solid var(--accent)"
                       : undefined,
-                    outlineOffset: isEntryDropTarget ? -2 : undefined,
-                    borderRadius: isEntryDropTarget ? 8 : undefined,
+                    outlineOffset: isDropTarget ? -2 : undefined,
+                    borderRadius: isDropTarget ? 8 : undefined,
+                    // Shaded fill so the drop-ready target reads as a box, not
+                    // just a ring (the affordance Gabriel named, task 089).
+                    background: isDropTarget ? "var(--accent-light)" : undefined,
                   },
                 }}
               >
@@ -604,7 +621,7 @@ export function PanelTabStrip({
             label={tab.label}
             closable={tab.closable}
             isDragging={isDragging}
-            isEntryDropTarget={isEntryDropTarget}
+            isDropTarget={isDropTarget}
             dragProps={dragProps}
             onClick={() => onActivate(tab.id)}
             onClose={() => onClose(tab.id)}
@@ -658,7 +675,7 @@ const BackgroundTab = forwardRef<
     label: string;
     closable: boolean;
     isDragging: boolean;
-    isEntryDropTarget: boolean;
+    isDropTarget: boolean;
     dragProps: {
       draggable: boolean;
       onDragStart: (e: DragEvent<HTMLElement>) => void;
@@ -679,7 +696,7 @@ const BackgroundTab = forwardRef<
     label,
     closable,
     isDragging,
-    isEntryDropTarget,
+    isDropTarget,
     dragProps,
     onClick,
     onClose,
@@ -705,12 +722,12 @@ const BackgroundTab = forwardRef<
       // hover pattern elsewhere in this file; skipped while a drag-drop target
       // so the accent-light highlight isn't overwritten.
       onMouseEnter={(e) => {
-        if (!isEntryDropTarget)
+        if (!isDropTarget)
           (e.currentTarget as HTMLDivElement).style.background =
             "rgba(0,0,0,0.05)";
       }}
       onMouseLeave={(e) => {
-        if (!isEntryDropTarget)
+        if (!isDropTarget)
           (e.currentTarget as HTMLDivElement).style.background = "transparent";
       }}
       style={{
@@ -729,10 +746,10 @@ const BackgroundTab = forwardRef<
         height: 32,
         opacity: isDragging ? 0.5 : 1,
         cursor: dragProps.draggable ? "grab" : "default",
-        outline: isEntryDropTarget ? "2px solid var(--accent)" : "none",
-        outlineOffset: isEntryDropTarget ? -2 : 0,
+        outline: isDropTarget ? "2px solid var(--accent)" : "none",
+        outlineOffset: isDropTarget ? -2 : 0,
         borderRadius: "var(--radius-md)",
-        background: isEntryDropTarget ? "var(--accent-light)" : "transparent",
+        background: isDropTarget ? "var(--accent-light)" : "transparent",
         transition: "background 90ms ease",
         paddingLeft: hasPin ? 4 : 0,
         paddingRight: hasTrailing ? 4 : 0,
