@@ -498,8 +498,11 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             });
             break;
           }
-          // Atom blocks: select the cloned node as a unit. Text-bearing
-          // kinds: drop the caret near the start of the cloned content.
+          // Node-selecting blocks (true atoms): select the cloned node as a
+          // unit. Text-bearing kinds (incl. `latexComment`, a content block
+          // since task-017): drop the caret near the start of the cloned
+          // content, so a duplicated comment lands caret-ready. Keys on the
+          // SELECTION facet, not the gating facet (task 066).
           try {
             const insertPos = outer.to;
             const docSize = tr.doc.content.size;
@@ -507,7 +510,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
             const atomBlock =
               refKind !== "selection" &&
               isTextObjectKind(refKind) &&
-              TEXT_OBJECT_REGISTRY[refKind].isAtomBlock;
+              TEXT_OBJECT_REGISTRY[refKind].selectsAsNode;
             if (atomBlock && insertPos < docSize) {
               tr.setSelection(NodeSelection.create(tr.doc, insertPos));
             } else if (insertPos < docSize) {
@@ -550,8 +553,16 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // ACTION-MENU-DIAGNOSIS.md §5.2.10. Bail only when the resolved
           // range has NO content at all, so an atom-only line archives like
           // any other text-bearing block.
+          //
+          // task 066: a meaningful block atom that now resolves as TEXT
+          // (`latexComment`, a content block since task-017 with an empty inner
+          // range for `% `) is meaningful in the NODE itself, not its inner
+          // content — so an empty `% ` comment stays archivable. Skip the bail
+          // for those (keys on the gating facet, so `figureBlock` — meaningful
+          // for confirm but not gated — is unaffected).
           if (
             resolved.selectionKind === "text" &&
+            !isMeaningfulBlockAtomKind(ref.kind) &&
             ed.state.doc.slice(range.from, range.to).content.size === 0
           )
             break;
@@ -861,21 +872,33 @@ function lifecycleLabel(action: DragHandleAction): string {
  *   • `isAtomNode` (ATOM_REGISTRY, the inline-Atom SSOT) covers the inline
  *     atoms: `footnote`, `citation`, `labelRef` (`\ref`), `inlineMath`.
  *   • This set covers the BLOCK atoms — every `TEXT_OBJECT_REGISTRY` kind
- *     flagged `isAtomBlock` (`displayMath`, `texBlock`, `graphicsBlock`,
- *     `latexComment`), the kind name being the PM node name — PLUS
- *     `figureBlock`, which is NOT a schema atom (`content: figureCaption?`)
+ *     flagged `isMeaningfulBlockAtom` (`displayMath`, `texBlock`,
+ *     `graphicsBlock`, `latexComment`), the kind name being the PM node name —
+ *     PLUS `figureBlock`, which is NOT a schema atom (`content: figureCaption?`)
  *     but is still meaningful, destroy-with-a-confirm content.
  *
  * Keep both sourced from the registries; do not hard-code a parallel
  * inline list. If a new atom kind is added to either registry it must
- * either carry `isAtomBlock` (block) or be in ATOM_REGISTRY (inline) for
- * this gate to pick it up. */
+ * either carry `isMeaningfulBlockAtom` (block) or be in ATOM_REGISTRY (inline)
+ * for this gate to pick it up. */
 const MEANINGFUL_BLOCK_ATOM_NODE_NAMES: ReadonlySet<string> = new Set<string>([
   ...Object.entries(TEXT_OBJECT_REGISTRY)
-    .filter(([, meta]) => meta.isAtomBlock)
+    .filter(([, meta]) => meta.isMeaningfulBlockAtom)
     .map(([kind]) => kind),
   "figureBlock",
 ]);
+
+/** True iff `kind` carries the GATING facet `isMeaningfulBlockAtom` (task 066).
+ *  Deliberately DISTINCT from `MEANINGFUL_BLOCK_ATOM_NODE_NAMES`, which also
+ *  includes `figureBlock` for destructive-confirm content detection: the gating
+ *  facet excludes `figureBlock` (it must stay "ok" for the block/heading gates),
+ *  so the archive-empty-content bail-skip leaves an empty-caption figure
+ *  untouched while letting an empty `% ` latexComment stay archivable. */
+function isMeaningfulBlockAtomKind(kind: DragHandleRef["kind"]): boolean {
+  return (
+    isTextObjectKind(kind) && TEXT_OBJECT_REGISTRY[kind].isMeaningfulBlockAtom
+  );
+}
 
 /** Cheap walk over `[from, to)` looking for any `linkedAnchor` mark, inline
  *  Atom (footnote / citation / `\ref` / inline-math — via the ATOM_REGISTRY
@@ -1046,7 +1069,7 @@ function resolveRefRange(
       node.type.name === ref.kind &&
       (node.attrs?.uuid as string | null) === ref.id
     ) {
-      if (meta.isAtomBlock && node.type.isBlock) {
+      if (meta.selectsAsNode && node.type.isBlock) {
         result = {
           selectionKind: "node",
           pos,

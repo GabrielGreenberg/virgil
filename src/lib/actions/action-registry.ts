@@ -1048,9 +1048,10 @@ function cardResolveScope(
     return section ? { from: section.start, to: section.end } : null;
   }
 
-  // Any other block / sub-object / atom-block: its node bounds. Atom blocks
-  // return the full node range (NodeSelection territory); text-bearing blocks
-  // return the inner content range. Mirrors `resolveRefRange`'s tail.
+  // Any other block / sub-object / atom-block: its node bounds. Node-selecting
+  // blocks (true atoms) return the full node range (NodeSelection territory);
+  // text-bearing blocks (incl. `latexComment`) return the inner content range.
+  // Keys on the SELECTION facet (task 066). Mirrors `resolveRefRange`'s tail.
   let result: { from: number; to: number } | null = null;
   doc.descendants((node, pos) => {
     if (result) return false;
@@ -1058,7 +1059,7 @@ function cardResolveScope(
       node.type.name === ref.kind &&
       (node.attrs?.uuid as string | null) === ref.id
     ) {
-      result = meta.isAtomBlock
+      result = meta.selectsAsNode
         ? { from: pos, to: pos + node.nodeSize }
         : { from: pos + 1, to: pos + node.nodeSize - 1 };
       return false;
@@ -1644,10 +1645,11 @@ export function refRun(ctx: ActionContext): void {
  * is the creator). Both surfaces call `refRun` → `ctx.openAtomCreate("ref")`.
  *
  * `applies`: a `\ref` is insertable at any caret / selection (the popover lands
- * the atom at the cursor). A non-text ATOM-BLOCK ref (the `isAtomBlock:true`
- * kinds — `displayMath` / `texBlock` / `graphicsBlock` / `latexComment`) has no
- * caret to insert at → "disabled", via the shared `blockApplies` gate (the same
- * gate tex/example/math use). NOTE: `figureBlock` is NOT an atom block (it has
+ * the atom at the cursor). A meaningful-block-atom ref (the
+ * `isMeaningfulBlockAtom` kinds — `displayMath` / `texBlock` / `graphicsBlock` /
+ * `latexComment`) is a nonsensical block-insert target → "disabled", via the
+ * shared `blockApplies` gate (the same gate tex/example/math use). NOTE:
+ * `figureBlock` is NOT a meaningful block atom (it has
  * caption content), so `blockApplies` returns "ok" for it — verified by the
  * CHIP 8 real-stack matrix (RESULTS-realstack.md finding #4). In practice `ref`
  * is only invoked from a caret/selection (the slash command or the grid bolt),
@@ -1955,14 +1957,16 @@ const EXAMPLE_ACTION_ROW: ActionSpec = {
 // (they WRAP a selection when present, else insert an empty shell / placeholder —
 // `texRun` / `exampleRun` insert empty on a collapsed caret; `mathRun` seeds a
 // placeholder `latex`), so the DA-5 range check never greys them — only the
-// `isAtomBlock` kind-base and collab read-only can.
+// `isMeaningfulBlockAtom` kind-base and collab read-only can.
 // ---------------------------------------------------------------------------
 function blockApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
   const ref = ctx.ref;
   let base: "ok" | "disabled";
   if (ref.kind === "selection" || ref.kind === "cursor") base = "ok";
   else if (!isTextObjectKind(ref.kind)) base = "ok"; // defensive: unknown → allow
-  else base = TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
+  // GATING facet (task 066): a `% comment` / equation is a nonsensical
+  // block-insert target regardless of whether it has an editable caret.
+  else base = TEXT_OBJECT_REGISTRY[ref.kind].isMeaningfulBlockAtom ? "disabled" : "ok";
   // selection-`"optional"`: caret OK; only the kind-base + collab gate can grey.
   return gateApplies({ selection: "optional" }, ctx, base);
 }
@@ -2162,15 +2166,15 @@ interface PMNodeLike {
  * The 4 block-ATOM grid rows (CHIP 6a) — `inline-math`, `display-math`,
  * `figure`, `graphics`. All `category: "block"`, `surfaces: { lightning: true }`
  * (grid-only — no slash/typed/grab/keyboard today; those stay false). `applies`
- * follows the tex/example/heading `isAtomBlock → 'disabled'` pattern via the
- * shared `blockApplies`. `run`: math WRAPS the selection (`mathRun(kind)`);
+ * follows the tex/example/heading `isMeaningfulBlockAtom → 'disabled'` pattern
+ * via the shared `blockApplies`. `run`: math WRAPS the selection (`mathRun(kind)`);
  * figure/graphics INSERT via `smartInsertBlock` then open the source popover
  * (`figureRun` / `graphicsRun`).
  *
  * CHIP 7b: all 4 are selection-`"optional"` — the math cells WRAP a selection
  * but seed a placeholder `latex` ("x" / "\int f(x)\,dx") when empty (`mathRun`),
  * and figure/graphics insert an opaque block at the caret. So a collapsed caret
- * is a valid invocation (no DA-5 grey); only the `isAtomBlock` kind-base + the
+ * is a valid invocation (no DA-5 grey); only the `isMeaningfulBlockAtom` kind-base + the
  * uniform collab gate can disable them.
  */
 const INLINE_MATH_ACTION_ROW: ActionSpec = {
@@ -2575,13 +2579,14 @@ function headingRow(id: BlockActionId & `heading-${string}`): ActionSpec {
       // Per-kind base: a selection / caret converts iff the SCHEMA can host a
       // heading where it sits — false inside a `listItem` / `exampleItem`, where
       // `setBlockType(heading)` is a silent no-op (Bug #3). A TextObjectRef
-      // converts iff it's a text-bearing block (an atom block — figure /
-      // displayMath / texBlock — has no text → disabled).
+      // converts iff it's NOT a meaningful block atom — a `% comment` / equation
+      // / graphic is a nonsensical heading target (`setBlockType` inside an
+      // `isolating` node is a no-op), so the GATING facet disables it (task 066).
       let base: "ok" | "disabled" = "ok";
       if (ref.kind === "selection" || ref.kind === "cursor") {
         base = selectionCanHostHeading(ctx.view) ? "ok" : "disabled";
       } else if (isTextObjectKind(ref.kind)) {
-        base = TEXT_OBJECT_REGISTRY[ref.kind].isAtomBlock ? "disabled" : "ok";
+        base = TEXT_OBJECT_REGISTRY[ref.kind].isMeaningfulBlockAtom ? "disabled" : "ok";
       }
       // Layer the collab gate (the DA-5 range check is a no-op for "ignored").
       return gateApplies({ selection: "ignored" }, ctx, base);

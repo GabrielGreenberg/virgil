@@ -402,6 +402,62 @@ describe("Nit E — highlight on an empty block is a clean no-op", () => {
 });
 
 // ---------------------------------------------------------------------------
+// task 066 — an empty `% ` latexComment stays archivable after the facet split.
+//
+// The selection facet flip (`selectsAsNode:false`) means `resolveRefRange` now
+// returns a TEXT range for latexComment, whose INNER range is empty for a `% `
+// comment — which would newly trip the archive empty-content bail. The gating
+// facet (`isMeaningfulBlockAtom:true`) guards the bail so the NODE (a meaningful
+// comment) is still archived. Regression pin: without the guard the archive
+// silently no-ops and the node survives.
+// ---------------------------------------------------------------------------
+
+/** Count `latexComment` nodes in the doc. */
+function countLatexComments(editor: Editor): number {
+  let count = 0;
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "latexComment") count += 1;
+  });
+  return count;
+}
+
+describe("task 066 — empty latexComment archive (facet split)", () => {
+  it("archives an EMPTY `% ` comment (the node is meaningful even with empty inner content)", async () => {
+    const editor = mountDoc([
+      {
+        type: "paragraph",
+        attrs: { uuid: "para-A" },
+        content: [{ type: "text", text: "keep me" }],
+      },
+      { type: "latexComment", attrs: { uuid: "cmt-A" } },
+    ]);
+    expect(countLatexComments(editor)).toBe(1);
+    const h = makeHarness(editor);
+    await h.dispatch("archive", { kind: "latexComment", id: "cmt-A" });
+    // The comment node was removed → archive PROCEEDED (bail did not fire).
+    expect(countLatexComments(editor)).toBe(0);
+    expect(h.notify).not.toHaveBeenCalled();
+  });
+
+  it("still bails on a genuinely-empty PARAGRAPH (guard is scoped to meaningful block atoms)", async () => {
+    const editor = mountDoc([
+      { type: "paragraph", attrs: { uuid: "para-A" }, content: [] },
+      {
+        type: "paragraph",
+        attrs: { uuid: "para-B" },
+        content: [{ type: "text", text: "sibling" }],
+      },
+    ]);
+    const before = editor.state.doc.childCount;
+    const h = makeHarness(editor);
+    await h.dispatch("archive", { kind: "paragraph", id: "para-A" });
+    // Empty plain paragraph: nothing to archive → the bail still fires, doc
+    // unchanged (the guard must NOT loosen the bail for non-meaningful blocks).
+    expect(editor.state.doc.childCount).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // BUG2 — a collapsed-caret card action on a NON-paragraph anchorable block.
 //
 // BUG2 (DIAGNOSIS.md §3) was the lightning menu flattening every cursor anchor

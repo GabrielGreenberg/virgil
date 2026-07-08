@@ -295,6 +295,27 @@ describe("card-action applies() mirrors the per-kind grey-out", () => {
     expect(at(ref, "delete")).toBe("ok");
   });
 
+  it("latexComment DISABLES highlight (marks:\"\" can't carry a linkedAnchor) but keeps note/todo/archive", () => {
+    // task 066: Highlight wraps the live range in a `linkedAnchor` MARK, but a
+    // `marks: ""` comment node rejects `setMark`, so the action silently no-ops
+    // — a menu-honesty bug. Greying it (via the highlight-less MARKLESS list) is
+    // the fix. The distinction from displayMath: the atom blocks have no text so
+    // Highlight clean early-breaks (a deliberate pinned no-op), whereas a
+    // text-bearing comment would PROCEED to a broken mark — hence only the
+    // marks:"" kind drops it.
+    const ref: ActionRef = { kind: "latexComment", id: "lc0" };
+    expect(at(ref, "highlight")).toBe("disabled");
+    // displayMath (a true atom, no text) KEEPS highlight — guards the split.
+    expect(at({ kind: "displayMath", id: "m1" }, "highlight")).toBe("ok");
+    // The rest of the comment's non-mark-backed vocabulary stays enabled.
+    expect(at(ref, "note")).toBe("ok");
+    expect(at(ref, "todo")).toBe("ok");
+    expect(at(ref, "archive")).toBe("ok");
+    expect(at(ref, "delete")).toBe("ok");
+    // footnote/citation/suggest-edit are already dropped for non-prose blocks.
+    expect(at(ref, "footnote")).toBe("disabled");
+  });
+
   it("non-prose block (codeBlock) likewise disables footnote", () => {
     const ref: ActionRef = { kind: "codeBlock", id: "c0" };
     expect(at(ref, "footnote")).toBe("disabled");

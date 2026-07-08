@@ -33,17 +33,42 @@ describe("TEXT_OBJECT_REGISTRY", () => {
     }
   });
 
-  it("classifies atom blocks correctly", () => {
-    // Only these four are true ProseMirror atoms in this taxonomy.
-    expect(TEXT_OBJECT_REGISTRY.texBlock.isAtomBlock).toBe(true);
-    expect(TEXT_OBJECT_REGISTRY.graphicsBlock.isAtomBlock).toBe(true);
-    expect(TEXT_OBJECT_REGISTRY.displayMath.isAtomBlock).toBe(true);
-    expect(TEXT_OBJECT_REGISTRY.latexComment.isAtomBlock).toBe(true);
+  // task 066: the former conflated `isAtomBlock` split into two facets. The
+  // SELECTION facet (`selectsAsNode`) tracks true schema atomicity — pinned to
+  // the live schema in block-atom-facet-parity.test.ts. The GATING facet
+  // (`isMeaningfulBlockAtom`) tracks "nonsensical heading/block-convert target +
+  // meaningful-when-empty for archive". They DIVERGE on exactly one kind:
+  // latexComment (a content block since task-017, but still a meaningful comment).
+  it("classifies the SELECTION facet (selectsAsNode = true schema atom) correctly", () => {
+    // The three true ProseMirror atoms select as a whole node.
+    expect(TEXT_OBJECT_REGISTRY.texBlock.selectsAsNode).toBe(true);
+    expect(TEXT_OBJECT_REGISTRY.graphicsBlock.selectsAsNode).toBe(true);
+    expect(TEXT_OBJECT_REGISTRY.displayMath.selectsAsNode).toBe(true);
+    // latexComment is a CONTENT block (`content: "text*"`) → caret/text range,
+    // NOT a NodeSelection. This is the divergence the split exists for.
+    expect(TEXT_OBJECT_REGISTRY.latexComment.selectsAsNode).toBe(false);
     // figureBlock has a figureCaption child — NOT an atom.
-    expect(TEXT_OBJECT_REGISTRY.figureBlock.isAtomBlock).toBe(false);
+    expect(TEXT_OBJECT_REGISTRY.figureBlock.selectsAsNode).toBe(false);
     // Prose kinds.
-    expect(TEXT_OBJECT_REGISTRY.paragraph.isAtomBlock).toBe(false);
-    expect(TEXT_OBJECT_REGISTRY.heading.isAtomBlock).toBe(false);
+    expect(TEXT_OBJECT_REGISTRY.paragraph.selectsAsNode).toBe(false);
+    expect(TEXT_OBJECT_REGISTRY.heading.selectsAsNode).toBe(false);
+  });
+
+  it("classifies the GATING facet (isMeaningfulBlockAtom) correctly", () => {
+    // All four meaningful block atoms — a nonsensical heading/block-convert
+    // target, and meaningful-when-empty for the archive bail. latexComment
+    // KEEPS this facet even though its selection facet flipped.
+    expect(TEXT_OBJECT_REGISTRY.texBlock.isMeaningfulBlockAtom).toBe(true);
+    expect(TEXT_OBJECT_REGISTRY.graphicsBlock.isMeaningfulBlockAtom).toBe(true);
+    expect(TEXT_OBJECT_REGISTRY.displayMath.isMeaningfulBlockAtom).toBe(true);
+    expect(TEXT_OBJECT_REGISTRY.latexComment.isMeaningfulBlockAtom).toBe(true);
+    // figureBlock is meaningful-for-confirm but must stay "ok" for the
+    // block/heading gates → NOT flagged here (added separately to
+    // MEANINGFUL_BLOCK_ATOM_NODE_NAMES).
+    expect(TEXT_OBJECT_REGISTRY.figureBlock.isMeaningfulBlockAtom).toBe(false);
+    // Prose kinds.
+    expect(TEXT_OBJECT_REGISTRY.paragraph.isMeaningfulBlockAtom).toBe(false);
+    expect(TEXT_OBJECT_REGISTRY.heading.isMeaningfulBlockAtom).toBe(false);
   });
 
   it("classifies sub-objects correctly", () => {
