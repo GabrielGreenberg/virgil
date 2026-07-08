@@ -923,6 +923,13 @@ function BibliographyPanel({
         const ids = keyToCitationIds()[entry.key] || [];
         const idx = clampedOccurrenceIdx(entry.key, ids.length);
         const isCited = citedKeys.has(entry.key);
+        // `isCited` (persisted `citations`) answers the filter/label question —
+        // it includes keys referenced only by an unanchored/archived citation
+        // with no live in-text `\cite` node. Jumping needs a *live* occurrence
+        // (`ids` from `allEditorCitations`), so gate the jump on that instead,
+        // else a referenced-but-not-in-text entry shows a full-opacity chevron
+        // that silently no-ops (`handleJumpToBibKey` finds `ids[…] === undefined`).
+        const canJump = ids.length > 0;
         const isLibraryResult = showSearch && searchScope === "library";
         const isPreviewResult = isLibraryResult;
         // For library results we keep the Add affordance even when the
@@ -977,7 +984,7 @@ function BibliographyPanel({
               handleSelectBibKey(selected ? null : entry.key);
               listRef.current?.focus();
             }}
-            onJump={isCited ? (sourceEl) => handleJumpToBibKey(entry.key, sourceEl) : undefined}
+            onJump={canJump ? (sourceEl) => handleJumpToBibKey(entry.key, sourceEl) : undefined}
             getAnnotation={getAnnotation}
             setAnnotation={setAnnotation}
             onRequestReview={onRequestReview}
