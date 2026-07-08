@@ -43,6 +43,7 @@ import type {
   BibReviewRequest,
   RevisionCard,
 } from "@/lib/types";
+import { isRequestOpen } from "@/lib/ai-request-open";
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
 import { Button } from "./panel-primitives";
@@ -192,7 +193,7 @@ function relTime(iso: string): string {
 
 /* ── Build view-models from raw hook state ─────────────────────────── */
 
-interface BuildArgs {
+export interface BuildArgs {
   bibReviewRequests: BibReviewRequest[];
   bibEntryRequests: BibEntryRequest[];
   comments: RevisionCard[];
@@ -202,7 +203,10 @@ interface BuildArgs {
   deletePanelAiRequest: (id: string) => void;
 }
 
-function buildRequests(args: BuildArgs): AIRequestVM[] {
+// Exported for the inbox-open-derivation test (task 093): the panel-request
+// row's `status` must mirror the `isRequestOpen` SSOT, not a binary
+// `status === "complete"` check.
+export function buildRequests(args: BuildArgs): AIRequestVM[] {
   const out: AIRequestVM[] = [];
 
   for (const r of args.bibReviewRequests) {
@@ -281,18 +285,20 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
 
   for (const r of args.panelAiRequests) {
     if (r.kind === "style-merge") continue;
+    // Openness is the `isRequestOpen` SSOT, NOT a binary `status === "complete"`
+    // check: an answered-L3 proposal (`in-progress`+`resultId`) is CLOSED — the
+    // user owns accept/reject now — so it must render "resolved" (and expose no
+    // cancel affordance), not "open" (task 093 GAP 1).
+    const open = isRequestOpen(r);
     out.push({
       id: `panel:${r.id}`,
       kind: PANEL_KIND_MAP[r.kind],
-      status: r.status === "complete" ? "resolved" : "open",
+      status: open ? "open" : "resolved",
       label: r.kind,
       snippet: r.text || "(empty draft)",
       turnCount: 0,
       createdAt: r.createdAt,
-      onCancel:
-        r.status !== "complete"
-          ? () => args.deletePanelAiRequest(r.id)
-          : undefined,
+      onCancel: open ? () => args.deletePanelAiRequest(r.id) : undefined,
       hasUserText: !!r.text?.trim(),
     });
   }
@@ -329,7 +335,9 @@ export function aiRequestDotStatus(args: {
   }
   if (!hasOpen) {
     for (const r of panelAiRequests) {
-      if (r.status !== "complete") { hasOpen = true; break; }
+      // Same SSOT as `buildRequests` above: an answered-L3 row is closed, so it
+      // must not light the yellow inbox dot (task 093 GAP 1).
+      if (isRequestOpen(r)) { hasOpen = true; break; }
     }
   }
   if (!hasOpen) {

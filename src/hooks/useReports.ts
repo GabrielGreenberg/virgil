@@ -23,7 +23,10 @@ import {
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
-import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import {
+  bridgeCardAiRequestFlag,
+  type AiRequestSyncMode,
+} from "@/lib/ai-request-bridge";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { applyCardMorph } from "@/cards/morphs";
 import { usePersistentState } from "./usePersistentState";
@@ -140,12 +143,19 @@ export function useReports(
   // checkbox toggle AND the default-on-create path both funnel through it, so
   // the `ai-requests.json` payload shape lives once.
   const bridgeRequest = useCallback(
-    (card: ReportRequestCard, value: boolean) => {
-      void bridgeCardAiRequestFlag(docId, "report-request", card.id, value, {
-        text: card.text || "<report request>",
-        paragraphIds: getLinkedTextObjectIds(card),
-        selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
-      });
+    (card: ReportRequestCard, value: boolean, mode: AiRequestSyncMode = "toggle") => {
+      void bridgeCardAiRequestFlag(
+        docId,
+        "report-request",
+        card.id,
+        value,
+        {
+          text: card.text || "<report request>",
+          paragraphIds: getLinkedTextObjectIds(card),
+          selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
+        },
+        mode,
+      );
     },
     [docId],
   );
@@ -281,7 +291,7 @@ export function useReports(
   );
 
   const setRequestAiRequest = useCallback(
-    (id: string, value: boolean) => {
+    (id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
       pristine.markDirty(id);
       const card = state.cards.find(
         (c) => c.id === id && c.kind === "report-request",
@@ -294,7 +304,7 @@ export function useReports(
             : c,
         ),
       }));
-      if (card) bridgeRequest({ ...card, aiRequest: value }, value);
+      if (card) bridgeRequest({ ...card, aiRequest: value }, value, mode);
     },
     [update, pristine, state.cards, bridgeRequest],
   );

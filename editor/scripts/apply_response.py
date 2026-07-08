@@ -341,18 +341,28 @@ class _Txn:
                 self.mark(path)
                 break
 
-    def close_linked_request(self, linked: dict, *, result: str) -> bool:
-        # Flip the FIRST OPEN `ai-requests.json` row linked to `linked`
-        # ({panel, cardId}) to a terminal status — the by-`linkedTo` twin of
-        # cmd_write's by-`request_id` completion (the task 019 resolve SSOT).
-        # Needed by a terminal card transition that carries NO driving requestId
-        # (a user-initiated archive): `_mutation_commit` resolves a row by
-        # request_id ONLY, so without this the bridged row is left dangling OPEN
-        # (Leg A) even after the card is archived. Mirrors
-        # list_requests.isRequestOpen (terminal, or answered-L3 = closed) so it
-        # closes exactly the rows the drain still counts open. Returns True iff a
-        # row was closed — the guard: an unflagged / already-resolved card
-        # matches nothing and writes no spurious terminal row.
+    def close_linked_request(self, linked: dict, *, result: str,
+                             force: bool = False) -> bool:
+        # Flip the FIRST linked `ai-requests.json` row ({panel, cardId}) to a
+        # terminal status — the by-`linkedTo` twin of cmd_write's by-`request_id`
+        # completion (the task 019 resolve SSOT). Needed by a terminal card
+        # transition that carries NO driving requestId (a user-initiated
+        # archive): `_mutation_commit` resolves a row by request_id ONLY, so
+        # without this the bridged row is left dangling OPEN (Leg A) even after
+        # the card is archived.
+        #
+        # `force` (task 093) selects the closure scope:
+        #   - False (default) — mirror list_requests.isRequestOpen: close only a
+        #     row the drain still counts OPEN, leaving an answered-L3 row
+        #     (`in-progress`+`resultId`) untouched so a toggle-off can't orphan
+        #     its `resultId` (the task 043 protection).
+        #   - True (archive) — the card is GONE, so terminate the first
+        #     non-terminal row REGARDLESS of openness, incl. an answered-L3 row.
+        #     `cmd_archive` passes this; the byte-mirror of the UI bridge's
+        #     `"terminate"` mode. Already-terminal rows are still skipped, so it
+        #     stays idempotent and closes exactly one row.
+        # Returns True iff a row was closed — an unflagged / already-resolved
+        # card matches nothing and writes no spurious terminal row.
         panel = linked.get("panel")
         card_id = linked.get("cardId")
         if not panel or not card_id:
@@ -372,7 +382,7 @@ class _Txn:
             status = r.get("status")
             if status in (STATUS_COMPLETE, STATUS_FAILED):
                 continue
-            if status == STATUS_IN_PROGRESS and r.get("resultId"):
+            if not force and status == STATUS_IN_PROGRESS and r.get("resultId"):
                 continue
             r["status"] = STATUS_COMPLETE
             r["result"] = result
@@ -1294,9 +1304,12 @@ def cmd_archive(doc: Path, op: dict) -> dict:
     # Terminal-transition resolve, Leg A (bridged row): a user archive has no
     # requestId, so `_mutation_commit`'s request_id-only flip can't reach the
     # open `ai-requests.json` row bridged to this card — close it here by its
-    # `linkedTo`, or it dangles OPEN forever. No-op (guarded) when unflagged.
+    # `linkedTo`, or it dangles OPEN forever. `force=True` (task 093) makes
+    # archive terminal REGARDLESS of openness, so an answered-L3 row
+    # (`in-progress`+`resultId`) is closed too, not just a plain-open one. No-op
+    # (guarded) when unflagged.
     txn.close_linked_request({"panel": panel, "cardId": card_id},
-                             result=RESULT_AUTO_APPLIED)
+                             result=RESULT_AUTO_APPLIED, force=True)
     snippet = {
         "id": card_id,
         "title": _archive_title(original, kind),

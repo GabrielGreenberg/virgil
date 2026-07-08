@@ -6,7 +6,10 @@ import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
-import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import {
+  bridgeCardAiRequestFlag,
+  type AiRequestSyncMode,
+} from "@/lib/ai-request-bridge";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -172,7 +175,7 @@ export function useFootnotes(
    *  sourced from the doc instead of the card, because that's where the anchor
    *  lives for an atom-bearing kind. */
   const setFootnoteAiRequest = useCallback(
-    (id: string, value: boolean) => {
+    (id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
       pristine?.markDirty(id);
       const ref = stateRef.current.footnotes.find((f) => f.id === id);
       setState((prev) => {
@@ -189,11 +192,18 @@ export function useFootnotes(
         ? richJsonToPlainText(normalizeRichContent(ref.content)).trim()
         : "";
       const anchor = resolveAnchor?.(id);
-      void bridgeCardAiRequestFlag(docId, "footnote", id, value, {
-        text: summary || "<footnote>",
-        paragraphIds: anchor?.paragraphIds,
-        selectedText: anchor?.selectedText,
-      });
+      void bridgeCardAiRequestFlag(
+        docId,
+        "footnote",
+        id,
+        value,
+        {
+          text: summary || "<footnote>",
+          paragraphIds: anchor?.paragraphIds,
+          selectedText: anchor?.selectedText,
+        },
+        mode,
+      );
     },
     [persist, pristine, docId, resolveAnchor],
   );
