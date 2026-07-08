@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { useLibraryHandle } from "@library/hooks/useLibraryHandle";
 import type { UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
 import LibraryFolderPicker from "./LibraryFolderPicker";
+import LibraryPaneFill from "./LibraryPaneFill";
 import LibraryPermissionGate from "./LibraryPermissionGate";
 import LibraryView from "./LibraryView";
 
@@ -28,17 +29,9 @@ export default function LibraryApp({ tabsOptions, showNavigator, belowNavigator 
 
   if (state.kind === "loading") {
     return (
-      <div
-        style={{
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--muted)",
-        }}
-      >
+      <LibraryPaneFill center style={{ color: "var(--muted)" }}>
         Loading…
-      </div>
+      </LibraryPaneFill>
     );
   }
 

@@ -1,5 +1,7 @@
 "use client";
 
+import LibraryPaneFill from "./LibraryPaneFill";
+
 interface Props {
   onPick: () => void;
   /** Latest picker-flow error (e.g. Chrome's "file picker already
@@ -10,17 +12,7 @@ interface Props {
 
 export default function LibraryFolderPicker({ onPick, pickerError }: Props) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100%",
-        gap: 16,
-        padding: 32,
-      }}
-    >
+    <LibraryPaneFill center style={{ gap: 16, padding: 32 }}>
       <h1 style={{ fontFamily: "var(--serif)", fontSize: 32, fontWeight: 500 }}>
         Virgil Library
       </h1>
@@ -61,6 +53,6 @@ export default function LibraryFolderPicker({ onPick, pickerError }: Props) {
           {pickerError}
         </p>
       ) : null}
-    </div>
+    </LibraryPaneFill>
   );
 }
