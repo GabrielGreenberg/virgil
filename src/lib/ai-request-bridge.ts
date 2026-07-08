@@ -45,6 +45,19 @@ export interface BridgeContext {
 }
 
 /**
+ * How the bridge should reconcile a card's linked `ai-requests.json` row.
+ *
+ * - `"toggle"` (default) — the reversible per-card flag semantics: `value=true`
+ *   adds/refreshes an OPEN row, `value=false` drops it. Deliberately protects an
+ *   answered-L3 row (`in-progress`+`resultId`) from a stray toggle-off (task 043).
+ * - `"terminate"` — the card is **gone** (archived). A terminal transition:
+ *   close the first linked NON-terminal row (a plain open row OR an answered-L3
+ *   row) to `complete` regardless of current openness. The UI twin of the Python
+ *   `close_linked_request(force=True)` on `cmd_archive` (task 093).
+ */
+export type AiRequestSyncMode = "toggle" | "terminate";
+
+/**
  * Sync a card-level `aiRequest` flag toggle into `ai-requests.json`.
  *
  * - `value=true` and no existing linked request → add one (`status: "pending"`).
@@ -68,6 +81,7 @@ export async function bridgeCardAiRequestFlag(
   cardId: string,
   value: boolean,
   ctx: BridgeContext,
+  mode: AiRequestSyncMode = "toggle",
 ): Promise<void> {
   if (!docId) return;
   const routing = CARD_REGISTRY[cardKind].aiRequest;
@@ -96,6 +110,42 @@ export async function bridgeCardAiRequestFlag(
   // that returns null/undefined for a missing sidecar instead of the default —
   // treat it as an empty queue rather than dereferencing null.
   const requests = Array.isArray(state?.requests) ? state.requests : [];
+
+  // Archive intent (task 093): the card is gone, so terminate the FIRST linked
+  // non-terminal row — a plain-open row OR a 043-protected answered-L3
+  // (`in-progress`+`resultId`) — to `complete`, regardless of current openness.
+  // This is the SINGLE ai-requests.json writer on archive (callers reach it via
+  // `clearAiRequestForKind` → the panel setters with `mode: "terminate"`), so it
+  // never races a second toggle-off write. Byte-mirror of Python
+  // `close_linked_request(force=True)` on `cmd_archive`: both stamp
+  // `status: complete` + `result: "auto-applied"`. Idempotent — an unmatched or
+  // already-terminal card writes nothing (no spurious terminal row), and the
+  // `value` argument is irrelevant here (archive is always a resolve).
+  if (mode === "terminate") {
+    const termIdx = requests.findIndex(
+      (r) =>
+        r.linkedTo &&
+        r.linkedTo.panel === link.panel &&
+        r.linkedTo.cardId === link.cardId &&
+        r.status !== "complete" &&
+        r.status !== "failed",
+    );
+    if (termIdx < 0) return;
+    const terminated = requests.map((r, i) =>
+      i === termIdx
+        ? ({ ...r, status: "complete", result: "auto-applied" } as AiRequest)
+        : r,
+    );
+    try {
+      await writeSidecar(handle, "ai-requests.json", { requests: terminated });
+    } catch (err) {
+      if (isStalePipelineError(err)) return;
+      console.error("Failed to terminate linked AI request on archive:", err);
+      return;
+    }
+    publishAiRequests(docId, terminated);
+    return;
+  }
 
   const existingIdx = requests.findIndex(
     (r) =>

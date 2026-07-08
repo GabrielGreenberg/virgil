@@ -5087,24 +5087,29 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // TERMINAL request transition, so it must funnel into the SAME resolve step as
   // answer (task 019) and delete (deleteReportCard / the atom-delete path) — the
   // missing third leg. Each flag-bearing kind's bridge-clearing setter lowers the
-  // card's `aiRequest` flag (the `list_unbridged_card_flags` leg) AND drops the
-  // open `ai-requests.json` row (the `isRequestOpen` leg) in one call, so an
-  // archived request surfaces on NEITHER drain leg. The bridge's `value=false`
-  // path early-returns when no open linked row matches, so an unflagged card is a
-  // natural no-op (no spurious terminal row). Dispatch is on the CardKind (not the
-  // panel) because note vs highlight share the `notes` panel but own distinct
-  // setters; kinds with no aiRequest routing (citation, the suggestion family,
-  // plain report) fall through to a no-op.
+  // card's `aiRequest` flag (the `list_unbridged_card_flags` leg) AND — because
+  // it runs the bridge in `"terminate"` mode (task 093) — TERMINATES the linked
+  // `ai-requests.json` row to `complete`, so an archived request surfaces on
+  // NEITHER drain leg. Terminate (not the reversible `value=false` drop) is what
+  // makes archive close an answered-L3 row (`in-progress`+`resultId`) too: a
+  // toggle-off deliberately preserves that row's `resultId` (task 043), but
+  // archive means the card is *gone*, so the row must terminate regardless. The
+  // terminate branch is the SINGLE ai-requests.json writer here, so there is no
+  // second write to race, and it is idempotent (unmatched / already-terminal
+  // cards write nothing). Dispatch is on the CardKind (not the panel) because
+  // note vs highlight share the `notes` panel but own distinct setters; kinds
+  // with no aiRequest routing (citation, the suggestion family, plain report)
+  // fall through to a no-op.
   const clearAiRequestForKind = useCallback(
     (kind: CardKind, id: string) => {
       switch (kind) {
-        case "note": notesHook.setNoteAiRequest(id, false); break;
-        case "highlight": notesHook.setHighlightAiRequest(id, false); break;
-        case "todo": todosHook.setAiRequest(id, false); break;
-        case "report-request": reportsHook.setRequestAiRequest(id, false); break;
-        case "revision-comment": revisionsHook.setCommentAiRequest(id, false); break;
-        case "cutter-comment": cutterHook.setCommentAiRequest(id, false); break;
-        case "footnote": footnotesHook.setFootnoteAiRequest(id, false); break;
+        case "note": notesHook.setNoteAiRequest(id, false, "terminate"); break;
+        case "highlight": notesHook.setHighlightAiRequest(id, false, "terminate"); break;
+        case "todo": todosHook.setAiRequest(id, false, "terminate"); break;
+        case "report-request": reportsHook.setRequestAiRequest(id, false, "terminate"); break;
+        case "revision-comment": revisionsHook.setCommentAiRequest(id, false, "terminate"); break;
+        case "cutter-comment": cutterHook.setCommentAiRequest(id, false, "terminate"); break;
+        case "footnote": footnotesHook.setFootnoteAiRequest(id, false, "terminate"); break;
       }
     },
     [

@@ -20,7 +20,10 @@ import {
   setTextAnchorLink,
 } from "@/links/links";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
-import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import {
+  bridgeCardAiRequestFlag,
+  type AiRequestSyncMode,
+} from "@/lib/ai-request-bridge";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { applyCardMorph } from "@/cards/morphs";
@@ -288,7 +291,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   );
 
   const setNoteAiRequest = useCallback(
-    (id: string, value: boolean) => {
+    (id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
       pristine.markDirty(id);
       const note = notes.find((n) => n.id === id);
       update((prev) => ({
@@ -307,6 +310,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
             paragraphIds: getLinkedTextObjectIds(note),
             selectedText: getTextAnchor(note)?.anchorText,
           },
+          mode,
         );
       }
     },
@@ -314,7 +318,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   );
 
   const setHighlightAiRequest = useCallback(
-    (id: string, value: boolean) => {
+    (id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
       const card = highlights.find((h) => h.id === id);
       update((prev) => ({
         cards: prev.cards.map((c) =>
@@ -333,6 +337,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
             paragraphIds: getLinkedTextObjectIds(card),
             selectedText: anchorText,
           },
+          mode,
         );
       }
     },

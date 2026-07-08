@@ -221,3 +221,72 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
     expect(reqs[0].text).toBe("still working?");
   });
 });
+
+// --- archive terminate mode (task 093) -------------------------------------
+//
+// Archiving a flagged card routes the bridge in `mode: "terminate"` (via
+// `clearAiRequestForKind` → the panel setters). Unlike a `value=false`
+// toggle-off — which drops only an OPEN row and deliberately preserves an
+// answered-L3 row's `resultId` (task 043) — terminate closes the FIRST linked
+// NON-terminal row to `complete` REGARDLESS of current openness, because the
+// card is gone. This is the UI twin of Python `close_linked_request(force=True)`
+// on `cmd_archive`; both stamp `status: complete` + `result: "auto-applied"`.
+describe("bridgeCardAiRequestFlag terminate mode (archive)", () => {
+  it("(g) terminates a plain-OPEN pending row → complete, not a drop", async () => {
+    seeded.state = { requests: [linkedRequest()] }; // status: "pending"
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "terminate");
+
+    expect(written).toHaveLength(1);
+    const reqs = written[0].data.requests;
+    expect(reqs).toHaveLength(1); // kept (terminated), not filtered out
+    expect(reqs[0].id).toBe("req-existing");
+    expect(reqs[0].status).toBe("complete");
+    expect(reqs[0].result).toBe("auto-applied");
+  });
+
+  it("(h) terminates an answered-L3 row (in-progress+resultId) — the GAP the toggle-off can't close", async () => {
+    seeded.state = {
+      requests: [linkedRequest({ status: "in-progress", resultId: "card-proposal-1" })],
+    };
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "terminate");
+
+    expect(written).toHaveLength(1);
+    const r = written[0].data.requests[0];
+    expect(r.status).toBe("complete");
+    expect(r.result).toBe("auto-applied");
+    // The proposal pointer survives the terminal stamp (audit trail intact).
+    expect(r.resultId).toBe("card-proposal-1");
+  });
+
+  it("(i) an already-terminal linked row is a pure no-op (idempotent, no write)", async () => {
+    seeded.state = { requests: [linkedRequest({ status: "complete", result: "accepted" })] };
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "terminate");
+    expect(written).toHaveLength(0);
+  });
+
+  it("(j) no linked row → no-op (no spurious terminal row minted)", async () => {
+    seeded.state = {
+      requests: [linkedRequest({ id: "req-other", linkedTo: { panel: "todos", cardId: "card-2" } })],
+    };
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "terminate");
+    expect(written).toHaveLength(0);
+  });
+
+  it("(k) terminates ONLY the matched row; unrelated rows untouched", async () => {
+    seeded.state = {
+      requests: [
+        linkedRequest(), // card-1, pending → terminated
+        linkedRequest({ id: "req-other", linkedTo: { panel: "todos", cardId: "card-2" } }),
+      ],
+    };
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "terminate");
+
+    expect(written).toHaveLength(1);
+    const reqs = written[0].data.requests;
+    expect(reqs).toHaveLength(2);
+    const mine = reqs.find((r) => r.id === "req-existing")!;
+    const other = reqs.find((r) => r.id === "req-other")!;
+    expect(mine.status).toBe("complete");
+    expect(other.status).toBe("pending"); // untouched
+  });
+});

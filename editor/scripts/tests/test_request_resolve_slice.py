@@ -231,5 +231,31 @@ check(SUG_REQ not in ids, "ai-request row still hidden by the resultId gate")
 check(f"virtual:todos:{TODO_ID}" in ids,
       "un-cleared todo RESURFACES via the fallback — the recycle the default clear prevents")
 
+print("\n=== archive TERMINATES an answered-L3 row (in-progress+resultId) — task 093 ===")
+# A toggle-off deliberately PRESERVES an answered-L3 row's resultId (task 043),
+# but archive means the card is *gone* — a terminal transition. cmd_archive
+# passes force=True to close_linked_request, which must flip the lingering
+# in-progress+resultId row to `complete` (not leave it dangling, which the inbox
+# would then paint OPEN — GAP 1). This is the Python twin of the UI bridge's
+# "terminate" mode.
+sb = sandbox()
+r = draft_suggestion_proposal(sb, clear_source_flag=True)
+check(r.returncode == 0, f"pre: propose exited 0 (stderr={r.stderr.strip()[:160]})")
+req = next(x for x in load(sb, "ai-requests.json")["requests"] if x["id"] == SUG_REQ)
+check(req["status"] == "in-progress" and req.get("resultId") == "rev-resolve-1",
+      "pre: SUG_REQ is answered-L3 (in-progress+resultId), lingering after propose")
+r = run(APPLY, str(sb), "archive", json.dumps({"cardId": TODO_ID}))
+check(r.returncode == 0, f"archive exited 0 (stderr={r.stderr.strip()[:160]})")
+check(card_by_id(sb, "todos.json", "items", TODO_ID) is None, "linked todo removed from todos.json")
+req = next(x for x in load(sb, "ai-requests.json")["requests"] if x["id"] == SUG_REQ)
+check(req["status"] == "complete",
+      "answered-L3 row TERMINATED to complete on archive (force=True) — no longer lingering")
+check(req.get("result") == "auto-applied", "terminal result stamped auto-applied")
+check(req.get("resultId") == "rev-resolve-1", "resultId pointer preserved (audit trail intact)")
+check(SUG_REQ not in listed_ids(sb), "terminated row stays drain-hidden")
+# Control for the 043 protection (force=False must NOT terminate answered-L3) is
+# already proven above: after `propose` — an answer path, not an archive — the
+# same SUG_REQ row stays `in-progress`+`resultId` (":210"), untouched.
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

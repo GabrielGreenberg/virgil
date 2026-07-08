@@ -12,7 +12,10 @@ import {
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
-import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import {
+  bridgeCardAiRequestFlag,
+  type AiRequestSyncMode,
+} from "@/lib/ai-request-bridge";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -108,7 +111,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     }));
   }, [update, pristine]);
 
-  const setAiRequest = useCallback((id: string, value: boolean) => {
+  const setAiRequest = useCallback((id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
     pristine.markDirty(id);
     const todo = state.items.find((i) => i.id === id);
     update((prev) => ({
@@ -124,6 +127,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
           text: todo.text || "<todo>",
           paragraphIds: getLinkedTextObjectIds(todo),
         },
+        mode,
       );
     }
   }, [update, pristine, docId, state.items]);

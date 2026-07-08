@@ -24,7 +24,10 @@ import {
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
-import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import {
+  bridgeCardAiRequestFlag,
+  type AiRequestSyncMode,
+} from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -173,12 +176,19 @@ export function useRevisions(
   // checkbox toggle AND the default-on-create path both funnel through it, so
   // the `ai-requests.json` payload shape lives once.
   const bridgeComment = useCallback(
-    (card: RevisionCommentCard, value: boolean) => {
-      void bridgeCardAiRequestFlag(docId, "revision-comment", card.id, value, {
-        text: card.text || "<revision comment>",
-        paragraphIds: getLinkedTextObjectIds(card),
-        selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
-      });
+    (card: RevisionCommentCard, value: boolean, mode: AiRequestSyncMode = "toggle") => {
+      void bridgeCardAiRequestFlag(
+        docId,
+        "revision-comment",
+        card.id,
+        value,
+        {
+          text: card.text || "<revision comment>",
+          paragraphIds: getLinkedTextObjectIds(card),
+          selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
+        },
+        mode,
+      );
     },
     [docId],
   );
@@ -312,7 +322,7 @@ export function useRevisions(
   );
 
   const setCommentAiRequest = useCallback(
-    (id: string, value: boolean) => {
+    (id: string, value: boolean, mode: AiRequestSyncMode = "toggle") => {
       pristine.markDirty(id);
       const card = state.cards.find(
         (c) => c.id === id && c.kind === "comment",
@@ -323,7 +333,7 @@ export function useRevisions(
           c.id === id && c.kind === "comment" ? { ...c, aiRequest: value } : c,
         ),
       }));
-      if (card) bridgeComment({ ...card, aiRequest: value }, value);
+      if (card) bridgeComment({ ...card, aiRequest: value }, value, mode);
     },
     [update, pristine, state.cards, bridgeComment],
   );
