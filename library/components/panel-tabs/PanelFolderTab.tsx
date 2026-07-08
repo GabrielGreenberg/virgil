@@ -8,9 +8,11 @@ import {
   type ReactNode,
   useCallback,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import { isGutterDragging, onGutterDragChange } from "@library/lib/gutter-drag";
 import {
   ACTIVE_MIN_CONTENT,
   buildActiveTabStrokePath,
@@ -110,17 +112,23 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
     // pointer-events:none on the svg), so neither participates in flex layout —
     // writing `tabW`/`naturalTabW` to state can't change what the observers
     // measure on the next frame once the fixpoint (svgW === laidOut) is reached.
+    // Set while a Library L/R gutter drag parked a would-be measure, so the
+    // one post-drag settle knows to reconcile the final geometry (task 090).
+    const dirtyRef = useRef(false);
     const measure = useCallback(() => {
       const wrap = wrapperRef.current;
       const content = contentRef.current;
       if (!wrap) return;
-      setTabW(
-        deriveTabWidthFromWrapper({
-          laidOutWidth: wrap.getBoundingClientRect().width,
-          minTabW: ACTIVE_MIN_CONTENT,
-          S,
-        }),
-      );
+      const nextTabW = deriveTabWidthFromWrapper({
+        laidOutWidth: wrap.getBoundingClientRect().width,
+        minTabW: ACTIVE_MIN_CONTENT,
+        S,
+      });
+      // Equality gate (matches frameBox / activeFlushRight): an RO fire that
+      // resolves to the SAME integer width must NOT setState — otherwise a
+      // continuous gutter drag re-renders + rebuilds the folder `d` string
+      // every frame (the "random redraw"), even sub-pixel-identical frames.
+      setTabW((prev) => (prev === nextTabW ? prev : nextTabW));
       if (content) {
         // The overlay is width-CLAMPED to the assigned tabW (svgW − 2*S − 1)
         // with overflow:hidden, so its OWN scrollWidth latches at ≈ tabW and
@@ -142,7 +150,11 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
               titleScrollWidth: titleEl.scrollWidth,
             })
           : content.scrollWidth;
-        setNaturalTabW(Math.max(ACTIVE_MIN_CONTENT, Math.ceil(naturalContent)));
+        const nextNatural = Math.max(
+          ACTIVE_MIN_CONTENT,
+          Math.ceil(naturalContent),
+        );
+        setNaturalTabW((prev) => (prev === nextNatural ? prev : nextNatural));
       }
     }, []);
 
@@ -151,10 +163,30 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
       const content = contentRef.current;
       if (!wrap) return;
       measure();
-      const ro = new ResizeObserver(measure);
+      // Park while a Library L/R gutter is being dragged: the strip re-assigns
+      // this wrapper's width every pointermove frame, but re-measuring +
+      // repainting the folder silhouette per frame is exactly the "random
+      // redraw" + choppiness. Stash a dirty bit and reconcile once on release.
+      const onResize = () => {
+        if (isGutterDragging()) {
+          dirtyRef.current = true;
+          return;
+        }
+        measure();
+      };
+      const ro = new ResizeObserver(onResize);
       ro.observe(wrap);
       if (content) ro.observe(content);
-      return () => ro.disconnect();
+      const unsub = onGutterDragChange((active) => {
+        if (!active && dirtyRef.current) {
+          dirtyRef.current = false;
+          measure();
+        }
+      });
+      return () => {
+        ro.disconnect();
+        unsub();
+      };
     }, [measure]);
 
     // The overlay's box is pinned to the assigned width, so the ResizeObserver
@@ -167,24 +199,37 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
     const { svgW, svgH, inset, insetY } = tabSvgGeometry({ tabW, tabH: TAB_H, S });
     // Natural (uncompressed) canvas width — the flex preferred + max size.
     const naturalSvgW = tabSvgGeometry({ tabW: naturalTabW, tabH: TAB_H, S }).svgW;
-    const fillPath = buildTabFillPath({
-      tabW,
-      tabH: TAB_H,
-      R,
-      S,
-      tuckLeft: tuckLeftFoot,
-      tuckRight: tuckRightFoot,
-    });
-    const strokePath = active
-      ? buildActiveTabStrokePath({
+    // Memoize the folder-path `d` strings on their geometry inputs (R/S/TAB_H
+    // are module constants). Without this the SVG path was rebuilt on EVERY
+    // render, so any unrelated re-render during a drag re-serialized the
+    // silhouette — part of the per-frame thrash (task 090). Now the `d` string
+    // is a stable reference unless the width/tuck actually changes.
+    const fillPath = useMemo(
+      () =>
+        buildTabFillPath({
           tabW,
           tabH: TAB_H,
           R,
           S,
           tuckLeft: tuckLeftFoot,
           tuckRight: tuckRightFoot,
-        })
-      : null;
+        }),
+      [tabW, tuckLeftFoot, tuckRightFoot],
+    );
+    const strokePath = useMemo(
+      () =>
+        active
+          ? buildActiveTabStrokePath({
+              tabW,
+              tabH: TAB_H,
+              R,
+              S,
+              tuckLeft: tuckLeftFoot,
+              tuckRight: tuckRightFoot,
+            })
+          : null,
+      [active, tabW, tuckLeftFoot, tuckRightFoot],
+    );
     // The 1px seam bridge covers ONLY the tab's FLAT-BODY span, so the tab merges
     // into the page there — but the swoop-foot VALLEYS (where each foot dips down)
     // are left UNBRIDGED, so the body's top-edge frame stroke shows under them and

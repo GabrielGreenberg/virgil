@@ -19,6 +19,7 @@ import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { PanelFolderTab } from "./PanelFolderTab";
 import { STRIP_SIDE_PAD } from "./folder-path";
+import { isGutterDragging, onGutterDragChange } from "@library/lib/gutter-drag";
 
 // F#15 inactive-tab floor: inactive tabs absorb the squeeze first and
 // ellipsize their names down to this width before the active tab compresses.
@@ -172,6 +173,7 @@ export function PanelTabStrip({
       return;
     }
     let raf = 0;
+    let dirty = false;
     const measure = () => {
       const el = tabRefs.current.get(activeId);
       if (!el) {
@@ -184,6 +186,15 @@ export function PanelTabStrip({
       setActiveFlushRight((prev) => (prev === flush ? prev : flush));
     };
     const schedule = () => {
+      // Park during a Library L/R gutter drag (for symmetry with the tab-width
+      // + body-frame observers): this measure is already RAF-coalesced +
+      // equality-gated so it rarely setStates, but parking also skips its two
+      // per-frame getBoundingClientRect reads. The tuck reconciles on release
+      // — while the tab silhouette itself is frozen mid-drag anyway (task 090).
+      if (isGutterDragging()) {
+        dirty = true;
+        return;
+      }
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
@@ -200,9 +211,16 @@ export function PanelTabStrip({
     // can read a stale pre-activation width and miss the tuck.
     const activeEl = tabRefs.current.get(activeId);
     if (activeEl) ro.observe(activeEl);
+    const unsub = onGutterDragChange((active) => {
+      if (!active && dirty) {
+        dirty = false;
+        schedule();
+      }
+    });
     return () => {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
+      unsub();
     };
   }, [activeId, tabs.length, panelRef]);
 

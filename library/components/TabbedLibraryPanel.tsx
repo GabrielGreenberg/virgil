@@ -21,6 +21,7 @@ import {
   type Registry,
 } from "@library/lib/library-store";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
+import { isGutterDragging, onGutterDragChange } from "@library/lib/gutter-drag";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { useProjectLibrary } from "@library/lib/project-library-context";
 import {
@@ -321,6 +322,7 @@ export default function TabbedLibraryPanel({
       setFrameBox(null);
       return;
     }
+    let dirty = false;
     const measure = () => {
       const r = el.getBoundingClientRect();
       // Round to integer CSS px so the path coords stay DPR-crisp (the tab
@@ -332,10 +334,30 @@ export default function TabbedLibraryPanel({
         prev && prev.w === w && prev.h === h ? prev : { w, h },
       );
     };
+    // Park during a Library L/R gutter drag: `Math.round(width)` flips each
+    // frame of a continuous drag, breaking the equality gate below and
+    // repainting the body-frame SVG per frame. Stash dirty + reconcile once
+    // on release (task 090).
+    const onResize = () => {
+      if (isGutterDragging()) {
+        dirty = true;
+        return;
+      }
+      measure();
+    };
     measure();
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(onResize);
     ro.observe(el);
-    return () => ro.disconnect();
+    const unsub = onGutterDragChange((active) => {
+      if (!active && dirty) {
+        dirty = false;
+        measure();
+      }
+    });
+    return () => {
+      ro.disconnect();
+      unsub();
+    };
     // Re-attach when the active library changes (the body div remounts) so the
     // observer tracks the live node.
   }, [activeLibrary]);

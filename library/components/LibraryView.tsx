@@ -38,6 +38,7 @@ import Toaster from "./Toaster";
 import TabbedLibraryPanel, { type EntryActions } from "./TabbedLibraryPanel";
 import LibrariesNavigator from "./LibrariesNavigator";
 import { queueBibReview, queueDelete, queueImportBib, queuePaperReview } from "@library/lib/bib-edit";
+import { beginGutterDrag, endGutterDrag } from "@library/lib/gutter-drag";
 
 /**
  * The Library-tab desktop **field** surface (the chrome the folder panels sit on:
@@ -215,6 +216,12 @@ export default function LibraryView({
         // imperative (off the React render path).
         const handle = e.currentTarget;
         handle.classList.add("dragging");
+        // Publish the drag-active flag so the downstream tab-chrome
+        // ResizeObservers PARK their measure→setState→SVG-repaint work for the
+        // gesture and reconcile once on release (task 090). Both L/R column
+        // gutters route through here; the vertical papers splitter does NOT
+        // (startPapersResize), so it is intentionally left ungated.
+        beginGutterDrag();
         const startX = e.clientX;
         const startWidth = currentWidth;
         let latest = startWidth;
@@ -234,6 +241,11 @@ export default function LibraryView({
           document.body.style.cursor = "";
           document.body.style.userSelect = "";
           handle.classList.remove("dragging");
+          // Clear the drag flag (drag-clear edge) so parked observers run their
+          // one post-drag settle, THEN commit the store size — the committed
+          // width equals the last live width, so the settle + the reconcile
+          // render both land the identical geometry (no jump).
+          endGutterDrag();
           commit(Math.round(latest));
         };
         window.addEventListener("pointermove", onMove);
