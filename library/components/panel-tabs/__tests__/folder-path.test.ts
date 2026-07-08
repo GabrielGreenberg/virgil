@@ -13,6 +13,7 @@ import {
   deriveTabWidthFromWrapper,
   firstTabSwoopFootX,
   frameTopCornerStartX,
+  recoverNaturalContentWidth,
   tabSvgGeometry,
 } from "../folder-path";
 
@@ -379,5 +380,104 @@ describe("library edge token — --library-edge re-pairing (task 2026-07-05-048)
       `Library edges must derive from --library-edge, not the top-bar token ` +
         `--topbar-border (task 048). Offending file(s): ${offenders.join(", ")}`,
     ).toEqual([]);
+  });
+});
+
+describe("task 2026-07-07-088 — active tab shows its FULL title; backgrounds ellipsize first", () => {
+  // Model the active tab's content overlay: it is width-CLAMPED to the assigned
+  // body width with overflow:hidden, and the ONE flexible child (the title span)
+  // shrinks to fit, so the OVERLAY's own scrollWidth latches at the clamp. These
+  // constants stand in for a concrete layout: fixed chrome (pin/icon/close +
+  // padding + gaps) consumes CHROME px; the title's un-clipped text is TITLE px.
+  const CHROME = 60;
+  const TITLE = 180;
+  // The true natural content width the flex preferred size must request.
+  const INTRINSIC = CHROME + TITLE;
+
+  it("recovers the SAME intrinsic width at ANY compression level (the clamp cancels — no latch)", () => {
+    // At any clamped overlay width `w`, the title span shrinks to (w − CHROME)
+    // and clips; its scrollWidth stays the full TITLE. The recovery formula must
+    // return INTRINSIC regardless of w — this width-independence is exactly what
+    // breaks the old self-referential latch (naturalTabW ≈ current tabW).
+    for (const overlayClientWidth of [116, 150, 200, INTRINSIC, 300]) {
+      const titleClientWidth = Math.max(0, overlayClientWidth - CHROME);
+      const natural = recoverNaturalContentWidth({
+        overlayClientWidth,
+        titleClientWidth,
+        titleScrollWidth: TITLE,
+      });
+      expect(natural).toBe(INTRINSIC);
+    }
+  });
+
+  it("un-latches a floored measurement: floor-width overlay still recovers the full title width", () => {
+    // The reported bug: the active tab sits at its ACTIVE_MIN_CONTENT floor and
+    // renders "C…". At the floor the title is heavily clipped, but its
+    // scrollWidth is still the full text — so recovery returns the full
+    // INTRINSIC (> floor), letting the tab grow on the next frame.
+    const titleClientWidth = Math.max(0, ACTIVE_MIN_CONTENT - CHROME);
+    const natural = recoverNaturalContentWidth({
+      overlayClientWidth: ACTIVE_MIN_CONTENT,
+      titleClientWidth,
+      titleScrollWidth: TITLE,
+    });
+    expect(natural).toBe(INTRINSIC);
+    expect(natural).toBeGreaterThan(ACTIVE_MIN_CONTENT);
+  });
+
+  it("is a no-op when the title already fits (no deficit → natural === overlay width)", () => {
+    // When there's room the span shows in full (clientWidth === scrollWidth), so
+    // recovery returns the overlay width unchanged — the fixpoint is stable and
+    // the tab neither grows nor shrinks spuriously.
+    const overlayClientWidth = INTRINSIC;
+    const natural = recoverNaturalContentWidth({
+      overlayClientWidth,
+      titleClientWidth: TITLE,
+      titleScrollWidth: TITLE,
+    });
+    expect(natural).toBe(overlayClientWidth);
+  });
+
+  it("the OLD overlay-scrollWidth read would have latched (regression contrast)", () => {
+    // Documents WHY the fix is needed: a clamped overlay with a shrunk child has
+    // no overflow, so overlay.scrollWidth === its clamped width — feeding that
+    // back pins naturalTabW to the current width and the tab can never grow.
+    const clampedOverlayScrollWidth = ACTIVE_MIN_CONTENT; // latched, not INTRINSIC
+    expect(clampedOverlayScrollWidth).toBeLessThan(INTRINSIC);
+  });
+
+  it("SECONDARY — the active tab resists shrink (flex 0 0 auto); backgrounds yield first (flex 1 1 auto)", () => {
+    // Flex shrink is distributed ∝ (shrink × basis), so with EQUAL shrink the
+    // larger-basis active tab absorbed MORE of the squeeze and starved first —
+    // the inversion of intent. The active tab must be flex-shrink:0 so it holds
+    // its full title while backgrounds (shrink 1) ellipsize to their floor; past
+    // the floor the F#15 scroll effect keeps the active visible.
+    const folder = readFileSync(
+      path.join(ROOT, "library/components/panel-tabs/PanelFolderTab.tsx"),
+      "utf8",
+    );
+    const strip = readFileSync(
+      path.join(ROOT, "library/components/panel-tabs/PanelTabStrip.tsx"),
+      "utf8",
+    );
+    expect(folder).toContain('flex: "0 0 auto"'); // active resists
+    expect(strip).toContain('flex: "1 1 auto"'); // backgrounds yield
+  });
+
+  it("the active title span is tagged for the un-clipped intrinsic-width read (data-tab-title)", () => {
+    // The measurement in PanelFolderTab reads the intrinsic width off the ONE
+    // flexible child via [data-tab-title]; the strip must tag the active span,
+    // and the component must query the same attribute — bind both ends so they
+    // can't drift.
+    const folder = readFileSync(
+      path.join(ROOT, "library/components/panel-tabs/PanelFolderTab.tsx"),
+      "utf8",
+    );
+    const strip = readFileSync(
+      path.join(ROOT, "library/components/panel-tabs/PanelTabStrip.tsx"),
+      "utf8",
+    );
+    expect(strip).toContain("data-tab-title");
+    expect(folder).toContain("data-tab-title");
   });
 });

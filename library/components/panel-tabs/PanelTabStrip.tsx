@@ -544,6 +544,11 @@ export function PanelTabStrip({
                   />
                 ) : (
                   <span
+                    // Tag the ONE flexible child so PanelFolderTab can read the
+                    // label's un-clipped intrinsic width off it (scrollWidth) and
+                    // grow the active tab to its full name — instead of the
+                    // width-clamped overlay's latched scrollWidth (task 088).
+                    data-tab-title=""
                     style={{
                       fontSize: 13,
                       lineHeight: "16px",

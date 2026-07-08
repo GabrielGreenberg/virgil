@@ -6,6 +6,7 @@ import {
   type DragEvent,
   type HTMLAttributes,
   type ReactNode,
+  useCallback,
   useLayoutEffect,
   useRef,
   useState,
@@ -16,9 +17,16 @@ import {
   buildTabFillPath,
   deriveTabWidthFromWrapper,
   MANILA_RADIUS,
+  recoverNaturalContentWidth,
   TAB_TOP_GUTTER,
   tabSvgGeometry,
 } from "./folder-path";
+
+// The active tab's title span is tagged with this attribute (see
+// PanelTabStrip) so the natural-width measurement below can read the label's
+// UN-CLIPPED intrinsic width off the one flexible child, instead of the
+// width-clamped overlay's latched scrollWidth (task 088).
+const TITLE_MEASURE_ATTR = "data-tab-title";
 
 // Top-corner radius of the manila-folder tab, from the single geometry SSOT
 // (folder-path.ts). It is the numeric twin of the CSS token
@@ -95,39 +103,66 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
     //   (1) wrapperRef → the width the strip's flex layout ASSIGNED us. We map
     //       it to `tabW` and repaint the folder path at exactly that size, so
     //       svgW(tabW) === laidOut and the shape never under/overflows its box.
-    //   (2) contentRef → the label/icons' INTRINSIC width (scrollWidth, valid
-    //       even though the overlay is position:absolute). It sets the flex
-    //       preferred size, so the tab requests its natural width and shrinks
-    //       only under pressure.
+    //   (2) contentRef → the label/icons' INTRINSIC width. It sets the flex
+    //       preferred size, so the tab requests its natural width and grows to
+    //       fit its name when there's room.
     // The <svg> and the content overlay are both absolutely-positioned (+
     // pointer-events:none on the svg), so neither participates in flex layout —
     // writing `tabW`/`naturalTabW` to state can't change what the observers
     // measure on the next frame once the fixpoint (svgW === laidOut) is reached.
+    const measure = useCallback(() => {
+      const wrap = wrapperRef.current;
+      const content = contentRef.current;
+      if (!wrap) return;
+      setTabW(
+        deriveTabWidthFromWrapper({
+          laidOutWidth: wrap.getBoundingClientRect().width,
+          minTabW: ACTIVE_MIN_CONTENT,
+          S,
+        }),
+      );
+      if (content) {
+        // The overlay is width-CLAMPED to the assigned tabW (svgW − 2*S − 1)
+        // with overflow:hidden, so its OWN scrollWidth latches at ≈ tabW and
+        // can NOT report the tab's natural (uncompressed) width — the old
+        // `content.scrollWidth` read pinned naturalTabW to the current width, so
+        // a long-named active tab never grew past its floor and rendered "C…"
+        // (task 088). Recover the intrinsic width from the ONE shrinking child,
+        // the title span (tagged data-tab-title): its scrollWidth is the
+        // un-clipped text width even while it renders ellipsized. While the tab
+        // is being renamed the title is an <input> (no tagged span) → fall back
+        // to the raw scrollWidth.
+        const titleEl = content.querySelector<HTMLElement>(
+          `[${TITLE_MEASURE_ATTR}]`,
+        );
+        const naturalContent = titleEl
+          ? recoverNaturalContentWidth({
+              overlayClientWidth: content.clientWidth,
+              titleClientWidth: titleEl.clientWidth,
+              titleScrollWidth: titleEl.scrollWidth,
+            })
+          : content.scrollWidth;
+        setNaturalTabW(Math.max(ACTIVE_MIN_CONTENT, Math.ceil(naturalContent)));
+      }
+    }, []);
+
     useLayoutEffect(() => {
       const wrap = wrapperRef.current;
       const content = contentRef.current;
       if (!wrap) return;
-      const update = () => {
-        setTabW(
-          deriveTabWidthFromWrapper({
-            laidOutWidth: wrap.getBoundingClientRect().width,
-            minTabW: ACTIVE_MIN_CONTENT,
-            S,
-          }),
-        );
-        if (content) {
-          // scrollWidth is the un-clipped intrinsic width (ignores the
-          // overflow:hidden ellipsis clamp). tabW that this content wants =
-          // its width minus the left padding already baked into `left:S`.
-          setNaturalTabW(Math.max(ACTIVE_MIN_CONTENT, Math.ceil(content.scrollWidth)));
-        }
-      };
-      update();
-      const ro = new ResizeObserver(update);
+      measure();
+      const ro = new ResizeObserver(measure);
       ro.observe(wrap);
       if (content) ro.observe(content);
       return () => ro.disconnect();
-    }, []);
+    }, [measure]);
+
+    // The overlay's box is pinned to the assigned width, so the ResizeObserver
+    // above never fires on a pure title-text change (rename). Re-measure when
+    // the title prop changes so the active tab regrows/shrinks to the new name.
+    useLayoutEffect(() => {
+      measure();
+    }, [title, measure]);
 
     const { svgW, svgH, inset, insetY } = tabSvgGeometry({ tabW, tabH: TAB_H, S });
     // Natural (uncompressed) canvas width — the flex preferred + max size.
@@ -177,12 +212,17 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
         data-tab-id={dataTabId}
         style={{
           position: "relative",
-          // F#15: the active tab resists the squeeze (last to shrink) but is
-          // NOT flexShrink:0 — the strip shares width Chrome-style. It floors
-          // at its reserved min-width (2*S swoops + ACTIVE_MIN_CONTENT body +
-          // 1px gutter); past the floor the strip scrolls, never ellipsizing
-          // the active tab's name.
-          flex: "0 1 auto",
+          // F#15 (task 088): the active tab RESISTS the squeeze — flex-shrink:0
+          // so it holds its natural width (its full title) while the background
+          // tabs (flex:"1 1 auto") absorb the squeeze and ellipsize first. Once
+          // the backgrounds hit their floor and the strip still overflows, the
+          // F#15 scroll-active-into-view effect keeps the active tab visible —
+          // the strip scrolls rather than ever ellipsizing the active name.
+          // (Equal flex-shrink previously made the LARGER-basis active tab
+          // absorb MORE of the shrink, so it starved to "C…" first — the exact
+          // inversion of the intended "active resists, inactive yield" doctrine.)
+          // The min-width floor is retained as the reserved-width contract.
+          flex: "0 0 auto",
           minWidth: 2 * S + ACTIVE_MIN_CONTENT + 1,
           // Preferred + max width = the tab's natural (uncompressed) extent, so
           // it grows to fit its name when there's room and shrinks toward the

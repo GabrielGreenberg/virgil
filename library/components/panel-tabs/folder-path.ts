@@ -254,6 +254,42 @@ export function deriveTabWidthFromWrapper(args: {
 }
 
 /**
+ * Recover the active tab's INTRINSIC (uncompressed) content width from a
+ * width-clamped overlay measurement (F#15 / task 088).
+ *
+ * The active tab's content overlay is pinned to the assigned body width
+ * (`svgW − 2*S − 1` === the current `tabW`) with `overflow:hidden`, and its
+ * ONE flexible child — the title span — shrinks (with a text-overflow ellipsis)
+ * to fit. So the overlay's OWN `scrollWidth` latches at ≈ the clamped width and
+ * cannot report the tab's *natural* width; feeding it back as the flex
+ * preferred size pins `naturalTabW ≈ tabW`, so the active tab can never grow
+ * past its `ACTIVE_MIN_CONTENT` floor — the reported "C…" bug.
+ *
+ * The fix reads the intrinsic width off the title span instead: its
+ * `scrollWidth` is the un-clipped text width even while it renders ellipsized.
+ * The natural content width is then the overlay minus the title's SHRUNK box
+ * plus the title's FULL box:
+ *
+ *   natural = overlayClientWidth − titleClientWidth + titleScrollWidth
+ *
+ * This is INDEPENDENT of how compressed the tab currently is (the clamp
+ * cancels): `overlayClientWidth − titleClientWidth` is the fixed chrome +
+ * padding (a constant), and `titleScrollWidth` is the constant intrinsic text
+ * width — so the same true natural width is recovered at any compression level,
+ * giving the ResizeObserver a stable fixpoint instead of the self-referential
+ * latch. Pure so both the component and the geometry tests share one SSOT.
+ */
+export function recoverNaturalContentWidth(args: {
+  overlayClientWidth: number;
+  titleClientWidth: number;
+  titleScrollWidth: number;
+}): number {
+  return (
+    args.overlayClientWidth - args.titleClientWidth + args.titleScrollWidth
+  );
+}
+
+/**
  * Foot-tuck geometry (task 053). An OUTER swoop foot that lands on the body's
  * rounded top corner (the first tab's LEFT foot, or a flush-right last tab's
  * RIGHT foot) pokes past the corner and opens the reported notch: the body's
