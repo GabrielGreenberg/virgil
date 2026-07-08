@@ -247,6 +247,11 @@ export default function RightDetail({
       <div
         style={{
           height: "100%",
+          // Fill the pane on either flex axis so the placeholder centers over
+          // the full detail width, not a content-shrunk left-pinned strip
+          // (task 054 — same flex-row mount caveat as the branches below).
+          flex: 1,
+          minWidth: 0,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -272,6 +277,18 @@ export default function RightDetail({
           flexDirection: "column",
           height: "100%",
           minHeight: 0,
+          // Fill the pane on EITHER flex axis. The outer-tab mount
+          // (PaperOuterView) parents us in a flex COLUMN, so `align-items:
+          // stretch` already gives us full width. But the in-library mount
+          // (ReaderLRU → KeepAliveSlot) parents us in a flex ROW, where a plain
+          // flex item shrinks to CONTENT width and pins left — and in PDF mode
+          // our widest child is the ~620px centered header (the PDF iframe's
+          // intrinsic width is only ~300px), so the whole pane collapsed to
+          // ~620 with a manila dead-band to the right (task 054). `flex:1`
+          // grows us to fill the row; it's inert/harmless in the column/block
+          // mounts. `minWidth:0` lets us shrink below content min-width too.
+          flex: 1,
+          minWidth: 0,
           background: "var(--background)",
         }}
       >
@@ -321,6 +338,12 @@ export default function RightDetail({
         flexDirection: "column",
         height: "100%",
         minHeight: 0,
+        // Fill the pane on either flex axis — same reasoning as the PDF branch
+        // above (task 054). Text mode only *looked* correct before because the
+        // EditorPane content is wide enough to push our content-width near the
+        // pane width; `flex:1` makes that robust instead of accidental.
+        flex: 1,
+        minWidth: 0,
         background: "var(--background)",
       }}
     >
