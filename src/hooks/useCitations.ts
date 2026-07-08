@@ -234,7 +234,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       update((prev) => ({
         ...prev,
         citations: prev.citations.map((c) =>
-          c.id === id ? { ...c, command, keys: parsed?.keys || c.keys } : c,
+          c.id === id ? { ...c, command, keys: parsed?.keys || [] } : c,
         ),
       }));
     },
