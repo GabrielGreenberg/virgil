@@ -44,6 +44,11 @@ export function topLevelDropAdapter(
 // an ordered listItem wraps into orderedList. Cross-list drops (bullet
 // into ordered) are "compatible parent" today (target accepts the item
 // as-is).
+//
+// Task 065 — shares the `canPlaceHere` wrap-validity gate with the two other
+// wrap adapters below. It no-ops (rejects) the drop when the fresh list would
+// be invalid at the TRUE immediate insert parent, instead of fabricating a
+// splitting insert (see `DropTarget.canPlaceHere`).
 // ---------------------------------------------------------------------------
 
 export function listItemDropAdapter(
@@ -63,6 +68,18 @@ export function listItemDropAdapter(
     sourceRef.sourceContext.parentKind === "orderedList"
       ? "orderedList"
       : "bulletList";
+  // The shared gate: `classifyParentAt` collapses distinct positions onto the
+  // same registered ancestor, so "inside-incompatible-parent" alone does NOT
+  // prove the fresh list is schema-valid at the immediate parent. Dropping a
+  // listItem into a foreign container's item gap (a multi-item `exampleBlock`,
+  // immediate parent `exampleItemList` with content `exampleItem+`) would
+  // otherwise wrap into a `bulletList` that is invalid there — ProseMirror
+  // splits the container to fit it, tearing one example into two with a
+  // DUPLICATE uuid. Wrap only when the fresh list actually fits here; else
+  // reject. (Omitted predicate → keep the pre-065 wrap for isolated callers.)
+  if (target.canPlaceHere && !target.canPlaceHere(wrapKind)) {
+    return { kind: "no-op" };
+  }
   return { kind: "wrap", parentKind: wrapKind };
 }
 
@@ -71,6 +88,14 @@ export function listItemDropAdapter(
 // outside an existing one. The exampleBlock schema requires items to
 // sit inside an `exampleItemList` wrapper; the wrap step constructs the
 // full envelope (exampleBlock > exampleItemList > exampleItem).
+//
+// Task 065 — the symmetric guard to `listItemDropAdapter`: it no-ops the drop
+// when the fresh `exampleBlock` would be invalid at the TRUE immediate insert
+// parent. Dropping an exampleItem into a foreign container's item gap (a
+// multi-item `bulletList`, immediate parent `bulletList` with content
+// `listItem+`) would otherwise fabricate an `exampleBlock` invalid there —
+// splitting the list into two both keeping one uuid. Shares the same
+// `canPlaceHere` gate.
 // ---------------------------------------------------------------------------
 
 export function exampleItemDropAdapter(
@@ -79,6 +104,9 @@ export function exampleItemDropAdapter(
 ): DropAction {
   if (target.kind === "inside-compatible-parent") {
     return { kind: "drop-direct" };
+  }
+  if (target.canPlaceHere && !target.canPlaceHere("exampleBlock")) {
+    return { kind: "no-op" };
   }
   return { kind: "wrap", parentKind: "exampleBlock" };
 }
@@ -103,26 +131,28 @@ export function exampleItemDropAdapter(
 // `classifyParentAt` reports BOTH as `exampleBlock` (it skips the unregistered
 // exampleItemList), so only the schema at the true immediate parent tells them
 // apart. The wrap fires iff the bare block is REJECTED here
-// (`canDropDirect === false`) AND an `exampleItem` is ACCEPTED here (`canWrapHere`,
-// the A2 edge-fix: `canDropDirectAt(insertPos, exampleItem)`, threaded via
-// `DropTarget`). `exampleItem` is valid only inside an `exampleItemList`, so
-// `canWrapHere` is true exactly at the multi between-items gap [case a] — the
-// precise wrap site. Everything else — an exampleItem body [case b], a single
-// example body [A2], top level, a missing signal, OR a non-expex position where
-// the bare block is rejected but an `exampleItem` is ALSO invalid (e.g. a
-// `displayMath` at a `listItem`'s index 0) — drops directly, preserving each
-// kind's non-expex placement byte-for-byte (that last case restores A1's
-// drop-direct instead of fabricating a here-invalid exampleItem). `buildWrap`'s
-// exampleItem case builds the single sibling; the enclosing exampleItemList
-// already exists at the insert site. figureBlock / texBlock stay on
-// `topLevelDropAdapter` (user decision: text/picture/equation only).
+// (`canDropDirect === false`) AND an `exampleItem` is ACCEPTED here — the
+// generalized `canPlaceHere("exampleItem")` gate (task 065; the A2 edge-fix,
+// formerly the bespoke `canWrapHere` boolean). `exampleItem` is valid only
+// inside an `exampleItemList`, so this is true exactly at the multi between-
+// items gap [case a] — the precise wrap site. Everything else — an exampleItem
+// body [case b], a single example body [A2], top level, a missing signal, OR a
+// non-expex position where the bare block is rejected but an `exampleItem` is
+// ALSO invalid (e.g. a `displayMath` at a `listItem`'s index 0) — drops
+// directly, preserving each kind's non-expex placement byte-for-byte (that last
+// case restores A1's drop-direct instead of fabricating a here-invalid
+// exampleItem). `buildWrap`'s exampleItem case builds the single sibling; the
+// enclosing exampleItemList already exists at the insert site. figureBlock /
+// texBlock stay on `topLevelDropAdapter` (user decision: text/picture/equation
+// only). `canPlaceHere` is now the ONE wrap-validity gate shared with the two
+// sub-object adapters above (task 065).
 // ---------------------------------------------------------------------------
 
 export function blockIntoExpexDropAdapter(
   _sourceRef: TextObjectRef & { sourceContext: TextObjectSourceContext },
   target: DropTarget,
 ): DropAction {
-  if (target.canDropDirect === false && target.canWrapHere) {
+  if (target.canDropDirect === false && target.canPlaceHere?.("exampleItem")) {
     return { kind: "wrap", parentKind: "exampleItem" };
   }
   return { kind: "drop-direct" };

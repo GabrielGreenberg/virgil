@@ -210,8 +210,9 @@ describe("Feature A2 — applyDrop on the REAL schema (non-destructive tr.doc)",
     // `exampleItem` is ALSO invalid there (it's valid only inside an
     // `exampleItemList`), so the A2 wrap must NOT fire. Pre-fix the adapter wrapped
     // on `canDropDirect === false` alone: the fitter then promoted the equation into
-    // a freestanding `exampleBlock` and split the list — the bug. The `canWrapHere`
-    // gate restores A1's drop-direct here.
+    // a freestanding `exampleBlock` and split the list — the bug. The
+    // `canPlaceHere("exampleItem")` gate (task 065; formerly `canWrapHere`)
+    // restores A1's drop-direct here.
     const d = schema.nodeFromJSON({
       type: "doc",
       content: [
@@ -234,9 +235,10 @@ describe("Feature A2 — applyDrop on the REAL schema (non-destructive tr.doc)",
     const insertPos = li.pos + 1; // just inside the listItem, before its paragraph (index 0)
 
     // The wrap trigger fires (bare block rejected here) — but the wrap target is
-    // ALSO invalid here, so `canWrapHere` is false and the wrap must be suppressed.
+    // ALSO invalid here, so `canPlaceHere("exampleItem")` is false and the wrap
+    // must be suppressed.
     expect(canDropDirectAt(editor, insertPos, schema.nodes.displayMath)).toBe(false); // canDropDirect=false
-    expect(canDropDirectAt(editor, insertPos, schema.nodes.exampleItem)).toBe(false); // canWrapHere=false ⇒ no wrap
+    expect(canDropDirectAt(editor, insertPos, schema.nodes.exampleItem)).toBe(false); // canPlaceHere("exampleItem")=false ⇒ no wrap
 
     textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), "textobject:displayMath:dsrc", ctx);
     const result = dispatched[0].doc;
