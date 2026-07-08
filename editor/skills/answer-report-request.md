@@ -6,7 +6,7 @@ description: |
   `kind: report` request in the paper's AI-request inbox. Researches and
   composes the report, then drafts a Report card authored by AI, anchored
   to the same paragraph. Does NOT trigger for margin notes (use
-  answer-note-request), revision comments (use answer-revision-comment),
+  answer-note-request), revision requests (use answer-revision-request),
   or todos (use answer-todo-request). Args: <docPath> <requestId>.
 ---
 

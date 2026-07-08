@@ -188,8 +188,8 @@ sb = sandbox(); mem = tempfile.mkdtemp(prefix="cowork-m-")
 rid = inject_request(sb, {"id": "req-rev-x", "kind": "suggestion", "status": "submitted",
                           "linkedTo": {"panel": "revisions", "cardId": "c2"}, "text": "…"})
 run([APPLY, str(sb), "complete-only", rid], mem)
-check(only_skill(mem) == "answer-revision-comment",
-      f"kind=suggestion + panel revisions → answer-revision-comment (got {only_skill(mem)})")
+check(only_skill(mem) == "answer-revision-request",
+      f"kind=suggestion + panel revisions → answer-revision-request (got {only_skill(mem)})")
 
 # A NATIVE suggestion (no linkedTo panel) still → draft-suggestion.
 sb = sandbox(); mem = tempfile.mkdtemp(prefix="cowork-m-")

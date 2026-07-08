@@ -2,7 +2,7 @@
 r"""End-to-end test of the chip-14 propose-responder migration → chip-13 accept.
 
 The propose-flow responders (draft-suggestion, answer-cutter-comment,
-answer-revision-comment path a, and the answer-note/answer-todo doc-edit
+answer-revision-request path a, and the answer-note/answer-todo doc-edit
 branches) now DRAFT a proposal via the contract's L3 propose path
 (`apply_response.py complete-task --propose`) instead of legacy default-apply.
 The defining difference: legacy default-apply completed the Task immediately

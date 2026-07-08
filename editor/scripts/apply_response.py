@@ -852,7 +852,7 @@ _KIND_SKILL = {
 # bridged comment (kind "suggestion" + linkedTo.panel cutter/revisions).
 _PANEL_SKILL = {
     "notes": "answer-note-request", "todos": "answer-todo-request",
-    "cutter": "answer-cutter-comment", "revisions": "answer-revision-comment",
+    "cutter": "answer-cutter-comment", "revisions": "answer-revision-request",
     "footnotes": "draft-footnote", "citations": "find-citation",
     "reports": "answer-report-request",
 }

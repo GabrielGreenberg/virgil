@@ -50,7 +50,7 @@ acts-on-branch / propose-via-worktree machinery — see
 
 `<skill-name>` ∈ `{review, draft-footnote, find-citation,
 draft-quotation, answer-note-request, answer-todo-request,
-answer-cutter-comment, answer-revision-comment, draft-suggestion,
+answer-cutter-comment, answer-revision-request, draft-suggestion,
 answer-bib-review, style-merge}`. Anything else: abort with a one-line
 error.
 
@@ -92,7 +92,7 @@ exercise already-stabilized subskills:
 4. `answer-note-request`
 5. `answer-todo-request`
 6. `answer-cutter-comment`
-7. `answer-revision-comment`
+7. `answer-revision-request`
 8. `draft-suggestion`
 9. `answer-bib-review`
 10. `style-merge`
@@ -161,7 +161,7 @@ Write the request directly into the appropriate sandbox sidecar:
 - `bib-review-requests.json`: kind `bib-review`.
 - For Mode B / `linkedTo` variants targeting answer-note-request /
   answer-todo-request / answer-cutter-comment /
-  answer-revision-comment: also flip `aiRequest: true` on a card in
+  answer-revision-request: also flip `aiRequest: true` on a card in
   the corresponding sidecar (`notes.json` / `todos.json` /
   `cutter.json` / `revisions.json`) and set the request's
   `linkedTo: { panel, cardId }`.

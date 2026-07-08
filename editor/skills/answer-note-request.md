@@ -6,7 +6,7 @@ description: |
   `kind: note` request in the paper's AI-request inbox. Drafts a
   sibling note anchored to the same paragraph (or a suggestion card if
   the user is asking for a doc edit). Does NOT trigger for todos (use
-  answer-todo-request), revision comments (use answer-revision-comment),
+  answer-todo-request), revision requests (use answer-revision-request),
   or footnote insertions (use draft-footnote). Args: <docPath> <requestId>.
 ---
 

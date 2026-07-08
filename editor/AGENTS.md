@@ -45,12 +45,12 @@ The skill set turns those signals into responses:
   atomic op** through the contract (chip 12): the card rides `panel`/`card` and
   the `references.bib` append rides `bibEdit`, so a crash can't orphan one
   against the other.
-- `/editor/answer-cutter-comment`, `/editor/answer-revision-comment`,
+- `/editor/answer-cutter-comment`, `/editor/answer-revision-request`,
   `/editor/draft-suggestion` — responder-kind emitters (comment / the
   suggestion family). On the contract as of **chip 14**: a suggestion proposal
   drafts via `apply_response.py complete-task --propose` (the card lands, the
   Task is left awaiting review, the `.tex` untouched) — directly consumable by
-  chip 13's `accept`; `answer-revision-comment`'s path-(b) sibling comment is a
+  chip 13's `accept`; `answer-revision-request`'s path-(b) sibling request is a
   terminal `complete-task` create. No more legacy default-apply.
 - `/editor/accept-suggestion`, `/editor/reject-suggestion` — the **L3
   consummation** (chip 13). A drafted suggestion proposal (revision- or
@@ -101,7 +101,7 @@ editor/
 │   ├── answer-note-request.md
 │   ├── answer-todo-request.md
 │   ├── answer-cutter-comment.md
-│   ├── answer-revision-comment.md
+│   ├── answer-revision-request.md
 │   ├── answer-report-request.md
 │   ├── draft-suggestion.md
 │   ├── accept-suggestion.md    ┐ L3 consummation (chip 13): accept = splice +
@@ -438,11 +438,11 @@ skill — call `get_para_context.py`.
   `/editor/reject-suggestion` consummating a drafted proposal via the generic
   `replace-span` texEdit + the `accept`/`reject` ops (chip 13); and finally the
   L3 *draft* side — the **propose responders** (`draft-suggestion`,
-  `answer-cutter-comment`, `answer-revision-comment` path (a), and
+  `answer-cutter-comment`, `answer-revision-request` path (a), and
   `answer-note-request` / `answer-todo-request`'s doc-edit branch) drafting via
   `complete-task --propose` so a proposal lands *awaiting review*, consumable by
-  chip 13's `accept` (chip 14; `answer-revision-comment`'s path-(b) sibling
-  comment lands as a terminal `complete-task` create). Chip 14 also fixed the
+  chip 13's `accept` (chip 14; `answer-revision-request`'s path-(b) sibling
+  request lands as a terminal `complete-task` create). Chip 14 also fixed the
   responder anchor-shape drift at its root — `_common.card_paragraph_ids` now
   reads the canonical `textObject`/`textObjectIds` anchor shape (it had read the
   retired `anchor`/`paragraphIds` shape, returning `[]` for every real card),
