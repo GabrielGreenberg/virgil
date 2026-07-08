@@ -29,8 +29,13 @@ export interface PanelProps {
   onAdd?: (anchorRect?: DOMRect) => void;
   /** When provided, the "+" button opens a dropdown of choices. Used by
    *  panels hosting more than one card kind. Overrides `onAdd`.
-   *  Each option's `onClick` receives the trigger button's bounding rect. */
-  onAddOptions?: { label: string; onClick: (anchorRect?: DOMRect) => void }[];
+   *  Each option's `onClick` receives the trigger button's bounding rect.
+   *  A `disabled` option renders greyed-out and is inert. */
+  onAddOptions?: {
+    label: string;
+    onClick: (anchorRect?: DOMRect) => void;
+    disabled?: boolean;
+  }[];
   /** Far-left header content (e.g. options menu). */
   headerLeading?: ReactNode;
   /** Inline content right after the title (mode toggles that cluster with

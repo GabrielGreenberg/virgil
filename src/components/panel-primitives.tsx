@@ -2337,9 +2337,14 @@ export function PanelHeader({
   /** When provided, the "+" button opens a small dropdown menu of
    *  choices instead of firing `onAdd` directly. Use when a panel
    *  hosts more than one card kind (e.g. Cutter: Comment vs Suggestion).
-   *  Each option receives the trigger button's bounding rect.
+   *  Each option receives the trigger button's bounding rect. A
+   *  `disabled` option renders greyed-out and is inert.
    *  `onAdd` is ignored when `onAddOptions` is set. */
-  onAddOptions?: { label: string; onClick: (anchorRect?: DOMRect) => void }[];
+  onAddOptions?: {
+    label: string;
+    onClick: (anchorRect?: DOMRect) => void;
+    disabled?: boolean;
+  }[];
   /** Content rendered at the far left of the header, before the title.
    *  Typical use: the panel's three-dots options menu. */
   leading?: ReactNode;
@@ -2388,7 +2393,11 @@ export function PanelHeader({
 function HeaderAddDropdown({
   options,
 }: {
-  options: { label: string; onClick: (anchorRect?: DOMRect) => void }[];
+  options: {
+    label: string;
+    onClick: (anchorRect?: DOMRect) => void;
+    disabled?: boolean;
+  }[];
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -2476,8 +2485,16 @@ function HeaderAddDropdown({
             <button
               key={o.label}
               role="menuitem"
-              onClick={() => pick(o.onClick)}
-              className="w-full text-left px-3 py-1 text-sm text-[var(--foreground)] hover-on-light"
+              disabled={o.disabled}
+              onClick={() => {
+                if (o.disabled) return;
+                pick(o.onClick);
+              }}
+              className={
+                o.disabled
+                  ? "w-full text-left px-3 py-1 text-sm text-ink-faint cursor-not-allowed"
+                  : "w-full text-left px-3 py-1 text-sm text-[var(--foreground)] hover-on-light"
+              }
             >
               {o.label}
             </button>

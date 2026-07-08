@@ -124,9 +124,6 @@ function BibliographyPanel({
   const filter = bibFilter ?? localFilter;
   const setFilter = setBibFilter ?? setLocalFilter;
 
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
-  const addMenuRef = useRef<HTMLDivElement>(null);
-
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchScope, setSearchScope] = useState<"local" | "library">("local");
@@ -147,26 +144,17 @@ function BibliographyPanel({
     | null
   >(null);
 
-  // Cross-library picker dropdown — opens from the addMenu's "Search
-  // library…" item. Anchored to the rect of that menu item at click
-  // time so the popover lands under the user's gesture even though the
-  // addMenu itself closes immediately after.
+  // Cross-library picker dropdown — opens from the add-menu's "Search
+  // library…" item. Anchored to the rect of the "+" trigger at click
+  // time (passed through by HeaderAddDropdown) so the popover lands
+  // under the user's gesture even though the add-menu closes immediately
+  // after.
   const [libraryMenuOpen, setLibraryMenuOpen] = useState(false);
   const [libraryMenuAnchor, setLibraryMenuAnchor] = useState<DOMRect | null>(
     null,
   );
 
   const listRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!addMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node))
-        setAddMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [addMenuOpen]);
 
   useEffect(() => {
     if (showSearch) searchInputRef.current?.focus();
@@ -411,7 +399,6 @@ function BibliographyPanel({
 
   const handleAddFromCentralLibrary = useCallback(
     (anchor: DOMRect | null) => {
-      setAddMenuOpen(false);
       setShowRequestForm(false);
       setConflictDecision(null);
       setLibraryMenuAnchor(anchor);
@@ -440,7 +427,6 @@ function BibliographyPanel({
   }, []);
 
   const handleOpenRequestForm = useCallback(() => {
-    setAddMenuOpen(false);
     setShowSearch(false);
     setShowRequestForm(true);
     setRequestText("");
@@ -652,52 +638,25 @@ function BibliographyPanel({
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
       </button>
-      <div className="flex items-center gap-1">
-        <div className="relative" ref={addMenuRef}>
-          {addMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
-              <button
-                className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
-                  isLibraryConnected
-                    ? "text-ink-body hover-on-light"
-                    : "text-ink-faint cursor-not-allowed"
-                }`}
-                onClick={
-                  isLibraryConnected
-                    ? (e) => {
-                        const rect = (
-                          e.currentTarget as HTMLElement
-                        ).getBoundingClientRect();
-                        handleAddFromCentralLibrary(rect);
-                      }
-                    : undefined
-                }
-                data-hint="Search library"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                </svg>
-                Search library…
-              </button>
-              <button
-                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center gap-2"
-                onClick={handleOpenRequestForm}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="12" y1="18" x2="12" y2="12" />
-                  <line x1="9" y1="15" x2="15" y2="15" />
-                </svg>
-                Request entry
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
     </>
   );
+
+  // The "+" add menu now folds onto the shared `HeaderAddDropdown` primitive
+  // (via `onAddOptions`), which wraps the trigger + dropdown in one ref so its
+  // outside-click correctly excludes the "+" — making the "+" a real toggle.
+  // The trigger rect flows through to `handleAddFromCentralLibrary`, anchoring
+  // the library picker under the "+".
+  const addOptions = [
+    {
+      label: "Search library…",
+      onClick: (rect?: DOMRect) => handleAddFromCentralLibrary(rect ?? null),
+      disabled: !isLibraryConnected,
+    },
+    {
+      label: "Request entry",
+      onClick: () => handleOpenRequestForm(),
+    },
+  ];
 
   const panelExtras = (
     <>
@@ -935,7 +894,7 @@ function BibliographyPanel({
     <CardListPanel
       kind="bibliography"
       count={displayedEntries.length}
-      onAdd={() => setAddMenuOpen((o) => !o)}
+      onAddOptions={addOptions}
       headerLeading={headerLeading}
       headerExtras={headerExtras}
       panelExtras={panelExtras}
