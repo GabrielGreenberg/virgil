@@ -132,7 +132,7 @@ describe("omni builder anchorState classification", () => {
     expect(orphaned.pos).toBeNull();
   });
 
-  it("Footnotes: live → anchored; orphaned → orphaned; active unanchored ref → present orphaned/null; archived ref → absent", () => {
+  it("Footnotes: live → anchored; orphaned → orphaned; active unanchored ref → present FREE/null; archived ref → absent", () => {
     const items = buildFootnoteOmniItems({
       footnotes: [
         {
@@ -190,12 +190,15 @@ describe("omni builder anchorState classification", () => {
     expect(live.pos).toBe(17);
     expect(orphan.anchorState).toBe("orphaned");
     expect(orphan.pos).toBeNull();
-    // Active unanchored ref: present, pos null, orphaned (doctrine-neutral —
-    // matches the sibling Citations unanchored ref; task 056 may flip to "free").
+    // Active unanchored ref (task 056, adopted): present, pos null, FREE — an
+    // archive-born `FootnoteRef` carries deliberate `unanchored` intent (the
+    // `\footnote` atom was removed and not re-inserted, so it's a re-placeable
+    // PARKED ref), not a lost marker. Matches the sibling Citations unanchored
+    // ref → no red "orphaned" badge on a card the user parked deliberately.
     const unanchored = items.find((i) => i.id.endsWith("fn-unanchored"))!;
     expect(unanchored).toBeDefined();
     expect(unanchored.pos).toBeNull();
-    expect(unanchored.anchorState).toBe("orphaned");
+    expect(unanchored.anchorState).toBe("free");
     // Archived ref: dropped from Omni (parity with the docked Archives view).
     expect(items.find((i) => i.id.endsWith("fn-archived"))).toBeUndefined();
   });
@@ -453,15 +456,18 @@ describe("omni builder anchorState classification", () => {
     expect(states.get("float:card:report-request:rq-orphan")).toEqual(["orphaned", null]);
   });
 
-  it("Citations: never free — in the position map → anchored; missing marker → orphaned", () => {
-    const cit = (id: string): CitationRef => ({
+  it("Citations (task 056): in the position map → anchored; missing marker + no intent → orphaned; missing marker + unanchored intent → free", () => {
+    const cit = (id: string, unanchored?: boolean): CitationRef => ({
       id,
       command: `\\citep{key-${id}}`,
       keys: [`key-${id}`],
       createdAt: "2026-01-01T00:00:00.000Z",
+      ...(unanchored ? { unanchored: true } : {}),
     });
     const items = buildCitationOmniItems({
-      citations: [cit("ci-anchored"), cit("ci-orphan")],
+      // ci-parked: archived-then-unarchived — carries `unanchored: true`, no
+      // live marker → deliberately FREE (not the red orphaned-error badge).
+      citations: [cit("ci-anchored"), cit("ci-orphan"), cit("ci-parked", true)],
       citationPositionMap: new Map([["ci-anchored", 7]]),
       selectedCitationId: null,
       setSelectedCitationId: noopId,
@@ -482,10 +488,14 @@ describe("omni builder anchorState classification", () => {
     });
     const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));
     expect(states.get("float:card:citation:ci-anchored")).toEqual(["anchored", 7]);
-    // A citation with no in-text marker is ORPHANED, never "free" — an
-    // intrinsically in-text kind (this includes panel-created unanchored
-    // citations: current behavior classifies them orphaned too).
+    // A citation with no in-text marker AND no free intent is ORPHANED (its
+    // `\cite` marker was genuinely deleted in-text) — the recoverable-error
+    // state (red badge).
     expect(states.get("float:card:citation:ci-orphan")).toEqual(["orphaned", null]);
+    // A citation with no in-text marker but `unanchored: true` intent is FREE
+    // — deliberately parked (archive→unarchive removed the atom and did not
+    // re-insert it), a normal re-placeable state, NOT the red orphaned error.
+    expect(states.get("float:card:citation:ci-parked")).toEqual(["free", null]);
   });
 
   it("Examples: never free — block pos → anchored; gone block (null pos) → orphaned", () => {

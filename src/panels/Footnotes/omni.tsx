@@ -5,6 +5,7 @@ import type { FootnoteInfo } from "@/components/Editor";
 import type { OrphanedFootnote, FootnoteRef } from "@/lib/types";
 import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
+import { resolveAnchorState } from "@/links/anchor-state";
 import {
   FootnoteCard,
   OrphanedFootnoteCard,
@@ -51,8 +52,9 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
     items.push({
       id,
       pos: fn.pos,
-      // A live footnote always resolves to its in-text marker pos.
-      anchorState: "anchored",
+      // A live footnote always resolves to its in-text marker pos (anchored).
+      // No free intent — a live marker wins unconditionally in the SSOT.
+      anchorState: resolveAnchorState(fn.pos, null),
       content: (
         <FootnoteCard
           key={id}
@@ -85,8 +87,8 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
       id,
       pos: null,
       // Orphaned footnotes carry a \footnote{} that lost its callout —
-      // they intend to anchor but have no resolvable in-text marker.
-      anchorState: "orphaned",
+      // no live marker AND no free intent, so the SSOT resolves `orphaned`.
+      anchorState: resolveAnchorState(null, null),
       content: (
         <OrphanedFootnoteCard
           key={id}
@@ -120,12 +122,13 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
     items.push({
       id,
       pos: null,
-      // anchorState "orphaned" (not "free"): behavior-consistent with the current
-      // pinned contract — the sibling Citations unanchored ref surfaces as
-      // "orphaned" today (A5 test). Task 056, if adopted, flips citation AND
-      // footnote unanchored refs to "free" in one `resolveAnchorState(pos, {
-      // unanchored })` pass — do NOT pre-empt that decision here.
-      anchorState: "orphaned",
+      // Task 056 (adopted): an archive-born `FootnoteRef` carries deliberate
+      // `unanchored` intent — the `\footnote` atom was removed on archive and
+      // NOT re-inserted on unarchive, so this is a re-placeable PARKED ref, not
+      // a lost one. The SSOT resolves it to `free` (neutral), matching the
+      // sibling Citations unanchored ref — no red "orphaned" error badge on a
+      // card the user parked deliberately.
+      anchorState: resolveAnchorState(null, { unanchored: ref.unanchored }),
       content: (
         <UnanchoredFootnoteCard
           key={id}

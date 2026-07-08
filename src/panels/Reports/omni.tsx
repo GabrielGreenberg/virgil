@@ -8,6 +8,7 @@ import type {
 import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { getLinkedTextObjectIds } from "@/links/links";
+import { resolveAnchorState } from "@/links/anchor-state";
 import { ReportCard } from "./ReportCard";
 import { ReportRequestCard } from "./ReportRequestCard";
 import type { JSONContent, Editor } from "@tiptap/react";
@@ -89,7 +90,8 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
       items.push({
         id: baseId,
         pos: null,
-        anchorState: "free",
+        // Unlinked (no paragraph anchor) — a deliberately-free card.
+        anchorState: resolveAnchorState(null, { unanchored: true }),
         content: renderCard(baseId),
       });
     } else {
@@ -102,7 +104,9 @@ export function buildReportsOmniItems(a: BuildArgs): OmniItem[] {
           id: omniId,
           pos,
           anchorUuid: pid,
-          anchorState: pos == null ? "orphaned" : "anchored",
+          // Linked to a paragraph — no free intent: resolved pos ⇒ anchored,
+          // lost pos ⇒ orphaned.
+          anchorState: resolveAnchorState(pos, null),
           content: renderCard(omniId),
         });
       }

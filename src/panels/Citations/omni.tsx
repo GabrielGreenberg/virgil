@@ -3,6 +3,7 @@
 import type { BibEntry, CitationRef } from "@/lib/types";
 import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
+import { resolveAnchorState } from "@/links/anchor-state";
 import { CitationCard } from "./CitationCard";
 
 interface BuildArgs {
@@ -40,13 +41,15 @@ export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {
     const pos = a.citationPositionMap.get(cit.id) ?? null;
     const isSelected = a.selectedCitationId === cit.id;
     const id = popKey("citations", cit.id);
-    // A citation is intrinsically an in-text \cite reference, so it's never
-    // "free": it either resolves to its marker pos (anchored) or its marker
-    // is missing from the doc (orphaned).
+    // A citation resolves to its marker pos (anchored) when live. With no live
+    // marker it's `free` if the ref carries deliberate-free intent
+    // (`unanchored` — e.g. archived-then-unarchived: the `\cite` atom was
+    // removed and not re-inserted, so the card is a re-placeable parked ref),
+    // else `orphaned` (the marker was genuinely deleted in-text). Task 056.
     items.push({
       id,
       pos,
-      anchorState: pos == null ? "orphaned" : "anchored",
+      anchorState: resolveAnchorState(pos, { unanchored: cit.unanchored }),
       content: (
         <CitationCard
           key={id}

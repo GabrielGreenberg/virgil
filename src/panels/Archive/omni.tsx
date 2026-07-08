@@ -6,6 +6,7 @@ import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { ArchiveCard } from "./ArchiveCard";
 import { getLinkedTextObjectIds } from "@/links/links";
+import { resolveAnchorState } from "@/links/anchor-state";
 
 interface BuildArgs {
   archiveSnippets: ArchivedSnippet[];
@@ -36,8 +37,10 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
         id: baseId,
         pos: null,
         // `orphaned` ⇒ had an anchor that vanished; otherwise it simply
-        // carries no link at all (free).
-        anchorState: orphaned ? "orphaned" : "free",
+        // carries no link at all — a deliberately-free card. Modelled as the
+        // SSOT's `unanchored` intent so the free-vs-orphaned split lives in
+        // `resolveAnchorState`, not an inline literal.
+        anchorState: resolveAnchorState(null, { unanchored: !orphaned }),
         content: (
           <ArchiveCard
             key={baseId}
@@ -65,7 +68,9 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
           id: omniId,
           pos,
           anchorUuid: pid,
-          anchorState: pos == null ? "orphaned" : "anchored",
+          // Linked to a paragraph — no free intent: resolved pos ⇒ anchored,
+          // lost pos ⇒ orphaned.
+          anchorState: resolveAnchorState(pos, null),
           content: (
             <ArchiveCard
               key={omniId}
