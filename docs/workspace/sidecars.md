@@ -1,4 +1,4 @@
-<!-- last-verified: 71e366c2 2026-07-07 -->
+<!-- last-verified: 77dc7794 2026-07-09 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -144,11 +144,11 @@ propose→review states.
 shape, kept only for the `useCutter` migration.)
 
 **`revisions.json` — `RevisionsState { cards: RevisionCard[]; tracker?:
-RevisionsTracker | null }`** (`RevisionCard = RevisionCommentCard |
+RevisionsTracker | null }`** (`RevisionCard = RevisionRequestCard |
 RevisionSuggestionCard`):
 
 ```ts
-RevisionCommentCard    { kind: "comment"; id; createdAt; text; content;
+RevisionRequestCard    { kind: "comment"; id; createdAt; text; content;
                          aiRequest; selectedText?; links: Link[] }
 RevisionSuggestionCard { kind: "suggestion"; …same fields as CutterSuggestionCard }
 RevisionsTracker       { target?: number | null; setAt?: string | null }
@@ -316,7 +316,7 @@ doc-of-record noted), grouped by family:
   `OrphanedFootnotesState`. Citations:
   `CitationRef`, `CitationsState`, `CitationInfo`. Cutter: `CutterCommentCard`,
   `CutterSuggestionCard`, `CutterCard`, `CutterGoal`, `CutterState`,
-  `CutItemLegacy`. Revisions: `RevisionCommentCard`, `RevisionSuggestionCard`,
+  `CutItemLegacy`. Revisions: `RevisionRequestCard`, `RevisionSuggestionCard`,
   `RevisionCard`, `RevisionsTracker`, `RevisionsState`. Reports: `ReportCard`,
   `ReportRequestCard`, `ReportItem`, `ReportsState`. Examples: `ExampleRef`,
   `ExamplesState`. Archive: `ArchivedSnippet`, `ArchiveState`.
