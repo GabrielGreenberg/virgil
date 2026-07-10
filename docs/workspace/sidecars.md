@@ -1,4 +1,4 @@
-<!-- last-verified: 77dc7794 2026-07-09 -->
+<!-- last-verified: 40d62da3 2026-07-10 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
