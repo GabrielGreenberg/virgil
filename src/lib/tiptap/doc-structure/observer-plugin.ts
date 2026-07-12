@@ -24,7 +24,13 @@ import { EMPTY_DIFF, EMPTY_STRUCTURE, type DocStructure, type StructureDiff } fr
 interface PluginState {
   structure: DocStructure;
   /** Diff produced by the most recently applied transaction. Null when
-   *  the most recent apply was a no-op (selection-only). */
+   *  the most recent apply was a no-op (selection-only). The shared
+   *  `EMPTY_DIFF` reference when the tx changed the doc but was
+   *  structurally AND content null (attr-only steps, e.g. a uuid mint or
+   *  footnote renumber) — readable by same-tx `apply` consumers via
+   *  `readPendingDiff` so they can take their cheap incremental path
+   *  instead of the observer-absent full-rebuild fallback; the view
+   *  hook skips the bus emit for it. */
   pendingDiff: StructureDiff | null;
 }
 
@@ -47,6 +53,9 @@ function makeViewSpec(editor: Editor) {
         // a no-no, but here we're only nulling a transient field; the
         // next apply() will write a fresh PluginState anyway.
         state.pendingDiff = null;
+        // EMPTY_DIFF is stored only so same-tx `apply` readers can see
+        // "observer present, nothing changed" — nothing to fan out.
+        if (diff === EMPTY_DIFF) return;
         asMutable(bus)._emit(diff, state.structure);
       },
       destroy() {
@@ -118,9 +127,21 @@ function mapStructurePositions(
  * extension-creation time, so we close over it via `Extension.create`'s
  * `addProseMirrorPlugins(this)` body — `this.editor` is set by the time
  * TipTap calls this method.
+ *
+ * `priority` is LOAD-BEARING: TipTap collects PM plugins in REVERSE extension
+ * order (`sortExtensions([...extensions].reverse())`), so without it the
+ * observer's plugin `apply` would run nearly LAST per transaction — and every
+ * plugin whose own `apply` calls `readPendingDiff(newState)` (uuid-attr,
+ * section-folding) would read `null` and silently take its full-doc-walk
+ * fallback ON EVERY KEYSTROKE. The high priority puts this plugin FIRST in
+ * the plugin array so the diff is computed before any consumer's `apply`
+ * reads it. The extension-ARRAY position (index 1, pinned by the Chip-A
+ * order test) is unchanged — plugin order is carried by this field, and
+ * pinned by `__tests__/pending-diff-in-apply.test.ts`.
  */
 export const DocStructureObserver = Extension.create({
   name: "docStructureObserver",
+  priority: 10_000,
 
   addProseMirrorPlugins() {
     const editor = this.editor;
@@ -147,11 +168,13 @@ export const DocStructureObserver = Extension.create({
             const diff = inspectSteps(tr, oldDoc, newDoc, prev.structure);
             if (diff === EMPTY_DIFF) {
               // Structurally null edit — still need to map positions so
-              // surviving entries don't go stale. But: if no consumer
-              // can observe a change without diff emission, mapping is
-              // wasted. Compromise: map only if positions actually shifted.
+              // surviving entries don't go stale. Store EMPTY_DIFF (not
+              // null) so same-tx `apply` consumers (uuid-attr) can tell
+              // "observer present, nothing changed" apart from "observer
+              // absent" and skip their full-rebuild fallback; the view
+              // hook skips the bus emit for it.
               const mapped = mapStructurePositions(prev.structure, tr.mapping);
-              return { structure: mapped, pendingDiff: null };
+              return { structure: mapped, pendingDiff: EMPTY_DIFF };
             }
             // Map positions first, then fold the diff in. The diff's
             // entries are already in newDoc coordinates.

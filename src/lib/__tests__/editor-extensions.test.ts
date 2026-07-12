@@ -243,6 +243,13 @@ describe("buildEditorExtensions (FCU factory)", () => {
   });
 
   it("keeps the observer at index 1 (keystroke-sanctity first-extension rule)", () => {
+    // NOTE: since the P0 ordering fix, the PLUGIN-order invariant ("observer's
+    // apply runs first per transaction") is carried by the extension's
+    // `priority: 10_000` field, NOT by this array position — TipTap collects
+    // PM plugins in REVERSE extension order, so array position alone put the
+    // observer's apply nearly last. This test still pins the ARRAY position
+    // (doc-order convention); `pending-diff-in-apply.test.ts` pins the
+    // runtime plugin order.
     const exts = buildEditorExtensions(mainCtx());
     expect(exts[0].name).toBe("starterKit");
     expect(exts[1].name).toBe("docStructureObserver");

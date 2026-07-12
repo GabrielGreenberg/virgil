@@ -1,5 +1,5 @@
 import { Extension } from "@tiptap/react";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { isAnchorableNode } from "@/lib/marginalia";
@@ -93,6 +93,68 @@ export function buildUuidDecorations(doc: PMNode): DecorationSet {
 }
 
 /**
+ * Restore node decorations that `DecorationSet.map` dropped because a step
+ * REPLACED a node in place (same uuid, same position — e.g. `setNodeMarkup`'s
+ * ReplaceAroundStep rewriting a heading's attrs). Walks only the transaction's
+ * changed regions in new-doc coordinates — O(edit-size), never O(doc).
+ * Idempotent: a node whose decoration survived is left alone.
+ */
+function readdReplacedRegionDecos(
+  set: DecorationSet,
+  tr: Transaction,
+  newDoc: PMNode,
+): DecorationSet {
+  // Collect each step's post-step range, mapped through the REMAINING steps
+  // to final-doc coordinates.
+  const regions: Array<[number, number]> = [];
+  for (let i = 0; i < tr.steps.length; i++) {
+    const rest = tr.mapping.slice(i + 1);
+    tr.steps[i].getMap().forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+      const from = rest.map(newStart, -1);
+      const to = rest.map(newEnd, 1);
+      if (to > from) regions.push([from, to]);
+    });
+  }
+  if (regions.length === 0) return set;
+
+  let out = set;
+  const adds: Decoration[] = [];
+  for (const [from, to] of regions) {
+    newDoc.nodesBetween(
+      Math.max(0, from),
+      Math.min(newDoc.content.size, to),
+      (node, pos, parent) => {
+        if (!isAnchorableNode(node.type)) return true;
+        if (isDeferredInnerParagraph(node, parent)) return true;
+        const uuid = node.attrs?.uuid as string | null | undefined;
+        if (!uuid) return true;
+        const end = pos + node.nodeSize;
+        const present = out
+          .find(pos, end)
+          .some(
+            (d) =>
+              d.from === pos &&
+              d.to === end &&
+              (d as Decoration & { type?: { attrs?: Record<string, string> } })
+                .type?.attrs?.["data-uuid"] === uuid,
+          );
+        if (!present) {
+          adds.push(
+            Decoration.node(pos, end, {
+              "data-uuid": uuid,
+              "data-text-object-kind": node.type.name,
+            }),
+          );
+        }
+        return true;
+      },
+    );
+  }
+  if (adds.length > 0) out = out.add(newDoc, adds);
+  return out;
+}
+
+/**
  * TipTap extension that sets `data-uuid` and `data-text-object-kind`
  * on the outer DOM element of every anchorable block, via a single
  * ProseMirror node-attribute decoration.
@@ -154,6 +216,19 @@ export const UuidAttrDecorator = Extension.create({
               });
               set = DecorationSet.create(newState.doc, survivors);
             }
+
+            // Re-add decorations dropped by `map` over node-REPLACING steps.
+            // `DecorationSet.map` discards a node decoration when its node's
+            // boundary tokens are replaced (setNodeMarkup's ReplaceAroundStep
+            // — e.g. the sectionNumbers renumber follow-up after a heading
+            // delete), but the diff reports no add/remove for a same-uuid
+            // in-place replace, so the add pass below never restores it.
+            // Walk ONLY the steps' changed regions (O(edit-size), never the
+            // doc) and restore any anchorable node's missing decoration.
+            // Pre-P0 this never bit because `readPendingDiff` was null in
+            // every plugin `apply` and the full-rebuild fallback re-created
+            // the dropped decoration each keystroke — accidental self-heal.
+            set = readdReplacedRegionDecos(set, tr, newState.doc);
 
             // Add decorations for newly-arrived UUIDs.
             if (diff.addedBlocks.length > 0) {
