@@ -549,6 +549,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           // `.tiptap` class strings (they don't route through this config),
           // so they never inherit the 40px lead-in.
           "doc-prose-leadin prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[var(--editor-pt,40px)] pb-[var(--editor-pb,40px)]",
+        // Grammarly's extension is a per-keystroke O(doc) DOM scanner for
+        // users who have it installed; these attributes are its documented
+        // opt-out and inert for everyone else. Native spellcheck stays ON
+        // (prose editor; A/B-measured no per-keystroke cost).
+        "data-gramm": "false",
+        "data-gramm_editor": "false",
+        "data-enable-grammarly": "false",
         // PM keeps the DOM at `contenteditable="true"` even in Reader
         // mode (so native drag-to-select reaches `view.state.selection`,
         // and the unified TextObjectGrabHandle / linkedRange-float flow
