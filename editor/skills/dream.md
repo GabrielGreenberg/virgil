@@ -261,6 +261,18 @@ Be honest and unsparing — "the first dreams will be the worst," and the only w
 the dream improves at dreaming is by reading its past self-critiques. A
 `skill=dream` memo is read first by the next dream (it's your own track record).
 
+**Recursion guard — skip step 7 on a self-referential no-op.** `select` emits
+`selfReferentialOnly: true` when the only memos since the last dream are the
+dream's OWN prior self-reflections (`nonDreamMemoCount == 0`). When that flag is
+true **and** this run acted/proposed/refused **nothing** (a pure no-op), do
+**not** write a step-7 memo — a self-reflection with no real skill signal to
+reflect on is exactly what perpetuates the infinite self-referential recursion
+(dream reads its own note → no-ops → writes another note → …). Still write the
+digest (step 6, always) and flag the cadence in its `bootstrap` line so the next
+dream reads zero new memos until a **real** skill runs. Reflect normally
+whenever the run did real work (acted/proposed/refused > 0) — even in a
+self-referential window — since then there is something worth recording.
+
 ## Relationship to `/editor/iterate-virgil-editor` (and the chip-19 unification)
 
 `iterate` is the **manual, synthesized-input, single-skill, synchronous**

@@ -280,8 +280,16 @@ def cmd_select(_argv: list[str]) -> int:
     summ = _summarize(recs)
 
     new_marker = _memo_sort_key(recs[-1]) if recs else (marker or ("", ""))
+    # Self-referential-only window: the only memos since the last dream are the
+    # dream's OWN self-reflections (step 7).  No real skill-run signal exists, so
+    # writing another self-reflection perpetuates an infinite no-op recursion.
+    # Surface this once here (SSOT) so the skill can suppress step 7 and break it.
+    non_dream = [r for r in recs if r["skill"] != "dream"]
+    self_referential_only = bool(recs) and not non_dream
     out = {
         "devMode": True,
+        "selfReferentialOnly": self_referential_only,
+        "nonDreamMemoCount": len(non_dream),
         "memosRoot": str(memos_root),
         "since": (marker[0] if marker else None),
         "sinceMemo": (marker[1] if marker else None),
