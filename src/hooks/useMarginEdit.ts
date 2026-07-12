@@ -362,6 +362,10 @@ export function useMarginEdit({
   // key to break.
   const beginDrag = useCallback(
     (e: React.MouseEvent<HTMLElement>, side: MarginSide) => {
+      // Primary button only (pane-resize-engine contract): the mid-move
+      // buttons failsafe below keys on the primary bit, and a right-click
+      // must not start a gesture whose end edge the context menu then eats.
+      if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       // Measure the drag against the GUIDE OVERLAY (`data-margin-frame`),
@@ -438,6 +442,18 @@ export function useMarginEdit({
       };
 
       const onMove = (mv: MouseEvent) => {
+        // Missed-release failsafe (pane-resize-engine contract): window-mouse
+        // gestures lose their mouseup to the compiled-PDF iframe when the
+        // cursor releases over it — without this bail the guide would
+        // ghost-resume on re-entry and a later stray mouseup would commit a
+        // margin the user never chose. Primary button up ⇒ end with the last
+        // live value, WITHOUT incorporating this event's coordinate. Bit
+        // test, not `buttons === 0`, so a chorded second button can't mask
+        // the primary release.
+        if ((mv.buttons & 1) === 0) {
+          onUp();
+          return;
+        }
         let raw: number;
         if (axis === "x") {
           raw =
@@ -458,6 +474,7 @@ export function useMarginEdit({
         document.body.style.cursor = prevCursor;
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
+        window.removeEventListener("blur", onUp);
         if (rafId != null) {
           cancelAnimationFrame(rafId);
           flush();
@@ -472,6 +489,9 @@ export function useMarginEdit({
 
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
+      // Focus loss (cmd-tab, window switch) eats the mouseup the same way an
+      // iframe does — commit the live value instead of wedging the cursor.
+      window.addEventListener("blur", onUp);
     },
     [],
   );

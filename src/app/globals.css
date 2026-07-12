@@ -135,11 +135,14 @@
   --panel-radius: 14px; /* panel-only; editor pod & menus stay 8px */
   --radius-pill: 9999px;
   /* Deliberate exception, NOT a scale step: the Library "manila folder"
-     corner. The active-tab SVG silhouette (library/components/panel-tabs/
-     folder-path.ts) and the panel body frame must tangent at R=10, a
+     corner. The active-tab shoulder arc (MANILA_RADIUS in
+     src/components/chrome/folder-tab-geometry.ts — the folder-tab geometry
+     SSOT) and the panel body's plain CSS border-radius
+     (library/components/TabbedLibraryPanel.tsx) must tangent at R=10, a
      purpose-chosen aesthetic — do NOT collapse to --pod-radius. Named so
-     the tab geometry + the frame read ONE value (see STYLE_GUIDE "Radius
-     scale" exceptions; the folder-tab tangency SSOT is task 014). */
+     the tab geometry + the body frame read ONE value; the token↔constant
+     equality is pinned by folder-tab-geometry.test.ts (see STYLE_GUIDE
+     "Radius scale" exceptions; tangency lineage: task 014). */
   --library-manila-radius: 10px;
   --pod-gap: 10px;
   --pod-border: 1px solid var(--border-light);
@@ -4445,9 +4448,6 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   pointer-events: none;
   background: var(--drag-highlight);
 }
-.drag-gap.hover-preview::after {
-  opacity: 0.35;
-}
 .drag-gap.dragging::after {
   opacity: 0.5;
 }
@@ -4521,7 +4521,7 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
    1px line) is now repurposed as the pill. One shared rule set carries every
    property that doesn't depend on orientation; the two per-orientation blocks
    below differ only in which axis is the pill's long side + which axis widens.
-   Scoped to `.band-grip`, so bare HSplit / editor-split lines are unaffected. */
+   Scoped to `.band-grip`, so bare drag-gap lines are unaffected. */
 .drag-gap-h.band-grip::before,
 .drag-gap-v.band-grip::after {
   content: '';
@@ -4543,7 +4543,6 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   height: 4px;
   transform: translate(-50%, -50%);
 }
-.drag-gap-h.band-grip.hover-preview::before,
 .drag-gap-h.band-grip:hover::before {
   background: var(--drag-highlight);
   opacity: 1;
@@ -4567,7 +4566,6 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   height: 28px;
   transform: translate(-50%, -50%);
 }
-.drag-gap-v.band-grip.hover-preview::after,
 .drag-gap-v.band-grip:hover::after {
   background: var(--drag-highlight);
   opacity: 1;

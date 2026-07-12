@@ -64,7 +64,7 @@ The token scales:
   drift into a warm-on-cool clash (the failure mode when these edges rode the
   top-bar token `--topbar-border` over the promoted cool `--library-bg`; task
   048). Any new Library-surface edge consumes THIS token, never
-  `--topbar-border`; a guard in `folder-path.test.ts` fails the build if a
+  `--topbar-border`; a guard in `tab-chrome-contracts.test.ts` fails the build if a
   `library/` source re-grabs `--topbar-border`. The general pattern: an edge
   token that must harmonize with a surface should be `color-mix`-derived FROM
   that surface's var, not a hand-picked hex that a future retone can desync.
@@ -103,12 +103,14 @@ intentional flattening resets (`0`).
 
 **Deliberate exceptions** (do NOT collapse into the scale):
 
-- `--library-manila-radius` (10px) — the Library "manila folder" corner. The
-  active-tab SVG silhouette (`library/components/panel-tabs/folder-path.ts`)
-  and the panel body frame tangent at R=10 by design. Named so the tab
-  geometry and the frame read one value; never `--pod-radius`.
-- `folder-path.ts` `R`/`S` sweep constants — path geometry, touched at the
-  geometry layer, never tokenized (guard-allowlisted).
+- `--library-manila-radius` (10px) — the "manila folder" corner. The
+  folder-tab shoulder arcs (`src/components/chrome/folder-tab-geometry.ts`,
+  `MANILA_RADIUS`) and the Library panel body's CSS `border-radius` tangent
+  at R=10 by design. Named so the tab geometry and the body border read one
+  value; never `--pod-radius`.
+- `folder-tab-geometry.ts` `MANILA_RADIUS`/`FOLDER_TAB_SWOOP` sweep constants
+  — path geometry, touched at the geometry layer, never tokenized
+  (guard-allowlisted).
 
 A genuine one-off can carry a `radius-allow` comment on the line to opt out of
 the guard, but reach for that rarely — a new radius almost always belongs to a
@@ -450,11 +452,26 @@ shows) and reveals a single centered **grip pill** on hover AND drag —
 a horizontal gutter gets a wide-short pill on `::before`; a vertical gutter
 a tall-thin pill on `::after` (its `::before` is the hit-area extension).
 Don't hand-roll a resizer's look — put `band-grip` on a `.drag-gap-{h,v}`
-element and toggle `.dragging` for the gesture (`useDragGap` does this for
-the editor gutters; an imperative resizer adds/removes the class itself).
+element and spread the `usePaneResizeHandle` props on it (the pane-resize
+engine at `src/lib/pane-resize/` owns every divider gesture in both silos
+and toggles `.dragging` on the handle itself).
 The stacked-panel bands additionally carry `.band-grip-occlude` for an
 opaque `--background` backing (they occlude omni cards showing through);
 **no other gutter opts in** — every other resizer stays transparent at rest.
+
+Don't hand-roll the *gesture* either: the engine's spec is per-frame
+imperative CSS-var `apply()` (RAF-coalesced, equality-bailed) + `commit()`
+exactly once on release — never per-frame React state, store notifies, or
+localStorage. The ONE sanctioned exception: when a render-derived layout
+decision needs the live value (sole case today: `SplitWithCode`'s
+`liveRatio`, driving the compressed-gutter flip + clip fade), LOCAL state
+set from the engine's `apply()` (≤1 per frame) is permitted — children must
+bail on element identity and persistence stays commit-once. Heavyweight pane
+content (iframes, full editors) wraps in `PaneFreeze`; drag-time observers
+park via `parkDuringPaneDrag` (both keyed on the edge-only `PaneDragBus`).
+A bespoke window-listener divider fails CI — the guardrail keys on the
+resize cursor chrome AND the shared `.drag-gap`/`.band-grip` classes above
+(`pane-drag-guardrail.test.ts`); doctrine in AGENTS.md "Pane-drag stability".
 
 ## Code view
 
@@ -1077,6 +1094,37 @@ floating panels already do). Because the gate is the `data-display-mode` SSOT,
 WCO chrome now renders in the dev preview too — set
 `localStorage['virgil:wco-debug']='1'` (or append `?wco-debug`), which forces
 the attribute AND injects synthetic insets.
+
+## Folder tabs — layout-driven chrome
+
+Both tab strips (outer Virgil bar + inner Library panels) render their
+ACTIVE tab through ONE module: `src/components/chrome/FolderTabChrome.tsx`
+with the geometry SSOT `src/components/chrome/folder-tab-geometry.ts`
+(named variants `library`/`topbar` for the height/edge-token/seam
+differences). The silhouette is a three-piece composition — two constant
+SVG end caps (swoop foot + shoulder; half-pixel crispness baked in once)
+plus a stretchable middle (fill background + 1px top border) — so the tab
+tracks any width purely by layout. Rules that generalize:
+
+- **No measured chrome.** Never rebuild geometry from a
+  ResizeObserver/getBoundingClientRect; if only one dimension varies,
+  decompose into constant caps + a stretchable middle.
+- **Ink cushion by construction.** Stroke ink sits ≥ 1 CSS px from every
+  clip boundary (`TAB_TOP_GUTTER` inside the caps; `STRIP_TOP_HEADROOM`
+  padding on a clipping strip) — never flush against an
+  `overflow: hidden` edge.
+- **Seam fusion by z-order.** The active tab's open-bottom stroke +
+  bottom fill row overlap the body/canvas 1px top border via
+  `marginBottom: -FOLDER_TAB_SEAM_OVERLAP` — no measured bridge, correct
+  mid-drag.
+- **Integer widths without measurement.** Text metrics make `max-content`
+  fractional, which would put an edge-positioned cap's baked half-pixel
+  stroke off device-pixel phase (AA-soft right edge). Both wrappers use
+  `width: calc-size(max-content, round(up, size, 1px))` (Chromium 129+;
+  Virgil is Chromium-only) — the old forks' `Math.ceil(measured)` with
+  layout still owning the size.
+- **Inactive tabs are flat** (BackgroundTab / InlineTabLabel) — no
+  silhouette, by design.
 
 ## Library tab — double-tab pattern
 

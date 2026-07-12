@@ -16,7 +16,7 @@ library/
 │   ├── LibraryApp.tsx         entry shim — handle state machine
 │   ├── LibraryView.tsx        2-panel grid + inner tab strips
 │   ├── TabbedLibraryPanel.tsx
-│   ├── PanelTabStrip.tsx, PanelFolderTab.tsx, panel-tabs/folder-path.ts
+│   ├── PanelTabStrip.tsx, PanelFolderTab.tsx (tab chrome + geometry live at src/components/chrome/ — see sanctioned imports below)
 │   ├── LeftList.tsx, LeftListRow.tsx, RowActionMenu.tsx
 │   ├── RightDetail.tsx, PaperRender.tsx, PdfView.tsx
 │   ├── BibCard.tsx, BibEditModal.tsx, StatusPill.tsx
@@ -56,6 +56,129 @@ Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writ
 - `src/hooks/useLibrary.ts` is a façade: it exports `useLibraryItems()` (consumed by Bibliography panel) by reading the catalog from `library/lib/catalog-store.ts` and mapping `CatalogEntry → LibraryIndexItem`.
 - The `virgil-open-library` event bridge (`src/components/editor-layout/event-bridges/library.ts`) switches the active pane; `LibraryView` listens for the same event and sets the selected catalog row.
 - Outer manila tabs in `src/components/EditorLayout.tsx` (lines ~4901–4943) and the content mount at lines ~5285–5288 are unchanged.
+
+## Perf doctrine — keystroke sanctity, scroll anchors, pane drags
+
+The library silo obeys the SAME performance laws as `src/` (root
+[AGENTS.md](../AGENTS.md): "Keystroke sanctity", "Scroll-anchor stability",
+"Pane-drag stability"), and the same CI guardrail tests enforce them here —
+all three walk `library/` as well as `src/`:
+
+- [src/lib/\_\_tests\_\_/keystroke-subscriber-guardrail.test.ts](../src/lib/__tests__/keystroke-subscriber-guardrail.test.ts)
+- [src/lib/\_\_tests\_\_/scroll-reposition-guardrail.test.ts](../src/lib/__tests__/scroll-reposition-guardrail.test.ts)
+- [src/lib/\_\_tests\_\_/pane-drag-guardrail.test.ts](../src/lib/__tests__/pane-drag-guardrail.test.ts)
+
+**The allowlist convention** (identical to `src/`): the greps are heuristics,
+so every legitimate site lives on a `PERMITTED_*` allowlist in the test WITH a
+one-line justification of why it's O(1)/safe, and the same facts appear as a
+comment at the site itself. The prose lists below and the test allowlists are
+cross-references of the same reality — keep them in sync. If you cannot write
+the justification, the subscriber is the bug, not the list.
+
+### Keystroke sanctity (library edition)
+
+The Reader renders the shared `EditorPane`, so the `src/` law applies
+verbatim: no plugin, hook, or effect may do work proportional to document
+size on each transaction. The library's ONE permitted
+`editor.on("update"|"transaction")` subscriber:
+
+- [library/hooks/usePgmarkPages.ts](hooks/usePgmarkPages.ts) — `\pgmark` page
+  collection, docChanged-gated (the Reader is read-only, so plain transactions
+  never fire it); layout re-scans go through a RAF-coalesced ResizeObserver
+  that additionally PARKS during pane drags; the `pages` array is
+  identity-gated (label+docY equality) so a no-op re-scan keeps consumer memos
+  (`PaperRender`'s `pagePickerEl` → `EditorPane` memo) intact.
+
+Anything new needs the O(1) justification + a matching entry in
+`PERMITTED_LIBRARY_KEYSTROKE_SUBSCRIBERS`, or CI fails. Verify with
+`window.__virgilBusStats()` in the dev preview: typing N plain characters in
+an open paper must leave `emitCount` flat.
+
+### Scroll anchors (library edition)
+
+Same law as `src/`: an overlay anchored to content is either **layout-driven**
+(lives in the scroll container, moves by layout, NO scroll listener) or a
+**RAF-coalesced fixed portal** behind an equality bail. The library currently
+has ZERO fixed-portal scroll repositioners — its guardrail allowlist
+(`PERMITTED_LIBRARY_SCROLL_REPOSITIONERS`) is deliberately empty; the page
+lozenge and header pod are host-relative, and `usePgmarkPages`' scroll
+listener is a RAF-coalesced `scrollTop` read (no `position:fixed` overlay).
+A new naive per-scroll-frame re-solve fails CI.
+
+### Pane-drag doctrine
+
+The regression class this kills: choppy/hanging gutter drags, ghost-resumed
+gestures after a release over the pdf.js iframe, chrome outlines frozen
+mid-drag that "snap" seconds later, and per-frame re-renders of the whole
+Library tree. The rules:
+
+- **Engine-only gestures.** Every divider in the app — the three Library
+  gutters, the LeftList column-header drag, and all editor-side dividers —
+  runs on the ONE gesture engine [src/lib/pane-resize/](../src/lib/pane-resize/)
+  (`usePaneResizeHandle`): pointer capture on the handle, element-scoped
+  move/up/cancel/lostpointercapture, `button===0` start gate, `(buttons & 1)===0`
+  missed-release failsafe (the primary-button bit test — a chorded second
+  button must not mask the release), Escape restore, drag shield over
+  iframes. **No
+  bespoke `window`/`document` `pointermove`/`mousemove` drag handler may exist
+  under `library/`** — the pane-drag guardrail greps both silos and the
+  library's hit set is zero; keep it that way.
+- **No per-frame state, store, or localStorage.** Per-frame geometry is the
+  engine's RAF-coalesced, equality-bailed `apply()` — an imperative CSS-var
+  write on the layout container (grid templates own the hard clamps via
+  `minmax()`/`clamp()` in
+  [library/components/library-grid-template.ts](components/library-grid-template.ts)).
+  Persistence is `commit()`, exactly once on release. A `setState`/store
+  notify/localStorage write per pointer frame is the bug class, not a style
+  choice. (The ONE sanctioned exception is editor-side and named in root
+  AGENTS.md "Pane-drag stability" — `SplitWithCode`'s render-derived
+  `liveRatio`; the library silo has none and should stay that way.)
+- **Edge-only bus.** Drag-time coordination rides the app-wide `PaneDragBus`
+  (`isPaneDragging`/`onPaneDragChange` from `@/lib/pane-resize`): listeners
+  fire once on the begin edge and once on the end edge, NEVER per frame. The
+  per-frame geometry stream stays inside the engine.
+- **Park-and-settle.** Any geometry observer that could fire mid-gesture
+  routes its trigger through `parkDuringPaneDrag` (stash latest, replay ONCE
+  on the end edge) instead of hand-rolling an `isPaneDragging()` check —
+  current parks: `usePgmarkPages`' RO, `RightDetail`'s textPodRect RO and
+  pdf-viewer page-state feedback, `PanelTabStrip`'s flush-right measure.
+- **Reader freeze.** `RightDetail` wraps both branch roots (pdf iframe /
+  text reader) in `PaneFreeze`, so the heavyweight content is width-locked
+  for the gesture and sees exactly ONE resize on release (pdf.js re-scale,
+  O(doc) ProseMirror rewrap, downstream ROs — once, not per frame).
+- **Measurement-free chrome.** Tab silhouettes, panel outlines, and seams are
+  layout-driven (`FolderTabChrome` constant caps + stretchable middle; CSS
+  border + `--library-manila-radius` body frame) — geometry comes from layout,
+  never from a ResizeObserver → state → SVG re-path loop. Don't reintroduce
+  measured chrome; if only one dimension varies, decompose into constant
+  pieces + a stretchable middle.
+
+**ResizeObserver census** (every RO under `library/` +
+`src/components/library/`, each with its why-safe justification). This list
+is CI-enforced: the pane-drag guardrail test greps the library silo for
+`new ResizeObserver` and fails unless the hit set equals its
+`PERMITTED_LIBRARY_RESIZE_OBSERVERS` allowlist — a new RO must land with an
+entry there AND the justification at the site, or CI fails (same discipline
+as the keystroke/scroll lists):
+
+- [PanelTabStrip.tsx](components/panel-tabs/PanelTabStrip.tsx) flush-right
+  tuck measure — the ONE surviving chrome RO (a cross-subtree relationship CSS
+  can't express); RAF-coalesced, equality-bailed, parked via
+  `parkDuringPaneDrag`.
+- [LeftList.tsx](components/LeftList.tsx) rows-viewport measure —
+  virtualization window height; equality-bailed setState.
+- [RightDetail.tsx](components/RightDetail.tsx) textPodRect — header↔pod
+  pinning; RAF-coalesced, ±0.5px equality gate, parked (defense-in-depth
+  behind the PaneFreeze).
+- [PaperHeader.tsx](components/PaperHeader.tsx) narrow flag — boolean
+  threshold from `borderBoxSize`; React bails unless the 560px line is crossed.
+- [usePgmarkPages.ts](hooks/usePgmarkPages.ts) — see the keystroke entry
+  above; RAF-coalesced, parked, `pages` identity-gated.
+
+**Verify live** (dev preview, force-dev-storage): drag each library gutter —
+the outline tracks the edge with no lag/snap; release over the PDF viewer —
+no hang, no ghost-resume; typing leaves `__virgilBusStats().emitCount` flat;
+a full drag fires exactly two `PaneDragBus` edges and one store commit.
 
 ## Storage
 
@@ -295,4 +418,4 @@ The Reader can be driven live in the dev preview even though the FSA picker does
 
 - Don't add a backend. The cowork pattern is load-bearing.
 - Don't write to `master.bib` or `catalog.json` from the frontend — those are skill outputs.
-- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, `@/components/editor-layout/chrome-*` (sanctioned cross-silo bridges for Reader inheritance), and `@/lib/bib-searcher` (the shared fuzzy bib searcher — Library catalog search unifies onto it via `library/lib/catalog-search.ts` rather than duplicating the matcher; it's a leaf-pure `fuse.js`-only module). Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.
+- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, `@/components/editor-layout/chrome-*` (sanctioned cross-silo bridges for Reader inheritance), `@/lib/bib-searcher` (the shared fuzzy bib searcher — Library catalog search unifies onto it via `library/lib/catalog-search.ts` rather than duplicating the matcher; it's a leaf-pure `fuse.js`-only module), `@/lib/pane-resize` (the ONE app-wide divider gesture engine + pane-drag bus — every Library resizer runs on it, and the strip's flush-right tuck observer parks on its `isPaneDragging`/`onPaneDragChange` edges; it replaced `library/lib/gutter-drag.ts`. The reader drag-freeze is part of the same sanctioned bridge: `PaneFreeze` wraps both of `RightDetail`'s pdf/text branch roots so a gutter gesture resizes the reader content exactly once, and the `parkDuringPaneDrag` parks in `library/hooks/usePgmarkPages.ts` + `RightDetail` stash their geometry/viewer feedback behind the same bus edges. These are generic shared-layer utilities keyed on the bus — NOT Reader-specific render forks; see the shared-layer note in READER_INHERITANCE.md), and `@/components/chrome/FolderTabChrome` + `@/components/chrome/folder-tab-geometry` (the ONE folder-tab chrome + geometry SSOT shared by the outer Virgil-bar tabs and the inner library tabs — a layout-driven three-piece silhouette with zero ResizeObservers; it replaced the forked `library/components/panel-tabs/folder-path.ts` / `src/components/editor-layout/folder-path.ts` measured path builders). Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.

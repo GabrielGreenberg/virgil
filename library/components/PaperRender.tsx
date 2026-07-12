@@ -362,12 +362,14 @@ function PaperReader({
 
   // Chrome-band page picker element, memoized on the fields PagePicker actually
   // renders from — NOT on the `pgmarkPages` object, which usePgmarkPages returns
-  // as a fresh literal every render. During a same-page scroll only
-  // scrollTop/containerH bump, leaving `pages` (ref), `currentLabel` (value) and
-  // `scrollToPage` (ref) stable, so this element stays identity-stable and
-  // EditorPane's memo() can bail on the scroll frame; it re-creates only when the
-  // shown page label or the marks actually change. Must sit above the early
-  // returns below (hooks run unconditionally).
+  // as a fresh literal every render. `pages` identity is GUARANTEED stable by
+  // the hook's equality gate (R4): any recompute that finds the same
+  // (label, docY) marks — a same-page scroll, a resize-storm settle, a
+  // docChanged re-scan with unchanged marks — returns the SAME array
+  // reference. With `currentLabel` (value) and `scrollToPage` (ref) likewise
+  // stable, this element re-creates only when the shown page label or the
+  // marks actually change, and EditorPane's memo() bails on everything else.
+  // Must sit above the early returns below (hooks run unconditionally).
   const pagePickerEl = useMemo(
     () =>
       pgmarkPages && pgmarkPages.pages.length > 0 ? (

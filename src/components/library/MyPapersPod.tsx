@@ -214,7 +214,9 @@ export default function MyPapersPod({
               right: 6,
               marginTop: 2,
               background: "var(--pod-editor, var(--surface))",
-              border: "var(--pod-border, 1px solid var(--topbar-border))",
+              // Library surface: edges ride --library-edge, never the warm
+              // top-bar token (task 048; guard in tab-chrome-contracts.test.ts).
+              border: "var(--pod-border, 1px solid var(--library-edge))",
               boxShadow: "var(--pod-shadow)",
               borderRadius: "var(--pod-radius, 8px)",
               padding: "6px 0",
@@ -246,7 +248,8 @@ export default function MyPapersPod({
                   aria-hidden
                   style={{
                     height: 1,
-                    background: "var(--topbar-border)",
+                    // Divider tone from the library edge token (task 048).
+                    background: "var(--library-edge)",
                     margin: "6px 8px",
                   }}
                 />

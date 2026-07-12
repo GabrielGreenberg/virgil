@@ -18,10 +18,13 @@
 // content-width near the pane width.
 //
 // The fix declares `flex:1` (+ `minWidth:0`) on ALL THREE root branches so the
-// pane fills regardless of parent axis. jsdom has no layout engine, so this test
-// asserts the declared inline style — the durable, worktree-safe proof. A live
-// eyeball over a real PDF fixture is still owed to Gabriel (no PDF fixture ships
-// in the checkout).
+// pane fills regardless of parent axis. Since Phase 4 (reader drag-freeze) the
+// pdf/text branch root is the shared PaneFreeze wrapper, whose constant outer
+// style CARRIES this contract (src/lib/pane-resize/PaneFreeze.tsx OUTER_STYLE)
+// — these assertions now pin that the freeze mount preserved it. jsdom has no
+// layout engine, so this test asserts the declared inline style — the durable,
+// worktree-safe proof. A live eyeball over a real PDF fixture is still owed to
+// Gabriel (no PDF fixture ships in the checkout).
 
 import { act } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";

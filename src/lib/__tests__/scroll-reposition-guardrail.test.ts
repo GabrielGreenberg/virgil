@@ -4,11 +4,13 @@
 // scroll-reposition contract. Two layers, mirroring the keystroke-sanctity law
 // + the `float-policy.test.ts` z-drift grep:
 //
-//   1. SOURCE-GREP ALLOWLIST — walk `src/`, flag every file that is a
-//      `position:fixed` overlay recomputing its `top` from
+//   1. SOURCE-GREP ALLOWLIST — walk `src/` AND `library/`, flag every file
+//      that is a `position:fixed` overlay recomputing its `top` from
 //      `coordsAtPos`/`getBoundingClientRect` while listening to `scroll`, and
-//      assert the flagged set equals `PERMITTED_SCROLL_REPOSITIONERS`. A new
-//      naive fixed-scroll portal that isn't on the allowlist FAILS CI.
+//      assert the flagged set equals the silo's PERMITTED_ list (the library
+//      list is deliberately EMPTY — prose twin: library/AGENTS.md "Perf
+//      doctrine" → "Scroll anchors (library edition)"). A new naive
+//      fixed-scroll portal that isn't on an allowlist FAILS CI.
 //
 //   2. RUNTIME PROBE — drive `recordScrollPlacement` through the real probe
 //      state machine and assert a stable (one-commit-per-frame) portal reports
@@ -38,6 +40,7 @@ import {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../.."); // src/
+const LIBRARY = path.resolve(HERE, "../../../library"); // the Library silo
 
 // ── The permitted-subscriber allowlist ──────────────────────────────────────
 // Every source file that legitimately repositions a `position:fixed` overlay on
@@ -57,6 +60,14 @@ const PERMITTED_SCROLL_REPOSITIONERS: Record<string, string> = {
   "components/editor-layout/editor-scrollbar.tsx":
     "Custom scrollbar: scroll path reads ONLY `row.scrollTop` behind a prev-identity bail (no rect re-solve); rects/heights are measured in a single read-batched, equality-bailed ResizeObserver pass (editor-observer stability contract — no MutationObserver, no read-after-write).",
 };
+
+// ── The library-silo allowlist ──────────────────────────────────────────────
+// Deliberately EMPTY: the library has no fixed-portal scroll repositioner —
+// its overlays (page lozenge, header pod) are host-relative, and
+// usePgmarkPages' scroll listener is a RAF-coalesced scrollTop read with no
+// position:fixed overlay. A first entry here needs the same pod-relative /
+// RAF+equality-bail justification as the src/ list above.
+const PERMITTED_LIBRARY_SCROLL_REPOSITIONERS: Record<string, string> = {};
 
 /**
  * The risky class, as a machine-detectable conjunction: a source file that
@@ -146,6 +157,30 @@ describe("scroll-reposition guardrail — source allowlist", () => {
       }
     `;
     expect(detectScrollRepositioner(staticFixed)).toBe(false);
+  });
+});
+
+describe("scroll-reposition guardrail — library silo", () => {
+  const detected = walkSource(LIBRARY)
+    .filter((f) => detectScrollRepositioner(readFileSync(f, "utf8")))
+    .map((f) => path.relative(LIBRARY, f).split(path.sep).join("/"))
+    .sort();
+
+  it("flags exactly the allowlisted library portals (currently: none)", () => {
+    // If this fails with an EXTRA file: a new fixed-scroll portal landed in
+    // the library silo. Same escape hatch as src/: make it pod-relative or
+    // RAF-coalesced with an equality bail, then justify it in
+    // PERMITTED_LIBRARY_SCROLL_REPOSITIONERS AND the library/AGENTS.md prose.
+    expect(detected).toEqual(
+      Object.keys(PERMITTED_LIBRARY_SCROLL_REPOSITIONERS).sort(),
+    );
+  });
+
+  it("keeps the library allowlist free of stale entries", () => {
+    for (const rel of Object.keys(PERMITTED_LIBRARY_SCROLL_REPOSITIONERS)) {
+      const src = readFileSync(path.join(LIBRARY, rel), "utf8");
+      expect(detectScrollRepositioner(src)).toBe(true);
+    }
   });
 });
 

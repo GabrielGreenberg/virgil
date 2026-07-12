@@ -3,7 +3,7 @@
 import { Fragment, memo, useState } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
-import type { ReorderableColId } from "@library/lib/list-columns";
+import { COL_TEMPLATE_VAR, type ReorderableColId } from "@library/lib/list-columns";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { Dot, StatusPills } from "./StatusPill";
@@ -275,6 +275,17 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
           dragStartEvent: e,
           buildGhost: () => {
             const ghost = rowEl.cloneNode(true) as HTMLElement;
+            // The row's inner grid uses `grid-template-columns:
+            // var(--lib-col-template)`, a var defined on the LIST ROOT — but
+            // the ghost is appended to document.body, outside that scope,
+            // where the reference is invalid-at-computed-value → the grid
+            // collapses to `none` (cells stack vertically). Re-anchor the
+            // RESOLVED template on the clone: custom properties inherit, so
+            // reading it off the row yields the list root's live value.
+            ghost.style.setProperty(
+              COL_TEMPLATE_VAR,
+              getComputedStyle(rowEl).getPropertyValue(COL_TEMPLATE_VAR),
+            );
             ghost.style.width = `${rect.width}px`;
             ghost.style.background = "var(--surface, #ffffff)";
             ghost.style.border = "1px solid var(--border-light, #d5d3ce)";

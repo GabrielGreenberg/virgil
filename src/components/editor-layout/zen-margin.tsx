@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useRef } from "react";
-import { useDragGap } from "@/hooks/useDragGap";
+import { useEffect, useId, useRef } from "react";
+import { usePaneResizeHandle, onPaneDragChange } from "@/lib/pane-resize";
 import type { Side } from "@/hooks/useViewPrefs";
 
 /**
@@ -28,21 +28,45 @@ export function ZenMargin({
   onResizingChange?: (r: boolean) => void;
   onSyncBeforeDrag?: () => void;
 }) {
-  const startX = useRef(0);
-  const startMargin = useRef(0);
+  const colRef = useRef<HTMLDivElement>(null);
+  // Instance-unique gesture id — keep-alive doc panes mount a ZenMargin per
+  // side each, so a bare side-keyed id would fire every same-side instance's
+  // bus-edge listener (below) on a foreign gesture.
+  const reactId = useId();
+  const gestureId = `zen-margin-${side}-${reactId}`;
 
-  const onMove = useCallback(
-    (e: MouseEvent) => {
-      const delta = side === "right"
-        ? startX.current - e.clientX
-        : e.clientX - startX.current;
+  // Per-gesture pointer-UX clamp + start width, snapshotted once in
+  // getValue() (the engine's single start-edge read point). The reserved
+  // widths (opposite margin's flex-basis, editor min) don't change during
+  // the gesture, so the snapshot is equivalent to the old per-move
+  // re-measure.
+  const clampRef = useRef({ min: 0, max: Number.POSITIVE_INFINITY });
+  const startRef = useRef(0);
+
+  // Cancel / zero-move re-sync from the source of truth (the marginPref
+  // prop): mid-drag React renders `flex: 0 0 ${marginPref}px` (isResizing is
+  // true for the whole gesture), so writing that exact value re-converges
+  // DOM and props; the end edge's isResizing→false render then swaps in the
+  // resting `1 100` flex itself (the prop string changes, so React rewrites).
+  const restoreFlex = () => {
+    const col = colRef.current;
+    if (col) col.style.flex = `0 0 ${marginPref}px`;
+  };
+
+  const handle = usePaneResizeHandle({
+    id: gestureId,
+    axis: "x",
+    // The right margin grows as the pointer moves LEFT (toward the origin).
+    direction: side === "right" ? -1 : 1,
+    getValue: () => {
+      const col = colRef.current;
+      const rendered = col?.getBoundingClientRect().width ?? marginPref;
       const marginMin = parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue('--zen-margin-min'),
       ) || 0;
-      let requested = Math.max(marginMin, startMargin.current + delta);
-      const col = gapRef.current?.parentElement;
+      let max = Number.POSITIVE_INFINITY;
       const main = col?.parentElement;
-      if (main) {
+      if (col && main) {
         const editor = main.querySelector('[data-editor-col]') as HTMLElement | null;
         const editorMin = editor ? (parseFloat(getComputedStyle(editor).minWidth) || 0) : 0;
         let reserved = editorMin;
@@ -53,46 +77,69 @@ export function ZenMargin({
             reserved += Number.isFinite(basis) ? basis : el.getBoundingClientRect().width;
           }
         }
-        const maxMargin = Math.max(0, main.clientWidth - reserved);
-        requested = Math.min(requested, maxMargin);
+        max = Math.max(0, main.clientWidth - reserved);
       }
-      onMarginPrefChange(requested);
+      clampRef.current = { min: marginMin, max };
+      startRef.current = rendered;
+      return rendered;
     },
-    [side, onMarginPrefChange],
-  );
-
-  const { gapRef, onMouseDown: gapMouseDown } = useDragGap({
-    cursor: "col-resize",
-    onMove,
-    deadzone: 3,
+    clamp: (px) =>
+      Math.max(clampRef.current.min, Math.min(clampRef.current.max, px)),
+    // Live geometry is an imperative flex-basis write — one RAF-coalesced
+    // style write per frame. The old path ran onMarginPrefChange →
+    // useZenMode._persist → localStorage per mousemove.
+    apply: (px) => {
+      const col = colRef.current;
+      if (col) col.style.flex = `0 0 ${px}px`;
+    },
+    commit: (px) => {
+      // Zero-move end (plain click / drag returned to start): don't write
+      // prefs; re-sync the DOM from the store in case applies happened.
+      if (px === startRef.current) {
+        restoreFlex();
+        return;
+      }
+      onMarginPrefChange(px);
+    },
+    restore: restoreFlex,
   });
 
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      startX.current = e.clientX;
-      onSyncBeforeDrag?.();
-      const col = gapRef.current?.parentElement;
-      const rendered = col ? col.getBoundingClientRect().width : marginPref;
-      startMargin.current = rendered;
-      onResizingChange?.(true);
-      const onUp = () => {
-        onResizingChange?.(false);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mouseup", onUp);
-      gapMouseDown(e);
-    },
-    [marginPref, gapMouseDown, onResizingChange, onSyncBeforeDrag],
+  // Gesture-edge side effects (sync prefs to rendered, lift the flex to the
+  // pinned `0 0` shape via isResizing) ride the pane-drag bus filtered to
+  // THIS instance's gesture — the end edge fires on every end variant incl.
+  // owner unmount, so isResizing can never wedge true. Declared AFTER
+  // usePaneResizeHandle: unmount cleanups run in declaration order, so the
+  // engine's detach end-edge fires while this listener is still subscribed.
+  const onResizingChangeRef = useRef(onResizingChange);
+  const onSyncBeforeDragRef = useRef(onSyncBeforeDrag);
+  useEffect(() => {
+    // Latest-prop mirrors, refreshed post-commit (a render-time ref write
+    // trips react-hooks/refs). The listener only fires from pointer events,
+    // which can't interleave before this effect runs.
+    onResizingChangeRef.current = onResizingChange;
+    onSyncBeforeDragRef.current = onSyncBeforeDrag;
+  });
+  useEffect(
+    () =>
+      onPaneDragChange((active, info) => {
+        if (info.id !== gestureId) return;
+        if (active) {
+          onSyncBeforeDragRef.current?.();
+          onResizingChangeRef.current?.(true);
+        } else {
+          onResizingChangeRef.current?.(false);
+        }
+      }),
+    [gestureId],
   );
 
   return (
-    <div data-flex-col={side} className="relative flex" style={{ flex: isResizing ? `0 0 ${marginPref}px` : `1 100 ${marginPref}px`, minWidth: isResizing ? 0 : 'var(--zen-margin-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
+    <div ref={colRef} data-flex-col={side} className="relative flex" style={{ flex: isResizing ? `0 0 ${marginPref}px` : `1 100 ${marginPref}px`, minWidth: isResizing ? 0 : 'var(--zen-margin-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
       <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-2"}`} />
       <div
-        ref={gapRef}
         className={`drag-gap drag-gap-v band-grip shrink-0 ${side === "left" ? "order-2 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
-        style={{ width: 'var(--pod-gap)' }}
-        onMouseDown={onMouseDown}
+        {...handle}
+        style={{ ...handle.style, width: 'var(--pod-gap)' }}
       />
     </div>
   );

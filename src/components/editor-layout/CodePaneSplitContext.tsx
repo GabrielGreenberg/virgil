@@ -11,8 +11,13 @@ import { createContext, useContext } from "react";
  * "EditorPane is in a no-split context." `compressed` is the action
  * trigger — true when the editor pane is sized below its natural width
  * and should drop gutters (and disable margin-edit) to keep the prose
- * column usable. `clippedPx` is informational (downstream chrome may
- * want to fade the right edge once clipping starts).
+ * column usable.
+ *
+ * This state carries EDGES only (open/close, compressed threshold
+ * crossings) — never per-frame drag geometry. A context identity that
+ * changed per pointer frame would pierce consumers' element-identity
+ * bailouts and re-render EditorPane per frame; frame-granular values
+ * (the clip-fade depth) live locally in SplitWithCode.
  *
  * Default value (no provider) is `{ active: false, … }` so EditorPane
  * usage outside SplitWithCode is a no-op.
@@ -21,15 +26,11 @@ export interface CodePaneSplitState {
   active: boolean;
   /** Editor pane should suppress wide gutters / margin-edit chrome. */
   compressed: boolean;
-  /** Distance (px) past the editor's compressed min-width that the
-   *  clip wrapper is currently obscuring. 0 means no clipping. */
-  clippedPx: number;
 }
 
 const DEFAULT_STATE: CodePaneSplitState = {
   active: false,
   compressed: false,
-  clippedPx: 0,
 };
 
 const CodePaneSplitContext = createContext<CodePaneSplitState>(DEFAULT_STATE);

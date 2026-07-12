@@ -62,8 +62,9 @@ const PERMITTED_DEEP_MUTATION_OBSERVERS: Record<string, string> = {
 const PERMITTED_RESIZE_OBSERVERS: Record<string, string> = {
   "components/FigureBlockNodeView.tsx":
     "Observes the figure block's own box + its column — node-local sizing, RAF-scheduled.",
-  "components/editor-layout/DocumentFolderTab.tsx":
-    "Observes the tab's own element for chrome measurement — bounded, not editor content.",
+  // DocumentFolderTab's chrome-measurement RO was deleted by the Library UI
+  // refactor P3 — the folder-tab silhouette is layout-driven FolderTabChrome
+  // now (src/components/chrome/), zero observers by construction.
   "components/editor-layout/editor-scrollbar.tsx":
     "Observes row/editor-column/page in ONE read-batched, equality-bailed measureAndApply() pass (typing-latency fix 1b): all reads before all writes, CSS vars + React state only on value change — no MutationObserver, no read-after-write, feedback loop self-terminates.",
   "components/editor-layout/split-with-code.tsx":

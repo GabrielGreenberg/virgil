@@ -156,7 +156,6 @@ function TabStripImpl(props: TabStripProps) {
             className="flex items-end shrink-0"
           >
             <DocumentFolderTab
-              active
               fill="var(--library-bg)"
               dataPrefs="libraryBg,topbarBorder"
               title="Library"
@@ -214,7 +213,6 @@ function TabStripImpl(props: TabStripProps) {
             }}
           >
             <DocumentFolderTab
-              active
               fill="var(--background)"
               dataPrefs="background,topbarBorder"
               title={citekey}
@@ -334,7 +332,6 @@ function TabStripImpl(props: TabStripProps) {
             }}
           >
             <DocumentFolderTab
-              active
               fill="var(--library-bg)"
               dataPrefs="libraryBg,topbarBorder"
               title={label}
@@ -415,7 +412,6 @@ function TabStripImpl(props: TabStripProps) {
           }}
         >
           <DocumentFolderTab
-            active
             fill="var(--main-tab-bg)"
             dataPrefs="backgroundColor,topbarBorder"
             title={displayName}

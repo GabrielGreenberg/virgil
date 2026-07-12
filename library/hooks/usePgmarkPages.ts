@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
+import { parkDuringPaneDrag } from "@/lib/pane-resize/pane-drag-park";
 
 /** One printed-page anchor recovered from a `\pgmark{label}` decoration. */
 export interface PageMark {
@@ -49,10 +50,25 @@ const PROBE_FRACTION = 0.35;
  * Keystroke sanctity: pages are (re)collected ONLY on the editor's `create`
  * event and on `docChanged` transactions — never per keystroke (the Reader is
  * read-only anyway, so plain transactions don't fire). Layout changes go
- * through a RAF-coalesced ResizeObserver. The current-page index is recomputed
- * on scroll, RAF-coalesced to one compute per frame. No work is proportional
- * to document size on a plain keystroke.
+ * through a RAF-coalesced ResizeObserver, which additionally PARKS during any
+ * pane-resize gesture (app-wide PaneDragBus) and settles once on the end edge.
+ * The current-page index is recomputed on scroll, RAF-coalesced to one compute
+ * per frame. No work is proportional to document size on a plain keystroke.
+ *
+ * Identity guarantee (R4): `pages` is equality-gated on the (label, docY)
+ * sequence — ANY recompute that finds the same marks keeps the SAME array
+ * reference, so consumers may memoize on `pages` identity (PaperRender's
+ * `pagePickerEl` does; it keeps EditorPane's memo() intact through resize
+ * settles and no-op re-scans).
  */
+/** label+docY sequence equality — the `pages` identity gate above. */
+function pageMarksEqual(a: PageMark[], b: PageMark[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].label !== b[i].label || a[i].docY !== b[i].docY) return false;
+  }
+  return true;
+}
 export function usePgmarkPages(
   editor: Editor | null,
   scrollContainer: HTMLElement | null,
@@ -89,7 +105,11 @@ export function usePgmarkPages(
       const docY = rect.top - containerRect.top + top;
       next.push({ label, docY });
     }
-    setPages(next);
+    // Equality gate (R4): keep the previous array's IDENTITY when nothing
+    // changed, so downstream memos keyed on `pages` (PaperRender's
+    // pagePickerEl → EditorPane memo()) bail instead of re-rendering the
+    // reader subtree on every no-op re-scan.
+    setPages((prev) => (pageMarksEqual(prev, next) ? prev : next));
     setContainerH(scrollContainer.clientHeight);
   }, [editor, scrollContainer]);
 
@@ -119,22 +139,31 @@ export function usePgmarkPages(
 
   // Layout/size changes → recollect, RAF-coalesced so a resize storm can't
   // thrash the doc-scan (keystroke-sanctity / AGENTS.md: a width-watching RO
-  // must be RAF-guarded, unlike the legacy bare-callback lozenge RO).
+  // must be RAF-guarded, unlike the legacy bare-callback lozenge RO) — and
+  // PARKED during any pane-resize gesture: collectPages does O(chips)
+  // forced-layout reads (getComputedStyle + getBoundingClientRect per chip),
+  // so it must never ride a pointer frame. Mid-drag the reader content is
+  // width-frozen (PaneFreeze in RightDetail) so this RO shouldn't fire at all;
+  // the park is defense-in-depth — a mid-gesture fire stashes dirty and the
+  // end edge reconciles ONCE (the equality gate then usually keeps `pages`
+  // identity anyway).
   useEffect(() => {
     if (!editor || editor.isDestroyed || !scrollContainer) return;
     const dom = (editor.view as { dom?: HTMLElement } | undefined)?.dom;
     if (!dom) return;
-    const ro = new ResizeObserver(() => {
+    const park = parkDuringPaneDrag(() => {
       if (roRaf.current !== null) return;
       roRaf.current = requestAnimationFrame(() => {
         roRaf.current = null;
         collectPages();
       });
     });
+    const ro = new ResizeObserver(() => park.fire());
     ro.observe(dom);
     ro.observe(scrollContainer);
     return () => {
       ro.disconnect();
+      park.dispose();
       if (roRaf.current !== null) {
         cancelAnimationFrame(roRaf.current);
         roRaf.current = null;
