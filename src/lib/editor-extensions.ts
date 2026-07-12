@@ -25,7 +25,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
-import { UUID_ATTR_SPEC, UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
+import { UUID_ATTR_SPEC, makeUuidAttr, stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
@@ -154,8 +154,10 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
         // (number + drag handle) via the exampleBlock node view.
         const pos = typeof getPos === "function" ? getPos() : null;
         let skipChrome = false;
+        let parentNode: PMNode | null = null;
         if (pos != null) {
           const resolved = nodeEditor.state.doc.resolve(pos);
+          parentNode = resolved.parent;
           for (let d = resolved.depth; d >= 0; d--) {
             const name = resolved.node(d).type.name;
             if (name === "listItem" || name === "exampleBlock" || name === "exampleItem") {
@@ -172,6 +174,10 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
 
         const wrapper = document.createElement("div");
         wrapper.className = "par-title-wrapper";
+        // 2d: the NodeView owns its data-uuid/kind DOM exposure (the per-block
+        // decoration union is gone). Main surface only; the #49 deferral gate
+        // (blockquote/codeBlock-nested body paragraphs) lives inside the stamp.
+        if (!isFloat) stampTextObjectAttrs(wrapper, node, parentNode);
         // Belt-and-suspenders with the schema `draggable: false`: the
         // browser must never see this wrapper as a drag source.
         wrapper.draggable = false;
@@ -385,6 +391,11 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
           },
           update(updatedNode) {
             if (updatedNode.type.name !== "paragraph") return false;
+            // Re-stamp on uuid change (the backfill mint arrives as an
+            // AttrStep → this update). O(1), same-value writes bail inside.
+            if (!isFloat && updatedNode.attrs.uuid !== currentNode.attrs.uuid) {
+              stampTextObjectAttrs(wrapper, updatedNode, parentNode);
+            }
             currentNode = updatedNode;
             if (
               !titleAnnot.querySelector("input") &&
@@ -468,11 +479,15 @@ function createListTitleNodeView(
         }
         if (node.attrs.type) bare.setAttribute("type", String(node.attrs.type));
       }
+      // No update() on this bare NodeView — PM recreates it on node change,
+      // so the construction-time stamp stays current.
+      if (!isFloat) stampTextObjectAttrs(bare, node, null);
       return { dom: bare, contentDOM: bare };
     }
 
     const wrapper = document.createElement("div");
     wrapper.className = "list-title-wrapper";
+    if (!isFloat) stampTextObjectAttrs(wrapper, node, null);
     // Lists always have content; mark the wrapper accordingly so the
     // editor-level hover-band delegation (see useEffect below) can
     // detect it the same way it detects paragraph wrappers.
@@ -676,6 +691,9 @@ function createListTitleNodeView(
       },
       update(updatedNode) {
         if (updatedNode.type.name !== typeName) return false;
+        if (!isFloat && updatedNode.attrs.uuid !== currentNode.attrs.uuid) {
+          stampTextObjectAttrs(wrapper, updatedNode, null);
+        }
         currentNode = updatedNode;
         applyOrderedListAttrs();
         if (
@@ -730,7 +748,8 @@ export function createBlockquoteWithUuid() {
     addAttributes() {
       return {
         ...this.parent?.(),
-        uuid: UUID_ATTR_SPEC.uuid,
+        // No NodeView → renderHTML is the live DOM; emit uuid + kind (2d).
+        uuid: makeUuidAttr("blockquote"),
       };
     },
   });
@@ -749,7 +768,8 @@ export function createListItemWithUuid() {
     addAttributes() {
       return {
         ...this.parent?.(),
-        uuid: UUID_ATTR_SPEC.uuid,
+        // No NodeView → renderHTML is the live DOM; emit uuid + kind (2d).
+        uuid: makeUuidAttr("listItem"),
       };
     },
   });
@@ -761,7 +781,8 @@ export function createCodeBlockWithUuid() {
     addAttributes() {
       return {
         ...this.parent?.(),
-        uuid: UUID_ATTR_SPEC.uuid,
+        // No NodeView → renderHTML is the live DOM; emit uuid + kind (2d).
+        uuid: makeUuidAttr("codeBlock"),
       };
     },
   });
@@ -883,6 +904,8 @@ export function createHeadingWithLabel(
 
         const wrapper = document.createElement("div");
         wrapper.className = `heading-wrapper heading-wrapper-l${node.attrs.level}`;
+        // 2d: NodeView-owned data-uuid/kind exposure (main only).
+        if (!isFloat) stampTextObjectAttrs(wrapper, node, null);
 
         // Folding chevron — positioned in the left margin at the same
         // horizontal offset as the paragraph drag handles. Clicking toggles
@@ -1365,6 +1388,9 @@ export function createHeadingWithLabel(
           update(updatedNode) {
             if (updatedNode.type.name !== "heading") return false;
             if (updatedNode.attrs.level !== currentNode.attrs.level) return false;
+            if (!isFloat && updatedNode.attrs.uuid !== currentNode.attrs.uuid) {
+              stampTextObjectAttrs(wrapper, updatedNode, null);
+            }
             currentNode = updatedNode;
             // Keep section number in sync for CSS ::before. Same-value
             // dataset writes still queue mutation records — guard on change.
@@ -1704,7 +1730,9 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
   // builder's float mode — and ExpexNumbering) and the main-only chrome
   // (Placeholder, SlashPopupExtension, SmartQuotes, TextObjectOrphanGuard,
   // Title/Maketitle/Label handlers, EmptyParagraphTitleCleaner,
-  // MarginaliaAnchorGuard, PgMarkChip, UuidAttrDecorator, readOnlyEnforcer).
+  // MarginaliaAnchorGuard, PgMarkChip, readOnlyEnforcer). data-uuid DOM
+  // exposure moved off the deleted UuidAttrDecorator onto the NodeViews'
+  // own stamps (2d), main-gated inside each factory.
   // TextColor is now SHARED (FCU Chip C1, decision 4) so colored text renders
   // faithfully in popouts — the exact Issue-2 fidelity class. Block atoms
   // render as compact card previews (`cardContext: true`) and the heading
@@ -1741,7 +1769,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // Position 2 (right after the observer). Backfills a unique non-null uuid
     // onto every anchorable block by the end of its insertion transaction, so
     // dropped / pasted / split blocks are immediately graspable (the grab
-    // handle + UuidAttrDecorator key off a non-null uuid). Reads the observer's
+    // handle + the NodeView data-uuid stamp key off a non-null uuid). Reads the observer's
     // typed diff machinery, so it must run after it. Shared by both surfaces:
     // floats sync uuid-bearing content from main, and the move/re-sync identity
     // guard keeps those uuids stable (see block-uuid-backfill.ts).
@@ -1789,6 +1817,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     TexBlock.configure({
       isPoppedRef: ctx.texBlockIsPoppedRef ?? null,
       cardContext: ctx.cardContext,
+      surface: isFloat ? "float" : "main",
     }),
     FigureBlock.configure({
       docIdRef: ctx.docIdRef ?? null,
@@ -1796,12 +1825,14 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
       onConfirmFigureDeleteRef: ctx.callbacks.onConfirmFigureDelete ?? null,
       cardContext: ctx.cardContext,
       figureFloat: ctx.figureFloat ?? false,
+      surface: isFloat ? "float" : "main",
     }),
     FigureCaption,
     GraphicsBlock.configure({
       docIdRef: ctx.docIdRef ?? null,
       cardContext: ctx.cardContext,
       figureFloat: ctx.figureFloat ?? false,
+      surface: isFloat ? "float" : "main",
     }),
     ...(isMain
       ? [
@@ -1836,7 +1867,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // NodeSelection on the node — the `.selected`-at-rest problem the old
     // `surface` gate guarded against dissolves natively. Added bare on both
     // surfaces (only `cardContext` still gates it, via borrowed-schema).
-    LatexComment,
+    LatexComment.configure({ surface: isFloat ? "float" : "main" }),
     Citation,
     LabelRef,
     // cardContext gates the example's par-title strip (#47): on a card/float
@@ -1844,9 +1875,12 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // header and collides with the card's own CardBodyTitle +T. Mirrors the
     // TexBlock/FigureBlock/GraphicsBlock threading above. The "Ex." label pod
     // is NOT gated — the example float still renames its `\label{}`.
-    ExampleBlock.configure({ cardContext: ctx.cardContext }),
+    ExampleBlock.configure({
+      cardContext: ctx.cardContext,
+      surface: isFloat ? "float" : "main",
+    }),
     ExampleItemList,
-    ExampleItem,
+    ExampleItem.configure({ surface: isFloat ? "float" : "main" }),
     ExampleGloss,
     AlignedGlossRow,
     ProseGlossRow,
@@ -1874,10 +1908,10 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // all still main-only), so EXPECTED_MAIN_ORDER stays byte-identical. The
     // siblings are doc-wide main-only guards; the float needs only the node
     // spec (like it already omits sectionNumbers / ExpexNumbering).
-    TitleField,
+    TitleField.configure({ surface: isFloat ? "float" : "main" }),
     ...(isMain
       ? [
-          MaketitleMarker,
+          MaketitleMarker.configure({ surface: "main" }),
           LabelHandler,
           EmptyParagraphTitleCleaner,
         ]
@@ -1897,7 +1931,6 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
           // DOM element. The marginalia registry + drag hit-test depend on
           // these attributes being present in the live DOM. See uuid-attr.ts
           // for why this needs to be a decoration and not renderHTML.
-          UuidAttrDecorator,
           // Paints the four card hover/selection attrs onto in-editor anchor
           // targets via decorations (driven by useAnchorHighlightReconciler).
           // A decoration — not raw setAttribute — so PM owns the attrs and

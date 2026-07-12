@@ -36,7 +36,6 @@ vi.mock("@/lib/storage", () => {
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { DocStructureObserver } from "@/lib/tiptap/doc-structure";
-import { UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
 import {
   createParagraphWithTitle,
   createHeadingWithLabel,
@@ -59,7 +58,6 @@ function buildEditor() {
         dropcursor: false,
       }),
       DocStructureObserver,
-      UuidAttrDecorator,
       createParagraphWithTitle(),
       createHeadingWithLabel({}, { surface: "main" }),
     ],

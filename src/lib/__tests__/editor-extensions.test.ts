@@ -92,7 +92,6 @@ const EXPECTED_MAIN_ORDER = [
   "marginaliaAnchorGuard",
   "tabIndent",
   "pgmarkChip",
-  "uuidAttrDecorator",
   "anchorHighlightDecorator",
   "readOnlyEnforcer",
 ];
@@ -179,7 +178,6 @@ const MAIN_ONLY_NAMES = [
   "emptyParagraphTitleCleaner",
   "marginaliaAnchorGuard",
   "pgmarkChip",
-  "uuidAttrDecorator",
   "anchorHighlightDecorator",
   "readOnlyEnforcer",
 ];
@@ -318,18 +316,23 @@ describe("buildEditorExtensions (FCU factory)", () => {
   // Since the atom→block remodel (task 017) latexComment is a real editable
   // block with native inline content, so a float's single-node doc rests a
   // TextSelection inside it (never a NodeSelection on the node) — the
-  // `.selected`-at-rest problem the old `surface` gate guarded against dissolves
-  // natively. LatexComment is now added BARE on both surfaces, with no `surface`
-  // option to thread.
+  // `.selected`-at-rest problem the OLD `surface` gate guarded against
+  // dissolves natively. The `surface` option RETURNED in typing-latency fix
+  // 2d for a different job: it gates the NodeView's data-uuid/kind stamp
+  // (the replacement for the deleted UuidAttrDecorator) to the MAIN document
+  // surface, so a popped-out float never carries a second copy of the
+  // attribute that `useMarginaliaRegistry`'s document-global lookups key on.
   const latexCommentExt = (ctx: EditorExtensionsCtx) =>
     buildEditorExtensions(ctx).find((e) => e.name === "latexComment");
 
-  it("adds latexComment on both stacks with no per-surface option", () => {
-    expect(latexCommentExt(mainCtx())).toBeDefined();
-    expect(latexCommentExt(floatCtx())).toBeDefined();
+  it("threads the stamp-gate surface into latexComment per stack (2d)", () => {
     expect(
       (latexCommentExt(mainCtx())?.options as { surface?: string } | undefined)
         ?.surface,
-    ).toBeUndefined();
+    ).toBe("main");
+    expect(
+      (latexCommentExt(floatCtx())?.options as { surface?: string } | undefined)
+        ?.surface,
+    ).toBe("float");
   });
 });

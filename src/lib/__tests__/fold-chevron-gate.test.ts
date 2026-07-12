@@ -58,7 +58,6 @@ import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TextSelection } from "@tiptap/pm/state";
 import { DocStructureObserver } from "@/lib/tiptap/doc-structure";
-import { UuidAttrDecorator } from "@/lib/tiptap/uuid-attr";
 import {
   createParagraphWithTitle,
   createHeadingWithLabel,
@@ -93,11 +92,9 @@ function buildTwoSectionEditor() {
         dropcursor: false,
       }),
       DocStructureObserver,
-      // Stamps `data-uuid` on each heading wrapper, exactly as the real
-      // editor does — the shared plugin-view's resync resolves a chevron's
-      // section via `closest('[data-uuid]')`, so without this the resync
-      // would see every chevron as unfolded.
-      UuidAttrDecorator,
+      // data-uuid now rides on each NodeView's own stamp (2d) — the shared
+      // plugin-view's resync resolves a chevron's section via
+      // `closest('[data-uuid]')` off the heading wrapper's stamped attr.
       createParagraphWithTitle(),
       createHeadingWithLabel({}, { surface: "main" }),
     ],

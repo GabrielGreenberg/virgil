@@ -36,6 +36,8 @@ export const GraphicsBlock = Node.create<FigureBlockOptions>({
     return {
       docIdRef: null,
       cardContext: false,
+      // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
+      surface: "float" as "main" | "float",
       figureFloat: false,
       onConfirmLabelRenameRef: null,
       onConfirmFigureDeleteRef: null,
@@ -63,7 +65,18 @@ export const GraphicsBlock = Node.create<FigureBlockOptions>({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(FigureBlockNodeView);
+    const surface = this.options.surface;
+    // 2d: NodeView-owned data-uuid/kind exposure (MAIN only; re-applied on
+    // every node update, so the backfill's uuid mint lands too).
+    return ReactNodeViewRenderer(FigureBlockNodeView, {
+      attrs: ({ node }): Record<string, string> =>
+        surface === "main" && node.attrs.uuid
+          ? {
+              "data-uuid": node.attrs.uuid as string,
+              "data-text-object-kind": node.type.name,
+            }
+          : {},
+    });
   },
 });
 

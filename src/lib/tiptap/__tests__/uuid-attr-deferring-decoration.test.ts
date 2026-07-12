@@ -3,24 +3,28 @@
  * Backlog #49 — ExpEx (and the wider container) grab handles must NOT land ON
  * content. The `⠿` grab-handle hover scan
  * (`resolveTextObjectsAtMouse` → `editorEl.querySelectorAll("[data-uuid]")`)
- * keys on the `data-uuid` node-attribute DECORATION this module emits. So the
- * authoritative "is this a grabbable text-object" gate is `buildUuidDecorations`:
- * if it decorates a container's INNER body paragraph, that paragraph gets its
- * own handle anchored at text-start (right of the marker) — the reported
- * phantom SECOND handle:
+ * keys on the `data-uuid` attribute in the LIVE DOM. Since typing-latency fix
+ * 2d that attribute comes from each NodeView's own `stampTextObjectAttrs`
+ * (plus `makeUuidAttr` renderHTML for the NodeView-less listItem/blockquote/
+ * codeBlock) — the per-block decoration union is gone — so the authoritative
+ * "is this a grabbable text-object" gate is the stamp's
+ * `isDeferredInnerParagraph` check: if a container's INNER body paragraph
+ * carried `data-uuid`, it would get its own handle anchored at text-start
+ * (right of the marker) — the reported phantom SECOND handle:
  *
  *   - SINGLE example `(16) text…` — the block's body `paragraph` is a DIRECT
- *     child of `exampleBlock`; without the gate it mints/keeps a uuid → a 2nd
- *     handle in the gap right of `(16)`.
- *   - MULTI example `(13)` `a./b.` — each sub-item's body `paragraph` is a child
- *     of `exampleItem`; same phantom handle landing on the `b.` marker.
+ *     child of `exampleBlock`; without the gate a stale uuid would surface →
+ *     a 2nd handle in the gap right of `(16)`.
+ *   - MULTI example `(13)` `a./b.` — each sub-item's body `paragraph` is a
+ *     child of `exampleItem`; same phantom handle landing on the `b.` marker.
  *   - The same class for listItem / blockquote / codeBlock body paragraphs.
  *
- * The fix gates `buildUuidDecorations` on `isDeferredInnerParagraph`
- * (DEFERRING_PARENTS, now incl. `exampleBlock`) — the SSOT predicate the mint
- * sites already use — so a deferred body paragraph is never decorated EVEN IF it
- * carries a stale/loaded uuid. These tests lock that at the decoration layer
- * (the synthetic-DOM grab-handle harness is unfaithful per the backlog note).
+ * These tests assert against the MOUNTED editor DOM — strictly higher
+ * fidelity than the old decoration-set-level pins (the synthetic grab-handle
+ * harness is unfaithful per the backlog note). The React-NodeView blocks
+ * (figure/graphics/tex) stamp via `ReactNodeViewRenderer`'s `attrs` option
+ * and can't mount in jsdom (no ResizeObserver); their deferral-exemption is
+ * pinned at the predicate level below and verified live.
  *
  * (Storage stub: the extension barrel transitively imports `@/lib/storage`,
  * whose `require("@/lib/storage-fsa")` vitest can't resolve.)
@@ -45,14 +49,11 @@ vi.mock("@/lib/storage", () => {
   return mod;
 });
 
-import { getSchema } from "@tiptap/core";
-import type { Node as PMNode, Schema } from "@tiptap/pm/model";
-import type { Decoration } from "@tiptap/pm/view";
+import { Editor, type Content } from "@tiptap/core";
 import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
-import { buildUuidDecorations } from "@/lib/tiptap/uuid-attr";
 import {
   DEFERRING_PARENTS,
   isDeferredInnerParagraph,
@@ -71,23 +72,23 @@ function mainCtx(): EditorExtensionsCtx {
   };
 }
 
-const schema: Schema = getSchema(buildEditorExtensions(mainCtx()));
+function mountDoc(content: Content) {
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const editor = new Editor({
+    element: el,
+    extensions: buildEditorExtensions(mainCtx()),
+    content,
+  });
+  return { editor, el };
+}
 
-/** All `data-uuid` values the decoration set emits, paired with their kind. */
-function decoratedUuids(doc: PMNode): Array<{ uuid: string; kind: string }> {
-  const set = buildUuidDecorations(doc);
-  return set
-    .find()
-    .map((d: Decoration) => {
-      const attrs = (
-        d as Decoration & { type?: { attrs?: Record<string, string> } }
-      ).type?.attrs;
-      return {
-        uuid: attrs?.["data-uuid"] ?? "",
-        kind: attrs?.["data-text-object-kind"] ?? "",
-      };
-    })
-    .filter((x) => x.uuid);
+/** All `data-uuid` values live in the editor DOM, paired with their kind. */
+function stampedUuids(el: HTMLElement): Array<{ uuid: string; kind: string }> {
+  return [...el.querySelectorAll<HTMLElement>("[data-uuid]")].map((n) => ({
+    uuid: n.getAttribute("data-uuid") ?? "",
+    kind: n.getAttribute("data-text-object-kind") ?? "",
+  }));
 }
 
 describe("DEFERRING_PARENTS — exampleBlock is now in the set (the #49 gap)", () => {
@@ -107,19 +108,19 @@ describe("DEFERRING_PARENTS — exampleBlock is now in the set (the #49 gap)", (
     // A top-level paragraph (parent = doc) is NOT deferred.
     expect(isDeferredInnerParagraph(p, { type: { name: "doc" } })).toBe(false);
     // A non-paragraph child of a deferring parent is NOT deferred (e.g. a
-    // graphicsBlock dropped into a single example body stays grabbable).
+    // graphicsBlock dropped into a single example body stays grabbable —
+    // its React NodeView stamps via ReactNodeViewRenderer's attrs option).
     const g = { type: { name: "graphicsBlock" } };
     expect(isDeferredInnerParagraph(g, { type: { name: "exampleBlock" } })).toBe(false);
     expect(isDeferredInnerParagraph(p, null)).toBe(false);
   });
 });
 
-describe("buildUuidDecorations — never decorates a deferred inner paragraph (#49)", () => {
-  it("SINGLE example: the block is decorated, its body paragraph is NOT (no 2nd handle)", () => {
-    // A single `\ex` holds its body paragraph DIRECTLY (the `(16)` case). The
-    // inner paragraph is given a uuid to simulate a stale/loaded one — it must
-    // STILL be suppressed.
-    const doc = schema.nodeFromJSON({
+describe("NodeView stamps — never expose a deferred inner paragraph (#49, DOM-level)", () => {
+  it("SINGLE example: the block carries data-uuid, its body paragraph does NOT", () => {
+    // The inner paragraph is given a uuid to simulate a stale/loaded one —
+    // it must STILL be suppressed on the DOM.
+    const { editor, el } = mountDoc({
       type: "doc",
       content: [
         {
@@ -135,15 +136,17 @@ describe("buildUuidDecorations — never decorates a deferred inner paragraph (#
         },
       ],
     });
-    const decos = decoratedUuids(doc);
-    // The exampleBlock IS the grabbable text-object.
-    expect(decos).toContainEqual({ uuid: "EX16", kind: "exampleBlock" });
-    // Its body paragraph is NOT decorated → no phantom handle right of `(16)`.
-    expect(decos.find((d) => d.uuid === "BODY16")).toBeUndefined();
+    try {
+      const stamped = stampedUuids(el);
+      expect(stamped).toContainEqual({ uuid: "EX16", kind: "exampleBlock" });
+      expect(stamped.find((d) => d.uuid === "BODY16")).toBeUndefined();
+    } finally {
+      editor.destroy();
+    }
   });
 
-  it("MULTI example: each exampleItem is decorated, its body paragraph is NOT (no handle on b.)", () => {
-    const doc = schema.nodeFromJSON({
+  it("MULTI example: block + sub-items carry data-uuid, their body paragraphs do NOT", () => {
+    const { editor, el } = mountDoc({
       type: "doc",
       content: [
         {
@@ -181,18 +184,20 @@ describe("buildUuidDecorations — never decorates a deferred inner paragraph (#
         },
       ],
     });
-    const decos = decoratedUuids(doc);
-    // The block + both sub-items are grabbable.
-    expect(decos).toContainEqual({ uuid: "EX13", kind: "exampleBlock" });
-    expect(decos).toContainEqual({ uuid: "ITa", kind: "exampleItem" });
-    expect(decos).toContainEqual({ uuid: "ITb", kind: "exampleItem" });
-    // NEITHER sub-item's body paragraph is decorated (the on-the-`b.` handle).
-    expect(decos.find((d) => d.uuid === "BODYa")).toBeUndefined();
-    expect(decos.find((d) => d.uuid === "BODYb")).toBeUndefined();
+    try {
+      const stamped = stampedUuids(el);
+      expect(stamped).toContainEqual({ uuid: "EX13", kind: "exampleBlock" });
+      expect(stamped).toContainEqual({ uuid: "ITa", kind: "exampleItem" });
+      expect(stamped).toContainEqual({ uuid: "ITb", kind: "exampleItem" });
+      expect(stamped.find((d) => d.uuid === "BODYa")).toBeUndefined();
+      expect(stamped.find((d) => d.uuid === "BODYb")).toBeUndefined();
+    } finally {
+      editor.destroy();
+    }
   });
 
-  it("LIST ITEM: the listItem is decorated, its inner paragraph is NOT (same class)", () => {
-    const doc = schema.nodeFromJSON({
+  it("LIST ITEM: the listItem carries data-uuid + kind (renderHTML path), its inner paragraph does NOT", () => {
+    const { editor, el } = mountDoc({
       type: "doc",
       content: [
         {
@@ -214,42 +219,49 @@ describe("buildUuidDecorations — never decorates a deferred inner paragraph (#
         },
       ],
     });
-    const decos = decoratedUuids(doc);
-    expect(decos).toContainEqual({ uuid: "LI", kind: "listItem" });
-    expect(decos.find((d) => d.uuid === "LIBODY")).toBeUndefined();
+    try {
+      const stamped = stampedUuids(el);
+      // The list wrapper (NodeView stamp) + the item (makeUuidAttr renderHTML,
+      // which now carries the kind the grab-handle resolver reads).
+      expect(stamped).toContainEqual({ uuid: "UL", kind: "bulletList" });
+      expect(stamped).toContainEqual({ uuid: "LI", kind: "listItem" });
+      expect(stamped.find((d) => d.uuid === "LIBODY")).toBeUndefined();
+    } finally {
+      editor.destroy();
+    }
   });
 
-  it("a SINGLE example whose body is a non-paragraph (graphicsBlock) keeps it grabbable", () => {
-    // Feature A2: a picture dropped into a single example body is its own
-    // anchor — only `paragraph` defers, so the graphicsBlock stays decorated.
-    const doc = schema.nodeFromJSON({
-      type: "doc",
-      content: [
-        {
-          type: "exampleBlock",
-          attrs: { uuid: "EXG", kind: "single", number: 5 },
-          content: [
-            {
-              type: "graphicsBlock",
-              attrs: { uuid: "PIC", command: "\\includegraphics{x}" },
-            },
-          ],
-        },
-      ],
-    });
-    const decos = decoratedUuids(doc);
-    expect(decos).toContainEqual({ uuid: "EXG", kind: "exampleBlock" });
-    expect(decos.find((d) => d.uuid === "PIC")).toBeTruthy();
-  });
-
-  it("a plain TOP-LEVEL paragraph is still decorated (unchanged)", () => {
-    const doc = schema.nodeFromJSON({
+  it("a plain TOP-LEVEL paragraph is stamped (unchanged)", () => {
+    const { editor, el } = mountDoc({
       type: "doc",
       content: [
         { type: "paragraph", attrs: { uuid: "P1" }, content: [{ type: "text", text: "top" }] },
       ],
     });
-    const decos = decoratedUuids(doc);
-    expect(decos).toContainEqual({ uuid: "P1", kind: "paragraph" });
+    try {
+      expect(stampedUuids(el)).toContainEqual({ uuid: "P1", kind: "paragraph" });
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("a uuid minted AFTER mount (backfill AttrStep) appears via update()", () => {
+    // The decoration used to add this via the observer diff's addedBlocks;
+    // the stamp now rides the NodeView update() the AttrStep fires.
+    const { editor, el } = mountDoc({
+      type: "doc",
+      content: [
+        { type: "paragraph", attrs: { uuid: null }, content: [{ type: "text", text: "unminted" }] },
+      ],
+    });
+    try {
+      expect(el.querySelector('[data-uuid="MINTED"]')).toBeNull();
+      editor.view.dispatch(editor.state.tr.setNodeAttribute(0, "uuid", "MINTED"));
+      const stamped = el.querySelector('[data-uuid="MINTED"]');
+      expect(stamped).not.toBeNull();
+      expect(stamped!.getAttribute("data-text-object-kind")).toBe("paragraph");
+    } finally {
+      editor.destroy();
+    }
   });
 });
