@@ -413,6 +413,9 @@ function BibliographyPanel({
       if (!next) {
         setSearchQuery("");
         setSearchScope("local");
+        // Toggling search off tears down the context that raised the conflict
+        // strip — clear it too, same as `closeSearch` (task 096, Member A).
+        setConflictDecision(null);
       } else {
         setShowRequestForm(false);
       }
@@ -424,6 +427,11 @@ function BibliographyPanel({
     setShowSearch(false);
     setSearchQuery("");
     setSearchScope("local");
+    // The citekey-conflict strip is owned by the library-search context that
+    // raised it — tearing that context down must clear it, or an orphaned amber
+    // strip lingers over an unrelated list with its four actions still live on a
+    // stale snapshot (task 096, Member A).
+    setConflictDecision(null);
   }, []);
 
   const handleOpenRequestForm = useCallback(() => {
@@ -557,9 +565,25 @@ function BibliographyPanel({
     // fresh `uid` (don't inherit the library entry's) — this is a new, distinct
     // bibliography entry that gets its own durable identity.
     onAddBibEntry?.({ ...libraryEntry, uid: mintBibUid(), key: next, raw: "" });
-    setConflictDecision(null);
-    handleSelectBibKey(next);
-  }, [conflictDecision, bibEntries, onAddBibEntry, handleSelectBibKey]);
+    // Surface the just-added entry (task 096, Member B). A conflict is only
+    // raised from the library-search "Add" affordance or the cross-library
+    // dropdown, so the rendered list is library results / a local search that
+    // never contains the suffixed `<key>-N` — `handleSelectBibKey(next)` alone
+    // would resolve to selectedIdx === -1 (an invisible add). Leave the search
+    // context (which also clears the conflict strip), widen the filter — a
+    // brand-new entry is uncited and hidden under "Cited only" — then
+    // select + scroll the new entry into view.
+    closeSearch();
+    setFilter("all");
+    navigateToEntry(next);
+  }, [
+    conflictDecision,
+    bibEntries,
+    onAddBibEntry,
+    closeSearch,
+    setFilter,
+    navigateToEntry,
+  ]);
 
   const handleConflictRequestMerge = useCallback(() => {
     if (!conflictDecision) return;
@@ -694,7 +718,13 @@ function BibliographyPanel({
             <div className="flex items-center bg-surface border border-edge-subtle rounded overflow-hidden shrink-0">
               <button
                 type="button"
-                onClick={() => setSearchScope("local")}
+                onClick={() => {
+                  setSearchScope("local");
+                  // Flipping away from library scope abandons the context that
+                  // raised the conflict strip — clear it so it can't linger over
+                  // the now-local list (task 096, Member A).
+                  setConflictDecision(null);
+                }}
                 className={`text-[10px] px-1.5 py-1 ${
                   searchScope === "local"
                     ? "bg-surface-muted text-ink-body"
