@@ -27,6 +27,7 @@ import {
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { applyCardMorph } from "@/cards/morphs";
+import { carryCardEnvelope } from "@/cards/envelope";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -478,7 +479,11 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     (sourceId: string): string | null => {
       const source = cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "note") return null;
-      const clone: UserNote = {
+      // Task 076/099: the record-level envelope (`archived`) is carried via the
+      // shared clone/morph SSOT `carryCardEnvelope`; `originalAnchor` (the
+      // note/highlight-specific Mode-B restore hint) is carried inline.
+      // `aiRequest`→false and `links`→[] are intentionally reset for the clone.
+      const clone: UserNote = carryCardEnvelope(source, {
         kind: "note",
         id: generateEntityId(),
         title: source.title,
@@ -488,12 +493,8 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         createdAt: new Date().toISOString(),
         aiRequest: false,
         links: [],
-        // Task 076: carry the record-level envelope fields the morph converters
-        // already preserve (morphs/index.ts). Duplicating an archived note must
-        // stay archived; `originalAnchor` (the Mode-B restore hint) survives.
-        ...(source.archived ? { archived: source.archived } : {}),
         ...(source.originalAnchor ? { originalAnchor: source.originalAnchor } : {}),
-      };
+      });
       update((prev) => ({ cards: [...prev.cards, clone] }));
       return clone.id;
     },
@@ -506,18 +507,17 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     (sourceId: string): string | null => {
       const source = cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "highlight") return null;
-      const clone: HighlightCard = {
+      // Task 076/099: same as cloneNote — envelope (`archived`) via the shared
+      // `carryCardEnvelope` SSOT; `originalAnchor` inline; `aiRequest`/`links` reset.
+      const clone: HighlightCard = carryCardEnvelope(source, {
         kind: "highlight",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
         highlightColor: source.highlightColor,
         aiRequest: false,
         links: [],
-        // Task 076: same envelope-drop fix as cloneNote — an archived highlight
-        // clones archived; `originalAnchor` (the Mode-B restore hint) survives.
-        ...(source.archived ? { archived: source.archived } : {}),
         ...(source.originalAnchor ? { originalAnchor: source.originalAnchor } : {}),
-      };
+      });
       update((prev) => ({ cards: [...prev.cards, clone] }));
       return clone.id;
     },
