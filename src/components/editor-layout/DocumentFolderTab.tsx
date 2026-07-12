@@ -1,134 +1,85 @@
 "use client";
 
-import { memo, type ReactNode, useLayoutEffect, useRef, useState } from "react";
-import { buildActiveTabStrokePath, buildTabFillPath } from "./folder-path";
+import { memo, type ReactNode } from "react";
+import { FolderTabChrome } from "@/components/chrome/FolderTabChrome";
+import {
+  FOLDER_TAB_SEAM_OVERLAP,
+  FOLDER_TAB_VARIANTS,
+  TAB_TOP_GUTTER,
+} from "@/components/chrome/folder-tab-geometry";
 
-const R = 10;
-const S = 12;
-const TAB_H = 30;
-const STROKE = "var(--topbar-border, #d5d3ce)";
+// The topbar variant of the shared folder-tab chrome (geometry SSOT at
+// src/components/chrome/folder-tab-geometry.ts): tabH 30, --topbar-border
+// stroke, full-span seam bridge, footprint 2S + content (the F#8 stroke
+// cushion overhangs instead of widening the box, preserving the
+// inline↔folder pixel-stability contract with InlineTabLabel /
+// ACTIVE_TAB_*_SHIFT_PX). The inner library tabs render the SAME chrome
+// module with the "library" variant — one implementation, no forked
+// geometry (the old src/components/editor-layout/folder-path.ts fork, whose
+// zero-cushion top stroke was the outer strip's missing-top-outline defect,
+// is deleted).
+const V = FOLDER_TAB_VARIANTS.topbar;
 
 type Props = {
-  active: boolean;
   fill: string;
   onClick?: () => void;
   /** Tooltip / aria label (e.g., the doc folder name). */
   title?: string;
   /** Forwarded for color-picker integration. */
   dataPrefs?: string;
-  /** Tab content (icon, label, close button). Width is auto-measured. */
+  /** Tab content (icon, label, close button). Width is layout-owned. */
   children: ReactNode;
 };
 
 /**
- * A tab rendered as a single SVG shape with a continuous border around its
- * full outline (rounded top corners, sides, concave swoop hooks, flat bottom
- * across the flared base).
+ * The ACTIVE outer Virgil-bar folder tab (documents, papers, libraries).
+ * Inactive outer tabs are deliberately flat (InlineTabLabel — no
+ * silhouette), so this component only ever renders the active state.
  *
- * Closed silhouette is always drawn for fill so the body color paints the
- * entire shape including the swoop hooks. For active tabs the stroke uses
- * an open path that omits the bottom edge — the canvas's own top border
- * draws that seam, so the tab merges into the canvas without a redundant
- * closing line.
- *
- * Auto-measures content width with a ResizeObserver so labels of varying
- * lengths produce correctly-sized SVG paths.
+ * The silhouette is the shared three-piece FolderTabChrome: two constant SVG
+ * end caps + a stretchable middle. The content row is in-flow, so the tab
+ * sizes to its label by layout — the old content ResizeObserver is deleted,
+ * not parked. The stroke omits the bottom edge; the bottom fill row overlaps
+ * the topbar's border-b by 1px (negative margin) so the active tab merges
+ * into the canvas below.
  */
-function DocumentFolderTabImpl({
-  active,
-  fill,
-  onClick,
-  title,
-  dataPrefs,
-  children,
-}: Props) {
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const [tabW, setTabW] = useState(120);
-
-  useLayoutEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const update = () => setTabW(Math.ceil(el.getBoundingClientRect().width));
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // SVG box: extra S=12 on each side for the swoop flare. Height is TAB_H+1
-  // so the bottom 1px stroke (centered on path y=TAB_H with the 0.5 pixel-
-  // alignment offset) renders fully inside the viewBox instead of being
-  // clipped — without that extra pixel the seam-line stroke disappears.
-  const svgW = 2 * S + tabW;
-  const svgH = TAB_H + 1;
-  const fillPath = buildTabFillPath({ tabW, tabH: TAB_H, R, S });
-  const strokePath = active
-    ? buildActiveTabStrokePath({ tabW, tabH: TAB_H, R, S })
-    : null;
-
+function DocumentFolderTabImpl({ fill, onClick, title, dataPrefs, children }: Props) {
   return (
     <div
       data-prefs={dataPrefs}
-      className="relative shrink-0 cursor-default self-end"
+      className="relative flex shrink-0 cursor-default self-end"
       style={{
-        width: svgW,
-        height: svgH,
-        zIndex: active ? 10 : 1,
-        // Both states sit with their bottom 1px below the topbar's content
-        // area (overlapping the topbar's bottom border). Active tabs merge
-        // into the canvas via their open path + matching body color; inactive
-        // tabs' own closed-path bottom stroke is collinear with the topbar's
-        // border and paints in the same color, so the seam line reads as
-        // continuous across the window without the tab visibly shifting
-        // between states.
-        marginBottom: -1,
+        height: V.svgH,
+        // Integer-width discipline: max-content is fractional (text
+        // metrics), and the right cap hangs off the wrapper's right edge —
+        // a fractional width defeats the cap's baked half-pixel stroke
+        // crispness (INK_SHIFT). Round the layout-owned width UP to a whole
+        // CSS px, reproducing the old fork's Math.ceil(measured) without
+        // measurement. calc-size() is Chromium 129+ — Virgil is
+        // Chromium-only (FSA).
+        width: "calc-size(max-content, round(up, size, 1px))",
+        zIndex: 10,
+        // Sit with the bottom fill row below the topbar's content area,
+        // overlapping the topbar's bottom border: the open-bottom stroke +
+        // matching body color merge the tab into the canvas.
+        marginBottom: -FOLDER_TAB_SEAM_OVERLAP,
       }}
       onClick={onClick}
-      data-hint={title} aria-label={title}
+      data-hint={title}
+      aria-label={title}
     >
-      <svg
-        className="absolute inset-0 pointer-events-none"
-        width={svgW}
-        height={svgH}
-        viewBox={`0 0 ${svgW} ${svgH}`}
-        shapeRendering="geometricPrecision"
-        aria-hidden
-      >
-        {/* Fill silhouette, translated by 0.5 so its half-stroke crispness
-            aligns with the stroke pass below. */}
-        <g transform="translate(0.5, 0.5)">
-          <path d={fillPath} fill={fill} stroke="none" />
-        </g>
-        {/* Bottom-edge cover: a 1px-tall strip in the body color spanning
-            the silhouette's flared base. This sits over the topbar's
-            border-bottom (which is visible at the same y in screen space)
-            and hides it where this tab paints. For active tabs the open
-            stroke leaves this strip uncovered, so the body color flows
-            into the canvas with no visible seam. For inactive tabs, the
-            closed stroke below paints over this strip with the same
-            topbar-border color, so the seam line reads continuously. */}
-        <rect x="0" y={TAB_H} width={svgW} height="1" fill={fill} />
-        {/* Stroke: closed for inactive (continuous border around the whole
-            tab — including the bottom seam); open for active (omits the
-            bottom edge so the canvas blends in). */}
-        <g transform="translate(0.5, 0.5)">
-          {strokePath ? (
-            <path d={strokePath} fill="none" stroke={STROKE} strokeWidth="1" />
-          ) : (
-            <path d={fillPath} fill="none" stroke={STROKE} strokeWidth="1" />
-          )}
-        </g>
-      </svg>
+      <FolderTabChrome variant="topbar" fill={fill} />
       {/* Tab content sits over the narrow tab portion, vertically centered.
           The S-wide swoop flare on each side is decorative; content is
-          contained in the [S, S+tabW] x-range. */}
+          inset by the geometry SSOT and — being in-flow — SIZES the tab. */}
       <div
-        ref={contentRef}
-        className="absolute flex items-center gap-1.5 pl-3.5 pr-1 text-ink-strong"
+        className="relative flex items-center gap-1.5 pl-3.5 pr-1 text-ink-strong"
         style={{
-          left: S,
-          top: 0,
-          height: TAB_H,
+          zIndex: 1,
+          marginLeft: V.contentInsetLeft,
+          marginRight: V.contentInsetRight,
+          marginTop: TAB_TOP_GUTTER,
+          height: V.tabH,
           minWidth: 80,
         }}
       >

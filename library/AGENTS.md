@@ -16,7 +16,7 @@ library/
 │   ├── LibraryApp.tsx         entry shim — handle state machine
 │   ├── LibraryView.tsx        2-panel grid + inner tab strips
 │   ├── TabbedLibraryPanel.tsx
-│   ├── PanelTabStrip.tsx, PanelFolderTab.tsx, panel-tabs/folder-path.ts
+│   ├── PanelTabStrip.tsx, PanelFolderTab.tsx (tab chrome + geometry live at src/components/chrome/ — see sanctioned imports below)
 │   ├── LeftList.tsx, LeftListRow.tsx, RowActionMenu.tsx
 │   ├── RightDetail.tsx, PaperRender.tsx, PdfView.tsx
 │   ├── BibCard.tsx, BibEditModal.tsx, StatusPill.tsx
@@ -295,4 +295,4 @@ The Reader can be driven live in the dev preview even though the FSA picker does
 
 - Don't add a backend. The cowork pattern is load-bearing.
 - Don't write to `master.bib` or `catalog.json` from the frontend — those are skill outputs.
-- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, `@/components/editor-layout/chrome-*` (sanctioned cross-silo bridges for Reader inheritance), `@/lib/bib-searcher` (the shared fuzzy bib searcher — Library catalog search unifies onto it via `library/lib/catalog-search.ts` rather than duplicating the matcher; it's a leaf-pure `fuse.js`-only module), and `@/lib/pane-resize` (the ONE app-wide divider gesture engine + pane-drag bus — every Library resizer runs on it, and the tab-chrome observers park on its `isPaneDragging`/`onPaneDragChange` edges; it replaced `library/lib/gutter-drag.ts`). Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.
+- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, `@/components/editor-layout/chrome-*` (sanctioned cross-silo bridges for Reader inheritance), `@/lib/bib-searcher` (the shared fuzzy bib searcher — Library catalog search unifies onto it via `library/lib/catalog-search.ts` rather than duplicating the matcher; it's a leaf-pure `fuse.js`-only module), `@/lib/pane-resize` (the ONE app-wide divider gesture engine + pane-drag bus — every Library resizer runs on it, and the strip's flush-right tuck observer parks on its `isPaneDragging`/`onPaneDragChange` edges; it replaced `library/lib/gutter-drag.ts`), and `@/components/chrome/FolderTabChrome` + `@/components/chrome/folder-tab-geometry` (the ONE folder-tab chrome + geometry SSOT shared by the outer Virgil-bar tabs and the inner library tabs — a layout-driven three-piece silhouette with zero ResizeObservers; it replaced the forked `library/components/panel-tabs/folder-path.ts` / `src/components/editor-layout/folder-path.ts` measured path builders). Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.

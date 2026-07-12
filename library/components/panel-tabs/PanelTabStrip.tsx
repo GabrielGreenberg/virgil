@@ -18,7 +18,10 @@ import { isCentral } from "@library/lib/library-store";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { PanelFolderTab } from "./PanelFolderTab";
-import { STRIP_SIDE_PAD } from "./folder-path";
+import {
+  STRIP_SIDE_PAD,
+  STRIP_TOP_HEADROOM,
+} from "@/components/chrome/folder-tab-geometry";
 import { isPaneDragging, onPaneDragChange } from "@/lib/pane-resize";
 
 // F#15 inactive-tab floor: inactive tabs absorb the squeeze first and
@@ -166,6 +169,15 @@ export function PanelTabStrip({
   // on both sides, so "flush right" is: active-tab wrapper right ≈ panel right −
   // pad. RAF-coalesced + equality-gated; re-runs on selection / tab-count change
   // and on any resize. Library chrome, not a doc-keystroke subscriber.
+  //
+  // KEPT ResizeObserver (the tab chrome itself is layout-driven and needs
+  // none): whether the active tab's right edge coincides with the body's
+  // right edge depends on the SUM of the sibling tabs' natural widths versus
+  // the strip's width — a cross-subtree layout relationship CSS cannot
+  // express (no "am I flush with my scroll container's edge" selector), and
+  // it toggles a discrete art variant (the tucked right cap), not a style
+  // that could stretch. Equality-bailed boolean + RAF-coalesced + parked on
+  // the PaneDragBus below.
   useEffect(() => {
     const panel = panelRef?.current;
     if (!panel) {
@@ -186,12 +198,12 @@ export function PanelTabStrip({
       setActiveFlushRight((prev) => (prev === flush ? prev : flush));
     };
     const schedule = () => {
-      // Park during a pane-resize drag (the app-wide pane-drag bus — for
-      // symmetry with the tab-width + body-frame observers): this measure is
-      // already RAF-coalesced + equality-gated so it rarely setStates, but
-      // parking also skips its two per-frame getBoundingClientRect reads. The
-      // tuck reconciles on the end edge — while the tab silhouette itself is
-      // frozen mid-drag anyway (task 090).
+      // Park during a pane-resize drag (the app-wide pane-drag bus): this
+      // measure is already RAF-coalesced + equality-gated so it rarely
+      // setStates, but parking also skips its two per-frame
+      // getBoundingClientRect reads. The tuck reconciles once on the end
+      // edge; the silhouette itself is layout-driven and tracks the drag
+      // live, so a one-gesture-stale tuck is the only deferred geometry.
       if (isPaneDragging()) {
         dirty = true;
         return;
@@ -449,22 +461,29 @@ export function PanelTabStrip({
         display: "flex",
         alignItems: "flex-end",
         gap: 2,
+        // Ink-cushion by construction (geometry SSOT,
+        // src/components/chrome/folder-tab-geometry.ts): STRIP_TOP_HEADROOM
+        // (≥2px) of real top padding keeps the active tab's top stroke well
+        // clear of this strip's overflow clip at any DPR — the top edge gets
+        // TAB_TOP_GUTTER (inside the cap SVGs) PLUS this headroom, so no
+        // stroke ink is ever adjacent to a clip boundary (the pre-task-087
+        // top-stroke-eater class, dead by construction).
         // 1px bottom padding + -1px bottom margin lets the active tab's 1px
-        // fill bridge spill exactly 1px below the strip and overlap the body's
-        // top border — covering it under the active tab so the tab merges into
-        // the page with NO seam line — without changing the strip's outer
-        // footprint. The overflowY:hidden scroll-clip would otherwise eat that
-        // 1px; the padding keeps it inside the clip box. The strip bg is the
-        // solid --library-bg, so the inter-tab gaps and the tail past the last
-        // tab read as PURE library field — no chrome there (task 048); the page
-        // outline lives ONLY under the ACTIVE tab (its silhouette stroke +
-        // fill-bridge merging into the body edge). Inactive tabs are
-        // deliberately FLAT BackgroundTab divs with no stroke of their own
-        // (task 048) — the only line under them is the body frame's top edge.
-        // Horizontal pad is the STRIP_SIDE_PAD SSOT (folder-path.ts): the body
-        // frame below insets by the SAME constant so its rounded top corners
+        // bottom fill row spill exactly 1px below the strip and overlap the
+        // body's top border — covering it under the active tab so the tab
+        // merges into the page with NO seam line — without changing the
+        // strip's outer footprint. The overflowY:hidden scroll-clip would
+        // otherwise eat that 1px; the padding keeps it inside the clip box.
+        // The strip bg is the solid --library-bg, so the inter-tab gaps and
+        // the tail past the last tab read as PURE library field — no chrome
+        // there (task 048); the page outline lives ONLY under the ACTIVE tab
+        // (its silhouette stroke + bottom fill row merging into the body
+        // edge). Inactive tabs are deliberately FLAT BackgroundTab divs with
+        // no stroke of their own (task 048) — the only line under them is the
+        // body's top border. Horizontal pad is the STRIP_SIDE_PAD SSOT: the
+        // body below insets by the SAME constant so its rounded top corners
         // tuck exactly under the outermost tabs' swoop feet (task 047 no-wing).
-        padding: `0 ${STRIP_SIDE_PAD}px 1px`,
+        padding: `${STRIP_TOP_HEADROOM}px ${STRIP_SIDE_PAD}px 1px`,
         marginBottom: -1,
         // The strip + the (transparent) inactive tabs sit on the LIBRARY
         // backdrop (--library-bg) so unselected tabs read as part of the
@@ -489,10 +508,11 @@ export function PanelTabStrip({
         minWidth: 0,
         position: "relative",
         zIndex: 20,
-        // F#15: tabs are flex:1 1 auto (inactive) / flex:0 1 auto (active) —
-        // they SHARE the strip width and compress (inactive names ellipsize)
-        // instead of flex-shrink:0 + scroll. Only past every tab's floor does
-        // total content exceed the strip; then the scroll-active-into-view
+        // F#15: tabs SHARE the strip width — inactive tabs are flex:1 1 auto
+        // (they compress and their names ellipsize first), while the ACTIVE
+        // tab is flex:0 0 auto and RESISTS, holding its full name down to its
+        // reserved min-width floor (see PanelFolderTab). Only past the floors
+        // does total content exceed the strip; then the scroll-active-into-view
         // effect below keeps the active tab visible via scrollLeft. Scrollbar
         // hidden — the strip stays visually clean. Per-tab menus are
         // body-portaled (see TabMenuTrigger) so this overflow can't clip them.
@@ -538,7 +558,6 @@ export function PanelTabStrip({
             <Fragment key={tab.id}>
               <PanelFolderTab
                 ref={setRef}
-                active
                 fill={activeFill}
                 title={tab.label}
                 dataTabId={tab.id}
@@ -582,20 +601,15 @@ export function PanelTabStrip({
                   />
                 ) : (
                   <span
-                    // Tag the ONE flexible child so PanelFolderTab can read the
-                    // label's un-clipped intrinsic width off it (scrollWidth) and
-                    // grow the active tab to its full name — instead of the
-                    // width-clamped overlay's latched scrollWidth (task 088).
-                    data-tab-title=""
                     style={{
                       fontSize: 13,
                       lineHeight: "16px",
                       whiteSpace: "nowrap",
-                      // F#15: the active tab's name ellipsizes only when the tab
-                      // is compressed toward its floor (the overlay clips it);
-                      // above the floor the tab grows to its natural width and
-                      // the name shows in full. min-w-0 lets flex actually
-                      // shrink this span below its content width.
+                      // F#15: the active tab sizes to its content by layout
+                      // (in-flow content row, flex 0 0 auto), so the name
+                      // shows in full; the ellipsis engages only at the
+                      // reserved-min-width floor. min-w-0 lets flex actually
+                      // shrink this span below its content width there.
                       minWidth: 0,
                       overflow: "hidden",
                       textOverflow: "ellipsis",

@@ -64,7 +64,7 @@ The token scales:
   drift into a warm-on-cool clash (the failure mode when these edges rode the
   top-bar token `--topbar-border` over the promoted cool `--library-bg`; task
   048). Any new Library-surface edge consumes THIS token, never
-  `--topbar-border`; a guard in `folder-path.test.ts` fails the build if a
+  `--topbar-border`; a guard in `tab-chrome-contracts.test.ts` fails the build if a
   `library/` source re-grabs `--topbar-border`. The general pattern: an edge
   token that must harmonize with a surface should be `color-mix`-derived FROM
   that surface's var, not a hand-picked hex that a future retone can desync.
@@ -103,12 +103,14 @@ intentional flattening resets (`0`).
 
 **Deliberate exceptions** (do NOT collapse into the scale):
 
-- `--library-manila-radius` (10px) — the Library "manila folder" corner. The
-  active-tab SVG silhouette (`library/components/panel-tabs/folder-path.ts`)
-  and the panel body frame tangent at R=10 by design. Named so the tab
-  geometry and the frame read one value; never `--pod-radius`.
-- `folder-path.ts` `R`/`S` sweep constants — path geometry, touched at the
-  geometry layer, never tokenized (guard-allowlisted).
+- `--library-manila-radius` (10px) — the "manila folder" corner. The
+  folder-tab shoulder arcs (`src/components/chrome/folder-tab-geometry.ts`,
+  `MANILA_RADIUS`) and the Library panel body's CSS `border-radius` tangent
+  at R=10 by design. Named so the tab geometry and the body border read one
+  value; never `--pod-radius`.
+- `folder-tab-geometry.ts` `MANILA_RADIUS`/`FOLDER_TAB_SWOOP` sweep constants
+  — path geometry, touched at the geometry layer, never tokenized
+  (guard-allowlisted).
 
 A genuine one-off can carry a `radius-allow` comment on the line to opt out of
 the guard, but reach for that rarely — a new radius almost always belongs to a
@@ -1077,6 +1079,37 @@ floating panels already do). Because the gate is the `data-display-mode` SSOT,
 WCO chrome now renders in the dev preview too — set
 `localStorage['virgil:wco-debug']='1'` (or append `?wco-debug`), which forces
 the attribute AND injects synthetic insets.
+
+## Folder tabs — layout-driven chrome
+
+Both tab strips (outer Virgil bar + inner Library panels) render their
+ACTIVE tab through ONE module: `src/components/chrome/FolderTabChrome.tsx`
+with the geometry SSOT `src/components/chrome/folder-tab-geometry.ts`
+(named variants `library`/`topbar` for the height/edge-token/seam
+differences). The silhouette is a three-piece composition — two constant
+SVG end caps (swoop foot + shoulder; half-pixel crispness baked in once)
+plus a stretchable middle (fill background + 1px top border) — so the tab
+tracks any width purely by layout. Rules that generalize:
+
+- **No measured chrome.** Never rebuild geometry from a
+  ResizeObserver/getBoundingClientRect; if only one dimension varies,
+  decompose into constant caps + a stretchable middle.
+- **Ink cushion by construction.** Stroke ink sits ≥ 1 CSS px from every
+  clip boundary (`TAB_TOP_GUTTER` inside the caps; `STRIP_TOP_HEADROOM`
+  padding on a clipping strip) — never flush against an
+  `overflow: hidden` edge.
+- **Seam fusion by z-order.** The active tab's open-bottom stroke +
+  bottom fill row overlap the body/canvas 1px top border via
+  `marginBottom: -FOLDER_TAB_SEAM_OVERLAP` — no measured bridge, correct
+  mid-drag.
+- **Integer widths without measurement.** Text metrics make `max-content`
+  fractional, which would put an edge-positioned cap's baked half-pixel
+  stroke off device-pixel phase (AA-soft right edge). Both wrappers use
+  `width: calc-size(max-content, round(up, size, 1px))` (Chromium 129+;
+  Virgil is Chromium-only) — the old forks' `Math.ceil(measured)` with
+  layout still owning the size.
+- **Inactive tabs are flat** (BackgroundTab / InlineTabLabel) — no
+  silhouette, by design.
 
 ## Library tab — double-tab pattern
 

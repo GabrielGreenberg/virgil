@@ -135,11 +135,14 @@
   --panel-radius: 14px; /* panel-only; editor pod & menus stay 8px */
   --radius-pill: 9999px;
   /* Deliberate exception, NOT a scale step: the Library "manila folder"
-     corner. The active-tab SVG silhouette (library/components/panel-tabs/
-     folder-path.ts) and the panel body frame must tangent at R=10, a
+     corner. The active-tab shoulder arc (MANILA_RADIUS in
+     src/components/chrome/folder-tab-geometry.ts — the folder-tab geometry
+     SSOT) and the panel body's plain CSS border-radius
+     (library/components/TabbedLibraryPanel.tsx) must tangent at R=10, a
      purpose-chosen aesthetic — do NOT collapse to --pod-radius. Named so
-     the tab geometry + the frame read ONE value (see STYLE_GUIDE "Radius
-     scale" exceptions; the folder-tab tangency SSOT is task 014). */
+     the tab geometry + the body frame read ONE value; the token↔constant
+     equality is pinned by folder-tab-geometry.test.ts (see STYLE_GUIDE
+     "Radius scale" exceptions; tangency lineage: task 014). */
   --library-manila-radius: 10px;
   --pod-gap: 10px;
   --pod-border: 1px solid var(--border-light);

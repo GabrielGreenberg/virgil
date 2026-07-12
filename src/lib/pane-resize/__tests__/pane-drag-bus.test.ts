@@ -94,10 +94,13 @@ describe("pane-drag-bus", () => {
   });
 
   // Re-expressed from the retired gutter-drag.test.ts (task 090): the
-  // consumer-side park→settle contract the tab-chrome ResizeObservers
-  // (PanelFolderTab / TabbedLibraryPanel / PanelTabStrip) implement against
-  // this bus — parked fires stash a dirty bit, and the end edge reconciles
-  // exactly once.
+  // consumer-side park→settle contract implemented against this bus —
+  // parked fires stash a dirty bit, and the end edge reconciles exactly
+  // once. The surviving tab-chrome consumer is PanelTabStrip's flush-right
+  // tuck ResizeObserver (the PanelFolderTab / TabbedLibraryPanel observers
+  // were DELETED outright with the measured-SVG chrome in Phase 3, not
+  // parked); Phases 4/5 add reader/editor-side consumers of the same
+  // protocol.
   it("models the park→settle cycle: a parked observer reconciles exactly once on release", () => {
     let measures = 0;
     let dirty = false;

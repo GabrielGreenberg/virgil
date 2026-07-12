@@ -37,7 +37,7 @@ const EXTS = new Set([".css", ".ts", ".tsx"]);
 const ALLOWLIST_FILES = [
   // Folder-tab SVG silhouette: R/S sweep constants are path geometry, not CSS
   // corners — they must be touched at the geometry layer, never tokenized.
-  "library/components/panel-tabs/folder-path.ts",
+  "src/components/chrome/folder-tab-geometry.ts",
   // The guard itself + generated skill bundles.
   "scripts/check-radius-tokens.mjs",
 ];

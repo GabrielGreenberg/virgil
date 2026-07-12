@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -21,7 +20,6 @@ import {
   type Registry,
 } from "@library/lib/library-store";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
-import { isPaneDragging, onPaneDragChange } from "@/lib/pane-resize";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { useProjectLibrary } from "@library/lib/project-library-context";
 import {
@@ -49,7 +47,7 @@ import {
   type RecentLibrary,
   type TabDef,
 } from "./panel-tabs/PanelTabStrip";
-import { STRIP_SIDE_PAD, buildFramePath } from "./panel-tabs/folder-path";
+import { STRIP_SIDE_PAD } from "@/components/chrome/folder-tab-geometry";
 
 interface Props {
   panel: PanelKey;
@@ -307,61 +305,6 @@ export default function TabbedLibraryPanel({
 
   const panelRef = useRef<HTMLDivElement | null>(null);
 
-  // Task 047 — the body-frame's outline is a single SVG stroke (replacing the
-  // old CSS `border`), so we need the body's measured CSS box to draw the
-  // rounded-rect path at exactly its size. A ResizeObserver keeps it in sync
-  // with panel resize / content reflow. (Library chrome, NOT the editor
-  // keystroke path — a plain layout observer here is fine.)
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  const [frameBox, setFrameBox] = useState<{ w: number; h: number } | null>(
-    null,
-  );
-  useLayoutEffect(() => {
-    const el = bodyRef.current;
-    if (!el) {
-      setFrameBox(null);
-      return;
-    }
-    let dirty = false;
-    const measure = () => {
-      const r = el.getBoundingClientRect();
-      // Round to integer CSS px so the path coords stay DPR-crisp (the tab
-      // paths do the same); the <1px rounding delta is absorbed by the body's
-      // overflow:hidden. Bail on a 0-size transient (pre-layout paint).
-      const w = Math.round(r.width);
-      const h = Math.round(r.height);
-      setFrameBox((prev) =>
-        prev && prev.w === w && prev.h === h ? prev : { w, h },
-      );
-    };
-    // Park during a pane-resize drag (the app-wide pane-drag bus):
-    // `Math.round(width)` flips each frame of a continuous drag, breaking the
-    // equality gate below and repainting the body-frame SVG per frame. Stash
-    // dirty + reconcile once on the end edge (task 090).
-    const onResize = () => {
-      if (isPaneDragging()) {
-        dirty = true;
-        return;
-      }
-      measure();
-    };
-    measure();
-    const ro = new ResizeObserver(onResize);
-    ro.observe(el);
-    const unsub = onPaneDragChange((active) => {
-      if (!active && dirty) {
-        dirty = false;
-        measure();
-      }
-    });
-    return () => {
-      ro.disconnect();
-      unsub();
-    };
-    // Re-attach when the active library changes (the body div remounts) so the
-    // observer tracks the live node.
-  }, [activeLibrary]);
-
   // Panel-wide drop zone — accepts:
   //   - Entry rows (ENTRY_DT_TYPE): adds to the active library if it's a
   //     drop-eligible custom library. Per-tab targeting still wins
@@ -528,21 +471,22 @@ export default function TabbedLibraryPanel({
         fileDragActive={fileDragActive}
       />
       {activeLibrary ? (
-        // Body region = the "page". Its outline is a single SVG-stroke frame
-        // (task 047, drawn below), replacing the old CSS border — so the frame
-        // arc and the tab silhouette arc share MANILA_RADIUS by construction
-        // (tangent, no hairline overshoot). ALL FOUR corners are now rounded:
-        // the body is inset horizontally by STRIP_SIDE_PAD (the same pad the tab
-        // strip uses), so its rounded TOP corners begin exactly under the
-        // outermost tabs' swoop feet (frameTopCornerStartX === firstTabSwoopFootX)
-        // instead of arcing out into the bare gutter beside the tabs — the "wing"
-        // that e63ee738 squared the corners to avoid is gone WITHOUT re-squaring.
-        // The active tab's open-bottomed stroke + 1px fill bridge still merge
-        // into the frame's top edge (the strip's z-index paints its bridge over
-        // the frame under the active tab). Paper-kind tabs fill the warm Virgil
-        // canvas; other kinds use --surface.
+        // Body region = the "page". Its outline is a plain CSS border owned by
+        // the layout engine — it tracks every resize (including mid-drag)
+        // natively, with no measurement, no ResizeObserver, no park/reconcile
+        // protocol (the task-047 measured-SVG frame + its task-090 parking are
+        // deleted). Tangency with the tab silhouette is a radius-token
+        // relationship: border-radius consumes var(--library-manila-radius)
+        // === the numeric MANILA_RADIUS the tab caps' shoulder arcs use
+        // (locked by folder-tab-geometry.test.ts). The body is inset
+        // horizontally by STRIP_SIDE_PAD (the same pad the tab strip uses), so
+        // its rounded TOP corners begin exactly under the outermost tabs'
+        // swoop feet — the task-047 "no wing" invariant, now a pure layout
+        // relationship. The active tab's open-bottomed stroke + bottom fill
+        // row merge into this border's top edge (the strip's z-index paints
+        // the tab's seam row over the border under the active tab). Paper-kind
+        // tabs fill the warm Virgil canvas; other kinds use --surface.
         <div
-          ref={bodyRef}
           style={{
             position: "relative",
             flex: 1,
@@ -554,43 +498,13 @@ export default function TabbedLibraryPanel({
             background: isPaper(activeLibrary)
               ? "var(--background)"
               : "var(--surface)",
-            // border-radius here rounds/clips the page BACKGROUND + content; the
-            // visible 1px outline is the SVG frame below (single owner, toned
-            // --library-edge). Both consume var(--library-manila-radius) === the
-            // numeric MANILA_RADIUS the frame path uses, so they stay tangent.
+            border: "1px solid var(--library-edge)",
             borderRadius: "var(--library-manila-radius)",
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
           }}
         >
-          {frameBox ? (
-            // Single-owner page outline: a rounded-rect SVG stroke sharing
-            // MANILA_RADIUS with the tabs. z-index 2 lifts it over the page
-            // content but stays well under the tab strip (z 20), so the active
-            // tab's fill bridge still covers the frame's top edge under it.
-            <svg
-              aria-hidden
-              width={frameBox.w}
-              height={frameBox.h}
-              viewBox={`0 0 ${frameBox.w} ${frameBox.h}`}
-              shapeRendering="geometricPrecision"
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                pointerEvents: "none",
-                zIndex: 2,
-              }}
-            >
-              <path
-                d={buildFramePath({ w: frameBox.w, h: frameBox.h })}
-                fill="none"
-                stroke="var(--library-edge)"
-                strokeWidth={1}
-              />
-            </svg>
-          ) : null}
           {isPaper(activeLibrary) ? (
             // L3 keep-alive: an LRU of the last N reader papers stays mounted
             // (hidden) so switching between inner paper tabs is instant. Reuses
