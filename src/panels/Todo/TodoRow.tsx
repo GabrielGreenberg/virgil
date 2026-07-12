@@ -8,6 +8,7 @@ import {
   PanelCard,
   CardTitleInput,
   AiRequestCheckbox,
+  keyEventFromInteractiveControl,
 } from "@/components/panel-primitives";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
@@ -156,6 +157,12 @@ export function TodoRow({
       onFocusCapture={() => { if (!isSelected) onSelect(item.id); }}
       onKeyDown={(e) => {
         if (!selected) return;
+        // Todo is the lone editable card with a bare card-level delete-key
+        // handler (plain <input> title + <textarea> notes, no EditableCard
+        // focus-tracking). Without this guard a Backspace/Delete typed inside a
+        // field bubbles up and deletes the whole card (task 096). Bail when the
+        // keydown originated from an interactive control, not the card shell.
+        if (keyEventFromInteractiveControl(e)) return;
         if (e.key === "Delete" || e.key === "Backspace") {
           e.preventDefault();
           tryDelete();

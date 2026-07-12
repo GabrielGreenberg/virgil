@@ -108,3 +108,67 @@ describe("TodoRow delete-confirm (task 067 facet 2)", () => {
     expect(onDelete).toHaveBeenCalledWith("t1");
   });
 });
+
+// task 096 — the card-level Delete/Backspace handler must NOT fire while a
+// field inside the card is focused (Todo is the lone editable card wiring a
+// bare `!selected` card handler around a plain <input>/<textarea>; the keydown
+// bubbles up). Focusing a field selects the card (onFocusCapture), so `selected`
+// is true — the ONLY thing that must stop the card-delete is the event-origin
+// guard. These pin that a keydown from the title input / notes textarea edits
+// the character and never triggers card deletion or the confirm.
+describe("TodoRow delete-key focus guard (task 096)", () => {
+  // The guard only matters when the card is SELECTED (else the handler bails at
+  // `!selected`). In real use, focusing a field selects the card via
+  // onFocusCapture; here we render selected so the keydown reaches the guard.
+  function renderSelectedRow(item: TodoItem, onDelete = vi.fn()) {
+    cardStore.expand(REF);
+    render(
+      <TodoRow
+        item={item}
+        selected
+        onToggle={vi.fn()}
+        onUpdate={vi.fn()}
+        onUpdateNotes={vi.fn()}
+        onSetAiRequest={vi.fn()}
+        onDelete={onDelete}
+        onSelect={vi.fn()}
+        isAnchored={false}
+      />,
+    );
+    return onDelete;
+  }
+
+  it("Backspace from the TITLE input does NOT delete the card or open the confirm", () => {
+    const onDelete = renderSelectedRow(makeTodo({ text: "buy milk" }));
+    fireEvent.keyDown(screen.getByPlaceholderText("Task"), { key: "Backspace" });
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByText("This item has text. Delete it?")).toBeNull();
+  });
+
+  it("Delete from the TITLE input does NOT delete the card or open the confirm", () => {
+    const onDelete = renderSelectedRow(makeTodo({ text: "buy milk" }));
+    fireEvent.keyDown(screen.getByPlaceholderText("Task"), { key: "Delete" });
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByText("This item has text. Delete it?")).toBeNull();
+  });
+
+  it("Backspace from the NOTES textarea does NOT delete the card or open the confirm", () => {
+    const onDelete = renderSelectedRow(makeTodo({ text: "buy milk", notes: "a" }));
+    fireEvent.keyDown(screen.getByPlaceholderText("Notes..."), { key: "Backspace" });
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByText("This item has text. Delete it?")).toBeNull();
+  });
+
+  it("Backspace on the card SHELL (not a field) still routes to the card delete", () => {
+    // A pristine (blank) card deletes immediately; a Backspace whose target IS
+    // the card shell must reach tryDelete — proving the guard only suppresses
+    // field-origin keydowns, not the shell convention. onKeyDown lives on the
+    // card root (which also carries data-todo-entry), so dispatching there makes
+    // the shell both target and currentTarget.
+    const onDelete = renderSelectedRow(makeTodo({ text: "", notes: "" }));
+    const shell = document.querySelector<HTMLElement>('[data-todo-entry="t1"]');
+    expect(shell).not.toBeNull();
+    fireEvent.keyDown(shell!, { key: "Backspace" });
+    expect(onDelete).toHaveBeenCalledWith("t1");
+  });
+});
