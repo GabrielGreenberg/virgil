@@ -294,12 +294,28 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
           input.select();
         }
 
+        // Memo of the last-rendered annotation inputs. update() re-renders
+        // ONLY when one of them changed — a plain keystroke inside the
+        // paragraph otherwise re-ran the whole innerHTML="" + span/button
+        // rebuild (listener re-attach + style invalidation in the annotation
+        // subtree) on every character. `undefined` = never rendered.
+        let lastAnnotTitle: string | null | undefined;
+        let lastAnnotHasText: boolean | undefined;
+
+        function annotHasText(node: PMNode): boolean {
+          // content.size short-circuit avoids building the O(paragraph)
+          // textContent string for empty paragraphs.
+          return node.content.size > 0 && node.textContent.trim().length > 0;
+        }
+
         function renderAnnot() {
           const title = currentNode.attrs.parTitle as string | null;
+          const hasText = annotHasText(currentNode);
+          lastAnnotTitle = title;
+          lastAnnotHasText = hasText;
           titleAnnot.innerHTML = "";
 
           // Toggle has-text for drag handle visibility
-          const hasText = currentNode.textContent.trim().length > 0;
           wrapper.classList.toggle("has-text", hasText);
 
           if (title) {
@@ -370,7 +386,13 @@ export function createParagraphWithTitle(opts?: ParagraphSurfaceOpts) {
           update(updatedNode) {
             if (updatedNode.type.name !== "paragraph") return false;
             currentNode = updatedNode;
-            if (!titleAnnot.querySelector("input")) renderAnnot();
+            if (
+              !titleAnnot.querySelector("input") &&
+              ((updatedNode.attrs.parTitle as string | null) !== lastAnnotTitle ||
+                annotHasText(updatedNode) !== lastAnnotHasText)
+            ) {
+              renderAnnot();
+            }
             return true;
           },
           destroy() {},
@@ -584,8 +606,14 @@ function createListTitleNodeView(
       overlay.addEventListener("mousedown", (e) => { e.preventDefault(); commit(); });
     }
 
+    // Memo of the last-rendered title. update() re-renders only on change —
+    // a keystroke inside a list item otherwise re-ran the innerHTML=""
+    // rebuild on every character. `undefined` = never rendered.
+    let lastAnnotTitle: string | null | undefined;
+
     function renderAnnot() {
       const title = currentNode.attrs.parTitle as string | null;
+      lastAnnotTitle = title;
       titleAnnot.innerHTML = "";
 
       if (title) {
@@ -650,7 +678,12 @@ function createListTitleNodeView(
         if (updatedNode.type.name !== typeName) return false;
         currentNode = updatedNode;
         applyOrderedListAttrs();
-        if (!titleAnnot.querySelector("input")) renderAnnot();
+        if (
+          !titleAnnot.querySelector("input") &&
+          (updatedNode.attrs.parTitle as string | null) !== lastAnnotTitle
+        ) {
+          renderAnnot();
+        }
         return true;
       },
     };
@@ -1108,10 +1141,20 @@ export function createHeadingWithLabel(
           setTimeout(() => clearInterval(refocusId), 250);
         }
 
+        // Memo of the last-rendered annotation inputs (typeName derives from
+        // `level`, which can't change within this NodeView's life — a level
+        // change returns false from update() and recreates the view). Typing
+        // inside the heading otherwise re-ran the full chip/toggle/label
+        // innerHTML rebuild on every character. `undefined` = never rendered.
+        let lastAnnotNumbered: boolean | undefined;
+        let lastAnnotLabel: string | null | undefined;
+
         function renderAnnot() {
           const typeName = getTypeName(currentNode);
           const isNumbered = currentNode.attrs.numbered !== false;
           const label = currentNode.attrs.label as string | null;
+          lastAnnotNumbered = isNumbered;
+          lastAnnotLabel = label;
           annot.innerHTML = "";
 
           // 1. Type chip — clickable dropdown trigger.
@@ -1323,14 +1366,25 @@ export function createHeadingWithLabel(
             if (updatedNode.type.name !== "heading") return false;
             if (updatedNode.attrs.level !== currentNode.attrs.level) return false;
             currentNode = updatedNode;
-            // Keep section number in sync for CSS ::before
-            if (updatedNode.attrs.numbered !== false && updatedNode.attrs.sectionNumber) {
-              h.dataset.sectionNumber = updatedNode.attrs.sectionNumber;
-            } else {
-              delete h.dataset.sectionNumber;
+            // Keep section number in sync for CSS ::before. Same-value
+            // dataset writes still queue mutation records — guard on change.
+            const nextSectionNumber =
+              updatedNode.attrs.numbered !== false && updatedNode.attrs.sectionNumber
+                ? (updatedNode.attrs.sectionNumber as string)
+                : undefined;
+            if (h.dataset.sectionNumber !== nextSectionNumber) {
+              if (nextSectionNumber === undefined) delete h.dataset.sectionNumber;
+              else h.dataset.sectionNumber = nextSectionNumber;
             }
-            // Don't overwrite annot if an input is active
-            if (!annot.querySelector("input")) renderAnnot();
+            // Don't overwrite annot if an input is active; skip when the
+            // rendered inputs (numbered, label) are unchanged.
+            if (
+              !annot.querySelector("input") &&
+              ((updatedNode.attrs.numbered !== false) !== lastAnnotNumbered ||
+                (updatedNode.attrs.label as string | null) !== lastAnnotLabel)
+            ) {
+              renderAnnot();
+            }
             refreshFoldBtn();
             return true;
           },
