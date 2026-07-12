@@ -129,19 +129,20 @@ function minimalObserverPlugin() {
     state: {
       init: (_c: unknown, state: EditorState) => ({
         structure: buildInitial(state.doc),
+        pendingMaps: [],
         pendingDiff: null,
       }),
-      apply(tr: import("@tiptap/pm/state").Transaction, prev: { structure: ReturnType<typeof buildInitial>; pendingDiff: unknown }) {
+      apply(tr: import("@tiptap/pm/state").Transaction, prev: { structure: ReturnType<typeof buildInitial>; pendingMaps: readonly unknown[]; pendingDiff: unknown }) {
         if (!tr.docChanged) {
           return prev.pendingDiff !== null
-            ? { structure: prev.structure, pendingDiff: null }
+            ? { structure: prev.structure, pendingMaps: [], pendingDiff: null }
             : prev;
         }
         const diff = inspectSteps(tr, tr.before, tr.doc, prev.structure);
         if (diff === EMPTY_DIFF) {
-          return { structure: prev.structure, pendingDiff: null };
+          return { structure: prev.structure, pendingMaps: [], pendingDiff: null };
         }
-        return { structure: applyDiff(prev.structure, diff), pendingDiff: diff };
+        return { structure: applyDiff(prev.structure, diff), pendingMaps: [], pendingDiff: diff };
       },
     },
   });

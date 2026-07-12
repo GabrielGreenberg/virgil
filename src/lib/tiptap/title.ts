@@ -1,7 +1,7 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
-import { readDocStructure, readPendingDiff, touchedBlockPositions } from "./doc-structure";
+import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
 
 /**
  * Clears parTitle (and uuid) from empty paragraphs.
@@ -46,12 +46,11 @@ export const EmptyParagraphTitleCleaner = Extension.create({
 
           const { doc, schema } = newState;
           const paragraphType = schema.nodes.paragraph;
-          const structure = readDocStructure(newState);
           let tr: typeof newState.tr | null = null;
 
           // Only the touched blocks (and their neighbours) can have just
           // become an empty titled paragraph — never the whole doc.
-          for (const pos of touchedBlockPositions(pending, structure, doc, true)) {
+          for (const pos of touchedBlockPositions(pending, newState, doc, true)) {
             const node = doc.nodeAt(pos);
             if (!node || node.type !== paragraphType) continue;
             if (!node.attrs.parTitle) continue;

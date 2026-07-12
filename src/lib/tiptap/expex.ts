@@ -4,7 +4,7 @@ import { TextSelection, Selection } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { generateShortId } from "@/lib/uuid";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
-import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { readPendingDiff, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
 
 // The exampleBlock NodeView no longer hosts a grip or popout button — the
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
@@ -1811,10 +1811,11 @@ export const ExpexNumbering = Extension.create({
               // to run the numberer. The cost is a doc walk in those
               // cases, but those are still rarer than pure-text edits.
               if (!exampleContentTouched && pending.contentChangedUuids.size > 0) {
-                // Re-check by reading the structure-index.
-                const structure = readDocStructure(newState);
+                // Re-check by resolving each touched uuid against the
+                // structure index — per-uuid, no whole-snapshot
+                // materialization on the keystroke path.
                 for (const uuid of pending.contentChangedUuids) {
-                  const block = structure.blocks.get(uuid);
+                  const block = resolveTouchedBlock(newState, uuid);
                   if (block?.typeName === "exampleBlock") {
                     exampleContentTouched = true;
                     break;

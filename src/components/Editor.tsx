@@ -383,23 +383,32 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 // editors and resolve the FOCUSED one on demand (falling back to the sole
 // editor). Dev-only and lazy: the getter touches the bus only when called from
 // the console — zero per-keystroke cost.
-type BusStats = { emitCount: number; version: number };
+type BusStats = { emitCount: number; version: number; materializeCount: number };
 const busStatsEditors = new Set<Editor>();
 let busStatsInstalled = false;
 function installBusStatsProbe() {
   if (busStatsInstalled || typeof window === "undefined") return;
   busStatsInstalled = true;
-  void import("@/lib/tiptap/doc-structure").then(({ getBus }) => {
-    (
-      window as unknown as { __virgilBusStats?: (() => BusStats | null) | null }
-    ).__virgilBusStats = (): BusStats | null => {
-      const ed = pickProbeEditor(busStatsEditors);
-      if (!ed) return null;
-      const bus = getBus(ed);
-      if (!bus) return null;
-      return { emitCount: bus.emitCount, version: bus.structure.version };
-    };
-  });
+  void import("@/lib/tiptap/doc-structure").then(
+    ({ getBus, peekStructureVersion, getMaterializeCount }) => {
+      (
+        window as unknown as { __virgilBusStats?: (() => BusStats | null) | null }
+      ).__virgilBusStats = (): BusStats | null => {
+        const ed = pickProbeEditor(busStatsEditors);
+        if (!ed) return null;
+        const bus = getBus(ed);
+        if (!bus) return null;
+        return {
+          emitCount: bus.emitCount,
+          // Peek, don't materialize — reading the probe must not itself
+          // count as a consumer materialization, or the "typing leaves
+          // materializeCount flat" criterion couldn't be checked.
+          version: peekStructureVersion(ed.state),
+          materializeCount: getMaterializeCount(),
+        };
+      };
+    },
+  );
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(

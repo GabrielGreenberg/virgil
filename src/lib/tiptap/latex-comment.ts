@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from "@tiptap/react";
 import { NodeSelection, TextSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import type { NodeType, Schema } from "@tiptap/pm/model";
 import { UUID_ATTR_SPEC } from "./uuid-attr";
-import { readDocStructure, readPendingDiff } from "./doc-structure";
+import { readPendingDiff, resolveTouchedBlock } from "./doc-structure";
 
 // `latexComment` is a real editable BLOCK node with native inline (`text*`)
 // content — NOT an atom with its text stashed in an attr + a parallel
@@ -213,11 +213,10 @@ export const LatexComment = Node.create<LatexCommentOptions>({
           for (const b of pending.addedBlocks) candidateUuids.add(b.uuid);
           if (candidateUuids.size === 0) return null;
 
-          const structure = readDocStructure(newState);
           const paragraphType = newState.schema.nodes.paragraph;
           const changes: Array<{ pos: number; size: number; text: string }> = [];
           for (const uuid of candidateUuids) {
-            const block = structure.blocks.get(uuid);
+            const block = resolveTouchedBlock(newState, uuid);
             if (!block || block.typeName !== "paragraph") continue;
             const node = newState.doc.nodeAt(block.pos);
             if (!node || node.type !== paragraphType) continue;
