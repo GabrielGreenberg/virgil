@@ -4085,10 +4085,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     const anchor = anchorId && sel?.text
       ? { anchorId, anchorText: sel.text }
       : undefined;
-    // Atom-only selection (sel === null but a real atom is selected): anchor the
-    // comment Mode-A to its paragraph so it isn't orphaned. Text comments keep
-    // their existing Mode-B anchor (paragraphId null) unchanged.
-    const paragraphId = sel ? null : atomOnlySelectionParagraphId();
+    // Thread the selection's containing paragraph uuid the way note/cutter do
+    // (handleToolbarAddNote / handleToolbarAddCut), so `addComment` runs
+    // `addTextObjectLink(pid)` before `setTextAnchorLink` and the resulting
+    // Mode-B `linkedRange` link carries `textObjectIds:[pid]`. Passing null here
+    // (the old divergence) left the anchor link with `textObjectIds:[]`, which
+    // the panel/omni jump gate and omni binning key on — so a selection-anchored
+    // comment was un-jumpable and mis-binned "free" despite a live anchor +
+    // margin marker (task 107). Atom-only selection (sel === null) still resolves
+    // its containing paragraph Mode-A so it isn't orphaned.
+    const paragraphId = sel
+      ? sel.editorHandle.ensureParagraphUuid(sel.from)
+      : atomOnlySelectionParagraphId();
     const created = revisionsHook.addComment(paragraphId, undefined, anchor);
     if (anchorId) {
       const ed = innerRef.current?.getEditor();
