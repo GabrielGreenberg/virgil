@@ -29,6 +29,7 @@ import {
   type AiRequestSyncMode,
 } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
+import { carryCardEnvelope } from "@/cards/envelope";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -501,7 +502,9 @@ export function useRevisions(
     (sourceId: string): string | null => {
       const source = state.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "comment") return null;
-      const clone: RevisionRequestCard = {
+      // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
+      // `aiRequest`→false and `links`→[] are intentionally reset for the clone.
+      const clone: RevisionRequestCard = carryCardEnvelope(source, {
         kind: "comment",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
@@ -510,7 +513,7 @@ export function useRevisions(
         aiRequest: false,
         selectedText: source.selectedText,
         links: [],
-      };
+      });
       update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
       return clone.id;
     },
@@ -522,7 +525,9 @@ export function useRevisions(
     (sourceId: string): string | null => {
       const source = state.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "suggestion") return null;
-      const clone: RevisionSuggestionCard = {
+      // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
+      // `status`→"pending" and `links`→[] are intentionally reset for the clone.
+      const clone: RevisionSuggestionCard = carryCardEnvelope(source, {
         kind: "suggestion",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
@@ -535,7 +540,7 @@ export function useRevisions(
         status: "pending",
         selectedText: source.selectedText,
         links: [],
-      };
+      });
       update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
       return clone.id;
     },
