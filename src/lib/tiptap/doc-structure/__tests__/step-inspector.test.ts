@@ -454,6 +454,71 @@ describe("inspectSteps — figures and examples", () => {
   });
 });
 
+describe("inspectSteps — example reorder / renumber (changedExamples)", () => {
+  // The stale-`(N)`-after-reorder class (task 2026-07-12-101). An example
+  // drag-reorder is a same-uuid delete+insert MOVE and the ExpexNumbering
+  // renumber is an in-place setNodeMarkup — before the `changedExamples`
+  // bucket, BOTH reconciled to neither added nor removed, so
+  // `exampleStructureChanged` stayed flat and docked/Omni ExampleCards never
+  // re-seeded. These pin that a move AND a renumber now both surface as
+  // `changedExamples` + `exampleStructureChanged` (which drives
+  // `onExamplesRecomputable` → `rev.examples` → the card re-seed), while a
+  // plain keystroke inside an example fires neither (keystroke sanctity).
+
+  it("MOVING a top-level exampleBlock (delete+insert, one tx) emits changedExamples at the new pos, not added/removed", () => {
+    // Mirrors the top-level-paragraph-reorder + footnote/citation-move specs:
+    // the same-uuid cancels in added/removed (no phantom orphan), but the new
+    // position must surface as changedExamples so the structure index drops the
+    // stale mapped pos and the card re-derives.
+    const s = stateOf(
+      doc(exampleBlock("e1", { number: 1 }), exampleBlock("e2", { number: 2 })),
+    );
+    const prev = buildInitial(s.doc);
+    const e1Size = s.doc.child(0).nodeSize;
+    const e2 = s.doc.child(1);
+    // Move e2 before e1: delete e2, re-insert at 0 (uuid preserved).
+    const tr = s.tr.delete(e1Size, e1Size + e2.nodeSize);
+    tr.insert(0, e2);
+    const d = inspectSteps(tr, s.doc, tr.doc, prev);
+    expect(d.addedExamples.filter((e) => e.id === "e2")).toHaveLength(0);
+    expect(d.removedExamples.filter((e) => e.id === "e2")).toHaveLength(0);
+    const moved = d.changedExamples.find((e) => e.id === "e2");
+    expect(moved).toBeDefined();
+    expect(moved!.pos).toBe(0);
+    expect(d.exampleStructureChanged).toBe(true);
+  });
+
+  it("renumbering an exampleBlock in place (setNodeMarkup number 9→10) emits changedExamples, not added/removed", () => {
+    // The ExpexNumbering appendTransaction path: a leapfrogged block's `number`
+    // attr flips via setNodeMarkup. The card renders the seeded number, so this
+    // must count as changed even though pos is unchanged.
+    const s = stateOf(doc(exampleBlock("e1", { number: 9 })));
+    const tr = s.tr.setNodeMarkup(0, undefined, {
+      ...s.doc.firstChild!.attrs,
+      number: 10,
+    });
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.addedExamples.filter((e) => e.id === "e1")).toHaveLength(0);
+    expect(d.removedExamples.filter((e) => e.id === "e1")).toHaveLength(0);
+    expect(d.changedExamples.find((e) => e.id === "e1")?.number).toBe(10);
+    expect(d.exampleStructureChanged).toBe(true);
+  });
+
+  it("keystroke sanctity: typing inside an example fires NO changedExamples / exampleStructureChanged", () => {
+    const s = stateOf(
+      doc(exampleBlock("exA", { tag: "a" }, [exampleItem({}, "alpha")])),
+    );
+    // "alpha" starts at pos 2 (block open 0, item open 1) → ends at 7.
+    const tr = s.tr.insertText("!", 7, 7);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.changedExamples).toHaveLength(0);
+    expect(d.exampleStructureChanged).toBe(false);
+    // The content-only signal still fires so the card re-seeds text (the #39
+    // path) — this fix doesn't disturb it.
+    expect(d.exampleContentChangedUuids.has("exA")).toBe(true);
+  });
+});
+
 describe("inspectSteps — example content-change signal (#39 nit 1)", () => {
   // Two example blocks; the exampleItem (test schema) carries `inline*`,
   // so an edit inside one item is a pure-text content edit.

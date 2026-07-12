@@ -240,7 +240,18 @@ export interface StructureDiff {
 
   addedExamples: readonly ExampleEntry[];
   removedExamples: readonly ExampleEntry[];
-  /** True iff the nesting or count of exampleItems changed. */
+  /** Same example id survived (same-uuid drag-reorder MOVE, or an in-place
+   *  `setNodeMarkup` renumber) but its pos/number/tag/label changed. Mirrors
+   *  `changedFigures`/`changedCitations`: a uuid landing in BOTH added+removed
+   *  is an identity-preserving move — it must NOT appear in added/removed
+   *  (no phantom orphan), but its mapped entry is stale, so it's carried here
+   *  so the structure index folds the NEW pos/number in and a re-derive fires.
+   *  This is the "changed" bucket examples used to lack — the hole that left
+   *  docked/Omni ExampleCards showing a stale `(N)` after a reorder. */
+  changedExamples: readonly ExampleEntry[];
+  /** True iff the nesting or count of exampleItems changed, OR a same-uuid
+   *  example move/renumber populated `changedExamples`. Gates the bus's
+   *  `onExamplesRecomputable` emit and the structure-index example rebuild. */
   exampleStructureChanged: boolean;
 
   addedFigures: readonly FigureEntry[];
@@ -288,6 +299,7 @@ export const EMPTY_DIFF: StructureDiff = {
   removedAnchors: [],
   addedExamples: [],
   removedExamples: [],
+  changedExamples: [],
   exampleStructureChanged: false,
   addedFigures: [],
   removedFigures: [],
@@ -319,6 +331,7 @@ export function isEmptyDiff(diff: StructureDiff): boolean {
     diff.removedAnchors.length === 0 &&
     diff.addedExamples.length === 0 &&
     diff.removedExamples.length === 0 &&
+    diff.changedExamples.length === 0 &&
     !diff.exampleStructureChanged &&
     diff.addedFigures.length === 0 &&
     diff.removedFigures.length === 0 &&
@@ -363,6 +376,7 @@ export function diffHasStructuralEntries(diff: StructureDiff): boolean {
     diff.removedAnchors.length === 0 &&
     diff.addedExamples.length === 0 &&
     diff.removedExamples.length === 0 &&
+    diff.changedExamples.length === 0 &&
     !diff.exampleStructureChanged &&
     diff.addedFigures.length === 0 &&
     diff.removedFigures.length === 0 &&

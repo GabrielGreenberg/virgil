@@ -268,6 +268,23 @@ function footnoteChanged(a: FootnoteEntry, b: FootnoteEntry): boolean {
   return a.pos !== b.pos || a.thanks !== b.thanks || a.number !== b.number;
 }
 
+/** An example that survived (same id) but whose position or displayed attrs
+ *  changed — the signature of a same-uuid drag-reorder MOVE (delete+insert,
+ *  uuid preserved) or an in-place `setNodeMarkup` renumber. `pos` is load-
+ *  bearing for the structure index; `number`/`tag`/`label` are what the
+ *  ExampleCard renders, so a renumber `(9)`→`(10)` must count as changed and
+ *  re-seed the card. Mirrors `footnoteChanged`. A same-id re-scan with every
+ *  field equal (an edit at the block boundary that touched nothing) returns
+ *  false, so it never fires spuriously. */
+function exampleChanged(a: ExampleEntry, b: ExampleEntry): boolean {
+  return (
+    a.pos !== b.pos ||
+    a.number !== b.number ||
+    a.tag !== b.tag ||
+    a.label !== b.label
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Anchorable-ancestor finder for content-change attribution.
 // ---------------------------------------------------------------------------
@@ -710,13 +727,28 @@ export function inspectSteps(
     if (!added.anchors.has(id)) removedAnchors.push(entry);
   }
 
-  // Examples.
+  // Examples: separate added / removed / changed, mirroring footnotes &
+  // figures. A same-id in BOTH added+removed is an identity-preserving MOVE
+  // (a drag-reorder is `tr.delete(old)+tr.insert(node)` with the uuid kept by
+  // block-uuid-backfill) — or a same-tx re-scan. It must NOT land in
+  // added/removed (that would orphan/duplicate the card), but its mapped entry
+  // is stale, so emit it as `changedExamples` carrying the NEW pos/number when
+  // any displayed field differs. This is the hole that left docked/Omni
+  // ExampleCards showing a stale `(N)` after a reorder: with no changed bucket,
+  // a moved example fired NEITHER `rev.examples` nor per-uuid `contentRev`, so
+  // the card never re-seeded. A same-id with every field equal (a boundary
+  // re-scan) is a no-op → neither, so keystroke sanctity holds.
   const addedExamples: ExampleEntry[] = [];
   const removedExamples: ExampleEntry[] = [];
+  const changedExamples: ExampleEntry[] = [];
   let exampleStructureChanged = false;
   for (const [id, entry] of added.examples) {
-    if (!removed.examples.has(id)) {
+    const wasRemoved = removed.examples.get(id);
+    if (!wasRemoved) {
       addedExamples.push(entry);
+      exampleStructureChanged = true;
+    } else if (exampleChanged(wasRemoved, entry)) {
+      changedExamples.push(entry);
       exampleStructureChanged = true;
     }
   }
@@ -774,6 +806,7 @@ export function inspectSteps(
     removedAnchors.length === 0 &&
     addedExamples.length === 0 &&
     removedExamples.length === 0 &&
+    changedExamples.length === 0 &&
     !exampleStructureChanged &&
     addedFigures.length === 0 &&
     removedFigures.length === 0 &&
@@ -806,6 +839,7 @@ export function inspectSteps(
     removedAnchors,
     addedExamples,
     removedExamples,
+    changedExamples,
     exampleStructureChanged,
     addedFigures,
     removedFigures,

@@ -299,6 +299,34 @@ describe("applyDiff", () => {
     expect(next.headings[0]?.level).toBe(2);
   });
 
+  it("changedExamples folds a moved/renumbered example's new pos + number in place and re-sorts (task 2026-07-12-101)", () => {
+    // The reorder-staleness fix: a same-uuid example move/renumber arrives as
+    // changedExamples carrying the NEW pos/number. applyDiff must replace the
+    // entry in place (no phantom add/remove) and re-sort so the index doesn't
+    // keep the moved example's stale (deleted) position.
+    const prev = buildInitial(
+      doc(exampleBlock("e1", { number: 1 }), exampleBlock("e2", { number: 2 })),
+    );
+    expect(prev.examples.map((e) => e.id)).toEqual(["e1", "e2"]);
+    const e2Pos = prev.examples.find((e) => e.id === "e2")!.pos;
+    // Move e1 to AFTER e2 and renumber it (1)→(2), a larger pos than e2's.
+    const moveE1: StructureDiff = {
+      ...EMPTY_DIFF,
+      changedExamples: [
+        { id: "e1", uuid: "e1", pos: e2Pos + 4, tag: "", label: "", number: 2 },
+      ],
+      exampleStructureChanged: true,
+    };
+    const next = applyDiff(prev, moveE1);
+    // Identity set unchanged — no orphan/dup.
+    expect(next.examples.map((e) => e.id).sort()).toEqual(["e1", "e2"]);
+    const e1 = next.examples.find((e) => e.id === "e1");
+    expect(e1?.pos).toBe(e2Pos + 4);
+    expect(e1?.number).toBe(2);
+    // Re-sorted by pos: e2 now precedes e1.
+    expect(next.examples[0]?.id).toBe("e2");
+  });
+
   it("addedFootnotes preserves doc order via sort by pos", () => {
     const prev = buildInitial(doc(paragraph("p1", "body")));
     const diff: StructureDiff = {
