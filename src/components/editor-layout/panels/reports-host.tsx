@@ -40,11 +40,11 @@ export function ReportsHost(p: ReportsHostProps) {
   useEffect(() => () => discardRef.current(), []);
 
   const onAddReport = useCallback(
-    (rect?: DOMRect): ReportCard => createReport({ anchorRect: rect }),
+    (): ReportCard => createReport({}),
     [createReport],
   );
   const onAddReportRequest = useCallback(
-    (rect?: DOMRect): ReportRequestCard => createReportRequest({ anchorRect: rect }),
+    (): ReportRequestCard => createReportRequest({}),
     [createReportRequest],
   );
 
