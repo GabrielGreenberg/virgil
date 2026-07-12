@@ -23,14 +23,20 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
       ? normalizeRichContent(s.text)
       : normalizeRichContent(s.content);
   return {
-    id: s.id!,
+    // A migrator is the boundary where malformed input (a hand-edit, a partial
+    // write, an agent sidecar write of archive.json) must be tolerated, not
+    // asserted away. A missing/blank id would otherwise mint `id: undefined`,
+    // which `persistMigrationOnLoad` writes back keyless (JSON.stringify drops
+    // it) — then `popKey`/`deleteSnippet(undefined)` collide across every
+    // keyless entry. Heal to a fresh stable id at migrate time instead.
+    id: s.id || generateEntityId(),
     archived: s.archived,
     // T6/C12: recorded provenance, not shape — keep a user-owned title, drop a
     // recorded/legacy generated one, self-stamp the resolved bit.
     title: resolveLoadedTitle("archive", s.title, s.titleAuto),
     titleAuto: resolveTitleAuto("archive", s.title, s.titleAuto),
     content,
-    createdAt: s.createdAt!,
+    createdAt: s.createdAt || new Date().toISOString(),
     // Carry the born-free intent through load (absent ≡ false); the
     // free-vs-orphaned split is derived from it via resolveAnchorState.
     unanchored: s.unanchored,
@@ -38,7 +44,7 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
   };
 }
 
-function migrateArchive(raw: unknown): ArchiveState {
+export function migrateArchive(raw: unknown): ArchiveState {
   const s = raw as Partial<ArchiveState>;
   return { snippets: Array.isArray(s.snippets) ? s.snippets.map(migrateSnippet) : [] };
 }
