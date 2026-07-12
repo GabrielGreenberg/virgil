@@ -355,3 +355,101 @@ describe("#29 nit-3 fold-chevron: shared plugin-view does ZERO work on unrelated
     editor.destroy();
   });
 });
+
+describe("2b — cached fold DecorationSet (focus-view pattern)", () => {
+  let editor: ReturnType<typeof buildTwoSectionEditor>["editor"];
+  let el: HTMLElement;
+  beforeEach(() => {
+    ({ editor, el } = buildTwoSectionEditor());
+    void el;
+  });
+
+  const foldState = () => sectionFoldingPluginKey.getState(editor.state)!;
+
+  function foldA() {
+    editor.view.dispatch(
+      editor.state.tr.setMeta(sectionFoldingPluginKey, {
+        action: "toggle",
+        uuid: "h-A",
+      }),
+    );
+  }
+
+  it("a plain keystroke maps the cached set — folded and hiddenIdx keep their references", () => {
+    foldA();
+    const before = foldState();
+    expect(before.decoSet.find().length).toBe(1); // p-A hidden under h-A
+
+    // Type inside p-B (visible, under the other heading).
+    const pB = (() => {
+      let pos = -1;
+      let offset = 0;
+      editor.state.doc.forEach((node) => {
+        if (node.attrs?.uuid === "p-B") pos = offset;
+        offset += node.nodeSize;
+      });
+      return pos;
+    })();
+    editor.view.dispatch(editor.state.tr.insertText("x", pB + 2, pB + 2));
+
+    const after = foldState();
+    // No fold change, no structural change → the artifacts carry forward:
+    // `folded` and `hiddenIdx` keep their references (the chevron bail and
+    // the omni fold-filter memo key off them); the decoSet was .map()ed and
+    // still hides exactly p-A.
+    expect(after.folded).toBe(before.folded);
+    expect(after.hiddenIdx).toBe(before.hiddenIdx);
+    const decos = after.decoSet.find();
+    expect(decos.length).toBe(1);
+    const node = editor.state.doc.nodeAt(decos[0].from);
+    expect(node?.attrs?.uuid).toBe("p-A");
+    editor.destroy();
+  });
+
+  it("a heading level change under an active fold REBUILDS the set (extent grows)", () => {
+    foldA();
+    expect(foldState().decoSet.find().length).toBe(1);
+
+    // Demote h-B to level 2: it now falls UNDER h-A's level-1 fold, so the
+    // hidden extent must grow to cover h-B and p-B as well. This is the
+    // rebuild-on-changedHeadings path — a .map() carry-forward could never
+    // grow the set.
+    let hB = -1;
+    let offset = 0;
+    editor.state.doc.forEach((node) => {
+      if (node.attrs?.uuid === "h-B") hB = offset;
+      offset += node.nodeSize;
+    });
+    editor.view.dispatch(editor.state.tr.setNodeAttribute(hB, "level", 2));
+
+    const decos = foldState().decoSet.find();
+    const hiddenUuids = decos
+      .map((d) => editor.state.doc.nodeAt(d.from)?.attrs?.uuid)
+      .sort();
+    expect(hiddenUuids).toEqual(["h-B", "p-A", "p-B"]);
+    expect(foldState().hiddenIdx.size).toBe(3);
+    editor.destroy();
+  });
+
+  it("deleting a block outside the fold rebuilds with correct surviving coverage", () => {
+    foldA();
+    // Delete p-B (structural: removedBlocks) — the rebuild must still hide
+    // exactly p-A at its (unchanged) position.
+    let pB = -1;
+    let size = 0;
+    let offset = 0;
+    editor.state.doc.forEach((node) => {
+      if (node.attrs?.uuid === "p-B") {
+        pB = offset;
+        size = node.nodeSize;
+      }
+      offset += node.nodeSize;
+    });
+    editor.view.dispatch(editor.state.tr.delete(pB, pB + size));
+
+    const decos = foldState().decoSet.find();
+    expect(decos.length).toBe(1);
+    expect(editor.state.doc.nodeAt(decos[0].from)?.attrs?.uuid).toBe("p-A");
+    editor.destroy();
+  });
+});
