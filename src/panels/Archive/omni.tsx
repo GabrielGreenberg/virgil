@@ -33,20 +33,23 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
     const baseId = popKey("archive", snippet.id);
 
     if (orphaned || pids.length === 0) {
+      // No live-resolving anchor. Split free-vs-orphaned on the snippet's OWN
+      // recorded intent (`unanchored`, set at born-free creation) — not a
+      // link-presence proxy (task 104, Defect A): a deliberately-free clip
+      // reads "free" (neutral), while a clip whose anchor was swept away, or
+      // whose only link is present-but-dead, reads "orphaned" (red). The split
+      // stays inside `resolveAnchorState` (SSOT), never an inline literal.
+      const anchorState = resolveAnchorState(null, { unanchored: !!snippet.unanchored });
       items.push({
         id: baseId,
         pos: null,
-        // `orphaned` ⇒ had an anchor that vanished; otherwise it simply
-        // carries no link at all — a deliberately-free card. Modelled as the
-        // SSOT's `unanchored` intent so the free-vs-orphaned split lives in
-        // `resolveAnchorState`, not an inline literal.
-        anchorState: resolveAnchorState(null, { unanchored: !orphaned }),
+        anchorState,
         content: (
           <ArchiveCard
             key={baseId}
             snippet={snippet}
             selected={isSelected}
-            orphaned={orphaned}
+            orphaned={anchorState === "orphaned"}
             onSelect={a.setSelectedArchiveId}
             onEdit={(id, content) => a.updateArchiveSnippet(id, content)}
             onUpdateTitle={a.updateArchiveSnippetTitle}

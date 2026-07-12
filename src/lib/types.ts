@@ -213,6 +213,16 @@ export interface ArchivedSnippet {
    *  the useArchive hook migrates them to JSONContent on load. */
   content: unknown;
   createdAt: string;
+  /** When true, this snippet was created with no anchor target — a
+   *  deliberately-free clip (archived from a block with nothing anchorable
+   *  above it, or a blank archive spawned from a button). Mirrors
+   *  `CitationRef.unanchored` / `FootnoteRef.unanchored`: it is the intent
+   *  input to `resolveAnchorState`, distinguishing a born-free card (neutral)
+   *  from one whose in-text anchor was genuinely lost (orphaned, red). Set
+   *  only at born-free creation — NOT on the `virgil-textobject-orphaned`
+   *  sweep-to-linkless path, so a clip that HAD a link and lost it stays
+   *  intent-less ⇒ orphaned. Absent ≡ false. */
+  unanchored?: boolean;
   /** All paragraphs this snippet is anchored to. See src/links/links.ts
    *  for helpers (getLinkedTextObjectIds, addTextObjectLink, …). */
   links: Link[];

@@ -2247,7 +2247,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         return t;
       },
       addArchive: (paragraphId, seed) => {
-        const s = archiveHook.archiveContent(seed.content ?? "");
+        // Born-free when no paragraphId (task 104): records the free intent so
+        // a link-less clip reads neutral, not orphaned-red.
+        const s = archiveHook.archiveContent(seed.content ?? "", { unanchored: !paragraphId });
         if (seed.title) archiveHook.updateSnippetTitle(s.id, seed.title);
         if (paragraphId) {
           const ed = innerRef.current?.getEditor();
@@ -4176,7 +4178,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     const result = innerRef.current.archiveSelection("");
     if (!result) return;
     const sel = readSelection();
-    const snippet = archiveHook.archiveContent(result.content ?? sel?.text ?? "");
+    // Born-free when the selection has no anchorable paragraph (task 104).
+    const snippet = archiveHook.archiveContent(
+      result.content ?? sel?.text ?? "",
+      { unanchored: !result.paragraphId },
+    );
     if (result.paragraphId) {
       // FOLD A: snapshot the live paragraph at creation so the Mode-A link
       // is self-healing immediately.
@@ -4261,13 +4267,35 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Archive helpers — anchored-id set + paragraph-order sort matching
   // EditorLayout. The ArchivePanel uses these to surface anchored
   // snippets at the top of the list.
+  // Anchored ≡ has a link that resolves to a LIVE doc position — not mere
+  // link *presence* (task 104). A snippet whose only link points at a
+  // vanished / re-minted uuid is NOT anchored: it must read orphaned in the
+  // docked panel + float (killing the dead-but-present-link "live-looking Jump
+  // that no-ops" bug, Defect B), in agreement with the omni classifier, which
+  // already badges on live position. Walks the doc once, gated on the
+  // structural-revision counter (`rev.blocks`) + the reactive editor — the
+  // same keystroke-sane pattern as `sortedArchiveSnippets` below, so it never
+  // recomputes on a plain (structurally-null) keystroke.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const anchoredArchiveIds = useMemo<Set<string>>(() => {
+    const liveUuids = new Set<string>();
+    const ed = innerRef.current?.getEditor();
+    if (ed) {
+      ed.state.doc.descendants((node) => {
+        if (isAnchorableNode(node.type) && node.attrs?.uuid) {
+          liveUuids.add(node.attrs.uuid as string);
+        }
+        return true;
+      });
+    }
     const ids = new Set<string>();
     for (const s of archiveHook.snippets) {
-      if (getLinkedTextObjectIds(s).length > 0) ids.add(s.id);
+      if (getLinkedTextObjectIds(s).some((uuid) => liveUuids.has(uuid))) {
+        ids.add(s.id);
+      }
     }
     return ids;
-  }, [archiveHook.snippets]);
+  }, [archiveHook.snippets, rev.blocks, editor]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sortedArchiveSnippets = useMemo(() => {
     const paragraphOrder = new Map<string, number>();
