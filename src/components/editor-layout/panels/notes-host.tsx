@@ -53,8 +53,8 @@ export function NotesHost(p: NotesHostProps) {
   return (
     <NotesPanel
       cards={p.cards}
-      onAddNote={(rect) => createNote({ anchorRect: rect })}
-      onAddHighlight={(rect) => {
+      onAddNote={() => createNote({})}
+      onAddHighlight={() => {
         // Header "+" → Highlight requires a live selection. When the user
         // clicks the dropdown with no selection, do nothing (the action is
         // a no-op rather than creating an unanchored highlight).
@@ -75,7 +75,6 @@ export function NotesHost(p: NotesHostProps) {
         const card = createHighlight({
           anchor: { anchorId: record.anchorId, anchorText: record.text },
           paragraphId,
-          anchorRect: rect,
         });
         updateLinkedAnchorCard(ed, record.anchorId, "highlight", card.id);
         try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
