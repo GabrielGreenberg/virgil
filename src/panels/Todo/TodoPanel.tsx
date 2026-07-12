@@ -7,8 +7,15 @@ import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
+import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { TodoRow } from "./TodoRow";
+
+// Module-const predicates so their identity is stable across renders — both
+// `useArchiveVisibleItems`' memo and `CardListPanel`'s `getArchived`/`getCounted`
+// memoize on these, so a shared reference keeps the derivations identity-stable.
+const isArchived = (t: TodoItem) => !!t.archived;
+const isPending = (t: TodoItem) => !t.done;
 
 interface TodoPanelProps {
   items: TodoItem[];
@@ -18,7 +25,7 @@ interface TodoPanelProps {
   onUpdateNotes: (id: string, notes: string) => void;
   onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
-  onArchiveDone: () => void;
+  onArchiveDone: (ids?: string[]) => void;
   selectedTodoId: string | null;
   onSelectTodo: (id: string | null) => void;
   onJumpToCard?: (card: TodoItem, sourceEl?: HTMLElement | null) => void;
@@ -43,13 +50,20 @@ export default function TodoPanel({
     () => withRecentlyAddedFirst(items, recentlyAddedId, (i) => i.id),
     [items, recentlyAddedId],
   );
-  const pending = orderedItems.filter((i) => !i.done);
-  const done = orderedItems.filter((i) => i.done);
+  // Footer + Archive derive from the SAME archive-view-filtered slice
+  // `CardListPanel` renders (via the shared `useArchiveVisibleItems`), so an
+  // archived (hidden, deliberately set-aside) done todo can't inflate the
+  // "N completed" count, keep the Archive button alive, or get purged by it in
+  // the Active view. (task 2026-07-12-103.)
+  const visible = useArchiveVisibleItems("todo", orderedItems, isArchived);
+  const done = visible.filter((i) => i.done);
 
   return (
     <CardListPanel
       kind="todo"
-      count={pending.length}
+      // Badge counts pending (not-done) todos among the visible set — done
+      // todos no longer inflate it. See `getCounted` on CardListPanel.
+      getCounted={isPending}
       onAdd={(rect) => onAdd(rect)}
       headerLeading={
         <ItemMenu align="left">
@@ -61,7 +75,7 @@ export default function TodoPanel({
       }
       items={orderedItems}
       getId={(t) => t.id}
-      getArchived={(t) => !!t.archived}
+      getArchived={isArchived}
       selectedId={selectedTodoId}
       onSelect={onSelectTodo}
       emptyState={
@@ -94,7 +108,7 @@ export default function TodoPanel({
               {done.length} completed
             </span>
             <button
-              onClick={onArchiveDone}
+              onClick={() => onArchiveDone(done.map((d) => d.id))}
               className="text-xs px-2.5 py-1 rounded text-[var(--muted)] hover:text-ink-body hover-on-light flex items-center gap-1.5"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

@@ -157,8 +157,19 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     });
   }, [update]);
 
-  const archiveDone = useCallback(() => {
-    update((prev) => ({ items: prev.items.filter((i) => !i.done) }));
+  // Drop completed todos. When `ids` is supplied (the panel passes the done
+  // todos VISIBLE in the current archive view), remove only those — so a done
+  // todo hidden by the Active view because it was also deliberately set-aside
+  // (archived) is never swept along with the visible ones. Omitting `ids`
+  // preserves the legacy "purge every done todo" behavior for any other caller.
+  const archiveDone = useCallback((ids?: string[]) => {
+    update((prev) => {
+      if (ids) {
+        const idSet = new Set(ids);
+        return { items: prev.items.filter((i) => !(i.done && idSet.has(i.id))) };
+      }
+      return { items: prev.items.filter((i) => !i.done) };
+    });
   }, [update]);
 
   const addParagraphId = useCallback(
