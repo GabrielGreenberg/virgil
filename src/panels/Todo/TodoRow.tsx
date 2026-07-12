@@ -8,7 +8,7 @@ import {
   PanelCard,
   CardTitleInput,
   AiRequestCheckbox,
-  keyEventFromInteractiveControl,
+  useCardDeleteKey,
 } from "@/components/panel-primitives";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
@@ -139,6 +139,11 @@ export function TodoRow({
   const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
+  // Todo is the lone editable card with a bare card-level delete-key handler
+  // (plain <input> title + <textarea> notes, no EditableCard focus-tracking).
+  // The shared hook bakes in the interactive-control guard so a Backspace typed
+  // inside a field edits text instead of deleting the card (tasks 096 + 110).
+  const handleDeleteKey = useCardDeleteKey(selected, tryDelete);
 
   const card = (
     <>
@@ -175,19 +180,7 @@ export function TodoRow({
         if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
       }}
       onFocusCapture={() => { if (!isSelected) onSelect(item.id); }}
-      onKeyDown={(e) => {
-        if (!selected) return;
-        // Todo is the lone editable card with a bare card-level delete-key
-        // handler (plain <input> title + <textarea> notes, no EditableCard
-        // focus-tracking). Without this guard a Backspace/Delete typed inside a
-        // field bubbles up and deletes the whole card (task 096). Bail when the
-        // keydown originated from an interactive control, not the card shell.
-        if (keyEventFromInteractiveControl(e)) return;
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          tryDelete();
-        }
-      }}
+      onKeyDown={handleDeleteKey}
       kind="todo"
       canJump={isAnchored && !!onJump}
       onJump={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}

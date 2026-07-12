@@ -81,6 +81,44 @@ export function keyEventFromInteractiveControl(e: ReactKeyboardEvent): boolean {
   return !!target.closest(INTERACTIVE_CONTROL_SELECTOR);
 }
 
+/**
+ * The ONE card-level `Delete`/`Backspace` → "delete the selected card" keydown
+ * handler for {@link PanelCard}-based cards that DON'T route through
+ * {@link EditableCard} (which owns its own `isFocused`-guarded delete +
+ * `cardHasContent` confirm). It bakes in the two guards every such card needs:
+ *
+ *  1. act only when the card is `selected`; and
+ *  2. NEVER when the keydown came from a nested interactive control
+ *     ({@link keyEventFromInteractiveControl}) — so a `Backspace` typed inside a
+ *     field edits that field's text instead of deleting the whole card.
+ *
+ * Five cards hand-rolled this handler and passed it to PanelCard via `onKeyDown`
+ * (`...rest`): Todo, Highlight, Error, and the Cutter/Revision *suggestion*
+ * cards. Some omitted guard #2 — a reachable data-loss bug (a `Backspace` in a
+ * selected suggestion card's editable field silently deleted the card with the
+ * user's typed content in it; task 110). Routing them all through this one hook
+ * makes the field guard hold *by construction*: a card opts into keyboard-delete
+ * with a single `onKeyDown={useCardDeleteKey(selected, del)}` and cannot forget
+ * it. `del` is invoked only when both guards pass; pass the card's own
+ * (possibly confirm-wrapped) delete thunk.
+ */
+export function useCardDeleteKey(
+  selected: boolean,
+  onDelete: (() => void) | undefined,
+): (e: ReactKeyboardEvent) => void {
+  return useCallback(
+    (e: ReactKeyboardEvent) => {
+      if (!selected || !onDelete) return;
+      if (keyEventFromInteractiveControl(e)) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        onDelete();
+      }
+    },
+    [selected, onDelete],
+  );
+}
+
 /* ── Per-card claim context ─────────────────────────────────────────
  *  EditableCard publishes its (panelKind, cardId) here so deeply-nested
  *  inputs (e.g. CardTitleInput rendered as `headerContent`) can attach
