@@ -2,6 +2,7 @@
 
 import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
 import { pickProbeEditor } from "@/lib/active-editor-probe";
+import { installKeystrokeLatencyProbe } from "@/lib/keystroke-latency-probe";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
@@ -382,23 +383,32 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 // editors and resolve the FOCUSED one on demand (falling back to the sole
 // editor). Dev-only and lazy: the getter touches the bus only when called from
 // the console — zero per-keystroke cost.
-type BusStats = { emitCount: number; version: number };
+type BusStats = { emitCount: number; version: number; materializeCount: number };
 const busStatsEditors = new Set<Editor>();
 let busStatsInstalled = false;
 function installBusStatsProbe() {
   if (busStatsInstalled || typeof window === "undefined") return;
   busStatsInstalled = true;
-  void import("@/lib/tiptap/doc-structure").then(({ getBus }) => {
-    (
-      window as unknown as { __virgilBusStats?: (() => BusStats | null) | null }
-    ).__virgilBusStats = (): BusStats | null => {
-      const ed = pickProbeEditor(busStatsEditors);
-      if (!ed) return null;
-      const bus = getBus(ed);
-      if (!bus) return null;
-      return { emitCount: bus.emitCount, version: bus.structure.version };
-    };
-  });
+  void import("@/lib/tiptap/doc-structure").then(
+    ({ getBus, peekStructureVersion, getMaterializeCount }) => {
+      (
+        window as unknown as { __virgilBusStats?: (() => BusStats | null) | null }
+      ).__virgilBusStats = (): BusStats | null => {
+        const ed = pickProbeEditor(busStatsEditors);
+        if (!ed) return null;
+        const bus = getBus(ed);
+        if (!bus) return null;
+        return {
+          emitCount: bus.emitCount,
+          // Peek, don't materialize — reading the probe must not itself
+          // count as a consumer materialization, or the "typing leaves
+          // materializeCount flat" criterion couldn't be checked.
+          version: peekStructureVersion(ed.state),
+          materializeCount: getMaterializeCount(),
+        };
+      };
+    },
+  );
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
@@ -548,6 +558,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           // `.tiptap` class strings (they don't route through this config),
           // so they never inherit the 40px lead-in.
           "doc-prose-leadin prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[var(--editor-pt,40px)] pb-[var(--editor-pb,40px)]",
+        // Grammarly's extension is a per-keystroke O(doc) DOM scanner for
+        // users who have it installed; these attributes are its documented
+        // opt-out and inert for everyone else. Native spellcheck stays ON
+        // (prose editor; A/B-measured no per-keystroke cost).
+        "data-gramm": "false",
+        "data-gramm_editor": "false",
+        "data-enable-grammarly": "false",
         // PM keeps the DOM at `contenteditable="true"` even in Reader
         // mode (so native drag-to-select reaches `view.state.selection`,
         // and the unified TextObjectGrabHandle / linkedRange-float flow
@@ -1797,6 +1814,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     if (typeof window === "undefined" || !editor) return;
     busStatsEditors.add(editor);
     installBusStatsProbe();
+    installKeystrokeLatencyProbe();
     return () => {
       busStatsEditors.delete(editor);
     };

@@ -20,6 +20,7 @@ import { doc, paragraph, testSchema } from "../doc-structure/__tests__/fixtures"
 // `null` so `apply` can't return a `StructureDiff`.
 interface PluginState {
   structure: DocStructure;
+  pendingMaps: readonly never[];
   pendingDiff: StructureDiff | null;
 }
 
@@ -34,16 +35,16 @@ function observerPlugin(): Plugin<PluginState> {
   return new Plugin<PluginState>({
     key: docStructureKey,
     state: {
-      init: (_c, state) => ({ structure: buildInitial(state.doc), pendingDiff: null }),
+      init: (_c, state) => ({ structure: buildInitial(state.doc), pendingMaps: [], pendingDiff: null }),
       apply: (tr, prev) => {
         if (!tr.docChanged) {
           return prev.pendingDiff !== null
-            ? { structure: prev.structure, pendingDiff: null }
+            ? { structure: prev.structure, pendingMaps: [], pendingDiff: null }
             : prev;
         }
         const diff = inspectSteps(tr, tr.before, tr.doc, prev.structure);
-        if (diff === EMPTY_DIFF) return { structure: prev.structure, pendingDiff: null };
-        return { structure: applyDiff(prev.structure, diff), pendingDiff: diff };
+        if (diff === EMPTY_DIFF) return { structure: prev.structure, pendingMaps: [], pendingDiff: null };
+        return { structure: applyDiff(prev.structure, diff), pendingMaps: [], pendingDiff: diff };
       },
     },
   });

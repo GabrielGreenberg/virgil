@@ -71,7 +71,7 @@ import { planJumpDocks } from "./editor-layout/jump-docks";
 // The Reader's direct `<OutlinePanel>` branch was collapsed into the single
 // `<OutlineHost>` path (both surfaces now pass `viewPrefs`), so OutlinePanel
 // is no longer mounted here — OutlineHost owns the outline render.
-import ExamplesPanel from "@/panels/Examples";
+import { ExamplesHost } from "./editor-layout/panels/examples-host";
 import { PANEL_REGISTRY, cardPopKey } from "@/panels/panel-registry";
 import { focusNewCard } from "@/lib/focus-new-card";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
@@ -5448,7 +5448,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     side={panelSide}
                     panelKind={pid as PanelKind}
                     editor={editor}
-                    editorRef={innerRef}
                     content={outlineContent}
                     examples={examples}
                     docId={docId}
@@ -5517,7 +5516,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       side={panelSide}
                       panelKind={pid as PanelKind}
                       editor={editor}
-                      editorRef={innerRef}
                       content={outlineContent}
                       examples={examples}
                       docId={docId}
@@ -6538,7 +6536,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         side="left"
                         panelKind={kind as PanelKind}
                         editor={editor}
-                        editorRef={innerRef}
                         content={(initialContent ?? docHook.content) as JSONContent | null}
                         examples={examples}
                         docId={docId}
@@ -7353,7 +7350,6 @@ interface PaneRailBodyProps {
   side: "left" | "right";
   panelKind: PanelKind;
   editor: Editor | null;
-  editorRef: RefObject<EditorHandle | null>;
   content: JSONContent | null;
   examples: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getExamples"]>;
   docId: string;
@@ -7439,7 +7435,6 @@ function PaneRailBody({
   side,
   panelKind,
   editor,
-  editorRef,
   content,
   examples,
   docId,
@@ -7536,9 +7531,7 @@ function PaneRailBody({
     );
   }
   if (panelKind === "examples") {
-    return (
-      <ExamplesPanelHost editorRef={editorRef} examples={examples} />
-    );
+    return <ExamplesHost examples={examples} />;
   }
   if (panelKind === "footnotes") {
     return (
@@ -7812,32 +7805,15 @@ function PaneRailBody({
 /* ── Doc-derived panel hosts ─────────────────────────────────────────
  *
  * Examples and Footnote markers are derived from the editor's live
- * doc (no sidecar storage), so we can wire them in the Reader without
- * any hook context. The `examples` list is derived reactively in the
- * EditorPane body (keyed on the `editor` state + `rev.examples`) and
- * passed in as a prop, so it populates on mount and refreshes only when
- * examples change. Edit callbacks no-op in Reader mode (`editable: false`
- * prevents any user mutation reaching this surface anyway).
+ * doc (no sidecar storage). The `examples` list is derived reactively in
+ * the EditorPane body (keyed on the `editor` state + `rev.examples`) and
+ * threaded down as a prop, so it populates on mount and refreshes only
+ * when examples change. The docked/popped-out Examples panel renders via
+ * the store-backed `ExamplesHost` (editor-layout/panels/examples-host),
+ * matching every sibling host; the former inline `ExamplesPanelHost` — the
+ * last panel islanded on a private `useState` selection — was retired in
+ * task 2026-07-12-100.
  */
-
-interface PanelHostProps {
-  editorRef: RefObject<EditorHandle | null>;
-  examples: ReturnType<NonNullable<RefObject<EditorHandle | null>["current"]>["getExamples"]>;
-}
-
-function ExamplesPanelHost({ editorRef, examples }: PanelHostProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  return (
-    <ExamplesPanel
-      examples={examples}
-      selectedId={selectedId}
-      onSelect={setSelectedId}
-      onJump={(id, sourceEl) => {
-        editorRef.current?.scrollToExample(id, sourceEl ?? null);
-      }}
-    />
-  );
-}
 
 // Note: CitationsPanelHost / FootnotePanelHost local definitions
 // were removed in Step 7.5 — the canonical `CitationsHost` /

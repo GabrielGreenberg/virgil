@@ -118,7 +118,7 @@ describe("touchedBlockPositions — O(edit-size), not O(doc)", () => {
         ...EMPTY_DIFF,
         contentChangedUuids: new Set(["p20"]),
       };
-      const positions = touchedBlockPositions(diff, structure, editor.state.doc);
+      const positions = touchedBlockPositions(diff, editor.state, editor.state.doc);
       expect(positions).toEqual([target!.pos]);
       // The contract: the count is bounded by the edit, independent of the
       // 40-block document size.
@@ -136,7 +136,7 @@ describe("touchedBlockPositions — O(edit-size), not O(doc)", () => {
         ...EMPTY_DIFF,
         contentChangedUuids: new Set(["p20"]),
       };
-      const positions = touchedBlockPositions(diff, structure, editor.state.doc, true);
+      const positions = touchedBlockPositions(diff, editor.state, editor.state.doc, true);
       const want = [
         structure.blocks.get("p19")!.pos,
         structure.blocks.get("p20")!.pos,
@@ -159,7 +159,7 @@ describe("touchedBlockPositions — O(edit-size), not O(doc)", () => {
         ...EMPTY_DIFF,
         addedBlocks: [{ uuid: "p10", pos: p10.pos, typeName: "paragraph" }],
       };
-      const positions = touchedBlockPositions(diff, structure, editor.state.doc);
+      const positions = touchedBlockPositions(diff, editor.state, editor.state.doc);
       expect(positions).toEqual([p10.pos]);
     } finally {
       cleanup();

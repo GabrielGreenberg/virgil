@@ -240,7 +240,18 @@ export interface StructureDiff {
 
   addedExamples: readonly ExampleEntry[];
   removedExamples: readonly ExampleEntry[];
-  /** True iff the nesting or count of exampleItems changed. */
+  /** Same example id survived (same-uuid drag-reorder MOVE, or an in-place
+   *  `setNodeMarkup` renumber) but its pos/number/tag/label changed. Mirrors
+   *  `changedFigures`/`changedCitations`: a uuid landing in BOTH added+removed
+   *  is an identity-preserving move — it must NOT appear in added/removed
+   *  (no phantom orphan), but its mapped entry is stale, so it's carried here
+   *  so the structure index folds the NEW pos/number in and a re-derive fires.
+   *  This is the "changed" bucket examples used to lack — the hole that left
+   *  docked/Omni ExampleCards showing a stale `(N)` after a reorder. */
+  changedExamples: readonly ExampleEntry[];
+  /** True iff the nesting or count of exampleItems changed, OR a same-uuid
+   *  example move/renumber populated `changedExamples`. Gates the bus's
+   *  `onExamplesRecomputable` emit and the structure-index example rebuild. */
   exampleStructureChanged: boolean;
 
   addedFigures: readonly FigureEntry[];
@@ -288,6 +299,7 @@ export const EMPTY_DIFF: StructureDiff = {
   removedAnchors: [],
   addedExamples: [],
   removedExamples: [],
+  changedExamples: [],
   exampleStructureChanged: false,
   addedFigures: [],
   removedFigures: [],
@@ -319,6 +331,7 @@ export function isEmptyDiff(diff: StructureDiff): boolean {
     diff.removedAnchors.length === 0 &&
     diff.addedExamples.length === 0 &&
     diff.removedExamples.length === 0 &&
+    diff.changedExamples.length === 0 &&
     !diff.exampleStructureChanged &&
     diff.addedFigures.length === 0 &&
     diff.removedFigures.length === 0 &&
@@ -327,5 +340,48 @@ export function isEmptyDiff(diff: StructureDiff): boolean {
     diff.removedLabels.length === 0 &&
     diff.contentChangedUuids.size === 0 &&
     diff.exampleContentChangedUuids.size === 0
+  );
+}
+
+/**
+ * True when the diff carries anything BEYOND the two content-only sets —
+ * i.e. `applyDiff` would fold at least one entry. The observer plugin uses
+ * this to decide defer-vs-materialize per transaction: a content-only diff
+ * (every plain keystroke) accumulates StepMaps lazily; anything structural
+ * materializes so `applyDiff` folds into coherent positions.
+ *
+ * NOTE: deliberately BROADER than the bus's `emitCount` predicate — that one
+ * omits `changedBlocks`/`changedFootnotes` by design (they don't wake
+ * structural watchers), but applyDiff still folds them, so the observer must
+ * treat them as structural. Don't unify the two.
+ */
+export function diffHasStructuralEntries(diff: StructureDiff): boolean {
+  return !(
+    diff.addedBlocks.length === 0 &&
+    diff.removedBlocks.length === 0 &&
+    diff.changedBlocks.length === 0 &&
+    !diff.blockOrderChanged &&
+    diff.addedHeadings.length === 0 &&
+    diff.removedHeadings.length === 0 &&
+    diff.changedHeadings.length === 0 &&
+    diff.addedFootnotes.length === 0 &&
+    diff.removedFootnotes.length === 0 &&
+    diff.changedFootnotes.length === 0 &&
+    !diff.footnoteOrderChanged &&
+    diff.addedCitations.length === 0 &&
+    diff.removedCitations.length === 0 &&
+    diff.changedCitations.length === 0 &&
+    !diff.citationOrderChanged &&
+    diff.addedAnchors.length === 0 &&
+    diff.removedAnchors.length === 0 &&
+    diff.addedExamples.length === 0 &&
+    diff.removedExamples.length === 0 &&
+    diff.changedExamples.length === 0 &&
+    !diff.exampleStructureChanged &&
+    diff.addedFigures.length === 0 &&
+    diff.removedFigures.length === 0 &&
+    diff.changedFigures.length === 0 &&
+    diff.addedLabels.length === 0 &&
+    diff.removedLabels.length === 0
   );
 }

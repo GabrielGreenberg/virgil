@@ -29,6 +29,7 @@ import {
 } from "@/lib/ai-request-bridge";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { applyCardMorph } from "@/cards/morphs";
+import { carryCardEnvelope } from "@/cards/envelope";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -393,7 +394,10 @@ export function useReports(
     (sourceId: string): string | null => {
       const source = state.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "report") return null;
-      const clone: ReportCard = {
+      // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
+      // `links`→[] is intentionally reset for the clone. (Reports declare
+      // `lifecycle.clone:false`, so this is future-proofing — dead code today.)
+      const clone: ReportCard = carryCardEnvelope(source, {
         kind: "report",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
@@ -405,7 +409,7 @@ export function useReports(
         content: normalizeRichContent(source.content),
         selectedText: source.selectedText,
         links: [],
-      };
+      });
       update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
       return clone.id;
     },
@@ -416,7 +420,10 @@ export function useReports(
     (sourceId: string): string | null => {
       const source = state.cards.find((c) => c.id === sourceId);
       if (!source || source.kind !== "report-request") return null;
-      const clone: ReportRequestCard = {
+      // Envelope (`archived`) carried via the shared clone/morph SSOT (task 099);
+      // `aiRequest`→false and `links`→[] are intentionally reset for the clone.
+      // (Reports declare `lifecycle.clone:false` — future-proofing, dead today.)
+      const clone: ReportRequestCard = carryCardEnvelope(source, {
         kind: "report-request",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
@@ -425,7 +432,7 @@ export function useReports(
         aiRequest: false,
         selectedText: source.selectedText,
         links: [],
-      };
+      });
       update((prev) => ({ ...prev, cards: [...prev.cards, clone] }));
       return clone.id;
     },

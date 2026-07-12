@@ -4,6 +4,7 @@ import {
   extractDocumentClass,
   findSectioningCommands,
   rewriteDocumentClass,
+  unsupportedSectioningFor,
 } from "@/lib/document-class";
 
 describe("extractDocumentClass", () => {
@@ -165,6 +166,52 @@ describe("detectDocumentClassMismatch", () => {
     const m = detectDocumentClassMismatch(src);
     expect(m?.currentClass).toBe("article");
     expect(m?.offenders).toEqual(["chapter"]);
+  });
+});
+
+describe("unsupportedSectioningFor — the doc-type change gate", () => {
+  const withChapter =
+    "\\documentclass{book}\n\\begin{document}\n\\chapter{Intro}\n\\section{A}\n\\end{document}";
+  const sectionsOnly =
+    "\\documentclass{article}\n\\begin{document}\n\\section{A}\n\\subsection{B}\n\\end{document}";
+
+  it("upgrade (article → book): no offenders → hard swap", () => {
+    // Body uses only \section/\subsection; book supports both → mechanical.
+    expect(unsupportedSectioningFor(sectionsOnly, "book")).toEqual([]);
+  });
+
+  it("lateral (report → book): both support \\chapter → hard swap", () => {
+    expect(unsupportedSectioningFor(withChapter, "book")).toEqual([]);
+    expect(unsupportedSectioningFor(withChapter, "report")).toEqual([]);
+  });
+
+  it("downgrade (book → article) with \\chapter: offender → AI/restructure", () => {
+    expect(unsupportedSectioningFor(withChapter, "article")).toEqual(["chapter"]);
+  });
+
+  it("downgrade to a class that DOES support the used commands is still hard", () => {
+    // A book with only sections downgraded to article: article supports
+    // \section, so no offenders — the swap is mechanically safe.
+    expect(unsupportedSectioningFor(
+      "\\documentclass{book}\n\\begin{document}\n\\section{A}\n\\end{document}",
+      "article",
+    )).toEqual([]);
+  });
+
+  it("ignores the current class — only the TARGET's support matters", () => {
+    // Same body, different targets: article rejects \chapter, report accepts it.
+    expect(unsupportedSectioningFor(withChapter, "article")).toEqual(["chapter"]);
+    expect(unsupportedSectioningFor(withChapter, "report")).toEqual([]);
+  });
+
+  it("unknown target class stays silent (custom .cls could define anything)", () => {
+    expect(unsupportedSectioningFor(withChapter, "acmart")).toEqual([]);
+  });
+
+  it("does not flag commands hidden in verbatim/comments", () => {
+    const src =
+      "\\documentclass{book}\n\\begin{document}\n\\verb|\\chapter{fake}|\n\\section{real}\n\\end{document}";
+    expect(unsupportedSectioningFor(src, "article")).toEqual([]);
   });
 });
 

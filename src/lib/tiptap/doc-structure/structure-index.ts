@@ -429,17 +429,23 @@ export function applyDiff(prev: DocStructure, diff: StructureDiff): DocStructure
     anchors = next;
   }
 
-  // Examples — same pattern as headings.
+  // Examples — same pattern as figures (added / removed / changed). A same-id
+  // MOVE or renumber arrives as `changedExamples` carrying the NEW pos/number;
+  // replace the entry in place so the index doesn't keep the moved example's
+  // stale (deleted) position, then re-sort by pos.
   let examples: readonly ExampleEntry[] = prev.examples;
   if (
     diff.addedExamples.length > 0 ||
     diff.removedExamples.length > 0 ||
+    diff.changedExamples.length > 0 ||
     diff.exampleStructureChanged
   ) {
     const removedIds = new Set(diff.removedExamples.map((e) => e.id));
+    const changedById = new Map(diff.changedExamples.map((e) => [e.id, e]));
     const next: ExampleEntry[] = [];
     for (const e of prev.examples) {
-      if (!removedIds.has(e.id)) next.push(e);
+      if (removedIds.has(e.id)) continue;
+      next.push(changedById.get(e.id) ?? e);
     }
     for (const added of diff.addedExamples) next.push(added);
     next.sort((a, b) => a.pos - b.pos);

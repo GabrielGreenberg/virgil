@@ -176,7 +176,7 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            className="self-center shrink-0"
+            className="self-end mb-[3px] shrink-0"
           >
             <InlineTabLabel
               id={OUTER_LIBRARY_ROOT_ID}
@@ -247,7 +247,7 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            className="self-center shrink-0"
+            className="self-end mb-[3px] shrink-0"
           >
             <InlineTabLabel
               id={citekey}
@@ -364,7 +364,7 @@ function TabStripImpl(props: TabStripProps) {
               if (el) outerTabRefs.current.set(entryId, el);
               else outerTabRefs.current.delete(entryId);
             }}
-            className="self-center shrink-0"
+            className="self-end mb-[3px] shrink-0"
             {...dropHandlers}
             style={dropStyle}
           >
@@ -472,7 +472,7 @@ function TabStripImpl(props: TabStripProps) {
             if (el) outerTabRefs.current.set(doc.id, el);
             else outerTabRefs.current.delete(doc.id);
           }}
-          className="self-center shrink-0"
+          className="self-end mb-[3px] shrink-0"
         >
           <InlineTabLabel
             id={doc.id}

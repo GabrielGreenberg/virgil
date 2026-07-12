@@ -1,0 +1,207 @@
+// Editor-observer stability guardrail — the CI half of the third perf law
+// (AGENTS.md "Editor-observer stability"), sibling of
+// `keystroke-subscriber-guardrail.test.ts` (keystroke sanctity) and
+// `scroll-reposition-guardrail.test.ts` (scroll-anchor stability).
+//
+// The law: NO deep MutationObserver (subtree/characterData) over editor
+// content on the keystroke path — a characterData MO fires as a pre-paint
+// microtask on EVERY keystroke, and one that reads layout (scrollHeight /
+// getBoundingClientRect) forces a full-document layout right after the text
+// mutation; one that then WRITES styles dirties layout again (the exact
+// double-forced-layout the old editor-scrollbar MO paid per keystroke —
+// measured ~30 ms per full-page relayout at ~320 blocks). ResizeObservers
+// are the sanctioned alternative (they deliver post-layout, at most once per
+// frame, and only on real geometry change) — but their callbacks must be
+// read-before-write and equality-bailed so a var write can't ping-pong the
+// observer into a feedback loop.
+//
+//   SOURCE-GREP ALLOWLISTS — walk `src/`, flag (1) every file constructing a
+//   MutationObserver with `subtree: true` or `characterData: true`, and
+//   (2) every file constructing a ResizeObserver; assert each flagged set
+//   equals its PERMITTED_* allowlist. A new unlisted deep MO or RO FAILS CI.
+//
+// The grep is a heuristic — stability is semantic, not syntactic — so, as
+// with the two sibling guardrails, the allowlist + per-entry justification is
+// what makes it robust: a human confirms each listed site is genuinely
+// bounded (panel-local / node-local / RAF-coalesced / equality-bailed). The
+// runtime companion is `window.__keystrokeStats()` (keystroke-latency-probe):
+// its work-attribution channel counts observer fires per keystroke — a
+// healthy plain keystroke attributes ZERO fires.
+//
+// Scope notes:
+//   • Attribute-only MutationObservers (e.g. editor-ref.tsx's
+//     `{ attributes: true, attributeFilter: ["data-editable"] }`) are
+//     deliberately NOT matched — they fire on attribute flips, not typing.
+//   • Scoped to `src/` — `library/` owns its own perf doctrine.
+
+import { describe, it, expect } from "vitest";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const SRC = path.resolve(HERE, "../.."); // src/
+
+// ── Deep-MutationObserver allowlist ─────────────────────────────────────────
+// Every `src/` file that legitimately constructs a subtree/characterData
+// MutationObserver. The bar for entry is HIGH: the observed root must not be
+// editor content, and the callback must be bounded. The editor-scrollbar MUST
+// NEVER reappear here — its geometry needs are fully covered by its
+// ResizeObserver pass (a mutation that changes no element's size cannot
+// change any geometry input).
+const PERMITTED_DEEP_MUTATION_OBSERVERS: Record<string, string> = {
+  "panels/Outline/OutlinePanel.tsx":
+    "Two MOs (childList+subtree, no characterData) on the Outline panel's OWN list DOM — not editor content; mounted only while the panel is open; callbacks are a bounded row measure.",
+};
+
+// ── ResizeObserver allowlist ────────────────────────────────────────────────
+// Every `src/` file that constructs a ResizeObserver. Each must observe a
+// bounded target and keep its callback read-before-write + equality-bailed
+// (or RAF-coalesced) so it can neither force mid-frame layout nor feedback-
+// loop on its own writes.
+const PERMITTED_RESIZE_OBSERVERS: Record<string, string> = {
+  "components/FigureBlockNodeView.tsx":
+    "Observes the figure block's own box + its column — node-local sizing, RAF-scheduled.",
+  "components/editor-layout/DocumentFolderTab.tsx":
+    "Observes the tab's own element for chrome measurement — bounded, not editor content.",
+  "components/editor-layout/editor-scrollbar.tsx":
+    "Observes row/editor-column/page in ONE read-batched, equality-bailed measureAndApply() pass (typing-latency fix 1b): all reads before all writes, CSS vars + React state only on value change — no MutationObserver, no read-after-write, feedback loop self-terminates.",
+  "components/editor-layout/split-with-code.tsx":
+    "Observes the split container/child for divider sizing — layout chrome, not per-keystroke content.",
+  "components/panel-primitives.tsx":
+    "Observes a panel header's own box — panel chrome, mounted with the panel.",
+  "hooks/useEditorViewportCache.ts":
+    "Observes the editor element + scroll parent; refresh() has a full field-equality bail before the version bump, so unchanged geometry re-renders nothing.",
+  "hooks/useFloatingMenuPosition.ts":
+    "Observes the floating menu's own element; reposition is RAF-coalesced with a (left,top) equality bail (also on the scroll-reposition allowlist).",
+  "hooks/useInTextPositions.ts":
+    "Observes editor.view.dom for wrap-induced reflow; the callback only calls the RAF-coalesced schedule() — the measure pass is viewport-gated (NEAR_ZONE) and runs once per frame.",
+  "hooks/useMarginaliaRegistry.ts":
+    "Per-[data-uuid]-block ROs; onResize bails when the editor is hidden and feeds per-uuid invalidation into a RAF-coalesced recompute.",
+  "panels/Outline/OutlinePanel.tsx":
+    "Observes the panel's own scroller/container — panel-local, open-only, bounded row measure.",
+};
+
+/** Strip comments so doctrine prose can't read as a live constructor call. */
+export function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+}
+
+/**
+ * Detector 1 — the F1 regression class: a MutationObserver whose options
+ * include `subtree: true` or `characterData: true` (fires on typing).
+ * File-level conjunction on purpose; attribute-only MOs don't match.
+ */
+export function detectDeepMutationObserver(source: string): boolean {
+  const s = stripComments(source);
+  return (
+    /new MutationObserver/.test(s) &&
+    /(subtree|characterData)\s*:\s*true/.test(s)
+  );
+}
+
+/** Detector 2 — any ResizeObserver construction. */
+export function detectResizeObserver(source: string): boolean {
+  return /new ResizeObserver/.test(stripComments(source));
+}
+
+function walkSource(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    const st = statSync(full);
+    if (st.isDirectory()) {
+      // Skip test + fixture trees so the guard never scans itself.
+      if (entry === "__tests__" || entry === "__fixtures__") continue;
+      out.push(...walkSource(full));
+    } else if (/\.(ts|tsx)$/.test(entry)) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+describe("editor-observer guardrail — deep MutationObservers", () => {
+  const detected = walkSource(SRC)
+    .filter((f) => detectDeepMutationObserver(readFileSync(f, "utf8")))
+    .map((f) => path.relative(SRC, f).split(path.sep).join("/"))
+    .sort();
+
+  it("flags exactly the allowlisted deep MOs — no unlisted new ones", () => {
+    // If this fails with an EXTRA file: a new subtree/characterData
+    // MutationObserver landed. If it can observe editor content, it WILL fire
+    // per keystroke as a pre-paint microtask — rewrite it as a ResizeObserver
+    // (geometry) or a DocStructureBus consumer (structure) instead. Only a
+    // bounded, panel-local observer may be allowlisted, with a justification
+    // here AND in the AGENTS.md prose list.
+    expect(detected).toEqual(
+      Object.keys(PERMITTED_DEEP_MUTATION_OBSERVERS).sort(),
+    );
+  });
+
+  it("keeps the allowlist free of stale entries", () => {
+    for (const rel of Object.keys(PERMITTED_DEEP_MUTATION_OBSERVERS)) {
+      const src = readFileSync(path.join(SRC, rel), "utf8");
+      expect(detectDeepMutationObserver(src)).toBe(true);
+    }
+  });
+
+  it("would flag the old scrollbar-style MO (characterData over the scroll row)", () => {
+    const regressionFixture = `
+      const mo = new MutationObserver(() => { syncRowBoundCss(); refresh(); });
+      mo.observe(row, { childList: true, subtree: true, characterData: true });
+    `;
+    expect(detectDeepMutationObserver(regressionFixture)).toBe(true);
+  });
+
+  it("does not flag an attribute-only MO (editor-ref's data-editable watcher)", () => {
+    const attrOnly = `
+      const obs = new MutationObserver(read);
+      obs.observe(dom, { attributes: true, attributeFilter: ["data-editable"] });
+    `;
+    expect(detectDeepMutationObserver(attrOnly)).toBe(false);
+  });
+
+  it("does not flag a file that only MENTIONS the doctrine in comments", () => {
+    const commentOnly = `
+      // Never add a new MutationObserver with subtree: true here.
+      /* The old code used characterData: true — removed in fix 1b. */
+      export function noop() {}
+    `;
+    expect(detectDeepMutationObserver(commentOnly)).toBe(false);
+  });
+});
+
+describe("editor-observer guardrail — ResizeObservers", () => {
+  const detected = walkSource(SRC)
+    .filter((f) => detectResizeObserver(readFileSync(f, "utf8")))
+    .map((f) => path.relative(SRC, f).split(path.sep).join("/"))
+    .sort();
+
+  it("flags exactly the allowlisted ResizeObservers — no unlisted new ones", () => {
+    // If this fails with an EXTRA file: a new ResizeObserver landed. Confirm
+    // its callback is read-before-write + equality-bailed (or RAF-coalesced)
+    // and its target bounded, then allowlist it with a justification — OR
+    // restructure it. The runtime check: type in the dev preview and read
+    // window.__keystrokeStats().work — a plain keystroke must attribute 0
+    // fires to your site.
+    expect(detected).toEqual(Object.keys(PERMITTED_RESIZE_OBSERVERS).sort());
+  });
+
+  it("keeps the allowlist free of stale entries", () => {
+    for (const rel of Object.keys(PERMITTED_RESIZE_OBSERVERS)) {
+      const src = readFileSync(path.join(SRC, rel), "utf8");
+      expect(detectResizeObserver(src)).toBe(true);
+    }
+  });
+
+  it("does not flag a file that only MENTIONS ResizeObserver in comments", () => {
+    const commentOnly = `
+      // A new ResizeObserver here would need the allowlist.
+      export function noop() {}
+    `;
+    expect(detectResizeObserver(commentOnly)).toBe(false);
+  });
+});

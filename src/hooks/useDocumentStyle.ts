@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { drainDoc, readTex, writeTex } from "@/lib/storage";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
+import { rewriteDocumentClass } from "@/lib/document-class";
 import {
   dispatchTexDelimitersChanged,
   dispatchTexDelimitersWillChange,
@@ -115,5 +116,45 @@ export function useDocumentStyle(docId: string | null) {
     [docId, handle, update],
   );
 
-  return { styleId: state.styleId, setStyle };
+  /**
+   * Swap ONLY the document's `\documentclass` name in place — a purely
+   * mechanical change (`rewriteDocumentClass` preserves the `[options]` list
+   * and every other byte, preamble and body alike). This backs the Style
+   * panel's "change doc type" control for the safe case (the target class
+   * supports every sectioning command the body uses — any upgrade, plus
+   * lateral swaps). The structural-downgrade case (target drops a command the
+   * body relies on) is gated OUT of this path by the caller and routed to a
+   * restructuring prompt instead.
+   *
+   * Rides the SAME out-of-band-preamble resync contract as `setStyle` and the
+   * compile-path mismatch swap: flush the code-pane bridge + autosave first
+   * (`dispatchTexDelimitersWillChange` + `drainDoc`) so no in-flight write
+   * resurrects the old class, then rewrite, then `dispatchTexDelimitersChanged`
+   * so an open code view re-reads instead of persisting the stale class back.
+   * Unlike `setStyle` this does NOT touch `document-settings.json` — the style
+   * selection is orthogonal to the class (the swap will simply read as drift
+   * from the active style, which is correct: the user changed the class).
+   */
+  const setDocumentClass = useCallback(
+    async (newClass: string) => {
+      if (!docId || !handle) return;
+      try {
+        dispatchTexDelimitersWillChange(docId);
+        await drainDoc(docId);
+        const existingLatex = await readTex(docId);
+        const rewritten = rewriteDocumentClass(existingLatex, newClass);
+        // No-op if there's no live `\documentclass` to rewrite, or the class
+        // is already the target — avoid a spurious write + resync.
+        if (rewritten === existingLatex) return;
+        await writeTex(handle, rewritten);
+        dispatchTexDelimitersChanged(docId);
+      } catch (err) {
+        if (isStalePipelineError(err)) return;
+        console.error("Failed to rewrite documentclass:", err);
+      }
+    },
+    [docId, handle],
+  );
+
+  return { styleId: state.styleId, setStyle, setDocumentClass };
 }

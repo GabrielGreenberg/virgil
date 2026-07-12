@@ -2,7 +2,7 @@ import { Node, mergeAttributes } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import katex from "katex";
-import { UUID_ATTR_SPEC } from "./uuid-attr";
+import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 
 function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
   target.innerHTML = "";
@@ -56,6 +56,12 @@ function mathNodeView(opts: {
 
   renderMath(dom, node.attrs.latex || "", displayMode);
 
+  // 2d: NodeView-owned data-uuid/kind exposure (displayMath is anchorable;
+  // MAIN surface only — parity with the deleted UuidAttrDecorator scope).
+  if (surface === "main" && node.type.spec.attrs?.uuid !== undefined) {
+    stampTextObjectAttrs(dom, node, null);
+  }
+
   dom.addEventListener("click", (e: Event) => {
     e.preventDefault();
     e.stopPropagation();
@@ -102,10 +108,14 @@ function mathNodeView(opts: {
     dom,
     update(updated: any) {
       if (updated.type.name !== node.type.name) return false;
+      const uuidChanged = updated.attrs.uuid !== node.attrs.uuid;
       // Keep the captured node reference up to date so subsequent clicks
       // reflect the latest latex value without waiting for a re-mount.
       Object.assign(node, updated);
       renderMath(dom, updated.attrs.latex || "", displayMode);
+      if (uuidChanged && surface === "main" && node.type.spec.attrs?.uuid !== undefined) {
+        stampTextObjectAttrs(dom, updated, null);
+      }
       return true;
     },
     selectNode() {

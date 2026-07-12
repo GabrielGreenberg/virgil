@@ -1,8 +1,8 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import { NodeSelection, TextSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import type { NodeType, Schema } from "@tiptap/pm/model";
-import { UUID_ATTR_SPEC } from "./uuid-attr";
-import { readDocStructure, readPendingDiff } from "./doc-structure";
+import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
+import { readPendingDiff, resolveTouchedBlock } from "./doc-structure";
 
 // `latexComment` is a real editable BLOCK node with native inline (`text*`)
 // content — NOT an atom with its text stashed in an attr + a parallel
@@ -29,6 +29,9 @@ import { readDocStructure, readPendingDiff } from "./doc-structure";
 // without being silently dropped, and so typing `% ` in a note body doesn't get
 // auto-transformed into a latexComment.
 export interface LatexCommentOptions {
+  /** Stamp gate for the NodeView data-uuid/kind exposure (2d): only the
+   *  MAIN document surface carries the attributes (decorator parity). */
+  surface: "main" | "float";
   cardContext: boolean;
 }
 
@@ -53,6 +56,9 @@ export const LatexComment = Node.create<LatexCommentOptions>({
   addOptions() {
     return {
       cardContext: false,
+      // Stamp gate for the NodeView's data-uuid/kind exposure (2d): only the
+      // MAIN document surface carries the attributes (decorator parity).
+      surface: "float" as "main" | "float",
     };
   },
 
@@ -213,11 +219,10 @@ export const LatexComment = Node.create<LatexCommentOptions>({
           for (const b of pending.addedBlocks) candidateUuids.add(b.uuid);
           if (candidateUuids.size === 0) return null;
 
-          const structure = readDocStructure(newState);
           const paragraphType = newState.schema.nodes.paragraph;
           const changes: Array<{ pos: number; size: number; text: string }> = [];
           for (const uuid of candidateUuids) {
-            const block = structure.blocks.get(uuid);
+            const block = resolveTouchedBlock(newState, uuid);
             if (!block || block.typeName !== "paragraph") continue;
             const node = newState.doc.nodeAt(block.pos);
             if (!node || node.type !== paragraphType) continue;
@@ -246,6 +251,7 @@ export const LatexComment = Node.create<LatexCommentOptions>({
 
   addNodeView() {
     const cardContext = this.options.cardContext;
+    const surface = this.options.surface;
     return ({ node, getPos, editor }) => {
       // Card-context: static `% text` row in muted gray, no caret. The node
       // spec is identical to the main-doc form so JSON round-trips intact (the
@@ -268,6 +274,9 @@ export const LatexComment = Node.create<LatexCommentOptions>({
       // stopPropagation, no blur-commit.
       const dom = document.createElement("div");
       dom.className = "latex-comment";
+      // 2d: NodeView-owned data-uuid/kind (MAIN only). No update() below —
+      // PM recreates this NodeView on node change, keeping the stamp fresh.
+      if (surface === "main") stampTextObjectAttrs(dom, node, null);
 
       const bar = document.createElement("div");
       bar.className = "latex-comment-handle";

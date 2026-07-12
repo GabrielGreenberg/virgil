@@ -57,6 +57,9 @@ type DeleteHandler = () => Promise<boolean>;
 // EditorPane via Editor.tsx so the figure annotation lozenge can prompt
 // with the same modal surface as headings.
 export interface FigureBlockOptions {
+  /** Stamp gate for the NodeView data-uuid/kind exposure (2d): only the
+   *  MAIN document surface carries the attributes (decorator parity). */
+  surface: "main" | "float";
   docIdRef: RefObject<string | null> | null;
   cardContext: boolean;
   figureFloat: boolean;
@@ -87,6 +90,8 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
     return {
       docIdRef: null,
       cardContext: false,
+      // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
+      surface: "float" as "main" | "float",
       figureFloat: false,
       onConfirmLabelRenameRef: null,
       onConfirmFigureDeleteRef: null,
@@ -124,8 +129,18 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
     // `contentDOMElementTag: "span"` so the figureCaption child node renders
     // inline with the bolded `Figure N:` prefix instead of being wrapped in
     // a block-level div (Tiptap's default for block-group nodes).
+    const surface = this.options.surface;
     return ReactNodeViewRenderer(FigureBlockNodeView, {
       contentDOMElementTag: "span",
+      // 2d: NodeView-owned data-uuid/kind exposure (MAIN only; re-applied on
+      // every node update, so the backfill's uuid mint lands too).
+      attrs: ({ node }): Record<string, string> =>
+        surface === "main" && node.attrs.uuid
+          ? {
+              "data-uuid": node.attrs.uuid as string,
+              "data-text-object-kind": node.type.name,
+            }
+          : {},
     });
   },
 });

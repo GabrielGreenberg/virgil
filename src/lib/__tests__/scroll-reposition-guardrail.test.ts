@@ -58,7 +58,7 @@ const PERMITTED_SCROLL_REPOSITIONERS: Record<string, string> = {
   "hooks/useFloatingMenuPosition.ts":
     "RAF-coalesced `trackAnchor` scroll re-read + `(left,top)` equality bail.",
   "components/editor-layout/editor-scrollbar.tsx":
-    "Custom scrollbar: thumb offset tracks `row.scrollTop` (cheap read), NOT a coordsAtPos re-solve; the fixed track top is recomputed on layout/resize only.",
+    "Custom scrollbar: scroll path reads ONLY `row.scrollTop` behind a prev-identity bail (no rect re-solve); rects/heights are measured in a single read-batched, equality-bailed ResizeObserver pass (editor-observer stability contract — no MutationObserver, no read-after-write).",
 };
 
 // ── The library-silo allowlist ──────────────────────────────────────────────

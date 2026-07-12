@@ -10,6 +10,10 @@ import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { onFontReady } from "@/lib/text-metrics";
+import {
+  recordKeystrokeWork,
+  KEYSTROKE_WORK_INTEXT_RO,
+} from "@/lib/keystroke-latency-probe";
 
 /** Viewport gating margin — items within ±NEAR_ZONE_PX of the visible
  *  range still get measured, so scrolling slightly doesn't flash through
@@ -711,7 +715,10 @@ export function useInTextPositions(
     try {
       const editorDom = editor.view?.dom as HTMLElement | undefined;
       if (editorDom && typeof ResizeObserver !== "undefined") {
-        editorObs = new ResizeObserver(schedule);
+        editorObs = new ResizeObserver(() => {
+          recordKeystrokeWork(KEYSTROKE_WORK_INTEXT_RO);
+          schedule();
+        });
         editorObs.observe(editorDom);
       }
     } catch {
