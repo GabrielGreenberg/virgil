@@ -1,6 +1,6 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { readDocStructure, readPendingDiff, touchedBlockPositions } from "./doc-structure";
+import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
 
 /** \ref{label} — inline cross-reference rendered as a clickable pod. */
 export const LabelRef = Node.create({
@@ -131,7 +131,6 @@ export const LabelHandler = Extension.create({
           const { doc, schema } = newState;
           const headingType = schema.nodes.heading;
           const paragraphType = schema.nodes.paragraph;
-          const structure = readDocStructure(newState);
 
           // Deduped by the label paragraph's position — a heading/paragraph
           // pair can surface from BOTH ends when both are in the touched set.
@@ -169,7 +168,7 @@ export const LabelHandler = Extension.create({
             });
           };
 
-          for (const pos of touchedBlockPositions(pending, structure, doc)) {
+          for (const pos of touchedBlockPositions(pending, newState, doc)) {
             const node = doc.nodeAt(pos);
             if (!node) continue;
             if (node.type === headingType) {

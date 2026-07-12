@@ -202,6 +202,9 @@ describe("FN-A1-03 — delete footnote → undo → one card, no orphan", () => 
     await act(async () => {
       editor.commands.undo();
       await Promise.resolve();
+      // The rev-gated live-footnote derivation flushes on the next frame
+      // (2c trailing-RAF coalescing) — drain one before asserting.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
     });
     // f007 is live again.
     let liveFootnotes = 0;

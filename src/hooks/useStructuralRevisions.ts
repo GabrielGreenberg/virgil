@@ -39,9 +39,10 @@
  * `footnoteInfos` / `examples` are sourced in `EditorPane`).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { rafCoalesced } from "@/lib/raf-coalesced";
 
 export interface StructuralRevisions {
   /** Footnote node added / removed / reordered (also covers footnote-body edits). */
@@ -77,6 +78,16 @@ export function useStructuralRevisions(
   editor: Editor | null | undefined,
 ): StructuralRevisions {
   const [revs, setRevs] = useState<StructuralRevisions>(ZERO);
+  // Categories bumped since the last flush — the held-backspace damper
+  // (typing-latency fix 2c). A key-repeat delete across N blocks fires a
+  // structural emit per block-merge tx (~30/s); flushing per emit meant a
+  // panel-rerendering setState per repeat. Accumulate instead and flush ONE
+  // merged setRevs on the next frame: counters stay monotonic and
+  // per-category, a burst inside one frame costs one render, and the damper
+  // engages hardest exactly when frames are long (backpressure). Latency
+  // cost ≤ 1 frame — imperceptible for panel counts. The synchronous
+  // policy/appendTransaction path doesn't run through this hook at all.
+  const pendingRef = useRef<Set<keyof StructuralRevisions>>(new Set());
 
   useEffect(() => {
     if (!editor) return;
@@ -87,8 +98,23 @@ export function useStructuralRevisions(
     // so a doc-switch remount already forces recompute via the `editor` dep.
     // No reset needed (and a synchronous setState here would cascade renders).
 
-    const bump = (key: keyof StructuralRevisions) => () =>
-      setRevs((p) => ({ ...p, [key]: p[key] + 1 }));
+    const pending = pendingRef.current;
+    pending.clear();
+    const flush = rafCoalesced(() => {
+      if (pending.size === 0) return;
+      const keys = [...pending];
+      pending.clear();
+      setRevs((p) => {
+        const next = { ...p };
+        for (const k of keys) next[k] = p[k] + 1;
+        return next;
+      });
+    });
+
+    const bump = (key: keyof StructuralRevisions) => () => {
+      pending.add(key);
+      flush.schedule();
+    };
 
     const unsubs = [
       bus.onFootnotesAdded(bump("footnotes")),
@@ -128,6 +154,7 @@ export function useStructuralRevisions(
     ];
 
     return () => {
+      flush.cancel();
       for (const u of unsubs) u();
     };
   }, [editor]);

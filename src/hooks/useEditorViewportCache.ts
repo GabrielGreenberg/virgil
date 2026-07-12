@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
+import {
+  recordKeystrokeWork,
+  KEYSTROKE_WORK_VIEWPORT_CACHE_RO,
+} from "@/lib/keystroke-latency-probe";
 
 /**
  * Cached DOM measurements that are stable across keystrokes — the editor's
@@ -283,7 +287,10 @@ export function useEditorViewportCache(editor: Editor | null): {
 
     refresh();
 
-    const ro = new ResizeObserver(refresh);
+    const ro = new ResizeObserver(() => {
+      recordKeystrokeWork(KEYSTROKE_WORK_VIEWPORT_CACHE_RO);
+      refresh();
+    });
     ro.observe(editorEl);
     const sp = findScrollParent(editorEl);
     if (sp) ro.observe(sp);

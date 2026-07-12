@@ -117,8 +117,18 @@ export interface DocStructureBus {
 // ---------------------------------------------------------------------------
 
 interface MutableBus extends DocStructureBus {
-  _emit(diff: StructureDiff, structure: DocStructure): void;
+  /** `structure` may be a THUNK: on content-only emits (every plain
+   *  keystroke) the observer passes a lazy resolver so the snapshot only
+   *  materializes if a handler that actually receives it exists — the
+   *  per-block/per-example content handlers are argless, so plain typing
+   *  resolves nothing. Structural emits pass the concrete snapshot. */
+  _emit(diff: StructureDiff, structure: DocStructure | (() => DocStructure)): void;
   _setStructure(structure: DocStructure): void;
+  /** Live-flow snapshot source: the observer's view hook injects
+   *  `() => readDocStructure(view.state)` so `bus.structure` always reads
+   *  a materialized-at-read-time snapshot. Null (tests/detached) falls
+   *  back to the `_setStructure`/_emit-cached value. */
+  _setSnapshotProvider(provider: (() => DocStructure) | null): void;
 }
 
 function makeList<T>(): { add(fn: T): Unsub; emit(call: (fn: T) => void): void } {
@@ -146,6 +156,7 @@ function makeList<T>(): { add(fn: T): Unsub; emit(call: (fn: T) => void): void }
 
 export function createDocStructureBus(): DocStructureBus {
   let structure: DocStructure = EMPTY_STRUCTURE;
+  let snapshotProvider: (() => DocStructure) | null = null;
   let emitCount = 0;
 
   const anyChange = makeList<DiffHandler>();
@@ -190,7 +201,7 @@ export function createDocStructureBus(): DocStructureBus {
 
   const bus: MutableBus = {
     get structure() {
-      return structure;
+      return snapshotProvider ? snapshotProvider() : structure;
     },
     get emitCount() {
       return emitCount;
@@ -198,8 +209,17 @@ export function createDocStructureBus(): DocStructureBus {
     _setStructure(s) {
       structure = s;
     },
-    _emit(diff, s) {
-      structure = s;
+    _setSnapshotProvider(provider) {
+      snapshotProvider = provider;
+    },
+    _emit(diff, sOrThunk) {
+      // Memoized lazy resolve — a thunk is called at most once, and only
+      // if a handler that receives the snapshot actually runs.
+      let resolved: DocStructure | null =
+        typeof sOrThunk === "function" ? null : sOrThunk;
+      const s = (): DocStructure =>
+        (resolved ??= (sOrThunk as () => DocStructure)());
+      if (typeof sOrThunk !== "function") structure = sOrThunk;
 
       // `emitCount` and `onAnyChange` count only **structural** emits —
       // changes that affect any sub-view other than `contentChangedUuids`.
@@ -234,59 +254,59 @@ export function createDocStructureBus(): DocStructureBus {
 
       if (hasStructuralChange) {
         emitCount++;
-        anyChange.emit((fn) => fn(diff, s));
+        anyChange.emit((fn) => fn(diff, s()));
       }
 
-      if (diff.addedBlocks.length > 0) blocksAdded.emit((fn) => fn(diff.addedBlocks, s));
-      if (diff.removedBlocks.length > 0) blocksRemoved.emit((fn) => fn(diff.removedBlocks, s));
-      if (diff.blockOrderChanged) blockOrderChanged.emit((fn) => fn(diff, s));
+      if (diff.addedBlocks.length > 0) blocksAdded.emit((fn) => fn(diff.addedBlocks, s()));
+      if (diff.removedBlocks.length > 0) blocksRemoved.emit((fn) => fn(diff.removedBlocks, s()));
+      if (diff.blockOrderChanged) blockOrderChanged.emit((fn) => fn(diff, s()));
 
-      if (diff.addedHeadings.length > 0) headingsAdded.emit((fn) => fn(diff.addedHeadings, s));
-      if (diff.removedHeadings.length > 0) headingsRemoved.emit((fn) => fn(diff.removedHeadings, s));
-      if (diff.changedHeadings.length > 0) headingsChanged.emit((fn) => fn(diff.changedHeadings, s));
+      if (diff.addedHeadings.length > 0) headingsAdded.emit((fn) => fn(diff.addedHeadings, s()));
+      if (diff.removedHeadings.length > 0) headingsRemoved.emit((fn) => fn(diff.removedHeadings, s()));
+      if (diff.changedHeadings.length > 0) headingsChanged.emit((fn) => fn(diff.changedHeadings, s()));
       if (
         diff.addedHeadings.length > 0 ||
         diff.removedHeadings.length > 0 ||
         diff.changedHeadings.length > 0
       ) {
-        headingsRecomputable.emit((fn) => fn(diff, s));
+        headingsRecomputable.emit((fn) => fn(diff, s()));
       }
 
-      if (diff.addedFootnotes.length > 0) footnotesAdded.emit((fn) => fn(diff.addedFootnotes, s));
-      if (diff.removedFootnotes.length > 0) footnotesRemoved.emit((fn) => fn(diff.removedFootnotes, s));
-      if (diff.footnoteOrderChanged) footnoteOrderChanged.emit((fn) => fn(diff, s));
+      if (diff.addedFootnotes.length > 0) footnotesAdded.emit((fn) => fn(diff.addedFootnotes, s()));
+      if (diff.removedFootnotes.length > 0) footnotesRemoved.emit((fn) => fn(diff.removedFootnotes, s()));
+      if (diff.footnoteOrderChanged) footnoteOrderChanged.emit((fn) => fn(diff, s()));
 
-      if (diff.addedCitations.length > 0) citationsAdded.emit((fn) => fn(diff.addedCitations, s));
-      if (diff.removedCitations.length > 0) citationsRemoved.emit((fn) => fn(diff.removedCitations, s));
-      if (diff.changedCitations.length > 0) citationsChanged.emit((fn) => fn(diff.changedCitations, s));
-      if (diff.citationOrderChanged) citationOrderChanged.emit((fn) => fn(diff, s));
+      if (diff.addedCitations.length > 0) citationsAdded.emit((fn) => fn(diff.addedCitations, s()));
+      if (diff.removedCitations.length > 0) citationsRemoved.emit((fn) => fn(diff.removedCitations, s()));
+      if (diff.changedCitations.length > 0) citationsChanged.emit((fn) => fn(diff.changedCitations, s()));
+      if (diff.citationOrderChanged) citationOrderChanged.emit((fn) => fn(diff, s()));
 
-      if (diff.addedAnchors.length > 0) anchorsAdded.emit((fn) => fn(diff.addedAnchors, s));
-      if (diff.removedAnchors.length > 0) anchorsRemoved.emit((fn) => fn(diff.removedAnchors, s));
+      if (diff.addedAnchors.length > 0) anchorsAdded.emit((fn) => fn(diff.addedAnchors, s()));
+      if (diff.removedAnchors.length > 0) anchorsRemoved.emit((fn) => fn(diff.removedAnchors, s()));
 
-      if (diff.addedExamples.length > 0) examplesAdded.emit((fn) => fn(diff.addedExamples, s));
-      if (diff.removedExamples.length > 0) examplesRemoved.emit((fn) => fn(diff.removedExamples, s));
-      if (diff.exampleStructureChanged) examplesRecomputable.emit((fn) => fn(diff, s));
+      if (diff.addedExamples.length > 0) examplesAdded.emit((fn) => fn(diff.addedExamples, s()));
+      if (diff.removedExamples.length > 0) examplesRemoved.emit((fn) => fn(diff.removedExamples, s()));
+      if (diff.exampleStructureChanged) examplesRecomputable.emit((fn) => fn(diff, s()));
 
-      if (diff.addedFigures.length > 0) figuresAdded.emit((fn) => fn(diff.addedFigures, s));
-      if (diff.removedFigures.length > 0) figuresRemoved.emit((fn) => fn(diff.removedFigures, s));
-      if (diff.changedFigures.length > 0) figuresChanged.emit((fn) => fn(diff.changedFigures, s));
+      if (diff.addedFigures.length > 0) figuresAdded.emit((fn) => fn(diff.addedFigures, s()));
+      if (diff.removedFigures.length > 0) figuresRemoved.emit((fn) => fn(diff.removedFigures, s()));
+      if (diff.changedFigures.length > 0) figuresChanged.emit((fn) => fn(diff.changedFigures, s()));
       if (
         diff.addedFigures.length > 0 ||
         diff.removedFigures.length > 0 ||
         diff.changedFigures.length > 0
       ) {
-        figuresRecomputable.emit((fn) => fn(diff, s));
+        figuresRecomputable.emit((fn) => fn(diff, s()));
       }
 
-      if (diff.addedLabels.length > 0) labelsAdded.emit((fn) => fn(diff.addedLabels, s));
-      if (diff.removedLabels.length > 0) labelsRemoved.emit((fn) => fn(diff.removedLabels, s));
+      if (diff.addedLabels.length > 0) labelsAdded.emit((fn) => fn(diff.addedLabels, s()));
+      if (diff.removedLabels.length > 0) labelsRemoved.emit((fn) => fn(diff.removedLabels, s()));
       if (diff.addedLabels.length > 0 || diff.removedLabels.length > 0) {
-        labelsRecomputable.emit((fn) => fn(diff, s));
+        labelsRecomputable.emit((fn) => fn(diff, s()));
       }
 
       if (diff.contentChangedUuids.size > 0) {
-        contentChanged.emit((fn) => fn(diff.contentChangedUuids, s));
+        contentChanged.emit((fn) => fn(diff.contentChangedUuids, s()));
         for (const uuid of diff.contentChangedUuids) {
           const handlers = perBlockContent.get(uuid);
           if (handlers) {

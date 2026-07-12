@@ -1,7 +1,7 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { UUID_ATTR_SPEC } from "./uuid-attr";
-import { readDocStructure, readPendingDiff, touchedBlockPositions } from "./doc-structure";
+import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
+import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
 
 /**
  * Clears parTitle (and uuid) from empty paragraphs.
@@ -46,12 +46,11 @@ export const EmptyParagraphTitleCleaner = Extension.create({
 
           const { doc, schema } = newState;
           const paragraphType = schema.nodes.paragraph;
-          const structure = readDocStructure(newState);
           let tr: typeof newState.tr | null = null;
 
           // Only the touched blocks (and their neighbours) can have just
           // become an empty titled paragraph — never the whole doc.
-          for (const pos of touchedBlockPositions(pending, structure, doc, true)) {
+          for (const pos of touchedBlockPositions(pending, newState, doc, true)) {
             const node = doc.nodeAt(pos);
             if (!node || node.type !== paragraphType) continue;
             if (!node.attrs.parTitle) continue;
@@ -78,6 +77,13 @@ const FIELD_LABELS: Record<string, string> = {
 /** Block node with editable content, annotated "Title" / "Author" / "Date". */
 export const TitleField = Node.create({
   name: "titleField",
+
+  addOptions() {
+    return {
+      // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
+      surface: "float" as "main" | "float",
+    };
+  },
   group: "block textObject",
   content: "inline*",
 
@@ -106,9 +112,12 @@ export const TitleField = Node.create({
   },
 
   addNodeView() {
+    const opts = this.options;
     return ({ node }) => {
       const wrapper = document.createElement("div");
       wrapper.className = "title-field-wrapper";
+      // 2d: NodeView-owned data-uuid/kind exposure (MAIN only).
+      if (opts.surface === "main") stampTextObjectAttrs(wrapper, node, null);
 
       const content = document.createElement("div");
       content.className = `title-field-content${node.attrs.field === "title" ? " title-field-title" : ""}`;
@@ -141,6 +150,13 @@ export const TitleField = Node.create({
  */
 export const MaketitleMarker = Node.create({
   name: "maketitleMarker",
+
+  addOptions() {
+    return {
+      // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
+      surface: "float" as "main" | "float",
+    };
+  },
   group: "block",
   atom: true,
 
@@ -165,10 +181,14 @@ export const MaketitleMarker = Node.create({
   },
 
   addNodeView() {
-    return () => {
+    const opts = this.options;
+    return ({ node }) => {
       const wrapper = document.createElement("div");
       wrapper.className = "maketitle-marker";
       wrapper.setAttribute("data-type", "maketitle-marker");
+      // 2d: NodeView-owned data-uuid/kind exposure (MAIN only). No update()
+      // — PM recreates on node change, keeping the stamp fresh.
+      if (opts.surface === "main") stampTextObjectAttrs(wrapper, node, null);
       return { dom: wrapper };
     };
   },

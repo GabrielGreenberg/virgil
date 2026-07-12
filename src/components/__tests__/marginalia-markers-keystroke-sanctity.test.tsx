@@ -167,7 +167,7 @@ function multiModeACard(
 }
 
 describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
-  it("plain typing leaves emitCount flat AND the resolver-driven memo identity stable; a structural edit recomputes it", () => {
+  it("plain typing leaves emitCount flat AND the resolver-driven memo identity stable; a structural edit recomputes it", async () => {
     const editor = mountDoc();
     const bus = getBus(editor);
     expect(bus).toBeTruthy();
@@ -224,7 +224,7 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
     // ── (2) A real structural edit (insert a new uuid'd block) DOES bump the
     // counter → the memo recomputes (identity changes). Proves the gate is
     // wired, not merely never firing.
-    act(() => {
+    await act(async () => {
       const tr = editor.state.tr;
       const para = editor.schema.nodes.paragraph.create(
         { uuid: "P3" },
@@ -232,6 +232,9 @@ describe("marginalia marker memo — keystroke sanctity (CHIP-B)", () => {
       );
       tr.insert(editor.state.doc.content.size, para);
       editor.view.dispatch(tr);
+      // Structural rev counters flush on the next animation frame (2c
+      // trailing-RAF coalescing) — drain one frame before asserting.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
     });
 
     expect(bus!.emitCount).toBeGreaterThan(emitBefore);

@@ -15,15 +15,18 @@
  */
 
 import type { Node as PMNode } from "@tiptap/pm/model";
-import type { DocStructure, StructureDiff } from "./types";
+import type { EditorState } from "@tiptap/pm/state";
+import type { StructureDiff } from "./types";
+import { resolveTouchedBlock } from "./observer-plugin";
 
 /**
  * The live top-level positions a transaction's diff touched — the union of
  * freshly-added blocks (`addedBlocks`), content-changed blocks
- * (`contentChangedUuids`, resolved to a current position through the
- * structure index) and changed headings (`changedHeadings`, e.g. a label /
- * level edit). Every returned position is the opening-token position of a
- * top-level node in `doc`.
+ * (`contentChangedUuids`, resolved to a current position via
+ * `resolveTouchedBlock` — O(pendingMaps) per uuid, no whole-snapshot
+ * materialization on the keystroke path) and changed headings
+ * (`changedHeadings`, e.g. a label / level edit). Every returned position is
+ * the opening-token position of a top-level node in `doc`.
  *
  * `includeSiblings` additionally returns each touched block's immediate
  * top-level neighbours. This is needed when a fix must react to a block that
@@ -38,7 +41,7 @@ import type { DocStructure, StructureDiff } from "./types";
  */
 export function touchedBlockPositions(
   diff: StructureDiff,
-  structure: DocStructure,
+  state: EditorState,
   doc: PMNode,
   includeSiblings = false,
 ): number[] {
@@ -49,7 +52,7 @@ export function touchedBlockPositions(
 
   for (const b of diff.addedBlocks) add(b.pos);
   for (const uuid of diff.contentChangedUuids) {
-    const entry = structure.blocks.get(uuid);
+    const entry = resolveTouchedBlock(state, uuid);
     if (entry) add(entry.pos);
   }
   for (const h of diff.changedHeadings) add(h.pos);

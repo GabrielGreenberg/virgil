@@ -27,6 +27,9 @@ import {
 // the outer ref tracks the (sometimes-changing) inner ref's identity,
 // the inner ref holds the live predicate.
 export interface TexBlockOptions {
+  /** Stamp gate for the NodeView data-uuid/kind exposure (2d): only the
+   *  MAIN document surface carries the attributes (decorator parity). */
+  surface: "main" | "float";
   isPoppedRef: RefObject<RefObject<(uuid: string) => boolean> | undefined> | null;
   // When true, the NodeView renders a compact static preview (no
   // CodeMirror, no edit/delete chrome). Set by every card-bearing
@@ -53,6 +56,8 @@ export const TexBlock = Node.create<TexBlockOptions>({
     return {
       isPoppedRef: null,
       cardContext: false,
+      // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
+      surface: "float" as "main" | "float",
     };
   },
 
@@ -85,7 +90,19 @@ export const TexBlock = Node.create<TexBlockOptions>({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(TexBlockNodeView);
+    const surface = this.options.surface;
+    // 2d: NodeView-owned data-uuid/kind exposure on the renderer's outer
+    // element (MAIN only). TipTap re-applies a function-form `attrs` on every
+    // node update, so the backfill's uuid mint lands too.
+    return ReactNodeViewRenderer(TexBlockNodeView, {
+      attrs: ({ node }): Record<string, string> =>
+        surface === "main" && node.attrs.uuid
+          ? {
+              "data-uuid": node.attrs.uuid as string,
+              "data-text-object-kind": node.type.name,
+            }
+          : {},
+    });
   },
 });
 

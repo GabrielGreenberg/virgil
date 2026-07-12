@@ -3,13 +3,16 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection, Selection } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { generateShortId } from "@/lib/uuid";
-import { UUID_ATTR_SPEC } from "./uuid-attr";
-import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
+import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
+import { readPendingDiff, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
 
 // The exampleBlock NodeView no longer hosts a grip or popout button — the
 // editor-mounted TextObjectGrabHandle handles both. No per-extension
 // options needed for grip/popout wiring.
 export interface ExampleBlockOptions {
+  /** Stamp gate for the NodeView data-uuid/kind exposure (2d): only the
+   *  MAIN document surface carries the attributes (decorator parity). */
+  surface: "main" | "float";
   /** When true, the NodeView suppresses the par-title annotation strip
    *  (the hover-revealed "+T" affordance + any title row). Card / float
    *  surfaces set this (#47): the absolutely-positioned untitled strip sits
@@ -394,7 +397,11 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
   group: "block textObject",
 
   addOptions() {
-    return { cardContext: false };
+    return {
+      cardContext: false,
+      // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
+      surface: "float" as "main" | "float",
+    };
   },
   // Free-order content: paragraphs, gloss blocks, and item lists can
   // interleave in any order. The relaxed schema lets list-item Shift-Tab
@@ -756,6 +763,8 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       // keep working.
       const wrapper = document.createElement("div");
       wrapper.className = "par-title-wrapper expex-par-wrapper";
+      // 2d: NodeView-owned data-uuid/kind exposure (MAIN only).
+      if (opts.surface === "main") stampTextObjectAttrs(wrapper, node, null);
 
       // Par-title annotation (above the example). Click to edit.
       // SUPPRESSED in card/float context (#47): the untitled strip is
@@ -1071,6 +1080,9 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
         },
         update(updatedNode) {
           if (updatedNode.type.name !== "exampleBlock") return false;
+          if (opts.surface === "main" && updatedNode.attrs.uuid !== currentNode.attrs.uuid) {
+            stampTextObjectAttrs(wrapper, updatedNode, null);
+          }
           currentNode = updatedNode;
           const next = updatedNode.attrs.number
             ? `(${updatedNode.attrs.number})`
@@ -1143,6 +1155,13 @@ export const ExampleItem = Node.create({
     "(paragraph | graphicsBlock | displayMath)+ exampleItemList? exampleGloss?",
   group: "textObject",
   defining: true,
+
+  addOptions() {
+    return {
+      // Stamp gate for data-uuid/kind (2d): MAIN document surface only.
+      surface: "float" as "main" | "float",
+    };
+  },
   // NOTE: not isolating — prosemirror-schema-list's liftTarget breaks at
   // isolating ancestors, which would prevent Shift-Tab from un-nesting an
   // item out through its parent item. Standard listItem isn't isolating
@@ -1400,6 +1419,7 @@ export const ExampleItem = Node.create({
   },
 
   addNodeView() {
+    const opts = this.options;
     return ({ node, HTMLAttributes, editor, getPos }) => {
       let currentNode = node;
       const dom = document.createElement("div");
@@ -1411,6 +1431,10 @@ export const ExampleItem = Node.create({
       ).forEach(([k, v]) => {
         if (typeof v === "string") dom.setAttribute(k, v);
       });
+      // 2d: NodeView-owned data-uuid/kind exposure (MAIN only; HTMLAttributes
+      // above already carries data-uuid via renderHTML — the stamp adds the
+      // kind and keeps both in sync on uuid changes).
+      if (opts.surface === "main") stampTextObjectAttrs(dom, node, null);
       if (node.attrs.tag) dom.dataset.tag = node.attrs.tag;
       if (node.attrs.label) dom.dataset.label = node.attrs.label;
       dom.dataset.sublabel = node.attrs.subLabel || "";
@@ -1560,6 +1584,9 @@ export const ExampleItem = Node.create({
         },
         update(updatedNode) {
           if (updatedNode.type.name !== "exampleItem") return false;
+          if (opts.surface === "main" && updatedNode.attrs.uuid !== currentNode.attrs.uuid) {
+            stampTextObjectAttrs(dom, updatedNode, null);
+          }
           currentNode = updatedNode;
           marker.textContent = `${updatedNode.attrs.subLabel || "?"}.`;
           dom.dataset.sublabel = updatedNode.attrs.subLabel || "";
@@ -1811,10 +1838,11 @@ export const ExpexNumbering = Extension.create({
               // to run the numberer. The cost is a doc walk in those
               // cases, but those are still rarer than pure-text edits.
               if (!exampleContentTouched && pending.contentChangedUuids.size > 0) {
-                // Re-check by reading the structure-index.
-                const structure = readDocStructure(newState);
+                // Re-check by resolving each touched uuid against the
+                // structure index — per-uuid, no whole-snapshot
+                // materialization on the keystroke path.
                 for (const uuid of pending.contentChangedUuids) {
-                  const block = structure.blocks.get(uuid);
+                  const block = resolveTouchedBlock(newState, uuid);
                   if (block?.typeName === "exampleBlock") {
                     exampleContentTouched = true;
                     break;

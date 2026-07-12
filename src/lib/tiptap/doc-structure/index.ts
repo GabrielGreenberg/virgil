@@ -40,6 +40,9 @@ export {
   docStructureKey,
   readDocStructure,
   readPendingDiff,
+  resolveTouchedBlock,
+  peekStructureVersion,
+  getMaterializeCount,
 } from "./observer-plugin";
 
 export {
@@ -72,6 +75,7 @@ export { touchedBlockPositions } from "./diff-blocks";
 export {
   EMPTY_DIFF,
   isEmptyDiff,
+  diffHasStructuralEntries,
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,
