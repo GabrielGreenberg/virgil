@@ -452,11 +452,26 @@ shows) and reveals a single centered **grip pill** on hover AND drag —
 a horizontal gutter gets a wide-short pill on `::before`; a vertical gutter
 a tall-thin pill on `::after` (its `::before` is the hit-area extension).
 Don't hand-roll a resizer's look — put `band-grip` on a `.drag-gap-{h,v}`
-element and toggle `.dragging` for the gesture (`useDragGap` does this for
-the editor gutters; an imperative resizer adds/removes the class itself).
+element and spread the `usePaneResizeHandle` props on it (the pane-resize
+engine at `src/lib/pane-resize/` owns every divider gesture in both silos
+and toggles `.dragging` on the handle itself).
 The stacked-panel bands additionally carry `.band-grip-occlude` for an
 opaque `--background` backing (they occlude omni cards showing through);
 **no other gutter opts in** — every other resizer stays transparent at rest.
+
+Don't hand-roll the *gesture* either: the engine's spec is per-frame
+imperative CSS-var `apply()` (RAF-coalesced, equality-bailed) + `commit()`
+exactly once on release — never per-frame React state, store notifies, or
+localStorage. The ONE sanctioned exception: when a render-derived layout
+decision needs the live value (sole case today: `SplitWithCode`'s
+`liveRatio`, driving the compressed-gutter flip + clip fade), LOCAL state
+set from the engine's `apply()` (≤1 per frame) is permitted — children must
+bail on element identity and persistence stays commit-once. Heavyweight pane
+content (iframes, full editors) wraps in `PaneFreeze`; drag-time observers
+park via `parkDuringPaneDrag` (both keyed on the edge-only `PaneDragBus`).
+A bespoke window-listener divider fails CI — the guardrail keys on the
+resize cursor chrome AND the shared `.drag-gap`/`.band-grip` classes above
+(`pane-drag-guardrail.test.ts`); doctrine in AGENTS.md "Pane-drag stability".
 
 ## Code view
 

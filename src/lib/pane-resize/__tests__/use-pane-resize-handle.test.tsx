@@ -3,10 +3,11 @@
 // Pins EVERY hard behavior of the pane-resize gesture engine (.impl-notes.md):
 //
 //   1. pointer OWNERSHIP — setPointerCapture on the handle; move/up/cancel/
-//      lostpointercapture listeners on the ELEMENT, never window (the sole
-//      window listener is the gesture-scoped Escape keydown). A capture
-//      FAILURE refuses the gesture outright (no listeners, no shield, no bus
-//      edge) — without capture the shield would block its own end events.
+//      lostpointercapture listeners on the ELEMENT (window carries only the
+//      gesture-scoped Escape keydown + the end-only removal failsafes below).
+//      A capture FAILURE refuses the gesture outright (no listeners, no
+//      shield, no bus edge) — without capture the shield would block its own
+//      end events.
 //   2. start gates — button 0 + isPrimary + !disabled + no drag already live.
 //   3. RAF-coalesced apply() behind an equality bail; flush-before-commit.
 //   4. commit() EXACTLY once per completed gesture, on every end variant
@@ -23,6 +24,11 @@
 //      toggled on the handle, both torn down on every end path incl. unmount.
 //   9. getValue() called EXACTLY once per gesture, on the start edge — the
 //      documented safe point for consumers' per-gesture snapshots.
+//  10. captured-element REMOVAL mid-gesture (a conditionally rendered handle
+//      unmounting while the owner stays mounted) cannot wedge: the UA fires
+//      lostpointercapture at the DOCUMENT and later pointer events hit-test
+//      to the shield, so gesture-scoped document/window failsafes end the
+//      gesture on the same path.
 //
 // jsdom provides PointerEvent but NOT pointer-capture plumbing — the capture
 // pair is shimmed on Element.prototype per the repo testing notes.
@@ -103,7 +109,7 @@ afterEach(() => {
 
 // ── Harness ─────────────────────────────────────────────────────────────────
 
-type LogEntry = { op: "apply" | "commit"; px: number };
+type LogEntry = { op: "apply" | "commit" | "bus-begin" | "bus-end"; px: number };
 
 function makeHarness(overrides: Partial<PaneResizeSpec> = {}) {
   const log: LogEntry[] = [];
@@ -172,10 +178,11 @@ const escape = () =>
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe("usePaneResizeHandle — pointer ownership", () => {
-  it("captures the pointer on the handle and scopes all drag listeners to the element (window gets only the Escape keydown)", () => {
+  it("captures the pointer on the handle and scopes the drag stream to the element (window/document carry only gesture-scoped edges: Escape + end-only removal failsafes, no pointermove)", () => {
     const h = makeHarness();
     const elSpy = vi.spyOn(h.el, "addEventListener");
     const winSpy = vi.spyOn(window, "addEventListener");
+    const docSpy = vi.spyOn(document, "addEventListener");
 
     const { preventDefault } = pointerDown(h.props(), h.el, { pointerId: 7 });
 
@@ -191,13 +198,18 @@ describe("usePaneResizeHandle — pointer ownership", () => {
         "lostpointercapture",
       ]),
     );
+    // The per-frame stream (pointermove) is element-only; window/document get
+    // end/cancel edges exclusively.
     const winTypes = winSpy.mock.calls.map((c) => c[0]);
-    expect(winTypes).toEqual(["keydown"]);
+    expect(winTypes).toEqual(["keydown", "pointerup", "pointercancel"]);
+    const docTypes = docSpy.mock.calls.map((c) => c[0]);
+    expect(docTypes).toEqual(["lostpointercapture"]);
 
     up(h.el, { pointerId: 7 });
     expect(releasePointerCapture).toHaveBeenCalledExactlyOnceWith(7);
     elSpy.mockRestore();
     winSpy.mockRestore();
+    docSpy.mockRestore();
   });
 
   it("refuses the gesture when setPointerCapture throws — no listeners, no shield, no bus edge (a capture-less shield would block its own end events)", () => {
@@ -608,6 +620,39 @@ describe("usePaneResizeHandle — bus + chrome edges", () => {
     ]);
   });
 
+  it("orders bus edges around the geometry writes: begin BEFORE the first apply; final flushed apply + commit BEFORE the end edge, all synchronous", () => {
+    // Both PaneFreeze ordering contracts hang on this interleaving
+    // (PaneFreeze.tsx): freeze() reads the TRUE pre-drag width because begin
+    // fires from pointerdown, before any RAF apply(); and unfreeze() lands in
+    // the same style/layout flush as the final geometry because the end path
+    // flushes the pending apply and commits BEFORE publishing the end edge.
+    // A threshold-begin (emitted after the first apply) or a deferred/async
+    // bus emission (queueMicrotask/RAF) would break the freeze — one frame
+    // painted frozen at the new pane size, parks settling on pre-final
+    // geometry — with no other engine test failing. Pin the full sequence in
+    // ONE log so relative order is the assertion.
+    const h = makeHarness();
+    onPaneDragChange((active) =>
+      h.log.push({ op: active ? "bus-begin" : "bus-end", px: -1 }),
+    );
+
+    pointerDown(h.props(), h.el);
+    move(h.el, 120);
+    flushRaf();
+    move(h.el, 150); // scheduled, NOT flushed — the end path must flush it
+    up(h.el);
+
+    // Complete by the time pointerup returns (synchronous emission), in
+    // exactly this order.
+    expect(h.log).toEqual([
+      { op: "bus-begin", px: -1 },
+      { op: "apply", px: 220 },
+      { op: "apply", px: 250 }, // end-path flush of the pending frame…
+      { op: "commit", px: 250 }, // …commit agrees…
+      { op: "bus-end", px: -1 }, // …and only THEN the end edge publishes
+    ]);
+  });
+
   it("mounts the shield with the axis cursor and toggles .dragging for the gesture", () => {
     const h = makeHarness();
     pointerDown(h.props(), h.el);
@@ -653,6 +698,67 @@ describe("usePaneResizeHandle — bus + chrome edges", () => {
     expect(h.committed()).toEqual([]);
     // No restore either — the pane keeps its last applied geometry.
     expect(h.applied()).toEqual([250]);
+  });
+});
+
+describe("usePaneResizeHandle — captured-element removal failsafes", () => {
+  // The one case element-scoped listeners can't see: the captured handle is
+  // REMOVED from the DOM mid-gesture (a conditionally rendered handle —
+  // SplitWithCode's `{open && …}` branch — flipping while the owner stays
+  // mounted, so the unmount detach never fires). Per Pointer Events implicit
+  // release the UA fires lostpointercapture at the DOCUMENT, and later
+  // pointer events hit-test to the shield (which has no listeners) — without
+  // the document/window failsafes the shield would wedge ALL app input.
+
+  it("ends the gesture when the captured handle is removed mid-drag (UA fires lostpointercapture at the document)", () => {
+    const h = makeHarness();
+    pointerDown(h.props(), h.el);
+    move(h.el, 150);
+    flushRaf();
+    expect(h.applied()).toEqual([250]);
+
+    h.el.remove();
+    // jsdom doesn't implement implicit capture release — dispatch the
+    // document-targeted lostpointercapture the spec mandates for a removed
+    // capture node.
+    document.dispatchEvent(pe("lostpointercapture"));
+
+    expect(h.committed()).toEqual([250]);
+    expect(isPaneDragging()).toBe(false);
+    expect(isDragShieldMounted()).toBe(false);
+    expect(document.body.style.userSelect).toBe("");
+  });
+
+  it("a window-level pointerup after the handle detached still ends the gesture (the release hit-tests to the shield, never the element)", () => {
+    const h = makeHarness();
+    pointerDown(h.props(), h.el);
+    move(h.el, 150);
+    flushRaf();
+
+    h.el.remove();
+    window.dispatchEvent(pe("pointerup", { buttons: 0 }));
+
+    expect(h.committed()).toEqual([250]);
+    expect(isPaneDragging()).toBe(false);
+    expect(isDragShieldMounted()).toBe(false);
+  });
+
+  it("failsafes are pointerId-gated and gesture-scoped: foreign pointers are ignored, post-end strays are inert", () => {
+    const h = makeHarness();
+    pointerDown(h.props(), h.el);
+    document.dispatchEvent(pe("lostpointercapture", { pointerId: 9 }));
+    window.dispatchEvent(pe("pointerup", { buttons: 0, pointerId: 9 }));
+    expect(isPaneDragging()).toBe(true); // foreign pointer never ends it
+
+    up(h.el);
+    expect(h.committed()).toEqual([200]);
+
+    // Removed on the end edge — stray document/window events can't re-enter
+    // finish() (no double commit, no bus/shield churn).
+    document.dispatchEvent(pe("lostpointercapture"));
+    window.dispatchEvent(pe("pointerup", { buttons: 0 }));
+    expect(h.committed()).toEqual([200]);
+    expect(isPaneDragging()).toBe(false);
   });
 });
 

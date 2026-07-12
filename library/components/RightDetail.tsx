@@ -20,6 +20,15 @@ import BibEditModal from "./BibEditModal";
 import PaperHeader from "./PaperHeader";
 import PaperRender from "./PaperRender";
 import PdfView from "./PdfView";
+// Drag-time followers of the app-wide pane-resize bus (sanctioned cross-silo
+// bridge, see library/CLAUDE.md "Don't"): PaneFreeze width-locks the reader
+// subtree for the length of a gutter gesture; parkDuringPaneDrag stashes the
+// two per-frame feedback paths below as defense-in-depth behind that freeze.
+import {
+  PaneFreeze,
+  parkDuringPaneDrag,
+  type PaneDragPark,
+} from "@/lib/pane-resize";
 // Shared framed-viewer surface (inset + pod border/radius/shadow), the same
 // component the docs-side compiled-PDF pane renders through — sanctioned
 // cross-silo bridge (see library/CLAUDE.md "Don't"). Backdrop-parameterized:
@@ -114,7 +123,14 @@ export default function RightDetail({
     }
     let raf = 0;
     let cancelled = false;
-    const ro = new ResizeObserver(() => schedule());
+    // Parked during any pane-resize gesture: mid-drag the whole detail
+    // subtree is width-frozen (the PaneFreeze mount below) so this RO
+    // shouldn't fire at all; the park is defense-in-depth — a mid-gesture
+    // fire (font swap, image load) stashes dirty and the end edge reconciles
+    // ONCE instead of riding a pointer frame into the setTextPodRect →
+    // PaperHeader podAlign cascade.
+    const park = parkDuringPaneDrag(() => schedule());
+    const ro = new ResizeObserver(() => park.fire());
     const measure = () => {
       if (cancelled) return;
       const frame = readerScrollEl.querySelector<HTMLElement>("[data-pod-frame]");
@@ -157,6 +173,7 @@ export default function RightDetail({
       cancelled = true;
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
+      park.dispose();
       window.removeEventListener("resize", schedule);
     };
   }, [viewMode, readerScrollEl]);
@@ -186,12 +203,37 @@ export default function RightDetail({
     currentPage: 1,
   });
   const pdfNavigateRef = useRef<(page: number) => void>(() => {});
-  const onPdfPageStateChange = useCallback(
+  const applyPdfPageState = useCallback(
     (state: PdfPageState, navigate: (page: number) => void) => {
       pdfNavigateRef.current = navigate;
       setPdfPageState(state);
     },
     [],
+  );
+  // pdf.js eventBus → React feedback, parked during any pane-resize gesture:
+  // mid-drag the iframe is width-frozen (the PaneFreeze mount below) so the
+  // viewer sees no resize and shouldn't emit page-state churn at all; the park
+  // is defense-in-depth for events that arrive anyway (an async rasterize
+  // completing, a pagechanging settling) — latest-args-win, applied ONCE on
+  // the end edge instead of re-rendering RightDetail per pointer frame. The
+  // park's bus subscription is owned by the effect; outside its lifetime the
+  // callback applies directly (never drops a viewer event).
+  const pdfParkRef = useRef<PaneDragPark<
+    [PdfPageState, (page: number) => void]
+  > | null>(null);
+  useEffect(() => {
+    const park = parkDuringPaneDrag(applyPdfPageState);
+    pdfParkRef.current = park;
+    return () => {
+      pdfParkRef.current = null;
+      park.dispose();
+    };
+  }, [applyPdfPageState]);
+  const onPdfPageStateChange = useCallback(
+    (state: PdfPageState, navigate: (page: number) => void) => {
+      (pdfParkRef.current?.fire ?? applyPdfPageState)(state, navigate);
+    },
+    [applyPdfPageState],
   );
   // Re-derive only when the scalar page state changes; the scrollToPage closure
   // reads the latest navigate via the ref, so its identity needn't churn.
@@ -268,28 +310,97 @@ export default function RightDetail({
   // `entry` is non-null past the early return, so this equals `pdfOnDisk`.
   const pdfAvailable = pdfOnDisk;
 
+  // PaneFreeze anchor = this pane's STATIONARY edge, derived from the mount
+  // (hard-coding "right" would glue a LEFT-panel reader to its MOVING edge —
+  // the frozen content would translate with every pointer frame, the exact
+  // failure the anchor doc calls worse than no freeze). Papers routinely
+  // mount in the LEFT panel: openPaper routes to the panel OPPOSITE the
+  // click, and tabs drag across panels. Geometry per PanelKey
+  // (library-grid-template.ts): the RIGHT panel is the minmax(…,1fr) READER
+  // track — both library gutters move its LEFT edge, its right edge is
+  // container-fixed → "right". The LEFT panel is the fixed-width LIST track —
+  // the list|reader gutter moves its RIGHT edge while its left edge stays
+  // put → "left" (a nav|list drag translates the track rigidly, where either
+  // anchor is a no-op). The outer-tab mount (PaperOuterView: panel="left",
+  // scope="outer:*") sees no bus gesture today, so "left" is inert there.
+  const freezeAnchor: "left" | "right" = panel === "left" ? "left" : "right";
+
   if (viewMode === "pdf") {
-    // PDF mode: full-width layout, no drag handles.
+    // PDF mode: full-width layout, no drag handles. PaneFreeze is the branch
+    // root: its outer node carries the task-054 pane-fill contract (flex:1 +
+    // minWidth:0 + height:100% — grow to fill the pane in BOTH the flex-ROW
+    // in-library mount (ReaderLRU → KeepAliveSlot) and the flex-COLUMN
+    // outer-tab mount (PaperOuterView); without the grow, PDF mode collapsed
+    // to the ~620px header width, left-pinned), and it width-freezes the
+    // whole subtree — header + pdf.js iframe — for the length of any pane
+    // gutter gesture, so the viewer re-scales/re-rasterizes exactly ONCE per
+    // drag instead of per pointer frame. The anchor is the pane's stationary
+    // edge, derived per PanelKey above. The pane background rides the freeze
+    // wrapper so the sliver revealed while the pane grows mid-drag paints as
+    // reader background, not the grid behind.
     return (
+      <PaneFreeze anchor={freezeAnchor} style={{ background: "var(--background)" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            flex: 1,
+            minWidth: 0,
+            minHeight: 0,
+          }}
+        >
+          <PaperHeader
+            handle={handle}
+            entry={entry}
+            bib={bib}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            pdfAvailable={pdfAvailable}
+            indexedState={entry.indexed.state}
+            onEdit={canEdit ? () => setEditOpen(true) : undefined}
+            editPending={!canEdit && editPending}
+            showOpenInTab={!isOuterTab}
+            pgmarkPages={pdfPgmarkPages}
+            textPodRect={textPodRect}
+          />
+          <FramedViewerSurface backdrop="manila">
+            <PdfView
+              handle={handle}
+              citekey={entry.citekey}
+              onPdfPageStateChange={onPdfPageStateChange}
+            />
+          </FramedViewerSurface>
+          {editOpen && canEdit && bib && handle && entry.citekey && (
+            <BibEditModal
+              entry={bib}
+              onClose={() => setEditOpen(false)}
+              onSave={async (type, fields) => {
+                await queueBibEdit(handle, entry.citekey!, { type, fields });
+                onBibChanged?.();
+              }}
+            />
+          )}
+        </div>
+      </PaneFreeze>
+    );
+  }
+
+  // Text mode: header above the editor area; the panel/editor
+  // boundary uses the canonical `PanelColumn` drag-gap inside
+  // `EditorPane` — Reader inherits the same affordance as the main
+  // editor. Same PaneFreeze branch root as the PDF branch above: the
+  // task-054 fill contract lives on the freeze wrapper's outer node, and a
+  // pane gutter drag reflows the O(doc) ProseMirror doc exactly ONCE (on the
+  // end edge) instead of per pointer frame. Anchor derived per PanelKey above.
+  return (
+    <PaneFreeze anchor={freezeAnchor} style={{ background: "var(--background)" }}>
       <div
         style={{
           display: "flex",
           flexDirection: "column",
-          height: "100%",
-          minHeight: 0,
-          // Fill the pane on EITHER flex axis. The outer-tab mount
-          // (PaperOuterView) parents us in a flex COLUMN, so `align-items:
-          // stretch` already gives us full width. But the in-library mount
-          // (ReaderLRU → KeepAliveSlot) parents us in a flex ROW, where a plain
-          // flex item shrinks to CONTENT width and pins left — and in PDF mode
-          // our widest child is the ~620px centered header (the PDF iframe's
-          // intrinsic width is only ~300px), so the whole pane collapsed to
-          // ~620 with a manila dead-band to the right (task 054). `flex:1`
-          // grows us to fill the row; it's inert/harmless in the column/block
-          // mounts. `minWidth:0` lets us shrink below content min-width too.
           flex: 1,
           minWidth: 0,
-          background: "var(--background)",
+          minHeight: 0,
         }}
       >
         <PaperHeader
@@ -303,16 +414,27 @@ export default function RightDetail({
           onEdit={canEdit ? () => setEditOpen(true) : undefined}
           editPending={!canEdit && editPending}
           showOpenInTab={!isOuterTab}
-          pgmarkPages={pdfPgmarkPages}
+          pgmarkPages={pgmarkPages}
           textPodRect={textPodRect}
         />
-        <FramedViewerSurface backdrop="manila">
-          <PdfView
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <PaperRender
             handle={handle}
             citekey={entry.citekey}
-            onPdfPageStateChange={onPdfPageStateChange}
+            indexedState={entry.indexed.state}
+            scope={scope}
+            panel={panel}
+            onReaderRefs={onReaderRefs}
+            pgmarkPages={pgmarkPages}
           />
-        </FramedViewerSurface>
+        </div>
         {editOpen && canEdit && bib && handle && entry.citekey && (
           <BibEditModal
             entry={bib}
@@ -324,71 +446,6 @@ export default function RightDetail({
           />
         )}
       </div>
-    );
-  }
-
-  // Text mode: header above the editor area; the panel/editor
-  // boundary uses the canonical `PanelColumn` drag-gap inside
-  // `EditorPane` — Reader inherits the same affordance as the main
-  // editor.
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        minHeight: 0,
-        // Fill the pane on either flex axis — same reasoning as the PDF branch
-        // above (task 054). Text mode only *looked* correct before because the
-        // EditorPane content is wide enough to push our content-width near the
-        // pane width; `flex:1` makes that robust instead of accidental.
-        flex: 1,
-        minWidth: 0,
-        background: "var(--background)",
-      }}
-    >
-      <PaperHeader
-        handle={handle}
-        entry={entry}
-        bib={bib}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        pdfAvailable={pdfAvailable}
-        indexedState={entry.indexed.state}
-        onEdit={canEdit ? () => setEditOpen(true) : undefined}
-        editPending={!canEdit && editPending}
-        showOpenInTab={!isOuterTab}
-        pgmarkPages={pgmarkPages}
-        textPodRect={textPodRect}
-      />
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <PaperRender
-          handle={handle}
-          citekey={entry.citekey}
-          indexedState={entry.indexed.state}
-          scope={scope}
-          panel={panel}
-          onReaderRefs={onReaderRefs}
-          pgmarkPages={pgmarkPages}
-        />
-      </div>
-      {editOpen && canEdit && bib && handle && entry.citekey && (
-        <BibEditModal
-          entry={bib}
-          onClose={() => setEditOpen(false)}
-          onSave={async (type, fields) => {
-            await queueBibEdit(handle, entry.citekey!, { type, fields });
-            onBibChanged?.();
-          }}
-        />
-      )}
-    </div>
+    </PaneFreeze>
   );
 }

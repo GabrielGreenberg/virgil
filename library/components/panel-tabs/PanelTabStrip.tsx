@@ -22,7 +22,7 @@ import {
   STRIP_SIDE_PAD,
   STRIP_TOP_HEADROOM,
 } from "@/components/chrome/folder-tab-geometry";
-import { isPaneDragging, onPaneDragChange } from "@/lib/pane-resize";
+import { parkDuringPaneDrag } from "@/lib/pane-resize";
 
 // F#15 inactive-tab floor: inactive tabs absorb the squeeze first and
 // ellipsize their names down to this width before the active tab compresses.
@@ -185,7 +185,6 @@ export function PanelTabStrip({
       return;
     }
     let raf = 0;
-    let dirty = false;
     const measure = () => {
       const el = tabRefs.current.get(activeId);
       if (!el) {
@@ -197,25 +196,21 @@ export function PanelTabStrip({
       const flush = Math.abs(t.right - (p.right - STRIP_SIDE_PAD)) <= 2;
       setActiveFlushRight((prev) => (prev === flush ? prev : flush));
     };
-    const schedule = () => {
-      // Park during a pane-resize drag (the app-wide pane-drag bus): this
-      // measure is already RAF-coalesced + equality-gated so it rarely
-      // setStates, but parking also skips its two per-frame
-      // getBoundingClientRect reads. The tuck reconciles once on the end
-      // edge; the silhouette itself is layout-driven and tracks the drag
-      // live, so a one-gesture-stale tuck is the only deferred geometry.
-      if (isPaneDragging()) {
-        dirty = true;
-        return;
-      }
+    // Parked during a pane-resize drag (parkDuringPaneDrag on the app-wide
+    // bus): this measure is already RAF-coalesced + equality-gated so it
+    // rarely setStates, but parking also skips its two per-frame
+    // getBoundingClientRect reads. The tuck settles once on the end edge; the
+    // silhouette itself is layout-driven and tracks the drag live, so a
+    // one-gesture-stale tuck is the only deferred geometry.
+    const park = parkDuringPaneDrag(() => {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
         measure();
       });
-    };
-    schedule();
-    const ro = new ResizeObserver(schedule);
+    });
+    park.fire();
+    const ro = new ResizeObserver(() => park.fire());
     ro.observe(panel);
     if (stripRef.current) ro.observe(stripRef.current);
     // Also observe the ACTIVE tab itself: on selection the strip's own size is
@@ -224,16 +219,10 @@ export function PanelTabStrip({
     // can read a stale pre-activation width and miss the tuck.
     const activeEl = tabRefs.current.get(activeId);
     if (activeEl) ro.observe(activeEl);
-    const unsub = onPaneDragChange((active) => {
-      if (!active && dirty) {
-        dirty = false;
-        schedule();
-      }
-    });
     return () => {
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
-      unsub();
+      park.dispose();
     };
   }, [activeId, tabs.length, panelRef]);
 

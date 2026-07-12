@@ -120,10 +120,11 @@ describe("strip wiring — ink cushion + seam by construction", () => {
   it("the flush-right tuck observer stays parked on the pane-drag bus (the ONE justified RO)", () => {
     // The single surviving ResizeObserver in the tab chrome's orbit: the
     // flush-right tuck depends on sibling-width sums CSS can't express. It
-    // must stay equality-bailed + parked.
+    // must stay equality-bailed + parked — via the shared parkDuringPaneDrag
+    // helper (the doctrine forbids hand-rolled isPaneDragging() parks).
     expect(strip).toContain("ResizeObserver");
-    expect(strip).toContain("isPaneDragging");
-    expect(strip).toContain("onPaneDragChange");
+    expect(strip).toContain("parkDuringPaneDrag");
+    expect(strip).not.toContain("isPaneDragging");
   });
 });
 

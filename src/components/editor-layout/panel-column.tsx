@@ -1,5 +1,5 @@
-import { useCallback, useRef } from "react";
-import { useDragGap } from "@/hooks/useDragGap";
+import { useEffect, useId, useRef } from "react";
+import { usePaneResizeHandle, onPaneDragChange } from "@/lib/pane-resize";
 import {
   PanelId,
   Side,
@@ -107,46 +107,64 @@ function BottomEdgeHandle({
    *  backing into the omni gap below instead of a hard edge. */
   lone: boolean;
 }) {
-  const startY = useRef(0);
-  const startH = useRef(0);
-  const aboveStackPx = useRef(0);
-  const frameH = useRef(0);
+  // Per-gesture snapshots, taken in getValue() — the engine's documented
+  // single start-edge read point. `flex` records the band anchor's inline
+  // flex string as React last rendered it, so cancel / zero-move end paths
+  // can put the DOM back EXACTLY (a content-sized band renders `0 1 auto` —
+  // there is no pixel value in state to re-derive it from).
+  const bandRef = useRef<HTMLElement | null>(null);
+  const startRef = useRef({ h: 0, max: 0, flex: "" });
 
-  const onMove = useCallback(
-    (e: MouseEvent) => {
-      const dy = e.clientY - startY.current;
-      const max = Math.max(MIN_BAND_PX, frameH.current - aboveStackPx.current);
-      const next = Math.max(MIN_BAND_PX, Math.min(startH.current + dy, max));
-      onResize(bottomId, next);
-    },
-    [bottomId, onResize],
-  );
+  const restoreStartFlex = () => {
+    const band = bandRef.current;
+    if (band) band.style.flex = startRef.current.flex;
+  };
 
-  const { gapRef, onMouseDown: gapMouseDown } = useDragGap({
-    cursor: "row-resize",
-    onMove,
-  });
-
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  const handle = usePaneResizeHandle({
+    id: `panel-bottom-edge-${bottomId}`,
+    axis: "y",
+    getValue: () => {
       const frame = frameRef.current;
-      // The handle is now a sibling of the band anchor (not a descendant),
+      // The handle is a sibling of the band anchor (not a descendant),
       // so resolve the band by id rather than `closest`.
       const band = frame?.querySelector<HTMLElement>(
         `[data-dock-slot][data-panel-id="${bottomId}"]`,
       ) ?? null;
-      startY.current = e.clientY;
-      startH.current = band?.getBoundingClientRect().height ?? MIN_BAND_PX;
-      frameH.current = frame?.getBoundingClientRect().height ?? 0;
+      bandRef.current = band;
+      const frameH = frame?.getBoundingClientRect().height ?? 0;
       // Space above this band inside the frame = top of this band minus
       // top of the frame (covers the prior bands + their dividers).
       const frameTop = frame?.getBoundingClientRect().top ?? 0;
       const bandTop = band?.getBoundingClientRect().top ?? frameTop;
-      aboveStackPx.current = Math.max(0, bandTop - frameTop);
-      gapMouseDown(e);
+      const aboveStackPx = Math.max(0, bandTop - frameTop);
+      const h = band?.getBoundingClientRect().height ?? MIN_BAND_PX;
+      startRef.current = {
+        h,
+        max: Math.max(MIN_BAND_PX, frameH - aboveStackPx),
+        flex: band?.style.flex ?? "",
+      };
+      return h;
     },
-    [frameRef, gapMouseDown, bottomId],
-  );
+    clamp: (px) =>
+      Math.max(MIN_BAND_PX, Math.min(px, startRef.current.max)),
+    // Live geometry is an imperative flex write on the band anchor — one
+    // RAF-coalesced style write per frame, zero React state until release.
+    apply: (px) => {
+      const band = bandRef.current;
+      if (band) band.style.flex = `0 0 ${px}px`;
+    },
+    commit: (px) => {
+      // Zero-move end (a plain click, or a drag returned to its start):
+      // don't pin a content-sized band to a pixel height — restore the
+      // rendered flex string instead of persisting.
+      if (px === startRef.current.h) {
+        restoreStartFlex();
+        return;
+      }
+      onResize(bottomId, px);
+    },
+    restore: restoreStartFlex,
+  });
 
   return (
     <div
@@ -154,17 +172,18 @@ function BottomEdgeHandle({
       className="relative shrink-0 z-10"
       style={{ height: 'var(--pod-gap)', pointerEvents: 'auto' }}
     >
-      {/* Wider invisible hit target (mirrors BandDivider). */}
       <div
-        className="absolute inset-x-0 cursor-row-resize"
-        style={{ top: -4, bottom: -4, background: 'transparent' }}
-        onMouseDown={onMouseDown}
-      />
-      <div
-        ref={gapRef}
         className="drag-gap drag-gap-h band-grip band-grip-occlude w-full h-full"
-        onMouseDown={onMouseDown}
-      />
+        {...handle}
+      >
+        {/* Wider invisible hit target (mirrors BandDivider) — a CHILD of the
+            handle so a grab here bubbles to the captured element and the
+            `.dragging` grip chrome lands on the visible gap. */}
+        <div
+          className="absolute inset-x-0 cursor-row-resize"
+          style={{ top: -4, bottom: -4, background: 'transparent' }}
+        />
+      </div>
       {/* Lone panel: a manilla fade past the handle into the omni gap, so the
           omni cards behind it dissolve into the desktop. Must be --background
           (the canvas/manilla), NOT --pod-panel (the warm panel fill) — same
@@ -254,36 +273,68 @@ export function PanelColumn({
    *  the page-mark navigator. */
   tail?: React.ReactNode;
 }) {
-  const startX = useRef(0);
-  const startPanel = useRef(0);
   const frameRef = useRef<HTMLDivElement>(null);
+  const colRef = useRef<HTMLDivElement>(null);
+  // Instance-unique gesture id: keep-alive doc panes AND the Library Reader
+  // each mount a PanelColumn per side, so a bare `editor-panel-${side}` would
+  // make every same-side instance's bus-edge listener (below) fire on a
+  // foreign gesture — running the MAIN app's sync/isResizing side effects on
+  // a Reader drag.
+  const reactId = useId();
+  const gestureId = `editor-panel-${side}-${reactId}`;
 
-  const onMove = useCallback(
-    (e: MouseEvent) => {
-      const delta = side === "right"
-        ? startX.current - e.clientX
-        : e.clientX - startX.current;
+  // Per-gesture pointer-UX clamp + start width, snapshotted once in
+  // getValue() (the engine's documented single start-edge read point). The
+  // hard layout floor stays CSS (`minWidth: var(--panel-min)` at rest); this
+  // mirror only keeps the divider tracking the pointer instead of overrunning
+  // the row while `isResizing` lifts that minWidth to 0.
+  const clampRef = useRef({ min: 0, max: Number.POSITIVE_INFINITY });
+  const startRef = useRef(0);
+
+  // Cancel / zero-move re-sync: rewrite the flex from the SOURCE OF TRUTH
+  // (the panelPref prop) rather than the measured start px. In the Reader the
+  // rendered width can sit below the stored pref (no syncBeforeDrag there, so
+  // CSS min-width clamps the track) — pinning the measured px imperatively
+  // would diverge DOM from store until the next commit (React diffs style
+  // against previous props, not the DOM).
+  const restoreFlex = () => {
+    const col = colRef.current;
+    if (col) col.style.flex = collapsed ? "0 0 0px" : `0 0 ${panelPref}px`;
+  };
+
+  const gutterHandle = usePaneResizeHandle({
+    id: gestureId,
+    axis: "x",
+    // The right column grows as the pointer moves LEFT (toward the origin).
+    direction: side === "right" ? -1 : 1,
+    // A collapsed column renders `flex: 0 0 0px` — an imperative width write
+    // would silently override the collapse, so the gesture is refused.
+    disabled: collapsed,
+    getValue: () => {
+      const col = colRef.current;
+      const rendered = col?.getBoundingClientRect().width ?? panelPref;
       const panelMin = parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue('--panel-min'),
       ) || 0;
-      let requested = Math.max(panelMin, startPanel.current + delta);
       // Walk up to the row container that holds *all* columns (editor +
       // both panel rails). Pre-extraction this was `col.parentElement`;
       // post-extraction the panel column is wrapped by `<PaneRail>`'s
       // outer div, so we need to walk up two levels to reach the row.
       // The row carries the `editor-pane-root` class.
-      const col = gapRef.current?.closest<HTMLElement>('[data-flex-col]');
+      let max = Number.POSITIVE_INFINITY;
       const main = col?.closest('.editor-pane-root') as HTMLElement | null;
-      if (main) {
+      if (col && main) {
         const editor = main.querySelector('[data-editor-col]') as HTMLElement | null;
         const editorMin = editor ? (parseFloat(getComputedStyle(editor).minWidth) || 0) : 0;
         // Reserve everything in the row that ISN'T the panel being
         // dragged or the editor column. We sum measured widths of the
         // intermediate wrappers (PaneRail outer divs etc.) by their
         // current rendered widths minus the dragged column's
-        // contribution.
+        // contribution. None of these change during the gesture (the
+        // opposite rail and icon strips are untouched by this drag), so a
+        // start-edge snapshot is equivalent to the old per-move re-measure.
         let reserved = editorMin;
-        const dragRail = col?.closest<HTMLElement>('.editor-pane-root > div') ?? col;
+        const dragRail = col.closest<HTMLElement>('.editor-pane-root > div') ?? col;
         for (const child of Array.from(main.children)) {
           if (child === editor) continue;
           if (child === dragRail) {
@@ -297,36 +348,68 @@ export function PanelColumn({
             reserved += (child as HTMLElement).getBoundingClientRect().width;
           }
         }
-        const maxPanel = Math.max(0, main.clientWidth - reserved);
-        requested = Math.min(requested, maxPanel);
+        max = Math.max(0, main.clientWidth - reserved);
       }
-      onPanelPrefChange(requested);
+      clampRef.current = { min: panelMin, max };
+      startRef.current = rendered;
+      return rendered;
     },
-    [side, onPanelPrefChange],
-  );
-
-  const { gapRef, onMouseDown: gapMouseDown } = useDragGap({
-    cursor: "col-resize",
-    onMove,
-    deadzone: 3,
+    clamp: (px) =>
+      Math.max(clampRef.current.min, Math.min(clampRef.current.max, px)),
+    // Live geometry is an imperative flex-basis write on the column root —
+    // one RAF-coalesced style write per frame. The old path routed every
+    // mousemove through onPanelPrefChange → viewPrefs.setPanelWidth →
+    // localStorage ×2, re-rendering the EditorPane subtree per move.
+    apply: (px) => {
+      const col = colRef.current;
+      if (col) col.style.flex = `0 0 ${px}px`;
+    },
+    commit: (px) => {
+      // Zero-move end (plain click / drag returned to start): keep the old
+      // deadzone behavior of not writing prefs, and re-sync the DOM from
+      // the store in case applies happened.
+      if (px === startRef.current) {
+        restoreFlex();
+        return;
+      }
+      onPanelPrefChange(px);
+    },
+    restore: restoreFlex,
   });
 
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      startX.current = e.clientX;
-      onSyncBeforeDrag?.();
-      const col = gapRef.current?.closest<HTMLElement>('[data-flex-col]');
-      const rendered = col ? col.getBoundingClientRect().width : panelPref;
-      startPanel.current = rendered;
-      onResizingChange?.(true);
-      const onUp = () => {
-        onResizingChange?.(false);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mouseup", onUp);
-      gapMouseDown(e);
-    },
-    [panelPref, gapMouseDown, onResizingChange, onSyncBeforeDrag],
+  // Gesture-edge side effects (sync prefs to rendered widths, then lift the
+  // CSS min-width via isResizing) ride the pane-drag bus filtered to THIS
+  // instance's gesture — the end edge fires on every end variant, including
+  // an owner unmount mid-drag, so `isResizing` can never wedge true. Latest-
+  // prop refs keep the one subscription stable across renders. Declared
+  // AFTER usePaneResizeHandle: unmount cleanups run in declaration order, so
+  // the engine's detach end-edge fires while this listener is still
+  // subscribed.
+  const onResizingChangeRef = useRef(onResizingChange);
+  const onSyncBeforeDragRef = useRef(onSyncBeforeDrag);
+  useEffect(() => {
+    // Latest-prop mirrors, refreshed post-commit (a render-time ref write
+    // trips react-hooks/refs). The listener only fires from pointer events,
+    // which can't interleave before this effect runs.
+    onResizingChangeRef.current = onResizingChange;
+    onSyncBeforeDragRef.current = onSyncBeforeDrag;
+  });
+  useEffect(
+    () =>
+      onPaneDragChange((active, info) => {
+        if (info.id !== gestureId) return;
+        if (active) {
+          // Engine ordering: getValue() has already measured the true
+          // pre-drag width; syncing prefs to rendered widths here (before
+          // the `1 100`→`0 0`-style min-width lift lands) keeps shrunk
+          // panels from snapping back at drag start.
+          onSyncBeforeDragRef.current?.();
+          onResizingChangeRef.current?.(true);
+        } else {
+          onResizingChangeRef.current?.(false);
+        }
+      }),
+    [gestureId],
   );
 
   // The stack lifts over the action-toolbar strip whenever any band is
@@ -348,6 +431,7 @@ export function PanelColumn({
 
   return (
     <div
+      ref={colRef}
       data-flex-col={side}
       data-panel-column-side={side}
       // Reflect whether this side currently has visible content — a docked
@@ -463,10 +547,9 @@ export function PanelColumn({
         </div>
       )}
       <div
-        ref={gapRef}
         className={`drag-gap drag-gap-v band-grip shrink-0 ${side === "left" ? "order-3 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
-        style={{ width: 'var(--pod-gap)' }}
-        onMouseDown={onMouseDown}
+        {...gutterHandle}
+        style={{ ...gutterHandle.style, width: 'var(--pod-gap)' }}
       />
       </div>
       <ColumnEdgeFade side={side} edge="bottom" />

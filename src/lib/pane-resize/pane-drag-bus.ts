@@ -1,9 +1,10 @@
 // The app-wide pane-drag bus — ONE "a pane-resize gesture is in flight"
-// signal for both silos. Replaces the two disjoint park buses that let
+// signal for both silos. Replaced the two disjoint park buses that let
 // observers park on the wrong bus across silos: the Library's module flag
 // (library/lib/gutter-drag.ts, consumed only by the tab-chrome observers) and
 // the editor's `virgil:drag-gap-start/end` window CustomEvents (dispatched by
-// useDragGap, consumed by EditorScrollbar). Their consumers migrate here.
+// the deleted useDragGap hook, consumed by EditorScrollbar). Both are gone;
+// every consumer subscribes here.
 //
 // Discipline: EDGES ONLY, never per-frame. Listeners fire exactly once on the
 // begin edge and once on the end edge of a gesture; the per-frame geometry
@@ -61,4 +62,12 @@ export function endPaneDrag(info: PaneDragInfo): void {
 export function __resetPaneDragBusForTest(): void {
   activeDrag = null;
   listeners.clear();
+}
+
+/** @internal Test hygiene only — the live listener count, so suites can pin
+ *  that unmount/dispose paths really unsubscribe. (Node-state assertions
+ *  can't: React nulls a consumer's ref before a leaked listener could run,
+ *  so a discarded node stays inert whether or not the subscription leaked.) */
+export function __paneDragListenerCountForTest(): number {
+  return listeners.size;
 }

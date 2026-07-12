@@ -2,13 +2,12 @@
 
 import {
   type ReactNode,
-  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { useDragGap } from "@/hooks/useDragGap";
+import { usePaneResizeHandle } from "@/lib/pane-resize";
 import {
   CodePaneSplitProvider,
   type CodePaneSplitState,
@@ -32,9 +31,12 @@ import {
  *    minimum (see EditorPane.tsx).
  *  - When the splitter goes narrower than the editor's *compressed*
  *    min-width, `clipPx` continues to shrink (the editor stays at its
- *    min and just gets clipped). The clipped distance is published as
- *    `clippedPx` so a fade gradient at the right edge can scale with
- *    overlap depth.
+ *    min and just gets clipped). The clipped distance stays LOCAL — it
+ *    drives the fade gradient at the right edge, which scales with
+ *    overlap depth. It is deliberately NOT published through context:
+ *    it changes per pointer frame in the clipped band, and a per-frame
+ *    context identity would re-render every consumer (EditorPane) per
+ *    frame. Context carries only the open/compressed edges.
  *
  * Ratio: stored externally (the parent owns the value + setter); we
  * don't pull from prefs here so the primitive is reusable.
@@ -90,6 +92,20 @@ export function SplitWithCode({
   const containerRef = useRef<HTMLDivElement>(null);
   const editorWrapperRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  // LOAD-BEARING mid-drag React state (contract-noted exception): the split
+  // ratio must stay LIVE through React during the gesture because layout
+  // decisions downstream derive from it in render — `compressed` flips
+  // EditorPane's gutter compression (context consumers) the moment clipPx
+  // crosses the editor's natural width, and the clip fade scales with
+  // clippedPx. An imperative width write couldn't drive either. The state is
+  // LOCAL, set at most once per frame (the engine RAF-coalesces + equality-
+  // bails apply()), and `left`/`right` arrive as ReactNode props so their
+  // subtrees bail on element identity — vs. the old path, which routed every
+  // mousemove through onRatioChange → viewPrefs.setCodePaneRatio →
+  // localStorage ×2 and re-rendered ALL of EditorLayout per move.
+  // Persistence commits exactly once, on release.
+  const [liveRatio, setLiveRatio] = useState<number | null>(null);
+  const effectiveRatio = liveRatio ?? ratio;
   // The editor's natural width — measured ONLY while uncompressed
   // (see ref + skip below). Used as the stable threshold for the
   // compression decision; cached so it isn't polluted by the
@@ -141,10 +157,10 @@ export function SplitWithCode({
     return () => ro.disconnect();
   }, []);
 
-  // The "natural" target width given the requested ratio.
+  // The "natural" target width given the requested ratio (live mid-drag).
   const naturalEditorPx = Math.max(
     0,
-    Math.round(ratio * Math.max(containerWidth - GAP_WIDTH_PX, 0)),
+    Math.round(effectiveRatio * Math.max(containerWidth - GAP_WIDTH_PX, 0)),
   );
 
   // Effective min that we clamp the *code pane* against — so the user
@@ -172,30 +188,59 @@ export function SplitWithCode({
   // scales with how deep we are into clipping.
   const clippedPx = Math.max(0, EDITOR_PANE_COMPRESSED_MIN_PX - clipPx);
 
-  const onMove = useCallback(
-    (ev: MouseEvent) => {
-      const el = containerRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      if (rect.width <= 0) return;
-      const r = (ev.clientX - rect.left) / rect.width;
-      // Clamp to [absolute min editor visible, container - code min].
-      const minR = (EDITOR_MIN_VISIBLE_PX + GAP_WIDTH_PX / 2) / rect.width;
-      const maxR =
-        (rect.width - CODE_PANE_MIN_PX - GAP_WIDTH_PX / 2) / rect.width;
-      onRatioChange(Math.max(minR, Math.min(maxR, r)));
-    },
-    [onRatioChange],
-  );
+  // Per-gesture snapshot (container width + start px), taken in
+  // getValue() — the engine's single start-edge read point. The gesture's
+  // value is the editor track's px share (`ratio * (width - gap)`), so the
+  // divider tracks the pointer delta 1:1.
+  const dragRef = useRef({ w: 0, startPx: 0 });
 
-  const { gapRef, onMouseDown } = useDragGap({
-    cursor: "col-resize",
-    onMove,
+  const handle = usePaneResizeHandle({
+    id: "code-split",
+    axis: "x",
+    getValue: () => {
+      const w = containerRef.current?.getBoundingClientRect().width ?? 0;
+      const startPx = ratio * Math.max(w - GAP_WIDTH_PX, 0);
+      dragRef.current = { w, startPx };
+      return startPx;
+    },
+    clamp: (px) => {
+      const w = dragRef.current.w;
+      if (w <= 0) return px;
+      const track = Math.max(w - GAP_WIDTH_PX, 0);
+      // Clamp to [absolute min editor visible, container - code min].
+      const minR = (EDITOR_MIN_VISIBLE_PX + GAP_WIDTH_PX / 2) / w;
+      const maxR = (w - CODE_PANE_MIN_PX - GAP_WIDTH_PX / 2) / w;
+      return Math.max(minR * track, Math.min(maxR * track, px));
+    },
+    // Live path: the RAF-coalesced local liveRatio (see its declaration for
+    // the load-bearing justification).
+    apply: (px) => {
+      const track = Math.max(dragRef.current.w - GAP_WIDTH_PX, 0);
+      if (track > 0) setLiveRatio(px / track);
+    },
+    commit: (px) => {
+      const track = Math.max(dragRef.current.w - GAP_WIDTH_PX, 0);
+      // Both state writes batch into one render: the committed prefs ratio
+      // arrives as the `ratio` prop in the same pass that drops liveRatio.
+      setLiveRatio(null);
+      // Zero-move end (plain click): keep the old no-write behavior. Exact
+      // px compare against the getValue() snapshot — the engine commits the
+      // untouched start value on a zero-move, whereas a ratio round-trip
+      // ((r·track)/track) is not IEEE-exact for ~10% of stored (ratio, width)
+      // pairs and would fire a spurious pref write per plain click.
+      if (track > 0 && px !== dragRef.current.startPx) onRatioChange(px / track);
+    },
+    restore: () => setLiveRatio(null),
   });
 
+  // Context identity changes ONLY on the open/compressed edges — never per
+  // drag frame. clippedPx stays local (the fade below): in the clipped band
+  // it changes with every RAF apply, and publishing it minted a fresh context
+  // value per frame, which pierces the element-identity bailout and
+  // re-rendered EditorPane — the heaviest consumer — once per pointer frame.
   const splitState = useMemo<CodePaneSplitState>(
-    () => ({ active: open, compressed: open && compressed, clippedPx: open ? clippedPx : 0 }),
-    [open, compressed, clippedPx],
+    () => ({ active: open, compressed: open && compressed }),
+    [open, compressed],
   );
 
   // Fade-gradient strength: 0..1 based on how far into clipping we
@@ -324,9 +369,8 @@ export function SplitWithCode({
               style={{ width: GAP_WIDTH_PX }}
             >
               <div
-                ref={gapRef}
                 className="drag-gap drag-gap-v band-grip w-full h-full"
-                onMouseDown={onMouseDown}
+                {...handle}
               />
               {/* Manual "sync position" pill — pinned with the divider
                   (it lives inside the sticky container). Two stacked

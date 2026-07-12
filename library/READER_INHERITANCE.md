@@ -30,6 +30,8 @@ When triaging a Reader bug, the fix lives in exactly one of these three layers. 
 
 If the same bug exists in *both* Editor and Reader, the fix lives in the shared component — `EditorPane.tsx`, `Editor.tsx`, a TipTap extension under `src/lib/tiptap/`, a panel under `src/panels/`, etc. Patch it once; both surfaces benefit.
 
+Generic shared-layer *wrappers* mounted from `library/components/` are legal here too — precedent: `KeepAliveVisibilityProvider` (`src/lib/keep-alive/`), and `PaneFreeze` (`src/lib/pane-resize/PaneFreeze.tsx`), the drag-time content freeze `RightDetail` mounts around its pdf/text branch roots. They carry no Reader knowledge (PaneFreeze is "freeze my box while a pane drag is live", keyed on the app-wide `PaneDragBus`), so mounting one is configuration of a shared utility, not a Reader-specific render path. The sanctioned-import entry lives in [library/CLAUDE.md](CLAUDE.md) "Don't".
+
 Anti-pattern: implementing the fix only in `library/components/`.
 
 ### 2. `READER_CHROME` (when an Editor-only affordance is leaking)

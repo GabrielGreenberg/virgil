@@ -4448,9 +4448,6 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   pointer-events: none;
   background: var(--drag-highlight);
 }
-.drag-gap.hover-preview::after {
-  opacity: 0.35;
-}
 .drag-gap.dragging::after {
   opacity: 0.5;
 }
@@ -4524,7 +4521,7 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
    1px line) is now repurposed as the pill. One shared rule set carries every
    property that doesn't depend on orientation; the two per-orientation blocks
    below differ only in which axis is the pill's long side + which axis widens.
-   Scoped to `.band-grip`, so bare HSplit / editor-split lines are unaffected. */
+   Scoped to `.band-grip`, so bare drag-gap lines are unaffected. */
 .drag-gap-h.band-grip::before,
 .drag-gap-v.band-grip::after {
   content: '';
@@ -4546,7 +4543,6 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   height: 4px;
   transform: translate(-50%, -50%);
 }
-.drag-gap-h.band-grip.hover-preview::before,
 .drag-gap-h.band-grip:hover::before {
   background: var(--drag-highlight);
   opacity: 1;
@@ -4570,7 +4566,6 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   height: 28px;
   transform: translate(-50%, -50%);
 }
-.drag-gap-v.band-grip.hover-preview::after,
 .drag-gap-v.band-grip:hover::after {
   background: var(--drag-highlight);
   opacity: 1;

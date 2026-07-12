@@ -17,6 +17,12 @@
 //     because releasing the drag button while another is chorded fires only
 //     a pointermove with an updated mask, never a pointerup.
 //   - Escape restores the drag-start value and ends WITHOUT committing.
+//   - a captured handle REMOVED from the DOM mid-gesture (a conditionally
+//     rendered handle whose branch flips while the owner stays mounted) fires
+//     lostpointercapture at the DOCUMENT, not the detached element — so
+//     gesture-scoped document/window failsafes route that case into the same
+//     end path. Without them the element-scoped listeners could never fire
+//     again and the input-blocking shield would wedge the whole app.
 //   - geometry applies imperatively (CSS var / style write) RAF-coalesced
 //     behind an equality bail — at most one `apply()` per frame, zero React
 //     state per frame; any pending frame is flushed before commit.
@@ -205,6 +211,9 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
         el.removeEventListener("pointerup", onEnd);
         el.removeEventListener("pointercancel", onEnd);
         el.removeEventListener("lostpointercapture", onEnd);
+        document.removeEventListener("lostpointercapture", onEnd, true);
+        window.removeEventListener("pointerup", onEnd, true);
+        window.removeEventListener("pointercancel", onEnd, true);
         window.removeEventListener("keydown", onKeyDown, true);
         try {
           el.releasePointerCapture(pointerId);
@@ -257,6 +266,22 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
     el.addEventListener("pointercancel", onEnd);
     el.addEventListener("lostpointercapture", onEnd);
     window.addEventListener("keydown", onKeyDown, true);
+    // The one hole element-scoped listeners can't cover: the captured handle
+    // being REMOVED from the DOM mid-gesture (a conditionally rendered handle
+    // — SplitWithCode's `{open && …}` branch — flipping while the owner stays
+    // mounted; the unmount detach failsafe only covers OWNER unmount). Per
+    // Pointer Events implicit release, removal fires lostpointercapture at
+    // the DOCUMENT, not the detached element, and every later pointer event
+    // hit-tests to the shield — which has no listeners — so no element-scoped
+    // end path could ever run and the input-blocking shield would wedge ALL
+    // app input until Escape. These failsafes route that case into the same
+    // idempotent finish(); pointerId-gated, attached on the start edge and
+    // removed on every end path (the Escape-keydown lifecycle — gesture-
+    // scoped, never per-frame). Capture phase so no mid-tree handler can
+    // stop them; on a healthy end they lose the race to `ended` harmlessly.
+    document.addEventListener("lostpointercapture", onEnd, true);
+    window.addEventListener("pointerup", onEnd, true);
+    window.addEventListener("pointercancel", onEnd, true);
     el.classList.add("dragging");
     mountDragShield(axis === "x" ? "col-resize" : "row-resize");
     finishRef.current = finish;

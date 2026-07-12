@@ -9,6 +9,11 @@
 //   3. scrollToPage(label) scrolls the container to that page's docY; an
 //      unknown label is a no-op.
 //   4. A pgmark-less doc yields zero pages + null currentLabel.
+//   5. R4 identity gate: a re-scan that finds the SAME (label, docY) marks
+//      keeps the SAME pages array reference — the guarantee PaperRender's
+//      pagePickerEl memo (and through it EditorPane's memo()) is keyed on.
+//   6. The ResizeObserver re-scan PARKS during a pane-resize gesture and
+//      settles exactly once on the end edge (plan §P3 defense-in-depth).
 //
 // Keystroke sanctity: the hook recollects ONLY on editor create/docChanged,
 // never per keystroke — asserted indirectly by re-collecting on a docChanged
@@ -18,8 +23,19 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 
 import { usePgmarkPages } from "@library/hooks/usePgmarkPages";
+import {
+  beginPaneDrag,
+  endPaneDrag,
+  __resetPaneDragBusForTest,
+  type PaneDragInfo,
+} from "@/lib/pane-resize/pane-drag-bus";
 
-afterEach(() => cleanup());
+const DRAG: PaneDragInfo = { id: "gutter-under-test", axis: "x" };
+
+afterEach(() => {
+  cleanup();
+  __resetPaneDragBusForTest();
+});
 
 // rAF runs synchronously so RAF-coalesced setState lands within act().
 beforeEachRaf();
@@ -174,5 +190,100 @@ describe("usePgmarkPages", () => {
       });
     });
     expect(result.current.pages).toHaveLength(2); // re-scanned on docChanged
+  });
+
+  it("R4 identity gate: a re-scan with unchanged marks keeps the SAME pages array reference; a real change mints a new one", () => {
+    const { editor, container } = makeFixture([
+      { label: "1", docY: 0 },
+      { label: "2", docY: 500 },
+    ]);
+    const { result } = renderHook(() =>
+      usePgmarkPages(editor as never, container),
+    );
+    const before = result.current.pages;
+    expect(before.map((p) => p.label)).toEqual(["1", "2"]);
+
+    // No-op re-scan (docChanged, chips unchanged). The pre-P4 regression —
+    // `setPages(next)` with a fresh array — changes ONLY identity, never
+    // values, so this toBe is the one assertion that fails on a gate revert.
+    act(() => {
+      (editor as { __emit: (e: string, a: unknown) => void }).__emit("transaction", {
+        transaction: { docChanged: true },
+      });
+    });
+    expect(result.current.pages).toBe(before);
+
+    // A REAL change (new chip) must still produce a fresh array.
+    const chip = document.createElement("span");
+    chip.className = "pgmark-chip";
+    chip.textContent = "\\pgmark{3}";
+    chip.getBoundingClientRect = () =>
+      ({ top: 900, left: 0, right: 0, bottom: 900, width: 0, height: 0 }) as DOMRect;
+    (editor as { view: { dom: HTMLElement } }).view.dom.appendChild(chip);
+    act(() => {
+      (editor as { __emit: (e: string, a: unknown) => void }).__emit("transaction", {
+        transaction: { docChanged: true },
+      });
+    });
+    expect(result.current.pages).not.toBe(before);
+    expect(result.current.pages.map((p) => p.label)).toEqual(["1", "2", "3"]);
+  });
+
+  it("parks the ResizeObserver re-scan during a pane drag and settles exactly once on the end edge", () => {
+    // Controllable RO so the test can fire layout notifications by hand
+    // (collectPages does O(chips) forced-layout reads — it must never ride a
+    // pointer frame; deleting the parkDuringPaneDrag wiring re-scans per fire
+    // and fails the counts below).
+    const roCallbacks: ResizeObserverCallback[] = [];
+    const RealRO = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        roCallbacks.push(cb);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      const { editor, container } = makeFixture([{ label: "1", docY: 0 }]);
+      const dom = (editor as { view: { dom: HTMLElement } }).view.dom;
+      // Every collectPages run starts with ONE querySelectorAll on the editor
+      // dom — count re-scans through it.
+      const scans = vi.spyOn(dom, "querySelectorAll");
+      const { result } = renderHook(() =>
+        usePgmarkPages(editor as never, container),
+      );
+      expect(result.current.pages).toHaveLength(1);
+      const baseline = scans.mock.calls.length; // the mount collect
+
+      const fireRO = () =>
+        roCallbacks.forEach((cb) =>
+          cb([], undefined as unknown as ResizeObserver),
+        );
+
+      act(() => {
+        beginPaneDrag(DRAG);
+        // A drag-frame storm of RO fires — all parked, zero re-scans.
+        fireRO();
+        fireRO();
+        fireRO();
+      });
+      expect(scans.mock.calls.length).toBe(baseline);
+
+      act(() => {
+        endPaneDrag(DRAG);
+      });
+      // Exactly ONE settle re-scan on the end edge (latest-wins).
+      expect(scans.mock.calls.length).toBe(baseline + 1);
+
+      // A gesture with no parked fire settles nothing.
+      act(() => {
+        beginPaneDrag(DRAG);
+        endPaneDrag(DRAG);
+      });
+      expect(scans.mock.calls.length).toBe(baseline + 1);
+    } finally {
+      globalThis.ResizeObserver = RealRO;
+    }
   });
 });

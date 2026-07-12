@@ -33,10 +33,12 @@
 //     useDocument autosaver subscribes that way and is a prose-only entry).
 //   • The quote-delimited `"update"` form does NOT match `"selectionUpdate"`
 //     (selection is governed separately — the reactor audits), nor `focus`/`blur`.
-//   • Scoped to `src/` — the AGENTS.md list is a `src/` list. `library/` owns its
-//     own perf doctrine (`library/AGENTS.md`); its Reader subscriber
-//     (`library/hooks/usePgmarkPages.ts`, read-only, docChanged-gated) is out of
-//     scope here by design.
+//   • Walks BOTH silos: `src/` against PERMITTED_KEYSTROKE_SUBSCRIBERS (the
+//     AGENTS.md prose list) and `library/` against
+//     PERMITTED_LIBRARY_KEYSTROKE_SUBSCRIBERS (the library/AGENTS.md "Perf
+//     doctrine" prose list). Each silo keeps its own allowlist because each
+//     keeps its own prose doctrine — the justifications live next to the code
+//     they govern.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -45,6 +47,7 @@ import path from "node:path";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../.."); // src/
+const LIBRARY = path.resolve(HERE, "../../../library"); // the Library silo
 
 // ── The permitted-subscriber allowlist ──────────────────────────────────────
 // Every `src/` file that legitimately makes a main-editor
@@ -84,6 +87,15 @@ const PERMITTED_KEYSTROKE_SUBSCRIBERS: Record<string, string> = {
     "docChanged-gated + own-write meta filter — O(1) per tx.",
   "text-objects/TextObjectGrabHandle.tsx":
     "docChanged-gated, cheap handle reposition.",
+};
+
+// ── The library-silo allowlist ──────────────────────────────────────────────
+// Same discipline over `library/` (the Reader mounts the SAME EditorPane, so
+// the law applies verbatim). Prose twin: library/AGENTS.md "Perf doctrine" →
+// "Keystroke sanctity (library edition)".
+const PERMITTED_LIBRARY_KEYSTROKE_SUBSCRIBERS: Record<string, string> = {
+  "hooks/usePgmarkPages.ts":
+    "\\pgmark page collection: docChanged-gated (the Reader is read-only, so plain transactions never fire it); layout re-scans ride a RAF-coalesced RO parked during pane drags; `pages` is identity-gated (label+docY equality) so no-op re-scans keep consumer memos intact.",
 };
 
 /**
@@ -188,5 +200,29 @@ describe("keystroke-subscriber guardrail — source allowlist", () => {
     expect(detectKeystrokeSubscriber(`editor.on("selectionUpdate", fn)`)).toBe(false);
     expect(detectKeystrokeSubscriber(`editor.on('focus', fn)`)).toBe(false);
     expect(detectKeystrokeSubscriber(`editor.on("blur", fn)`)).toBe(false);
+  });
+});
+
+describe("keystroke-subscriber guardrail — library silo", () => {
+  const detected = walkSource(LIBRARY)
+    .filter((f) => detectKeystrokeSubscriber(readFileSync(f, "utf8")))
+    .map((f) => path.relative(LIBRARY, f).split(path.sep).join("/"))
+    .sort();
+
+  it("flags exactly the allowlisted library subscribers — no unlisted new ones", () => {
+    // Same escape hatch as the src/ block: confirm the new subscriber is O(1)
+    // per transaction, then add it to PERMITTED_LIBRARY_KEYSTROKE_SUBSCRIBERS
+    // with a justification AND to the library/AGENTS.md "Perf doctrine" prose
+    // list — OR rewrite it to stop walking the doc on every keystroke.
+    expect(detected).toEqual(
+      Object.keys(PERMITTED_LIBRARY_KEYSTROKE_SUBSCRIBERS).sort(),
+    );
+  });
+
+  it("keeps the library allowlist free of stale entries", () => {
+    for (const rel of Object.keys(PERMITTED_LIBRARY_KEYSTROKE_SUBSCRIBERS)) {
+      const src = readFileSync(path.join(LIBRARY, rel), "utf8");
+      expect(detectKeystrokeSubscriber(src)).toBe(true);
+    }
   });
 });
