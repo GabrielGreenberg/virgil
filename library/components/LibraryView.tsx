@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useCatalogItems, refreshCatalogStore } from "@library/lib/catalog-store";
 import { useMasterBib } from "@library/hooks/useMasterBib";
 import { useDropPdf } from "@library/hooks/useDropPdf";
@@ -38,7 +46,21 @@ import Toaster from "./Toaster";
 import TabbedLibraryPanel, { type EntryActions } from "./TabbedLibraryPanel";
 import LibrariesNavigator from "./LibrariesNavigator";
 import { queueBibReview, queueDelete, queueImportBib, queuePaperReview } from "@library/lib/bib-edit";
-import { beginGutterDrag, endGutterDrag } from "@library/lib/gutter-drag";
+import { usePaneResizeHandle } from "@/lib/pane-resize";
+import {
+  LEFT_DEFAULT,
+  LEFT_MIN,
+  LIB_GRID_GUTTER,
+  LIB_GRID_TEMPLATE_2COL,
+  LIB_GRID_TEMPLATE_3COL,
+  LIB_LIST_W_VAR,
+  LIB_NAV_W_VAR,
+  NAV_DEFAULT,
+  NAV_MIN,
+  PAPERS_DEFAULT,
+  PAPERS_MIN,
+  READER_MIN,
+} from "./library-grid-template";
 
 /**
  * The Library-tab desktop **field** surface (the chrome the folder panels sit on:
@@ -76,34 +98,25 @@ interface Props {
   belowNavigator?: ReactNode;
 }
 
-// The three column/pod sizes now live in the unified view-session-store's
+// The three column/pod sizes live in the unified view-session-store's
 // `layout` slice (`useLayoutPrefs` → layout.{middleWidth,navWidth,papersHeight})
-// instead of three standalone `useState` + localStorage pairs. The store was
-// already DEAD-SEEDING those layout fields from the legacy keys below but
-// nothing read them back — folding the readers onto the store closes that
-// mismatch. Same scope as before: the store's `layout` is a per-origin
-// localStorage slice (the store has no window-id partitioning — its `scopes`
-// keys distinguish inline vs tear-out panels, not browser windows), exactly
-// like the standalone keys it replaces. The legacy keys are kept ONLY as a
-// one-shot migration source for users whose blob predates this change (the
-// store's absent-blob seed already covers brand-new users).
+// instead of three standalone `useState` + localStorage pairs. Same scope as
+// before: the store's `layout` is a per-origin localStorage slice (the store
+// has no window-id partitioning — its `scopes` keys distinguish inline vs
+// tear-out panels, not browser windows), exactly like the standalone keys it
+// replaces. The legacy standalone size keys (virgil-library-{left,nav,papers}-*)
+// are owned by the store: `migrateLegacyLayoutSizes()` adopts them once on
+// mount and deletes them.
 //
-// The legacy standalone size keys (virgil-library-{left,nav,papers}-*) are now
-// owned by the store: `migrateLegacyLayoutSizes()` adopts them once on mount
-// and deletes them. Only the min-floors + defaults live here, shared with the
-// resize handlers and the load-time viewport clamp. (Mins MUST match the
-// store's NAV_WIDTH_MIN / MIDDLE_WIDTH_MIN / PAPERS_HEIGHT_MIN.)
-const LEFT_MIN = 220;
-const LEFT_DEFAULT = 360;
+// The min-floors / defaults / gutter width / grid-track templates live in
+// `library-grid-template.ts` (the floors MUST match the store's
+// NAV_WIDTH_MIN / MIDDLE_WIDTH_MIN / PAPERS_HEIGHT_MIN).
 
-const NAV_MIN = 180;
-const NAV_DEFAULT = 220;
-
-// Height of the My Papers pod in the navigator column. The Libraries pod
-// above takes the remaining space; both stay at least 100px tall so the
-// drag bar can't smash either pod into invisibility.
-const PAPERS_MIN = 100;
-const PAPERS_DEFAULT = 240;
+/** Stored-size read guard: a persisted value is used only when it's a finite
+ *  number (a hand-edited blob can't inject `"300"`/null into a CSS var). */
+function sizeOr(v: number | undefined, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
 
 export default function LibraryView({
   handle,
@@ -146,27 +159,23 @@ export default function LibraryView({
   // `middleWidth`; the older standalone localStorage key was "left" for the
   // pre-3-column layout.)
   const { layout, setLayout } = useLayoutPrefs();
-  // Clamp the stored widths to the viewport on read so an oversized width
-  // persisted on a wider monitor can't starve the content pane when reopened
-  // on a narrower screen (mirrors the load-time clamp the pre-store code
-  // applied). Only the RENDERED width is clamped — the stored value is left
-  // intact so it re-expands when the window grows again.
-  const viewportW =
-    typeof window !== "undefined" ? window.innerWidth : Number.POSITIVE_INFINITY;
-  const leftWidth = Math.max(
-    LEFT_MIN,
-    Math.min(layout.middleWidth ?? LEFT_DEFAULT, viewportW - 200),
-  );
-  const navWidth = Math.max(
-    NAV_MIN,
-    Math.min(layout.navWidth ?? NAV_DEFAULT, viewportW - 300),
-  );
-  const papersHeight = layout.papersHeight ?? PAPERS_DEFAULT;
+  // The STORED sizes feed the grid's CSS vars as-is: the hard viewport
+  // constraints live in the grid template itself (clamp()/minmax() — see
+  // library-grid-template.ts), so an oversized width persisted on a wider
+  // monitor is clamped BY LAYOUT, reactively, and re-expands when the window
+  // grows again. This replaces the old render-time `window.innerWidth` clamps,
+  // which were non-reactive and composed independently (the R8 class — their
+  // sum could exceed the viewport and collapse the 1fr reader to 0).
+  const leftWidth = sizeOr(layout.middleWidth, LEFT_DEFAULT);
+  const navWidth = sizeOr(layout.navWidth, NAV_DEFAULT);
+  const papersHeight = sizeOr(layout.papersHeight, PAPERS_DEFAULT);
   const navColumnRef = useRef<HTMLDivElement | null>(null);
-  // The resizable grid node + the My Papers pod node. The resizers write live
-  // drag feedback STRAIGHT to these DOM nodes (no per-frame React state) and
-  // commit to the store only on pointer-up — see makeResizeHandler.
+  // The resizable grid node + the list (middle) panel column + the My Papers
+  // pod node. The pane-resize engine writes live drag geometry STRAIGHT to
+  // these nodes (CSS vars / flex-basis — never per-frame React state) and
+  // commits to the store exactly once on release.
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const listColumnRef = useRef<HTMLDivElement | null>(null);
   const papersPodRef = useRef<HTMLDivElement | null>(null);
 
   // One-shot migration of the legacy standalone size keys into the store, for
@@ -179,146 +188,111 @@ export default function LibraryView({
     migrateLegacyLayoutSizes();
   }, []);
 
-  // Write the grid track string STRAIGHT to the live grid node. Mirrors the
-  // JSX `gridTemplateColumns` below (3-col with navigator, 2-col without).
-  const applyGridTemplate = useCallback(
-    (nav: number, mid: number) => {
-      const el = gridRef.current;
-      if (!el) return;
-      el.style.gridTemplateColumns = showNavigator
-        ? `${nav}px 6px ${mid}px 6px 1fr`
-        : `${mid}px 6px 1fr`;
+  // All three resizers run on the shared pane-resize engine
+  // (src/lib/pane-resize): pointer capture on the handle, RAF-coalesced
+  // imperative apply() (a CSS-var / flex-basis write — never per-frame React
+  // state, so LeftList's memoized rows and both panels stay untouched for the
+  // whole gesture), commit() to the store exactly once on release, and
+  // begin/end edges on the app-wide pane-drag bus (which the tab-chrome
+  // observers park on — task 090's contract, now bus-wide). The committed
+  // value equals the last live value, so the post-release render reconciles
+  // to the identical geometry (no jump).
+  //
+  // Pointer-UX clamp bound, snapshotted once per gesture in getValue() (the
+  // engine's documented single read point on the start edge). It MIRRORS the
+  // grid template's hard constraint so the divider tracks the pointer instead
+  // of dead-zoning against the CSS clamp; the template stays the authority.
+  // One shared ref is safe: the engine allows a single pane gesture app-wide,
+  // and every gesture re-snapshots it at start.
+  //
+  // restore() (Escape cancel): these getValue()s return RENDERED track sizes
+  // (offsetWidth/offsetHeight), which the grid template's clamp() can render
+  // SMALLER than the stored value on a narrow window. The engine's default
+  // cancel would pin that clamped px into the imperative var — and React
+  // never rewrites it while the store is unchanged (style diffs against
+  // previous props, not the DOM) — permanently forfeiting the template's
+  // re-expand-on-window-grow guarantee (library-grid-template.ts). So cancel
+  // re-syncs the DOM from the STORE value instead. The closures read the
+  // pre-drag store values: no commit happens mid-gesture, so they can't be
+  // stale.
+  const dragMaxRef = useRef(Number.POSITIVE_INFINITY);
+
+  const navResizeHandle = usePaneResizeHandle({
+    id: "library-nav",
+    axis: "x",
+    getValue: () => {
+      const gridW = gridRef.current?.offsetWidth ?? 0;
+      // Mirror of the nav track's CSS max: leave the list + reader mins.
+      dragMaxRef.current =
+        gridW > 0
+          ? gridW - (LEFT_MIN + READER_MIN + 2 * LIB_GRID_GUTTER)
+          : Number.POSITIVE_INFINITY;
+      return navColumnRef.current?.offsetWidth ?? navWidth;
     },
-    [showNavigator],
-  );
-  // A column resizer drives its live drag feedback IMPERATIVELY (writing the
-  // grid track to the DOM via `applyLive`) and commits the size to the store
-  // exactly ONCE on pointer-up (`commit`). This keeps a deliberate drag
-  // gesture entirely off the React render path: a per-frame store commit would
-  // re-render all of LibraryView — and with it the middle column's LeftList
-  // and its non-memoized rows — on every pointer-move frame. The committed
-  // value equals the last live value, so the post-drag render reconciles to
-  // the identical template (no jump). Persistence stays in the unified store,
-  // so sizes still survive reload.
-  const makeResizeHandler = useCallback(
-    (
-      currentWidth: number,
-      minWidth: number,
-      maxOffset: number,
-      applyLive: (next: number) => void,
-      commit: (next: number) => void,
-    ) =>
-      (e: React.PointerEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        // Reveal the shared band-grip pill in its dragging state (accent +
-        // widen) for the duration of the gesture — the same class the editor
-        // gutters toggle via useDragGap. Chrome only; the resize itself stays
-        // imperative (off the React render path).
-        const handle = e.currentTarget;
-        handle.classList.add("dragging");
-        // Publish the drag-active flag so the downstream tab-chrome
-        // ResizeObservers PARK their measure→setState→SVG-repaint work for the
-        // gesture and reconcile once on release (task 090). Both L/R column
-        // gutters route through here; the vertical papers splitter does NOT
-        // (startPapersResize), so it is intentionally left ungated.
-        beginGutterDrag();
-        const startX = e.clientX;
-        const startWidth = currentWidth;
-        let latest = startWidth;
-        const onMove = (ev: PointerEvent) => {
-          latest = Math.max(
-            minWidth,
-            Math.min(
-              window.innerWidth - maxOffset,
-              startWidth + (ev.clientX - startX),
-            ),
-          );
-          applyLive(latest);
-        };
-        const onUp = () => {
-          window.removeEventListener("pointermove", onMove);
-          window.removeEventListener("pointerup", onUp);
-          document.body.style.cursor = "";
-          document.body.style.userSelect = "";
-          handle.classList.remove("dragging");
-          // Clear the drag flag (drag-clear edge) so parked observers run their
-          // one post-drag settle, THEN commit the store size — the committed
-          // width equals the last live width, so the settle + the reconcile
-          // render both land the identical geometry (no jump).
-          endGutterDrag();
-          commit(Math.round(latest));
-        };
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
-        document.body.style.cursor = "col-resize";
-        document.body.style.userSelect = "none";
-      },
-    [],
-  );
-  const startResize = useMemo(
-    () =>
-      makeResizeHandler(
-        leftWidth,
-        LEFT_MIN,
-        200,
-        // Live: only the middle width changes; the nav width stays put.
-        (next) => applyGridTemplate(navWidth, next),
-        (next) => setLayout({ middleWidth: next }),
-      ),
-    [leftWidth, navWidth, makeResizeHandler, applyGridTemplate, setLayout],
-  );
+    clamp: (px) => Math.max(NAV_MIN, Math.min(dragMaxRef.current, px)),
+    apply: (px) => {
+      gridRef.current?.style.setProperty(LIB_NAV_W_VAR, `${px}px`);
+    },
+    commit: (px) => setLayout({ navWidth: Math.round(px) }),
+    restore: () => {
+      gridRef.current?.style.setProperty(LIB_NAV_W_VAR, `${navWidth}px`);
+    },
+  });
+
+  const listResizeHandle = usePaneResizeHandle({
+    id: "library-list",
+    axis: "x",
+    getValue: () => {
+      const gridW = gridRef.current?.offsetWidth ?? 0;
+      // Mirror of the list track's CSS max: leave the RESOLVED nav track
+      // (fixed for the duration of this gesture) + the reader min.
+      const navSpan = showNavigator
+        ? (navColumnRef.current?.offsetWidth ?? 0) + LIB_GRID_GUTTER
+        : 0;
+      dragMaxRef.current =
+        gridW > 0
+          ? gridW - navSpan - (READER_MIN + LIB_GRID_GUTTER)
+          : Number.POSITIVE_INFINITY;
+      return listColumnRef.current?.offsetWidth ?? leftWidth;
+    },
+    clamp: (px) => Math.max(LEFT_MIN, Math.min(dragMaxRef.current, px)),
+    apply: (px) => {
+      gridRef.current?.style.setProperty(LIB_LIST_W_VAR, `${px}px`);
+    },
+    commit: (px) => setLayout({ middleWidth: Math.round(px) }),
+    restore: () => {
+      gridRef.current?.style.setProperty(LIB_LIST_W_VAR, `${leftWidth}px`);
+    },
+  });
+
   // Vertical resizer between Libraries (top) and My Papers (bottom).
   // Dragging up grows the My Papers pod; dragging down shrinks it. Both pods
-  // clamp to at least PAPERS_MIN so neither disappears. Like the column
-  // resizers, the live drag writes `flex-basis` straight to the pod node and
-  // commits to the store only on pointer-up.
-  const startPapersResize = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      // Reveal the shared band-grip pill in its dragging state for the gesture
-      // (chrome only — the resize stays imperative, off the React render path).
-      const handle = e.currentTarget;
-      handle.classList.add("dragging");
-      const startY = e.clientY;
-      const startHeight = papersHeight;
-      let latest = startHeight;
-      const onMove = (ev: PointerEvent) => {
-        const colH = navColumnRef.current?.getBoundingClientRect().height ?? 0;
-        const maxH = Math.max(PAPERS_MIN, colH - PAPERS_MIN - 6);
-        latest = Math.max(
-          PAPERS_MIN,
-          Math.min(maxH, startHeight - (ev.clientY - startY)),
-        );
-        const pod = papersPodRef.current;
-        if (pod) pod.style.flexBasis = `${latest}px`;
-      };
-      const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-        handle.classList.remove("dragging");
-        setLayout({ papersHeight: Math.round(latest) });
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
+  // clamp to at least PAPERS_MIN so neither disappears.
+  const papersResizeHandle = usePaneResizeHandle({
+    id: "library-papers",
+    axis: "y",
+    // The pod sits BELOW its separator: dragging up (toward the axis origin)
+    // grows it.
+    direction: -1,
+    getValue: () => {
+      const colH = navColumnRef.current?.offsetHeight ?? 0;
+      dragMaxRef.current =
+        colH > 0
+          ? Math.max(PAPERS_MIN, colH - PAPERS_MIN - LIB_GRID_GUTTER)
+          : Number.POSITIVE_INFINITY;
+      return papersPodRef.current?.offsetHeight ?? papersHeight;
     },
-    [papersHeight, setLayout],
-  );
-  const startNavResize = useMemo(
-    () =>
-      makeResizeHandler(
-        navWidth,
-        NAV_MIN,
-        300,
-        // Live: only the nav width changes; the middle width stays put.
-        (next) => applyGridTemplate(next, leftWidth),
-        (next) => setLayout({ navWidth: next }),
-      ),
-    [navWidth, leftWidth, makeResizeHandler, applyGridTemplate, setLayout],
-  );
+    clamp: (px) => Math.max(PAPERS_MIN, Math.min(dragMaxRef.current, px)),
+    apply: (px) => {
+      const pod = papersPodRef.current;
+      if (pod) pod.style.flexBasis = `${px}px`;
+    },
+    commit: (px) => setLayout({ papersHeight: Math.round(px) }),
+    restore: () => {
+      const pod = papersPodRef.current;
+      if (pod) pod.style.flexBasis = `${papersHeight}px`;
+    },
+  });
 
   // Surface the most recent skill-bundle sync as a transient toast so the
   // user knows when CLAUDE.md / .claude/commands / scripts updated.
@@ -938,23 +912,33 @@ export default function LibraryView({
       <DropZone dragActive={dragActive}>
         <div
           ref={gridRef}
-          style={{
-            display: "grid",
-            // Three columns when the navigator is shown; two when it's
-            // hidden (tear-out outer-tab mode). Each column is followed
-            // by a 6px resizer except the last.
-            gridTemplateColumns: showNavigator
-              ? `${navWidth}px 6px ${leftWidth}px 6px 1fr`
-              : `${leftWidth}px 6px 1fr`,
-            // Without an explicit row track, the implicit row sizes to
-            // `auto` (content), which lets a tall paper push the grid
-            // past its container — making the whole page scroll instead
-            // of the right pane. `1fr` clamps the row to grid height.
-            gridTemplateRows: "1fr",
-            height: "100%",
-            minHeight: 0,
-            background: LIBRARY_FIELD_BG,
-          }}
+          style={
+            {
+              display: "grid",
+              // The column sizes ride these CSS vars; the template wraps them
+              // in the hard clamp()/minmax() constraints (see
+              // library-grid-template.ts — the reader can never collapse to
+              // 0). The pane-resize engine retargets the vars imperatively
+              // per drag frame; the store commit re-renders to the identical
+              // geometry on release.
+              [LIB_NAV_W_VAR]: `${navWidth}px`,
+              [LIB_LIST_W_VAR]: `${leftWidth}px`,
+              // Three columns when the navigator is shown; two when it's
+              // hidden (tear-out outer-tab mode). Each column is followed
+              // by a 6px resizer except the last.
+              gridTemplateColumns: showNavigator
+                ? LIB_GRID_TEMPLATE_3COL
+                : LIB_GRID_TEMPLATE_2COL,
+              // Without an explicit row track, the implicit row sizes to
+              // `auto` (content), which lets a tall paper push the grid
+              // past its container — making the whole page scroll instead
+              // of the right pane. `1fr` clamps the row to grid height.
+              gridTemplateRows: "1fr",
+              height: "100%",
+              minHeight: 0,
+              background: LIBRARY_FIELD_BG,
+            } as CSSProperties
+          }
         >
           {showNavigator && (
             <>
@@ -991,10 +975,10 @@ export default function LibraryView({
                       aria-orientation="horizontal"
                       aria-label="Resize My Papers pod"
                       className="drag-gap drag-gap-h band-grip"
-                      onPointerDown={startPapersResize}
+                      {...papersResizeHandle}
                       style={{
-                        height: 6,
-                        touchAction: "none",
+                        ...papersResizeHandle.style,
+                        height: LIB_GRID_GUTTER,
                         flexShrink: 0,
                       }}
                     />
@@ -1017,12 +1001,12 @@ export default function LibraryView({
                 aria-orientation="vertical"
                 aria-label="Resize Libraries navigator"
                 className="drag-gap drag-gap-v band-grip"
-                onPointerDown={startNavResize}
-                style={{ touchAction: "none" }}
+                {...navResizeHandle}
               />
             </>
           )}
           <div
+            ref={listColumnRef}
             style={{
               overflow: "hidden",
               minHeight: 0,
@@ -1038,8 +1022,7 @@ export default function LibraryView({
             aria-orientation="vertical"
             aria-label="Resize library file panel"
             className="drag-gap drag-gap-v band-grip"
-            onPointerDown={startResize}
-            style={{ touchAction: "none" }}
+            {...listResizeHandle}
           />
           <div
             style={{

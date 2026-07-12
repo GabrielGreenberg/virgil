@@ -90,18 +90,19 @@ async function reloadFromDisk(): Promise<void> {
     const version = await readCatalogVersion(handle);
     // `catalog-version.txt` is the canonical change signal — every Python
     // skill that touches master.bib / catalog.json / inbox.json bumps it
-    // under `lock_catalog`. Don't gate on `state.handle === handle`: in
-    // dev-storage mode `devLibraryRootHandle()` returns a fresh synthetic
-    // handle on every call, so identity comparison there is always false
-    // and the short-circuit would never engage — driving a 6s re-parse
-    // cascade through `useLibraryMasterBib`. In production FSA the handle
-    // is stable via IDB-keyval, but the version check is sufficient.
+    // under `lock_catalog`. The handle OBJECT, by contrast, has a FRESH
+    // identity on every resolve in BOTH environments: production idb-keyval
+    // deserializes a new FileSystemDirectoryHandle from the structured clone
+    // on each `get`, and dev-storage `devLibraryRootHandle()` mints a new
+    // synthetic per call. So handle identity must never drive an emit — the
+    // pre-fix "adopt the new handle reference" branch here setState'd on
+    // EVERY idle 6s tick, re-rendering the whole Library tree (R6). When the
+    // version is unchanged, keep the EXISTING state object untouched (same
+    // snapshot identity → zero notify): the previously-stored handle stays
+    // valid because FSA handles reference the directory entry itself, and in
+    // this branch `state.catalog !== null` guarantees a prior successful
+    // resolve stored one.
     if (version === state.version && state.catalog !== null) {
-      // No change. Adopt the new handle reference in case the previous
-      // resolve returned null or returned a fresh synthetic in dev mode.
-      if (state.handle !== handle) {
-        setState({ ...state, handle });
-      }
       return;
     }
     const catalog = await readCatalog(handle);

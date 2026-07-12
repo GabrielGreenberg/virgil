@@ -21,7 +21,7 @@ import {
   type Registry,
 } from "@library/lib/library-store";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
-import { isGutterDragging, onGutterDragChange } from "@library/lib/gutter-drag";
+import { isPaneDragging, onPaneDragChange } from "@/lib/pane-resize";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { useProjectLibrary } from "@library/lib/project-library-context";
 import {
@@ -334,12 +334,12 @@ export default function TabbedLibraryPanel({
         prev && prev.w === w && prev.h === h ? prev : { w, h },
       );
     };
-    // Park during a Library L/R gutter drag: `Math.round(width)` flips each
-    // frame of a continuous drag, breaking the equality gate below and
-    // repainting the body-frame SVG per frame. Stash dirty + reconcile once
-    // on release (task 090).
+    // Park during a pane-resize drag (the app-wide pane-drag bus):
+    // `Math.round(width)` flips each frame of a continuous drag, breaking the
+    // equality gate below and repainting the body-frame SVG per frame. Stash
+    // dirty + reconcile once on the end edge (task 090).
     const onResize = () => {
-      if (isGutterDragging()) {
+      if (isPaneDragging()) {
         dirty = true;
         return;
       }
@@ -348,7 +348,7 @@ export default function TabbedLibraryPanel({
     measure();
     const ro = new ResizeObserver(onResize);
     ro.observe(el);
-    const unsub = onGutterDragChange((active) => {
+    const unsub = onPaneDragChange((active) => {
       if (!active && dirty) {
         dirty = false;
         measure();

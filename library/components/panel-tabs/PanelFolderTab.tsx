@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { isGutterDragging, onGutterDragChange } from "@library/lib/gutter-drag";
+import { isPaneDragging, onPaneDragChange } from "@/lib/pane-resize";
 import {
   ACTIVE_MIN_CONTENT,
   buildActiveTabStrokePath,
@@ -163,12 +163,13 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
       const content = contentRef.current;
       if (!wrap) return;
       measure();
-      // Park while a Library L/R gutter is being dragged: the strip re-assigns
-      // this wrapper's width every pointermove frame, but re-measuring +
-      // repainting the folder silhouette per frame is exactly the "random
-      // redraw" + choppiness. Stash a dirty bit and reconcile once on release.
+      // Park while a pane-resize gesture is in flight (the app-wide pane-drag
+      // bus — task 090's contract): a gutter drag re-assigns this wrapper's
+      // width every pointermove frame, but re-measuring + repainting the
+      // folder silhouette per frame is exactly the "random redraw" +
+      // choppiness. Stash a dirty bit and reconcile once on the end edge.
       const onResize = () => {
-        if (isGutterDragging()) {
+        if (isPaneDragging()) {
           dirtyRef.current = true;
           return;
         }
@@ -177,7 +178,7 @@ export const PanelFolderTab = forwardRef<HTMLDivElement, Props>(
       const ro = new ResizeObserver(onResize);
       ro.observe(wrap);
       if (content) ro.observe(content);
-      const unsub = onGutterDragChange((active) => {
+      const unsub = onPaneDragChange((active) => {
         if (!active && dirtyRef.current) {
           dirtyRef.current = false;
           measure();

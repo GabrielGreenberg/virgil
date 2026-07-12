@@ -19,7 +19,7 @@ import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { PanelFolderTab } from "./PanelFolderTab";
 import { STRIP_SIDE_PAD } from "./folder-path";
-import { isGutterDragging, onGutterDragChange } from "@library/lib/gutter-drag";
+import { isPaneDragging, onPaneDragChange } from "@/lib/pane-resize";
 
 // F#15 inactive-tab floor: inactive tabs absorb the squeeze first and
 // ellipsize their names down to this width before the active tab compresses.
@@ -186,12 +186,13 @@ export function PanelTabStrip({
       setActiveFlushRight((prev) => (prev === flush ? prev : flush));
     };
     const schedule = () => {
-      // Park during a Library L/R gutter drag (for symmetry with the tab-width
-      // + body-frame observers): this measure is already RAF-coalesced +
-      // equality-gated so it rarely setStates, but parking also skips its two
-      // per-frame getBoundingClientRect reads. The tuck reconciles on release
-      // — while the tab silhouette itself is frozen mid-drag anyway (task 090).
-      if (isGutterDragging()) {
+      // Park during a pane-resize drag (the app-wide pane-drag bus — for
+      // symmetry with the tab-width + body-frame observers): this measure is
+      // already RAF-coalesced + equality-gated so it rarely setStates, but
+      // parking also skips its two per-frame getBoundingClientRect reads. The
+      // tuck reconciles on the end edge — while the tab silhouette itself is
+      // frozen mid-drag anyway (task 090).
+      if (isPaneDragging()) {
         dirty = true;
         return;
       }
@@ -211,7 +212,7 @@ export function PanelTabStrip({
     // can read a stale pre-activation width and miss the tuck.
     const activeEl = tabRefs.current.get(activeId);
     if (activeEl) ro.observe(activeEl);
-    const unsub = onGutterDragChange((active) => {
+    const unsub = onPaneDragChange((active) => {
       if (!active && dirty) {
         dirty = false;
         schedule();
@@ -456,8 +457,10 @@ export function PanelTabStrip({
         // 1px; the padding keeps it inside the clip box. The strip bg is the
         // solid --library-bg, so the inter-tab gaps and the tail past the last
         // tab read as PURE library field — no chrome there (task 048); the page
-        // outline lives ONLY under the tabs (each inactive tab's own silhouette
-        // stroke + the active tab's fill-bridge merging into the body edge).
+        // outline lives ONLY under the ACTIVE tab (its silhouette stroke +
+        // fill-bridge merging into the body edge). Inactive tabs are
+        // deliberately FLAT BackgroundTab divs with no stroke of their own
+        // (task 048) — the only line under them is the body frame's top edge.
         // Horizontal pad is the STRIP_SIDE_PAD SSOT (folder-path.ts): the body
         // frame below insets by the SAME constant so its rounded top corners
         // tuck exactly under the outermost tabs' swoop feet (task 047 no-wing).

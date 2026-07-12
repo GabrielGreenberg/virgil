@@ -9,10 +9,15 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type RefObject,
 } from "react";
+import { usePaneResizeHandle } from "@/lib/pane-resize";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import {
+  COL_TEMPLATE_REF,
+  COL_TEMPLATE_VAR,
   DEFAULT_WIDTHS,
   FACETS,
   RESIZER_WIDTH,
@@ -41,6 +46,16 @@ import { type PanelKey } from "@library/hooks/useLibraryTabs";
 import { useLayoutPrefs, useListView } from "@library/lib/view-session-store";
 import { searchCatalogFuzzy } from "@library/lib/catalog-search";
 import { ROW_HEIGHT, computeListWindow } from "@library/lib/list-window";
+
+// The header grid and every row consume ONE inherited template var
+// (COL_TEMPLATE_VAR / COL_TEMPLATE_REF from list-columns.ts), defined on the
+// list root. During a column-boundary drag the pane-resize engine rewrites
+// the var imperatively per frame — header and rows track by CSS inheritance,
+// zero React work — and the store commits exactly ONCE on release (R5: the
+// old handler routed setLayout through the view-session store per
+// pointermove, re-rendering LibraryView-wide every frame). The indirection
+// is also what keeps `LeftListRow`'s memo armed: the row prop is the
+// constant var reference, so a width change never re-renders a row.
 
 interface Props {
   entries: CatalogEntry[];
@@ -117,11 +132,18 @@ export default function LeftList({
     return out;
   }, [layout.colWidths]);
 
-  // Keep a ref to the live widths so the resize-handler closure can read
-  // the start width synchronously (the resize loop mutates a local draft
-  // and only commits to the store on pointer-up).
+  // Keep a ref to the live widths so a Resizer's gesture can snapshot the
+  // start widths synchronously at drag start (the drag projects a boundary
+  // delta onto that snapshot and only commits to the store on release).
   const widthsRef = useRef(widths);
   widthsRef.current = widths;
+  // The list root — owner of the shared `--lib-col-template` var the drag
+  // engine rewrites per frame.
+  const listRootRef = useRef<HTMLDivElement | null>(null);
+  const commitColWidths = useCallback(
+    (w: Record<ResizableColId, number>) => setLayout({ colWidths: w }),
+    [setLayout],
+  );
 
   // Typing must stay snappy: defer the query so the input reflects each
   // keystroke immediately while the filter catches up on a low-priority
@@ -412,62 +434,6 @@ export default function LeftList({
     [sort, setSort],
   );
 
-  const handleResize = useCallback(
-    (leftCol: ResizableColId | null, rightCol: ResizableColId | null) => {
-      return (e: React.PointerEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const startX = e.clientX;
-        const startLeftW = leftCol ? widthsRef.current[leftCol] : 0;
-        const startRightW = rightCol ? widthsRef.current[rightCol] : 0;
-        const onMove = (ev: PointerEvent) => {
-          const rawDelta = ev.clientX - startX;
-          // Constrain the boundary delta against BOTH columns' clamps so
-          // total fixed width is preserved (otherwise the 1fr title
-          // absorbs the difference and the status column shifts visibly).
-          let delta = rawDelta;
-          if (leftCol) {
-            delta = clampWidth(leftCol, startLeftW + delta) - startLeftW;
-          }
-          if (rightCol) {
-            delta = startRightW - clampWidth(rightCol, startRightW - delta);
-          }
-          const cur = widthsRef.current;
-          const patch: Partial<Record<ResizableColId, number>> = {};
-          let changed = false;
-          if (leftCol) {
-            const v = startLeftW + delta;
-            if (cur[leftCol] !== v) { patch[leftCol] = v; changed = true; }
-          }
-          if (rightCol) {
-            const v = startRightW - delta;
-            if (cur[rightCol] !== v) { patch[rightCol] = v; changed = true; }
-          }
-          // Write through the store: the in-memory update is synchronous
-          // (live drag feedback via the useLayoutPrefs re-render) while the
-          // store's 250 ms debounce coalesces the localStorage writes.
-          if (changed) {
-            setLayout({ colWidths: { ...cur, ...patch } });
-          }
-        };
-        const onUp = () => {
-          window.removeEventListener("pointermove", onMove);
-          window.removeEventListener("pointerup", onUp);
-          document.body.style.cursor = "";
-          document.body.style.userSelect = "";
-          // Final commit so the last frame's value is persisted (the store
-          // flushes it on the trailing debounce / pagehide).
-          setLayout({ colWidths: { ...widthsRef.current } });
-        };
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
-        document.body.style.cursor = "col-resize";
-        document.body.style.userSelect = "none";
-      };
-    },
-    [setLayout],
-  );
-
   // ── Header drag-reorder (F#13) ───────────────────────────────────────
   // Commit a new GLOBAL column order when the user drops a dragged header
   // onto another. `side` says whether the drop landed before or after the
@@ -517,7 +483,20 @@ export default function LeftList({
   }, [visibleRows, rowHeight]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div
+      ref={listRootRef}
+      style={
+        {
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          // The ONE place the column template lives — header + rows inherit
+          // it. React re-writes it only on a store commit (release/reorder);
+          // the drag engine retargets it imperatively per frame.
+          [COL_TEMPLATE_VAR]: template,
+        } as CSSProperties
+      }
+    >
       <div
         style={{
           padding: "10px 12px",
@@ -563,7 +542,7 @@ export default function LeftList({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: template,
+            gridTemplateColumns: COL_TEMPLATE_REF,
             alignItems: "stretch",
             flex: 1,
             minWidth: 0,
@@ -595,7 +574,16 @@ export default function LeftList({
                     onReorder={onReorder}
                   />
                 )}
-                {n && <Resizer onPointerDown={handleResize(n.left, n.right)} />}
+                {n && (
+                  <Resizer
+                    leftCol={n.left}
+                    rightCol={n.right}
+                    listRootRef={listRootRef}
+                    widthsRef={widthsRef}
+                    colOrder={colOrder}
+                    onCommitWidths={commitColWidths}
+                  />
+                )}
               </Fragment>
             );
           })}
@@ -644,7 +632,7 @@ export default function LeftList({
                     entry={entry}
                     bib={entry.citekey ? bibByKey.get(entry.citekey) : undefined}
                     selected={selectedKeys.has(key)}
-                    gridTemplate={template}
+                    gridTemplate={COL_TEMPLATE_REF}
                     colOrder={colOrder}
                     entryKey={key}
                     onActivate={onActivate}
@@ -951,16 +939,89 @@ function FacetSubBar({
 }
 
 function Resizer({
-  onPointerDown,
+  leftCol,
+  rightCol,
+  listRootRef,
+  widthsRef,
+  colOrder,
+  onCommitWidths,
 }: {
-  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+  /** The px-resizable neighbors this boundary pulls (title → null side). */
+  leftCol: ResizableColId | null;
+  rightCol: ResizableColId | null;
+  listRootRef: RefObject<HTMLDivElement | null>;
+  /** Live store widths — snapshotted once per gesture at drag start. */
+  widthsRef: RefObject<Record<ResizableColId, number>>;
+  colOrder: readonly ReorderableColId[];
+  /** ONE store commit on release with the complete widths record. */
+  onCommitWidths: (w: Record<ResizableColId, number>) => void;
 }) {
+  // Boundary-drag start snapshot, taken in getValue() — the engine's
+  // documented once-per-gesture read point on the start edge. The gesture's
+  // scalar value is the boundary DELTA (0 at start); apply() projects it onto
+  // the up-to-two neighbor widths and rewrites the inherited template var on
+  // the list root — no React state, no store write, until commit().
+  const startRef = useRef<{
+    widths: Record<ResizableColId, number>;
+    leftW: number;
+    rightW: number;
+  } | null>(null);
+
+  const widthsForDelta = (delta: number): Record<ResizableColId, number> => {
+    const start = startRef.current;
+    if (!start) return { ...widthsRef.current };
+    const next = { ...start.widths };
+    if (leftCol) next[leftCol] = start.leftW + delta;
+    if (rightCol) next[rightCol] = start.rightW - delta;
+    return next;
+  };
+
+  const handle = usePaneResizeHandle({
+    id: `library-columns:${leftCol ?? "fr"}|${rightCol ?? "fr"}`,
+    axis: "x",
+    getValue: () => {
+      const snapshot = { ...widthsRef.current };
+      startRef.current = {
+        widths: snapshot,
+        leftW: leftCol ? snapshot[leftCol] : 0,
+        rightW: rightCol ? snapshot[rightCol] : 0,
+      };
+      return 0;
+    },
+    clamp: (delta) => {
+      const start = startRef.current;
+      if (!start) return delta;
+      // Constrain the boundary delta against BOTH columns' clamps so total
+      // fixed width is preserved (otherwise the 1fr title absorbs the
+      // difference and the status column shifts visibly) — the existing
+      // per-column min/max floors (clampWidth) are the authority.
+      let d = delta;
+      if (leftCol) d = clampWidth(leftCol, start.leftW + d) - start.leftW;
+      if (rightCol) d = start.rightW - clampWidth(rightCol, start.rightW - d);
+      return d;
+    },
+    apply: (delta) => {
+      listRootRef.current?.style.setProperty(
+        COL_TEMPLATE_VAR,
+        gridTemplate(widthsForDelta(delta), colOrder),
+      );
+    },
+    commit: (delta) => {
+      onCommitWidths(widthsForDelta(delta));
+    },
+  });
+
   return (
     <div
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize column"
-      onPointerDown={onPointerDown}
+      {...handle}
+      onPointerDown={(e) => {
+        // Keep the press out of the header cells' drag-reorder machinery.
+        e.stopPropagation();
+        handle.onPointerDown(e);
+      }}
       onMouseEnter={(e) => {
         (e.currentTarget as HTMLDivElement).style.background = "var(--accent)";
       }}
@@ -968,11 +1029,11 @@ function Resizer({
         (e.currentTarget as HTMLDivElement).style.background = "transparent";
       }}
       style={{
+        ...handle.style,
         width: RESIZER_WIDTH,
         cursor: "col-resize",
         background: "transparent",
         transition: "background 120ms",
-        touchAction: "none",
         // Stretch the visible-on-hover bar down through every row by
         // letting the wrapping list scroll independently. This div sits
         // in the header's grid track; the row Spacers occupy the same

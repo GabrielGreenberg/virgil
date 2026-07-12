@@ -136,6 +136,16 @@ const MAX_WIDTHS: Record<ResizableColId, number> = {
 
 export const RESIZER_WIDTH = 4;
 
+/** The inherited CSS custom property carrying the live column template.
+ *  Defined ONCE on the LeftList root (and rewritten there imperatively per
+ *  drag frame by the pane-resize engine); the header grid and every row's
+ *  grid reference it via `COL_TEMPLATE_REF`. Shared here so LeftListRow's
+ *  drag ghost can re-anchor the RESOLVED value on its body-appended clone
+ *  (outside the list root the var is undefined and the ghost's
+ *  `grid-template-columns: var(...)` would collapse to `none`). */
+export const COL_TEMPLATE_VAR = "--lib-col-template";
+export const COL_TEMPLATE_REF = `var(${COL_TEMPLATE_VAR})`;
+
 export function clampWidth(col: ResizableColId, w: number): number {
   return Math.max(MIN_WIDTHS[col], Math.min(MAX_WIDTHS[col], Math.round(w)));
 }
@@ -173,12 +183,12 @@ export function gridTemplate(
  * The asymmetry is load-bearing: the `title` column is the 1fr filler that
  * absorbs slack, so a resizer must NOT try to resize `title` (it has no width).
  *   - A boundary on the LEFT side of title pulls only the single non-title
- *     neighbor; the delta flows into the 1fr (mirrors the old
- *     `handleResize("year", null)` / `("author", null)`).
- *   - A boundary on the RIGHT side of title pulls the two real px neighbors so
- *     the 1fr doesn't absorb the delta (mirrors `handleResize("status",
- *     "citekey")`), EXCEPT the boundary immediately right of title, which
- *     shrinks only the right neighbor (mirrors `handleResize(null, "status")`).
+ *     neighbor ({left: "year"|"author", right: null}); the delta flows into
+ *     the 1fr.
+ *   - A boundary on the RIGHT side of title pulls the two real px neighbors
+ *     ({left: "status", right: "citekey"}) so the 1fr doesn't absorb the
+ *     delta, EXCEPT the boundary immediately right of title, which shrinks
+ *     only the right neighbor ({left: null, right: "status"}).
  * `title` on either side maps to `null` for that side.
  *
  * This makes resize correct for ANY column arrangement, including title at
