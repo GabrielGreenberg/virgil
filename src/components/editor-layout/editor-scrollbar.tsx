@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SCROLLBAR_THUMB_WIDTH, SCROLLBAR_RIGHT_INSET } from "./constants";
+import {
+  recordKeystrokeWork,
+  KEYSTROKE_WORK_SCROLLBAR_RO,
+} from "@/lib/keystroke-latency-probe";
 
 /**
  * Custom thin scrollbar tucked just inside the editor column's right edge.
@@ -161,12 +165,20 @@ export function EditorScrollbar({
     syncRowBoundCss();
     row.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", refresh);
-    const ro = new ResizeObserver(() => { syncRowBoundCss(); refresh(); });
+    const ro = new ResizeObserver(() => {
+      recordKeystrokeWork(KEYSTROKE_WORK_SCROLLBAR_RO);
+      syncRowBoundCss();
+      refresh();
+    });
     ro.observe(row);
     ro.observe(ec);
     const page = ec.querySelector("[data-editor-page]") as HTMLElement | null;
     if (page) ro.observe(page);
-    const mo = new MutationObserver(() => { syncRowBoundCss(); refresh(); });
+    const mo = new MutationObserver(() => {
+      recordKeystrokeWork("scrollbar-mo");
+      syncRowBoundCss();
+      refresh();
+    });
     mo.observe(row, { childList: true, subtree: true, characterData: true });
     return () => {
       row.removeEventListener("scroll", onScroll);

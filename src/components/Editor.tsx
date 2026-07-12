@@ -2,6 +2,7 @@
 
 import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
 import { pickProbeEditor } from "@/lib/active-editor-probe";
+import { installKeystrokeLatencyProbe } from "@/lib/keystroke-latency-probe";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
@@ -1797,6 +1798,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     if (typeof window === "undefined" || !editor) return;
     busStatsEditors.add(editor);
     installBusStatsProbe();
+    installKeystrokeLatencyProbe();
     return () => {
       busStatsEditors.delete(editor);
     };

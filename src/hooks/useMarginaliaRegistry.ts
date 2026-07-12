@@ -12,6 +12,10 @@ import { findRowScroll } from "@/components/editor-layout/layout-scroll";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import {
+  recordKeystrokeWork,
+  KEYSTROKE_WORK_MARGINALIA_RO,
+} from "@/lib/keystroke-latency-probe";
+import {
   capHeight,
   capTopOffset,
   resolveInlineContextElement,
@@ -830,6 +834,7 @@ export function useMarginaliaRegistry(
 
     function onResize(entries: ResizeObserverEntry[]) {
       if (!isVisibleRef.current) return; // hidden editor → boxes are 0; skip
+      recordKeystrokeWork(KEYSTROKE_WORK_MARGINALIA_RO);
       for (const entry of entries) {
         const el = entry.target as HTMLElement;
         const uuid = el.getAttribute("data-uuid");
