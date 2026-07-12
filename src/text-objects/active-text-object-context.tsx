@@ -22,6 +22,7 @@ import type {
   TextObjectRef,
 } from "./types";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { rafCoalesced } from "@/lib/raf-coalesced";
 
 /**
  * Shared subscription that resolves the active TextObject from the
@@ -170,8 +171,13 @@ export function ActiveTextObjectProvider({ editorRef, children }: ProviderProps)
       editor.on("selectionUpdate", onSelection);
       const bus = getBus(editor);
       if (bus) {
-        busUnsubs.push(bus.onBlocksAdded(recompute));
-        busUnsubs.push(bus.onBlocksRemoved(recompute));
+        // RAF-coalesced (2c): block-merge bursts (held backspace) fire one
+        // structural emit per repeat — resolve the active text object once
+        // per frame instead.
+        const coalesced = rafCoalesced(recompute);
+        busUnsubs.push(bus.onBlocksAdded(coalesced.schedule));
+        busUnsubs.push(bus.onBlocksRemoved(coalesced.schedule));
+        busUnsubs.push(coalesced.cancel);
       }
       recompute();
     }

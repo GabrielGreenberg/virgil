@@ -15,6 +15,7 @@ import {
   recordKeystrokeWork,
   KEYSTROKE_WORK_MARGINALIA_RO,
 } from "@/lib/keystroke-latency-probe";
+import { rafCoalesced } from "@/lib/raf-coalesced";
 import {
   capHeight,
   capTopOffset,
@@ -863,9 +864,14 @@ export function useMarginaliaRegistry(
     const bus = getBus(editor);
     const unsubBus = bus
       ? (() => {
-          const u1 = bus.onBlocksAdded(() => syncObservedSet());
-          const u2 = bus.onBlocksRemoved(() => syncObservedSet());
+          // RAF-coalesced (2c): a held-backspace across N blocks fires a
+          // structural emit per block-merge tx — the DOM-scale observed-set
+          // resync must run once per frame, not once per repeat.
+          const coalescedSync = rafCoalesced(() => syncObservedSet());
+          const u1 = bus.onBlocksAdded(coalescedSync.schedule);
+          const u2 = bus.onBlocksRemoved(coalescedSync.schedule);
           return () => {
+            coalescedSync.cancel();
             u1();
             u2();
           };
