@@ -7,10 +7,7 @@ import SystemDialog, {
   SystemDialogFooter,
   SystemDialogHeader,
 } from "./system-dialog";
-import {
-  DOCUMENT_TEMPLATES,
-  DEFAULT_TEMPLATE_ID,
-} from "@/lib/document-templates";
+import { DOC_TYPES, DEFAULT_DOC_TYPE_ID } from "@/lib/doc-types";
 
 interface NewDocumentModalProps {
   /** Optional subtitle shown under the title. */
@@ -33,7 +30,7 @@ export default function NewDocumentModal({
 }: NewDocumentModalProps) {
   const [name, setName] = useState(initialName);
   const [templateId, setTemplateId] = useState(
-    initialTemplateId ?? DEFAULT_TEMPLATE_ID,
+    initialTemplateId ?? DEFAULT_DOC_TYPE_ID,
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,10 +86,10 @@ export default function NewDocumentModal({
 
       <div className="px-5 pt-3 pb-2">
         <label className="block text-[11px] font-medium text-ink-subtle uppercase tracking-wide mb-1.5">
-          Template
+          Document type
         </label>
         <div className="flex flex-col gap-1">
-          {DOCUMENT_TEMPLATES.map((t) => {
+          {DOC_TYPES.map((t) => {
             const selected = t.id === templateId;
             return (
               <button
@@ -107,7 +104,7 @@ export default function NewDocumentModal({
                 }`}
               >
                 <div className="text-sm font-medium text-ink-body">
-                  {t.name}
+                  {t.label}
                 </div>
                 <div className="text-xs text-ink-subtle mt-0.5">
                   {t.description}
