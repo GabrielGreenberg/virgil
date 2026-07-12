@@ -57,6 +57,30 @@ import CollabClaimPill from "./CollabClaimPill";
 import CollabPresenceDots from "./CollabPresenceDots";
 import { omniPinStore } from "./editor-layout/omni-pin-store";
 
+/**
+ * True when a keyboard event originated from an interactive control nested
+ * inside a card — a native form field, link, rich-text surface, or explicitly-
+ * draggable element (the shared {@link INTERACTIVE_CONTROL_SELECTOR} pass-
+ * through set) — rather than from the card shell itself.
+ *
+ * Card-level `Delete`/`Backspace` handlers must bail on this so a character
+ * edit inside a field never triggers card deletion. `EditableCard` already
+ * encodes this via its `isFocused` focus-tracking; cards that wire a *bare*
+ * card-level delete handler around editable fields (e.g. Todo's plain
+ * `<input>` + `<textarea>`, which never inherited that guard) reuse this helper
+ * instead of duplicating focus state. It keys off the SAME interactive-controls
+ * SSOT as the drag/lift/pin pass-through guards, so "controls a gesture must
+ * pass through untouched" has one definition across the app.
+ *
+ * Returns `false` when the event target IS the card shell (`currentTarget`), so
+ * a `Backspace` with the card shell — not a field — focused still deletes.
+ */
+export function keyEventFromInteractiveControl(e: ReactKeyboardEvent): boolean {
+  const target = e.target as HTMLElement | null;
+  if (!target || target === e.currentTarget) return false;
+  return !!target.closest(INTERACTIVE_CONTROL_SELECTOR);
+}
+
 /* ── Per-card claim context ─────────────────────────────────────────
  *  EditableCard publishes its (panelKind, cardId) here so deeply-nested
  *  inputs (e.g. CardTitleInput rendered as `headerContent`) can attach
