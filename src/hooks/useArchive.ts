@@ -31,6 +31,9 @@ function migrateSnippet(raw: unknown): ArchivedSnippet {
     titleAuto: resolveTitleAuto("archive", s.title, s.titleAuto),
     content,
     createdAt: s.createdAt!,
+    // Carry the born-free intent through load (absent ≡ false); the
+    // free-vs-orphaned split is derived from it via resolveAnchorState.
+    unanchored: s.unanchored,
     links: migrateCardLinks("archive", raw),
   };
 }
@@ -49,7 +52,7 @@ export function useArchive(docId: string | null) {
     });
 
   const archiveContent = useCallback(
-    (content: unknown): ArchivedSnippet => {
+    (content: unknown, opts?: { unanchored?: boolean }): ArchivedSnippet => {
       const snippet: ArchivedSnippet = {
         id: generateEntityId(),
         // T6/C12 (FORK-1): blank title + machine-default provenance.
@@ -57,6 +60,10 @@ export function useArchive(docId: string | null) {
         titleAuto: true,
         content: normalizeRichContent(content),
         createdAt: new Date().toISOString(),
+        // Born-free intent (task 104): the caller records here whether the
+        // snippet is being created with no anchor target, so a link-less clip
+        // reads "free" (neutral) rather than "orphaned" (red). Absent ≡ false.
+        ...(opts?.unanchored ? { unanchored: true } : {}),
         links: [],
       };
       update((prev) => ({ snippets: [...prev.snippets, snippet] }));

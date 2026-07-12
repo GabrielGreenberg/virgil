@@ -105,7 +105,7 @@ export interface CardCreationDeps {
   /** Archive — mints a snippet and (optionally) writes a Mode A
    *  paragraph link. The dispatcher owns the editor mutation (cleanup
    *  walker + tr.delete) before/around the call. */
-  archiveContent: (content: unknown) => ArchivedSnippet;
+  archiveContent: (content: unknown, opts?: { unanchored?: boolean }) => ArchivedSnippet;
   updateArchiveSnippet: (id: string, content: unknown) => void;
   addArchiveTextObjectId: (
     id: string,
@@ -617,7 +617,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     CardCreationApi["createArchiveSnippet"]
   >(
     (opts) => {
-      const snippet = archiveContent(opts.text ?? "");
+      // Born-free when no paragraphId is supplied (nothing anchorable) — the
+      // `if (opts.paragraphId)` guard below is the same signal, so record the
+      // intent up front (task 104: free vs orphaned via resolveAnchorState).
+      const snippet = archiveContent(opts.text ?? "", { unanchored: !opts.paragraphId });
       if (opts.content !== undefined) {
         updateArchiveSnippet(snippet.id, opts.content);
       }

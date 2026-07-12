@@ -30,6 +30,7 @@ vi.mock("@/lib/storage", () => {
 });
 
 import type { Link } from "@/links/_shared/types";
+import { getLinkedTextObjectIds } from "@/links/links";
 import type { OmniItem } from "@/panels/_shared/types";
 import type {
   ArchivedSnippet,
@@ -243,24 +244,45 @@ describe("omni builder anchorState classification", () => {
   // Shared resolver: only "live-uuid" resolves.
   const resolve = (uuid: string | null) => (uuid === "live-uuid" ? 42 : null);
 
-  it("Archive: anchoredIds-orphan → orphaned; no links → free; live link → anchored; dead link → orphaned", () => {
-    const snippet = (id: string, links: Link[]): ArchivedSnippet => ({
+  it("Archive: born-free (unanchored) → free; link-swept-to-empty → orphaned; live link → anchored; dead-but-present link → orphaned (docked/float agree)", () => {
+    // Task 104: anchor-state derives from (live position, born-free intent),
+    // NOT link presence. The fixture builds `anchoredIds` FAITHFULLY — a
+    // snippet is in the set iff it has a link that resolves LIVE (via
+    // `resolve`), exactly as `EditorPane.anchoredArchiveIds` now does — so the
+    // previously-unproducible inputs (a live link excluded from the set, a
+    // link-less id inside it) that masked Defect A are gone.
+    const snippet = (
+      id: string,
+      links: Link[],
+      unanchored?: boolean,
+    ): ArchivedSnippet => ({
       id,
       title: "",
       content: { type: "doc", content: [] },
       createdAt: "2026-01-01T00:00:00.000Z",
+      ...(unanchored ? { unanchored: true } : {}),
       links,
     });
+    const snippets = [
+      // deliberately created with no anchor target → free (neutral)
+      snippet("s-born-free", [], true),
+      // had a link, the orphan sweep stripped it to [] (no intent) → orphaned
+      snippet("s-swept", []),
+      // live-resolving link → anchored
+      snippet("s-anchored", [paraLink("live-uuid")]),
+      // link present but its uuid no longer resolves → orphaned (Defect B)
+      snippet("s-dead", [paraLink("dead-uuid")]),
+    ];
+    // Faithful anchored set: only snippets whose link resolves live.
+    const anchoredIds = new Set(
+      snippets
+        .filter((s) => getLinkedTextObjectIds(s).some((u) => resolve(u) != null))
+        .map((s) => s.id),
+    );
+    expect(anchoredIds).toEqual(new Set(["s-anchored"]));
     const items = buildArchiveOmniItems({
-      archiveSnippets: [
-        // anchoredIds says this one's anchor vanished — orphaned EVEN with a
-        // live-looking link (the anchoredIds check wins).
-        snippet("s-anchorless", [paraLink("live-uuid")]),
-        snippet("s-free", []),
-        snippet("s-anchored", [paraLink("live-uuid")]),
-        snippet("s-orphan", [paraLink("dead-uuid")]),
-      ],
-      anchoredIds: new Set(["s-free", "s-anchored", "s-orphan"]),
+      archiveSnippets: snippets,
+      anchoredIds,
       selectedArchiveId: null,
       setSelectedArchiveId: noopId,
       jumpToCard: noop,
@@ -273,10 +295,18 @@ describe("omni builder anchorState classification", () => {
       onCitationCreated: () => null,
     });
     const states = new Map(items.map((i) => [i.id, [i.anchorState, i.pos]]));
-    expect(states.get("float:card:archive:s-anchorless")).toEqual(["orphaned", null]);
-    expect(states.get("float:card:archive:s-free")).toEqual(["free", null]);
+    expect(states.get("float:card:archive:s-born-free")).toEqual(["free", null]);
+    expect(states.get("float:card:archive:s-swept")).toEqual(["orphaned", null]);
     expect(states.get("float:card:archive:s-anchored")).toEqual(["anchored", 42]);
-    expect(states.get("float:card:archive:s-orphan")).toEqual(["orphaned", null]);
+    expect(states.get("float:card:archive:s-dead")).toEqual(["orphaned", null]);
+    // Docked/float parity (Defect B): both derive `orphaned` as
+    // `!anchoredIds.has(id)`, which — with the live-resolution set — agrees
+    // with the omni classifier for the dead-but-present link (no more
+    // presence-vs-position divergence).
+    expect(anchoredIds.has("s-dead")).toBe(false);
+    expect(anchoredIds.has("s-anchored")).toBe(true);
+    expect(anchoredIds.has("s-born-free")).toBe(false);
+    expect(anchoredIds.has("s-swept")).toBe(false);
   });
 
   it("Todo: no links → free; live link → anchored; dead link → orphaned", () => {
