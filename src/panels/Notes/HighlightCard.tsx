@@ -8,6 +8,7 @@ import {
   PANEL,
   PanelCard,
   compressedBodyStyle,
+  useCardDeleteKey,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -66,6 +67,7 @@ export function HighlightCard({
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
+  const handleDeleteKey = useCardDeleteKey(isSelected, () => onDelete(card.id));
 
   // The card body renders the highlighted text in the document's serif
   // face (matching the editor) so the snippet reads like an excerpt.
@@ -128,13 +130,7 @@ export function HighlightCard({
         if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
         onHoverChange?.(false);
       }}
-      onKeyDown={(e) => {
-        if (!isSelected) return;
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          onDelete(card.id);
-        }
-      }}
+      onKeyDown={handleDeleteKey}
       className="focus:outline-none mb-2"
       {...(extraDataAttrs ?? {})}
     >

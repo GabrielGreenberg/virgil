@@ -5,6 +5,7 @@ import {
   CARD_THEMES,
   PanelCard,
   compressedBodyStyle,
+  useCardDeleteKey,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
@@ -119,6 +120,7 @@ export function ErrorCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const compressed = !expanded;
   const compressedLines = useCompressedLines();
+  const handleDeleteKey = useCardDeleteKey(selected, () => onDismiss(err.id));
 
   const card = (
     <PanelCard
@@ -144,13 +146,7 @@ export function ErrorCard({
         onExpand();
         onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
       }}
-      onKeyDown={(e) => {
-        if (!selected) return;
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          onDismiss(err.id);
-        }
-      }}
+      onKeyDown={handleDeleteKey}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
       kind="error"

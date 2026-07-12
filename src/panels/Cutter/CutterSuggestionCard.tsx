@@ -7,6 +7,7 @@ import {
   CardEmptyText,
   PanelCard,
   compressedBodyStyle,
+  useCardDeleteKey,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -122,6 +123,7 @@ export function CutterSuggestionCard({
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
   const cardBodyStyle = usePanelBodyStyle("cut");
+  const handleDeleteKey = useCardDeleteKey(isSelected, () => onDelete(card.id));
 
   const cardEl = (
     <PanelCard
@@ -156,13 +158,7 @@ export function CutterSuggestionCard({
         const h = cardStore.getState().hover;
         if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
       }}
-      onKeyDown={(e) => {
-        if (!isSelected) return;
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          onDelete(card.id);
-        }
-      }}
+      onKeyDown={handleDeleteKey}
       className="focus:outline-none mb-2"
       kind="cutter-suggestion"
       kindOptions={onConvert ? cardKindsForPanel("cutter") : undefined}
