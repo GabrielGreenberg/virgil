@@ -153,6 +153,35 @@ export function findSectioningCommands(latex: string): Set<SectioningCommand> {
 }
 
 /**
+ * The sectioning commands the body uses that `className` does NOT define —
+ * i.e. the commands that would fail with "Undefined control sequence" if the
+ * document were compiled under `className`. Empty when the class supports
+ * everything the body reaches for (a mechanically-safe target, including any
+ * "upgrade" that merely *adds* capability), or when `className` is unknown
+ * (best-effort: a custom journal .cls could define anything, so stay silent).
+ *
+ * This is the shared primitive behind two callers:
+ *   - `detectDocumentClassMismatch` — offenders for the doc's CURRENT class
+ *     (the compile-time mismatch prompt), and
+ *   - the Style-panel "change doc type" gate (task 098) — offenders for a
+ *     PROSPECTIVE target class, deciding hard-swap (empty) vs. AI/restructure
+ *     (non-empty, the structural-downgrade case).
+ */
+export function unsupportedSectioningFor(
+  latex: string,
+  className: string,
+): SectioningCommand[] {
+  if (!isKnownClass(className)) return [];
+  const used = findSectioningCommands(latex);
+  const supported = CLASS_COMMANDS[className];
+  const offenders: SectioningCommand[] = [];
+  for (const cmd of used) {
+    if (!supported.has(cmd)) offenders.push(cmd);
+  }
+  return offenders;
+}
+
+/**
  * Check whether the document's `\documentclass` supports every
  * sectioning command it uses. Returns null when there's no mismatch,
  * or when we don't recognise the class (best-effort: stay silent
@@ -165,12 +194,7 @@ export function detectDocumentClassMismatch(
   if (!cls) return null;
   if (!isKnownClass(cls.className)) return null;
 
-  const used = findSectioningCommands(latex);
-  const supported = CLASS_COMMANDS[cls.className];
-  const offenders: SectioningCommand[] = [];
-  for (const cmd of used) {
-    if (!supported.has(cmd)) offenders.push(cmd);
-  }
+  const offenders = unsupportedSectioningFor(latex, cls.className);
   if (offenders.length === 0) return null;
 
   return {

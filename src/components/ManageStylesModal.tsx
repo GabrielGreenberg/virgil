@@ -24,13 +24,41 @@ import SystemDialog, {
 } from "./system-dialog";
 import StyleEditorModal from "./StyleEditorModal";
 import StyleApplyDialog from "./StyleApplyDialog";
+import DocTypeChangeDialog from "./DocTypeChangeDialog";
 import type { StyleEntry } from "@/lib/document-styles";
 import type { AiRequest } from "@/lib/types";
+import type { SectioningCommand } from "@/lib/document-class";
 import { useStyleLibrary } from "@/hooks/useStyleLibrary";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
-import { readTex } from "@/lib/storage";
+import { drainDoc, readTex } from "@/lib/storage";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { stripAutoInjectedLines } from "@/lib/latex-requirements";
+import {
+  extractDocumentClass,
+  rewriteDocumentClass,
+  unsupportedSectioningFor,
+} from "@/lib/document-class";
+import { DOC_TYPES } from "@/lib/doc-types";
+
+/**
+ * The distinct `\documentclass` names offered by the doc-type control,
+ * sourced from the `DOC_TYPES` SSOT and de-duplicated by class (blank and
+ * article both map to `article`, so the change control — which only swaps the
+ * class — lists `article` once). Labels are the class name title-cased.
+ */
+const DOC_CLASS_CHOICES: { className: string; label: string }[] = (() => {
+  const seen = new Set<string>();
+  const out: { className: string; label: string }[] = [];
+  for (const dt of DOC_TYPES) {
+    if (seen.has(dt.documentClass)) continue;
+    seen.add(dt.documentClass);
+    out.push({
+      className: dt.documentClass,
+      label: dt.documentClass.charAt(0).toUpperCase() + dt.documentClass.slice(1),
+    });
+  }
+  return out;
+})();
 
 /** Drift compare on normalized forms — the serializer auto-injects
  *  requirement lines (packages + `\v*id` shims) into the doc's preamble,
@@ -73,7 +101,7 @@ export default function ManageStylesModal({
     duplicateStyle,
     setDefaultStyleId,
   } = useStyleLibrary();
-  const { styleId, setStyle } = useDocumentStyle(docId);
+  const { styleId, setStyle, setDocumentClass } = useDocumentStyle(docId);
 
   // null = list view; "new" = create flow; "fromCurrent" = seed from
   // doc preamble; string id = edit flow
@@ -83,6 +111,17 @@ export default function ManageStylesModal({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [docPreamble, setDocPreamble] = useState<string | null>(null);
   const [applyTarget, setApplyTarget] = useState<string | null>(null);
+  // The doc's current `\documentclass` name — derived from the loaded
+  // preamble, and updated locally on a swap so the control reflects the new
+  // class without a disk re-read. null when there's no document open or no
+  // live `\documentclass` to swap (the control is then hidden).
+  const [currentClass, setCurrentClass] = useState<string | null>(null);
+  // The structural-downgrade confirmation (target class + the commands it
+  // would drop). null = no prompt open.
+  const [docTypeDowngrade, setDocTypeDowngrade] = useState<{
+    targetClass: string;
+    offenders: SectioningCommand[];
+  } | null>(null);
 
   // Load the doc's current preamble. Re-read whenever docId changes —
   // the user might have edited the preamble in code view between opens.
@@ -109,6 +148,17 @@ export default function ManageStylesModal({
       cancelled = true;
     };
   }, [docId]);
+
+  // Track the doc's current `\documentclass` off the loaded preamble (the
+  // class line lives in the preamble). Recomputes whenever the preamble is
+  // (re)loaded for a new doc; a swap updates it locally below.
+  useEffect(() => {
+    setCurrentClass(
+      docPreamble != null
+        ? extractDocumentClass(docPreamble)?.className ?? null
+        : null,
+    );
+  }, [docPreamble]);
 
   const pendingMerge = aiRequests.find(
     (r) => r.kind === "style-merge" && r.status === "submitted",
@@ -215,6 +265,64 @@ export default function ManageStylesModal({
     setApplyTarget(null);
   }, [applyTarget, styles, ensureDocPreamble, addStyleMergeRequest]);
 
+  // Reflect a just-applied class swap in local state without a disk re-read:
+  // bump the tracked class and rewrite the cached preamble's class line so the
+  // style-drift indicator (which compares against the active style's preamble)
+  // stays accurate.
+  const applyClassLocally = useCallback((targetClass: string) => {
+    setCurrentClass(targetClass);
+    setDocPreamble((p) => (p != null ? rewriteDocumentClass(p, targetClass) : p));
+  }, []);
+
+  // The doc-type control's gate. A class swap is byte-mechanical
+  // (`rewriteDocumentClass`), but its SAFETY depends on sectioning: if the
+  // target class supports every command the body uses (any upgrade, or a
+  // lateral swap) it applies as a silent, instant hard swap; if it would drop
+  // a command the body relies on (the structural-downgrade case) it routes to
+  // the restructuring prompt instead of silently producing a non-compiling doc.
+  const changeDocType = useCallback(
+    async (targetClass: string) => {
+      if (!docId || pendingMerge) return;
+      if (!currentClass || targetClass === currentClass) return;
+      let latex: string;
+      try {
+        // Flush the autosave/code-pane debounce first so the gate sees the
+        // LIVE body — otherwise a just-typed `\chapter` could still be in the
+        // 1500 ms window, the gate would read stale disk bytes, decide "hard",
+        // and silently produce the very non-compiling doc it exists to prevent.
+        await drainDoc(docId);
+        latex = await readTex(docId);
+      } catch {
+        return;
+      }
+      const offenders = unsupportedSectioningFor(latex, targetClass);
+      if (offenders.length === 0) {
+        await setDocumentClass(targetClass);
+        applyClassLocally(targetClass);
+      } else {
+        setDocTypeDowngrade({ targetClass, offenders });
+      }
+    },
+    [docId, pendingMerge, currentClass, setDocumentClass, applyClassLocally],
+  );
+
+  const confirmDocTypeDowngrade = useCallback(async () => {
+    if (!docTypeDowngrade) return;
+    const { targetClass } = docTypeDowngrade;
+    setDocTypeDowngrade(null);
+    await setDocumentClass(targetClass);
+    applyClassLocally(targetClass);
+  }, [docTypeDowngrade, setDocumentClass, applyClassLocally]);
+
+  // The class options shown in the control. If the doc's current class isn't
+  // one of the SSOT choices (a custom journal .cls), surface it as a leading
+  // read-only-ish option so the select isn't blank — the user can still swap
+  // AWAY from it to a known class.
+  const classChoices =
+    currentClass && !DOC_CLASS_CHOICES.some((c) => c.className === currentClass)
+      ? [{ className: currentClass, label: `${currentClass} (current)` }, ...DOC_CLASS_CHOICES]
+      : DOC_CLASS_CHOICES;
+
   const targetEntry = applyTarget
     ? styles.find((s) => s.id === applyTarget)
     : null;
@@ -236,6 +344,40 @@ export default function ManageStylesModal({
           }
         />
         <SystemDialogBody className="pb-2">
+          {/* ── Document type ──────────────────────────────────────────
+              Swaps the doc's `\documentclass` in place (options preserved).
+              Instant/hard when the target class supports every sectioning
+              command the body uses (any upgrade, e.g. article→book); routes to
+              a restructuring prompt when it would drop one the body relies on
+              (e.g. book→article with `\chapter`s). Only shown with a doc open
+              that has a live `\documentclass`. */}
+          {showActiveColumn && currentClass && (
+            <div className="mb-3 flex items-center gap-2">
+              <label
+                htmlFor="doc-type-select"
+                className="text-[11px] font-medium uppercase tracking-wide text-ink-subtle shrink-0"
+                data-hint="Swap the document class — instant unless the doc uses chapters a smaller class can't hold"
+              >
+                Document type
+              </label>
+              <select
+                id="doc-type-select"
+                value={currentClass}
+                disabled={!!pendingMerge}
+                onChange={(e) => void changeDocType(e.target.value)}
+                className="text-xs bg-surface border border-edge-subtle rounded px-2 py-1 text-ink-body outline-none focus:border-[var(--accent)] disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {classChoices.map((c) => (
+                  <option key={c.className} value={c.className}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] text-ink-subtle">
+                Changes <code className="font-mono">\documentclass</code>.
+              </span>
+            </div>
+          )}
           {pendingMerge && (
             <div className="mb-3 px-3 py-2 rounded-md border border-edge-subtle bg-surface-muted/60 text-xs text-ink-body">
               AI merge in progress for <strong>{activeStyle?.name ?? "current style"}</strong>. The
@@ -421,6 +563,15 @@ export default function ManageStylesModal({
           </SystemDialogButton>
         </SystemDialogFooter>
       </SystemDialog>
+
+      {docTypeDowngrade && (
+        <DocTypeChangeDialog
+          targetClass={docTypeDowngrade.targetClass}
+          offenders={docTypeDowngrade.offenders}
+          onChangeAnyway={() => void confirmDocTypeDowngrade()}
+          onCancel={() => setDocTypeDowngrade(null)}
+        />
+      )}
 
       {targetEntry && docPreamble != null && (
         <StyleApplyDialog
