@@ -29,6 +29,13 @@ export interface CardListPanelProps<T> {
    *  item's `archived` flag through this accessor. Omit for panels with no
    *  archivable cards — they render every item as before. */
   getArchived?: (item: T) => boolean;
+  /** When provided (alongside `getArchived`), the header badge counts only the
+   *  visible items matching this predicate, instead of every visible item. Lets
+   *  a panel with a SECOND orthogonal dimension on top of `archived` (Todo's
+   *  `done`) show a semantically-meaningful badge — "pending, in this view" —
+   *  without desyncing from the rendered/filtered set. Omit ⇒ badge counts all
+   *  visible items, exactly as before. */
+  getCounted?: (item: T) => boolean;
   /** Render a single card. CardListPanel handles the React `key` via a
    *  Fragment wrapper, so the returned node should be the card directly
    *  (no need to set `key`). */
@@ -72,6 +79,7 @@ export function CardListPanel<T>({
   items,
   getId,
   getArchived,
+  getCounted,
   renderCard,
   selectedId,
   onSelect,
@@ -97,8 +105,13 @@ export function CardListPanel<T>({
   // the mode change (an archive toggle / view switch), never on a keystroke
   // (the `archived` flag lives in sidecar state, not the doc).
   const visibleItems = useArchiveVisibleItems(kind, items, getArchived);
-  // The header badge reflects what's actually shown in the current view.
-  const shownCount = getArchived ? visibleItems.length : count;
+  // The header badge reflects what's actually shown in the current view — and,
+  // when the panel supplies a `getCounted` predicate, only the visible subset it
+  // cares about (Todo: pending, i.e. not-done). Without `getCounted` this is the
+  // prior behavior (all visible items).
+  const shownCount = getArchived
+    ? (getCounted ? visibleItems.filter(getCounted).length : visibleItems.length)
+    : count;
 
   // If the selected card is filtered out of the current view (e.g. it was just
   // archived, or the user switched to View Active while an archived card was

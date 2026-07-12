@@ -19,7 +19,7 @@ export interface TodoHostProps {
   updateTodoNotes: (id: string, notes: string) => void;
   setTodoAiRequest: (id: string, value: boolean) => void;
   deleteTodo: (id: string) => void;
-  archiveTodos: () => void;
+  archiveTodos: (ids?: string[]) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
 }
