@@ -42,7 +42,10 @@ import {
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
 import { compileQuery } from "@/lib/search-sources";
-import { searchMainText } from "@/panels/Search/SearchPanel";
+import {
+  searchMainText,
+  resolveAnchoredHighlight,
+} from "@/panels/Search/SearchPanel";
 import { resolveLiveBlockRange } from "@/hooks/useLivePosResolver";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -94,6 +97,49 @@ function makeAtomContent(): Content {
           { type: "text", text: "Lead in " },
           { type: "footnote", attrs: { footnoteId: "fn-x", number: 1 } },
           { type: "text", text: " then TARGET word." },
+        ],
+      },
+    ],
+  };
+}
+
+// A paragraph where the search target starts at the char DIRECTLY after an
+// inline atom (a run boundary). Runs are char-contiguous but not PM-contiguous,
+// so the boundary offset names two PM positions — the atom's own slot vs the
+// following run's start. A start-endpoint conversion must pick the latter; the
+// old inclusive-bound scan picked the former, anchoring the highlight on the
+// atom pill one slot early. (`makeAtomContent` above starts its target MID-run,
+// which can't see this — that's why the suite was green despite the bug.)
+function makeBoundaryStartContent(): Content {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        attrs: { uuid: "uuid-boundary-para" },
+        content: [
+          { type: "text", text: "Lead " },
+          { type: "footnote", attrs: { footnoteId: "fn-b", number: 1 } },
+          { type: "text", text: "TARGET word." },
+        ],
+      },
+    ],
+  };
+}
+
+// A paragraph where the search target ENDS exactly at an atom boundary — the
+// end-endpoint conversion must stop BEFORE the atom (the preceding run's end).
+function makeBoundaryEndContent(): Content {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        attrs: { uuid: "uuid-boundary-end-para" },
+        content: [
+          { type: "text", text: "The END" },
+          { type: "footnote", attrs: { footnoteId: "fn-e", number: 1 } },
+          { type: "text", text: " tail." },
         ],
       },
     ],
@@ -219,7 +265,7 @@ describe("resolveLiveBlockRange — live re-resolution after an earlier edit", (
     }
   });
 
-  it("returns null when the anchoring block was deleted (so the click can fall back rather than scroll to stale)", () => {
+  it("returns null when the anchoring block was deleted (snapshot present, block absent — the click must no-op)", () => {
     warmBus(editor);
     const re = compileQuery("WIDGET", { caseSensitive: true, wholeWord: false })!;
     const hit = searchMainText(editor, re)[0];
@@ -235,8 +281,104 @@ describe("resolveLiveBlockRange — live re-resolution after an earlier edit", (
       editor.state.tr.delete(firstParaEnd, editor.state.doc.content.size),
     );
 
-    // The block is gone → null (navigateToResult then falls back to the baked
-    // range, which the editor clamps if out of range).
+    // The block is gone but the snapshot is present → null, NOT undefined.
     expect(resolveLiveBlockRange(editor, hit.blockId!)).toBeNull();
+  });
+
+  it("returns undefined (not null) when there is no snapshot at all — the only case the baked fallback serves", () => {
+    const re = compileQuery("WIDGET", { caseSensitive: true, wholeWord: false })!;
+    const hit = searchMainText(editor, re)[0];
+    expect(resolveLiveBlockRange(null, hit.blockId!)).toBeUndefined();
+  });
+});
+
+describe("charOffsetToPm endpoint semantics — matches at inline-atom boundaries", () => {
+  it("a match STARTING directly after an atom anchors on the text, not the atom's PM slot", () => {
+    const m = mountWith(makeBoundaryStartContent());
+    const ed = m.editor;
+    try {
+      warmBus(ed);
+      const re = compileQuery("TARGET", { caseSensitive: true, wholeWord: false })!;
+      const hits = searchMainText(ed, re);
+      expect(hits).toHaveLength(1);
+      const hit = hits[0];
+
+      // Assert the PM positions themselves (textBetween can't see this bug —
+      // the atom contributes no chars). Doc: para open @0, "Lead " @1..6,
+      // footnote atom @6..7, "TARGET word." @7..19. The match must start AT
+      // the text (7), not on the atom slot (6) the old inclusive bound chose.
+      expect(hit.from).toBe(7);
+      expect(hit.to).toBe(13);
+      expect(ed.state.doc.nodeAt(hit.from)?.isText).toBe(true);
+      // The slot directly before the match start IS the atom — the match
+      // begins immediately after it without swallowing it.
+      expect(ed.state.doc.nodeAt(hit.from - 1)?.type.name).toBe("footnote");
+      expect(ed.state.doc.textBetween(hit.from, hit.to)).toBe("TARGET");
+
+      // The durable identity carries the corrected intra-block PM offset, so
+      // live re-resolution reproduces the same correct range (not the
+      // atom-swallowing one).
+      expect(hit.blockId).toEqual({
+        blockUuid: "uuid-boundary-para",
+        offset: 6,
+        length: 6,
+      });
+      const live = resolveLiveBlockRange(ed, hit.blockId!);
+      expect(live).toEqual({ from: 7, to: 13 });
+    } finally {
+      m.cleanup();
+    }
+  });
+
+  it("a match ENDING at an atom boundary still stops BEFORE the atom", () => {
+    const m = mountWith(makeBoundaryEndContent());
+    const ed = m.editor;
+    try {
+      warmBus(ed);
+      const re = compileQuery("END", { caseSensitive: true, wholeWord: false })!;
+      const hits = searchMainText(ed, re);
+      expect(hits).toHaveLength(1);
+      const hit = hits[0];
+
+      // Doc: para open @0, "The END" @1..8, footnote atom @8..9. The match
+      // ends at 8 — the slot AT `to` is the atom, i.e. the range stops just
+      // before it and does not extend across it.
+      expect(hit.from).toBe(5);
+      expect(hit.to).toBe(8);
+      expect(ed.state.doc.nodeAt(hit.to)?.type.name).toBe("footnote");
+      expect(ed.state.doc.textBetween(hit.from, hit.to)).toBe("END");
+    } finally {
+      m.cleanup();
+    }
+  });
+});
+
+describe("resolveAnchoredHighlight — the click-time highlight policy", () => {
+  it("no-ops (null) for a deleted block instead of falling back to the baked range", () => {
+    warmBus(editor);
+    const re = compileQuery("WIDGET", { caseSensitive: true, wholeWord: false })!;
+    const hit = searchMainText(editor, re)[0];
+    const baked = { from: hit.from, to: hit.to };
+
+    // Pre-delete: resolves live.
+    expect(resolveAnchoredHighlight(editor, hit.blockId!, baked)).not.toBeNull();
+
+    // Delete the anchoring block. After a mid-doc deletion the baked range
+    // can still be in bounds, so a `?? baked` fallback would amber-highlight
+    // whatever unrelated text now occupies those coordinates. The policy must
+    // return null → the caller clears the highlight instead.
+    const firstPara = editor.state.doc.content.child(0);
+    editor.view.dispatch(
+      editor.state.tr.delete(firstPara.nodeSize, editor.state.doc.content.size),
+    );
+    expect(resolveAnchoredHighlight(editor, hit.blockId!, baked)).toBeNull();
+  });
+
+  it("falls back to the baked range ONLY when there is no snapshot at all", () => {
+    const re = compileQuery("WIDGET", { caseSensitive: true, wholeWord: false })!;
+    const hit = searchMainText(editor, re)[0];
+    const baked = { from: hit.from, to: hit.to };
+    // No editor → no bus/snapshot (the embedded-surface shape) → baked.
+    expect(resolveAnchoredHighlight(null, hit.blockId!, baked)).toBe(baked);
   });
 });
