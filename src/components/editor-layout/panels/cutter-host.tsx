@@ -29,7 +29,7 @@ export interface CutterHostProps {
   panelSide: Side | null;
   cards: CutterCard[];
   goal: CutterGoal | null;
-  setGoal: (target: number, initialWords: number) => void;
+  setGoal: (target: number, currentWords: number) => void;
   clearGoal: () => void;
   updateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;

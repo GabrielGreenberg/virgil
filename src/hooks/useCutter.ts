@@ -437,15 +437,24 @@ export function useCutter(
   );
 
   const setGoal = useCallback(
-    (target: number, initialWords: number) => {
+    (target: number, currentWords: number) => {
       if (!Number.isFinite(target) || target < 0) return;
-      if (!Number.isFinite(initialWords) || initialWords < 0) return;
-      const goal: CutterGoal = {
-        target: Math.round(target),
-        initialWords: Math.round(initialWords),
-        setAt: new Date().toISOString(),
-      };
-      update((prev) => ({ ...prev, goal }));
+      if (!Number.isFinite(currentWords) || currentWords < 0) return;
+      update((prev) => {
+        // `initialWords`/`setAt` are the baseline captured at goal START — the
+        // SSOT for cut-so-far progress. Editing an existing goal only changes the
+        // TARGET; it must never re-baseline (that's what Clear ✕ is for). Deciding
+        // the baseline HERE (not at each call site) makes every caller — the
+        // strip's edit path and any future one — preserve it by construction.
+        const goal: CutterGoal = prev.goal
+          ? { ...prev.goal, target: Math.round(target) }
+          : {
+              target: Math.round(target),
+              initialWords: Math.round(currentWords),
+              setAt: new Date().toISOString(),
+            };
+        return { ...prev, goal };
+      });
     },
     [update],
   );

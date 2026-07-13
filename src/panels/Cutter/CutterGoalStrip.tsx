@@ -6,7 +6,9 @@ import type { CutterGoal } from "@/lib/types";
 interface CutterGoalStripProps {
   goal: CutterGoal | null;
   currentWords: number;
-  onSetGoal: (target: number, initialWords: number) => void;
+  /** Second arg is the current word count — used only to capture the baseline
+   *  on FIRST set; when a goal already exists the hook preserves its baseline. */
+  onSetGoal: (target: number, currentWords: number) => void;
   onClearGoal: () => void;
 }
 
