@@ -43,12 +43,23 @@ export interface LatexError {
  * SAME line is dropped (the compiler is authoritative there; the linter's
  * guess is noise). Compile diagnostics are always kept. Sorted by line then
  * column.
+ *
+ * The dedup is **main-file scoped**. Lint runs only over the main `.tex`
+ * `sourceText`, so its records never carry a `file`; compile diagnostics DO
+ * carry a non-main `file` in multi-file papers (the tex-log parser stamps the
+ * innermost open `( ... )` input file). Only a main-file compile diagnostic
+ * (`file == null`) is authoritative on the main file's line N — a cross-file
+ * compile error at `chapters/intro.tex:12` must NOT suppress a legitimate
+ * main-file lint on line 12. So the suppression set is built from main-file
+ * compile lines only.
  */
 export function mergeLatexErrors(
   lint: LatexError[],
   compile: LatexError[],
 ): LatexError[] {
-  const compileLines = new Set(compile.filter((e) => e.line > 0).map((e) => e.line));
+  const compileLines = new Set(
+    compile.filter((e) => e.line > 0 && e.file == null).map((e) => e.line),
+  );
   const keptLint = lint.filter((e) => e.line <= 0 || !compileLines.has(e.line));
   return [...keptLint, ...compile].sort(
     (a, b) => a.line - b.line || (a.column ?? 0) - (b.column ?? 0),
