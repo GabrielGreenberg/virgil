@@ -183,10 +183,14 @@ describe("outline-prefs-store", () => {
     expect(docA[1].sort()).toEqual(["a1", "peer-added"]);
   });
 
-  it("ignores storage events for other keys", async () => {
+  it("ignores storage events for other keys and non-localStorage clears", async () => {
     const s = await freshStore();
     const before = s.getOutlinePrefsSnapshot();
     window.dispatchEvent(new StorageEvent("storage", { key: "some-other-key" }));
+    expect(s.getOutlinePrefsSnapshot()).toBe(before);
+    // key === null with storageArea ≠ localStorage (e.g. a peer's
+    // sessionStorage.clear()) must not replace the snapshot.
+    window.dispatchEvent(new StorageEvent("storage", { key: null }));
     expect(s.getOutlinePrefsSnapshot()).toBe(before);
   });
 

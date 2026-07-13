@@ -1616,8 +1616,9 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
   // identity only changes when the stored fold set does.
   const collapsed = useMemo(() => new Set(collapsedArr), [collapsedArr]);
   const { showLabels, showTitles, showWordCount, showPosition, showNumbers } = prefs;
-  // Fold-set writes go straight to the stable module setter (referencing it
-  // directly keeps the toggle/collapse callbacks dependency-free).
+  // Flat-pref writes go straight to the stable module setter; fold writes go
+  // through setOutlineCollapsedForDoc(foldDocId, …) so only this document's
+  // bucket is touched (the toggle/collapse callbacks depend on foldDocId).
   const setShowLabels = (v: boolean) => setOutlinePrefs({ showLabels: v });
   const setShowTitles = (v: boolean) => setOutlinePrefs({ showTitles: v });
   const setShowWordCount = (v: boolean) => setOutlinePrefs({ showWordCount: v });

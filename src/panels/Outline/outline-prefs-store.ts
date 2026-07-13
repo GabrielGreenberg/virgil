@@ -157,10 +157,12 @@ function emit() {
 // Cross-window re-sync: a peer window's write lands here via the native
 // `storage` event (never fired in the writing window itself), so this
 // window's snapshot can't go stale and its next write can't clobber the
-// peer's from a stale base. `key === null` is a storage.clear().
+// peer's from a stale base. `key === null` is a storage.clear() — accept it
+// only from localStorage (a peer's sessionStorage.clear() also fires with a
+// null key and must not trigger a spurious snapshot replacement).
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
-    if (e.key !== null && e.key !== STORAGE_KEY) return;
+    if (e.key === null ? e.storageArea !== localStorage : e.key !== STORAGE_KEY) return;
     current = readFromStorage();
     emit();
   });
