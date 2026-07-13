@@ -35,6 +35,7 @@ vi.mock("@/lib/storage", () => {
 import {
   JUMP_SELECTION_PANELS,
   jumpSelectionFor,
+  planJumpArchiveView,
   type JumpSelectionPanel,
   type JumpSelectionSetters,
 } from "@/components/editor-layout/jump-selection";
@@ -97,5 +98,27 @@ describe("jump-selection — exhaustiveness over SCOPE_PANEL", () => {
     for (const panel of ["omni", "search", "outline", "blank"] as const) {
       expect(jumpSelectionFor(setters, panel)).toBeNull();
     }
+  });
+});
+
+// ── planJumpArchiveView — the jump lands on a VISIBLE card (task 118) ──────
+// The dead-click class: `openItemInPanel` selects the target card, but the
+// panel renders through its archive view (`filterByArchiveView`), so a
+// selection the view filters out reveals nothing. The plan must widen the
+// view exactly when (and only when) the target's archived state is hidden.
+describe("planJumpArchiveView — widens the view exactly when the target is hidden", () => {
+  it('flips "active" → "all" for an archived target (the archived-search-hit case)', () => {
+    expect(planJumpArchiveView("active", true)).toBe("all");
+  });
+
+  it('flips "archived" → "all" for an active target (the symmetric dead click)', () => {
+    expect(planJumpArchiveView("archived", false)).toBe("all");
+  });
+
+  it("returns null when the target is already visible under the current view", () => {
+    expect(planJumpArchiveView("active", false)).toBeNull();
+    expect(planJumpArchiveView("archived", true)).toBeNull();
+    expect(planJumpArchiveView("all", true)).toBeNull();
+    expect(planJumpArchiveView("all", false)).toBeNull();
   });
 });

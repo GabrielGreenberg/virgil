@@ -70,6 +70,7 @@ import {
 import { planJumpDocks } from "./editor-layout/jump-docks";
 import {
   jumpSelectionFor,
+  planJumpArchiveView,
   type JumpSelectionSetters,
 } from "./editor-layout/jump-selection";
 // The Reader's direct `<OutlinePanel>` branch was collapsed into the single
@@ -4578,6 +4579,24 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       // the target's side and re-docks search alongside it only when they share
       // a side (Reader-safe: search is never docked there). See jump-docks.ts.
       if (!viewPrefs) return;
+
+      // Land on a VISIBLE card (task 118): the target panel filters its list
+      // through its archive view, and the selection setter above doesn't
+      // change that view — so jumping to an archived card under "View Active"
+      // (an archived search hit) or an active card under "View Archives" used
+      // to select an invisible card: a silent dead click. Widen the view to
+      // "all" via the same `setCardArchiveView` the panel's own three-dot
+      // menu uses (policy in `planJumpArchiveView`). The target's archived
+      // state comes from `archivedIds`, the cross-panel archived SSOT, read
+      // through its stable ref so this callback doesn't churn identity on
+      // every sidecar edit — and so EVERY jump caller gets the guarantee,
+      // not just search.
+      const viewFlip = planJumpArchiveView(
+        viewPrefs.prefs.cardArchiveView[panel] ?? "active",
+        archivedIdsRef.current.has(itemId),
+      );
+      if (viewFlip) viewPrefs.setCardArchiveView(panel, viewFlip);
+
       for (const op of planJumpDocks(viewPrefs.prefs, panel)) {
         viewPrefs.openPanelDocked(op.id, op.side);
       }

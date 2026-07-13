@@ -964,7 +964,15 @@ function ResultCard({
                 >
                   {scopeLabel}
                   {fieldLabel ? ` ${fieldLabel}` : ""}
-                  {result.unanchored ? " (unanchored)" : ""}
+                  {/* "(archived)" wins over "(unanchored)": archiving an
+                      atom card (footnote/citation) splices its atom out, so
+                      an archived hit is usually ALSO unanchored — archived
+                      is the cause, unanchored the symptom. */}
+                  {result.archived
+                    ? " (archived)"
+                    : result.unanchored
+                      ? " (unanchored)"
+                      : ""}
                 </span>
                 {result.breadcrumb.length > 0 && (
                   <span className="text-[var(--muted)]">{" \u203a "}</span>
