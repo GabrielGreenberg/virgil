@@ -1,4 +1,4 @@
-<!-- last-verified: 72d1c0db 2026-07-12 -->
+<!-- last-verified: 61022f65 2026-07-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts -->
 
