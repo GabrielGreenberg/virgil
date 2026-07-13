@@ -4,11 +4,14 @@
 //   1. Classification — free + orphaned render in the bin (collapsed shows a
 //      count pill; expanded lists them); orphaned rows carry a BadgeOrphaned;
 //      an anchored item never enters the bin.
-//   2. Zero-flow / no-overlap — the bin element is `position: absolute` (so it
-//      takes no flow space and can't displace the cascade pod's top the way the
-//      deleted flow <div> did) and it carries NO `data-omni-entry-wrapper`
-//      (so the cascade ResizeObserver never measures it → its expand/collapse
-//      can't bump measureVersion).
+//   2. Zero-flow / no-overlap — the shared `OmniBinStack` wrapper is the single
+//      `position: absolute` host (so the bin subtree takes no flow space and
+//      can't displace the cascade pod's top the way the deleted flow <div>
+//      did); the individual bins flow in normal layout inside it (task 127), so
+//      the outside-focus bin sits below the unanchored bin collapsed OR
+//      expanded. Neither wrapper nor bin carries `data-omni-entry-wrapper`, so
+//      the cascade ResizeObserver never measures them → expand/collapse can't
+//      bump measureVersion.
 //   3. Cascade-purity — the panel split that feeds `inTextItems` never lets a
 //      `pos == null` item into the natural cascade map.
 
@@ -36,7 +39,7 @@ vi.mock("@/lib/storage", () => {
   return mod;
 });
 
-import { OmniUnanchoredBin } from "@/panels/Omni/OmniViewPanel";
+import { OmniUnanchoredBin, OmniBinStack } from "@/panels/Omni/OmniViewPanel";
 import type { OmniItem } from "@/panels/_shared/types";
 
 afterEach(() => {
@@ -99,21 +102,30 @@ describe("OmniUnanchoredBin — classification + render", () => {
   });
 });
 
-describe("OmniUnanchoredBin — zero-flow / measurement exclusion", () => {
-  it("is position:absolute and carries no data-omni-entry-wrapper", () => {
+describe("OmniBinStack — zero-flow wrapper / measurement exclusion", () => {
+  it("wrapper is the single position:absolute host; bins flow inside it; no data-omni-entry-wrapper", () => {
     const { container } = render(
-      createElement(OmniUnanchoredBin, { free: [freeItem], orphaned: [orphanItem] }),
+      createElement(
+        OmniBinStack,
+        null,
+        createElement(OmniUnanchoredBin, { free: [freeItem], orphaned: [orphanItem] }),
+      ),
     );
-    const bin = container.querySelector("[data-omni-unanchored-bin]") as HTMLElement;
-    // Inline style is the load-bearing zero-flow guard (absolute → no flow
+    const stack = container.querySelector("[data-omni-bin-stack]") as HTMLElement;
+    // The WRAPPER carries the load-bearing zero-flow guard (absolute → no flow
     // space → cannot displace the cascade pod's top). The exact `top` is a
     // thin design gap above the pod top (4px), not the zero-flow guard — the
     // guard is `position: absolute`, which any non-negative top preserves.
-    expect(bin.style.position).toBe("absolute");
-    expect(bin.style.top).toBe("4px");
-    // The cascade ResizeObserver measures `[data-omni-entry-wrapper]`. The bin
-    // must never appear under that selector (collapsed OR expanded), or its
-    // height changes would feed back into measureVersion.
+    expect(stack.style.position).toBe("absolute");
+    expect(stack.style.top).toBe("4px");
+    // The individual bin now flows in NORMAL layout inside the wrapper (task
+    // 127) — it is NOT its own absolute sibling, so the outside-focus bin can
+    // stack below it whether it is collapsed or expanded.
+    const bin = container.querySelector("[data-omni-unanchored-bin]") as HTMLElement;
+    expect(bin.style.position).not.toBe("absolute");
+    // The cascade ResizeObserver measures `[data-omni-entry-wrapper]`. Neither
+    // wrapper nor bin may appear under that selector (collapsed OR expanded),
+    // or their height changes would feed back into measureVersion.
     expect(container.querySelectorAll("[data-omni-entry-wrapper]").length).toBe(0);
     fireEvent.click(container.querySelector("button")!);
     expect(container.querySelectorAll("[data-omni-entry-wrapper]").length).toBe(0);

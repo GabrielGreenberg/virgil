@@ -160,15 +160,19 @@ describe("OmniViewPanel (REAL component) — split routing with a live editor", 
     expect(mockState.lastItems!.every((i) => typeof i.pos === "number")).toBe(true);
   });
 
-  it("panelScrollRef parentage: the bin and the anchored wrappers are DIRECT children of the ref'd pod", () => {
+  it("panelScrollRef parentage: the bin stack and the anchored wrappers are DIRECT children of the ref'd pod", () => {
     const { container } = renderPanel(liveEditor);
     const pod = mockState.panelScrollRef.current;
     // The component attached the hook's ref to a real element…
     expect(pod).not.toBeNull();
     expect(container.contains(pod)).toBe(true);
-    // …which is the bin's direct parent (the bin scrolls with the panel)…
+    // …which is the bin STACK's direct parent (the stack — and its bins —
+    // scroll with the panel). The individual bins flow inside the stack now
+    // (task 127), so the DIRECT pod child is the stack, not each bin.
+    const stack = container.querySelector("[data-omni-bin-stack]")!;
+    expect(stack.parentElement).toBe(pod);
     const bin = container.querySelector("[data-omni-unanchored-bin]")!;
-    expect(bin.parentElement).toBe(pod);
+    expect(stack.contains(bin)).toBe(true);
     // …and the anchored wrapper's direct parent (one shared coordinate space).
     const wrapper = container.querySelector(
       `[data-omni-entry-wrapper="${anchoredNote.id}"]`,
@@ -176,6 +180,51 @@ describe("OmniViewPanel (REAL component) — split routing with a live editor", 
     expect(wrapper.parentElement).toBe(pod);
     // The pod extends alongside the document (min-height from the hook).
     expect((pod as HTMLElement).style.minHeight).toBe("600px");
+  });
+});
+
+describe("OmniViewPanel — two-bin stacking (task 127)", () => {
+  const liveEditor = {} as Editor;
+  // A card anchored OUTSIDE the focus band → routes to the outside-focus bin
+  // (the split checks `item.outsideFocus` before pos, so pos is irrelevant).
+  const outsideFocusNote: OmniItem = {
+    id: "float:card:note:outside-1",
+    pos: 20,
+    anchorState: "anchored",
+    outsideFocus: true,
+    content: createElement("div", { "data-test-card": "outside-1" }, "outside"),
+  };
+
+  it("both bins share the ONE absolute stack; unanchored sits above outside-focus in normal flow", () => {
+    const { container } = render(
+      <OmniViewPanel
+        side="right"
+        items={[freeNote, outsideFocusNote]}
+        editor={liveEditor}
+        enabledCategories={CATS}
+      />,
+    );
+    const stack = container.querySelector("[data-omni-bin-stack]") as HTMLElement;
+    const unanchored = container.querySelector("[data-omni-unanchored-bin]") as HTMLElement;
+    const outside = container.querySelector("[data-omni-outside-focus-bin]") as HTMLElement;
+    expect(unanchored).not.toBeNull();
+    expect(outside).not.toBeNull();
+    // Both bins live inside the single absolute wrapper — no independent
+    // absolute siblings with hand-measured offsets to fight over z-index.
+    expect(stack.style.position).toBe("absolute");
+    expect(stack.contains(unanchored)).toBe(true);
+    expect(stack.contains(outside)).toBe(true);
+    // Neither bin positions itself — they flow in the column, so the
+    // outside-focus bin is pushed below the unanchored bin whether the latter
+    // is collapsed or expanded (the fix: no static top:30 to paint over).
+    expect(unanchored.style.position).not.toBe("absolute");
+    expect(outside.style.position).not.toBe("absolute");
+    // Document order guarantees the outside-focus bin renders AFTER (below) the
+    // unanchored bin in the flex column.
+    expect(
+      unanchored.compareDocumentPosition(outside) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 
