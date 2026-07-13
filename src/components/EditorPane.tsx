@@ -7545,6 +7545,7 @@ function PaneRailBody({
     return (
       <OutlineHost
         content={content}
+        docId={docId}
         onScrollTo={viewPrefs.onScrollToHeading}
         onReorderBlocks={viewPrefs.onReorderBlocks}
         onRenameHeading={viewPrefs.onRenameHeading}

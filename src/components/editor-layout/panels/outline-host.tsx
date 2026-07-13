@@ -6,6 +6,8 @@ import type { FocusState } from "@/hooks/useFocusMode";
 
 export interface OutlineHostProps {
   content: JSONContent | null;
+  /** Scopes the persisted fold set to this document (task 111). */
+  docId: string;
   onScrollTo: (blockIndex: number) => void;
   onReorderBlocks: (fromIndex: number, count: number, toIndex: number) => void;
   // T3 (W3a): rename/label address by durable block uuid, not integer index.
@@ -31,6 +33,7 @@ export function OutlineHost(p: OutlineHostProps) {
   return (
     <OutlinePanel
       content={p.content}
+      docId={p.docId}
       onScrollTo={p.onScrollTo}
       onReorderBlocks={p.onReorderBlocks}
       onRenameHeading={p.onRenameHeading}

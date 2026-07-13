@@ -16,7 +16,8 @@ import {
   getOutlinePrefsSnapshot,
   getOutlinePrefsServerSnapshot,
   setOutlinePrefs,
-  setOutlineCollapsed,
+  setOutlineCollapsedForDoc,
+  getOutlineCollapsedForDoc,
 } from "./outline-prefs-store";
 
 /* ── Indentation model (single source of truth) ─────────────────────────
@@ -311,6 +312,10 @@ function InlineLabel({
 
 interface OutlinePanelProps {
   content: JSONContent | null;
+  /** Document id scoping the persisted fold set (task 111 — folds are
+      per-doc; 4-hex block uuids are only unique within one doc). Optional
+      for type permissiveness; an omitted id shares the "" bucket. */
+  docId?: string;
   onScrollTo: (headingIndex: number) => void;
   onReorderBlocks?: (fromIndex: number, count: number, toIndex: number) => void;
   // T3 (W3a): rename/label address by durable block uuid, not integer index.
@@ -1594,7 +1599,7 @@ function FocusBand({
 
 /* ── Main OutlinePanel ─────────────────────────────────────────────── */
 
-function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, isLabelTaken, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex, focusState, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
+function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, isLabelTaken, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex, focusState, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
   // View prefs come from the shared external store — survive reload AND the
   // docked↔popped-out remount (OUT-#7). No per-instance useState/localStorage.
   const prefs = useSyncExternalStore(
@@ -1602,12 +1607,18 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
     getOutlinePrefsSnapshot,
     getOutlinePrefsServerSnapshot,
   );
+  // Folds are per-document (task 111). The selector returns a referentially
+  // stable array while THIS doc's bucket is untouched, so unrelated store
+  // writes (flat pref toggles, another doc's folds) don't churn the Set.
+  const foldDocId = docId ?? "";
+  const collapsedArr = getOutlineCollapsedForDoc(prefs, foldDocId);
   // `collapsed` is exposed as a mutable Set for the existing consumers; its
   // identity only changes when the stored fold set does.
-  const collapsed = useMemo(() => new Set(prefs.collapsed), [prefs.collapsed]);
+  const collapsed = useMemo(() => new Set(collapsedArr), [collapsedArr]);
   const { showLabels, showTitles, showWordCount, showPosition, showNumbers } = prefs;
-  // Fold-set writes go straight to the stable module setter (referencing it
-  // directly keeps the toggle/collapse callbacks dependency-free).
+  // Flat-pref writes go straight to the stable module setter; fold writes go
+  // through setOutlineCollapsedForDoc(foldDocId, …) so only this document's
+  // bucket is touched (the toggle/collapse callbacks depend on foldDocId).
   const setShowLabels = (v: boolean) => setOutlinePrefs({ showLabels: v });
   const setShowTitles = (v: boolean) => setOutlinePrefs({ showTitles: v });
   const setShowWordCount = (v: boolean) => setOutlinePrefs({ showWordCount: v });
@@ -1662,13 +1673,13 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   }, [editMode, showWordCount, headings, perBlockCounts, totalBlocks, wcConfig.include]);
 
   const toggleNode = useCallback((id: string) => {
-    setOutlineCollapsed((prev) => {
+    setOutlineCollapsedForDoc(foldDocId, (prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }, []);
+  }, [foldDocId]);
 
   // Resolve where each pane's position chevron should appear, accounting
   // for collapsed sections (chevron bubbles up to the visible ancestor).
@@ -1711,17 +1722,19 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
 
   const isSplit = !!editorSplit;
 
+  // Collapse/expand-all replace ONLY this doc's fold bucket — they can no
+  // longer wipe another paper's persisted folds (task 111 member 1).
   const collapseAll = useCallback(() => {
-    setOutlineCollapsed(new Set(headings.filter((h, i) => {
+    setOutlineCollapsedForDoc(foldDocId, new Set(headings.filter((h, i) => {
       const hasSubHeading = i < headings.length - 1 && headings[i + 1].level > h.level;
       const hasTitles = showTitles && h.parTitles.length > 0;
       return hasSubHeading || hasTitles;
     }).map((h) => h.id)));
-  }, [headings, showTitles]);
+  }, [foldDocId, headings, showTitles]);
 
   const expandAll = useCallback(() => {
-    setOutlineCollapsed(new Set());
-  }, []);
+    setOutlineCollapsedForDoc(foldDocId, new Set());
+  }, [foldDocId]);
 
   const headerLeading = (
     <div className="relative -ml-3" ref={menuRef}>
