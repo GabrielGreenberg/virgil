@@ -73,8 +73,8 @@ const PERMITTED_KEYSTROKE_SUBSCRIBERS: Record<string, string> = {
     "Margin-bolt reposition: suppression check + RAF-already-scheduled bail; the single coordsAtPos placement math is RAF-coalesced and short-circuits on a placement-equality bail.",
   "components/SlashCommandPopup.tsx":
     "Mounted only while the popup is open; RAF-coalesced caret reposition.",
-  "components/editor-layout/panels/omni-host.tsx":
-    "Fold-aware OmniHost tick: a single getMeta(sectionFoldingPluginKey) check — bumps ONLY on a fold-meta tx, returns immediately on a plain keystroke.",
+  "components/editor-layout/panels/omni-fold-mirror-invalidation.ts":
+    "Fold-mirror invalidation SSOT (subscribeFoldMirrorInvalidation, consumed by omni-host's editorTick effect): a single getMeta(sectionFoldingPluginKey) check on the transaction handler — bumps ONLY on a fold-meta tx, returns immediately on a plain keystroke; its other sources are structural DocStructureBus events (headings/blocks added/removed/reordered), which never fire on a plain in-block keystroke.",
   "hooks/useEditorUIState.ts":
     "Section-fold persister: gated via the shared transactionTouchesFold predicate (fold-meta or docChanged) — O(1) per tx.",
   "hooks/useLatexSource.ts":
