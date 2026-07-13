@@ -544,7 +544,8 @@ function SearchPanel({
 
       const targetPanel = SCOPE_PANEL[result.scope];
       if (targetPanel && result.itemId) {
-        onOpenItem(targetPanel as PanelId, result.itemId);
+        // No cast: SCOPE_PANEL values are literal-typed PanelKind members.
+        onOpenItem(targetPanel, result.itemId);
       }
 
       requestAnimationFrame(() => {

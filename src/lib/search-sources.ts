@@ -10,6 +10,7 @@ import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/core";
 import { richJsonToPlainText } from "./footnote-content";
 import { DEFAULT_PANEL_COLORS, type PanelThemeKey } from "./panel-theme";
+import type { PanelKind } from "@/panels/_shared/types";
 import { resolveAnchorRange, getLinkedTextObjectIds, getTextAnchor } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
 import type {
@@ -95,8 +96,10 @@ export const SCOPE_LABEL: Record<SearchScope, string> = {
   bibliography: "Bibliography",
 };
 
-/** Native panel a result of this scope lives in. Headings/mainText have none. */
-export const SCOPE_PANEL: Partial<Record<SearchScope, string>> = {
+/** Literal-typed source for SCOPE_PANEL: the `as const` keeps each value a
+ *  literal so `SearchJumpPanel` is the exact value union; the `satisfies`
+ *  pins every value to a real registry `PanelKind`. */
+const SCOPE_PANEL_MAP = {
   footnotes: "footnotes",
   notes: "notes",
   citations: "citations",
@@ -106,7 +109,19 @@ export const SCOPE_PANEL: Partial<Record<SearchScope, string>> = {
   reports: "reports",
   revisions: "revisions",
   bibliography: "bibliography",
-};
+} as const satisfies Partial<Record<SearchScope, PanelKind>>;
+
+/** Union of panels a search hit can jump to — derived from `SCOPE_PANEL`'s
+ *  values, so adding a scope's panel automatically widens the union. The
+ *  jump-side selection dispatch (`jump-selection.ts`) is a TOTAL record over
+ *  it, making a scope that docks a panel but never selects in it a compile
+ *  error (the SR-F3-02 dropped-scope class, jump edition). */
+export type SearchJumpPanel =
+  (typeof SCOPE_PANEL_MAP)[keyof typeof SCOPE_PANEL_MAP];
+
+/** Native panel a result of this scope lives in. Headings/mainText have none. */
+export const SCOPE_PANEL: Partial<Record<SearchScope, SearchJumpPanel>> =
+  SCOPE_PANEL_MAP;
 
 /** Map a search-result scope to the card theme (panel-theme key) it wears.
  *  This makes the selected border + scope accent track the source kind:
