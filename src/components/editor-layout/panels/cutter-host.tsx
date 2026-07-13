@@ -22,6 +22,7 @@ import {
   type PendingChangeCardDeps,
 } from "@/links/pending-change-actions";
 import { generateEntityId } from "@/lib/uuid";
+import { buildSuggestionApplyPrompt } from "@/links/suggestion-apply-prompt";
 import { useDocWriteHandleOrNull } from "../DocPipeline";
 
 export interface CutterHostProps {
@@ -63,28 +64,6 @@ export interface CutterHostProps {
   discardPristine: () => void;
 }
 
-function buildSuggestionPrompt(s: CutterSuggestionCard): string {
-  const anchorBits: string[] = [];
-  if (s.selectedText) anchorBits.push(`captured text: "${s.selectedText}"`);
-  if (s.links.length > 0) {
-    const pids = new Set<string>();
-    for (const l of s.links) {
-      if (l.anchor.type === "textObject") {
-        for (const p of l.anchor.textObjectIds) pids.add(p);
-      }
-    }
-    if (pids.size > 0) anchorBits.push(`paragraphs: ${[...pids].join(", ")}`);
-  }
-  const anchor = anchorBits.length > 0 ? anchorBits.join("; ") : "(none)";
-  return [
-    "Apply this suggestion in the document:",
-    `ORIGINAL: ${s.original_text}`,
-    `REPLACEMENT: ${s.suggested_text}`,
-    `EXPLANATION: ${s.explanation || "(none)"}`,
-    `ANCHOR: ${anchor}`,
-  ].join("\n");
-}
-
 export function CutterHost(p: CutterHostProps) {
   const { editorInstance, editorRef } = useEditorRefContext();
   const { selectedCutterCardId, setSelectedCutterCardId } =
@@ -115,7 +94,10 @@ export function CutterHost(p: CutterHostProps) {
       );
       if (!s) return;
       p.setSuggestionStatus(id, "accepted");
-      addAiRequest("suggestion", buildSuggestionPrompt(s));
+      addAiRequest(
+        "suggestion",
+        buildSuggestionApplyPrompt("cutter-suggestion", s),
+      );
     },
     [p, addAiRequest],
   );
