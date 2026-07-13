@@ -15,7 +15,12 @@ function lint(line: number, message: string, column?: number): LatexError {
   };
 }
 
-function compile(line: number, message: string, column?: number): LatexError {
+function compile(
+  line: number,
+  message: string,
+  column?: number,
+  file?: string,
+): LatexError {
   return {
     id: `compile:${line}:${column ?? 0}:${message}`,
     source: "compile",
@@ -23,6 +28,7 @@ function compile(line: number, message: string, column?: number): LatexError {
     line,
     column,
     message,
+    file,
   };
 }
 
@@ -86,6 +92,28 @@ describe("mergeLatexErrors", () => {
     // Both compile errors on line 10 stay; the lint on line 10 is dropped.
     expect(result).toHaveLength(2);
     expect(result.every((e) => e.source === "compile")).toBe(true);
+  });
+
+  it("does NOT drop a main-file lint when a CROSS-FILE compile error shares its line", () => {
+    // A compile error in chapters/intro.tex:12 must not suppress a legitimate
+    // main-file lint on line 12 — the compiler is not authoritative on the
+    // main file's line 12 in that case.
+    const result = mergeLatexErrors(
+      [lint(12, "main-file lint on 12")],
+      [compile(12, "cross-file compile on intro.tex:12", undefined, "chapters/intro.tex")],
+    );
+    expect(result).toHaveLength(2);
+    expect(result.filter((e) => e.source === "lint")).toHaveLength(1);
+    expect(result.filter((e) => e.source === "compile")).toHaveLength(1);
+  });
+
+  it("DOES drop a main-file lint when a MAIN-FILE compile error shares its line (file === undefined)", () => {
+    const result = mergeLatexErrors(
+      [lint(12, "main-file lint on 12")],
+      [compile(12, "main-file compile on 12")], // file undefined ⇒ main file
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].source).toBe("compile");
   });
 
   it("handles empty inputs", () => {
