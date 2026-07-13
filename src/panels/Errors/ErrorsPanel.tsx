@@ -77,13 +77,21 @@ function ErrorsPanel({
     );
   }, [visible, filter]);
 
-  // Clear selection if the selected error drops out of the filtered list
-  // (filter change, dismissal, or re-lint that removed the error).
+  // Clear selection ONLY when the selected error leaves the shared error set —
+  // i.e. it was dismissed or removed by a re-lint (both drop it from `visible`).
+  // `selectedId`/`onSelect` are shared cross-surface state (the omni mirror
+  // renders all errors and paints its halo from `selectedId`; the editor's
+  // error highlight is driven by it), so this MUST gate on `visible`, not
+  // `filtered`. The panel-local text filter is a docked-view concern and must
+  // not mutate shared selection: a filter that merely hides the selected card
+  // keeps the selection (and the omni halo + editor highlight) intact. The
+  // docked list tolerates a selected-but-filtered-out card — `selectedIdx`
+  // resolves to null and the nav keys already handle that.
   useEffect(() => {
-    if (selectedId && !filtered.some((e) => e.id === selectedId)) {
+    if (selectedId && !visible.some((e) => e.id === selectedId)) {
       onSelect(null);
     }
-  }, [filtered, selectedId, onSelect]);
+  }, [visible, selectedId, onSelect]);
 
   const selectedIdx = useMemo(() => {
     if (!selectedId) return null;
