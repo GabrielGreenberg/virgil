@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, memo, useState, useRef, useEffect } from "react";
+import type { ReactNode } from "react";
 import type { Editor } from "@tiptap/react";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 import {
@@ -307,19 +308,52 @@ export function OmniFilterMenu({
 }
 
 /**
+ * The single `position: absolute` wrapper that hosts BOTH omni bins (the
+ * unanchored bin and the outside-focus bin) as a flex COLUMN. This is the one
+ * element that carries the zero-flow guard: `position:absolute` → the whole
+ * bin subtree takes no flow space, so it never displaces the cascade pod's
+ * top the way the old flow <div> did (A5's structural fix), and it carries NO
+ * `data-omni-entry-wrapper`, so the cascade ResizeObserver in
+ * `useInTextPositions` never measures it (keystroke/measure sanctity).
+ *
+ * Laying the bins out in normal flow inside this column is the task-127 fix:
+ * the outside-focus bin sits directly BELOW the unanchored bin whether the
+ * latter is collapsed or expanded, so expanding the unanchored bin can no
+ * longer paint its opaque list over the outside-focus pill or swallow its
+ * clicks. It replaces the former hand-measured `top:30`/z-index-19-vs-20
+ * stacking of two independent absolute siblings. `zIndex:20` keeps the pills
+ * above any card anchored to the very first paragraph.
+ */
+export function OmniBinStack({ children }: { children: ReactNode }) {
+  return (
+    <div
+      data-omni-bin-stack=""
+      className="flex flex-col gap-1"
+      style={{ position: "absolute", top: 4, left: 8, right: 8, zIndex: 20 }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
  * The unanchored-card bin. Holds every card with no live text anchor —
  * `free` (no link at all) + `orphaned` (link target gone) together (R7).
  * Default-COLLAPSED to a compact count pill (Gabriel-ratified); clicking
  * expands it into a bounded, self-scrolling list that grows DOWNWARD.
  *
- * Rendered `position: absolute; top:0` inside the cascade pod so it takes
- * zero flow space — the key structural fix for the overwrite bug (the old
- * flow <div> displaced podRect.top, desyncing every anchored card). It
- * carries NO `data-omni-entry-wrapper`, so the cascade ResizeObserver in
- * `useInTextPositions` never observes it and its expand/collapse never
- * bumps `measureVersion` (keystroke/measure sanctity). Its z-index sits
- * above the cards so the pill overlays any card anchored to the very
- * first paragraph rather than hiding under it.
+ * Rendered as a NORMAL-FLOW block inside the shared `OmniBinStack` wrapper
+ * (`data-omni-bin-stack`), which is the single `position: absolute` element
+ * that takes zero flow space — the key structural fix for the overwrite bug
+ * (the old flow <div> displaced podRect.top, desyncing every anchored card).
+ * Living in flow inside that wrapper means the sibling outside-focus bin
+ * naturally sits BELOW this one whether this bin is collapsed or expanded
+ * (task 127 — no hand-measured offset, no z-index fight, no expanded-state
+ * overlap). It carries NO `data-omni-entry-wrapper`, so the cascade
+ * ResizeObserver in `useInTextPositions` never observes it and its
+ * expand/collapse never bumps `measureVersion` (keystroke/measure sanctity).
+ * The wrapper's z-index sits above the cards so the pill overlays any card
+ * anchored to the very first paragraph rather than hiding under it.
  */
 export function OmniUnanchoredBin({
   free,
@@ -333,10 +367,7 @@ export function OmniUnanchoredBin({
   if (count === 0) return null;
 
   return (
-    <div
-      style={{ position: "absolute", top: 4, left: 8, right: 8, zIndex: 20 }}
-      data-omni-unanchored-bin=""
-    >
+    <div data-omni-unanchored-bin="">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
@@ -379,28 +410,27 @@ export function OmniUnanchoredBin({
  * The "outside focus" bin. When focus view is active, cards anchored OUTSIDE
  * the focused band have a hidden in-text anchor, so they can't cascade inline.
  * Rather than drop them (silent data loss — the user's note just vanishes),
- * they collect here in a collapsed count pill, expandable to a bounded list —
- * the same zero-flow `position:absolute` pattern as the unanchored bin. The
- * cards render only when expanded, so no live editors mount by default.
+ * they collect here in a collapsed count pill, expandable to a bounded list.
+ * The cards render only when expanded, so no live editors mount by default.
  *
- * `topPx` stacks it just below the unanchored bin when both are present.
+ * Like the unanchored bin, this renders as a NORMAL-FLOW block inside the
+ * shared `OmniBinStack` wrapper. Because the wrapper lays its children out in
+ * a flex column, this bin sits directly below the unanchored bin whether that
+ * bin is collapsed or expanded — no hand-measured `topPx`, no z-index fight
+ * (task 127, replacing the former static `top:30` that the expanded
+ * unanchored list painted over).
  */
 export function OmniOutsideFocusBin({
   items,
-  topPx,
 }: {
   items: OmniItem[];
-  topPx: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const count = items.length;
   if (count === 0) return null;
 
   return (
-    <div
-      style={{ position: "absolute", top: topPx, left: 8, right: 8, zIndex: 19 }}
-      data-omni-outside-focus-bin=""
-    >
+    <div data-omni-outside-focus-bin="">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
@@ -687,7 +717,7 @@ function OmniViewPanel({
           The min-height matches the editor content height so the panel
           column extends alongside the document.
 
-          The unanchored bin renders as the FIRST child here, but
+          The `OmniBinStack` renders as the FIRST child here, but
           `position: absolute` so it takes ZERO flow space — it does not
           displace this pod's top the way the old flow <div> did (that
           shifted podRect.top while coordsAtPos did not, desyncing every
@@ -699,15 +729,10 @@ function OmniViewPanel({
         className="relative"
         style={{ minHeight: editorContentHeight || undefined }}
       >
-        <OmniUnanchoredBin free={free} orphaned={orphaned} />
-        <OmniOutsideFocusBin
-          items={outsideFocus}
-          // Stack just below the unanchored pill when present. Measured live
-          // (dev preview, doc_devtest): unanchored bin top:4 + pill height
-          // 26.5px (10px orphan dot fits inside the 16.5px text line, so the
-          // text line — not the badge — sets the row) → bottom edge ~30.5px.
-          topPx={free.length + orphaned.length > 0 ? 30 : 0}
-        />
+        <OmniBinStack>
+          <OmniUnanchoredBin free={free} orphaned={orphaned} />
+          <OmniOutsideFocusBin items={outsideFocus} />
+        </OmniBinStack>
         {anchored.map((item) => {
           const isPinned = pinRequest?.cardId === item.id;
           const top = positions.get(item.id);
