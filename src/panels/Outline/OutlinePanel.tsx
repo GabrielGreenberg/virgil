@@ -2,11 +2,8 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, useSyncExternalStore, memo } from "react";
 import type { JSONContent } from "@tiptap/react";
-import {
-  type Category,
-  ALL_CATEGORIES,
-  useWordCountConfig,
-} from "@/hooks/useWordCountConfig";
+import { useWordCountConfig } from "@/hooks/useWordCountConfig";
+import { buildPerBlockCounts, sumIncludedWords } from "@/lib/word-count-core";
 import type { FocusState } from "@/hooks/useFocusMode";
 import { sectionRange } from "@/hooks/useFocusMode";
 import { Panel } from "@/panels/_shared/Panel";
@@ -488,171 +485,11 @@ function nodeIntersectsFocus(node: TreeNode, focus: FocusState): boolean {
 
 /* ── Per-section word counting (view mode) ─────────────────────────── */
 
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
-}
-
-/**
- * Walk a single top-level JSONContent block and bucket its text by category.
- * Mirrors the PmNode walker in useWordCount.ts so the per-section outline
- * counts and the panel-level totals stay in agreement.
- */
-/**
- * Extract plain text from `\caption{...}` commands inside raw LaTeX strings.
- * Handles nested braces.
- */
-function extractCaptionText(raw: string): string[] {
-  const results: string[] = [];
-  let i = 0;
-  while (i < raw.length) {
-    const idx = raw.indexOf("\\caption", i);
-    if (idx === -1) break;
-    let pos = idx + "\\caption".length;
-    if (pos < raw.length && raw[pos] === "*") pos++;
-    if (pos < raw.length && raw[pos] === "[") {
-      const close = raw.indexOf("]", pos);
-      if (close !== -1) pos = close + 1;
-    }
-    if (pos < raw.length && raw[pos] === "{") {
-      let depth = 1;
-      const start = pos + 1;
-      pos++;
-      while (pos < raw.length && depth > 0) {
-        if (raw[pos] === "\\" && pos + 1 < raw.length) { pos += 2; continue; }
-        if (raw[pos] === "{") depth++;
-        else if (raw[pos] === "}") depth--;
-        if (depth > 0) pos++;
-      }
-      if (depth === 0) {
-        const inner = raw.slice(start, pos);
-        const plain = inner
-          .replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])*\{([^}]*)\}/g, "$2")
-          .replace(/\\[a-zA-Z]+\*?/g, "")
-          .replace(/[{}]/g, "")
-          .trim();
-        if (plain) results.push(plain);
-      }
-    }
-    i = pos + 1;
-  }
-  return results;
-}
-
-function walkBlockJson(node: JSONContent): Record<Category, number> {
-  const cats: Record<Category, string[]> = {
-    mainText: [],
-    headings: [],
-    footnotes: [],
-    captions: [],
-    math: [],
-    comments: [],
-  };
-
-  const collectInline = (n: JSONContent, bucket: string[]) => {
-    if (n.type === "text" && n.text) {
-      // Text marked as latexCommand is raw LaTeX — not prose.
-      // Extract any \caption{...} text into captions, skip the rest.
-      if (n.marks?.some((m) => m.type === "latexCommand")) {
-        const capts = extractCaptionText(n.text);
-        for (const c of capts) cats.captions.push(c);
-        return;
-      }
-      bucket.push(n.text);
-      return;
-    }
-    if (n.type === "inlineMath") {
-      const latex = (n.attrs?.latex as string) || "";
-      if (latex) cats.math.push(latex);
-      return;
-    }
-    if (n.type === "citation") return;
-    if (n.type === "footnote") {
-      const content = (n.attrs?.content as string) || "";
-      if (content) cats.footnotes.push(content);
-      return;
-    }
-    if (n.type === "hardBreak") {
-      bucket.push(" ");
-      return;
-    }
-    if (n.content) {
-      for (const child of n.content) collectInline(child, bucket);
-    }
-  };
-
-  const walkBlock = (n: JSONContent, ctx: Category) => {
-    switch (n.type) {
-      case "heading":
-        collectInline(n, cats.headings);
-        return;
-      case "blockquote":
-        if (n.content) for (const child of n.content) walkBlock(child, ctx);
-        return;
-      case "bulletList":
-      case "orderedList":
-        if (n.content) for (const child of n.content) walkBlock(child, ctx);
-        return;
-      case "listItem":
-        if (n.content) for (const child of n.content) walkBlock(child, ctx);
-        return;
-      case "displayMath": {
-        const latex = (n.attrs?.latex as string) || "";
-        if (latex) cats.math.push(latex);
-        return;
-      }
-      case "latexComment": {
-        const text = (n.content ?? []).map((c) => c.text ?? "").join("");
-        if (text) cats.comments.push(text);
-        return;
-      }
-      case "paragraph":
-      case "codeBlock":
-        collectInline(n, cats[ctx]);
-        return;
-      default:
-        if (n.content && n.content.length > 0) {
-          for (const child of n.content) walkBlock(child, ctx);
-        }
-        return;
-    }
-  };
-
-  walkBlock(node, "mainText");
-
-  const out = {} as Record<Category, number>;
-  for (const cat of ALL_CATEGORIES) {
-    out[cat] = countWords(cats[cat].join(" "));
-  }
-  return out;
-}
-
-/**
- * Precompute per-block category word counts so per-heading section sums
- * are O(blocks) instead of O(blocks × headings).
- */
-export function buildPerBlockCounts(doc: JSONContent | null): Record<Category, number>[] {
-  if (!doc?.content) return [];
-  return doc.content.map((node) => walkBlockJson(node));
-}
-
-export function sumIncludedWords(
-  perBlock: Record<Category, number>[],
-  fromIdx: number,
-  toIdx: number, // exclusive
-  include: Record<Category, boolean>,
-): number {
-  let total = 0;
-  for (let i = fromIdx; i < toIdx; i++) {
-    const counts = perBlock[i];
-    if (!counts) continue;
-    for (const cat of ALL_CATEGORIES) {
-      if (include[cat]) total += counts[cat];
-    }
-  }
-  return total;
-}
+// Per-block categorization + section summing live in the shared
+// word-count-core walker — the SSOT with useWordCount's panel totals, so
+// the same include-config bit always filters the same word set on both
+// surfaces (task 112). Re-exported for the ./index barrel consumers.
+export { buildPerBlockCounts, sumIncludedWords };
 
 /* ── View-mode tree row ────────────────────────────────────────────── */
 

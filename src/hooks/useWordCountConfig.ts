@@ -7,32 +7,12 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import type { Category } from "@/lib/word-count-core";
 
-export type Category =
-  | "mainText"
-  | "headings"
-  | "footnotes"
-  | "captions"
-  | "math"
-  | "comments";
-
-export const CATEGORY_LABELS: Record<Category, string> = {
-  mainText: "Main Text",
-  headings: "Headings",
-  footnotes: "Footnotes",
-  captions: "Captions",
-  math: "Math",
-  comments: "Comments",
-};
-
-export const ALL_CATEGORIES: Category[] = [
-  "mainText",
-  "headings",
-  "footnotes",
-  "captions",
-  "math",
-  "comments",
-];
+// Category vocabulary lives in the shared word-count core (the SSOT walker);
+// re-exported here so existing panel imports keep working.
+export { ALL_CATEGORIES, CATEGORY_LABELS } from "@/lib/word-count-core";
+export type { Category };
 
 export interface WordCountConfig {
   include: Record<Category, boolean>;
