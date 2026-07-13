@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect, memo } from "react";
+import {
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  useEffect,
+  useDeferredValue,
+  memo,
+} from "react";
 import type { Editor } from "@tiptap/react";
 import {
   themedCard,
@@ -118,16 +126,15 @@ const FIELD_LABEL: Record<NonNullable<SearchHit["field"]>, string> = {
   author: "author",
 };
 
-function getDocTitle(editor: Editor): string {
-  let title = "";
-  editor.state.doc.forEach((node) => {
-    if (node.type.name === "titleField" && node.attrs?.field === "title") {
-      const text = node.textContent?.trim() || "";
-      if (text) title = text;
-    }
-  });
-  return title;
-}
+/** How many hits get enriched (breadcrumbs) and mounted as result cards. The
+ *  COUNT is always true (`totalResults`), and an overflow note names what's
+ *  hidden — but a short query on a long doc can match tens of thousands of
+ *  times, and mounting that many cards is reliably multi-second (task 119).
+ *  Bounding at the render sink keeps the panel responsive at any hit count. */
+export const MAX_RENDERED_RESULTS = 300;
+
+/** Stable empty list for the cleared-query fast path below. */
+const EMPTY_RESULTS: SearchResult[] = [];
 
 /**
  * SR-F1-05: fold a left-to-right sequence of headings (each `{level, text}`)
@@ -155,18 +162,67 @@ export function foldHeadingAncestry(
   return sections;
 }
 
-function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
-  const headings: { level: number; text: string }[] = [];
-  let parTitle = "";
+/**
+ * Position-indexed breadcrumb source, built in ONE doc walk per search run
+ * (task 119). The predecessor `buildBreadcrumb` ran a full `doc.descendants`
+ * pass PER anchored hit — O(hits × doc), the quadratic core of the
+ * per-character search freeze: a short query on a long doc yields hits
+ * proportional to doc length, so result building went quadratic in document
+ * size. One walk now collects everything any breadcrumb can need; each hit
+ * resolves against it by binary search (`breadcrumbAt`).
+ *
+ *  - `headings`: every heading in document order, each carrying the FOLDED
+ *    ancestry as of that heading — incremental copy-on-write snapshots (≤6
+ *    entries each, one heading level per slot) built with the same
+ *    pop-by-stored-level rule as `foldHeadingAncestry` (equivalence pinned by
+ *    search-breadcrumb-index.test). A hit's section trail is the snapshot of
+ *    the last heading strictly BEFORE it.
+ *  - `parTitles`: every parTitle-bearing paragraph/list span in walk order
+ *    (parents before children), plus a prefix-max of span ends so the
+ *    backward containment scan bails as soon as no earlier span can still
+ *    reach past the position. The last containing span in walk order wins —
+ *    the innermost, matching the old per-hit walk's overwrite semantics.
+ *  - `docTitle`: the top-level titleField text (the old per-hit `getDocTitle`
+ *    fallback, now collected in the same walk).
+ *
+ * Exported for tests.
+ */
+export interface BreadcrumbIndex {
+  headings: { pos: number; ancestry: BreadcrumbSegment[] }[];
+  parTitles: { start: number; end: number; text: string }[];
+  parMaxEnd: number[];
+  docTitle: string;
+}
 
-  editor.state.doc.descendants((node, nodePos) => {
-    if (nodePos >= pos) return false;
+export function buildBreadcrumbIndex(editor: Editor): BreadcrumbIndex {
+  const headings: BreadcrumbIndex["headings"] = [];
+  const parTitles: BreadcrumbIndex["parTitles"] = [];
+  const parMaxEnd: number[] = [];
+  let docTitle = "";
+  const stack: BreadcrumbSegment[] = [];
 
+  editor.state.doc.descendants((node, nodePos, parent) => {
     if (node.type.name === "heading") {
       const level = node.attrs.level as number;
       const text = node.textContent?.trim() || "Untitled";
-      headings.push({ level, text });
+      while (
+        stack.length > 0 &&
+        (stack[stack.length - 1].level ?? 0) >= level
+      ) {
+        stack.pop();
+      }
+      stack.push({ text, kind: "section", level });
+      headings.push({ pos: nodePos, ancestry: stack.slice() });
       return true;
+    }
+
+    if (
+      node.type.name === "titleField" &&
+      node.attrs?.field === "title" &&
+      parent?.type.name === "doc"
+    ) {
+      const text = node.textContent?.trim() || "";
+      if (text) docTitle = text;
     }
 
     const titleAttr = node.attrs?.parTitle as string | null | undefined;
@@ -174,28 +230,69 @@ function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
       titleAttr &&
       (node.type.name === "paragraph" ||
         node.type.name === "bulletList" ||
-        node.type.name === "orderedList") &&
-      nodePos + node.nodeSize > pos
+        node.type.name === "orderedList")
     ) {
-      parTitle = titleAttr;
+      const end = nodePos + node.nodeSize;
+      parTitles.push({ start: nodePos, end, text: titleAttr });
+      parMaxEnd.push(
+        parMaxEnd.length > 0
+          ? Math.max(parMaxEnd[parMaxEnd.length - 1], end)
+          : end,
+      );
     }
 
     return true;
   });
 
-  const sections = foldHeadingAncestry(headings);
-  let crumbs: BreadcrumbSegment[];
-  if (sections.length > 0) {
-    crumbs = sections;
-  } else {
-    const docTitle = getDocTitle(editor);
-    crumbs = docTitle
-      ? [{ text: docTitle, kind: "title" }]
-      : [{ text: "Document start", kind: "documentStart" }];
-  }
+  return { headings, parTitles, parMaxEnd, docTitle };
+}
 
-  if (parTitle) {
-    crumbs.push({ text: parTitle, kind: "parTitle" });
+/** Rightmost index in ascending `arr` whose key is strictly less than `pos`,
+ *  or -1. The strict bound mirrors the old walk's `nodePos >= pos` cutoff. */
+function lastBefore<T>(arr: T[], key: (t: T) => number, pos: number): number {
+  let lo = 0;
+  let hi = arr.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (key(arr[mid]) < pos) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
+}
+
+/** Resolve one hit's breadcrumb from the prebuilt index — O(log doc), no doc
+ *  walk. Exported for tests (equivalence with the old per-hit walk). */
+export function breadcrumbAt(
+  index: BreadcrumbIndex,
+  pos: number,
+): BreadcrumbSegment[] {
+  const h = lastBefore(index.headings, (x) => x.pos, pos);
+  const sections = h >= 0 ? index.headings[h].ancestry : [];
+
+  // `slice()` — ancestry snapshots are shared across hits; the parTitle push
+  // below must not mutate them.
+  const crumbs: BreadcrumbSegment[] =
+    sections.length > 0
+      ? sections.slice()
+      : index.docTitle
+        ? [{ text: index.docTitle, kind: "title" }]
+        : [{ text: "Document start", kind: "documentStart" }];
+
+  // parTitle: innermost span with `start < pos < end`. Walk back from the
+  // last span starting before `pos`; the prefix-max of ends bounds the scan —
+  // once no span up to `i` reaches past `pos`, nothing earlier contains it.
+  const { parTitles, parMaxEnd } = index;
+  for (let i = lastBefore(parTitles, (s) => s.start, pos); i >= 0; i--) {
+    if (parMaxEnd[i] <= pos) break;
+    if (parTitles[i].end > pos) {
+      crumbs.push({ text: parTitles[i].text, kind: "parTitle" });
+      break;
+    }
   }
 
   return crumbs;
@@ -286,16 +383,31 @@ function buildMainTextIndex(editor: Editor): {
   return { text, spans };
 }
 
-/** Find the span whose half-open `[textStart, textEnd)` contains `offset`.
- *  Spans are ascending, so a small linear scan is fine (result building is
- *  event-time, not per keystroke). */
+/** Find the span whose half-open `[textStart, textEnd)` contains `offset`, by
+ *  binary search. Spans are ascending and non-overlapping (consecutive blocks
+ *  are separated by one "\n" char), so the only candidate is the rightmost
+ *  span starting at or before `offset`. The old from-index-0 linear scan was
+ *  O(spans) per hit — and hit count scales with doc length for short queries,
+ *  so the total went quadratic in document size (task 119). */
 function spanAt(spans: BlockSpan[], offset: number): BlockSpan | null {
-  for (const s of spans) {
-    if (offset >= s.textStart && offset < s.textEnd) return s;
-    // A zero-length block (empty paragraph) can host an empty match exactly at
-    // its start; tolerate `offset === textStart === textEnd`.
-    if (offset === s.textStart && s.textStart === s.textEnd) return s;
+  let lo = 0;
+  let hi = spans.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (spans[mid].textStart <= offset) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
   }
+  if (ans < 0) return null;
+  const s = spans[ans];
+  if (offset >= s.textStart && offset < s.textEnd) return s;
+  // A zero-length block (empty paragraph) can host an empty match exactly at
+  // its start; tolerate `offset === textStart === textEnd`.
+  if (offset === s.textStart && s.textStart === s.textEnd) return s;
   return null;
 }
 
@@ -512,15 +624,42 @@ function SearchPanel({
     [onStateChange, onHighlightRange],
   );
 
-  const results: SearchResult[] = useMemo(() => {
-    if (!editor) return [];
-    const re = compileQuery(query, { caseSensitive, wholeWord });
-    if (!re) return [];
+  // ── Task 119: the search input must never wait on the search ─────────────
+  // The query is controlled state, and the results memo used to key on the
+  // LIVE value — so the full search ran synchronously in the same render as
+  // the input echo, stalling each typed character by the search's cost.
+  // `useDeferredValue` over the (memoized, so identity-stable) input tuple
+  // splits that: the urgent render echoes the keystroke with the PREVIOUS
+  // results (memo deps unchanged), then React re-renders at deferred priority
+  // with the new tuple and runs the search — and abandons stale deferred
+  // passes when more keystrokes arrive. All four search inputs ride the same
+  // tuple so a case/word/scope toggle gets the same treatment.
+  const searchInputs = useMemo(
+    () => ({
+      query,
+      caseSensitive,
+      wholeWord,
+      scopes: state.enabledScopes,
+    }),
+    [query, caseSensitive, wholeWord, state.enabledScopes],
+  );
+  const deferred = useDeferredValue(searchInputs);
+  const searchPending = deferred !== searchInputs;
+
+  const { results: searchedResults, totalResults: searchedTotal } = useMemo(() => {
+    const none = { results: [] as SearchResult[], totalResults: 0 };
+    if (!editor) return none;
+    const re = compileQuery(deferred.query, {
+      caseSensitive: deferred.caseSensitive,
+      wholeWord: deferred.wholeWord,
+    });
+    if (!re) return none;
+    const scopes = new Set(deferred.scopes);
 
     // Build the shared UUID→pos map once, only if a uuid-anchored scope is on
     // (the doc walk isn't free). `UUID_POS_SCOPES` is the single source of
     // truth for which scopes need it (see scope-dispatch.ts).
-    const needsUuidMap = UUID_POS_SCOPES.some((s) => enabledScopes.has(s));
+    const needsUuidMap = UUID_POS_SCOPES.some((s) => scopes.has(s));
     const uuidPos = needsUuidMap
       ? buildUuidPosMap(editor)
       : new Map<string, number>();
@@ -549,21 +688,30 @@ function SearchPanel({
     // COMPILE error, so the panel can never silently skip one (SR-F3-02).
     const hits: SearchHit[] = [];
     for (const scope of SCOPE_ORDER) {
-      if (enabledScopes.has(scope)) hits.push(...SCOPE_DISPATCH[scope](ctx));
+      if (scopes.has(scope)) hits.push(...SCOPE_DISPATCH[scope](ctx));
     }
 
     hits.sort((a, b) => a.from - b.from);
 
-    return hits.map((h) => ({
+    // Enrich + expose only the first MAX_RENDERED_RESULTS hits; the true
+    // total survives for the counter and the overflow note. The breadcrumb
+    // index is ONE lazy doc walk shared by every displayed hit (built only if
+    // some displayed hit is anchored) — never a walk per hit.
+    let crumbIndex: BreadcrumbIndex | null = null;
+    const shown =
+      hits.length > MAX_RENDERED_RESULTS
+        ? hits.slice(0, MAX_RENDERED_RESULTS)
+        : hits;
+    const results = shown.map((h) => ({
       ...h,
-      breadcrumb: h.unanchored ? [] : buildBreadcrumb(editor, h.from),
+      breadcrumb: h.unanchored
+        ? []
+        : breadcrumbAt((crumbIndex ??= buildBreadcrumbIndex(editor)), h.from),
     }));
+    return { results, totalResults: hits.length };
   }, [
     editor,
-    query,
-    caseSensitive,
-    wholeWord,
-    enabledScopes,
+    deferred,
     footnotes,
     orphanedFootnotes,
     notes,
@@ -577,6 +725,13 @@ function SearchPanel({
     comments,
     bibEntries,
   ]);
+
+  // A CLEARED input empties the list at urgent priority — otherwise stale
+  // cards would linger under the "Type to search" empty state until the
+  // deferred pass drains. (Keyed on the live `query`, but this is O(1) — the
+  // expensive memo above stays keyed on the deferred tuple.)
+  const results = query ? searchedResults : EMPTY_RESULTS;
+  const totalResults = query ? searchedTotal : 0;
 
   // Pure navigation: highlight + open + scroll. The cursor index is owned by
   // `useCycle` (below) — this only consumes `idx` to scroll the matching card
@@ -643,16 +798,34 @@ function SearchPanel({
 
   // A new query / scope / option change starts a fresh search — reset the
   // cursor so the counter shows "<total> results" (not a carried-over "N of M")
-  // and the next Enter starts at the first hit. Keyed on the search inputs, not
+  // and the next Enter starts at the first hit. Keyed on the DEFERRED inputs
+  // (the ones the results memo actually consumed) so the cursor resets when
+  // the results really swap, never mid-defer against a stale list — and not on
   // the results array (which also changes on a structural edit, where we must
   // NOT drop a live selection). Skips the initial mount.
-  const searchKey = `${query} ${caseSensitive} ${wholeWord} ${state.enabledScopes.join(",")}`;
+  const searchKey = `${deferred.query} ${deferred.caseSensitive} ${deferred.wholeWord} ${deferred.scopes.join(",")}`;
   const prevSearchKeyRef = useRef(searchKey);
   useEffect(() => {
     if (prevSearchKeyRef.current === searchKey) return;
     prevSearchKeyRef.current = searchKey;
     setCycleIdx(null);
   }, [searchKey, setCycleIdx]);
+
+  // One stable click callback for every card (the card passes its own
+  // `(result, idx)` back), so the memoized ResultCard's props are
+  // identity-stable and the urgent echo render (the defer leg above) bails on
+  // all unchanged cards instead of re-rendering the whole list per keystroke.
+  // Point the shared cursor at the row, then navigate: `setCycleIdx` is the
+  // index authority; `onActivateResult` (navigate + persist) runs through it
+  // so a click and a keyboard cycle land identically.
+  const handleResultClick = useCallback(
+    (r: SearchResult, i: number) => {
+      setCycleIdx(i);
+      onActivateResult(r, i);
+      listRef.current?.focus();
+    },
+    [setCycleIdx, onActivateResult],
+  );
 
   const handleNavKeys = useCallback(
     (e: React.KeyboardEvent) => {
@@ -677,7 +850,7 @@ function SearchPanel({
   const headerExtras = query ? (
     <PrevNextCounter
       current={selectedIdx}
-      total={results.length}
+      total={totalResults}
       label="results"
     />
   ) : undefined;
@@ -746,7 +919,7 @@ function SearchPanel({
       scrollTabIndex={0}
     >
       {!query && <p className={PANEL.empty}>Type to search your document.</p>}
-      {query && results.length === 0 && (
+      {query && !searchPending && results.length === 0 && (
         <p className={PANEL.empty}>No matches found.</p>
       )}
       {results.map((r, i) => (
@@ -755,16 +928,15 @@ function SearchPanel({
           idx={i}
           result={r}
           selected={selectedIdx === i}
-          onClick={() => {
-            // Point the shared cursor at this row, then navigate. `setCycleIdx`
-            // is the index authority; `onActivateResult` (navigate + persist)
-            // runs through it so a click and a keyboard cycle land identically.
-            setCycleIdx(i);
-            onActivateResult(r, i);
-            listRef.current?.focus();
-          }}
+          onClick={handleResultClick}
         />
       ))}
+      {totalResults > results.length && (
+        <p className={PANEL.empty}>
+          Showing the first {results.length} of {totalResults} results — refine
+          the search to see the rest.
+        </p>
+      )}
     </Panel>
   );
 }
@@ -923,7 +1095,10 @@ function ScopeChip({
   );
 }
 
-function ResultCard({
+// memo: with the stable `onClick` (the panel's single `handleResultClick`)
+// every prop is identity-stable across the urgent input-echo render, so up to
+// MAX_RENDERED_RESULTS cards bail per keystroke instead of re-rendering.
+const ResultCard = memo(function ResultCard({
   idx,
   result,
   selected,
@@ -932,7 +1107,7 @@ function ResultCard({
   idx: number;
   result: SearchResult;
   selected: boolean;
-  onClick: () => void;
+  onClick: (result: SearchResult, idx: number) => void;
 }) {
   const color = SCOPE_COLOR[result.scope];
   const borderStyle: React.CSSProperties =
@@ -948,7 +1123,7 @@ function ResultCard({
     <button
       data-result-idx={idx}
       className={`${themedCard(theme, selected)} w-full text-left`}
-      onClick={onClick}
+      onClick={() => onClick(result, idx)}
       style={{ ...themedCardStyle(theme, selected), ...borderStyle }}
     >
       <div className={PANEL.cardInner}>
@@ -1028,6 +1203,6 @@ function ResultCard({
       </div>
     </button>
   );
-}
+});
 
 export default memo(SearchPanel);
