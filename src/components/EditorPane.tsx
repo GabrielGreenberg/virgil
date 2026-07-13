@@ -68,6 +68,10 @@ import {
   type EditorChromeConfig,
 } from "./editor-layout/chrome-config";
 import { planJumpDocks } from "./editor-layout/jump-docks";
+import {
+  jumpSelectionFor,
+  type JumpSelectionSetters,
+} from "./editor-layout/jump-selection";
 // The Reader's direct `<OutlinePanel>` branch was collapsed into the single
 // `<OutlineHost>` path (both surfaces now pass `viewPrefs`), so OutlinePanel
 // is no longer mounted here — OutlineHost owns the outline render.
@@ -4540,8 +4544,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // SearchHost cross-panel jump — select the target item AND dock its panel
   // into the live `dockStack` so the jump actually surfaces it. Caller supplies
   // a PanelId (broader than PanelKind: includes shell-only ids like
-  // `omni`/`search`); we fan out to the matching per-kind selection setter for
-  // the ids we recognize, then open the panel via `viewPrefs.openPanelDocked`.
+  // `omni`/`search`); we fan out to the matching per-kind selection setter,
+  // then open the panel via `viewPrefs.openPanelDocked`.
   //
   // This is the ONE shared jump for both the main app and the Reader (the
   // duplicate that used to live in EditorLayout is gone). It previously only
@@ -4549,16 +4553,24 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // from — so the panel never actually opened.
   const openItemInPanel = useCallback(
     (panel: PanelId, itemId: string) => {
-      // Select the target on the panel's native selection slot.
-      if (panel === "notes") setSelectedNoteId(itemId);
-      else if (panel === "footnotes") setSelectedFootnoteId(itemId);
-      else if (panel === "citations") setSelectedCitationId(itemId);
-      else if (panel === "todo") setSelectedTodoId(itemId);
-      else if (panel === "archive") setSelectedArchiveId(itemId);
-      else if (panel === "cutter") setSelectedCutterCardId(itemId);
-      else if (panel === "revisions") setSelectedCommentId(itemId);
-      else if (panel === "bibliography") setSelectedBibKey(itemId);
-      else if (panel === "examples") setSelectedExampleId(itemId);
+      // Select the target on the panel's native selection slot. TOTAL record
+      // over `SearchJumpPanel | "examples"` (jump-selection.ts) — a SCOPE_PANEL
+      // value without a setter here is a compile error, retiring the
+      // silently-dropped-scope if-ladder (reports was the repeat victim:
+      // SR-F3-02 on the search dispatch, task 116 on this jump).
+      const selectionSetters: JumpSelectionSetters = {
+        notes: setSelectedNoteId,
+        footnotes: setSelectedFootnoteId,
+        citations: setSelectedCitationId,
+        todo: setSelectedTodoId,
+        archive: setSelectedArchiveId,
+        cutter: setSelectedCutterCardId,
+        reports: setSelectedReportCardId,
+        revisions: setSelectedCommentId,
+        bibliography: setSelectedBibKey,
+        examples: setSelectedExampleId,
+      };
+      jumpSelectionFor(selectionSetters, panel)?.(itemId);
 
       // Dock the destination via the live `dockStack`. `viewPrefs` is always
       // present on the canonical render path (PaneRail early-returns without
@@ -4570,7 +4582,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         viewPrefs.openPanelDocked(op.id, op.side);
       }
     },
-    [viewPrefs],
+    [
+      viewPrefs,
+      setSelectedNoteId,
+      setSelectedFootnoteId,
+      setSelectedCitationId,
+      setSelectedTodoId,
+      setSelectedArchiveId,
+      setSelectedCutterCardId,
+      setSelectedReportCardId,
+      setSelectedCommentId,
+      setSelectedExampleId,
+    ],
   );
 
   // Side derivations — which side each panel is currently DOCKED on. Hosts
