@@ -53,6 +53,15 @@ export interface SearchHit {
   /** Which field of the item was matched. */
   field?: "title" | "body" | "text" | "notes" | "key" | "author";
   unanchored?: boolean;
+  /** The matched card is archived (its per-card `archived` flag) — stamped
+   *  uniformly at the hit by every collection search fn whose items are
+   *  archivable, the same shape as `unanchored`, so `ResultCard` can render
+   *  an "(archived)" cue. Searching archived content is a feature (that's
+   *  where "I know I wrote this somewhere" text lives); the cue is what keeps
+   *  it from reading as a normal hit. The JUMP side doesn't consume this:
+   *  `openItemInPanel` re-checks the cross-panel archived SSOT (`archivedIds`)
+   *  at click time, which also covers non-search jump callers. */
+  archived?: boolean;
   /** Keystroke-durable identity for a main-text hit: the matched block's
    *  stable uuid + the char offset of the match within that block + the match
    *  length. `navigateToResult` re-resolves this to a LIVE PM range via the
@@ -263,13 +272,16 @@ function resolveItemPos(
   return lowestPos(uuidPos, getLinkedTextObjectIds(item));
 }
 
-/** Turn a matched string + context into a SearchHit. */
+/** Turn a matched string + context into a SearchHit. `archived` is the
+ *  matched item's per-card flag; normalized so active items (false/undefined)
+ *  carry no field at all. */
 function hitFromMatch(
   scope: SearchScope,
   itemId: string | undefined,
   pos: number | null,
   field: SearchHit["field"],
   m: { start: number; end: number; match: string; before: string; after: string },
+  archived?: boolean,
 ): SearchHit {
   const anchored = pos != null;
   return {
@@ -282,6 +294,7 @@ function hitFromMatch(
     after: m.after,
     field,
     unanchored: !anchored,
+    archived: archived || undefined,
   };
 }
 
@@ -331,12 +344,12 @@ export function searchNotes(
     const pos = resolveItemPos(editor, uuidPos, n);
     if (n.title) {
       for (const m of scanText(n.title, re)) {
-        out.push(hitFromMatch("notes", n.id, pos, "title", m));
+        out.push(hitFromMatch("notes", n.id, pos, "title", m, n.archived));
       }
     }
     const body = richJsonToPlainText(n.content);
     for (const m of scanText(body, re)) {
-      out.push(hitFromMatch("notes", n.id, pos, "body", m));
+      out.push(hitFromMatch("notes", n.id, pos, "body", m, n.archived));
     }
   }
   return out;
@@ -356,12 +369,12 @@ export function searchCitations(
   for (const c of persisted) {
     const pos = posById.get(c.id) ?? null;
     for (const m of scanText(c.command, re)) {
-      out.push(hitFromMatch("citations", c.id, pos, "body", m));
+      out.push(hitFromMatch("citations", c.id, pos, "body", m, c.archived));
     }
     const display = getDisplayText(c.command);
     if (display && display !== c.command) {
       for (const m of scanText(display, re)) {
-        out.push(hitFromMatch("citations", c.id, pos, "text", m));
+        out.push(hitFromMatch("citations", c.id, pos, "text", m, c.archived));
       }
     }
   }
@@ -395,11 +408,11 @@ export function searchTodos(
   for (const t of todos) {
     const pos = lowestPos(uuidPos, getLinkedTextObjectIds(t));
     for (const m of scanText(t.text, re)) {
-      out.push(hitFromMatch("todos", t.id, pos, "text", m));
+      out.push(hitFromMatch("todos", t.id, pos, "text", m, t.archived));
     }
     if (t.notes) {
       for (const m of scanText(t.notes, re)) {
-        out.push(hitFromMatch("todos", t.id, pos, "notes", m));
+        out.push(hitFromMatch("todos", t.id, pos, "notes", m, t.archived));
       }
     }
   }
@@ -418,12 +431,12 @@ export function searchArchive(
     const pos = lowestPos(uuidPos, getLinkedTextObjectIds(s));
     if (s.title) {
       for (const m of scanText(s.title, re)) {
-        out.push(hitFromMatch("archive", s.id, pos, "title", m));
+        out.push(hitFromMatch("archive", s.id, pos, "title", m, s.archived));
       }
     }
     const body = richJsonToPlainText(s.content);
     for (const m of scanText(body, re)) {
-      out.push(hitFromMatch("archive", s.id, pos, "body", m));
+      out.push(hitFromMatch("archive", s.id, pos, "body", m, s.archived));
     }
   }
   return out;
@@ -443,17 +456,17 @@ export function searchCutter(
     if (c.kind === "comment") {
       const body = c.text || richJsonToPlainText(c.content);
       for (const m of scanText(body, re)) {
-        out.push(hitFromMatch("cuts", c.id, pos, "body", m));
+        out.push(hitFromMatch("cuts", c.id, pos, "body", m, c.archived));
       }
     } else {
       for (const m of scanText(c.original_text, re)) {
-        out.push(hitFromMatch("cuts", c.id, pos, "title", m));
+        out.push(hitFromMatch("cuts", c.id, pos, "title", m, c.archived));
       }
       for (const m of scanText(c.suggested_text, re)) {
-        out.push(hitFromMatch("cuts", c.id, pos, "body", m));
+        out.push(hitFromMatch("cuts", c.id, pos, "body", m, c.archived));
       }
       for (const m of scanText(c.explanation, re)) {
-        out.push(hitFromMatch("cuts", c.id, pos, "body", m));
+        out.push(hitFromMatch("cuts", c.id, pos, "body", m, c.archived));
       }
     }
   }
@@ -473,12 +486,12 @@ export function searchReports(
     const pos = resolveItemPos(editor, uuidPos, c);
     if (c.kind === "report" && c.title) {
       for (const m of scanText(c.title, re)) {
-        out.push(hitFromMatch("reports", c.id, pos, "title", m));
+        out.push(hitFromMatch("reports", c.id, pos, "title", m, c.archived));
       }
     }
     const body = c.text || richJsonToPlainText(c.content);
     for (const m of scanText(body, re)) {
-      out.push(hitFromMatch("reports", c.id, pos, "body", m));
+      out.push(hitFromMatch("reports", c.id, pos, "body", m, c.archived));
     }
   }
   return out;
@@ -498,7 +511,7 @@ export function searchComments(
     const pos = range?.from ?? null;
     if (c.kind === "comment") {
       for (const m of scanText(c.text, re)) {
-        out.push(hitFromMatch("revisions", c.id, pos, "body", m));
+        out.push(hitFromMatch("revisions", c.id, pos, "body", m, c.archived));
       }
     } else {
       const fields: Array<keyof RevisionCard & string> = [];
@@ -511,7 +524,7 @@ export function searchComments(
       ];
       for (const { value } of checks) {
         for (const m of scanText(value || "", re)) {
-          out.push(hitFromMatch("revisions", c.id, pos, "body", m));
+          out.push(hitFromMatch("revisions", c.id, pos, "body", m, c.archived));
         }
       }
       void fields;

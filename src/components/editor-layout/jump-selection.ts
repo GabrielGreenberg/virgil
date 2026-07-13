@@ -15,7 +15,7 @@
  * selection slot) without being a search scope.
  */
 
-import type { PanelId } from "@/hooks/useViewPrefs";
+import type { CardArchiveView, PanelId } from "@/hooks/useViewPrefs";
 import { SCOPE_PANEL, type SearchJumpPanel } from "@/lib/search-sources";
 
 /** Every panel the cross-panel jump can land a selection in. */
@@ -46,4 +46,30 @@ export function jumpSelectionFor(
 ): ((id: string) => void) | null {
   const partial: Partial<Record<PanelId, (id: string) => void>> = setters;
   return partial[panel] ?? null;
+}
+
+/**
+ * The archive-view half of landing a jump on a VISIBLE card (task 118).
+ *
+ * A card panel renders its list through the panel's archive view
+ * (`CardListPanel` → `filterByArchiveView`), and the jump's selection setter
+ * doesn't change that view — so selecting an archived card while the panel
+ * shows "View Active" (the archived-search-hit case), or an active card while
+ * it shows "View Archives", lands the selection on a card the panel doesn't
+ * render: a silent dead click. This decides the view the jump must switch the
+ * target panel to BEFORE selecting, or null when the target is already
+ * visible under `view`.
+ *
+ * Widens to "all" (not the target's own state) so the landed card keeps its
+ * neighbors for context; an "all" view is never narrowed. Pure — the caller
+ * (`openItemInPanel`) supplies the panel's current view and the target's
+ * archived state from the cross-panel `archivedIds` SSOT, so EVERY jump
+ * caller gets the guarantee, not just search.
+ */
+export function planJumpArchiveView(
+  view: CardArchiveView,
+  targetArchived: boolean,
+): CardArchiveView | null {
+  const visible = view === "all" || (view === "archived") === targetArchived;
+  return visible ? null : "all";
 }
