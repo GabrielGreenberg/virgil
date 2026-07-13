@@ -290,6 +290,10 @@ def cmd_select(_argv: list[str]) -> int:
         "devMode": True,
         "selfReferentialOnly": self_referential_only,
         "nonDreamMemoCount": len(non_dream),
+        # Canonical UTC date — the branch name (step 4) keys off THIS, never a
+        # separate local date.today(), so branch and digest can't split across
+        # two calendar dates (dream.py digest keys off the same _now_iso_date()).
+        "dreamDate": _now_iso_date()[1],
         "memosRoot": str(memos_root),
         "since": (marker[0] if marker else None),
         "sinceMemo": (marker[1] if marker else None),

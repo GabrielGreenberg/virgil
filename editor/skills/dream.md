@@ -189,7 +189,11 @@ python3 editor/scripts/dream_land.py --change @change.json
   worktree and record it under `proposed` with a `git merge dream/<date>` hint:
 
   ```bash
-  DATE=$(python3 -c "import datetime;print(datetime.date.today())")   # or pin via the run
+  # Key the branch off select's canonical UTC dreamDate — the SAME clock
+  # dream.py digest uses — so branch/digest never split across two dates.
+  # (Never local date.today(): at night in a US timezone it lands a day behind
+  #  the UTC digest, forking dream/<D> from the <D+1>.md digest.)
+  DATE=$(python3 editor/scripts/dream.py select | python3 -c "import sys,json;print(json.load(sys.stdin)['dreamDate'])")
   git worktree add -b dream/$DATE ../virgil-dream-$DATE main
   # …make the change in ../virgil-dream-$DATE…, commit it there…
   ```
