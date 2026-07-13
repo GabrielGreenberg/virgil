@@ -134,3 +134,46 @@ describe("panel ↔ outline parity (the task-112 contract)", () => {
     }
   });
 });
+
+describe("per-category character parity (the task-121 contract)", () => {
+  // Chars are now a per-category quantity in the SSOT, exactly parallel to
+  // words — the panel's headline "chars" filters this by the SAME include-set
+  // that drives "words", so the two stats never disagree on scope (before the
+  // fix, "chars" always counted every category, incl. comments which the
+  // default config excludes).
+  const { characters, characterCategories } = computeWordCounts(doc);
+
+  it("per-category characters sum to the whole-doc characters", () => {
+    const sum = ALL_CATEGORIES.reduce(
+      (acc, cat) => acc + (characterCategories[cat] ?? 0),
+      0,
+    );
+    expect(sum).toBe(characters);
+  });
+
+  it("every category has some characters (the fixture exercises all six)", () => {
+    for (const cat of ALL_CATEGORIES) {
+      expect(characterCategories[cat] ?? 0, `category "${cat}"`).toBeGreaterThan(0);
+    }
+  });
+
+  it("an included-set filter over chars matches the panel's filteredChars derivation", () => {
+    // Mirror of the filteredTotal parity test: toggling each category off must
+    // drop the panel's filtered chars by exactly that category's characters —
+    // the same include-set that already drives the filtered words figure.
+    const allOn = Object.fromEntries(
+      ALL_CATEGORIES.map((c) => [c, true]),
+    ) as Record<Category, boolean>;
+    for (const off of ALL_CATEGORIES) {
+      const include = { ...allOn, [off]: false };
+      // WordCountPanel.tsx filteredChars derivation
+      const filteredChars = ALL_CATEGORIES.reduce(
+        (sum, cat) => sum + (include[cat] ? (characterCategories[cat] ?? 0) : 0),
+        0,
+      );
+      expect(filteredChars, `with "${off}" off`).toBe(
+        characters - (characterCategories[off] ?? 0),
+      );
+    }
+  });
+});

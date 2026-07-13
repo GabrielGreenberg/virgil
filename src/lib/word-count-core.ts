@@ -53,7 +53,15 @@ export interface WordCounts {
   characters: number;
   sentences: number;
   readingTime: string;
+  /** Per-category word counts (the include-config filters these for the headline). */
   categories: Record<string, number>;
+  /**
+   * Per-category NON-WHITESPACE character counts, exactly parallel to
+   * `categories`. The panel's headline "chars" filters this by the same
+   * include-set that drives "words", so the two stats never disagree on scope
+   * (task 121). `characterCategories` sums to `characters` over ALL_CATEGORIES.
+   */
+  characterCategories: Record<string, number>;
 }
 
 export function countWords(text: string): number {
@@ -245,10 +253,16 @@ export function computeWordCounts(doc: JSONContent): WordCounts {
 
   const allText: string[] = [];
   const categories: Record<string, number> = {};
+  const characterCategories: Record<string, number> = {};
 
   for (const cat of ALL_CATEGORIES) {
     const joined = cats[cat].join(" ");
     categories[cat] = countWords(joined);
+    // Non-whitespace chars for this category, mirroring the whole-doc rule
+    // below. Join separators are whitespace, so they're stripped and don't
+    // affect the per-category count — the sum over categories equals the
+    // whole-doc `characters` exactly (pinned in word-count-core.test.ts).
+    characterCategories[cat] = joined.replace(/\s/g, "").length;
     if (joined.trim()) allText.push(joined);
   }
 
@@ -259,5 +273,5 @@ export function computeWordCounts(doc: JSONContent): WordCounts {
   const minutes = Math.max(1, Math.round(total / 225));
   const readingTime = minutes === 1 ? "1 min" : `${minutes} min`;
 
-  return { total, characters, sentences, readingTime, categories };
+  return { total, characters, sentences, readingTime, categories, characterCategories };
 }

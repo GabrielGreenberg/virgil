@@ -70,7 +70,7 @@ function getSelectionCounts(editor: Editor): SelectionCounts | null {
 export function useWordCount(editor: Editor | null) {
   const [counts, setCounts] = useState<WordCounts>({
     total: 0, characters: 0, sentences: 0, readingTime: "0 min",
-    categories: {},
+    categories: {}, characterCategories: {},
   });
   const [selection, setSelection] = useState<SelectionCounts | null>(null);
 

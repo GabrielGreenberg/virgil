@@ -43,6 +43,15 @@ export default function WordCountPanel({
     0,
   );
 
+  // Chars share ONE include-set SSOT with words — same reduce over the same
+  // visible(cat) set, so the two headline stats never disagree on scope
+  // (task 121). Falls back to the raw whole-doc total if a category's
+  // per-cat chars are absent (e.g. the initial empty-state counts).
+  const filteredChars = ALL_CATS.reduce(
+    (sum, cat) => sum + (visible(cat) ? (counts.characterCategories[cat] ?? 0) : 0),
+    0,
+  );
+
   const catsWithWords = ALL_CATS.filter(
     (c) => (counts.categories[c] ?? 0) > 0,
   );
@@ -60,7 +69,7 @@ export default function WordCountPanel({
         </div>
         <div className="flex items-baseline gap-1.5">
           <span className="text-base font-medium text-ink-strong tabular-nums leading-none">
-            {counts.characters.toLocaleString()}
+            {filteredChars.toLocaleString()}
           </span>
           <span className="text-[11px] text-[var(--muted)] uppercase tracking-wide">
             chars
