@@ -90,7 +90,9 @@ export interface ListView {
   // viewMode is meaningful ONLY on a paper:<citekey> "list" — the paper-detail
   // Text/PDF toggle. Persisted per-(panel,paper) so each source remembers its
   // own Text-vs-PDF posture across reloads AND intra-session paper switches.
-  // Absent ⇒ the default ("text") for a paper the user never toggled.
+  // Absent ⇒ the OPEN-AWARE default resolved by the reader, `usePaperViewMode`:
+  // "pdf" when a PDF is on disk, else "text" (a DOCX-only source). A never-
+  // toggled paper leaves this unset and rides that default.
   viewMode?: "text" | "pdf";
 }
 
@@ -603,8 +605,12 @@ export function setListViewMode(
  * the PDF default never strands them). Idempotent in effect: it always sets the
  * mode to the open-default, so re-running it on the same open is harmless.
  *
- * No-op write skip: if the slice is already at the desired mode we don't commit
- * (avoids a needless notify/render on the common PDF-source reopen).
+ * No-op on a FRESH open: an UNSEEDED slice is treated as already at the open
+ * default (`existing ?? open`), so this commits ONLY when a PERSISTED choice
+ * diverges — there is nothing to override on a first open. `usePaperViewMode`'s
+ * own read is open-aware with the SAME formula, so render 1 already paints the
+ * right branch; seeding the slice here would be a redundant post-paint write.
+ * (Also skips the common PDF-source reopen already at "pdf".)
  */
 export function resetPaperViewModeOnOpen(
   scope: string,
@@ -614,7 +620,7 @@ export function resetPaperViewModeOnOpen(
 ): void {
   const open: "text" | "pdf" = pdfAvailable ? "pdf" : "text";
   const s = ensureInit();
-  const existing = s.scopes[scope]?.[panel]?.lists[libId]?.viewMode;
+  const existing = s.scopes[scope]?.[panel]?.lists[libId]?.viewMode ?? open;
   if (existing === open) return;
   commit(
     withScopePanel(s, scope, panel, (p) => withList(p, libId, { viewMode: open })),
@@ -878,32 +884,42 @@ export function useListView(
 /**
  * Per-(panel, paper) Text/PDF view mode for the paper-detail header toggle.
  * `libId` is the `paper:<citekey>` key (the same slice the reader scroll uses).
- * Returns the current mode (default "pdf" when the slice is unset) plus a setter.
+ * Returns the current mode plus a setter. The default for an UNSEEDED slice is
+ * **open-aware**: `pdfOnDisk ? "pdf" : "text"` — a DOCX-only source (no PDF on
+ * disk) resolves straight to "text" on the FIRST read, so render 1 already
+ * paints the right branch. This is the SSOT the field comment on `viewMode`
+ * (`ListView`) points at; it removed the old open-blind `?? "pdf"` default that
+ * flashed the PDF branch for one paint on every DOCX open before the post-paint
+ * reset corrected it.
  *
- * View-mode is now SESSION-ONLY in effect (user decision 2026-06-23: "always
- * reset to PDF on open"). The store still HOLDS the value — so the live toggle
+ * View-mode is SESSION-ONLY in effect (user decision 2026-06-23: "always reset
+ * to PDF on open"). The store still HOLDS the value — so the live toggle
  * re-renders the detail pane and an intra-session re-render restores the user's
  * current choice — but RightDetail calls `resetPaperViewModeOnOpen()` once per
- * paper open, snapping the stored posture back to PDF whenever a PDF exists.
- * So a prior Text toggle does NOT stick across a reopen; reopening the paper
- * lands on PDF again. DOCX-only sources with no PDF on disk reset to "text"
- * instead (the open-reset passes pdfAvailable), so the PDF default never strands
- * them — this subsumes the old post-load coercion.
+ * paper open, snapping any PERSISTED posture back to the open default. Because
+ * this read is now open-aware, that reset is a no-op on a FRESH open (nothing to
+ * override) — it only fires when a persisted choice diverges from the open
+ * default. DOCX-only sources reset to "text"; this subsumes the old post-load
+ * coercion.
  */
 export function usePaperViewMode(
   scope: string,
   panel: PanelKey,
   libId: string,
+  pdfOnDisk: boolean,
 ): {
   viewMode: "text" | "pdf";
   setViewMode: (m: "text" | "pdf") => void;
 } {
   // The store hands back the stable module-level EMPTY_LIST_VIEW for the
   // absent slice, so reading `.viewMode` directly (a primitive) is snapshot-
-  // safe without the object-identity caching `useListView` needs.
+  // safe without the object-identity caching `useListView` needs. The absent
+  // default is open-aware so the FIRST paint is correct (no PDF-branch flash on
+  // a DOCX-only open); `pdfOnDisk` in deps re-reads if availability resolves
+  // late.
   const getSnap = useCallback(
-    () => readListView(scope, panel, libId).viewMode ?? "pdf",
-    [scope, panel, libId],
+    () => readListView(scope, panel, libId).viewMode ?? (pdfOnDisk ? "pdf" : "text"),
+    [scope, panel, libId, pdfOnDisk],
   );
   const viewMode = useSyncExternalStore(subscribe, getSnap, getSnap);
   const setViewMode = useCallback(
