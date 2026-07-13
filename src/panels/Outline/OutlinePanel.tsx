@@ -16,6 +16,7 @@ import {
   setOutlineCollapsedForDoc,
   getOutlineCollapsedForDoc,
 } from "./outline-prefs-store";
+import { resolveDragCommit } from "./focus-band-drag";
 
 /* ── Indentation model (single source of truth) ─────────────────────────
  * One place defines the outline's left-edge geometry, used by both the view
@@ -1144,15 +1145,19 @@ function FocusBand({
   //  - `fixedPx`: pixel position of the edge that stays put (the band's bottom
   //    when dragging "top", its top when dragging "bottom"), captured at
   //    mousedown so the transient rect is computed against it.
-  //  - `fixedBlockIndex`: the committed block index of that fixed edge — used
-  //    on mouseup to decide whether the dragged edge actually moved.
+  //  - `startBlockIndex`/`endBlockIndex`: the committed range at mousedown.
+  //    On mouseup, resolveDragCommit derives the dragged edge's OWN row from
+  //    these to decide whether it actually moved (task 113 — comparing against
+  //    the FIXED edge's row silently dropped the shrink-onto-opposite-edge
+  //    gesture and let a drag back to the origin row commit a no-op).
   //  - `pendingBlockIndex`: the block the dragged edge is currently snapped to
   //    (the single value committed via onSnapBoundary on mouseup).
   const dragRef = useRef<{
     edge: "top" | "bottom";
     rows: { blockIndex: number; top: number; mid: number; bottom: number }[];
     fixedPx: number;
-    fixedBlockIndex: number;
+    startBlockIndex: number;
+    endBlockIndex: number;
     pendingBlockIndex: number | null;
   } | null>(null);
 
@@ -1289,22 +1294,32 @@ function FocusBand({
     const handleMouseUp = () => {
       const drag = dragRef.current;
       if (!drag) return;
-      // Commit ONCE — but only if the dragged edge actually moved off the
-      // fixed-edge-committed block (otherwise it's a no-op click on the handle
-      // and we skip the state write + re-render + breadcrumb recompute).
-      const moved =
-        drag.pendingBlockIndex != null &&
-        drag.pendingBlockIndex !== drag.fixedBlockIndex;
+      // Commit ONCE — but only if the dragged edge actually moved off its OWN
+      // committed row (otherwise it's a no-op click/return-to-origin and we
+      // skip the state write + re-render + breadcrumb recompute). The decision
+      // lives in resolveDragCommit (pure, unit-tested — task 113).
+      const decision = resolveDragCommit({
+        edge: drag.edge,
+        pendingBlockIndex: drag.pendingBlockIndex,
+        startBlockIndex: drag.startBlockIndex,
+        endBlockIndex: drag.endBlockIndex,
+      });
       dragRef.current = null;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       setAnimated(true);
-      if (moved) {
+      if (decision.commit) {
         // After this lands, focusState updates and the (now un-guarded)
         // measure() recomputes the authoritative rect — which matches the
         // transient rect we already painted (same snapped row → same offsetTop/
         // offsetHeight), so there is no visible jump.
-        onSnapBoundary(drag.edge, drag.pendingBlockIndex as number);
+        onSnapBoundary(drag.edge, decision.blockIndex);
+      } else {
+        // No commit → focusState is untouched, so nothing re-runs measure()
+        // for us (the MO fires on childList only). Restore the authoritative
+        // rect ourselves — the mid-drag transient rect may still be painted
+        // (dragRef is cleared, so measure() no longer bails).
+        measure();
       }
     };
 
@@ -1314,7 +1329,9 @@ function FocusBand({
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [onSnapBoundary, focusState.locked, scrollRef]);
+    // `measure` re-identifies only on focusState/row changes (commit-time,
+    // never mid-drag), so this re-subscribe stays off the drag path.
+  }, [onSnapBoundary, focusState.locked, scrollRef, measure]);
 
   const startDrag = (edge: "top" | "bottom") => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1338,12 +1355,18 @@ function FocusBand({
       rows.push({ blockIndex: r.blockIndex, top, mid: top + el.offsetHeight / 2, bottom });
     }
     // The OPPOSITE edge stays put for the whole drag. Capture its pixel position
-    // from the current band rect and its committed block index from focusState
-    // so the transient rect (and the moved-check on commit) reference it.
+    // from the current band rect so the transient rect references it, plus the
+    // full committed range so the moved-check on commit compares the dragged
+    // edge against its OWN row (task 113).
     const fixedPx = edge === "top" ? band.top + band.height : band.top;
-    const fixedBlockIndex =
-      edge === "top" ? focusState.endBlockIndex : focusState.startBlockIndex;
-    dragRef.current = { edge, rows, fixedPx, fixedBlockIndex, pendingBlockIndex: null };
+    dragRef.current = {
+      edge,
+      rows,
+      fixedPx,
+      startBlockIndex: focusState.startBlockIndex,
+      endBlockIndex: focusState.endBlockIndex,
+      pendingBlockIndex: null,
+    };
     document.body.style.cursor = "ns-resize";
     document.body.style.userSelect = "none";
     // Disable transitions during drag so the band tracks the cursor.
