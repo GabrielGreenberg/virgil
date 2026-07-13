@@ -48,7 +48,7 @@ export default function CutterPanel({
 }: {
   cards: CutterCard[];
   goal: CutterGoal | null;
-  onSetGoal: (target: number, initialWords: number) => void;
+  onSetGoal: (target: number, currentWords: number) => void;
   onClearGoal: () => void;
   onAddComment: (anchorRect?: DOMRect) => CutterCommentCardData;
   onAddSuggestion: (anchorRect?: DOMRect) => CutterSuggestionCardData;
