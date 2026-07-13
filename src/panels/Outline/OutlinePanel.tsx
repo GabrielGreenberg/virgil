@@ -17,6 +17,7 @@ import {
   getOutlineCollapsedForDoc,
 } from "./outline-prefs-store";
 import { resolveDragCommit } from "./focus-band-drag";
+import { landingBlockIndex, isRejectedDrop, resolveDropIndicator } from "./outline-drop";
 
 /* ── Indentation model (single source of truth) ─────────────────────────
  * One place defines the outline's left-edge geometry, used by both the view
@@ -1001,6 +1002,20 @@ function EditableOutline({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ podId: string; position: "above" | "below" } | null>(null);
 
+  // The painted drop-line derives from the LANDING index via the same
+  // outline-drop helpers handleDrop uses, so indicator and effect can't
+  // disagree (task 114): a "below" hover on an EXPANDED heading paints after
+  // the section's last visible member (where the blocks actually land), not
+  // between the heading and its first child; a hover whose drop handleDrop
+  // would reject (own pod / inside the dragged section) lights nothing.
+  const dropIndicator = useMemo(() => {
+    if (!dropTarget) return null;
+    const target = pods.find((p) => p.id === dropTarget.podId);
+    if (!target) return null;
+    const source = draggingId ? pods.find((p) => p.id === draggingId) : undefined;
+    return resolveDropIndicator(visiblePods, target, dropTarget.position, source);
+  }, [dropTarget, pods, visiblePods, draggingId]);
+
   const handleDragStart = useCallback((pod: OutlinePod, e: React.DragEvent) => {
     setDraggingId(pod.id);
     e.dataTransfer.effectAllowed = "move";
@@ -1036,16 +1051,10 @@ function EditableOutline({
       return;
     }
 
-    // Compute the target block index
-    let targetBlockIndex: number;
-    if (dropTarget.position === "above") {
-      targetBlockIndex = targetPod.blockIndex;
-    } else {
-      targetBlockIndex = targetPod.blockIndex + targetPod.blockCount;
-    }
-
-    // Don't drop within source's own range
-    if (targetBlockIndex > sourcePod.blockIndex && targetBlockIndex < sourcePod.blockIndex + sourcePod.blockCount) {
+    // Landing index + own-range rejection through the shared outline-drop
+    // helpers — the same math the indicator paints from (task 114).
+    const targetBlockIndex = landingBlockIndex(targetPod, dropTarget.position);
+    if (isRejectedDrop(sourcePod, targetPod, targetBlockIndex)) {
       setDraggingId(null);
       setDropTarget(null);
       return;
@@ -1084,7 +1093,7 @@ function EditableOutline({
           pod={pod}
           isDragging={draggingId === pod.id}
           dropPosition={
-            dropTarget?.podId === pod.id ? dropTarget.position : null
+            dropIndicator?.podId === pod.id ? dropIndicator.position : null
           }
           isCollapsed={collapsed.has(pod.id)}
           onToggleCollapse={
