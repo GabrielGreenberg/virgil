@@ -298,4 +298,34 @@ describe("LeftList — scroll restore one-shot guard (C7-001)", () => {
     rerender(<Harness entries={many(300)} libId="other" />);
     expect(sc.scrollTop).toBe(3000);
   });
+
+  it("switching to a never-scrolled (saved 0) library resets the reused list to the top — no leaked offset", () => {
+    // A is scrolled deep; B has never been scrolled (saved scrollTop defaults
+    // to 0). The component is reused (no `key`) across the libId switch, so the
+    // rows DOM + viewport survive from A. The earlier `scrollTop > 0` gate made
+    // the reset for B a silent no-op, leaking A's offset into B's window.
+    setListScroll("", "left", "libA", 1500);
+    // libB intentionally left unset → saved scrollTop === 0.
+
+    const { container, rerender } = render(
+      <Harness entries={many(300)} libId="libA" />,
+    );
+    const sc = scrollContainer(container);
+    expect(sc.scrollTop).toBe(1500); // A restored deep
+
+    // Switch to the never-scrolled B. The reused element still holds 1500.
+    rerender(<Harness entries={many(300)} libId="libB" />);
+
+    // DOM-level: the reused scroll container is reset to the top.
+    expect(sc.scrollTop).toBe(0);
+
+    // Window-level (the visible bug): the virtualization window must resolve to
+    // the top of the list, not the leaked mid-list offset. The rendered slice
+    // is offset by `translateY(padTop)`, where padTop = startIndex * ROW_HEIGHT.
+    // At the leaked scrollTop 1500 / 29px rows the window starts at index ~43
+    // (padTop ≈ 1247px); after the reset padTop must be 0 (sort-order agnostic).
+    const slice = sc.querySelector<HTMLElement>('div[style*="translateY"]');
+    expect(slice).not.toBeNull();
+    expect(slice!.style.transform).toBe("translateY(0px)");
+  });
 });

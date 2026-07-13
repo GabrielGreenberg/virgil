@@ -278,21 +278,28 @@ export default function LeftList({
   // runs once for the new list and stamps the ref. A separate reset effect
   // would null the ref AFTER this layout effect and trigger a SECOND restore
   // on the next `filtered` change (yanking the user back) — so there is none.
+  //
+  // The apply is UNCONDITIONAL over the offset domain — saved 0 included. This
+  // component is REUSED (no `key`) across a `libId` switch, so `el.scrollTop`
+  // and the `viewport` state survive from the OUTGOING library. If we only
+  // wrote when `scrollTop > 0` (as an earlier revision did), switching to a
+  // never-scrolled library (saved 0) would skip the write yet still stamp the
+  // ref — leaking the outgoing library's offset into the reused list and
+  // painting it mid-list instead of at row 0. "Restore" must be total over the
+  // offset domain, not truthy-only.
   useLayoutEffect(() => {
     if (restoredForRef.current === libId) return;
     const el = rowsRef.current;
     if (!el) return;
     if (filtered.length === 0) return; // empty list — keep the saved value
     if (el.scrollHeight <= el.clientHeight) return; // not scrollable yet
-    if (scrollTop > 0) {
-      el.scrollTop = scrollTop;
-      // Seed the window to the restored offset. This runs in a
-      // useLayoutEffect, so React flushes this state update SYNCHRONOUSLY
-      // before paint — the first painted frame already renders the rows at
-      // the restored offset (overscan covers any residual), instead of
-      // painting row 0 then jumping once the scroll event lands.
-      setViewport({ scrollTop: el.scrollTop, height: el.clientHeight });
-    }
+    el.scrollTop = scrollTop;
+    // Seed the window to the restored offset (0 included). This runs in a
+    // useLayoutEffect, so React flushes this state update SYNCHRONOUSLY before
+    // paint — the first painted frame already renders the rows at the restored
+    // offset (overscan covers any residual), instead of painting the reused /
+    // leaked offset then jumping once the scroll event lands.
+    setViewport({ scrollTop: el.scrollTop, height: el.clientHeight });
     restoredForRef.current = libId;
     // `scrollTop` is read once at restore time; we intentionally don't
     // re-restore when it changes (that's the live user scroll feeding back).
