@@ -37,9 +37,16 @@ export interface BlockRangeId {
  * edit" class (SR-F1-01 / SR-A2-01 / SR-F3-04).
  *
  * The block's text content begins at `pos + 1` (just inside the node's opening
- * token), so `from = pos + 1 + offset`. Returns `null` when the snapshot no
- * longer carries the block (it was deleted) — the caller should then no-op the
- * highlight rather than scroll to a stale position.
+ * token), so `from = pos + 1 + offset`. The two failure modes are distinct and
+ * the caller must treat them differently:
+ *
+ * - `null` — the snapshot is PRESENT but no longer carries the block: it was
+ *   deleted. The caller must no-op (the baked search-time range now points at
+ *   whatever unrelated text shifted into those coordinates).
+ * - `undefined` — there is NO snapshot at all (an editor surface without the
+ *   DocStructureObserver, or no editor). Only here may the caller fall back to
+ *   its baked range. On the main editor `buildInitial` populates the snapshot
+ *   at plugin-state init, so this branch never fires there.
  *
  * **Keystroke sanctity:** call this at a discrete user action (a result
  * click), never per keystroke — same call-site discipline as `useLivePosResolver`.
@@ -48,9 +55,9 @@ export interface BlockRangeId {
 export function resolveLiveBlockRange(
   editor: Editor | null,
   id: BlockRangeId,
-): { from: number; to: number } | null {
+): { from: number; to: number } | null | undefined {
   const s = getBus(editor)?.structure;
-  if (!s) return null;
+  if (!s) return undefined;
   const block = s.blocks.get(id.blockUuid);
   if (!block) return null;
   const from = block.pos + 1 + id.offset;

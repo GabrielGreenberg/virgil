@@ -26,7 +26,10 @@ import {
   buildUuidPosMap,
 } from "@/lib/search-sources";
 import { SCOPE_DISPATCH, UUID_POS_SCOPES } from "@/panels/Search/scope-dispatch";
-import { resolveLiveBlockRange } from "@/hooks/useLivePosResolver";
+import {
+  resolveLiveBlockRange,
+  type BlockRangeId,
+} from "@/hooks/useLivePosResolver";
 import type {
   ArchivedSnippet,
   BibEntry,
@@ -298,12 +301,42 @@ function spanAt(spans: BlockSpan[], offset: number): BlockSpan | null {
 
 /** Convert a joined-text char offset to a PM position WITHIN `span`, walking
  *  its run table so inline atoms (0 chars / 1 PM slot) don't skew the result.
- *  Falls back to `contentStart + (offset - textStart)` for the degenerate
- *  empty-block case. */
-function charOffsetToPm(span: BlockSpan, charOffset: number): number {
-  for (const run of span.runs) {
-    if (charOffset >= run.charStart && charOffset <= run.charStart + run.len) {
+ *
+ *  Runs are char-contiguous but NOT PM-contiguous: inline atoms between two
+ *  text nodes contribute 0 chars but ≥1 PM slot, so the char offset at a
+ *  run boundary names TWO distinct PM positions — before the atoms (the
+ *  preceding run's end) and after them (the following run's start). Which one
+ *  is right depends on the endpoint being converted:
+ *
+ *  - `"start"` — a match STARTING at the boundary begins with the following
+ *    run's first char, so it resolves AFTER the atoms. (The old single
+ *    inclusive-bound scan resolved it to the preceding run's end — the atom's
+ *    own slot — anchoring the highlight one PM slot early and painting the
+ *    atom pill.)
+ *  - `"end"` — a match ENDING at the boundary must stop BEFORE the atoms,
+ *    at the preceding run's end.
+ *
+ *  A block-final boundary (no following run) resolves to the last run's end
+ *  for both endpoints. Falls back to `contentStart + (offset - textStart)`
+ *  for the degenerate empty-block case (no runs). */
+function charOffsetToPm(
+  span: BlockSpan,
+  charOffset: number,
+  endpoint: "start" | "end",
+): number {
+  const runs = span.runs;
+  for (let i = 0; i < runs.length; i++) {
+    const run = runs[i];
+    const upper = run.charStart + run.len;
+    if (charOffset >= run.charStart && charOffset < upper) {
       return run.pmStart + (charOffset - run.charStart);
+    }
+    if (charOffset === upper) {
+      if (endpoint === "end") return run.pmStart + run.len;
+      // Start endpoint at a shared boundary: defer to the following run
+      // (char-contiguous, so its charStart === upper) to land after the
+      // atoms; block-final (no following run) resolves here.
+      if (!runs[i + 1]) return run.pmStart + run.len;
     }
   }
   return span.contentStart + (charOffset - span.textStart);
@@ -328,9 +361,15 @@ export function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
     // `to` is computed from the END offset clamped to the start block's text.
     const startSpan = spanAt(spans, matchStart);
     if (startSpan) {
-      const pmFrom = charOffsetToPm(startSpan, matchStart);
+      const pmFrom = charOffsetToPm(startSpan, matchStart, "start");
       const clampedEnd = Math.min(matchEnd, startSpan.textEnd);
-      const pmTo = charOffsetToPm(startSpan, clampedEnd);
+      // A zero-length match sits at ONE position — reuse `pmFrom` rather than
+      // converting the same offset with "end" semantics, which at an atom
+      // boundary would resolve BEFORE the atoms and invert the range.
+      const pmTo =
+        clampedEnd === matchStart
+          ? pmFrom
+          : charOffsetToPm(startSpan, clampedEnd, "end");
       out.push({
         scope: "mainText",
         from: pmFrom,
@@ -354,6 +393,35 @@ export function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
     if (m[0].length === 0) re.lastIndex++;
   }
   return out;
+}
+
+/**
+ * Decide the highlight range for a block-anchored main-text hit at CLICK time
+ * (SR-F1-01 / SR-F3-04): re-resolve the durable `{blockUuid, offset, length}`
+ * identity to a LIVE PM range from the DocStructure snapshot, never the baked
+ * search-time `{from,to}`. If the user typed in an earlier paragraph after
+ * searching, the block shifted — the live range tracks it.
+ *
+ * The resolver's two failure modes get DIFFERENT treatment (its contract):
+ * - `null` (snapshot present, block deleted) → return `null` so the caller
+ *   no-ops the highlight. The baked range is still in bounds after a mid-doc
+ *   deletion, so falling back would amber-highlight and scroll-center whatever
+ *   unrelated text now occupies those coordinates.
+ * - `undefined` (no snapshot at all — an editor surface without the
+ *   DocStructureObserver) → fall back to the baked range. On the main editor
+ *   this never fires: `buildInitial` populates the snapshot at plugin-state
+ *   init, so every uuid-bearing block is carried from doc load.
+ *
+ * Exported for tests (like `searchMainText` above).
+ */
+export function resolveAnchoredHighlight(
+  editor: Editor | null,
+  blockId: BlockRangeId,
+  baked: { from: number; to: number },
+): { from: number; to: number } | null {
+  const live = resolveLiveBlockRange(editor, blockId);
+  if (live === undefined) return baked;
+  return live;
 }
 
 function SearchPanel({
@@ -520,20 +588,14 @@ function SearchPanel({
       if (result.unanchored) {
         onHighlightRange(null);
       } else if (result.blockId) {
-        // SR-F1-01 / SR-F3-04: re-resolve the match to a LIVE PM range from the
-        // DocStructure snapshot at CLICK time, never the baked `result.from`.
-        // If the user typed in an earlier paragraph after searching, the block
-        // shifted — the live range tracks it. Fall back to the baked range when
-        // the snapshot doesn't carry the block (the bus isn't warmed on a
-        // freshly-loaded doc until the first structural edit — the same
-        // `resolve(id) ?? baked` discipline OmniViewPanel uses). If the block
-        // was genuinely deleted, the baked range is stale but the editor's
-        // highlight apply clamps/no-ops an out-of-range position.
+        // Live re-resolution + the deleted-block no-op — the full policy
+        // (including why the baked fallback is reserved for the no-snapshot
+        // case) lives on `resolveAnchoredHighlight`.
         onHighlightRange(
-          resolveLiveBlockRange(editor, result.blockId) ?? {
+          resolveAnchoredHighlight(editor, result.blockId, {
             from: result.from,
             to: result.to,
-          },
+          }),
         );
       } else {
         // Collection hits (footnote/citation/etc.) anchor on a paragraph; the
