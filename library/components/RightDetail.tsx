@@ -78,7 +78,18 @@ export default function RightDetail({
   // placeholder below); use a stable sentinel libId so the hook order stays
   // constant — it's read only when a real paper is selected.
   const viewModeLibId = `paper:${entry?.citekey ?? "__none__"}`;
-  const { viewMode, setViewMode } = usePaperViewMode(scope, panel, viewModeLibId);
+  // Whether a PDF source is on disk for THIS paper. Computed from `entry`
+  // directly (a null entry has no PDF). Hoisted above the view-mode read so the
+  // hook's default is OPEN-AWARE — render 1 paints Text for a DOCX-only source
+  // instead of flashing the PDF branch (and its doomed FSA readFile) for one
+  // frame before the post-paint reset corrects it.
+  const pdfOnDisk = !!entry && hasPdfSource(entry);
+  const { viewMode, setViewMode } = usePaperViewMode(
+    scope,
+    panel,
+    viewModeLibId,
+    pdfOnDisk,
+  );
   const [editOpen, setEditOpen] = useState(false);
 
   // F#9: the "open in a new tab" link is redundant inside the OUTER Virgil-bar
@@ -246,11 +257,6 @@ export default function RightDetail({
       ),
     [pdfPageState.pagesCount, pdfPageState.currentPage],
   );
-
-  // Whether a PDF source is on disk for THIS paper. Computed from `entry`
-  // directly (not the post-early-return `pdfAvailable`) so the hook order below
-  // stays stable; a null entry has no PDF.
-  const pdfOnDisk = !!entry && hasPdfSource(entry);
 
   // On every paper (re)open: close any stale edit modal AND reset the view mode
   // to the fresh-open default — PDF when a PDF exists, else Text. This makes the

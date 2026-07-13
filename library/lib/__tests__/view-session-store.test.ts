@@ -8,6 +8,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { renderHook } from "@testing-library/react";
 
 import {
   VIEW_SESSION_KEY,
@@ -23,6 +24,7 @@ import {
   setListSort,
   setListViewMode,
   resetPaperViewModeOnOpen,
+  usePaperViewMode,
   migrateLegacyLayoutSizes,
   setPanelTabs,
   setProjectHidden,
@@ -447,9 +449,10 @@ describe("view-session-store — always-reset-to-PDF on open (FIX #3)", () => {
   });
 
   it("the Text toggle still works WITHIN the session after the open reset", () => {
-    resetPaperViewModeOnOpen("", "left", "paper:foo", true); // open → pdf
-    expect(getSession().scopes[""].left.lists["paper:foo"].viewMode).toBe("pdf");
-    // Live toggle to Text during the session.
+    // Fresh open is a no-op on the store (the reader's open-aware default
+    // supplies "pdf"); the slice stays unseeded until the user acts.
+    resetPaperViewModeOnOpen("", "left", "paper:foo", true);
+    // Live toggle to Text during the session seeds the slice and sticks.
     setListViewMode("", "left", "paper:foo", "text");
     expect(getSession().scopes[""].left.lists["paper:foo"].viewMode).toBe("text");
   });
@@ -460,15 +463,57 @@ describe("view-session-store — always-reset-to-PDF on open (FIX #3)", () => {
     expect(getSession().scopes[""].left.lists["paper:docx"].viewMode).toBe("text");
   });
 
-  it("is a quiet no-op (no notify) when the slice is already at the open default", () => {
-    resetPaperViewModeOnOpen("", "left", "paper:foo", true); // open → pdf
+  it("is a quiet no-op on a FRESH open — nothing to override, nothing seeded or notified", () => {
+    getSession(); // force init so we measure only the reset's own notifications
     const seen = vi.fn();
     const unsub = subscribe(seen);
-    // Re-running on the same open (still pdf) must not commit/notify again.
+    // Fresh (unseeded) open of a PDF paper: `usePaperViewMode`'s own read is
+    // open-aware and already resolves "pdf", so there is nothing to override —
+    // no commit, no notify, and the slice is NOT eagerly seeded (task 130).
     resetPaperViewModeOnOpen("", "left", "paper:foo", true);
+    expect(seen).not.toHaveBeenCalled();
+    expect(getSession().scopes[""].left.lists["paper:foo"]).toBeUndefined();
+    unsub();
+  });
+
+  it("is a quiet no-op when a persisted slice already sits at the open default", () => {
+    setListViewMode("", "left", "paper:foo", "pdf"); // seed at open default
+    flushNow();
+    const seen = vi.fn();
+    const unsub = subscribe(seen);
+    resetPaperViewModeOnOpen("", "left", "paper:foo", true); // still pdf → no-op
     expect(seen).not.toHaveBeenCalled();
     expect(getSession().scopes[""].left.lists["paper:foo"].viewMode).toBe("pdf");
     unsub();
+  });
+});
+
+describe("view-session-store — usePaperViewMode open-aware default (task 130)", () => {
+  // The Done-when contract: the FIRST read (initial render, before any
+  // post-paint reset effect) resolves to `pdfOnDisk ? "pdf" : "text"` for an
+  // unseeded slice — so a DOCX-only open never flashes the PDF branch.
+  it("an UNSEEDED slice resolves to 'text' on the first read when no PDF is on disk (DOCX-only)", () => {
+    const { result } = renderHook(() =>
+      usePaperViewMode("", "left", "paper:docxonly", /* pdfOnDisk */ false),
+    );
+    expect(result.current.viewMode).toBe("text");
+  });
+
+  it("an UNSEEDED slice resolves to 'pdf' on the first read when a PDF is on disk", () => {
+    const { result } = renderHook(() =>
+      usePaperViewMode("", "left", "paper:haspdf", /* pdfOnDisk */ true),
+    );
+    expect(result.current.viewMode).toBe("pdf");
+  });
+
+  it("a PERSISTED choice still wins over the open-aware default", () => {
+    // pdfOnDisk=true would default to "pdf", but the persisted Text choice wins
+    // (the intra-session live-toggle contract; the OPEN reset is what snaps it).
+    setListViewMode("", "left", "paper:toggled", "text");
+    const { result } = renderHook(() =>
+      usePaperViewMode("", "left", "paper:toggled", true),
+    );
+    expect(result.current.viewMode).toBe("text");
   });
 });
 
