@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getHiddenTopLevelIndices, sectionFoldingPluginKey } from "@/lib/section-folding";
+import { getHiddenTopLevelIndices } from "@/lib/section-folding";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useLivePosResolver, buildParagraphAnchorMap } from "@/hooks/useLivePosResolver";
 import { filterOmniItemsByFoldAndFocus } from "./omni-fold-focus-filter";
+import { subscribeFoldMirrorInvalidation } from "./omni-fold-mirror-invalidation";
 import {
   buildNestedContainerChildMap,
   nestContainerChildren,
@@ -37,7 +38,6 @@ import type { useRevisions } from "@/hooks/useRevisions";
 import type { useCutter } from "@/hooks/useCutter";
 import type { useReports } from "@/hooks/useReports";
 import type { JSONContent } from "@tiptap/react";
-import type { Transaction } from "@tiptap/pm/state";
 import type {
   ArchivedSnippet,
   OrphanedFootnote,
@@ -206,42 +206,27 @@ export function OmniHost(p: OmniHostProps) {
   const rev = useStructuralRevisions(editorInstance);
 
   // Re-derive `hiddenTopLevel` only on events that legitimately invalidate
-  // it: fold-state changes (via the section-folding plugin's meta) and
-  // heading add/remove (via the DocStructureBus — heading positions
-  // changing shifts which top-level child indices are folded).
+  // it: fold-state changes AND anything that shifts the absolute top-level
+  // child index map `getHiddenTopLevelIndices` reads — heading add/remove
+  // AND plain block add/remove/reorder. The invalidation set lives in
+  // `subscribeFoldMirrorInvalidation`, which MIRRORS the section-folding
+  // plugin's own `hiddenIdx`-rebuild triggers (task 126: bumping on
+  // "headings only" left the mirror stale after a block edit while a
+  // section was folded, mis-binning cards until the next fold toggle).
   //
   // Ordinary typing inside any block — including a heading's text —
-  // doesn't change which top-level indices are folded. Pre-fix, this
-  // bumped on every `docChanged` transaction; the resulting OmniHost
-  // re-render cascaded through `useInTextPositions.measure()` into a
-  // per-keystroke `coordsAtPos` storm visible as card flicker below
-  // the cursor. See plan `ok-lets-do-a-dreamy-thacker.md` (flicker fix).
+  // doesn't change which top-level indices are folded, and every source
+  // is fold-meta or a structural bus event, so this stays keystroke-safe
+  // (`emitCount` flat). Pre-flicker-fix this bumped on every `docChanged`
+  // transaction; the resulting OmniHost re-render cascaded through
+  // `useInTextPositions.measure()` into a per-keystroke `coordsAtPos`
+  // storm. See plan `ok-lets-do-a-dreamy-thacker.md` (flicker fix).
   const [editorTick, setEditorTick] = useState(0);
   useEffect(() => {
     if (!editorInstance) return;
-    const bump = () => setEditorTick((v) => v + 1);
-    const bus = getBus(editorInstance);
-    // (a) Fold-toggle / collapseAll / expandAll: dispatched as a
-    //     transaction carrying `sectionFoldingPluginKey` meta. No bus
-    //     event covers this — the plugin's apply runs synchronously
-    //     inside the same tx.
-    const onTr = (props: { transaction: Transaction }) => {
-      if (props.transaction.getMeta(sectionFoldingPluginKey) !== undefined) {
-        bump();
-      }
-    };
-    editorInstance.on("transaction", onTr);
-    // (b) Heading add/remove: shifts the top-level child index map that
-    //     `getHiddenTopLevelIndices` walks. The fold-state plugin
-    //     already prunes dead UUIDs from its set on the same tx
-    //     (section-folding.ts handles that via the same bus events).
-    const u1 = bus?.onHeadingsAdded(bump) ?? (() => {});
-    const u2 = bus?.onHeadingsRemoved(bump) ?? (() => {});
-    return () => {
-      editorInstance.off("transaction", onTr);
-      u1();
-      u2();
-    };
+    return subscribeFoldMirrorInvalidation(editorInstance, () =>
+      setEditorTick((v) => v + 1),
+    );
   }, [editorInstance]);
   const {
     selectedFootnoteId, setSelectedFootnoteId,
@@ -724,8 +709,11 @@ export function OmniHost(p: OmniHostProps) {
   const hiddenTopLevel = useMemo<ReadonlySet<number>>(() => {
     if (!editorInstance) return EMPTY_HIDDEN;
     return getHiddenTopLevelIndices(editorInstance.state);
-    // editorTick forces re-eval on every editor transaction (fold toggles
-    // dispatch a transaction but don't change editorInstance's identity).
+    // editorTick forces a re-read on exactly the transactions that can shift
+    // the folded absolute-top-level-index set — fold toggles, heading
+    // add/remove, and block add/remove/reorder (see the editorTick effect
+    // above, via subscribeFoldMirrorInvalidation). editorInstance identity is
+    // stable across those, so editorTick is the reactive dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorInstance, editorTick]);
 
