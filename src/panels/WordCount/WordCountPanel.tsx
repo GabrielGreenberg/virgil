@@ -12,7 +12,6 @@ import { Panel } from "@/panels/_shared/Panel";
 interface WordCountPanelProps {
   counts: WordCounts;
   selection: SelectionCounts | null;
-  focusCounts?: { words: number } | null;
 }
 
 const ALL_CATS: Category[] = ALL_CATEGORIES;
@@ -33,7 +32,6 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 export default function WordCountPanel({
   counts,
   selection,
-  focusCounts,
 }: WordCountPanelProps) {
   const { config, setInclude } = useWordCountConfig();
 
@@ -79,17 +77,6 @@ export default function WordCountPanel({
           <Stat label="Characters" value={selection?.characters ?? 0} />
         </div>
       </div>
-
-      {focusCounts && (
-        <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-light)] px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-[var(--accent)] font-medium mb-2">
-            Focus
-          </div>
-          <div className="flex flex-wrap gap-x-6 gap-y-1">
-            <Stat label="Words" value={focusCounts.words} />
-          </div>
-        </div>
-      )}
 
       {catsWithWords.length > 0 && (
         <div className="rounded-lg border border-edge-subtle bg-surface overflow-hidden">

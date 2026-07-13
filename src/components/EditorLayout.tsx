@@ -14,7 +14,7 @@ import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
 import { useTransientAnchorCleanup } from "@/text-objects/useTransientAnchorCleanup";
 import { type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
 import { Editor } from "@tiptap/react";
-import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
+import { type SectionPathEntry, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
@@ -186,9 +186,6 @@ import { extractFigureAttrs, extractGraphicsAttrs } from "@/lib/figures/parse-at
 import { parseInlineContent as parseInlineLatexForCaption } from "@/lib/latex-parser";
 import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
-import { useWordCount } from "@/hooks/useWordCount";
-import { useWordCountConfig } from "@/hooks/useWordCountConfig";
-import WordCountPanel from "@/panels/WordCount";
 import { useFocusMode } from "@/hooks/useFocusMode";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import pkg from "../../package.json";
@@ -922,7 +919,6 @@ export default function EditorLayout() {
   // useWordCount is consumed inside EditorPane (per-doc); no shell-side
   // counter needed.
   const focusMode = useFocusMode(docIdForHooks, editorInstance);
-  const { config: focusWcConfig } = useWordCountConfig();
   // Paragraph-titles + %-comments visibility — persisted via ViewPrefs
   // (global, like their View-menu siblings). Previously a plain
   // `useState(true)` here, which reset on every reload (the reported bug);
@@ -2198,14 +2194,6 @@ export default function EditorLayout() {
     // three are top-level block indices in the same space as outlineFocusHeadings.
     currentSeedBlockIndex: currentSectionPath.at(-1)?.index ?? currentParTitleIndex,
   });
-
-  // Focus word count: sum per-block counts within the focused range
-  const focusWordCount = useMemo(() => {
-    if (!focusMode.state.active) return null;
-    const perBlock = buildPerBlockCounts(docForOutline);
-    const words = sumIncludedWords(perBlock, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex + 1, focusWcConfig.include);
-    return { words };
-  }, [focusMode.state, docForOutline, focusWcConfig.include]);
 
   // Selection ↔ linked-anchor highlight binding for each panel-anchored entity
   // (notes, text revisions, cuts). Each hook:
