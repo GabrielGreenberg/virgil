@@ -26,15 +26,15 @@ export default function BibEditModal({ entry, onSave, onClose }: Props) {
   const [mode, setMode] = useState<Mode>("form");
   const [type, setType] = useState<string>(entry.type);
   const [fields, setFields] = useState<Record<string, string>>({ ...entry.fields });
-  const [extraRows, setExtraRows] = useState<Array<{ id: number; key: string; value: string }>>(
-    seedExtraRows(entry),
-  );
+  // One seed at mount feeds BOTH the initial rows and the id allocator, so the
+  // two never diverge (task 128). The raw→form re-seed adopts the same source.
+  const [extraRows, setExtraRows] = useState<ExtraRow[]>(() => seedExtraRows(entry).rows);
   const [raw, setRaw] = useState<string>(emitBibEntry(entry.type, entry.key, entry.fields));
   const [rawError, setRawError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const nextId = useRef(extraRows.reduce((m, r) => Math.max(m, r.id), 0) + 1);
+  const nextId = useRef(seedExtraRows(entry).nextId);
 
   // Close on Escape, lock body scroll while open.
   useEffect(() => {
@@ -105,7 +105,11 @@ export default function BibEditModal({ entry, onSave, onClose }: Props) {
       }
       setType(parsed.type);
       setFields(parsed.fields);
-      setExtraRows(seedExtraRowsFromFields(parsed.type, parsed.fields));
+      const seeded = seedExtraRowsFromFields(parsed.type, parsed.fields);
+      setExtraRows(seeded.rows);
+      // Resync the shared allocator so the next "+ Add field" can't collide
+      // with a re-seeded row id (task 128).
+      nextId.current = seeded.nextId;
       setRawError(null);
     }
     setMode(next);
@@ -692,19 +696,30 @@ const inputStyle: React.CSSProperties = {
   boxSizing: "border-box",
 };
 
-function seedExtraRows(entry: BibEntry): Array<{ id: number; key: string; value: string }> {
+type ExtraRow = { id: number; key: string; value: string };
+
+/** The result of a seed: the rows PLUS the next free id. Both the mount seed
+ *  and the raw→form re-seed must adopt `nextId` so the monotonic `addRow`
+ *  allocator can never mint an id that collides with a re-seeded row (the
+ *  two allocators share ONE counter — see task 128). */
+type ExtraSeed = { rows: ExtraRow[]; nextId: number };
+
+function seedExtraRows(entry: BibEntry): ExtraSeed {
   return seedExtraRowsFromFields(entry.type, entry.fields);
 }
 
 function seedExtraRowsFromFields(
   type: string,
   fields: Record<string, string>,
-): Array<{ id: number; key: string; value: string }> {
+): ExtraSeed {
   const known = knownFieldsForType(type);
   let id = 1;
-  return Object.entries(fields)
+  const rows = Object.entries(fields)
     .filter(([k, v]) => !known.has(k) && v && v.trim().length > 0)
     .map(([k, v]) => ({ id: id++, key: k, value: v }));
+  // After the map `id` is the last-used id + 1 (or 1 when there were no rows),
+  // i.e. the next free id — always strictly greater than every seeded row id.
+  return { rows, nextId: id };
 }
 
 /** Parse a single BibTeX entry block (the form `@type{key, k=v, ...}`).
