@@ -214,7 +214,7 @@ function BibEntryPickerMenuInner({
       excludeRefs={excludeRefs}
       onClose={onClose}
       ariaLabel={ariaLabel}
-      containerClassName="bib-entry-picker-menu bg-surface border border-edge-subtle rounded-md shadow-md"
+      containerClassName="bib-entry-picker-menu bg-surface border border-edge-subtle rounded-lg shadow-md"
       containerStyle={{
         width: POPUP_WIDTH,
         display: "flex",

@@ -69,7 +69,7 @@ export default function PanelThemePicker({
       />
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-md shadow-lg p-2 z-[9999]"
+          className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg p-2 z-[9999]"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >

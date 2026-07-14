@@ -589,7 +589,7 @@ function CardKindDropdown({
       {open && (
         <div
           ref={menuRef}
-          className="absolute top-full left-0 mt-1 z-50 bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 min-w-[120px]"
+          className="absolute top-full left-0 mt-1 z-50 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 min-w-[120px]"
         >
           {options.map((opt) => (
             <button
@@ -2535,7 +2535,7 @@ function HeaderAddDropdown({
       {open && (
         <div
           role="menu"
-          className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[60] min-w-[140px]"
+          className="fixed bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-[60] min-w-[140px]"
           style={{
             top: pos.top,
             bottom: pos.bottom,
@@ -2809,7 +2809,7 @@ export function ItemMenu({
           excludeRefs={[btnRef.current]}
           onClose={close}
           ariaLabel="Options"
-          containerClassName="bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 min-w-[100px]"
+          containerClassName="bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 min-w-[100px]"
         >
           {/* Close-on-any-click + the stopPropagation fence: menu items fire on
               onMouseDown/onClick, and this wrapper's onClick closes the menu and
