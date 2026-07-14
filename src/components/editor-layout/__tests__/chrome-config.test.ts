@@ -17,8 +17,7 @@ import { describe, it, expect } from "vitest";
 import { READER_CHROME, FULL_CHROME } from "../chrome-config";
 
 describe("READER_CHROME — pinned read-only preset", () => {
-  it("hides the formatting toolbar and MenuBar edit items", () => {
-    expect(READER_CHROME.showFormattingToolbar).toBe(false);
+  it("hides the MenuBar edit items", () => {
     expect(READER_CHROME.showMenuBarEditItems).toBe(false);
     expect(READER_CHROME.showHeadingFloatLabelEdit).toBe(false);
     expect(READER_CHROME.showParagraphFloatTitleEdit).toBe(false);
@@ -41,8 +40,7 @@ describe("READER_CHROME — pinned read-only preset", () => {
 });
 
 describe("FULL_CHROME — pinned main-app default (everything on)", () => {
-  it("shows the formatting toolbar and MenuBar edit items", () => {
-    expect(FULL_CHROME.showFormattingToolbar).toBe(true);
+  it("shows the MenuBar edit items", () => {
     expect(FULL_CHROME.showMenuBarEditItems).toBe(true);
     expect(FULL_CHROME.showHeadingFloatLabelEdit).toBe(true);
     expect(FULL_CHROME.showParagraphFloatTitleEdit).toBe(true);

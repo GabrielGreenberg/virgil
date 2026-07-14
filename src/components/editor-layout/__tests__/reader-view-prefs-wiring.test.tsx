@@ -312,7 +312,6 @@ describe("useReaderView — menuBar bundle (F#16)", () => {
       "closeAllPanels",
       "paraNavBack",
       "paraNavForward",
-      "onOpenPreferences",
       "onOpenFontsDialog",
       "onOpenMarginsMode",
     ] as const) {

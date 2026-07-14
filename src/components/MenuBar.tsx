@@ -4,7 +4,6 @@ import { memo, useCallback, useState, useRef, useEffect, type ReactNode } from "
 import { Editor } from "@tiptap/react";
 import type { HighlightType, MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
 import { VIEW_PREF_REGISTRY } from "@/lib/view-prefs/registry";
-import { type ToolbarOrientation } from "./editor-layout/floating-toolbar-shell";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
@@ -20,8 +19,6 @@ import {
   type BlockActionId,
 } from "@/lib/actions/action-registry";
 import { paragraphUuidAt } from "@/links/links";
-
-export { type ToolbarOrientation };
 
 // CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
 // / `handleExampleMenuPick`) were RETIRED here. The single canonical example
@@ -68,32 +65,7 @@ const HIGHLIGHT_TYPE_ROWS = VIEW_PREF_REGISTRY.hiddenHighlightTypes.members.map(
   label: VIEW_PREF_REGISTRY.hiddenHighlightTypes.memberLabels[type],
 }));
 
-/** Callbacks wired to every button in the Actions toolbar. Shared by the
- *  attached popover in MenuBar and the detached floating toolbar rendered
- *  at the EditorLayout level. Every entry corresponds 1:1 to a side-panel
- *  whose "+" button creates a new item; the toolbar variant operates on
- *  the live editor selection when one exists, or creates a blank card
- *  otherwise — either way, a card popup spawns near the toolbar.
- *
- *  `anchorRect` is the bounding rect of the surrounding toolbar pod (the
- *  popover or the detached floater), captured at click time so the
- *  popup can spawn just below it (flipping above when near the viewport
- *  bottom). Handlers accept `null` as a safe fallback. */
-export type ActionToolbarCallback = (anchorRect: DOMRect | null) => void;
-
-export interface ActionToolbarCallbacks {
-  onAddComment?: ActionToolbarCallback;
-  onAddNote?: ActionToolbarCallback;
-  onAddHighlight?: ActionToolbarCallback;
-  onAddTodo?: ActionToolbarCallback;
-  onCutSelection?: ActionToolbarCallback;
-  onArchive?: ActionToolbarCallback;
-  onCreateFootnote?: ActionToolbarCallback;
-  onInsertCitation?: ActionToolbarCallback;
-  onCreateBibEntry?: ActionToolbarCallback;
-}
-
-interface MenuBarProps extends ActionToolbarCallbacks {
+interface MenuBarProps {
   editor: Editor | null;
   showParTitles: boolean;
   onToggleParTitles: () => void;
@@ -107,7 +79,6 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   onToggleOmniDimResting: () => void;
   cardOutlineChrome: boolean;
   onToggleCardOutline: () => void;
-  onOpenPreferences?: () => void;
   editorSplit?: boolean;
   onToggleEditorSplit?: () => void;
   activeSplitPane?: "top" | "bottom";
@@ -135,8 +106,6 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   /** Enter the in-editor margin-edit mode — guides appear over the
    *  text column and Save/Cancel buttons appear in the docked toolbar. */
   onOpenMarginsMode?: () => void;
-  orientation: ToolbarOrientation;
-  onSetOrientation: (o: ToolbarOrientation) => void;
   /** Optional collaborator-mode status pill, rendered at the start of
    *  the bar. Owned by the host (EditorLayout) so it can plug in
    *  per-doc collab state. */
@@ -147,9 +116,6 @@ interface MenuBarProps extends ActionToolbarCallbacks {
    *  `chrome.showMenuBarEditItems`; the Library Reader's chrome sets it
    *  to false. */
   showEditItems?: boolean;
-  /** When false, suppress the Formatting popover entirely. Defaults to
-   *  true. EditorPane wires this from `chrome.showFormattingToolbar`. */
-  showFormattingToolbar?: boolean;
 }
 
 const BLOCK_TYPES = [
@@ -564,7 +530,6 @@ export function ViewMenu({
   onToggleOmniDimResting,
   cardOutlineChrome,
   onToggleCardOutline,
-  onOpenPreferences,
   showMarginalia,
   onToggleMarginalia,
   hiddenMarginaliaTypes,
@@ -578,8 +543,6 @@ export function ViewMenu({
   onToggleDividerLevel,
   dividerWidth,
   onSetDividerWidth,
-  orientation,
-  onSetOrientation,
   onCloseAllPanels,
   onOpenFontsDialog,
   onOpenMarginsMode,
@@ -590,14 +553,12 @@ export function ViewMenu({
   | "showHeadingLabels" | "onToggleHeadingLabels"
   | "omniDimResting" | "onToggleOmniDimResting"
   | "cardOutlineChrome" | "onToggleCardOutline"
-  | "onOpenPreferences"
   | "showMarginalia" | "onToggleMarginalia"
   | "hiddenMarginaliaTypes" | "onToggleMarginaliaType"
   | "showHighlights" | "onToggleHighlights"
   | "hiddenHighlightTypes" | "onToggleHighlightType"
   | "availableDividerLevels" | "dividerLevels" | "onToggleDividerLevel"
   | "dividerWidth" | "onSetDividerWidth"
-  | "orientation" | "onSetOrientation"
   | "onCloseAllPanels"
   | "onOpenFontsDialog"
   | "onOpenMarginsMode"
@@ -664,7 +625,6 @@ export function ViewMenu({
           height="16"
           viewBox="5.75 -1.75 4.5 19.5"
           fill="currentColor"
-          style={orientation === "vertical" ? { transform: "rotate(90deg)" } : undefined}
         >
           <circle cx="8" cy="3" r="1.5" />
           <circle cx="8" cy="8" r="1.5" />
@@ -830,22 +790,16 @@ export function ViewMenu({
   );
 }
 
-/** Shared button row used by both the at-home MenuBar and the
- *  detached floating copies. Renders View menu + Format popover +
- *  Actions popover + paragraph nav + split. Orientation
- *  drives only the nav-button pair stacking; the popovers and single
- *  buttons are layout-agnostic. */
+/** Shared button row rendered inside the docked MenuBar. Renders the
+ *  View menu + collab pill + paragraph nav + editor-split toggle. */
 function MenuBarContent({
   editor,
-  orientation,
-  onAddComment, onArchive, onCreateFootnote, onAddNote, onAddHighlight, onAddTodo, onCutSelection, onInsertCitation,
   showParTitles, onToggleParTitles,
   showCardTitles, onToggleCardTitles,
   showLatexComments, onToggleLatexComments,
   showHeadingLabels, onToggleHeadingLabels,
   omniDimResting, onToggleOmniDimResting,
   cardOutlineChrome, onToggleCardOutline,
-  onOpenPreferences,
   editorSplit, onToggleEditorSplit, activeSplitPane,
   showMarginalia, onToggleMarginalia,
   hiddenMarginaliaTypes, onToggleMarginaliaType,
@@ -855,22 +809,17 @@ function MenuBarContent({
   dividerWidth, onSetDividerWidth,
   onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled,
   onCloseAllPanels,
-  onSetOrientation,
   onOpenFontsDialog,
   onOpenMarginsMode,
   showEditItems = true,
-  showFormattingToolbar = true,
   kebabAtEnd = false,
   collabStatus,
 }: {
   editor: Editor;
-  orientation: ToolbarOrientation;
-  onSetOrientation: (o: ToolbarOrientation) => void;
   /** When true, render the kebab/View menu after every other control
    *  instead of before. Used by the docked MenuBar above the editor. */
   kebabAtEnd?: boolean;
-} & Omit<MenuBarProps, "editor" | "orientation" | "onSetOrientation">) {
-  const isVert = orientation === "vertical";
+} & Omit<MenuBarProps, "editor">) {
   const viewMenu = (
     <ViewMenu
       showParTitles={showParTitles}
@@ -885,7 +834,6 @@ function MenuBarContent({
       onToggleOmniDimResting={onToggleOmniDimResting}
       cardOutlineChrome={cardOutlineChrome}
       onToggleCardOutline={onToggleCardOutline}
-      onOpenPreferences={onOpenPreferences}
       showMarginalia={showMarginalia}
       onToggleMarginalia={onToggleMarginalia}
       hiddenMarginaliaTypes={hiddenMarginaliaTypes}
@@ -899,8 +847,6 @@ function MenuBarContent({
       onToggleDividerLevel={onToggleDividerLevel}
       dividerWidth={dividerWidth}
       onSetDividerWidth={onSetDividerWidth}
-      orientation={orientation}
-      onSetOrientation={onSetOrientation}
       onCloseAllPanels={onCloseAllPanels}
       onOpenFontsDialog={showEditItems ? onOpenFontsDialog : undefined}
       onOpenMarginsMode={showEditItems ? onOpenMarginsMode : undefined}
@@ -917,16 +863,16 @@ function MenuBarContent({
           The action menu is reached from the margin SelectionActionsMenu
           trigger; no redundant strip copy lives here. */}
       {(onParaNavBack || onParaNavForward) && (
-        <div className={`flex items-stretch gap-1 ${isVert ? "flex-col" : "flex-row"}`}>
+        <div className="flex items-stretch gap-1 flex-row">
           {onParaNavBack && (
             <button
               onClick={onParaNavBack}
               disabled={paraNavBackDisabled}
               data-hint="Go back"
               className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
-              style={isVert ? { width: 20, height: 16 } : { width: 16, height: 20 }}
+              style={{ width: 16, height: 20 }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 12H5M12 19l-7-7 7-7" />
               </svg>
             </button>
@@ -937,9 +883,9 @@ function MenuBarContent({
               disabled={paraNavForwardDisabled}
               data-hint="Go forward"
               className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
-              style={isVert ? { width: 20, height: 16 } : { width: 16, height: 20 }}
+              style={{ width: 16, height: 20 }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </button>
@@ -976,15 +922,13 @@ function MenuBarContent({
  *  the text window. Icons sit directly on the canvas background with
  *  no enclosing pod, mirroring the left tool strip's loose buttons.
  *  No grab handle, no tear-off; the kebab/View menu sits at the end. */
-function MenuBar({ orientation: _o, onSetOrientation: _so, ...rest }: MenuBarProps) {
-  if (!rest.editor) return null;
+function MenuBar(props: MenuBarProps) {
+  if (!props.editor) return null;
   return (
     <div className="flex flex-row items-center gap-0.5 h-[24px]">
       <MenuBarContent
-        {...rest}
-        editor={rest.editor}
-        orientation="horizontal"
-        onSetOrientation={() => {}}
+        {...props}
+        editor={props.editor}
         kebabAtEnd
       />
     </div>
