@@ -288,7 +288,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
         {helperMenuOpen && typeof document !== "undefined" && createPortal(
           <div
             ref={helperPositionRef}
-            className="bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
+            className="bg-surface border border-edge-subtle rounded-lg shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
             style={{ ...helperPositionStyle, zIndex: OPEN_CHROME_MENU_Z }}
             onClick={(e) => e.stopPropagation()}
             onMouseLeave={() => setCommandsPopoutOpen(false)}
@@ -308,7 +308,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
               </svg>
               {commandsPopoutOpen && (
                 <div
-                  className="absolute left-full top-0 ml-1 bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body py-1 min-w-[160px]"
+                  className="absolute left-full top-0 ml-1 bg-surface border border-edge-subtle rounded-lg shadow-md text-xs text-ink-body py-1 min-w-[160px]"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {VIRGIL_COMMAND_NAMES.map((name) => (

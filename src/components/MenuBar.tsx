@@ -335,7 +335,7 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
   const close = useCallback(() => setOpen(false), []);
 
   const dropdownClassName = [
-    "absolute bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 min-w-[160px]",
+    "absolute bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 min-w-[160px]",
     placement.v === "below" ? "top-full mt-1" : "bottom-full mb-1",
     placement.h === "left" ? "left-0" : "right-0",
   ].join(" ");

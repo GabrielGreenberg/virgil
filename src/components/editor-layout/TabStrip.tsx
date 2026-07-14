@@ -309,7 +309,7 @@ function TabStripImpl(props: TabStripProps) {
           ? "2px solid var(--accent)"
           : undefined,
         outlineOffset: isEntryDropTarget ? -2 : undefined,
-        borderRadius: isEntryDropTarget ? 8 : undefined,
+        borderRadius: isEntryDropTarget ? "var(--pod-radius)" : undefined,
         background: isEntryDropTarget
           ? "var(--accent-light)"
           : undefined,

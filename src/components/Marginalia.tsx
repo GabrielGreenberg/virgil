@@ -403,7 +403,7 @@ function OverflowPill({
       </button>
       {open && (
         <div
-          className="pointer-events-auto absolute z-30 flex flex-col rounded-md border border-edge-subtle bg-surface shadow-lg"
+          className="pointer-events-auto absolute z-30 flex flex-col rounded-lg border border-edge-subtle bg-surface shadow-lg"
           style={{
             top: group.cell.y + MARGINALIA_ICON_SIZE + 4,
             [group.side]: 2,
