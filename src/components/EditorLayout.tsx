@@ -2323,7 +2323,6 @@ export default function EditorLayout() {
     paraNavForward,
     paraNavBackDisabled,
     paraNavForwardDisabled,
-    onOpenPreferences: () => setPreferencesOpen(true),
     onOpenFontsDialog: () => setFontsOpen(true),
     onOpenMarginsMode: enterMarginEditMode,
   }), [

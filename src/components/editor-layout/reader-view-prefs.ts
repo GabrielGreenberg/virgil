@@ -37,9 +37,7 @@
  * the viewPrefs bundle (see `useReaderView`), so a menu toggle ("Hide
  * paragraph titles") mutates the same store the panel rail / rendered text
  * read — no two-engine divergence. Fonts…/Margins… auto-drop via
- * `READER_CHROME.showMenuBarEditItems=false`; the Reader has no shell prefs
- * modal so `onOpenPreferences` is a typed no-op (ViewMenu never renders a
- * Preferences row, so it's not a dead control). Back/forward is a FUNCTIONAL
+ * `READER_CHROME.showMenuBarEditItems=false`. Back/forward is a FUNCTIONAL
  * port of EditorLayout's wall-clock recorder (`useParaNavHistory`) — keystroke
  * -safe by construction (no `editor.on(...)` subscription; a `setInterval` +
  * debounced passive `scroll` listener that reads `getActiveParagraphId()` on
@@ -345,9 +343,6 @@ function useReaderMenuBarBundle(
       paraNavForwardDisabled: paraNav.paraNavForwardDisabled,
 
       // ── Dialog openers ──────────────────────────────────────────
-      // The Reader has no shell Preferences modal; ViewMenu never renders a
-      // Preferences row, so a no-op is not a dead control.
-      onOpenPreferences: () => {},
       // Fonts…/Margins… auto-drop via READER_CHROME.showMenuBarEditItems=false
       // (MenuBar passes them as undefined when showEditItems is false), so
       // these typed no-ops satisfy the contract without re-adding the entries.

@@ -38,7 +38,6 @@ import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
-import MenuBar from "./MenuBar";
 import {
   walkJsonContentForCitations,
   stripFootnoteNestedCitation,

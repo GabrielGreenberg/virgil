@@ -77,7 +77,7 @@ left/right panel columns, the omni-view area, dock slots, and the code-view gutt
 | **Back / forward buttons** (paragraph nav) | Chevron pair, inline in MenuBar | `MenuBar.tsx`, inline in `MenuBarContent` (~line 866) |
 | **Split screen toggle** | Inline button in MenuBar | `MenuBar.tsx` |
 | **Close all panels** (X button) | Inline button in MenuBar | `MenuBar.tsx` |
-| **Grab handle** / **rotation knob** / **dock-up button** (the old tear-out-pod chrome — drag the Virgil bar out, rotate it horizontal/vertical, re-dock it) | **Removed.** The Virgil bar / `MenuBar` is now docked-only ("No grab handle, no tear-off" — see `MenuBar.tsx`); `PodGrabHandle` was retired with the detached-toolbar removal (it no longer exists; `floating-toolbar-shell.tsx` now exports only the `ToolbarOrientation` type) | — |
+| **Grab handle** / **rotation knob** / **dock-up button** (the old tear-out-pod chrome — drag the Virgil bar out, rotate it horizontal/vertical, re-dock it) | **Removed.** The Virgil bar / `MenuBar` is now docked-only ("No grab handle, no tear-off" — see `MenuBar.tsx`); `PodGrabHandle` was retired with the detached-toolbar removal (it no longer exists; `floating-toolbar-shell.tsx` itself was deleted with task 133) | — |
 
 ## Panels (what "panel" means)
 

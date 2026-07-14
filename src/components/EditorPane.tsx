@@ -266,8 +266,6 @@ import MenuBar, {
 import {
   getLinkedTextObjectIds,
   getTextAnchor,
-  createLinkedAnchor,
-  updateLinkedAnchorCard,
   restampLinkedAnchorForKind,
   paragraphUuidAt,
   captureParagraphSnapshot,
@@ -288,7 +286,6 @@ import {
   isModeARequestCard,
   type RequestMarkCardLike,
 } from "@/links/_shared/request-marks";
-import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import { isPendingChangesOn } from "@/lib/pending-changes-flag";
 import {
   keepSuggestion,
@@ -593,7 +590,6 @@ export interface EditorPaneMenuBarBundle {
   paraNavForwardDisabled: boolean;
 
   // ── Dialog openers (drive shell-owned modals) ──────────────────
-  onOpenPreferences: () => void;
   onOpenFontsDialog: () => void;
   onOpenMarginsMode: () => void;
 }
@@ -4046,181 +4042,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const podHeaderH = showChromeHeader ? POD_HEADER_H : 0;
   const chromeTopPx = POD_TOP_PX + podHeaderH;
 
-  // ─── Toolbar action handlers ──────────────────────────────────────
-  // Each creates a card in its corresponding panel — selection-anchored
-  // when text is selected, blank otherwise. These are the LIVE toolbar
-  // handlers (R20): selection-create routes through `useCardCreation`
-  // here, and `popCardAtAnchor` spawns the real floating popup. The old
-  // EditorLayout `useSelectionToCardActions` copies were dead and are gone.
-
-  const readSelection = useCallback(() => {
-    const ed = innerRef.current?.getEditor();
-    if (!ed || !innerRef.current) return null;
-    const { from, to } = ed.state.selection;
-    if (from === to) return null;
-    const text = ed.state.doc.textBetween(from, to, " ").trim();
-    if (!text) return null;
-    return { ed, from, to, text, editorHandle: innerRef.current };
-  }, []);
-
-  // Mode-A paragraph fallback for an ATOM-ONLY selection (a citation pill /
-  // `$\lambda$` / `\ref` selected alone). `readSelection()` rejects those (no
-  // textContent), so a Note / Cut / Comment built from them would land
-  // UNANCHORED. Resolve the containing paragraph's uuid so the card anchors
-  // Mode-A rather than orphaning. Returns null for a genuinely-empty / no
-  // selection (atoms count as content — mirrors the archive fix).
-  const atomOnlySelectionParagraphId = useCallback((): string | null => {
-    const ed = innerRef.current?.getEditor();
-    if (!ed || !innerRef.current) return null;
-    const { from, to } = ed.state.selection;
-    if (from < to && ed.state.doc.slice(from, to).content.size > 0) {
-      return innerRef.current.ensureParagraphUuid(from);
-    }
-    return null;
-  }, []);
-
-  const handleToolbarAddComment = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    let anchorId: string | null = null;
-    if (sel) {
-      const record = createLinkedAnchor(sel.ed, "revision");
-      anchorId = record?.anchorId ?? null;
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    }
-    const anchor = anchorId && sel?.text
-      ? { anchorId, anchorText: sel.text }
-      : undefined;
-    // Thread the selection's containing paragraph uuid the way note/cutter do
-    // (handleToolbarAddNote / handleToolbarAddCut), so `addComment` runs
-    // `addTextObjectLink(pid)` before `setTextAnchorLink` and the resulting
-    // Mode-B `linkedRange` link carries `textObjectIds:[pid]`. Passing null here
-    // (the old divergence) left the anchor link with `textObjectIds:[]`, which
-    // the panel/omni jump gate and omni binning key on — so a selection-anchored
-    // comment was un-jumpable and mis-binned "free" despite a live anchor +
-    // margin marker (task 107). Atom-only selection (sel === null) still resolves
-    // its containing paragraph Mode-A so it isn't orphaned.
-    const paragraphId = sel
-      ? sel.editorHandle.ensureParagraphUuid(sel.from)
-      : atomOnlySelectionParagraphId();
-    const created = revisionsHook.addComment(paragraphId, undefined, anchor);
-    if (anchorId) {
-      const ed = innerRef.current?.getEditor();
-      if (ed) updateLinkedAnchorCard(ed, anchorId, "revision-comment", created.id);
-    }
-    popCardAtAnchor("revision-comment", created.id, anchorRect);
-  }, [readSelection, revisionsHook, popCardAtAnchor]);
-
-  const handleToolbarAddNote = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    let anchor: { anchorId: string; anchorText: string } | undefined;
-    let paragraphId: string | null = null;
-    if (sel) {
-      paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
-      const record = createLinkedAnchor(sel.ed, "note");
-      if (record) anchor = { anchorId: record.anchorId, anchorText: record.text };
-    } else {
-      // Atom-only selection: no text for a Mode-B mark, but anchor Mode-A.
-      paragraphId = atomOnlySelectionParagraphId();
-    }
-    const note = cardCreation.createNote({ paragraphId, anchor, anchorRect });
-    if (sel && anchor) {
-      updateLinkedAnchorCard(sel.ed, anchor.anchorId, "note", note.id);
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    }
-  }, [readSelection, cardCreation]);
-
-  // Highlight needs a live text-range selection (Adobe-style); a click
-  // with no selection is a no-op.
-  const handleToolbarAddHighlight = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    if (!sel) return;
-    const paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
-    const record = createLinkedAnchor(
-      sel.ed,
-      "highlight",
-      undefined,
-      undefined,
-      { tintColor: defaultTintForLinkedAnchorKind("highlight") },
-    );
-    if (!record) return;
-    const card = cardCreation.createHighlight({
-      anchor: { anchorId: record.anchorId, anchorText: record.text },
-      paragraphId,
-      anchorRect,
-    });
-    updateLinkedAnchorCard(sel.ed, record.anchorId, "highlight", card.id);
-    try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-  }, [readSelection, cardCreation]);
-
-  const handleToolbarAddTodo = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    const paragraphId = sel ? sel.editorHandle.ensureParagraphUuid(sel.from) : null;
-    cardCreation.createTodo({ text: sel?.text, paragraphId, anchorRect });
-    if (sel) {
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    }
-  }, [readSelection, cardCreation]);
-
-  const handleToolbarAddCut = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    let anchor: { anchorId: string; anchorText: string } | undefined;
-    let paragraphId: string | null = null;
-    if (sel) {
-      paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
-      const record = createLinkedAnchor(sel.ed, "cutter-comment");
-      if (record) anchor = { anchorId: record.anchorId, anchorText: record.text };
-    } else {
-      // Atom-only selection: anchor the cut Mode-A so it isn't orphaned.
-      paragraphId = atomOnlySelectionParagraphId();
-    }
-    const card = cardCreation.createCutterComment({ paragraphId, anchor, anchorRect });
-    if (sel && anchor) {
-      updateLinkedAnchorCard(sel.ed, anchor.anchorId, "cutter-comment", card.id);
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    }
-  }, [readSelection, cardCreation]);
-
-  const handleToolbarArchive = useCallback((anchorRect: DOMRect | null) => {
-    // Call `archiveSelection` first — its slice-based emptiness check
-    // (`slice.size === 0`) is authoritative. Atom-only ranges have
-    // empty plain text (so `readSelection` returns null) but still
-    // produce a non-empty slice. Bypass `readSelection` for archive:
-    // the slice IS the answer, and we no longer create orphan empty
-    // snippets when the selection has no text.
-    if (!innerRef.current) return;
-    const result = innerRef.current.archiveSelection("");
-    if (!result) return;
-    const sel = readSelection();
-    // Born-free when the selection has no anchorable paragraph (task 104).
-    const snippet = archiveHook.archiveContent(
-      result.content ?? sel?.text ?? "",
-      { unanchored: !result.paragraphId },
-    );
-    if (result.paragraphId) {
-      // FOLD A: snapshot the live paragraph at creation so the Mode-A link
-      // is self-healing immediately.
-      const snapshot = captureParagraphSnapshot(
-        innerRef.current.getEditor(),
-        result.paragraphId,
-      );
-      archiveHook.addParagraphId(
-        snippet.id,
-        result.paragraphId,
-        "paragraph",
-        snapshot,
-      );
-    }
-    popCardAtAnchor("archive", snippet.id, anchorRect);
-  }, [readSelection, archiveHook, popCardAtAnchor]);
-
-  const handleToolbarCreateFootnote = useCallback((anchorRect: DOMRect | null) => {
-    cardCreation.createFootnote({ fromSelection: !!readSelection(), anchorRect });
-  }, [readSelection, cardCreation]);
-
-  const handleToolbarInsertCitation = useCallback((anchorRect: DOMRect | null) => {
-    cardCreation.createCitation({ anchorRect });
-  }, [cardCreation]);
-
   // Editor-derived citations: BibliographyHost wants `keys` (parsed
   // from the LaTeX `\cite{a,b}` / `\cites{a}{b}` command) plus the
   // citation's position. Mirror the same regex EditorLayout uses
@@ -6137,14 +5958,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     {menuBar && (
                     <MenuBar
                       editor={overrideEditor ?? editor}
-                      onAddComment={handleToolbarAddComment}
-                      onArchive={handleToolbarArchive}
-                      onCreateFootnote={handleToolbarCreateFootnote}
-                      onAddNote={handleToolbarAddNote}
-                      onAddHighlight={handleToolbarAddHighlight}
-                      onAddTodo={handleToolbarAddTodo}
-                      onCutSelection={handleToolbarAddCut}
-                      onInsertCitation={handleToolbarInsertCitation}
                       showParTitles={menuBar.showParTitles}
                       onToggleParTitles={menuBar.onToggleParTitles}
                       showCardTitles={menuBar.showCardTitles}
@@ -6157,7 +5970,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       onToggleOmniDimResting={menuBar.onToggleOmniDimResting}
                       cardOutlineChrome={menuBar.cardOutlineChrome}
                       onToggleCardOutline={menuBar.onToggleCardOutline}
-                      onOpenPreferences={menuBar.onOpenPreferences}
                       editorSplit={menuBar.editorSplit}
                       onToggleEditorSplit={menuBar.toggleEditorSplit}
                       activeSplitPane={menuBar.editorSplit ? menuBar.activeSplitPane : undefined}
@@ -6181,10 +5993,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       onCloseAllPanels={menuBar.closeAllPanels}
                       onOpenFontsDialog={menuBar.onOpenFontsDialog}
                       onOpenMarginsMode={enterMarginEditMode}
-                      orientation="horizontal"
-                      onSetOrientation={() => {}}
                       showEditItems={chrome.showMenuBarEditItems ?? true}
-                      showFormattingToolbar={chrome.showFormattingToolbar ?? true}
                     />
                     )}
                   </div>

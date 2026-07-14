@@ -15,8 +15,6 @@
 import type { CardKind, PanelKind } from "@/panels/_shared/types";
 
 export interface EditorChromeConfig {
-  /** Whether the formatting toolbar (bold/italic/headings/etc.) renders. */
-  showFormattingToolbar: boolean;
   /**
    * Whether the MenuBar exposes its edit-mutating items (Fonts dialog,
    * margins-mode toggle, etc.). View toggles (margins, marginalia,
@@ -78,7 +76,6 @@ export function viewToggleClasses(
 }
 
 export const FULL_CHROME: EditorChromeConfig = {
-  showFormattingToolbar: true,
   showMenuBarEditItems: true,
   showHeadingFloatLabelEdit: true,
   showParagraphFloatTitleEdit: true,
@@ -87,14 +84,13 @@ export const FULL_CHROME: EditorChromeConfig = {
 };
 
 /**
- * Reader preset: read-only main text, formatting toolbar hidden, MenuBar
- * edit items hidden, the six reading-affordance panels are visible.
+ * Reader preset: read-only main text, MenuBar edit items hidden, the
+ * six reading-affordance panels are visible.
  * Mirrors the user's explicit list (outline / footnotes / examples /
  * citations / bibliography / notes). Note cards stay editable so users
  * can write inside them.
  */
 export const READER_CHROME: EditorChromeConfig = {
-  showFormattingToolbar: false,
   showMenuBarEditItems: false,
   showHeadingFloatLabelEdit: false,
   showParagraphFloatTitleEdit: false,
