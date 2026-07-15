@@ -173,6 +173,7 @@ export function migrateFloatKeys<T>(
 ): { keys: string[]; positions: Record<string, T>; changed: boolean } {
   let changed = false;
   const nextKeys: string[] = [];
+  const emitted = new Set<string>(); // target keys already pushed to nextKeys
   const remap = new Map<string, string>(); // old → new (for surviving keys)
   for (const key of keys) {
     const next = mapKey(key);
@@ -181,8 +182,18 @@ export function migrateFloatKeys<T>(
       continue;
     }
     if (next !== key) changed = true;
-    nextKeys.push(next);
     remap.set(key, next);
+    // Collision-safe by construction: two source keys can canonicalize to the
+    // SAME target (a stale-SW grammar downgrade or an interrupted migration can
+    // leave both grammar-variants of one entity in the stored blob). Dedup here
+    // — the migration is the one path that bypasses toggleCardPopout's runtime
+    // includes-guard — so poppedOutCards never emits a duplicate React key.
+    if (emitted.has(next)) {
+      changed = true; // a collapse happened → persist the deduped blob
+      continue;
+    }
+    emitted.add(next);
+    nextKeys.push(next);
   }
 
   const nextPositions: Record<string, T> = {};
@@ -195,6 +206,13 @@ export function migrateFloatKeys<T>(
       continue;
     }
     if (mapped !== key) changed = true;
+    // First-writer-wins on a target collision: never clobber an already-written
+    // rect (both colliding keys are the same entity, so the surviving rect is
+    // equivalent — but keep it deterministic rather than last-iterated).
+    if (Object.prototype.hasOwnProperty.call(nextPositions, mapped)) {
+      changed = true;
+      continue;
+    }
     nextPositions[mapped] = rect;
   }
 
