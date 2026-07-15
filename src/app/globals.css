@@ -314,6 +314,14 @@
   --danger: #ef4444;        /* destructive action text (≈ red-500) */
   --danger-soft: #fef2f2;   /* destructive action hover bg (≈ red-50) */
 
+  /* Status dots (traffic-light) — the semantic triple every red/green/yellow
+     status affordance reads from (the Virgil-bar AI-status dot today; other
+     status glyphs can converge here). Values pinned to their prior hexes so
+     adopting the token is a zero-diff swap. Red aliases --danger. */
+  --status-danger: var(--danger); /* red   — error / failure */
+  --status-ok: #22c55e;           /* green — success / done (≈ green-500) */
+  --status-warn: #eab308;         /* yellow — pending / working (≈ yellow-500) */
+
   /* Interaction */
   --ring-drag-target: #fcd34d; /* drop-target highlight ring (≈ amber-300) */
 
