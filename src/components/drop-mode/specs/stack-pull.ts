@@ -9,17 +9,24 @@
  *  - card     → upsert any sidecar bib entries, then materialize a fresh
  *               card via the per-doc factories on `ctx.stack`.
  *
- * Stack pulls are paste-as-new — every id/uuid is regenerated. The
- * source stack item is NOT removed (pulls are copy, not pop); the X
- * button on the thumbnail is the only deletion path.
+ * Stack pulls are paste-as-new — every id/uuid is regenerated. Block
+ * uuids are reminted by `withFreshUuid`; Card-bearing inline-atom ids
+ * (footnoteId / citationId, + the unified linkId mirror) by
+ * `withFreshAtomIds`. Both run on the pull side so the snapshot stays a
+ * faithful copy — the fresh identity is minted exactly where a fresh
+ * presence is created. The source stack item is NOT removed (pulls are
+ * copy, not pop); the X button on the thumbnail is the only deletion path.
  */
 
 import { Node as PMNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
+import type { JSONContent } from "@tiptap/react";
 import type { DropDecision, DropSpec, Placement } from "../types";
 import { readStackItem } from "@/hooks/useStack";
 import type { StackItem, StackPayload } from "@/lib/stack/types";
 import { generateShortId } from "@/lib/uuid";
+import { remintNestedAtomIds } from "@/lib/inline-content";
+import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 
 const ALLOWED_PLACEMENTS: ReadonlyArray<Placement["kind"]> = [
   "between-blocks",
@@ -106,11 +113,23 @@ function insertText(
   if (placement.kind !== "inline-cursor" && placement.kind !== "between-blocks") {
     return;
   }
+  // Remint any Card-bearing inline atoms in the slice content so a pulled
+  // footnote/citation can't share the source atom's id (the text path is the
+  // headline case — select text spanning a footnote → add to Stack → pull).
+  const seen = collectAtomIds(editor.state.doc);
+  const rawSlice = payload.slice as
+    | ({ content?: JSONContent[] } & Record<string, unknown>)
+    | null
+    | undefined;
+  const sliceJson =
+    rawSlice && Array.isArray(rawSlice.content)
+      ? { ...rawSlice, content: rawSlice.content.map((n) => withFreshAtomIds(n, seen)) }
+      : rawSlice;
   let slice: Slice;
   try {
     slice = Slice.fromJSON(
       editor.state.schema,
-      payload.slice as Parameters<typeof Slice.fromJSON>[1],
+      sliceJson as Parameters<typeof Slice.fromJSON>[1],
     );
   } catch (err) {
     console.error("[stack-pull] failed to rehydrate text slice:", err);
@@ -138,7 +157,8 @@ function insertParagraph(
   payload: Extract<StackPayload, { kind: "paragraph" }>,
 ) {
   if (placement.kind !== "between-blocks") return;
-  const json = withFreshUuid(payload.node);
+  const seen = collectAtomIds(editor.state.doc);
+  const json = withFreshAtomIds(withFreshUuid(payload.node), seen);
   let node: PMNode | null = null;
   try {
     node = editor.state.schema.nodeFromJSON(
@@ -162,11 +182,12 @@ function insertHeading(
   payload: Extract<StackPayload, { kind: "heading" }>,
 ) {
   if (placement.kind !== "between-blocks") return;
+  const seen = collectAtomIds(editor.state.doc);
   const nodes: PMNode[] = [];
   for (const j of payload.nodes) {
     try {
       const n = editor.state.schema.nodeFromJSON(
-        withFreshUuid(j) as Parameters<
+        withFreshAtomIds(withFreshUuid(j), seen) as Parameters<
           typeof editor.state.schema.nodeFromJSON
         >[0],
       );
@@ -214,6 +235,54 @@ function withFreshUuid(json: import("@tiptap/react").JSONContent): import("@tipt
     next.content = next.content.map(withFreshUuid);
   }
   return next;
+}
+
+// ── Inline-atom identity remint ───────────────────────────────────────
+/** Every Card-bearing inline-atom id currently live in `doc` — the
+ *  `footnoteId`/`citationId` (via the ATOM_REGISTRY `idAttr`) plus its unified
+ *  `linkId` mirror. Seeds the remint avoidance-set: on a SAME-doc pull the
+ *  source atom stays in the doc (pull is copy, not pop), so its id lives here —
+ *  which is exactly the collision `withFreshAtomIds` must never reproduce. */
+function collectAtomIds(doc: PMNode): Set<string> {
+  const ids = new Set<string>();
+  doc.descendants((node) => {
+    const meta = atomMetaForNodeName(node.type.name);
+    if (meta?.idAttr) {
+      const own = node.attrs[meta.idAttr];
+      if (typeof own === "string" && own) ids.add(own);
+      const linkId = node.attrs.linkId;
+      if (typeof linkId === "string" && linkId) ids.add(linkId);
+    }
+    return true;
+  });
+  return ids;
+}
+
+/**
+ * Remint every Card-bearing inline-atom id (footnoteId / citationId, plus the
+ * unified linkId mirror kept in lock-step) inside a rehydrated blob, so a Stack
+ * pull can never introduce a second atom that shares the SOURCE atom's id — a
+ * same-doc paste-as-new would otherwise strand two footnote/citation atoms on
+ * ONE id, and every id-keyed consumer (jump / edit / delete / pop-key, the
+ * DocStructureObserver footnote/citation maps) resolves ambiguously to the
+ * wrong atom. Atom kinds that own no cloneable Card identity (inlineMath /
+ * labelRef → `idAttr: null`) are left untouched. `seen` accumulates every id
+ * already live in the destination doc AND every id minted so far in this pull,
+ * so no two atoms — existing or freshly-pulled — collide.
+ *
+ * The atom-id twin of `withFreshUuid`: block uuids and inline-atom ids are the
+ * two identity axes a paste-as-new must regenerate. Reuses `remintNestedAtomIds`
+ * so a `\cite` nested inside a footnote body (`attrs.content`) is reached the
+ * same way the live editor reads it.
+ */
+function withFreshAtomIds(json: JSONContent, seen: Set<string>): JSONContent {
+  return remintNestedAtomIds(json, (typeName) => {
+    const meta = atomMetaForNodeName(typeName);
+    if (!meta?.idAttr) return null; // ref / inline-math own no Card identity
+    const fresh = generateShortId(seen);
+    seen.add(fresh);
+    return fresh;
+  }).content;
 }
 
 // ── Card payload ──────────────────────────────────────────────────────
