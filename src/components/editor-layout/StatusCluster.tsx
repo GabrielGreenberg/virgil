@@ -400,9 +400,9 @@ function StatusClusterImpl(props: StatusClusterProps) {
             className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full"
             style={{
               backgroundColor:
-                vbar.aiDot === "red" ? "#ef4444"
-                : vbar.aiDot === "green" ? "#22c55e"
-                : "#eab308",
+                vbar.aiDot === "red" ? "var(--status-danger)"
+                : vbar.aiDot === "green" ? "var(--status-ok)"
+                : "var(--status-warn)",
             }}
           />
         )}
