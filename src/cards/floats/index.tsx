@@ -498,10 +498,20 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
   const cit = ctx.citations.find((c) => c.id === id);
   if (!cit) return null;
   const pos = ctx.citationPositionMap.get(cit.id) ?? null;
+  const isAnchored = pos !== null;
   const isSelected = ctx.selectedCitationId === cit.id;
   return cardFloatable("citation", id, {
-    canJump: true,
-    jumpToSource: () => ctx.editorRef.current?.scrollToCitation(cit.id, null),
+    // Citation is the only collection that can hold an unanchored-yet-poppable
+    // member, so — unlike footnote/example whose atoms are always live — the
+    // FloatChrome jump affordance must derive from the anchored state the
+    // builder already resolved, matching the docked card, the omni card, and
+    // the in-body chevron (all gate on `pos !== null` / `isAnchored`). An
+    // unanchored citation's `scrollToCitation` resolves no in-text atom and is
+    // a dead control, so gate `jumpToSource` the same way.
+    canJump: isAnchored,
+    jumpToSource: isAnchored
+      ? () => ctx.editorRef.current?.scrollToCitation(cit.id, null)
+      : () => {},
     // R3: resolve bib sidecars from the ctx's already-loaded entries — no
     // separate getBibEntry hook needed.
     snapshotForStack: (source) =>
@@ -513,7 +523,7 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
       <CitationCard
         citation={cit}
         isSelected={isSelected}
-        isAnchored={pos !== null}
+        isAnchored={isAnchored}
         bibEntries={ctx.bibEntries}
         bibPackage={ctx.bibPackage}
         getDisplayText={ctx.getCitationDisplayText}
