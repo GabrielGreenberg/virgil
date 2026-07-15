@@ -167,4 +167,32 @@ describe("migrateFloatKeys (lockstep both maps)", () => {
       "float:card:note:n1": { x: 0, y: 0, width: 1, height: 1 },
     });
   });
+
+  it("dedups two source keys that canonicalize to the same target", () => {
+    // A pre-D10 `paragraph:` block key and its already-migrated
+    // `textobject:paragraph:` twin can coexist in a stored blob after a stale-SW
+    // grammar downgrade / interrupted migration. Both map to the SAME float:
+    // key — the migration must NOT emit a duplicate React key or clobber a rect.
+    const mapKey = (k: string): string => {
+      // Normalize the pre-textobject block prefix first (mirrors the read-time
+      // block-prefix step), then feed the float-grammar migration.
+      const normalized = k.startsWith("paragraph:")
+        ? `textobject:${k}`
+        : k;
+      return migrateLegacyKeyToFloat(normalized);
+    };
+    const keys = ["paragraph:p1", "textobject:paragraph:p1"];
+    const positions = {
+      "paragraph:p1": { x: 1, y: 1, width: 1, height: 1 }, // first writer
+      "textobject:paragraph:p1": { x: 9, y: 9, width: 9, height: 9 }, // would clobber
+    };
+    const out = migrateFloatKeys(keys, positions, mapKey);
+    expect(out.changed).toBe(true);
+    // Single key in the output list — no duplicate.
+    expect(out.keys).toEqual(["float:textobject:paragraph:p1"]);
+    // First-writer-wins: the first source key's rect survives deterministically.
+    expect(out.positions).toEqual({
+      "float:textobject:paragraph:p1": { x: 1, y: 1, width: 1, height: 1 },
+    });
+  });
 });
