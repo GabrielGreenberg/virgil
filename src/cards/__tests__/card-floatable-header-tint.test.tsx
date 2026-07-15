@@ -44,7 +44,7 @@ import { CARD_REGISTRY } from "@/cards/card-registry";
 import { CARD_THEMES } from "@/components/panel-primitives";
 import { textObjectFloatable } from "@/text-objects/text-object-floatable";
 import type { CardFloatCtx } from "@/cards/card-float-ctx";
-import type { UserNote, TodoItem } from "@/lib/types";
+import type { UserNote, TodoItem, CitationRef } from "@/lib/types";
 import type { Link } from "@/links/_shared/types";
 
 function modeBLink(): Link {
@@ -192,6 +192,71 @@ describe("cardFloatable canDrop (registry → Floatable, chip-D drop button)", (
     expect(f!.canDrop).toBe(false); // …and canDrop is independently false.
   });
 
+});
+
+describe("citation float canJump (task 136 — anchor-state jump gate)", () => {
+  // The citation collection is the ONLY one that can hold an unanchored-yet-
+  // poppable member (a panel `+`-created CitationRef the user hasn't dragged
+  // into the doc yet). FloatChrome's header jump button is card-blind — gated
+  // only on `Floatable.canJump` — and for a popped, chromeless citation it is
+  // the SOLE jump affordance. So the builder must derive `canJump` from the
+  // anchored state (`citationPositionMap.get(id) != null`) it already resolves,
+  // matching the docked card / omni card / in-body chevron. Anchored → the
+  // header chevron works; unanchored → no dead chevron.
+  function citRef(id: string): CitationRef {
+    return {
+      id,
+      command: `\\citep{${id}}`,
+      keys: [id],
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+  }
+
+  function citCtx(id: string, pos: number | null): CardFloatCtx {
+    const map = new Map<string, number>();
+    if (pos !== null) map.set(id, pos);
+    return ctxWith({
+      citations: [citRef(id)],
+      citationPositionMap: map,
+      selectedCitationId: null,
+      bibEntries: [],
+    } as unknown as Partial<CardFloatCtx>);
+  }
+
+  it("anchored citation (pos !== null): canJump true, jumpToSource fires scrollToCitation", () => {
+    const scrollToCitation = vi.fn();
+    const ctx = citCtx("c1", 42);
+    (ctx as unknown as { editorRef: { current: unknown } }).editorRef = {
+      current: { scrollToCitation },
+    };
+    const f = CARD_REGISTRY.citation.toFloatable("c1", ctx);
+    expect(f).not.toBeNull();
+    expect(f!.canJump).toBe(true);
+    f!.jumpToSource();
+    expect(scrollToCitation).toHaveBeenCalledWith("c1", null);
+  });
+
+  it("unanchored citation (pos === null): canJump false, jumpToSource is an inert no-op", () => {
+    const scrollToCitation = vi.fn();
+    const ctx = citCtx("c2", null);
+    (ctx as unknown as { editorRef: { current: unknown } }).editorRef = {
+      current: { scrollToCitation },
+    };
+    const f = CARD_REGISTRY.citation.toFloatable("c2", ctx);
+    expect(f).not.toBeNull();
+    // The header jump chevron is suppressed (matches docked + omni surfaces)…
+    expect(f!.canJump).toBe(false);
+    // …and even if invoked, it never fires the dead scroll.
+    f!.jumpToSource();
+    expect(scrollToCitation).not.toHaveBeenCalled();
+  });
+
+  it("canJump is exactly `pos !== null` (the docked/omni parity contract)", () => {
+    const anchored = CARD_REGISTRY.citation.toFloatable("c3", citCtx("c3", 0));
+    const unanchored = CARD_REGISTRY.citation.toFloatable("c4", citCtx("c4", null));
+    expect(anchored!.canJump).toBe(true); // pos 0 is a valid anchor, not falsy-null
+    expect(unanchored!.canJump).toBe(false);
+  });
 });
 
 describe("note float kind-chevron gate (WS7 — float half of the docked gate)", () => {
