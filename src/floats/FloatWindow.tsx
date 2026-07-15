@@ -9,7 +9,7 @@ import { consumeCardLiftHandoff } from "@/components/card-lift";
 import {
   FLOAT_DEFAULT_SIZE,
   FLOAT_SPAWN_FIT_MARGIN,
-  FLOAT_Z_BASE,
+  cardFloatZ,
   capPopoutHeight,
   collectClippedHeight,
 } from "./float-policy";
@@ -174,7 +174,7 @@ export function FloatWindow({
       initialY={initialY}
       initialWidth={initialWidth}
       initialHeight={initialHeight}
-      zIndex={ctx.floatZIndex?.(key) ?? FLOAT_Z_BASE + indexHint}
+      zIndex={ctx.floatZIndex?.(key) ?? cardFloatZ(indexHint)}
       surface={floatable.surface}
       accentTint={floatable.accentTint}
       onChange={(pos) => ctx.setFloatPosition(key, pos)}

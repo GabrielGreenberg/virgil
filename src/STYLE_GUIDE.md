@@ -708,8 +708,8 @@ number. Full ladder, low → high:
 | content / editor prose | 0–99 | (local) |
 | docked panel band | 1000 | `FLOATING_PANEL_Z_BASE` |
 | resting margin trigger | 1199 | `RESTING_MARGIN_TRIGGER_Z` |
-| float layer (popped cards, lift overlay) | 1200 | `FLOAT_Z_BASE` |
-| draggable tool window (`SystemDialog variant="draggable"`) | 1205 | `DRAGGABLE_DIALOG_Z` |
+| float layer (popped cards, lift overlay) — BOUNDED band | 1200–1204 | `FLOAT_Z_BASE` … `FLOAT_Z_MAX` (via `cardFloatZ`) |
+| draggable tool window (`SystemDialog variant="draggable"`) | 1205 | `DRAGGABLE_DIALOG_Z` (= `FLOAT_Z_MAX + 1`) |
 | open chrome menu (`<Menu>` CHROME_Z, sticky-bar dropdowns) | 2000 | `OPEN_CHROME_MENU_Z` |
 | drop-mode indicator | 9999 | `DROP_INDICATOR_Z` |
 | modal scrim + centered dialogs | 10000 | `MODAL_SCRIM_Z` |

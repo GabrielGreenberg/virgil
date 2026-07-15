@@ -102,7 +102,7 @@ import {
   FLOATING_PANEL_STACK_OFFSET,
   FLOATING_PANEL_Z_BASE,
 } from "./editor-layout/constants";
-import { FLOAT_Z_BASE } from "@/floats/float-policy";
+import { cardFloatZ } from "@/floats/float-policy";
 import {
   alignEntryToY,
   scrollEntryIntoView,
@@ -743,7 +743,10 @@ export default function EditorLayout() {
         (r): r is { kind: "card"; key: string } => r.kind === "card",
       );
       const idx = cards.findIndex((r) => r.key === key);
-      return FLOAT_Z_BASE + (idx >= 0 ? idx : cards.length);
+      // Bounded card-float band: `cardFloatZ` saturates the MRU offset at
+      // FLOAT_Z_MAX so a frontmost card can never climb over the draggable
+      // dialog tier, however many cards are popped (task 137).
+      return cardFloatZ(idx >= 0 ? idx : cards.length);
     },
     [focusStack],
   );
