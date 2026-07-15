@@ -23,6 +23,7 @@ import {
   DRAGGABLE_DIALOG_Z,
   DROP_INDICATOR_Z,
   FLOAT_Z_BASE,
+  FLOAT_Z_MAX,
   FLOATING_PANEL_Z_BASE,
   HINT_Z,
   MODAL_SCRIM_Z,
@@ -30,6 +31,7 @@ import {
   POPOUT_MAX_VH,
   RESTING_MARGIN_TRIGGER_Z,
   capPopoutHeight,
+  cardFloatZ,
   liftSpawnRect,
 } from "../float-policy";
 
@@ -127,10 +129,13 @@ describe("editor stacking tiers (BUG #50: margin bolt below floats)", () => {
   it("places a draggable tool window just above floats but below open menus (task 033)", () => {
     // A scrimless SystemDialog variant="draggable" (Preferences window) rides the
     // float band, above popped cards yet below a chrome menu opened from inside it
-    // — and far below the modal tier. Derived from FLOAT_Z_BASE, not a magic number.
+    // — and far below the modal tier. Derived from FLOAT_Z_MAX, not a magic number.
     expect(DRAGGABLE_DIALOG_Z).toBeGreaterThan(FLOAT_Z_BASE);
     expect(DRAGGABLE_DIALOG_Z).toBeLessThan(OPEN_CHROME_MENU_Z);
     expect(DRAGGABLE_DIALOG_Z).toBeLessThan(MODAL_SCRIM_Z);
+    // One tier above the BOUNDED float band — the derivation, not the literal.
+    expect(DRAGGABLE_DIALOG_Z).toBe(FLOAT_Z_MAX + 1);
+    // …and the task-033 value is unchanged (1205) by the task-137 re-derivation.
     expect(DRAGGABLE_DIALOG_Z).toBe(FLOAT_Z_BASE + 5);
   });
 
@@ -138,6 +143,41 @@ describe("editor stacking tiers (BUG #50: margin bolt below floats)", () => {
     // When nothing overlaps, the bolt must out-stack docked panels so it stays
     // visible + clickable.
     expect(RESTING_MARGIN_TRIGGER_Z).toBeGreaterThan(FLOATING_PANEL_Z_BASE);
+  });
+});
+
+// Task 137 — the card-float band is BOUNDED. `cardFloatZ` saturates the MRU
+// raise-on-click offset at FLOAT_Z_MAX so a frontmost card can never climb over
+// the draggable-dialog tier (Preferences), however many cards are popped. This
+// pins the ceiling the old unbounded `FLOAT_Z_BASE + idx` silently drifted past.
+describe("card-float band ceiling (task 137: bounded MRU band)", () => {
+  it("keeps every attainable card z strictly below the draggable dialog tier", () => {
+    // The core invariant: no offset, however large, can reach Preferences.
+    for (const offset of [0, 1, 4, 5, 6, 7, 20, 1000]) {
+      expect(cardFloatZ(offset)).toBeLessThan(DRAGGABLE_DIALOG_Z);
+    }
+    // The band ceiling itself sits below the dialog tier, by construction.
+    expect(FLOAT_Z_MAX).toBeLessThan(DRAGGABLE_DIALOG_Z);
+    expect(DRAGGABLE_DIALOG_Z).toBe(FLOAT_Z_MAX + 1);
+  });
+
+  it("preserves MRU ordering below the ceiling", () => {
+    expect(cardFloatZ(0)).toBe(FLOAT_Z_BASE);
+    expect(cardFloatZ(3)).toBe(FLOAT_Z_BASE + 3);
+    expect(cardFloatZ(4)).toBe(FLOAT_Z_MAX);
+    // Strictly increasing up to the cap so a raised card out-stacks a buried one.
+    expect(cardFloatZ(2)).toBeGreaterThan(cardFloatZ(1));
+  });
+
+  it("saturates at FLOAT_Z_MAX past the ceiling (the 6-7-card overrun is gone)", () => {
+    // Six popped cards → frontmost offset 6 used to reach 1206 > 1205; now clamps.
+    expect(cardFloatZ(5)).toBe(FLOAT_Z_MAX);
+    expect(cardFloatZ(6)).toBe(FLOAT_Z_MAX);
+    expect(cardFloatZ(1000)).toBe(FLOAT_Z_MAX);
+  });
+
+  it("floors a negative/absent offset at the band base (never below)", () => {
+    expect(cardFloatZ(-1)).toBe(FLOAT_Z_BASE);
   });
 });
 
@@ -228,5 +268,30 @@ describe("task 032 consumer wiring", () => {
     // The SSOT is HINT_Z; the CSS rule mirrors its value. If HINT_Z moves, this
     // fails until the mirror is updated.
     expect(css).toContain(`z-index: ${HINT_Z}`);
+  });
+});
+
+// Task 137 consumer wiring — BOTH card-float z sites route through the bounded
+// `cardFloatZ` helper, so no site can reintroduce the raw unbounded
+// `FLOAT_Z_BASE + offset` that overran the dialog tier. Source-text asserts in
+// the spirit of the BUG #50 / task-032 wiring pins above.
+describe("task 137 consumer wiring (bounded card-float band)", () => {
+  const HERE = path.dirname(fileURLToPath(import.meta.url));
+  const SRC = path.resolve(HERE, "../.."); // src/
+
+  it("EditorLayout's cardFloatZIndex derives from cardFloatZ, not FLOAT_Z_BASE + idx", () => {
+    const src = readFileSync(
+      path.join(SRC, "components/EditorLayout.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("cardFloatZ(");
+    // The old unbounded form must be gone.
+    expect(src).not.toContain("FLOAT_Z_BASE +");
+  });
+
+  it("FloatWindow's floatZIndex fallback derives from cardFloatZ, not FLOAT_Z_BASE + indexHint", () => {
+    const src = readFileSync(path.join(SRC, "floats/FloatWindow.tsx"), "utf8");
+    expect(src).toContain("cardFloatZ(indexHint)");
+    expect(src).not.toContain("FLOAT_Z_BASE + indexHint");
   });
 });

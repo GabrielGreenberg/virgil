@@ -29,16 +29,50 @@ export const FLOAT_DEFAULT_SIZE = { w: 360, h: 280 } as const;
 export const FLOAT_Z_BASE = 1200;
 
 /**
+ * Top (inclusive) of the card / text-object float band. The per-float MRU
+ * raise-on-click offset (a card's index in the card-filtered focus stack) has
+ * no natural ceiling — with N popped cards the frontmost reaches
+ * `FLOAT_Z_BASE + N`. Left unbounded it climbs THROUGH {@link
+ * DRAGGABLE_DIALOG_Z} and a frontmost card paints over the dragged-out
+ * Preferences window once ~6-7 cards are popped (task 137). Saturating every
+ * card z at this ceiling keeps the whole band strictly below the draggable
+ * dialog tier by construction. Five distinct levels (1200-1204) is ample for
+ * MRU ordering among simultaneously-popped cards; beyond that they share the
+ * top and DOM/portal order breaks ties (the same tie behavior a z-collision
+ * has always had). Consume via {@link cardFloatZ}, never a raw
+ * `FLOAT_Z_BASE + offset`.
+ */
+export const FLOAT_Z_MAX = FLOAT_Z_BASE + 4;
+
+/**
  * Paint z-index for a scrimless **draggable tool window** — a `SystemDialog`
  * rendered with `variant="draggable"` (the Preferences window; conceptually the
- * band FontsDialog's FloatingPanel also lives in). Sits just ABOVE the float
- * card layer so a tool window the user dragged out composes over popped cards,
- * but strictly BELOW {@link OPEN_CHROME_MENU_Z} (so a chrome menu opened from
- * inside the window stacks on top) and far below the modal tier. Replaces the
- * bare `z-[9999]` PreferencesModal used to hardcode — which collided with
- * {@link DROP_INDICATOR_Z} (task 033).
+ * band FontsDialog's FloatingPanel also lives in). Sits ONE tier ABOVE the
+ * BOUNDED float band ({@link FLOAT_Z_MAX}) so a tool window the user dragged out
+ * ALWAYS composes over every popped card regardless of how many are open, but
+ * strictly BELOW {@link OPEN_CHROME_MENU_Z} (so a chrome menu opened from inside
+ * the window stacks on top) and far below the modal tier. Derived from the band
+ * ceiling, not a magic `+5`, so the "dialog above cards" invariant can't drift
+ * as the band grows (task 137). Value is unchanged (1205) — replaces the bare
+ * `z-[9999]` PreferencesModal used to hardcode, which collided with {@link
+ * DROP_INDICATOR_Z} (task 033).
  */
-export const DRAGGABLE_DIALOG_Z = FLOAT_Z_BASE + 5;
+export const DRAGGABLE_DIALOG_Z = FLOAT_Z_MAX + 1;
+
+/**
+ * The ONE derivation of a card / text-object float's paint z-index from its MRU
+ * raise-on-click offset (the float's index in the card-filtered focus stack, or
+ * the popped-key list for the fallback path). Saturates at {@link FLOAT_Z_MAX}
+ * so the band stays strictly below {@link DRAGGABLE_DIALOG_Z} no matter how many
+ * cards are popped (task 137). MRU *ordering* is preserved below the ceiling;
+ * at/above it cards share the top and DOM order breaks ties (unchanged). Both z
+ * sites — `EditorLayout.cardFloatZIndex` (primary) and `FloatWindow`'s
+ * `floatZIndex`-absent fallback — route through here, so no raw
+ * `FLOAT_Z_BASE + offset` can reintroduce the unbounded band.
+ */
+export function cardFloatZ(offset: number): number {
+  return Math.min(FLOAT_Z_BASE + Math.max(0, offset), FLOAT_Z_MAX);
+}
 
 // Re-exported so panel z-stacking and the float band reference one symbol.
 export { FLOATING_PANEL_Z_BASE };
@@ -57,9 +91,12 @@ export { FLOATING_PANEL_Z_BASE };
  *                                       content + panels so it's clickable, but
  *                                       just BELOW the float layer so a popout
  *                                       dropped over its paragraph OCCLUDES it)
- *   float layer                 1200   (FLOAT_Z_BASE — popped cards, the
- *                                       lifted-text overlay, the inline-atom
- *                                       drag ghost; CSS mirror at z-index:1200
+ *   float layer              1200–1204 (FLOAT_Z_BASE … FLOAT_Z_MAX — popped
+ *                                       cards, the lifted-text overlay, the
+ *                                       inline-atom drag ghost; a BOUNDED band
+ *                                       whose MRU offset saturates at
+ *                                       FLOAT_Z_MAX so it never overruns the
+ *                                       dialog tier; CSS mirror at z-index:1200
  *                                       in globals.css)
  *   open chrome menus           2000   (OPEN_CHROME_MENU_Z — the <Menu>
  *                                       primitive's CHROME_Z; a transient open
