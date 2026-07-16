@@ -364,7 +364,7 @@ export function IconZap({ size = 16, muted = false }: { size?: number; muted?: b
     );
   }
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="#eab308" stroke="#a16207" strokeWidth="1.25" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="var(--status-warn)" stroke="var(--status-warn-strong)" strokeWidth="1.25" strokeLinejoin="round">
       <path d="M13 2 L4 14 H11 L10 22 L20 9 H13 Z" />
     </svg>
   );
