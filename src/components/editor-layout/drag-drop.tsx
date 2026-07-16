@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { PanelId, Side, ViewPrefs } from "@/hooks/useViewPrefs";
 import { PANEL_ICONS, panelLabel } from "./panel-icons";
 import { scrollEntryIntoView } from "./layout-scroll";
@@ -92,7 +92,6 @@ export function StripButton({
   const renderIcon = PANEL_ICONS[panelId];
   const label = panelLabel(panelId);
   const btnRef = useRef<HTMLButtonElement>(null);
-  if (!renderIcon) return null;
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const isDragging = useRef(false);
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -105,6 +104,26 @@ export function StripButton({
   }, []);
 
   const indicatorRef = useRef<HTMLDivElement | null>(null);
+
+  // Single teardown for every drag terminator (up / cancel / capture-loss /
+  // unmount): reclaim the body-appended ghost + drop-indicator nodes and reset
+  // the drag latches. Idempotent — safe to call when no drag is in flight.
+  const cleanupDragArtifacts = useCallback(() => {
+    ghostRef.current?.remove();
+    ghostRef.current = null;
+    indicatorRef.current?.remove();
+    indicatorRef.current = null;
+    isDragging.current = false;
+    pointerStart.current = null;
+  }, []);
+
+  // A drag can be interrupted without an `onPointerUp` firing — a
+  // `pointercancel` (browser takes the gesture over as a scroll/pinch, routine
+  // on touch/pen) suppresses the trailing pointerup per spec, and an unmount
+  // mid-drag never sees one either. Without this, the fixed z-9999
+  // `#virgil-drag-ghost` stays frozen on `document.body` and the next drag-start
+  // orphans it permanently. Reclaim it on unmount.
+  useEffect(() => cleanupDragArtifacts, [cleanupDragArtifacts]);
 
   const updateDropIndicator = useCallback((clientX: number, clientY: number) => {
     // Find which strip we're hovering
@@ -172,7 +191,10 @@ export function StripButton({
     const dy = e.clientY - pointerStart.current.y;
     if (!isDragging.current && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
       isDragging.current = true;
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      // Capture on the STABLE button element, not `e.target` — during a move
+      // `e.target` is the inner <svg>/<path>, so capturing (and its implicit
+      // release) would retarget to a descendant.
+      btnRef.current?.setPointerCapture(e.pointerId);
       // Clone the icon as ghost
       const ghost = document.createElement("div");
       ghost.id = "virgil-drag-ghost";
@@ -206,12 +228,12 @@ export function StripButton({
   }, [updateDropIndicator]);
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
-    ghostRef.current?.remove();
-    ghostRef.current = null;
-    indicatorRef.current?.remove();
-    indicatorRef.current = null;
+    // Read the drag latch before teardown resets it, then run the same single
+    // teardown every terminator shares.
+    const wasDragging = isDragging.current;
+    cleanupDragArtifacts();
 
-    if (isDragging.current) {
+    if (wasDragging) {
       const centerX = window.innerWidth / 2;
       const toSide: Side = e.clientX < centerX ? "left" : "right";
 
@@ -246,8 +268,6 @@ export function StripButton({
       }
 
       onMove(panelId, toSide, toIndex);
-      isDragging.current = false;
-      pointerStart.current = null;
       // The drag consumed this press — mark it handled so the browser's
       // trailing click doesn't ALSO toggle the panel (backlog #7). Safe
       // because pointerdown re-arms the guard on the next press.
@@ -255,14 +275,19 @@ export function StripButton({
       return;
     }
 
-    pointerStart.current = null;
     handledByPointer.current = true;
     onClick();
-  }, [side, onMove, panelId, onClick]);
+  }, [cleanupDragArtifacts, side, onMove, panelId, onClick]);
 
   // `stripRef` is accepted for the caller's DOM attachment conventions but
   // not used here; kept to preserve the calling contract after extraction.
   void stripRef;
+
+  // Bail-out AFTER all hooks (react-hooks/rules-of-hooks: hook order must be
+  // unconditional). Never truthy for a real strip panel today — even `blank`
+  // maps to `() => null` — but a future icon-less panel id would otherwise
+  // change hook order and crash.
+  if (!renderIcon) return null;
 
   return (
     <button
@@ -271,13 +296,21 @@ export function StripButton({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      // A `pointercancel` (browser co-opts the gesture as scroll/pinch, routine
+      // on touch/pen) suppresses the trailing `pointerup` per spec, and a
+      // capture loss likewise strands the drag — both must run the same teardown
+      // so the fixed z-9999 ghost/indicator can't be orphaned on document.body.
+      onPointerCancel={cleanupDragArtifacts}
+      onLostPointerCapture={cleanupDragArtifacts}
       onClick={() => {
         if (!handledByPointer.current) {
           onClick();
         }
         handledByPointer.current = false;
       }}
-      className="iconbtn-md iconbtn-toggle relative select-none"
+      // `touch-none` (touch-action: none) stops the browser pre-empting the drag
+      // as scroll in the first place, so `pointercancel` fires far less often.
+      className="iconbtn-md iconbtn-toggle relative select-none touch-none"
       aria-pressed={active}
       data-hint={label}
     >
