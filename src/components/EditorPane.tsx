@@ -6926,9 +6926,10 @@ function IconStrip({
           }}
           className="iconbtn-md iconbtn-toggle"
           aria-pressed={isOpen}
+          aria-label="Toggle sidebar"
           data-hint="Toggle sidebar"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <rect x="4" y="4" width="16" height="16" rx="1.5" />
             {isOpen && (
               isLeft
@@ -6942,6 +6943,7 @@ function IconStrip({
           onClick={() => viewPrefs.toggleOmniHideAllCards(side)}
           className="iconbtn-md iconbtn-toggle"
           aria-pressed={viewPrefs.getOmniHideAll(side)}
+          aria-label="Omni view"
           data-hint="Omni view"
         >
           <IconBlank active={viewPrefs.getOmniHideAll(side)} />

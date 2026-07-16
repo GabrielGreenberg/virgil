@@ -312,9 +312,15 @@ export function StripButton({
       // as scroll in the first place, so `pointercancel` fires far less often.
       className="iconbtn-md iconbtn-toggle relative select-none touch-none"
       aria-pressed={active}
+      // `data-hint` drives the CSS tooltip; `aria-label` gives the icon-only
+      // button an accessible name (the SVG carries no title/text of its own).
+      aria-label={label}
       data-hint={label}
     >
-      {renderIcon(active)}
+      {/* Decorative: the button's name comes from `aria-label` above. */}
+      <span aria-hidden="true" className="contents">
+        {renderIcon(active)}
+      </span>
     </button>
   );
 }
