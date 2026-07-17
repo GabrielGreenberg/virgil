@@ -31,6 +31,13 @@
 //   4. Prose still converts: a `\section` at a paragraph caret produces a
 //      heading@2 (no over-gating); a heading re-level still works.
 //   5. The existing listItem / exampleItem no-op cases stay no-ops.
+//
+// Task 153 EXTENDS this file (section 6): the BlockType dropdown's OUT-of-scope
+// levels 0/5/6 (Part / Paragraph heading / Subparagraph heading) have no
+// registry row and fall through to a bare `setNode("heading")` that never
+// reaches `headingRun`, so 149's bail never ran on them. `pickBlockType` now
+// gates that fallback on the SAME `posHostsBlockInsert` predicate — one gate,
+// every heading-convert surface.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@/lib/storage", () => {
@@ -65,6 +72,7 @@ import {
 } from "@/lib/actions/action-registry";
 import { COMMAND_MAP } from "@/lib/tiptap/commands";
 import { serializeToLatex } from "@/lib/latex-serializer";
+import { pickBlockType } from "@/components/MenuBar";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Real editor stack
@@ -337,5 +345,78 @@ describe("heading slash commands stay no-ops in list/example items (task 149 kee
     expect(countOfType(editor, "heading")).toBe(0);
     expect(countOfType(editor, "exampleItem")).toBe(1);
     editor.destroy();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// 6. The BlockType dropdown's OUT-of-scope levels (task 153)
+//
+// Levels 0 (Part) / 5 (Paragraph heading) / 6 (Subparagraph heading) have no
+// registry row, so `applyHeadingFromDropdown` falls through to a bare
+// `setNode("heading", {level})` that NEVER reaches `headingRun` — bypassing
+// 149's container bail. The same in-place conversion 149 proved corrupts a
+// titleField / codeBlock / latexComment. Task 153 gates that fallback on the
+// SAME `posHostsBlockInsert` SSOT, so `pickBlockType(editor, "0"|"5"|"6")` is a
+// no-op inside a protected block — matching the levels-1–4 behavior 149 gives.
+// ───────────────────────────────────────────────────────────────────────────
+
+const DROPDOWN_OUT_OF_SCOPE = ["0", "5", "6"] as const;
+
+describe("BlockType dropdown out-of-scope levels honor the containing block (task 153)", () => {
+  for (const container of PROTECTED) {
+    for (const level of DROPDOWN_OUT_OF_SCOPE) {
+      it(`pickBlockType(${level}) at a mid-${container} caret preserves it and creates no heading`, () => {
+        const editor = mountFixture();
+        placeCaretAt(editor, midInside(editor, container));
+        const before = countOfType(editor, container);
+
+        pickBlockType(editor, level);
+
+        expect(countOfType(editor, container), `${container} count`).toBe(before);
+        expect(countOfType(editor, "heading"), `heading count`).toBe(0);
+        editor.destroy();
+      });
+    }
+  }
+
+  it("serializer proof: after every out-of-scope dropdown pick the full \\title{...} survives", () => {
+    const editor = mountFixture();
+    for (const level of DROPDOWN_OUT_OF_SCOPE) {
+      placeCaretAt(editor, midInside(editor, "titleField"));
+      pickBlockType(editor, level);
+    }
+    // Exactly one titleField remains; no heading was minted — the data-loss
+    // (\title{X} re-emitting as \part{X} on reload) can no longer occur.
+    expect(countOfType(editor, "titleField")).toBe(1);
+    expect(countOfType(editor, "heading")).toBe(0);
+    const tex = serializeToLatex(editor.getJSON());
+    expect(tex).toContain("\\title{My Paper Title}");
+    editor.destroy();
+  });
+
+  it("prose still converts: pickBlockType('0') at a paragraph caret produces a heading@level0 (no over-gating)", () => {
+    const editor = mountFixture();
+    placeCaretAt(editor, midInside(editor, "paragraph"));
+
+    pickBlockType(editor, "0");
+
+    expect(countOfType(editor, "heading")).toBe(1);
+    let level: number | null = null;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "heading" && level === null) level = node.attrs.level as number;
+      return true;
+    });
+    expect(level).toBe(0); // Part = level 0
+    editor.destroy();
+  });
+
+  it("prose still converts: pickBlockType('5') and ('6') at a paragraph caret still create a heading", () => {
+    for (const level of ["5", "6"] as const) {
+      const editor = mountFixture();
+      placeCaretAt(editor, midInside(editor, "paragraph"));
+      pickBlockType(editor, level);
+      expect(countOfType(editor, "heading"), `level ${level}`).toBe(1);
+      editor.destroy();
+    }
   });
 });

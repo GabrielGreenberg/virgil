@@ -27,6 +27,17 @@ import { BlockTypeDropdown, ViewMenu } from "../../MenuBar";
 import type { Editor } from "@tiptap/react";
 import type { DividerLevel } from "@/hooks/useViewPrefs";
 
+// Task 153: the dropdown's out-of-scope levels (0/5/6) now gate their direct
+// `setNode` on `posHostsBlockInsert`. These tests drive a STUB editor (no real
+// doc) whose fixtures are ordinary prose (paragraph / heading) that legitimately
+// hosts a heading conversion — so stub the predicate `true`. The gate's OWN
+// correctness (a titleField/codeBlock/latexComment caret is a no-op) is covered
+// end-to-end in heading-convert-container-gate.test.ts against the real schema.
+vi.mock("@/text-objects/text-object-registry", async (importActual) => ({
+  ...(await importActual<typeof import("@/text-objects/text-object-registry")>()),
+  posHostsBlockInsert: () => true,
+}));
+
 // jsdom has no ResizeObserver; useFloatingMenuPosition measures with one (the
 // docked path bypasses positioning, but the provider still constructs the hook).
 class ResizeObserverStub {

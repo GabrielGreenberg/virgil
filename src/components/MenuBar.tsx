@@ -19,6 +19,10 @@ import {
   type BlockActionId,
 } from "@/lib/actions/action-registry";
 import { paragraphUuidAt } from "@/links/links";
+// Task 153: the SAME 147/149 SSOT container predicate the registry `headingRun`
+// bails on — so the dropdown's OUT-of-scope levels (0/5/6), which never reach
+// `headingRun`, can't corrupt a titleField / codeBlock / latexComment either.
+import { posHostsBlockInsert } from "@/text-objects/text-object-registry";
 
 // CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
 // / `handleExampleMenuPick`) were RETIRED here. The single canonical example
@@ -181,6 +185,18 @@ function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
       return;
     }
   }
+  // Task 153: out-of-scope levels (0/5/6) skip `headingRun` entirely, so they
+  // bypass 149's container bail. Mirror it here with the SAME 147/149 SSOT
+  // predicate — ONE gate governs every heading-convert surface — so picking
+  // Part / Paragraph heading / Subparagraph heading with the caret in a
+  // titleField / codeBlock / latexComment is a no-op, not an in-place
+  // `setBlockType` that corrupts the structural node (silent \title{} loss on
+  // reload). `.focus()` restores the ProseMirror selection to the caret's block,
+  // so the head pos IS the SET's source — the same block the predicate tests.
+  // Read via `editor.view.state` (identical to `editor.state`) to match the
+  // levels-1–4 path above, which already works off `editor.view`.
+  const { state } = editor.view;
+  if (!posHostsBlockInsert(state.doc, state.selection.from)) return;
   // Out-of-scope level (0/5/6, or a misconfigured value): SET directly +
   // numbered (NOT toggle — matches the SET decision for the whole dropdown).
   const level = parseInt(levelValue) as unknown as 1 | 2 | 3 | 4 | 5 | 6;
@@ -188,8 +204,9 @@ function applyHeadingFromDropdown(editor: Editor, levelValue: string): void {
 }
 
 /** Apply a BlockType row's pick — the shared verb behind a click AND an
- *  Enter activation (so keyboard + mouse take the identical path). */
-function pickBlockType(editor: Editor, value: string): void {
+ *  Enter activation (so keyboard + mouse take the identical path).
+ *  Exported for the task-153 container-gate regression test. */
+export function pickBlockType(editor: Editor, value: string): void {
   // CHIP 7b: uniform collab read-only gate — a block-type change
   // (incl. 'Body' → setParagraph) refuses when the partner holds
   // the pen. No over-gating: always editable in a non-collab doc.
