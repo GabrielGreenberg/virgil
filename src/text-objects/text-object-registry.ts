@@ -11,7 +11,7 @@
  * See TEXT-OBJECT-REFACTOR.md §3.
  */
 
-import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Node as PMNode, NodeType } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/core";
 import { headingTypeName } from "@/lib/heading-types";
 import {
@@ -1125,6 +1125,48 @@ export function posBlockAllowsAction(
 ): boolean {
   const clamped = Math.max(0, Math.min(pos, doc.content.size));
   return blockKindAllowsAction(doc.resolve(clamped).parent.type.name, action);
+}
+
+/**
+ * Can the textblock of type `parentType` host a block-atom CHILD (example /
+ * display-math / `\tex` / figure / graphics) inserted at a caret WITHOUT
+ * corrupting the document? (task 147.)
+ *
+ * A block-atom insert at a mid-content caret can't fit into an inline-only
+ * container, so ProseMirror's fitter SPLITS the container to place the atom.
+ * For ordinary prose (paragraph, list item, blockquote's inner paragraph) that
+ * split is harmless — two paragraphs around the atom — so those return `true`.
+ * Two block families corrupt on the split and must grey the insert:
+ *
+ *   • MARKLESS verbatim blocks (`codeBlock`, `latexComment`) — `marks: ""`
+ *     nodes whose text is literal source; a split mangles them into two blocks
+ *     that BOTH serialize → structural corruption (the CONT cluster, task 146).
+ *   • `titleField` — a uuid-keyed preamble SINGLETON. A split mints two
+ *     `\title{}` sharing one uuid; the serializer's first-occurrence-wins dedup
+ *     (`collectPreambleTitleFields`) then drops the second silently →
+ *     data-loss on reload.
+ *
+ * Markless-ness is read from the schema (`spec.marks === ""`) so a future
+ * verbatim kind is covered without editing this predicate; the titleField
+ * preamble singleton is named explicitly (no schema flag distinguishes it).
+ * INLINE-atom inserts (inline-math `$x$`, `\ref`) never split — they are valid
+ * inside a title / code block and do NOT consult this gate.
+ */
+export function blockTypeHostsBlockInsert(parentType: NodeType): boolean {
+  if (parentType.spec.marks === "") return false; // codeBlock / latexComment
+  if (parentType.name === "titleField") return false; // preamble singleton
+  return true;
+}
+
+/**
+ * Resolve the textblock containing `pos` and test whether it can host a
+ * block-atom child — the position-based entry point for
+ * `blockTypeHostsBlockInsert`, used by the lightning / slash surfaces whose ref
+ * is a bare caret. `pos` is clamped into the doc so a stale caret can't throw.
+ */
+export function posHostsBlockInsert(doc: PMNode, pos: number): boolean {
+  const clamped = Math.max(0, Math.min(pos, doc.content.size));
+  return blockTypeHostsBlockInsert(doc.resolve(clamped).parent.type);
 }
 
 /**

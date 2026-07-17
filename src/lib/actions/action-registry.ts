@@ -180,6 +180,7 @@ import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
   posBlockAllowsAction,
+  posHostsBlockInsert,
 } from "@/text-objects/text-object-registry";
 import {
   getSectionRangeByUuid,
@@ -1548,6 +1549,11 @@ export function texRun(ctx: ActionContext): void {
   const texBlockType = state.schema.nodes.texBlock;
   if (!texBlockType) return;
   const { from, to, empty } = state.selection;
+  // CONTAINER GUARD (task 147, defense-in-depth — covers the slash `\tex` twin):
+  // a `texBlock` insert at a caret inside a block that can't host a block child
+  // (titleField / codeBlock / latexComment) would SPLIT it — two `\title{}`
+  // (silent data-loss) or two verbatim blocks. Bail so NO surface can corrupt.
+  if (!posHostsBlockInsert(state.doc, from)) return;
   const seedCode = empty
     ? ""
     : state.doc.textBetween(from, to, "\n", (node) =>
@@ -1602,7 +1608,7 @@ const TEX_ACTION_ROW: ActionSpec = {
   slashName: "tex",
   // Shared block-atom gate (CHIP 6a: `blockApplies`). A function declaration, so
   // it is hoisted above this row's definition.
-  applies: (ctx) => blockApplies(ctx),
+  applies: blockInsertApplies,
   run: texRun,
 };
 
@@ -1861,6 +1867,11 @@ export function exampleRun(ctx: ActionContext): void {
   const exampleBlockType = state.schema.nodes.exampleBlock;
   if (!exampleBlockType) return;
   const { from, to, empty } = state.selection;
+  // CONTAINER GUARD (task 147, defense-in-depth — covers the slash `\ex` twin):
+  // an `exampleBlock` insert at a caret inside a block that can't host a block
+  // child (titleField / codeBlock / latexComment) would SPLIT it. Bail so NO
+  // surface can corrupt (mirrors the texRun guard).
+  if (!posHostsBlockInsert(state.doc, from)) return;
 
   // Harvest inline-only content from the selection (the WRAP path) via the SSOT
   // `extractInlineFromSlice` — a bounded walk over the selection slice (never the
@@ -1939,7 +1950,7 @@ const EXAMPLE_ACTION_ROW: ActionSpec = {
   selection: "optional",
   surfaces: { slash: true, lightning: true },
   slashName: "ex",
-  applies: (ctx) => blockApplies(ctx),
+  applies: blockInsertApplies,
   run: exampleRun,
 };
 
@@ -1969,6 +1980,35 @@ function blockApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
   else base = TEXT_OBJECT_REGISTRY[ref.kind].isMeaningfulBlockAtom ? "disabled" : "ok";
   // selection-`"optional"`: caret OK; only the kind-base + collab gate can grey.
   return gateApplies({ selection: "optional" }, ctx, base);
+}
+
+// ---------------------------------------------------------------------------
+// blockInsertApplies (task 147) — the CONTAINER-AWARE gate for the block-atom
+// rows that INSERT a block node at the caret (example / display-math / `\tex` /
+// figure / graphics). It tightens `blockApplies`: when the caret's containing
+// block can't host a block child (`titleField` / `codeBlock` / `latexComment`),
+// a mid-content insert would SPLIT the container — corrupting a title into two
+// `\title{}` (silent data-loss on reload) or a verbatim block into two. Resolve
+// the container from the live view and grey the cell there, exactly as
+// `cardActionAllowedForCtx` greys the inline-atom rows via `posBlockAllowsAction`.
+//
+// This is the SUPERSET gate — `inline-math` (`$x$`) and `ref` (`\ref`) insert
+// INLINE atoms (no split, valid inside a title/code block) and stay on the bare
+// `blockApplies`, so they are NOT greyed here.
+//
+// Degrades to `blockApplies`'s verdict when no live view / a non-PM mock doc is
+// threaded (the minimal `{ ref, canEdit }` menu-decoration ctx or a unit-test
+// probe), matching `cardActionAllowedForCtx`'s fallback — historic "allow".
+// ---------------------------------------------------------------------------
+function blockInsertApplies(ctx: ActionContext): "ok" | "disabled" | "absent" {
+  const base = blockApplies(ctx);
+  if (base !== "ok") return base; // absent / already-disabled (kind / collab) — keep
+  const ref = ctx.ref;
+  if (ref.kind !== "cursor" && ref.kind !== "selection") return base;
+  const doc = ctx.view?.state?.doc;
+  if (!doc || typeof doc.resolve !== "function") return base; // no live view → allow
+  const pos = ref.kind === "cursor" ? ref.pos : ref.from;
+  return posHostsBlockInsert(doc, pos) ? "ok" : "disabled";
 }
 
 // ---------------------------------------------------------------------------
@@ -2010,6 +2050,12 @@ function mathRun(kind: "inline" | "display"): (ctx: ActionContext) => void {
       insertInlineAtom({ editor, type: "inlineMath", attrs: { latex } });
       return;
     }
+    // CONTAINER GUARD (task 147): a `displayMath` BLOCK atom at a caret inside a
+    // block that can't host a block child (titleField / codeBlock / latexComment)
+    // would SPLIT it. Bail — the inline branch above is exempt (inline atoms
+    // never split). display-math is lightning-only (greyed by blockInsertApplies);
+    // this is the belt-and-suspenders on the run itself.
+    if (!posHostsBlockInsert(editor.state.doc, from)) return;
     // `displayMath` is a BLOCK atom — bringing the freshly inserted block into
     // view IS intended (and now lands below the sticky chrome via the editor's
     // chrome-aware scrollMargin). Keep the block-insert scroll path.
@@ -2192,7 +2238,7 @@ const DISPLAY_MATH_ACTION_ROW: ActionSpec = {
   category: "block",
   selection: "optional",
   surfaces: { lightning: true },
-  applies: blockApplies,
+  applies: blockInsertApplies,
   run: mathRun("display"),
 };
 const FIGURE_ACTION_ROW: ActionSpec = {
@@ -2201,7 +2247,7 @@ const FIGURE_ACTION_ROW: ActionSpec = {
   category: "block",
   selection: "optional",
   surfaces: { lightning: true },
-  applies: blockApplies,
+  applies: blockInsertApplies,
   run: figureRun,
 };
 const GRAPHICS_ACTION_ROW: ActionSpec = {
@@ -2210,7 +2256,7 @@ const GRAPHICS_ACTION_ROW: ActionSpec = {
   category: "block",
   selection: "optional",
   surfaces: { lightning: true },
-  applies: blockApplies,
+  applies: blockInsertApplies,
   run: graphicsRun,
 };
 

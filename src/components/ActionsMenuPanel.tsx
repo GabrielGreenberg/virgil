@@ -422,6 +422,31 @@ export function ActionsMenuPanel({
       canEdit,
     } as ActionContext) === "disabled";
 
+  // Task 147 (DATA-LOSS): the five block-atom INSERT cells (example /
+  // display-math / `\tex` / figure / graphics) grey out when the caret sits in a
+  // block that can't host a block child (titleField / codeBlock / latexComment)
+  // — inserting there would SPLIT the container into two `\title{}` (silent
+  // data-loss on reload) or two verbatim blocks. All five share the registry's
+  // container-aware `blockInsertApplies`, so one probe (the `example` row) covers
+  // all five. `!canEdit` is folded in (collab gate) for a uniform render, exactly
+  // like `wrappersDisabled`. inline-math / `\ref` insert INLINE atoms (no split,
+  // valid in a title) and are NOT gated here. Computed at menu-open, never per
+  // keystroke.
+  const blockAtomsDisabled =
+    !canEdit ||
+    VIRGIL_ACTION_REGISTRY["example"]!.applies({
+      editor,
+      view: editor.view,
+      ref: {
+        kind: "selection",
+        from: editor.state.selection.from,
+        to: editor.state.selection.to,
+        paragraphId: "",
+      },
+      surface: "lightning",
+      canEdit,
+    } as ActionContext) === "disabled";
+
   // The 11 card-action rows, decorated with their per-open disabled state, fed
   // to `<MenuItemsFromRegistry>` (the same mapper the grab menu uses). CHIP 7b:
   // the card-row grey-out runs through the row's OWN `applies()` (the DA-5
@@ -632,7 +657,7 @@ export function ActionsMenuPanel({
             row={2}
             col={0}
             title="Wrap selection in example block"
-            disabled={!canEdit}
+            disabled={blockAtomsDisabled}
             run={() => wrapSelectionInExample()}
           >
             <IconExample size={16} />
@@ -654,7 +679,7 @@ export function ActionsMenuPanel({
             row={2}
             col={2}
             title="Wrap selection in display math"
-            disabled={!canEdit}
+            disabled={blockAtomsDisabled}
             run={() => runGridAction("display-math")}
           >
             <span style={{ fontFamily: "var(--font-serif, serif)", fontSize: 13, letterSpacing: -0.5 }}>
@@ -677,7 +702,7 @@ export function ActionsMenuPanel({
             row={3}
             col={0}
             title="Insert raw LaTeX block"
-            disabled={!canEdit}
+            disabled={blockAtomsDisabled}
             run={() => insertTexBlock(editor)}
           >
             <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
@@ -689,7 +714,7 @@ export function ActionsMenuPanel({
             row={3}
             col={1}
             title="Insert figure block"
-            disabled={!canEdit}
+            disabled={blockAtomsDisabled}
             run={() => runGridAction("figure")}
           >
             <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
@@ -701,7 +726,7 @@ export function ActionsMenuPanel({
             row={3}
             col={2}
             title="Insert image"
-            disabled={!canEdit}
+            disabled={blockAtomsDisabled}
             run={() => runGridAction("graphics")}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
