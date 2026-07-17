@@ -49,6 +49,43 @@ describe("MenuRegistry — snapshot + versioning", () => {
     expect(r.getVersion()).toBeGreaterThan(v0);
   });
 
+  it("captures a ref set BEFORE register (the real commit order) — refFor returns the live el", () => {
+    // The REAL React mount order: a ref callback fires at COMMIT, `register`
+    // runs in a passive effect AFTER. So `setRef` lands before the record
+    // exists. Pre-fix, `setRef`'s `if (rec)` gate dropped the element and the
+    // ref stayed null forever (dead §3.5 scroll-into-view). This is the inverse
+    // of the masking order above — it must now return the live element, and a
+    // ref set must STILL not bump the version.
+    const r = new MenuRegistry("m", "list");
+    const el = {} as HTMLElement;
+    r.setRef("a", el); // commit-phase: no record yet
+    const v0 = r.getVersion();
+    r.register(reg({ id: "a" })); // passive effect: record created after
+    expect(r.refFor("a")).toBe(el);
+    // register bumped (new item), but the ref itself never bumps:
+    r.setRef("a", {} as HTMLElement);
+    const v1 = r.getVersion();
+    r.setRef("a", null);
+    expect(r.getVersion()).toBe(v1);
+    expect(r.refFor("a")).toBeNull();
+  });
+
+  it("refFor survives an unregister→register churn (disabled-flip re-register keeps no stale ref)", () => {
+    const r = new MenuRegistry("m", "list");
+    const el = {} as HTMLElement;
+    r.register(reg({ id: "a" }));
+    r.setRef("a", el);
+    expect(r.refFor("a")).toBe(el);
+    // A disabled-flip in useMenuItem unregisters then re-registers. The ref map
+    // is independent of the record, so it is only cleared by an explicit
+    // unregister (real unmount) — a bare re-register must NOT strand the ref.
+    r.register(reg({ id: "a", disabled: true }));
+    expect(r.refFor("a")).toBe(el);
+    // A real unmount (unregister) DOES clear the ref map entry.
+    r.unregister("a");
+    expect(r.refFor("a")).toBeNull();
+  });
+
   it("reuses the cached snapshot until the version changes", () => {
     const r = new MenuRegistry("m", "list");
     r.register(reg({ id: "a" }));
