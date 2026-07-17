@@ -181,6 +181,7 @@ import {
   isTextObjectKind,
   posBlockAllowsAction,
   posHostsBlockInsert,
+  blockTypeHostsBlockInsert,
 } from "@/text-objects/text-object-registry";
 import {
   getSectionRangeByUuid,
@@ -1344,6 +1345,15 @@ function headingRun(level: number): (ctx: ActionContext) => void {
     const { state } = ctx.view;
     const heading = state.schema.nodes.heading;
     if (!heading) return;
+    // Task 149: defense-in-depth container bail (belt-and-suspenders, mirroring
+    // `texRun`'s own `posHostsBlockInsert` bail). Even though `applies()` now
+    // greys heading in a protected structural block AND both invocation paths
+    // gate on it (the bridge at EditorPane, and the slash `runViewOnlyAction`),
+    // a caller that reaches `run()` WITHOUT consulting `applies()` must not
+    // corrupt a titleField / codeBlock / latexComment. The caret's own textblock
+    // is the SET's source: bail when it can't host a heading. Uses the SAME 147
+    // SSOT predicate as the `applies()` gate above, so the two can never diverge.
+    if (!posHostsBlockInsert(state.doc, state.selection.from)) return;
     const tr = state.tr.setBlockType(
       state.selection.from,
       state.selection.to,
@@ -2571,6 +2581,20 @@ function selectionCanHostHeading(view: EditorView): boolean {
       // Mirror setBlockType: only textblocks are candidates; a block already
       // carrying the target markup is an applicable (re-level) SET.
       if (!node.isTextblock || node.hasMarkup(heading)) return undefined;
+      // Task 149: the SOURCE textblock must ALSO be heading-convertible. A
+      // protected STRUCTURAL block (titleField / codeBlock / latexComment) IS a
+      // textblock whose parent is `doc` — and `doc` hosts headings anywhere — so
+      // the `canReplaceWith` parent check below returns `true` and would
+      // greenlight the SET. But `setBlockType` then REPLACES the structural node
+      // with a heading, dropping its identity: `\title{}` → `\section{}` (silent
+      // title-loss on the next save, since `collectPreambleTitleFields` finds no
+      // titleField), and the verbatim / comment role is destroyed. The 147 SSOT
+      // names EXACTLY this protected set (markless verbatim blocks via
+      // `spec.marks === ""` + the titleField preamble singleton), so ONE
+      // predicate now governs both the block-INSERT split class (147) and this
+      // heading-CONVERT class — `latexComment` is covered for free. A
+      // paragraph / heading is convertible → passes through.
+      if (!blockTypeHostsBlockInsert(node.type)) return undefined;
       if (node.type === heading) {
         applicable = true;
         return undefined;

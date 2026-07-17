@@ -269,7 +269,15 @@ const LABEL_REF = {
 describe("heading SET across applicable kinds (slash ⇄ registry run)", () => {
   // Kinds where the EXPECTED-MATRIX (+ live probe) shows heading CONVERTS the
   // targeted textblock in place. blockquote: the INNER paragraph converts, the
-  // wrapper stays. codeBlock/titleField: the block itself converts.
+  // wrapper stays.
+  //
+  // NOTE (task 149): `codeBlock` and `titleField` USED to be listed here as
+  // "converting" — but that CONVERSION was the data-loss bug (a `\title{}` lozenge
+  // silently became a `\section{}`, a verbatim block was destroyed). They now
+  // belong in the PROTECTED_NOOP matrix below; the convert-aware
+  // `selectionCanHostHeading` greys them and both surfaces no-op. Only genuinely
+  // heading-convertible textblocks (paragraph, blockquote's inner paragraph)
+  // remain here.
   type Case = {
     name: string;
     content: Record<string, unknown>[];
@@ -286,20 +294,6 @@ describe("heading SET across applicable kinds (slash ⇄ registry run)", () => {
       content: [paragraph("Hello world")],
       expectHeading: true,
       keepText: "Hello world",
-      outerWrapper: null,
-    },
-    {
-      name: "codeBlock",
-      content: [{ type: "codeBlock", attrs: { uuid: "c1" }, content: [{ type: "text", text: "x=1" }] }],
-      expectHeading: true,
-      keepText: "x=1",
-      outerWrapper: null,
-    },
-    {
-      name: "titleField",
-      content: [{ type: "titleField", attrs: { uuid: "t1", field: "title" }, content: [{ type: "text", text: "My Title" }] }],
-      expectHeading: true,
-      keepText: "My Title",
       outerWrapper: null,
     },
     {
@@ -343,6 +337,46 @@ describe("heading SET across applicable kinds (slash ⇄ registry run)", () => {
       expect(viaRun).toEqual({ type: "heading", level: 2, numbered: true });
       // The whole doc shape (node types/levels in order) is identical too.
       expect(shapeRun).toEqual(shapeSlash);
+    });
+  }
+
+  // Task 149 — the CONVERT twin of 147: a heading `setBlockType` on a PROTECTED
+  // structural textblock (titleField / codeBlock / latexComment) is now a NO-OP,
+  // on BOTH surfaces. The block survives with its identity attrs intact; no
+  // heading is minted. (The former CONVERTING rows for codeBlock/titleField
+  // encoded the data-loss bug; they moved here.)
+  const PROTECTED_NOOP: Array<{ name: string; keepText: string; content: Record<string, unknown>[] }> = [
+    { name: "titleField", keepText: "My Title", content: [{ type: "titleField", attrs: { uuid: "t1", field: "title" }, content: [{ type: "text", text: "My Title" }] }] },
+    { name: "codeBlock", keepText: "x=1", content: [{ type: "codeBlock", attrs: { uuid: "c1" }, content: [{ type: "text", text: "x=1" }] }] },
+    { name: "latexComment", keepText: "a comment", content: [{ type: "latexComment", attrs: { uuid: "cm1" }, content: [{ type: "text", text: "a comment" }] }] },
+  ];
+
+  for (const c of PROTECTED_NOOP) {
+    it(`slash \\section on ${c.name} is a NO-OP (block preserved, no heading) — task 149`, () => {
+      const e = mount(JSON.parse(JSON.stringify(c.content)));
+      caretInFirstTextblock(e);
+      COMMAND_MAP.get("section")!.action(e.view, "\\section");
+
+      expect(countOfType(e, "heading")).toBe(0);
+      expect(countOfType(e, c.name)).toBe(1);
+      expect(e.state.doc.textContent).toContain(c.keepText);
+    });
+
+    it(`registry run heading-section on ${c.name} is the SAME no-op — task 149`, () => {
+      const e = mount(JSON.parse(JSON.stringify(c.content)));
+      caretInFirstTextblock(e);
+      runRegistry(e, "heading-section");
+
+      expect(countOfType(e, "heading")).toBe(0);
+      expect(countOfType(e, c.name)).toBe(1);
+    });
+
+    it(`heading-section applies() is "disabled" for a ${c.name} caret — task 149`, () => {
+      const e = mount(JSON.parse(JSON.stringify(c.content)));
+      caretInFirstTextblock(e);
+      const ref: CursorRef = { kind: "cursor", pos: e.state.selection.head, paragraphId: "" };
+      const verdict = VIRGIL_ACTION_REGISTRY["heading-section"]!.applies({ ref, view: e.view } as ActionContext);
+      expect(verdict).toBe("disabled");
     });
   }
 });
