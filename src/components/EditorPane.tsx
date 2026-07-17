@@ -6713,6 +6713,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             <DragHandleMenu
               anchorRect={dragHandleMenuState.anchorRect}
               kind={dragHandleMenuState.ref.kind}
+              // Task 145: pass the REAL ref (a selection carries its live
+              // from/to) + the live editor so the menu decoration resolves a
+              // selection's CONTAINING block kind and greys per that block's
+              // curated set — closing the viewless bypass that let a selection
+              // inside a titleField / codeBlock / latexComment show
+              // Citation/footnote/suggest-edit enabled (the SELECTION-ref
+              // residual of task 061).
+              ref={dragHandleMenuState.ref}
+              editor={editor}
               // CHIP 7b: the UNIFORM collab read-only gate. `collab.canEditMainText`
               // (`!sidecar.enabled || iHavePen`) is the SSOT — false only when
               // collab is on AND the partner holds the pen, so every card row greys

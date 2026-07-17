@@ -56,6 +56,7 @@ import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
+  posBlockAllowsAction,
 } from "@/text-objects/text-object-registry";
 import { isAtomNode } from "@/lib/tiptap/atom-registry";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
@@ -212,6 +213,25 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
         if (LIFECYCLE_ACTIONS.has(action)) {
           notifyStaleRef(lifecycleLabel(action), ref, notify);
         }
+        return;
+      }
+
+      // Defense-in-depth (task 145): the grab-bar's SELECTION ref reaches this
+      // legacy dispatcher DIRECTLY, bypassing `runAction`'s applies() gate. The
+      // menu decoration now greys a container-invalid action (a selection inside
+      // a titleField/codeBlock/latexComment can't click Citation/footnote/
+      // suggest-edit/highlight), but re-check the CONTAINING block here too via
+      // the SSOT `posBlockAllowsAction` so no inline atom/mark can land in a
+      // block whose schema rejects it — even by a programmatic dispatch — the
+      // enforcement point is not the menu alone. Only gesture SELECTION refs need
+      // this: a block ref carries a TextObject kind the menu already curates, and
+      // its resolved range may not sit in a prose container. Lifecycle actions
+      // are exempt (a selection delete/archive acts on the selected text).
+      if (
+        ref.kind === "selection" &&
+        CONTAINER_SENSITIVE_ACTIONS.has(action) &&
+        !posBlockAllowsAction(ed.state.doc, resolved.from, action)
+      ) {
         return;
       }
 
@@ -1004,6 +1024,25 @@ const LIFECYCLE_ACTIONS: ReadonlySet<DragHandleAction> = new Set([
   "duplicate",
   "archive",
   "delete",
+]);
+
+// The card actions whose result is an INLINE ATOM (footnote/citation) or an
+// inline MARK (highlight/suggest-edit) embedded in the block's text — so the
+// containing block's schema decides whether they're valid. These are exactly
+// the actions the curated `NON_PROSE_BLOCK_ACTIONS` / `MARKLESS_BLOCK_ACTIONS`
+// / `TITLE_FIELD_ACTIONS` sets drop for a non-prose / markless / title block.
+// Task 145 re-checks the container for these on a SELECTION-ref dispatch as
+// defense-in-depth: the menu decoration now greys them (so a user can't click
+// through), but a selection ref bypasses `runAction`, so the dispatch itself
+// also guards — no `\title{\cite{}}` corruption / dead codeBlock click can land
+// even by a programmatic dispatch. Lifecycle actions are NOT here: a selection
+// delete/archive acts on the selected TEXT (always safe), not on the singleton
+// title block the curated set protects — gating those would over-grey.
+const CONTAINER_SENSITIVE_ACTIONS: ReadonlySet<DragHandleAction> = new Set([
+  "footnote",
+  "citation",
+  "suggest-edit",
+  "highlight",
 ]);
 
 function actionClass(action: DragHandleAction): ResolveAction {
