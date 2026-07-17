@@ -3,6 +3,10 @@ import type { Editor } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import katex from "katex";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
+import {
+  posHostsBlockInsert,
+  posHostsInlineAtom,
+} from "@/text-objects/text-object-registry";
 
 function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
   target.innerHTML = "";
@@ -192,6 +196,12 @@ export const InlineMath = Node.create<MathOptions>({
           handleTextInput(view, from, _to, text) {
             if (text !== "$") return false;
             const { state } = view;
+            // Container gate (task 150): an inline-math atom is valid in a
+            // `titleField` (`inline*`) but SPLITS the `text*` verbatim blocks
+            // (codeBlock / latexComment), which admit literal text only. Bail so
+            // the `$` falls through as a literal char — the "refuse, don't
+            // insert" contract shared with the typed cite/footnote rules (061).
+            if (!posHostsInlineAtom(state.doc, from, nodeType)) return false;
             const $from = state.doc.resolve(from);
             const textBefore = $from.parent.textBetween(
               Math.max(0, $from.parentOffset - 200),
@@ -275,6 +285,14 @@ export const DisplayMath = Node.create<MathOptions>({
           handleTextInput(view, from, _to, text) {
             if (text !== "$") return false;
             const { state } = view;
+            // Container gate (task 150 / 147): a `displayMath` BLOCK atom splits
+            // any container that can't host a block child — titleField (drops
+            // the title text → data-loss on reload) and the codeBlock /
+            // latexComment verbatim blocks (structural corruption). Bail so the
+            // `$` falls through as a literal char. Guards BOTH the `$$`-on-empty
+            // (case 1) and the `$$content$$` closing (case 2) branches, which
+            // share this `from`.
+            if (!posHostsBlockInsert(state.doc, from)) return false;
             const $from = state.doc.resolve(from);
             const textBefore = $from.parent.textBetween(
               Math.max(0, $from.parentOffset - 500),
