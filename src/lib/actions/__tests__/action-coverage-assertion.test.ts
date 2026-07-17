@@ -316,11 +316,22 @@ describe("card-action applies() mirrors the per-kind grey-out", () => {
     expect(at(ref, "footnote")).toBe("disabled");
   });
 
-  it("non-prose block (codeBlock) likewise disables footnote", () => {
+  it("non-prose block (codeBlock) disables footnote/citation/suggest-edit AND highlight (marks:\"\", task 146)", () => {
     const ref: ActionRef = { kind: "codeBlock", id: "c0" };
     expect(at(ref, "footnote")).toBe("disabled");
     expect(at(ref, "citation")).toBe("disabled");
+    expect(at(ref, "suggest-edit")).toBe("disabled");
+    // task 146: codeBlock's PM node is `marks: ""` (like latexComment), so a
+    // Highlight click's `setMark("linkedAnchor")` is rejected → a dead click.
+    // MARKLESS_BLOCK_ACTIONS drops highlight so the row greys honestly.
+    expect(at(ref, "highlight")).toBe("disabled");
+    // displayMath (a true atom, no text) KEEPS highlight — guards the split.
+    expect(at({ kind: "displayMath", id: "m2" }, "highlight")).toBe("ok");
+    // The rest of the non-mark-backed vocabulary stays enabled.
     expect(at(ref, "note")).toBe("ok");
+    expect(at(ref, "todo")).toBe("ok");
+    expect(at(ref, "archive")).toBe("ok");
+    expect(at(ref, "delete")).toBe("ok");
   });
 
   it("titleField disables citation + the destructive lifecycle cells, keeps footnote/note", () => {

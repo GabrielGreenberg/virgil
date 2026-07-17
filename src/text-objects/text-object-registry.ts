@@ -87,13 +87,21 @@ const NON_PROSE_BLOCK_ACTIONS: ReadonlyArray<DragHandleAction> =
     (a) => a !== "footnote" && a !== "citation" && a !== "suggest-edit",
   );
 
-// A non-prose block whose node is `marks: ""` (only `latexComment`) additionally
-// drops `highlight`: Highlight wraps the live range in a `linkedAnchor` MARK, but
-// a `marks: ""` node rejects `setMark`, so on a text-bearing comment the action
-// silently no-ops (a menu-honesty bug — see task 066). Greying it makes the dead
-// affordance visibly disabled. NOTE: the true atom blocks
-// (displayMath/texBlock/graphicsBlock) KEEP highlight — they have no text so it
-// clean early-breaks, a deliberate pinned no-op (action-coverage-assertion.test).
+// A non-prose block whose node is `marks: ""` (`latexComment` — task 066 — and
+// `codeBlock` — task 146) additionally drops `highlight`: Highlight wraps the
+// live range in a `linkedAnchor` MARK, but a `marks: ""` node rejects `setMark`,
+// so on a text-bearing comment / code block the action silently no-ops (a
+// menu-honesty bug). Greying it makes the dead affordance visibly disabled.
+// NOTE: the true atom blocks (displayMath/texBlock/graphicsBlock) KEEP highlight
+// — they have no text so it clean early-breaks, a deliberate pinned no-op
+// (action-coverage-assertion.test).
+//
+// The true selector for this set is "a text-bearing block whose PM node is
+// `marks: ""`" — currently exactly `latexComment` + `codeBlock`. If a THIRD such
+// kind appears, prefer deriving MARKLESS-ness from the schema's `marks` spec
+// (`schema.nodes[kind].spec.marks === ""`) over hand-assigning the set, so the
+// next kind can't silently regress to a dead Highlight. Not built here — two
+// kinds don't yet justify the indirection.
 const MARKLESS_BLOCK_ACTIONS: ReadonlyArray<DragHandleAction> =
   NON_PROSE_BLOCK_ACTIONS.filter((a) => a !== "highlight");
 
@@ -493,7 +501,16 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: NON_PROSE_BLOCK_ACTIONS,
+    // MARKLESS, not NON_PROSE (task 146): codeBlock's node is `marks: ""`
+    // (`content: "text*"`, inherited from @tiptap/extension-code-block), the
+    // IDENTICAL property that put `latexComment` on MARKLESS_BLOCK_ACTIONS in
+    // task 066. It is text-bearing, so a Highlight click would PROCEED past the
+    // `!text` no-op guard to `createLinkedAnchor` → `setMark("linkedAnchor")`,
+    // which a `marks: ""` node rejects → the chain returns false → a dead click
+    // (row enabled, nothing happens). MARKLESS_BLOCK_ACTIONS drops `highlight`
+    // so the menu greys it honestly. (The true atom blocks displayMath/texBlock/
+    // graphicsBlock KEEP highlight — no text ⇒ it clean early-breaks.)
+    actions: MARKLESS_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
     // L3g (bodyless kinds, Chip 1): codeBlock lifts through the two-mode
     // gesture into the same shared SingleBlockBody float.
