@@ -1149,8 +1149,10 @@ export function posBlockAllowsAction(
  * Markless-ness is read from the schema (`spec.marks === ""`) so a future
  * verbatim kind is covered without editing this predicate; the titleField
  * preamble singleton is named explicitly (no schema flag distinguishes it).
- * INLINE-atom inserts (inline-math `$x$`, `\ref`) never split — they are valid
- * inside a title / code block and do NOT consult this gate.
+ * INLINE-atom inserts (inline-math `$x$`, `\ref`) do NOT consult this gate —
+ * they have their own container SSOT below (`blockTypeHostsInlineAtom`): an
+ * inline atom is valid in a `titleField` but STILL corrupts the `text*`
+ * verbatim blocks (codeBlock / latexComment), which admit literal text only.
  */
 export function blockTypeHostsBlockInsert(parentType: NodeType): boolean {
   if (parentType.spec.marks === "") return false; // codeBlock / latexComment
@@ -1167,6 +1169,48 @@ export function blockTypeHostsBlockInsert(parentType: NodeType): boolean {
 export function posHostsBlockInsert(doc: PMNode, pos: number): boolean {
   const clamped = Math.max(0, Math.min(pos, doc.content.size));
   return blockTypeHostsBlockInsert(doc.resolve(clamped).parent.type);
+}
+
+/**
+ * Can the textblock of type `parentType` host an INLINE-atom child of type
+ * `atomType` (inline-math `$x$`, and any future typed inline atom like `\ref`)
+ * inserted at a caret WITHOUT corrupting the container? (task 150 — the inline
+ * sibling of `blockTypeHostsBlockInsert`.)
+ *
+ * An inline atom never SPLITS an inline-hosting textblock — it lands between the
+ * surrounding characters. But the MARKLESS verbatim blocks (`codeBlock`,
+ * `latexComment`) declare `content: "text*"`: they admit literal text only, no
+ * inline nodes. ProseMirror's fitter, unable to place the atom in `text*`, wraps
+ * it in a fresh paragraph and SPLITS the verbatim block around it → the same
+ * structural corruption the block gate prevents. A `titleField`
+ * (`content: "inline*"`) legitimately hosts inline math and must stay allowed —
+ * which is why this canNOT reuse the block gate (that greys the title too).
+ *
+ * The distinction is read straight from the schema: the parent's content
+ * expression admits the atom iff `contentMatch.matchType(atomType)` succeeds
+ * (true for `inline*`, false for `text*`). Reading the schema — not a hardcoded
+ * kind list — covers any future verbatim OR inline-hosting container for free.
+ */
+export function blockTypeHostsInlineAtom(
+  parentType: NodeType,
+  atomType: NodeType,
+): boolean {
+  return parentType.contentMatch.matchType(atomType) != null;
+}
+
+/**
+ * Resolve the textblock containing `pos` and test whether it can host an
+ * inline atom of type `atomType` — the position-based entry point for
+ * `blockTypeHostsInlineAtom`, used by the typed-math input rules whose ref is a
+ * bare caret. `pos` is clamped into the doc so a stale caret can't throw.
+ */
+export function posHostsInlineAtom(
+  doc: PMNode,
+  pos: number,
+  atomType: NodeType,
+): boolean {
+  const clamped = Math.max(0, Math.min(pos, doc.content.size));
+  return blockTypeHostsInlineAtom(doc.resolve(clamped).parent.type, atomType);
 }
 
 /**
