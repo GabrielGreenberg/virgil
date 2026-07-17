@@ -173,6 +173,23 @@ describe("LabelRefPopover combobox — nav over a filtered list", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onInsertRef).toHaveBeenCalledWith("ex:donkey", "ref");
   });
+
+  it("ArrowDown scrolls the roving-active row into view (§3.5 built-in fires)", () => {
+    // The combobox deleted its bespoke `scrollIntoView` in favor of the
+    // controller's §3.5 built-in (LabelRefPopover.tsx). That built-in calls
+    // `registry.refFor(activeId)?.scrollIntoView(...)`. Before the ref-capture
+    // fix, `refFor` was permanently null and the scroll never fired. Spy on the
+    // active row's real element to prove the built-in reaches a LIVE ref.
+    const { input } = setupCreate();
+    const spy = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    fireEvent.keyDown(input, { key: "ArrowDown" }); // roving onto sec:intro
+    const active = activeOption();
+    expect(active).toBeDefined();
+    expect(spy).toHaveBeenCalled();
+    // it must scroll with {block:"nearest"} (the parity behavior), no focus theft.
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ block: "nearest" }));
+    spy.mockRestore();
+  });
 });
 
 describe("LabelRefPopover combobox — input is the keyboard source (no focus theft)", () => {

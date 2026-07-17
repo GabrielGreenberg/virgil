@@ -57,8 +57,20 @@ export class MenuRegistry implements MenuRegistryHandle {
   // registration (DOM order ≈ registration order for both sources). A consumer
   // whose rows REORDER without remount (a fuzzy-ranked combobox) breaks that
   // equivalence and republishes its live visual index via `setOrder` (see there).
-  private records = new Map<string, MenuNode & { order: number }>();
+  private records = new Map<string, Omit<MenuNode, "ref"> & { order: number }>();
   private nextOrder = 0;
+
+  // Live element refs, keyed by item id — the SINGLE source of truth for
+  // `refFor()` (the §3.5 scroll-into-view path). Kept in a DEDICATED map, NOT
+  // on the record, because a ref callback fires at COMMIT while `register` runs
+  // in a passive effect that fires AFTER: seeding the ref onto the record at
+  // register time would always read null (the record doesn't exist yet when
+  // `setRef` first runs, and `setRef`'s stable identity means React never
+  // re-invokes it). Decoupling makes ref capture order-independent and survives
+  // the unregister→register churn on a disabled-flip. `setRef` writes here
+  // unconditionally and still does NOT bump the version (a ref set is not
+  // nav-structural — keystroke sanctity).
+  private refs = new Map<string, HTMLElement>();
 
   // Bumped on any structural change (register / unregister / disabled-flip /
   // coords change). The memoized snapshot is rebuilt only when this changes.
@@ -99,7 +111,9 @@ export class MenuRegistry implements MenuRegistryHandle {
   register(reg: MenuItemRegistration): void {
     const existing = this.records.get(reg.id);
     const order = existing ? existing.order : this.nextOrder++;
-    const next: MenuNode & { order: number } = {
+    // No `ref` on the record — the live element lives in `this.refs` (see the
+    // field comment). This keeps ref capture decoupled from register order.
+    const next: Omit<MenuNode, "ref"> & { order: number } = {
       id: reg.id,
       region: reg.region,
       coords: reg.coords,
@@ -108,7 +122,6 @@ export class MenuRegistry implements MenuRegistryHandle {
       letterAliases: reg.letterAliases,
       run: reg.run,
       domId: this.domIdFor(reg.id),
-      ref: existing?.ref ?? null,
       order,
     };
     // Only bump (and re-snapshot + notify) when something nav-relevant changed.
@@ -124,8 +137,12 @@ export class MenuRegistry implements MenuRegistryHandle {
   }
 
   setRef(id: string, el: HTMLElement | null): void {
-    const rec = this.records.get(id);
-    if (rec) rec.ref = el; // ref churn does NOT bump (not nav-structural)
+    // Write to the dedicated refs map UNCONDITIONALLY — no `if (rec)` gate, so
+    // capture no longer depends on `register` having run first (the ref
+    // callback fires at commit, BEFORE register's passive effect). ref churn
+    // does NOT bump (not nav-structural — keystroke sanctity).
+    if (el) this.refs.set(id, el);
+    else this.refs.delete(id);
   }
 
   /**
@@ -156,11 +173,12 @@ export class MenuRegistry implements MenuRegistryHandle {
    *  to scroll the active row into view (the built-in §3.5 scroll re-anchor
    *  that replaces a combobox's bespoke `scrollIntoView` effect). */
   refFor(id: string): HTMLElement | null {
-    return this.records.get(id)?.ref ?? null;
+    return this.refs.get(id) ?? null;
   }
 
   unregister(id: string): void {
     if (!this.records.delete(id)) return;
+    this.refs.delete(id);
     if (this.active === id) this.active = null;
     this.bump();
   }
@@ -180,7 +198,10 @@ export class MenuRegistry implements MenuRegistryHandle {
           letterAliases: rec.letterAliases,
           run: rec.run,
           domId: rec.domId,
-          ref: rec.ref,
+          // Cosmetic snapshot field, sourced from the refs-map SSOT. Nav never
+          // reads it (only `refFor` does, live); may lag a ref set (which
+          // doesn't bump the snapshot), which is fine — it's non-load-bearing.
+          ref: this.refs.get(rec.id) ?? null,
         }));
       this.snapshotVersion = this.version;
     }
