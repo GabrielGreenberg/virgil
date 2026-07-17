@@ -42,7 +42,8 @@ card so the user can drag it into the document.
 
 0. **Validate.** Before doing anything, check the request:
    - `kind == "citation"` (otherwise refuse).
-   - `status == "submitted"` (otherwise no-op).
+   - the status is open (not the terminal `complete` / `failed` —
+     re-running a terminal Task is a no-op).
 
    `paragraphIds` is optional for citation requests (the resulting
    card is `unanchored: true` — the user drags it to anchor).
@@ -187,7 +188,7 @@ card so the user can drag it into the document.
    exists** (so if step 3's collision check missed one, the write fails
    loudly rather than duplicating).
 
-5. **Build the CitationRef** (see `src/lib/types.ts:202`):
+5. **Build the CitationRef** (`CitationRef`, `src/lib/types.ts`):
    ```json
    { "id": "<new-uuid>",
      "command": "\\citet{<citekey>}",
