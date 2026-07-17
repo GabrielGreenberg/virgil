@@ -183,6 +183,18 @@ export function SelectionActionsMenu({
     range: { from: number; to: number };
     mode: "selection" | "cursor";
   } | null>(null);
+  // Transient scroll/drag jitter-suppression for the RESTING bolt ONLY — a
+  // channel of its own, kept OUT of `placement`. Historically `suppress()`
+  // wrote `placement.visible = false`, which overloaded that flag: because the
+  // open menu's lifecycle + render also keyed off `placement.visible`, a
+  // bolt-only jitter guard silently unmounted the OPEN menu on the first scroll
+  // tick (task 154). `placement.visible` now reflects ONLY `computePlacement`'s
+  // *logical* on/off-screen state — the sole legitimate reason to close the
+  // menu — while `suppressed` hides the bolt during motion without touching it.
+  // Flips on scroll-start / editor-mousedown → true and on scroll-idle /
+  // mouseup → false; edge-only, never on the editor transaction path, so it
+  // adds no per-keystroke work (keystroke sanctity).
+  const [suppressed, setSuppressed] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   // Shared viewport-metrics cache. editorRight, scrollTop, scrollBottom
@@ -236,12 +248,24 @@ export function SelectionActionsMenu({
         run();
       });
     };
+    // Enter suppression: cancel any pending compute and hide the RESTING bolt
+    // via its own `suppressed` channel. Crucially it NO LONGER zeroes
+    // `placement` — so an open menu (gated on the logical `placement.visible`,
+    // not on `suppressed`) survives the scroll/drag it used to be collapsed by.
     const suppress = () => {
       if (rafId) {
         cancelAnimationFrame(rafId);
         rafId = 0;
       }
-      setPlacement(INVISIBLE_PLACEMENT);
+      setSuppressed(true);
+    };
+    // Leave suppression once BOTH sources are clear (no editor mousedown, no
+    // pending scroll-idle timer): drop the bolt-hide flag and recompute the
+    // resting placement at the settled position.
+    const settle = () => {
+      if (isSuppressed()) return;
+      setSuppressed(false);
+      update();
     };
     const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
@@ -256,7 +280,7 @@ export function SelectionActionsMenu({
     const onMouseUp = () => {
       if (!mouseDownInEditor) return;
       mouseDownInEditor = false;
-      if (!isSuppressed()) update();
+      settle();
     };
     const onScroll = () => {
       if (scrollIdleTimer === null) {
@@ -266,7 +290,7 @@ export function SelectionActionsMenu({
       }
       scrollIdleTimer = window.setTimeout(() => {
         scrollIdleTimer = null;
-        if (!isSuppressed()) update();
+        settle();
       }, SCROLL_IDLE_MS);
     };
     const subscribe = (ed: Editor) => {
@@ -322,11 +346,11 @@ export function SelectionActionsMenu({
     // sidebar toggle changes editorRight). cacheRef itself is stable.
   }, [editorRef, cacheRef, cacheVersion]);
 
-  // Close the menu on logical changes only — selection moved, paragraph
-  // changed, mode flipped, visibility dropped. `left/top` excluded so
-  // scroll re-positions the open menu instead of collapsing it.
-  // `anchorNodePos` (not UUID) is the identity key: it's stable across the
-  // `ensureAnchorUuid` setNodeMarkup that fires when the menu opens.
+  // Close the menu when the anchored *identity* changes — selection moved,
+  // paragraph changed, mode flipped. `left/top` excluded so scroll re-positions
+  // the open menu instead of collapsing it. `anchorNodePos` (not UUID) is the
+  // identity key: it's stable across the `ensureAnchorUuid` setNodeMarkup that
+  // fires when the menu opens.
   useEffect(() => {
     setMenuTarget(null);
   }, [
@@ -334,8 +358,21 @@ export function SelectionActionsMenu({
     placement.range?.to,
     placement.anchorNodePos,
     placement.mode,
-    placement.visible,
   ]);
+
+  // Close the menu on a genuine visibility DROP only — the anchored selection
+  // scrolled fully off-screen (`computePlacement:116` yields visible:false,
+  // range preserved). A RISE (false→true) must NOT close: it's exactly what
+  // Cmd+/ triggers via `scrollIntoView` to bring an off-screen caret into view,
+  // and closing on the rise would kill the menu it just opened (task 154). The
+  // directional guard is why `placement.visible` was split out of the
+  // identity-close effect above.
+  const prevVisibleRef = useRef(placement.visible);
+  useEffect(() => {
+    const droppedOffScreen = prevVisibleRef.current && !placement.visible;
+    prevVisibleRef.current = placement.visible;
+    if (droppedOffScreen) setMenuTarget(null);
+  }, [placement.visible]);
 
   // Keep the latest open-state reachable from the mount-once Cmd+/ handler
   // without re-subscribing the listener on every selection change.
@@ -365,6 +402,13 @@ export function SelectionActionsMenu({
       const resolved = resolveAnchorUuidAndKind(ed.view, sel.head);
       if (!resolved) return;
       e.preventDefault();
+      // Bring the caret into the visible band before opening. When the focused
+      // caret is scrolled off-screen `computePlacement` yields visible:false
+      // with left/top=0, so the shared render gate would swallow Cmd+/ with no
+      // effect — or, un-gated, anchor the panel at the 0,0 viewport corner.
+      // `scrollIntoView` makes the subsequent (scroll-idle) recompute yield a
+      // real on-screen placement, so the menu opens at the caret (task 154).
+      ed.commands.scrollIntoView();
       setMenuTarget({
         uuid: resolved.uuid,
         kind: resolved.kind,
@@ -378,11 +422,19 @@ export function SelectionActionsMenu({
 
   const hint = useHint({ keys: "Mod+/" });
 
-  if (!placement.visible) return null;
   if (typeof document === "undefined") return null;
 
   const editor = editorRef.current;
   if (!editor) return null;
+
+  // The RESTING bolt paints only at a logically-visible placement AND while not
+  // transiently suppressed (scroll/drag jitter). The OPEN menu is DECOUPLED
+  // from `suppressed` — it renders on `menuTarget` + the *logical*
+  // `placement.visible` (below), so a scroll can no longer unmount it (task
+  // 154). `placement.visible` is still required for the menu so it (a) never
+  // anchors at the off-screen 0,0 corner and (b) unmounts the frame it goes
+  // off-screen, in lock-step with the off-screen-drop close effect.
+  const showBolt = placement.visible && !suppressed;
 
   const openMenu = () => {
     if (!placement.range) return;
@@ -412,7 +464,8 @@ export function SelectionActionsMenu({
   // `ActionsMenuPanel` below, which rides the `<Menu>` primitive's CHROME_Z
   // (2000, = OPEN_CHROME_MENU_Z) and therefore stays on top of EVERYTHING,
   // floats included. Never demote the open menu — only the resting trigger.
-  const buttonPortal = createPortal(
+  const buttonPortal = showBolt
+    ? createPortal(
     <button
       ref={buttonRef}
       type="button"
@@ -441,9 +494,14 @@ export function SelectionActionsMenu({
       <IconZap size={16} />
     </button>,
     document.body,
-  );
+      )
+    : null;
 
-  if (!menuTarget) return buttonPortal;
+  // Menu renders on `menuTarget` + logical visibility only — never the transient
+  // `suppressed` — so scroll/drag can't unmount an open menu (task 154). The
+  // `placement.visible` conjunction narrows `menuTarget` to non-null AND keeps
+  // the panel off the 0,0 corner when the anchor is off-screen.
+  if (!menuTarget || !placement.visible) return buttonPortal;
 
   return (
     <>
