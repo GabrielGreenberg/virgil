@@ -41,11 +41,13 @@ matters" (write a note). Read the todo and dispatch.
      paragraph") → emit a **suggestion card** in `revisions.json`
      (`author: "ai"`, `status: "pending"`, with `original_text` from
      the anchored paragraph and `suggested_text` your proposal).
-   - **Footnote / citation / quotation** → file a follow-up AI request
+   - **Footnote / citation** → file a follow-up AI request
      of the appropriate kind via the storage layer, then mark the todo
      request complete with a note pointing at the new request.
      (Future: dispatch directly to the relevant subskill from this
-     skill — for now, defer.)
+     skill — for now, defer.) A todo asking to *pull a quoted passage*
+     has no dedicated kind — file a **citation** follow-up (to surface
+     the source) or emit a sibling **note/report** carrying the quote.
    - **Analysis / explanation** ("why does this matter", "how does
      this connect to X") → emit a sibling **note** card.
    - **Action you can't take** ("get permission from coauthor",
@@ -95,7 +97,7 @@ matters" (write a note). Read the todo and dispatch.
      `/editor/accept-suggestion`. This is the L3 propose path, *not* legacy
      default-apply.
 
-   - **Footnote / citation / quotation → follow-up** and **action you can't
+   - **Footnote / citation → follow-up** and **action you can't
      take → complete-with-note**: unchanged (step 2) — file the follow-up
      request, or `apply_response.py <docPath> complete-only <id> --note "<limit>"`;
      neither creates a card here.
@@ -128,7 +130,7 @@ matters" (write a note). Read the todo and dispatch.
      ```
      Drafted note <newId> as a proposal for todo <cardId>, request <requestId> — awaiting review (todo left open). Output: notes.json (+ ai-requests.json status, todos.json aiRequest cleared, notifications, version).
      ```
-   - Follow-up filed (footnote/citation/quotation):
+   - Follow-up filed (footnote/citation):
      ```
      Done: filed follow-up <kind> request <newRequestId> for todo <cardId>. Output: ai-requests.json (+ todos.json aiRequest cleared, notifications, version).
      ```

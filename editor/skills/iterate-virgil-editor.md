@@ -49,7 +49,7 @@ acts-on-branch / propose-via-worktree machinery — see
 ```
 
 `<skill-name>` ∈ `{review, draft-footnote, find-citation,
-draft-quotation, answer-note-request, answer-todo-request,
+answer-note-request, answer-todo-request,
 answer-cutter-comment, answer-revision-request, draft-suggestion,
 answer-bib-review, style-merge}`. Anything else: abort with a one-line
 error.
@@ -88,15 +88,14 @@ exercise already-stabilized subskills:
 
 1. `draft-footnote`
 2. `find-citation`
-3. `draft-quotation`
-4. `answer-note-request`
-5. `answer-todo-request`
-6. `answer-cutter-comment`
-7. `answer-revision-request`
-8. `draft-suggestion`
-9. `answer-bib-review`
-10. `style-merge`
-11. `review` (umbrella — exercises dispatch, not per-kind logic)
+3. `answer-note-request`
+4. `answer-todo-request`
+5. `answer-cutter-comment`
+6. `answer-revision-request`
+7. `draft-suggestion`
+8. `answer-bib-review`
+9. `style-merge`
+10. `review` (umbrella — exercises dispatch, not per-kind logic)
 
 After every 3 skills stabilize, run the **survey pass** (see below)
 before moving to the next skill.
