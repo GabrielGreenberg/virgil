@@ -1,4 +1,4 @@
-<!-- last-verified: 2aa792ae 2026-07-14 -->
+<!-- last-verified: 15f88bcf 2026-07-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts -->
 
@@ -28,7 +28,7 @@ The `textObject` schema group is the single canonical answer to "is this graspab
 | `heading` | `\part` / `\chapter` / `\section` / `\subsection` / `\subsubsection` / `\paragraph` / `\subparagraph` | Levels 0–6 (vocabulary in [src/lib/heading-types.ts](../../src/lib/heading-types.ts)); supports `label` mark (`\label{}`). Per-heading control strip uses [src/components/HeadingTypeMenu.tsx](../../src/components/HeadingTypeMenu.tsx) |
 | `bulletList` / `orderedList` | `\itemize` / `\enumerate` | Nested; optional `listPreamble` |
 | `blockquote` | `\begin{quote}…\end{quote}` | |
-| `codeBlock` | `\begin{verbatim}…\end{verbatim}` | |
+| `codeBlock` | `\begin{verbatim}…\end{verbatim}` | Node is `marks: ""` (`content: "text*"`), so — like `latexComment` — it greys the dead Highlight action via `MARKLESS_BLOCK_ACTIONS` (task 146) |
 | `displayMath` | `$$…$$` | Atom node |
 | `texBlock` | `%!vtex:begin <uuid>` … `%!vtex:end <uuid>` (block-level raw LaTeX passthrough, edited inside a CodeMirror pod; popoutable like `exampleBlock`) | Atom block; `selectable:false`; node-view in `TexBlockNodeView.tsx` |
 | `titleField` | hoisted `\title{}` / `\author{}` / `\date{}` | Round-trips via `\title`/`\author`/`\date` commands; the `fromPreamble` flag was dropped in 35824df |

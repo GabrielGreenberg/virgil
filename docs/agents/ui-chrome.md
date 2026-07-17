@@ -1,4 +1,4 @@
-<!-- last-verified: 7d359f94 2026-07-16 -->
+<!-- last-verified: 15f88bcf 2026-07-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts -->
 
@@ -196,7 +196,7 @@ The per-column "+" action-chip row (chips above each omni gutter) was suppressed
 
 ## Panel icons
 
-[src/components/editor-layout/panel-icons.tsx](../../src/components/editor-layout/panel-icons.tsx) — `IconNotes`, `IconHighlight` (highlighter-pen marker, used by the new Highlight action button — there is no Highlight panel since highlights live inside the Notes panel), `IconRevisions`, `IconArchive`, `IconFootnote`, `IconCitation`, `IconBibliography`, `IconTodo`, `IconCutter`, `IconReports`, `IconOutline`, `IconSearch`, `IconWordCount`, `IconOmni`, `IconBlank`, `IconErrors`, `IconExample`, `IconSplit`, `IconFolder`, `IconPlus`, `IconX`, `IconLibrary`, `IconDuplicate`, `IconTrash`, `IconZap`. All use `currentColor`. (`IconSuggestions` was removed when the Suggestions panel folded into Revisions; `IconQuotations` → `IconReports` in the card-system refactor.)
+[src/components/editor-layout/panel-icons.tsx](../../src/components/editor-layout/panel-icons.tsx) — `IconNotes`, `IconHighlight` (highlighter-pen marker, used by the new Highlight action button — there is no Highlight panel since highlights live inside the Notes panel), `IconRevisions`, `IconArchive`, `IconFootnote`, `IconCitation`, `IconBibliography`, `IconTodo`, `IconCutter`, `IconReports`, `IconOutline`, `IconSearch`, `IconWordCount`, `IconOmni`, `IconBlank`, `IconErrors`, `IconExample`, `IconSplit`, `IconFolder`, `IconPlus`, `IconX`, `IconLibrary`, `IconDuplicate`, `IconTrash`, `IconZap`. All use `currentColor` except `IconZap`'s default (filled) variant, which fills/strokes from the `--status-warn` / `--status-warn-strong` tokens (task 144; its `muted` variant is still `currentColor`). (`IconSuggestions` was removed when the Suggestions panel folded into Revisions; `IconQuotations` → `IconReports` in the card-system refactor.)
 
 **Topbar icon size: 16px** (`.topbarbtn` is 24px, leaving 4px of padding). Don't ship 14px or 20px topbar icons — see `STYLE_GUIDE.md`.
 
