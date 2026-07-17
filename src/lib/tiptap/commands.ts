@@ -84,6 +84,19 @@ function runViewOnlyAction(id: ActionId, view: EditorView): void {
     surface: "slash",
     canEdit,
   };
+  // Task 149: honor the applicability SSOT before running — mirroring the bridge
+  // path (`EditorPane.tsx`, `if (spec.applies(ctx) === "disabled") return`). The
+  // view-only slash surface previously called `spec.run(ctx)` DIRECTLY, skipping
+  // `applies()` entirely — so a gate-tightening (e.g. heading-* greyed inside a
+  // titleField / codeBlock / latexComment via task 149's `selectionCanHostHeading`
+  // fix) leaked past the slash surface and `/section` still corrupted the block.
+  // This is the UNIFIED move (central principle): EVERY view-only slash command
+  // now honors its gate, so no future gate can ever again slip past this path.
+  // No over-gating of the existing rows: `\title`/`\author`/`\date` use
+  // `blockApplies` (→ "ok" at a caret) and `\tex` uses `blockInsertApplies`
+  // (already "disabled" in a titleField, where `texRun`'s own bail already
+  // no-ops it) — so behavior is unchanged for everything but the heading fix.
+  if (spec.applies(ctx) === "disabled") return;
   void spec.run(ctx);
 }
 
