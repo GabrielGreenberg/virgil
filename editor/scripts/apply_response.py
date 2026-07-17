@@ -57,7 +57,7 @@ Safety-level mapping (skills read `safetyLevel` on the Task and dispatch):
 A direct create the user opted into → complete-task (result: direct-created).
 
 Legacy surface (preserved verbatim for un-migrated skills — find-citation,
-the answer-* family, draft-quotation, style-merge, …):
+the answer-* family, style-merge, …):
 
   apply_response.py <doc> <op-json>                         # default apply
   apply_response.py <doc> --revert <request-id>             # undo

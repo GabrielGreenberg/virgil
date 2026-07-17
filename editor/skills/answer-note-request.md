@@ -51,7 +51,7 @@ two paths:
      ```
    - Pull cards anchored to the same paragraph(s) — if there's
      already a **note** making the same point, fold or skip. Cards
-     in other panels (quotations, footnotes, todos, citations) are
+     in other panels (reports, footnotes, todos, citations) are
      orthogonal context, not dedupe targets.
      ```bash
      python3 editor/scripts/cards_for_paragraph.py <docPath> <uuid>

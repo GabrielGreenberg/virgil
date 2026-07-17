@@ -21,7 +21,7 @@ source request in place.
 
 > **Note:** Earlier drafts of this skill assumed a per-card `turns[]`
 > dialogue model. That model was retired in favor of sibling-card
-> threading (`migrateRevisions` in `src/hooks/useRevisions.ts:104`
+> threading (`migrateRevisions` in `src/hooks/useRevisions.ts`
 > drops legacy turns on read). Treat the panel as a flat list of
 > linked requests + suggestions.
 

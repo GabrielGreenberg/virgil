@@ -8,8 +8,7 @@ description: |
   Crossref/OpenAlex/Semantic Scholar/arXiv, adds the entry to
   references.bib, and creates a citation card linked to the anchor
   paragraph. Does NOT trigger for verifying an existing bib entry
-  (use answer-bib-review) or pulling a quotation (use draft-quotation).
-  Args: <docPath> <requestId>.
+  (use answer-bib-review). Args: <docPath> <requestId>.
 ---
 
 # /editor/find-citation $ARGUMENTS
