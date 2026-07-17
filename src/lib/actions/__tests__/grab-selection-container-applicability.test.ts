@@ -174,7 +174,8 @@ describe("grab-bar SELECTION-ref decoration honors the containing block (task 14
     expect(decorate("footnote", ref, editor)).toBe("disabled");
     expect(decorate("citation", ref, editor)).toBe("disabled");
     expect(decorate("suggest-edit", ref, editor)).toBe("disabled");
-    // codeBlock is NON_PROSE (still keeps highlight until task 146); note/todo ok.
+    // codeBlock is MARKLESS (task 146) — highlight greyed too; note/todo ok.
+    expect(decorate("highlight", ref, editor)).toBe("disabled");
     expect(decorate("note", ref, editor)).toBe("ok");
     expect(decorate("todo", ref, editor)).toBe("ok");
     editor.destroy();
