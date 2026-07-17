@@ -767,24 +767,43 @@ export function ActionsMenuPanel({
         <MenuList className="lightning-card-list">
           <MenuItemsFromRegistry rows={cardRows} />
         </MenuList>
-      </MenuProvider>
 
-      {colorPopoverAnchor && (
-        <SelectionColorPopover
-          editor={editor}
-          anchorRect={colorPopoverAnchor}
-          palette={palette}
-          onApply={applyColor}
-          onClear={clearColor}
-          onPickCustom={applyColor}
-          onContainerRef={setColorPopoverEl}
-          onClose={() => {
-            setColorPopoverAnchor(null);
-            setColorPopoverEl(null);
-            stashedRangeRef.current = null;
-          }}
-        />
-      )}
+        {/* Task 151 — the color popover is a STACK PARTICIPANT, not a portaled
+            sibling. It renders as a React DESCENDANT of the lightning provider
+            (it still `portal`s to document.body, so DOM/stacking is unchanged),
+            so `MenuStackContext` flows through the `createPortal` boundary → the
+            popover inherits the SAME `MenuStackController` → depth+1 → becomes
+            the stack top while open. The lightning menu's window-capture keydown
+            + Escape then correctly STAND DOWN: one Arrow moves only the swatch
+            cursor, one Enter applies only the swatch, one Escape pops just the
+            popover (matching the nested-descendant contract in
+            nested-provider-stack.test.tsx). As a sibling (the pre-151 topology,
+            rendered after `</MenuProvider>`) it read the root sentinel and built
+            its OWN controller, so BOTH menus declared themselves `isTop` and
+            both fired on every keypress — the double-move / double-activate /
+            double-close bug. The `excludeRefs` click-outside coupling above is
+            orthogonal to stack membership and still applies; a nested provider
+            ALSO auto-registers its container into the parent's exclude set
+            (MenuProvider :289–301), so it is now belt-and-suspenders — retained
+            deliberately (removing it would drop the coupling during the one
+            setTimeout(0) tick before the auto-register lands). */}
+        {colorPopoverAnchor && (
+          <SelectionColorPopover
+            editor={editor}
+            anchorRect={colorPopoverAnchor}
+            palette={palette}
+            onApply={applyColor}
+            onClear={clearColor}
+            onPickCustom={applyColor}
+            onContainerRef={setColorPopoverEl}
+            onClose={() => {
+              setColorPopoverAnchor(null);
+              setColorPopoverEl(null);
+              stashedRangeRef.current = null;
+            }}
+          />
+        )}
+      </MenuProvider>
     </>
   );
 }
