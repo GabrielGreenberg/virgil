@@ -25,6 +25,7 @@
  */
 
 import { useMemo } from "react";
+import type { Editor } from "@tiptap/react";
 import {
   type FloatingMenuPlacement,
 } from "@/hooks/useFloatingMenuPosition";
@@ -76,10 +77,24 @@ interface Props {
   onSelect: (action: DragHandleAction) => void;
   onClose: () => void;
   /** The kind that opened the menu. Drives the registry's per-kind `applies()`
-   *  grey-out. `"selection"` is the gesture-input case and exposes the full
-   *  action list (matches today's behavior). Omit to expose the full list as
-   *  well — defensive default for legacy call sites until they pass a ref. */
+   *  grey-out. `"selection"` is the gesture-input case. A bare `kind` with no
+   *  `ref`/`editor` exposes the full action list for a selection (the legacy
+   *  viewless fallback — kept for the menu-render tests). Prefer passing the
+   *  full `ref` + `editor` below so a selection resolves its containing block. */
   kind?: TextObjectKind | "selection";
+  /** The REAL ref the handle opened on (task 145). For a `"selection"` ref this
+   *  carries the live `from`/`to`, so — paired with `editor` — the decoration
+   *  resolves the selection's CONTAINING block kind and greys per that block's
+   *  curated `actions` set (matching the block-ref path + the lightning twin,
+   *  task 061). Omit to fall back to synthesizing a ref from `kind`. */
+  ref?: ActionRef;
+  /** The live editor (task 145). Threaded so the decoration `ctx` carries a
+   *  `view` — `cardActionAllowedForCtx` needs it to resolve a selection ref's
+   *  containing block via `posBlockAllowsAction`. Without it a selection ref
+   *  short-circuits to the historic "allow-all" (the viewless bypass 145 fixes).
+   *  Block refs never read the view (they key on `ref.kind`), so this is
+   *  irrelevant for them. */
+  editor?: Editor | null;
   /** Whether this user may currently edit the main text — the UNIFORM
    *  collab-read-only gate (CHIP 7b). Threaded from `collab.canEditMainText`
    *  (the SSOT — see `ActionContext.canEdit`). When `false` (partner holds the
@@ -104,7 +119,7 @@ function getActiveDescendantHost(): HTMLElement | null {
   return null;
 }
 
-export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, canEdit = true }: Props) {
+export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, ref, editor, canEdit = true }: Props) {
   // Render the CARD action rows straight off the registry (the SSOT) and
   // decorate each with its per-kind disabled state from the row's own
   // `applies()`. Disabled entries stay in the list (visible-disabled
@@ -113,21 +128,28 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, canEdit = 
   // ACTION-MENU-DIAGNOSIS.md cluster C1 + §7 q3.
   const rows = useMemo<DecoratedMenuRow[]>(() => {
     const cardRows = cardActionRows("grab");
-    // Synthesize the ref the registry's `applies()` reads. A persistent
-    // TextObject kind → a `TextObjectRef` (the id is irrelevant to the
-    // per-kind grey-out, which keys off `kind` alone); `"selection"` / no
-    // kind / an unknown kind → a live selection ref, which exposes the full
-    // vocabulary (matching the former "full list" branch).
-    const ref: ActionRef =
-      kind && kind !== "selection" && isTextObjectKind(kind)
+    // Resolve the ref the registry's `applies()` reads. PREFER the REAL `ref`
+    // the handle opened on (task 145) — for a `"selection"` it carries the live
+    // `from`/`to`, which the container resolve below needs. Fall back to
+    // synthesizing one from `kind` for legacy callers that pass only `kind`:
+    // a persistent TextObject kind → a `TextObjectRef` (the id is irrelevant to
+    // the per-kind grey-out, which keys off `kind` alone); `"selection"` / no
+    // kind / an unknown kind → a live selection ref.
+    const resolvedRef: ActionRef =
+      ref ??
+      (kind && kind !== "selection" && isTextObjectKind(kind)
         ? { kind, id: "" }
-        : { kind: "selection", from: 0, to: 1, paragraphId: "" };
-    // The card rows' `applies()` reads only `ctx.ref` + `ctx.canEdit`; the rest
-    // of the `ActionContext` (editor/view) is unused for the per-kind grey-out,
-    // so a minimal context is sufficient at menu-decoration time. `canEdit` is
-    // threaded so the row's uniform collab gate (CHIP 7b) greys EVERYTHING when
-    // the partner holds the pen. `canEdit !== false` ⇒ un-gated (no over-gating).
-    const ctx = { ref, canEdit } as ActionContext;
+        : { kind: "selection", from: 0, to: 1, paragraphId: "" });
+    // Thread the live `view` (task 145 — the 061 template, one surface over). A
+    // BLOCK ref keys off `ref.kind` alone (view unused). A SELECTION ref has no
+    // TextObject kind of its own, so `cardActionAllowedForCtx` resolves the
+    // selection's CONTAINING block via `posBlockAllowsAction(doc, ref.from, id)`
+    // — greying Citation inside a `titleField`, footnote/citation/suggest-edit
+    // inside a `codeBlock`/`latexComment`, exactly as the block-ref + lightning
+    // surfaces already do. Without a view it short-circuits to the historic
+    // "allow-all" (the viewless bypass 145 closes). `canEdit` threads the
+    // uniform collab gate (CHIP 7b): `canEdit !== false` ⇒ un-gated.
+    const ctx = { ref: resolvedRef, canEdit, view: editor?.view } as ActionContext;
     return cardRows.map<DecoratedMenuRow>((row) => ({
       id: row.id,
       label: row.label,
@@ -143,7 +165,7 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose, kind, canEdit = 
         onSelect(row.id as DragHandleAction);
       },
     }));
-  }, [kind, canEdit, onSelect]);
+  }, [ref, kind, editor, canEdit, onSelect]);
 
   if (typeof document === "undefined") return null;
 
