@@ -10,10 +10,22 @@ description: |
   safe to invoke from a paper session with --library. Does NOT trigger
   for newly-dropped files in unsorted/ (use /triage-pdf first) or for
   cleaning up an already-indexed paper (use /deep-index). Args:
-  <citekey>.
+  <citekey> [--library <path>].
 ---
 
 # /index-paper $ARGUMENTS
+
+## Args
+
+- `<citekey>` — the paper to index (its source sits at
+  `papers/<citekey>/<citekey>.<ext>`).
+- `--library <path>` — override library-path resolution. Useful when
+  invoking this skill **from a paper session** with multiple libraries on
+  disk; without it the normal chain
+  (`./.virgil/library-path.json` → `VIRGIL_LIBRARY_ROOT` →
+  `~/.config/virgil/library-path.json` → `~/Virgil-Library/`) is used.
+
+See also **Optional flags** below for the extractor / bib-auth switches.
 
 ## Bootstrap (run this first)
 
@@ -22,6 +34,16 @@ root and cd into it before running anything else — that way the skill
 works from any Virgil-managed folder.
 
 ```bash
+# Set from the invocation above: LIBRARY holds the value of an explicit
+# `--library <path>`, and stays empty when the caller didn't pass one.
+# Build the flag as an ARRAY, not a `${LIBRARY:+--library "$LIBRARY"}`
+# string — under zsh that idiom collapses into ONE argument
+# ("--library /path") and argparse rejects it. Empty array = zero args,
+# so an absent flag falls through to the normal resolution chain.
+LIBRARY=""   # e.g. LIBRARY="/Users/me/Papers/Virgil-Library"
+lib_args=()
+[ -n "$LIBRARY" ] && lib_args=(--library "$LIBRARY")
+
 # Find library_path.py — synced PWA folders have it under .virgil/scripts/,
 # the Virgil source repo has it under editor/scripts/. Either is fine.
 library_path_py=""
@@ -32,7 +54,7 @@ if [ -z "$library_path_py" ]; then
   echo "No library set up. Pick a library in Virgil first."
   exit 1
 fi
-library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+library_root="$(python3 "$library_path_py" --get "${lib_args[@]}" 2>/dev/null)" || {
   echo "No library set up. Pick a library in Virgil first."
   echo "  (Or run: python3 $library_path_py --set <abs-path>)"
   exit 1
