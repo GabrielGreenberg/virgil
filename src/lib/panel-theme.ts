@@ -32,6 +32,7 @@ export type PanelThemeKey =
 // Shipped defaults are loaded from a JSON sidecar so the personal-prefs
 // promotion pipeline can rewrite them without touching TS source.
 import defaultPanelColorsJson from "./panel-theme.defaults.json";
+import { subscribeToStorageKey } from "./cross-window-storage";
 
 /** Base hex used to seed each panel's palette by default. */
 export const DEFAULT_PANEL_COLORS: Record<PanelThemeKey, string> =
@@ -256,28 +257,51 @@ function persist() {
   catch { /* ignore */ }
 }
 
+/** Parse + validate the persisted blob into a fresh overrides object.
+ *  The ONE validation path: used by the initial hydrate AND by the
+ *  cross-window re-hydrate below, so a peer's blob is filtered exactly like a
+ *  local one (system accents skipped, non-hex values dropped) rather than
+ *  through a second, drifting copy of the rules. Returns `{}` for a missing,
+ *  unparseable, or non-object blob. */
+function readOverridesFromStorage(): Partial<Record<PanelThemeKey, string>> {
+  const next: Partial<Record<PanelThemeKey, string>> = {};
+  if (typeof window === "undefined") return next;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return next;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return next;
+    for (const k of Object.keys(parsed) as PanelThemeKey[]) {
+      if (SYSTEM_THEME_KEYS.has(k)) continue; // never honor a persisted system-accent override
+      const v = parsed[k];
+      if (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) {
+        next[k] = v;
+      }
+    }
+  } catch { /* ignore */ }
+  return next;
+}
+
 /** Load overrides from localStorage. Safe to call multiple times. */
 export function loadPanelColors(): void {
   if (loaded) return;
   loaded = true;
   if (typeof window === "undefined") return;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      overrides = {};
-      for (const k of Object.keys(parsed) as PanelThemeKey[]) {
-        if (SYSTEM_THEME_KEYS.has(k)) continue; // never honor a persisted system-accent override
-        const v = parsed[k];
-        if (typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v)) {
-          overrides[k] = v;
-        }
-      }
-      if (Object.keys(overrides).length > 0) notify();
-    }
-  } catch { /* ignore */ }
+  overrides = readOverridesFromStorage();
+  if (Object.keys(overrides).length > 0) notify();
 }
+
+// Cross-window re-sync (task 177). Without this, a second window's snapshot
+// goes permanently stale — `loaded` is a one-shot latch, so it could never
+// re-hydrate — and its next full-blob `persist()` silently drops the peer's
+// color changes. The `storage` event never fires in the writing window, so
+// this is the peer channel only. Unconditional re-read + `notify()`: a peer
+// CLEARING an override must propagate too, and every card re-tints for free
+// because they all read through `useCardTheme` → `subscribePanelColors`.
+subscribeToStorageKey(STORAGE_KEY, () => {
+  overrides = readOverridesFromStorage();
+  notify();
+});
 
 /** Current base hex for a panel (override or default). */
 export function getPanelColor(key: PanelThemeKey): string {

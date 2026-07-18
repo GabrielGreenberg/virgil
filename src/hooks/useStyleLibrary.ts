@@ -8,6 +8,7 @@ import {
   setStyleLibrarySync,
   type StyleLibraryBlob,
 } from "@/lib/style-library";
+import { subscribeToStorageKey } from "@/lib/cross-window-storage";
 import type { StyleEntry } from "@/lib/document-styles";
 import { generateEntityId } from "@/lib/uuid";
 
@@ -25,14 +26,14 @@ export function useStyleLibrary() {
   useEffect(() => {
     setLib(getStyleLibrarySync());
     const refresh = () => setLib(getStyleLibrarySync());
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== STYLE_LIBRARY_KEY) return;
-      refresh();
-    };
-    window.addEventListener("storage", onStorage);
+    // Peer-window writes ride the ONE storage-event contract (task 177). The
+    // hand-rolled listener this replaces missed the `key === null` clear()
+    // case, and this store's mutators build the next blob from React state —
+    // so a missed clear left it writing the whole blob from a stale base.
+    const offStorage = subscribeToStorageKey(STYLE_LIBRARY_KEY, refresh);
     window.addEventListener(STYLE_LIBRARY_EVENT, refresh);
     return () => {
-      window.removeEventListener("storage", onStorage);
+      offStorage();
       window.removeEventListener(STYLE_LIBRARY_EVENT, refresh);
     };
   }, []);

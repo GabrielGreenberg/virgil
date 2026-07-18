@@ -59,6 +59,8 @@ export interface OutlinePrefs {
   showNumbers: boolean;
 }
 
+import { subscribeToStorageKey } from "@/lib/cross-window-storage";
+
 const STORAGE_KEY = "virgil-outline-prefs";
 
 /** LRU cap on per-doc fold buckets — bounds blob growth across doc history. */
@@ -157,16 +159,15 @@ function emit() {
 // Cross-window re-sync: a peer window's write lands here via the native
 // `storage` event (never fired in the writing window itself), so this
 // window's snapshot can't go stale and its next write can't clobber the
-// peer's from a stale base. `key === null` is a storage.clear() — accept it
-// only from localStorage (a peer's sessionStorage.clear() also fires with a
-// null key and must not trigger a spurious snapshot replacement).
-if (typeof window !== "undefined") {
-  window.addEventListener("storage", (e) => {
-    if (e.key === null ? e.storageArea !== localStorage : e.key !== STORAGE_KEY) return;
-    current = readFromStorage();
-    emit();
-  });
-}
+// peer's from a stale base. This store first carried the fix (task 111); the
+// listener contract — including the `key === null` storage.clear() guard that
+// must accept only localStorage clears — now lives in ONE place
+// (`subscribeToStorageKey`), which the panel color/typography stores ride too
+// (task 177). Behavior here is unchanged.
+subscribeToStorageKey(STORAGE_KEY, () => {
+  current = readFromStorage();
+  emit();
+});
 
 export function subscribeOutlinePrefs(cb: () => void): () => void {
   listeners.add(cb);
