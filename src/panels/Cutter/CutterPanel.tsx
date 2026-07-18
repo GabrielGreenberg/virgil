@@ -101,7 +101,6 @@ export default function CutterPanel({
   return (
     <CardListPanel<Item>
       kind="cutter"
-      count={cards.length}
       onAddOptions={onAddOptions}
       headerLeading={
         <ItemMenu align="left">

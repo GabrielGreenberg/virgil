@@ -299,7 +299,6 @@ function CitationsPanel({
   return (
     <CardListPanel
       kind="citations"
-      count={orderedCitations.length}
       onAdd={() => {
         onStartCreate();
       }}

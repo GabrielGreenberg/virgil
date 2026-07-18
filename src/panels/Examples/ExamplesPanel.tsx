@@ -56,7 +56,6 @@ function ExamplesPanel(props: ExamplesPanelProps) {
   return (
     <CardListPanel
       kind="examples"
-      count={examples.length}
       onAdd={onAdd}
       headerLeading={
         <ItemMenu align="left">

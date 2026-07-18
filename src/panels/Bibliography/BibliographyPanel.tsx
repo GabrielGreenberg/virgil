@@ -923,7 +923,6 @@ function BibliographyPanel({
     <>
     <CardListPanel
       kind="bibliography"
-      count={displayedEntries.length}
       onAddOptions={addOptions}
       headerLeading={headerLeading}
       headerExtras={headerExtras}
