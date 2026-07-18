@@ -3,7 +3,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { TodoItem } from "@/lib/types";
 import {
-  CARD_THEMES,
   PANEL,
   PanelCard,
   CardTitleInput,
@@ -13,13 +12,12 @@ import {
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
-
-const theme = CARD_THEMES.todo;
 
 /** The done/undone checkbox shown in a Todo's header (docked) and its float
  *  chrome trailing slot. Exported so the `toFloatable` factory can place the
@@ -90,6 +88,11 @@ export function TodoRow({
   const cardRef = useRef<HTMLDivElement>(null);
   const popped = usePoppedCards();
   const cardKey = popKey("todo", item.id);
+  // Version-subscribed, so the "Todo color" override re-tints the docked card
+  // live — the same source the todo margin marker and the popped-out float
+  // already read. Never bind `CARD_THEMES.todo` at module scope: that table is
+  // a one-time fold over the SHIPPED defaults and is override-blind forever.
+  const theme = useCardTheme("todo");
   const todoBodyStyle = usePanelBodyStyle("todo");
   const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
 

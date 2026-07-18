@@ -272,6 +272,12 @@
   --citation-border-color: #a8c4de;
   --footnote-color: var(--footnote-500);
   --footnote-bg: var(--footnote-50);
+  /* Marker hover wash — one scale step up from the rest state. Both are
+     OVERWRITTEN at runtime on :root by DERIVED_CSS (preferences-tree.ts), which
+     re-derives them from the user's footnote marker color; these scale steps are
+     the pre-hydration / SSR / print values, not the final rendered ones. See the
+     near-match note on the DERIVED_CSS entry. */
+  --footnote-bg-hover: var(--footnote-100);
   --note-color: #15803d;
   --note-bg: #f0fdf4;
   --note-marker-border: #86efac;
@@ -3007,7 +3013,10 @@ textarea,
 }
 
 .footnote-marker:hover {
-  background: #fde8e8;
+  /* Follows the user's footnote marker color, like the rest state
+     (--footnote-bg) and the jump/selection ring (--link-anchor-color) already
+     do. Was a frozen `#fde8e8`, which is the --footnote-100 literal (task 175). */
+  background: var(--footnote-bg-hover, #fde8e8);
 }
 
 .footnote-highlight-marker {

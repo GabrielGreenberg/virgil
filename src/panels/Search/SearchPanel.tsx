@@ -13,13 +13,13 @@ import type { Editor } from "@tiptap/react";
 import {
   themedCard,
   themedCardStyle,
-  CARD_THEMES,
   PANEL,
   PrevNextCounter,
   clearStaleHover,
   useCycle,
 } from "@/components/panel-primitives";
 import type { PanelId } from "@/hooks/useViewPrefs";
+import { useCardTheme, useAllPanelColors } from "@/hooks/usePanelTheme";
 import {
   type SearchScope,
   type SearchHit,
@@ -27,7 +27,6 @@ import {
   type EditorCitationItem,
   SCOPE_LABEL,
   SCOPE_PANEL,
-  SCOPE_COLOR,
   SCOPE_ORDER,
   SCOPE_TO_CARD_THEME,
   compileQuery,
@@ -803,7 +802,7 @@ function SearchPanel({
   // the results really swap, never mid-defer against a stale list — and not on
   // the results array (which also changes on a structural edit, where we must
   // NOT drop a live selection). Skips the initial mount.
-  const searchKey = `${deferred.query} ${deferred.caseSensitive} ${deferred.wholeWord} ${deferred.scopes.join(",")}`;
+  const searchKey = `${deferred.query}\0${deferred.caseSensitive}\0${deferred.wholeWord}\0${deferred.scopes.join(",")}`;
   const prevSearchKeyRef = useRef(searchKey);
   useEffect(() => {
     if (prevSearchKeyRef.current === searchKey) return;
@@ -956,6 +955,9 @@ function MoreScopesDropdown({
   const [pos, setPos] = useState({ top: 0, left: 0 });
 
   const enabledCount = scopes.filter((s) => enabledScopes.has(s)).length;
+  // ONE version-subscribed lookup for the whole menu — a per-scope hook inside
+  // the `.map` below would be a rules-of-hooks violation.
+  const scopeAccent = useScopeAccent();
 
   useEffect(() => {
     if (!open) return;
@@ -1023,7 +1025,7 @@ function MoreScopesDropdown({
         >
           {scopes.map((s) => {
             const enabled = enabledScopes.has(s);
-            const color = SCOPE_COLOR[s];
+            const color = scopeAccent(s);
             return (
               <button
                 key={s}
@@ -1060,6 +1062,26 @@ function MoreScopesDropdown({
   );
 }
 
+/** Live (user-override-aware) twin of the shipped-defaults `SCOPE_COLOR` table.
+ *
+ *  Returns a LOOKUP FUNCTION rather than a single color so a caller that paints
+ *  N scopes (the scope menu's `.map`) can stay rules-of-hooks-legal: one
+ *  version-subscribed hook per component, not one per scope.
+ *
+ *  `SCOPE_COLOR` itself is an `Object.fromEntries` fold over
+ *  `DEFAULT_PANEL_COLORS` evaluated once at module load, so it can never pick up
+ *  a panel-color override — see the corrected note on its declaration in
+ *  `lib/search-sources.ts`. Search results wear their SOURCE kind's accent, so
+ *  reading the frozen table made every scope dot / result border / result card
+ *  disagree with the very panel it points at once that panel was re-colored. */
+function useScopeAccent(): (scope: SearchScope) => string {
+  const colors = useAllPanelColors();
+  return (scope) =>
+    // mainText has no source kind — it stays transparent (rendered as a neutral
+    // stone dot by each call site), exactly as SCOPE_COLOR encodes.
+    scope === "mainText" ? "transparent" : colors[SCOPE_TO_CARD_THEME[scope]];
+}
+
 function ScopeChip({
   scope,
   enabled,
@@ -1069,7 +1091,7 @@ function ScopeChip({
   enabled: boolean;
   onToggle: () => void;
 }) {
-  const color = SCOPE_COLOR[scope];
+  const color = useScopeAccent()(scope);
   return (
     <button
       type="button"
@@ -1109,7 +1131,7 @@ const ResultCard = memo(function ResultCard({
   selected: boolean;
   onClick: (result: SearchResult, idx: number) => void;
 }) {
-  const color = SCOPE_COLOR[result.scope];
+  const color = useScopeAccent()(result.scope);
   const borderStyle: React.CSSProperties =
     color === "transparent"
       ? {}
@@ -1117,7 +1139,9 @@ const ResultCard = memo(function ResultCard({
   const scopeLabel = SCOPE_LABEL[result.scope];
   const fieldLabel = result.field ? FIELD_LABEL[result.field] : undefined;
   const showScopeLabel = result.scope !== "mainText";
-  const theme = CARD_THEMES[SCOPE_TO_CARD_THEME[result.scope]];
+  // Version-subscribed: this card is `memo`'d on identity-stable props, so the
+  // hook subscription is what re-renders it when its source panel is recolored.
+  const theme = useCardTheme(SCOPE_TO_CARD_THEME[result.scope]);
 
   return (
     <button

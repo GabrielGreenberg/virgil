@@ -400,7 +400,16 @@ export function themedCardStyle(
  *    amber identity inside the Notes panel;
  *  - `aiRequest` (sky) / `error` (rust) are system accents:
  *    `SYSTEM_THEME_KEYS` marks them non-overridable, so a user-color
- *    override on (e.g.) the footnote panel can NOT re-tint them. */
+ *    override on (e.g.) the footnote panel can NOT re-tint them.
+ *
+ *  ⚠️ SHIPPED DEFAULTS ONLY — this table is folded ONCE at module eval, so it
+ *  is **override-blind by construction**: no re-render can ever make it pick up
+ *  a user color. A rendered component must read `useCardTheme(key)`
+ *  (`hooks/usePanelTheme.ts`), which is version-subscribed to the override
+ *  store. The ONLY legitimate runtime reads of this table from a component are
+ *  the `SYSTEM_THEME_KEYS` accents (`aiRequest`/`error`), which have no
+ *  override to miss. CI-enforced: `__tests__/card-theme-override-guardrail.test.ts`
+ *  (task 175 — `TodoRow` was the last non-system offender). */
 export const CARD_THEMES: Record<PanelThemeKey, CardTheme> = Object.fromEntries(
   (Object.keys(DEFAULT_PANEL_COLORS) as PanelThemeKey[]).map((key) => [
     key,

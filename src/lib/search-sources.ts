@@ -152,12 +152,18 @@ export const SCOPE_TO_CARD_THEME: Record<SearchScope, PanelThemeKey> = {
   bibliography: "bib",
 };
 
-/** Light-theme accent for the chip dot + result-card left border + scope label.
- *  DERIVED from the theme SSOT so it can never drift: each scope wears its card
- *  kind's accent (`DEFAULT_PANEL_COLORS[SCOPE_TO_CARD_THEME[scope]]`), the same
- *  source `PanelCard`/marginalia use — so a panel-color edit ripples here
- *  automatically. `mainText` has no source kind, so it stays transparent.
- *  Pinned by `scope-color-theme.test.ts` (audit-058). */
+/** SHIPPED-DEFAULT light-theme accent for the chip dot + result-card left border
+ *  + scope label. DERIVED from the theme SSOT so it can never drift: each scope
+ *  wears its card kind's accent (`DEFAULT_PANEL_COLORS[SCOPE_TO_CARD_THEME[scope]]`),
+ *  the same source `PanelCard`/marginalia use. `mainText` has no source kind, so
+ *  it stays transparent. Pinned by `scope-color-theme.test.ts` (audit-058).
+ *
+ *  ⚠️ DEFAULTS ONLY — this is an `Object.fromEntries` fold evaluated ONCE at
+ *  module load, so it is override-blind exactly like `CARD_THEMES`. It does NOT
+ *  ripple a user panel-color edit (an earlier version of this comment claimed it
+ *  did; task 175 corrected that). A RENDERED component must read the live twin
+ *  `useScopeAccent()` in `panels/Search/SearchPanel.tsx`, which is subscribed to
+ *  the override-version counter. Keep this table as the default/drift-pin SSOT. */
 export const SCOPE_COLOR: Record<SearchScope, string> = Object.fromEntries(
   (Object.keys(SCOPE_TO_CARD_THEME) as SearchScope[]).map((scope) => [
     scope,
