@@ -5405,11 +5405,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   />
                 ) : (
                   <PanelChromeProvider
-                    value={{
-                      isPoppedOut: true,
-                      side: panelSide,
-                      onClose: () => viewPrefs.closePopout(pid),
-                    }}
+                    value={{ onClose: () => viewPrefs.closePopout(pid) }}
                   >
                     <PaneRailBody
                       side={panelSide}

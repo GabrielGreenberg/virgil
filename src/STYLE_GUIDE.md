@@ -458,8 +458,9 @@ Sidebar pod with a locked-height header (`--header-h: 26px` — the lock is
 real: [src/__tests__/token-contract.test.ts](__tests__/token-contract.test.ts)
 fails if this prose and `globals.css` disagree). Header
 slots, in order: leading menu/swatch, title + count, after-title tool,
-add button, AI button, extras, popout chevron. Order is fixed even
-when slots are absent.
+add button, extras, close X. Order is fixed even when slots are absent.
+(AI requests are per-**card** — the `AiRequestCheckbox` — not a panel-header
+slot.)
 
 Panel pods are **borderless warm sheets**: `--pod-panel` fill, a larger
 `--panel-radius` (14px, vs the editor pod's 8px `--pod-radius`), and the

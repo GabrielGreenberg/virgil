@@ -72,7 +72,7 @@ Panel-side assignment is stored in `prefs.placements` and defaults come from `de
 
 ## Panel column
 
-[src/components/editor-layout/panel-column.tsx](../../src/components/editor-layout/panel-column.tsx) — `PanelColumn` (also exports `PlaceholderPanel`, the `BandSpec` type, and `measureOmniGap`).
+[src/components/editor-layout/panel-column.tsx](../../src/components/editor-layout/panel-column.tsx) — `PanelColumn` (also exports the `BandSpec` type and `measureOmniGap`).
 
 **Auto-stacking band layout (51e0092).** The single-slot/split model is gone. The column is an always-mounted omni "desktop"; up to `MAX_STACK` opaque content-sized **bands** stack top→bottom over it. Three layers inside the column root: (A) `{omni}` in normal flow (the background); (B) an absolute pass-through layer so empty gaps click through to omni; (C) a sticky stack frame holding the band anchors (`data-dock-slot` keys, top→bottom) with a `BandDivider` ([panel-primitives.tsx](../../src/components/panel-primitives.tsx)) between consecutive bands. Each band anchor is empty — `<FloatingPanel mode="docked">` portals its panel content into the anchor, visually covering omni (which stays mounted underneath). When `stack` is empty the column is omni-only. (The Reader can now dock bands too — it runs the same ephemeral `useViewPrefs` engine — so its stack isn't always empty.)
 
@@ -88,10 +88,10 @@ Panels render via `<PaneRailBody>` inside EditorPane. The same panel components 
 
 All panels share the wrapper system in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) and [src/panels/_shared/](../../src/panels/_shared/). Two wrapper shapes:
 
-- **`Panel`** — universal outer. Flex column with header, scroll body, absolute popout + close buttons. Used by panels with custom bodies (Outline, Search, WordCount).
+- **`Panel`** — universal outer. Flex column with header (whose trailing slot is the close X) and scroll body. Used by panels with custom bodies (Outline, Search, WordCount).
 - **`CardListPanel<T>`** — wraps `Panel` + iterates items as cards + adds AI-requests section. Used by card panels. (The historical list/in-text view-mode toggle and `panel-view-mode` context were removed; cards now always render in list form.) It also applies the **per-card archive view filter** (`filterByArchiveView` in [src/panels/_shared/card-archive-view.tsx](../../src/panels/_shared/card-archive-view.tsx)) — see "Per-card archive" below.
 
-**Header** is `PanelHeader` — fixed 26px (`--header-h`), title + count + optional `onAdd` (+ icon) and `onAiRequest` (8-ray star).
+**Header** is `PanelHeader` — fixed 26px (`--header-h`), slots in order: `leading`, title + count, `titleAfter`, optional `onAdd`/`onAddOptions` (+ icon), `children` (extras), and a trailing `PanelClose` X. There is no AI-request slot in the header — AI requests are per-**card** (`AiRequestCheckbox`).
 
 ### Panel registry — SSOT
 

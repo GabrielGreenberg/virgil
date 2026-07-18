@@ -8,21 +8,6 @@ import {
 } from "@/hooks/useViewPrefs";
 import { BandDivider } from "../panel-primitives";
 
-export function PlaceholderPanel({ title }: { title: string }) {
-  return (
-    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <div className="px-4 h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--pod-panel)]">
-        <h3 className="text-sm font-semibold text-ink-body">{title}</h3>
-      </div>
-      <div className="flex-1 flex items-center justify-center p-6">
-        <p className="text-sm text-[var(--muted)] text-center">
-          {title} panel — coming soon.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 /** One docked band in a column's stack: a panel id plus an optional
  *  resized height (px). Absent height ⇒ content-sized (flex auto). */
 export type BandSpec = { id: PanelId; height?: number };

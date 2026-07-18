@@ -42,7 +42,6 @@ import {
   walkJsonContentForCitations,
   stripFootnoteNestedCitation,
 } from "./citation-doc-ops";
-import { createPopoutButtonEl } from "./panel-primitives";
 import { TextObjectGrabHandle } from "@/text-objects/TextObjectGrabHandle";
 import { ActiveTextObjectProvider } from "@/text-objects/active-text-object-context";
 import { SelectionActionsMenu } from "./SelectionActionsMenu";

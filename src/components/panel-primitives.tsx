@@ -1528,20 +1528,15 @@ export function Chevron({ expanded }: { expanded: boolean }) {
   );
 }
 
-/* ── Panel chrome context (popout button) ─────────────────────────── */
+/* ── Panel chrome context (close button) ──────────────────────────── */
 
 /**
- * Context that lets PanelHeader render a pop-out / un-pop button without
- * threading props through every panel component. The EditorLayout wraps
- * each rendered panel with a provider that supplies the current popped-out
- * state for that panel's id.
+ * Context that lets `PanelHeader` render its trailing close X without
+ * threading a close handler through every panel component. EditorPane
+ * wraps each rendered panel with a provider carrying that panel's close
+ * handler. `PanelClose` is the sole consumer.
  */
 export interface PanelChromeValue {
-  /** True when this panel is rendered as a floating window. In the
-   *  always-float model this is always true for non-omni panels. */
-  isPoppedOut: boolean;
-  /** Side this panel is docked to (or floats from). Drives chevron direction. */
-  side: "left" | "right";
   /** Close this panel: removes it from the floating panel list. */
   onClose: () => void;
 }
@@ -1563,11 +1558,11 @@ export function PanelChromeProvider({
 }
 
 /* ── Centralized popout button ─────────────────────────────────────
- * Single source of truth for the popout-button visual. Used by panel
- * headers, card chrome, and imperative consumers (paragraph node view
- * in the editor). Variants only differ in the popped-out glyph:
- *   - "arrow": rect + down-arrow (PanelPopout)
- *   - "x":     bare X glyph     (CardPopoutButton)
+ * Single source of truth for the popout-button visual. Used by card
+ * chrome and imperative consumers (`createPopoutButtonEl`, for non-React
+ * DOM trees). Variants only differ in the popped-out glyph:
+ *   - "arrow": rect + down-arrow (the default)
+ *   - "x":     bare X glyph      (CardPopoutButton, FloatChrome)
  */
 
 export const POPOUT_BUTTON_CLASS = "iconbtn-sm";
@@ -1711,16 +1706,6 @@ export function createPopoutButtonEl(opts: {
 }
 
 /**
- * Pop-out button bound to the panel chrome — retained as a no-op so
- * existing render trees continue to compile. In the always-float model
- * panels are always floating, so the button has nothing to do; leaving
- * it as `null` keeps the header layout stable.
- */
-export function PanelPopout() {
-  return null;
-}
-
-/**
  * Close button bound to the surrounding PanelChromeProvider. Renders an X
  * and always closes the panel — collapses the column in single mode,
  * removes just the half in split mode, or closes the floater in pop-out
@@ -1784,7 +1769,7 @@ export function CardDragHandle() {
 
 /**
  * Per-card popout toggle. Always rendered as the last element of the card
- * header (top-right). Styled identically to PanelPopout / PanelClose:
+ * header (top-right). Styled identically to PanelClose:
  * docked state shows a pod with an up arrow; popped state shows a bare X
  * glyph that re-docks the card.
  */
