@@ -40,6 +40,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import suppression_categories_from_catalog  # noqa: E402
+
 
 # Invisible character codepoints to detect.
 # Soft hyphen, ZWSP, BOM, ZWNJ, ZWJ, NBSP, Braille blank.
@@ -801,19 +804,11 @@ def _catalog_suppression_categories(library: Path, citekey: str) -> set[str]:
         catalog = json.loads(catalog_path.read_text())
     except Exception:
         return set()
-    suppressed: set[str] = set()
-    for e in catalog.get("entries", []):
-        if e.get("citekey") != citekey:
-            continue
-        indexed = e.get("indexed") or {}
-        for w in indexed.get("warnings", []) or []:
-            if not isinstance(w, str):
-                continue
-            m = re.match(r"^([a-z][a-z-]*)-false-positive:\s", w)
-            if m:
-                suppressed.add(m.group(1))
-        break
-    return suppressed
+    # Shared reader (SSOT for the `<category>-false-positive:` convention). No
+    # prefix → categories returned verbatim, matched against this audit's own
+    # bare-category findings. pgmark_validate calls the same helper with
+    # prefix="pgmark-" so the two readers can't drift again.
+    return suppression_categories_from_catalog(catalog, citekey, prefix=None)
 
 
 def main(argv: list[str]) -> int:

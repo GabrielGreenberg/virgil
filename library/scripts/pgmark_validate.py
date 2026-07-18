@@ -60,6 +60,9 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tools import suppression_categories_from_catalog  # noqa: E402
+
 
 PGMARK_RE = re.compile(r"\\pgmark(?:\[([a-zA-Z]+)\])?\{([^}]*)\}")
 
@@ -706,16 +709,29 @@ def _baseline_kinds_from_catalog(
         catalog = json.loads(catalog_path.read_text())
     except Exception:
         return set()
+    # `pgmark-<kind>-false-positive:` suppressions (operator-verified false
+    # positives, written by add_validator_suppression.py) → bare finding kind.
+    # Routed through the shared reader so the `-false-positive` suffix is
+    # actually stripped; the old inline reader kept it, so every suppression
+    # was silently ignored and the finding re-blocked convergence each pass.
+    kinds: set[str] = suppression_categories_from_catalog(
+        catalog, citekey, prefix="pgmark-",
+    )
+    # Plain prior-pass warnings `pgmark-<kind>: <detail>` (the validator's own
+    # emitted findings from a previous pass). Suffix `-false-positive` entries
+    # are handled above, so skip them here.
     for e in catalog.get("entries", []):
         if e.get("citekey") == citekey:
             warnings = (e.get("indexed") or {}).get("warnings") or []
-            kinds: set[str] = set()
             for w in warnings:
-                if isinstance(w, str) and w.startswith("pgmark-") and ":" in w:
-                    head = w.split(":", 1)[0]
-                    kinds.add(head[len("pgmark-"):])
-            return kinds
-    return set()
+                if not (isinstance(w, str) and w.startswith("pgmark-") and ":" in w):
+                    continue
+                head = w.split(":", 1)[0]
+                if head.endswith("-false-positive"):
+                    continue
+                kinds.add(head[len("pgmark-"):])
+            break
+    return kinds
 
 
 def main() -> int:
