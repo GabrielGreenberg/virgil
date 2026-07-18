@@ -724,7 +724,8 @@ for any command menu, kebab, or anchored dropdown; don't hand-roll a portal +
   only) so the editor caret never moves.
 
 **`ItemMenu`** (the three-dot card/panel menu in `panel-primitives.tsx`, used by
-all 8 card panels + `CardViewModeMenu`) is **folded onto this primitive** — it's a
+all 8 card panels + `CardViewModeMenu` + Outline's view options) is **folded onto
+this primitive** — it's a
 thin shell that keeps its `align` + `children` API and the auto-injected
 `PanelTextSizeRow` row, but delegates portal / positioning / dismiss / z / Escape
 to `MenuProvider` (retiring its old `fixed z-[9999]` portal + hand-rolled
@@ -736,6 +737,24 @@ per-item registration — wrap them in `useMenuItem` when a menu wants roving na
 
 The sticky-bar topbar kebabs (`ExternalChangeBadge`, `CollabStatusPill`) are the
 reference wiring for the body-portal case — see the **Top bar** portal rule below.
+
+**A panel-header dropdown must be portaled too, and for a second reason: the
+clip.** `Panel`'s wrapper is `overflow-hidden`, so an `absolute` dropdown laid
+out inside it is not merely trapped in a stacking context — it is *cut off at
+the panel's box*. A docked band clamps to `MIN_BAND_PX` (140), which leaves
+~110px below the header, so any menu taller than that loses its last rows
+**unreachably**: they render outside the clip with nothing to scroll. This was
+OutlinePanel's hand-rolled `absolute … z-30` kebab (task 180), the last one;
+every panel-header kebab now goes through `ItemMenu align="left"`.
+
+**Checkbox/toggle rows use `<MenuToggleRow>`** (`src/components/menu/`) — one
+row implementation for MenuBar's ViewMenu and every panel kebab: label left,
+accent ✓ right, `role="menuitemcheckbox"` + `aria-checked`, registered via
+`useMenuItem` so arrow-nav and the roving highlight come for free. Closing stays
+the caller's business (MenuBar's Display rows close from inside their own
+`onToggle`); pass `keepMenuOpen` inside `ItemMenu`, whose children wrapper
+otherwise closes the menu on any bubbled click — a run of independent toggles
+should not dismiss the menu after each one.
 
 ### Z-index ladder
 

@@ -7,6 +7,8 @@ import { buildPerBlockCounts, sumIncludedWords } from "@/lib/word-count-core";
 import type { FocusState } from "@/hooks/useFocusMode";
 import { sectionRange } from "@/hooks/useFocusMode";
 import { Panel } from "@/panels/_shared/Panel";
+import { ItemMenu } from "@/components/panel-primitives";
+import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { flattenInlineText } from "@/lib/inline-content";
 import {
   subscribeOutlinePrefs,
@@ -1494,24 +1496,14 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
   const setShowPosition = (v: boolean) => setOutlinePrefs({ showPosition: v });
   const setShowNumbers = (v: boolean) => setOutlinePrefs({ showNumbers: v });
 
-  const [menuOpen, setMenuOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // Per-section counts inherit the shared Word Count config — the
   // outline view menu no longer exposes category toggles of its own.
   const { config: wcConfig } = useWordCountConfig();
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [menuOpen]);
+  // (The bespoke outside-click closer that used to live here went with the
+  //  hand-rolled dropdown — `MenuProvider` owns dismissal now. See `headerLeading`.)
 
   const { headings, preambleTitles } = useMemo(() => extractHeadings(content), [content]);
   const tree = useMemo(() => buildTree(headings), [headings]);
@@ -1605,59 +1597,59 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
     setOutlineCollapsedForDoc(foldDocId, new Set());
   }, [foldDocId]);
 
+  /* The view-options kebab (task 180). This was the last hand-rolled panel-header
+   * dropdown: an `absolute … z-30` div laid out INSIDE `Panel`'s
+   * `overflow-hidden` wrapper, so at the `MIN_BAND_PX` (140) band height its last
+   * rows rendered outside the clip and were unreachable — and `z-30` sat off the
+   * ladder entirely, under the float layer (1200) at every band height. Folding
+   * onto `ItemMenu` retires the clip (body-portaled at OPEN_CHROME_MENU_Z),
+   * the missing viewport flip/clamp, the missing Escape + menu ARIA, and the
+   * un-ringed trigger in one move — all five were properties of not being on the
+   * primitive. `align="left"` also auto-injects `PanelTextSizeRow` when the
+   * enclosing panel has a body key; Outline has no card-body typography, so
+   * `bodyKey` is null and nothing is injected (see `panel-typography.ts:176`).
+   *
+   * `keepMenuOpen` on every row: `ItemMenu` closes on any bubbled click, and
+   * these five are independent checkboxes the user commonly flips in a run —
+   * closing after each one would be a regression against the old dropdown. */
   const headerLeading = (
-    <div className="relative -ml-3" ref={menuRef}>
-      <button
-        onClick={() => setMenuOpen(!menuOpen)}
-        className="p-0.5 text-ink-muted hover:text-ink-body transition-colors"
-        data-hint="View options"
-      >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <circle cx="8" cy="3" r="1.5" />
-          <circle cx="8" cy="8" r="1.5" />
-          <circle cx="8" cy="13" r="1.5" />
-        </svg>
-      </button>
-      {menuOpen && (
-        <div className="absolute left-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[180px]">
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-            onClick={() => { setShowNumbers(!showNumbers); }}
-          >
-            <span>Show section numbers</span>
-            <span className="text-[var(--accent)]">{showNumbers ? "✓" : ""}</span>
-          </button>
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-            onClick={() => { setShowLabels(!showLabels); }}
-          >
-            <span>Show labels</span>
-            <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
-          </button>
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-            onClick={() => { setShowTitles(!showTitles); }}
-          >
-            <span>Show par. titles</span>
-            <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
-          </button>
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-            onClick={() => { setShowWordCount(!showWordCount); }}
-          >
-            <span>Show word count</span>
-            <span className="text-[var(--accent)]">{showWordCount ? "✓" : ""}</span>
-          </button>
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-            onClick={() => { setShowPosition(!showPosition); }}
-          >
-            <span>Show current position</span>
-            <span className="text-[var(--accent)]">{showPosition ? "✓" : ""}</span>
-          </button>
-        </div>
-      )}
-    </div>
+    <ItemMenu align="left" hint="View options">
+      <MenuToggleRow
+        id="outline-show-numbers"
+        label="Show section numbers"
+        checked={showNumbers}
+        keepMenuOpen
+        onToggle={() => setShowNumbers(!showNumbers)}
+      />
+      <MenuToggleRow
+        id="outline-show-labels"
+        label="Show labels"
+        checked={showLabels}
+        keepMenuOpen
+        onToggle={() => setShowLabels(!showLabels)}
+      />
+      <MenuToggleRow
+        id="outline-show-titles"
+        label="Show par. titles"
+        checked={showTitles}
+        keepMenuOpen
+        onToggle={() => setShowTitles(!showTitles)}
+      />
+      <MenuToggleRow
+        id="outline-show-word-count"
+        label="Show word count"
+        checked={showWordCount}
+        keepMenuOpen
+        onToggle={() => setShowWordCount(!showWordCount)}
+      />
+      <MenuToggleRow
+        id="outline-show-position"
+        label="Show current position"
+        checked={showPosition}
+        keepMenuOpen
+        onToggle={() => setShowPosition(!showPosition)}
+      />
+    </ItemMenu>
   );
 
   const headerTitleAfter = (
