@@ -6,6 +6,7 @@ import type { HighlightType, MarginaliaType, DividerLevel, DividerWidth } from "
 import { VIEW_PREF_REGISTRY } from "@/lib/view-prefs/registry";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
+import { MenuToggleRow } from "./menu/MenuToggleRow";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 // CHIP 5a: the BlockType dropdown's heading items route through the canonical
 // `headingRun` (SET + numbered:true) in the action registry — the SAME `run()`
@@ -41,7 +42,7 @@ export type { MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useView
 
 // Row labels are sourced from VIEW_PREF_REGISTRY (the single source of truth),
 // not re-declared here. The ViewMenu maps the registry's `memberLabels` /
-// `valueLabels` / `menu` grouping into the existing ViewToggleRow/ViewGroupRow
+// `valueLabels` / `menu` grouping into the existing MenuToggleRow/ViewGroupRow
 // JSX, keeping the prop-controlled `checked`/`onToggle` contract intact.
 const DIVIDER_LEVEL_LABELS = VIEW_PREF_REGISTRY.dividerLevels.memberLabels as Record<DividerLevel, string>;
 const DIVIDER_WIDTH_LABELS = VIEW_PREF_REGISTRY.dividerWidth.valueLabels as Record<DividerWidth, string>;
@@ -427,43 +428,12 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
 // controller, checked before `reg.move` for left/right) — see the migration
 // report. Enter-expand/Enter-collapse + click cover the behavior fully today.
 
-/** A checkbox/toggle row. Registers into the `<Menu>` registry; `aria-checked`
- *  reflects `checked`. `closeOnToggle` mirrors today's split: the Display rows
- *  close the menu on toggle; the in-group sub-toggles keep it open. */
-function ViewToggleRow({
-  id,
-  label,
-  checked,
-  indent = 0,
-  onToggle,
-}: {
-  id: string;
-  label: string;
-  checked: boolean;
-  /** Indent depth (0 = top level, 1 = group child, 2 = nested child). */
-  indent?: 0 | 1 | 2;
-  onToggle: () => void;
-}) {
-  const { active, getItemProps } = useMenuItem({
-    id,
-    region: "list",
-    role: "menuitemcheckbox",
-    run: onToggle,
-  });
-  const pad = indent === 2 ? "pl-9 pr-3" : indent === 1 ? "pl-6 pr-3" : "px-3";
-  return (
-    <button
-      {...getItemProps()}
-      type="button"
-      aria-checked={checked}
-      className={`w-full text-left ${pad} py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3`}
-      style={{ background: active ? "var(--menu-roving-bg)" : undefined }}
-    >
-      <span>{label}</span>
-      <span className="text-[var(--accent)]">{checked ? "✓" : ""}</span>
-    </button>
-  );
-}
+// The checkbox/toggle row this menu uses is the shared `<MenuToggleRow>`
+// primitive (`menu/MenuToggleRow.tsx`) — extracted from here in task 180 when
+// OutlinePanel's kebab folded onto `ItemMenu` and wanted the identical row.
+// Closing stays the CALLER's business, which is how today's split survives the
+// extraction unchanged: the Display rows close the menu from inside their own
+// `onToggle` (`… ; setOpen(false)`), the in-group sub-toggles keep it open.
 
 /** An expandable group header row. `aria-expanded` reflects state; Enter/click
  *  toggle it (the chevron rotates). Left/Right keyboard expand-collapse is the
@@ -706,7 +676,7 @@ export function ViewMenu({
               cardOutlineChrome: onToggleCardOutline,
             };
             return DISPLAY_ROWS.map((row) => (
-              <ViewToggleRow
+              <MenuToggleRow
                 key={row.id}
                 id={row.id}
                 label={row.label}
@@ -719,9 +689,9 @@ export function ViewMenu({
           <ViewGroupRow id="marginalia-group" label="Marginalia" expanded={marginaliaExpanded} onToggle={() => setMarginaliaExpanded((p) => !p)} />
           {marginaliaExpanded && (
             <>
-              <ViewToggleRow id="marginalia-show" label={VIEW_PREF_REGISTRY.showMarginalia.label} checked={showMarginalia} indent={1} onToggle={() => onToggleMarginalia()} />
+              <MenuToggleRow id="marginalia-show" label={VIEW_PREF_REGISTRY.showMarginalia.label} checked={showMarginalia} indent={1} onToggle={() => onToggleMarginalia()} />
               {showMarginalia && MARGINALIA_TYPE_ROWS.map(({ type, label }) => (
-                <ViewToggleRow
+                <MenuToggleRow
                   key={type}
                   id={`marginalia-type-${type}`}
                   label={label}
@@ -735,9 +705,9 @@ export function ViewMenu({
           <ViewGroupRow id="highlights-group" label="Highlights" expanded={highlightsExpanded} onToggle={() => setHighlightsExpanded((p) => !p)} />
           {highlightsExpanded && (
             <>
-              <ViewToggleRow id="highlights-show" label={VIEW_PREF_REGISTRY.showHighlights.label} checked={showHighlights} indent={1} onToggle={onToggleHighlights} />
+              <MenuToggleRow id="highlights-show" label={VIEW_PREF_REGISTRY.showHighlights.label} checked={showHighlights} indent={1} onToggle={onToggleHighlights} />
               {showHighlights && HIGHLIGHT_TYPE_ROWS.map(({ type, label }) => (
-                <ViewToggleRow
+                <MenuToggleRow
                   key={type}
                   id={`highlights-type-${type}`}
                   label={label}
@@ -754,7 +724,7 @@ export function ViewMenu({
               {dividersExpanded && (
                 <>
                   {VIEW_PREF_REGISTRY.dividerLevels.members.filter((lvl) => availableDividerLevels.has(lvl)).map((lvl) => (
-                    <ViewToggleRow
+                    <MenuToggleRow
                       key={lvl}
                       id={`divider-level-${lvl}`}
                       label={DIVIDER_LEVEL_LABELS[lvl]}
@@ -765,7 +735,7 @@ export function ViewMenu({
                   ))}
                   <ViewGroupRow id="divider-prefs-group" label={VIEW_PREF_REGISTRY.dividerWidth.label} expanded={dividerPrefsExpanded} indent={1} onToggle={() => setDividerPrefsExpanded((p) => !p)} />
                   {dividerPrefsExpanded && VIEW_PREF_REGISTRY.dividerWidth.values.map((w) => (
-                    <ViewToggleRow
+                    <MenuToggleRow
                       key={w}
                       id={`divider-width-${w}`}
                       label={DIVIDER_WIDTH_LABELS[w]}

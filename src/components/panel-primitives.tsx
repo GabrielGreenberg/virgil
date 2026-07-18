@@ -2716,12 +2716,16 @@ const ITEM_MENU_PLACEMENTS: Record<"left" | "right", FloatingMenuPlacement[]> = 
 export function ItemMenu({
   children,
   align = "right",
+  hint = "Options",
 }: {
   children: ReactNode;
   /** Which edge of the button the dropdown aligns to. Use "left" for
    *  menu buttons near the left edge of a panel (dropdown drops right),
    *  "right" (default) for buttons near the right edge of a card. */
   align?: "left" | "right";
+  /** Trigger tooltip. Defaults to the generic "Options"; override when the
+   *  menu's contents are narrower than that (Outline's is "View options"). */
+  hint?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -2787,7 +2791,7 @@ export function ItemMenu({
         ref={btnRef}
         onClick={(e) => { e.stopPropagation(); toggle(); }}
         className={isPanelHeader ? "iconbtn-sm" : "iconbtn-md"}
-        data-hint="Options"
+        data-hint={hint}
         aria-haspopup="menu"
         aria-expanded={open}
       >

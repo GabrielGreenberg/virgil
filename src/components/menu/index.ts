@@ -15,6 +15,8 @@ export type {
   MenuItemsFromRegistryProps,
   DecoratedMenuRow,
 } from "./MenuItemsFromRegistry";
+export { MenuToggleRow } from "./MenuToggleRow";
+export type { MenuToggleRowProps } from "./MenuToggleRow";
 export { MenuGrid, MenuList, useMenuGrid } from "./regions";
 export type { MenuGridProps, MenuListProps } from "./regions";
 export { useMenuItem } from "./useMenuItem";
