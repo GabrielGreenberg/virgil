@@ -64,11 +64,29 @@ Operates on `papers/$ARGUMENTS/main.tex` and
 - **Step 3g** — rewrite inline citations in the body text to natbib
   `\cite{…}` family commands.
 
-**Working directory.** Every `python3 .virgil/scripts/<name>.py …`
-invocation below assumes pwd is `~/Virgil-Library/` (the library root
-where `.virgil/scripts/`, `papers/`, and `master.bib` live). `cd` there
-before invoking, or prepend each command with
-`cd ~/Virgil-Library && …`.
+**Working directory.** Every `python3 .virgil/scripts/library/<name>.py …`
+invocation below assumes pwd is the **resolved library root** — the
+`cd "$library_root"` the Bootstrap above already performed (also exported
+as `$VIRGIL_LIBRARY_ROOT`). That is the folder where `.virgil/scripts/`,
+`papers/`, and `master.bib` live. The default location is
+`~/Virgil-Library/`, but the library is a **user-picked folder** and may
+live anywhere — never hardcode the default. If a step needs to re-enter
+it, use `cd "$VIRGIL_LIBRARY_ROOT" && …`.
+
+**Who persists the warnings.** Several steps below compute
+`entry.indexed.warnings` lines (`missing-bib-entry:`,
+`ambiguous-citation:`, `numeric-citation-style:`) and hand them to
+`deep-index.md` step 5 ("### 5. Update catalog"). **This skill performs no
+catalog write of its own** — step 5 lives in `deep-index.md`, not here. So:
+
+- Running **as a `/library/deep-index` subskill** (the normal case): compute
+  the lines and hand them up; step 5 does the drop-and-recompute write.
+- Running **standalone** (`/library/clean-bibliography <citekey>` invoked
+  directly): there is no step 5. Do **not** hand-write `.virgil/catalog.json`.
+  Instead, **report every computed warning line verbatim in your reply**, and
+  say plainly that they were computed but **not persisted to the catalog** —
+  re-run under `/library/deep-index` (or run its step 5) to make them durable.
+  Surfacing beats silently dropping them on the floor.
 
 ## Step 3e — Itemize the References section
 
@@ -406,8 +424,9 @@ mentions as prose verbatim, and append exactly one warning of the
 form `numeric-citation-style: source uses Vancouver-style numeric
 citations; inline rewrite skipped` to `entry.indexed.warnings`
 (this is a fifth recomputed-prefix kind alongside the four in §5;
-step 5 must drop any prior `numeric-citation-style:` line and
-re-emit it). Do NOT emit `missing-bib-entry:` warnings either —
+`deep-index.md` step 5 — "### 5. Update catalog" — must drop any prior
+`numeric-citation-style:` line and re-emit it). Do NOT emit
+`missing-bib-entry:` warnings either —
 the lookup spec keys on author surnames, which numeric prose
 doesn't carry. The references.bib still gets emitted normally per
 §3e/§3f, just with citekeys that the body doesn't reference. A
@@ -560,9 +579,9 @@ Constraints:
   - one line under "Unresolved inline citations" in the deep-index
     summary log; and
   - one entry of the form `"missing-bib-entry: <Author> <Year>"` (one
-    per unique author/year pair) for step 5 to merge into
-    `entry.indexed.warnings` in `.virgil/catalog.json`. This makes the gap
-    durable rather than buried.
+    per unique author/year pair) for `deep-index.md` step 5 ("### 5.
+    Update catalog") to merge into `entry.indexed.warnings` in
+    `.virgil/catalog.json`. This makes the gap durable rather than buried.
 - **Ambiguous unsuffixed citation** — if prose has `(Author Year)`
   with no letter suffix but `references.bib` has multiple matching
   entries (`author<year>a`, `author<year>b`, `author<year>c`),
@@ -573,7 +592,8 @@ Constraints:
   context heuristics — the user can choose the right suffix
   manually after triage. (Treat this as a fourth recomputed-prefix
   alongside `missing-bib-entry:`, `footnote-recovery-needed:`, and
-  `examples-not-converted:` in step 5's drop-and-recompute list.)
+  `examples-not-converted:` in `deep-index.md` step 5's
+  drop-and-recompute list.)
 - For **multi-author textual citations that include given names**
   ("Barbara Grosz and Candace Sidner (1986)"), leave the prose alone.
   `\citet{}` would render only surnames and silently drop the inner
@@ -674,10 +694,22 @@ catch-all sweep from `/library/index-pending`.)
 python3 .virgil/scripts/library/invalidate_bib_imports.py $ARGUMENTS
 ```
 
-## Pre-flight (called from /library/authenticate-bib, not here)
+## Coherence check (unwired helper — run it manually)
 
-Cross-field coherence + PDF cover-page check before authentication:
+Cross-field coherence + PDF cover-page check. **No skill currently invokes
+this**: `authenticate-bib.md` does not call it, and this invocation is the
+only reference to `validate_bib_coherence.py` anywhere in the skill tree. It
+is a working script, not a wired pipeline step — the earlier heading claimed
+it was "called from /library/authenticate-bib", which was never true.
+
+Run it by hand when a paper's bib fields look internally inconsistent (e.g.
+an `@article` with a publisher but no journal), or when a PDF's cover page
+disagrees with the entry:
 
 ```bash
 python3 .virgil/scripts/library/validate_bib_coherence.py $ARGUMENTS
 ```
+
+It only reports; it writes nothing. Whether it should become a real
+pre-authentication gate inside `/library/authenticate-bib` is an open
+question, not settled here.
