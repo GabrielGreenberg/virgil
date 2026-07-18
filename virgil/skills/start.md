@@ -90,7 +90,6 @@ dispatch:
 | "fix my bibliography" / "tidy my references" / "sync my refs to the library" | Dispatch `/editor/sync-bib-to-library <docPath>` as a subagent (start with `--dry-run` if the user hasn't confirmed they want writes) |
 | "add a footnote" / "draft a footnote here" | Dispatch `/editor/draft-footnote <docPath> <requestId>` (find or create the request) |
 | "find/add a citation" / "look up the source for this claim" | Dispatch `/editor/find-citation <docPath> <requestId>` |
-| "draft a quotation" / "pull a quote from <source>" | Dispatch `/editor/draft-quotation <docPath> <requestId>` |
 | "answer this note" / "address this todo" / "respond to my comment" | Dispatch the appropriate `/editor/answer-*` skill |
 | "draft a suggestion" / "propose an edit here" | Dispatch `/editor/draft-suggestion <docPath> <requestId>` |
 | "answer this bib review" / "verify this bib entry" | Dispatch `/editor/answer-bib-review <docPath> <bibKey>` |
@@ -101,7 +100,7 @@ dispatch:
 | "deep-index <citekey>" / "do a deep index pass" / "deep research <topic>" / "drain my library queue" / "triage everything in unsorted" / "process all pending" | **Heavy-library branch** (Step 4) — does NOT dispatch inline in light-ops mode |
 | Anything else | Ask one short clarifying question, then re-classify |
 
-For each dispatch, mirror the [/editor/review](../editor/skills/review.md)
+For each dispatch, mirror the `/editor/review`
 pattern: dispatch the specialist as a **subagent** so the front-door's
 context stays bounded, and echo the specialist's one-line `Done:` reply.
 
