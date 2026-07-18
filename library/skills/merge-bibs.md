@@ -308,7 +308,7 @@ user sees progress.
 >    ```
 >    The script does the dedup → authenticate → transient-skip work
 >    and writes `.virgil/merge-reports/<citekey>.json`. It also writes
->    a one-line summary to stdout (`+A ~D ⤬T ⚠F ?M`).
+>    a one-line summary to stdout (`+A ~D ⇄U ⤬T ⚠F ?M`).
 > 4. Read the report. If `manual_review[]` is non-empty, briefly look at
 >    each item — reading the relevant master.bib entries when useful —
 >    and add a `manual_review_decisions` array to the report file with
@@ -345,9 +345,19 @@ indicator so the user knows how far the run has progressed:
 Once every chunk finishes, read every per-paper report and produce a
 single library-wide summary.
 
+**Bucket by the literal the engine wrote — never a hand-enumerated ladder.**
+The engine owns the report vocabulary and grows it (`would-auth` and
+`would-collective-auth` under `--dry-run`; whatever a later state adds). An
+aggregator that `if state == "authenticated" … elif …` silently scores every
+unrecognized literal as zero, so the summary reads "nothing happened" for a run
+that did plenty. Count into a `Counter` keyed on the raw string and render every
+key you find — an unknown state then shows up as an extra line, which is visible
+and fixable, instead of vanishing.
+
 ```bash
 python3 - <<'PY'
 import json, os, sys
+from collections import Counter
 from pathlib import Path
 library = Path(os.environ["VIRGIL_LIBRARY_ROOT"])
 report_dir = library / ".virgil" / "merge-reports"
@@ -356,12 +366,14 @@ citekeys = [ck for ck in (worklist_file.read_text().splitlines() if worklist_fil
 
 totals = {
     "papers": 0, "entries": 0,
-    "added_auth": 0, "added_canonical": 0, "added_unverified": 0, "added_failed": 0,
-    "deferred_dup": 0, "skipped_transient": 0,
-    "auth_failed": 0, "manual_review": 0,
-    "unauth_dup_merged": 0, "unauth_dup_split": 0,
+    "deferred_dup": 0, "skipped_transient": 0, "manual_review": 0,
 }
+# Keyed on the raw report literal, so no state can be silently dropped.
+added_by_state: Counter[str] = Counter()        # report.added[].state
+auth_failed_by_state: Counter[str] = Counter()  # report.auth_failed[].state — ALSO written to master.bib
+unauth_dup_by_action: Counter[str] = Counter()  # report.unauth_dup_handled[].action
 manual_papers: list[str] = []
+dry_run_seen = False
 for ck in citekeys:
     rpt_path = report_dir / f"{ck}.json"
     if not rpt_path.exists():
@@ -370,58 +382,111 @@ for ck in citekeys:
     totals["papers"] += 1
     totals["entries"] += r.get("entries_total", 0)
     for row in r.get("added", []):
-        state = row.get("state", "")
-        if state == "authenticated":
-            totals["added_auth"] += 1
-        elif state == "canonical":
-            totals["added_canonical"] += 1
-        elif state == "unverified":
-            totals["added_unverified"] += 1
-        elif state == "failed":
-            totals["added_failed"] += 1
+        added_by_state[row.get("state", "") or "(unstated)"] += 1
+        dry_run_seen |= bool(row.get("dry_run"))
+    for row in r.get("auth_failed", []):
+        auth_failed_by_state[row.get("state", "") or "(unstated)"] += 1
+    for row in r.get("unauth_dup_handled", []):
+        unauth_dup_by_action[row.get("action", "") or "(unstated)"] += 1
+        dry_run_seen |= bool(row.get("dry_run"))
     totals["deferred_dup"] += len(r.get("deferred_dup", []))
     totals["skipped_transient"] += len(r.get("skipped_transient", []))
-    totals["auth_failed"] += len(r.get("auth_failed", []))
-    for row in r.get("unauth_dup_handled", []):
-        if row.get("action") == "merged":
-            totals["unauth_dup_merged"] += 1
-        elif row.get("action") == "split":
-            totals["unauth_dup_split"] += 1
     n_manual = len(r.get("manual_review", []))
     totals["manual_review"] += n_manual
     if n_manual:
         manual_papers.append(ck)
 
-print(json.dumps({"totals": totals, "manual_papers": manual_papers}, indent=2))
+out = {
+    "totals": totals,
+    "dry_run": dry_run_seen,
+    "added_by_state": dict(added_by_state),
+    "auth_failed_by_state": dict(auth_failed_by_state),
+    "unauth_dup_by_action": dict(unauth_dup_by_action),
+    "added_total": sum(added_by_state.values()),
+    "auth_failed_total": sum(auth_failed_by_state.values()),
+    "manual_papers": manual_papers,
+}
+print(json.dumps(out, indent=2))
+
+# Step 4 sources these instead of hand-transcribing them into the env.
+env_path = Path("/tmp/merge-bibs-totals.env")
+# `export` matters: the Step 4 memo heredoc reads MANUAL_PAPERS via os.environ,
+# so a plain shell assignment would not reach it.
+env_path.write_text(
+    f"export MANUAL_REVIEW={totals['manual_review']}\n"
+    f"export MANUAL_PAPERS='{' '.join(manual_papers)}'\n"
+    f"export DRY_RUN_SEEN={1 if dry_run_seen else 0}\n"
+)
 PY
 ```
 
-Print the summary table in the orchestrator's reply (≤10 lines):
+`auth_failed[]` entries **were written to master.bib** — the engine routes
+`unverified`/`failed` there instead of `added[]` (`merge_paper_references.py`
+`:614-623`), so they are additions that need attention, not skips. That is what
+the skill's headline promise ("Adds even if auth comes back
+`unverified`/`failed`") looks like in the aggregate, so it gets its own row.
+
+Print the summary table in the orchestrator's reply:
 
 ```
 Library-wide bib merge complete
 ───────────────────────────────
 Papers processed:                  <papers>
 Entries seen:                      <entries>
-+ Added (authenticated):           <added_auth>
-+ Added (canonical):               <added_canonical>
-+ Added (unverified/failed):       <added_unverified + added_failed>
-⇄ Unauth-dup → merged into master: <unauth_dup_merged>
-⇄ Unauth-dup → split (both kept):  <unauth_dup_split>
++ Added (authenticated):           <added_by_state["authenticated"]>
++ Added (canonical):               <added_by_state["canonical"]>
++ Added (unverified/failed):       <auth_failed_total>
+⇄ Unauth-dup → merged into master: <unauth_dup_by_action["merged"]>
+⇄ Unauth-dup → split (both kept):  <unauth_dup_by_action["split"]>
 ~ Deferred — dup of terminal master: <deferred_dup>
 ⤬ Skipped — transient:             <skipped_transient>
 ? Manual review pending:           <manual_review>  in <list-of-citekeys-or-"none">
 ```
 
+Two rules on top of the template:
+
+- **Any leftover key gets its own line.** If `added_by_state`,
+  `auth_failed_by_state`, or `unauth_dup_by_action` holds a key the template
+  doesn't name, append `+ Added (<state>): <n>` / `⇄ Unauth-dup → <action>: <n>`
+  rather than dropping it. Omit template rows whose count is 0 *and* whose state
+  never appeared, so the table stays short.
+- **`dry_run: true` → relabel, don't zero.** A dry run reports the sentinels
+  `would-auth` (in `added[]`) and `would-collective-auth` (in
+  `unauth_dup_handled[]`) and writes nothing. Head the table
+  `Library-wide bib merge — DRY RUN (no writes)` and phrase the rows as
+  *would-add* / *would-collective-auth*, e.g.
+  `+ Would add: <added_by_state["would-auth"]>`. The point of a dry run is
+  seeing the magnitude, so it must never print an all-zeros table.
+
 ---
 
 ## Step 3.5 — Postflight verification
 
-Compare the post-run library state against the preflight snapshot.
-The merge helper's contract is "only add, never delete" — any
-shrinkage in `master.bib`, `catalog.json`'s entry count, or any
-`indexed.state` distribution means a sync race ate writes and the
-user needs to roll back.
+Compare the post-run library state against the preflight snapshot. The merge
+helper's contract is "only add, never delete" **to the canonical store** —
+`master.bib`. `catalog.json` is a derived index under the F#4 holdings-only
+model, so parts of it legitimately shrink. `merge_bibs_postflight.py` alerts on
+exactly three things; treat its `alerts[]`/`clean` as authoritative rather than
+re-deriving a verdict from the raw counts:
+
+- **`master.bib` shrank** — real data loss; the merge only appends to it.
+- **An `indexed.state` regression** — a holding lost its indexed status. Only
+  the *real* work states count (`_REAL_INDEX_STATES` at `:103-109`:
+  `indexed`, `deepIndexed`, `richIndexed`, `running`, `queued`, `failed`).
+  A drop in `none` is skipped at `:114` — those are the expected F#4
+  reference-row prunes.
+- **A `present: true` holdings row disappeared** (`present_dropped`, F4W-2) —
+  data loss that shows up in neither of the above.
+
+A **bare `catalog.json` total decline with no state regression is expected and
+clean**, not an alert: the merge removes/never-mints reference-only rows whose
+auth state has moved into the `% bib.state` comment in `master.bib`. The script
+records it as `catalog_shrank_expected: true` and still reports `clean: true`
+(`:166-176`, `:207`). Do **not** tell the user to roll back on that signal
+alone — it would abandon a correct merge.
+
+Roll back only when `alerts[]` is non-empty; the script hands you the exact
+commands in `restore_commands`.
 
 ```bash
 postflight_json="$(python3 .virgil/scripts/library/merge_bibs_postflight.py \
@@ -482,7 +547,11 @@ If `manual_review > 0`, write a library memo so the user can find the
 items later. Skip the memo entirely otherwise.
 
 ```bash
-if [ "$MANUAL_REVIEW" -gt 0 ] && [ "$DRY_RUN" != "1" ]; then
+# MANUAL_REVIEW / MANUAL_PAPERS / DRY_RUN_SEEN come from the file Step 3 wrote —
+# don't hand-transcribe them into the env, that is how this branch silently
+# died (unset MANUAL_REVIEW → `[: : integer expression expected`, rc 2).
+. /tmp/merge-bibs-totals.env
+if [ "${MANUAL_REVIEW:-0}" -gt 0 ] && [ "$DRY_RUN" != "1" ]; then
   date="$(date +%Y-%m-%d)"
   memo=".virgil/memos/${date}-bib-merge.md"
   mkdir -p .virgil/memos
@@ -513,8 +582,8 @@ PY
 fi
 ```
 
-Pass `MANUAL_PAPERS="<space-separated-citekeys>"` and `RUN_AT="<iso>"`
-into the env first.
+`MANUAL_PAPERS` arrives from the sourced file above; export `RUN_AT="<iso>"`
+into the env yourself before the heredoc runs.
 
 ---
 
