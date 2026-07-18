@@ -78,7 +78,7 @@
     --font-display: "Source Serif 4", Georgia, serif;
 
     /* Sizes */
-    --header-h: 34px;
+    --header-h: 26px;
     --panel-font-size: 13px;
     --panel-header-size: 14px;
 
@@ -1056,7 +1056,7 @@
     <div class="grid cols-3">
       <div class="spec"><div class="body"><p class="label">Pod radius</p><p class="meta"><span class="k">--pod-radius</span> · <span class="v">8px</span></p><div style="margin-top:10px; height:60px; border:var(--pod-border); border-radius:var(--pod-radius); box-shadow:var(--pod-shadow); background:var(--surface);"></div></div></div>
       <div class="spec"><div class="body"><p class="label">Card ambient lift</p><p class="meta"><span class="k">--card-shadow-ambient</span></p><div style="margin-top:10px; height:60px; border-radius:8px; background:var(--surface); box-shadow:var(--card-shadow-ambient);"></div></div></div>
-      <div class="spec"><div class="body"><p class="label">Header height</p><p class="meta"><span class="k">--header-h</span> · <span class="v">34px</span></p><div style="margin-top:10px; height:34px; background:var(--header-bg); border:1px solid var(--border-light); border-radius:6px;"></div></div></div>
+      <div class="spec"><div class="body"><p class="label">Header height</p><p class="meta"><span class="k">--header-h</span> · <span class="v">26px</span></p><div style="margin-top:10px; height:26px; background:var(--header-bg); border:1px solid var(--border-light); border-radius:6px;"></div></div></div>
     </div>
   </div>
 </section>
@@ -1158,7 +1158,7 @@
         <tr><td>Card body padding</td><td><code>6px 12px 8px</code></td><td>px-3 pt-1.5 pb-2.</td></tr>
         <tr><td>Sub-pod padding</td><td><code>12px</code></td><td>p-3.</td></tr>
         <tr><td>Pod gap</td><td><code>--pod-gap</code> · <code>10px</code></td><td>Between pods on the canvas.</td></tr>
-        <tr><td>Header height</td><td><code>--header-h</code> · <code>34px</code></td><td>Locked. Every panel header obeys.</td></tr>
+        <tr><td>Header height</td><td><code>--header-h</code> · <code>26px</code></td><td>Locked. Every panel header obeys.</td></tr>
         <tr><td>Marginalia grid</td><td><code>22px</code> cell, <code>2px</code> gap</td><td>2 columns per gutter side.</td></tr>
       </tbody>
     </table>
@@ -1841,7 +1841,7 @@
   <div class="audit">
     <span class="tag spacing">Spacing</span><span class="tag low">Low</span>
     <h4>Panel header height drifts when an icon row is added</h4>
-    <div class="where"><code>--header-h: 34px</code> · ad-hoc <code>py-2</code> in custom headers</div>
+    <div class="where"><code>--header-h: 26px</code> · ad-hoc <code>py-2</code> in custom headers</div>
     <div class="ba">
       <div class="col bad"><h5>Today</h5><p>Custom panels (Outline, Errors) use <code>py-2</code> instead of fixing to <code>--header-h</code>; height visually drifts when icons stack.</p></div>
       <div class="col good"><h5>Canonical</h5><p>Header always exactly 34 px. Anything taller goes into <code>panelExtras</code> below the header, not inside it.</p></div>
@@ -2025,7 +2025,7 @@
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "accent": "#7c5e3c",
   "background": "#f8f3ed",
-  "headerH": 34,
+  "headerH": 26,
   "panelFontSize": 13,
   "selectionTreatment": "themed-border-and-header"
 }/*EDITMODE-END*/;

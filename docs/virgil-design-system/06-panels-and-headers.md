@@ -24,7 +24,7 @@ share chrome.
 
 ## The header is locked
 
-`--header-h: 34px`. Don't override per-panel. Don't add a second row.
+`--header-h: 26px`. Don't override per-panel. Don't add a second row.
 Don't expand on hover.
 
 ## Header slots

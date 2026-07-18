@@ -142,7 +142,7 @@ Hover (not selected): only the border changes (`edge-hover` →
 
 ## Panels
 
-Sidebar pod with a locked-height header (`--header-h: 34px`). Header
+Sidebar pod with a locked-height header (`--header-h: 26px`). Header
 slots, in order: leading menu/swatch, title + count, after-title tool,
 add button, AI button, extras, popout chevron. Order is fixed even
 when slots are absent.

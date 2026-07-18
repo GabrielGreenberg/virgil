@@ -96,7 +96,11 @@ The token scales:
 Locked aliases (must track each other): `--theme-color`/`--topbar-bg`,
 `--main-tab-bg`/`--background`, `--pod-editor`/`--surface`,
 `--h1-color`/`--foreground`, `--h2h3-color`/`--editor-text-color`,
-`--scrollbar-hover`/`--muted-light`.
+`--scrollbar-hover`/`--muted-light`. Each is DERIVED (`var(--partner)`), never
+a re-spelled literal, and
+[src/__tests__/token-contract.test.ts](__tests__/token-contract.test.ts) fails
+if one is flattened back to a literal — "locked" names an invariant here, not
+a convention.
 
 Forbidden in new code: `text-stone-*`, `border-stone-*`,
 `bg-stone-*-with-opacity`, hex literals in components, `bg-blue-*` /
@@ -450,7 +454,9 @@ release cancels).
 
 ## Panels
 
-Sidebar pod with a locked-height header (`--header-h: 34px`). Header
+Sidebar pod with a locked-height header (`--header-h: 26px` — the lock is
+real: [src/__tests__/token-contract.test.ts](__tests__/token-contract.test.ts)
+fails if this prose and `globals.css` disagree). Header
 slots, in order: leading menu/swatch, title + count, after-title tool,
 add button, AI button, extras, popout chevron. Order is fixed even
 when slots are absent.
