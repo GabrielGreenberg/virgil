@@ -253,16 +253,62 @@ directory).
      imprint year matches the bib's `year` (or the citekey's baked-in
      year) — corroborate via Internet Archive when possible.
    Apply the surviving changes via the locked CLI shim — do **not**
-   Read/Write `master.bib` directly:
+   Read/Write `master.bib` directly.
+
+   > **The shim's write is a WHOLE-BLOCK REPLACEMENT, not a diff.** It
+   > finds the brace-balanced `@<type>{<citekey>, ...}` block and
+   > replaces it with a block emitted from *exactly* the fields file —
+   > nothing is merged for you. What you are holding at this point is a
+   > **filtered change list**, not an entry, so writing it directly
+   > would destroy every field the auth pass didn't touch (`pages`,
+   > `volume`, `publisher`, `doi`, `isbn`, `url`, `note`). Two ways to
+   > be safe, and the shim refuses the write unless you pick one:
+   >
+   > - **Pass `--merge-existing`** (used below) — the shim merges your
+   >   change-set over the entry's current fields, so untouched fields
+   >   survive. This is the right form for an auth pass.
+   > - Or build the complete merged set yourself, from the fields you
+   >   read in step 1 plus the surviving changes, and write that.
+   >
+   > A field you mean to *remove* needs `--drop-field <name>`
+   > (repeatable). `--merge-existing` re-adds every field the entry
+   > currently has, so an omission can no longer say "remove this" —
+   > `--drop-field` is applied after the merge and is the only removal
+   > signal that composes with it. (`--allow-field-drop`, which trusts
+   > omission as removal, is inert here; that flag is for
+   > `/apply-bib-edit`, where the user hands a complete entry.)
+
+   **Entry type — use the helper's `proposed_type` when it set one.**
+   `AuthResult.proposed_type` is non-empty when Crossref's type
+   disagrees with the master.bib type (article + book-chapter →
+   `incollection`, article + proceedings-article → `inproceedings`,
+   posted-content → `unpublished`). The helper computed the field
+   changes you are about to apply *against that proposed type*
+   (`effective_type = proposed_type or entry_type`), so re-emitting
+   under the original type would land the new fields — `booktitle`,
+   `publisher` — on an entry still marked `@article`. Write
+   `r["proposed_type"] or "<entry_type>"`.
+
+   A type change usually also *retires* fields, and the helper only ever
+   proposes additions — so name the retirements yourself with
+   `--drop-field`, matching what `index_paper.py` does in-process for
+   this same flow:
+
+   | type change | also pass |
+   |---|---|
+   | `article` → `incollection` | copy `journal`'s value into `booktitle` if absent, then `--drop-field journal` |
+   | anything → `unpublished` | `--drop-field journal --drop-field booktitle --drop-field volume --drop-field number --drop-field pages` |
+   | `article` → `inproceedings` | copy `journal` → `booktitle` if absent, then `--drop-field journal` |
 
    ```bash
    cat > /tmp/<citekey>-auth-fields.json <<'EOF'
    { "title": "...", "author": "...", "year": "...", ... }
    EOF
    python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
-     --entry-type "<entry_type>" \
+     --entry-type "<proposed_type or entry_type>" \
      --fields-file /tmp/<citekey>-auth-fields.json \
-     --bib-state "<final_state>"
+     --bib-state "<final_state>" \
+     --merge-existing
    rm /tmp/<citekey>-auth-fields.json
    ```
 
@@ -272,7 +318,7 @@ directory).
    step-9 marker-comment edit is needed.
 
    Record only the changes you actually applied in `bib.fieldChanges`
-   (step 6).
+   (step 6). If you applied a type change, say so in the reply.
 
 5. **Re-emit `references.bib`** from the updated master.bib entry:
    ```bash
@@ -366,15 +412,38 @@ directory).
 
 7. **Append a notification** via the locked CLI shim. (No need to bump
    `catalog-version.txt` separately — step 6's
-   `_sync_catalog_entry_from_master` does it for you.) Pick a `kind`
-   matching the terminal state — one of `"authenticated"`,
-   `"unverified"`, `"canonical"`, `"manuscript"`, or `"failed"`:
+   `_sync_catalog_entry_from_master` does it for you.)
+
+   > **`kind` is the frontend's toast enum, NOT the bib.state enum.**
+   > The only values the Library UI knows are `"indexed"`,
+   > `"authenticated"`, `"failed"`, `"triaged"`, `"setup-needed"`
+   > (`NotificationItem["kind"]` in `library/lib/queue.ts`). Nothing
+   > rejects an off-list value — `append_inbox_item.py` appends
+   > verbatim — it just falls through `notificationSeverity()` to the
+   > default `info`, so a `"unverified"` toast that should linger for
+   > 11 s as an *attention* row is rendered as a routine 5 s one and the
+   > user misses the entry that needed them. So map the terminal state
+   > onto the enum by **whether the user must act**, and keep the
+   > fine-grained state in the summary:
+   >
+   > | terminal state | `kind` | why |
+   > |---|---|---|
+   > | `authenticated` | `authenticated` | done, neutral toast |
+   > | `canonical` | `authenticated` | descriptor, not a give-up — no action needed |
+   > | `manuscript` | `authenticated` | terminal, no action needed |
+   > | `unverified` | `failed` | "manual review recommended" — needs the attention TTL |
+   > | `failed` | `failed` | needs the attention TTL |
+   >
+   > Reusing `authenticated` as the family's neutral kind rather than
+   > widening the enum is the same call `/apply-bib-edit` makes.
 
    ```bash
    cat > /tmp/<citekey>-auth-notify.json <<'EOF'
-   { "kind": "<state>", "citekey": "<citekey>",
+   { "kind": "<authenticated|failed per the table above>",
+     "citekey": "<citekey>",
      "at": "<now ISO>",
-     "summary": "Authenticated <citekey> via <sources> (<N> field changes)" }
+     "state": "<terminal state>",
+     "summary": "<citekey>: <terminal state> via <sources> (<N> field changes)" }
    EOF
    python3 .virgil/scripts/library/append_inbox_item.py \
      --item-file /tmp/<citekey>-auth-notify.json

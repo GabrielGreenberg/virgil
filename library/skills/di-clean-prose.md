@@ -119,7 +119,14 @@ mismatch, the policy script in preflight already updated
    ambiguous, prefer the larger artifact (book over chapter,
    proceedings over paper, reprint over original).
 3. Use `update_master_bib_entry.py` and `update_catalog_entry.py`
-   (NOT direct Write) to acquire the file locks safely.
+   (NOT direct Write) to acquire the file locks safely. **The bib
+   shim's write is a whole-block replacement, not a diff** — it
+   re-emits the entry from exactly the fields file. What you have here
+   is a cover-page *correction* (a title, maybe publisher/isbn), so
+   pass `--merge-existing` and the rest of the entry survives; without
+   it the shim refuses the write rather than let author/year/doi be
+   destroyed. This is the hand-run twin of what
+   `apply_metadata_mismatch_policy.py` does in preflight.
 4. Set `bib.state = "needs-reauth"` so the next
    `/library/authenticate-bib` pass re-verifies the new DOI.
 5. Update the in-file `\title{}` to match.
@@ -127,7 +134,8 @@ mismatch, the policy script in preflight already updated
    as outstanding work.
 
 For reprint / republication: keep the existing bib but add a
-`note` field documenting the reprint source, then proceed.
+`note` field documenting the reprint source, then proceed — a
+single-field fields file, so `--merge-existing` is required here too.
 
 **The only exception — `metadata-lock: true`.** If the catalog row
 carries `metadata-lock: true`, the user has explicitly pinned the

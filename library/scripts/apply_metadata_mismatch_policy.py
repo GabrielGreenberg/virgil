@@ -24,8 +24,10 @@ This script implements the policy hook. It:
 - Extracts the candidate book title (longest plausible line on the
   first non-lending page).
 - Extracts the publisher / press / ISBN where available.
-- Calls `update_master_bib_entry.py` to rewrite `master.bib` with
-  `type=@book` and the new fields.
+- Calls `update_master_bib_entry.py --merge-existing` to rewrite
+  `master.bib` with `type=@book` and the corrected fields merged over
+  the entry's existing ones (the shim's write is a whole-block
+  replacement, so the merge is what keeps author/year/address/doi).
 - Calls `update_catalog_entry.py` to update `title` and set
   `bib.state = "needs-reauth"`.
 - Updates the in-file `\\title{...}` in `main.tex`.
@@ -332,8 +334,11 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
     publisher = _extract_publisher(cover_text)
     isbn = _extract_isbn(cover_text)
 
-    # Compose the new bib fields. Year, address, author come from the
-    # existing entry where possible (those usually stay).
+    # Compose the CHANGE-SET — only the fields the cover page corrected.
+    # Year, address, author and the rest come from the existing entry: the
+    # shim is invoked with `--merge-existing` below, which merges this over
+    # the entry's current fields. Without that flag the shim's write is a
+    # whole-block replacement and every unlisted field would be destroyed.
     fields: dict[str, str] = {"title": title}
     if publisher:
         fields["publisher"] = publisher
@@ -363,6 +368,7 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
                 citekey, "--entry-type", "book",
                 "--fields-file", fields_file,
                 "--bib-state", POLICY_BIB_STATE,
+                "--merge-existing",
             ],
             check=True,
         )

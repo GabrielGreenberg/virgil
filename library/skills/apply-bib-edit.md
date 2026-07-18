@@ -76,7 +76,8 @@ All paths below are relative to the library root.
    EOF
    python3 .virgil/scripts/library/update_master_bib_entry.py "$ARGUMENTS" \
      --entry-type "<type>" \
-     --fields-file /tmp/$ARGUMENTS-bibedit-fields.json
+     --fields-file /tmp/$ARGUMENTS-bibedit-fields.json \
+     --allow-field-drop
    rm /tmp/$ARGUMENTS-bibedit-fields.json
    ```
 
@@ -87,6 +88,15 @@ All paths below are relative to the library root.
    whitespace-only from `--fields-file`. Never include a `citekey`
    field; the script always uses the positional argument and won't
    accept it being overridden via the fields map.
+
+   Because the write is a whole-block replacement, the shim normally
+   **refuses** one that drops a currently-non-empty field — that guard
+   is what stops a caller holding a mere change-set from destroying the
+   rest of the entry. This skill is the one place where dropping is the
+   *point*: the user's edit is a complete entry, and a field they
+   cleared is a field they meant to remove. Hence `--allow-field-drop`.
+   (A caller that only computed a diff wants `--merge-existing`
+   instead — that's the auth/backfill form, not this one.)
 
    **Do not** pass `--bib-state`: a manual edit doesn't invalidate
    prior authentication. The existing `% bib.state = ...` comment is

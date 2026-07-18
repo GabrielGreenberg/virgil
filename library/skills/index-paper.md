@@ -153,7 +153,12 @@ you to disambiguate something.
      publisher — prefer the publisher printed on the PDF cover
      page; record the aggregator in `note` or skip it)
 
-   Write the updated fields to `master.bib` via the locked CLI shim:
+   Write the updated fields to `master.bib` via the locked CLI shim.
+   **The shim replaces the whole entry** with a block emitted from
+   exactly the fields file — it merges nothing. Since what you have here
+   is a Crossref-derived *change-set*, pass `--merge-existing` so the
+   fields the backfill didn't touch survive; without it the shim refuses
+   the write rather than let them be destroyed.
 
    ```bash
    cat > /tmp/<citekey>-doiback-fields.json <<'EOF'
@@ -162,7 +167,8 @@ you to disambiguate something.
    python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<type>" \
      --fields-file /tmp/<citekey>-doiback-fields.json \
-     --bib-state authenticated
+     --bib-state authenticated \
+     --merge-existing
    rm /tmp/<citekey>-doiback-fields.json
    ```
 
@@ -346,7 +352,10 @@ you to disambiguate something.
    this way, append `[inferred from source]` to the `note` field so the
    user can audit.
 
-   After filling fields, update `master.bib` via the locked CLI shim:
+   After filling fields, update `master.bib` via the locked CLI shim.
+   Same contract as step 3's backfill: **the shim replaces the whole
+   entry**, and you are holding only the fields you just filled, so pass
+   `--merge-existing` to keep the rest.
 
    ```bash
    cat > /tmp/<citekey>-tier-fields.json <<'EOF'
@@ -354,7 +363,8 @@ you to disambiguate something.
    EOF
    python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<type>" \
-     --fields-file /tmp/<citekey>-tier-fields.json
+     --fields-file /tmp/<citekey>-tier-fields.json \
+     --merge-existing
    rm /tmp/<citekey>-tier-fields.json
    ```
 
