@@ -29,12 +29,13 @@ export interface CardListPanelProps<T> {
    *  item's `archived` flag through this accessor. Omit for panels with no
    *  archivable cards — they render every item as before. */
   getArchived?: (item: T) => boolean;
-  /** When provided (alongside `getArchived`), the header badge counts only the
-   *  visible items matching this predicate, instead of every visible item. Lets
-   *  a panel with a SECOND orthogonal dimension on top of `archived` (Todo's
-   *  `done`) show a semantically-meaningful badge — "pending, in this view" —
-   *  without desyncing from the rendered/filtered set. Omit ⇒ badge counts all
-   *  visible items, exactly as before. */
+  /** When provided, the header badge counts only the visible items matching this
+   *  predicate, instead of every visible item. Lets a panel with a SECOND
+   *  orthogonal dimension on top of the rendered set (Todo's `done`) show a
+   *  semantically-meaningful badge — "pending, in this view" — without
+   *  desyncing from it. Omit ⇒ badge counts all visible items. Independent of
+   *  `getArchived`: the badge always derives from the rendered set, so a panel
+   *  may narrow it with `getCounted` alone. */
   getCounted?: (item: T) => boolean;
   /** Render a single card. CardListPanel handles the React `key` via a
    *  Fragment wrapper, so the returned node should be the card directly
@@ -52,8 +53,11 @@ export interface CardListPanelProps<T> {
   listTrailing?: ReactNode;
 
   // ── Pass-through Panel slots ──
+  // NOTE: no `count`. The header badge is DERIVED from the rendered set (see
+  // `shownCount` below), so a card panel structurally cannot hand the header a
+  // number unrelated to what it renders. `count` remains on `PanelProps` for
+  // the non-card panels that render `<Panel>` directly.
   title?: string;
-  count?: number;
   onAdd?: (anchorRect?: DOMRect) => void;
   /** When provided, the "+" button opens a small dropdown of choices
    *  instead of firing `onAdd`. Used by panels hosting more than one
@@ -86,7 +90,6 @@ export function CardListPanel<T>({
   emptyState,
   listTrailing,
   title,
-  count,
   onAdd,
   onAddOptions,
   headerLeading,
@@ -105,13 +108,19 @@ export function CardListPanel<T>({
   // the mode change (an archive toggle / view switch), never on a keystroke
   // (the `archived` flag lives in sidecar state, not the doc).
   const visibleItems = useArchiveVisibleItems(kind, items, getArchived);
-  // The header badge reflects what's actually shown in the current view — and,
+  // The header badge is derived from the RENDERED set, unconditionally — and,
   // when the panel supplies a `getCounted` predicate, only the visible subset it
-  // cares about (Todo: pending, i.e. not-done). Without `getCounted` this is the
-  // prior behavior (all visible items).
-  const shownCount = getArchived
-    ? (getCounted ? visibleItems.filter(getCounted).length : visibleItems.length)
-    : count;
+  // cares about (Todo: pending, i.e. not-done).
+  //
+  // Deriving it here rather than accepting a `count` prop is the invariant
+  // (task 183): the badge and the list cannot disagree, because there is only
+  // one set. Previously this fell back to a raw `count` pass-through whenever
+  // `getArchived` was absent, which let `ErrorsPanel` pass its *unfiltered* set
+  // to the badge while rendering the text-filtered one — a header that showed
+  // "ERRORS 12" beside a "0 errors" counter above an empty list.
+  const shownCount = getCounted
+    ? visibleItems.filter(getCounted).length
+    : visibleItems.length;
 
   // If the selected card is filtered out of the current view (e.g. it was just
   // archived, or the user switched to View Active while an archived card was

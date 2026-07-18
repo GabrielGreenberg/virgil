@@ -99,7 +99,6 @@ export default function NotesPanel({
   return (
     <CardListPanel<NoteCardItem>
       kind="notes"
-      count={cards.length}
       onAddOptions={onAddOptions}
       headerLeading={
         <ItemMenu align="left">

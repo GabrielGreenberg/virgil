@@ -148,11 +148,6 @@ function FootnotePanel({
   return (
     <CardListPanel
       kind="footnotes"
-      // C25 (FN-C1-01 / FN-F1-03): the badge counts the RENDERED union (orphans
-      // + anchored), not the anchored sub-list — otherwise a panel showing N
-      // orphans + M anchored displayed only M (and "0", i.e. no badge, when the
-      // panel held orphans only).
-      count={items.length}
       onAdd={onAdd}
       headerLeading={
         <ItemMenu align="left">
@@ -162,6 +157,10 @@ function FootnotePanel({
           <CardViewModeMenuItems kind="footnotes" />
         </ItemMenu>
       }
+      // C25 (FN-C1-01 / FN-F1-03): `items` is the RENDERED union (orphans +
+      // anchored), not the anchored sub-list — otherwise a panel showing N
+      // orphans + M anchored displayed only M (and "0", i.e. no badge, when the
+      // panel held orphans only). The header badge derives from this same set.
       items={items}
       getId={itemId}
       // Bug sweep #3: archived atomless refs filter into the Archives view; live

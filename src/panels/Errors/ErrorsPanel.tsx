@@ -163,7 +163,6 @@ function ErrorsPanel({
   return (
     <CardListPanel<LatexError>
       kind="errors"
-      count={visible.length}
       headerExtras={headerExtras}
       panelExtras={panelExtras}
       footer={footer}

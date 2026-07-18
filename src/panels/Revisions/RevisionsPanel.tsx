@@ -106,7 +106,6 @@ export default function RevisionsPanel({
   return (
     <CardListPanel<Item>
       kind="revisions"
-      count={cards.length}
       onAddOptions={onAddOptions}
       headerLeading={
         <ItemMenu align="left">

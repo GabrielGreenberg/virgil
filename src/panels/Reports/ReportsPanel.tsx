@@ -82,7 +82,6 @@ export default function ReportsPanel({
   return (
     <CardListPanel<Item>
       kind="reports"
-      count={cards.length}
       onAddOptions={onAddOptions}
       headerLeading={
         <ItemMenu align="left">
