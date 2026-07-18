@@ -51,8 +51,8 @@ required.
   writing anything. Recommended for the first run on any paper.
 - `--library <path>` — override library-path resolution. Useful when
   multiple libraries exist; otherwise the chain
-  (`VIRGIL_LIBRARY_ROOT` → `~/.config/virgil/library-path.json` →
-  `~/Virgil-Library/`) is used.
+  (`./.virgil/library-path.json` → `VIRGIL_LIBRARY_ROOT` →
+  `~/.config/virgil/library-path.json` → `~/Virgil-Library/`) is used.
 
 ## Procedure
 
@@ -63,6 +63,16 @@ top of step 1.
 
 1. **Resolve the library.**
    ```bash
+   # Set from the invocation above: LIBRARY holds the value of an explicit
+   # `--library <path>`, and stays empty when the caller didn't pass one.
+   # Build the flag as an ARRAY, not a `${LIBRARY:+--library "$LIBRARY"}`
+   # string — under zsh that idiom collapses into ONE argument
+   # ("--library /path") and argparse rejects it. Empty array = zero args,
+   # so an absent flag falls through to the normal resolution chain.
+   LIBRARY=""   # e.g. LIBRARY="/Users/me/Papers/Virgil-Library"
+   lib_args=()
+   [ -n "$LIBRARY" ] && lib_args=(--library "$LIBRARY")
+
    # Synced PWA folders have library_path.py under .virgil/scripts/editor/.
    # The Virgil source repo has it under editor/scripts/. Either is fine.
    library_path_py=""
@@ -74,7 +84,7 @@ top of step 1.
      echo "Open the paper in Virgil first so cowork tooling syncs into it."
      exit 1
    fi
-   library_root=$(python3 "$library_path_py" --get ${LIBRARY:+--library "$LIBRARY"}) || true
+   library_root=$(python3 "$library_path_py" --get "${lib_args[@]}") || true
    # Derive the editor scripts directory from the resolved library_path.py.
    # Used below for `bib_match_library.py` etc. so we stay consistent
    # with whichever location the resolver was found in.

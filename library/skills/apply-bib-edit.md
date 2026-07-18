@@ -8,10 +8,25 @@ description: |
   references.bib, and bumps the catalog version. Does NOT trigger for
   external-source verification (use /authenticate-bib) or for
   bibliography cleanup of a paper (use /clean-bibliography). Light —
-  safe to invoke from a paper session with --library. Args: <citekey>.
+  safe to invoke from a paper session with --library. Args:
+  <citekey> [--library <path>].
 ---
 
 # /apply-bib-edit $ARGUMENTS
+
+## Args
+
+- `<citekey>` — the entry whose queued edit
+  (`.virgil/queue/<citekey>-bibedit.json`) should be applied.
+- `--library <path>` — override library-path resolution. Useful when
+  invoking this skill **from a paper session** with multiple libraries on
+  disk; without it the normal chain
+  (`./.virgil/library-path.json` → `VIRGIL_LIBRARY_ROOT` →
+  `~/.config/virgil/library-path.json` → `~/Virgil-Library/`) is used.
+
+Every command below refers to the citekey as `"$CITEKEY"` — always
+quoted, never a bare `$ARGUMENTS` (which would also swallow the
+`--library` flag into the positional).
 
 ## Bootstrap (run this first)
 
@@ -19,6 +34,17 @@ This skill operates on the user's Virgil Library. Resolve the library
 root and cd into it before running anything else.
 
 ```bash
+# Set both from the invocation above. CITEKEY is the positional argument
+# (every command below uses "$CITEKEY", never a bare $ARGUMENTS). LIBRARY
+# holds the value of an explicit `--library <path>`, empty when absent.
+# Build the flag as an ARRAY, not a `${LIBRARY:+--library "$LIBRARY"}`
+# string — under zsh that idiom collapses into ONE argument
+# ("--library /path") and argparse rejects it. Empty array = zero args.
+CITEKEY="<citekey>"
+LIBRARY=""   # e.g. LIBRARY="/Users/me/Papers/Virgil-Library"
+lib_args=()
+[ -n "$LIBRARY" ] && lib_args=(--library "$LIBRARY")
+
 # Find library_path.py — synced PWA folders have it under .virgil/scripts/,
 # the Virgil source repo has it under editor/scripts/. Either is fine.
 library_path_py=""
@@ -29,7 +55,7 @@ if [ -z "$library_path_py" ]; then
   echo "No library set up. Pick a library in Virgil first."
   exit 1
 fi
-library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+library_root="$(python3 "$library_path_py" --get "${lib_args[@]}" 2>/dev/null)" || {
   echo "No library set up. Pick a library in Virgil first."
   echo "  (Or run: python3 $library_path_py --set <abs-path>)"
   exit 1
@@ -71,14 +97,14 @@ All paths below are relative to the library root.
    vice versa). Call the locked CLI shim instead:
 
    ```bash
-   cat > /tmp/$ARGUMENTS-bibedit-fields.json <<'EOF'
+   cat > "/tmp/$CITEKEY-bibedit-fields.json" <<'EOF'
    { "title": "...", "author": "...", "year": "...", ... }
    EOF
-   python3 .virgil/scripts/library/update_master_bib_entry.py "$ARGUMENTS" \
+   python3 .virgil/scripts/library/update_master_bib_entry.py "$CITEKEY" \
      --entry-type "<type>" \
-     --fields-file /tmp/$ARGUMENTS-bibedit-fields.json \
+     --fields-file "/tmp/$CITEKEY-bibedit-fields.json" \
      --allow-field-drop
-   rm /tmp/$ARGUMENTS-bibedit-fields.json
+   rm "/tmp/$CITEKEY-bibedit-fields.json"
    ```
 
    The script holds `lock_master_bib`, finds the existing
@@ -113,7 +139,7 @@ All paths below are relative to the library root.
    Construct a patch:
 
    ```bash
-   cat > /tmp/$ARGUMENTS-bibedit-patch.json <<'EOF'
+   cat > "/tmp/$CITEKEY-bibedit-patch.json" <<'EOF'
    {
      "title": "<new title or omit>",
      "authors": [...],
@@ -128,9 +154,9 @@ All paths below are relative to the library root.
      }
    }
    EOF
-   python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-     --patch-file /tmp/$ARGUMENTS-bibedit-patch.json
-   rm /tmp/$ARGUMENTS-bibedit-patch.json
+   python3 .virgil/scripts/library/update_catalog_entry.py "$CITEKEY" \
+     --patch-file "/tmp/$CITEKEY-bibedit-patch.json"
+   rm "/tmp/$CITEKEY-bibedit-patch.json"
    ```
 
    Include top-level `title`/`authors`/`year`/`doi` only for the
@@ -143,7 +169,7 @@ All paths below are relative to the library root.
 
    Note: `bib.fieldChanges` is an array, and deep-merge **replaces**
    arrays. If you need to *append* to the existing fieldChanges, read
-   it first (`jq ".entries[] | select(.citekey == \"$ARGUMENTS\") |
+   it first (`jq ".entries[] | select(.citekey == \"$CITEKEY\") |
    .bib.fieldChanges" .virgil/catalog.json`) and include the
    concatenated list in the patch.
 
@@ -153,13 +179,13 @@ All paths below are relative to the library root.
 6. **Append a notification** via the locked CLI shim:
 
    ```bash
-   cat > /tmp/$ARGUMENTS-bibedit-notify.json <<'EOF'
+   cat > "/tmp/$CITEKEY-bibedit-notify.json" <<'EOF'
    { "kind": "authenticated", "citekey": "<citekey>", "at": "<now ISO>",
      "summary": "Applied manual edit (<N> field changes)" }
    EOF
    python3 .virgil/scripts/library/append_inbox_item.py \
-     --item-file /tmp/$ARGUMENTS-bibedit-notify.json
-   rm /tmp/$ARGUMENTS-bibedit-notify.json
+     --item-file "/tmp/$CITEKEY-bibedit-notify.json"
+   rm "/tmp/$CITEKEY-bibedit-notify.json"
    ```
 
    (The `authenticated` kind is reused — the frontend renders it as a
