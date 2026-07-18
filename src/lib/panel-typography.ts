@@ -13,6 +13,7 @@
  * (card-registry imports only types), so no cycle.
  */
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { subscribeToStorageKey } from "./cross-window-storage";
 import type { CardKind } from "@/cards/types";
 import type { PanelKind } from "@/panels/_shared/types";
 
@@ -331,32 +332,50 @@ function persist() {
   catch { /* ignore */ }
 }
 
+/** Parse + validate the persisted blob into a fresh overrides object. The ONE
+ *  validation path, shared by the initial hydrate and the cross-window
+ *  re-hydrate below (same shape as `panel-theme.ts`). Returns `{}` for a
+ *  missing, unparseable, or non-object blob. */
+function readOverridesFromStorage(): Partial<Record<PanelBodyKey, TypoOverride>> {
+  const next: Partial<Record<PanelBodyKey, TypoOverride>> = {};
+  if (typeof window === "undefined") return next;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return next;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return next;
+    for (const k of Object.keys(parsed) as PanelBodyKey[]) {
+      const v = parsed[k];
+      if (!v || typeof v !== "object") continue;
+      const o: TypoOverride = {};
+      if (typeof v.fontFamily === "string") o.fontFamily = v.fontFamily;
+      if (typeof v.fontSize === "number") o.fontSize = v.fontSize;
+      if (typeof v.color === "string" && /^#[0-9a-f]{6}$/i.test(v.color)) {
+        o.color = v.color.toLowerCase();
+      }
+      if (Object.keys(o).length > 0) next[k] = o;
+    }
+  } catch { /* ignore */ }
+  return next;
+}
+
 export function loadPanelTypography(): void {
   if (loaded) return;
   loaded = true;
   if (typeof window === "undefined") return;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      overrides = {};
-      for (const k of Object.keys(parsed) as PanelBodyKey[]) {
-        const v = parsed[k];
-        if (v && typeof v === "object") {
-          const o: TypoOverride = {};
-          if (typeof v.fontFamily === "string") o.fontFamily = v.fontFamily;
-          if (typeof v.fontSize === "number") o.fontSize = v.fontSize;
-          if (typeof v.color === "string" && /^#[0-9a-f]{6}$/i.test(v.color)) {
-            o.color = v.color.toLowerCase();
-          }
-          if (Object.keys(o).length > 0) overrides[k] = o;
-        }
-      }
-      if (Object.keys(overrides).length > 0) notify();
-    }
-  } catch { /* ignore */ }
+  overrides = readOverridesFromStorage();
+  if (Object.keys(overrides).length > 0) notify();
 }
+
+// Cross-window re-sync (task 177). The structural twin of `panel-theme.ts`'s
+// listener, and the same bug without it: one-shot hydrate + whole-blob write
+// means a second window's next font/size/color write silently reverts the
+// peer's. Not covered by the task's own report — swept alongside it because
+// it is the same store shape, one file over.
+subscribeToStorageKey(STORAGE_KEY, () => {
+  overrides = readOverridesFromStorage();
+  notify();
+});
 
 /** Return the effective typography for `key` (override merged over default).
  *  The DEFAULT here is the doc-relative `effectiveDefault` (BUG #30): when the

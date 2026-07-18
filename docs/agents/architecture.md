@@ -126,6 +126,16 @@ All are JSON files. Schemas in [src/lib/types.ts](../../src/lib/types.ts).
 
 Agents never touch this app — they read the same `.tex`/`.bib` and write these sidecars. Virgil polls/watches and surfaces changes.
 
+### localStorage stores + the cross-window rule
+
+Prefs that aren't per-document live in `localStorage` behind small module-global stores consumed through `useSyncExternalStore` (panel colors, panel typography, Outline view prefs, the Stack, …).
+
+> **A store that caches a localStorage snapshot at module scope MUST re-hydrate on the native `storage` event.** Multi-window is first-class (`openNewVirgilWindow`), and the common store shape — hydrate ONCE behind a `loaded` latch, then serialize the WHOLE snapshot on every setter — is silently unsafe without it: window B never learns about A's write, so B's snapshot is permanently stale and B's next write clobbers A's change from that stale base. The loss is silent and the two windows disagree until one reloads.
+
+The listener contract lives in ONE place — [src/lib/cross-window-storage.ts](../../src/lib/cross-window-storage.ts) (`subscribeToStorageKey(key, onChange)`) — because it has two guards that are easy to get subtly wrong: foreign keys must be ignored, and `key === null` is a `clear()` that must be honored **only** when `storageArea === localStorage` (a peer's `sessionStorage.clear()` fires with a null key too). On the event, re-read through the store's own parse/validate path and notify — one validation path, so a peer's blob is filtered exactly like a local one.
+
+Riding it today: `panel-theme.ts`, `panel-typography.ts`, `outline-prefs-store.ts`. Also cross-window-safe by other means: `useStack` (own listener + read-modify-write), `useViewPrefs` (the `global-pref-changed` bus in `src/lib/multi-window/bus.ts`), `style-library` / `library-store` / `row-viewed-store` (no module cache — they re-read per call). Stores that still cache a stale snapshot are tracked as a known follow-up (`usePreferences`, `useZenMode`, `pref-links`, `useWordCountConfig`, `library/lib/view-session-store`, `useLibraryTabs`, the `ActionsMenuPanel` palette).
+
 ### External-change detection
 
 [src/lib/disk-watcher.ts](../../src/lib/disk-watcher.ts) (mounted by `DiskWatcherProvider`) is a per-doc wall-clock `setInterval` poller (~3 s, paused while `document.hidden`, immediate on tab-focus) that detects out-of-band edits to the `.tex`/`.bib` on disk — Overleaf-via-sync, `git pull`, `vim`, Dropbox — and raises the `ExternalChangeBadge` topbar pill ([src/components/ExternalChangeBadge.tsx](../../src/components/ExternalChangeBadge.tsx); amber = clean reload, danger = conflict with unsaved edits). It compares a content fingerprint owned by the `diskLedger` ([src/lib/disk-ledger.ts](../../src/lib/disk-ledger.ts)) — stamped ONLY on load + writes, never on plain reads (the anti-flicker lynchpin) — against fresh `statFiles` / `readTextFile` reads (`getBibFilename` resolves the `.bib` name). Autosave pauses on a detected change; reconcile reuses `useDocument.refetch()` and never auto-merges. The watcher *pulls* the dirty flag at poll time rather than subscribing to the editor, so it does zero per-keystroke work (a wall-clock-service keystroke-sanctity exemption — see AGENTS.md).
@@ -211,7 +221,7 @@ Together: only explicit user gestures (gutter delete or panel trash) destroy a c
 
 ## Per-panel color overrides
 
-Users can recolor any panel via the header color picker. The override routes through `deriveCardPalette` in [src/lib/panel-theme.ts](../../src/lib/panel-theme.ts), which derives a full card palette (marker, badge, border, header, selected variants) from a single accent color.
+Users can recolor any panel via the header color picker. The override routes through `deriveCardPalette` in [src/lib/panel-theme.ts](../../src/lib/panel-theme.ts), which derives a full card palette (marker, badge, border, header, selected variants) from a single accent color. The override store is cross-window synced — see "localStorage stores + the cross-window rule" above.
 
 ## Drag / drop MIME map
 

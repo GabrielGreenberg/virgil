@@ -18,6 +18,7 @@ import {
   type StackEnvelope,
   type StackItem,
 } from "@/lib/stack/types";
+import { subscribeToStorageKey } from "@/lib/cross-window-storage";
 
 const EMPTY_ENVELOPE: StackEnvelope = { version: 1, items: [] };
 
@@ -68,18 +69,17 @@ export function useStack(): UseStackValue {
   const [items, setItems] = useState<StackItem[]>(() => readEnvelope().items);
 
   // Cross-tab sync — `storage` event fires in OTHER tabs when one tab
-  // writes localStorage. Plus same-window listeners for sibling
+  // writes localStorage; routed through the ONE storage-event contract
+  // (task 177), which also covers the `key === null` clear() the previous
+  // hand-rolled listener missed. Plus same-window listeners for sibling
   // consumers in this tab.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const reread = () => setItems(readEnvelope().items);
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === STACK_STORAGE_KEY) reread();
-    };
-    window.addEventListener("storage", onStorage);
+    const offStorage = subscribeToStorageKey(STACK_STORAGE_KEY, reread);
     sameWindowListeners.add(reread);
     return () => {
-      window.removeEventListener("storage", onStorage);
+      offStorage();
       sameWindowListeners.delete(reread);
     };
   }, []);
