@@ -566,7 +566,7 @@ export function PanelTabStrip({
                       ? "2px solid var(--accent)"
                       : undefined,
                     outlineOffset: isDropTarget ? -2 : undefined,
-                    borderRadius: isDropTarget ? 8 : undefined,
+                    borderRadius: isDropTarget ? "var(--pod-radius)" : undefined,
                     // Shaded fill so the drop-ready target reads as a box, not
                     // just a ring (the affordance Gabriel named, task 089).
                     background: isDropTarget ? "var(--accent-light)" : undefined,

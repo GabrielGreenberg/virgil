@@ -307,7 +307,9 @@ export function EditorScrollbar({
           top: thumbY,
           width,
           height: thumbHeight,
-          borderRadius: width / 2,
+          // Half the thumb's own width — a perfect capsule, the computed
+          // sibling of the scale's 50% circles, not a corner tier.
+          borderRadius: width / 2, // radius-allow
           background: hover || dragging
             ? "rgba(0,0,0,0.35)"
             : "rgba(0,0,0,0.18)",

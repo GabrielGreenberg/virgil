@@ -1023,7 +1023,7 @@ function EditableOutline({
     // Custom ghost
     const ghost = document.createElement("div");
     ghost.textContent = pod.text;
-    ghost.style.cssText = "position:fixed;top:-1000px;padding:4px 12px;background:#fff;border:1px solid #d6d3d1;border-radius:6px;font-size:13px;color:#44403c;box-shadow:0 2px 8px rgba(0,0,0,0.12);max-width:200px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;";
+    ghost.style.cssText = "position:fixed;top:-1000px;padding:4px 12px;background:#fff;border:1px solid #d6d3d1;border-radius:var(--radius-md);font-size:13px;color:#44403c;box-shadow:0 2px 8px rgba(0,0,0,0.12);max-width:200px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;";
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, 10, 14);
     requestAnimationFrame(() => document.body.removeChild(ghost));

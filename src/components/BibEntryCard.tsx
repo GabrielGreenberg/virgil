@@ -376,7 +376,7 @@ export default function BibEntryCard({
       buildGhost: () => {
         const ghost = document.createElement("div");
         ghost.textContent = display.length > 80 ? display.slice(0, 80) + "\u2026" : display;
-        ghost.style.cssText = "max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:3px;font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        ghost.style.cssText = "max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:var(--radius-xs);font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
         return ghost;
       },
       cursorOffsetX: 10,
