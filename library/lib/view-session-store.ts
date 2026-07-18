@@ -25,6 +25,10 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
+  subscribeToStorageKey,
+  writeStorageIfChanged,
+} from "@/lib/cross-window-storage";
+import {
   loadSort,
   loadWidths,
   isReorderableColId,
@@ -214,16 +218,20 @@ function readStringArray(key: string): string[] {
  * wiping state. Returns `null` when the blob is simply ABSENT, so the
  * caller knows to run the one-shot seed.
  */
-function readBlob(): LibraryViewSession | null {
+function readRawBlob(): string | null {
   if (!hasStorage()) return null;
-  let raw: string | null;
   try {
-    raw = localStorage.getItem(VIEW_SESSION_KEY);
+    return localStorage.getItem(VIEW_SESSION_KEY);
   } catch {
     // Storage access itself threw (private mode etc.) — treat as absent.
     return null;
   }
-  if (raw == null) return null; // absent → caller seeds
+}
+
+/** Parse + normalize, or `null` when the blob is UNREADABLE by this code
+ *  (non-object root, parse error, wrong/missing schema version). Split out so
+ *  the two callers below can differ on what "unreadable" should mean. */
+function parseSessionBlob(raw: string): LibraryViewSession | null {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (
@@ -232,16 +240,31 @@ function readBlob(): LibraryViewSession | null {
       Array.isArray(parsed) ||
       (parsed as { schemaVersion?: unknown }).schemaVersion !== SCHEMA_VERSION
     ) {
-      // Non-object root or wrong/missing version → discard, but DON'T
-      // re-seed (the blob exists, just unreadable by this code). Empty
-      // session keeps the user from losing the keys; a future
-      // migrateSession() ladder would slot in here for v2+.
-      return emptySession();
+      return null;
     }
     return normalizeSession(parsed as LibraryViewSession);
   } catch {
-    return emptySession();
+    return null;
   }
+}
+
+function readBlob(): LibraryViewSession | null {
+  const raw = readRawBlob();
+  if (raw == null) return null; // absent → caller seeds
+  // Unreadable at INIT → discard, but DON'T re-seed (the blob exists, just
+  // unreadable by this code). Empty session keeps the user from losing the
+  // keys; a future migrateSession() ladder would slot in here for v2+.
+  return parseSessionBlob(raw) ?? emptySession();
+}
+
+/** Strict read for the cross-window sync: `null` for absent OR unreadable.
+ *  At init an unreadable blob resolves to an empty session, which is right —
+ *  there is no live state to protect. Mid-session it is NOT: adopting an empty
+ *  session because a peer (or a hand edit, or a future schema version) wrote
+ *  something this code can't parse would wipe the user's live Library view. */
+function readValidBlob(): LibraryViewSession | null {
+  const raw = readRawBlob();
+  return raw == null ? null : parseSessionBlob(raw);
 }
 
 /** Coerce a parsed blob into a well-formed session, filling any missing
@@ -406,6 +429,9 @@ function ensureInit(): LibraryViewSession {
   const existing = readBlob();
   if (existing) {
     session = existing;
+    // Seed the merge base: this IS what storage held at hydrate time. A
+    // separate copy, so later in-place mutations of `session` can't reach it.
+    lastPersisted = JSON.parse(JSON.stringify(existing)) as LibraryViewSession;
   } else {
     // Absent blob → one-shot seed, then immediately persist so the blob
     // exists and the seed never runs again.
@@ -420,11 +446,19 @@ function ensureInit(): LibraryViewSession {
 
 function persistNow(s: LibraryViewSession): void {
   if (!hasStorage()) return;
+  let json: string;
   try {
-    localStorage.setItem(VIEW_SESSION_KEY, JSON.stringify(s));
+    json = JSON.stringify(s);
   } catch {
-    // Quota / private-mode: leave the user where they are. The in-memory
-    // session is still authoritative for this page lifetime.
+    return;
+  }
+  // Idempotent: an unchanged blob writes nothing, so a no-op debounce flush
+  // never wakes the other windows (task 179). The return says whether storage
+  // now HOLDS this value — advance the merge base only then, so a quota /
+  // private-mode failure leaves the last known-on-disk snapshot standing
+  // instead of pretending our in-memory changes were written.
+  if (writeStorageIfChanged(VIEW_SESSION_KEY, json)) {
+    lastPersisted = JSON.parse(json) as LibraryViewSession;
   }
 }
 
@@ -464,6 +498,109 @@ function commit(next: LibraryViewSession): void {
   notify();
   armWrite();
 }
+
+/* ── cross-window sync (task 179, following 177) ─────────────────────────
+ *
+ * This store is the awkward member of the stale-snapshot class: it caches the
+ * session at module scope AND its write is debounced 250 ms, so a peer's
+ * `storage` event routinely lands while our own change is still only in
+ * memory. Adopting the peer blob would drop that change; ignoring the peer
+ * keeps the stale base that clobbers the peer on the next flush.
+ *
+ * So the sync does a THREE-WAY MERGE — the same shape as a git merge, and for
+ * the same reason: two writers, one shared ancestor.
+ *
+ *   base   = `lastPersisted`, the snapshot this window last KNEW was on disk
+ *   ours   = the live in-memory `session` (base + our unflushed changes)
+ *   theirs = the peer's blob
+ *
+ * Per node: if we didn't change it, take theirs; if they didn't, keep ours; if
+ * both did, recurse into objects and let ours win at a genuinely conflicting
+ * leaf (the local user's most recent intent). The pending timer then flushes
+ * the merged blob, so the peer converges on the same result.
+ *
+ * Why a value-diff against a base rather than a set of dirty paths declared by
+ * the setters: a path list is only ever as fine-grained as the bookkeeping
+ * remembers to be, and everything here lives under ONE map (`scopes[""]` is
+ * the singleton scope every non-tear-out consumer uses — both panels'
+ * selection, tabs, and every per-library sort/query/scroll). A `scopes.<id>`
+ * granularity would swap that whole subtree and silently drop a peer's edit to
+ * a different panel inside it — the same clobber, just narrower. The base diff
+ * gets leaf granularity for free and needs nothing from the setters, including
+ * the in-place `setListScrollQuiet` mutation (base is a deep copy, so an
+ * in-place write still reads as "ours changed").
+ */
+
+/** The session as last known to be IN STORAGE — the merge base. Advanced only
+ *  on a write that actually landed, and to the peer's blob on a sync. */
+let lastPersisted: LibraryViewSession | null = null;
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((x, i) => deepEqual(x, b[i]));
+  }
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const ka = Object.keys(a);
+    if (ka.length !== Object.keys(b).length) return false;
+    return ka.every((k) => k in b && deepEqual(a[k], b[k]));
+  }
+  return false;
+}
+
+/** Three-way merge of two plain-JSON trees over their common ancestor.
+ *  Arrays are treated as leaves (an ordered list — merging elementwise would
+ *  invent orderings neither window asked for). */
+function merge3(base: unknown, ours: unknown, theirs: unknown): unknown {
+  if (deepEqual(ours, theirs)) return ours;
+  if (deepEqual(ours, base)) return theirs;   // untouched here → peer wins
+  if (deepEqual(theirs, base)) return ours;   // untouched there → we win
+  if (isPlainObject(ours) && isPlainObject(theirs)) {
+    const b = isPlainObject(base) ? base : {};
+    const out: Record<string, unknown> = {};
+    for (const k of new Set([...Object.keys(ours), ...Object.keys(theirs)])) {
+      const inOurs = k in ours;
+      const inTheirs = k in theirs;
+      if (inOurs && inTheirs) {
+        out[k] = merge3(b[k], ours[k], theirs[k]);
+      } else if (inOurs) {
+        // Absent from theirs: a peer DELETE if we left the key alone,
+        // otherwise our own edit (or addition) and it stands.
+        if (!(k in b) || !deepEqual(ours[k], b[k])) out[k] = ours[k];
+      } else {
+        // Absent from ours: symmetric — honor our delete, else take theirs.
+        if (!(k in b) || !deepEqual(theirs[k], b[k])) out[k] = theirs[k];
+      }
+    }
+    return out;
+  }
+  // Conflicting leaves (or an object-vs-leaf type change): the local user's
+  // most recent intent wins; the flush then propagates it to the peer.
+  return ours;
+}
+
+subscribeToStorageKey(VIEW_SESSION_KEY, () => {
+  // Nothing hydrated in this window yet → the next `ensureInit` reads the
+  // peer's blob straight from storage anyway.
+  if (!initialized || !session) return;
+  const peer = readValidBlob();
+  // Absent, cleared, or unreadable (corrupt / a future schema version): keep
+  // the live session rather than resetting the user's Library view.
+  if (!peer) return;
+  session = normalizeSession(
+    merge3(lastPersisted ?? session, session, peer) as LibraryViewSession,
+  );
+  // Storage now holds the peer's blob — that, not our merged result, is the
+  // ancestor the next sync must diff against.
+  lastPersisted = peer;
+  notify();
+  // A pending debounced write now carries the merged blob, so the peer
+  // converges too. With nothing pending there is nothing to flush.
+});
 
 // ── immutable slice rebuilders (new refs only along the changed path) ───
 
@@ -654,6 +791,9 @@ export function setListScrollQuiet(
     return;
   }
   existing.scrollTop = top;
+  // No cross-window bookkeeping needed for this in-place mutation: the merge
+  // base (`lastPersisted`) is a separate deep copy, so the write still reads
+  // as "ours changed" to `merge3` (task 179).
   armWrite();
 }
 
@@ -1033,5 +1173,6 @@ export function __resetViewSessionForTests(): void {
   }
   session = null;
   initialized = false;
+  lastPersisted = null; // the merge base is part of the singleton
   listeners.clear();
 }
