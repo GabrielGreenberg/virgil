@@ -84,7 +84,7 @@ Ordered light → dark. Use the *role*, not the hex.
 --pod-dark:      #eae6df          dark pods
 --header-bg:     #e8e5de          panel-header strip
 
---header-h:      34px             panel header height (LOCKED)
+--header-h:      26px             panel header height (locked; enforced by src/__tests__/token-contract.test.ts)
 --pod-radius:    8px
 --pod-gap:       10px
 --pod-border:    1px solid var(--border-light)

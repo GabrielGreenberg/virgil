@@ -91,7 +91,7 @@ All panels share the wrapper system in [src/components/panel-primitives.tsx](../
 - **`Panel`** — universal outer. Flex column with header, scroll body, absolute popout + close buttons. Used by panels with custom bodies (Outline, Search, WordCount).
 - **`CardListPanel<T>`** — wraps `Panel` + iterates items as cards + adds AI-requests section. Used by card panels. (The historical list/in-text view-mode toggle and `panel-view-mode` context were removed; cards now always render in list form.) It also applies the **per-card archive view filter** (`filterByArchiveView` in [src/panels/_shared/card-archive-view.tsx](../../src/panels/_shared/card-archive-view.tsx)) — see "Per-card archive" below.
 
-**Header** is `PanelHeader` — fixed 34px (`--header-h`), title + count + optional `onAdd` (+ icon) and `onAiRequest` (8-ray star).
+**Header** is `PanelHeader` — fixed 26px (`--header-h`), title + count + optional `onAdd` (+ icon) and `onAiRequest` (8-ray star).
 
 ### Panel registry — SSOT
 

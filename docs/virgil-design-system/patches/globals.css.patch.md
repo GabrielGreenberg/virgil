@@ -1,5 +1,13 @@
 # patches/globals.css.patch.md
 
+> **Historical — this patch was never applied as written, and its
+> values are NOT the current spec.** It is kept as the record of what
+> the 2026 systematization pass proposed. Read `src/app/globals.css`
+> for live token values and `src/STYLE_GUIDE.md` for the live spec.
+> Known divergences: `--header-h` is **26px** in code (this patch says
+> 34px), and `--pod-shadow-light` was never added at all — a snippet
+> reading `var(--pod-shadow-light)` resolves to nothing. <!-- token-doc-allow -->
+
 Drop-in replacement for the `:root { … }` block in
 `src/app/globals.css`. Apply as part of **Pass 1**.
 
