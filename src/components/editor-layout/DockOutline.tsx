@@ -7,10 +7,11 @@ import { useDockDragTarget, type DockDragTarget } from "./dock-drag";
 /** Quick fade — snappy, but readable as a transition. */
 const FADE_MS = 120;
 
-/** Outline color: thin clear blue with a static blue glow. */
-const OUTLINE_BORDER = "1.5px solid var(--drag-highlight, #3b82f6)";
-const OUTLINE_GLOW =
-  "0 0 10px rgba(59, 130, 246, 0.45), 0 0 2px rgba(59, 130, 246, 0.7)";
+/** Outline color: thin accent line with a static accent glow. Shared
+ *  drag-outline chrome, tokenized in globals.css ("Drag glow/ring layers")
+ *  and read identically by CardLiftOutline — one definition, two portals. */
+const OUTLINE_BORDER = "var(--drag-outline-border)";
+const OUTLINE_GLOW = "var(--drag-glow-outline)";
 
 /**
  * Body-portaled hard-black outline that marks the active dock target
@@ -110,10 +111,11 @@ export function DockOutline() {
           top: displayed.rect.top,
           width: displayed.rect.width,
           height: displayed.rect.height,
-          // Thin clear-blue outline with a static blue glow. The 1.5px
-          // border keeps it visually crisp without weighing the panel
-          // down; the layered box-shadow gives a soft outer halo plus a
-          // tighter inner highlight, both blue, both static.
+          // Thin clear outline with a static glow, both in the live
+          // --drag-highlight accent (blue by default, user-retintable).
+          // The 1.5px border keeps it visually crisp without weighing the
+          // panel down; the layered box-shadow gives a soft outer halo
+          // plus a tighter inner highlight. Both static.
           border: OUTLINE_BORDER,
           borderRadius: "var(--pod-radius)",
           background: "transparent",

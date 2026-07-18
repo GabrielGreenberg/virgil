@@ -230,6 +230,27 @@
   --amber-200: #f5e29e;
   --amber-500: #d4a843;
 
+  /* ── Amber highlight (the "lit inline atom" role-set) ──────────────
+     The two-state wash every inline atom shares when it lights up:
+     citation pill (:hover + card-hover/selected), label-ref node
+     (:hover + .label-ref-active), the label-ref popover and its active
+     ref-command button, and .citation-highlight-bib. ONE role-set,
+     seven rule sites — before this the four values were re-spelled as
+     raw literals at each site, which is exactly how the amber family
+     drifted into five different hexes (docs/virgil-design-system/
+     10-audit.md item 8; the scale half of that item shipped above, the
+     consumer sweep is this).
+
+     --amber-highlight-wash is deliberately NOT folded into --amber-100
+     (#fdf3c8): the two sit within ~2/255 of each other, but they are
+     different roles and collapsing them would be a real visual change.
+     They are near-twins because the drift produced them independently —
+     which is the point of naming the role rather than the value. */
+  --amber-highlight-wash: #fef3c3;         /* hover / passive lit state */
+  --amber-highlight-wash-active: #fef08a;  /* active / selected state */
+  --amber-highlight-edge: var(--amber-500); /* border + ring, both states */
+  --amber-highlight-ink: #4a3f20;          /* text on either wash */
+
   /* ── Footnote rust scale ──────────────────────────────────────────
      Footnote, cut, and error markers consolidate here.
      Inline-element tokens below alias into this scale. */
@@ -264,6 +285,33 @@
 
   /* Drag */
   --drag-highlight: #3b82f6;
+
+  /* Drag glow/ring layers — DERIVED from --drag-highlight, never
+     re-spelled. This is not cosmetic tidying: --drag-highlight is a USER
+     PREFERENCE (`dragHighlight`, src/lib/preferences-tree.ts), so a glow
+     hardcoded as rgba(59, 130, 246, …) keeps painting blue after the user
+     retints the accent — the fill moves, the halo around it doesn't. Six
+     call sites did exactly that.
+     color-mix() with `transparent` is premultiplied, so each of these is
+     precisely the live token at that alpha (same derive-don't-hand-pick
+     pattern as --library-edge above).
+     Composed shadows, not bare colors, so the two body-portaled outlines
+     (CardLiftOutline / DockOutline) consume ONE token instead of keeping
+     byte-identical copies of the same two-layer halo in sync by hand. */
+  --drag-outline-border: 1.5px solid var(--drag-highlight);
+  /* Lift/dock outline: soft outer halo + tighter inner highlight. */
+  --drag-glow-outline:
+    0 0 10px color-mix(in oklab, var(--drag-highlight) 45%, transparent),
+    0 0 2px color-mix(in oklab, var(--drag-highlight) 70%, transparent);
+  /* Hairline margin-guide line. */
+  --drag-glow-line: 0 0 4px color-mix(in oklab, var(--drag-highlight) 35%, transparent);
+  /* Margin-guide corner knob — brighter, it's the grabbable dot. */
+  --drag-glow-knob:
+    0 0 8px color-mix(in oklab, var(--drag-highlight) 70%, transparent),
+    0 0 2px color-mix(in oklab, var(--drag-highlight) 90%, transparent);
+  /* Faint accent ring for a chip/pill that belongs to a drag gesture.
+     Ring only — a caller composes its own drop shadow beside it. */
+  --drag-ring-faint: 0 0 0 2px color-mix(in oklab, var(--drag-highlight) 18%, transparent);
 
   /* Scrollbar
      --scrollbar-hover is locked to --muted-light (same grey as muted text). */
@@ -3018,9 +3066,9 @@ textarea,
 .citation-node[data-card-selected="true"],
 [data-type="citation"][data-card-hovered="true"],
 [data-type="citation"][data-card-selected="true"] {
-  background: #fef3c3;
-  border-color: #d4a843;
-  color: #4a3f20;
+  background: var(--amber-highlight-wash);
+  border-color: var(--amber-highlight-edge);
+  color: var(--amber-highlight-ink);
 }
 
 /* Mode B text-range spans — soft wash, no ring. */
@@ -3515,9 +3563,9 @@ body[data-drop-mode-active="true"] * {
 }
 
 .citation-node:hover {
-  background: #fef3c3;
-  border-color: #d4a843;
-  color: #4a3f20;
+  background: var(--amber-highlight-wash);
+  border-color: var(--amber-highlight-edge);
+  color: var(--amber-highlight-ink);
 }
 
 /* Empty placeholder pill — when the user typed \cite/\cite-slash with no
@@ -3532,8 +3580,8 @@ body[data-drop-mode-active="true"] * {
 }
 
 .citation-highlight-bib {
-  background: #fef08a;
-  box-shadow: 0 0 0 2px #d4a843;
+  background: var(--amber-highlight-wash-active);
+  box-shadow: 0 0 0 2px var(--amber-highlight-edge);
   border-radius: var(--radius-xs);
 }
 
@@ -3557,16 +3605,16 @@ body[data-drop-mode-active="true"] * {
 }
 
 .label-ref-node:hover {
-  background: #fef3c3;
-  border-color: #d4a843;
-  color: #4a3f20;
+  background: var(--amber-highlight-wash);
+  border-color: var(--amber-highlight-edge);
+  color: var(--amber-highlight-ink);
 }
 
 .label-ref-node.label-ref-active {
-  background: #fef08a;
-  border-color: #d4a843;
-  box-shadow: 0 0 0 2px #d4a843;
-  color: #4a3f20;
+  background: var(--amber-highlight-wash-active);
+  border-color: var(--amber-highlight-edge);
+  box-shadow: 0 0 0 2px var(--amber-highlight-edge);
+  color: var(--amber-highlight-ink);
 }
 
 /* Atoms are graspable — drag to reposition (InlineAtomGrab). The base
@@ -3592,9 +3640,11 @@ body[data-drop-mode-active="true"] * {
 
 .label-ref-popover {
   background: var(--surface, #fff);
-  border: 2px solid #d4a843;
+  border: 2px solid var(--amber-highlight-edge);
   border-radius: var(--radius-md);
-  box-shadow: 0 0 0 2px rgba(212, 168, 67, 0.25), 0 4px 16px rgba(0, 0, 0, 0.12);
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--amber-highlight-edge) 25%, transparent),
+    0 4px 16px rgba(0, 0, 0, 0.12);
   overflow: visible;
   font-size: 0.82rem;
 }
@@ -3781,9 +3831,9 @@ body[data-drop-mode-active="true"] * {
 }
 
 .label-ref-popover-refcmd-btn.active {
-  background: #fef3c3;
-  border-color: #d4a843;
-  color: #4a3f20;
+  background: var(--amber-highlight-wash);
+  border-color: var(--amber-highlight-edge);
+  color: var(--amber-highlight-ink);
 }
 
 /* ── expex: \ex / \pex / \begingl blocks ── */

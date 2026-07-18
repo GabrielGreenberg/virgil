@@ -38,6 +38,14 @@ All colors, sizes, and shadows live in `src/app/globals.css` under
 `border-edge-subtle`) or `var(--token)` in inline `style`. Never use a
 hex literal in `*.tsx`.
 
+That ban covers the value, not the spelling: `rgba(59, 130, 246, 0.45)` is
+`#3b82f6` written in decimal, so it evades a naive `#`-grep while being the same
+violation. For an alpha variant of a token, reach for
+`color-mix(in oklab, var(--token) 45%, transparent)` — mixing with `transparent`
+is premultiplied, so it is exactly the live token at that alpha, and it keeps
+tracking the token when the value changes. Never re-spell a channel triple.
+(There is no CI guard for this yet — `check:radius` covers radii only.)
+
 The token scales:
 
 - **Ink** (text, light → dark): `ink-faint`, `ink-muted`, `ink-subtle`,
@@ -57,6 +65,22 @@ The token scales:
   `bg-blue-*`.
 - **Footnote rust** (footnote, cut, error): `--footnote-50/100/200/300/500`.
 - **Warm amber** (citation, bib, quote): `--amber-50/100/200/500`.
+- **Amber highlight** (the "lit inline atom" role-set): `--amber-highlight-wash`
+  (hover), `--amber-highlight-wash-active` (active/selected),
+  `--amber-highlight-edge` (border + ring, derived from `--amber-500`),
+  `--amber-highlight-ink` (text on either wash). Every inline atom that lights
+  up amber — citation pill, label-ref node and its popover, the active
+  ref-command button, `.citation-highlight-bib` — consumes THIS set. Before it,
+  the four values were re-spelled as raw hexes at all seven rule sites, which is
+  how the amber family drifted into five hexes.
+- **Drag glow** (`--drag-glow-outline` / `--drag-glow-line` / `--drag-glow-knob`
+  / `--drag-ring-faint`, plus `--drag-outline-border`): the halo/ring layers
+  around a drag affordance, each `color-mix`-DERIVED from `--drag-highlight`.
+  Deriving is mandatory, not stylistic: `--drag-highlight` is a **user
+  preference** (`dragHighlight`), so a glow spelled `rgba(59, 130, 246, …)`
+  keeps painting blue after the user retints the accent — the fill moves and its
+  halo doesn't. Same rule as Library edge below: derive from the token, never
+  re-spell its channels.
 - **Library edge** (`--library-edge`): the SSOT for every Library-surface
   page edge — tab silhouette strokes, the panel/body frame border, NavPod.
   DERIVED, not a literal: `color-mix(in oklab, var(--library-bg) 82%, #000)`,
