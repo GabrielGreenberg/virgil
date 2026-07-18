@@ -28,6 +28,14 @@ Virgil Library:
   library candidates) → write a markdown review note under
   `<docPath>/virgil/notes/` for the user to disambiguate manually.
 
+> **Shared doctrine — find-or-surface, never fabricate.** Read
+> [_find-or-surface.md](_find-or-surface.md). The **missing-entries**
+> step above authenticates each new entry through the library pipeline —
+> so this skill can mint a `master.bib` row. Never fake one: if a
+> missing entry won't authenticate, let its terminal state
+> (`unverified` / `failed`) stand as the surfaced gap and leave it for a
+> human, rather than swapping in a guessed entry.
+
 This skill is safe to run from the editor session — the library's
 locked CLI shims (`master.bib.lock`, `catalog.json.lock`,
 `notifications/inbox.json.lock`) serialize writes even if a parallel

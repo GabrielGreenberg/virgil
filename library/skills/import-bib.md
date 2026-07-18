@@ -30,6 +30,14 @@ machinery of `/library/merge-bibs` (that's for the whole-library sweep).
 The engine self-locks every shared-file write, so a single-paper run is
 safe to invoke directly.
 
+> **Shared doctrine — find-or-surface, never fabricate.** Read
+> [_find-or-surface.md](_find-or-surface.md). The per-entry fold engine
+> **authenticates** each imported entry before writing it to
+> `master.bib` — so this skill can add a sourced row. Never fake one:
+> let each entry's terminal auth state (`unverified` / `failed` /
+> `canonical`) be the surfaced gap, and do not upgrade a low-confidence
+> match to `authenticated` by hand.
+
 ## Bootstrap (run this first)
 
 Resolve the library root and cd into it before running anything else.

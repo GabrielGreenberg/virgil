@@ -34,6 +34,14 @@ description: |
 
 # /merge-bibs $ARGUMENTS
 
+> **Shared doctrine — find-or-surface, never fabricate.** Read
+> [_find-or-surface.md](_find-or-surface.md). This is the whole-library
+> arm of the same per-entry authenticate engine as `/library/import-bib`,
+> so it can add many sourced rows in one sweep. Never fake one: an entry
+> that only reaches `unverified` / `failed` is added as such (the work is
+> real) — that terminal state IS the surfaced gap; do not hand-upgrade a
+> low-confidence match to `authenticated`.
+
 ## Bootstrap (run this first)
 
 This skill operates on the user's Virgil Library. Resolve the library
