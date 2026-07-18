@@ -151,7 +151,7 @@ The script identifies adjacent-article spans in `main.tex` (text that
 belongs to a different article — often JSTOR scans or Annual Reviews
 collections include front-of-issue or facing-page content). Surgically
 remove each identified span via a body Edit. This **is** in-scope for
-/deep-index per §0.5 doctrine — don't defer it to /index-paper. The
+/deep-index per §Scope doctrine — don't defer it to /index-paper. The
 threshold for surgical removal: the span must (a) be clearly
 attributable to a different article (different title, different
 authors), (b) not be referenced by the body of the indexed paper,
