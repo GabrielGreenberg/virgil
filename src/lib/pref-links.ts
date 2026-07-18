@@ -13,6 +13,7 @@
 
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
+import { subscribeToStorageKey } from "@/lib/cross-window-storage";
 
 /** Only color-valued prefs are linkable right now. */
 export type LinkableKey = keyof EditorPreferences;
@@ -160,27 +161,47 @@ function persist() {
   catch { /* ignore */ }
 }
 
+/**
+ * The ONE parse/validate path for the persisted blob — shared by the one-shot
+ * hydrate and the cross-window re-sync below, so a peer's blob is filtered by
+ * exactly the same rules as a local one. Absent/corrupt storage (and a peer's
+ * `clear()`) resolve to the defaults.
+ */
+function readLinkStatesFromStorage(): Record<LinkId, LinkState> {
+  const next: Record<LinkId, LinkState> = { ...DEFAULT_LINK_STATES };
+  if (typeof window === "undefined") return next;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return next;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return next;
+    for (const k of Object.keys(parsed)) {
+      const v = parsed[k];
+      if (v && typeof v === "object" && typeof v.deltaL === "number" && typeof v.locked === "boolean") {
+        next[k] = { deltaL: v.deltaL, locked: v.locked };
+      }
+    }
+  } catch { /* ignore */ }
+  return next;
+}
+
 export function loadPrefLinks(): void {
   if (loaded) return;
   loaded = true;
   if (typeof window === "undefined") return;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object") {
-      const next: Record<LinkId, LinkState> = { ...DEFAULT_LINK_STATES };
-      for (const k of Object.keys(parsed)) {
-        const v = parsed[k];
-        if (v && typeof v === "object" && typeof v.deltaL === "number" && typeof v.locked === "boolean") {
-          next[k] = { deltaL: v.deltaL, locked: v.locked };
-        }
-      }
-      states = next;
-      notify();
-    }
-  } catch { /* ignore */ }
+  states = readLinkStatesFromStorage();
+  notify();
 }
+
+// Cross-window re-sync (task 179, following 177). `loaded` is a one-shot
+// latch, so a second window's snapshot could never re-hydrate — and because
+// `setLinkField` serializes the WHOLE `states` map, its next edit would drop
+// the peer's lock/delta changes from that stale base. The `storage` event
+// never fires in the writing window, so this is the peer channel only.
+subscribeToStorageKey(STORAGE_KEY, () => {
+  states = readLinkStatesFromStorage();
+  notify();
+});
 
 export function getLinkState(id: LinkId): LinkState | undefined {
   return states[id];

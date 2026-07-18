@@ -8,6 +8,7 @@ import {
   isPaperId,
   isProjectDocId,
   loadPanelTabs,
+  panelTabsStorageKey,
   paperLibraryId,
   projectLibraryIdForDoc,
   savePanelTabs,
@@ -15,6 +16,10 @@ import {
   type PanelTabsState,
   type Registry,
 } from "@library/lib/library-store";
+import {
+  useStorageKeySync,
+  writeStorageIfChanged,
+} from "@/lib/cross-window-storage";
 import { useDiskLibraries } from "@library/hooks/useDiskLibraries";
 import {
   getSession,
@@ -176,12 +181,10 @@ function loadIdSet(key: string): Set<string> {
 }
 
 function saveIdSet(key: string, set: Set<string>): void {
-  if (typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(key, JSON.stringify(Array.from(set)));
-  } catch {
-    // ignore
-  }
+  // Idempotent (task 179) for the same reason `savePanelTabs` is: these
+  // persist from state-watching effects, and an unconditional write would
+  // turn the cross-window sync below into a peer-to-peer write ping-pong.
+  writeStorageIfChanged(key, JSON.stringify(Array.from(set)));
 }
 
 const CENTRAL_LIBRARY: Library = {
@@ -310,6 +313,37 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     // configuration (changing them would require a remount of the consumer).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Cross-window re-sync (task 179, following 177). The hydrate above is
+  // explicitly once-per-mount, so a second window's tab layout and pin sets
+  // would stay on their load-time snapshot forever — and because every
+  // persist effect below writes the WHOLE blob, that window's next tab move
+  // would silently drop the peer's opened tabs / pins. Re-read through the
+  // SAME `loadPanelTabs`/`loadIdSet` validation path.
+  //
+  // The echo hazard (a peer sync landing as a write, because these persist
+  // from state-watching effects rather than from setters) is closed one level
+  // down: `savePanelTabs`/`saveIdSet` route through `writeStorageIfChanged`,
+  // so re-persisting an unchanged blob writes nothing and wakes nobody.
+  useStorageKeySync(
+    [
+      panelTabsStorageKey("left", scope),
+      panelTabsStorageKey("right", scope),
+      PROJECT_HIDDEN_KEY,
+      PROJECT_PINNED_KEY,
+      PAPER_PINNED_KEY,
+    ],
+    () => {
+      if (!hydrated) return; // don't race the one-shot hydrate
+      setLeftTabs(loadPanelTabs("left", { scope, fallback: seed?.left }));
+      setRightTabs(loadPanelTabs("right", { scope, fallback: seed?.right }));
+      if (projectsEnabled) {
+        setHiddenProjectIds(loadIdSet(PROJECT_HIDDEN_KEY));
+        setProjectPinnedIds(loadIdSet(PROJECT_PINNED_KEY));
+        setPaperPinnedIds(loadIdSet(PAPER_PINNED_KEY));
+      }
+    },
+  );
 
   useEffect(() => {
     if (!hydrated) return;

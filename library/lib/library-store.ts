@@ -11,6 +11,8 @@
  * list) but disappear from the panel's open tabs.
  */
 
+import { writeStorageIfChanged } from "@/lib/cross-window-storage";
+
 export const CENTRAL_LIBRARY_ID = "central";
 const CENTRAL_LIBRARY_LABEL = "Central Library";
 
@@ -286,7 +288,7 @@ export function addEntryToLibraryGlobal(libId: string, entryKey: string): void {
  *  empty, the legacy unscoped key (`virgil-library-tabs-left`/`-right`)
  *  is used — preserving back-compat for the inline Library tab. Scoped
  *  callers (each library outer tab) get isolated keys. */
-function panelTabsStorageKey(panelKey: string, scope?: string): string {
+export function panelTabsStorageKey(panelKey: string, scope?: string): string {
   if (!scope) return PANEL_TABS_PREFIX + panelKey;
   return `${PANEL_TABS_PREFIX}${scope}-${panelKey}`;
 }
@@ -333,14 +335,15 @@ export function savePanelTabs(
   state: PanelTabsState,
   opts?: { scope?: string },
 ): void {
-  try {
-    localStorage.setItem(
-      panelTabsStorageKey(panelKey, opts?.scope),
-      JSON.stringify(state),
-    );
-  } catch {
-    // ignore
-  }
+  // Idempotent write (task 179). `useLibraryTabs` persists from a
+  // state-watching effect, so the cross-window sync's `setState` would
+  // otherwise echo straight back out as a write — and each window's write
+  // wakes the other, giving two windows a ping-pong that never settles. An
+  // unchanged blob writes nothing, so the echo dies on its first bounce.
+  writeStorageIfChanged(
+    panelTabsStorageKey(panelKey, opts?.scope),
+    JSON.stringify(state),
+  );
 }
 
 export function isCentral(id: string): boolean {

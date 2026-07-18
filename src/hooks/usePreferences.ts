@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { GlobalTransforms, DEFAULT_TRANSFORMS } from "@/lib/color-transforms";
+import { useStorageKeySync } from "@/lib/cross-window-storage";
 import defaultPrefsJson from "./usePreferences.defaults.json";
 
 export interface EditorPreferences {
@@ -206,6 +207,20 @@ export function usePreferences() {
     setPresets(loadPresets());
     initialized.current = true;
   }, []);
+
+  // Cross-window re-sync (task 179, following 177). The hydrate above is
+  // one-shot, so without this a second window's `prefs`/`transforms`/`presets`
+  // snapshot goes permanently stale — and because every setter serializes the
+  // WHOLE object, its next edit silently drops the peer's changes from that
+  // stale base. Re-read through the SAME `load*` parse path so a peer's blob
+  // is merged onto the defaults exactly like a local one. Persistence lives in
+  // the setters (not in a state-watching effect), so this sync can never echo
+  // back out as a write — no two-window ping-pong.
+  useStorageKeySync([PREFS_KEY, TRANSFORMS_KEY, PRESETS_KEY], () => {
+    setPrefs(loadPrefs());
+    setTransforms(loadTransforms());
+    setPresets(loadPresets());
+  });
 
   const persistPrefs = useCallback((newPrefs: EditorPreferences) => {
     try { localStorage.setItem(PREFS_KEY, JSON.stringify(newPrefs)); } catch {}

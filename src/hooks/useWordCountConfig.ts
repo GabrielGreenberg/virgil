@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { useStorageKeySync } from "@/lib/cross-window-storage";
 import type { Category } from "@/lib/word-count-core";
 
 // Category vocabulary lives in the shared word-count core (the SSOT walker);
@@ -67,6 +68,15 @@ export function useWordCountConfig() {
     window.addEventListener(CHANGE_EVENT, onChange as EventListener);
     return () => window.removeEventListener(CHANGE_EVENT, onChange as EventListener);
   }, []);
+
+  // The `CHANGE_EVENT` above is a SAME-window bus — it keeps sibling hook
+  // instances (Word Count panel + Outline panel) in step, but a second app
+  // window never hears it. Without the cross-window channel that window's
+  // config stays on its load-time snapshot and its next `setInclude` writes
+  // the whole `include` map over the peer's category toggles (task 179,
+  // following 177). Re-read through the SAME `loadConfig` merge path; the
+  // write lives in the setters, so a sync can't echo back out.
+  useStorageKeySync(STORAGE_KEY, () => setConfig(loadConfig()));
 
   const setInclude = useCallback((cat: Category, value: boolean) => {
     setConfig((prev) => {

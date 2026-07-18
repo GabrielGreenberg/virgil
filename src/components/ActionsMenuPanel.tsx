@@ -50,6 +50,7 @@ import {
   type ActionId,
 } from "@/lib/actions/action-registry";
 import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
+import { useStorageKeySync } from "@/lib/cross-window-storage";
 import { BlockTypeDropdown } from "./MenuBar";
 import { IconExample } from "./editor-layout/panel-icons";
 import { insertTexBlock } from "@/lib/tiptap/tex-block";
@@ -188,6 +189,13 @@ export function ActionsMenuPanel({
 
   // Color palette state (MRU-first, 7 slots).
   const [palette, setPalette] = useState<string[]>(() => loadPalette());
+  // Cross-window re-sync (task 179, following 177). The palette is hydrated
+  // once per mount and `persistPalette` writes all 7 slots, so a second window
+  // would keep its load-time MRU order and its next color pick would rewrite
+  // the whole array over the peer's. Re-read through the SAME `loadPalette`
+  // validation; the write lives in `persistPalette`, never in a state-watching
+  // effect, so a sync can't echo back out as a write.
+  useStorageKeySync(COLOR_PALETTE_KEY, () => setPalette(loadPalette()));
   const lastAppliedColor = palette[0] ?? DEFAULT_PALETTE[0];
   const persistPalette = (next: string[]) => {
     setPalette(next);

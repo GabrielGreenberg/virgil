@@ -24,6 +24,8 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
+import { subscribeToStorageKey } from "@/lib/cross-window-storage";
+
 const STORAGE_KEY = "virgil-zen-mode";
 const DEFAULT_MARGIN = 160;
 // Bounds are generous so Zen can preserve whatever margins the non-Zen
@@ -47,19 +49,26 @@ function _notify() {
   _listeners.forEach((l) => l());
 }
 
-function _loadOnce() {
-  if (_loaded) return;
-  _loaded = true;
-  if (typeof window === "undefined") return;
+/**
+ * The ONE parse/validate path for the persisted blob — shared by the one-shot
+ * hydrate and the cross-window re-sync below, so a peer's blob is filtered by
+ * exactly the same rules (including the legacy-boolean migration) as a local
+ * one. Returns the defaults when the key is absent or unreadable, which is
+ * also what a peer's `clear()` must produce.
+ */
+function _readFromStorage(): ZenState {
+  const base: ZenState = { on: false, leftMargin: DEFAULT_MARGIN, rightMargin: DEFAULT_MARGIN };
+  if (typeof window === "undefined") return base;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw == null) return;
+    if (raw == null) return base;
     const parsed = JSON.parse(raw);
     if (typeof parsed === "boolean") {
       // Legacy format: just the on/off flag.
-      _state = { ..._state, on: parsed };
-    } else if (parsed && typeof parsed === "object") {
-      _state = {
+      return { ...base, on: parsed };
+    }
+    if (parsed && typeof parsed === "object") {
+      return {
         on: parsed.on === true,
         leftMargin: typeof parsed.leftMargin === "number" ? parsed.leftMargin : DEFAULT_MARGIN,
         rightMargin: typeof parsed.rightMargin === "number" ? parsed.rightMargin : DEFAULT_MARGIN,
@@ -68,7 +77,27 @@ function _loadOnce() {
   } catch {
     /* ignore */
   }
+  return base;
 }
+
+function _loadOnce() {
+  if (_loaded) return;
+  _loaded = true;
+  if (typeof window === "undefined") return;
+  _state = _readFromStorage();
+}
+
+// Cross-window re-sync (task 179, following 177). `_loaded` is a one-shot
+// latch, so without this a second window's snapshot could never re-hydrate and
+// its next whole-blob `_persist()` would silently drop the peer's zen state /
+// margin widths. The `storage` event never fires in the writing window, so
+// this is the peer channel only; the re-read runs the same validation as the
+// hydrate, and `_notify()` re-renders every `useZenMode` consumer (which also
+// re-runs the `data-zen-mode` body-attribute effect).
+subscribeToStorageKey(STORAGE_KEY, () => {
+  _state = _readFromStorage();
+  _notify();
+});
 
 function _persist() {
   if (typeof window === "undefined") return;
