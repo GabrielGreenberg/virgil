@@ -200,7 +200,7 @@ export function StripButton({
       ghost.id = "virgil-drag-ghost";
       ghost.style.cssText = `
         position: fixed; z-index: 9999; pointer-events: none;
-        padding: 8px; border-radius: 8px;
+        padding: 8px; border-radius: var(--pod-radius);
         background: white; border: 1px solid var(--border);
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         opacity: 0.95; display: flex; align-items: center; justify-content: center;

@@ -80,6 +80,15 @@ Forbidden in new code: `text-stone-*`, `border-stone-*`,
 (`borderRadius: 6`, `border-radius: 0.375rem`, `rounded-[6px]`) — use the
 radius scale below. The guard `npm run check:radius` enforces this.
 
+That ban is on the **declaration, not the file**: a radius authored as CSS
+inside a `.tsx` string (`el.style.cssText = "…;border-radius:6px;…"`), as a
+property assignment (`el.style.borderRadius = "3px"`), or as an expression
+(`dropOver ? 4 : 0`) is as forbidden as one in a stylesheet, and the guard
+reads all four forms. **Transient chrome counts** — drag ghosts, drop
+indicators and badges are built this way and are exactly where untokenized
+radii have hidden before; `var(--…)` resolves in them normally, since they
+mount on `document.body`.
+
 ### Radius scale
 
 Corner radii are tokens, the single source of truth — the same rule colors
@@ -99,7 +108,9 @@ onto the Tailwind `rounded-*` utilities via an `@theme` block, so
 
 **Allowed to stay literal** (the guard permits these): hairline insertion &
 drop-indicator bars (`1px`), perfect circles / dots / avatars (`50%`), and
-intentional flattening resets (`0`).
+intentional flattening resets (`0`). A capsule computed from the element's own
+size (`borderRadius: width / 2`) is the same "not a corner tier" case, but the
+guard can't tell it from arithmetic on a stray literal — mark it `radius-allow`.
 
 **Deliberate exceptions** (do NOT collapse into the scale):
 

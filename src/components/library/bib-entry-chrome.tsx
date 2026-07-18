@@ -146,7 +146,7 @@ export function BibEntryChrome({
               const ghost = document.createElement("div");
               ghost.textContent = headerText || citekey;
               ghost.style.cssText =
-                "max-width:320px;padding:4px 10px;background:var(--surface,#ffffff);border:1px solid var(--border-light,#d5d3ce);box-shadow:0 4px 12px rgba(0,0,0,0.18);opacity:0.92;border-radius:3px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+                "max-width:320px;padding:4px 10px;background:var(--surface,#ffffff);border:1px solid var(--border-light,#d5d3ce);box-shadow:0 4px 12px rgba(0,0,0,0.18);opacity:0.92;border-radius:var(--radius-xs,3px);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
               return ghost;
             },
             cursorOffsetX: e.clientX - rect.left,

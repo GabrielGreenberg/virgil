@@ -303,7 +303,7 @@ function NavRow({
               : "transparent",
         outline: dropOver ? `2px solid ${ACCENT}` : undefined,
         outlineOffset: dropOver ? -2 : undefined,
-        borderRadius: dropOver ? 4 : 0,
+        borderRadius: dropOver ? "var(--radius-sm)" : 0,
       }}
       onClick={editing ? undefined : onClick}
       onDoubleClick={onStartEdit}

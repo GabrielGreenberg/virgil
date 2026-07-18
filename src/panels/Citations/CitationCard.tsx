@@ -523,7 +523,7 @@ export function CitationCard({
       ghost.textContent =
         plain.length > 80 ? plain.slice(0, 80) + "…" : plain;
       ghost.style.cssText =
-        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:3px;font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:var(--radius-xs);font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
       document.body.appendChild(ghost);
       e.dataTransfer.setDragImage(ghost, 10, 14);
       requestAnimationFrame(() => document.body.removeChild(ghost));
