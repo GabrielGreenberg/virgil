@@ -89,8 +89,11 @@ baseline").
 - `--baseline-from-catalog` — required for the "new vs. baseline"
   continuity check (already in the canonical invocation above).
 
-Run from the library root (`cd ~/Virgil-Library`) — the script and
-paper paths above are relative to that root.
+Run from the **resolved** library root — the `cd "$library_root"` the
+Bootstrap above already performed (also exported as
+`$VIRGIL_LIBRARY_ROOT`). The script and paper paths above are relative to
+that root. The default location is `~/Virgil-Library/`, but the library is
+a user-picked folder and may live anywhere — never hardcode the default.
 
 ### Hard-gate semantics
 
