@@ -25,7 +25,7 @@ CLI:
 
 Output:
     .virgil/merge-reports/<citekey>.json  (default location)
-    One-line summary on stdout: "+A ~D ⤬T ⚠F ?M"
+    One-line summary on stdout: "+A ~D ⇄U ⤬T ⚠F ?M"
 """
 
 from __future__ import annotations
