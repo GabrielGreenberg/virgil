@@ -421,6 +421,57 @@ def write_catalog(library: Path, catalog: dict) -> None:
     _mark_bib_index_dirty(library)
 
 
+# Shared parser for the `<category>-false-positive:` suppression-warning
+# convention written by `add_validator_suppression.py`. Both the pgmark
+# validator's baseline reader and audit_deepindex's category reader consume
+# this — factoring it here stops the two from drifting (the pgmark reader
+# previously kept the `-false-positive` suffix, silently ignoring every
+# suppression an operator wrote; audit_deepindex's regex stripped it). The
+# `[a-z][a-z-]*` class matches every real category (pgmark finding kinds and
+# audit categories are all lowercase + dashes, no digits); `\s` after the
+# colon matches the writer's `"<kind>-false-positive: <reason>"` format.
+_SUPPRESSION_FALSE_POSITIVE_RE = re.compile(r"^([a-z][a-z-]*)-false-positive:\s")
+
+
+def suppression_categories_from_catalog(
+    catalog: dict, citekey: str, prefix: str | None = None,
+) -> set[str]:
+    """Return the `<category>` tokens the catalog flagged as
+    `<category>-false-positive:` warnings for `citekey`, per the shared
+    validator/audit suppression convention (see `add_validator_suppression.py`).
+
+    - `prefix=None`  → each category verbatim, e.g. `"case-errors"`,
+      `"pgmark-low-confidence-flood"` (audit_deepindex's use — it wants all
+      categories and matches them against its own bare-category findings).
+    - `prefix="pgmark-"` → only categories under that prefix, WITH the prefix
+      stripped, e.g. `"low-confidence-flood"` (pgmark_validate's baseline use —
+      it matches against bare finding kinds like `gap` / `duplicate`).
+      Categories outside the prefix are ignored.
+
+    The greedy `[a-z-]*` strips exactly the trailing `-false-positive` suffix
+    (regex backtracks to leave the literal in place), so a
+    `pgmark-gap-false-positive:` warning yields the bare kind `gap`.
+    """
+    out: set[str] = set()
+    for e in catalog.get("entries", []):
+        if e.get("citekey") != citekey:
+            continue
+        indexed = e.get("indexed") or {}
+        for w in indexed.get("warnings", []) or []:
+            if not isinstance(w, str):
+                continue
+            m = _SUPPRESSION_FALSE_POSITIVE_RE.match(w)
+            if not m:
+                continue
+            category = m.group(1)
+            if prefix is None:
+                out.add(category)
+            elif category.startswith(prefix):
+                out.add(category[len(prefix):])
+        break
+    return out
+
+
 def _bump_version_locked(library: Path) -> None:
     """Bump catalog-version.txt. CALLER must hold `lock_catalog`."""
     p = library / ".virgil" / "catalog-version.txt"
