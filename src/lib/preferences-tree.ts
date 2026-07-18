@@ -364,6 +364,19 @@ export const DERIVED_CSS: DerivedCssMapping[] = [
   { cssVar: "--latex-comment-bg", compute: (p) => deriveLight(p.latexCommentColor, 0.12) },
   { cssVar: "--citation-bg", compute: () => "#ffffff" },
   { cssVar: "--footnote-bg", compute: (p) => deriveLight(p.footnoteColor, 0.08) },
+  // Hover wash for the in-text footnote marker — the same derivation as its
+  // rest-state twin above, one step stronger, so hover follows the user's
+  // marker color instead of a frozen rust (task 175).
+  //
+  // DELIBERATE NEAR-MATCH, not a byte-preserving swap: the old literal was
+  // `#fde8e8` (the `--footnote-100` scale step); at the default `#b45757` this
+  // derives `#f5e8e8` — g/b identical, red 8/255 lower. 0.135 is chosen because
+  // it reproduces `--footnote-100`'s g/b channels EXACTLY, which is the same
+  // relationship 0.08 has to `--footnote-50` for the rest state above (that one
+  // likewise renders `#f9f2f2`, not the literal `#fef2f2`). So hover and rest
+  // now sit on one ray from the user's accent, consistent with each other —
+  // which is the property that was broken, and is worth 8/255 of red.
+  { cssVar: "--footnote-bg-hover", compute: (p) => deriveLight(p.footnoteColor, 0.135) },
   { cssVar: "--note-bg", compute: (p) => deriveLight(p.noteColor, 0.06) },
   { cssVar: "--pod-border", compute: (p) => `1px solid ${p.borderLight}` },
   // Panels are borderless warm sheets (separation via gutter + shadow). Keep
