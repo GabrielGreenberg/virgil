@@ -9,9 +9,12 @@ const FADE_IN_MS = 90;
 /** Slow fade-out so the highlight visibly trails the user's drag. */
 const FADE_OUT_MS = 360;
 
-const OUTLINE_BORDER = "1.5px solid var(--drag-highlight, #3b82f6)";
-const OUTLINE_GLOW =
-  "0 0 10px rgba(59, 130, 246, 0.45), 0 0 2px rgba(59, 130, 246, 0.7)";
+// Shared drag-outline chrome, tokenized in globals.css ("Drag glow/ring
+// layers"). Both the border and the halo derive from --drag-highlight, which
+// is a user preference — DockOutline reads the same two tokens, so the pair
+// can't drift apart the way the old byte-identical rgba() copies did.
+const OUTLINE_BORDER = "var(--drag-outline-border)";
+const OUTLINE_GLOW = "var(--drag-glow-outline)";
 
 /**
  * Body-portaled outline that flashes around a card when the user

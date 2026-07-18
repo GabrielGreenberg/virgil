@@ -6192,7 +6192,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                               left: 6,
                               width: 1,
                               background: "var(--drag-highlight)",
-                              boxShadow: "0 0 4px rgba(59, 130, 246, 0.35)",
+                              boxShadow: "var(--drag-glow-line)",
                               pointerEvents: "none",
                             }
                           : {
@@ -6202,7 +6202,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                               top: 6,
                               height: 1,
                               background: "var(--drag-highlight)",
-                              boxShadow: "0 0 4px rgba(59, 130, 246, 0.35)",
+                              boxShadow: "var(--drag-glow-line)",
                               pointerEvents: "none",
                             };
                         return (
@@ -6275,7 +6275,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                               borderRadius: "50%",
                               background: "var(--drag-highlight)",
                               border: "1.5px solid #fff",
-                              boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
+                              boxShadow: "var(--drag-glow-knob)",
                               opacity: `var(${mk.symVar}, 0)`,
                               transition: "opacity 80ms ease-out",
                             }}
@@ -6306,7 +6306,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                           borderRadius: "var(--radius-pill)",
                           background: "var(--surface)",
                           border: "1px solid var(--drag-highlight)",
-                          boxShadow: "0 2px 10px rgba(0,0,0,0.16), 0 0 0 2px rgba(59, 130, 246, 0.18)",
+                          boxShadow: "0 2px 10px rgba(0,0,0,0.16), var(--drag-ring-faint)",
                         }}
                       >
                         <span
