@@ -379,14 +379,17 @@ you to disambiguate something.
      user knows printed-page anchors are unreliable for this paper.
      (Patching is `/library/deep-index`'s job; just surface the
      count.)
-   - If `bib.state` is `unverified`, `failed`, or `canonical`,
+   - If `bib.state` is `unverified`, `failed`, `needs-reauth`, or `canonical`,
      mention it so the user can decide whether to manually accept.
-     The five `bib.state` values:
+     The six `bib.state` values:
      - `authenticated` — DOI verified, or ≥2 sources agreed at score ≥0.92, or
        (for books) Google Books + OpenLibrary both ≥0.85.
      - `unverified` — single source matched at the lower threshold, or a
        manual correction with one canonical source. **Action needed.**
      - `failed` — no source produced a match above threshold. **Action needed.**
+     - `needs-reauth` — set by `apply_metadata_mismatch_policy.py` when an
+       already-authenticated entry's on-file metadata diverged from the
+       authoritative source. **Action needed** (re-run `/library/authenticate-bib`).
      - `manuscript` — `@unpublished` entry; no external auth attempted.
      - `canonical` — pre-digital classic, no external registry expected.
    - Confirm `master.bib` now has, at minimum, title + author + year +
@@ -414,7 +417,7 @@ commands to a generated preamble.
 
 ## When to fall back to Claude reasoning
 
-The orchestrator already invokes Claude reasoning is **not** wired up yet —
+Invoking Claude reasoning from the orchestrator is **not** wired up yet —
 this is the v1 deterministic pipeline. If the user reports that footnote
 re-attachment or math correction is poor, that's a Phase 2.5 followup;
 log the issue but don't try to patch it inline.

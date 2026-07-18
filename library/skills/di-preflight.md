@@ -210,9 +210,9 @@ fi
 python3 .virgil/scripts/library/detect_genre.py papers/$ARGUMENTS
 ```
 
-`detect_genre.py` prints one of five primary labels to stdout:
-`article`, `endnote-style`, `multi-article-pdf`, `scanned-ocr`,
-`book`. Record the result and propagate it to downstream subskills via
+`detect_genre.py` prints one of six primary labels to stdout:
+`article`, `article-vancouver`, `endnote-style`, `multi-article-pdf`,
+`scanned-ocr`, `book`. Record the result and propagate it to downstream subskills via
 the catalog entry's `warnings` (e.g. `"genre: scanned-ocr"`) or via
 an in-memory pass-through if you are inside the
 `/library/deep-index` orchestrator.
@@ -242,13 +242,19 @@ an in-memory pass-through if you are inside the
   range and the bib `pages` field disagree (article starts at
   pp. 19–39 inside a 23-page PDF), set `--journal-cumulative` on
   `pgmark_validate` in di-validate.
+- **`article-vancouver`** — an article whose in-text citations are
+  numeric/bracketed (`[12]`) rather than author-year. Same flow as
+  `article`, plus `rewrite_citations --style=bracket-numeric` in
+  di-clean-prose to resolve the bracket numbers against the itemized
+  reference list.
 
 **Secondary signals (NOT emitted by detect_genre.py — derive from
 catalog/bib/file inspection):**
 
 - **dissertation** — detect via `master.bib` entry type
   `@phdthesis` / `@mastersthesis`. Step 0.2 metadata check
-  mandatory; `promote_lost_subsections` in di-clean-prose;
+  mandatory; lost-subsection promotion in di-clean-prose
+  (manual heading edit — no script yet);
   `rewrite_citations --style=bracket-numeric` if applicable.
 - **formal-semantics-paper** — detect via lambda / brackets in
   body text + linguistics/philosophy keywords in the title.

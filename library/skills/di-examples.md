@@ -378,7 +378,7 @@ John was disappointed in Tim.
 
 ### What NOT to convert
 
-Top-level `(N)` examples become `\ex[exno=N] \vexid{<uuid>} body
+Top-level `(N)` examples become `\vexid{<uuid>} \ex[exno=N] body
 \xe`; sub-items `(Na)` / `(Nb)` get grouped under a parent `\pex`
 block with `\a` sub-items. Refuses to convert inside:
 

@@ -64,11 +64,15 @@ directory).
    1. `bib-edit`
    2. `authenticate`
    3. `index` / `reindex`
-   4. `triage`
+   4. `deepIndex` (legacy `richIndex`)
+   5. `import-bib`
+   6. `triage`
 
-   `bib-edit`, `authenticate`, and `triage` kinds are **deferred** —
-   the script lists them in its summary but does not handle them
-   itself. Capture stdout for the per-entry classification table.
+   Only `index` and `reindex` are native (`drain_queue.py`
+   `NATIVE_KINDS`). **Every other kind is deferred** — `bib-edit`,
+   `authenticate`, `deepIndex` (legacy `richIndex`), `import-bib`, and
+   `triage`: the script lists them in its summary but does not handle
+   them itself. Capture stdout for the per-entry classification table.
 
 2. **Dispatch deferred kinds via skills.** For each kind the drain
    script reported as deferred:
@@ -137,10 +141,11 @@ Detach-and-poll instead. Two phases:
 **Phase A — kick off the drain detached, return immediately.**
 ```bash
 cd <library-root>
+ts=$(date +%s)
 nohup python3 .virgil/scripts/library/drain_queue.py \
-  > /tmp/drain_$(date +%s).log 2>&1 &
+  > /tmp/drain_$ts.log 2>&1 &
 disown
-echo "drain pid=$! log=/tmp/drain_$(date +%s).log"
+echo "drain pid=$! log=/tmp/drain_$ts.log"
 ```
 The drain now outlives the current shell / agent turn. Capture the
 log path so the next phase can tail it.
