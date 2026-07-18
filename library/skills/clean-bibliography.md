@@ -44,6 +44,15 @@ export VIRGIL_LIBRARY_ROOT="$library_root"
 > 1000+-entry book bibliographies and run-on indices are in-scope —
 > deferring is almost always a doctrine violation.
 
+> **Shared doctrine — find-or-surface, never fabricate.** Read
+> [_find-or-surface.md](_find-or-surface.md). The **Bibliography
+> synthesis** step below mints canonical entries via Crossref for cited
+> works missing from the references — that is a sourcing action, so it is
+> bound by this doctrine: synthesize ONLY from a real Crossref match
+> (marked `% synthesized via Crossref`), never from the model's own
+> recollection, and leave a `missing-bib-entry:` gap surfaced rather than
+> inventing an entry you could not locate.
+
 Operates on `papers/$ARGUMENTS/main.tex` and
 `papers/$ARGUMENTS/references.bib`. Covers three phases:
 

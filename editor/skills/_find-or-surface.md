@@ -18,9 +18,14 @@
 
 Sourcing skills — anything that adds, verifies, or cites a real work
 (`find-citation`, `authenticate-bib`, `answer-bib-review`,
-`draft-footnote`, `sync-bib-to-library`, `import-bib`, the
-bibliography subskills) — share one rule. It is stated **here once** and
+`draft-footnote`, `sync-bib-to-library`, `import-bib`, `merge-bibs`,
+`clean-bibliography`) — share one rule. It is stated **here once** and
 referenced, never re-paraphrased, so it cannot drift skill to skill.
+This set is the mirror image of the drift-guard test's
+`REFERENCING_SKILLS`
+(`library/lib/__tests__/find-or-surface-doctrine.test.ts`): a skill added
+here that drops its pointer, or a new sourcing skill added to the set,
+fails CI until it links back.
 
 **1. Never fabricate.** A source, a bibliographic field, a DOI/ISBN, or a
 `\cite`/`\citet`/`\textcite` command is real evidence about the world. Do

@@ -24,12 +24,21 @@ const EDITOR_DOCTRINE = "editor/skills/_find-or-surface.md";
 
 // Skills that MUST reference the doctrine rather than re-paraphrase it.
 // The path is relative to each skill (same directory), so the link text
-// is the bare filename in both silos.
+// is the bare filename in both silos. This list is the MIRROR IMAGE of
+// the doctrine body's own enumeration (`_find-or-surface.md`): every
+// sourcing skill named there — anything that can mint, authenticate, or
+// synthesize a real bib entry / cite command — must link back here, and
+// a future skill silently dropping the pointer fails CI. Keep the two in
+// sync (same discipline as `latex-allowlist-doctrine.test.ts`).
 const REFERENCING_SKILLS = [
   "editor/skills/find-citation.md",
   "editor/skills/answer-bib-review.md",
   "editor/skills/draft-footnote.md",
+  "editor/skills/sync-bib-to-library.md",
   "library/skills/authenticate-bib.md",
+  "library/skills/import-bib.md",
+  "library/skills/merge-bibs.md",
+  "library/skills/clean-bibliography.md",
 ];
 
 describe("find-or-surface doctrine (cross-silo SSOT)", () => {
