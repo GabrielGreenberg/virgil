@@ -91,7 +91,7 @@ import {
 import { useViewPrefs, PanelId, Side, ALL_HIGHLIGHT_TYPES, HighlightType, dockedSideOf, isPanelDocked } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
 import { entityToAnchorId } from "@/links/_shared/entity-hover";
-import { Button, PanelChromeProvider } from "./panel-primitives";
+import { Button } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";

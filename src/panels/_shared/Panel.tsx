@@ -11,7 +11,7 @@
  * but the body is rendered as direct children with no scroll wrapper.
  */
 
-import type { HTMLAttributes, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { PANEL, PanelHeader } from "@/components/panel-primitives";
 import {
   PanelKindProvider,
@@ -49,9 +49,6 @@ export interface PanelProps {
   variant?: "list" | "raw";
   /** Ref to the scroll container (only meaningful for variant="list"). */
   scrollRef?: React.Ref<HTMLDivElement>;
-  onDragOver?: (e: React.DragEvent) => void;
-  onDragLeave?: (e: React.DragEvent) => void;
-  onDrop?: (e: React.DragEvent) => void;
   /** Click on empty list area (typically used to deselect). */
   onClickEmpty?: (e: React.MouseEvent) => void;
   /** Keydown handler attached to the scroll container (list variant only). */
@@ -62,12 +59,6 @@ export interface PanelProps {
   /** Sticky footer rendered below the scroll body, inside the outer flex
    *  column. Used for action bars like Todo's "Archive completed". */
   footer?: ReactNode;
-  /** Extra classes appended to the outer wrapper div. Used by Archive's
-   *  capture-drop styling. */
-  wrapperClassName?: string;
-  /** Extra props (data-attrs, drag handlers) spread onto the outer wrapper
-   *  div. Used by Archive's `usePanelCapture` dropProps. */
-  wrapperProps?: HTMLAttributes<HTMLDivElement>;
   children: ReactNode;
 }
 
@@ -83,15 +74,10 @@ export function Panel({
   panelExtras,
   variant = "list",
   scrollRef,
-  onDragOver,
-  onDragLeave,
-  onDrop,
   onClickEmpty,
   onKeyDown,
   scrollTabIndex,
   footer,
-  wrapperClassName,
-  wrapperProps,
   children,
 }: PanelProps) {
   const entry = PANEL_REGISTRY[kind];
@@ -102,17 +88,12 @@ export function Panel({
   // renderers — RichTextField cards already pick up the override via
   // their own inline style, so this catches the bespoke widgets.
   const bodyVars = usePanelBodyVarsForKind(kind);
-  const wrapperStyle = wrapperProps?.style;
-  const mergedStyle = bodyVars
-    ? { ...wrapperStyle, ...bodyVars }
-    : wrapperStyle;
 
   return (
     <PanelKindProvider kind={kind}>
       <div
-        {...wrapperProps}
-        style={mergedStyle}
-        className={`w-full bg-transparent flex flex-col overflow-hidden h-full panel-body-typo${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+        style={bodyVars}
+        className="w-full bg-transparent flex flex-col overflow-hidden h-full panel-body-typo"
       >
         <PanelHeader
           title={resolvedTitle}
@@ -129,9 +110,6 @@ export function Panel({
           <div
             ref={scrollRef}
             className={`${PANEL.list}${onKeyDown || scrollTabIndex != null ? " focus:outline-none" : ""}`}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
             onClick={onClickEmpty}
             onKeyDown={onKeyDown}
             tabIndex={scrollTabIndex}

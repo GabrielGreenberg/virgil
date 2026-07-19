@@ -189,7 +189,7 @@ Floats spawn near their trigger element via `popCardAtAnchor` in EditorPane (whi
 
 ## Panel context
 
-`PanelChromeProvider` in `panel-primitives.tsx` injects the current panel id so context-aware buttons (`PanelPopout`, `PanelClose`) know which panel they belong to without prop drilling.
+`PanelChromeProvider` in `panel-primitives.tsx` supplies the surrounding panel's `onClose` so the header's context-aware close button (`PanelClose`) can close the right panel without prop drilling. It carries nothing else — `PanelClose` is its sole consumer.
 
 ## Card creation + pristine cards
 
