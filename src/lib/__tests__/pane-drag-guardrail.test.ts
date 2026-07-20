@@ -14,9 +14,10 @@
 // state/store/localStorage, or wedges a park flag forever.
 //
 //   1. SOURCE-GREP ALLOWLIST — walk BOTH silos (`src/` + `library/`), flag
-//      every file that pairs a WINDOW/DOCUMENT-level `pointermove`/`mousemove`
-//      listener with drag-gesture chrome (a `body.style.cursor` write or a
-//      col/row/ew/ns-resize cursor token), and assert the flagged set equals
+//      every file that pairs a WINDOW/DOCUMENT-level (incl. `document.body` /
+//      `document.documentElement`) `pointermove`/`mousemove`/`touchmove`
+//      listener with drag-gesture chrome (a `body.style.cursor` write or any
+//      CSS resize cursor token), and assert the flagged set equals
 //      `PERMITTED_WINDOW_DRAG_GESTURES`. The engine directory itself is
 //      excluded (it is the one sanctioned owner of divider gestures — and its
 //      listeners are element-scoped under pointer capture anyway, exactly what
@@ -112,27 +113,38 @@ export function stripComments(source: string): string {
 
 /**
  * The guarded class as a machine-detectable conjunction: a file that
- * (a) attaches a WINDOW- or DOCUMENT-level `pointermove`/`mousemove` listener
- * (the "watch the gesture" shape — the engine owns its pointer via capture
- * with ELEMENT-scoped listeners instead), and (b) carries drag-gesture
- * chrome: a `document.body`/`documentElement` cursor write, a
- * col/row/ew/ns-resize cursor token, OR the shared divider handle classes
- * (`.drag-gap[-v|-h]` / `.band-grip`). The class leg is load-bearing: the
- * repo's divider cursors live in those CSS classes (globals.css) and
+ * (a) attaches a WINDOW- or DOCUMENT-level `pointermove`/`mousemove`/`touchmove`
+ * listener — including on `document.body` / `document.documentElement`, which
+ * are window-level in every way that matters to the law (the engine owns its
+ * pointer via capture with ELEMENT-scoped listeners on the handle instead) —
+ * and (b) carries drag-gesture chrome: a `document.body`/`documentElement`
+ * cursor write, ANY CSS resize cursor token (`col`/`row`/`ns`/`ew`/`n`/`e`/`s`/
+ * `w`/`ne`/`nw`/`se`/`sw`/`nesw`/`nwse`-resize), OR the shared divider handle
+ * classes (`.drag-gap[-v|-h]` / `.band-grip`). The class leg is load-bearing:
+ * the repo's divider cursors live in those CSS classes (globals.css) and
  * STYLE_GUIDE tells authors to style a divider with them — a bespoke divider
  * written the documented way carries no cursor token of its own, and only
  * this leg catches it. File-level on purpose — the allowlist + justification
  * closes the semantic gap.
+ *
+ * Each alternation is deliberately as wide as the behavior it stands for — a
+ * `document.body` listener, a touch-driven divider, or a corner-resize cursor
+ * are all the same class as far as the law is concerned, and a narrower regex
+ * would let those idioms pass CI silently (task 187 — the same guard-narrower-
+ * than-its-doctrine shape as task 169's `check-radius-tokens.mjs`).
  */
 export function detectWindowDragGesture(source: string): boolean {
   const src = stripComments(source);
   const windowLevelMove =
-    /(?:window|document)\.addEventListener\(\s*["'](?:pointermove|mousemove)["']/.test(
+    /(?:window|document)(?:\.body|\.documentElement)?\.addEventListener\(\s*["'](?:pointermove|mousemove|touchmove)["']/.test(
       src,
     );
   const dragChrome =
     /(?:body|documentElement)\.style\.cursor\s*=/.test(src) ||
-    /\b(?:col|row|ew|ns)-resize\b/.test(src) ||
+    // The complete set of CSS resize cursors — `-resize\b`-anchored so a
+    // token only matches as a whole cursor keyword (multi-char alternatives
+    // first so backtracking never leaves e.g. `nesw` half-matched as `ne`).
+    /\b(?:col|row|nesw|nwse|ne|nw|se|sw|ns|ew|n|e|s|w)-resize\b/.test(src) ||
     /\bdrag-gap(?:-v|-h)?\b|\bband-grip\b/.test(src);
   return windowLevelMove && dragChrome;
 }
@@ -247,6 +259,64 @@ describe("pane-drag guardrail — source allowlist (both silos)", () => {
       }
     `;
     expect(detectWindowDragGesture(classStyledDivider)).toBe(true);
+  });
+
+  it("would flag a document.body / documentElement listener divider (task 187 hole 1)", () => {
+    // `document.body.addEventListener("pointermove", …)` and
+    // `document.documentElement.addEventListener(…)` are window-level in every
+    // way that matters to the law — the pre-widening regex anchored the root
+    // object immediately before `.addEventListener` and missed both.
+    const bodyListenerDivider = `
+      export function BodyGutter({ apply }) {
+        const onPointerDown = () => {
+          document.body.style.cursor = "col-resize";
+          document.body.addEventListener("pointermove", (ev) => apply(ev.clientX));
+        };
+        return h("div", { onPointerDown });
+      }
+    `;
+    const docElDivider = `
+      export function DocElGutter({ apply }) {
+        const onPointerDown = () => {
+          document.documentElement.addEventListener("mousemove", (ev) => apply(ev.clientX));
+          document.documentElement.style.cursor = "row-resize";
+        };
+        return h("div", { onPointerDown });
+      }
+    `;
+    expect(detectWindowDragGesture(bodyListenerDivider)).toBe(true);
+    expect(detectWindowDragGesture(docElDivider)).toBe(true);
+  });
+
+  it("would flag a touch-driven divider (task 187 hole 2)", () => {
+    // A `touchmove`-only divider was undetectable pre-widening (the move
+    // alternation listed only pointermove|mousemove).
+    const touchDivider = `
+      export function TouchGutter({ apply }) {
+        const onPointerDown = () => {
+          document.body.style.cursor = "col-resize";
+          window.addEventListener("touchmove", (ev) => apply(ev.touches[0].clientX));
+        };
+        return h("div", { onPointerDown });
+      }
+    `;
+    expect(detectWindowDragGesture(touchDivider)).toBe(true);
+  });
+
+  it("would flag a corner-resize-cursor divider (task 187 hole 3)", () => {
+    // Any CSS resize cursor is drag chrome — the pre-widening set enumerated
+    // only col/row/ew/ns-resize, so a divider whose cursor was a diagonal or
+    // single-axis keyword (e.g. nwse-resize) carried no recognized token.
+    const cornerDivider = `
+      export function CornerGutter({ apply }) {
+        const onPointerDown = () => {
+          const onMove = (ev) => apply(ev.clientX);
+          window.addEventListener("pointermove", onMove);
+        };
+        return h("div", { className: "grip", style: { cursor: "nwse-resize" }, onPointerDown });
+      }
+    `;
+    expect(detectWindowDragGesture(cornerDivider)).toBe(true);
   });
 
   it("does not flag the engine's own shape (element-scoped listeners under capture)", () => {
