@@ -38,6 +38,10 @@ import {
   type PaneDragInfo,
 } from "./pane-drag-bus";
 import { mountDragShield, unmountDragShield } from "./drag-shield";
+// The start gate and the missed-release failsafe are shared with the bespoke
+// gestures the engine's shape doesn't fit (the Outline FocusBand's snap-to-row
+// selection) — one definition, one rationale (task 185).
+import { isMissedRelease, isPrimaryDragStart } from "./pointer-invariants";
 
 export interface PaneResizeSpec {
   /** Stable, unique gesture id — carried on the bus info + probe data attrs. */
@@ -118,7 +122,7 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
     if (disabled) return;
     // Primary button, primary pointer only — a right-click must not start a
     // gesture whose end edge the context menu then eats.
-    if (e.button !== 0 || !e.isPrimary) return;
+    if (!isPrimaryDragStart(e)) return;
     // One pane gesture app-wide at a time.
     if (isPaneDragging()) return;
     const el = e.currentTarget;
@@ -232,11 +236,8 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
       // Missed-release failsafe: the PRIMARY button is up, so this movement
       // happened AFTER a release we never saw — end with the last live value
       // and do NOT incorporate this event's coordinate (that would be ghost
-      // drag). Bit test, not `buttons === 0`: the gesture is gated to button
-      // 0 at start, and releasing it while another button is chorded fires
-      // pointermove with an updated mask — pointerup only fires for the LAST
-      // button, which would keep a button-up drag tracking until then.
-      if ((ev.buttons & 1) === 0) {
+      // drag). Bit-test rationale lives with the predicate.
+      if (isMissedRelease(ev)) {
         finish("commit");
         return;
       }

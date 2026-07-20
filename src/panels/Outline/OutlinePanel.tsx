@@ -18,7 +18,7 @@ import {
   setOutlineCollapsedForDoc,
   getOutlineCollapsedForDoc,
 } from "./outline-prefs-store";
-import { resolveDragCommit } from "./focus-band-drag";
+import { useFocusBandEdgeDrag, type FocusBandRow } from "./focus-band-drag";
 import { landingBlockIndex, isRejectedDrop, resolveDropIndicator } from "./outline-drop";
 
 /* ── Indentation model (single source of truth) ─────────────────────────
@@ -1149,28 +1149,11 @@ function FocusBand({
   // the band tracks the cursor instead of trailing 200ms behind it.
   const [animated, setAnimated] = useState(true);
 
-  // Drag state: a snapshot of all candidate row positions taken at drag
-  // start. The drag is a purely LOCAL overlay gesture (CHIP B) — mid-drag we
-  // drive the band rect from this snapshot + the fixed-edge pixel/block (no
-  // parent state, no disk write), then commit ONCE on mouseup.
-  //  - `fixedPx`: pixel position of the edge that stays put (the band's bottom
-  //    when dragging "top", its top when dragging "bottom"), captured at
-  //    mousedown so the transient rect is computed against it.
-  //  - `startBlockIndex`/`endBlockIndex`: the committed range at mousedown.
-  //    On mouseup, resolveDragCommit derives the dragged edge's OWN row from
-  //    these to decide whether it actually moved (task 113 — comparing against
-  //    the FIXED edge's row silently dropped the shrink-onto-opposite-edge
-  //    gesture and let a drag back to the origin row commit a no-op).
-  //  - `pendingBlockIndex`: the block the dragged edge is currently snapped to
-  //    (the single value committed via onSnapBoundary on mouseup).
-  const dragRef = useRef<{
-    edge: "top" | "bottom";
-    rows: { blockIndex: number; top: number; mid: number; bottom: number }[];
-    fixedPx: number;
-    startBlockIndex: number;
-    endBlockIndex: number;
-    pendingBlockIndex: number | null;
-  } | null>(null);
+  // Whether an edge drag is live. The gesture itself (its snapshot, its
+  // listeners, and its single end path) lives in useFocusBandEdgeDrag — this
+  // ref is the one bit of it `measure()` needs to read, so the authoritative
+  // rect can't clobber the transient one mid-drag. The hook owns every write.
+  const isDraggingRef = useRef(false);
 
   // Minimum band height in pixels so a drag past the opposite edge clamps to a
   // thin band instead of inverting/collapsing (mirrors snapBoundary's 1-row
@@ -1202,7 +1185,7 @@ function FocusBand({
     // hasn't moved yet (we only commit on mouseup) — letting it run here would
     // clobber the live transient band. Bail; the post-commit measure restores
     // the authoritative rect.
-    if (dragRef.current) return;
+    if (isDraggingRef.current) return;
     const container = scrollRef.current;
     if (!container) return;
 
@@ -1251,113 +1234,19 @@ function FocusBand({
     };
   }, [scrollRef, measure]);
 
-  // Drag — snapshot row positions at mousedown and reuse them for every
-  // mousemove (CHIP B). Mid-drag is a PURELY LOCAL overlay gesture: we drive
-  // the band rect from the snapshot via setBand and do NOT touch parent state
-  // or disk. Throttle with requestAnimationFrame. The single onSnapBoundary
-  // commit happens on mouseup, so an N-row drag = 1 state write + 1 re-render
-  // + 1 breadcrumb recompute (not N).
-  useEffect(() => {
-    if (!onSnapBoundary || focusState.locked) return;
-
-    let rafScheduled = false;
-    let lastY = 0;
-
-    const flush = () => {
-      rafScheduled = false;
-      const drag = dragRef.current;
-      if (!drag) return;
-      // Nearest snapped row to the cursor.
-      let bestIdx = 0;
-      let bestDist = Infinity;
-      for (let i = 0; i < drag.rows.length; i++) {
-        const dist = Math.abs(lastY - drag.rows[i].mid);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestIdx = i;
-        }
-      }
-      const row = drag.rows[bestIdx];
-      drag.pendingBlockIndex = row.blockIndex;
-      // Transient rect against the fixed edge. Clamp so the band never inverts
-      // or collapses (consistent with snapBoundary's 1-row clamp).
-      if (drag.edge === "top") {
-        const newTop = Math.min(row.top, drag.fixedPx - MIN_PX);
-        setBand({ top: newTop, height: drag.fixedPx - newTop });
-      } else {
-        const newBottom = Math.max(row.bottom, drag.fixedPx + MIN_PX);
-        setBand({ top: drag.fixedPx, height: newBottom - drag.fixedPx });
-      }
-    };
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const drag = dragRef.current;
-      const container = scrollRef.current;
-      if (!drag || !container) return;
-      const rect = container.getBoundingClientRect();
-      lastY = e.clientY - rect.top + container.scrollTop;
-      if (!rafScheduled) {
-        rafScheduled = true;
-        requestAnimationFrame(flush);
-      }
-    };
-
-    const handleMouseUp = () => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      // Commit ONCE — but only if the dragged edge actually moved off its OWN
-      // committed row (otherwise it's a no-op click/return-to-origin and we
-      // skip the state write + re-render + breadcrumb recompute). The decision
-      // lives in resolveDragCommit (pure, unit-tested — task 113).
-      const decision = resolveDragCommit({
-        edge: drag.edge,
-        pendingBlockIndex: drag.pendingBlockIndex,
-        startBlockIndex: drag.startBlockIndex,
-        endBlockIndex: drag.endBlockIndex,
-      });
-      dragRef.current = null;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      setAnimated(true);
-      if (decision.commit) {
-        // After this lands, focusState updates and the (now un-guarded)
-        // measure() recomputes the authoritative rect — which matches the
-        // transient rect we already painted (same snapped row → same offsetTop/
-        // offsetHeight), so there is no visible jump.
-        onSnapBoundary(drag.edge, decision.blockIndex);
-      } else {
-        // No commit → focusState is untouched, so nothing re-runs measure()
-        // for us (the MO fires on childList only). Restore the authoritative
-        // rect ourselves — the mid-drag transient rect may still be painted
-        // (dragRef is cleared, so measure() no longer bails).
-        measure();
-      }
-    };
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-    // `measure` re-identifies only on focusState/row changes (commit-time,
-    // never mid-drag), so this re-subscribe stays off the drag path.
-  }, [onSnapBoundary, focusState.locked, scrollRef, measure]);
-
-  const startDrag = (edge: "top" | "bottom") => (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // Candidate snap rows, measured fresh at each mousedown. The drag never
+  // changes row layout, so this one read serves the whole gesture — we keep
+  // top/mid/bottom: `mid` for nearest-row snapping, `top`/`bottom` for the
+  // transient rect.
+  const measureRows = useCallback((): FocusBandRow[] => {
     const container = scrollRef.current;
-    if (!container || !band) return;
-    // Snapshot row geometry once. Drag doesn't change row layout, so we never
-    // need to re-read the DOM during the drag itself. We keep top/mid/bottom:
-    // `mid` for nearest-row snapping, `top`/`bottom` for the transient rect.
+    if (!container) return [];
     const rowMap = new Map<string, HTMLElement>();
     container.querySelectorAll<HTMLElement>("[data-outline-pos]").forEach((el) => {
       const attr = el.dataset.outlinePos;
       if (attr) rowMap.set(attr, el);
     });
-    const rows: { blockIndex: number; top: number; mid: number; bottom: number }[] = [];
+    const rows: FocusBandRow[] = [];
     for (const r of allRowAttrs) {
       const el = rowMap.get(r.attr);
       if (!el) continue;
@@ -1365,24 +1254,33 @@ function FocusBand({
       const bottom = el.offsetTop + el.offsetHeight;
       rows.push({ blockIndex: r.blockIndex, top, mid: top + el.offsetHeight / 2, bottom });
     }
-    // The OPPOSITE edge stays put for the whole drag. Capture its pixel position
-    // from the current band rect so the transient rect references it, plus the
-    // full committed range so the moved-check on commit compares the dragged
-    // edge against its OWN row (task 113).
-    const fixedPx = edge === "top" ? band.top + band.height : band.top;
-    dragRef.current = {
-      edge,
-      rows,
-      fixedPx,
+    return rows;
+  }, [scrollRef, allRowAttrs]);
+
+  // The edge-drag gesture. Mid-drag is purely LOCAL (CHIP B): the rect is
+  // driven from the mousedown snapshot via setBand — no parent state, no disk
+  // — and the single onSnapBoundary commit happens on the end edge, so an
+  // N-row drag = 1 state write + 1 re-render + 1 breadcrumb recompute (not N).
+  // The hook also owns the two pointer invariants a released-but-unobserved
+  // pointer would otherwise break (task 185).
+  const { startDrag } = useFocusBandEdgeDrag({
+    getScrollContainer: () => scrollRef.current,
+    enabled: !!onSnapBoundary && !focusState.locked,
+    measureRows,
+    getBand: () => band,
+    getRange: () => ({
       startBlockIndex: focusState.startBlockIndex,
       endBlockIndex: focusState.endBlockIndex,
-      pendingBlockIndex: null,
-    };
-    document.body.style.cursor = "ns-resize";
-    document.body.style.userSelect = "none";
-    // Disable transitions during drag so the band tracks the cursor.
-    setAnimated(false);
-  };
+    }),
+    minPx: MIN_PX,
+    setBand,
+    setAnimated,
+    restore: measure,
+    setDragging: (dragging) => {
+      isDraggingRef.current = dragging;
+    },
+    onSnapBoundary,
+  });
 
   if (!band) return null;
 

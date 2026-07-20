@@ -75,8 +75,8 @@ const PERMITTED_WINDOW_DRAG_GESTURES: Record<string, string> = {
     "Floating-panel drag positioner — RAF-coalesced setPosition (≤1 per frame) on one small fixed panel; body cursor set/cleared on the edges; no persistence (position IS the session state).",
   "src/hooks/useMarginEdit.ts":
     "Margin-edit guides — engine-conformant by hand: frame rect snapshotted at drag start, RAF-coalesced CSS-var writes on the editor column per frame, ONE setLiveMargins commit on release, body cursor on the edges, primary-button start gate + (buttons & 1)===0 mid-move bail + window-blur failsafe closing the missed-release end edge (a release over the compiled-PDF iframe must not ghost-resume or wedge the cursor). Pre-dates the engine; its 4-side axis tables + opposite-side snap live outside the single-value PaneResizeSpec shape.",
-  "src/panels/Outline/OutlinePanel.tsx":
-    "Focus-band edge drag (snap-to-row selection, not a pane resize): row geometry snapshotted at drag start (offsetTop reads, none per frame), RAF-coalesced transient band paint, ONE onSnapBoundary commit on mouseup; body cursor on the edges.",
+  "src/panels/Outline/focus-band-drag.ts":
+    "Focus-band edge drag (snap-to-row selection, not a pane resize): row geometry snapshotted at drag start (offsetTop reads, none per frame), RAF-coalesced transient band paint, ONE onSnapBoundary commit on the end edge; body cursor on the edges. Since task 185 it also closes the missed-release end edge the way the engine does — it shares the engine's own predicates (lib/pane-resize/pointer-invariants): primary-button start gate + an isMissedRelease(e) mid-move bail that ends before reading the stray coordinate, plus a teardown end path so unmount can't leave the stamp. Extracted out of OutlinePanel.tsx so the gesture is a testable unit.",
 };
 
 // ── The library ResizeObserver census ────────────────────────────────────────
