@@ -4503,21 +4503,12 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   letter-spacing: 0.04em;
 }
 
-/* ── Drag gap — invisible split handle with blue hover highlight ── */
+/* ── Drag gap — invisible split handle; the sole visible affordance is the
+   centered `.band-grip` pill (below), not a hairline. ── */
 .drag-gap {
   background: transparent;
   position: relative;
   flex-shrink: 0;
-}
-.drag-gap::after {
-  content: '';
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-  background: var(--drag-highlight);
-}
-.drag-gap.dragging::after {
-  opacity: 0.5;
 }
 /* Vertical drag gap (col-resize — between panels and editor) */
 .drag-gap-v {
@@ -4527,12 +4518,12 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
      pointer events instead of the editor-column div beneath it. */
   z-index: 2;
 }
+/* The vertical band-grip pill lives on `::after`; only its horizontal centre
+   anchor lives here — kept at this low specificity so the toward-editor nudges
+   below can override it. All other geometry comes from
+   `.drag-gap-v.band-grip::after`. */
 .drag-gap-v::after {
-  top: 0;
-  bottom: 0;
   left: 50%;
-  width: 1px;
-  transform: translateX(-0.5px);
 }
 /* Panel wrappers add 4px padding on each side, so the real visual
    gutter between panel pod and editor pod is 8px wider than the
@@ -4567,13 +4558,6 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
 .drag-gap-h {
   cursor: row-resize;
 }
-.drag-gap-h::after {
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 1px;
-  transform: translateY(-0.5px);
-}
 
 /* ── Shared resize-gutter grip (`.band-grip`) — orientation-agnostic ──
    ONE grip-pill chrome consumed by every resizer in the app: the panel-band
@@ -4585,9 +4569,9 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
 
    The pill lives on `::before` for horizontal gutters and on `::after` for
    vertical ones — because `.drag-gap-v::before` is already claimed by the
-   gutter's invisible hit-area extension, whereas its `::after` (the old faint
-   1px line) is now repurposed as the pill. One shared rule set carries every
-   property that doesn't depend on orientation; the two per-orientation blocks
+   gutter's invisible hit-area extension, so its `::after` holds the pill.
+   One shared rule set carries every property that doesn't depend on
+   orientation; the two per-orientation blocks
    below differ only in which axis is the pill's long side + which axis widens.
    Scoped to `.band-grip`, so bare drag-gap lines are unaffected. */
 .drag-gap-h.band-grip::before,
@@ -4623,10 +4607,9 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
 }
 
 /* Vertical gutter — the same pill rotated (4×28), widening along its HEIGHT.
-   Overrides the base `.drag-gap-v::after` 1px-line geometry (top/bottom/width/
-   transform) so the strip's sole affordance is now the grip pill. `left` is
-   left to the base `.drag-gap-v::after` (50%) and the toward-editor nudge so
-   the pill lands at the true centre of the padded gutter, same as the old line. */
+   Sets the pill's box (top/bottom/width/height/transform); `left` is left to
+   `.drag-gap-v::after` (50%) and the toward-editor nudge so the pill lands at
+   the true centre of the padded gutter. */
 .drag-gap-v.band-grip::after {
   top: 50%;
   bottom: auto;
