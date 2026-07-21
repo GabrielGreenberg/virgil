@@ -184,23 +184,93 @@ def _memos_root() -> Path:
 
 
 def _skill_sha(skill: str) -> str:
-    """Best-effort `git rev-parse HEAD:editor/skills/<skill>.md`, short, against
-    the Virgil SOURCE repo (resolved independently of `__file__`, so it still
-    works when this script runs from a synced paper copy). Never fatal — a repo
-    we can't find records 'unknown'; an uncommitted/unknown skill 'uncommitted'."""
+    """Best-effort `git rev-parse HEAD:editor/skills/<skill>.md` against the
+    Virgil SOURCE repo (resolved independently of `__file__`, so it still works
+    when this script runs from a synced paper copy). Returns the full blob hash
+    sliced to 7 chars — NOT git `--short`, whose length floats with HEAD's
+    disambiguation needs (8+ chars) and would then never string-equal the 7-char
+    `_skill_working_sha`, silently defeating the equal-shas-are-clean signal the
+    two are meant to support. Both slice the same object hash to the same width,
+    so equal content compares equal. Never fatal — a repo we can't find records
+    'unknown'; an uncommitted/unknown skill 'uncommitted'."""
     repo = source_repo_root()
     if repo is None:
         return "unknown"
     try:
         out = subprocess.run(
-            ["git", "-C", str(repo), "rev-parse", "--short",
+            ["git", "-C", str(repo), "rev-parse",
              f"HEAD:editor/skills/{skill}.md"],
             capture_output=True, text=True, timeout=10,
         )
         sha = out.stdout.strip()
-        return sha if out.returncode == 0 and sha else "uncommitted"
+        return sha[:7] if out.returncode == 0 and sha else "uncommitted"
     except Exception:
         return "unknown"
+
+
+def _skill_working_sha(skill: str) -> str:
+    """Content hash of the skill markdown AS IT EXISTS ON DISK in the source
+    repo working tree (`git hash-object`, short), so a divergence from
+    `_skill_sha`'s HEAD blob is itself the staleness signal: it means the copy
+    on disk (and therefore the copy that could have been bundled/served) is not
+    what HEAD attests. Equal shas → clean; differing shas → an uncommitted or
+    stale local skill ran. Never fatal — same 'unknown'/'uncommitted' vocabulary
+    as `_skill_sha` so the two are directly comparable in the corpus.
+
+    NOTE: this hashes the source-repo working file, which is the closest truth
+    reflect.py can compute locally. It does NOT reach into a built skill bundle;
+    when the served prompt comes from a stale *bundle* (built off an older
+    commit) both shas can still agree. That residual is a bundle-provenance
+    problem tracked separately — see the digest escalation on build:skill-bundles."""
+    repo = source_repo_root()
+    if repo is None:
+        return "unknown"
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo), "hash-object", "--",
+             f"editor/skills/{skill}.md"],
+            capture_output=True, text=True, timeout=10,
+        )
+        sha = out.stdout.strip()
+        return sha[:7] if out.returncode == 0 and sha else "uncommitted"
+    except Exception:
+        return "unknown"
+
+
+def _bundle_version(doc: Path | None = None) -> str:
+    """The `version` stamp of the skill BUNDLE that was actually distributed to
+    the paper this reflection ran under — the provenance of what REALLY ran,
+    unified across every skill in one field. This closes the residual the
+    `_skill_working_sha` docstring names: `skillSha`/`skillWorkingSha` compare
+    the source repo against itself, so they cannot see that the SERVED prompt
+    came from an older *bundle* (built off a past commit, then synced into the
+    paper's `.virgil/`) — when that happens both shas still agree while a stale
+    prompt runs. Reading the bundle's own `.skill-bundle-version.json` makes a
+    stale-bundle run finally visible in the corpus. Resolution, most-specific
+    first: the paper's `<doc>/.virgil/.skill-bundle-version.json`; else walk up
+    from this file for a `.virgil/.skill-bundle-version.json` (the synced-copy
+    case reflect.py runs from); else the source repo's
+    `library-data/.virgil/.skill-bundle-version.json` (dev/SSOT runs). Never
+    fatal — 'unknown' when no stamp is found."""
+    candidates: list[Path] = []
+    if doc is not None:
+        candidates.append(Path(doc) / ".virgil" / ".skill-bundle-version.json")
+    for parent in Path(__file__).resolve().parents:
+        candidates.append(parent / ".virgil" / ".skill-bundle-version.json")
+        candidates.append(parent / ".skill-bundle-version.json")
+    repo = source_repo_root()
+    if repo is not None:
+        candidates.append(
+            repo / "library-data" / ".virgil" / ".skill-bundle-version.json")
+    for p in candidates:
+        try:
+            if p.is_file():
+                v = str(json.loads(p.read_text()).get("version", "")).strip()
+                if v:
+                    return v
+        except Exception:
+            continue
+    return "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +323,8 @@ def _read_task(doc: Path, task_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 FM_KEYS = ["skill", "taskId", "kind", "status", "result", "tier", "fixNow",
-           "paragraphIds", "reflectedAt", "skillSha"]
+           "paragraphIds", "reflectedAt", "skillSha", "skillWorkingSha",
+           "bundleVersion"]
 
 
 def _parse_memo(text: str) -> tuple[dict, dict]:
@@ -484,6 +555,15 @@ def main(argv: list[str]) -> int:
         # Task's, not this invocation's); record the skill sha fresh.
         "reflectedAt": prior_fm.get("reflectedAt") or iso,
         "skillSha": _skill_sha(a.skill),
+        # Companion to skillSha: hash of the on-disk working copy. skillSha ==
+        # skillWorkingSha → clean; they differ → a stale/uncommitted skill ran.
+        # (The HEAD blob sha and hash-object blob sha are the same object hash,
+        # so equal values compare directly.)
+        "skillWorkingSha": _skill_working_sha(a.skill),
+        # Provenance of the BUNDLE that actually ran (see _bundle_version): the
+        # one stamp that catches a stale served prompt even when both shas above
+        # agree — the residual _skill_working_sha's docstring flags as open.
+        "bundleVersion": _bundle_version(doc),
         # render-only (not persisted as frontmatter keys)
         "_summary": a.summary or memo.get("summary") or prior_summary,
         "_source": task["source"],
