@@ -544,7 +544,7 @@ crowded workspace:
 
 Five variants × three sizes via `<Button variant size>`:
 
-- **primary** — `bg-accent` text white. At most one per surface.
+- **primary** — `bg-btn-primary` (the taupe `--control-selected`, not the `--accent` brown) text white. At most one per surface.
 - **secondary** — `bg-surface border-edge-hover`. The default.
 - **warm** — `bg-accent-light text-accent`. The "Apply / Yes" affordance
   in suggestion flows.
