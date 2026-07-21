@@ -13,7 +13,7 @@
  * them for backward compatibility).
  */
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Button, Chevron } from "@/components/panel-primitives";
 import { BorrowedMainText } from "@/components/BorrowedMainText";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -252,6 +252,63 @@ export function FieldTitleRow({
       )}
     </div>
   );
+}
+
+/**
+ * The captured-selection excerpt cue shared by the two comment cards
+ * (`CutterCommentCard` / `RevisionRequestCard`). A comment anchored to a text
+ * selection stores that span in `card.selectedText`; both cards surface it the
+ * same way and must not drift (task 200 — the revision twin never grew this,
+ * so it rendered no cue about which passage it targeted):
+ *
+ *  - `excerptBlock` — an "Original" section rendered ABOVE the body via
+ *    `EditableCard`'s additive `aboveBody` slot, fold-toggleable, in the
+ *    suggestion-card "Original" dialect (`FieldTitleRow` + red danger-soft
+ *    block). Owns its own fold state.
+ *  - `compressedExcerpt` — the red-italic quoted one-liner a collapsed card
+ *    shows in place of the rich-text body summary.
+ *
+ * Both are `undefined` when there is no `selectedText`, so a card can fall
+ * back to its body-derived summary. This is the single source of truth so the
+ * two hand-forked comment cards can't diverge again.
+ */
+export function useExcerptCue({
+  selectedText,
+  kindHint,
+  label = "Original",
+}: {
+  selectedText?: string | null;
+  kindHint?: string | null;
+  label?: string;
+}): { excerptBlock: ReactNode | undefined; compressedExcerpt: ReactNode | undefined } {
+  const [folded, setFolded] = useState(false);
+  if (!selectedText) {
+    return { excerptBlock: undefined, compressedExcerpt: undefined };
+  }
+  const excerptBlock = (
+    <div className="mb-2">
+      <FieldTitleRow
+        label={label}
+        kindHint={kindHint ?? null}
+        text={selectedText}
+        showCopy={true}
+        showWordCount={true}
+        folded={folded}
+        onToggleFold={() => setFolded((f) => !f)}
+      />
+      {!folded && (
+        <div className="bg-danger-soft border border-red-200 rounded px-2 py-1.5 text-xs text-red-700 whitespace-pre-wrap break-words">
+          {selectedText}
+        </div>
+      )}
+    </div>
+  );
+  const compressedExcerpt = (
+    <span className="text-red-700/80 italic">
+      &quot;{selectedText.replace(/\s+/g, " ").trim()}&quot;
+    </span>
+  );
+  return { excerptBlock, compressedExcerpt };
 }
 
 /** A single labelled suggestion field (title row + textarea). `panelKey`

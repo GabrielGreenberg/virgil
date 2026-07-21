@@ -11,12 +11,17 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
-import { getLinkedTextObjectIds, hasTextAnchor } from "@/links/links";
+import {
+  getAnchorSummary,
+  getLinkedTextObjectIds,
+  hasTextAnchor,
+} from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { useExcerptCue } from "@/panels/_shared/suggestion-fields";
 
 export function RevisionRequestCard({
   card,
@@ -51,6 +56,7 @@ export function RevisionRequestCard({
   const isAnchored =
     getLinkedTextObjectIds(card).length > 0 || hasTextAnchor(card);
   const isOrphaned = !isAnchored && !!card.selectedText;
+  const anchorSummary = getAnchorSummary(card, editor ?? null);
   const popped = usePoppedCards();
   const cardKey = popKey("revisions", card.id);
   const onToggleFromCtx =
@@ -63,11 +69,18 @@ export function RevisionRequestCard({
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
+  // The captured-selection excerpt cue (SSOT for both comment cards). A
+  // selection-anchored revision comment shows its excerpt (red italic) as the
+  // compressed cue, falling back to the rich-text body summary.
+  const { excerptBlock, compressedExcerpt } = useExcerptCue({
+    selectedText: card.selectedText,
+    kindHint: anchorSummary?.kind ?? null,
+  });
   const compressedSummary = compressed
-    ? (makeCompressedSummary(card.content, compressedLines) || "")
+    ? (compressedExcerpt ??
+      (makeCompressedSummary(card.content, compressedLines) || ""))
     : undefined;
 
-  void editor;
   void isOrphaned;
 
   const handleChange = useCallback(
@@ -117,6 +130,7 @@ export function RevisionRequestCard({
         });
       }}
       onDelete={() => onDelete(card.id)}
+      aboveBody={excerptBlock}
       footer={
         !compressed ? (
           <div className="px-3 pb-2 -mt-1">

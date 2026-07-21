@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
 import {
@@ -21,7 +21,7 @@ import { cardKindsForPanel, bodyVariantForCardKind } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { FieldTitleRow } from "./CutterSuggestionCard";
+import { useExcerptCue } from "@/panels/_shared/suggestion-fields";
 
 export function CutterCommentCard({
   card,
@@ -64,23 +64,22 @@ export function CutterCommentCard({
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
 
-  const [originalFolded, setOriginalFolded] = useState(false);
   const ac = useAnchoredCard({ kind: "cutter-comment", id: card.id });
   const cardStore = useCardStore();
   const isExpanded = ac.expanded;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
-  // The cut excerpt is the cutter card's distinctive compressed cue — show it
-  // (red italic) when present, falling back to the rich-text body summary.
+  // The captured-selection excerpt cue (SSOT for both comment cards). The cut
+  // excerpt is the cutter card's distinctive compressed cue — show it (red
+  // italic) when present, falling back to the rich-text body summary.
+  const { excerptBlock, compressedExcerpt } = useExcerptCue({
+    selectedText: card.selectedText,
+    kindHint: anchorSummary?.kind ?? null,
+  });
   const compressedSummary = compressed
-    ? card.selectedText
-      ? (
-          <span className="text-red-700/80 italic">
-            &quot;{card.selectedText.replace(/\s+/g, " ").trim()}&quot;
-          </span>
-        )
-      : (makeCompressedSummary(card.content, compressedLines) || undefined)
+    ? (compressedExcerpt ??
+      (makeCompressedSummary(card.content, compressedLines) || undefined))
     : undefined;
 
   const handleChange = useCallback(
@@ -95,29 +94,6 @@ export function CutterCommentCard({
   // used to live here is removed — the chokepoint expands + focuses the body
   // for every editable-body kind at creation, so this per-kind workaround is
   // redundant.)
-
-  // The one structural element unique to cutter comments: the excised text,
-  // rendered as an "Original" section ABOVE the comment body (via EditableCard's
-  // additive `aboveBody` slot). Styled in the suggestion-card "Original" dialect
-  // (FieldTitleRow + the red danger-soft block) for cross-panel consistency.
-  const excerptBlock = card.selectedText ? (
-    <div className="mb-2">
-      <FieldTitleRow
-        label="Original"
-        kindHint={anchorSummary?.kind ?? null}
-        text={card.selectedText}
-        showCopy={true}
-        showWordCount={true}
-        folded={originalFolded}
-        onToggleFold={() => setOriginalFolded((f) => !f)}
-      />
-      {!originalFolded && (
-        <div className="bg-danger-soft border border-red-200 rounded px-2 py-1.5 text-xs text-red-700 whitespace-pre-wrap break-words">
-          {card.selectedText}
-        </div>
-      )}
-    </div>
-  ) : undefined;
 
   const cardEl = (
     <EditableCard
