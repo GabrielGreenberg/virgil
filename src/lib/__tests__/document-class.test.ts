@@ -109,6 +109,15 @@ describe("findSectioningCommands", () => {
     expect(found.has("chapter")).toBe(false);
     expect(found.has("section")).toBe(true);
   });
+
+  it("detects a \\chapter after a same-line verbatim carrying a % (task 208)", () => {
+    // A `%` inside the verbatim used to truncate the `\end{verbatim}` token,
+    // sticking the projection in verbatim to EOF and hiding the \chapter.
+    const found = findSectioningCommands(
+      "\\begin{verbatim}x % y\\end{verbatim}\n\\chapter{A}",
+    );
+    expect(found.has("chapter")).toBe(true);
+  });
 });
 
 describe("detectDocumentClassMismatch", () => {

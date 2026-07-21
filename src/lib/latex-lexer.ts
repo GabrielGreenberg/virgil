@@ -93,11 +93,24 @@ function familyBeginEndRes(envs: readonly string[]): {
   };
 }
 
-/** Strip a line's `%`-comment tail. A `%` starts a comment unless escaped
- *  (`\%`); an even run of backslashes before it (`\\%` = linebreak + comment)
- *  does not escape it. Folded verbatim from the former `stripCommentTail`. */
+/** Index of the char that begins a line's `%`-comment, or -1 if the line has
+ *  none. A `%` starts a comment unless escaped (`\%`); an even run of
+ *  backslashes before it (`\\%` = linebreak + comment) does not escape it.
+ *  The single SSOT for "where does the comment start" — both `stripCommentTail`
+ *  and `projectLiveLatex`'s verbatim-aware walk read it, so the escaping rule
+ *  lives in exactly one regex. */
+function commentTailStart(line: string): number {
+  // Group 1 is the (unescaped) run right before the `%`; the `%` itself sits at
+  // `m.index + m[1].length`.
+  const m = /((?:^|[^\\])(?:\\\\)*)%/.exec(line);
+  return m ? m.index + m[1].length : -1;
+}
+
+/** Strip a line's `%`-comment tail (see {@link commentTailStart}). Folded
+ *  verbatim from the former `stripCommentTail`. */
 function stripCommentTail(line: string): string {
-  return line.replace(/((?:^|[^\\])(?:\\\\)*)%.*$/, "$1");
+  const i = commentTailStart(line);
+  return i === -1 ? line : line.slice(0, i);
 }
 
 /** Drop inline `\verb<delim>…<delim>` / `\verb*<delim>…<delim>` runs from a
@@ -161,12 +174,15 @@ export function projectLiveLatex(
   const out: string[] = [];
   let inVerbatim = false;
   for (const rawLine of src.split("\n")) {
-    // Comments only exist outside verbatim (inside, `%` is literal — and the
-    // content is dropped wholesale anyway).
-    let line = inVerbatim ? rawLine : stripCommentTail(rawLine);
+    let line = rawLine;
     let kept = "";
     // Walk the line through verbatim open/close transitions so same-line
-    // `\begin{verbatim}…\end{verbatim}` pairs are handled too.
+    // `\begin{verbatim}…\end{verbatim}` pairs are handled too. Comment
+    // stripping is INTERLEAVED with this walk — never applied up front — so a
+    // `%` is only honored on the portion of the line currently OUTSIDE a
+    // verbatim span. Inside verbatim a `%` is literal; a `%` before a
+    // same-line `\end{verbatim}` must NOT truncate the `\end` token (the
+    // pre-strip bug that let a same-line verbatim swallow the source to EOF).
     for (;;) {
       if (inVerbatim) {
         const end = endRe.exec(line);
@@ -178,9 +194,14 @@ export function projectLiveLatex(
         line = line.slice(end.index + end[0].length);
         continue;
       }
+      // Outside verbatim: a comment tail wins over any `\begin{verbatim}` that
+      // sits at or after it — that begin is itself commented out. Only a begin
+      // strictly BEFORE the comment is a real open.
       const begin = beginRe.exec(line);
-      if (!begin) {
-        kept += inlineVerb ? stripInlineVerb(line) : line;
+      const comment = commentTailStart(line);
+      if (!begin || (comment !== -1 && begin.index >= comment)) {
+        const visible = comment === -1 ? line : line.slice(0, comment);
+        kept += inlineVerb ? stripInlineVerb(visible) : visible;
         break;
       }
       const head = line.slice(0, begin.index);

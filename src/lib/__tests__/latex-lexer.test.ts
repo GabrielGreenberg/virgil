@@ -61,6 +61,35 @@ describe("projectLiveLatex — verbatim (NARROW family)", () => {
     ).toBe("before  after");
   });
 
+  // task 208: the `%` inside a same-line verbatim is LITERAL — it must not be
+  // stripped before the walk sees the `\end{verbatim}` (the pre-strip bug that
+  // deleted the close token and left `inVerbatim` stuck to EOF).
+  it("a same-line verbatim carrying a % does NOT swallow following source", () => {
+    expect(
+      projectLiveLatex("\\begin{verbatim}x % y\\end{verbatim}\nAFTER"),
+    ).toBe("\nAFTER");
+  });
+
+  it("a same-line verbatim-with-% keeps a live command on the NEXT line", () => {
+    expect(
+      projectLiveLatex("\\begin{verbatim}a%b\\end{verbatim}\n\\includegraphics{p}\n"),
+    ).toBe("\n\\includegraphics{p}\n");
+  });
+
+  it("still strips a genuine trailing comment AFTER a same-line close", () => {
+    // The `%` here is outside verbatim (past `\end{verbatim}`), so it is a real
+    // comment and its tail drops — the working path must not regress.
+    expect(
+      projectLiveLatex("\\begin{verbatim}code\\end{verbatim} % tail\nlive"),
+    ).toBe(" \nlive");
+  });
+
+  it("still strips a trailing comment after a MULTI-line verbatim close", () => {
+    expect(
+      projectLiveLatex("\\begin{verbatim}\ncode\n\\end{verbatim} % tail\nlive"),
+    ).toBe("\n\n \nlive");
+  });
+
   it("NARROW family leaves lstlisting/minted contents alone", () => {
     const src = "\\begin{lstlisting}\n\\section{live-here}\n\\end{lstlisting}";
     // NARROW does not drop lstlisting, so the inner text survives.
