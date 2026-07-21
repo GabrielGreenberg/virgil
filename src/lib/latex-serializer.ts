@@ -7,7 +7,7 @@ import {
   detectBodyRequirements,
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
-import { typographyToLatex } from "@/lib/latex-typography";
+import { typographyToLatex, smartenStraightQuotes } from "@/lib/latex-typography";
 import { extractBraced, isEscaped } from "@/lib/latex-lexer";
 import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
 import { classifyCiteFamily } from "@/lib/bib-family";
@@ -100,11 +100,7 @@ function serializeMarks(
   // round-trip to a valid `.tex` even when the mark has been inherited
   // onto stray text by Tiptap's default mark-extension behavior.
   if (marks.some((m) => m.type === "latexCommand")) {
-    return text
-      .replace(/“/g, "``")
-      .replace(/”/g, "''")
-      .replace(/(^|[\s([{—–])"/g, "$1``")
-      .replace(/"/g, "''");
+    return smartenStraightQuotes(text);
   }
 
   // Code spans are verbatim — `--` is literal and accent commands stay raw,
@@ -195,18 +191,17 @@ function escapeLatex(
   // `\ex[exno=3]`, real `\\[2em]` lengths) live on latexCommand/texBlock/example
   // paths that bypass escapeLatex, so only prose text is touched. The parser
   // collapses `{[}`/`{]}` back to a bare `[`/`]`, closing the round-trip.
-  const escaped = text
-    .replace(/(?<!\\)([&%#$_])/g, "\\$1")
-    .replace(/\[/g, "{[}")
-    .replace(/\]/g, "{]}")
-    .replace(/~/g, "\\textasciitilde{}")
-    .replace(/\^/g, "\\textasciicircum{}")
-    .replace(/“/g, "``")
-    .replace(/”/g, "''")
-    // Straight `"` → smart LaTeX pair. Opening if at start or after
-    // whitespace / opening punctuation; otherwise closing.
-    .replace(/(^|[\s([{—–])"/g, "$1``")
-    .replace(/"/g, "''");
+  // Straight/curly `"` → smart LaTeX pairs via the shared serialize-side
+  // helper (also used by serializeMarks' latexCommand path) so the
+  // opener/closer character class has exactly ONE definition.
+  const escaped = smartenStraightQuotes(
+    text
+      .replace(/(?<!\\)([&%#$_])/g, "\\$1")
+      .replace(/\[/g, "{[}")
+      .replace(/\]/g, "{]}")
+      .replace(/~/g, "\\textasciitilde{}")
+      .replace(/\^/g, "\\textasciicircum{}"),
+  );
   // Typographic reverse-map (accents/special-letters/dashes/ellipsis →
   // canonical LaTeX) runs AFTER char-escaping so its emitted `\^{e}` / `\~{n}`
   // commands aren't re-escaped by the `^`/`~` rules above. Suppressed for
