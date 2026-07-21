@@ -111,6 +111,47 @@ describe("LaTeX double-quote round-trip", () => {
     const out = serializeBody(doc as any);
     expect(out).toContain("(see ``page 4'')");
   });
+
+  it("straight \" immediately after a slash opens (not closes)", () => {
+    // Regression: the opener lookbehind omitted `/`, so a `"` after a slash
+    // fell through to the closing rule and serialized ``and/''or''`` — a
+    // wrong-way double-quote. `/` is now an opening context.
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: 'and/"or"' }],
+        },
+      ],
+    };
+    const out = serializeBody(doc as any);
+    expect(out).toContain("and/``or''");
+    expect(out).not.toContain("and/''");
+  });
+
+  it("smartens quotes on a raw latexCommand-marked node via the shared helper", () => {
+    // The latexCommand path smartens straight quotes WITHOUT the full
+    // typographic reverse-map — and shares the same opener class, so `/"`
+    // opens there too.
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: 'x/"y"',
+              marks: [{ type: "latexCommand" }],
+            },
+          ],
+        },
+      ],
+    };
+    const out = serializeBody(doc as any);
+    expect(out).toContain("x/``y''");
+  });
 });
 
 describe("LaTeX quote ENVIRONMENT round-trip (blockquote)", () => {

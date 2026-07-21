@@ -499,6 +499,40 @@ export function typographyToLatex(text: string): string {
   return out;
 }
 
+/**
+ * Reverse-map straight/curly double quotes to their canonical LaTeX pairs:
+ * an OPENING `"` → ``` `` ```, a CLOSING `"` → `''`. A `"` opens when it sits
+ * at the start of the buffer or immediately after whitespace / opening
+ * punctuation (`(` `[` `{` `/`) or a dash glyph (— –); otherwise it closes.
+ * Curly `“`/`”` map directly to the opening/closing pair regardless of
+ * context. Ordered opener-before-closer so the greedy closing catch-all only
+ * sees the quotes the opener rule didn't claim.
+ *
+ * This is the ONE serialize-side smart-quote transform, shared by
+ * `escapeLatex` (prose char-escape path) and `serializeMarks`' raw
+ * `latexCommand` path — previously duplicated byte-for-byte in both, which let
+ * the opener character class drift (the `/` omission that made `and/"or"`
+ * serialize a wrong-way closing pair). Sits beside `typographyToLatex` because
+ * it is the same "glyph → canonical LaTeX" direction, but is a SEPARATE export:
+ * the `latexCommand` path smartens quotes WITHOUT running the full typographic
+ * reverse-map (the user typed raw LaTeX there on purpose).
+ *
+ * Callers run this INSIDE `escapeLatex` after char-escaping and, for
+ * `latexCommand`, on the raw mark text — never on `code`/verbatim spans.
+ */
+export function smartenStraightQuotes(text: string): string {
+  return (
+    text
+      .replace(/“/g, "``")
+      .replace(/”/g, "''")
+      // Straight `"` → smart LaTeX pair. Opening if at start or after
+      // whitespace / opening punctuation (incl. `/`) / a dash glyph;
+      // otherwise closing.
+      .replace(/(^|[\s([{/—–])"/g, "$1``")
+      .replace(/"/g, "''")
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Introspection for tests — expose the table so the golden round-trip test
 // derives its cases from the SAME source of truth, not a hand-copied list.
