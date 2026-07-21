@@ -107,6 +107,17 @@ describe("detectBodyRequirements — detection matrix", () => {
     ).toContain("xcolor");
   });
 
+  it("detects \\includegraphics after a same-line verbatim carrying a % (task 208)", () => {
+    // The `%` inside the verbatim used to truncate the `\end{verbatim}`, leaving
+    // the projection stuck in verbatim to EOF so the trailing \includegraphics
+    // was never seen → graphicx silently un-injected → the saved .tex fails.
+    expect(
+      detectBodyRequirements(
+        "\\begin{verbatim}x % y\\end{verbatim}\n\\includegraphics{p}",
+      ),
+    ).toContain("graphicx");
+  });
+
   // P4: the broadened, SHARED tikz vocabulary — the fallback detector uses the
   // exact same TIKZ_RE the emit-site declarations use.
   it("detects the broadened tikz family: \\tikz inline / tikzcd / pgfplots \\begin{axis}", () => {
