@@ -3392,7 +3392,10 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
 }
 
 .latex-comment:hover {
-  background: #e8f0f8;
+  /* Derived from `latexCommentColor` (preferences-tree DERIVED_CSS), so the
+   * hover wash follows a comment recolor instead of staying frozen blue —
+   * task 193, the task-175 `--footnote-bg-hover` class. */
+  background: var(--latex-comment-bg-hover, #e8f0f8);
 }
 
 /* Node-selection feedback (grab-handle / arrow-nav), matching the block-node
@@ -3404,7 +3407,10 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
 .latex-comment.ProseMirror-selectednode {
   outline: 2px solid var(--heading-annotation-border, #a8c4de);
   outline-offset: -1px;
-  background: #e0ecf5;
+  /* Node-selection wash, one derive step darker than :hover — likewise tracks
+   * `latexCommentColor` (task 193). The outline stays on the shared
+   * heading-annotation chrome token (see the handle note below). */
+  background: var(--latex-comment-bg-active, #e0ecf5);
 }
 
 .latex-comment-handle {
@@ -3418,7 +3424,12 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
 }
 
 .latex-comment-handle:hover {
-  background: #7fa8c8;
+  /* The handle chrome (rest bg, selectednode outline, prefix) is deliberately
+   * the shared heading-annotation blue, NOT the comment's text color — so its
+   * hover darkens THAT token rather than deriving from `latexCommentColor`,
+   * keeping the handle on one ray with its own rest state. Was a frozen
+   * `#7fa8c8`; now tracks a `headingAnnotationBorder` recolor (task 193). */
+  background: color-mix(in oklab, var(--heading-annotation-border, #a8c4de) 82%, #000);
 }
 
 .latex-comment-content {

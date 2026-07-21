@@ -362,6 +362,22 @@ export const DERIVED_CSS: DerivedCssMapping[] = [
   { cssVar: "--comment-bg", compute: (p) => hexToRgba(p.commentColor, 0.25) },
   { cssVar: "--comment-border", compute: (p) => hexToRgba(p.commentColor, 0.5) },
   { cssVar: "--latex-comment-bg", compute: (p) => deriveLight(p.latexCommentColor, 0.12) },
+  // Hover + node-selection washes for the inline LaTeX-comment node — the same
+  // derivation as the rest-state twin above, one/two steps stronger, so they
+  // follow the user's `latexCommentColor` instead of a frozen blue (task 193,
+  // the task-175 `--footnote-bg-hover` class one inline-kind over).
+  //
+  // DELIBERATE SAME-RAY NEAR-MATCH, not a byte-preserving swap: the retired
+  // literals `#e8f0f8` (hover) / `#e0ecf5` (selectednode) were hand-picked with
+  // a bluer-than-ray bias, so no single opacity reproduces all three channels.
+  // 0.16 / 0.22 reproduce each literal's RED channel EXACTLY (`#e8…` / `#e0…` —
+  // the dominant hue channel), landing g/b a few /255 less blue so the wash now
+  // sits on the SAME ray as the rest state (rest #eef2f6 → hover #e8edf2 →
+  // active #e0e7ee at the default #7191b0). Consistency with the rest wash is
+  // the property that was broken, and is worth a couple /255 of blue — same
+  // trade the footnote precedent accepted at `--footnote-bg-hover` below.
+  { cssVar: "--latex-comment-bg-hover", compute: (p) => deriveLight(p.latexCommentColor, 0.16) },
+  { cssVar: "--latex-comment-bg-active", compute: (p) => deriveLight(p.latexCommentColor, 0.22) },
   { cssVar: "--citation-bg", compute: () => "#ffffff" },
   { cssVar: "--footnote-bg", compute: (p) => deriveLight(p.footnoteColor, 0.08) },
   // Hover wash for the in-text footnote marker — the same derivation as its
