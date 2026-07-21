@@ -1,4 +1,4 @@
-<!-- last-verified: 0d788512 2026-07-18 -->
+<!-- last-verified: 887ea534 2026-07-21 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
@@ -218,7 +218,7 @@ The agent writes `<sidecar>.json` (the new/changed card) + `ai-requests.json` (T
 ## Code organization
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
-*An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: aa5e40f`).*
+*An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: 887ea534`).*
 
 ### `src/` top-level map
 
@@ -255,6 +255,7 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 
 - **Disk (File System Access API):** the single boundary is [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts) — every read/write routes through it. On disk per paper: `<name>.tex` (source of truth), optional `<name>.bib`, and the `virgil/` sidecar folder.
 - **IndexedDB:** preferences, tab state, folder handles, doc index — never paper content.
+- **localStorage + the cross-window rule:** multi-window is first-class (`openNewVirgilWindow`), so any store that caches a `localStorage` snapshot must re-hydrate on the native `storage` event or its next write silently clobbers a peer window's change from a stale base. The contract has exactly one encoding — [src/lib/cross-window-storage.ts](../../src/lib/cross-window-storage.ts) — and every snapshot-caching store rides it (tasks 177 + 179 drained the census). Detail: `docs/agents/architecture.md` → "localStorage stores + the cross-window rule".
 
 ### LaTeX round-trip
 
