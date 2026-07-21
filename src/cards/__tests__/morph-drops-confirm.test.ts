@@ -76,15 +76,19 @@ describe("morphConfirmMessage — generated from drops, direction-correct", () =
     expect(morphConfirmMessage("highlight")).toBeNull();
   });
 
-  it("comment → suggestion warns it drops the rich formatting (both pairs — 074)", () => {
+  it("comment → suggestion warns it drops the rich formatting AND the AI-request flag (both pairs — 074/198)", () => {
     // The comment shape holds a rich `content` (citations, math, marks, multi-
     // paragraph); the suggestion shape has no home for it, so the outbound morph
     // flattens it to plain text. The declaration used to lie (`drops: []`) and
     // flip silently; now it names `formatting` so the generated confirm fires.
+    // 198: the comment is also `aiRequest: true` bridging an inbox row the
+    // routing-less suggestion can't hold, so `aiRequest` drops too — the confirm
+    // must say so (the pending request IS lost) and the morph unbridges it.
     for (const from of ["revision-comment", "cutter-comment"] as const) {
       const copy = morphConfirmMessage(from);
       expect(copy).not.toBeNull();
       expect(copy!.message).toContain("the rich formatting");
+      expect(copy!.message).toContain("the AI-request flag");
     }
   });
 
