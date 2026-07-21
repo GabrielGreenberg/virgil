@@ -8,6 +8,7 @@ import {
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
 import { typographyToLatex } from "@/lib/latex-typography";
+import { extractBraced, isEscaped } from "@/lib/latex-lexer";
 import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
 import { classifyCiteFamily } from "@/lib/bib-family";
 import {
@@ -709,8 +710,8 @@ function hasTopLevelWhitespace(s: string): boolean {
   let depth = 0;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
-    if (c === "{" && s[i - 1] !== "\\") depth++;
-    else if (c === "}" && s[i - 1] !== "\\") depth = Math.max(0, depth - 1);
+    if (c === "{" && !isEscaped(s, i)) depth++;
+    else if (c === "}" && !isEscaped(s, i)) depth = Math.max(0, depth - 1);
     else if (depth === 0 && /\s/.test(c)) return true;
   }
   return false;
@@ -1038,8 +1039,11 @@ function extractTitleFieldLines(preamble: string): string[] {
   const seen = new Set<string>();
   // Match `\(title|author|date){…}` with brace-balanced extraction,
   // followed by an optional `%!v:hex` UUID anchor up to the line end.
-  // We re-implement balanced-brace scanning here (small + local) rather
-  // than importing the parser's `extractBraced` (cross-module dep).
+  // Brace scanning is the lexer's `extractBraced` — the SSOT. (A former
+  // comment here claimed the re-rolled copy avoided a "cross-module dep";
+  // that was false — the lexer imports only latex-typography, so there is
+  // no cycle — and the copy carried the naive single-char escape bug, which
+  // dropped a `\title{Foo\\}` field plus its `%!v:` UUID on a style switch.)
   let i = 0;
   while (i < preamble.length) {
     const rest = preamble.slice(i);
@@ -1050,19 +1054,13 @@ function extractTitleFieldLines(preamble: string): string[] {
     }
     const field = m[1];
     const bracedStart = i + m[0].length - 1;
-    let depth = 1;
-    let j = bracedStart + 1;
-    while (j < preamble.length && depth > 0) {
-      if (preamble[j] === "{" && preamble[j - 1] !== "\\") depth++;
-      else if (preamble[j] === "}" && preamble[j - 1] !== "\\") depth--;
-      j++;
-    }
-    if (depth !== 0) {
+    const braced = extractBraced(preamble, bracedStart);
+    if (!braced) {
       // Unbalanced — bail on this match, advance past `\foo{`.
       i += m[0].length;
       continue;
     }
-    let end = j;
+    let end = braced.end;
     // Optional UUID anchor: ` %!v:abcd` immediately after closing brace.
     const afterMatch = preamble.slice(end).match(/^\s*%!v:[a-f0-9]+/);
     if (afterMatch) end += afterMatch[0].length;

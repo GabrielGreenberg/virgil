@@ -367,6 +367,32 @@ export function matchSpecialLetter(
   return { glyph: entry.glyph, end };
 }
 
+/**
+ * THE escape rule for LaTeX delimiters — the single definition of "is the
+ * char at `i` escaped by a preceding backslash?" for the whole codebase.
+ *
+ * Escaping is **backslash-run parity**, not a single-character look-behind:
+ * a delimiter is escaped iff the unbroken run of backslashes ending just
+ * before it has ODD length. `\{` (run 1, odd) is a literal brace; `\\{`
+ * (run 2, even — an escaped backslash, i.e. a `\\` line break) is a REAL
+ * group delimiter. The naive `text[i - 1] !== "\\"` test gets the even case
+ * backwards, so `\emph{text\\}` never balances and `end\\$x^2$` never
+ * toggles math (task 206).
+ *
+ * Lives here because `latex-typography.ts` is the true zero-import leaf;
+ * `latex-lexer.ts` re-exports it so every other consumer imports it from the
+ * lexer SSOT rather than reaching past it.
+ */
+export function isEscaped(text: string, i: number): boolean {
+  let bs = 0;
+  let j = i - 1;
+  while (j >= 0 && text[j] === "\\") {
+    bs++;
+    j--;
+  }
+  return bs % 2 === 1;
+}
+
 /** Find the index of the `}` matching the `{` at `open`. -1 if unbalanced. */
 function findMatchingBrace(text: string, open: number): number {
   if (text[open] !== "{") return -1;
@@ -374,8 +400,8 @@ function findMatchingBrace(text: string, open: number): number {
   let i = open + 1;
   while (i < text.length) {
     const ch = text[i];
-    if (ch === "{" && text[i - 1] !== "\\") depth++;
-    else if (ch === "}" && text[i - 1] !== "\\") {
+    if (ch === "{" && !isEscaped(text, i)) depth++;
+    else if (ch === "}" && !isEscaped(text, i)) {
       depth--;
       if (depth === 0) return i;
     }

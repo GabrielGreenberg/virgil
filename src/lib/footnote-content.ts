@@ -15,6 +15,7 @@ import {
   dashesToGlyphs,
   typographyToLatex,
 } from "@/lib/latex-typography";
+import { findMatchingBrace, isEscaped } from "@/lib/latex-lexer";
 
 const HTML_TAG_RE = /<[^>]+>/;
 
@@ -467,7 +468,7 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
     }
 
     // Inline math: $...$
-    if (text[i] === "$" && (i === 0 || text[i - 1] !== "\\")) {
+    if (text[i] === "$" && !isEscaped(text, i)) {
       const end = text.indexOf("$", i + 1);
       if (end !== -1) {
         flush();
@@ -602,6 +603,18 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         continue;
       }
 
+      // `\\` (line break / escaped backslash) is ONE token — consume both
+      // chars together. Otherwise the lone-backslash fallback below advances
+      // by one and the SECOND backslash re-pairs with a following special as
+      // an escape: `end\\$x^2$` became `end\$x^2$` (one backslash eaten, the
+      // math never opening). Consuming the pair is what makes the `$` toggle
+      // above see an EVEN backslash run and open math correctly (task 206).
+      if (rest[1] === "\\") {
+        buffer += "\\\\";
+        i += 2;
+        continue;
+      }
+
       // Escaped specials
       const escMatch = rest.match(/^\\(textbackslash\{\}|textasciitilde\{\}|textasciicircum\{\}|[&%$#_{}])/);
       if (escMatch) {
@@ -671,17 +684,11 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
   return nodes;
 }
 
+/** Index of the `}` matching the `{` at `openBrace`, or -1. Delegates to the
+ *  lexer's `findMatchingBrace` — this was a re-rolled copy carrying the naive
+ *  single-char escape test (task 206). */
 function findClose(text: string, openBrace: number): number {
-  if (text[openBrace] !== "{") return -1;
-  let depth = 1;
-  let i = openBrace + 1;
-  while (i < text.length && depth > 0) {
-    if (text[i] === "{" && text[i - 1] !== "\\") depth++;
-    else if (text[i] === "}" && text[i - 1] !== "\\") depth--;
-    if (depth === 0) return i;
-    i++;
-  }
-  return -1;
+  return findMatchingBrace(text, openBrace);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
