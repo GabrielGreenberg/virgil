@@ -142,3 +142,93 @@ describe("verbatim codeBlock round-trip", () => {
     expect(codeBlockText(blocks[0])).toBe("code");
   });
 });
+
+/**
+ * Task 207 — the serializer used to route the codeBlock body through
+ * `serializeInlineSequence` → `escapeLatex` (the PROSE path, typography on)
+ * while the parser reads it byte-for-byte. That asymmetry corrupted code
+ * punctuation, and for brackets it was unbounded: `{[}` re-ingests literally
+ * and gets re-wrapped on the next save, growing a brace layer per cycle.
+ * The pre-existing tests above all use special-char-free bodies (`const x = 1;`),
+ * so none of this was covered.
+ */
+describe("verbatim codeBlock is byte-raw (task 207)", () => {
+  /** Run N full save→reload cycles; return every emitted `.tex` and body. */
+  function cycles(body: string, n: number) {
+    let doc: JSONContent = {
+      type: "doc",
+      content: [{ type: "codeBlock", content: [{ type: "text", text: body }] }],
+    };
+    const texts: string[] = [];
+    const bodies: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const tex = serializeBody(doc);
+      texts.push(tex);
+      doc = parseBody(tex) as JSONContent;
+      const blocks = findCodeBlocks(doc);
+      bodies.push(blocks.length ? codeBlockText(blocks[0]) : "");
+    }
+    return { texts, bodies };
+  }
+
+  const PUNCTUATION_BODIES: [name: string, body: string][] = [
+    // The unbounded one: `[`/`]` were rewritten to `{[}`/`{]}` and re-wrapped
+    // on every subsequent save.
+    ["brackets", "const first = arr[0];\nconst last = arr[arr.length - 1];"],
+    // Char escapes: & % # $ _ ^ ~ were all backslash-escaped.
+    ["latex-special chars", "x_2 = a & b;  # 50% of $total\ny = z^2 ~ w"],
+    ["printf format string", 'printf("%d items, %s\\n", n, name);'],
+    // Straight quotes were smart-mapped to `` / '' — fatal in code.
+    ["straight quotes", 'const s = "hello";\nconst t = \'world\';'],
+    // Typography: directly-typed Unicode glyphs were mapped to LaTeX commands.
+    ["directly-typed Unicode", "// café — naïve…\nconst π = 3.14159;"],
+    // Shell/markup soup — the whole vocabulary at once.
+    ["shell + markup", 'grep -E "^\\[a-z]+$" f.txt | awk \'{print $1}\' & echo ~/x'],
+  ];
+
+  for (const [name, body] of PUNCTUATION_BODIES) {
+    it(`emits ${name} byte-for-byte and stays idempotent across cycles`, () => {
+      const { texts, bodies } = cycles(body, 3);
+
+      // 1. The emitted verbatim body IS the input, byte-for-byte.
+      expect(texts[0]).toContain(`\\begin{verbatim}\n${body}\n\\end{verbatim}`);
+
+      // 2. Every reload recovers the original body exactly.
+      expect(bodies[0]).toBe(body);
+      expect(bodies[1]).toBe(body);
+      expect(bodies[2]).toBe(body);
+
+      // 3. Idempotent: serialize∘parse reaches a fixed point immediately.
+      //    (Pre-fix, the bracket case FAILED here — it grew every cycle.)
+      expect(texts[1]).toBe(texts[0]);
+      expect(texts[2]).toBe(texts[0]);
+    });
+  }
+
+  it("never brace-wraps a bracket, at any cycle depth", () => {
+    const { texts } = cycles("arr[0]", 4);
+    for (const tex of texts) {
+      expect(tex).toContain("arr[0]");
+      expect(tex).not.toContain("{[}");
+      expect(tex).not.toContain("{]}");
+    }
+  });
+
+  it("never backslash-escapes a LaTeX special char in the body", () => {
+    const { texts } = cycles("a & b % c # d $ e _ f", 2);
+    for (const tex of texts) {
+      expect(tex).toContain("a & b % c # d $ e _ f");
+    }
+  });
+
+  it("keeps the \\end{verbatim} sentinel guard working on the raw body", () => {
+    // The guard now runs on RAW bytes rather than post-escape ones — it must
+    // still fire, and still reverse.
+    const body = 'if (x) { print("\\end{verbatim}"); }';
+    const { texts, bodies } = cycles(body, 2);
+    expect(texts[0]).toContain("\\end{verbatim%!v-esc}");
+    expect(bodies[0]).toBe(body);
+    expect(bodies[1]).toBe(body);
+    expect(texts[1]).toBe(texts[0]);
+  });
+});
