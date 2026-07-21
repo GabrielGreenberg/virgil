@@ -187,8 +187,9 @@
      content column's left edge. Two columns share this margin: the
      fold chevron (leftmost) and the grab-handle baseline (between
      chevron and content). The handle inset (used as the narrow-viewport
-     FLOOR) is read by block-frame.ts via getComputedStyle so JS placement
-     and CSS chrome stay in lockstep. See STYLE_GUIDE.md "Margin chrome". */
+     FLOOR) is read by useEditorViewportCache.ts (cache.marginInset, applied
+     in handle-layout.ts) via getComputedStyle so JS placement and CSS chrome
+     stay in lockstep. See STYLE_GUIDE.md "Margin chrome". */
   --margin-col-chevron: -44px;
   --margin-col-handle-inset: 22px;
   /* Chip-2 chrome geometry: a margin affordance's RIGHT edge sits one
