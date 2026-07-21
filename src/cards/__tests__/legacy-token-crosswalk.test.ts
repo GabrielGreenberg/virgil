@@ -3,6 +3,8 @@ import {
   LEGACY_TOKEN_CROSSWALK,
   cssTokenForCardKind,
   legacyDataKindForCardKind,
+  legacyMarkKindForCardKind,
+  legacyMarkKindToCardKind,
   normalizeLegacyCardKind,
 } from "../legacy-token-crosswalk";
 import type { CardKind } from "../types";
@@ -51,6 +53,42 @@ describe("LEGACY_TOKEN_CROSSWALK (R-C frozen tokens)", () => {
     // Atoms / unanchored kinds carry no link-card or paragraph-kind token.
     expect(legacyDataKindForCardKind("footnote")).toBeNull();
     expect(cssTokenForCardKind("highlight")).toBeNull();
+  });
+});
+
+describe("legacyMarkKindToCardKind (forward mark-kind → spine accessor)", () => {
+  it("covers the eight real legacy mark kinds, incl. the previously-dropped ones", () => {
+    expect(legacyMarkKindToCardKind("note")).toBe("note");
+    expect(legacyMarkKindToCardKind("highlight")).toBe("highlight");
+    // todo / report / report-request are the kinds the links.ts hand-rolled copy
+    // silently omitted (task 203) — the SSOT map must carry them.
+    expect(legacyMarkKindToCardKind("todo")).toBe("todo");
+    expect(legacyMarkKindToCardKind("report")).toBe("report");
+    expect(legacyMarkKindToCardKind("report-request")).toBe("report-request");
+    expect(legacyMarkKindToCardKind("revision")).toBe("revision-comment");
+    expect(legacyMarkKindToCardKind("cutter-comment")).toBe("cutter-comment");
+    expect(legacyMarkKindToCardKind("cutter-suggestion")).toBe("cutter-suggestion");
+  });
+
+  it("returns null for tokens it deliberately omits (dead `cut` alias, sentinels, unknowns)", () => {
+    expect(legacyMarkKindToCardKind("cut")).toBeNull();
+    expect(legacyMarkKindToCardKind("pending-ai-change")).toBeNull();
+    expect(legacyMarkKindToCardKind("pending-ai-request")).toBeNull();
+    expect(legacyMarkKindToCardKind("bogus")).toBeNull();
+  });
+
+  it("is the faithful inverse of legacyMarkKindForCardKind for the shared mark kinds", () => {
+    const MARK_KINDS = [
+      "note", "highlight", "todo", "revision",
+      "cutter-comment", "cutter-suggestion", "report", "report-request",
+    ];
+    for (const markKind of MARK_KINDS) {
+      const spine = legacyMarkKindToCardKind(markKind)!;
+      // `revision` folds both revision spine kinds to the single `"revision"`
+      // marker, so the inverse of the resolved spine round-trips back to the
+      // same marker token.
+      expect(legacyMarkKindForCardKind(spine)).toBe(markKind);
+    }
   });
 });
 

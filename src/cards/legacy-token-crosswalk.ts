@@ -195,6 +195,20 @@ export function legacyMarkKindForCardKind(kind: CardKind): string | null {
   return CARD_KIND_TO_LEGACY_MARK_KIND[kind] ?? null;
 }
 
+/** Legacy `linkedAnchor` mark `kind` attr → spine `CardKind`, or `null` for a
+ *  token this map doesn't cover. Single source for the FORWARD projection the
+ *  `links.ts` mark-collectors need (`legacyAnchorKindToCardKind`,
+ *  `linkedAnchorKindToCardKind`) — the inverse of `legacyMarkKindForCardKind`.
+ *
+ *  Covers the eight real legacy mark kinds (note/highlight/todo/revision/the two
+ *  cutter kinds/the two report kinds). Does NOT cover the dead `"cut"` alias (see
+ *  `dataLinkCardTokenForLegacyMarkKind`) or the `pending-ai-*` render sentinels
+ *  (which are NOT card marker kinds) — callers layer those on top before falling
+ *  through to this accessor. */
+export function legacyMarkKindToCardKind(kind: string): CardKind | null {
+  return LEGACY_MARK_KIND_TO_CARD_KIND[kind] ?? null;
+}
+
 /**
  * The `data-link-card` token a `linkedAnchor` mark falls back to when it carries
  * NO explicit `linkCard` — i.e. a mark re-stamped by the once-per-doc

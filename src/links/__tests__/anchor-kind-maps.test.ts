@@ -32,8 +32,17 @@ vi.mock("@/lib/storage", () => {
   return mod;
 });
 
-import { cardKindToLegacyAnchorKind, legacyKindToCardKindString } from "@/links/links";
-import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
+import {
+  cardKindToLegacyAnchorKind,
+  legacyAnchorKindToCardKind,
+  legacyKindToCardKindString,
+} from "@/links/links";
+import type { CardKind } from "@/panels/_shared/types";
+import {
+  defaultTintForLinkedAnchorKind,
+  legacyMarkKindForCardKind,
+  legacyMarkKindToCardKind,
+} from "@/cards/legacy-token-crosswalk";
 
 describe("cardKindToLegacyAnchorKind — exhaustive, no silent note default", () => {
   it("folds both revision kinds to the shared `revision` marker", () => {
@@ -67,6 +76,66 @@ describe("cardKindToLegacyAnchorKind — exhaustive, no silent note default", ()
     expect(legacyKindToCardKindString("revision")).toBe("revision-comment");
     expect(legacyKindToCardKindString("report")).toBe("report");
     expect(legacyKindToCardKindString("note")).toBe("note");
+  });
+});
+
+describe("legacyAnchorKindToCardKind — complete, routes through the crosswalk SSOT", () => {
+  // Regression pin for task 203: the hand-rolled copy silently omitted these
+  // three anchor-bearing kinds, so a `linkedAnchor` mark of one of them with no
+  // explicit `linkCard` token dropped out of `collectLinksFromEditor`'s result.
+  it("resolves the previously-dropped todo / report / report-request kinds", () => {
+    expect(legacyAnchorKindToCardKind("todo")).toBe("todo");
+    expect(legacyAnchorKindToCardKind("report")).toBe("report");
+    expect(legacyAnchorKindToCardKind("report-request")).toBe("report-request");
+  });
+
+  it("still folds the dead `cut` alias to cutter-comment", () => {
+    expect(legacyAnchorKindToCardKind("cut")).toBe("cutter-comment");
+  });
+
+  it("passes the other live mark kinds through", () => {
+    expect(legacyAnchorKindToCardKind("note")).toBe("note");
+    expect(legacyAnchorKindToCardKind("highlight")).toBe("highlight");
+    expect(legacyAnchorKindToCardKind("revision")).toBe("revision-comment");
+    expect(legacyAnchorKindToCardKind("cutter-comment")).toBe("cutter-comment");
+    expect(legacyAnchorKindToCardKind("cutter-suggestion")).toBe("cutter-suggestion");
+  });
+
+  it("returns null for undefined and unknown tokens", () => {
+    expect(legacyAnchorKindToCardKind(undefined)).toBeNull();
+    expect(legacyAnchorKindToCardKind("bogus")).toBeNull();
+    expect(legacyAnchorKindToCardKind("footnote")).toBeNull();
+  });
+});
+
+describe("links.ts CardKind↔legacy-kind projections agree with the crosswalk SSOT", () => {
+  // Guard against the twins drifting back apart: both `links.ts` accessors now
+  // route through the crosswalk, so they must equal it for every kind. Mirrors
+  // the crosswalk's own round-trip dev pin.
+  const ANCHOR_CARD_KINDS: CardKind[] = [
+    "note", "highlight", "todo",
+    "revision-comment", "revision-suggestion",
+    "cutter-comment", "cutter-suggestion",
+    "report", "report-request",
+  ];
+  const NON_ANCHOR_CARD_KINDS: CardKind[] = [
+    "footnote", "citation", "example", "archive", "bib", "error",
+  ];
+
+  it("cardKindToLegacyAnchorKind == legacyMarkKindForCardKind for every CardKind", () => {
+    for (const kind of [...ANCHOR_CARD_KINDS, ...NON_ANCHOR_CARD_KINDS]) {
+      expect(cardKindToLegacyAnchorKind(kind)).toBe(legacyMarkKindForCardKind(kind));
+    }
+  });
+
+  it("legacyAnchorKindToCardKind inverts legacyMarkKindForCardKind for every anchor kind", () => {
+    for (const kind of ANCHOR_CARD_KINDS) {
+      const markKind = legacyMarkKindForCardKind(kind)!;
+      // Round-trips back through the SSOT forward map. Both revision kinds share
+      // the `"revision"` marker, which folds to the comment spine kind — so the
+      // round-trip lands on `revision-comment`, not necessarily the start kind.
+      expect(legacyAnchorKindToCardKind(markKind)).toBe(legacyMarkKindToCardKind(markKind));
+    }
   });
 });
 

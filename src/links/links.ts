@@ -33,6 +33,7 @@ import {
 import {
   legacyDataKindForCardKind,
   legacyMarkKindForCardKind,
+  legacyMarkKindToCardKind,
   defaultTintForLinkedAnchorKind,
 } from "@/cards/legacy-token-crosswalk";
 import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
@@ -58,28 +59,22 @@ export {
 // Kind mapping from legacy `linkedAnchor.kind` attr to CardKind
 // ---------------------------------------------------------------------------
 
-/** Legacy `linkedAnchor.kind` values map to CardKinds. Revisions use the
- *  `comment` card kind in the panel registry. The legacy `"cut"` value
- *  (pre-Cutter-rebuild) maps to `"cutter-comment"` since cuts migrate
- *  to comments. */
-function legacyAnchorKindToCardKind(
+/** Legacy `linkedAnchor.kind` mark-attr value → spine `CardKind`, for a mark that
+ *  carries NO explicit `linkCard` token (the fallback branch in
+ *  `collectLinksFromEditor`). Routes through the crosswalk SSOT
+ *  (`legacyMarkKindToCardKind`) so it stays complete — the previous hand-rolled
+ *  copy silently omitted `todo`/`report`/`report-request`, dropping those anchors
+ *  from the collected `Link[]`. The one thing the SSOT map lacks is the dead
+ *  pre-Cutter-rebuild `"cut"` alias (cuts migrated to comments), preserved here
+ *  explicitly. Exported so the crosswalk-completeness contract is unit-pinnable. */
+export function legacyAnchorKindToCardKind(
   kind: string | undefined,
 ): CardKind | null {
-  switch (kind) {
-    case "note":
-      return "note";
-    case "highlight":
-      return "highlight";
-    case "cut":
-    case "cutter-comment":
-      return "cutter-comment";
-    case "cutter-suggestion":
-      return "cutter-suggestion";
-    case "revision":
-      return "revision-comment";
-    default:
-      return null;
-  }
+  if (kind == null) return null;
+  // Dead legacy alias the crosswalk mark-kind map deliberately omits (no spine
+  // kind carries a `"cut"` mark attr); pre-Cutter-rebuild cuts fold to comments.
+  if (kind === "cut") return "cutter-comment";
+  return legacyMarkKindToCardKind(kind);
 }
 
 // ---------------------------------------------------------------------------
@@ -389,9 +384,10 @@ function createAnchorLink(
           anchorId: linkId,
           // `?? "note"` is unreachable-defensive: `createAnchorLink` only ever
           // runs for an anchor-bearing CardKind, all nine of which map to a real
-          // LinkedAnchorKind. A non-anchor kind would be a caller bug, not the
-          // old silent revision/report mislabel (now fixed in the map above).
-          kind: cardKindToLegacyAnchorKind(args.targetCardKind) ?? "note",
+          // legacy mark kind. A non-anchor kind would be a caller bug, not the
+          // old silent revision/report mislabel. Reads the crosswalk SSOT
+          // (`legacyMarkKindForCardKind`) directly — no hand-rolled twin.
+          kind: legacyMarkKindForCardKind(args.targetCardKind) ?? "note",
           linkId,
           linkKind: "anchor",
           linkCard: cardKey,
@@ -435,28 +431,15 @@ function createAnchorLink(
  *  `revision-suggestion` / `report` / `report-request` anchors as notes (the
  *  BUG1 kind-corruption class, but at create time). Exported for the reload
  *  re-stamp + kind-aware orphan glue. Kept until the mark's `kind` attr is
- *  dropped in Phase 3 cleanup. */
+ *  dropped in Phase 3 cleanup.
+ *
+ *  Thin adapter over the crosswalk SSOT (`legacyMarkKindForCardKind`) so it can't
+ *  drift from the declaration — every value it returns is a `LinkedAnchorKind`
+ *  (the crosswalk's mark-kind namespace is a subset of that union). */
 export function cardKindToLegacyAnchorKind(
   cardKind: CardKind,
 ): LinkedAnchorKind | null {
-  switch (cardKind) {
-    case "note":                return "note";
-    case "highlight":           return "highlight";
-    case "todo":                return "todo";
-    case "revision-comment":    return "revision";
-    case "revision-suggestion": return "revision";
-    case "cutter-comment":      return "cutter-comment";
-    case "cutter-suggestion":   return "cutter-suggestion";
-    case "report":              return "report";
-    case "report-request":      return "report-request";
-    case "footnote":
-    case "citation":
-    case "example":
-    case "archive":
-    case "bib":
-    case "error":
-      return null;
-  }
+  return (legacyMarkKindForCardKind(cardKind) as LinkedAnchorKind | null) ?? null;
 }
 
 function createCitationLink(
@@ -836,24 +819,20 @@ export interface LinkedAnchorRecord {
 
 /** `LinkedAnchorKind` (the legacy mark-attr namespace) → spine `CardKind`. The
  *  one many-to-one fold is `revision` → `revision-comment` (the canonical
- *  comment spine kind for the shared `revision` marker). */
+ *  comment spine kind for the shared `revision` marker). The eight real mark
+ *  kinds route through the crosswalk SSOT (`legacyMarkKindToCardKind`); the two
+ *  `pending-ai-*` render sentinels — which are NOT card marker kinds and so are
+ *  absent from the crosswalk — are folded here. */
 function linkedAnchorKindToCardKind(kind: LinkedAnchorKind): CardKind {
-  switch (kind) {
-    case "note":              return "note";
-    case "highlight":         return "highlight";
-    case "todo":              return "todo";
-    case "cutter-comment":    return "cutter-comment";
-    case "cutter-suggestion": return "cutter-suggestion";
-    case "revision":          return "revision-comment";
-    case "report":            return "report";
-    case "report-request":    return "report-request";
-    case "pending-ai-change": return "revision-suggestion";
-    // Placeholder fold: the request reconcile ALWAYS threads an explicit
-    // `linkCardToken` (the owning card's real kind), so this fallback is never
-    // consulted for a `pending-ai-request` mark's stamped token — it exists only
-    // to keep the switch exhaustive. `note` is an arbitrary safe CardKind.
-    case "pending-ai-request": return "note";
-  }
+  if (kind === "pending-ai-change") return "revision-suggestion";
+  // Placeholder fold: the request reconcile ALWAYS threads an explicit
+  // `linkCardToken` (the owning card's real kind), so this fallback is never
+  // consulted for a `pending-ai-request` mark's stamped token — it exists only
+  // to keep the switch exhaustive. `note` is an arbitrary safe CardKind.
+  if (kind === "pending-ai-request") return "note";
+  // The remaining LinkedAnchorKinds are exactly the crosswalk's mark kinds, so
+  // the `?? "note"` is unreachable-defensive (every real mark kind resolves).
+  return legacyMarkKindToCardKind(kind) ?? "note";
 }
 
 /** The `data-link-card` token for a legacy `LinkedAnchorKind`. Single-sourced
