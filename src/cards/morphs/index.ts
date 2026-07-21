@@ -38,10 +38,20 @@ import {
 import { assertMarkerCoverage } from "../marker-meta";
 import { getTextAnchor } from "@/links/links";
 
-/** Wrap a plain string into a single-paragraph rich doc (or empty doc). */
-function richFromText(text: string): JSONContent {
-  return text
-    ? { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] }
+/** Build a rich doc with one paragraph per non-empty part (or empty doc). Used
+ *  by the suggestion → comment salvage so a suggestion's user_text AND its
+ *  explanation both land in the free-form comment body — nothing dropped, the
+ *  `lossy: false` declaration stays honest (task 199, the inbound twin of 074). */
+function richFromParagraphs(parts: string[]): JSONContent {
+  const nonEmpty = parts.filter(Boolean);
+  return nonEmpty.length
+    ? {
+        type: "doc",
+        content: nonEmpty.map((text) => ({
+          type: "paragraph",
+          content: [{ type: "text", text }],
+        })),
+      }
     : emptyRichContent();
 }
 
@@ -67,13 +77,19 @@ function revisionRequestToSuggestion(c: RevisionRequestCard): RevisionSuggestion
 }
 
 function revisionSuggestionToRequest(s: RevisionSuggestionCard): RevisionRequestCard {
-  const bodyText = s.user_text || s.suggested_text || "";
+  // Salvage BOTH the user's revision text and their Explanation into the
+  // free-form comment body — a comment has no `explanation` field, so dropping
+  // it silently was the 074 data-loss class one direction over (task 199). Each
+  // non-empty part becomes its own paragraph; nothing is lost, so lossy stays
+  // false. One-way like 074's flatten: morphing back won't re-split it.
+  const parts = [s.user_text || s.suggested_text || "", s.explanation || ""];
+  const bodyText = parts.filter(Boolean).join("\n\n");
   return {
     kind: "comment",
     id: s.id,
     createdAt: s.createdAt,
     text: bodyText,
-    content: richFromText(bodyText),
+    content: richFromParagraphs(parts),
     aiRequest: false,
     selectedText: s.selectedText ?? s.original_text ?? undefined,
     links: s.links,
@@ -109,13 +125,17 @@ function cutterCommentToSuggestion(c: CutterCommentCard): CutterSuggestionCard {
 }
 
 function cutterSuggestionToComment(s: CutterSuggestionCard): CutterCommentCard {
-  const bodyText = s.user_text || s.suggested_text || "";
+  // Symmetric with the revision twin (task 199): fold the cut's Explanation
+  // into the free-form comment body alongside the user text so neither is lost
+  // and the morph's `lossy: false` stays honest.
+  const parts = [s.user_text || s.suggested_text || "", s.explanation || ""];
+  const bodyText = parts.filter(Boolean).join("\n\n");
   return {
     kind: "comment",
     id: s.id,
     createdAt: s.createdAt,
     text: bodyText,
-    content: richFromText(bodyText),
+    content: richFromParagraphs(parts),
     aiRequest: false,
     selectedText: s.selectedText ?? s.original_text ?? undefined,
     links: s.links,
