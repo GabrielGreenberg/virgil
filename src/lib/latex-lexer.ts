@@ -27,9 +27,17 @@
  * Imports ONLY latex-typography (a leaf) to avoid a cycle.
  */
 
-import { matchAccent, matchSpecialLetter } from "@/lib/latex-typography";
+import { matchAccent, matchSpecialLetter, isEscaped } from "@/lib/latex-typography";
 
 export { matchAccent, matchSpecialLetter };
+
+/**
+ * Re-export of THE delimiter-escape rule (defined in the zero-import leaf
+ * `latex-typography.ts`, see its doc comment). Every scanner in the codebase —
+ * brace, math-delimiter, comment, gloss — asks this ONE question, so
+ * backslash-run parity is decided in exactly one place (task 206).
+ */
+export { isEscaped };
 
 // ---------------------------------------------------------------------------
 // Verbatim families
@@ -192,8 +200,9 @@ export function projectLiveLatex(
 /**
  * Find the index of the `}` matching the `{` at `open`. Returns -1 if the
  * char at `open` is not `{` or the group is unbalanced. `\{`/`\}` are treated
- * as literal (an escaped brace does not change depth) — identical escape
- * semantics to the former copies in latex-parser.ts and latex-typography.ts.
+ * as literal (an escaped brace does not change depth), with escaping decided
+ * by the shared `isEscaped` backslash-run parity rule — so `\\{`/`\\}` (a
+ * `\\` line break followed by a REAL delimiter) balances correctly.
  */
 export function findMatchingBrace(text: string, open: number): number {
   if (text[open] !== "{") return -1;
@@ -201,8 +210,8 @@ export function findMatchingBrace(text: string, open: number): number {
   let i = open + 1;
   while (i < text.length) {
     const ch = text[i];
-    if (ch === "{" && text[i - 1] !== "\\") depth++;
-    else if (ch === "}" && text[i - 1] !== "\\") {
+    if (ch === "{" && !isEscaped(text, i)) depth++;
+    else if (ch === "}" && !isEscaped(text, i)) {
       depth--;
       if (depth === 0) return i;
     }
@@ -215,8 +224,8 @@ export function findMatchingBrace(text: string, open: number): number {
  * Extract the contents of the `{...}` group starting at `startOfBrace`.
  * Returns `{ content, end }` where `end` is the index just past the closing
  * `}`, or null if the char at `startOfBrace` is not `{` or the group is
- * unbalanced. `\{`/`\}` are treated as literal, matching latex-parser.ts's
- * former `extractBraced` byte-for-byte.
+ * unbalanced. `\{`/`\}` are treated as literal — same shared `isEscaped`
+ * parity rule as `findMatchingBrace`.
  */
 export function extractBraced(
   text: string,
@@ -226,8 +235,8 @@ export function extractBraced(
   let depth = 1;
   let i = startOfBrace + 1;
   while (i < text.length && depth > 0) {
-    if (text[i] === "{" && text[i - 1] !== "\\") depth++;
-    if (text[i] === "}" && text[i - 1] !== "\\") depth--;
+    if (text[i] === "{" && !isEscaped(text, i)) depth++;
+    if (text[i] === "}" && !isEscaped(text, i)) depth--;
     i++;
   }
   if (depth !== 0) return null;
@@ -324,14 +333,9 @@ export function findMatchingGloss(src: string, startPos: number): number {
     }
     if (ch === "%") {
       // Unescaped `%` starts a comment: an even run of backslashes before it
-      // does not escape it. Check the immediately-preceding backslash run.
-      let bs = 0;
-      let j = pos - 1;
-      while (j >= 0 && src[j] === "\\") {
-        bs++;
-        j--;
-      }
-      if (bs % 2 === 0) {
+      // does not escape it (`\\%` = line break + comment). Same shared parity
+      // rule the brace/math scanners use.
+      if (!isEscaped(src, pos)) {
         inComment = true;
         pos++;
         continue;

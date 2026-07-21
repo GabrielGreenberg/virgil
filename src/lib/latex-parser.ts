@@ -14,7 +14,7 @@ import {
   matchSpecialLetter,
   dashesToGlyphs,
 } from "@/lib/latex-typography";
-import { extractBraced, findMatchingGloss } from "@/lib/latex-lexer";
+import { extractBraced, findMatchingGloss, isEscaped } from "@/lib/latex-lexer";
 
 interface ParseContext {
   pos: number;
@@ -244,7 +244,7 @@ export function parseInlineContent(
     if (
       text[i] === "$" &&
       text[i + 1] === "$" &&
-      (i === 0 || text[i - 1] !== "\\")
+      !isEscaped(text, i)
     ) {
       const end = text.indexOf("$$", i + 2);
       if (end !== -1) {
@@ -259,7 +259,7 @@ export function parseInlineContent(
     }
 
     // Inline math: $...$
-    if (text[i] === "$" && (i === 0 || text[i - 1] !== "\\")) {
+    if (text[i] === "$" && !isEscaped(text, i)) {
       flush();
       const end = text.indexOf("$", i + 1);
       if (end !== -1) {
