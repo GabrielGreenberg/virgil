@@ -3,9 +3,12 @@ import {
   runCardLifecycleEvent,
   type CardLifecycleDeps,
 } from "../lifecycle/run-event";
-import { CARD_REGISTRY } from "../card-registry";
+import { CARD_REGISTRY, assertMorphCoverage } from "../card-registry";
 import { CARD_KINDS } from "../predicates";
 import type { CardKind } from "../types";
+// Side-effect: register every morph converter onto CARD_REGISTRY so
+// assertMorphCoverage()'s converter check doesn't false-fire below.
+import "../morphs";
 
 /**
  * T4 §3.4 — the lifecycle unbridge. A morph that DROPS the aiRequest flag
@@ -66,6 +69,32 @@ describe("morph unbridge", () => {
     // sanity: note↔highlight does not declare an aiRequest drop
     expect(CARD_REGISTRY.note.morph?.drops).not.toContain("aiRequest");
   });
+
+  // 198 — the comment→suggestion family crosses from an aiRequest-routed FROM
+  // kind to a routing-less suggestion TO kind, so it MUST unbridge the pending
+  // `ai-requests.json` row before mutating (else the row strands and re-drafts a
+  // duplicate AI suggestion on the next `/editor/review`). Same obligation the
+  // report-request→report pair carries.
+  it("revision-comment → revision-suggestion UNBRIDGES the FROM kind BEFORE mutate (198)", async () => {
+    await runCardLifecycleEvent({ type: "morph", fromKind: "revision-comment", id: "rc1" }, ctx.d);
+    expect(ctx.unbridgeArgs).toEqual([["revision-comment", "rc1"]]);
+    expect(ctx.order).toEqual(["unbridge", "mutate"]);
+  });
+
+  it("cutter-comment → cutter-suggestion UNBRIDGES the FROM kind BEFORE mutate (198)", async () => {
+    await runCardLifecycleEvent({ type: "morph", fromKind: "cutter-comment", id: "cc1" }, ctx.d);
+    expect(ctx.unbridgeArgs).toEqual([["cutter-comment", "cc1"]]);
+    expect(ctx.order).toEqual(["unbridge", "mutate"]);
+  });
+
+  it("the REVERSE suggestion → comment does NOT unbridge (the FROM side has no routing)", async () => {
+    for (const from of ["revision-suggestion", "cutter-suggestion"] as const) {
+      const c = makeDeps();
+      await runCardLifecycleEvent({ type: "morph", fromKind: from, id: "s1" }, c.d);
+      expect(c.d.unbridgeAiRequest, from).not.toHaveBeenCalled();
+      expect(c.order, from).toEqual(["mutate"]);
+    }
+  });
 });
 
 describe("delete unbridge", () => {
@@ -105,7 +134,11 @@ describe("delete unbridge", () => {
 });
 
 describe("the unbridge decision matches the registry contract", () => {
-  it("every kind whose morph drops aiRequest has FROM routing and TO has none", () => {
+  // The registry pins `drops.includes("aiRequest")` ⇔ (FROM routed ∧ TO unrouted)
+  // as a strict biconditional (`assertMorphCoverage`). Both halves are tested so
+  // neither can regress independently.
+
+  it("CONVERSE — every kind whose morph drops aiRequest has FROM routing and TO has none", () => {
     for (const k of CARD_KINDS) {
       const m = CARD_REGISTRY[k].morph;
       if (m?.drops.includes("aiRequest")) {
@@ -113,5 +146,37 @@ describe("the unbridge decision matches the registry contract", () => {
         expect(CARD_REGISTRY[m.to].aiRequest == null, `${m.to}: TO must NOT have routing`).toBe(true);
       }
     }
+  });
+
+  // 198 — the FORWARD direction: a morph from a routed kind to a routing-less one
+  // MUST declare the aiRequest drop, or the pending inbox row strands. This was
+  // the gap the converse-only check read green on (revision-comment /
+  // cutter-comment omitted "aiRequest" while crossing the asymmetry).
+  it("FORWARD — every morph from a routed kind to a routing-less one declares the aiRequest drop", () => {
+    const crossing: CardKind[] = [];
+    for (const k of CARD_KINDS) {
+      const m = CARD_REGISTRY[k].morph;
+      if (!m) continue;
+      const fromRouted = CARD_REGISTRY[k].aiRequest != null;
+      const toRouted = CARD_REGISTRY[m.to].aiRequest != null;
+      if (fromRouted && !toRouted) {
+        crossing.push(k);
+        expect(m.drops.includes("aiRequest"), `${k}→${m.to}: must drop aiRequest`).toBe(true);
+      }
+    }
+    // Guard the guard: the three known routing-asymmetric morphs are all present,
+    // so this test can't pass vacuously if the registry shape shifts.
+    expect(crossing.sort()).toEqual(
+      ["cutter-comment", "report-request", "revision-comment"].sort(),
+    );
+  });
+
+  // The boot assertion itself must run SILENT against the real (fixed) registry —
+  // this is the CI-armed guard that the new forward check has no false positive.
+  it("assertMorphCoverage is SILENT on the real registry (both biconditional halves hold)", () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    assertMorphCoverage();
+    expect(errSpy).not.toHaveBeenCalled();
+    errSpy.mockRestore();
   });
 });

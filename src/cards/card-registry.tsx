@@ -150,16 +150,38 @@ export function assertMorphCoverage(): void {
           `${JSON.stringify(m.drops)} (lossy must equal drops.length > 0).`,
       );
     }
-    // An `aiRequest` drop is only meaningful when the FROM kind actually has
-    // aiRequest routing and the TO kind does NOT (the inbox would orphan).
-    if (m.drops.includes("aiRequest")) {
+    // The `aiRequest` drop is a strict BICONDITIONAL with the routing asymmetry:
+    // `drops.includes("aiRequest")` ⇔ (FROM has routing AND TO does not). Both
+    // halves matter and each was a real bug:
+    //  · CONVERSE (declared ⇒ asymmetric): an aiRequest drop is only meaningful
+    //    when the FROM kind bridges an `ai-requests.json` row that the TO kind
+    //    can't hold — otherwise the unbridge in `runCardLifecycleEvent` would
+    //    clear a row that should carry across (or clear nothing).
+    //  · FORWARD (asymmetric ⇒ declared): if the FROM kind has routing and the TO
+    //    kind does not, the morph MUST declare the drop, or the pending inbox row
+    //    strands — it re-drafts a duplicate AI response on the already-converted
+    //    paragraph and the routing-less TO kind exposes no UI to clear it (198,
+    //    the comment→suggestion family; report-request→report already declared it).
+    // Pinning BOTH directions closes the class so a future routing-asymmetric
+    // morph pair can't silently strand (mirrors 044/057 "pin the class").
+    {
       const fromHasRouting = CARD_REGISTRY[k].aiRequest != null;
       const toHasRouting = CARD_REGISTRY[m.to].aiRequest != null;
-      if (!fromHasRouting || toHasRouting) {
+      const mustDrop = fromHasRouting && !toHasRouting;
+      const declaresDrop = m.drops.includes("aiRequest");
+      if (declaresDrop && !mustDrop) {
         console.error(
           `[CardMorph] "${k}".morph.drops includes "aiRequest" but the unbridge ` +
             `is only meaningful when the FROM kind has routing and the TO kind ` +
             `does not (from=${fromHasRouting}, to=${toHasRouting}).`,
+        );
+      }
+      if (mustDrop && !declaresDrop) {
+        console.error(
+          `[CardMorph] "${k}".morph → "${m.to}" crosses from an aiRequest-routed ` +
+            `kind to a routing-less one but "${k}".morph.drops omits "aiRequest" — ` +
+            `the pending ai-requests.json row will strand (add "aiRequest" to drops ` +
+            `so runCardLifecycleEvent unbridges it on the morph).`,
         );
       }
     }
@@ -517,10 +539,16 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // rich `content` (citation atoms, inline math, marks, multi-paragraph) is
     // flattened away — round-tripping back rebuilds a single flat paragraph. So
     // the OUTBOUND direction is lossy: declare `formatting` in `drops` so the
-    // generated confirm warns before the flatten (074). The REVERSE (suggestion →
-    // comment) seeds the body from the plain mirror and loses nothing user-
-    // authored → stays non-lossy/silent (declared on `revision-suggestion.morph`).
-    morph: { to: "revision-suggestion", lossy: true, drops: ["formatting"] },
+    // generated confirm warns before the flatten (074). It ALSO drops
+    // `aiRequest`: a revision-comment is `aiRequest: true` by default and bridges
+    // an `ai-requests.json` row, but the revision-suggestion TO kind has no
+    // routing — so the morph must unbridge that pending row in the same step
+    // (`runCardLifecycleEvent`, `run-event.ts`), else the stranded row re-drafts a
+    // duplicate AI suggestion on the next `/editor/review` (198, same class as the
+    // report-request→report REP-F5-01 drop). The REVERSE (suggestion → comment)
+    // seeds the body from the plain mirror and loses nothing user-authored → stays
+    // non-lossy/silent (declared on `revision-suggestion.morph`).
+    morph: { to: "revision-suggestion", lossy: true, drops: ["formatting", "aiRequest"] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,
@@ -545,8 +573,11 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: "margin",
     // Same outbound-lossy comment → suggestion flatten as the revision pair: the
     // rich `content` has no home on the suggestion shape, so `formatting` drops
-    // and the confirm warns. The REVERSE stays silent (`cutter-suggestion.morph`).
-    morph: { to: "cutter-suggestion", lossy: true, drops: ["formatting"] },
+    // and the confirm warns. It ALSO drops `aiRequest` for the same reason as
+    // revision-comment — a cutter-comment bridges a `cutter` inbox row that the
+    // routing-less cutter-suggestion TO kind can't hold, so the morph unbridges it
+    // (198). The REVERSE stays silent (`cutter-suggestion.morph`).
+    morph: { to: "cutter-suggestion", lossy: true, drops: ["formatting", "aiRequest"] },
     bodyClass: "sans",
     stackable: true,
     poppable: true,
