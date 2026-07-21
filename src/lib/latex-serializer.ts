@@ -141,6 +141,32 @@ function serializeMarks(
   return result;
 }
 
+/**
+ * Byte-raw body of a MARKLESS text-node container (`content: "text*"`,
+ * `marks: ""`) — currently exactly `codeBlock` and `latexComment`.
+ *
+ * These two are the schema's verbatim pair: their parser reads byte-preserve
+ * the source into a single bare text node (`latex-parser.ts` `case "verbatim"`
+ * / the `latexComment` branch), running no `unescapeLatex` and no typography.
+ * So the serializer must be that read's exact byte-inverse — flatten the text
+ * children and emit them raw. Routing them through `serializeInlineSequence`
+ * instead (as `codeBlock` did until task 207) sends them down the PROSE escape
+ * path, which char-escapes `& % # $ _ ^ ~`, rewrites `[`→`{[}`, and runs the
+ * typographic reverse-map. That is not merely wrong once — it is NON-IDEMPOTENT:
+ * the parser re-ingests `{[}` literally and the next save re-wraps it, so a
+ * body containing `arr[0]` grows a brace layer on EVERY save, unbounded.
+ * `latex-typography.ts` states outright that callers must never run it inside a
+ * verbatim/code span; this is the helper that keeps that contract structural.
+ *
+ * The schema guarantees the escaping can never be *needed* here: `marks: ""`
+ * makes marked children impossible and `content: "text*"` makes non-text
+ * children impossible, so a flatten loses nothing (see
+ * `text-object-registry.ts` — it names these two as the markless pair).
+ */
+function serializeMarklessTextBody(content: JSONContent[] | undefined): string {
+  return (content ?? []).map((c) => c.text ?? "").join("");
+}
+
 function escapeLatex(
   text: string,
   opts?: { typography?: boolean },
@@ -297,7 +323,10 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     }
 
     case "codeBlock": {
-      const inner = serializeInlineSequence(node.content || []);
+      // Verbatim is byte-preserving in BOTH directions — flatten the markless
+      // text children raw (the parser's `case "verbatim"` inverse). See
+      // `serializeMarklessTextBody`.
+      const inner = serializeMarklessTextBody(node.content);
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       // A body line reading `\end{verbatim}` would otherwise close the
@@ -305,8 +334,8 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // literal string). Escape it to a private form that breaks the
       // delimiter substring; the parser un-escapes it on the way back in.
       // Mirrors the `texBlock` `%!vtex:end` → `%!v tex:end` sentinel guard.
-      // The `%` is injected here, AFTER `escapeLatex` ran on `inner`, so it
-      // stays raw (not `\%`) and reverses cleanly. Verbatim bodies containing
+      // The `%` is injected into an already-RAW body, so it stays raw (not
+      // `\%`) and reverses cleanly. Verbatim bodies containing
       // a literal `\end{verbatim}` are uncompilable in raw LaTeX anyway, so
       // preserving Virgil's representation losslessly is strictly better.
       const escaped = inner.replace(
@@ -471,8 +500,9 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       // Comment text is native inline content now (`content: text*`), not an
-      // `attrs.text` — flatten the text nodes.
-      const text = (node.content ?? []).map((c) => c.text ?? "").join("");
+      // `attrs.text` — flatten the text nodes raw, via the shared markless
+      // byte-passthrough helper it shares with `codeBlock`.
+      const text = serializeMarklessTextBody(node.content);
       return `% ${text}${anchor}\n`;
     }
 
