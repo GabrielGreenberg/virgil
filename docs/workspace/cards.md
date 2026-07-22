@@ -1,4 +1,4 @@
-<!-- last-verified: 887ea534 2026-07-21 -->
+<!-- last-verified: 4294c162 2026-07-22 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/cards/types.ts, src/cards/card-registry.tsx, src/cards/predicates.ts, src/cards/has-content.ts, src/cards/lifecycle/run-event.ts, src/cards/lifecycle/card-lifecycle-signal.ts, src/cards/lifecycle/useCardLifecycleReconciler.ts, src/panels/panel-registry.ts, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/components/panel-primitives.tsx, src/lib/types.ts, src/hooks/useReports.ts, src/lib/ai-request-bridge.ts, src/cards/drop-specs/index.ts, src/components/drop-mode/card-drop-gesture.ts, src/components/icons/DropChevrons.tsx, src/hooks/useReconcileModeAAnchors.ts, src/links/resolve-card-anchor.ts -->
 
@@ -235,8 +235,8 @@ polymorphic-panel map:
 | Panel | Hosts | Shared key/theme | Morph |
 |---|---|---|---|
 | **Notes** | `note` + `highlight` | each its own accent | `note` ⇄ `highlight`, **lossy both ways** (a highlight has no body/title) — a confirm guards both flips (`morph.lossy` is true in both directions) |
-| **Revisions** | `revision-comment` + `revision-suggestion` | the `revision` key | non-lossy both ways (the body rides into `user_text` and back) |
-| **Cutter** | `cutter-comment` + `cutter-suggestion` | the **legacy `cut` key** (`CARD_THEMES.cut`) | non-lossy both ways |
+| **Revisions** | `revision-comment` + `revision-suggestion` | the `revision` key | comment→suggestion lossy (`drops: formatting + aiRequest`); suggestion→comment non-lossy (body rides into `user_text` and back) |
+| **Cutter** | `cutter-comment` + `cutter-suggestion` | the **legacy `cut` key** (`CARD_THEMES.cut`) | comment→suggestion lossy (`drops: formatting + aiRequest`); suggestion→comment non-lossy |
 | **Reports** | `report` + `report-request` | `report` | `report` ⇄ `report-request`, lossy both ways — [below](#the-reports-panel) |
 
 Each pair is a reciprocal **morph pair** (`CardMeta.morph: { to, lossy, drops }`):
@@ -248,7 +248,9 @@ registered through `registerCardMorph`
 `MorphDropField`s the TO shape can't hold (`title` / `byline` / `aiRequest` /
 `body` / `keys`) — it drives the generated confirm copy AND the unbridge:
 `drops.includes("aiRequest")` is the declarative trigger to clear the orphaned
-`ai-requests.json` entry (the report→report-request flip). `lossy` is pinned to
+`ai-requests.json` entry (the `report-request`→`report` flip, plus — since task
+198 — the `revision-comment`→`revision-suggestion` and
+`cutter-comment`→`cutter-suggestion` flips). `lossy` is pinned to
 `drops.length > 0` by `assertMorphCoverage`.
 
 ## The ghost kinds: `ai` and `suggestion` (neither is a `CardKind`)
