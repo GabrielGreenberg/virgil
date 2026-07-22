@@ -115,9 +115,31 @@ export const LinkedAnchorGuard = Extension.create({
   name: "linkedAnchorGuard",
 
   addProseMirrorPlugins() {
+    // Capture the live view so the deferred dispatch can re-check anchor
+    // liveness against the FINAL, fully-committed doc — the mark-level twin of
+    // TextObjectOrphanGuard's settled-doc recheck below. The root-cause fix
+    // lives in the step-inspector (an interior char-delete inside a marked run
+    // no longer false-reports the surviving anchor as removed), but this recheck
+    // is the safety net: if any future step path re-introduces a false positive
+    // in `removedAnchors`, firing the orphan event would make the feature hooks
+    // (useNotes / useCutter / useRevisions / useReports) PERMANENTLY strip a
+    // still-valid anchor link — silent data loss. Re-checking the settled doc in
+    // the `setTimeout(0)` skips any anchorId whose mark is actually still live.
+    let liveView: EditorView | null = null;
     return [
       new Plugin({
         key: new PluginKey("linkedAnchorGuard"),
+        view(v) {
+          liveView = v;
+          return {
+            update(v2) {
+              liveView = v2;
+            },
+            destroy() {
+              liveView = null;
+            },
+          };
+        },
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           // Read the diff already computed by DocStructureObserver
@@ -126,7 +148,28 @@ export const LinkedAnchorGuard = Extension.create({
           const diff = readPendingDiff(newState);
           if (!diff || diff.removedAnchors.length === 0) return null;
           setTimeout(() => {
+            // Build the set of anchorIds still live in the settled doc ONCE. An
+            // id present here survived (interior edit) and is NOT an orphan — skip
+            // its event so the sweep doesn't strip a valid link. O(doc), but only
+            // on an anchor-removal transaction, never the plain-typing path.
+            // Fallback (no view): dispatch all, matching prior behavior.
+            const doc = liveView?.state.doc ?? null;
+            let liveAnchorIds: Set<string> | null = null;
+            if (doc) {
+              liveAnchorIds = new Set<string>();
+              doc.descendants((node) => {
+                if (node.isText && node.marks.length > 0) {
+                  for (const mark of node.marks) {
+                    if (mark.type.name !== "linkedAnchor") continue;
+                    const aid = (mark.attrs as { anchorId?: string }).anchorId ?? "";
+                    if (aid) liveAnchorIds!.add(aid);
+                  }
+                }
+                return true;
+              });
+            }
             for (const a of diff.removedAnchors) {
+              if (liveAnchorIds && liveAnchorIds.has(a.id)) continue; // survived
               window.dispatchEvent(
                 new CustomEvent("virgil-anchor-orphaned", {
                   detail: { anchorId: a.id, kind: a.kind },

@@ -396,6 +396,39 @@ export function inspectSteps(
     return newDocUuidsCache.has(uuid);
   };
 
+  // Anchor-id survivor guard — the mark-level twin of `oldUuidSurvivesInNewDoc`.
+  // `collectRange` registers a `linkedAnchor` by WHOLE text node (`inspectNodeAt`),
+  // so deleting one char strictly INSIDE a marked run puts the anchor id into
+  // `removed.anchors` even though the mark still rides the untouched remainder in
+  // `newDoc` (the added side collapses — nothing was inserted — so `added.anchors`
+  // stays empty and the naive reconciler false-reports it removed). That false
+  // positive makes `LinkedAnchorGuard` orphan the card and the feature hooks
+  // persist the anchor loss — silent detachment on an ordinary interior Backspace.
+  // Consult this before pushing an anchor to `removedAnchors`: it's truly removed
+  // only if its id is absent from every `linkedAnchor` mark in `newDoc`. A genuine
+  // mark removal (RemoveMarkStep) or a full-run deletion leaves the id nowhere →
+  // removal still fires. Built at most once per tx, and ONLY when some anchor
+  // entered `removed.anchors` (never on plain typing — no anchor removal, no walk),
+  // so keystroke sanctity holds (the O(doc) walk is off the typing path).
+  let newDocAnchorIdsCache: Set<string> | null = null;
+  const anchorSurvivesInNewDoc = (anchorId: string): boolean => {
+    if (!newDocAnchorIdsCache) {
+      const set = new Set<string>();
+      newDoc.descendants((node) => {
+        if (node.isText && node.marks.length > 0) {
+          for (const mark of node.marks) {
+            if (mark.type.name !== "linkedAnchor") continue;
+            const aid = (mark.attrs as { anchorId?: string }).anchorId ?? "";
+            if (aid) set.add(aid);
+          }
+        }
+        return true;
+      });
+      newDocAnchorIdsCache = set;
+    }
+    return newDocAnchorIdsCache.has(anchorId);
+  };
+
   for (let stepIndex = 0; stepIndex < tr.steps.length; stepIndex++) {
     const step = tr.steps[stepIndex] as Step;
     if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
@@ -724,7 +757,12 @@ export function inspectSteps(
     if (!removed.anchors.has(id)) addedAnchors.push(entry);
   }
   for (const [id, entry] of removed.anchors) {
-    if (!added.anchors.has(id)) removedAnchors.push(entry);
+    // Survivor guard: an interior char-delete inside a marked run reports the
+    // whole run removed while the mark still survives in `newDoc`. Only report
+    // the anchor removed if it's absent from `added` AND truly gone from newDoc.
+    // The `!added.anchors.has(id)` short-circuit keeps the O(doc) walk off the
+    // hot path when the anchor was re-collected on the added side.
+    if (!added.anchors.has(id) && !anchorSurvivesInNewDoc(id)) removedAnchors.push(entry);
   }
 
   // Examples: separate added / removed / changed, mirroring footnotes &
