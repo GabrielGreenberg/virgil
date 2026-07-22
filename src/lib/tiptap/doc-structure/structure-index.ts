@@ -21,6 +21,7 @@ import {
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,
+  deriveExampleIdentity,
   type DocStructure,
   EMPTY_STRUCTURE,
   type ExampleEntry,
@@ -55,8 +56,9 @@ export function buildInitial(doc: PMNode): DocStructure {
   // stack is O(depth) and runs INSIDE the single load-only `buildInitial`
   // walk — no extra doc pass, and `applyDiff` never re-walks (keystroke
   // sanctity; see AGENTS.md "Card-source derivation"). `id` is the example's
-  // `ExampleEntry.id` (block uuid ?? tag ?? label) so it matches the example
-  // omni item key `cardPopKey("example", id)` the nesting transform resolves.
+  // `ExampleEntry.id` (first non-empty of uuid → tag → label, via the shared
+  // `deriveExampleIdentity`) so it matches the example omni item key
+  // `cardPopKey("example", id)` the nesting transform resolves.
   const exampleStack: { id: string; end: number }[] = [];
 
   // Walk top-level UUID-bearing blocks. For nested anchor-bearing marks
@@ -134,21 +136,20 @@ export function buildInitial(doc: PMNode): DocStructure {
         label?: string;
         number?: string | number | null;
       };
-      const id = uuid ?? attrs.tag ?? attrs.label ?? "";
+      // Shared derivation with inspectNodeAt — see `deriveExampleIdentity`.
+      const { id, uuid: exUuid, tag, label, number } = deriveExampleIdentity({
+        uuid,
+        tag: attrs.tag,
+        label: attrs.label,
+        number: attrs.number,
+      });
       if (id) {
-        examples.push({
-          id,
-          uuid: uuid ?? null,
-          pos,
-          tag: attrs.tag ?? "",
-          label: attrs.label ?? "",
-          number: attrs.number ?? null,
-        });
-        if (attrs.label) {
-          labels.set(attrs.label, {
-            id: attrs.label,
+        examples.push({ id, uuid: exUuid, pos, tag, label, number });
+        if (label) {
+          labels.set(label, {
+            id: label,
             owner: "example",
-            ownerUuid: uuid ?? null,
+            ownerUuid: exUuid,
             pos,
           });
         }

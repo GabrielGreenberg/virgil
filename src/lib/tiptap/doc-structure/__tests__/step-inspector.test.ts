@@ -491,6 +491,65 @@ describe("inspectSteps — figures and examples", () => {
   });
 });
 
+describe("exampleBlock id-derivation is congruent across load + incremental paths (task 213)", () => {
+  // buildInitial (the load-time O(N) walk) and inspectNodeAt (the per-transaction
+  // incremental path) must derive an identical ExampleEntry.id for every input.
+  // They had drifted: the incremental path pre-coerced tag/label to "" before the
+  // `??` chain, so a uuid-less, tag-less, LABEL-ONLY example was indexed on reload
+  // but skipped live. Both now route through `deriveExampleIdentity`.
+
+  /** Insert `node` into an empty-ish doc and return the incremental diff. */
+  function insertDiff(node: ReturnType<typeof exampleBlock>): StructureDiff {
+    const s = stateOf(doc(paragraph("p1", "body")));
+    const tr = s.tr.insert(s.doc.content.size, node);
+    return inspectSteps(tr, s.doc, tr.doc);
+  }
+
+  it("a label-only (no uuid, no tag) exampleBlock indexes under its label on BOTH paths", () => {
+    // uuid null + tag "" (fixture default) + label present — the drift case.
+    const solo = exampleBlock(null as unknown as string, { label: "ex:solo" });
+
+    // Load path.
+    const loaded = buildInitial(doc(solo));
+    expect(loaded.examples.map((e) => e.id)).toContain("ex:solo");
+    expect(loaded.examples.find((e) => e.id === "ex:solo")?.label).toBe("ex:solo");
+
+    // Incremental path — previously produced NO example entry here.
+    const d = insertDiff(solo);
+    expect(d.addedExamples.map((e) => e.id)).toContain("ex:solo");
+    expect(d.exampleStructureChanged).toBe(true);
+
+    // Congruent.
+    expect(d.addedExamples.map((e) => e.id).sort()).toEqual(
+      loaded.examples.map((e) => e.id).sort(),
+    );
+  });
+
+  it("a uuid-bearing example still indexes under its uuid on both paths (regression)", () => {
+    const ex = exampleBlock("e1", { tag: "myex", label: "ex:a" });
+    const loaded = buildInitial(doc(ex));
+    const d = insertDiff(ex);
+    expect(loaded.examples.map((e) => e.id)).toEqual(["e1"]);
+    expect(d.addedExamples.map((e) => e.id)).toEqual(["e1"]);
+  });
+
+  it("a uuid-less but tag-bearing example indexes under its tag on both paths (regression)", () => {
+    const ex = exampleBlock(null as unknown as string, { tag: "mytag", label: "ex:b" });
+    const loaded = buildInitial(doc(ex));
+    const d = insertDiff(ex);
+    expect(loaded.examples.map((e) => e.id)).toEqual(["mytag"]);
+    expect(d.addedExamples.map((e) => e.id)).toEqual(["mytag"]);
+  });
+
+  it("an all-empty example (no uuid/tag/label) is skipped by both paths", () => {
+    const ex = exampleBlock(null as unknown as string, {});
+    const loaded = buildInitial(doc(ex));
+    const d = insertDiff(ex);
+    expect(loaded.examples).toHaveLength(0);
+    expect(d.addedExamples).toHaveLength(0);
+  });
+});
+
 describe("inspectSteps — example reorder / renumber (changedExamples)", () => {
   // The stale-`(N)`-after-reorder class (task 2026-07-12-101). An example
   // drag-reorder is a same-uuid delete+insert MOVE and the ExpexNumbering
