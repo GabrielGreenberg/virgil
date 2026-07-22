@@ -37,6 +37,7 @@ import {
   type FigureEntry,
   type FootnoteEntry,
   type HeadingEntry,
+  isEmptyDiff,
   type LabelEntry,
   type StructureDiff,
 } from "./types";
@@ -823,41 +824,7 @@ export function inspectSteps(
     if (!added.labels.has(id)) removedLabels.push(entry);
   }
 
-  // Fast-path: if all categories are empty, return the shared EMPTY_DIFF
-  // singleton so consumers can `=== EMPTY_DIFF` for the no-op check.
-  if (
-    addedBlocks.length === 0 &&
-    removedBlocks.length === 0 &&
-    changedBlocks.length === 0 &&
-    !blockOrderChanged &&
-    addedHeadings.length === 0 &&
-    removedHeadings.length === 0 &&
-    changedHeadings.length === 0 &&
-    addedFootnotes.length === 0 &&
-    removedFootnotes.length === 0 &&
-    !footnoteOrderChanged &&
-    addedCitations.length === 0 &&
-    removedCitations.length === 0 &&
-    changedCitations.length === 0 &&
-    !citationOrderChanged &&
-    addedAnchors.length === 0 &&
-    removedAnchors.length === 0 &&
-    addedExamples.length === 0 &&
-    removedExamples.length === 0 &&
-    changedExamples.length === 0 &&
-    !exampleStructureChanged &&
-    addedFigures.length === 0 &&
-    removedFigures.length === 0 &&
-    changedFigures.length === 0 &&
-    addedLabels.length === 0 &&
-    removedLabels.length === 0 &&
-    contentChangedUuids.size === 0 &&
-    exampleContentChangedUuids.size === 0
-  ) {
-    return EMPTY_DIFF;
-  }
-
-  return {
+  const diff: StructureDiff = {
     addedBlocks,
     removedBlocks,
     changedBlocks,
@@ -887,4 +854,16 @@ export function inspectSteps(
     contentChangedUuids,
     exampleContentChangedUuids,
   };
+
+  // Fast-path: if all categories are empty, return the shared EMPTY_DIFF
+  // singleton so consumers can `=== EMPTY_DIFF` for the no-op check. Delegate
+  // the emptiness test to `isEmptyDiff` (the SSOT) rather than re-listing the
+  // field conditions inline — the inline copy had drifted (it omitted
+  // `changedFootnotes`, masked only by `footnoteOrderChanged` being co-set),
+  // and a re-listing can silently drift again as fields are added. Routing
+  // through `isEmptyDiff` makes that impossible: the fast-path can never
+  // disagree with the canonical predicate.
+  if (isEmptyDiff(diff)) return EMPTY_DIFF;
+
+  return diff;
 }
