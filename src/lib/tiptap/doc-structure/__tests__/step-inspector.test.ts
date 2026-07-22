@@ -429,6 +429,43 @@ describe("inspectSteps — linkedAnchor marks", () => {
     const d = inspectSteps(tr, s.doc, tr.doc);
     expect(d.removedAnchors.map((a) => a.id)).toEqual(["a1"]);
   });
+
+  it("deleting a char INSIDE a marked run does NOT emit removedAnchors (mark survives)", () => {
+    // [anchoredText("anchored", a1)][" rest"] — delete one interior char of the
+    // marked run. `collectRange` registers the whole marked text node into
+    // `removed.anchors`, but the mark still rides the untouched remainder in
+    // newDoc — so the survivor guard must suppress the false removal. This is
+    // the ordinary interior-Backspace edit that was silently orphaning the card.
+    const para = testSchema.nodes.paragraph.create(
+      { uuid: "p1" },
+      [anchoredText("anchored", "a1"), testSchema.text(" rest")],
+    );
+    const s = stateOf(doc(para));
+    // Delete the char at pos 3 (inside "anchored": "an|chored" → "achored").
+    const tr = s.tr.delete(3, 4);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.removedAnchors).toHaveLength(0);
+    // Sanity: the mark genuinely survives in the new doc.
+    let survives = false;
+    tr.doc.descendants((n) => {
+      if (n.isText && n.marks.some((m) => m.type.name === "linkedAnchor")) survives = true;
+      return true;
+    });
+    expect(survives).toBe(true);
+  });
+
+  it("deleting the ENTIRE marked run still emits removedAnchors (id truly gone)", () => {
+    // Full-run deletion leaves the anchor id nowhere in newDoc → the survivor
+    // guard lets the removal through, matching the removeMark case.
+    const para = testSchema.nodes.paragraph.create(
+      { uuid: "p1" },
+      [anchoredText("anchored", "a1"), testSchema.text(" rest")],
+    );
+    const s = stateOf(doc(para));
+    const tr = s.tr.delete(1, 1 + "anchored".length);
+    const d = inspectSteps(tr, s.doc, tr.doc);
+    expect(d.removedAnchors.map((a) => a.id)).toEqual(["a1"]);
+  });
 });
 
 describe("inspectSteps — figures and examples", () => {
