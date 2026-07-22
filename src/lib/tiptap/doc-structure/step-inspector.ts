@@ -32,6 +32,7 @@ import {
   type BlockEntry,
   type CitationEntry,
   type DocStructure,
+  deriveExampleIdentity,
   EMPTY_DIFF,
   type ExampleEntry,
   type FigureEntry,
@@ -122,23 +123,20 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle): void {
     }
 
     if (typeName === "exampleBlock") {
-      const tag = (attrs.tag as string | undefined) ?? "";
-      const label = (attrs.label as string | undefined) ?? "";
-      const id = uuid ?? tag ?? label ?? "";
+      // Shared derivation with buildInitial — see `deriveExampleIdentity`.
+      const { id, uuid: exUuid, tag, label, number } = deriveExampleIdentity({
+        uuid,
+        tag: attrs.tag as string | null | undefined,
+        label: attrs.label as string | null | undefined,
+        number: attrs.number as string | number | null | undefined,
+      });
       if (id) {
-        out.examples.set(id, {
-          id,
-          uuid: uuid ?? null,
-          pos,
-          tag,
-          label,
-          number: (attrs.number as string | number | null | undefined) ?? null,
-        });
+        out.examples.set(id, { id, uuid: exUuid, pos, tag, label, number });
         if (label) {
           out.labels.set(label, {
             id: label,
             owner: "example",
-            ownerUuid: uuid ?? null,
+            ownerUuid: exUuid,
             pos,
           });
         }

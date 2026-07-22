@@ -111,6 +111,44 @@ export interface ExampleEntry {
   number: string | number | null;
 }
 
+/**
+ * Derive an `exampleBlock`'s stable identity + display fields from its attrs.
+ *
+ * SHARED by BOTH entity extractors — `buildInitial` (the load-time O(N) walk,
+ * `structure-index.ts`) and `inspectNodeAt` (the per-transaction incremental
+ * path, `step-inspector.ts`) — so the two can never disagree on WHICH examples
+ * are indexed or under WHAT id. They had drifted (task 213): the incremental
+ * path pre-coerced `tag`/`label` to `""` before the `??` chain, so `null ?? ""`
+ * short-circuited and the `label` fallback was unreachable there.
+ *
+ * `id` is the first NON-EMPTY of `uuid → tag → label` (empty strings treated as
+ * ABSENT — the schema defaults `tag`/`label` to `""`, not `undefined`, so a
+ * plain `??` chain would let an empty `tag` block the `label` fallback). This
+ * lets a uuid-less, tag-less, **label-only** example index under its label
+ * instead of being dropped. An all-empty example yields `id === ""` and is
+ * skipped by both callers (`if (id)`). The stored `tag`/`label` stay coerced
+ * to `""` for the `ExampleEntry` display fields.
+ */
+export function deriveExampleIdentity(attrs: {
+  uuid?: string | null;
+  tag?: string | null;
+  label?: string | null;
+  number?: string | number | null;
+}): {
+  id: string;
+  uuid: string | null;
+  tag: string;
+  label: string;
+  number: string | number | null;
+} {
+  const uuid = attrs.uuid ?? null;
+  const tag = attrs.tag ?? "";
+  const label = attrs.label ?? "";
+  const id = uuid || tag || label || "";
+  const number = attrs.number ?? null;
+  return { id, uuid, tag, label, number };
+}
+
 export interface FigureEntry {
   uuid: string;
   pos: number;
