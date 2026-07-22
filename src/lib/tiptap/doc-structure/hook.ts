@@ -46,34 +46,58 @@ export function useDocStructure(editor: Editor | null | undefined): DocStructure
  *     // …
  *   });
  */
-type SubMethod =
-  | "onAnyChange"
-  | "onBlocksAdded"
-  | "onBlocksRemoved"
-  | "onHeadingsAdded"
-  | "onHeadingsRemoved"
-  | "onHeadingsChanged"
-  | "onHeadingsRecomputable"
-  | "onFootnotesAdded"
-  | "onFootnotesRemoved"
-  | "onFootnoteOrderChanged"
-  | "onCitationsAdded"
-  | "onCitationsRemoved"
-  | "onCitationsChanged"
-  | "onCitationOrderChanged"
-  | "onAnchorsAdded"
-  | "onAnchorsRemoved"
-  | "onExamplesAdded"
-  | "onExamplesRemoved"
-  | "onExamplesRecomputable"
-  | "onFiguresAdded"
-  | "onFiguresRemoved"
-  | "onFiguresChanged"
-  | "onFiguresRecomputable"
-  | "onLabelsAdded"
-  | "onLabelsRemoved"
-  | "onLabelsRecomputable"
-  | "onContentChanged";
+/**
+ * The bus subscription methods reachable through `useDocStructureEvent`.
+ *
+ * SSOT: `SubMethod` is DERIVED from this runtime array, and the array is
+ * pinned to the `DocStructureBus` interface by a parity test
+ * (`__tests__/diff-predicate-congruence.test.ts`) that asserts every `bus.on*`
+ * method appears here — minus the two intentionally-excluded per-uuid
+ * subscriptions (`onBlockContentChanged` / `onExampleContentChanged`), which
+ * take a `uuid` argument the diff-shaped trampoline below can't supply. A new
+ * bus method that forgets this list fails CI instead of silently being
+ * unreachable through the typed hook (this list already drifted once —
+ * `onBlockOrderChanged` was missing).
+ */
+export const SUB_METHODS = [
+  "onAnyChange",
+  "onBlocksAdded",
+  "onBlocksRemoved",
+  "onBlockOrderChanged",
+  "onHeadingsAdded",
+  "onHeadingsRemoved",
+  "onHeadingsChanged",
+  "onHeadingsRecomputable",
+  "onFootnotesAdded",
+  "onFootnotesRemoved",
+  "onFootnoteOrderChanged",
+  "onCitationsAdded",
+  "onCitationsRemoved",
+  "onCitationsChanged",
+  "onCitationOrderChanged",
+  "onAnchorsAdded",
+  "onAnchorsRemoved",
+  "onExamplesAdded",
+  "onExamplesRemoved",
+  "onExamplesRecomputable",
+  "onFiguresAdded",
+  "onFiguresRemoved",
+  "onFiguresChanged",
+  "onFiguresRecomputable",
+  "onLabelsAdded",
+  "onLabelsRemoved",
+  "onLabelsRecomputable",
+  "onContentChanged",
+] as const;
+
+/** Per-uuid bus subscriptions deliberately NOT reachable through the
+ *  diff-shaped `useDocStructureEvent` trampoline (they take a `uuid` arg). */
+export const SUB_METHOD_UUID_EXCLUSIONS = [
+  "onBlockContentChanged",
+  "onExampleContentChanged",
+] as const;
+
+type SubMethod = (typeof SUB_METHODS)[number];
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function useDocStructureEvent(

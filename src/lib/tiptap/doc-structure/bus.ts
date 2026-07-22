@@ -154,6 +154,49 @@ function makeList<T>(): { add(fn: T): Unsub; emit(call: (fn: T) => void): void }
   };
 }
 
+/**
+ * True when a diff should wake the STRUCTURAL watchers — i.e. bump `emitCount`
+ * and fire `onAnyChange`. This is the bus's keystroke-sanctity predicate, and
+ * it is DELIBERATELY NARROWER than `diffHasStructuralEntries` (types.ts): it
+ * omits `changedBlocks` / `changedFootnotes` / `changedExamples` because
+ * `blockOrderChanged` / `footnoteOrderChanged` / `exampleStructureChanged` are
+ * co-set on those transactions, so a same-uuid change already reaches
+ * position-keyed consumers without waking every structural watcher — and it
+ * omits the two content-only sets (`contentChangedUuids` /
+ * `exampleContentChangedUuids`), the plain-keystroke case that must leave
+ * `emitCount` flat.
+ *
+ * Exported (and pinned by `__tests__/diff-predicate-congruence.test.ts`) so the
+ * documented relationship to the sibling predicates can't silently drift.
+ */
+export function diffWakesStructuralWatchers(diff: StructureDiff): boolean {
+  return (
+    diff.addedBlocks.length > 0 ||
+    diff.removedBlocks.length > 0 ||
+    diff.blockOrderChanged ||
+    diff.addedHeadings.length > 0 ||
+    diff.removedHeadings.length > 0 ||
+    diff.changedHeadings.length > 0 ||
+    diff.addedFootnotes.length > 0 ||
+    diff.removedFootnotes.length > 0 ||
+    diff.footnoteOrderChanged ||
+    diff.addedCitations.length > 0 ||
+    diff.removedCitations.length > 0 ||
+    diff.changedCitations.length > 0 ||
+    diff.citationOrderChanged ||
+    diff.addedAnchors.length > 0 ||
+    diff.removedAnchors.length > 0 ||
+    diff.addedExamples.length > 0 ||
+    diff.removedExamples.length > 0 ||
+    diff.exampleStructureChanged ||
+    diff.addedFigures.length > 0 ||
+    diff.removedFigures.length > 0 ||
+    diff.changedFigures.length > 0 ||
+    diff.addedLabels.length > 0 ||
+    diff.removedLabels.length > 0
+  );
+}
+
 export function createDocStructureBus(): DocStructureBus {
   let structure: DocStructure = EMPTY_STRUCTURE;
   let snapshotProvider: (() => DocStructure) | null = null;
@@ -227,30 +270,7 @@ export function createDocStructureBus(): DocStructureBus {
       // out to per-block content subscribers (the only consumers that
       // care), but don't wake up the structural watchers and don't
       // count against the keystroke-sanctity success criterion.
-      const hasStructuralChange =
-        diff.addedBlocks.length > 0 ||
-        diff.removedBlocks.length > 0 ||
-        diff.blockOrderChanged ||
-        diff.addedHeadings.length > 0 ||
-        diff.removedHeadings.length > 0 ||
-        diff.changedHeadings.length > 0 ||
-        diff.addedFootnotes.length > 0 ||
-        diff.removedFootnotes.length > 0 ||
-        diff.footnoteOrderChanged ||
-        diff.addedCitations.length > 0 ||
-        diff.removedCitations.length > 0 ||
-        diff.changedCitations.length > 0 ||
-        diff.citationOrderChanged ||
-        diff.addedAnchors.length > 0 ||
-        diff.removedAnchors.length > 0 ||
-        diff.addedExamples.length > 0 ||
-        diff.removedExamples.length > 0 ||
-        diff.exampleStructureChanged ||
-        diff.addedFigures.length > 0 ||
-        diff.removedFigures.length > 0 ||
-        diff.changedFigures.length > 0 ||
-        diff.addedLabels.length > 0 ||
-        diff.removedLabels.length > 0;
+      const hasStructuralChange = diffWakesStructuralWatchers(diff);
 
       if (hasStructuralChange) {
         emitCount++;
