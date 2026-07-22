@@ -15,7 +15,7 @@ import {
   dashesToGlyphs,
   typographyToLatex,
 } from "@/lib/latex-typography";
-import { findMatchingBrace, isEscaped } from "@/lib/latex-lexer";
+import { findMatchingBrace, isEscaped, findUnescaped } from "@/lib/latex-lexer";
 
 const HTML_TAG_RE = /<[^>]+>/;
 
@@ -469,7 +469,7 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
 
     // Inline math: $...$
     if (text[i] === "$" && !isEscaped(text, i)) {
-      const end = text.indexOf("$", i + 1);
+      const end = findUnescaped(text, "$", i + 1);
       if (end !== -1) {
         flush();
         nodes.push({ type: "inlineMath", attrs: { latex: text.slice(i + 1, end) } });

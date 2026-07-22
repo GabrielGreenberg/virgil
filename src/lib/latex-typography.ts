@@ -393,6 +393,30 @@ export function isEscaped(text: string, i: number): boolean {
   return bs % 2 === 1;
 }
 
+/**
+ * Find the index of the first UNESCAPED occurrence of `delim` in `text` at or
+ * after `from`, or -1 if none. The closing-delimiter twin of `isEscaped`: where
+ * `isEscaped` answers "is the delimiter at this index real?", this answers
+ * "where is the next REAL delimiter?" — so both ends of a delimiter pair
+ * (opening check, closing search) resolve through the same backslash-run parity
+ * rule rather than a bare escape-blind `indexOf`.
+ *
+ * The bug this closes: `$a \$ b$` (a legitimately escaped `\$` inside a math
+ * run). A raw `indexOf("$", …)` stops at the escaped `\$` and terminates the
+ * math node early; this skips it and finds the true close. Backslash RUNS were
+ * already fine under `indexOf` (`$x\\$` — the even `\\` run is non-escaping, so
+ * the same `$` is returned either way); parity now makes that explicit.
+ *
+ * Fallback is byte-identical to `indexOf`: no unescaped hit → -1.
+ */
+export function findUnescaped(text: string, delim: string, from: number): number {
+  let k = text.indexOf(delim, from);
+  while (k !== -1 && isEscaped(text, k)) {
+    k = text.indexOf(delim, k + 1);
+  }
+  return k;
+}
+
 /** Find the index of the `}` matching the `{` at `open`. -1 if unbalanced. */
 function findMatchingBrace(text: string, open: number): number {
   if (text[open] !== "{") return -1;

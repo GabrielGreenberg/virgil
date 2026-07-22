@@ -27,7 +27,12 @@
  * Imports ONLY latex-typography (a leaf) to avoid a cycle.
  */
 
-import { matchAccent, matchSpecialLetter, isEscaped } from "@/lib/latex-typography";
+import {
+  matchAccent,
+  matchSpecialLetter,
+  isEscaped,
+  findUnescaped,
+} from "@/lib/latex-typography";
 
 export { matchAccent, matchSpecialLetter };
 
@@ -36,8 +41,12 @@ export { matchAccent, matchSpecialLetter };
  * `latex-typography.ts`, see its doc comment). Every scanner in the codebase —
  * brace, math-delimiter, comment, gloss — asks this ONE question, so
  * backslash-run parity is decided in exactly one place (task 206).
+ *
+ * `findUnescaped` is its closing-side twin — "where is the next REAL delimiter?"
+ * — so the math-close searches resolve through the same SSOT parity rule as the
+ * opening check rather than an escape-blind `indexOf` (task 210).
  */
-export { isEscaped };
+export { isEscaped, findUnescaped };
 
 // ---------------------------------------------------------------------------
 // Verbatim families
