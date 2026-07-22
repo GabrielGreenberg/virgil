@@ -127,6 +127,72 @@ describe("math-delimiter toggles", () => {
   });
 });
 
+/**
+ * Task 210 — the CLOSING delimiter search is escape-aware too (the
+ * closing-side twin of the task-206 opening rule). A legitimately escaped
+ * `\$` INSIDE a math run must not terminate the node early; the search finds
+ * the first UNESCAPED delimiter via the shared `findUnescaped` SSOT.
+ */
+
+/** Collect the `latex` attr of every inlineMath node, depth-first. */
+function mathLatex(json: JSONContent): string[] {
+  const out: string[] = [];
+  const walk = (n: JSONContent) => {
+    if (n.type === "inlineMath") out.push((n.attrs?.latex as string) ?? "");
+    (n.content ?? []).forEach(walk);
+  };
+  walk(json);
+  return out;
+}
+
+/** Concatenate every text node's text, depth-first. */
+function allText(json: JSONContent): string {
+  let out = "";
+  const walk = (n: JSONContent) => {
+    if (typeof n.text === "string") out += n.text;
+    (n.content ?? []).forEach(walk);
+  };
+  walk(json);
+  return out;
+}
+
+describe("math CLOSING delimiter is escape-aware (task 210)", () => {
+  it("$a \\$ b$ tail → ONE inlineMath 'a \\$ b', then literal ' tail' (parser)", () => {
+    const doc = parseLatex(
+      "\\begin{document}\n$a \\$ b$ tail\n\\end{document}\n",
+    );
+    expect(mathLatex(doc)).toEqual(["a \\$ b"]);
+    expect(allText(doc)).toContain("tail");
+  });
+
+  it("same input through the footnote path (richLatexToJson)", () => {
+    const json = richLatexToJson("$a \\$ b$ tail");
+    expect(mathLatex(json)).toEqual(["a \\$ b"]);
+    expect(allText(json)).toContain("tail");
+  });
+
+  it("$$a \\$ b$$ display-math twin closes at the real $$", () => {
+    const doc = parseLatex(
+      "\\begin{document}\n$$a \\$ b$$ tail\n\\end{document}\n",
+    );
+    expect(mathLatex(doc)).toEqual(["a \\$ b"]);
+    expect(allText(doc)).toContain("tail");
+  });
+
+  it("regression: $x\\\\$ (even run — a \\\\ line break) STILL closes at that $", () => {
+    // The `\\` before the close is an EVEN run → non-escaping, so the close is
+    // real. `indexOf` was already correct here; parity keeps it correct.
+    const doc = parseLatex("\\begin{document}\n$x\\\\$\n\\end{document}\n");
+    expect(mathLatex(doc)).toEqual(["x\\\\"]);
+  });
+
+  it("regression: an unterminated $ still falls through to literal text", () => {
+    const doc = parseLatex("\\begin{document}\n$abc no close\n\\end{document}\n");
+    expect(nodeTypes(doc)).not.toContain("inlineMath");
+    expect(allText(doc)).toContain("$abc no close");
+  });
+});
+
 describe("title harvest survives a \\\\-terminated field (style merge)", () => {
   it("keeps \\title{Foo\\\\} and its %!v: UUID through a style switch", () => {
     const oldLatex =
