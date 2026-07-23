@@ -101,12 +101,42 @@ describe("resolveInlineContextElement", () => {
     expect(target.classList.contains("title-field-content")).toBe(true);
   });
 
-  it("descends list-title-wrapper to first li", () => {
+  it("descends list-title-wrapper to first li (bare li, no inner <p>)", () => {
     const anchor = build(`
       <div class="list-title-wrapper"><ul><li>Item</li></ul></div>
     `);
     const target = resolveInlineContextElement(anchor);
     expect(target.tagName).toBe("LI");
+  });
+
+  it("descends list-title-wrapper past the <li> to its inner <p> (task 217)", () => {
+    const anchor = build(`
+      <div class="list-title-wrapper"><ul><li><p>Item</p></li></ul></div>
+    `);
+    const target = resolveInlineContextElement(anchor);
+    expect(target.tagName).toBe("P");
+  });
+
+  it("descends a bare <li> to its inner <p> — the metrics element owns the line box (task 217)", () => {
+    const anchor = build(`<li><p>Item</p></li>`);
+    const target = resolveInlineContextElement(anchor);
+    expect(target.tagName).toBe("P");
+    expect(target.textContent).toBe("Item");
+  });
+
+  it("falls back to the <li> itself when it has no direct inner <p> (task 217)", () => {
+    // Markerless / non-paragraph content — safe fallback, no throw.
+    const anchor = build(`<li>Plain text</li>`);
+    const target = resolveInlineContextElement(anchor);
+    expect(target).toBe(anchor);
+  });
+
+  it("only descends a DIRECT-child <p>, not a nested one (task 217)", () => {
+    // A `<p>` buried inside a nested list must not be mistaken for the item's
+    // own first line — `:scope > p` keeps the descent to the direct child.
+    const anchor = build(`<li><ul><li><p>Nested</p></li></ul></li>`);
+    const target = resolveInlineContextElement(anchor);
+    expect(target).toBe(anchor);
   });
 
   it("descends expex-item to .expex-item-body inner paragraph", () => {
@@ -366,6 +396,63 @@ describe("capBandCenterOffset + opticalCenterY (with stubbed canvas)", () => {
       expect(opticalCenterY(250, el)).toBe(250);
     } finally {
       el.remove();
+    }
+  });
+});
+
+describe("listItem optical center reads the inner <p>'s metrics, not the <li>'s (task 217)", () => {
+  let originalGetContext: typeof HTMLCanvasElement.prototype.getContext;
+
+  beforeEach(() => {
+    clearCapTopCache();
+    originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+      font: "",
+      measureText: vi.fn((_t: string) => ({
+        actualBoundingBoxAscent: 11, // capHeight
+        fontBoundingBoxAscent: 13,
+        fontBoundingBoxDescent: 3,
+        width: 10,
+      })),
+    })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  });
+
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext;
+    clearCapTopCache();
+  });
+
+  it("resolves to the <p>, so the cap-band center uses the <p>'s line-height", () => {
+    // The `<li>` inherits base leading (16px); its inner `<p>` carries prose
+    // leading (32px). The two produce DIFFERENT optical centers — the bug was
+    // measuring the `<li>`. capBandCenterOffset = capTopOffset + capHeight/2:
+    //   on <li> (lh 16): (16-16)/2 + (13-11) = 2 ; + 5.5 = 7.5
+    //   on <p>  (lh 32): (32-16)/2 + (13-11) = 10 ; + 5.5 = 15.5
+    const li = document.createElement("li");
+    li.style.fontFamily = "Serif";
+    li.style.fontSize = "16px";
+    li.style.fontWeight = "400";
+    li.style.lineHeight = "16px";
+    const p = document.createElement("p");
+    p.style.fontFamily = "Serif";
+    p.style.fontSize = "16px";
+    p.style.fontWeight = "400";
+    p.style.lineHeight = "32px";
+    p.textContent = "Item";
+    li.appendChild(p);
+    document.body.appendChild(li);
+    try {
+      const target = resolveInlineContextElement(li);
+      expect(target).toBe(p);
+      // Anchors on the <p>'s optical center (15.5), NOT the <li>'s (7.5).
+      expect(capBandCenterOffset(target)).toBeCloseTo(15.5, 5);
+      expect(capBandCenterOffset(li)).toBeCloseTo(7.5, 5);
+      expect(capBandCenterOffset(target)).not.toBeCloseTo(
+        capBandCenterOffset(li),
+        1,
+      );
+    } finally {
+      li.remove();
     }
   });
 });

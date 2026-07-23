@@ -444,16 +444,11 @@ export function resolveBlockFrame(
   // Resolve the em margin tokens against the LABELED TEXT's font, so the gap
   // scales with the prose the user reads and every prose block shares ONE
   // value. `resolveInlineContextElement` descends wrappers to the inline text
-  // for paragraphs / example items / headings, but leaves a bare `<li>` at its
-  // own (root 16px) size rather than its inner `<p>`'s prose (15.2px) size —
-  // so descend that one case here, keeping `target` (and thus the chip-1
-  // optical center) untouched. One getComputedStyle on an element already on
-  // the placement path.
-  const fontEl =
-    target.tagName === "LI"
-      ? (target.querySelector<HTMLElement>(":scope > p") ?? target)
-      : target;
-  const cs = getComputedStyle(fontEl);
+  // for paragraphs / example items / headings — AND now the `<li>`→inner-`<p>`
+  // case (task 217), so `target` is already the prose element the optical
+  // center reads. No separate `fontEl` descent: the em token and the chip-1
+  // optical center read the SAME element by construction.
+  const cs = getComputedStyle(target);
   const fontSizePx = parseFloat(cs.fontSize) || DEFAULT_HANDLE_GAP_PX * 1.6;
   const gapPx = resolveMarginEm(
     cs,
