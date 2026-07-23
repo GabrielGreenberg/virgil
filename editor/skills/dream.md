@@ -117,6 +117,26 @@ all of them), and emits one JSON blob:
 - `memos` — the full selected set (frontmatter + the non-empty buckets) for your
   own pattern detection.
 
+**Preflight — are you running the current prompt?** This skill is *distributed*:
+the copy that actually runs is a built artifact under `.claude/commands/editor/`
+(and the skill bundles), regenerated only by `npm run build:skill-bundles`
+(`predev`/`prebuild`). So a skill edit — including one a past dream authored and
+landed — is **not live until the bundle is rebuilt**, and the gap is invisible
+from inside the prompt. Confirm it before you detect anything:
+
+```bash
+for s in editor/skills/*.md; do c=".claude/commands/editor/$(basename "$s")";
+  [ -f "$c" ] && ! diff -q "$s" "$c" >/dev/null && echo "DRIFT $s"; done
+```
+
+If any skill drifted — **that is the night's top finding**, ahead of anything in
+the memos. Record it in the digest with the rebuild command. Then **read the
+SSOT (`editor/skills/…`), not your own served text, for the rest of the run**:
+the fixes the memos seem to call for may already exist upstream, and proposing
+them again re-authors work that already landed. Treat memos written under a
+drifted prompt as evidence about the *stale* version — `skillSha` records the
+SSOT blob at HEAD, so it silently attests to a version that may never have run.
+
 ### 2. Detect cross-memo patterns
 
 This is the judgment the scripts can't do. Over the selected memos:
