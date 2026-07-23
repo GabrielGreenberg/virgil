@@ -89,12 +89,12 @@ export const VIEW_PREF_REGISTRY = {
   cardOutlineChrome:    { kind: "toggle", scope: "global", default: false, label: "Card outline",       menu: "display" },
   // Marginalia
   showMarginalia:       { kind: "toggle", scope: "global", default: true, label: "Show marginalia",   menu: "marginalia" },
-  hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: [] as MarginaliaType[], members: ["note", "archive", "todo"] as const,
+  hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: [] as MarginaliaType[], members: (["note", "archive", "todo"] as const) satisfies readonly MarginaliaType[],
                           polarity: "hidden", label: "Marginalia types", menu: "marginalia",
                           memberLabels: { note: "Notes", archive: "Archive", todo: "Todo" } },
   // Highlights
   showHighlights:       { kind: "toggle", scope: "global", default: true, label: "Show highlights",   menu: "highlights" },
-  hiddenHighlightTypes: { kind: "set", scope: "global", default: [] as HighlightType[], members: ["note", "todo", "comment", "cut"] as const,
+  hiddenHighlightTypes: { kind: "set", scope: "global", default: [] as HighlightType[], members: (["note", "todo", "comment", "cut"] as const) satisfies readonly HighlightType[],
                           polarity: "hidden", label: "Highlight types", menu: "highlights",
                           memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } },
   // Dividers
