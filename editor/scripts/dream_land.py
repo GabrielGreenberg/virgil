@@ -71,6 +71,22 @@ B_AGENTS_DONT = "B1:agents-dont-rules"
 B_CONTRACT_SHAPE = "B2:apply_response-contract-shape"
 B_DEV_GATE = "B3:dev-mode-gate"
 
+# Dev-loop procedure skills — the self-improvement machinery itself -----------
+# An edit to one of these skill prompts REWRITES how the loop operates, so it is
+# never an unattended ACTS even for a prose-polish intent: a dream/iterate run
+# editing its own operating procedure must surface that self-modification for
+# human review (→ PROPOSES).  This is the softer sibling of the three boundaries
+# below — those REFUSE outright; this only WITHHOLDS the acts fast-lane.  The
+# loop MUST be able to improve at looping (dream.md step 7's recursion), but only
+# on a reviewed branch, never committed unattended to the acts-branch.  Retires
+# the "should the dream editing dream.md always propose?" ruling flagged in the
+# 2026-07-22 self-reflection, generalized to the whole self-improvement triad.
+DEV_LOOP_SKILLS = {
+    "editor/skills/dream.md",
+    "editor/skills/reflect.md",
+    "editor/skills/iterate-virgil-editor.md",
+}
+
 # Repo-relative boundary-sensitive paths --------------------------------------
 AGENTS_MD = "editor/AGENTS.md"
 APPLY_RESPONSE = "editor/scripts/apply_response.py"
@@ -294,14 +310,29 @@ def classify_change(change: dict) -> Verdict:
     if refused is not None:
         return refused
 
+    # 2) Self-modification guard — a dev-loop procedure skill editing ITSELF
+    #    (the dream/reflect/iterate triad) always proposes, regardless of
+    #    intent.  Rewriting the self-improvement machinery unattended is
+    #    behavior-change to the loop; withhold the acts fast-lane and surface it
+    #    for human review.  (Boundaries above still win — a self-mod that also
+    #    crosses B1/B2/B3 is already refused before we get here.)
+    loop_self = [p for p in paths if p in DEV_LOOP_SKILLS]
+    if loop_self:
+        names = ", ".join(sorted(_skill_name(p) for p in loop_self))
+        return Verdict(LAND_PROPOSES,
+                       f"self-modification of the dev-loop procedure skill(s) "
+                       f"{names} — rewrites the loop's own operating procedure, "
+                       f"so human-reviewed, never an unattended acts",
+                       paths=paths)
+
     intent = (change.get("intent") or "").strip().lower()
     content = _content(change)
 
-    # 2) Structural intent → always propose.
+    # 3) Structural intent → always propose.
     if intent in STRUCTURAL_INTENTS:
         return Verdict(LAND_PROPOSES, f"structural change (intent: {intent})", paths=paths)
 
-    # 3) Any non-skill-prompt path → propose (scripts, manifest, AGENTS.md prose,
+    # 4) Any non-skill-prompt path → propose (scripts, manifest, AGENTS.md prose,
     #    build files, …): only a lone skill .md is ACTS-eligible.
     non_skill = [p for p in paths if not _is_skill_md(p)]
     if non_skill:
@@ -313,25 +344,25 @@ def classify_change(change: dict) -> Verdict:
             why = f"touches non-skill-prompt file(s): {', '.join(non_skill)}"
         return Verdict(LAND_PROPOSES, why, paths=paths)
 
-    # 4) Cross-skill (≥2 distinct skill prompts) → propose.
+    # 5) Cross-skill (≥2 distinct skill prompts) → propose.
     skills = sorted({_skill_name(p) for p in paths})
     if len(skills) > 1:
         return Verdict(LAND_PROPOSES, f"cross-skill change ({', '.join(skills)})", paths=paths)
 
-    # 5) Behavior-contract-adjacent content in a single skill prompt → propose.
+    # 6) Behavior-contract-adjacent content in a single skill prompt → propose.
     sig = _hits(content, _CONTRACT_USAGE_SIGNS)
     if sig:
         return Verdict(LAND_PROPOSES,
                        f"behavior-contract-adjacent (skill prompt touches {sig!r})",
                        paths=paths)
 
-    # 6) A single skill prompt with an explicit prose-polish intent → ACTS.
+    # 7) A single skill prompt with an explicit prose-polish intent → ACTS.
     if intent in PROSE_INTENTS:
         return Verdict(LAND_ACTS,
                        f"single skill-prompt polish ({intent}) in {skills[0]}.md",
                        paths=paths)
 
-    # 7) Single skill prompt but the intent isn't a declared prose-polish one →
+    # 8) Single skill prompt but the intent isn't a declared prose-polish one →
     #    propose (the safe default; don't act on an unspecified change).
     return Verdict(LAND_PROPOSES,
                    f"unspecified intent ({intent or 'none'}) on {skills[0]}.md — "
