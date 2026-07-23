@@ -89,9 +89,19 @@ to satisfy `reflect.py` — it is **not** the subject of the dream. Default it t
 ## The flow
 
 ```
-read ─► detect ─► route ─► act ─► digest ─► reflect-on-self
- §1      §2       §4/§5    §3+§4   §6         §7
+sync ─► read ─► detect ─► route ─► act ─► digest ─► reflect-on-self
+ §0      §1      §2       §4/§5    §3+§4   §6         §7
 ```
+
+### 0. Reconcile with existing dream work FIRST
+
+Before you author anything, reconcile with what is already in flight on this
+shared checkout — the human drives it live and prior dream runs leave work here.
+This was hard-won lore across several nights; it is now an explicit step.
+
+- **Check-first, don't fork.** Run `git worktree list` and `git branch --list 'dream/*'`. If a `dream/<date>` branch/worktree already holds the complementary half of what you were about to do, **compose onto it** rather than opening a competing branch — two dream branches editing the same script produce merge conflicts and split provenance.
+- **Preserve provenance of a prior run's uncommitted change.** If the existing dream worktree has an *uncommitted* change from an earlier run (a finished, dream-voiced proposal left in the working tree), commit **that** as its own commit first — attributing it to the run that authored it — *then* stack your own change on top. Never fold another run's work into your commit; it conflates authorship on a shared checkout.
+- **Built-artifact regeneration is a human ruling, never a self-heal.** Regenerating a distributed artifact — most importantly rebuilding/deploying the skill bundle (`npm run build:skill-bundles`) — is out of bounds for an unattended run on a live shared checkout, even when a stale bundle is demonstrably the loop's bottleneck. Do **not** run it. Surface it in the digest as a ruling owed to the human, and keep surfacing it until they rule.
 
 ### 1. Read the memos since the last dream
 
