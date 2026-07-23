@@ -202,12 +202,27 @@ export function opticalCenterY(lineTop: number, el: HTMLElement): number {
  * `resolveInlineContextElement` at its prose branch) and the block frame
  * (`resolveFirstLineTarget`) both call THIS, rather than re-deriving it;
  * it covers `par-title-wrapper` / `heading-wrapper` / `title-field-wrapper`
- * / `list-title-wrapper` / `expex-item` / `blockquote` / `pre`.
+ * / `list-title-wrapper` / `expex-item` / `blockquote` / `pre` / bare `<li>`.
  *
  * Falls back to `anchorDom` itself for unrecognized wrappers — safe for
- * raw `<p>`, `<blockquote>`, `<pre>`, `<li>`, etc., whose own style IS
- * the right reading.
+ * raw `<p>`, `<blockquote>`, etc., whose own style IS the right reading.
  */
+/**
+ * A list item's rendered first line lives in its inner `<p>` (TipTap renders a
+ * `listItem` as `<li><p>…</p></li>`), and `.tiptap li > p` carries the prose
+ * `font-size` + `line-height: 1.8` while the bare `<li>` inherits the base
+ * (root 16px / body leading). Because {@link computeCapTopOffset} derives
+ * half-leading and cap-height from the MEASURED element's line-height,
+ * measuring the `<li>` computes the offset for the WRONG line-height and drops
+ * the handle/marker ~1-2px off the text's cap-band. Descend to the direct inner
+ * `<p>` so the metrics element owns the line box; fall back to the `<li>` when
+ * it has no `:scope > p` child (markerless / non-paragraph content) — the same
+ * safe-fallback shape as the `<pre>`→`<code>` descent below.
+ */
+function descendListItem(li: HTMLElement): HTMLElement {
+  return (li.querySelector(":scope > p") as HTMLElement | null) ?? li;
+}
+
 export function resolveInlineContextElement(anchorDom: HTMLElement): HTMLElement {
   if (anchorDom.classList.contains("par-title-wrapper")) {
     return (
@@ -228,10 +243,8 @@ export function resolveInlineContextElement(anchorDom: HTMLElement): HTMLElement
     );
   }
   if (anchorDom.classList.contains("list-title-wrapper")) {
-    return (
-      (anchorDom.querySelector("ul > li, ol > li") as HTMLElement | null) ??
-      anchorDom
-    );
+    const li = anchorDom.querySelector("ul > li, ol > li") as HTMLElement | null;
+    return li ? descendListItem(li) : anchorDom;
   }
   if (anchorDom.classList.contains("expex-item")) {
     // Prefer the inner `<p>` (carries body line-height); fall back to
@@ -258,6 +271,12 @@ export function resolveInlineContextElement(anchorDom: HTMLElement): HTMLElement
     return (
       (anchorDom.querySelector("code") as HTMLElement | null) ?? anchorDom
     );
+  }
+  if (anchorDom.tagName === "LI") {
+    // A bare `<li>` (the block frame's `resolveFirstLineTarget` and the
+    // marginalia registry both hand us the raw list-item node DOM) — descend to
+    // the inner `<p>` that owns the rendered line box. See {@link descendListItem}.
+    return descendListItem(anchorDom);
   }
   return anchorDom;
 }
