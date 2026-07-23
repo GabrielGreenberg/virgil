@@ -17,9 +17,9 @@ import {
 } from "@/lib/keystroke-latency-probe";
 import { rafCoalesced } from "@/lib/raf-coalesced";
 import {
-  capHeight,
-  capTopOffset,
+  opticalCenterY,
   resolveInlineContextElement,
+  resolveLineHeightPx,
 } from "@/lib/text-metrics";
 
 /**
@@ -210,8 +210,8 @@ function emptyState(): RegistryState {
  * carries the first visual text line (handling `heading-wrapper` h1–**h6**,
  * `par-title-wrapper`, `title-field-wrapper`, `list-title-wrapper`, `blockquote`,
  * `<pre>`→`<code>`, `expex-item`), and the anchor is the OPTICAL cap-band center
- * of that first line (`firstLineRect.top + capTopOffset + capHeight/2`, the same
- * `opticalCenterY` `block-frame.ts` resolves). Storing `top = opticalCenter −
+ * of that first line via the shared `opticalCenterY(lineTop, target)` primitive
+ * ([text-metrics.ts] — the same one `block-frame.ts` composes). Storing `top = opticalCenter −
  * lineHeight/2` makes the grid's `cellAt` formula (`top + row·lineHeight +
  * (lineHeight − ICON)/2`, whose row-0 icon-CENTER is `top + lineHeight/2`) land
  * each marker on the optical middle of the text line — pixel-aligned with the
@@ -290,10 +290,9 @@ export function measureBlock(
     const targetRect = target.getBoundingClientRect();
 
     const style = window.getComputedStyle(target);
-    const lh = parseFloat(style.lineHeight);
-    const lineHeight = Number.isFinite(lh)
-      ? lh
-      : parseFloat(style.fontSize) * 1.2;
+    // Shared line-height parse — the `* 1.2` "normal"-leading approximation
+    // lives once, in `resolveLineHeightPx`, not re-inlined here.
+    const lineHeight = resolveLineHeightPx(style, parseFloat(style.fontSize));
 
     let top: number;
     if (anchorOverride) {
@@ -302,13 +301,10 @@ export function measureBlock(
       top = targetRect.top - hostRect.top;
     } else {
       // Optical cap-band center of the first text line — the canonical
-      // vertical anchor grab handles use (block-frame.ts `opticalCenterY`).
+      // vertical anchor grab handles use, via the shared `opticalCenterY`
+      // primitive (block-frame.ts `opticalCenterY` composes the same one).
       // Store `optical − lineHeight/2` so the grid centers the icon on it.
-      const optical =
-        targetRect.top -
-        hostRect.top +
-        capTopOffset(target) +
-        capHeight(target) / 2;
+      const optical = opticalCenterY(targetRect.top - hostRect.top, target);
       top = optical - lineHeight / 2;
     }
 

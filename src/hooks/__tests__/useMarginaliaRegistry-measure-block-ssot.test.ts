@@ -13,17 +13,17 @@
 //
 // The fix routes the prose anchor through the SAME SSOT the grab handles use:
 // `resolveInlineContextElement` (descends the wrapper to the first-line text
-// element, h1–h6 included) + the OPTICAL cap-band center
-// (`firstLineRect.top + capTopOffset + capHeight/2`, `block-frame.ts`
-// `opticalCenterY`). The grid centers a row-0 icon at `top + lineHeight/2`, so
+// element, h1–h6 included) + the OPTICAL cap-band center via the shared
+// `opticalCenterY(lineTop, target)` primitive (the same one `block-frame.ts`
+// composes). The grid centers a row-0 icon at `top + lineHeight/2`, so
 // storing `top = optical − lineHeight/2` lands the marker on the optical middle
 // of the text — pixel-aligned with the grab handle, and branch-independent.
 //
 // The TEETH here:
 //   1. A heading (incl. h4/h6) anchors to the HEADING TEXT, never the wrapper's
 //      (divider-carrying) top or the old `coordsAtPos` sentinel.
-//   2. The anchor is the resolved element's optical center (uses capTopOffset +
-//      capHeight), not its raw border-box top.
+//   2. The anchor is the resolved element's optical center (the shared
+//      `opticalCenterY` primitive), not its raw border-box top.
 //   3. The same logical line measured via a bare element vs a wrapper resolves
 //      to the SAME marker center (the anti-jump / branch-independence property).
 //
@@ -49,17 +49,23 @@ vi.mock("@/lib/storage", () => {
 });
 
 // Keep `resolveInlineContextElement` REAL (it's the SSOT descent under test),
-// but make the font-metric readers deterministic — jsdom has no canvas, so the
-// real helpers return 0; the mock lets us assert the optical-center math with
-// non-zero offsets in one test.
-const capTopOffsetMock = vi.fn<(el: HTMLElement) => number>(() => 0);
-const capHeightMock = vi.fn<(el: HTMLElement) => number>(() => 0);
+// but make the shared vertical primitive deterministic — jsdom has no canvas,
+// so the real `opticalCenterY` returns `lineTop` (cap-band offset 0). The mock
+// adds a settable cap-band offset so we can assert the registry composes the
+// SAME `opticalCenterY(lineTop, target)` primitive `block-frame.ts` uses, with
+// a non-zero optical center in one test. (Post task 2026-07-22-215: the
+// registry no longer inlines `capTopOffset + capHeight/2` — it calls this one
+// primitive, so the SSOT is asserted at the primitive, not the two terms.)
+const opticalOffset = { value: 0 };
+const opticalCenterYMock = vi.fn<(lineTop: number, el: HTMLElement) => number>(
+  (lineTop) => lineTop + opticalOffset.value,
+);
 vi.mock("@/lib/text-metrics", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/text-metrics")>();
   return {
     ...actual,
-    capTopOffset: (el: HTMLElement) => capTopOffsetMock(el),
-    capHeight: (el: HTMLElement) => capHeightMock(el),
+    opticalCenterY: (lineTop: number, el: HTMLElement) =>
+      opticalCenterYMock(lineTop, el),
   };
 });
 
@@ -104,10 +110,8 @@ function markerCenter(m: { top: number; lineHeight: number }): number {
 }
 
 beforeEach(() => {
-  capTopOffsetMock.mockReset();
-  capHeightMock.mockReset();
-  capTopOffsetMock.mockReturnValue(0);
-  capHeightMock.mockReturnValue(0);
+  opticalCenterYMock.mockClear();
+  opticalOffset.value = 0;
 });
 
 describe("measureBlock — grab-handle geometry SSOT", () => {
@@ -147,19 +151,19 @@ describe("measureBlock — grab-handle geometry SSOT", () => {
     document.body.removeChild(wrapper);
   });
 
-  it("anchors on the OPTICAL cap-band center (capTopOffset + capHeight/2), not the raw border-box top", () => {
-    capTopOffsetMock.mockReturnValue(6);
-    capHeightMock.mockReturnValue(10);
+  it("anchors on the OPTICAL cap-band center via the shared opticalCenterY primitive, not the raw border-box top", () => {
+    opticalOffset.value = 11; // the cap-band offset (was capTopOffset 6 + capHeight/2 = 5)
     const p = withRect(document.createElement("p"), 300, 48);
     p.style.lineHeight = "24px";
     document.body.appendChild(p);
 
     const m = measureBlock(fakeEditor(p), 1, false, HOST_RECT, "id")!;
-    // optical = 300 + 6 + 10/2 = 311 → marker center sits on the cap band,
-    // 11px below the line-box top, exactly where the grab handle sits.
+    // optical = opticalCenterY(300, p) = 300 + 11 = 311 → marker center sits on
+    // the cap band, 11px below the line-box top, exactly where the grab handle sits.
     expect(markerCenter(m)).toBeCloseTo(311, 3);
-    expect(capTopOffsetMock).toHaveBeenCalled();
-    expect(capHeightMock).toHaveBeenCalled();
+    // The registry composed the ONE shared primitive (SSOT), passing the line
+    // top (host-relative) and the resolved first-line target.
+    expect(opticalCenterYMock).toHaveBeenCalledWith(300, p);
 
     document.body.removeChild(p);
   });
@@ -177,8 +181,7 @@ describe("measureBlock — grab-handle geometry SSOT", () => {
   });
 
   it("is branch-independent: the same line measured bare vs wrapped resolves to the SAME marker center (anti-jump)", () => {
-    capTopOffsetMock.mockReturnValue(4);
-    capHeightMock.mockReturnValue(12);
+    opticalOffset.value = 10; // was capTopOffset 4 + capHeight/2 = 6 → 10
 
     // Shape A — nodeDOM returns the bare <h2>.
     const bare = withRect(document.createElement("h2"), 500, 40);
@@ -197,9 +200,9 @@ describe("measureBlock — grab-handle geometry SSOT", () => {
 
     // Pre-fix, shape A took the coordsAtPos branch and shape B the wrapper
     // border-box branch → different tops → the settle jump. Now both resolve
-    // the h2's optical center: identical.
+    // the h2's optical center via the same primitive: identical.
     expect(markerCenter(a)).toBeCloseTo(markerCenter(b), 3);
-    expect(markerCenter(a)).toBeCloseTo(510, 3); // 500 + 4 + 12/2
+    expect(markerCenter(a)).toBeCloseTo(510, 3); // opticalCenterY(500, h2) = 500 + 10
 
     document.body.removeChild(bare);
     document.body.removeChild(wrapper);
