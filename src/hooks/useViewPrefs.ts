@@ -39,22 +39,24 @@ export type DividerWidth = "full" | "mid" | "text";
  *  EditorPane would otherwise mask a missing member (audit-059). */
 export type PanelId = PanelKind | "blank";
 
-/** Card kinds whose linked-anchor highlights are togglable from the
- *  Highlights menu. Values match the prefix of `data-link-card`. */
-export type HighlightType =
-  | "note"
-  | "todo"
-  | "comment"
-  | "cut"
-  | "report";
-
-export const ALL_HIGHLIGHT_TYPES: HighlightType[] = [
+/** Card kinds whose linked-anchor highlights are togglable from the Highlights
+ *  menu. Values match the prefix of `data-link-card`.
+ *
+ *  The ARRAY is the SSOT and `HighlightType` is DERIVED from it, so the two can
+ *  never drift: adding a kind here flows straight into the union. The inverse
+ *  shape (a hand-typed union + a `HighlightType[]`-annotated array) could not be
+ *  made safe — the annotation permits a *proper subset*, so a kind added to the
+ *  union while the array stayed stale would compile clean yet silently never
+ *  render its highlights at the `ALL_HIGHLIGHT_TYPES` consumer (EditorLayout's
+ *  `visibleHighlightKinds`). Deriving closes that omission direction for good. */
+export const ALL_HIGHLIGHT_TYPES = [
   "note",
   "todo",
   "comment",
   "cut",
   "report",
-];
+] as const;
+export type HighlightType = (typeof ALL_HIGHLIGHT_TYPES)[number];
 export type Side = "left" | "right";
 
 export interface PanelPlacement {
@@ -257,7 +259,7 @@ const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
  *  (`showMarginalia`, `dividerLevels`, highlights, …) are appended from
  *  `REGISTRY_GLOBAL_KEYS` so "is this pref global?" is decided in ONE place
  *  (the registry's `scope` field), never re-asserted by hand here. */
-const STRUCTURAL_GLOBAL_PREF_KEYS = [
+export const STRUCTURAL_GLOBAL_PREF_KEYS = [
   "printOptions",
   "placements",
   "pageWidth",
@@ -286,7 +288,7 @@ const GLOBAL_PREF_SET = new Set<string>(GLOBAL_PREF_KEYS);
  *  Reader's prose measure stays in step. This narrow set is the only thing the
  *  ephemeral subscription re-reads — never the layout keys. Numeric + value-
  *  typed so a hostile blob can't inject layout state through it. */
-const MARGIN_PREF_KEYS = [
+export const MARGIN_PREF_KEYS = [
   "pageWidth",
   "editorLeftMargin",
   "editorRightMargin",
@@ -294,6 +296,15 @@ const MARGIN_PREF_KEYS = [
   "editorBottomMargin",
 ] as const;
 const MARGIN_PREF_SET = new Set<string>(MARGIN_PREF_KEYS);
+
+// The geometry keys the ephemeral Reader tracks are, by construction, a narrow
+// slice of the structural globals. Prove the subset at compile time so the two
+// lists can't drift; the runtime twin is pinned in view-prefs-vocab-guards.test.
+type _MarginKeysAreStructural =
+  (typeof MARGIN_PREF_KEYS)[number] extends (typeof STRUCTURAL_GLOBAL_PREF_KEYS)[number]
+    ? true
+    : never;
+void (true as _MarginKeysAreStructural);
 
 function windowStorageKey(): string {
   return WINDOW_STORAGE_PREFIX + getWindowId();
@@ -811,11 +822,14 @@ function seedEphemeralPrefs(): ViewPrefs {
     // a deep merge of arbitrary global keys could re-introduce layout state we
     // intentionally want defaulted. Keep this list narrow and value-typed.
     const seed: ViewPrefs = { ...DEFAULT_PREFS };
-    if (typeof globalSlice.pageWidth === "number") seed.pageWidth = globalSlice.pageWidth;
-    if (typeof globalSlice.editorLeftMargin === "number") seed.editorLeftMargin = globalSlice.editorLeftMargin;
-    if (typeof globalSlice.editorRightMargin === "number") seed.editorRightMargin = globalSlice.editorRightMargin;
-    if (typeof globalSlice.editorTopMargin === "number") seed.editorTopMargin = globalSlice.editorTopMargin;
-    if (typeof globalSlice.editorBottomMargin === "number") seed.editorBottomMargin = globalSlice.editorBottomMargin;
+    // Geometry fold — mirror `rereadGlobal` EXACTLY (loop `MARGIN_PREF_KEYS`) so
+    // a new margin key added to that SSOT flows into BOTH the seed and the live
+    // editor→Reader sync path, never one but not the other. `placements` is not
+    // geometry, so it stays its own seed line below.
+    for (const k of MARGIN_PREF_KEYS) {
+      const v = globalSlice[k];
+      if (typeof v === "number") seed[k] = v;
+    }
     if (Array.isArray(globalSlice.placements)) {
       seed.placements = filterPlacements<PanelPlacement>(globalSlice.placements as PanelPlacement[]);
     }
