@@ -46,8 +46,7 @@
 import type { Editor } from "@tiptap/react";
 import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
 import {
-  capHeight,
-  capTopOffset,
+  capBandCenterOffset,
   resolveInlineContextElement,
 } from "@/lib/text-metrics";
 
@@ -61,6 +60,15 @@ export interface BlockFrame {
    *  node decoration). */
   el: HTMLElement;
   /**
+   * The inline-context text element whose first line defines the frame — the
+   * result of `resolveFirstLineTarget(el)` (for a container, its first
+   * grabbable child's first-line element). Exposed so a consumer that needs
+   * the resolved font target (the selection grab handle's optical-center read)
+   * reads it from the ONE resolve rather than re-descending via
+   * `resolveInlineContextElement`. Same element `ContentEdges.target` carries.
+   */
+  target: HTMLElement;
+  /**
    * The resolved text element's border box (`getBoundingClientRect`). Its
    * `.top` is the FIRST VISUAL TEXT LINE's line-box top and `.left` is the
    * content-left; for a multi-line block the box spans every line (chip 2
@@ -72,7 +80,8 @@ export interface BlockFrame {
   firstLineRect: DOMRect;
   /**
    * Optical (cap-band) center Y of the first visual text line:
-   * `firstLineRect.top + capTopOffset + capHeight/2`. THE canonical
+   * `firstLineRect.top + capBandCenterOffset(target)` (i.e. the shared
+   * `opticalCenterY(firstLineRect.top, target)` primitive). THE canonical
    * vertical anchor for margin chrome — center an affordance's glyph on
    * this and it sits on the optical middle of the text it labels,
    * independent of font size / line-height.
@@ -425,8 +434,10 @@ export function resolveBlockFrame(
     resolveContentEdges(el);
 
   // ---- Vertical axis (chip 1) ----
-  const opticalCenterY =
-    firstLineRect.top + capTopOffset(target) + capHeight(target) / 2;
+  // Composed from the shared `capBandCenterOffset` primitive (one
+  // `measureFontMetrics` read) so this optical center, the marginalia markers,
+  // and the selection grab handle can never drift from a copied expression.
+  const opticalCenterY = firstLineRect.top + capBandCenterOffset(target);
   const root: HTMLElement | null =
     cache?.editorEl ?? (editor?.view?.dom as HTMLElement | null) ?? null;
   const depth = countUuidAncestors(el, root);
@@ -465,6 +476,7 @@ export function resolveBlockFrame(
 
   return {
     el,
+    target,
     firstLineRect,
     opticalCenterY,
     depth,

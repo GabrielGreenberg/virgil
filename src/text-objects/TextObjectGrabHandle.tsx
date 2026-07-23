@@ -62,12 +62,7 @@ import {
   useEditorViewportCache,
   type EditorViewportCache,
 } from "@/hooks/useEditorViewportCache";
-import {
-  capHeight,
-  capTopOffset,
-  onFontReady,
-  resolveInlineContextElement,
-} from "@/lib/text-metrics";
+import { onFontReady, opticalCenterY } from "@/lib/text-metrics";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
@@ -438,8 +433,13 @@ function computePlacement(
     dotsCenterY = anchorRect.top + HANDLE_GLYPH_HALF;
   } else if (ref.kind === "selection") {
     const baseTop = selectionFirstLineTop ?? anchorRect.top;
-    const target = resolveInlineContextElement(anchorDom);
-    dotsCenterY = baseTop + capTopOffset(target) + capHeight(target) / 2;
+    // Same optical cap-band center as the text-object branch, via the shared
+    // `opticalCenterY` primitive. Read the font target from the ONE block frame
+    // (`frame.target` = `resolveFirstLineTarget(anchorDom)`) rather than
+    // re-descending: a selection's `anchorDom` is always a leaf/item text
+    // object (never a container kind), so `frame.target` equals the old
+    // `resolveInlineContextElement(anchorDom)` by construction.
+    dotsCenterY = opticalCenterY(baseTop, frame.target);
   } else {
     dotsCenterY = frame.opticalCenterY;
   }

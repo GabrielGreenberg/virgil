@@ -1,12 +1,18 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  capBandCenterOffset,
+  capHeight,
   capTopOffset,
   clearCapTopCache,
   computeCapTopOffset,
   onFontReady,
+  opticalCenterY,
   resolveInlineContextElement,
+  resolveLineHeightPx,
 } from "../text-metrics";
 
 describe("computeCapTopOffset (pure)", () => {
@@ -289,6 +295,111 @@ describe("capTopOffset (with stubbed canvas)", () => {
       el.remove();
     }
   });
+});
+
+describe("capBandCenterOffset + opticalCenterY (with stubbed canvas)", () => {
+  let originalGetContext: typeof HTMLCanvasElement.prototype.getContext;
+
+  beforeEach(() => {
+    clearCapTopCache();
+    originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+      font: "",
+      measureText: vi.fn((_t: string) => ({
+        actualBoundingBoxAscent: 11, // capHeight
+        fontBoundingBoxAscent: 13,
+        fontBoundingBoxDescent: 3,
+        width: 10,
+      })),
+    })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  });
+
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext;
+    clearCapTopCache();
+  });
+
+  function attach(): HTMLElement {
+    const el = document.createElement("p");
+    el.style.fontFamily = "Serif";
+    el.style.fontSize = "16px";
+    el.style.fontWeight = "400";
+    el.style.lineHeight = "24px";
+    document.body.appendChild(el);
+    return el;
+  }
+
+  it("capBandCenterOffset = capTopOffset + capHeight/2 (the ONE vertical primitive)", () => {
+    const el = attach();
+    try {
+      // capTopOffset = (24-16)/2 + (13-11) = 6 ; capHeight = 11 → 6 + 5.5 = 11.5
+      expect(capBandCenterOffset(el)).toBeCloseTo(11.5, 5);
+      // And it equals the two terms composed — the drift-proof guarantee.
+      expect(capBandCenterOffset(el)).toBeCloseTo(
+        capTopOffset(el) + capHeight(el) / 2,
+        5,
+      );
+    } finally {
+      el.remove();
+    }
+  });
+
+  it("opticalCenterY(lineTop, el) = lineTop + capBandCenterOffset(el), space-invariant", () => {
+    const el = attach();
+    try {
+      expect(opticalCenterY(100, el)).toBeCloseTo(100 + 11.5, 5);
+      // Space-invariant: shifting the line top shifts the result by the same amount.
+      expect(opticalCenterY(500, el) - opticalCenterY(100, el)).toBeCloseTo(400, 5);
+    } finally {
+      el.remove();
+    }
+  });
+
+  it("both degrade to 0 / lineTop when metrics are unavailable (canvas null)", () => {
+    HTMLCanvasElement.prototype.getContext = vi.fn(
+      () => null,
+    ) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+    const el = attach();
+    try {
+      expect(capBandCenterOffset(el)).toBe(0);
+      expect(opticalCenterY(250, el)).toBe(250);
+    } finally {
+      el.remove();
+    }
+  });
+});
+
+describe("resolveLineHeightPx", () => {
+  function cs(lineHeight: string): CSSStyleDeclaration {
+    return { lineHeight } as unknown as CSSStyleDeclaration;
+  }
+  it("parses an explicit px line-height", () => {
+    expect(resolveLineHeightPx(cs("24px"), 16)).toBeCloseTo(24, 5);
+  });
+  it("falls back to fontSize * 1.2 for 'normal'", () => {
+    expect(resolveLineHeightPx(cs("normal"), 16)).toBeCloseTo(19.2, 5);
+  });
+  it("falls back to fontSize * 1.2 for an empty / unparseable value", () => {
+    expect(resolveLineHeightPx(cs(""), 20)).toBeCloseTo(24, 5);
+  });
+});
+
+describe("optical-center SSOT — no inlined copy of the primitive (task 2026-07-22-215)", () => {
+  // The vertical cap-band-center math lives in ONE place (text-metrics.ts). No
+  // consumer may re-inline `capTopOffset(...) + capHeight(...) / 2` — that is the
+  // drift the primitive extraction retired. Grep the three former copy sites.
+  const INLINED = /capTopOffset\([^)]*\)\s*\+\s*capHeight\([^)]*\)\s*\/\s*2/;
+  const consumers = [
+    "../../text-objects/block-frame.ts",
+    "../../hooks/useMarginaliaRegistry.ts",
+    "../../text-objects/TextObjectGrabHandle.tsx",
+  ];
+  for (const rel of consumers) {
+    it(`${rel} composes the primitive, no inlined capTopOffset + capHeight/2`, () => {
+      const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+      expect(INLINED.test(src)).toBe(false);
+    });
+  }
 });
 
 describe("onFontReady", () => {

@@ -68,15 +68,15 @@ vi.mock("@/components/editor-layout/layout-scroll", () => ({
   findEditorScrollFor: () => null,
 }));
 
-// Keep the descent SSOT real but make font metrics deterministic (jsdom has no
-// canvas): capTopOffset/capHeight = 0, so `measureBlock`'s prose optical center
-// reduces to `targetRect.top - hostRect.top` and `top = that - lineHeight/2`.
+// Keep the descent SSOT real but make the vertical primitive deterministic
+// (jsdom has no canvas): a zero cap-band offset, so `measureBlock`'s prose
+// optical center reduces to `targetRect.top - hostRect.top` and
+// `top = that - lineHeight/2`.
 vi.mock("@/lib/text-metrics", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/text-metrics")>();
   return {
     ...actual,
-    capTopOffset: () => 0,
-    capHeight: () => 0,
+    opticalCenterY: (lineTop: number) => lineTop,
   };
 });
 
