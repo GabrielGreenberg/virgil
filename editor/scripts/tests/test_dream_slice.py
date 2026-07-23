@@ -105,6 +105,31 @@ v = verdict({"paths": ["editor/skills/foo.md"], "intent": "merge-skill"})
 check(v.mode == LAND_PROPOSES, "merge-skill intent → proposes")
 
 
+# ── (a2) self-modification of a dev-loop procedure skill → proposes ───────────
+# The dream/reflect/iterate triad rewrites the self-improvement machinery; a
+# prose-polish intent that WOULD act on any other skill must instead propose
+# when the skill IS the loop's own operating procedure (2026-07-22 ruling).
+print("\n=== (a2) self-modification of a dev-loop skill → proposes ===")
+
+for skill in ("dream", "reflect", "iterate-virgil-editor"):
+    for intent in ("tighten-wording", "expand-guidance", "clarify", "add-example"):
+        v = verdict({"paths": [f"editor/skills/{skill}.md"], "intent": intent,
+                     "newText": "a harmless clarification of the loop's own flow"})
+        check(v.mode == LAND_PROPOSES,
+              f"{skill}.md self-edit ({intent}) → proposes (got {v.mode})")
+
+# a NON-loop skill with the same prose-polish intent still ACTS (guard is scoped)
+v = verdict({"paths": ["editor/skills/draft-footnote.md"], "intent": "expand-guidance",
+             "newText": "unaffected sibling skill"})
+check(v.mode == LAND_ACTS, "non-loop skill prose-polish still acts (self-mod guard is scoped)")
+
+# self-mod that ALSO crosses a boundary is still refused (boundary wins)
+v = verdict({"paths": ["editor/skills/dream.md"], "intent": "expand-guidance",
+             "newText": "Always reflect regardless of dev mode."})
+check(v.mode == LAND_REFUSED and v.boundary == B_DEV_GATE,
+      "self-mod that crosses B3 → refused (boundary precedence over self-mod guard)")
+
+
 # ── (b) boundary-refusal for each of the three ───────────────────────────────
 print("\n=== (b) the three boundaries → refused (never applied) ===")
 
