@@ -269,15 +269,27 @@ let fontReadyArmed = false;
  * Register a callback to fire after `document.fonts.ready` resolves.
  * Also clears the cap-top cache at that moment so cached offsets
  * computed against the fallback font during FOUT are recomputed against
- * the real font on the next read. Idempotent — registering the same
- * callback twice will fire it twice; that's the caller's contract.
+ * the real font on the next read.
+ *
+ * Returns a **disposer** — call it (in an effect cleanup) to unregister the
+ * callback so a fresh closure per effect run doesn't accumulate. Every closure
+ * transitively pins its editor graph, so an un-disposed registration across
+ * paper switches / panel toggles / multi-window opens leaks torn-down editors.
+ * The one-shot `fonts.ready` handler also `clear()`s the whole Set after firing,
+ * so pre-ready registrants are released even if their disposer never runs.
+ *
+ * `fontReadyCallbacks` is a `Set`, so registering the SAME callback reference
+ * twice dedupes (fires once); only distinct closures fire separately.
  */
-export function onFontReady(cb: () => void): void {
-  if (typeof document === "undefined") return;
+export function onFontReady(cb: () => void): () => void {
+  if (typeof document === "undefined") return () => {};
   fontReadyCallbacks.add(cb);
-  if (fontReadyArmed) return;
+  const dispose = () => {
+    fontReadyCallbacks.delete(cb);
+  };
+  if (fontReadyArmed) return dispose;
   const fonts = (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts;
-  if (!fonts || !fonts.ready || typeof fonts.ready.then !== "function") return;
+  if (!fonts || !fonts.ready || typeof fonts.ready.then !== "function") return dispose;
   fontReadyArmed = true;
   fonts.ready.then(() => {
     FONT_METRICS_CACHE.clear();
@@ -288,7 +300,17 @@ export function onFontReady(cb: () => void): void {
         // Swallow — callbacks are best-effort schedule pings.
       }
     }
+    // One-shot: release every registered closure (and any registered later,
+    // which can never fire) so the module-global Set can't retain torn-down
+    // editor graphs.
+    fontReadyCallbacks.clear();
   });
+  return dispose;
+}
+
+/** Test-only: number of callbacks currently registered with {@link onFontReady}. */
+export function __fontReadyPendingCount(): number {
+  return fontReadyCallbacks.size;
 }
 
 /** Test-only: drop the cap-top cache. */

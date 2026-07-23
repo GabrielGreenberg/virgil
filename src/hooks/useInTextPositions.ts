@@ -393,8 +393,9 @@ export function useInTextPositions(
   const computeRafRef = useRef(0);
   // Settle loop bookkeeping — armed once per mount/enable, self-terminating.
   const settleRafRef = useRef(0);
-  // `onFontReady` registers a module-global callback with NO per-caller
-  // unsubscribe; this ref lets the registered ping bail after unmount/disable
+  // `onFontReady` now returns a disposer (called in the effect cleanup), so a
+  // fresh closure per effect run doesn't accumulate. This ref is the belt to
+  // that suspenders: it lets an already-queued ping bail after unmount/disable
   // so a late `document.fonts.ready` never measures a torn-down editor.
   const fontReadyActiveRef = useRef(false);
 
@@ -653,7 +654,8 @@ export function useInTextPositions(
     // A.2 — FOUT corrector. When web fonts swap in, every line shifts; the
     // metrics module clears its own caches on `document.fonts.ready` and we
     // re-measure so the deck snaps to the corrected coordinates. `onFontReady`
-    // has no per-caller unsubscribe, so guard the ping with a mounted ref.
+    // returns a disposer (called in cleanup below); the mounted ref additionally
+    // guards an already-queued ping.
     //
     // `onFontReady` is a one-shot module-global that arms
     // `document.fonts.ready.then(...)` ONCE (see text-metrics.ts ~:221). Any
@@ -674,7 +676,7 @@ export function useInTextPositions(
     // fonts/KaTeX/expex reflow — must still be feel-checked in a real browser
     // against the L2 paper↔Library bounce.)
     fontReadyActiveRef.current = true;
-    onFontReady(() => {
+    const disposeFontReady = onFontReady(() => {
       if (fontReadyActiveRef.current) schedule();
     });
     // Card positions are anchored to PM coords. Subscribe to the
@@ -729,6 +731,7 @@ export function useInTextPositions(
       cancelAnimationFrame(computeRafRef.current);
       cancelAnimationFrame(settleRafRef.current);
       fontReadyActiveRef.current = false;
+      disposeFontReady();
       unsubBlocks?.();
       window.removeEventListener("resize", schedule);
       editorObs?.disconnect();
