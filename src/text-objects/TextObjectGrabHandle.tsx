@@ -838,7 +838,9 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     // values measured against the fallback font. The metrics module
     // clears its own cache on `document.fonts.ready`; we also need to
     // re-run placement so visible handles snap to the corrected cap-top.
-    onFontReady(() => scheduleRaf());
+    // `onFontReady` returns a disposer — called in this effect's cleanup so a
+    // fresh closure per mount doesn't retain the torn-down editor graph.
+    const disposeFontReady = onFontReady(() => scheduleRaf());
 
     const onScroll = () => {
       // Scroll re-schedules placement (block rects change in clientY
@@ -924,6 +926,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     }
     return () => {
       cleanupListeners();
+      disposeFontReady();
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = 0;

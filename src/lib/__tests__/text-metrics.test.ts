@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  __fontReadyPendingCount,
   capBandCenterOffset,
   capHeight,
   capTopOffset,
@@ -403,22 +404,68 @@ describe("optical-center SSOT — no inlined copy of the primitive (task 2026-07
 });
 
 describe("onFontReady", () => {
-  it("fires the callback once after document.fonts.ready resolves and clears the cache", async () => {
-    // The metrics module caches its `fontReadyArmed` flag for the
-    // lifetime of the test process. Since the production module isn't
-    // resettable, we test the observable behavior: registering a
-    // callback should resolve the registered Promise on this turn (if
-    // fonts.ready is already a resolved promise) and the cache should
-    // be cleared at that point.
-    //
-    // jsdom doesn't ship `document.fonts` by default; if absent, the
-    // helper is a no-op and the callback never fires — exercise that
-    // branch explicitly.
+  it("returns a disposer even when document.fonts is absent (jsdom default); the callback never fires", () => {
     const cb = vi.fn();
-    onFontReady(cb);
-    // No `fonts` field exists in jsdom by default → callback never
-    // fires; we just verify the call is safe and idempotent.
-    expect(() => onFontReady(cb)).not.toThrow();
+    const dispose = onFontReady(cb);
+    expect(typeof dispose).toBe("function");
+    // No `fonts` field exists in jsdom by default → never armed, never fires.
     expect(cb).not.toHaveBeenCalled();
+    // Disposer is idempotent and safe.
+    expect(() => {
+      dispose();
+      dispose();
+    }).not.toThrow();
+  });
+
+  it("the disposer unregisters the callback (before ready) so fresh closures can't accumulate", () => {
+    const before = __fontReadyPendingCount();
+    const cb = vi.fn();
+    const dispose = onFontReady(cb);
+    expect(__fontReadyPendingCount()).toBe(before + 1);
+    dispose();
+    expect(__fontReadyPendingCount()).toBe(before);
+  });
+
+  it("fires registered callbacks once after fonts.ready, empties the Set, and never fires an unsubscribed cb", async () => {
+    // The `fontReadyArmed` latch is module-global, so exercise the one-shot on
+    // a FRESH module instance with a controllable `document.fonts.ready`.
+    vi.resetModules();
+    let resolveReady!: () => void;
+    const ready = new Promise<void>((r) => {
+      resolveReady = r;
+    });
+    const originalFonts = (document as unknown as { fonts?: unknown }).fonts;
+    (document as unknown as { fonts?: unknown }).fonts = { ready };
+    try {
+      const mod = await import("../text-metrics");
+      const fired: string[] = [];
+      const disposeA = mod.onFontReady(() => fired.push("a"));
+      mod.onFontReady(() => fired.push("b"));
+      expect(mod.__fontReadyPendingCount()).toBe(2);
+
+      disposeA(); // unsubscribe A BEFORE ready resolves
+      expect(mod.__fontReadyPendingCount()).toBe(1);
+
+      resolveReady();
+      await ready;
+      await Promise.resolve(); // flush the `.then` microtask
+
+      // Only B fired (A was disposed); the one-shot cleared the Set afterwards.
+      expect(fired).toEqual(["b"]);
+      expect(mod.__fontReadyPendingCount()).toBe(0);
+
+      // A registrant AFTER ready never fires (one-shot semantics preserved).
+      const late = vi.fn();
+      mod.onFontReady(late);
+      await Promise.resolve();
+      expect(late).not.toHaveBeenCalled();
+    } finally {
+      if (originalFonts === undefined) {
+        delete (document as unknown as { fonts?: unknown }).fonts;
+      } else {
+        (document as unknown as { fonts?: unknown }).fonts = originalFonts;
+      }
+      vi.resetModules();
+    }
   });
 });
