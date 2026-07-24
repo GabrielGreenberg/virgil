@@ -289,4 +289,34 @@ describe("bridgeCardAiRequestFlag terminate mode (archive)", () => {
     expect(mine.status).toBe("complete");
     expect(other.status).toBe("pending"); // untouched
   });
+
+  // task 219 — the footnote DELETE leg. Deleting a flagged footnote
+  // (`handleDeleteFootnote`) closes its linked row in the SAME terminate mode as
+  // archive, keyed on the `footnotes` panel routing. This is the seventh
+  // flag-bearing kind's leg (the other six ride `makeUnbridgingDelete`, pinned in
+  // cards/__tests__/unbridging-delete.test.ts); footnote threads the bridge call
+  // directly, so pin its terminate here where the storage mock lives.
+  it("(l) terminates a footnote-linked open row → complete (task 219 delete leg)", async () => {
+    seeded.state = {
+      requests: [
+        {
+          id: "fn-req",
+          kind: "footnote",
+          text: "fn body",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          status: "pending",
+          linkedTo: { panel: "footnotes", cardId: "fn-1" },
+          paragraphIds: ["p-1"],
+        },
+      ],
+    };
+    await bridgeCardAiRequestFlag("doc", "footnote", "fn-1", false, { text: "" }, "terminate");
+
+    expect(written).toHaveLength(1);
+    const reqs = written[0].data.requests;
+    expect(reqs).toHaveLength(1); // kept as a terminal record, not dropped
+    expect(reqs[0].id).toBe("fn-req");
+    expect(reqs[0].status).toBe("complete");
+    expect(reqs[0].result).toBe("auto-applied");
+  });
 });
