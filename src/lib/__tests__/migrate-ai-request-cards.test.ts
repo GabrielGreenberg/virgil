@@ -9,7 +9,11 @@
  * requests are untouched), so it can run on every load idempotently.
  */
 import { describe, it, expect } from "vitest";
-import { migrateUnlinkedCardRequests } from "@/lib/migrate-ai-request-cards";
+import {
+  migrateUnlinkedCardRequests,
+  LINK_PANEL,
+} from "@/lib/migrate-ai-request-cards";
+import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { AiRequest } from "@/lib/types";
 
 const NOW = "2026-06-21T12:00:00.000Z";
@@ -147,5 +151,33 @@ describe("migrateUnlinkedCardRequests (#55b retire ai kind)", () => {
       panel: "notes",
       cardId: out.addedNotes[0].id,
     });
+  });
+});
+
+/**
+ * `LINK_PANEL` ↔ registry equality pin (task 2026-07-23-221).
+ *
+ * The migration is deliberately PURE (no `card-registry.tsx` import — it pulls
+ * React/JSX deps), so its `note`/`todo` → panel routing is a hand-kept literal
+ * rather than a live `CARD_REGISTRY[kind].aiRequest.linkPanel` read like the
+ * bridge does. That literal is the ONE member of the
+ * `registry → bridge → migration → Python-manifest` routing chain that isn't
+ * derived; this pin makes it un-driftable — a registry `linkPanel` edit that
+ * leaves `LINK_PANEL` behind trips CI here, the same way
+ * `ai-request-routing-contract.test.ts` guards the bridge's forward token and
+ * `ai-request-routing-manifest.test.ts` guards the Python drain manifest. The
+ * test imports the React-bearing registry freely; the module under test stays
+ * pure.
+ */
+describe("LINK_PANEL ↔ CARD_REGISTRY routing pin (R29)", () => {
+  it("mirrors the registry-declared linkPanel for note + todo", () => {
+    expect(LINK_PANEL.note).toBe(CARD_REGISTRY.note.aiRequest?.linkPanel);
+    expect(LINK_PANEL.todo).toBe(CARD_REGISTRY.todo.aiRequest?.linkPanel);
+  });
+
+  it("covers exactly the convertible kinds (note, todo)", () => {
+    // If a third kind ever becomes composer-convertible, LINK_PANEL grows and
+    // this reminds the author to add its registry pin above.
+    expect(Object.keys(LINK_PANEL).sort()).toEqual(["note", "todo"]);
   });
 });

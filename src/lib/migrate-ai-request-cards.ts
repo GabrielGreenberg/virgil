@@ -49,8 +49,15 @@ const CONVERTIBLE_KINDS = new Set(["note", "todo"]);
 /** Wire `linkedTo.panel` token per kind — kept identical to the
  *  registry-declared routing (`CARD_REGISTRY[kind].aiRequest.linkPanel`,
  *  pinned by `ai-request-routing-contract.test.ts`) so a migrated request is
- *  byte-for-byte what the card-flag bridge would have written. */
-const LINK_PANEL = { note: "notes", todo: "todos" } as const;
+ *  byte-for-byte what the card-flag bridge would have written.
+ *
+ *  Deliberately a literal, NOT a live `CARD_REGISTRY` read: this module is
+ *  pure (no React/JSX deps), and `card-registry.tsx` pulls render deps in. The
+ *  literal is instead equality-PINNED to the registry by
+ *  `migrate-ai-request-cards.test.ts` (task 221), so a registry linkPanel edit
+ *  that leaves this copy behind trips CI — the same derive-or-pin discipline the
+ *  bridge (which reads the registry directly) satisfies by derivation. */
+export const LINK_PANEL = { note: "notes", todo: "todos" } as const;
 
 export interface MigrationDeps {
   /** Fresh entity id for each created card (real: `generateEntityId`). */

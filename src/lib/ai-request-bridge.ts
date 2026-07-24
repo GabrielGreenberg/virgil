@@ -29,7 +29,7 @@ import {
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
 import { publishAiRequests } from "@/lib/ai-request-events";
-import { isRequestOpen } from "@/lib/ai-request-open";
+import { isRequestOpen, isTerminalStatus } from "@/lib/ai-request-open";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
 
@@ -127,8 +127,10 @@ export async function bridgeCardAiRequestFlag(
         r.linkedTo &&
         r.linkedTo.panel === link.panel &&
         r.linkedTo.cardId === link.cardId &&
-        r.status !== "complete" &&
-        r.status !== "failed",
+        // The terminal half is the shared `isTerminalStatus` SSOT — same source
+        // `isRequestOpen` reads for its clause 1, so a future terminal
+        // `AiRequestStatus` lands in both predicates at once (task 221).
+        !isTerminalStatus(r.status),
     );
     if (termIdx < 0) return;
     const terminated = requests.map((r, i) =>
