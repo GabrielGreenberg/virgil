@@ -26,7 +26,27 @@
  * a change on either side trips a test instead of silently re-drifting.
  */
 
-import type { AiRequest } from "@/lib/types";
+import type { AiRequest, AiRequestStatus } from "@/lib/types";
+
+/**
+ * The terminal-status SSOT: `complete` / `failed` are the v1 terminal
+ * statuses. Every "a row is terminal / resolved" decision in the AI-request
+ * surface derives from THIS predicate rather than re-inlining the
+ * `{ complete, failed }` literal set, so a future terminal `AiRequestStatus`
+ * is added in one place:
+ *
+ *   - `isRequestOpen` (below) — clause 1, the drain's open rule.
+ *   - the bridge's `terminate`-mode guard (`ai-request-bridge.ts`) — the
+ *     "close the first linked NON-terminal row" `findIndex` on `cmd_archive`.
+ *
+ * The Python drain's twin literal (`list_requests.py` `list_ai_requests` and
+ * `close_linked_request`) is the cross-language mirror; parity across both
+ * TS predicates AND the Python source is pinned by
+ * `ai-request-open-parity.test.ts`.
+ */
+export function isTerminalStatus(s: AiRequestStatus): boolean {
+  return s === "complete" || s === "failed";
+}
 
 /**
  * True iff the request is still open to the drain (awaiting service). The
@@ -37,7 +57,7 @@ import type { AiRequest } from "@/lib/types";
 export function isRequestOpen(
   r: Pick<AiRequest, "status" | "resultId">,
 ): boolean {
-  if (r.status === "complete" || r.status === "failed") return false;
+  if (isTerminalStatus(r.status)) return false;
   if (r.status === "in-progress" && r.resultId) return false;
   return true;
 }

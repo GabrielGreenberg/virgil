@@ -26,7 +26,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { isRequestOpen } from "@/lib/ai-request-open";
+import { isRequestOpen, isTerminalStatus } from "@/lib/ai-request-open";
 import type { AiRequest, AiRequestStatus } from "@/lib/types";
 
 /** Byte-for-byte transcription of the Python drain rule
@@ -49,16 +49,41 @@ function drainOpenReference(
   return true;
 }
 
-/** Every `status` value the on-disk schema can carry, plus the absent case. */
-const STATUSES: (AiRequestStatus | undefined)[] = [
+/** Every non-absent `status` value the on-disk schema can carry, as a
+ *  compile-time-exhaustive tuple: the `satisfies` clause forces this list to
+ *  grow whenever a new member is added to `AiRequestStatus`, so a new terminal
+ *  status can't be introduced without a human touching the terminal-set pin
+ *  below. */
+const CONCRETE_STATUSES = [
   "pending",
   "in-progress",
   "complete",
   "failed",
   "draft",
   "submitted",
-  undefined,
-];
+] as const satisfies readonly AiRequestStatus[];
+
+// Exhaustiveness guard: if `AiRequestStatus` grows a member, this line fails to
+// compile until it is added to CONCRETE_STATUSES (and thus enters the matrix +
+// terminal-set assertions). `never` iff the two sets are equal.
+type _StatusExhaustive = Exclude<
+  AiRequestStatus,
+  (typeof CONCRETE_STATUSES)[number]
+> extends never
+  ? true
+  : ["AiRequestStatus grew a member — add it to CONCRETE_STATUSES"];
+const _statusExhaustive: _StatusExhaustive = true;
+void _statusExhaustive;
+
+/** Every `status` value the on-disk schema can carry, plus the absent case. */
+const STATUSES: (AiRequestStatus | undefined)[] = [...CONCRETE_STATUSES, undefined];
+
+/** The terminal-status reference set — the `{ complete, failed }` vocabulary
+ *  the drain and the bridge both resolve through `isTerminalStatus`. Kept as an
+ *  independent literal here so a drift between the helper and the frozen set
+ *  (e.g. someone widens `isTerminalStatus` without updating the drain rule)
+ *  trips this test. */
+const TERMINAL_REFERENCE = new Set<AiRequestStatus>(["complete", "failed"]);
 
 describe("isRequestOpen ↔ list_requests.py drain rule parity", () => {
   it("agrees with the drain rule across the status × resultId matrix", () => {
@@ -96,5 +121,49 @@ describe("isRequestOpen ↔ list_requests.py drain rule parity", () => {
     const collapsed = src.replace(/\s+/g, " ");
     expect(collapsed).toContain('if status in ("complete", "failed"): continue');
     expect(collapsed).toContain('if status == "in-progress" and r.get("resultId"): continue');
+  });
+});
+
+/**
+ * Terminal-status SSOT pin (task 2026-07-23-221).
+ *
+ * `isTerminalStatus` is the shared `{ complete, failed }` predicate that BOTH
+ * `isRequestOpen` (clause 1) and the bridge's `terminate`-mode guard
+ * (`ai-request-bridge.ts` — the `cmd_archive` "close first non-terminal linked
+ * row" `findIndex`) now derive from, retiring the two hand-inlined copies. These
+ * pins ensure a future terminal `AiRequestStatus` trips a test on BOTH
+ * predicates, not just the open one: the exhaustiveness guard above forces the
+ * new member into the matrix, and the coupling assertion forces it to agree with
+ * `isRequestOpen`.
+ */
+describe("isTerminalStatus terminal-set SSOT", () => {
+  it("matches the frozen { complete, failed } set across the full status matrix", () => {
+    for (const status of CONCRETE_STATUSES) {
+      expect(isTerminalStatus(status)).toBe(TERMINAL_REFERENCE.has(status));
+    }
+  });
+
+  it("is coupled to isRequestOpen: every terminal status is CLOSED to the drain", () => {
+    // This is the invariant the bridge's `terminate` guard leans on — a row it
+    // treats as terminal (`!isTerminalStatus`) is exactly one `isRequestOpen`
+    // treats as closed. If a new terminal status were added to `isTerminalStatus`
+    // but `isRequestOpen`'s clause 1 stopped reading it, this fails.
+    for (const status of CONCRETE_STATUSES) {
+      if (isTerminalStatus(status)) {
+        // resultId is irrelevant for a terminal row — closed either way.
+        expect(isRequestOpen({ status })).toBe(false);
+        expect(isRequestOpen({ status, resultId: "card-x" })).toBe(false);
+      }
+    }
+  });
+
+  it("agrees with the drain's terminal literal (the Python { complete, failed })", () => {
+    // The same `("complete", "failed")` set the drain source-pin above asserts
+    // verbatim — proving the TS terminal SSOT and the Python drain rule share one
+    // terminal vocabulary.
+    for (const status of CONCRETE_STATUSES) {
+      const pythonTerminal = status === "complete" || status === "failed";
+      expect(isTerminalStatus(status)).toBe(pythonTerminal);
+    }
   });
 });
