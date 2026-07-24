@@ -163,6 +163,7 @@ import { LiftHost } from "@/text-objects/LiftHost";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { cardHasContent } from "@/cards/has-content";
 import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
+import { makeUnbridgingDelete } from "@/cards/lifecycle/unbridging-delete";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { isCardKind, panelForCardKind, isArchivable, archiveRemovesAtom } from "@/cards/predicates";
 import {
@@ -1349,6 +1350,21 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     },
     [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, docId],
   );
+  // The SINGLE ai-requests.json writer for the DELETE leg (task 219). A delete
+  // is a TERMINAL transition like archive (task 093): the card is gone, so the
+  // linked open row must close regardless of current openness — including an
+  // answered-L3 proposal (`in-progress`+`resultId`) that a reversible
+  // `value=false` toggle deliberately preserves (task 043). We therefore run the
+  // bridge in `"terminate"` mode (the `value` arg is irrelevant there), NOT the
+  // `value=false` drop the report leg historically used — applied uniformly to
+  // every flag-bearing kind so delete can't strand a row archive would have
+  // closed. There is no card flag to lower afterward (the card is being deleted),
+  // so — unlike `clearAiRequestForKind` (archive) — this only closes the row.
+  const unbridgeOnDelete = useCallback(
+    (kind: CardKind, id: string) =>
+      bridgeCardAiRequestFlag(docId, kind, id, false, { text: "" }, "terminate"),
+    [docId],
+  );
   // Per-pair adapters that take each card's legacy `(id, dataToKind)` signature,
   // resolve the FROM spine kind, and delegate to the generalized chokepoint —
   // so all 4 pairs morph identically (float survival + lossy confirm + remap).
@@ -1389,13 +1405,49 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // omni-host) with `convertCard` swapped for the popout-key-remapping adapter —
   // one chokepoint per pair, so the morph survives regardless of which surface
   // triggers it (docked dropdown, omni, or FloatChrome title control).
+  // Wrap each panel hook's raw `deleteCard` so a DELETE of an aiRequest-bearing
+  // card discharges the same cross-store obligation archive/morph already do —
+  // UNBRIDGE the pending ai-requests.json row + publish the D6 card-deleted
+  // signal — through the SAME `runCardLifecycleEvent` executor the report leg
+  // uses (task 219). The stored panel kind (`comment`/`suggestion`) resolves to
+  // its registry `CardKind` so only the routed member (`revision-comment` /
+  // `cutter-comment`) actually unbridges; the suggestion twin has no routing and
+  // the executor no-ops. Wrapping at the hook-memo level means every consumer
+  // (margin marker, anchor-click registry, panel trash, pristine discard) that
+  // threads `revisionsHook.deleteCard`/`cutterHook.deleteCard` inherits it.
+  const deleteRevisionCard = useMemo(
+    () =>
+      makeUnbridgingDelete({
+        resolveKind: (id) => {
+          const c = revisionsHookRaw.cards.find((r) => r.id === id);
+          if (!c) return null;
+          return c.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
+        },
+        rawDelete: revisionsHookRaw.deleteCard,
+        unbridge: unbridgeOnDelete,
+      }),
+    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeOnDelete],
+  );
+  const deleteCutterCard = useMemo(
+    () =>
+      makeUnbridgingDelete({
+        resolveKind: (id) => {
+          const c = cutterHookRaw.cards.find((r) => r.id === id);
+          if (!c) return null;
+          return c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
+        },
+        rawDelete: cutterHookRaw.deleteCard,
+        unbridge: unbridgeOnDelete,
+      }),
+    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeOnDelete],
+  );
   const revisionsHook = useMemo(
-    () => ({ ...revisionsHookRaw, convertCard: convertRevisionCard }),
-    [revisionsHookRaw, convertRevisionCard],
+    () => ({ ...revisionsHookRaw, convertCard: convertRevisionCard, deleteCard: deleteRevisionCard }),
+    [revisionsHookRaw, convertRevisionCard, deleteRevisionCard],
   );
   const cutterHook = useMemo(
-    () => ({ ...cutterHookRaw, convertCard: convertCutterCard }),
-    [cutterHookRaw, convertCutterCard],
+    () => ({ ...cutterHookRaw, convertCard: convertCutterCard, deleteCard: deleteCutterCard }),
+    [cutterHookRaw, convertCutterCard, deleteCutterCard],
   );
 
   // ── Phase 2 — auto-apply driver for AI-pending changes (flag-ON) ──────────
@@ -1427,25 +1479,21 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // report-request discharges the same cross-store obligation a morph does:
   // UNBRIDGE the pending ai-requests.json entry (REP-F7-02, the symmetric
   // delete leak) + publish the D6 card-deleted signal — through the SAME
-  // executor contract, so the delete and the morph can't diverge. The
-  // content-confirm already happened upstream (EditableCard / deleteMarginItem),
-  // so the executor runs with `hasContent: false` (no double-confirm). A plain
-  // `report` (no routing) deletes straight through.
-  const deleteReportCard = useCallback(
-    (id: string) => {
-      const card = reportsHookRaw.cards.find((c) => c.id === id);
-      const kind: CardKind = card?.kind === "report-request" ? "report-request" : "report";
-      void runCardLifecycleEvent(
-        { type: "delete", kind, id, hasContent: false },
-        {
-          confirm: async () => true, // upstream already confirmed
-          unbridgeAiRequest: (k, cid) =>
-            bridgeCardAiRequestFlag(docId, k, cid, false, { text: "" }),
-          mutate: () => reportsHookRaw.deleteCard(id),
+  // `makeUnbridgingDelete` composition every other flag-bearing kind now uses
+  // (task 219), so the delete leg is declared once, not re-inlined per kind. A
+  // plain `report` (no routing) resolves to `"report"` and the executor no-ops
+  // the unbridge. Terminate semantics come from the shared `unbridgeOnDelete`.
+  const deleteReportCard = useMemo(
+    () =>
+      makeUnbridgingDelete({
+        resolveKind: (id) => {
+          const c = reportsHookRaw.cards.find((r) => r.id === id);
+          return c?.kind === "report-request" ? "report-request" : "report";
         },
-      );
-    },
-    [reportsHookRaw, docId],
+        rawDelete: reportsHookRaw.deleteCard,
+        unbridge: unbridgeOnDelete,
+      }),
+    [reportsHookRaw.cards, reportsHookRaw.deleteCard, unbridgeOnDelete],
   );
   const reportsHook = useMemo(
     () => ({
@@ -1455,11 +1503,43 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     }),
     [reportsHookRaw, convertReportCard, deleteReportCard],
   );
-  const notesHook = useMemo(
-    () => ({ ...notesHookRaw, convertCard: convertNotesCard }),
-    [notesHookRaw, convertNotesCard],
+  // note AND highlight both carry aiRequest routing and share this one hook
+  // delete; resolve the kind off the card so the executor unbridges the right
+  // routed row (task 219).
+  const deleteNoteCard = useMemo(
+    () =>
+      makeUnbridgingDelete({
+        resolveKind: (id) => {
+          const c = notesHookRaw.cards.find((n) => n.id === id);
+          return c ? (c.kind as CardKind) : null;
+        },
+        rawDelete: notesHookRaw.deleteNote,
+        unbridge: unbridgeOnDelete,
+      }),
+    [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeOnDelete],
   );
-  const todosHook = useTodos(docId, todoPristine);
+  const notesHook = useMemo(
+    () => ({ ...notesHookRaw, convertCard: convertNotesCard, deleteNote: deleteNoteCard }),
+    [notesHookRaw, convertNotesCard, deleteNoteCard],
+  );
+  const todosHookRaw = useTodos(docId, todoPristine);
+  // A todo always resolves to the single routed kind `"todo"`; wrap its raw
+  // delete so a flagged-then-deleted todo unbridges its ai-requests.json row
+  // (task 219), through the same executor as every other kind.
+  const deleteTodoItem = useMemo(
+    () =>
+      makeUnbridgingDelete({
+        resolveKind: (id) =>
+          todosHookRaw.items.some((t) => t.id === id) ? "todo" : null,
+        rawDelete: todosHookRaw.deleteItem,
+        unbridge: unbridgeOnDelete,
+      }),
+    [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeOnDelete],
+  );
+  const todosHook = useMemo(
+    () => ({ ...todosHookRaw, deleteItem: deleteTodoItem }),
+    [todosHookRaw, deleteTodoItem],
+  );
   // BUG #55b (part b): subsume any pre-existing UNLINKED note/todo AI request
   // into a real card with the per-card `aiRequest` flag (re-bridged via
   // `linkedTo`), so retiring the legacy `"ai"` CardKind / `AiRequestCard`
@@ -3465,7 +3545,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     () => ({
       footnote: {
         clone: footnotesHook.cloneFootnote,
-        delete: footnotesHook.deleteFootnote,
+        // The atom-range delete walker's sidecar cleanup — a second footnote
+        // delete entry point beside `handleDeleteFootnote` (which splices via
+        // the editor handle). Unbridge here too so deleting a flagged footnote
+        // through a wide-scope range delete can't strand its inbox row either
+        // (task 219). No D6 signal — the atom's removal already drives the W2b
+        // bus prune.
+        delete: (id: string) => {
+          void unbridgeOnDelete("footnote", id);
+          footnotesHook.deleteFootnote(id);
+        },
       },
       citation: {
         clone: citationsHook.cloneCitation,
@@ -3502,7 +3591,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         bindAnchor: cutterHook.bindAnchor,
       },
     }),
-    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, handleDeleteCitation],
+    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, handleDeleteCitation, unbridgeOnDelete],
   );
   const cardLifecycle = useCardLifecycleApi(cardLifecycleRegistry);
   // Dev-only: assert the provider satisfies exactly CARD_REGISTRY's declared
@@ -4217,6 +4306,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // read-only. Wired as a no-op until the main app needs it.
   }, []);
   const handleDeleteFootnote = useCallback((id: string) => {
+    // Close the linked ai-requests.json row (task 219). A flagged footnote
+    // deleted from the panel / margin marker / float otherwise strands its open
+    // inbox row forever — a deleted footnote can never toggle its flag again, so
+    // the bridge's "self-heals on the next toggle" escape hatch never fires.
+    // Terminate mode: a delete is a terminal transition like archive (task 093).
+    // Unlike the sidecar-backed kinds, this path does NOT publish a D6
+    // card-deleted signal — a footnote IS an inline atom, so its cardStore
+    // prune is already owned by the W2b bus reconciler off the splice's
+    // structural diff; emitting one here would be a redundant double-prune.
+    void unbridgeOnDelete("footnote", id);
     // Arm the orphan-suppression latch BEFORE the atom is removed: the
     // footnote orphan-detector (src/lib/tiptap/footnote.ts) dispatches a
     // deferred `virgil-footnote-orphaned` on any non-empty footnote node
@@ -4242,7 +4341,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       );
     }
     innerRef.current?.deleteFootnote(id);
-  }, [docId]);
+  }, [docId, unbridgeOnDelete]);
 
   // Citation order — left-to-right ids of `\cite{}` commands in the
   // doc. Recomputes only when citations actually change (`rev.citations`),
