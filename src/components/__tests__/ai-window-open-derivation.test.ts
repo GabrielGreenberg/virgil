@@ -42,6 +42,7 @@ const NOOPS = {
   cancelBibReview: () => {},
   removeEntryRequest: () => {},
   deletePanelAiRequest: () => {},
+  clearLinkedAiRequest: () => {},
 };
 
 function listOne(r: AiRequest) {

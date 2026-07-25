@@ -17,6 +17,7 @@ import { CARD_REGISTRY } from "./card-registry";
 import type { CardKind, CardMeta } from "./types";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { PanelThemeKey } from "@/lib/panel-theme";
+import type { AiRequestKind, AiRequestLink } from "@/lib/types";
 import { LEGACY_TOKEN_CROSSWALK } from "./legacy-token-crosswalk";
 
 /** All card kinds, in registry declaration order. */
@@ -257,6 +258,39 @@ export const IN_TEXT_ANCHOR_ACCENTS: InTextAnchorAccentRow[] = (() => {
     cssVar: inTextAnchorAccentVar(token),
     themeKey,
   }));
+})();
+
+/**
+ * Resolve a bridged AI-request's `(kind, linkPanel)` PAIR back to the owning
+ * spine `CardKind` — the read-side inverse of the forward routing each
+ * flag-bearing kind declares (`CARD_REGISTRY[kind].aiRequest = { kind,
+ * linkPanel }`, pinned by `ai-request-routing-contract.test.ts`). Derived once
+ * from the registry so it can never drift from the bridge's forward token.
+ *
+ * The PAIR is the bijection, not `linkPanel` alone: note/highlight both declare
+ * `linkPanel: "notes"` (disambiguated by request kind `note` vs `highlight`),
+ * and cutter-/revision-comment both declare request `kind: "suggestion"`
+ * (disambiguated by panel `cutter` vs `revisions`). Inverting either coordinate
+ * on its own would collapse two spine kinds onto one. Returns `null` for a pair
+ * no flag-bearing kind declares (a corrupt or foreign link).
+ *
+ * O(1): a single Map read over the static registry — no collection scan, no
+ * doc walk (keystroke sanctity).
+ */
+export function linkedCardKindFrom(
+  reqKind: AiRequestKind,
+  panel: AiRequestLink["panel"],
+): CardKind | null {
+  return LINKED_CARD_KIND_BY_PAIR.get(`${reqKind} ${panel}`) ?? null;
+}
+
+const LINKED_CARD_KIND_BY_PAIR: Map<string, CardKind> = (() => {
+  const m = new Map<string, CardKind>();
+  for (const k of CARD_KINDS) {
+    const routing = CARD_REGISTRY[k].aiRequest;
+    if (routing) m.set(`${routing.kind} ${routing.linkPanel}`, k);
+  }
+  return m;
 })();
 
 export function cardKindFromRecord(
