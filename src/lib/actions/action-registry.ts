@@ -190,17 +190,21 @@ import {
   getSectionRangeByUuid,
   getHeadingLineRangeByUuid,
 } from "@/lib/section-range";
-// VALUE import: the typed-LaTeX citation input-rule patterns. The PARSER, the
-// `citation.ts` input rule, AND this registry row all reference the SAME
-// regexes from `cite-commands` so the four surfaces can never recognize a
-// different cite vocabulary. `cite-commands` is a plain regex module (no
-// React/DOM), so importing the values here is free for every consumer.
-import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
+// VALUE import: the typed-LaTeX citation FULL-form pattern (`\cite{key}`). The
+// PARSER, the `citation.ts` input rule, AND this registry row all reference the
+// SAME regexes from `cite-commands` (the true pattern SSOT) so the four
+// surfaces can never recognize a different cite vocabulary. `cite-commands` is
+// a plain regex module (no React/DOM), so importing the value here is free for
+// every consumer. (The bare form `CITE_RE_BARE` lives in `cite-commands` too;
+// the row records only the canonical full form as its scalar `inputRulePattern`.)
+import { CITE_RE_FULL } from "@/lib/cite-commands";
 // VALUE import: the typed-LaTeX footnote trigger pattern — the footnote twin of
 // `CITE_RE_FULL`. The `footnote.ts` input rule AND this registry row reference
 // the SAME regex from `footnote-commands` (a plain regex leaf, no React/DOM/
 // TipTap) so the typed surface and the registry can never recognize a different
-// footnote vocabulary. Re-exported below as `FOOTNOTE_INPUT_RULE_PATTERN`.
+// footnote vocabulary. `footnote-commands` is the true pattern SSOT — aliased
+// to `FOOTNOTE_INPUT_RULE_PATTERN` locally only to set the footnote row's
+// `inputRulePattern` below.
 import { FOOTNOTE_RE_FULL as FOOTNOTE_INPUT_RULE_PATTERN } from "@/lib/footnote-commands";
 // VALUE import: the canonical float-key builder. The citation soft-route
 // focuses the new card's library-picker input via the SAME key the card
@@ -2744,11 +2748,12 @@ function cardRow(id: CardActionId): ActionSpec {
     ...(isCitation ? { slashName: "cite" } : {}),
     ...(isFootnote ? { slashName: "footnote" } : {}),
     // The typed-LaTeX trigger. For citation, two patterns exist (`\cite{key}`
-    // full + `\cite ` bare); we record CITE_RE_FULL as the canonical row
-    // pattern (CITATION_INPUT_RULE_PATTERNS below carries the bare form). For
-    // footnote, the single `\footnote{…}` rule (FOOTNOTE_INPUT_RULE_PATTERN).
-    // All live next to the input rules they drive so the four surfaces can
-    // never recognize a different vocabulary.
+    // full + `\cite ` bare, both in `@/lib/cite-commands`); we record the
+    // canonical FULL form as the row's scalar `inputRulePattern`. For footnote,
+    // the single `\footnote{…}` rule (`FOOTNOTE_RE_FULL` from
+    // `@/lib/footnote-commands`). Both leaves are the SSOT the live input rules
+    // ALSO import, so the four surfaces can never recognize a different
+    // vocabulary — the single-sourcing is via that shared leaf, not via this row.
     ...(isCitation ? { inputRulePattern: CITE_RE_FULL } : {}),
     ...(isFootnote ? { inputRulePattern: FOOTNOTE_INPUT_RULE_PATTERN } : {}),
     applies: (ctx) => cardApplies(id, ctx, selection),
@@ -2757,28 +2762,14 @@ function cardRow(id: CardActionId): ActionSpec {
   };
 }
 
-/**
- * The typed-LaTeX input-rule patterns the citation row recognizes, recorded
- * here as the SSOT join between the registry and `citation.ts`. The row's
- * scalar `inputRulePattern` slot holds the FULL form (`\cite{key}`); the bare
- * form (`\cite ` with no braces yet) is the second trigger. Both are imported
- * from `@/lib/cite-commands` so the registry and the live input rule can never
- * recognize a different cite vocabulary.
- */
-export const CITATION_INPUT_RULE_PATTERNS: readonly RegExp[] = [
-  CITE_RE_FULL,
-  CITE_RE_BARE,
-];
-
-/**
- * The typed-LaTeX footnote trigger, re-exported here as the SSOT join between
- * the registry and `footnote.ts`. The footnote row's `inputRulePattern` holds
- * this same `\footnote{…}` regex; `footnote.ts`'s input rule imports it from
- * `@/lib/footnote-commands` (the shared leaf) so the registry and the live
- * input rule can never recognize a different footnote vocabulary. Unlike
- * citation there is no bare form — a footnote has no partial-command path.
- */
-export { FOOTNOTE_INPUT_RULE_PATTERN };
+// The typed-LaTeX input-rule patterns are SINGLE-SOURCED by leaf-sharing, not
+// by any re-export from this module: the citation full/bare forms live in
+// `@/lib/cite-commands` (`CITE_RE_FULL`/`CITE_RE_BARE`) and the footnote trigger
+// in `@/lib/footnote-commands` (`FOOTNOTE_RE_FULL`). `citation.ts` / the
+// `footnote.ts` input rule / this registry row all import the SAME leaf, so the
+// four surfaces can never recognize a different vocabulary. (Former
+// `CITATION_INPUT_RULE_PATTERNS` + `FOOTNOTE_INPUT_RULE_PATTERN` re-exports were
+// removed — task 225 — as dead, zero-importer symbols that mislabeled the join.)
 
 /** The 11 card ids, in canonical MENU-DISPLAY order — derived from
  *  `CARD_ACTION_ORDER` (the insertion order of `CARD_ACTION_PRESENTATION`,
