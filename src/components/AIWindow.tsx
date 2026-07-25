@@ -44,6 +44,8 @@ import type {
   RevisionCard,
 } from "@/lib/types";
 import { isRequestOpen } from "@/lib/ai-request-open";
+import { linkedCardKindFrom } from "@/cards/predicates";
+import type { CardKind } from "@/cards/types";
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
 import { Button } from "./panel-primitives";
@@ -201,6 +203,12 @@ export interface BuildArgs {
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   removeEntryRequest: (id: string) => void;
   deletePanelAiRequest: (id: string) => void;
+  // Cancel a CARD-LINKED panel request: drops the queue row AND lowers the
+  // owning card's `aiRequest` flag together (the queue→card twin of archive's
+  // both-faces clear). Kind is already resolved from the request's
+  // `(kind, linkPanel)` pair; cardId is `linkedTo.cardId`. Unlinked
+  // composer-created requests keep the raw `deletePanelAiRequest` path.
+  clearLinkedAiRequest: (kind: CardKind, cardId: string) => void;
 }
 
 // Exported for the inbox-open-derivation test (task 093): the panel-request
@@ -290,6 +298,18 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
     // user owns accept/reject now — so it must render "resolved" (and expose no
     // cancel affordance), not "open" (task 093 GAP 1).
     const open = isRequestOpen(r);
+    // Cancel routing (task 222): a CARD-LINKED row must clear BOTH faces — drop
+    // the queue row AND lower the owning card's `aiRequest` flag — via the
+    // card-flag-clearing path (the inverse of checking the card's AI box), NOT
+    // the raw `deletePanelAiRequest` filter that would orphan the flag lit (the
+    // queue→card twin of the delete-leg leak, task 219). The owning `CardKind`
+    // resolves from the `(kind, linkPanel)` PAIR — `linkPanel` alone is
+    // ambiguous (note/highlight, cutter/revision). An UNLINKED composer row (or
+    // a corrupt link that can't resolve) keeps the raw delete.
+    const linkedKind = r.linkedTo
+      ? linkedCardKindFrom(r.kind, r.linkedTo.panel)
+      : null;
+    const linkedCardId = r.linkedTo?.cardId;
     out.push({
       id: `panel:${r.id}`,
       kind: PANEL_KIND_MAP[r.kind],
@@ -298,7 +318,11 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
       snippet: r.text || "(empty draft)",
       turnCount: 0,
       createdAt: r.createdAt,
-      onCancel: open ? () => args.deletePanelAiRequest(r.id) : undefined,
+      onCancel: open
+        ? linkedKind && linkedCardId
+          ? () => args.clearLinkedAiRequest(linkedKind, linkedCardId)
+          : () => args.deletePanelAiRequest(r.id)
+        : undefined,
       hasUserText: !!r.text?.trim(),
     });
   }
@@ -366,6 +390,9 @@ export interface AIWindowProps {
   panelAiRequests: AiRequest[];
   addPanelAiRequest: (kind: PanelAiRequestKind, text?: string) => AiRequest;
   deletePanelAiRequest: (id: string) => void;
+  // Cancel a card-linked panel request — clears both the queue row and the
+  // owning card's `aiRequest` flag (task 222). See BuildArgs.
+  clearLinkedAiRequest: (kind: CardKind, cardId: string) => void;
 
   // Mutators
   requestBibReview: (
@@ -400,6 +427,7 @@ export default function AIWindow({
   panelAiRequests,
   addPanelAiRequest,
   deletePanelAiRequest,
+  clearLinkedAiRequest,
   requestBibReview,
   cancelBibReview,
   addEntryRequest,
@@ -431,6 +459,7 @@ export default function AIWindow({
         cancelBibReview,
         removeEntryRequest,
         deletePanelAiRequest,
+        clearLinkedAiRequest,
       }),
     [
       bibReviewRequests,
@@ -440,6 +469,7 @@ export default function AIWindow({
       cancelBibReview,
       removeEntryRequest,
       deletePanelAiRequest,
+      clearLinkedAiRequest,
     ],
   );
 

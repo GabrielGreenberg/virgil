@@ -165,6 +165,7 @@ import { cardHasContent } from "@/cards/has-content";
 import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
 import { makeUnbridgingDelete } from "@/cards/lifecycle/unbridging-delete";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
 import { isCardKind, panelForCardKind, isArchivable, archiveRemovesAtom } from "@/cards/predicates";
 import {
   CardArchiveActionsProvider,
@@ -5081,33 +5082,26 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     ],
   );
 
-  // The resolve twin of `setArchivedForKind`. Archiving a flagged card is a
-  // TERMINAL request transition, so it must funnel into the SAME resolve step as
-  // answer (task 019) and delete (deleteReportCard / the atom-delete path) — the
-  // missing third leg. Each flag-bearing kind's bridge-clearing setter lowers the
-  // card's `aiRequest` flag (the `list_unbridged_card_flags` leg) AND — because
-  // it runs the bridge in `"terminate"` mode (task 093) — TERMINATES the linked
-  // `ai-requests.json` row to `complete`, so an archived request surfaces on
-  // NEITHER drain leg. Terminate (not the reversible `value=false` drop) is what
-  // makes archive close an answered-L3 row (`in-progress`+`resultId`) too: a
-  // toggle-off deliberately preserves that row's `resultId` (task 043), but
-  // archive means the card is *gone*, so the row must terminate regardless. The
-  // terminate branch is the SINGLE ai-requests.json writer here, so there is no
-  // second write to race, and it is idempotent (unmatched / already-terminal
-  // cards write nothing). Dispatch is on the CardKind (not the panel) because
-  // note vs highlight share the `notes` panel but own distinct setters; kinds
-  // with no aiRequest routing (citation, the suggestion family, plain report)
-  // fall through to a no-op.
-  const clearAiRequestForKind = useCallback(
-    (kind: CardKind, id: string) => {
+  // The ONE panel-setter fan-out for the 7 flag-bearing kinds: dispatch a
+  // `(kind, id, value, mode)` onto the owning panel hook's `aiRequest` setter,
+  // which sets the card's flag AND bridges the `ai-requests.json` row per
+  // `mode`. Dispatch is on the CardKind (not the panel) because note vs
+  // highlight share the `notes` panel but own distinct setters; kinds with no
+  // aiRequest routing (citation, the suggestion family, plain report) fall
+  // through to a no-op. Both intents that clear a linked flag route through
+  // here — `clearAiRequestForKind` (archive → terminate) and
+  // `clearLinkedAiRequest` (AIWindow cancel → toggle-off) — so the two can
+  // never dispatch to different setters.
+  const setAiRequestForKind = useCallback(
+    (kind: CardKind, id: string, value: boolean, mode: AiRequestSyncMode) => {
       switch (kind) {
-        case "note": notesHook.setNoteAiRequest(id, false, "terminate"); break;
-        case "highlight": notesHook.setHighlightAiRequest(id, false, "terminate"); break;
-        case "todo": todosHook.setAiRequest(id, false, "terminate"); break;
-        case "report-request": reportsHook.setRequestAiRequest(id, false, "terminate"); break;
-        case "revision-comment": revisionsHook.setCommentAiRequest(id, false, "terminate"); break;
-        case "cutter-comment": cutterHook.setCommentAiRequest(id, false, "terminate"); break;
-        case "footnote": footnotesHook.setFootnoteAiRequest(id, false, "terminate"); break;
+        case "note": notesHook.setNoteAiRequest(id, value, mode); break;
+        case "highlight": notesHook.setHighlightAiRequest(id, value, mode); break;
+        case "todo": todosHook.setAiRequest(id, value, mode); break;
+        case "report-request": reportsHook.setRequestAiRequest(id, value, mode); break;
+        case "revision-comment": revisionsHook.setCommentAiRequest(id, value, mode); break;
+        case "cutter-comment": cutterHook.setCommentAiRequest(id, value, mode); break;
+        case "footnote": footnotesHook.setFootnoteAiRequest(id, value, mode); break;
       }
     },
     [
@@ -5119,6 +5113,37 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       cutterHook.setCommentAiRequest,
       footnotesHook.setFootnoteAiRequest,
     ],
+  );
+
+  // Archive clear — the resolve twin of `setArchivedForKind`. Archiving a
+  // flagged card is a TERMINAL request transition, so it funnels into the SAME
+  // resolve step as answer (task 019) and delete — the missing third leg: lower
+  // the card's `aiRequest` flag (the `list_unbridged_card_flags` leg) AND, in
+  // `"terminate"` mode (task 093), TERMINATE the linked `ai-requests.json` row
+  // to `complete`, so an archived request surfaces on NEITHER drain leg.
+  // Terminate (not the reversible `value=false` drop) is what makes archive
+  // close an answered-L3 row (`in-progress`+`resultId`) too: a toggle-off
+  // deliberately preserves that row's `resultId` (task 043), but archive means
+  // the card is *gone*, so the row must terminate regardless. Idempotent
+  // (unmatched / already-terminal cards write nothing). Contrast
+  // `clearLinkedAiRequest` below (cancel = toggle-off, card stays).
+  const clearAiRequestForKind = useCallback(
+    (kind: CardKind, id: string) => setAiRequestForKind(kind, id, false, "terminate"),
+    [setAiRequestForKind],
+  );
+
+  // AIWindow "cancel" of a card-linked request (task 222): the exact INVERSE of
+  // checking the card's AI box — a `value=false` TOGGLE-off drops the queue row
+  // AND lowers the card's flag together, so the Notes/Todos card checkbox can't
+  // be left lit over a row the skill drain will never serve (the queue→card
+  // twin of the delete-leg leak, task 219). NOT terminate: cancel is a
+  // retraction, not an archive — the card stays put, only its request is
+  // withdrawn, so the row is removed (matching the unlinked composer cancel's
+  // raw delete) rather than parked `complete`. `kind` is already resolved from
+  // the request's `(kind, linkPanel)` pair in `buildRequests`.
+  const clearLinkedAiRequest = useCallback(
+    (kind: CardKind, cardId: string) => setAiRequestForKind(kind, cardId, false, "toggle"),
+    [setAiRequestForKind],
   );
 
   // Archiving an atom-bearing card: splice its `\footnote`/`\cite` marker out of
@@ -5384,6 +5409,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               panelAiRequests={aiRequestsHook.requests}
               addPanelAiRequest={aiRequestsHook.addRequest}
               deletePanelAiRequest={aiRequestsHook.deleteRequest}
+              clearLinkedAiRequest={clearLinkedAiRequest}
               requestBibReview={bibReviewHook.requestReview}
               cancelBibReview={bibReviewHook.cancelRequest}
               addEntryRequest={bibSettingsHook.addEntryRequest}
