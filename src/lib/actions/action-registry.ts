@@ -18,10 +18,12 @@
  *
  * # Why this registry exists
  *
- * Today the "vocabulary" of editing actions (highlight, footnote, cite,
- * `\section`, bold, …) is scattered across FOUR independent surfaces, each
- * with its own list, its own dispatch, and — critically — its own side of
- * the React-land / ProseMirror-plugin-land boundary:
+ * Before this registry, the "vocabulary" of editing actions (highlight,
+ * footnote, cite, `\section`, bold, …) was scattered across FOUR independent
+ * surfaces, each with its own list, its own dispatch, and — critically — its
+ * own side of the React-land / ProseMirror-plugin-land boundary (the surfaces
+ * below are described in that original scattered state; each `MENU_ENTRIES`
+ * mention is historical — it has since been deleted, see the STATUS block):
  *
  *   1. **Grab-bar menu** — `DragHandleMenu` / `MENU_ENTRIES`
  *      ([src/components/DragHandleMenu.tsx]). React-land. The
@@ -47,11 +49,11 @@
  *      no-React-context constraint. Both now register their CARD via the bridge
  *      (the atom is still inserted synchronously in plugin-land).
  *
- * The same logical action (e.g. "make a footnote") is implemented up to four
- * times with subtly different behavior and four different code paths. This
- * registry is the SSOT that the four surfaces will eventually read off of —
- * exactly the way `TEXT_OBJECT_REGISTRY` and `CARD_REGISTRY` already drive
- * their parallel implementations from one shape.
+ * That same logical action (e.g. "make a footnote") used to be implemented up
+ * to four times with subtly different behavior and four different code paths.
+ * This registry is now the SSOT that the four surfaces read off of — exactly
+ * the way `TEXT_OBJECT_REGISTRY` and `CARD_REGISTRY` already drive their
+ * parallel implementations from one shape.
  *
  * # The React-land vs ProseMirror-plugin-land boundary (the crux)
  *
@@ -60,9 +62,9 @@
  * Surfaces 1 & 2 are React components, so they call `run()` directly.
  *
  * Surfaces 3 & 4 are ProseMirror plugins with only an `EditorView`. They
- * **cannot** call React-land `cardCreation`. The architecture (wired for
- * `\cite` in CHIP 4a-ii and `\footnote` in CHIP 4b; the remaining PM commands
- * still ride the legacy CustomEvents):
+ * **cannot** call React-land `cardCreation`. The architecture (fully wired
+ * through CHIP 7a — `\cite`/`\footnote`/`\ex`/`\ref` all reach React via this
+ * one bridge; NO command rides a legacy `window` CustomEvent anymore):
  *
  *   - The React tree publishes ONE imperative handle, `EditorActionsHandle`,
  *     into a ref (`editorActionsRef`) — the PM→React bridge.
@@ -156,9 +158,10 @@ import type { DragHandleRef } from "@/components/editor-layout/card-actions/drag
 // no React/DOM at import — pulling it in does not bloat any consumer that
 // imports the registry types. (Tree-shaking drops it for type-only importers.)
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap/commands";
-// The grab-bar action union — what `ctx.dispatch` and `MENU_ENTRIES` speak.
-// `CardActionId` is its registry-side twin (same 11 string literals); the
-// coverage assertion pins them equal so they cannot drift.
+// The grab-bar action union — what `ctx.dispatch` speaks (formerly also the
+// deleted `MENU_ENTRIES` array). `CardActionId` is its registry-side twin
+// (same 11 string literals); the coverage assertion pins them equal so they
+// cannot drift.
 import type { DragHandleAction } from "@/components/DragHandleMenu";
 
 // ── Card-row presentation (CHIP 3: the registry now OWNS this) ──
@@ -217,8 +220,8 @@ import { buildFloatKey } from "@/floats/float-key";
 // surfaces (see `assertActionCoverage`).
 // ---------------------------------------------------------------------------
 
-/** Card-producing actions — the 11 entries of `MENU_ENTRIES`
- *  (`DragHandleAction`). Each lands a card via `cardCreation.create*`. */
+/** Card-producing actions — the 11 card rows (`DragHandleAction`; formerly the
+ *  deleted `MENU_ENTRIES` array). Each lands a card via `cardCreation.create*`. */
 export type CardActionId =
   | "highlight"
   | "note"
@@ -348,13 +351,16 @@ export type ActionSurface = "grab" | "lightning" | "slash" | "typed" | "keyboard
 
 /**
  * Per-action surface membership. A `true` flag means "this id has a row on
- * that surface." Optional/absent ⇒ false. `assertActionCoverage` cross-checks
- * these flags against the live source lists (`MENU_ENTRIES`,
- * `VIRGIL_COMMAND_NAMES`, the input-rule patterns) so a flag can't drift from
- * the surface it claims.
+ * that surface." Optional/absent ⇒ false. `assertActionCoverage` fully
+ * reconciles the SLASH surface against the live `VIRGIL_COMMAND_NAMES` list
+ * (name ↔ row, both directions); the grab / lightning / typed flags are only
+ * shape-checked (presence of a `letter` / `inputRulePattern`, no premature
+ * flags), NOT cross-checked against the live grab/lightning menus or the
+ * input-rule plugins — so those flags describe intent the assertion can't yet
+ * prove. (The former `MENU_ENTRIES` array it used to check against is deleted.)
  */
 export interface ActionSurfaces {
-  /** Grab-bar menu (`DragHandleMenu` / `MENU_ENTRIES`). */
+  /** Grab-bar menu (`DragHandleMenu`; formerly the deleted `MENU_ENTRIES`). */
   grab?: boolean;
   /** Lightning-bolt menu (`ActionsMenuPanel`: action list + formatting grid). */
   lightning?: boolean;
@@ -722,9 +728,10 @@ export interface ActionSpec {
    *   - `"disabled"` — present but greyed-out (e.g. Highlight on a collapsed
    *     caret; an action a kind's `TEXT_OBJECT_REGISTRY.actions` excludes);
    *   - `"absent"` — not offered on this surface/context at all.
-   * Pure; called at menu-open / dispatch time. Mirrors the
-   * `MENU_ENTRIES` per-kind `disabled` decoration + the cursor-mode
-   * Highlight grey-out in `ActionsMenuPanel`.
+   * Pure; called at menu-open / dispatch time. Mirrors the grab menu's
+   * per-kind `disabled` decoration (the former `MENU_ENTRIES` grey-out, now
+   * driven off these rows) + the cursor-mode Highlight grey-out in
+   * `ActionsMenuPanel`.
    */
   applies(ctx: ActionContext): "ok" | "disabled" | "absent";
   /**
@@ -756,10 +763,10 @@ export interface ActionSpec {
  *
  *   editorActionsRef.current?.runAction("footnote", { surface: "slash" });
  *
- * The handle's implementation (a later chip) resolves the `ActionSpec`,
- * builds an `ActionContext` — crucially **supplying `cardCreation` /
- * `cardLifecycle` from React-land** so the plugin never touches React — and
- * invokes `spec.run(ctx)`.
+ * The handle's implementation resolves the `ActionSpec`, builds an
+ * `ActionContext` — crucially **supplying `cardCreation` / `cardLifecycle`
+ * from React-land** so the plugin never touches React — and invokes
+ * `spec.run(ctx)`.
  *
  * ── REPLACED ── this ONE typed entrypoint superseded the scattered `window`
  * CustomEvent seams that used to cross the boundary. All are now RETIRED (the
@@ -779,7 +786,8 @@ export interface EditorActionsHandle {
    *
    * @param id    Which action to run. The bridge looks it up in
    *              `VIRGIL_ACTION_REGISTRY`; an absent/empty row is a no-op
-   *              (today: the whole registry, so this is inert until CHIP 2+).
+   *              (defensive — the registry is now the COMPLETE SSOT, so every
+   *              `ActionId` resolves to a row).
    * @param seed  The invocation context the plugin can supply. `surface` is
    *              restricted to the two plugin-land surfaces. `position` and
    *              `payload` thread the same way they do on `ActionContext`
@@ -802,9 +810,9 @@ export interface EditorActionsHandle {
 // Each row is the SSOT for a card action's VOCABULARY (id / label / letter /
 // surfaces / applicability / scope) but its `run()` FORWARDS to the existing
 // grab-bar dispatcher (`ctx.dispatch`) so live behavior is byte-identical to
-// today. The menus are NOT yet re-pointed at the registry — that is CHIP 3.
-// This block is purely additive: it populates + lets the coverage assertion
-// go green for the card milestone.
+// the pre-registry menus. The two live menus now render their card list off
+// these rows (CHIP 3) — the deleted `MENU_ENTRIES` array is gone. This block
+// populates the card slice + lets the coverage assertion go green for it.
 //
 // `applies` / `resolveScope` mirror the dispatcher's existing logic so the
 // registry tells the SAME story the live menus do:
@@ -2780,10 +2788,12 @@ export { FOOTNOTE_INPUT_RULE_PATTERN };
 const CARD_ACTION_IDS: readonly CardActionId[] = CARD_ACTION_ORDER;
 
 /**
- * The SSOT map. `Partial<Record<…>>` so consumers tolerate not-yet-migrated
- * ids (treated as "absent"). CHIP 2 populates the 11 CARD rows as delegating
- * wrappers; the slash / block / format / typed ids are still pending (later
- * chips). `assertActionCoverage` partitions covered (card) vs expected-pending.
+ * The SSOT map. `Partial<Record<…>>` is a defensive shape (a lookup miss reads
+ * as "absent") — but as of CHIP 7a EVERY `ActionId` is populated below: the 11
+ * CARD rows, the heading / tex / example / block-atom / format / title slices,
+ * and `ref`. `assertActionCoverage` asserts this is complete (covered ==
+ * `EXPECTED_ACTION_IDS`, both directions) — the old covered-vs-pending
+ * partition is now vacuous.
  */
 export const VIRGIL_ACTION_REGISTRY: Partial<Record<ActionId, ActionSpec>> =
   Object.fromEntries([
@@ -2858,7 +2868,7 @@ export function formatActionRows(): readonly ActionSpec[] {
 }
 
 // ---------------------------------------------------------------------------
-// Coverage assertion — DEV-ONLY, NOT YET WIRED.
+// Coverage assertion — DEV-ONLY, WIRED via `action-coverage-assertion.test.ts`.
 // ---------------------------------------------------------------------------
 
 /**
@@ -2947,11 +2957,11 @@ const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
 };
 
 /**
- * The 11 card ids — the SUBSET of `EXPECTED_ACTION_IDS` this chip (CHIP 2)
- * actually populates. The remaining ids (atom / block / title / format) are
- * EXPECTED-PENDING: they get rows in later chips (4–7). `assertActionCoverage`
- * partitions on this set so the assertion can be green at the card milestone
- * without falsely flagging the not-yet-migrated surfaces.
+ * The 11 card ids — the CARD slice of `EXPECTED_ACTION_IDS`. This was the first
+ * slice migrated onto the registry (CHIP 2); the remaining ids (atom / block /
+ * title / format) landed in CHIPs 4–7 and now have their own `COVERED_*`
+ * slices, so the union of all slices EQUALS `EXPECTED_ACTION_IDS` (no pending
+ * ids remain). `assertActionCoverage` still checks each slice's row shapes.
  *
  * Equal to `CARD_ACTION_IDS` (the row-population list) but typed against the
  * `CardActionId` union so a drift between the two trips the typechecker.
@@ -3157,17 +3167,18 @@ export function assertActionCoverage(): string[] {
         );
       }
     } else {
-      // The remaining card actions do NOT yet own the slash / typed surfaces —
-      // those migrate in a later chip. A premature flag here would mean the
-      // row got ahead of the surface that actually reads it.
+      // The remaining card actions are menu-only BY DESIGN — they have no
+      // slash/typed vocabulary (highlight/note/todo/… never became `\`-commands
+      // or input rules). A flag here would claim a PM-land surface no plugin
+      // actually reads, so it's an error regardless of chip.
       if (row.surfaces.slash) {
         problems.push(
-          `[actions] card id "${id}" prematurely sets surfaces.slash (a later chip owns the slash surface)`,
+          `[actions] card id "${id}" sets surfaces.slash but has no slash command (this card is menu-only by design)`,
         );
       }
       if (row.surfaces.typed) {
         problems.push(
-          `[actions] card id "${id}" prematurely sets surfaces.typed (a later chip owns the typed-LaTeX surface)`,
+          `[actions] card id "${id}" sets surfaces.typed but has no typed-LaTeX input rule (this card is menu-only by design)`,
         );
       }
     }
@@ -3473,8 +3484,10 @@ export function assertActionCoverage(): string[] {
       continue;
     }
     const row = VIRGIL_ACTION_REGISTRY[id];
-    // Not-yet-migrated (no row, or a row that hasn't opted into slash) →
-    // expected-pending; its surface checks land with its chip.
+    // Defensive skip: as of CHIP 7a every live slash name's target row exists
+    // and claims the slash surface, so this is vacuous in practice (it matches
+    // the "no live name should hit it" note above). Kept so a future row that
+    // forgets `surfaces.slash` degrades to a skipped check, not a crash.
     if (!row || !row.surfaces.slash) continue;
     // The primary name plus any alias names the row claims. A live command must
     // match ONE of them (many-to-one for the structural wrappers, 1:1 otherwise).
