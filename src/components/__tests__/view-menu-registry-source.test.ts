@@ -26,6 +26,7 @@ import {
 } from "@/lib/view-prefs/registry";
 import devPrefsRegistry from "@/lib/dev-prefs-registry.json";
 import viewPrefsDefaults from "@/hooks/useViewPrefs.defaults.json";
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const MENUBAR_SRC = readFileSync(path.resolve(here, "../MenuBar.tsx"), "utf8");
@@ -175,4 +176,74 @@ describe("registry ↔ shipped-defaults byte-identity (release-snapshot contract
       expect(json[key]).toEqual(registryDefault);
     });
   }
+});
+
+describe("placements[].side ⇔ PANEL_REGISTRY.defaultStripSide (release-snapshot contract, task 223)", () => {
+  // Sibling of the byte-identity block above, for the STRUCTURAL `placements`
+  // key (not a VIEW_PREF_REGISTRY entry, so the loop above doesn't reach it).
+  //
+  // The shipped `placements` default (useViewPrefs.defaults.json, spread into
+  // DEFAULT_PREFS) declares each panel's default sidebar strip side — the SAME
+  // fact PANEL_REGISTRY[id].defaultStripSide owns (its doc-comment literally
+  // says it "Mirrors useViewPrefs.DEFAULT_PREFS.placements"). Nothing derives
+  // one from the other, so the two are hand-kept parallel lists. They agree
+  // today, but `placements` is on the promote-defaults whitelist
+  // (dev-prefs-registry.json), so a `/cleanup-virgil` run re-bakes the personal
+  // snapshot's placements over the shipped JSON — the moment a panel dragged to
+  // the other strip lands in the snapshot, the shipped `side` silently diverges
+  // from the registry (the exact showParTitles / task-057 class, now for
+  // `placements`). And the authority is genuinely SPLIT at runtime: the Library
+  // Reader sources strip sides straight from `defaultStripSide`
+  // (reader-view-prefs.ts), while the editor lets a JSON `placements` side win
+  // (useViewPrefs.ts `side ?? placement?.side ?? registryEntry?.defaultStripSide`)
+  // — so a one-sided drift ships OPPOSITE fresh-user defaults in editor vs
+  // Reader / jump-dock. This pin makes that drift fail CI.
+  //
+  // `placements` legitimately owns ONE thing the registry does not — the strip
+  // display ORDER (the JSON order differs from registry declaration order and is
+  // load-bearing), so we pin only `side`, never order.
+  type Placement = { id: string; side: "left" | "right" };
+  const placements = ((viewPrefsDefaults as { placements?: Placement[] }).placements ?? []);
+  const stripSide = (id: string): "left" | "right" | null | undefined =>
+    (PANEL_REGISTRY as Record<string, { defaultStripSide: "left" | "right" | null } | undefined>)[id]
+      ?.defaultStripSide;
+
+  it("the JSON actually ships a non-empty placements array", () => {
+    expect(placements.length).toBeGreaterThan(0);
+  });
+
+  for (const { id, side } of placements) {
+    it(`${id}: shipped side "${side}" equals PANEL_REGISTRY.defaultStripSide`, () => {
+      expect(
+        id in PANEL_REGISTRY,
+        `placements lists panel "${id}" that is not in PANEL_REGISTRY`,
+      ).toBe(true);
+      expect(stripSide(id)).toBe(side);
+    });
+  }
+
+  it("placements ⇔ strip panels is a bijection (no missing, dup, or null-side/omni leak)", () => {
+    const placedIds = placements.map((p) => p.id);
+
+    const dupes = placedIds.filter((id, i) => placedIds.indexOf(id) !== i);
+    expect(dupes, `duplicate placements rows: ${dupes.join(", ")}`).toEqual([]);
+
+    // Every panel with a real (non-null) default strip side must ship a row, so
+    // a fresh user gets a stable, complete strip order — a missing row would
+    // fall back to `defaultStripSide` at load but leave the icon order to chance.
+    const stripPanels = (Object.keys(PANEL_REGISTRY) as (keyof typeof PANEL_REGISTRY)[]).filter(
+      (k) => PANEL_REGISTRY[k].defaultStripSide !== null,
+    );
+    const placedSet = new Set(placedIds);
+    const missing = stripPanels.filter((k) => !placedSet.has(k));
+    expect(missing, `strip panels missing from placements: ${missing.join(", ")}`).toEqual([]);
+
+    // …and no null-side panel (omni — a presentation pod, never a strip) leaked
+    // into placements.
+    const nullSideLeak = placedIds.filter((id) => stripSide(id) === null);
+    expect(
+      nullSideLeak,
+      `null-side (non-strip) panels leaked into placements: ${nullSideLeak.join(", ")}`,
+    ).toEqual([]);
+  });
 });
