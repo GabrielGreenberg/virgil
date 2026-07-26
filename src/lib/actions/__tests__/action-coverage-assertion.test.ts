@@ -610,3 +610,58 @@ describe("list/quote slash alias reconciliation (task 062)", () => {
     expect(assertActionCoverage()).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// (7) task 226 — the slash reconciliation's RETURN leg (row → name). The
+//     forward leg (name → row) only walks LIVE command names, so a row that
+//     DECLARES `surfaces.slash` + a slashName/alias that NO `VIRGIL_COMMANDS`
+//     entry provides is a declared-but-unreachable command the forward leg can
+//     never see. The return leg asserts every declared slash name is reachable.
+// ---------------------------------------------------------------------------
+
+describe("slash reconciliation — return leg (task 226)", () => {
+  it("a row declaring a slash name with no live VIRGIL_COMMANDS entry trips the assertion", () => {
+    // A bogus DECLARED alias is invisible to the forward (name → row) leg — that
+    // loop iterates only LIVE names, so a name no command provides is never
+    // reached. ONLY the return (row → name) leg catches it. bullet-list already
+    // claims slash, so appending a ghost alias isolates the new leg.
+    const bullet = VIRGIL_ACTION_REGISTRY["bullet-list"]!;
+    const original = bullet.slashAliases;
+    expect(assertActionCoverage()).toEqual([]); // green baseline
+    try {
+      (bullet as { slashAliases?: string[] }).slashAliases = [
+        ...(original ?? []),
+        "ghostcommand", // absent from VIRGIL_COMMAND_NAMES
+      ];
+      const problems = assertActionCoverage();
+      expect(
+        problems.some(
+          (p) =>
+            p.includes("bullet-list") &&
+            p.includes("\\ghostcommand") &&
+            p.includes("unreachable slash command"),
+        ),
+        `expected a return-leg problem for \\ghostcommand; got ${JSON.stringify(problems)}`,
+      ).toBe(true);
+    } finally {
+      (bullet as { slashAliases?: string[] }).slashAliases = original;
+    }
+    // Restored → green again (no leakage into the SSOT baseline).
+    expect(assertActionCoverage()).toEqual([]);
+  });
+
+  it("the LIVE registry satisfies the return leg — every declared slash name is reachable", () => {
+    // The invariant the return leg pins over the real registry: for every
+    // slash-claiming row, each declared slashName/alias is a live command.
+    const live = new Set<string>(VIRGIL_COMMAND_NAMES);
+    for (const r of Object.values(VIRGIL_ACTION_REGISTRY)) {
+      if (!r || !r.surfaces.slash) continue;
+      const declared = [r.slashName, ...(r.slashAliases ?? [])].filter(
+        (n): n is string => !!n,
+      );
+      for (const n of declared) {
+        expect(live.has(n), `${r.id} declares unreachable \\${n}`).toBe(true);
+      }
+    }
+  });
+});

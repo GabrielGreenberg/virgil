@@ -3092,9 +3092,12 @@ const CARD_IDS_WITH_PM_SURFACES: ReadonlySet<CardActionId> =
  *      is the COMPLETE-SSOT guard: a new `ActionId` added to the union without a
  *      `COVERED_*` entry (or vice-versa) trips here.
  *
- * The slash reconciliation against `VIRGIL_COMMAND_NAMES` pins, for every live
- * slash command, that its target row exists + opted into the slash surface +
- * named the same command.
+ * The slash reconciliation against `VIRGIL_COMMAND_NAMES` runs BOTH directions:
+ *   - forward (name → row): every live slash command's target row exists +
+ *     opted into the slash surface + named the same command;
+ *   - return (row → name): every row that declares `surfaces.slash` names only
+ *     slash names (`slashName`/`slashAliases`) that a live `VIRGIL_COMMANDS`
+ *     entry actually provides — catching a declared-but-unreachable command.
  *
  * Returns a list of GENUINELY-UNEXPECTED problems (empty ⇒ the full vocabulary
  * is covered + each row's shape is sound). Returns `[]` in production.
@@ -3487,6 +3490,29 @@ export function assertActionCoverage(): string[] {
       problems.push(
         `[actions] slash command "\\${name}" maps to "${id}", whose slashName/aliases are ${JSON.stringify(claimedNames.filter(Boolean))} (expected to include "${name}")`,
       );
+    }
+  }
+
+  // (slash reconciliation — RETURN leg) The loop above pins every LIVE command
+  // name to a row that claims it (name → row). The inverse is just as real a
+  // drift: a row that declares `surfaces.slash` + a `slashName`/`slashAliases`
+  // entry that NO `VIRGIL_COMMANDS` entry provides is a DECLARED-BUT-UNREACHABLE
+  // slash command — a user typing `\<name>` gets nothing, yet the row advertises
+  // it. The per-slice loops above only assert a `slashName` is PRESENT, never
+  // that it is REACHABLE. Mirror the forward loop: for every slash-claiming row,
+  // assert each declared name appears in the live command list. Task 226.
+  const liveSlashNames = new Set<string>(VIRGIL_COMMAND_NAMES);
+  for (const row of Object.values(VIRGIL_ACTION_REGISTRY)) {
+    if (!row || !row.surfaces.slash) continue;
+    const declaredNames = [row.slashName, ...(row.slashAliases ?? [])].filter(
+      (n): n is string => !!n,
+    );
+    for (const name of declaredNames) {
+      if (!liveSlashNames.has(name)) {
+        problems.push(
+          `[actions] row "${row.id}" declares slash name "\\${name}" with no matching VIRGIL_COMMANDS entry (unreachable slash command)`,
+        );
+      }
     }
   }
 
