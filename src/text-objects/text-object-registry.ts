@@ -1153,6 +1153,13 @@ export function posBlockAllowsAction(
  * they have their own container SSOT below (`blockTypeHostsInlineAtom`): an
  * inline atom is valid in a `titleField` but STILL corrupts the `text*`
  * verbatim blocks (codeBlock / latexComment), which admit literal text only.
+ *
+ * This TEXTBLOCK-only predicate catches the two families whose corruption is a
+ * property of the SPLIT TEXTBLOCK ITSELF (titleField dups; markless mangles).
+ * It canNOT catch a container whose editable textblock is FINE to split but
+ * whose PARENT can't re-host the atom — the `figureCaption`-in-`figureBlock`
+ * case (task 229). That schema-precise container question lives in
+ * `posHostsBlockInsert` below, which resolves the full position.
  */
 export function blockTypeHostsBlockInsert(parentType: NodeType): boolean {
   if (parentType.spec.marks === "") return false; // codeBlock / latexComment
@@ -1161,14 +1168,57 @@ export function blockTypeHostsBlockInsert(parentType: NodeType): boolean {
 }
 
 /**
- * Resolve the textblock containing `pos` and test whether it can host a
- * block-atom child — the position-based entry point for
- * `blockTypeHostsBlockInsert`, used by the lightning / slash surfaces whose ref
- * is a bare caret. `pos` is clamped into the doc so a stale caret can't throw.
+ * Resolve the textblock containing `pos` and test whether a block-atom insert
+ * there is SAFE — the position-based entry point for the lightning / slash /
+ * input-rule surfaces whose ref is a bare caret. `pos` is clamped into the doc
+ * so a stale caret can't throw.
+ *
+ * Two layers, both schema-precise:
+ *   1. The caret's own TEXTBLOCK must survive the split — `blockTypeHostsBlockInsert`
+ *      (titleField singleton / markless verbatim).
+ *   2. When the inserted block's `insertType` is known, the caret's CONTAINER
+ *      must be able to host that block as a sibling of the textblock. A
+ *      `figureCaption` is a fine editable textblock, but its parent `figureBlock`
+ *      (`content: "figureCaption?"`, non-isolating) can host no block child — so
+ *      the atom's insert splits `figureBlock` into two dup-uuid copies and the
+ *      figure/caption is silently lost on reload (task 229, the unpatched member
+ *      of the 147 split-corruption class). `doc` / `listItem` / `blockquote`
+ *      DO host block children, so ordinary prose splits stay allowed.
+ *
+ * Layer 2 mirrors the heading-CONVERT twin's schema-precise parent check
+ * (`action-registry.ts` `selectionCanHostHeading` — `canReplaceWith`), unifying
+ * the two destructive-container surfaces onto ONE question: "can the schema
+ * actually host this block here?". It is name-agnostic — any future single-slot
+ * container is covered without enumerating it. It is applied only as an
+ * ADDITIONAL reject (never relaxes layer 1), and the adjacent-gap `||` form
+ * below never over-gates a content model that merely pins a leading paragraph
+ * (e.g. `listItem` — inserting AFTER the first paragraph is valid though before
+ * it is not). Callers that don't know the type (heading-convert's
+ * belt-and-suspenders) omit `insertType` and get layer 1 alone.
  */
-export function posHostsBlockInsert(doc: PMNode, pos: number): boolean {
+export function posHostsBlockInsert(
+  doc: PMNode,
+  pos: number,
+  insertType?: NodeType,
+): boolean {
   const clamped = Math.max(0, Math.min(pos, doc.content.size));
-  return blockTypeHostsBlockInsert(doc.resolve(clamped).parent.type);
+  const $pos = doc.resolve(clamped);
+  if (!blockTypeHostsBlockInsert($pos.parent.type)) return false;
+  if (insertType && $pos.depth > 0) {
+    const container = $pos.node($pos.depth - 1);
+    const idx = $pos.index($pos.depth - 1);
+    // Can the block sit BESIDE this textblock in its container? Allow if EITHER
+    // adjacent gap accepts it — a pure ProseMirror `canReplaceWith` insert
+    // (from === to). Both gaps false ⇒ the atom can't land in the container ⇒
+    // PM would split the container itself (the dup-uuid corruption). Erring
+    // toward "allow" here is deliberate: layer 2 must never REGRESS a
+    // legitimate split, only reject the genuinely unhostable ones.
+    const hostable =
+      container.canReplaceWith(idx, idx, insertType) ||
+      container.canReplaceWith(idx + 1, idx + 1, insertType);
+    if (!hostable) return false;
+  }
+  return true;
 }
 
 /**

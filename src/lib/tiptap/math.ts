@@ -292,7 +292,7 @@ export const DisplayMath = Node.create<MathOptions>({
             // `$` falls through as a literal char. Guards BOTH the `$$`-on-empty
             // (case 1) and the `$$content$$` closing (case 2) branches, which
             // share this `from`.
-            if (!posHostsBlockInsert(state.doc, from)) return false;
+            if (!posHostsBlockInsert(state.doc, from, nodeType)) return false;
             const $from = state.doc.resolve(from);
             const textBefore = $from.parent.textBetween(
               Math.max(0, $from.parentOffset - 500),
