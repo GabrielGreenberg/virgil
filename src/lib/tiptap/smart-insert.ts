@@ -124,14 +124,18 @@ export function smartInsertBlock(args: SmartInsertBlockArgs): SmartInsertResult 
   editor.chain().focus().run();
 
   const { state } = editor.view;
-  // CONTAINER GUARD (task 147, defense-in-depth): a block atom inserted at a
-  // caret inside a block that can't host a block child (titleField / codeBlock /
-  // latexComment) would SPLIT the container — corrupting a `\title{}` singleton
-  // or a verbatim block. figure/graphics are lightning-only (greyed by
-  // `blockInsertApplies`); this guards the low-level primitive so ANY caller
+  // CONTAINER GUARD (task 147 + 229, defense-in-depth): a block atom inserted at
+  // a caret inside a block that can't host a block child would SPLIT the
+  // container. Two shapes corrupt — the caret's own textblock (titleField
+  // singleton → `\title{}` data-loss; codeBlock / latexComment verbatim), AND a
+  // fine textblock whose PARENT can't re-host the atom (a `figureCaption` in a
+  // single-slot `figureBlock` → the figure splits into two dup-uuid copies,
+  // silently lost on reload). Threading `type` engages the schema-precise
+  // container check for the latter. figure/graphics are lightning-only (greyed
+  // by `blockInsertApplies`); this guards the low-level primitive so ANY caller
   // (the standalone `insertFigureBlock`/`insertGraphicsBlock`, a future file
   // drop) can't corrupt. Returns the not-inserted sentinel.
-  if (!posHostsBlockInsert(state.doc, state.selection.from)) {
+  if (!posHostsBlockInsert(state.doc, state.selection.from, type)) {
     return { uuid: "", pos: -1 };
   }
   const carriesUuid = "uuid" in type.spec.attrs!;
