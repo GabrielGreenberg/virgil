@@ -1444,17 +1444,26 @@ function titleFieldRun(field: "title" | "author" | "date"): (ctx: ActionContext)
     //    with a larger field order.
     const order: Record<string, number> = { title: 0, author: 1, date: 2 };
     const insertOrder = order[field];
+    // Accumulate a CUMULATIVE document offset across ALL top-level children (not
+    // just the matching title-fields) and record the position AFTER the last
+    // preceding title-field of smaller order. This lands the new node at a valid
+    // block boundary between top-level children regardless of arrangement —
+    // identical to the old arithmetic when title-fields are hoisted/contiguous at
+    // doc top (the parse-time `hoistTitleFieldsToTop` invariant), but robust when a
+    // non-title block precedes a title-field during live editing (the invariant is
+    // not re-established while editing). The old walk summed only the matching
+    // title-fields' sizes, so any preceding body block made `insertPos` undercount
+    // and land inside the previous title's inline content → ReplaceError/no-op or a
+    // dup-uuid title split with silent data-loss on reload (task 236).
     let insertPos = 0;
-    let walkOffset = 0;
+    let cumulative = 0;
     state.doc.forEach((child) => {
       const childOrder =
         child.type.name === "titleField"
           ? order[child.attrs?.field as string] ?? 99
           : 99;
-      if (childOrder < insertOrder) {
-        walkOffset += child.nodeSize;
-        insertPos = walkOffset;
-      }
+      cumulative += child.nodeSize;
+      if (childOrder < insertOrder) insertPos = cumulative;
     });
 
     // Build the new node. Pre-stamp a UUID so the in-memory id matches what
