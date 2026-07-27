@@ -17,9 +17,10 @@
  * is the actual ascent of a rendered capital letter. All three come from
  * canvas's `TextMetrics`. We cache per
  * `(fontFamily | fontSize | fontWeight | lineHeight)` signature; the
- * cache is invalidated when `document.fonts.ready` resolves so FOUT
- * (font swap mid-session) doesn't leave handles stuck at the fallback
- * font's cap-top.
+ * cache is invalidated on EVERY font-load wave (the `FontFaceSet`'s
+ * `loadingdone` event — not just the boot `document.fonts.ready`) so
+ * FOUT, including a runtime main-text font switch to a lazily-loaded
+ * family, doesn't leave handles stuck at the fallback font's cap-top.
  *
  * Used by `src/text-objects/TextObjectGrabHandle.tsx` for both the
  * TextObjectRef placement path and the SelectionRef path, and — through the
@@ -285,17 +286,49 @@ const fontReadyCallbacks = new Set<() => void>();
 let fontReadyArmed = false;
 
 /**
- * Register a callback to fire after `document.fonts.ready` resolves.
- * Also clears the cap-top cache at that moment so cached offsets
- * computed against the fallback font during FOUT are recomputed against
- * the real font on the next read.
+ * The slice of the live `FontFaceSet` we depend on. Structural so a test can
+ * stub it with a minimal `EventTarget` + `status` (jsdom ships neither reliably).
+ */
+interface FontFaceSetLike {
+  status?: "loading" | "loaded";
+  addEventListener?: (type: "loadingdone", listener: () => void) => void;
+}
+
+/** Clear the cap-top cache and re-run every registered callback. */
+function fireFontReady(): void {
+  FONT_METRICS_CACHE.clear();
+  for (const fn of fontReadyCallbacks) {
+    try {
+      fn();
+    } catch {
+      // Swallow — callbacks are best-effort schedule pings.
+    }
+  }
+}
+
+/**
+ * Register a callback to fire whenever a font-load wave completes.
+ * Also clears the cap-top cache at that moment so cached offsets computed
+ * against the fallback font during FOUT are recomputed against the real
+ * font on the next read.
+ *
+ * `document.fonts` is a live `FontFaceSet`: the boot `next/font` faces are
+ * one wave, but a runtime typography change (e.g. the Fonts… picker swapping
+ * the main-text family to a lazily-loaded, `font-display: swap` Google font)
+ * is a SECOND wave the already-settled `fonts.ready` promise never reports.
+ * So we arm a **persistent** `loadingdone` listener (fires once per completed
+ * wave), not a one-shot `fonts.ready.then` — every wave self-corrects
+ * identically, defeating stale-fallback cap-band metrics that previously
+ * persisted until a full page reload.
  *
  * Returns a **disposer** — call it (in an effect cleanup) to unregister the
  * callback so a fresh closure per effect run doesn't accumulate. Every closure
  * transitively pins its editor graph, so an un-disposed registration across
  * paper switches / panel toggles / multi-window opens leaks torn-down editors.
- * The one-shot `fonts.ready` handler also `clear()`s the whole Set after firing,
- * so pre-ready registrants are released even if their disposer never runs.
+ * Leak-safety rests ENTIRELY on these disposers (both current callers invoke
+ * theirs unconditionally in cleanup) — the listener is armed once and never
+ * disarmed, and the callback Set is never cleared, so a persistent registrant
+ * keeps re-firing across waves as intended.
  *
  * `fontReadyCallbacks` is a `Set`, so registering the SAME callback reference
  * twice dedupes (fires once); only distinct closures fire separately.
@@ -307,23 +340,20 @@ export function onFontReady(cb: () => void): () => void {
     fontReadyCallbacks.delete(cb);
   };
   if (fontReadyArmed) return dispose;
-  const fonts = (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts;
-  if (!fonts || !fonts.ready || typeof fonts.ready.then !== "function") return dispose;
+  const fonts = (document as unknown as { fonts?: FontFaceSetLike }).fonts;
+  // Feature-detect `addEventListener` (absent under SSR / jsdom / old engines)
+  // — same SSR-safe shape as the former `fonts?.ready?.then` guard.
+  if (!fonts || typeof fonts.addEventListener !== "function") return dispose;
   fontReadyArmed = true;
-  fonts.ready.then(() => {
-    FONT_METRICS_CACHE.clear();
-    for (const fn of fontReadyCallbacks) {
-      try {
-        fn();
-      } catch {
-        // Swallow — callbacks are best-effort schedule pings.
-      }
-    }
-    // One-shot: release every registered closure (and any registered later,
-    // which can never fire) so the module-global Set can't retain torn-down
-    // editor graphs.
-    fontReadyCallbacks.clear();
-  });
+  fonts.addEventListener("loadingdone", fireFontReady);
+  // Catch-up for the boot wave if it ALREADY settled before we attached (the
+  // old resolved-`fonts.ready`-promise case): `loadingdone` only reports FUTURE
+  // waves, so without this a late first-registration would miss a stale cache
+  // primed during boot FOUT. Mutually exclusive with the boot `loadingdone`
+  // (status is "loading" until that wave completes), so it never double-fires.
+  if (fonts.status === "loaded") {
+    Promise.resolve().then(fireFontReady);
+  }
   return dispose;
 }
 
@@ -335,4 +365,19 @@ export function __fontReadyPendingCount(): number {
 /** Test-only: drop the cap-top cache. */
 export function clearCapTopCache(): void {
   FONT_METRICS_CACHE.clear();
+}
+
+/** Test-only: current cap-top cache size (jsdom can't drive real measurement). */
+export function __fontMetricsCacheSize(): number {
+  return FONT_METRICS_CACHE.size;
+}
+
+/** Test-only: insert a dummy cache entry so invalidation can be observed. */
+export function __primeFontMetricsCache(key = "__test__"): void {
+  FONT_METRICS_CACHE.set(key, {
+    capHeight: 0,
+    ascent: 0,
+    descent: 0,
+    lineHeightPx: 0,
+  });
 }

@@ -513,39 +513,88 @@ describe("onFontReady", () => {
     expect(__fontReadyPendingCount()).toBe(before);
   });
 
-  it("fires registered callbacks once after fonts.ready, empties the Set, and never fires an unsubscribed cb", async () => {
-    // The `fontReadyArmed` latch is module-global, so exercise the one-shot on
-    // a FRESH module instance with a controllable `document.fonts.ready`.
+  it("clears the cache and re-runs callbacks on EVERY loadingdone wave (not just the first), and stops after the disposer", async () => {
+    // The `fontReadyArmed` latch is module-global, so exercise the persistent
+    // listener on a FRESH module instance with a controllable `FontFaceSet`.
+    // jsdom ships neither `loadingdone` nor a real `FontFaceSet`, so stub a
+    // minimal EventTarget with a `status` field (mirrors the 216 stub shape).
     vi.resetModules();
-    let resolveReady!: () => void;
-    const ready = new Promise<void>((r) => {
-      resolveReady = r;
-    });
+    const listeners = new Set<() => void>();
+    const fontsStub = {
+      // "loading" at arm time → no immediate catch-up; `loadingdone` drives.
+      status: "loading" as "loading" | "loaded",
+      addEventListener: (_type: "loadingdone", listener: () => void) => {
+        listeners.add(listener);
+      },
+    };
+    const dispatchLoadingDone = () => {
+      for (const l of Array.from(listeners)) l();
+    };
     const originalFonts = (document as unknown as { fonts?: unknown }).fonts;
-    (document as unknown as { fonts?: unknown }).fonts = { ready };
+    (document as unknown as { fonts?: unknown }).fonts = fontsStub;
     try {
       const mod = await import("../text-metrics");
       const fired: string[] = [];
       const disposeA = mod.onFontReady(() => fired.push("a"));
       mod.onFontReady(() => fired.push("b"));
       expect(mod.__fontReadyPendingCount()).toBe(2);
+      expect(listeners.size).toBe(1); // armed exactly once
 
-      disposeA(); // unsubscribe A BEFORE ready resolves
+      // Prime the cache so we can observe the invalidation.
+      mod.__primeFontMetricsCache();
+      expect(mod.__fontMetricsCacheSize()).toBe(1);
+
+      // WAVE 1 (the initial FOUT wave): cache cleared, both callbacks fire,
+      // and — unlike the old one-shot — the Set is NOT emptied.
+      dispatchLoadingDone();
+      expect(mod.__fontMetricsCacheSize()).toBe(0);
+      expect(fired).toEqual(["a", "b"]);
+      expect(mod.__fontReadyPendingCount()).toBe(2);
+
+      // Re-prime, then WAVE 2 (a runtime font switch): the still-registered
+      // callbacks fire AGAIN and the cache clears AGAIN.
+      mod.__primeFontMetricsCache();
+      expect(mod.__fontMetricsCacheSize()).toBe(1);
+      dispatchLoadingDone();
+      expect(mod.__fontMetricsCacheSize()).toBe(0);
+      expect(fired).toEqual(["a", "b", "a", "b"]);
+
+      // Disposer unregisters A; a THIRD wave fires only B → leak-safety kept.
+      disposeA();
       expect(mod.__fontReadyPendingCount()).toBe(1);
+      dispatchLoadingDone();
+      expect(fired).toEqual(["a", "b", "a", "b", "b"]);
+    } finally {
+      if (originalFonts === undefined) {
+        delete (document as unknown as { fonts?: unknown }).fonts;
+      } else {
+        (document as unknown as { fonts?: unknown }).fonts = originalFonts;
+      }
+      vi.resetModules();
+    }
+  });
 
-      resolveReady();
-      await ready;
-      await Promise.resolve(); // flush the `.then` microtask
+  it("catches up an already-settled boot wave (status 'loaded' at arm time) via a microtask, without a loadingdone event", async () => {
+    vi.resetModules();
+    const fontsStub = {
+      status: "loaded" as "loading" | "loaded",
+      addEventListener: () => {
+        // Boot wave already complete; no future `loadingdone` will fire.
+      },
+    };
+    const originalFonts = (document as unknown as { fonts?: unknown }).fonts;
+    (document as unknown as { fonts?: unknown }).fonts = fontsStub;
+    try {
+      const mod = await import("../text-metrics");
+      const cb = vi.fn();
+      mod.onFontReady(cb);
+      mod.__primeFontMetricsCache();
+      expect(mod.__fontMetricsCacheSize()).toBe(1);
 
-      // Only B fired (A was disposed); the one-shot cleared the Set afterwards.
-      expect(fired).toEqual(["b"]);
-      expect(mod.__fontReadyPendingCount()).toBe(0);
-
-      // A registrant AFTER ready never fires (one-shot semantics preserved).
-      const late = vi.fn();
-      mod.onFontReady(late);
+      expect(cb).not.toHaveBeenCalled(); // catch-up is deferred to a microtask
       await Promise.resolve();
-      expect(late).not.toHaveBeenCalled();
+      expect(cb).toHaveBeenCalledTimes(1);
+      expect(mod.__fontMetricsCacheSize()).toBe(0);
     } finally {
       if (originalFonts === undefined) {
         delete (document as unknown as { fonts?: unknown }).fonts;
