@@ -30,6 +30,11 @@
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Editor, JSONContent } from "@tiptap/react";
+// Task 230: the footnote/citation → id-attr map is the registry's `idAttr`
+// facet — read it off ATOM_REGISTRY rather than re-encoding the ternary here, so
+// this by-id resolver shares the single source of truth (peer: stack-pull.ts,
+// which resolves `node.attrs[meta.idAttr]` the same registry way).
+import { atomMetaForNodeName } from "./tiptap/atom-registry";
 
 // ---------------------------------------------------------------------------
 // Place A — attr-borne atom payload (absorbed from atom-text.ts)
@@ -352,7 +357,11 @@ export function findInlineAtomPosDeep(
   id: string,
   opts?: InlineContentOpts,
 ): InlineAtomLocation | null {
-  const idAttr = nodeName === "footnote" ? "footnoteId" : "citationId";
+  const idAttr = atomMetaForNodeName(nodeName)?.idAttr;
+  // The registry guarantees a non-null idAttr for footnote/citation (the two
+  // Card-bearing atoms), so this guard never fires for the typed inputs — it
+  // just restores the exact non-null `string` the old ternary produced.
+  if (!idAttr) return null;
 
   // --- 1. Top-level fast-path (unchanged behavior for the common case) ---
   let topPos: number | null = null;
