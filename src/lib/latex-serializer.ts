@@ -8,7 +8,7 @@ import {
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
 import { typographyToLatex, smartenStraightQuotes } from "@/lib/latex-typography";
-import { extractBraced, isEscaped } from "@/lib/latex-lexer";
+import { extractBraced, isEscaped, VERBATIM_ENVS_FULL } from "@/lib/latex-lexer";
 import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
 import { classifyCiteFamily } from "@/lib/bib-family";
 import {
@@ -894,14 +894,26 @@ function serializeInline(node: JSONContent): string {
 
 /**
  * Collapse runs of 3+ newlines down to a single blank-line separator —
- * EXCEPT inside `verbatim` environments, whose bodies are byte-preserving.
+ * EXCEPT inside the `verbatim` FAMILY, whose bodies are byte-preserving.
  * Verbatim blocks are pulled out behind placeholders, the collapse runs on
  * the remaining prose, then the blocks are spliced back intact. A body line
  * reading `\end{verbatim}` is escaped (`%!v-esc`) at emit time, so the
  * non-greedy match always stops at the block's real terminator even when the
  * body itself contains a literal `\begin{verbatim}`.
+ *
+ * The stash pattern is built from the `VERBATIM_ENVS_FULL` vocab SSOT (not a
+ * hard-coded bare-`verbatim` literal), so `verbatim*`/`lstlisting`/`minted`
+ * bodies keep their interior blank runs too (task 243). A capture-group
+ * backreference (`\1`) pairs each `\begin{env}` with its own `\end{env}`, and
+ * the alternation is longest-first so `verbatim*` is tried before `verbatim`.
  */
-const VERBATIM_BLOCK_RE = /\\begin\{verbatim\}\n[\s\S]*?\n\\end\{verbatim\}/g;
+const VERBATIM_BLOCK_RE = new RegExp(
+  `\\\\begin\\{(${[...VERBATIM_ENVS_FULL]
+    .sort((a, b) => b.length - a.length)
+    .map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|")})\\}\\n[\\s\\S]*?\\n\\\\end\\{\\1\\}`,
+  "g",
+);
 function collapseBlankRuns(s: string): string {
   const blocks: string[] = [];
   // Stash each verbatim block behind a placeholder that carries no newline

@@ -256,3 +256,36 @@ describe("matchCommandToken", () => {
     expect(matchCommandToken("abc", 0)).toBeNull();
   });
 });
+
+describe("findMatchingEnv — verbatim family reads the VERBATIM_ENVS_FULL SSOT (task 243)", () => {
+  // For each `src`, `startPos` points just past the OUTER `\begin{env}`. The
+  // body then contains an inner `\begin{env}` and TWO `\end{env}`s, so the two
+  // policies pick DIFFERENT closes:
+  //   • literal family member  → FIRST `\end` (first-close-wins)
+  //   • depth-counted non-member → SECOND `\end` (inner begin bumps the depth)
+  function twoEndSrc(env: string) {
+    const open = `\\begin{${env}}`;
+    const src = `${open}X${open}Y\\end{${env}}Z\\end{${env}}`;
+    return { src, startPos: open.length, endTok: `\\end{${env}}` };
+  }
+
+  it("gives EVERY VERBATIM_ENVS_FULL member first-close-wins", () => {
+    for (const env of VERBATIM_ENVS_FULL) {
+      const { src, startPos, endTok } = twoEndSrc(env);
+      expect(
+        findMatchingEnv(src, startPos, env),
+        `${env} should terminate at the first \\end`,
+      ).toBe(src.indexOf(endTok, startPos));
+    }
+  });
+
+  it("still depth-counts a non-family env (itemize → second close)", () => {
+    const { src, startPos, endTok } = twoEndSrc("itemize");
+    // Inner begin bumps depth to 2, so the matching close is the SECOND \end.
+    expect(findMatchingEnv(src, startPos, "itemize")).toBe(
+      src.lastIndexOf(endTok),
+    );
+    // Sanity: the two policies genuinely differ on this fixture.
+    expect(src.indexOf(endTok, startPos)).not.toBe(src.lastIndexOf(endTok));
+  });
+});

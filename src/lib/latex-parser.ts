@@ -19,6 +19,7 @@ import {
   findMatchingGloss,
   isEscaped,
   findUnescaped,
+  VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
 
 interface ParseContext {
@@ -1612,17 +1613,23 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       const optArg = beginMatch[2] || "";
       ctx.pos += beginMatch[0].length;
       // Find the matching \end{env}. For most envs we depth-count so nested
-      // same-name environments pair correctly. `verbatim` is the exception:
-      // it is non-nestable and its body is LITERAL, so the correct terminator
-      // is the FIRST `\end{verbatim}` — depth-counting is actively wrong here,
-      // since a literal `\begin{verbatim}` in the body would bump the counter
-      // and swallow the real close. The serializer escapes any body
-      // `\end{verbatim}` (→ `\end{verbatim%!v-esc}`), so the first literal
-      // `\end{verbatim}` we find is guaranteed to be the block's true end.
-      const envEnd =
-        env === "verbatim"
-          ? ctx.src.indexOf(`\\end{${env}}`, ctx.pos)
-          : findMatchingEnd(ctx.src, ctx.pos, env);
+      // same-name environments pair correctly. The `verbatim` FAMILY is the
+      // exception: those envs are non-nestable and their body is LITERAL, so
+      // the correct terminator is the FIRST `\end{env}` — depth-counting is
+      // actively wrong here, since a literal `\begin{env}` in the body would
+      // bump the counter and swallow the real close (and, when the counter
+      // never rebalances, swallow the rest of the document into one block).
+      // The membership test reads the vocab SSOT (`VERBATIM_ENVS_FULL`), so
+      // every family member — `verbatim*`/`lstlisting`/`minted`, not just bare
+      // `verbatim` — gets first-close-wins handling (task 243). The serializer
+      // escapes any body `\end{verbatim}` (→ `\end{verbatim%!v-esc}`), so the
+      // first literal `\end{env}` we find is the block's true end.
+      const isLiteralEnv = (VERBATIM_ENVS_FULL as readonly string[]).includes(
+        env,
+      );
+      const envEnd = isLiteralEnv
+        ? ctx.src.indexOf(`\\end{${env}}`, ctx.pos)
+        : findMatchingEnd(ctx.src, ctx.pos, env);
       const envContent =
         envEnd !== -1
           ? ctx.src.slice(ctx.pos, envEnd)

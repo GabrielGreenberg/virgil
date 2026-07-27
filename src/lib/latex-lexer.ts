@@ -322,12 +322,10 @@ export function findMatchingEnv(
 }
 
 function isVerbatimFamily(envName: string): boolean {
-  return (
-    envName === "verbatim" ||
-    envName === "verbatim*" ||
-    envName === "lstlisting" ||
-    envName === "minted"
-  );
+  // Derive from the single vocab SSOT — never re-enumerate the family here.
+  // Adding a member to VERBATIM_ENVS_FULL must automatically grant it the
+  // first-close-wins / literal-body handling below (task 243).
+  return (VERBATIM_ENVS_FULL as readonly string[]).includes(envName);
 }
 
 /**
