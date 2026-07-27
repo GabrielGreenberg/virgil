@@ -30,7 +30,7 @@ import {
 import { isMultiDocKeepAliveOn } from "@/lib/multi-doc-keepalive-flag";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
-import { collabClaimScope } from "@/cards/predicates";
+import { collabClaimsFor } from "@/cards/collab-broadcast";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
 import type { LatexError } from "@/lib/latex-errors";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
@@ -50,7 +50,6 @@ import {
   getPanelColorVersion,
   loadPanelColors,
   subscribePanelColors,
-  type PanelThemeKey,
 } from "@/lib/panel-theme";
 import { IN_TEXT_ANCHOR_ACCENTS } from "@/cards/predicates";
 import { loadPanelTypography, setTierBaseFontSizes } from "@/lib/panel-typography";
@@ -2980,26 +2979,32 @@ export default function EditorLayout() {
   );
 
   // ── Soft presence: broadcast our card selections to the partner.
-  // Scope tokens are REGISTRY-DERIVED via `collabClaimScope` (R28/D-2) so the
-  // broadcast always matches what the card chrome reads back through
-  // `getCardSelections(scope, id)`. This fixed two bugs the hand-kept literal
-  // table shipped: the revision row broadcast "comment" (a token no reader
-  // ever used — the cards read "revision"), and the report selection was
-  // never broadcast at all.
+  // The broadcast set is FACET-DERIVED (task 239): `collabClaimsFor` emits a
+  // claim for a selected card IFF `hasCollabClaims(kind)` — the exact same
+  // facet the reader (`CollabCardTrailing`) gates on — so the writer set can
+  // never drift from the reader gate. This deleted four dead pushes
+  // (citation/todo/bib/example are `collabClaims:false`; no reader ever
+  // consumed their claims) and closes the symmetric "forgot to broadcast a new
+  // claim-bearing kind" hole. Scope tokens stay registry-derived via
+  // `collabClaimScope` (R28/D-2), matching `getCardSelections(scope, id)`. The
+  // per-slot map keys are compile-tied to `COLLAB_SELECTION_SLOT_KINDS`, so a
+  // forgotten/extra slot is a type error, not a silent drift.
   useEffect(() => {
     if (!collab.enabled) return;
-    const cards: { panelKind: PanelThemeKey; cardId: string }[] = [];
-    if (selectedNoteId) cards.push({ panelKind: collabClaimScope("note"), cardId: selectedNoteId });
-    if (selectedFootnoteId) cards.push({ panelKind: collabClaimScope("footnote"), cardId: selectedFootnoteId });
-    if (selectedCitationId) cards.push({ panelKind: collabClaimScope("citation"), cardId: selectedCitationId });
-    if (selectedTodoId) cards.push({ panelKind: collabClaimScope("todo"), cardId: selectedTodoId });
-    if (selectedArchiveId) cards.push({ panelKind: collabClaimScope("archive"), cardId: selectedArchiveId });
-    if (selectedCutterCardId) cards.push({ panelKind: collabClaimScope("cutter-comment"), cardId: selectedCutterCardId });
-    if (selectedReportCardId) cards.push({ panelKind: collabClaimScope("report"), cardId: selectedReportCardId });
-    if (selectedCommentId) cards.push({ panelKind: collabClaimScope("revision-comment"), cardId: selectedCommentId });
-    if (selectedBibKey) cards.push({ panelKind: collabClaimScope("bib"), cardId: selectedBibKey });
-    if (selectedExampleId) cards.push({ panelKind: collabClaimScope("example"), cardId: selectedExampleId });
-    collab.updateSelection(cards);
+    collab.updateSelection(
+      collabClaimsFor({
+        note: selectedNoteId,
+        footnote: selectedFootnoteId,
+        citation: selectedCitationId,
+        todo: selectedTodoId,
+        archive: selectedArchiveId,
+        "cutter-comment": selectedCutterCardId,
+        report: selectedReportCardId,
+        "revision-comment": selectedCommentId,
+        bib: selectedBibKey,
+        example: selectedExampleId,
+      }),
+    );
   }, [
     collab.enabled,
     collab.updateSelection,
