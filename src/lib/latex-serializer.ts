@@ -676,6 +676,11 @@ function serializeExampleItem(node: JSONContent): string {
   const idMarker = uuid ? `\\vxid{${uuid}}` : "";
   const tag = (node.attrs?.tag as string) || "";
   const tagStr = tag ? `<${tag}>` : "";
+  // Item-level `\a[exno=N]` override — mirror the block leg
+  // (`serializeExampleBlock`: `optStr` before `tagStr`). Emitted only when
+  // present, so an override-free item serializes byte-identically.
+  const override = (node.attrs?.exnoOverride as string | null) || null;
+  const optStr = override ? `[exno=${override}]` : "";
   const label = (node.attrs?.label as string) || "";
   const labelStr = label ? `\\label{${label}}` : "";
   const pieces: string[] = [];
@@ -724,7 +729,7 @@ function serializeExampleItem(node: JSONContent): string {
     }
   }
   const body = pieces.join("\n");
-  return `${idMarker}\\a${tagStr}${labelStr} ${body}\n`;
+  return `${idMarker}\\a${optStr}${tagStr}${labelStr} ${body}\n`;
 }
 
 /** True if `s` has a whitespace char at brace depth 0 — i.e. a space that

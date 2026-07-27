@@ -2368,7 +2368,13 @@ function buildExampleBlockFromBody(
     const itemNodes: JSONContent[] = [];
     for (const item of items) {
       itemNodes.push(
-        buildExampleItemFromText(item.tag, item.label, item.uuid, item.text),
+        buildExampleItemFromText(
+          item.tag,
+          item.label,
+          item.uuid,
+          item.text,
+          item.exnoOverride,
+        ),
       );
     }
     if (itemNodes.length === 0) {
@@ -2394,6 +2400,7 @@ function buildExampleItemFromText(
   label: string,
   uuid: string | null,
   text: string,
+  exnoOverride: string | null = null,
 ): JSONContent {
   // Slice out any `\begin{xlist}…\end{xlist}` body before parsing the
   // surrounding text as paragraphs/gloss. We keep just the FIRST nested
@@ -2439,7 +2446,17 @@ function buildExampleItemFromText(
     // marker so the panel and sidecar have a stable id to key by. The
     // serializer emits `\vxid{…}` on the next save, anchoring the id in
     // the .tex itself.
-    attrs: { uuid: uuid || generateShortId(), tag, label, subLabel: "" },
+    // `exnoOverride` mirrors the block leg (`\pex[exno=N]` →
+    // `attrs.exnoOverride`): an item-level `\a[exno=N]` forces a specific
+    // sub-example number and must survive the parse→serialize cycle. Only
+    // carry it when present so an override-free item's attrs stay identical.
+    attrs: {
+      uuid: uuid || generateShortId(),
+      tag,
+      label,
+      subLabel: "",
+      exnoOverride: exnoOverride ?? null,
+    },
     content: normalized,
   };
 }
@@ -2453,7 +2470,13 @@ function buildExampleItemListFromBody(body: string): JSONContent {
   const itemNodes: JSONContent[] = [];
   for (const item of items) {
     itemNodes.push(
-      buildExampleItemFromText(item.tag, item.label, item.uuid, item.text),
+      buildExampleItemFromText(
+        item.tag,
+        item.label,
+        item.uuid,
+        item.text,
+        item.exnoOverride,
+      ),
     );
   }
   if (itemNodes.length === 0) {

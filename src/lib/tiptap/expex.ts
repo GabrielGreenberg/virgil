@@ -1399,6 +1399,11 @@ export const ExampleItem = Node.create({
       tag: { default: "" },
       label: { default: "" },
       subLabel: { default: "" },
+      // Item-level `\a[exno=N]` override (mirrors the exampleBlock attr). Kept
+      // in the schema so it survives the editor round-trip; not rendered here —
+      // sub-label numbering still derives from item position (numbering-honor
+      // is a noted follow-up, see task 244).
+      exnoOverride: { default: null },
     };
   },
 

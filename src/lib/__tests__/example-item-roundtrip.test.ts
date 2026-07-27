@@ -243,3 +243,74 @@ describe("exampleItem hand-authored item-marker aliases for \\a", () => {
     expect(items).toHaveLength(1);
   });
 });
+
+describe("item-level \\a[exno=N] override round-trip (task 244)", () => {
+  // The block-level `\pex[exno=N]` override already round-trips. Its item-level
+  // twin `\a[exno=N]` was PARSED onto the item struct but never stored on attrs
+  // nor emitted — silently dropped on the first save. These assert the parse
+  // and serialize legs now mirror the block leg.
+
+  it("parses \\a[exno=5] into the first item's exnoOverride, leaves siblings null", () => {
+    const tex = `\\pex
+\\a[exno=5] foo
+\\a bar
+\\xe`;
+    const json = parseBody(tex);
+    const items = findAll(json, "exampleItem");
+    expect(items).toHaveLength(2);
+    expect(items[0].attrs?.exnoOverride).toBe("5");
+    expect(items[1].attrs?.exnoOverride).toBeNull();
+  });
+
+  it("re-emits [exno=5] on the correct item and nothing on the other", () => {
+    const tex = `\\pex
+\\a[exno=5] foo
+\\a bar
+\\xe`;
+    const serialized = serializeBody(parseBody(tex));
+    expect(serialized).toContain("\\a[exno=5] foo");
+    // The override-free sibling must NOT gain a spurious [exno=…].
+    expect(serialized).toContain("\\a bar");
+    expect((serialized.match(/\[exno=/g) || []).length).toBe(1);
+  });
+
+  it("round-trips the override through parse → serialize → parse", () => {
+    const original = `\\pex
+\\a[exno=5] foo
+\\a bar
+\\xe`;
+    const serialized = serializeBody(parseBody(original));
+    const reparsed = parseBody(serialized);
+    const items = findAll(reparsed, "exampleItem");
+    expect(items[0].attrs?.exnoOverride).toBe("5");
+    expect(items[1].attrs?.exnoOverride).toBeNull();
+  });
+
+  it("items WITHOUT an override serialize with no [exno=…] (byte-identity regression)", () => {
+    const tex = `\\pex
+\\a foo
+\\a bar
+\\xe`;
+    const serialized = serializeBody(parseBody(tex));
+    expect(serialized).not.toContain("[exno=");
+  });
+
+  it("carries an item-level override inside a nested \\begin{xlist} tier", () => {
+    const tex = `\\pex
+\\a outer
+\\begin{xlist}
+\\a[exno=3] inner one
+\\a inner two
+\\end{xlist}
+\\xe`;
+    const json = parseBody(tex);
+    const items = findAll(json, "exampleItem");
+    // Depth-first order: [0] outer, [1] inner one, [2] inner two.
+    expect(items).toHaveLength(3);
+    expect(items[0].attrs?.exnoOverride).toBeNull();
+    expect(items[1].attrs?.exnoOverride).toBe("3");
+    expect(items[2].attrs?.exnoOverride).toBeNull();
+    const serialized = serializeBody(json);
+    expect(serialized).toContain("\\a[exno=3] inner one");
+  });
+});
