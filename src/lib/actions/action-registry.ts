@@ -3482,8 +3482,12 @@ export function assertActionCoverage(): string[] {
   // `slashAliases` (`\itemize` → bullet-list's `["itemize"]`, `\quotation` →
   // blockquote's `["quotation"]`). This closes the last drift hole — a mis-mapped
   // alias in `SLASH_NAME_TO_ACTION_ID`, or a typo'd `slashAliases` entry, now
-  // trips here instead of passing silently. (The `!row || !row.surfaces.slash`
-  // skip below is defensive only — no live name should hit it.)
+  // trips here instead of passing silently. Task 237 closes the two remaining
+  // holes below: a live name whose target row is MISSING, or exists but does NOT
+  // claim `surfaces.slash` (a wired-but-unadapted / menu-only row), are each now
+  // FLAGGED as problems rather than skipped — the leg finally delivers its stated
+  // guarantee ("a typed `\<name>` can never silently land on a row that forgot to
+  // claim slash") instead of `continue`-ing over exactly that drift.
   for (const name of VIRGIL_COMMAND_NAMES) {
     const id = SLASH_NAME_TO_ACTION_ID[name];
     if (!id) {
@@ -3499,11 +3503,25 @@ export function assertActionCoverage(): string[] {
       continue;
     }
     const row = VIRGIL_ACTION_REGISTRY[id];
-    // Defensive skip: as of CHIP 7a every live slash name's target row exists
-    // and claims the slash surface, so this is vacuous in practice (it matches
-    // the "no live name should hit it" note above). Kept so a future row that
-    // forgets `surfaces.slash` degrades to a skipped check, not a crash.
-    if (!row || !row.surfaces.slash) continue;
+    // A live `\<name>` mapping to a target that has no registry row is broken —
+    // the command resolves to nothing. (After this guard `row` is defined, so
+    // reading `row.surfaces.slash` below is crash-safe.)
+    if (!row) {
+      problems.push(
+        `[actions] slash command "\\${name}" maps to "${id}", which has no registry row`,
+      );
+      continue;
+    }
+    // A live `\<name>` whose target row does NOT claim `surfaces.slash` is the
+    // exact mistake this leg exists to catch: a wired-but-unadapted (or
+    // menu-only) row typing lands on. FLAG it — never `continue` over it, which
+    // is what silently shipped a broken slash command green pre-237.
+    if (!row.surfaces.slash) {
+      problems.push(
+        `[actions] slash command "\\${name}" maps to "${id}", which does not claim surfaces.slash (a live command on a menu-only/unadapted row)`,
+      );
+      continue;
+    }
     // The primary name plus any alias names the row claims. A live command must
     // match ONE of them (many-to-one for the structural wrappers, 1:1 otherwise).
     const claimedNames = [row.slashName, ...(row.slashAliases ?? [])];
