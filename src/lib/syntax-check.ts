@@ -16,6 +16,7 @@
 
 import type { LatexError } from "./latex-errors";
 import { makeErrorId } from "./latex-errors";
+import { KNOWN_CITE_COMMANDS, MULTI_CITE_NAMES } from "./cite-commands";
 
 export interface SyntaxCheckOptions {
   /** Bib keys known from the project's .bib files. When provided,
@@ -49,31 +50,33 @@ const REF_CMDS = new Set([
   "Nameref",
 ]);
 
-const CITE_CMDS = new Set([
-  "cite",
-  "Cite",
-  "citep",
-  "Citep",
-  "citet",
-  "Citet",
-  "citeauthor",
-  "Citeauthor",
-  "citeyear",
-  "Citeyear",
-  "citealp",
-  "Citealp",
-  "citealt",
-  "Citealt",
-  "citenum",
-  "citetext",
-  "parencite",
-  "Parencite",
-  "textcite",
-  "Textcite",
-  "footcite",
-  "Footcite",
-  "fullcite",
-]);
+/**
+ * Single-key cite commands whose `{key}` the undefined-citation diagnostic
+ * validates against the .bib. DERIVED from the shared citation-command
+ * registry (`cite-commands.ts`) so the linter's vocabulary can never silently
+ * drift from the round-trip parser's — a registry addition is picked up here
+ * automatically (the "derive, don't duplicate" SSOT rule). Two exclusions:
+ *
+ *  - `nocite` — matched by name in the extraction loop below; it's
+ *    informational (`\nocite{*}` cites everything), so its keys are never
+ *    recorded for validation.
+ *  - the MULTI-cite forms (`\cites`, `\textcites`, `\parencites`,
+ *    `\autocites`, `\footcites`, `\smartcites`) — they take a repeated
+ *    `{key}` / `(pre)(post)` argument shape that the single-`{key}` extractor
+ *    at the `CITE_CMDS.has(macroName)` branch does NOT parse. Including them
+ *    would mis-read or skip their keys. Recognizing them correctly needs the
+ *    extractor to walk repeated `{key}` groups — a scoped follow-up.
+ *
+ * Both the lowercase and capitalized-first-letter forms are recognized (natbib
+ * + biblatex support `\Citet` / `\Autocite` etc. for sentence starts), mirroring
+ * the registry's own caps convention (see `ALL_NAMES` in cite-commands.ts).
+ */
+const CITE_CMDS = new Set<string>();
+for (const base of KNOWN_CITE_COMMANDS) {
+  if (base === "nocite" || MULTI_CITE_NAMES.has(base)) continue;
+  CITE_CMDS.add(base);
+  CITE_CMDS.add(base[0].toUpperCase() + base.slice(1));
+}
 
 /** Bib keys that are intentionally allowed but won't appear in .bib —
  *  e.g. `\nocite{*}` cites all entries; `*` is not a real key. */
