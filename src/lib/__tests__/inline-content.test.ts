@@ -271,6 +271,21 @@ describe("findInlineAtomPosDeep", () => {
     editor.destroy();
   });
 
+  // Task 230: exercise the `nodeName: "footnote"` branch too. The resolver
+  // derives its id-attr (footnoteId vs citationId) from ATOM_REGISTRY.idAttr
+  // now, not a local ternary — this pins that the footnote branch still matches
+  // on `footnoteId`, so the registry fold is behavior-neutral for BOTH kinds.
+  it("resolves a TOP-LEVEL footnote by its footnoteId (nested:false)", () => {
+    const editor = mount(docWithTopAndNestedCite());
+    const loc = findInlineAtomPosDeep(editor, "footnote", "fn-host");
+    expect(loc).not.toBeNull();
+    expect(loc!.nested).toBe(false);
+    const node = editor.state.doc.nodeAt(loc!.pos);
+    expect(node?.type.name).toBe("footnote");
+    expect(node?.attrs.footnoteId).toBe("fn-host");
+    editor.destroy();
+  });
+
   it("returns null for an id that exists nowhere", () => {
     const editor = mount(docWithTopAndNestedCite());
     expect(findInlineAtomPosDeep(editor, "citation", "ghost")).toBeNull();
