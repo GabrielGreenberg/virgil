@@ -4,13 +4,23 @@
  * # Why this exists
  *
  * Inline atoms (footnote / citation / inline-math / ref) carry a HARD invariant:
- * inserting one must NEVER force a viewport scroll. That is literally why they are
- * `selectable: false` —
+ * inserting one must NEVER force a viewport scroll. This insert-scroll invariant is
+ * ORTHOGONAL to the `selectable` facet — it holds for all four kinds, and this
+ * helper is what roots it (focus WITHOUT scroll; never `scrollIntoView`). Three of
+ * the kinds ALSO opt out of `NodeSelection` (`selectable: false`), but for a
+ * DIFFERENT reason (a *resting* selection, not the insert); inline-math does NOT:
  *
- *   - `footnote.ts` / `citation.ts`: a NodeSelection on an inline atom dispatches a
- *     selection transaction defaulting to `scrollIntoView: true`, which "scrolls the
- *     row by ~70–100px" before our click handlers can route to the omni-card
- *     alignment. `selectable:false` exists to suppress exactly that.
+ *   - `footnote.ts` / `citation.ts` / `label.ts` (ref): `selectable: false`. A
+ *     NodeSelection resting on the atom dispatches a selection transaction
+ *     defaulting to `scrollIntoView: true`, which "scrolls the row by ~70–100px"
+ *     before our click handlers can route to the omni-card alignment.
+ *     `selectable:false` suppresses exactly that. (SSOT: `ATOM_REGISTRY.selectable`.)
+ *   - `math.ts` (inline-math): `selectable: true` — its NodeView legitimately needs
+ *     the NodeSelection to paint `.selected` chrome and drive the single-node float,
+ *     so it does NOT opt out (the registry's `selectable` JSDoc warns against
+ *     blanketing it to false). It is still scroll-safe on INSERT via the
+ *     no-`scrollIntoView` focus path this helper roots — the insert invariant does
+ *     not depend on `selectable`.
  *   - `drop-mode/util/inline-atom-move.ts`: the drop-mode insert/move helpers
  *     document "NEVER `.scrollIntoView()`" and even park a caret so undo can't
  *     re-trigger the jump.
