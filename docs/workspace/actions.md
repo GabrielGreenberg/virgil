@@ -1,4 +1,4 @@
-<!-- last-verified: 887ea534 2026-07-21 -->
+<!-- last-verified: 153cac0c 2026-07-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -150,14 +150,19 @@ reach). Two cells are still direct local calls (`\tex` → `insertTexBlock`,
 | Figure (`fig.`) | insert a figure block | `runGridAction("figure")` → registry `figureRun` → `smartInsertBlock` ([smart-insert.ts](../../src/lib/tiptap/smart-insert.ts)) |
 | Image | insert a graphics block | `runGridAction("graphics")` → registry `graphicsRun` → `smartInsertBlock` ([smart-insert.ts](../../src/lib/tiptap/smart-insert.ts)) |
 
-**The container gate (tasks 147–150, 153).** An insert at a caret must honor the
+**The container gate (tasks 147–150, 153, 229).** An insert at a caret must honor the
 **containing block** — a block-type can refuse a child it can't host without
 corrupting the doc. Two SSOT predicates in [text-object-registry.ts](../../src/text-objects/text-object-registry.ts)
 decide, read straight from the schema (no hardcoded kind list): `blockTypeHostsBlockInsert`
 (pos entry `posHostsBlockInsert`) greys BLOCK-atom inserts (display-math / figure /
 graphics / `\ex` / `\tex`) inside markless verbatim blocks (`codeBlock` / `latexComment`,
 `spec.marks === ""`) and the `titleField` preamble singleton — the split those inserts
-force there would corrupt the source; `blockTypeHostsInlineAtom` (pos entry
+force there would corrupt the source. Since task 229 `posHostsBlockInsert` also takes the
+inserted block's `NodeType` and adds a schema-precise **container** layer: it greys an
+insert whose containing block can't host that block as a sibling (via `canReplaceWith`),
+so a caret inside a `figureCaption` — whose non-isolating `figureBlock` parent hosts no
+block child, and would otherwise split into dup-uuid copies — is rejected too, name-
+agnostically (and type-precisely for `exampleItem`). `blockTypeHostsInlineAtom` (pos entry
 `posHostsInlineAtom`) greys INLINE-atom inserts (inline-math `$x$`, `\ref`) inside the
 `text*` verbatim blocks only (`contentMatch.matchType`), leaving them valid in a
 `titleField`. The same gate is consulted by the slash/menu heading conversion (`headingRun` in

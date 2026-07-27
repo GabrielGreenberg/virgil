@@ -1,4 +1,4 @@
-<!-- last-verified: 4294c162 2026-07-22 -->
+<!-- last-verified: 153cac0c 2026-07-27 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -102,12 +102,17 @@ not Atoms, but a skill editing inline content meets them:
 4. **Don't hand-write the id markers** (`\vfid` / `\vcid`) — compose the
    content command and let the create path allocate and place the marker
    ([identity.md → rules for skills](identity.md#rules-for-skills)).
-5. **Inserting an Atom never scrolls the viewport.** Atoms are `selectable:false`
-   precisely so a create/selection doesn't trigger ProseMirror's default
-   `scrollIntoView`. The in-app React create helpers (footnote / citation /
-   labelRef / inlineMath) all route through the one no-scroll primitive
-   `insertInlineAtom` (`src/lib/tiptap/insert-inline-atom.ts`) — focus without
-   scroll, then `insertContent` — instead of hand-rolling `.chain().focus()`.
+5. **Inserting an Atom never scrolls the viewport.** This insert-scroll invariant
+   is **orthogonal to `selectable`** — it holds for all four kinds because the
+   in-app React create helpers (footnote / citation / labelRef / inlineMath) all
+   route through the one no-scroll primitive `insertInlineAtom`
+   (`src/lib/tiptap/insert-inline-atom.ts`) — focus without scroll, then
+   `insertContent` — instead of hand-rolling `.chain().focus()`. Footnote /
+   citation / labelRef are *additionally* `selectable:false` (SSOT:
+   `ATOM_REGISTRY.selectable`) to suppress a *resting* NodeSelection's default
+   `scrollIntoView`; inline-math is `selectable:true` (its NodeView needs the
+   NodeSelection for `.selected` chrome + the single-node float) yet is still
+   scroll-safe on insert via that same no-`scrollIntoView` focus path.
    Citation and `\ref` creation share **one** deferred-commit popover controller
    (the `openAtomCreate` seam in `src/lib/actions/atom-create.ts`); it passes
    `insertInlineAtom`'s optional `at` arg — a position captured at trigger time —
