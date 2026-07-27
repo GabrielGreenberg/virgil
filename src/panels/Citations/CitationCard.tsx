@@ -21,6 +21,7 @@ import {
   PANEL,
   CardMetaLabel,
   cardTitleStyle,
+  usePanelCardTryDelete,
 } from "@/components/panel-primitives";
 import { FONT_STACKS } from "@/lib/panel-typography";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -31,8 +32,6 @@ import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
-import { useConfirmDialog } from "@/components/ConfirmDialog";
-import { cardHasContent } from "@/cards/has-content";
 import { useLibraryEntryLookup } from "@/hooks/useLibrary";
 import { OpenEntryLink } from "@/components/library/open-library-entry";
 import { CitekeyPicker } from "./CitekeyPicker";
@@ -257,22 +256,18 @@ export function CitationCard({
 
   // CI-F7-01 / OMNI-F7-01: deleting a citation removes the in-text `\cite{}`
   // atom. Route the trash through the SAME content-aware confirm every other
-  // card kind uses (CitationCard renders via PanelCard, not EditableCard, so it
-  // bypassed the shared `EditableCard.tryDelete` flow — that bypass IS the bug).
-  // A citation WITH keys confirms; a keyless draft deletes straight through.
-  const { confirm: confirmDelete, dialog: deleteConfirmDialog } = useConfirmDialog();
-  const tryDelete = useCallback(async () => {
-    if (!onDelete) return;
-    if (cardHasContent("citation", cit)) {
-      const ok = await confirmDelete({
-        message: "This citation is referenced in the document. Delete it?",
-        confirmLabel: "Delete",
-        tone: "danger",
-      });
-      if (!ok) return;
-    }
-    onDelete(cit.id);
-  }, [onDelete, cit, confirmDelete]);
+  // PanelCard-direct kind uses — the shared `usePanelCardTryDelete` hook that
+  // also serves the cutter/revision suggestion cards (CitationCard renders via
+  // PanelCard, not EditableCard, so it bypassed `EditableCard.tryDelete` — that
+  // bypass IS the bug class). A citation WITH keys confirms (its own referenced-
+  // in-the-document prompt); a keyless draft deletes straight through.
+  const { tryDelete, dialog: deleteConfirmDialog } = usePanelCardTryDelete(
+    "citation",
+    cit,
+    cit.id,
+    onDelete,
+    { message: "This citation is referenced in the document. Delete it?" },
+  );
 
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
@@ -783,7 +778,7 @@ export function CitationCard({
       isPoppedOut={isPoppedOut}
       chromeless={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
-      onTrashClick={!compressed && onDelete ? () => void tryDelete() : undefined}
+      onTrashClick={!compressed && onDelete ? tryDelete : undefined}
       cardKey={cardKey}
       dropDisabled={dropDisabled}
       isCollapsed={compressed}
