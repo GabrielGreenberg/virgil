@@ -8,6 +8,7 @@ import {
   PanelCard,
   compressedBodyStyle,
   useCardDeleteKey,
+  usePanelCardTryDelete,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -116,7 +117,17 @@ export function RevisionSuggestionCard({
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
   const cardBodyStyle = usePanelBodyStyle("revision");
-  const handleDeleteKey = useCardDeleteKey(isSelected, () => onDelete(card.id));
+  // CI-F7-01 class: this card renders via PanelCard directly (like CitationCard),
+  // so its docked trash + Delete-key must route through the SAME content-aware
+  // confirm every EditableCard sibling and the in-text margin marker use — not
+  // the raw `onDelete`, which assumes the confirm already happened upstream.
+  const { tryDelete, dialog: deleteConfirmDialog } = usePanelCardTryDelete(
+    "revision-suggestion",
+    card,
+    card.id,
+    onDelete,
+  );
+  const handleDeleteKey = useCardDeleteKey(isSelected, tryDelete);
 
   const cardEl = (
     <PanelCard
@@ -136,7 +147,7 @@ export function RevisionSuggestionCard({
       isCollapsed={compressed && !isApplied}
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
-      onTrashClick={() => onDelete(card.id)}
+      onTrashClick={tryDelete}
       tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
@@ -255,6 +266,7 @@ export function RevisionSuggestionCard({
           ))}
       </div>
       )}
+      {deleteConfirmDialog}
     </PanelCard>
   );
 

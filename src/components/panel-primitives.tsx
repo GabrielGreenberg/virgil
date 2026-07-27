@@ -26,7 +26,7 @@ import type { JSONContent } from "@tiptap/react";
 import { usePaneResizeHandle } from "@/lib/pane-resize";
 import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { autoSizeInput } from "@/lib/autoSizeInput";
-import ConfirmDialog from "./ConfirmDialog";
+import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
 import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable } from "@/cards/predicates";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
@@ -117,6 +117,51 @@ export function useCardDeleteKey(
     },
     [selected, onDelete],
   );
+}
+
+/**
+ * The ONE content-aware delete flow for cards that render DIRECTLY via
+ * {@link PanelCard} (not through {@link EditableCard}) and so bypass
+ * EditableCard's built-in `cardHasContent` confirm. Three kinds do this —
+ * `citation`, `cutter-suggestion`, `revision-suggestion` — and each was
+ * re-inlining (or, for the two suggestions, silently MISSING) the same "gate the
+ * trash on `cardHasContent`" block. That bypass IS the bug class (CI-F7-01): a
+ * PanelCard-direct card's docked trash / Delete-key hard-deleted a
+ * content-bearing card with no confirm, unlike every EditableCard sibling and the
+ * same card's own in-text margin marker (`deleteMarginItem`). This hook is that
+ * block, once — so citation + both suggestions + any future PanelCard-direct kind
+ * share ONE confirm path (the "one SSOT, not N inlined copies" shape).
+ *
+ * Returns `{ tryDelete, dialog }`. Call `tryDelete()` from the trash button and
+ * (via {@link useCardDeleteKey}) the Delete/Backspace key; render `dialog` inside
+ * the card. When `cardHasContent(kind, card)` is true it awaits the confirm and
+ * bails on cancel; otherwise (a pristine/empty card) it deletes straight through,
+ * no nag. `onDelete` may be undefined (e.g. a draft with no delete wired) — then
+ * `tryDelete` is a no-op. `opts.message`/`opts.confirmLabel` override the shared
+ * default ("This item has text. Delete it?") for kinds with a domain-specific
+ * prompt (a citation is "referenced in the document").
+ */
+export function usePanelCardTryDelete(
+  kind: CardKind,
+  card: unknown,
+  id: string,
+  onDelete: ((id: string) => void) | undefined,
+  opts?: { message?: string; confirmLabel?: string },
+): { tryDelete: () => void; dialog: ReactNode } {
+  const { confirm, dialog } = useConfirmDialog();
+  const message = opts?.message ?? "This item has text. Delete it?";
+  const confirmLabel = opts?.confirmLabel ?? "Delete";
+  const tryDelete = useCallback(() => {
+    if (!onDelete) return;
+    void (async () => {
+      if (cardHasContent(kind, card)) {
+        const ok = await confirm({ message, confirmLabel, tone: "danger" });
+        if (!ok) return;
+      }
+      onDelete(id);
+    })();
+  }, [kind, card, id, onDelete, confirm, message, confirmLabel]);
+  return { tryDelete, dialog };
 }
 
 /* ── Per-card claim context ─────────────────────────────────────────
