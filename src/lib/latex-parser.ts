@@ -290,7 +290,12 @@ export function parseInlineContent(
       // `--`/accent inside leaks into the plain buffer (the D2 regression).
       if (rest.startsWith("\\[") || rest.startsWith("\\(")) {
         const closer = rest.startsWith("\\[") ? "\\]" : "\\)";
-        const closeIdx = text.indexOf(closer, i + 2);
+        // Escape-aware close search through the parity SSOT (task 210 did the
+        // same for $/$$): a `\\` line break immediately before a literal `]`/`)`
+        // must not be mistaken for the `\]`/`\)` closer. `findUnescaped` skips
+        // the occurrence whose backslash sits after an odd-length run; it is
+        // byte-identical to `indexOf` when no escaped delimiter is present.
+        const closeIdx = findUnescaped(text, closer, i + 2);
         if (closeIdx !== -1) {
           flush();
           nodes.push({
@@ -1424,7 +1429,10 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
     // Display math \[...\]
     if (rest.startsWith("\\[")) {
-      const endMath = ctx.src.indexOf("\\]", ctx.pos + 2);
+      // Escape-aware close search (parity SSOT — see the mid-paragraph twin):
+      // a `\\` line break right before a literal `]` (e.g. a matrix row ending
+      // `\\` before the environment close) must not close the math early.
+      const endMath = findUnescaped(ctx.src, "\\]", ctx.pos + 2);
       if (endMath !== -1) {
         const latex = ctx.src.slice(ctx.pos + 2, endMath).trim();
         ctx.pos = endMath + 2;
