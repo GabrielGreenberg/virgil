@@ -1176,29 +1176,6 @@ export function reanchorByText(
 }
 
 // ---------------------------------------------------------------------------
-// derivedLinksForCard — synthesize Link[] from the legacy card shape
-// ---------------------------------------------------------------------------
-
-type AnchorCardShape = {
-  id: string;
-  paragraphIds?: string[];
-  anchorId?: string;
-  anchorText?: string;
-  links?: Link[];
-};
-
-/**
- * Derive a canonical `Link[]` from a card that's still using legacy
- * fields (`paragraphIds` / `anchorId` / `anchorText`). Used by hooks that
- * load card sidecars into state — lets Cowork read a uniform shape
- * without needing to branch per card kind.
- *
- * Policy: Mode B cards (those with an `anchorId`) produce a single Link
- * whose `paragraphIds` include all known paragraph entries PLUS the
- * containing paragraph inferred from the mark, if distinct. Mode A cards
- * produce one Link per paragraphId.
- */
-// ---------------------------------------------------------------------------
 // Accessor / mutator API over card.links
 //
 // These replace every direct `card.paragraphIds` / `card.anchorId` /
@@ -1724,6 +1701,30 @@ export function clearTextAnchorLink<T extends CardWithLinks>(
   return { ...card, links: newLinks };
 }
 
+// ---------------------------------------------------------------------------
+// derivedLinksForCard — synthesize Link[] from the legacy card shape
+// ---------------------------------------------------------------------------
+
+type AnchorCardShape = {
+  id: string;
+  paragraphIds?: string[];
+  anchorId?: string;
+  anchorText?: string;
+  links?: Link[];
+};
+
+/**
+ * Derive a canonical `Link[]` from a card that's still using legacy
+ * fields (`paragraphIds` / `anchorId` / `anchorText`). Used on the
+ * legacy→canonical migration path (`migrate-card.ts`) — lets Cowork read a
+ * uniform shape without needing to branch per card kind.
+ *
+ * Policy: a Mode B card (one with an `anchorId`) produces a single Link
+ * carrying `card.paragraphIds` as its `textObjectIds` plus a `textRange`
+ * built from `anchorId`/`anchorText` — no containing paragraph is inferred
+ * from the mark. A Mode A card (no `anchorId`) produces one Link per
+ * `paragraphId`.
+ */
 export function derivedLinksForCard(
   cardKind: CardKind,
   card: AnchorCardShape,
