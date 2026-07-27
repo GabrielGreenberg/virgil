@@ -3,7 +3,7 @@ import { EditorState } from "@tiptap/pm/state";
 import { Slice, Fragment } from "@tiptap/pm/model";
 import { AttrStep } from "@tiptap/pm/transform";
 import { inspectSteps } from "../step-inspector";
-import { buildInitial } from "../structure-index";
+import { applyDiff, buildInitial } from "../structure-index";
 import { EMPTY_DIFF, type StructureDiff } from "../types";
 import {
   anchoredText,
@@ -100,6 +100,38 @@ describe("inspectSteps — paragraph split / merge", () => {
     expect(removed).not.toContain("p1");
     // The freshly-minted clone identity is a real new block.
     expect(added).toContain("fresh");
+  });
+
+  it("post-split re-mint via setNodeMarkup (ReplaceAroundStep, the REAL path) does NOT report the surviving original as removed", () => {
+    // Task 247: the LIVE trigger. `BlockUuidBackfill` re-mints the cloned half
+    // with `tr.setNodeMarkup(pos, undefined, { …, uuid: fresh })`. A paragraph
+    // is a non-leaf node, so setNodeMarkup emits a ReplaceAroundStep — NOT an
+    // AttrStep (the branch the sibling test above exercises never runs for a
+    // real edit). Before the fix, the Replace* reconciler pushed the surviving
+    // original "p1" into removedBlocks with no survivor check.
+    const oldDoc = doc(paragraph("p1", "hello"), paragraph("p1", "world"));
+    const s = stateOf(oldDoc);
+    const prev = buildInitial(oldDoc); // prev.blocks has "p1"
+    // Second paragraph starts at pos 7 (para1 = open+5+close = 7 tokens).
+    const tr = s.tr.setNodeMarkup(7, undefined, { uuid: "fresh" });
+    // Sanity-pin the step KIND so this test can't silently degrade into the
+    // AttrStep path if a future TipTap changes setNodeMarkup's emission.
+    expect(tr.steps[0].constructor.name).toBe("ReplaceAroundStep");
+    const d = inspectSteps(tr, s.doc, tr.doc, prev);
+
+    const removed = d.removedBlocks.map((b) => b.uuid);
+    const added = d.addedBlocks.map((b) => b.uuid);
+    // The original p1 is still live on the FIRST paragraph → must NOT be reported
+    // removed (that desyncs structure.blocks + fires a spurious onBlocksRemoved).
+    expect(removed).not.toContain("p1");
+    // The freshly-minted clone identity is a real new block.
+    expect(added).toContain("fresh");
+
+    // End-of-chain: folding the diff into the structure index must RETAIN the
+    // surviving "p1" (the exact assertion the scratch repro failed).
+    const next = applyDiff(prev, d);
+    expect(next.blocks.has("p1")).toBe(true);
+    expect(next.blocks.has("fresh")).toBe(true);
   });
 
   it("a genuine uuid death (clone uuid not present elsewhere) STILL reports removal", () => {
