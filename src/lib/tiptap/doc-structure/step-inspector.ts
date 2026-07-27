@@ -370,17 +370,23 @@ export function inspectSteps(
   let citationOrderChanged = false;
   let blockOrderChanged = false;
 
-  // Lazily-built set of every uuid live in `newDoc`. Consulted ONLY by the
-  // uuid-AttrStep branch to avoid claiming a block "removed" when its uuid in
-  // fact still survives elsewhere in the doc. The canonical trigger: a split
-  // clones a block (both halves transiently share one uuid), then
-  // BlockUuidBackfill re-mints the CLONE (oldUuid → fresh) via a setNodeMarkup
-  // AttrStep — but the ORIGINAL half still carries `oldUuid`. Naively emitting
-  // `removed.blocks[oldUuid]` there desyncs `structure.blocks` (drops a still-
-  // live uuid) and makes UuidAttrDecorator strip the original's `data-uuid`.
-  // Built at most once per transaction, and ONLY when a uuid-changing AttrStep
-  // exists — never on a plain keystroke (no AttrStep), so keystroke sanctity is
-  // preserved (the O(doc) walk is off the typing path).
+  // Lazily-built set of every uuid live in `newDoc`. The ONE block-survivor
+  // guard — consulted by BOTH the uuid-AttrStep branch AND the reachable
+  // ReplaceStep|ReplaceAroundStep block reconciler below — to avoid claiming a
+  // block "removed" when its uuid in fact still survives elsewhere in the doc.
+  // The canonical trigger: a mid-paragraph Enter split clones a block (both
+  // halves transiently share one uuid), then BlockUuidBackfill re-mints the
+  // CLONE (oldUuid → fresh) via `setNodeMarkup` — but the ORIGINAL (kept) half
+  // still carries `oldUuid`. Naively emitting `removed.blocks[oldUuid]` desyncs
+  // `structure.blocks` (drops a still-live uuid) and makes UuidAttrDecorator
+  // strip the original's `data-uuid`. NOTE the re-mint's REAL step type: a
+  // paragraph is a non-leaf node, so `setNodeMarkup` emits a ReplaceAroundStep,
+  // NOT an AttrStep (task 247) — the Replace* reconciler is the live path; the
+  // AttrStep branch is a defensive fallback sharing this same guard. Built at
+  // most once per transaction, and ONLY when some uuid entered `removed.blocks`
+  // — never on a plain keystroke (no block-start touched → `removed.blocks`
+  // empty), so keystroke sanctity is preserved (the O(doc) walk is off the
+  // typing path).
   let newDocUuidsCache: Set<string> | null = null;
   const oldUuidSurvivesInNewDoc = (uuid: string): boolean => {
     if (!newDocUuidsCache) {
@@ -680,6 +686,20 @@ export function inspectSteps(
   }
   for (const [uuid, entry] of removed.blocks) {
     if (added.blocks.has(uuid)) continue;
+    // Block-survivor guard (task 247) — the block twin of the anchor-survivor
+    // check `anchorSurvivesInNewDoc`. The REAL post-split re-mint lands HERE,
+    // not in the AttrStep branch: `setNodeMarkup` on a non-leaf paragraph emits
+    // a ReplaceAroundStep, whose `collectRange` sweeps the CLONE's old
+    // (duplicate) uuid into `removed.blocks` even though the KEPT half still
+    // carries it live in `newDoc`. Emitting the removal would drop a still-live
+    // block from `structure.blocks` (`applyDiff` does `blocks.delete(uuid)`) and
+    // fire a spurious `onBlocksRemoved` — silently detaching every card anchored
+    // to the kept paragraph. Skip when the uuid still survives. This is the same
+    // lazy O(doc)-once guard the AttrStep branch uses, gated behind the
+    // `added.blocks.has` short-circuit so it never runs for a re-collected add;
+    // off the plain-keystroke path (a keystroke touches no block-start, so
+    // `removed.blocks` stays empty and this loop body never executes).
+    if (oldUuidSurvivesInNewDoc(uuid)) continue;
     if (prevBlocks && !prevBlocks.has(uuid)) {
       // UUID was never in oldDoc's structure index — likely a stale
       // partial slice extraction. Skip.
