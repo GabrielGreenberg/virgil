@@ -5,6 +5,13 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
 import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
+// Task 232: the structural DOM facets (`data-type` / `class`) are sourced from
+// the atom SSOT instead of hardcoded literals, so a NodeView rename can't drift
+// from ATOM_REGISTRY (that would silently kill InlineAtomGrab for this kind).
+// Pinned by atom-selectable-parity.test.ts.
+import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+
+const FOOTNOTE_ATOM = ATOM_REGISTRY.footnote;
 // FN-A1-02: orphan-worthiness reads the SAME registry-driven content model as
 // the delete-confirm (a title-only footnote counts), so the two never diverge.
 import { cardHasContent } from "@/cards/has-content";
@@ -91,7 +98,7 @@ export const Footnote = Node.create<FootnoteOptions>({
   },
 
   parseHTML() {
-    return [{ tag: 'span[data-type="footnote"]' }];
+    return [{ tag: `span[data-type="${FOOTNOTE_ATOM.domType}"]` }];
   },
 
   renderHTML({ HTMLAttributes, node }) {
@@ -105,8 +112,8 @@ export const Footnote = Node.create<FootnoteOptions>({
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
-        "data-type": "footnote",
-        class: "footnote-marker",
+        "data-type": FOOTNOTE_ATOM.domType,
+        class: FOOTNOTE_ATOM.domClass,
         "data-link-id": footnoteId,
         "data-link-kind": "footnote",
         "data-link-card": linkCard,
@@ -296,8 +303,8 @@ export const Footnote = Node.create<FootnoteOptions>({
   addNodeView() {
     return ({ node }) => {
       const dom = document.createElement("span");
-      dom.className = "footnote-marker";
-      dom.dataset.type = "footnote";
+      dom.className = FOOTNOTE_ATOM.domClass;
+      dom.dataset.type = FOOTNOTE_ATOM.domType;
       dom.dataset.footnoteId = node.attrs.footnoteId || "";
       dom.contentEditable = "false";
       // contenteditable=false islands are natively draggable inside a

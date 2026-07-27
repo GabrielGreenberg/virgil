@@ -7,6 +7,13 @@ import {
   posHostsBlockInsert,
   posHostsInlineAtom,
 } from "@/text-objects/text-object-registry";
+// Task 232: the INLINE atom's structural DOM facets (`data-type` / `class`) come
+// from the atom SSOT rather than hardcoded literals, so a NodeView rename can't
+// drift from ATOM_REGISTRY. displayMath is deliberately NOT an atom (a block, not
+// inline) and keeps its literals. Pinned by atom-selectable-parity.test.ts.
+import { ATOM_REGISTRY } from "./atom-registry";
+
+const INLINE_MATH_ATOM = ATOM_REGISTRY["inline-math"];
 
 function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
   target.innerHTML = "";
@@ -48,15 +55,19 @@ function mathNodeView(opts: {
   surface: "main" | "float";
   tag: "span" | "div";
   className: string;
+  // The `data-type` the NodeView DOM carries. For the inline atom this is
+  // sourced from ATOM_REGISTRY["inline-math"].domType (task 232) so it can't
+  // drift from the SSOT; displayMath (not an atom) passes its literal.
+  dataType: string;
   kind: "inline" | "display";
   displayMode: boolean;
 }) {
-  const { node, getPos, editor, surface, tag, className, kind, displayMode } = opts;
+  const { node, getPos, editor, surface, tag, className, dataType, kind, displayMode } = opts;
   const dom = document.createElement(tag);
   dom.className = className;
   dom.contentEditable = "false";
   dom.draggable = false; // see footnote.ts: keep the grab gesture's mousemove stream
-  dom.setAttribute("data-type", kind === "inline" ? "inline-math" : "display-math");
+  dom.setAttribute("data-type", dataType);
 
   renderMath(dom, node.attrs.latex || "", displayMode);
 
@@ -173,15 +184,15 @@ export const InlineMath = Node.create<MathOptions>({
   },
 
   parseHTML() {
-    return [{ tag: 'span[data-type="inline-math"]' }];
+    return [{ tag: `span[data-type="${INLINE_MATH_ATOM.domType}"]` }];
   },
 
   renderHTML({ HTMLAttributes }) {
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
-        "data-type": "inline-math",
-        class: "inline-math",
+        "data-type": INLINE_MATH_ATOM.domType,
+        class: INLINE_MATH_ATOM.domClass,
       }),
       `$${HTMLAttributes.latex || ""}$`,
     ];
@@ -236,7 +247,8 @@ export const InlineMath = Node.create<MathOptions>({
         editor,
         surface,
         tag: "span",
-        className: "inline-math",
+        className: INLINE_MATH_ATOM.domClass,
+        dataType: INLINE_MATH_ATOM.domType,
         kind: "inline",
         displayMode: false,
       });
@@ -341,6 +353,9 @@ export const DisplayMath = Node.create<MathOptions>({
         surface,
         tag: "div",
         className: "display-math",
+        // displayMath is a BLOCK, not an inline atom — the registry correctly
+        // omits it, so this stays a literal (task 232).
+        dataType: "display-math",
         kind: "display",
         displayMode: true,
       });
