@@ -665,3 +665,41 @@ describe("slash reconciliation — return leg (task 226)", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// (8) task 237 — the slash reconciliation's FORWARD leg (name → row) had the
+//     mirror hole task 226 closed on the return leg: a live `\<name>` whose
+//     target row exists but does NOT claim `surfaces.slash` (a wired-but-
+//     unadapted / menu-only row) was `continue`-d over instead of flagged — the
+//     exact drift the leg exists to catch shipped green. The leg now FLAGS it.
+// ---------------------------------------------------------------------------
+
+describe("slash reconciliation — forward leg slashless-target hole (task 237)", () => {
+  it("a live slash command whose target row does NOT claim surfaces.slash trips the assertion", () => {
+    // Inject the violation on a live slash-claiming row (bullet-list, live
+    // `\itemize`/`\bullet`/…): drop its slash surface. The forward leg must now
+    // PUSH a problem naming the row + the missing-slash reason — pre-237 it
+    // silently `continue`-d, shipping a broken slash command green.
+    const bullet = VIRGIL_ACTION_REGISTRY["bullet-list"]!;
+    const original = bullet.surfaces.slash;
+    expect(assertActionCoverage()).toEqual([]); // green baseline
+    try {
+      (bullet as { surfaces: { slash?: boolean } }).surfaces.slash = false;
+      const problems = assertActionCoverage();
+      // Flipping a live-slash row also trips other slice checks — that's fine;
+      // assert the SPECIFIC new forward-leg message is present among them.
+      expect(
+        problems.some(
+          (p) =>
+            p.includes("bullet-list") &&
+            p.includes("does not claim surfaces.slash"),
+        ),
+        `expected a forward-leg slashless-target problem for bullet-list; got ${JSON.stringify(problems)}`,
+      ).toBe(true);
+    } finally {
+      (bullet as { surfaces: { slash?: boolean } }).surfaces.slash = original;
+    }
+    // Restored → green again (no leakage into the SSOT baseline).
+    expect(assertActionCoverage()).toEqual([]);
+  });
+});
