@@ -39,6 +39,7 @@ vi.mock("@/lib/storage", () => {
 
 import { getSchema } from "@tiptap/core";
 import type { Schema } from "@tiptap/pm/model";
+import { DOMSerializer } from "@tiptap/pm/model";
 import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
@@ -104,4 +105,63 @@ describe("ATOM_REGISTRY selectable facet ↔ live schema parity (task 063)", () 
   it("inlineMath's live schema node stays selectable", () => {
     expect(effectiveSelectable("inlineMath")).toBe(true);
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 232: pin the STRUCTURAL facets (nodeName / domType / domClass / idAttr),
+// not just `selectable`. Task 063 verified these four "against the live nodes" by
+// HAND and left them free to drift. The blast radius: the grab gesture builds
+// `ATOM_DOM_SELECTOR` from `domType` and resolves the kind via
+// `atomMetaForDomType(el.getAttribute("data-type"))` (inline-atom-grab.ts); a
+// NodeView renaming its `data-type`/class silently kills `InlineAtomGrab` for
+// that kind, with no test to catch it — the exact gap 063 closed for
+// `selectable`, left open here.
+//
+// The four atom nodes now DERIVE these facets from ATOM_REGISTRY
+// (footnote/citation/label + math's inline branch), so a NodeView can no longer
+// diverge from the SSOT by construction. This test is the floor that still
+// catches a stale registry row, a `nodeName` typo, or any FUTURE atom that
+// reverts to a divergent literal — assert the render output against the registry
+// via the schema's own `toDOM` (DOMSerializer, which uses renderHTML, not the
+// editor-view NodeView), the same faithful-render approach the `selectable` pin
+// uses for the live schema. displayMath is intentionally absent (a block, not an
+// inline atom — the registry correctly omits it).
+describe("ATOM_REGISTRY structural facets ↔ live schema/render parity (task 232)", () => {
+  const kinds = Object.keys(ATOM_REGISTRY) as AtomKind[];
+  const serializer = DOMSerializer.fromSchema(schema);
+
+  it.each(kinds)(
+    "%s: registry nodeName resolves to a live schema node",
+    (kind) => {
+      const meta = ATOM_REGISTRY[kind];
+      expect(
+        schema.nodes[meta.nodeName],
+        `schema is missing atom node "${meta.nodeName}" (ATOM_REGISTRY.${kind}.nodeName)`,
+      ).toBeTruthy();
+    },
+  );
+
+  it.each(kinds)(
+    "%s: renderHTML/toDOM emits data-type === registry.domType and class ⊇ registry.domClass",
+    (kind) => {
+      const meta = ATOM_REGISTRY[kind];
+      const node = schema.nodes[meta.nodeName].create();
+      const el = serializer.serializeNode(node) as HTMLElement;
+      expect(el.getAttribute("data-type")).toBe(meta.domType);
+      expect(el.classList.contains(meta.domClass)).toBe(true);
+    },
+  );
+
+  // idAttr is only meaningful for the Card-bearing atoms (footnote/citation);
+  // ref/inline-math own no Card and declare it `null`. A non-null idAttr MUST be
+  // a real declared attr on the schema node — the by-id float/drop path reads
+  // `node.attrs[meta.idAttr]` (stack-pull.ts), so a stale name silently misses.
+  it.each(kinds.filter((k) => ATOM_REGISTRY[k].idAttr !== null))(
+    "%s: non-null registry.idAttr is a declared attr on the schema node",
+    (kind) => {
+      const meta = ATOM_REGISTRY[kind];
+      const attrs = schema.nodes[meta.nodeName].spec.attrs ?? {};
+      expect(Object.keys(attrs)).toContain(meta.idAttr!);
+    },
+  );
 });

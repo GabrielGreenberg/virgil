@@ -11,9 +11,13 @@
  * `InlineAtomGrab` gesture, cardKey/source-capture construction, and the
  * `cursor: grab` affordance.
  *
- * Adding an Atom kind = one row here (+ an `idAttr` if it owns a Card,
- * + the `data-type`/class on its NodeView DOM). The grab gesture, the
- * `inTextAtomGrab` drop spec, and the affordance CSS all read off this.
+ * Adding an Atom kind = one row here (+ an `idAttr` if it owns a Card). Its
+ * node file then SOURCES `data-type`/`class` from this row in `renderHTML`,
+ * `parseHTML`, and its NodeView (footnote / citation / label / math's inline
+ * branch) instead of hardcoding the literals, so the live DOM can't drift from
+ * this SSOT — pinned per-kind by `atom-selectable-parity.test.ts` (task 232).
+ * The grab gesture, the `inTextAtomGrab` drop spec, and the affordance CSS all
+ * read off this.
  *
  * The deprecated `aiRequestMarker` is intentionally absent — AI requests
  * live in Cards, not as in-text atoms (uprooted; see git history).

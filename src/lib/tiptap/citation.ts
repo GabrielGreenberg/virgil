@@ -13,6 +13,12 @@ import { getEditorActionsHandleFor } from "@/lib/actions/editor-actions-bridge";
 // citation atom can't land in a `titleField` / non-prose block where the
 // curated set greys `citation` out. Resolved by the block kind at the caret.
 import { blockKindAllowsAction } from "@/text-objects/text-object-registry";
+// Task 232: structural DOM facets (`data-type` / `class`) come from the atom
+// SSOT rather than hardcoded literals, so a NodeView rename can't drift from
+// ATOM_REGISTRY. Pinned by atom-selectable-parity.test.ts.
+import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+
+const CITATION_ATOM = ATOM_REGISTRY.citation;
 
 // Flag: when a bare \cite is typed, signal the panel to open
 let _pendingCitationCreate: string | null = null;
@@ -70,7 +76,7 @@ export const Citation = Node.create<CitationOptions>({
   },
 
   parseHTML() {
-    return [{ tag: 'span[data-type="citation"]' }];
+    return [{ tag: `span[data-type="${CITATION_ATOM.domType}"]` }];
   },
 
   renderHTML({ HTMLAttributes, node }) {
@@ -84,8 +90,8 @@ export const Citation = Node.create<CitationOptions>({
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
-        "data-type": "citation",
-        class: "citation-node",
+        "data-type": CITATION_ATOM.domType,
+        class: CITATION_ATOM.domClass,
         "data-link-id": citationId,
         "data-link-kind": "citation",
         "data-link-card": linkCard,
@@ -264,8 +270,8 @@ export const Citation = Node.create<CitationOptions>({
     };
     return ({ node, getPos }) => {
       const dom = document.createElement("span");
-      dom.className = "citation-node";
-      dom.dataset.type = "citation";
+      dom.className = CITATION_ATOM.domClass;
+      dom.dataset.type = CITATION_ATOM.domType;
       dom.dataset.citationId = node.attrs.citationId || "";
       dom.contentEditable = "false";
       dom.draggable = false; // see footnote.ts: keep the grab gesture's mousemove stream

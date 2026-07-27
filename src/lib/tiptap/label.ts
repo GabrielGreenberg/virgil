@@ -1,6 +1,12 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { readPendingDiff, touchedBlockPositions } from "./doc-structure";
+// Task 232: structural DOM facets (`data-type` / `class`) come from the atom
+// SSOT rather than hardcoded literals, so a NodeView rename can't drift from
+// ATOM_REGISTRY. Pinned by atom-selectable-parity.test.ts.
+import { ATOM_REGISTRY } from "./atom-registry";
+
+const REF_ATOM = ATOM_REGISTRY.ref;
 
 /** \ref{label} — inline cross-reference rendered as a clickable pod. */
 export const LabelRef = Node.create({
@@ -30,15 +36,15 @@ export const LabelRef = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: 'span[data-type="label-ref"]' }];
+    return [{ tag: `span[data-type="${REF_ATOM.domType}"]` }];
   },
 
   renderHTML({ HTMLAttributes }) {
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
-        "data-type": "label-ref",
-        class: "label-ref-node",
+        "data-type": REF_ATOM.domType,
+        class: REF_ATOM.domClass,
       }),
       HTMLAttributes.displayText || "??",
     ];
@@ -47,8 +53,8 @@ export const LabelRef = Node.create({
   addNodeView() {
     return ({ node }) => {
       const dom = document.createElement("span");
-      dom.className = "label-ref-node";
-      dom.dataset.type = "label-ref";
+      dom.className = REF_ATOM.domClass;
+      dom.dataset.type = REF_ATOM.domType;
       dom.dataset.label = node.attrs.label || "";
       dom.dataset.refCommand = node.attrs.refCommand || "ref";
       if (node.attrs.targetKind) dom.dataset.targetKind = node.attrs.targetKind;
