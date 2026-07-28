@@ -1072,14 +1072,27 @@ export function useViewPrefs(opts?: {
     };
   }
 
-  /** The stalest docked panel on `side`: the last MRU entry still present
-   *  in the stack. Falls back to the TOP of the stack (oldest-opened, since
-   *  opens append at the bottom) when MRU has no coverage — e.g. just after
-   *  a reload, when the open set is restored but recency is empty. */
+  /** The stalest docked panel on `side` — the eviction victim.
+   *
+   *  Recency (`panelMRU`) is SESSION-ONLY: `loadPrefs` restores the full
+   *  `dockStack` on reload but resets the MRU to empty, so a docked panel
+   *  the user hasn't touched THIS session is absent from the MRU entirely —
+   *  and is, by definition, staler than any tracked panel. So an untracked
+   *  band always outranks a tracked one as the victim; among untracked
+   *  bands the oldest-opened (lowest stack index, since opens append at the
+   *  bottom) goes first. Only when EVERY docked panel is tracked does true
+   *  MRU recency decide — the least-recently-used tracked panel (MRU
+   *  tail→head). The zero-coverage case (empty MRU, e.g. just after a
+   *  reload) falls out of the untracked rule as `stack[0]`. */
   function leastRecentlyUsed(p: ViewPrefs, side: Side): PanelId | null {
     const stack = stackFor(p, side);
     if (stack.length === 0) return null;
     const mru = mruFor(p, side);
+    // An untracked (never-used-this-session) band is stalest — evict the
+    // oldest-opened such (lowest stack index) before any tracked panel.
+    const untracked = stack.find((id) => !mru.includes(id));
+    if (untracked !== undefined) return untracked;
+    // Full coverage: the least-recently-used tracked panel (MRU tail→head).
     for (let i = mru.length - 1; i >= 0; i--) {
       if (stack.includes(mru[i])) return mru[i];
     }
