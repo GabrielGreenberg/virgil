@@ -35,6 +35,26 @@ import type { CardKind } from "@/cards/types";
 
 const EMPTY: AiRequestsState = { requests: [] };
 
+/**
+ * A request that `terminate` mode must close: it's linked to `link`'s card AND
+ * not yet terminal. States the terminate-match rule ONCE (task 253) so every
+ * matching row is closed, never just the first. The terminal half is the shared
+ * `isTerminalStatus` SSOT — the same source `isRequestOpen` reads for its clause
+ * 1, so a future terminal `AiRequestStatus` lands in both predicates at once
+ * (task 221). A card can legitimately carry TWO non-terminal linked rows — a
+ * closed-to-the-drain answered-L3 (`in-progress`+`resultId`) plus a fresh
+ * re-toggled `pending` row (task 043) — and archive/delete means the card is
+ * gone, so BOTH must close.
+ */
+function isLinkedNonTerminal(r: AiRequest, link: AiRequestLink): boolean {
+  return (
+    !!r.linkedTo &&
+    r.linkedTo.panel === link.panel &&
+    r.linkedTo.cardId === link.cardId &&
+    !isTerminalStatus(r.status)
+  );
+}
+
 export interface BridgeContext {
   /** Plain text excerpt of the card body — surfaces in the request as `text`. */
   text: string;
@@ -51,9 +71,10 @@ export interface BridgeContext {
  *   adds/refreshes an OPEN row, `value=false` drops it. Deliberately protects an
  *   answered-L3 row (`in-progress`+`resultId`) from a stray toggle-off (task 043).
  * - `"terminate"` — the card is **gone** (archived). A terminal transition:
- *   close the first linked NON-terminal row (a plain open row OR an answered-L3
- *   row) to `complete` regardless of current openness. The UI twin of the Python
- *   `close_linked_request(force=True)` on `cmd_archive` (task 093).
+ *   close EVERY linked NON-terminal row (each a plain open row OR an answered-L3
+ *   row) to `complete` regardless of current openness — a card can carry two at
+ *   once (task 253). The UI twin of the Python `close_linked_request(force=True)`
+ *   on `cmd_archive` (task 093).
  */
 export type AiRequestSyncMode = "toggle" | "terminate";
 
@@ -111,33 +132,29 @@ export async function bridgeCardAiRequestFlag(
   // treat it as an empty queue rather than dereferencing null.
   const requests = Array.isArray(state?.requests) ? state.requests : [];
 
-  // Archive intent (task 093): the card is gone, so terminate the FIRST linked
+  // Archive intent (task 093): the card is gone, so terminate EVERY linked
   // non-terminal row — a plain-open row OR a 043-protected answered-L3
   // (`in-progress`+`resultId`) — to `complete`, regardless of current openness.
-  // This is the SINGLE ai-requests.json writer on archive (callers reach it via
-  // `clearAiRequestForKind` → the panel setters with `mode: "terminate"`), so it
-  // never races a second toggle-off write. Byte-mirror of Python
-  // `close_linked_request(force=True)` on `cmd_archive`: both stamp
-  // `status: complete` + `result: "auto-applied"`. Idempotent — an unmatched or
-  // already-terminal card writes nothing (no spurious terminal row), and the
-  // `value` argument is irrelevant here (archive is always a resolve).
+  // NOT just the first (task 253): a single card can carry two non-terminal
+  // linked rows at once (an answered-L3 row closed to the drain plus a fresh
+  // re-toggled `pending` row, per task 043), and archive/delete means the card
+  // is gone, so all of them must close or a stray row is re-served for a card
+  // that no longer exists. This is the SINGLE ai-requests.json writer on archive
+  // (callers reach it via `clearAiRequestForKind` → the panel setters with
+  // `mode: "terminate"`), so it never races a second toggle-off write.
+  // Byte-mirror of Python `close_linked_request(force=True)` on `cmd_archive`:
+  // both stamp `status: complete` + `result: "auto-applied"`. Idempotent — an
+  // unmatched or already-terminal card writes nothing (no spurious terminal row,
+  // no needless write), and the `value` argument is irrelevant here (archive is
+  // always a resolve).
   if (mode === "terminate") {
-    const termIdx = requests.findIndex(
-      (r) =>
-        r.linkedTo &&
-        r.linkedTo.panel === link.panel &&
-        r.linkedTo.cardId === link.cardId &&
-        // The terminal half is the shared `isTerminalStatus` SSOT — same source
-        // `isRequestOpen` reads for its clause 1, so a future terminal
-        // `AiRequestStatus` lands in both predicates at once (task 221).
-        !isTerminalStatus(r.status),
-    );
-    if (termIdx < 0) return;
-    const terminated = requests.map((r, i) =>
-      i === termIdx
-        ? ({ ...r, status: "complete", result: "auto-applied" } as AiRequest)
-        : r,
-    );
+    let matched = false;
+    const terminated = requests.map((r) => {
+      if (!isLinkedNonTerminal(r, link)) return r;
+      matched = true;
+      return { ...r, status: "complete", result: "auto-applied" } as AiRequest;
+    });
+    if (!matched) return;
     try {
       await writeSidecar(handle, "ai-requests.json", { requests: terminated });
     } catch (err) {
