@@ -164,6 +164,7 @@ import { CARD_REGISTRY } from "@/cards/card-registry";
 import { cardHasContent } from "@/cards/has-content";
 import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
 import { makeUnbridgingDelete } from "@/cards/lifecycle/unbridging-delete";
+import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footnote-delete";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
 import { isCardKind, panelForCardKind, isArchivable, archiveRemovesAtom } from "@/cards/predicates";
@@ -1580,6 +1581,26 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [],
   );
   const footnotesHook = useFootnotes(docId, footnotePristine, resolveFootnoteAnchor);
+  // The ONE door every footnote hard-delete entry point routes through so the
+  // task-219 obligation — discharge the linked `ai-requests.json` row (terminate
+  // mode) BEFORE removing the footnote — holds at every site, not just the ones
+  // that hand-threaded it. Footnote is the one flag-bearing kind NOT on
+  // `makeUnbridgingDelete` (it's an inline atom: no D6 signal, and its removal
+  // mechanism varies — editor-handle splice vs sidecar ref delete — see the
+  // helper's header). Each caller supplies only its own `remove`. (task 252)
+  const deleteFootnoteUnbridged = useMemo(
+    () => makeUnbridgingFootnoteDelete({ unbridge: unbridgeOnDelete }),
+    [unbridgeOnDelete],
+  );
+  // Permanently trashing an UNANCHORED footnote ref (the atom is already gone —
+  // e.g. an in-editor marker deletion left a flagged orphan ref that KEPT its
+  // open row). Route the raw sidecar ref delete through the unbridge door so it
+  // can't strand that row either (the latent sibling of the pristine-discard
+  // strand). Terminate is a no-op for an unflagged ref — no spurious row.
+  const handleDeleteUnanchoredFootnote = useCallback(
+    (id: string) => deleteFootnoteUnbridged(id, footnotesHook.deleteFootnote),
+    [deleteFootnoteUnbridged, footnotesHook.deleteFootnote],
+  );
   const suggestionsHook = useSuggestions(docId);
   const collab = useCollab(docId);
   const documentStyleHook = useDocumentStyle(docId);
@@ -3519,10 +3540,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           if (cardHasContent("footnote", { content: fn.content, title: fn.title })) {
             return; // the user typed something — keep it
           }
-          innerRef.current?.deleteFootnote(id);
+          // Discard the blank footnote — but if it was flagged for AI (an empty
+          // body still opens a bridged `ai-requests.json` row), discharge that
+          // row FIRST, exactly like the panel/margin delete and the atom-range
+          // walker already do. A deleted footnote can never toggle its flag
+          // shut again, so a raw delete here stranded the row forever (task 252).
+          deleteFootnoteUnbridged(id, (fid) => {
+            innerRef.current?.deleteFootnote(fid);
+          });
         }, 0);
       }),
-    [footnotePristine],
+    [footnotePristine, deleteFootnoteUnbridged],
   );
 
   // ─── Drag-handle action menu ────────────────────────────────────
@@ -3552,10 +3580,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // through a wide-scope range delete can't strand its inbox row either
         // (task 219). No D6 signal — the atom's removal already drives the W2b
         // bus prune.
-        delete: (id: string) => {
-          void unbridgeOnDelete("footnote", id);
-          footnotesHook.deleteFootnote(id);
-        },
+        delete: (id: string) =>
+          deleteFootnoteUnbridged(id, footnotesHook.deleteFootnote),
       },
       citation: {
         clone: citationsHook.cloneCitation,
@@ -3592,7 +3618,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         bindAnchor: cutterHook.bindAnchor,
       },
     }),
-    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, handleDeleteCitation, unbridgeOnDelete],
+    [footnotesHook, citationsHook, notesHook, revisionsHook, cutterHook, handleDeleteCitation, deleteFootnoteUnbridged],
   );
   const cardLifecycle = useCardLifecycleApi(cardLifecycleRegistry);
   // Dev-only: assert the provider satisfies exactly CARD_REGISTRY's declared
@@ -4307,16 +4333,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // read-only. Wired as a no-op until the main app needs it.
   }, []);
   const handleDeleteFootnote = useCallback((id: string) => {
-    // Close the linked ai-requests.json row (task 219). A flagged footnote
-    // deleted from the panel / margin marker / float otherwise strands its open
-    // inbox row forever — a deleted footnote can never toggle its flag again, so
-    // the bridge's "self-heals on the next toggle" escape hatch never fires.
-    // Terminate mode: a delete is a terminal transition like archive (task 093).
-    // Unlike the sidecar-backed kinds, this path does NOT publish a D6
-    // card-deleted signal — a footnote IS an inline atom, so its cardStore
-    // prune is already owned by the W2b bus reconciler off the splice's
-    // structural diff; emitting one here would be a redundant double-prune.
-    void unbridgeOnDelete("footnote", id);
+    // Close the linked ai-requests.json row (task 219) via the shared
+    // `deleteFootnoteUnbridged` door (below): a flagged footnote deleted from the
+    // panel / margin marker / float otherwise strands its open inbox row forever
+    // — a deleted footnote can never toggle its flag again, so the bridge's
+    // "self-heals on the next toggle" escape hatch never fires. The door runs the
+    // bridge in terminate mode (a delete is terminal like archive, task 093) and,
+    // being footnote-specific, does NOT publish a D6 card-deleted signal — a
+    // footnote IS an inline atom, so its cardStore prune is already owned by the
+    // W2b bus reconciler off the splice's structural diff.
+    //
     // Arm the orphan-suppression latch BEFORE the atom is removed: the
     // footnote orphan-detector (src/lib/tiptap/footnote.ts) dispatches a
     // deferred `virgil-footnote-orphaned` on any non-empty footnote node
@@ -4341,8 +4367,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         }),
       );
     }
-    innerRef.current?.deleteFootnote(id);
-  }, [docId, unbridgeOnDelete]);
+    // Unbridge-then-splice through the one door (the latch is already armed).
+    deleteFootnoteUnbridged(id, (fid) => {
+      innerRef.current?.deleteFootnote(fid);
+    });
+  }, [docId, deleteFootnoteUnbridged]);
 
   // Citation order — left-to-right ids of `\cite{}` commands in the
   // doc. Recomputes only when citations actually change (`rev.citations`),
@@ -5486,7 +5515,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     citationOrder={citationOrder}
                     footnoteInfos={footnoteInfos}
                     unanchoredFootnotes={unanchoredFootnoteRefs}
-                    onDeleteUnanchoredFootnote={footnotesHook.deleteFootnote}
+                    onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
                     footnoteAiRequests={footnoteAiRequests}
                     setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                     setBibActiveCitationId={setBibActiveCitationId}
@@ -5550,7 +5579,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       citationOrder={citationOrder}
                       footnoteInfos={footnoteInfos}
                       unanchoredFootnotes={unanchoredFootnoteRefs}
-                      onDeleteUnanchoredFootnote={footnotesHook.deleteFootnote}
+                      onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
                       footnoteAiRequests={footnoteAiRequests}
                       setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                       setBibActiveCitationId={setBibActiveCitationId}
@@ -5713,7 +5742,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 onEditFootnoteTitle={handleEditFootnoteTitle}
                 onDeleteFootnote={handleDeleteFootnote}
                 unanchoredFootnotes={unanchoredFootnoteRefs}
-                onDeleteUnanchoredFootnote={footnotesHook.deleteFootnote}
+                onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
                 onDeleteCitation={handleDeleteCitation}
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
@@ -6558,7 +6587,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         citationOrder={citationOrder}
                         footnoteInfos={footnoteInfos}
                         unanchoredFootnotes={unanchoredFootnoteRefs}
-                        onDeleteUnanchoredFootnote={footnotesHook.deleteFootnote}
+                        onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
                         footnoteAiRequests={footnoteAiRequests}
                         setFootnoteAiRequest={footnotesHook.setFootnoteAiRequest}
                         setBibActiveCitationId={setBibActiveCitationId}
@@ -6802,7 +6831,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 onEditFootnoteTitle={handleEditFootnoteTitle}
                 onDeleteFootnote={handleDeleteFootnote}
                 unanchoredFootnotes={unanchoredFootnoteRefs}
-                onDeleteUnanchoredFootnote={footnotesHook.deleteFootnote}
+                onDeleteUnanchoredFootnote={handleDeleteUnanchoredFootnote}
                 onDeleteCitation={handleDeleteCitation}
                 selectedNoteId={selectedNoteId}
                 setSelectedNoteId={setSelectedNoteId}
