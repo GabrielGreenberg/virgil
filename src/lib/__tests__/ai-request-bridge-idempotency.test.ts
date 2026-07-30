@@ -33,6 +33,7 @@ vi.mock("@/lib/multi-window/doc-pipeline", () => ({
 }));
 
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
+import { isRequestOpen } from "@/lib/ai-request-open";
 
 /** An on-disk request linked to the todo card `card-1` (registry routing for
  *  `todo` is { kind: "todo", linkPanel: "todos" } — pinned byte-for-byte by
@@ -318,5 +319,38 @@ describe("bridgeCardAiRequestFlag terminate mode (archive)", () => {
     expect(reqs[0].id).toBe("fn-req");
     expect(reqs[0].status).toBe("complete");
     expect(reqs[0].result).toBe("auto-applied");
+  });
+
+  // task 253 — TWO non-terminal linked rows on the SAME card. A card can carry
+  // both an answered-L3 row (`in-progress`+`resultId`, closed to the drain but
+  // NOT terminal) and a fresh `pending` row filed by a re-toggle (task 043's
+  // documented "re-toggle files a fresh request" path). Archive/delete means the
+  // card is gone, so terminate must close BOTH — the old first-only `findIndex`
+  // left the second `pending` row stranded and the drain re-served an archived
+  // card. Distinct from case (k), which seeds two rows on DIFFERENT cards.
+  it("(m) terminates BOTH non-terminal rows on one card (answered-L3 + fresh pending)", async () => {
+    seeded.state = {
+      requests: [
+        // R1: answered-L3 — in-progress + resultId (not open, not terminal).
+        linkedRequest({ id: "req-l3", status: "in-progress", resultId: "card-proposal-1" }),
+        // R2: fresh pending filed by a re-toggle after R1 closed to the drain.
+        linkedRequest({ id: "req-fresh", status: "pending" }),
+      ],
+    };
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "terminate");
+
+    expect(written).toHaveLength(1);
+    const reqs = written[0].data.requests;
+    expect(reqs).toHaveLength(2);
+    // BOTH rows closed — no open linked row survives the archive.
+    const l3 = reqs.find((r) => r.id === "req-l3")!;
+    const fresh = reqs.find((r) => r.id === "req-fresh")!;
+    expect(l3.status).toBe("complete");
+    expect(l3.result).toBe("auto-applied");
+    expect(l3.resultId).toBe("card-proposal-1"); // proposal pointer preserved
+    expect(fresh.status).toBe("complete");
+    expect(fresh.result).toBe("auto-applied");
+    // No row remains that the drain would still consider open for card-1.
+    expect(reqs.some((r) => r.linkedTo?.cardId === "card-1" && isRequestOpen(r))).toBe(false);
   });
 });

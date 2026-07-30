@@ -36,8 +36,9 @@ import type { AiRequest, AiRequestStatus } from "@/lib/types";
  * is added in one place:
  *
  *   - `isRequestOpen` (below) — clause 1, the drain's open rule.
- *   - the bridge's `terminate`-mode guard (`ai-request-bridge.ts`) — the
- *     "close the first linked NON-terminal row" `findIndex` on `cmd_archive`.
+ *   - the bridge's `terminate`-mode guard (`ai-request-bridge.ts`
+ *     `isLinkedNonTerminal`) — "close EVERY linked NON-terminal row" on
+ *     `cmd_archive` (task 253).
  *
  * The Python drain's twin literal (`list_requests.py` `list_ai_requests` and
  * `close_linked_request`) is the cross-language mirror; parity across both
