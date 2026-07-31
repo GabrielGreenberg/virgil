@@ -112,6 +112,27 @@ export function exampleItemDropAdapter(
 }
 
 // ---------------------------------------------------------------------------
+// EXPEX_INNER_KINDS — the ONE source of truth for the block kinds that may land
+// inside an expex example. This restates the schema fact that an `exampleItem`'s
+// content is `(paragraph | graphicsBlock | displayMath)+` (expex.ts, the true
+// root) — text, picture, equation. Every place that gates the into-example drop
+// derives from THIS set, never a hand-kept parallel literal:
+//   • the `isCompatibleParent` if-chain below consumes it (`kind ∈ set`), and
+//   • `hit-test.ts` imports it as its `EXPEX_DROP_KINDS` gate.
+// The registry facet `dropAdapter === blockIntoExpexDropAdapter` is the natural
+// SSOT for the SAME fact; the registry imports THIS module (cycle), so it cannot
+// derive the set at runtime — instead a parity test pins this set against that
+// facet (drop-adapters.test.ts) so a future registry edit and the drop machinery
+// can never disagree. Adding a 4th expex-inner kind is then: widen the expex.ts
+// union + set that kind's registry `dropAdapter` + add it here, and the parity
+// test enforces the last two agree. Mirrors the shipped
+// `MEANINGFUL_BLOCK_ATOM_NODE_NAMES` derivation (drag-handle-actions.ts).
+// ---------------------------------------------------------------------------
+
+export const EXPEX_INNER_KINDS: ReadonlySet<TextObjectKind> =
+  new Set<TextObjectKind>(["paragraph", "graphicsBlock", "displayMath"]);
+
+// ---------------------------------------------------------------------------
 // blockIntoExpex — the unified "land a block inside an expex example" adapter
 // (Feature A1, generalizing A0's graphics-only `graphicsBlockDropAdapter`;
 // Feature A2 makes the decision schema-driven). Shared by the three block kinds
@@ -177,11 +198,7 @@ export function isCompatibleParent(
     // enclosing block, so report `exampleBlock` as compatible too.
     return parentKind === "exampleBlock";
   }
-  if (
-    childKind === "graphicsBlock" ||
-    childKind === "paragraph" ||
-    childKind === "displayMath"
-  ) {
+  if (EXPEX_INNER_KINDS.has(childKind)) {
     // Feature A1 — text (paragraph), picture (graphicsBlock) and equation
     // (displayMath) are each schema-valid inside an exampleItem (expex.ts,
     // `(paragraph | graphicsBlock | displayMath)+`). None is a valid DIRECT

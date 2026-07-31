@@ -21,7 +21,10 @@ import { generateShortId } from "@/lib/uuid";
 import { resolveAnchorableNode, ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { markAnchorMint } from "@/lib/anchor-mint-signal";
 import { resolveContentEdges } from "@/text-objects/block-frame";
-import { isCompatibleParent } from "@/text-objects/drop-adapters";
+import {
+  EXPEX_INNER_KINDS,
+  isCompatibleParent,
+} from "@/text-objects/drop-adapters";
 import {
   parseTextObjectPopoutKey,
   TEXT_OBJECT_REGISTRY,
@@ -311,17 +314,17 @@ export function resolveSubItemPeerBlock(
 }
 
 /**
- * Feature A1 — the three block kinds the unified expex drop welcomes into an
- * example: paragraph (text), graphicsBlock (picture), displayMath (equation).
- * Each is schema-valid inside an `exampleItem`
- * (`(paragraph | graphicsBlock | displayMath)+`, expex.ts). Every other source
- * kind makes `resolveBlockIntoExpex` return null → its drag is byte-unchanged.
+ * Feature A1 — the block kinds the unified expex drop welcomes into an example:
+ * paragraph (text), graphicsBlock (picture), displayMath (equation). Each is
+ * schema-valid inside an `exampleItem` (`(paragraph | graphicsBlock |
+ * displayMath)+`, expex.ts). Every other source kind makes
+ * `resolveBlockIntoExpex` return null → its drag is byte-unchanged.
+ *
+ * This is the ONE SSOT (`EXPEX_INNER_KINDS`, drop-adapters.ts), NOT a parallel
+ * literal — the same set `isCompatibleParent` gates on, pinned in CI against the
+ * registry's `dropAdapter === blockIntoExpexDropAdapter` facet (task 254).
  */
-const EXPEX_DROP_KINDS: ReadonlySet<TextObjectKind> = new Set<TextObjectKind>([
-  "paragraph",
-  "graphicsBlock",
-  "displayMath",
-]);
+const EXPEX_DROP_KINDS = EXPEX_INNER_KINDS;
 
 /** Thickness (px) of the expex drop bar — the WIDTH of the vertical into-item
  *  bar AND the HEIGHT of the horizontal new-item bar. Tunable. */

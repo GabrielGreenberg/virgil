@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  EXPEX_INNER_KINDS,
   blockIntoExpexDropAdapter,
   exampleItemDropAdapter,
   isCompatibleParent,
   listItemDropAdapter,
   topLevelDropAdapter,
 } from "../drop-adapters";
+import { TEXT_OBJECT_REGISTRY } from "../text-object-registry";
 import type { TextObjectKind } from "../types";
 
 describe("listItemDropAdapter", () => {
@@ -246,4 +248,43 @@ describe("isCompatibleParent", () => {
       expect(isCompatibleParent(child, parent)).toBe(expected);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// SSOT parity (task 254) — `EXPEX_INNER_KINDS` is the ONE source of truth for
+// the block kinds droppable INTO an expex example. It was formerly triplicated:
+// this set, `hit-test.ts`'s `EXPEX_DROP_KINDS` literal, and the `isCompatibleParent`
+// if-chain each restated `{paragraph, graphicsBlock, displayMath}` by hand. The
+// registry facet `dropAdapter === blockIntoExpexDropAdapter` is the natural SSOT
+// for the SAME schema fact (an `exampleItem`'s content, expex.ts). The registry
+// imports drop-adapters (a cycle), so the set can't be derived from the registry
+// at runtime — this test pins the two so a future registry edit and the drop
+// machinery can never disagree. Mirrors block-atom-facet-parity.test.ts (066).
+// ---------------------------------------------------------------------------
+describe("EXPEX_INNER_KINDS ↔ registry dropAdapter facet parity (task 254)", () => {
+  const registryExpexKinds = (
+    Object.keys(TEXT_OBJECT_REGISTRY) as TextObjectKind[]
+  ).filter(
+    (kind) => TEXT_OBJECT_REGISTRY[kind].dropAdapter === blockIntoExpexDropAdapter,
+  );
+
+  it("the set of kinds whose registry dropAdapter is blockIntoExpexDropAdapter equals EXPEX_INNER_KINDS", () => {
+    expect([...registryExpexKinds].sort()).toEqual([...EXPEX_INNER_KINDS].sort());
+  });
+
+  it("pins the current membership so a widening is a deliberate, reviewed edit", () => {
+    expect([...EXPEX_INNER_KINDS].sort()).toEqual([
+      "displayMath",
+      "graphicsBlock",
+      "paragraph",
+    ]);
+  });
+
+  it("isCompatibleParent(kind, 'exampleItem') is true for exactly the SSOT kinds", () => {
+    for (const kind of EXPEX_INNER_KINDS) {
+      expect(isCompatibleParent(kind, "exampleItem")).toBe(true);
+    }
+    // A non-member (e.g. codeBlock) stays incompatible → drop-direct.
+    expect(isCompatibleParent("codeBlock", "exampleItem")).toBe(false);
+  });
 });
