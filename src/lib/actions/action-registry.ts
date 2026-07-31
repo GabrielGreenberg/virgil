@@ -2948,7 +2948,7 @@ const EXPECTED_ACTION_IDS: readonly ActionId[] = [
  * live names to a slash-claiming row that names it (primary OR alias), giving
  * the wrappers the same typo-catching guard every 1:1 slash command has.
  */
-const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
+export const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
   title: "title",
   author: "author",
   date: "date",
@@ -3552,6 +3552,23 @@ export function assertActionCoverage(): string[] {
           `[actions] row "${row.id}" declares slash name "\\${name}" with no matching VIRGIL_COMMANDS entry (unreachable slash command)`,
         );
       }
+    }
+  }
+
+  // (slash reconciliation — MAP-KEY leg) The forward leg reads the map BY KEY,
+  // but only ever for LIVE command names (`SLASH_NAME_TO_ACTION_ID[name]`), and
+  // the return leg walks registry ROWS — so NEITHER ever iterates the map's own
+  // key set. A KEY that was removed from `VIRGIL_COMMANDS` but left behind here
+  // is a DEAD mapping: inert at runtime (only read when a live name matches it,
+  // which a stale key by definition never does) yet silently drifted from the
+  // live vocabulary this table bills itself as reconciling. Complete the SSOT's
+  // self-consistency in all THREE directions — mirror the two legs above and
+  // assert every map key is a live command name. Task 261.
+  for (const name of Object.keys(SLASH_NAME_TO_ACTION_ID)) {
+    if (!liveSlashNames.has(name)) {
+      problems.push(
+        `[actions] SLASH_NAME_TO_ACTION_ID key "\\${name}" has no matching VIRGIL_COMMANDS entry (dead mapping)`,
+      );
     }
   }
 
