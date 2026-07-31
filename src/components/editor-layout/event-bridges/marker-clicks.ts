@@ -17,6 +17,7 @@ import {
   ATOM_CREATE_POPOVER_EVENT,
   type AtomCreateRequest,
 } from "@/lib/actions/atom-create";
+import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 
 /** The card kinds that route through the shared anchor-click body
  *  (`routeAnchorClick`): the five Mode-B text-range kinds (dispatched by
@@ -301,7 +302,7 @@ export function useMarkerClickBridges(deps: {
       );
       if (typeof clickY === "number") {
         const sourceEl = document.querySelector(
-          `.footnote-marker[data-footnote-id="${detail.footnoteId}"]`,
+          `.${ATOM_REGISTRY.footnote.domClass}[data-footnote-id="${detail.footnoteId}"]`,
         ) as HTMLElement | null;
         // alignOmniCardWithClick converts clickY → pod-relative and
         // publishes a pin request. Retries one rAF later if the panel
@@ -351,7 +352,7 @@ export function useMarkerClickBridges(deps: {
       // recomputed card positions.
       if (typeof clickY === "number") {
         const sourceEl = document.querySelector(
-          `.citation-node[data-citation-id="${detail.citationId}"]`,
+          `.${ATOM_REGISTRY.citation.domClass}[data-citation-id="${detail.citationId}"]`,
         ) as HTMLElement | null;
         alignOmniCardWithClick(cardPopKey("citation", detail.citationId), clickY, sourceEl);
       }
@@ -365,7 +366,7 @@ export function useMarkerClickBridges(deps: {
       const detail = (e as CustomEvent).detail;
       if (!detail?.label) return;
       const el = document.querySelector(
-        `.label-ref-node[data-label="${detail.label}"]`,
+        `.${ATOM_REGISTRY.ref.domClass}[data-label="${detail.label}"]`,
       ) as HTMLElement | null;
       if (el) {
         setActiveRefLabel(detail.label);

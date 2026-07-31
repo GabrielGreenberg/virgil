@@ -44,7 +44,11 @@ import {
   buildEditorExtensions,
   type EditorExtensionsCtx,
 } from "@/lib/editor-extensions";
-import { ATOM_REGISTRY, type AtomKind } from "@/lib/tiptap/atom-registry";
+import {
+  ATOM_REGISTRY,
+  CARD_ATOM_DOM_SELECTOR,
+  type AtomKind,
+} from "@/lib/tiptap/atom-registry";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -164,4 +168,39 @@ describe("ATOM_REGISTRY structural facets ↔ live schema/render parity (task 23
       expect(Object.keys(attrs)).toContain(meta.idAttr!);
     },
   );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task 256: pin CARD_ATOM_DOM_SELECTOR — the CONSUMER-side twin of the 232 gap.
+// 232 made the render DOM derive domType/domClass from the registry; six
+// DOM-query CONSUMERS still hardcoded those literals. They now source the
+// prefix from ATOM_REGISTRY. The click-away card-selection guard additionally
+// unified onto CARD_ATOM_DOM_SELECTOR — the Card-bearing atoms (`idAttr !==
+// null`) — replacing its old footnote-by-class / citation-by-data-type split.
+// This pins that derived selector so a registry facet rename tracks it (and a
+// future Card-bearing atom is covered for free), instead of silently breaking
+// the guard the way the hardcoded literals would have.
+describe("CARD_ATOM_DOM_SELECTOR ↔ registry Card-bearing atoms (task 256)", () => {
+  const cardBearing = (Object.keys(ATOM_REGISTRY) as AtomKind[]).filter(
+    (k) => ATOM_REGISTRY[k].idAttr !== null,
+  );
+
+  it("selects exactly the Card-bearing atoms (footnote + citation), by data-type", () => {
+    expect([...cardBearing].sort()).toEqual(["citation", "footnote"]);
+    // Preserve registry-declaration order (footnote, citation) — no mutation.
+    expect(CARD_ATOM_DOM_SELECTOR).toBe(
+      cardBearing.map((k) => `[data-type="${ATOM_REGISTRY[k].domType}"]`).join(","),
+    );
+  });
+
+  it("matches every Card-bearing atom's rendered DOM and no id-less atom", () => {
+    const serializer = DOMSerializer.fromSchema(schema);
+    for (const kind of Object.keys(ATOM_REGISTRY) as AtomKind[]) {
+      const meta = ATOM_REGISTRY[kind];
+      const el = serializer.serializeNode(
+        schema.nodes[meta.nodeName].create(),
+      ) as HTMLElement;
+      expect(el.matches(CARD_ATOM_DOM_SELECTOR)).toBe(meta.idAttr !== null);
+    }
+  });
 });

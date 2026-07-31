@@ -122,6 +122,21 @@ export const ATOM_DOM_SELECTOR: string = ALL.map(
   (m) => `[data-type="${m.domType}"]`,
 ).join(",");
 
+/**
+ * A CSS selector matching any **Card-bearing** Atom's NodeView DOM — the atoms
+ * that own a Card (`idAttr !== null`: footnote + citation; ref / inline-math own
+ * no Card, correctly excluded). The click-away card-selection guard uses this to
+ * answer "was this mousedown on a Card-bearing atom?" so the halo isn't cleared
+ * out from under a marker click. Derived from the registry so the two kinds stay
+ * consistent (no more footnote-by-class / citation-by-data-type split) AND a
+ * future Card-bearing atom kind is covered for free (task 256).
+ */
+export const CARD_ATOM_DOM_SELECTOR: string = ALL.filter(
+  (m) => m.idAttr !== null,
+)
+  .map((m) => `[data-type="${m.domType}"]`)
+  .join(",");
+
 /** Resolve an Atom meta from a DOM `data-type` value (or null). */
 export function atomMetaForDomType(domType: string | null | undefined): AtomMeta | null {
   return domType ? (BY_DOM_TYPE.get(domType) ?? null) : null;
