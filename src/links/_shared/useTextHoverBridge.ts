@@ -28,6 +28,7 @@ import type { Editor } from "@tiptap/react";
 import type { UserNote, CutterCard, RevisionCard, ReportItem } from "@/lib/types";
 import { getTextAnchor } from "../links";
 import { cardKindFromRecord } from "@/cards/predicates";
+import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
 import type { EntityKind } from "./entity-hover";
 
 interface AnchorIdEntry {
@@ -116,7 +117,7 @@ export function useTextHoverBridge({
 
       // Footnote atom (`<sup class="footnote-marker" data-footnote-id=...>`).
       const footnote = el.closest<HTMLElement>(
-        "[data-footnote-id], .footnote-marker",
+        `[data-footnote-id], .${ATOM_REGISTRY.footnote.domClass}`,
       );
       if (footnote) {
         const id = footnote.getAttribute("data-footnote-id");

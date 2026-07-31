@@ -178,6 +178,7 @@ import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover"
 import type { AtomCreateRequest } from "@/lib/actions/atom-create";
 import { getEditorActionsHandle } from "@/lib/actions/editor-actions-bridge";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { ATOM_REGISTRY, CARD_ATOM_DOM_SELECTOR } from "@/lib/tiptap/atom-registry";
 import { serializeCiteCommand } from "@/lib/bib-parser";
 import { generateShortId } from "@/lib/uuid";
 import NodeEditPopover from "./NodeEditPopover";
@@ -1483,8 +1484,11 @@ export default function EditorLayout() {
         t.closest("[data-marginalia-marker]") ||
         t.closest("[data-marginalia-overflow]") ||
         t.closest(".linked-anchor") ||
-        t.closest(".footnote-marker") ||
-        t.closest('[data-type="citation"]')
+        // Card-bearing atoms (footnote + citation) — derived from ATOM_REGISTRY
+        // (`idAttr !== null`) so this stays consistent with the render DOM and a
+        // future Card-bearing kind is covered for free (task 256). Replaces the
+        // old footnote-by-class / citation-by-data-type split.
+        t.closest(CARD_ATOM_DOM_SELECTOR)
       ) {
         return;
       }
@@ -2397,7 +2401,7 @@ export default function EditorLayout() {
   useEffect(() => {
     if (!activeRefLabel) return;
     const els = document.querySelectorAll(
-      `.label-ref-node[data-label="${activeRefLabel}"]`,
+      `.${ATOM_REGISTRY.ref.domClass}[data-label="${activeRefLabel}"]`,
     );
     for (const el of els) el.classList.add("label-ref-active");
     return () => {
