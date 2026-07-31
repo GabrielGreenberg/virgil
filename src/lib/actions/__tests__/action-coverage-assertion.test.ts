@@ -55,6 +55,7 @@ import {
 } from "@/lib/editor-extensions";
 import {
   VIRGIL_ACTION_REGISTRY,
+  SLASH_NAME_TO_ACTION_ID,
   assertActionCoverage,
   formatActionRows,
   type ActionContext,
@@ -701,5 +702,54 @@ describe("slash reconciliation — forward leg slashless-target hole (task 237)"
     }
     // Restored → green again (no leakage into the SSOT baseline).
     expect(assertActionCoverage()).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (9) task 261 — the slash reconciliation's MAP-KEY leg (key → live name). The
+//     forward leg reads the map BY KEY but only for LIVE command names, and the
+//     return leg walks registry ROWS — so NEITHER ever iterates the map's own
+//     key set. A KEY removed from VIRGIL_COMMANDS but left behind here is a DEAD
+//     mapping: inert at runtime (only read when a live name matches it, which a
+//     stale key never does) yet silently drifted from the vocabulary this table
+//     bills itself as reconciling. The new leg asserts every map key is live.
+// ---------------------------------------------------------------------------
+
+describe("slash reconciliation — map-key leg (task 261)", () => {
+  it("a map KEY with no live VIRGIL_COMMANDS entry trips the assertion (dead mapping)", () => {
+    // A stale key is invisible to BOTH existing legs: the forward (name → row)
+    // leg iterates only LIVE names so it never reaches a key no command names,
+    // and the return (row → name) leg walks rows, not the map. ONLY the new
+    // map-key leg catches it. Inject a bogus key onto the map (any valid
+    // ActionId value — the leg keys off the NAME, not the target).
+    const map = SLASH_NAME_TO_ACTION_ID as Record<string, ActionId>;
+    expect(assertActionCoverage()).toEqual([]); // green baseline
+    try {
+      map["deadname"] = "title"; // absent from VIRGIL_COMMAND_NAMES
+      const problems = assertActionCoverage();
+      expect(
+        problems.some(
+          (p) =>
+            p.includes("SLASH_NAME_TO_ACTION_ID") &&
+            p.includes("\\deadname") &&
+            p.includes("dead mapping"),
+        ),
+        `expected a map-key problem for \\deadname; got ${JSON.stringify(problems)}`,
+      ).toBe(true);
+    } finally {
+      delete map["deadname"];
+    }
+    // Restored → green again (no leakage into the SSOT baseline).
+    expect(assertActionCoverage()).toEqual([]);
+  });
+
+  it("the LIVE map satisfies the map-key leg — every key is a live command name", () => {
+    // The invariant the new leg pins over the real map: no stale/dead keys.
+    const live = new Set<string>(VIRGIL_COMMAND_NAMES);
+    for (const name of Object.keys(SLASH_NAME_TO_ACTION_ID)) {
+      expect(live.has(name), `SLASH_NAME_TO_ACTION_ID key \\${name} is dead`).toBe(
+        true,
+      );
+    }
   });
 });
