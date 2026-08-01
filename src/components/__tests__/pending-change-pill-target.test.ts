@@ -7,7 +7,7 @@
 // id-only fallback bridges the cutter-vs-revision mark-kind flatten; the caret
 // path matches by anchorId.
 
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 
 // Importing PendingChangePill transitively pulls `@/lib/storage`, whose backend
 // `require("@/lib/storage-fsa")` isn't resolvable under vitest (jsdom). Stub the
@@ -19,9 +19,11 @@ vi.mock("@/lib/storage", () => ({
 }));
 
 import {
+  pillVerticalSeat,
   resolveTargetKey,
   type PendingChangeIndex,
 } from "@/components/PendingChangePill";
+import { clearCapTopCache, opticalCenterY } from "@/lib/text-metrics";
 
 function makeIndex(): PendingChangeIndex {
   const map: PendingChangeIndex = new Map();
@@ -91,5 +93,62 @@ describe("resolveTargetKey", () => {
     expect(
       resolveTargetKey({ kind: "note", id: "N9" }, null, ["unknown-anchor"], idx),
     ).toBeNull();
+  });
+});
+
+// The pill's vertical seat MUST be the shared optical cap-band center (task 266),
+// not the line-box geometric center — so it aligns with the grab handle + the
+// marginalia marker on the same row BY CONSTRUCTION. Stub the canvas exactly as
+// text-metrics.test.ts does so `opticalCenterY` resolves real (non-zero) metrics.
+describe("pillVerticalSeat (optical cap-band center, not geometric center)", () => {
+  let originalGetContext: typeof HTMLCanvasElement.prototype.getContext;
+
+  beforeEach(() => {
+    clearCapTopCache();
+    originalGetContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+      font: "",
+      measureText: vi.fn((_t: string) => ({
+        actualBoundingBoxAscent: 11, // capHeight
+        fontBoundingBoxAscent: 13,
+        fontBoundingBoxDescent: 3,
+        width: 10,
+      })),
+    })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+  });
+
+  afterEach(() => {
+    HTMLCanvasElement.prototype.getContext = originalGetContext;
+    clearCapTopCache();
+  });
+
+  function attach(): HTMLElement {
+    const el = document.createElement("p");
+    el.style.fontFamily = "Serif";
+    el.style.fontSize = "16px";
+    el.style.fontWeight = "400";
+    el.style.lineHeight = "24px";
+    document.body.appendChild(el);
+    return el;
+  }
+
+  it("seats on opticalCenterY(lineTop, target), which diverges from the geometric center", () => {
+    const el = attach();
+    try {
+      const lineTop = 100;
+      const lineBottom = 124; // 24px line box
+      const seat = pillVerticalSeat(lineTop, lineBottom, el);
+      // capBandCenterOffset = (24-16)/2 + (13-11) + 11/2 = 6 + 5.5 = 11.5
+      // → optical = 100 + 11.5 = 111.5, NOT the geometric 112.
+      expect(seat).toBeCloseTo(opticalCenterY(lineTop, el), 5);
+      expect(seat).toBeCloseTo(111.5, 5);
+      expect(seat).not.toBeCloseTo((lineTop + lineBottom) / 2, 3);
+    } finally {
+      el.remove();
+    }
+  });
+
+  it("falls back to the line-box geometric center when no target element resolves", () => {
+    expect(pillVerticalSeat(100, 124, null)).toBeCloseTo(112, 5);
   });
 });

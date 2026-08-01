@@ -58,6 +58,10 @@ import {
   type EditorViewportCache,
 } from "@/hooks/useEditorViewportCache";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
+import {
+  opticalCenterY,
+  resolveInlineContextElement,
+} from "@/lib/text-metrics";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 import {
   recordScrollPlacement,
@@ -200,7 +204,12 @@ export function resolveTargetKey(
  *  — the text-column edge for that block, which the paragraph grab handle sits
  *  just to the left of. Walks up from the text node to the direct block child
  *  of the editor content root. Returns null if the DOM can't be resolved. */
-function paragraphBlockLeft(editor: Editor, pos: number): number | null {
+/** The top-level block NodeView element containing `pos` — the same element
+ *  `editor.view.nodeDOM(blockPos)` returns, resolved by walking up from the
+ *  text node to the direct child of the ProseMirror DOM. Feeds BOTH the pill's
+ *  horizontal seat (its left edge) and its vertical seat (the optical
+ *  cap-band-center font target). Null on any failure. */
+function resolveParagraphBlockEl(editor: Editor, pos: number): HTMLElement | null {
   try {
     const domAt = editor.view.domAtPos(pos);
     let el: Node | null = domAt.node;
@@ -210,11 +219,33 @@ function paragraphBlockLeft(editor: Editor, pos: number): number | null {
     while (block && block.parentElement && block.parentElement !== pmDom) {
       block = block.parentElement;
     }
-    if (!(block instanceof HTMLElement)) return null;
-    return block.getBoundingClientRect().left;
+    return block instanceof HTMLElement ? block : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * The pill's VERTICAL seat: the OPTICAL cap-band center of the change's first
+ * line, composing the shared `opticalCenterY` primitive (via
+ * `text-metrics.ts`) — the SAME vertical anchor the grab handle
+ * (`TextObjectGrabHandle` `opticalCenterY(baseTop, frame.target)`) and the
+ * marginalia marker (`useMarginaliaRegistry` `opticalCenterY(...)`) seat on, so
+ * the three align on a shared row BY CONSTRUCTION rather than by coincidence of
+ * the current font's metrics. `lineTop`/`lineBottom` are the `coordsAtPos` line
+ * box for `range.from`; `lineTop` is exactly the line-box top the primitive
+ * expects (the coordinate space the grab handle passes as `baseTop`).
+ *
+ * Falls back to the line-box geometric center only when the block target can't
+ * be resolved (no DOM) — matching the primitive's own metrics-unavailable
+ * degrade.
+ */
+export function pillVerticalSeat(
+  lineTop: number,
+  lineBottom: number,
+  target: HTMLElement | null,
+): number {
+  return target ? opticalCenterY(lineTop, target) : (lineTop + lineBottom) / 2;
 }
 
 /** One `coordsAtPos` over the target's blue range, mirroring
@@ -259,13 +290,17 @@ function computePlacement(
   // `GRAB_BAR_CLEARANCE` further left — clear of the grab bar. Vertically center
   // on the change's first line. It may overlap other margin markers (accepted;
   // the pill z-order lifts it above them).
-  const textLeft = paragraphBlockLeft(editor, range.from) ?? coords.left;
+  const blockEl = resolveParagraphBlockEl(editor, range.from);
+  const textLeft = blockEl?.getBoundingClientRect().left ?? coords.left;
   const rightEdge = textLeft - GRAB_BAR_CLEARANCE; // viewport x of the pill's right edge
   let right = vw - rightEdge; // CSS `right`
   if (right < VIEWPORT_MARGIN) right = VIEWPORT_MARGIN;
   if (right > vw - VIEWPORT_MARGIN) right = vw - VIEWPORT_MARGIN;
 
-  let top = (coords.top + coords.bottom) / 2; // vertical center of the line
+  // Optical cap-band center of the change's first line (the shared vertical SSOT),
+  // so the pill aligns with the grab handle + marginalia marker on the same row.
+  const fontTarget = blockEl ? resolveInlineContextElement(blockEl) : null;
+  let top = pillVerticalSeat(coords.top, coords.bottom, fontTarget);
   top = Math.max(top, scrollTop + VIEWPORT_MARGIN, VIEWPORT_MARGIN);
   if (top > vh - VIEWPORT_MARGIN) top = vh - VIEWPORT_MARGIN;
 
