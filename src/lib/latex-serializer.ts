@@ -765,6 +765,14 @@ function glossCellToText(cell: JSONContent): string {
 function serializeExampleGloss(node: JSONContent): string {
   // A gloss emits `\begingl … \endgl` — an expex construct.
   need("expex");
+  // Re-emit the opaque `[<opts>]` bracket the parser captured (task 262) so a
+  // user's gloss options survive save→reload byte-for-byte; a null attr (source
+  // had no bracket) emits a bare `\begingl` identical to today. A string —
+  // including "" from a literal `\begingl[]` — keeps the bracket, so the
+  // round-trip is a true fixed point.
+  const rawOptions = node.attrs?.glossOptions;
+  const glossOptions = typeof rawOptions === "string" ? rawOptions : null;
+  const optStr = glossOptions !== null ? `[${glossOptions}]` : "";
   const rows = node.content || [];
   const lines: string[] = [];
   for (const row of rows) {
@@ -780,7 +788,7 @@ function serializeExampleGloss(node: JSONContent): string {
       lines.push(`\\${tier} ${inner} //`);
     }
   }
-  return `\\begingl\n${lines.join("\n")}\n\\endgl\n`;
+  return `\\begingl${optStr}\n${lines.join("\n")}\n\\endgl\n`;
 }
 
 /**
