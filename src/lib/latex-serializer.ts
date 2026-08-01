@@ -385,8 +385,13 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         bodyParts.push(extras);
       }
       if (captionChild) {
+        // Re-emit the optional `[short]` list-of-figures argument opaquely when
+        // present (task 263); a bracket-free caption stays byte-identical.
+        const shortCaption = node.attrs?.shortCaption as string | null;
+        const shortArg =
+          typeof shortCaption === "string" ? `[${shortCaption}]` : "";
         bodyParts.push("\n  ");
-        bodyParts.push(`\\caption{${captionTex}}`);
+        bodyParts.push(`\\caption${shortArg}{${captionTex}}`);
       }
       if (label) {
         bodyParts.push("\n  ");

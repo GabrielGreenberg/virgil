@@ -1729,6 +1729,7 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
               widthPercent: figAttrs.widthPercent,
               sources: figAttrs.sources,
               label: figAttrs.label,
+              shortCaption: figAttrs.shortCaption,
               numbered: true,
               figureNumber: null,
               ...(envUuid ? { uuid: envUuid } : {}),

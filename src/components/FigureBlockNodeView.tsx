@@ -473,6 +473,11 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
         widthPercent: attrs.widthPercent,
         sources: attrs.sources,
         label: attrs.label,
+        // Re-thread the optional `\caption[<short>]` LoF arg from the edited
+        // source so adding/changing/removing the bracket in the popover isn't
+        // silently ignored (task 263 — the parse-then-drop class, on the
+        // popover edit path).
+        shortCaption: attrs.shortCaption,
       });
       if (captionNode) {
         // Replace the existing figureCaption child (if any) with the new
