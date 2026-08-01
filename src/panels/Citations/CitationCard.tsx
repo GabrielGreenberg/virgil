@@ -1381,7 +1381,7 @@ function CitationKeyRow({
       {/* Bottom line: citekey controls — META tier (10px, the one meta
           gray), fixed: the body-font picker never applies here. */}
       {trimmed && (
-        <div className="pl-[14px] flex items-center gap-1.5 text-[10px] text-[var(--muted)]">
+        <div className="pl-[14px] flex items-center gap-1.5 text-[10px] text-[var(--muted)] min-w-0">
           <button
             type="button"
             ref={(el) => registerAnchor(el)}
@@ -1389,7 +1389,7 @@ function CitationKeyRow({
               e.stopPropagation();
               onOpenPicker();
             }}
-            className="card-mono text-[var(--muted)] hover:text-ink-body underline decoration-dotted decoration-edge-hover underline-offset-2"
+            className="card-mono text-[var(--muted)] hover:text-ink-body underline decoration-dotted decoration-edge-hover underline-offset-2 truncate min-w-0"
             data-hint="Click to change" aria-label="Click to change"
           >
             {trimmed}
