@@ -30,7 +30,7 @@ import {
   LibraryMembershipChips,
   type ProvenanceChip,
 } from "./provenance-chips";
-import { attachClampedDragGhost } from "@/lib/drag-ghost";
+import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import {
   ENTRY_DT_TYPE,
   ENTRIES_DT_TYPE,
@@ -142,13 +142,16 @@ export function BibEntryChrome({
           const rect = rowEl.getBoundingClientRect();
           attachClampedDragGhost({
             dragStartEvent: e,
-            buildGhost: () => {
-              const ghost = document.createElement("div");
-              ghost.textContent = headerText || citekey;
-              ghost.style.cssText =
-                "max-width:320px;padding:4px 10px;background:var(--surface,#ffffff);border:1px solid var(--border-light,#d5d3ce);box-shadow:0 4px 12px rgba(0,0,0,0.18);opacity:0.92;border-radius:var(--radius-xs,3px);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-              return ghost;
-            },
+            buildGhost: () =>
+              buildTextDragGhost(headerText || citekey, {
+                maxWidthPx: 320,
+                padding: "4px 10px",
+                shadow: "0 4px 12px rgba(0,0,0,0.18)",
+                opacity: 0.92,
+                // Preserve the prior body-inherited text color (this ghost set
+                // no explicit `color` before adopting the shared builder).
+                ink: "inherit",
+              }),
             cursorOffsetX: e.clientX - rect.left,
             cursorOffsetY: e.clientY - rect.top,
           });
