@@ -1077,10 +1077,12 @@ export function reanchorByText(
   // uuid-scoped path (Chip 6): when a containing-paragraph uuid is supplied
   // and resolves to a live node, search ONLY that node's text — disambiguating
   // co-located/duplicate snapshots that the legacy doc-wide first-match would
-  // displace. Map the char hit to doc positions with a per-CHILD offset walk:
-  // the doc pos advances by `nodeSize` for ALL children (incl. inline atoms),
-  // but the char index advances only for text — so `from`/`to` stay correct
-  // across an inline atom (footnote/citation/\ref) sitting inside the span.
+  // displace. Map the char hit to doc positions over the node's TEXT
+  // DESCENDANTS: the char index advances only for text, but each text node's
+  // absolute doc position (`nodePos + 1 + offsetWithinNode`, freshly computed)
+  // already accounts for every preceding child's size — inline atoms
+  // (footnote/citation/\ref) AND inter-block structural gaps — so `from`/`to`
+  // stay correct across an atom OR a paragraph boundary inside the span.
   const nodePos = paragraphUuid
     ? findParagraphByUuid(editor, paragraphUuid)
     : null;
@@ -1091,23 +1093,32 @@ export function reanchorByText(
       if (index === -1) return null;
       const endIndex = index + snapshot.length;
       let charCount = 0;
-      // Children live at `nodePos + 1` (just inside the node's open token).
-      let childPos = nodePos + 1;
-      node.forEach((child) => {
-        if (from !== -1 && to !== -1) return;
-        if (child.isText && child.text) {
-          const charStart = charCount;
-          const charEnd = charCount + child.text.length;
-          if (from === -1 && index >= charStart && index < charEnd) {
-            from = childPos + (index - charStart);
-          }
-          if (from !== -1 && to === -1 && endIndex <= charEnd) {
-            to = childPos + (endIndex - charStart);
-          }
-          charCount = charEnd;
+      // Walk TEXT DESCENDANTS, not just direct children: the anchor uuid is
+      // frequently a DEFERRING_PARENTS container (listItem/blockquote/
+      // exampleItem/exampleBlock, `@/lib/anchor-uuid`) whose direct children are
+      // BLOCK paragraphs, not text — the resolveAnchorableNode deferral means a
+      // Mode-A card on text inside such a container anchors to the CONTAINER
+      // uuid. A direct-child `forEach` never enters the `isText` branch there,
+      // leaving `from`/`to` at -1 → a null return (task 271). `descendants`
+      // reaches the inner text at any depth. `offsetWithinNode` is PM's position
+      // of the descendant relative to `node`'s content start, so the text node's
+      // absolute doc position is `nodePos + 1 + offsetWithinNode`. The bare-
+      // paragraph + codeBlock cases (a single text run at offset 0) and the
+      // atom-interleave mapping are byte-identical to the old per-child walk.
+      node.descendants((child, offsetWithinNode) => {
+        if (from !== -1 && to !== -1) return false; // both resolved — stop
+        if (!child.isText || !child.text) return true; // descend into containers
+        const charStart = charCount;
+        const charEnd = charCount + child.text.length;
+        const childStartPos = nodePos + 1 + offsetWithinNode;
+        if (from === -1 && index >= charStart && index < charEnd) {
+          from = childStartPos + (index - charStart);
         }
-        // Advance the doc pos by every child's full size (atoms included).
-        childPos += child.nodeSize;
+        if (from !== -1 && to === -1 && endIndex <= charEnd) {
+          to = childStartPos + (endIndex - charStart);
+        }
+        charCount = charEnd;
+        return true;
       });
     }
   } else {

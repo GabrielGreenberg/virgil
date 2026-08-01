@@ -103,6 +103,41 @@ export function resolveAnchorableNode(
 }
 
 /**
+ * The anchorable UUID governing document position `pos` — the uuid of the
+ * nearest ancestor that OWNS anchor identity, honoring the DEFERRING_PARENTS
+ * rule: a deferred inner `paragraph` is SKIPPED in favour of its container (the
+ * same policy {@link resolveAnchorableNode} applies for coordinate hits), so a
+ * position inside a bullet-list item / blockquote / expex example resolves to
+ * the CONTAINER uuid, not the deferred inner paragraph's (which never carries
+ * one). Returns null when no governing ancestor carries a uuid, or `pos` is out
+ * of range.
+ *
+ * This is the load/reconcile-path twin of `resolveAnchorableNode` (which needs
+ * an `EditorView` for coordinate resolution): it works off a bare `doc` + `pos`
+ * for the mark-scan reconcilers (`reconcileRequestMarks`' PRESENT scan) that
+ * walk text descendants and must map each in-text mark back to its CONTAINER
+ * anchor uuid. Reading the immediate text-parent uuid instead resolves a
+ * container-anchored mark to the deferred inner paragraph's absent uuid `""`,
+ * which never equals the desired container uuid → the mark is stripped and
+ * re-stamped on every reconcile (thrash). See task 271.
+ */
+export function anchorableUuidAt(doc: PMNode, pos: number): string | null {
+  try {
+    const $pos = doc.resolve(pos);
+    for (let depth = $pos.depth; depth >= 0; depth--) {
+      const node = $pos.node(depth);
+      if (depth > 0 && isDeferredInnerParagraph(node, $pos.node(depth - 1))) {
+        continue; // deferred inner paragraph — its container owns anchor identity
+      }
+      if (node.attrs?.uuid) return node.attrs.uuid as string;
+    }
+  } catch {
+    // pos out of range
+  }
+  return null;
+}
+
+/**
  * Resolve the anchorable node at `pos`, minting its UUID if missing, and
  * return the freshly-resolved `{ uuid, node }` pair WITHOUT a stale re-read of
  * the node after the `setNodeMarkup` dispatch.
