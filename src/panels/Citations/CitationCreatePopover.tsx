@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BibEntry } from "@/lib/types";
+import { Button } from "@/components/panel-primitives";
 import { CitekeyPicker } from "./CitekeyPicker";
 
 export interface CitationCreatePopoverProps {
@@ -125,20 +126,20 @@ function StagedFooter({ staged, onRemove, onOk }: StagedFooterProps) {
     >
       <div className="flex-1 min-w-0 flex flex-wrap gap-1">
         {staged.length === 0 ? (
-          <span className="text-[11px] text-ink-muted">
+          <span className="text-[10px] text-[var(--muted)]">
             Pick one or more citekeys…
           </span>
         ) : (
           staged.map((key) => (
             <span
               key={key}
-              className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded bg-edge-subtle text-[11px] text-ink-body font-mono"
+              className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded bg-edge-subtle text-[10px] text-ink-body font-mono"
             >
               {key}
               <button
                 type="button"
                 onClick={() => onRemove(key)}
-                className="text-ink-muted hover:text-ink-body leading-none"
+                className="text-[var(--muted)] hover:text-ink-body leading-none"
                 data-hint={`Remove ${key}`}
                 aria-label={`Remove ${key}`}
               >
@@ -159,16 +160,17 @@ function StagedFooter({ staged, onRemove, onOk }: StagedFooterProps) {
           ))
         )}
       </div>
-      <button
-        type="button"
+      <Button
+        variant="primary"
+        size="sm"
+        className="shrink-0"
         onClick={onOk}
-        className="shrink-0 px-3 py-1 rounded text-[11px] font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
         disabled={staged.length === 0}
         data-hint="Insert citation"
         aria-label="Insert citation"
       >
         OK
-      </button>
+      </Button>
     </div>
   );
 }

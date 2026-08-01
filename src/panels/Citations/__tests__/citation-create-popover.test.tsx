@@ -13,6 +13,28 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { CitationCreatePopover } from "@/panels/Citations/CitationCreatePopover";
 
+// The popover's footer now composes the `Button` primitive from the
+// panel-primitives barrel, which transitively pulls in `@/lib/storage`
+// (whose FSA backend `require` can't resolve under vitest). Stub it — the
+// popover exercises none of these I/O paths. (vitest_extension_barrel gotcha.)
+vi.mock("@/lib/storage", () => {
+  const STORAGE_FNS = [
+    "readSidecar", "readSidecarIfExists", "writeSidecar", "readSidecarBundle",
+    "invalidateSidecarBundle", "readTex", "writeTex", "readDocBundle",
+    "writeDocBundle", "readBib", "writeBib", "createDocFromPicker",
+    "createDocInFolder", "pickProjectFolder", "registerDocInFolder",
+    "openExistingDocFromPicker", "listDocs", "renameDoc", "deleteDocFromIndex",
+    "flushDoc", "drainDoc", "detectBibPackage", "readPaperFolder",
+    "getTexFilename", "getBibFilename", "statFiles", "readTextFile", "writePdf",
+    "readPdf", "getPdfFilename", "pdfFilenameFromTex", "readFigureSource",
+    "readFigureRaster", "writeFigureRaster", "deleteFigureRaster",
+    "readFigureIndex", "writeFigureIndex", "getDocWriteHandle", "importFigureFile",
+  ];
+  const mod: Record<string, unknown> = { isDevStorage: false };
+  for (const name of STORAGE_FNS) mod[name] = vi.fn();
+  return mod;
+});
+
 vi.mock("@/panels/Citations/CitekeyPicker", () => ({
   CitekeyPicker: (props: {
     onSelectKey: (k: string) => void;
