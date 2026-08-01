@@ -22,6 +22,9 @@ export interface FigureAttrs {
   sources: FigureSource[];
   /** `\caption{...}` body verbatim (LaTeX text, not parsed). Empty string if none. */
   caption: string;
+  /** Optional `\caption[<short>]` list-of-figures argument, raw/opaque. Null if
+   *  the caption had no `[short]` bracket (task 263). */
+  shortCaption: string | null;
   /** `\label{...}` body. Empty string if none. */
   label: string;
   /** Env body with `\caption{...}` and `\label{...}` stripped. Preserves
@@ -128,21 +131,32 @@ export function extractFigureSources(envContent: string): FigureSource[] {
   return sources;
 }
 
-/** Extract `\caption{...}` body. Returns "" if none. */
-export function extractCaption(envContent: string): string {
+/** Extract the figure-own `\caption` — its long braced body plus the optional
+ *  `[short]` list-of-figures argument. `short` is the raw opaque bracket
+ *  contents (null when the source had no bracket), tied to the SAME `\caption`
+ *  the long body comes from so it re-emits on the right caption. Both are ""/null
+ *  when there is no caption. (task 263 — mirrors the item-level `exnoOverride`
+ *  opaque round-trip; the short caption and long body travel together so a future
+ *  depth-aware caption picker — blocked task 245 — moves both at once.) */
+export function extractCaption(envContent: string): {
+  body: string;
+  short: string | null;
+} {
   const idx = envContent.indexOf("\\caption");
-  if (idx === -1) return "";
+  if (idx === -1) return { body: "", short: null };
   // skip past \caption (and any whitespace) to the opening {
   let i = idx + "\\caption".length;
-  // optional [short] argument
+  // optional [short] argument — the list-of-figures caption
+  let short: string | null = null;
   if (envContent[i] === "[") {
     const close = envContent.indexOf("]", i);
-    if (close === -1) return "";
+    if (close === -1) return { body: "", short: null };
+    short = envContent.slice(i + 1, close);
     i = close + 1;
   }
   while (i < envContent.length && /\s/.test(envContent[i])) i++;
   const braced = findBracedBody(envContent, i);
-  return braced ? braced.body : "";
+  return { body: braced ? braced.body : "", short };
 }
 
 /** Extract `\label{...}` body. Returns "" if none. */
@@ -185,11 +199,13 @@ function extractExtras(envContent: string): string {
 export function extractFigureAttrs(envContent: string): FigureAttrs {
   const sources = extractFigureSources(envContent);
   const first = sources[0] ?? null;
+  const caption = extractCaption(envContent);
   return {
     source: first?.path ?? null,
     widthPercent: first?.widthPercent ?? null,
     sources,
-    caption: extractCaption(envContent),
+    caption: caption.body,
+    shortCaption: caption.short,
     label: extractLabel(envContent),
     extras: extractExtras(envContent),
   };

@@ -108,6 +108,9 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
       widthPercent: { default: null, renderHTML: () => ({}) },
       sources: { default: [], renderHTML: () => ({}) },
       label: { default: "" },
+      // Opaque raw `\caption[<short>]` list-of-figures argument, preserved for a
+      // byte-exact round-trip (task 263); null when the caption had no bracket.
+      shortCaption: { default: null, renderHTML: () => ({}) },
       numbered: { default: true, renderHTML: () => ({}) },
       figureNumber: { default: null, renderHTML: () => ({}) },
     };

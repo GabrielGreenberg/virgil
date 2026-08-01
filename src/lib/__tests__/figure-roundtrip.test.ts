@@ -4,6 +4,7 @@ import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly as serializeBody } from "@/lib/latex-serializer";
 import {
   canEditWidthInOptions,
+  extractFigureAttrs,
   setWidthInOptions,
   withReplacedFigurePath,
   withUpdatedFigureWidth,
@@ -119,6 +120,70 @@ After.`;
     expect(out).toMatch(/\\caption\{See .*?\\cite\{foo\}/);
     expect(out).toContain("for context.");
     expect(out).toContain("\\label{fig:plot}");
+  });
+
+  it("captures the optional \\caption[short] list-of-figures argument", () => {
+    const input = `\\begin{figure}
+  \\includegraphics{img}
+  \\caption[Short LoF text]{Full descriptive caption}
+  \\label{fig:x}
+\\end{figure}\n`;
+    const json = parseBody(input);
+    const figs = findByType(json, "figureBlock");
+    expect(figs).toHaveLength(1);
+    expect(figs[0].attrs?.shortCaption).toBe("Short LoF text");
+  });
+
+  it("round-trips \\caption[short]{long} re-emitting the [short] bracket byte-for-byte (task 263)", () => {
+    const input = `\\begin{figure}
+  \\includegraphics{img}
+  \\caption[Short LoF text]{Full descriptive caption}
+  \\label{fig:x}
+\\end{figure}\n`;
+    const json = parseBody(input);
+    const out = serializeBody(json);
+    expect(out).toContain("\\caption[Short LoF text]{Full descriptive caption}");
+  });
+
+  it("leaves a bracket-free \\caption{...} byte-identical (no spurious [] on serialize)", () => {
+    const input = `\\begin{figure}
+  \\includegraphics{img}
+  \\caption{Plain caption}
+\\end{figure}\n`;
+    const json = parseBody(input);
+    const figs = findByType(json, "figureBlock");
+    expect(figs[0].attrs?.shortCaption).toBeNull();
+    const out = serializeBody(json);
+    expect(out).toContain("\\caption{Plain caption}");
+    expect(out).not.toContain("\\caption[");
+  });
+
+  it("preserves an empty \\caption[]{long} bracket (opaque, not dropped)", () => {
+    const input = `\\begin{figure}
+  \\includegraphics{img}
+  \\caption[]{Long body}
+\\end{figure}\n`;
+    const json = parseBody(input);
+    const figs = findByType(json, "figureBlock");
+    expect(figs[0].attrs?.shortCaption).toBe("");
+    const out = serializeBody(json);
+    expect(out).toContain("\\caption[]{Long body}");
+  });
+
+  // The popover re-extraction path (FigureBlockNodeView / EditorLayout
+  // `updateFromText`) rebuilds figure attrs from the edited source via
+  // `extractFigureAttrs`, so that seam must surface `shortCaption` for the
+  // re-thread to pick up — else editing the `[short]` bracket in the popover
+  // is silently ignored (task 263, popover edit path).
+  it("extractFigureAttrs surfaces shortCaption for the popover re-extraction seam", () => {
+    const withShort = extractFigureAttrs(
+      `\n  \\includegraphics{img}\n  \\caption[LoF text]{Long body}\n`,
+    );
+    expect(withShort.shortCaption).toBe("LoF text");
+    const withoutShort = extractFigureAttrs(
+      `\n  \\includegraphics{img}\n  \\caption{Long body}\n`,
+    );
+    expect(withoutShort.shortCaption).toBeNull();
   });
 
   it("numbers multiple figures sequentially", () => {
