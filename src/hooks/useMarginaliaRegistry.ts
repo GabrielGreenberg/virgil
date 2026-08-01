@@ -17,6 +17,7 @@ import {
 } from "@/lib/keystroke-latency-probe";
 import { rafCoalesced } from "@/lib/raf-coalesced";
 import {
+  onFontReady,
   opticalCenterY,
   resolveInlineContextElement,
   resolveLineHeightPx,
@@ -840,15 +841,25 @@ export function useMarginaliaRegistry(
       }
     }
 
-    function onWindowResize() {
+    /**
+     * Queue EVERY observed block for re-measure on the next paint — the
+     * "something global changed, the whole observed set may have moved"
+     * recompute. Shared by the window-resize belt-and-suspenders and the
+     * font-load (FOUT) corrector below.
+     */
+    function recomputeAllObserved() {
       if (!isVisibleRef.current) return; // hidden editor → nothing to re-measure
-      // Belt-and-suspenders: ResizeObserver covers per-element box changes
-      // but not (e.g.) viewport-only DPR changes that don't resize any
-      // observed element. Re-measure everything observed.
       for (const uuid of state.observed.keys()) {
         state.pendingRecompute.add(uuid);
       }
       scheduleRecompute();
+    }
+
+    function onWindowResize() {
+      // Belt-and-suspenders: ResizeObserver covers per-element box changes
+      // but not (e.g.) viewport-only DPR changes that don't resize any
+      // observed element. Re-measure everything observed.
+      recomputeAllObserved();
     }
 
     /**
@@ -873,6 +884,24 @@ export function useMarginaliaRegistry(
           };
         })()
       : null;
+
+    // FOUT corrector — the missing sibling of the RO/IO/resize triggers. A
+    // runtime font-FAMILY swap at unchanged font-size + line-height (the Fonts…
+    // picker → `--font-serif-override`, a lazily-loaded `font-display:swap` face
+    // = a second `loadingdone` wave) re-lays out NO block box, so no RO / IO /
+    // window-resize / structural trigger fires — yet it moves every block's
+    // OPTICAL cap-band center, because `measureBlock` seats `top` on
+    // `opticalCenterY` (cap-height / ascent / descent, all font-family
+    // dependent). `fireFontReady` clears FONT_METRICS_CACHE, but that alone does
+    // nothing here: the registry caches the RESOLVED `top`, not the metrics, so
+    // without this subscription the marker keeps its old-font Y while the grab
+    // handle + in-text deck re-snap (both DO subscribe: TextObjectGrabHandle /
+    // useInTextPositions). Re-measure the whole observed set on the wave, exactly
+    // mirroring those siblings. Keystroke-sanctity: `onFontReady` fires only on a
+    // font-load wave, never per keystroke (emitCount stays flat), and
+    // `flushRecompute` is equality-bailed (`metricsWithinEpsilon`) so a wave that
+    // moves nothing notifies nothing.
+    const disposeFontReady = onFontReady(recomputeAllObserved);
 
     /** First-measure pass on mount. */
     function prime() {
@@ -914,6 +943,7 @@ export function useMarginaliaRegistry(
     return () => {
       editor.off("create", tryPrime);
       unsubBus?.();
+      disposeFontReady();
       window.removeEventListener("resize", onWindowResize);
       if (state.rafId) cancelAnimationFrame(state.rafId);
       if (state.observeRetryRafId) cancelAnimationFrame(state.observeRetryRafId);
