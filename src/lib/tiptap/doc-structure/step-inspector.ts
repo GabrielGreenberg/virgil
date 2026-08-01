@@ -401,6 +401,27 @@ export function inspectSteps(
     return newDocUuidsCache.has(uuid);
   };
 
+  // The ONE survivor guard shared by every anchorable-block removed-reconciler
+  // (blocks + the three sub-views headings/figures/examples), so no sub-view can
+  // drift out of guard again (task 265 — the sub-view twin of task 247). A split
+  // clone transiently shares a uuid across two nodes; `BlockUuidBackfill` re-mints
+  // the CLONE (`setNodeMarkup` → ReplaceAroundStep on a non-leaf), whose range
+  // walk sweeps the KEPT half's still-live uuid into `removed.*`. `removedBlocks`
+  // was guarded (247) but the sub-views were not: `headingStructurallyChanged`
+  // only covers the same-key CHANGED case, and a re-mint has DIFFERENT keys on
+  // each side (removed=oldUuid, added=newUuid), so it flowed through the unguarded
+  // `removed<Kind>.push` loops and `applyDiff` spliced the kept heading/figure/
+  // example out of the canonical index. Report a removal only when the uuid is
+  // truly gone from `newDoc`. A `null`/empty key (a tag/label-only example, never
+  // a backfill re-mint candidate) can't hit this path → treated as NOT surviving,
+  // so a genuine removal still fires. Same lazy O(doc)-once cost as the block
+  // path (`oldUuidSurvivesInNewDoc` builds its set at most once per tx); every
+  // call site is gated behind its `!added.<kind>.has(key)` short-circuit so the
+  // walk stays off the re-collected-add and plain-keystroke paths (a keystroke
+  // touches no block start → `removed.<kind>` empty → these loops never execute).
+  const uuidSurvivesRemoval = (uuid: string | null | undefined): boolean =>
+    !!uuid && oldUuidSurvivesInNewDoc(uuid);
+
   // Anchor-id survivor guard — the mark-level twin of `oldUuidSurvivesInNewDoc`.
   // `collectRange` registers a `linkedAnchor` by WHOLE text node (`inspectNodeAt`),
   // so deleting one char strictly INSIDE a marked run puts the anchor id into
@@ -557,7 +578,7 @@ export function inspectSteps(
           // would drop a still-live block from `structure.blocks` and strip its
           // `data-uuid`. A genuine rename/death (uuid → null, or a true identity
           // change) leaves `oldUuid` nowhere in the doc → removal still fires.
-          if (oldUuid && !oldUuidSurvivesInNewDoc(oldUuid)) {
+          if (oldUuid && !uuidSurvivesRemoval(oldUuid)) {
             removed.blocks.set(oldUuid, { uuid: oldUuid, pos: step.pos, typeName });
           }
           if (newUuid) {
@@ -699,7 +720,7 @@ export function inspectSteps(
     // `added.blocks.has` short-circuit so it never runs for a re-collected add;
     // off the plain-keystroke path (a keystroke touches no block-start, so
     // `removed.blocks` stays empty and this loop body never executes).
-    if (oldUuidSurvivesInNewDoc(uuid)) continue;
+    if (uuidSurvivesRemoval(uuid)) continue;
     if (prevBlocks && !prevBlocks.has(uuid)) {
       // UUID was never in oldDoc's structure index — likely a stale
       // partial slice extraction. Skip.
@@ -723,7 +744,15 @@ export function inspectSteps(
     // flow through contentChangedUuids if anywhere.
   }
   for (const [uuid, entry] of removed.headings) {
-    if (!added.headings.has(uuid)) removedHeadings.push(entry);
+    // Survivor guard (task 265) — the heading twin of the block guard above. A
+    // mid-heading Enter split re-mints the clone; its old (duplicate) uuid gets
+    // swept into `removed.headings` while the KEPT heading still carries it in
+    // `newDoc`. `headingStructurallyChanged` (the added-side reconciler) only
+    // catches the same-KEY changed case — a re-mint has different keys on each
+    // side, so it lands here. Skip when the uuid still survives, or `applyDiff`
+    // splices the kept heading out of `structure.headings` (a spurious
+    // `onHeadingsRemoved` desyncs Focus-mode boundaries + the fold mirror).
+    if (!added.headings.has(uuid) && !uuidSurvivesRemoval(uuid)) removedHeadings.push(entry);
   }
   // Mark contentChangedUuids for surviving headings — text may have
   // changed via the ReplaceStep that triggered the attribute step.
@@ -811,6 +840,13 @@ export function inspectSteps(
   }
   for (const [id, entry] of removed.examples) {
     if (!added.examples.has(id)) {
+      // Survivor guard (task 265) — same class as headings/figures. `exampleBlock`
+      // is anchorable, so a duplicate-uuid re-mint sweeps its old uuid here. The
+      // example key is `id = uuid || tag || label`, so guard on `entry.uuid` only
+      // when it's non-null: a tag/label-only example (null uuid) is never a
+      // backfill re-mint candidate, so it can't false-report and must fall through
+      // to a genuine removal.
+      if (uuidSurvivesRemoval(entry.uuid)) continue;
       removedExamples.push(entry);
       exampleStructureChanged = true;
     }
@@ -829,7 +865,10 @@ export function inspectSteps(
     }
   }
   for (const [uuid, entry] of removed.figures) {
-    if (!added.figures.has(uuid)) removedFigures.push(entry);
+    // Survivor guard (task 265) — same class as headings/examples. `figureBlock`
+    // is anchorable, so a duplicate-uuid re-mint (paste-duplication, drag-copy)
+    // sweeps its old uuid here while the kept figure still carries it in `newDoc`.
+    if (!added.figures.has(uuid) && !uuidSurvivesRemoval(uuid)) removedFigures.push(entry);
   }
 
   // Labels.

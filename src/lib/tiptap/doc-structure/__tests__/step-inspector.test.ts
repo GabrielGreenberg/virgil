@@ -148,6 +148,92 @@ describe("inspectSteps — paragraph split / merge", () => {
   });
 });
 
+describe("inspectSteps — anchorable sub-view survivor guard (task 265)", () => {
+  // The sub-view twin of the block survivor tests above (task 247). A split
+  // clone transiently shares a uuid across TWO anchorable-block nodes;
+  // `BlockUuidBackfill` re-mints the CLONE via `setNodeMarkup` (a
+  // ReplaceAroundStep on a non-leaf), whose range walk sweeps the KEPT half's
+  // still-live uuid into `removed.<subview>`. Before the fix the
+  // headings/figures/examples reconcilers had ONLY a `!added.has(key)`
+  // short-circuit — which never fires here (added = newUuid, removed = oldUuid,
+  // different keys) — so the surviving uuid was reported removed and `applyDiff`
+  // spliced the kept entry out of the canonical index.
+
+  it("heading re-mint (ReplaceAroundStep) does NOT report the surviving original heading removed", () => {
+    // Two headings transiently share "h1" (the post-split duplicate-uuid state);
+    // backfill re-mints the SECOND via setNodeMarkup → "fresh". The FIRST keeps "h1".
+    const oldDoc = doc(heading("h1", 1, "hello"), heading("h1", 1, "world"));
+    const s = stateOf(oldDoc);
+    const prev = buildInitial(oldDoc); // prev.headings has "h1"
+    // heading1 = open+5+close = 7 tokens → heading2 starts at pos 7.
+    const tr = s.tr.setNodeMarkup(7, undefined, { uuid: "fresh" });
+    // Pin the step KIND: a heading is non-leaf, so setNodeMarkup emits a
+    // ReplaceAroundStep (the reachable path), not an AttrStep.
+    expect(tr.steps[0].constructor.name).toBe("ReplaceAroundStep");
+    const d = inspectSteps(tr, s.doc, tr.doc, prev);
+
+    // The surviving "h1" must NOT be reported removed; the clone identity is a
+    // real new heading.
+    expect(d.removedHeadings.map((h) => h.uuid)).not.toContain("h1");
+    expect(d.addedHeadings.map((h) => h.uuid)).toContain("fresh");
+
+    // End-of-chain: folding the diff must RETAIN "h1" in structure.headings.
+    const next = applyDiff(prev, d);
+    expect(next.headings.map((h) => h.uuid)).toContain("h1");
+    expect(next.headings.map((h) => h.uuid)).toContain("fresh");
+  });
+
+  it("a genuine heading uuid death (old uuid gone) STILL reports removal", () => {
+    // Control: sole heading, uuid genuinely changes → removal must still fire.
+    const oldDoc = doc(heading("only", 1, "hello"));
+    const s = stateOf(oldDoc);
+    const prev = buildInitial(oldDoc);
+    const tr = s.tr.setNodeMarkup(0, undefined, { uuid: "renamed" });
+    const d = inspectSteps(tr, s.doc, tr.doc, prev);
+    expect(d.removedHeadings.map((h) => h.uuid)).toContain("only");
+    expect(d.addedHeadings.map((h) => h.uuid)).toContain("renamed");
+    const next = applyDiff(prev, d);
+    expect(next.headings.map((h) => h.uuid)).not.toContain("only");
+  });
+
+  it("figure re-mint (ReplaceAroundStep) does NOT report the surviving original figure removed", () => {
+    const oldDoc = doc(figureBlock("f1", "fig:a"), figureBlock("f1", "fig:b"));
+    const s = stateOf(oldDoc);
+    const prev = buildInitial(oldDoc); // prev.figures has "f1"
+    // figureBlock1 = open + (empty inline) + close = 2 tokens → figure2 at pos 2.
+    const pos2 = s.doc.firstChild!.nodeSize;
+    const tr = s.tr.setNodeMarkup(pos2, undefined, { uuid: "fresh", label: "fig:b" });
+    expect(tr.steps[0].constructor.name).toBe("ReplaceAroundStep");
+    const d = inspectSteps(tr, s.doc, tr.doc, prev);
+
+    expect(d.removedFigures.map((f) => f.uuid)).not.toContain("f1");
+    expect(d.addedFigures.map((f) => f.uuid)).toContain("fresh");
+
+    const next = applyDiff(prev, d);
+    expect(next.figures.map((f) => f.uuid)).toContain("f1");
+    expect(next.figures.map((f) => f.uuid)).toContain("fresh");
+  });
+
+  it("example re-mint (ReplaceAroundStep) does NOT report the surviving original example removed", () => {
+    // exampleBlock is keyed by id = uuid||tag||label; here uuid is the key.
+    const oldDoc = doc(exampleBlock("e1"), exampleBlock("e1"));
+    const s = stateOf(oldDoc);
+    const prev = buildInitial(oldDoc); // prev.examples has id "e1"
+    const pos2 = s.doc.firstChild!.nodeSize;
+    const tr = s.tr.setNodeMarkup(pos2, undefined, { uuid: "fresh" });
+    expect(tr.steps[0].constructor.name).toBe("ReplaceAroundStep");
+    const d = inspectSteps(tr, s.doc, tr.doc, prev);
+
+    // Keyed by id; the surviving example's id "e1" must NOT be reported removed.
+    expect(d.removedExamples.map((e) => e.id)).not.toContain("e1");
+    expect(d.addedExamples.map((e) => e.id)).toContain("fresh");
+
+    const next = applyDiff(prev, d);
+    expect(next.examples.map((e) => e.id)).toContain("e1");
+    expect(next.examples.map((e) => e.id)).toContain("fresh");
+  });
+});
+
 describe("inspectSteps — top-level block reorder", () => {
   it("MOVING a top-level paragraph (delete+insert, one tx) emits changedBlocks at the new pos + blockOrderChanged, not added/removed", () => {
     // Mirrors the footnote/citation move spec, one level up: a reorder is a
