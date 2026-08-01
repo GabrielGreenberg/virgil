@@ -16,6 +16,75 @@
 
 import type { DragEvent as ReactDragEvent } from "react";
 
+/**
+ * Options for {@link buildTextDragGhost}. Every color/size axis defaults to a
+ * design-system token (with a first-paint hex fallback) so a caller passes only
+ * the deltas its surface needs. See the token map in `globals.css`
+ * (`--citation-ghost-bg` / `--citation-border-color` / `--citation-color` for the
+ * citation cream; `--surface` / `--edge-hover` / `--ink-body` for the neutral row).
+ */
+export interface TextDragGhostOptions {
+  /** Truncate the label to N chars (adds an ellipsis). Omit for the full text. */
+  maxChars?: number;
+  /** Max rendered width in px. Default 260. */
+  maxWidthPx?: number;
+  /** CSS background — a token or literal. Default `var(--surface)`. */
+  bg?: string;
+  /** CSS border color — a token or literal. Default `var(--border-light)`. */
+  border?: string;
+  /** CSS text color — a token or literal. Default `var(--ink-body)`. */
+  ink?: string;
+  /** border-radius — a token or literal. Default `var(--radius-xs)`. */
+  radius?: string;
+  /** font-size in px. Default 12. */
+  fontSizePx?: number;
+  /** Optional box-shadow. Default none. */
+  shadow?: string;
+  /** Padding CSS. Default "4px 8px". */
+  padding?: string;
+  /** Optional opacity (0–1). Default fully opaque. */
+  opacity?: number;
+}
+
+/**
+ * The one home for a text-label drag ghost. Returns a themed `<div>` whose
+ * `cssText` reads from design-system tokens by default, so no drag source has
+ * to re-author the "cream/neutral card" chrome (or re-drift its palette) by
+ * hand. Positioning is owned by {@link attachClampedDragGhost}, which sets
+ * `position:fixed` + coordinates after `buildGhost` returns — this builder must
+ * NOT set position.
+ */
+export function buildTextDragGhost(
+  text: string,
+  opts: TextDragGhostOptions = {},
+): HTMLElement {
+  const {
+    maxChars,
+    maxWidthPx = 260,
+    bg = "var(--surface, #ffffff)",
+    border = "var(--border-light, #d5d3ce)",
+    ink = "var(--ink-body, #44403c)",
+    radius = "var(--radius-xs, 3px)",
+    fontSizePx = 12,
+    shadow,
+    padding = "4px 8px",
+    opacity,
+  } = opts;
+  const ghost = document.createElement("div");
+  ghost.textContent =
+    maxChars != null && text.length > maxChars
+      ? text.slice(0, maxChars) + "…"
+      : text;
+  ghost.style.cssText =
+    `max-width:${maxWidthPx}px;padding:${padding};` +
+    `background:${bg};border:1px solid ${border};border-radius:${radius};` +
+    `font-size:${fontSizePx}px;color:${ink};line-height:1.4;` +
+    (shadow ? `box-shadow:${shadow};` : "") +
+    (opacity != null ? `opacity:${opacity};` : "") +
+    `white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
+  return ghost;
+}
+
 export interface AttachClampedDragGhostOptions {
   dragStartEvent: ReactDragEvent | DragEvent;
   /** Builds the ghost element. Called once at drag start. */

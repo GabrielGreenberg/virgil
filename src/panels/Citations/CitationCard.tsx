@@ -29,6 +29,7 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import BibEntryCard from "@/components/BibEntryCard";
 import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
+import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
@@ -514,14 +515,21 @@ export function CitationCard({
       // affordance (Editor.tsx dragover); the card merge target still takes
       // "copy".
       e.dataTransfer.effectAllowed = "copyMove";
-      const ghost = document.createElement("div");
-      ghost.textContent =
-        plain.length > 80 ? plain.slice(0, 80) + "…" : plain;
-      ghost.style.cssText =
-        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:var(--radius-xs);font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-      document.body.appendChild(ghost);
-      e.dataTransfer.setDragImage(ghost, 10, 14);
-      requestAnimationFrame(() => document.body.removeChild(ghost));
+      // Route through the clamped-ghost SSOT so the native OS drag image is
+      // suppressed and the custom ghost stays viewport-clamped (never tears off
+      // into the title bar). Cream palette via tokens — the citation family.
+      attachClampedDragGhost({
+        dragStartEvent: e,
+        buildGhost: () =>
+          buildTextDragGhost(plain, {
+            maxChars: 80,
+            bg: "var(--citation-ghost-bg, #fdf8e1)",
+            border: "var(--citation-border-color, #e0d5a8)",
+            ink: "var(--citation-color, #6b6245)",
+          }),
+        cursorOffsetX: 10,
+        cursorOffsetY: 14,
+      });
     },
     [cit, getDisplayText],
   );

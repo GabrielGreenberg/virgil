@@ -9,7 +9,7 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
-import { attachClampedDragGhost } from "@/lib/drag-ghost";
+import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { popKey as buildPopKey } from "@/panels/panel-registry";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
 
@@ -373,12 +373,14 @@ export default function BibEntryCard({
     e.dataTransfer.effectAllowed = "copyMove";
     attachClampedDragGhost({
       dragStartEvent: e,
-      buildGhost: () => {
-        const ghost = document.createElement("div");
-        ghost.textContent = display.length > 80 ? display.slice(0, 80) + "\u2026" : display;
-        ghost.style.cssText = "max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:var(--radius-xs);font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-        return ghost;
-      },
+      buildGhost: () =>
+        // Citation cream via tokens \u2014 one home with CitationCard's ghost.
+        buildTextDragGhost(display, {
+          maxChars: 80,
+          bg: "var(--citation-ghost-bg, #fdf8e1)",
+          border: "var(--citation-border-color, #e0d5a8)",
+          ink: "var(--citation-color, #6b6245)",
+        }),
       cursorOffsetX: 10,
       cursorOffsetY: 14,
     });

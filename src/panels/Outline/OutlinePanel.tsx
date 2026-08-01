@@ -20,6 +20,7 @@ import {
 } from "./outline-prefs-store";
 import { useFocusBandEdgeDrag, type FocusBandRow } from "./focus-band-drag";
 import { landingBlockIndex, isRejectedDrop, resolveDropIndicator } from "./outline-drop";
+import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 
 /* ── Indentation model (single source of truth) ─────────────────────────
  * One place defines the outline's left-edge geometry, used by both the view
@@ -1022,13 +1023,25 @@ function EditableOutline({
     setDraggingId(pod.id);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", pod.id);
-    // Custom ghost
-    const ghost = document.createElement("div");
-    ghost.textContent = pod.text;
-    ghost.style.cssText = "position:fixed;top:-1000px;padding:4px 12px;background:#fff;border:1px solid #d6d3d1;border-radius:var(--radius-md);font-size:13px;color:#44403c;box-shadow:0 2px 8px rgba(0,0,0,0.12);max-width:200px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;";
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 10, 14);
-    requestAnimationFrame(() => document.body.removeChild(ghost));
+    // Custom ghost via the clamped-ghost SSOT: suppresses the native OS drag
+    // image (so an upward drag toward the Virgil bar can't tear off / flip to
+    // no-drop) and viewport-clamps the neutral row card. Palette via tokens.
+    attachClampedDragGhost({
+      dragStartEvent: e,
+      buildGhost: () =>
+        buildTextDragGhost(pod.text, {
+          maxWidthPx: 200,
+          padding: "4px 12px",
+          radius: "var(--radius-md, 6px)",
+          fontSizePx: 13,
+          bg: "var(--surface, #ffffff)",
+          border: "var(--edge-hover, #d6d3d1)",
+          ink: "var(--ink-body, #44403c)",
+          shadow: "0 2px 8px rgba(0,0,0,0.12)",
+        }),
+      cursorOffsetX: 10,
+      cursorOffsetY: 14,
+    });
   }, []);
 
   const handleDragOver = useCallback((podId: string, e: React.DragEvent) => {

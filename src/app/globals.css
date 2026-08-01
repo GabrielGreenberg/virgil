@@ -271,6 +271,12 @@
   --citation-color: #555;
   --citation-bg: #ffffff;
   --citation-border-color: #a8c4de;
+  /* Cream fill of the citation drag-ghost card (CitationCard / BibEntryCard).
+     Distinct from --citation-bg (the in-text cite pill fill, #ffffff): the
+     dragged card reads on a warmer cream. Border + ink reuse
+     --citation-border-color / --citation-color. Consumed only via
+     buildTextDragGhost's `bg` override. */
+  --citation-ghost-bg: #fdf8e1;
   --footnote-color: var(--footnote-500);
   --footnote-bg: var(--footnote-50);
   /* Marker hover wash — one scale step up from the rest state. Both are
