@@ -1556,10 +1556,19 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
     const beginGlMatch = rest.match(/^\\begingl\b/);
     if (beginGlMatch) {
       ctx.pos += beginGlMatch[0].length;
-      // Optional [opts] — preserved-but-ignored for now
+      // Optional `[opts]` — expex's documented gloss-option bracket
+      // (`glhangstyle`, `aboveglftskip`, `glstyle`, `everygla`, `textoffset`,
+      // …). Captured as an opaque raw string (Virgil need not interpret the
+      // keys) and threaded onto the node so `serializeExampleGloss` can
+      // re-emit it byte-for-byte — the same parse↔serialize symmetry the
+      // item-level `\a[exno=N]` override keeps (task 244).
+      let glossOptions: string | null = null;
       if (ctx.src[ctx.pos] === "[") {
         const close = ctx.src.indexOf("]", ctx.pos);
-        if (close !== -1) ctx.pos = close + 1;
+        if (close !== -1) {
+          glossOptions = ctx.src.slice(ctx.pos + 1, close);
+          ctx.pos = close + 1;
+        }
       }
       const bodyStart = ctx.pos;
       // Boundary/comment-aware, depth-counted terminator (a bare indexOf
@@ -1568,7 +1577,7 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       const bodyText =
         endIdx !== -1 ? ctx.src.slice(bodyStart, endIdx) : ctx.src.slice(bodyStart);
       ctx.pos = endIdx !== -1 ? endIdx + "\\endgl".length : ctx.src.length;
-      const glossNode = buildGlossFromBody(bodyText);
+      const glossNode = buildGlossFromBody(bodyText, glossOptions);
       parent.content.push(glossNode);
       continue;
     }
@@ -2525,7 +2534,10 @@ function parseExampleBodyAsBlocks(
 
 /** Parse a `\begingl … \endgl` body into an `exampleGloss` node with
  *  `alignedGlossRow` + `proseGlossRow` children. */
-function buildGlossFromBody(body: string): JSONContent {
+function buildGlossFromBody(
+  body: string,
+  glossOptions: string | null = null,
+): JSONContent {
   const rows: JSONContent[] = [];
   // Split on \gla / \glb / \glc / \glft / \glpreamble markers at block-start.
   const tierPattern = /\\gl(a|b|c|ft|preamble)\b/g;
@@ -2577,7 +2589,7 @@ function buildGlossFromBody(body: string): JSONContent {
   }
   return {
     type: "exampleGloss",
-    attrs: { glossId: null, colCount: maxCells },
+    attrs: { glossId: null, colCount: maxCells, glossOptions },
     content: rows,
   };
 }

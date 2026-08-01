@@ -212,3 +212,42 @@ describe("Task 038 — aligned gloss cell brace-awareness", () => {
     expect(serializeBody(doc)).toContain("\\gla {a b} c //");
   });
 });
+
+describe("Task 262 — `\\begingl[opts]` optional argument round-trip", () => {
+  it("captures the gloss-option bracket onto the exampleGloss node", () => {
+    const tex = `\\ex\n\\begingl[aboveglftskip=2pt, glhangstyle=indent]\n\\gla foo bar //\n\\glft translation //\n\\endgl\n\\xe`;
+    const gloss = findAll(parseBody(tex), "exampleGloss")[0];
+    expect(gloss).toBeTruthy();
+    expect(gloss.attrs?.glossOptions).toBe("aboveglftskip=2pt, glhangstyle=indent");
+  });
+
+  it("re-emits the `[opts]` bracket byte-for-byte on serialize (FAILS on main)", () => {
+    const tex = `\\ex\n\\begingl[aboveglftskip=2pt, glhangstyle=indent]\n\\gla foo bar //\n\\glft translation //\n\\endgl\n\\xe`;
+    const back = serializeBody(parseBody(tex));
+    expect(back).toContain(
+      "\\begingl[aboveglftskip=2pt, glhangstyle=indent]",
+    );
+    // The options-bearing form must be a fixed point across a second round-trip.
+    const back2 = serializeBody(parseBody(back));
+    expect(back2).toContain(
+      "\\begingl[aboveglftskip=2pt, glhangstyle=indent]",
+    );
+  });
+
+  it("a bare `\\begingl` (no opts) stays byte-identical — no spurious `[]`", () => {
+    const tex = `\\ex\n\\begingl\n\\gla foo bar //\n\\glft translation //\n\\endgl\n\\xe`;
+    const back = serializeBody(parseBody(tex));
+    expect(back).toContain("\\begingl\n");
+    expect(back).not.toContain("\\begingl[");
+    const gloss = findAll(parseBody(tex), "exampleGloss")[0];
+    expect(gloss.attrs?.glossOptions).toBeNull();
+  });
+
+  it("preserves a literal empty `\\begingl[]` bracket as a true fixed point", () => {
+    const tex = `\\ex\n\\begingl[]\n\\gla foo bar //\n\\endgl\n\\xe`;
+    const gloss = findAll(parseBody(tex), "exampleGloss")[0];
+    expect(gloss.attrs?.glossOptions).toBe("");
+    const back = serializeBody(parseBody(tex));
+    expect(back).toContain("\\begingl[]");
+  });
+});

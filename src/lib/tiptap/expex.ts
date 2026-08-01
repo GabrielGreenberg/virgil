@@ -1623,6 +1623,10 @@ export const ExampleGloss = Node.create({
     return {
       glossId: { default: null },
       colCount: { default: 1 },
+      // Opaque raw `\begingl[<opts>]` gloss-option string, preserved for a
+      // byte-exact LaTeX round-trip (task 262); null when the source had no
+      // optional bracket. Mirrors the item-level `exnoOverride` opaque field.
+      glossOptions: { default: null },
     };
   },
 
