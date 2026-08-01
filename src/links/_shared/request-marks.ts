@@ -57,6 +57,7 @@ import {
   type CardWithLinks,
 } from "../links";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
+import { anchorableUuidAt } from "@/lib/anchor-uuid";
 import type { AnchoredCardRef } from "./anchored-card-store";
 
 /** The `linkedAnchor.kind` namespace for an open-AI-request mark. */
@@ -170,15 +171,21 @@ export function reconcileRequestMarks(
     });
   }
 
-  // PRESENT: every live request mark's anchorId → the paragraph uuid it sits in
+  // PRESENT: every live request mark's anchorId → the ANCHORABLE uuid it sits in
   // (one scan, only on set change). The uuid is captured so a card RE-ANCHORED
   // while its request is open (mark now on the wrong paragraph) is detected and
   // moved, not left stale — the anchorId is stable (`airq-<cardId>`), so a naive
-  // presence check alone would wrongly skip re-stamping.
+  // presence check alone would wrongly skip re-stamping. `anchorableUuidAt`
+  // (deferral-aware) climbs to the CONTAINER uuid for a mark inside a
+  // listItem/blockquote/exampleItem/exampleBlock, matching `desired` (whose uuid
+  // is the card's container anchor). Reading the immediate text-parent uuid
+  // instead resolves to the deferred inner paragraph's absent uuid `""`, which
+  // never equals `desired` → the freshly-stamped container mark would be
+  // stripped and re-stamped every reconcile (task 271 thrash).
   const present = new Map<string, string>();
-  editor.state.doc.descendants((node, _pos, parent) => {
+  editor.state.doc.descendants((node, pos) => {
     if (!node.isText) return true;
-    const uuid = (parent?.attrs?.uuid as string | undefined) ?? "";
+    const uuid = anchorableUuidAt(editor.state.doc, pos) ?? "";
     for (const m of node.marks) {
       if (m.type.name !== "linkedAnchor") continue;
       if (m.attrs.kind !== REQUEST_KIND) continue;
