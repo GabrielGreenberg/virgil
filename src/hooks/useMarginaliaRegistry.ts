@@ -3,7 +3,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { Editor } from "@tiptap/react";
 import { pickProbeEditor } from "@/lib/active-editor-probe";
-import { type AnchorNodeMetrics } from "@/lib/marginalia";
+import {
+  type AnchorNodeMetrics,
+  resolveMarginaliaHost,
+} from "@/lib/marginalia";
 import {
   walkAnchorableBlocks,
   resolveDomForUuid,
@@ -357,19 +360,6 @@ function metricsWithinEpsilon(
   );
 }
 
-function resolveHost(editor: Editor | null | undefined): HTMLElement | null {
-  if (!editor) return null;
-  try {
-    return (
-      (editor.view?.dom?.closest(
-        "[data-marginalia-host]",
-      ) as HTMLElement | null) ?? null
-    );
-  } catch {
-    return null;
-  }
-}
-
 // ── Dev perf probe (multi-doc safe) ────────────────────────────────────────
 // `window.__marginaliaStats()` must read the registry of the editor being
 // TYPED INTO so the recompute-count check stays trustworthy with N warm editors
@@ -479,7 +469,7 @@ export function useMarginaliaRegistry(
 
     function flushRecompute() {
       if (!editor || editor.isDestroyed || !isVisibleRef.current) return;
-      const host = state.hostEl ?? resolveHost(editor);
+      const host = state.hostEl ?? resolveMarginaliaHost(editor);
       if (!host) return;
       const hostRect = host.getBoundingClientRect();
       const pending = state.pendingRecompute;
@@ -691,7 +681,7 @@ export function useMarginaliaRegistry(
 
     function onIntersection(entries: IntersectionObserverEntry[]) {
       if (!editor || editor.isDestroyed || !isVisibleRef.current) return;
-      const host = state.hostEl ?? resolveHost(editor);
+      const host = state.hostEl ?? resolveMarginaliaHost(editor);
       if (!host) return;
       const hostRect = host.getBoundingClientRect();
 
@@ -905,7 +895,7 @@ export function useMarginaliaRegistry(
 
     /** First-measure pass on mount. */
     function prime() {
-      const host = resolveHost(editor);
+      const host = resolveMarginaliaHost(editor);
       if (!host) return;
       state.hostEl = host;
 

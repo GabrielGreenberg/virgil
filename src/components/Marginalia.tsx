@@ -12,6 +12,7 @@ import {
   MARGINALIA_MARGIN_WIDTH_LEFT,
   MARGINALIA_MARGIN_WIDTH_RIGHT,
   MARGINALIA_ICON_SIZE,
+  resolveMarginaliaHost,
   type GridCell,
   type MarginaliaMarker,
   type MarkerOverflowGroup,
@@ -77,17 +78,10 @@ function useMarginaliaHost(editor: Editor | null): HTMLElement | null {
       editor.off("update", recheck);
     };
   };
-  const getSnapshot = (): HTMLElement | null => {
-    if (!editor) return null;
-    try {
-      return (
-        (editor.view?.dom?.closest("[data-marginalia-host]") as HTMLElement | null) ??
-        null
-      );
-    } catch {
-      return null;
-    }
-  };
+  // Only the resolution is shared (`resolveMarginaliaHost`, the same helper the
+  // registry measures against); the subscription + RAF-coalesced notify plumbing
+  // stays here.
+  const getSnapshot = (): HTMLElement | null => resolveMarginaliaHost(editor);
   return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }
 

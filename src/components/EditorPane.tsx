@@ -114,6 +114,7 @@ import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { resolveLabelDisplay } from "./editor-layout/card-actions/ref";
 import {
   isAnchorableNode,
+  MARGINALIA_HOST_ATTR,
   MARGINALIA_MIN_MARGIN_LEFT,
   MARGINALIA_MIN_MARGIN_RIGHT,
   resolveHorizontalMargin,
@@ -6152,7 +6153,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
             )}
             <div
               className="editor-pane-pod"
-              data-marginalia-host
+              {...{ [MARGINALIA_HOST_ATTR]: "" }}
               style={{
                 flex: viewPrefs ? "1000 1 0" : "1 1 0",
                 minWidth: 0,
