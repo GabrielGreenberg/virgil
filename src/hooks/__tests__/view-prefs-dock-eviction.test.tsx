@@ -126,3 +126,57 @@ describe("useViewPrefs — dock-eviction victim under session-only MRU (task 251
     expect(result.current.prefs.dockStack.left).not.toContain(C);
   });
 });
+
+// redockPanel (drag-a-float-onto-a-dock-slot) must clear the collapse/blank
+// sentinels for the target side, exactly like `dockOpen` (task 272). Pre-fix,
+// `redockPanel` re-implemented stack insertion inline but never touched
+// `collapsedLeft/Right` / `blankLeft/Right`, so dropping a float onto a
+// COLLAPSED side inserted the band into the stack while the column stayed at
+// 0px — the docked panel's portal target didn't exist, so it "vanished". The
+// visible layout symptom is geometry-masking (a 0px column) and can't be
+// reproduced in jsdom; the durable proof is that the reducer clears the
+// sentinel. A real-browser eyeball is still owed.
+describe("useViewPrefs — redockPanel clears the collapsed/blank sentinel (task 272)", () => {
+  beforeAll(() => {
+    installStorageShim("localStorage");
+    installStorageShim("sessionStorage");
+  });
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  afterEach(() => cleanup());
+
+  it("un-collapses the target side when a float is redocked onto it", () => {
+    const { result } = renderHook(() => useViewPrefs());
+
+    // Collapse the left side (as the user would via the strip chevron).
+    act(() => result.current.collapseLeft());
+    expect(result.current.prefs.collapsedLeft).toBe(true);
+
+    // Drag a floating panel onto the collapsed left dock slot.
+    act(() => result.current.redockPanel(A, "left"));
+
+    // The band is inserted AND the side is expanded, so the just-docked
+    // panel's portal target exists and it renders (mirrors dockOpen).
+    expect(result.current.prefs.dockStack.left).toContain(A);
+    expect(result.current.prefs.collapsedLeft).toBe(false);
+    expect(result.current.prefs.blankLeft).toBe(false);
+  });
+
+  it("clears the sentinel on the right side without touching the other side", () => {
+    const { result } = renderHook(() => useViewPrefs());
+
+    act(() => result.current.collapseLeft());
+    act(() => result.current.collapseRight());
+    expect(result.current.prefs.collapsedLeft).toBe(true);
+    expect(result.current.prefs.collapsedRight).toBe(true);
+
+    act(() => result.current.redockPanel(B, "right"));
+
+    // Only the target (right) side expands; the untouched left stays collapsed.
+    expect(result.current.prefs.dockStack.right).toContain(B);
+    expect(result.current.prefs.collapsedRight).toBe(false);
+    expect(result.current.prefs.collapsedLeft).toBe(true);
+  });
+});
