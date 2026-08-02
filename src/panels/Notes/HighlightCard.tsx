@@ -144,8 +144,8 @@ export function HighlightCard({
         <div className={`${PANEL.cardBody} space-y-2`} onClick={(e) => e.stopPropagation()}>
           <div>
             <div
-              className="text-sm whitespace-pre-wrap break-words"
-              style={{ ...snippetFontStyle, padding: "4px 6px" }}
+              className="text-sm whitespace-pre-wrap break-words py-1"
+              style={snippetFontStyle}
             >
               {trimmedAnchor || (
                 <CardEmptyText label="empty highlight" />
