@@ -52,6 +52,18 @@ function formatBibEntryForNote(entry: BibEntry): string {
   return lines.join("\n");
 }
 
+/** Shared chrome for the panel's amber "attention" surfaces — a pending/warning
+ *  wash with an amber-200 hairline. One SSOT so the three surfaces (conflict
+ *  decision, request form, pending-requests card) read as one family and can't
+ *  drift apart again (task 280: the request form had picked up a neutral
+ *  `--border-light` seam and the three washes had drifted to /50, /40, /30).
+ *  Holds the color family + padding only; each caller adds the border *shape*
+ *  and layout it needs:
+ *    · `border-b`          → panelExtras row (conflict decision / request form)
+ *    · `border rounded-md` → standalone card (pending-requests item) */
+const AMBER_ATTENTION_STRIP =
+  "px-3 py-2 border-[var(--amber-200)] bg-[var(--amber-50)]/40";
+
 interface BibliographyPanelProps {
   citations: CitationRef[];
   bibEntries: BibEntry[];
@@ -780,7 +792,7 @@ function BibliographyPanel({
       )}
 
       {conflictDecision && (
-        <div className="px-3 py-2 border-b border-[var(--amber-200)] bg-[var(--amber-50)]/50">
+        <div className={`${AMBER_ATTENTION_STRIP} border-b`}>
           <div className="text-[11px] text-ink-body mb-1.5">
             <span className="font-mono text-ink-muted">
               {conflictDecision.libraryEntry.key}
@@ -825,7 +837,7 @@ function BibliographyPanel({
       )}
 
       {showRequestForm && (
-        <div className="px-3 py-2 border-b border-[var(--border-light)] bg-[var(--amber-50)]/30">
+        <div className={`${AMBER_ATTENTION_STRIP} border-b`}>
           <div className="flex items-center gap-1.5 mb-1.5">
             <span className="text-[10px] font-medium text-ink-subtle uppercase tracking-wide">
               Request entry
@@ -887,7 +899,7 @@ function BibliographyPanel({
         {entryRequests.map((req) => (
           <div
             key={req.id}
-            className="mx-1 mb-1.5 rounded-md border border-[var(--amber-200)] bg-[var(--amber-50)]/40 px-3 py-2"
+            className={`${AMBER_ATTENTION_STRIP} border rounded-md mx-1 mb-1.5`}
           >
             <div className="flex items-start justify-between gap-2">
               <p className="text-xs text-ink-body whitespace-pre-wrap">
