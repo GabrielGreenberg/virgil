@@ -1597,10 +1597,18 @@ export function useViewPrefs(opts?: {
         // Remove any existing float + stack position, then splice into the
         // target side's stack at `index` (default append). Enforce the cap
         // by evicting the least-recently-used band if the side is full.
+        // Un-collapse + un-blank the target side, exactly as `dockOpen` does
+        // (task 272): a docked band's portal target only exists in an
+        // expanded column, so redocking onto a collapsed side must expand it
+        // or the just-docked panel renders nothing ("vanishes").
         let next: ViewPrefs = {
           ...p,
           poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
           panelModes: { ...p.panelModes, [id]: "docked" },
+          collapsedLeft: side === "left" ? false : p.collapsedLeft,
+          collapsedRight: side === "right" ? false : p.collapsedRight,
+          blankLeft: side === "left" ? false : p.blankLeft,
+          blankRight: side === "right" ? false : p.blankRight,
         };
         const existingSide = sideOfDockedPanel(next, id);
         if (existingSide) {
