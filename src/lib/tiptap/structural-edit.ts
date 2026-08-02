@@ -68,6 +68,26 @@ export function findNodeByUuid(
   return found;
 }
 
+/**
+ * Shallow attr-equality for the no-op-tx bail. Compares the UNION of own keys,
+ * normalizing `undefined` ≡ `null` so a schema default that is absent on one
+ * side (attr not materialized) doesn't read as a change against an explicit
+ * `null` (heading/parTitle/label all default to `null`, so `null → null` must
+ * compare equal and bail). Heading/parTitle/label attrs are flat primitives, so
+ * a shallow compare is sufficient.
+ */
+export function shallowEqualAttrs(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const norm = (v: unknown) => (v === undefined ? null : v);
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if (norm(a[k]) !== norm(b[k])) return false;
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // editStructuredNodeByUuid — the single primitive
 // ---------------------------------------------------------------------------
@@ -132,10 +152,17 @@ export function editStructuredNodeByUuid(
   // Attr edit (parTitle / label) — setNodeMarkup at the node's own pos.
   if (opts.setAttrs) {
     const nextAttrs = opts.setAttrs({ ...(node.attrs as Record<string, unknown>) });
-    // `mapping` keeps the attr edit valid after a content replace above.
-    const mappedPos = tr.mapping.map(pos);
-    tr = tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
-    changed = true;
+    // Only dispatch if the attrs actually changed (avoid a no-op tx that would
+    // still bump structural counters + push a phantom undo step) — mirrors the
+    // `editInlineContent` guard above. A same-value commit (incl. label
+    // `null → null` from blurring an unlabeled heading's "+") is now a true
+    // no-op: `editStructuredNodeByUuid` returns false, the doc is not dirtied.
+    if (!shallowEqualAttrs(node.attrs as Record<string, unknown>, nextAttrs)) {
+      // `mapping` keeps the attr edit valid after a content replace above.
+      const mappedPos = tr.mapping.map(pos);
+      tr = tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
+      changed = true;
+    }
   }
 
   if (!changed) return false;

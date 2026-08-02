@@ -46,6 +46,7 @@ import {
   renameParTitleByUuid,
   updateHeadingLabelByUuid,
   findNodeByUuid,
+  shallowEqualAttrs,
 } from "@/lib/tiptap/structural-edit";
 
 function mainCtx(): EditorExtensionsCtx {
@@ -157,6 +158,97 @@ describe("editStructuredNodeByUuid — addressing + guards", () => {
     } finally {
       cleanup();
     }
+  });
+});
+
+describe("editStructuredNodeByUuid — setAttrs no-op bail (phantom-undo class)", () => {
+  it("an unchanged attr commit dispatches nothing and returns false", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const spy = vi.spyOn(editor.view, "dispatch");
+      const stateBefore = editor.state;
+      // HEADING2 already has label "sec:two"; re-setting the SAME value must bail.
+      const ok = editStructuredNodeByUuid(editor, HEADING2_UUID, {
+        setAttrs: (a) => ({ ...a, label: "sec:two" }),
+      });
+      expect(ok).toBe(false);
+      expect(spy).not.toHaveBeenCalled();
+      // No transaction → state identity is unchanged (doc not dirtied, no undo
+      // step added).
+      expect(editor.state).toBe(stateBefore);
+      spy.mockRestore();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a null → null label commit (blur the '+' on an unlabeled heading) is a no-op", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const spy = vi.spyOn(editor.view, "dispatch");
+      // HEADING1 has no label (undefined attr); committing `null` must normalize
+      // to equal and bail — the real Outline "+"-then-blur trigger.
+      const ok = updateHeadingLabelByUuid(
+        editor,
+        HEADING_UUID,
+        null,
+        () => false,
+      );
+      expect(ok).toBe(false);
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a same-string parTitle rename is a no-op", () => {
+    const { editor, cleanup } = mount();
+    try {
+      // Seed a parTitle, then re-commit the identical value.
+      expect(renameParTitleByUuid(editor, PARA_UUID, "My Title")).toBe(true);
+      const spy = vi.spyOn(editor.view, "dispatch");
+      const ok = renameParTitleByUuid(editor, PARA_UUID, "My Title");
+      expect(ok).toBe(false);
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("a genuine attr change still dispatches exactly one tx and returns true", () => {
+    const { editor, cleanup } = mount();
+    try {
+      const spy = vi.spyOn(editor.view, "dispatch");
+      const ok = updateHeadingLabelByUuid(
+        editor,
+        HEADING2_UUID,
+        "sec:renamed",
+        () => false,
+      );
+      expect(ok).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(findNodeByUuid(editor, HEADING2_UUID)?.node.attrs.label).toBe(
+        "sec:renamed",
+      );
+      spy.mockRestore();
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe("shallowEqualAttrs — undefined ≡ null normalization", () => {
+  it("treats an absent key as equal to an explicit null", () => {
+    expect(shallowEqualAttrs({ label: undefined }, { label: null })).toBe(true);
+    expect(shallowEqualAttrs({}, { label: null })).toBe(true);
+    expect(shallowEqualAttrs({ level: 2, label: null }, { level: 2 })).toBe(true);
+  });
+  it("detects a genuine value change", () => {
+    expect(shallowEqualAttrs({ label: "a" }, { label: "b" })).toBe(false);
+    expect(shallowEqualAttrs({ label: null }, { label: "b" })).toBe(false);
+    expect(shallowEqualAttrs({ level: 2 }, { level: 3 })).toBe(false);
   });
 });
 
@@ -379,13 +471,17 @@ describe("updateHeadingLabelByUuid — duplicate-label block (OUT-F8-03)", () =>
     }
   });
 
-  it("lets a heading keep its OWN label (exclude self)", () => {
+  it("lets a heading keep its OWN label (exclude self) — now a no-op bail, label preserved", () => {
     const { editor, cleanup } = mount();
     try {
       const isTaken = takenByOther(new Set(["sec:two"]));
-      // Re-commit HEADING2's own label — not a self-collision.
+      // Re-commit HEADING2's own label — not a self-collision, so NOT blocked.
+      // Since the value is unchanged, the setAttrs equality bail makes this a
+      // true no-op (returns false, no phantom tx) rather than the old
+      // dispatch-anyway behavior. The user-facing contract that matters — the
+      // label is neither blocked-and-cleared nor errored — still holds.
       const ok = updateHeadingLabelByUuid(editor, HEADING2_UUID, "sec:two", isTaken);
-      expect(ok).toBe(true);
+      expect(ok).toBe(false);
       expect(findNodeByUuid(editor, HEADING2_UUID)?.node.attrs.label).toBe("sec:two");
     } finally {
       cleanup();
