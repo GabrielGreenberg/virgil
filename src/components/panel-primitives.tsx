@@ -512,6 +512,22 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
   );
 }
 
+/** Twin-lockstep SSOT for the "deliberately parked, re-anchorable" rest state
+ *  (an unanchored citation or footnote ref whose `\cite`/`\footnote` atom was
+ *  spliced out on archive and NOT re-inserted on unarchive — see
+ *  `CitationRef.unanchored` / `FootnoteRef.unanchored`). The card sits in the
+ *  panel with a NEUTRAL "drag into the editor to anchor it" cue: a dashed border
+ *  + reduced opacity. This is deliberately DISTINCT from BOTH the anchored rest
+ *  state (solid border, full opacity) AND the `orphaned` ERROR state (which
+ *  keeps its faded {@link BadgeOrphaned} "no anchor" dot). Both the Citation and
+ *  Footnote unanchored cards consume these so the two twins can't drift apart. */
+export const UNANCHORED_CARD_CLASS = "border-dashed opacity-80";
+
+/** Tooltip for an unanchored/parked card — pairs with {@link UNANCHORED_CARD_CLASS}. */
+export function unanchoredCardTitle(noun: "citation" | "footnote"): string {
+  return `Unanchored ${noun} — drag into the editor to anchor it`;
+}
+
 /** Small uppercase overline naming the card type ("Citation", "Footnote", …).
  *  Used by `CardKindHeader` (unified card chrome) as the single-kind case.
  *  Matches the style first introduced on Comment cards. */
@@ -1087,6 +1103,15 @@ export interface EditableCardProps {
    *  "Applied" original-record card). ANDs into the chrome-derived editable
    *  flag, so it only ever tightens, never loosens. */
   forceReadOnly?: boolean;
+  /** Extra classes for the card root, merged with the internal cursor class and
+   *  forwarded into `themedCard(theme, selected, extra)` on `PanelCard` — the
+   *  same slot the citation card uses for state styling (e.g. the
+   *  {@link UNANCHORED_CARD_CLASS} dashed/opacity parked cue). Additive: default
+   *  `undefined` leaves every existing card's chrome unchanged. */
+  extraCardClass?: string;
+  /** Native `title` (hover tooltip) forwarded to the card root — used for the
+   *  unanchored/parked cue's "drag to anchor" hint ({@link unanchoredCardTitle}). */
+  title?: string;
 }
 
 /**
@@ -1108,7 +1133,7 @@ export function EditableCard({
   onTogglePopout, isPoppedOut, cardKey,
   compressed, compressedSummary, compressedContent, onToggleExpanded, onHeaderActivate,
   kind, kindLabelOverride, kindOptions, onKindChange,
-  canJump, onJump, chromeless, forceReadOnly,
+  canJump, onJump, chromeless, forceReadOnly, extraCardClass, title,
 }: EditableCardProps) {
   // Chrome-driven read-only mode: when the host has set
   // `editableCardKinds` and this card's kind isn't on the list, the
@@ -1273,7 +1298,8 @@ export function EditableCard({
       onTrashClick={inlineDelete && onDelete ? tryDelete : undefined}
       onArchiveClick={inlineDelete ? doArchive : undefined}
       isArchived={cardArchived}
-      extraCardClass={cursorClass}
+      extraCardClass={extraCardClass ? `${cursorClass} ${extraCardClass}` : cursorClass}
+      title={title}
       draggable={cardDraggable}
       onDragStart={onDragStart}
       tabIndex={selected ? 0 : -1}
