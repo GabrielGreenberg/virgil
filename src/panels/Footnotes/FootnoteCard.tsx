@@ -10,6 +10,8 @@ import {
   BadgeLabel,
   BadgeOrphaned,
   makeCompressedSummary,
+  UNANCHORED_CARD_CLASS,
+  unanchoredCardTitle,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -323,6 +325,15 @@ export function UnanchoredFootnoteCard({
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
+      // Twin-consistency (task 278): an unanchored footnote ref is DELIBERATELY
+      // parked (its `\footnote` atom was spliced out and not re-inserted), so it
+      // wears the same neutral "drag to anchor" cue as the Citation twin — a
+      // dashed border + reduced opacity + tooltip — NOT the `orphaned` error
+      // badge (its omni state is neutral `free`, see Footnotes/omni.tsx). No
+      // `footnoteBadge` is passed: the parked chrome, not a badge, distinguishes
+      // it from both the numbered (anchored) and BadgeOrphaned (error) siblings.
+      extraCardClass={UNANCHORED_CARD_CLASS}
+      title={unanchoredCardTitle("footnote")}
       // No in-text marker for an atomless ref, so body click is select+expand
       // only (no jump) — same composition as an orphan card.
       onClick={() => ac.onBodyActivate({ onSelect })}

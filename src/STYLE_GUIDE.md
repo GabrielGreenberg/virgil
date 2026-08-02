@@ -452,6 +452,25 @@ chrome stays domain-blind.** The text-object terminal policy is
 ghost-only (no popout — the float is already open; outside-content
 release cancels).
 
+### Unanchored / parked card rest-state (twin SSOT)
+
+A card whose atom was deliberately spliced out and **not** re-inserted —
+an unanchored **citation** or **footnote** ref (archive → unarchive
+round-trip; `CitationRef.unanchored` / `FootnoteRef.unanchored`) — sits
+in its panel wearing a **neutral "drag to anchor" cue**: a **dashed
+border + reduced opacity** (`UNANCHORED_CARD_CLASS = "border-dashed
+opacity-80"`, `panel-primitives.tsx`) plus a hover `title` from
+`unanchoredCardTitle(noun)` ("Unanchored <noun> — drag into the editor to
+anchor it"). This is **not** an error affordance — it is deliberately
+distinct from the `orphaned` ERROR state, whose card keeps its faded
+`BadgeOrphaned` "no anchor" dot. The omni layer already draws the same
+line (an unanchored footnote resolves to the neutral `free` state, not
+`orphaned` — `Footnotes/omni.tsx`); the parked cue is that intent made
+visible on the docked card. **Both twins consume the one const + helper**
+so the citation and footnote unanchored states can't drift apart — add
+any future "parked, re-placeable" card kind to the same SSOT rather than
+re-spelling the classes.
+
 ## Panels
 
 Sidebar pod with a locked-height header (`--header-h: 26px` — the lock is

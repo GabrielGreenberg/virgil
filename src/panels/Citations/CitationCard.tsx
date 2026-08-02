@@ -22,6 +22,8 @@ import {
   CardMetaLabel,
   cardTitleStyle,
   usePanelCardTryDelete,
+  UNANCHORED_CARD_CLASS,
+  unanchoredCardTitle,
 } from "@/components/panel-primitives";
 import { FONT_STACKS } from "@/lib/panel-typography";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -740,7 +742,7 @@ export function CitationCard({
   const stateClass = isDropTarget
     ? "ring-2 ring-drag-target ring-offset-0"
     : !isAnchored
-      ? "border-dashed opacity-80"
+      ? UNANCHORED_CARD_CLASS
       : "";
 
   const onToggleFromCtx =
@@ -834,9 +836,7 @@ export function CitationCard({
         )
       }
       title={
-        !isAnchored && !isDraft
-          ? "Unanchored citation — drag into the editor to anchor it"
-          : undefined
+        !isAnchored && !isDraft ? unanchoredCardTitle("citation") : undefined
       }
     >
       {compressed ? (
