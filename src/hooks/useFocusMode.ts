@@ -26,7 +26,14 @@ export interface FocusState {
   endBlockIndex: number;
 }
 
-const INITIAL: FocusState = {
+/**
+ * The canonical inactive `FocusState` — a single frozen reference reused
+ * everywhere an "unfocused" state is needed (this hook's degrade-to-show-all
+ * paths, and the Reader's OutlineHost mount, which supplies `focusState: null`).
+ * Sharing ONE const keeps callers from minting a fresh per-render literal that
+ * would silently defeat a downstream `memo()` boundary.
+ */
+export const INACTIVE_FOCUS_STATE: FocusState = {
   active: false,
   locked: false,
   startBlockIndex: 0,
@@ -214,9 +221,9 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
   // Backward-compatible index projection — LIVE-resolved, so it never drifts.
   const state: FocusState = useMemo(() => {
     const doc = editor?.state?.doc;
-    if (!doc) return INITIAL;
+    if (!doc) return INACTIVE_FOCUS_STATE;
     const resolved = resolveFocusBand(doc, band);
-    if (!resolved) return INITIAL; // inactive or a dead anchor → degrade to "show all"
+    if (!resolved) return INACTIVE_FOCUS_STATE; // inactive or a dead anchor → degrade to "show all"
     return {
       active: true,
       locked: band.locked,

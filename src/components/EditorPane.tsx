@@ -318,7 +318,7 @@ import type {
 } from "@/hooks/useViewPrefs";
 import { bandSlotKey, dockedSideOf } from "@/hooks/useViewPrefs";
 import { useMarginEdit, MARGIN_AXIS } from "@/hooks/useMarginEdit";
-import type { FocusState } from "@/hooks/useFocusMode";
+import { INACTIVE_FOCUS_STATE, type FocusState } from "@/hooks/useFocusMode";
 import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
 import type { PanelKind, CardKind } from "@/panels/_shared/types";
@@ -7570,7 +7570,7 @@ function PaneRailBody({
         editorSplit={viewPrefs.prefs.editorSplit}
         mirrorSectionPath={viewPrefs.mirrorSectionPath}
         mirrorParTitleIndex={viewPrefs.mirrorParTitleIndex}
-        focusState={viewPrefs.focusState ?? { active: false } as FocusState}
+        focusState={viewPrefs.focusState ?? INACTIVE_FOCUS_STATE}
         onFocusActivate={viewPrefs.onFocusActivate}
         onFocusDeactivate={viewPrefs.onFocusDeactivate}
         onFocusToggleLock={viewPrefs.onFocusToggleLock}
