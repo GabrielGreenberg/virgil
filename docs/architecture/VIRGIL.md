@@ -1,4 +1,4 @@
-<!-- last-verified: 153cac0c 2026-07-27 -->
+<!-- last-verified: e940e322 2026-08-02 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
@@ -218,7 +218,7 @@ The agent writes `<sidecar>.json` (the new/changed card) + `ai-requests.json` (T
 ## Code organization
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
-*An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: 4294c162`).*
+*An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: e940e322`).*
 
 ### `src/` top-level map
 

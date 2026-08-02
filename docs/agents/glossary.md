@@ -1,4 +1,4 @@
-<!-- last-verified: 153cac0c 2026-07-27 -->
+<!-- last-verified: e940e322 2026-08-02 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/panel-primitives.tsx, src/components/menu/, src/components/SkillSyncControls.tsx, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/cards/predicates.ts -->
 
@@ -260,7 +260,7 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 | **New document modal** | `NewDocumentModal` — uses `SystemDialog` | [src/components/NewDocumentModal.tsx](../../src/components/NewDocumentModal.tsx) |
 | **Tex file picker** | `TexFilePickerModal` — uses `SystemDialog` | [src/components/TexFilePickerModal.tsx](../../src/components/TexFilePickerModal.tsx) |
 | **Document class mismatch dialog** | `DocumentClassMismatchDialog` — uses `SystemDialog` | [src/components/DocumentClassMismatchDialog.tsx](../../src/components/DocumentClassMismatchDialog.tsx) |
-| **Fonts dialog** / **font picker** (per-category font + size dialog launched from the View menu's "Fonts…" item; one card per font category — body, headings, footnotes, marginalia, etc. — each with a `FontPicker` and `SizeStepper`) | `FontsDialog` (uses `FloatingPanel`); `FontPicker` (typeahead pop-down listing `MAIN_TEXT_FONTS`); `SizeStepper` (− / + numeric stepper, larger hit targets than `PanelTextSizeRow`) | [src/components/FontsDialog.tsx](../../src/components/FontsDialog.tsx); [src/components/FontPicker.tsx](../../src/components/FontPicker.tsx); [src/components/SizeStepper.tsx](../../src/components/SizeStepper.tsx); font catalog in [src/lib/preferences-tree.ts](../../src/lib/preferences-tree.ts) (`MAIN_TEXT_FONTS`); opened from `MenuBar` ViewMenu (`onOpenFontsDialog`); mounted in `EditorLayout.tsx` ~line 4048 |
+| **Fonts dialog** / **font picker** (per-category font + size dialog launched from the View menu's "Fonts…" item; one card per font category — body, headings, footnotes, marginalia, etc. — each with a `FontPicker` and `SizeStepper`) | `FontsDialog` (uses `FloatingPanel`); `FontPicker` (typeahead pop-down listing `MAIN_TEXT_FONTS`); `SizeStepper` (− / + numeric stepper, larger hit targets than `PanelTextSizeRow`) | [src/components/FontsDialog.tsx](../../src/components/FontsDialog.tsx); [src/components/FontPicker.tsx](../../src/components/FontPicker.tsx); [src/components/SizeStepper.tsx](../../src/components/SizeStepper.tsx); font catalog in [src/lib/preferences-tree.ts](../../src/lib/preferences-tree.ts) (`MAIN_TEXT_FONTS`); opened from `MenuBar` ViewMenu (`onOpenFontsDialog`); mounted in `EditorLayout.tsx` ~line 3823 |
 
 ## Card creation / pristine cards
 
