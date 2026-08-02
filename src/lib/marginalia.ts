@@ -30,6 +30,7 @@
 
 import type { PanelId } from "@/hooks/useViewPrefs";
 import type { NodeType } from "@tiptap/pm/model";
+import type { Editor } from "@tiptap/react";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import type { MarkerType } from "@/cards/types";
 // Right-margin geometry SSOT — the overlay-scrollbar footprint the marker
@@ -62,6 +63,48 @@ export function isAnchorableNode(nodeType: NodeType): boolean {
  */
 export function isAnchorableAtom(nodeType: NodeType): boolean {
   return isAnchorableNode(nodeType) && nodeType.isAtom;
+}
+
+// ---------------------------------------------------------------------------
+// Marginalia host-pod contract (single source of truth)
+// ---------------------------------------------------------------------------
+
+/**
+ * The DOM attribute marking the white pod (`position: relative`) that both the
+ * measurement registry and the renderer key off. The registry measures every
+ * block's host-relative `top`/`domTop` against this pod's rect
+ * (`useMarginaliaRegistry`), and the renderer `createPortal`s the markers into
+ * it (`Marginalia`). Those two must resolve the SAME element by construction,
+ * so the attribute name, the selector, and the resolution live here once —
+ * never re-derived at a call site. The producer is the pod's JSX attribute
+ * (`EditorPane`'s `editor-pane-pod`).
+ */
+export const MARGINALIA_HOST_ATTR = "data-marginalia-host";
+
+/** The presence selector for {@link MARGINALIA_HOST_ATTR}. */
+export const MARGINALIA_HOST_SELECTOR = `[${MARGINALIA_HOST_ATTR}]`;
+
+/**
+ * Resolve the marginalia host pod for an editor: the nearest
+ * `[data-marginalia-host]` ancestor of the editor's ProseMirror DOM, or `null`
+ * (no editor, no view yet, or a detached/reparented view). This is the ONE
+ * resolver both readers call — the registry to fix its measurement origin and
+ * the renderer to fix its portal target — so their equality is structural, not
+ * a hand-mirrored coincidence across two module-local closures.
+ */
+export function resolveMarginaliaHost(
+  editor: Editor | null | undefined,
+): HTMLElement | null {
+  if (!editor) return null;
+  try {
+    return (
+      (editor.view?.dom?.closest(
+        MARGINALIA_HOST_SELECTOR,
+      ) as HTMLElement | null) ?? null
+    );
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
