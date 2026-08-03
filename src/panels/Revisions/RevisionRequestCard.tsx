@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { bodyVariantForCardKind } from "@/cards/predicates";
+import { bodyVariantForCardKind, cardKindsForPanel } from "@/cards/predicates";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { RevisionRequestCard as RevisionRequestCardData } from "@/lib/types";
 import {
@@ -42,7 +42,7 @@ export function RevisionRequestCard({
   selected: boolean;
   onUpdateContent: (id: string, content: JSONContent) => void;
   onSetAiRequest: (id: string, value: boolean) => void;
-  onConvert: (id: string, toKind: "comment" | "suggestion") => void;
+  onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
@@ -81,8 +81,6 @@ export function RevisionRequestCard({
       (makeCompressedSummary(card.content, compressedLines) || ""))
     : undefined;
 
-  void isOrphaned;
-
   const handleChange = useCallback(
     (json: JSONContent) => {
       onUpdateContent(card.id, normalizeRichContent(json));
@@ -101,10 +99,14 @@ export function RevisionRequestCard({
       id={card.id}
       cardKind="revision-comment"
       kind="revision-comment"
-      kindOptions={["revision-comment", "revision-suggestion"]}
-      onKindChange={(k) => {
-        if (k !== "revision-comment") onConvert(card.id, "suggestion");
-      }}
+      kindOptions={onConvert ? cardKindsForPanel("revisions") : undefined}
+      onKindChange={
+        onConvert
+          ? (k) => {
+              if (k !== "revision-comment") onConvert(card.id, "suggestion");
+            }
+          : undefined
+      }
       selected={isSelected}
       theme={theme}
       hideToolbar
