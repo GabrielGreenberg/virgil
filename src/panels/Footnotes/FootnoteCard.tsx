@@ -13,6 +13,7 @@ import {
   UNANCHORED_CARD_CLASS,
   unanchoredCardTitle,
 } from "@/components/panel-primitives";
+import { bodyVariantForCardKind } from "@/cards/predicates";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -155,7 +156,7 @@ export function FootnoteCard({
         ) : undefined
       }
       value={fn.content}
-      variant="footnote"
+      variant={bodyVariantForCardKind("footnote")}
       panelKey="footnote"
       placeholder="Text here."
       onChange={handleEdit}
@@ -246,7 +247,7 @@ export function OrphanedFootnoteCard({
       onClick={() => ac.onBodyActivate({ onSelect })}
       onDelete={onDelete}
       value={orphan.content}
-      variant="footnote"
+      variant={bodyVariantForCardKind("footnote")}
       panelKey="footnote"
       placeholder="Text here."
       onChange={handleEdit}
@@ -339,7 +340,7 @@ export function UnanchoredFootnoteCard({
       onClick={() => ac.onBodyActivate({ onSelect })}
       onDelete={onDelete}
       value={content}
-      variant="footnote"
+      variant={bodyVariantForCardKind("footnote")}
       panelKey="footnote"
       placeholder="Text here."
       onChange={handleEdit}
