@@ -56,8 +56,15 @@ class ResizeObserverStub {
 import { render, cleanup } from "@testing-library/react";
 import { NoteCard } from "@/panels/Notes/NoteCard";
 import { HighlightCard } from "@/panels/Notes/HighlightCard";
+import { RevisionRequestCard } from "@/panels/Revisions/RevisionRequestCard";
+import { RevisionSuggestionCard } from "@/panels/Revisions/RevisionSuggestionCard";
 import { cardKindsForPanel } from "@/cards/predicates";
-import type { UserNote, HighlightCard as HighlightCardData } from "@/lib/types";
+import type {
+  UserNote,
+  HighlightCard as HighlightCardData,
+  RevisionRequestCard as RevisionRequestCardData,
+  RevisionSuggestionCard as RevisionSuggestionCardData,
+} from "@/lib/types";
 import type { Link } from "@/links/_shared/types";
 
 afterEach(cleanup);
@@ -191,9 +198,105 @@ describe("HighlightCard morph gate (ungated sibling)", () => {
   });
 });
 
+// Task 288: the two Revisions cards used to hardcode the morph literal
+// `["revision-comment", "revision-suggestion"]` and treat `onConvert` as
+// required (always rendering the chevron). They now derive from
+// `cardKindsForPanel("revisions")` and gate the chevron on `onConvert`,
+// signature-identical to their Cutter/Reports twins. Pin the render sites so
+// the ungated-chevron and the SSOT option set can't silently drift back.
+describe("Revisions cards morph gate (task 288 call sites)", () => {
+  function requestCard(): RevisionRequestCardData {
+    return {
+      kind: "comment",
+      id: "rc1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      text: "",
+      content: { type: "doc", content: [] },
+      aiRequest: false,
+      links: [],
+    };
+  }
+
+  function suggestionCard(): RevisionSuggestionCardData {
+    return {
+      kind: "suggestion",
+      id: "rs1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      author: "ai",
+      original_text: "The original sentence.",
+      suggested_text: "The revised sentence.",
+      explanation: "",
+      user_text: "",
+      instructions: "",
+      status: "pending",
+      links: [],
+    };
+  }
+
+  it("RevisionRequestCard: offers the kind-chevron when onConvert is wired", () => {
+    const { container } = render(
+      <RevisionRequestCard
+        card={requestCard()}
+        selected={false}
+        onUpdateContent={noop}
+        onSetAiRequest={noop}
+        onConvert={noop}
+        onDelete={noop}
+        onSelect={noop}
+      />,
+    );
+    expect(container.querySelector(CHEVRON)).not.toBeNull();
+  });
+
+  it("RevisionRequestCard: no onConvert wired → chevron GATED OFF", () => {
+    const { container } = render(
+      <RevisionRequestCard
+        card={requestCard()}
+        selected={false}
+        onUpdateContent={noop}
+        onSetAiRequest={noop}
+        onDelete={noop}
+        onSelect={noop}
+      />,
+    );
+    expect(container.querySelector(CHEVRON)).toBeNull();
+  });
+
+  it("RevisionSuggestionCard: offers the kind-chevron when onConvert is wired", () => {
+    const { container } = render(
+      <RevisionSuggestionCard
+        card={suggestionCard()}
+        selected={false}
+        onUpdateField={noop}
+        onAccept={noop}
+        onReject={noop}
+        onConvert={noop}
+        onDelete={noop}
+        onSelect={noop}
+      />,
+    );
+    expect(container.querySelector(CHEVRON)).not.toBeNull();
+  });
+
+  it("RevisionSuggestionCard: no onConvert wired → chevron GATED OFF", () => {
+    const { container } = render(
+      <RevisionSuggestionCard
+        card={suggestionCard()}
+        selected={false}
+        onUpdateField={noop}
+        onAccept={noop}
+        onReject={noop}
+        onDelete={noop}
+        onSelect={noop}
+      />,
+    );
+    expect(container.querySelector(CHEVRON)).toBeNull();
+  });
+});
+
 describe("the chevron option sets are the registry panel buckets (frozen)", () => {
-  // Every call site passes `cardKindsForPanel(<panel>)` (or the revision pair
-  // literal, which must stay equal to its bucket). Freeze the buckets so a
+  // Every call site passes `cardKindsForPanel(<panel>)` — the Revisions cards
+  // too, since task 288 retired their hand-kept literal. Freeze the buckets so a
   // registry `panel:` edit that silently changes a dropdown trips here.
   it("notes / cutter / revisions / reports buckets", () => {
     expect(cardKindsForPanel("notes")).toEqual(["note", "highlight"]);

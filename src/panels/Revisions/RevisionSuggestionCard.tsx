@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { cardKindsForPanel } from "@/cards/predicates";
 import type { RevisionSuggestionCard as RevisionSuggestionCardData } from "@/lib/types";
 import {
   Button,
@@ -77,7 +78,7 @@ export function RevisionSuggestionCard({
   onApply?: (id: string) => void;
   onKeep?: (id: string) => void;
   onRevert?: (id: string) => void;
-  onConvert: (id: string, toKind: "comment" | "suggestion") => void;
+  onConvert?: (id: string, toKind: "comment" | "suggestion") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
@@ -165,10 +166,14 @@ export function RevisionSuggestionCard({
       onKeyDown={handleDeleteKey}
       className="focus:outline-none mb-2"
       kind="revision-suggestion"
-      kindOptions={["revision-comment", "revision-suggestion"]}
-      onKindChange={(k) => {
-        if (k !== "revision-suggestion") onConvert(card.id, "comment");
-      }}
+      kindOptions={onConvert ? cardKindsForPanel("revisions") : undefined}
+      onKindChange={
+        onConvert
+          ? (k) => {
+              if (k !== "revision-suggestion") onConvert(card.id, "comment");
+            }
+          : undefined
+      }
       canJump={isAnchored && !!onJump}
       onJump={(e) => {
         if (onJump && isAnchored)
