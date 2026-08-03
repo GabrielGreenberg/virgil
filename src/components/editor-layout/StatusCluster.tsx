@@ -157,7 +157,15 @@ function StatusClusterImpl(props: StatusClusterProps) {
   );
 
   return (
-    <div className="shrink-0 flex items-center px-2">
+    <div
+      // self-end mb-[3px]: bottom-anchor this 24px-tall icon row to the bar's
+      // seam and lift it 3px so its optical center lands at seam−15 — the same
+      // anchor the tab titles use (task 094), so titles + icons share one
+      // baseline in BOTH the 32px base bar and the taller WCO-folded bar. The
+      // inner items-center keeps the buttons centered within this 24px row
+      // (task 289).
+      className="shrink-0 flex items-center self-end mb-[3px] px-2"
+    >
       {/* Service-worker update banner. Visible whenever a new SW has
           installed and is waiting. Sits before the topbarRightCollapsed gate
           so an update prompt isn't hidden by the user's collapsed-right

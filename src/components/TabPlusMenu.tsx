@@ -250,7 +250,15 @@ export function TabPlusMenu({
   );
 
   return (
-    <div ref={setWrapEl} className="self-center inline-flex">
+    <div
+      ref={setWrapEl}
+      // self-end mb-[3px]: seam-anchor the "+" to the bar's bottom edge (was
+      // self-center, which floated it UP to seam−H/2 as the WCO bar grew taller,
+      // above the seam-anchored tab titles). The 24px topbarbtn + mb-[3px] lands
+      // the icon's optical center at seam−15, matching the tab titles (task 094)
+      // and the StatusCluster icons — one shared bar baseline (task 289).
+      className="self-end mb-[3px] inline-flex"
+    >
       <button
         ref={btnRef}
         type="button"

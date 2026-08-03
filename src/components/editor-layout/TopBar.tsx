@@ -40,7 +40,17 @@ function TopBarImpl({ zenModeOn, tabStrip, statusCluster }: TopBarProps) {
       // integration; the live box can be taller under WCO.
       data-prefs="topbarBackground,topbarBackgroundBottom,virgilBarText"
       data-bar-h="32"
-      className={`virgil-bar flex items-center sticky top-0 z-30 ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
+      // items-END, not items-center: the whole bar row shares ONE seam (bottom)
+      // anchor so the tabs, the "+", and the StatusCluster icons all track the
+      // bar's bottom edge at ANY bar height. Under WCO the `.virgil-bar` grows
+      // (min-height only, no vertical padding) and `items-center` would push
+      // every center-anchored child UP by H/2 as the bar got taller, dropping
+      // them ABOVE the seam-anchored tab titles (task 094 seam-anchored only the
+      // titles). With items-end every group bottom-anchors; the 24px-tall
+      // content groups add `mb-[3px]` (StatusCluster, the "+") to land their
+      // optical center at seam−15, matching the tab titles' 094 anchor. TabStrip
+      // is `self-stretch` so it fills H and keeps its tabs at the seam (task 289).
+      className={`virgil-bar flex items-end sticky top-0 z-30 ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
       style={{
         color: "var(--virgil-bar-text)",
         background: zenModeOn
