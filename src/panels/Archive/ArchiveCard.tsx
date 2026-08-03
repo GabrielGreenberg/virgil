@@ -6,6 +6,7 @@ import {
   EditableCard,
   makeCompressedSummary,
 } from "@/components/panel-primitives";
+import { bodyVariantForCardKind } from "@/cards/predicates";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -89,7 +90,7 @@ export function ArchiveCard({
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       onDelete={() => onDelete(snippet.id)}
       value={snippet.content}
-      variant="footnote"
+      variant={bodyVariantForCardKind("archive")}
       panelKey="archive"
       placeholder="Text here."
       onChange={handleEditContent}
