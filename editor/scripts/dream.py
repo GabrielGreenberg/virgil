@@ -136,6 +136,42 @@ def _dream_sha() -> str:
         return "unknown"
 
 
+def _detect_skill_drift() -> list[str]:
+    """Names of editor skills whose SSOT (`editor/skills/<name>.md`) differs from
+    the *served* built artifact (`.claude/commands/editor/<name>.md`) — i.e. a
+    landed skill edit not yet shipped by `npm run build:skill-bundles`.
+
+    This is the §1 preflight the dream markdown describes, hoisted OUT of the
+    distributed prompt into `select` (which always runs from source, never the
+    bundle) so it is immune to the very drift it detects: a dream served the
+    stale prompt still sees `drift` in this output because `select` computed it
+    from disk, not from the served text. Best-effort and never fatal — an
+    unresolvable source repo or a checkout without a built `.claude/commands/`
+    (e.g. a synced paper copy) yields `[]`, since drift is only meaningful in a
+    repo that carries both halves."""
+    repo = source_repo_root()
+    if repo is None:
+        return []
+    skills_dir = repo / "editor" / "skills"
+    served_dir = repo / ".claude" / "commands" / "editor"
+    if not skills_dir.is_dir() or not served_dir.is_dir():
+        return []
+    drifted: list[str] = []
+    try:
+        for ssot in sorted(skills_dir.glob("*.md")):
+            served = served_dir / ssot.name
+            if not served.is_file():
+                continue  # not-yet-built new skill isn't "drift" against a peer
+            try:
+                if ssot.read_text() != served.read_text():
+                    drifted.append(ssot.name)
+            except Exception:
+                continue
+    except Exception:
+        return drifted
+    return drifted
+
+
 # ---------------------------------------------------------------------------
 # Memo ordering + the since-last-dream marker
 # ---------------------------------------------------------------------------
@@ -288,6 +324,10 @@ def cmd_select(_argv: list[str]) -> int:
     self_referential_only = bool(recs) and not non_dream
     out = {
         "devMode": True,
+        # §1 preflight, computed from source so it survives a stale served prompt:
+        # SSOT skills that differ from the built .claude/commands artifact (a
+        # landed edit not yet rebuilt). Non-empty => the night's top finding.
+        "drift": _detect_skill_drift(),
         "selfReferentialOnly": self_referential_only,
         "nonDreamMemoCount": len(non_dream),
         # Canonical UTC date — the branch name (step 4) keys off THIS, never a
