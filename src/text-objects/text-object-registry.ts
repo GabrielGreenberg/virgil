@@ -218,6 +218,26 @@ function descriptorForContainer(
   };
 }
 
+/** Build a descriptor for an "atom block" kind (displayMath, texBlock,
+ *  graphicsBlock, figureBlock). Atom blocks ALWAYS warn — there's no
+ *  meaningful empty state to preview, so unlike `descriptorForSimpleBlock`
+ *  this never returns null and needs no `doc`/`ctx` walk. The confirm
+ *  button names the kind (`${label} ${kindLabel}`), matching the file-wide
+ *  convention (paragraph/list/example/heading/passage all do the same) so
+ *  the dialog title and its button agree. */
+function descriptorForAtomBlock(
+  kindLabel: string,
+  action: "archive" | "delete",
+  opts: { message?: string } = {},
+): ConfirmDescriptor {
+  const { verb, label } = actionVerb(action);
+  return {
+    title: `${verb} this ${kindLabel}?`,
+    message: opts.message ?? `${verb} this ${kindLabel}.`,
+    confirmLabel: `${label} ${kindLabel}`,
+  };
+}
+
 /** Heading × Delete/Archive: wide-scope section summary. Mirrors the
  *  pre-existing `confirmHeadingLifecycle` for these two actions; the
  *  Duplicate gate still uses that helper directly since this slot only
@@ -538,14 +558,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // Atom blocks: always warn (can't preview a meaningful "empty"
     // state for math/figure/etc.). The hasAnchorsOrAtoms guard is
     // irrelevant — the block itself is what's at stake.
-    confirmDestructive: (_doc, _uuid, action) => {
-      const { verb, label } = actionVerb(action);
-      return {
-        title: `${verb} this math block?`,
-        message: `${verb} this math block.`,
-        confirmLabel: `${label} block`,
-      };
-    },
+    confirmDestructive: (_doc, _uuid, action) =>
+      descriptorForAtomBlock("math block", action),
   },
   titleField: {
     label: "Title field",
@@ -622,14 +636,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // command-form; the sentinel pair is handled directly by the
     // parser/serializer for texBlock.
     dropAdapter: topLevelDropAdapter,
-    confirmDestructive: (_doc, _uuid, action) => {
-      const { verb, label } = actionVerb(action);
-      return {
-        title: `${verb} this TeX block?`,
-        message: `${verb} this raw LaTeX block.`,
-        confirmLabel: `${label} block`,
-      };
-    },
+    confirmDestructive: (_doc, _uuid, action) =>
+      descriptorForAtomBlock("TeX block", action, {
+        message: `${actionVerb(action).verb} this raw LaTeX block.`,
+      }),
   },
   figureBlock: {
     label: "Figure",
@@ -652,14 +662,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // margin. No `computeLabel`/`liftSourceRect` — static `label: "Figure"`.
     actions: NON_PROSE_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
-    confirmDestructive: (_doc, _uuid, action) => {
-      const { verb, label } = actionVerb(action);
-      return {
-        title: `${verb} this figure?`,
-        message: `${verb} this figure and its caption.`,
-        confirmLabel: `${label} figure`,
-      };
-    },
+    confirmDestructive: (_doc, _uuid, action) =>
+      descriptorForAtomBlock("figure", action, {
+        message: `${actionVerb(action).verb} this figure and its caption.`,
+      }),
   },
   graphicsBlock: {
     label: "Graphic",
@@ -679,14 +685,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // top-level placement, unchanged). figureBlock stays on topLevelDropAdapter.
     // Shares the unified blockIntoExpex adapter with paragraph + displayMath.
     dropAdapter: blockIntoExpexDropAdapter,
-    confirmDestructive: (_doc, _uuid, action) => {
-      const { verb, label } = actionVerb(action);
-      return {
-        title: `${verb} this graphic?`,
-        message: `${verb} this graphic.`,
-        confirmLabel: `${label} graphic`,
-      };
-    },
+    confirmDestructive: (_doc, _uuid, action) =>
+      descriptorForAtomBlock("graphic", action),
   },
   exampleBlock: {
     label: "Example",
