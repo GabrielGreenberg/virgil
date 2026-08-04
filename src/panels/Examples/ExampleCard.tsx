@@ -621,7 +621,7 @@ export function ExampleCard({
             style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
           />
           <div
-            className="px-3 py-2 text-[11px] leading-snug text-ink-body bg-amber-50/40"
+            className="px-3 py-2 text-[11px] leading-snug text-ink-body bg-[var(--amber-50)]/40"
             onClick={(e) => e.stopPropagation()}
           >
             <p className="mb-1">
