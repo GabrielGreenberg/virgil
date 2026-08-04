@@ -817,6 +817,49 @@ export function ActionsMenuPanel({
 }
 
 /**
+ * Shared shell for the lightning grid's two `<button>`-based cells (`FmtBtn`
+ * and `ColorGridCell`). It owns the axes on which those two primitives must
+ * NOT drift: the fixed row height, the borderless surface, and — the axis that
+ * DID drift (task 294) — the **disabled affordance** (`not-allowed` cursor +
+ * 0.4 opacity). Both cells hand-rolled these inline and diverged: the color
+ * cell's disabled cursor was a `pointer ? "pointer" : "pointer"` tautology
+ * while `FmtBtn` correctly painted `not-allowed`. Routing both through one
+ * helper makes that class of drift unrepresentable.
+ *
+ * `background` stays caller-owned — `FmtBtn` paints a third format-applied
+ * state (`active`) the color cell lacks, so the cells compute their own
+ * background and pass it in. `BlockTypeGridCell` is deliberately NOT a consumer:
+ * it's a `<div>`-wrapped nested-dropdown trigger with no `disabled` prop (a
+ * structurally different shape), so it stays bespoke.
+ */
+function gridCellShellStyle({
+  disabled,
+  background,
+}: {
+  disabled?: boolean;
+  background: string;
+}): React.CSSProperties {
+  return {
+    height: FORMATTING_ROW_H,
+    background,
+    border: "none",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.4 : 1,
+  };
+}
+
+/**
+ * Shared className for the two button grid cells: the flex/rounded/transition
+ * base, with `hover-on-light` gated off when disabled. `extra` appends
+ * cell-specific classes (the color cell's `flex-col`).
+ */
+function gridCellClassName(disabled?: boolean, extra?: string): string {
+  return `flex items-center justify-center rounded transition-colors ${
+    disabled ? "" : "hover-on-light"
+  }${extra ? ` ${extra}` : ""}`;
+}
+
+/**
  * One bespoke format-grid cell, registered into the lightning menu's grid
  * region. Spreads `useMenuItem` getters onto the existing `<button>` so the
  * cell GAINS arrow nav + the roving `data-active` highlight without a markup
@@ -860,22 +903,21 @@ function FmtBtn({
       type="button"
       data-hint={title}
       disabled={disabled}
-      className={`flex items-center justify-center rounded transition-colors ${disabled ? "" : "hover-on-light"}`}
+      className={gridCellClassName(disabled)}
       style={{
-        height: FORMATTING_ROW_H,
-        // The roving (keyboard-cursor) cell paints the blue-tinted selection
-        // highlight and WINS over the format-is-applied state, so the arrow
-        // cursor stays unambiguous even when it lands on an applied format;
-        // an applied-but-not-roving cell keeps the stronger muted surface.
-        background: roving && !disabled
-          ? "var(--menu-roving-bg)"
-          : active
-            ? "var(--surface-muted-strong, rgba(0,0,0,0.08))"
-            : "transparent",
+        ...gridCellShellStyle({
+          disabled,
+          // The roving (keyboard-cursor) cell paints the blue-tinted selection
+          // highlight and WINS over the format-is-applied state, so the arrow
+          // cursor stays unambiguous even when it lands on an applied format;
+          // an applied-but-not-roving cell keeps the stronger muted surface.
+          background: roving && !disabled
+            ? "var(--menu-roving-bg)"
+            : active
+              ? "var(--surface-muted-strong, rgba(0,0,0,0.08))"
+              : "transparent",
+        }),
         color: active ? "var(--ink-strong)" : "var(--ink-muted)",
-        border: "none",
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.4 : 1,
       }}
       aria-label={title}
     >
@@ -932,17 +974,14 @@ function ColorGridCell({
           ? itemProps.onClick
           : (e) => run(e.currentTarget.getBoundingClientRect())
       }
-      className={`flex flex-col items-center justify-center rounded transition-colors ${disabled ? "" : "hover-on-light"}`}
+      className={gridCellClassName(disabled, "flex-col")}
       style={{
-        height: FORMATTING_ROW_H,
-        background:
-          roving && !disabled
-            ? "var(--menu-roving-bg)"
-            : "transparent",
+        ...gridCellShellStyle({
+          disabled,
+          background:
+            roving && !disabled ? "var(--menu-roving-bg)" : "transparent",
+        }),
         color: "var(--ink-strong)",
-        border: "none",
-        cursor: disabled ? "pointer" : "pointer",
-        opacity: disabled ? 0.4 : 1,
         padding: 0,
         lineHeight: 1,
       }}
