@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
 import { generateShortId } from "@/lib/uuid";
+import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
 // CHIP 4a-ii: the PM→React bridge the typed-LaTeX input rules use to register
 // the citation CARD (the atom is still inserted synchronously below). Replaces
 // the `virgil-citation-create` CustomEvent. The FULL `\cite{key}` branch
@@ -142,9 +143,11 @@ export const Citation = Node.create<CitationOptions>({
           handleTextInput(view, from, to, text) {
             // CHIP 7b: uniform collab read-only gate. PM already suppresses
             // `handleTextInput` on a non-editable view, but guard explicitly so
-            // the typed-`\cite{}` surface refuses uniformly with the other three
-            // (no synchronous atom insert when the partner holds the pen).
-            if (!view.editable) return false;
+            // the typed-`\cite{}` surface refuses uniformly with the other four
+            // typed-LaTeX surfaces (math ×2, footnote, `% ` comment) via the
+            // shared SSOT — no synchronous atom insert when the partner holds
+            // the pen.
+            if (refuseTypedInsertWhenReadOnly(view)) return false;
             // Only check on characters that could complete a citation pattern
             if (text !== "}" && text !== " " && text !== "\n") return false;
 
