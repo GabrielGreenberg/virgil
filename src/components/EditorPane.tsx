@@ -2182,7 +2182,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Per-doc PoppedCardsContext value. Built from the `viewPrefs` prop so
   // both the main app (persisted `useViewPrefs`) and the Library Reader
   // (`useReaderViewPrefs`, the same engine in ephemeral mode) supply the
-  // same shape. Consumers (panel cards, SelectionDragHandle,
+  // same shape. Consumers (panel cards, TextObjectGrabHandle,
   // paragraph/heading/example floats) read this via `usePoppedCards()` and
   // tolerate a `null` value if no `viewPrefs` is supplied.
   const poppedCardsValue = useMemo<PoppedCardsValue | null>(() => {

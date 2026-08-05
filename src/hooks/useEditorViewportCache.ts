@@ -14,7 +14,7 @@ import {
  * moves or content edits.
  *
  * Selection-tracking placement components (SelectionActionsMenu,
- * SelectionDragHandle) previously re-read these on every RAF, paying for
+ * TextObjectGrabHandle) previously re-read these on every RAF, paying for
  * 3-4 forced layouts per keystroke: editor `getBoundingClientRect` +
  * `getComputedStyle` for padding + `findScrollParent` (which walks DOM
  * ancestors with `getComputedStyle` each) + scroll parent

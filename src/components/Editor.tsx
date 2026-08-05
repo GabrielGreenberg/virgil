@@ -432,7 +432,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // the DOM stays `contenteditable="true"` and PM continues to sync
   // native drag-to-select to `view.state.selection`. Read-only is
   // enforced separately by rejecting any transaction that touches the
-  // doc. This is what unblocks the SelectionDragHandle in the Library
+  // doc. This is what unblocks the TextObjectGrabHandle in the Library
   // Reader — `contenteditable="false"` interferes with how some browsers
   // route user-initiated selection events to PM, which made the handle
   // never appear even though the wiring was correct end-to-end.
@@ -1791,7 +1791,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     applyHighlight();
   }, [highlightText, highlightRange, activeAnchorId, activeAnchorColor, applyHighlight]);
 
-  // Keep the stable editor ref in sync for SelectionDragHandle and
+  // Keep the stable editor ref in sync for TextObjectGrabHandle and
   // anything else that needs a non-rerendering handle.
   useEffect(() => {
     editorInstanceRef.current = editor;

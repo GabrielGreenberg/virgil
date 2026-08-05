@@ -19,7 +19,7 @@
  * / `update` / `focus` / `blur` plus window `scroll` / `resize`.
  *
  * Counterpart triggers:
- *  - {@link SelectionDragHandle} (left side) for the drag-to-lift gesture.
+ *  - {@link TextObjectGrabHandle} (left side) for the drag-to-lift gesture.
  */
 
 import { useEffect, useRef, useState, type RefObject } from "react";
