@@ -100,6 +100,45 @@ function runViewOnlyAction(id: ActionId, view: EditorView): void {
   void spec.run(ctx);
 }
 
+/**
+ * Run a BRIDGE-dispatched registry action from a slash command (the sibling of
+ * `runViewOnlyAction` for the actions that need React-land wiring — a card /
+ * atom-create popover / panel soft-route the synthesized view-only stub can't
+ * supply). Used by `\ref`, `\ex`, the five structural wrappers, and (for the
+ * trailing dispatch) `\cite`.
+ *
+ * It owns the two steps every bridge-dispatched slash command shares, ONCE:
+ *
+ *   1. CHIP 7b — the UNIFORM collab read-only gate. `view.editable` is the
+ *      in-editor mirror of `collab.canEditMainText` (EditorLayout flips it via
+ *      `setEditable` when the partner holds the pen). When read-only the command
+ *      no-ops. The bridge's own `runAction` ALSO no-ops on `!isEditable`
+ *      (`EditorPane.tsx`), so this is an EXPLICIT, uniform early refusal — not
+ *      the only guard — mirroring `runViewOnlyAction`'s gate for the pure-PM
+ *      commands and the typed surface's `refuseTypedInsertWhenReadOnly`. No
+ *      over-gating: a non-collab editor is always editable.
+ *   2. the bridge dispatch itself — `getEditorActionsHandleFor(view)?.runAction`,
+ *      routed via the EXACT live `view` so it reaches THIS pane's handle under
+ *      multi-doc keep-alive, not a hidden keep-alive pane's.
+ *
+ * This folds the seven byte-near-identical `if (!view.editable) return; getEditor
+ * ActionsHandleFor(view)?.runAction(<id>, { surface: "slash" })` closures onto
+ * one helper, so the slash surface's collab gate lives in exactly two places
+ * (`runViewOnlyAction` + here), and `\ref`/`\ex` — previously missing the gate
+ * entirely — now refuse uniformly with the rest.
+ */
+function runBridgeAction(
+  id: ActionId,
+  view: EditorView,
+  payload?: Record<string, unknown>,
+): void {
+  if (!view.editable) return;
+  getEditorActionsHandleFor(view)?.runAction(id, {
+    surface: "slash",
+    ...(payload ? { payload } : {}),
+  });
+}
+
 export const VIRGIL_COMMANDS: VirgilCommand[] = [
   // CHIP 7a: the 3 title-field commands route through the SINGLE canonical
   // `titleFieldRun` (idempotent find-existing-or-insert; canonical doc-top order;
@@ -131,10 +170,12 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // the user picks/types a label. Opening the popover is a React-land
       // side-effect (it sets EditorLayout's `atomCreateRequest`), so `\ref` rides
       // the bridge (like `\cite`/`\footnote`) — `refRun` receives
-      // `ctx.openAtomCreate` from EditorPane's bridge handle.
-      // Routed via the EXACT live `view` (multi-doc keep-alive) so it reaches
+      // `ctx.openAtomCreate` from EditorPane's bridge handle. Via `runBridgeAction`
+      // so `\ref` carries the SAME CHIP 7b collab read-only gate as `\cite` /
+      // `\footnote` / the wrappers (previously absent here — task 297), and is
+      // routed via the EXACT live `view` (multi-doc keep-alive) so it reaches
       // THIS pane's handle, not a hidden keep-alive pane's.
-      getEditorActionsHandleFor(view)?.runAction("ref", { surface: "slash" });
+      runBridgeAction("ref", view);
     },
   },
   {
@@ -149,21 +190,22 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // (surface omni's Examples row → scroll to the new block, backlog #2 —
       // never force-opens), which is a React-land side-effect. So `\ex` rides the
       // bridge (like `\cite`/`\footnote`) rather than the view-only path, so
-      // `exampleRun` receives `ctx.panelRouting.selectExample`.
-      getEditorActionsHandleFor(view)?.runAction("example", { surface: "slash" });
+      // `exampleRun` receives `ctx.panelRouting.selectExample`. Via `runBridgeAction`
+      // so `\ex` carries the SAME CHIP 7b collab read-only gate as the rest
+      // (previously absent here — task 297).
+      runBridgeAction("example", view);
     },
   },
   {
     name: "cite",
     action: (view) => {
-      // CHIP 7b: uniform collab read-only gate — refuse when the partner holds
-      // the pen (the bridge's `runAction` ALSO no-ops on read-only, but bail
-      // here too so we never even open the popover). `view.editable` mirrors
-      // `collab.canEditMainText`.
-      if (!view.editable) return;
       // Task 061: refuse when the caret's containing block greys `citation` out
       // (a `titleField` / non-prose block). Mirrors the bridge `applies()` gate;
-      // bailing here avoids even opening the create popover.
+      // bailing here avoids even opening the create popover. This bespoke
+      // pre-gate is a pure read (no doc mutation), so — unlike `\footnote`'s
+      // synchronous atom insert — it needn't precede the collab gate: the CHIP 7b
+      // `view.editable` refusal lives in `runBridgeAction` (which bails before any
+      // dispatch, so the popover never opens on a read-only view either way).
       if (!blockKindAllowsAction(view.state.selection.$from.parent.type.name, "citation")) return;
       // Citation creation popover (deferred-commit): `/cite` no longer inserts a
       // blank `\cite{}` atom + pristine card up front. It routes through the
@@ -171,14 +213,19 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // the create popover at the caret (`openAtomCreate("citation")`). The user
       // searches citekeys; the atom + card materialize only on commit (OK /
       // click-away with ≥1 key), via a second `runAction` carrying the payload.
-      getEditorActionsHandleFor(view)?.runAction("citation", { surface: "slash" });
+      runBridgeAction("citation", view);
     },
   },
   {
     name: "footnote",
     action: (view) => {
-      // CHIP 7b: uniform collab read-only gate (same rationale as `\cite`) —
-      // refuse before the synchronous atom insert.
+      // CHIP 7b: collab read-only gate. Unlike the other bridge-dispatched
+      // commands, `\footnote` inserts its atom SYNCHRONOUSLY below (BEFORE the
+      // bridge dispatch), so this `view.editable` refusal MUST run here as a
+      // bespoke pre-gate — deferring to `runBridgeAction`'s gate alone would land
+      // an orphan atom on a read-only view. The trailing dispatch still routes
+      // through `runBridgeAction` (its gate re-checks harmlessly, already
+      // editable here), so the bridge-dispatch boilerplate isn't re-inlined.
       if (!view.editable) return;
       const { state } = view;
       // Task 061: refuse the synchronous footnote-atom insert when the caret's
@@ -213,10 +260,7 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       // the Footnotes panel). Replaces the retired `virgil-footnote-input`
       // event + its command-input.ts listener (and the dead
       // `virgil-footnote-created` it used to broadcast).
-      getEditorActionsHandleFor(view)?.runAction("footnote", {
-        surface: "slash",
-        payload: { footnoteId },
-      });
+      runBridgeAction("footnote", view, { footnoteId });
     },
   },
   // CHIP 5b: `\tex` routes through the SINGLE canonical `texRun` (seed `code`
@@ -236,21 +280,22 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   // `runViewOnlyAction`), the wrapper rows run `editor.chain().toggleBulletList()`
   // / `toggleOrderedList()` / `toggleBlockquote()` — which the view-only path's
   // SYNTHESIZED `{ view, state }` stub lacks (`.chain()` is undefined there). So
-  // they MUST route through the BRIDGE (`getEditorActionsHandleFor`), the same
-  // path as `\cite`/`\footnote`/`\ex` — the bridge builds the ctx from the LIVE
+  // they MUST route through the BRIDGE (`runBridgeAction`), the same path as
+  // `\cite`/`\footnote`/`\ref`/`\ex` — the bridge builds the ctx from the LIVE
   // TipTap editor (`innerRef.getEditor()`), which has `.chain()`. The EXACT
   // `view` reaches THIS pane's handle under multi-doc keep-alive.
   //
   // Data-loss is impossible on a non-listable block (titleField / heading /
   // atom): the registry rows grey via `wrapperApplies` AND no-op in `run()` via
   // `selectionIsListable` (action-registry.ts) — a `\enumerate` typed on a
-  // heading simply does nothing. The `if (!view.editable) return` gate mirrors
-  // `\cite`/`\footnote` — uniform collab read-only refusal.
-  { name: "list", action: (view) => { if (!view.editable) return; getEditorActionsHandleFor(view)?.runAction("bullet-list", { surface: "slash" }); } },
-  { name: "itemize", action: (view) => { if (!view.editable) return; getEditorActionsHandleFor(view)?.runAction("bullet-list", { surface: "slash" }); } },
-  { name: "enumerate", action: (view) => { if (!view.editable) return; getEditorActionsHandleFor(view)?.runAction("ordered-list", { surface: "slash" }); } },
-  { name: "quote", action: (view) => { if (!view.editable) return; getEditorActionsHandleFor(view)?.runAction("blockquote", { surface: "slash" }); } },
-  { name: "quotation", action: (view) => { if (!view.editable) return; getEditorActionsHandleFor(view)?.runAction("blockquote", { surface: "slash" }); } },
+  // heading simply does nothing. `runBridgeAction`'s `view.editable` gate is the
+  // uniform CHIP 7b collab read-only refusal — the SAME one `\cite`/`\footnote`/
+  // `\ref`/`\ex` now share (no longer re-inlined per row).
+  { name: "list", action: (view) => runBridgeAction("bullet-list", view) },
+  { name: "itemize", action: (view) => runBridgeAction("bullet-list", view) },
+  { name: "enumerate", action: (view) => runBridgeAction("ordered-list", view) },
+  { name: "quote", action: (view) => runBridgeAction("blockquote", view) },
+  { name: "quotation", action: (view) => runBridgeAction("blockquote", view) },
 ];
 
 /** Fast lookup by command name (without backslash). */
