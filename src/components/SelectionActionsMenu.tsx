@@ -475,7 +475,15 @@ export function SelectionActionsMenu({
       // selection before the click registers.
       onMouseDown={(e) => e.preventDefault()}
       onClick={openMenu}
-      className="flex items-center justify-center hover-on-light"
+      // Resting bg lives on the CLASS layer (`bg-[var(--pod-editor)]`), NOT
+      // inline: an inline `background` shorthand sets `background-color` and,
+      // as an inline declaration, beats any non-`!important` selector —
+      // including `.hover-on-light:hover` — so the hover tint would be dead.
+      // With the resting bg as a (0,1,0) utility class, `.hover-on-light:hover`
+      // (0,2,0, and unlayered vs. Tailwind's `@layer utilities`) wins and the
+      // one-step tint fires — matching the left-side TextObjectGrabHandle twin
+      // and every other `hover-on-light` control (task 299).
+      className="flex items-center justify-center hover-on-light bg-[var(--pod-editor)]"
       style={{
         position: "fixed",
         left: placement.left,
@@ -483,7 +491,6 @@ export function SelectionActionsMenu({
         width: BUTTON_SIZE,
         height: BUTTON_SIZE,
         zIndex: RESTING_MARGIN_TRIGGER_Z,
-        background: "var(--pod-editor)",
         border: "var(--pod-border)",
         boxShadow: "var(--pod-shadow)",
         borderRadius: "var(--pod-radius)",

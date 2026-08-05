@@ -207,6 +207,33 @@ describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () 
     ).toBeNull();
   });
 
+  // Task 299 — the resting ⚡ bolt's hover-on-light affordance must be LIVE.
+  // An inline `background` shorthand sets `background-color` and (as an inline
+  // decl) shadows `.hover-on-light:hover`, so the resting bg MUST live on the
+  // class layer for the hover tint to fire. We pin the source-shape contract
+  // (jsdom applies no stylesheet, so :hover computed styles aren't meaningful):
+  // the affordance class is present AND no inline background shadows it.
+  it("keeps the resting bolt's hover affordance live (no inline bg shadow)", () => {
+    const ref = createRef<Editor | null>();
+    ref.current = makeEditor();
+    const { baseElement } = render(<SelectionActionsMenu editorRef={ref} />);
+    const bolt = baseElement.querySelector(
+      'button[aria-label="Open actions menu"]',
+    ) as HTMLButtonElement | null;
+    expect(bolt).toBeTruthy();
+    // The hover affordance signal is present…
+    expect(bolt!.className).toContain("hover-on-light");
+    // …the resting bg lives on the class layer (so the class `:hover` can win)…
+    expect(bolt!.className).toContain("bg-[var(--pod-editor)]");
+    // …and NO inline background shadows the class-layer :hover tint.
+    expect(bolt!.style.background).toBe("");
+    expect(bolt!.style.backgroundColor).toBe("");
+    // The pod chrome the bolt is meant to keep stays inline & unchanged.
+    expect(bolt!.style.border).toBe("var(--pod-border)");
+    expect(bolt!.style.boxShadow).toBe("var(--pod-shadow)");
+    expect(bolt!.style.borderRadius).toBe("var(--pod-radius)");
+  });
+
   it("Cmd+/ with an off-screen caret calls scrollIntoView and opens on-screen", () => {
     const ref = createRef<Editor | null>();
     ref.current = makeEditor();
