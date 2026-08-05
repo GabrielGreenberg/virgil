@@ -3,6 +3,7 @@ import { NodeSelection, TextSelection, Plugin, PluginKey } from "@tiptap/pm/stat
 import type { NodeType, Schema } from "@tiptap/pm/model";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { readPendingDiff, resolveTouchedBlock } from "./doc-structure";
+import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
 
 // `latexComment` is a real editable BLOCK node with native inline (`text*`)
 // content — NOT an atom with its text stashed in an attr + a parallel
@@ -162,6 +163,9 @@ export const LatexComment = Node.create<LatexCommentOptions>({
         key: new PluginKey("latexCommentInput"),
         props: {
           handleTextInput(view, from, _to, text) {
+            // CHIP 7b: uniform collab read-only gate (SSOT shared with the other
+            // typed-LaTeX surfaces — cite/footnote/inline-math/display-math).
+            if (refuseTypedInsertWhenReadOnly(view)) return false;
             // Only trigger on "%" or " " after "%"
             if (text !== "%" && text !== " ") return false;
             const { state } = view;

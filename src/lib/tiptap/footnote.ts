@@ -20,6 +20,7 @@ import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-fl
 // registry's footnote row references, so the typed surface and the registry can
 // never recognize a different footnote vocabulary.
 import { FOOTNOTE_RE_FULL } from "@/lib/footnote-commands";
+import { refuseTypedInsertWhenReadOnly } from "@/lib/tiptap/typed-latex-read-only-gate";
 // CHIP 4b: the PM→React bridge the typed-LaTeX `\footnote{}` input rule uses to
 // register the footnote CARD (the atom is still inserted synchronously below).
 // Replaces the DEAD `virgil-footnote-created` CustomEvent (zero listeners) —
@@ -134,9 +135,10 @@ export const Footnote = Node.create<FootnoteOptions>({
           handleTextInput(view, from, _to, text) {
             // CHIP 7b: uniform collab read-only gate (same rationale as
             // citation.ts). PM suppresses input on a non-editable view; guard
-            // explicitly so typed-`\footnote{}` refuses uniformly when the
-            // partner holds the pen.
-            if (!view.editable) return false;
+            // explicitly so typed-`\footnote{}` refuses uniformly with the other
+            // typed-LaTeX surfaces via the shared SSOT when the partner holds
+            // the pen.
+            if (refuseTypedInsertWhenReadOnly(view)) return false;
             if (text !== "}") return false;
             const { state } = view;
             const $from = state.doc.resolve(from);
@@ -165,14 +167,8 @@ export const Footnote = Node.create<FootnoteOptions>({
             });
             const footnoteId = idGenerator(existing);
             const start = from + 1 - match[0].length;
-            const tr = state.tr.replaceWith(
-              start,
-              from + 1,
-              nodeType.create({ content, footnoteId, number: 0 })
-            );
-            // Insert the typed "}" into the document first so replaceWith range is valid
-            // Actually we already accounted for it — replaceWith from start to from+1 covers the "}" we're inserting
-            // But we need to handle this: from is pre-insert, so we replace start..from and consume the text
+            // `from` is the PRE-insert caret (the typed "}" is not yet in the
+            // doc), so replace `start..from` and let the atom consume the "}".
             const trFixed = state.tr.replaceWith(
               start,
               from,
