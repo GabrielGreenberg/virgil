@@ -124,6 +124,16 @@ function publishHandle(editor: Editor): void {
   setEditorActionsHandle(handle);
 }
 
+/** Publish a PURE-SPY bridge handle: `runAction` records the (id, seed) it was
+ *  called with and does nothing else. Lets a test assert whether a slash command
+ *  DISPATCHES to the bridge at all — the commands.ts-level early collab gate —
+ *  independent of what the registry `run()` would do (task 297). Returns the spy. */
+function publishSpyHandle(): ReturnType<typeof vi.fn> {
+  const runAction = vi.fn();
+  setEditorActionsHandle({ runAction } as unknown as EditorActionsHandle);
+  return runAction;
+}
+
 afterEach(() => {
   setEditorActionsHandle(null);
   document.body.innerHTML = "";
@@ -178,5 +188,50 @@ describe("list/quote slash commands (via the bridge)", () => {
     expect(hasNode(editor, "orderedList")).toBe(false);
     expect(hasNode(editor, "heading")).toBe(true); // heading identity intact
     expect(editor.state.doc.textContent).toContain("a heading");
+  });
+});
+
+// Task 297 — `\ref` and `\ex` were the only two side-effecting slash commands
+// missing the explicit CHIP 7b collab read-only gate; they now route through
+// `runBridgeAction` (the sibling of `runViewOnlyAction`), which refuses on a
+// non-editable view BEFORE dispatching to the bridge. These pin the now-uniform
+// bridge-path refusal so the gate can't silently re-drop. We assert the stronger
+// property — that `runAction` itself never fires on a read-only view — via a
+// pure-spy handle (chip8's ref read-only test only proves refRun's own downstream
+// gate, not the early commands.ts refusal this task added). Each refusal is paired
+// with a POSITIVE control so it isn't vacuous.
+describe("\\ref / \\ex uniform collab read-only gate (task 297)", () => {
+  it("editable view: \\ref DOES reach the bridge (positive control)", () => {
+    const editor = mountEditor("hello");
+    const runAction = publishSpyHandle();
+    COMMAND_MAP.get("ref")!.action(editor.view, "\\ref");
+    expect(runAction).toHaveBeenCalledTimes(1);
+    expect(runAction).toHaveBeenCalledWith("ref", { surface: "slash" });
+  });
+
+  it("editable view: \\ex DOES reach the bridge (positive control)", () => {
+    const editor = mountEditor("hello");
+    const runAction = publishSpyHandle();
+    COMMAND_MAP.get("ex")!.action(editor.view, "\\ex");
+    expect(runAction).toHaveBeenCalledTimes(1);
+    expect(runAction).toHaveBeenCalledWith("example", { surface: "slash" });
+  });
+
+  it("read-only view: \\ref does NOT reach the bridge (no runAction, no doc mutation)", () => {
+    const editor = mountEditor("hello", /* editable */ false);
+    const runAction = publishSpyHandle();
+    const before = editor.state.doc.toJSON();
+    COMMAND_MAP.get("ref")!.action(editor.view, "\\ref");
+    expect(runAction).not.toHaveBeenCalled();
+    expect(editor.state.doc.toJSON()).toEqual(before);
+  });
+
+  it("read-only view: \\ex does NOT reach the bridge (no runAction, no doc mutation)", () => {
+    const editor = mountEditor("hello", /* editable */ false);
+    const runAction = publishSpyHandle();
+    const before = editor.state.doc.toJSON();
+    COMMAND_MAP.get("ex")!.action(editor.view, "\\ex");
+    expect(runAction).not.toHaveBeenCalled();
+    expect(editor.state.doc.toJSON()).toEqual(before);
   });
 });
