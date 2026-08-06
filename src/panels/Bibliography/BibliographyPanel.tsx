@@ -9,6 +9,7 @@ import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
 import { serializeBibForExport } from "@/lib/bib-parser";
 import { mintBibUid } from "@/lib/bib-uid";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 import {
   useLibraryItems,
   useLibraryMasterBib,
@@ -51,18 +52,6 @@ function formatBibEntryForNote(entry: BibEntry): string {
   lines.push("}");
   return lines.join("\n");
 }
-
-/** Shared chrome for the panel's amber "attention" surfaces — a pending/warning
- *  wash with an amber-200 hairline. One SSOT so the three surfaces (conflict
- *  decision, request form, pending-requests card) read as one family and can't
- *  drift apart again (task 280: the request form had picked up a neutral
- *  `--border-light` seam and the three washes had drifted to /50, /40, /30).
- *  Holds the color family + padding only; each caller adds the border *shape*
- *  and layout it needs:
- *    · `border-b`          → panelExtras row (conflict decision / request form)
- *    · `border rounded-md` → standalone card (pending-requests item) */
-const AMBER_ATTENTION_STRIP =
-  "px-3 py-2 border-[var(--amber-200)] bg-[var(--amber-50)]/40";
 
 interface BibliographyPanelProps {
   citations: CitationRef[];
