@@ -11,6 +11,7 @@ import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
+import { cardTypeLabel } from "@/panels/panel-registry";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { ReportCard } from "./ReportCard";
@@ -73,8 +74,8 @@ export default function ReportsPanel({
 
   const onAddOptions = useMemo(
     () => [
-      { label: "Report Request", onClick: (rect?: DOMRect) => onAddReportRequest(rect) },
-      { label: "Report", onClick: (rect?: DOMRect) => onAddReport(rect) },
+      { label: cardTypeLabel("report-request"), onClick: (rect?: DOMRect) => onAddReportRequest(rect) },
+      { label: cardTypeLabel("report"), onClick: (rect?: DOMRect) => onAddReport(rect) },
     ],
     [onAddReport, onAddReportRequest],
   );
