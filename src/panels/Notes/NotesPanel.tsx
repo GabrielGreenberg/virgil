@@ -16,6 +16,7 @@ import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
+import { cardTypeLabel } from "@/panels/panel-registry";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { NoteCard } from "./NoteCard";
 import { HighlightCard } from "./HighlightCard";
@@ -88,9 +89,9 @@ export default function NotesPanel({
   // "+" dropdown: lets the user explicitly pick which kind to create.
   const onAddOptions = useMemo(
     () => [
-      { label: "Note", onClick: (rect?: DOMRect) => onAddNote(rect) },
+      { label: cardTypeLabel("note"), onClick: (rect?: DOMRect) => onAddNote(rect) },
       ...(onAddHighlight
-        ? [{ label: "Highlight", onClick: (rect?: DOMRect) => onAddHighlight(rect) }]
+        ? [{ label: cardTypeLabel("highlight"), onClick: (rect?: DOMRect) => onAddHighlight(rect) }]
         : []),
     ],
     [onAddNote, onAddHighlight],

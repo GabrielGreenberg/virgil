@@ -14,6 +14,7 @@ import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
+import { cardTypeLabel } from "@/panels/panel-registry";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { CutterCommentCard } from "./CutterCommentCard";
 import { CutterSuggestionCard } from "./CutterSuggestionCard";
@@ -92,8 +93,8 @@ export default function CutterPanel({
 
   const onAddOptions = useMemo(
     () => [
-      { label: "Request", onClick: (rect?: DOMRect) => onAddComment(rect) },
-      { label: "Suggestion", onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
+      { label: cardTypeLabel("cutter-comment"), onClick: (rect?: DOMRect) => onAddComment(rect) },
+      { label: cardTypeLabel("cutter-suggestion"), onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
     ],
     [onAddComment, onAddSuggestion],
   );
