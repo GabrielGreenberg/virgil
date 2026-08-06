@@ -318,7 +318,8 @@ import type {
 } from "@/hooks/useViewPrefs";
 import { bandSlotKey, dockedSideOf } from "@/hooks/useViewPrefs";
 import { useMarginEdit, MARGIN_AXIS } from "@/hooks/useMarginEdit";
-import { INACTIVE_FOCUS_STATE, type FocusState } from "@/hooks/useFocusMode";
+import { type FocusState } from "@/hooks/useFocusMode";
+import type { FocusBand } from "@/lib/focus-view";
 import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
 import type { PanelKind, CardKind } from "@/panels/_shared/types";
@@ -377,8 +378,13 @@ export interface EditorPaneViewPrefs {
   // ── Read state ──────────────────────────────────────────────────
   prefs: ViewPrefs;
   isResizingPanels: boolean;
-  /** From useFocusMode. Drives focus-aware dimming/hiding. */
+  /** From useFocusMode. The index projection — consumed by the OmniHost
+   *  fold/focus filter (resolved live against the doc). */
   focusState: FocusState | null;
+  /** From useFocusMode. The UUID-anchored band — consumed by the OutlineHost,
+   *  which resolves it to index boundaries against its own snapshot so the cull
+   *  never straddles two doc revisions (task 307). */
+  focusBand: FocusBand | null;
 
   // ── Section path (OutlineHost) ──────────────────────────────────
   activeSectionPath: SectionPathEntry[];
@@ -7570,7 +7576,7 @@ function PaneRailBody({
         editorSplit={viewPrefs.prefs.editorSplit}
         mirrorSectionPath={viewPrefs.mirrorSectionPath}
         mirrorParTitleIndex={viewPrefs.mirrorParTitleIndex}
-        focusState={viewPrefs.focusState ?? INACTIVE_FOCUS_STATE}
+        focusBand={viewPrefs.focusBand}
         onFocusActivate={viewPrefs.onFocusActivate}
         onFocusDeactivate={viewPrefs.onFocusDeactivate}
         onFocusToggleLock={viewPrefs.onFocusToggleLock}

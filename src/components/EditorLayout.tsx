@@ -2712,6 +2712,7 @@ export default function EditorLayout() {
   const editorPaneViewDerivations = useMemo<EditorPaneViewDerivations>(() => ({
     isResizingPanels,
     focusState: focusMode.state,
+    focusBand: focusMode.band,
     zenMode: zenModeOn,
     zenLeftMargin,
     zenRightMargin,
@@ -2724,6 +2725,7 @@ export default function EditorLayout() {
   }), [
     isResizingPanels,
     focusMode.state,
+    focusMode.band,
     zenModeOn,
     zenLeftMargin,
     zenRightMargin,

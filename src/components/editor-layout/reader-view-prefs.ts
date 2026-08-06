@@ -629,6 +629,7 @@ export function useReaderView(
       // separately — see `useReaderSectionPath` below — Phase 5a.)
       isResizingPanels: false,
       focusState: null,
+      focusBand: null,
       zenMode: false,
       zenLeftMargin: 0,
       zenRightMargin: 0,

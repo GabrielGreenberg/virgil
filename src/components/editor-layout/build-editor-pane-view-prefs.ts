@@ -26,6 +26,7 @@ import type {
 } from "@/hooks/useViewPrefs";
 import type { OmniCategory } from "@/panels/Omni/OmniViewPanel";
 import type { FocusState } from "@/hooks/useFocusMode";
+import type { FocusBand } from "@/lib/focus-view";
 import type { SectionPathEntry } from "@/panels/Outline";
 import type { OrphanedFootnote } from "@/lib/types";
 
@@ -130,7 +131,12 @@ export const EMPTY_ORPHANED_FOOTNOTES: OrphanedFootnote[] = Object.freeze(
  */
 export interface EditorPaneViewDerivations {
   isResizingPanels: boolean;
+  /** Index projection consumed by the OmniHost fold/focus filter (resolved
+   *  live against the doc). */
   focusState: FocusState | null;
+  /** UUID-anchored band consumed by the OutlineHost, which resolves it to
+   *  indices against its own snapshot (task 307). */
+  focusBand: FocusBand | null;
   zenMode: boolean;
   zenLeftMargin: number;
   zenRightMargin: number;
@@ -177,6 +183,7 @@ export function buildEditorPaneViewPrefs(
     prefs: vp.prefs,
     isResizingPanels: view.isResizingPanels,
     focusState: view.focusState,
+    focusBand: view.focusBand,
 
     // ── Section path (OutlineHost) — Phase 5a: from the split arg ────
     activeSectionPath: sectionPaths.activeSectionPath,

@@ -5,7 +5,8 @@ import type { JSONContent } from "@tiptap/react";
 import { useWordCountConfig } from "@/hooks/useWordCountConfig";
 import { buildPerBlockCounts, sumIncludedWords } from "@/lib/word-count-core";
 import type { FocusState } from "@/hooks/useFocusMode";
-import { sectionRange } from "@/hooks/useFocusMode";
+import { sectionRange, INACTIVE_FOCUS_STATE } from "@/hooks/useFocusMode";
+import type { FocusBand } from "@/lib/focus-view";
 import { Panel } from "@/panels/_shared/Panel";
 import { ItemMenu } from "@/components/panel-primitives";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
@@ -341,8 +342,11 @@ interface OutlinePanelProps {
   mirrorSectionPath?: SectionPathEntry[];
   /** Active parTitle index for the mirror pane. */
   mirrorParTitleIndex?: number | null;
-  /** Focus mode state — null when feature not wired. */
-  focusState?: FocusState | null;
+  /** Focus mode band — the UUID-anchored truth from `useFocusMode.band`, null
+   *  when the feature isn't wired. The outline resolves it to index boundaries
+   *  against its OWN `content` snapshot (`resolveFocusStateFromSnapshot`), so
+   *  boundary + heading indices always share one revision (task 307). */
+  focusBand?: FocusBand | null;
   /** Callbacks for focus mode. */
   onFocusActivate?: () => void;
   onFocusDeactivate?: () => void;
@@ -470,6 +474,67 @@ function buildTree(headings: HeadingItem[]): TreeNode[] {
   }
 
   return roots;
+}
+
+/**
+ * Resolve the UUID-anchored focus `band` to an index-based `FocusState`
+ * **against the outline's own `content` snapshot** — the SAME revision that
+ * `extractHeadings` reads, so the boundary indices and the heading indices can
+ * never describe two different doc revisions.
+ *
+ * This is the outline's snapshot twin of `resolveFocusBand(doc, band)`
+ * ([focus-view.ts]): identical semantics — `null` anchors are doc-start /
+ * doc-end sentinels, a NAMED anchor missing from the snapshot degrades to
+ * "no band → show everything" (never a phantom range), and crossed anchors
+ * swap — but it walks `content.content` (top-level array index == the block
+ * index `extractHeadings` records) instead of the live PM doc.
+ *
+ * WHY (task 307, the "mirror drifts from source on structural change" class,
+ * task 126): the outline previously compared snapshot-fresh heading indices
+ * against `useFocusMode.state`, whose index projection re-resolves ONLY on
+ * `rev.blocks` while the outline snapshot refreshes on a 300ms catch-all tick.
+ * Within that window the two clocks describe different revisions, so a
+ * stale `endBlockIndex` + the inclusive boundary leaked the NEXT section into
+ * the focused outline. Resolving the boundary from the outline's OWN snapshot
+ * collapses them onto one revision — the editor plugin already does the live
+ * equivalent against the live doc.
+ *
+ * Pure + O(top-level-count); called from a `useMemo` gated on
+ * `[focusBand, content]`, never on the keystroke path (a plain keystroke
+ * changes neither the band nor the snapshot).
+ */
+export function resolveFocusStateFromSnapshot(
+  band: FocusBand | null | undefined,
+  content: JSONContent | null,
+): FocusState {
+  if (!band || !band.active) return INACTIVE_FOCUS_STATE;
+  const nodes = content?.content;
+  if (!nodes || nodes.length === 0) return INACTIVE_FOCUS_STATE;
+  const lastIdx = nodes.length - 1;
+
+  let startIdx = band.startUuid == null ? 0 : -1;
+  let endIdx = band.endUuid == null ? lastIdx : -1;
+
+  if (startIdx === -1 || endIdx === -1) {
+    for (let i = 0; i < nodes.length; i++) {
+      const uuid = (nodes[i]?.attrs?.uuid as string | null | undefined) ?? null;
+      if (uuid == null) continue;
+      if (startIdx === -1 && uuid === band.startUuid) startIdx = i;
+      if (endIdx === -1 && uuid === band.endUuid) endIdx = i;
+    }
+  }
+
+  // A named anchor wasn't found in this snapshot → it died (or hasn't been
+  // hydrated into this snapshot yet). Degrade to no band rather than honour a
+  // phantom range — exactly as `resolveFocusBand` does on the live doc.
+  if (startIdx === -1 || endIdx === -1) return INACTIVE_FOCUS_STATE;
+  if (startIdx > endIdx) [startIdx, endIdx] = [endIdx, startIdx];
+  return {
+    active: true,
+    locked: band.locked,
+    startBlockIndex: startIdx,
+    endBlockIndex: endIdx,
+  };
 }
 
 /**
@@ -1381,7 +1446,7 @@ function FocusBand({
 
 /* ── Main OutlinePanel ─────────────────────────────────────────────── */
 
-function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, isLabelTaken, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex, focusState, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
+function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, isLabelTaken, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex, focusBand, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
   // View prefs come from the shared external store — survive reload AND the
   // docked↔popped-out remount (OUT-#7). No per-instance useState/localStorage.
   const prefs = useSyncExternalStore(
@@ -1419,6 +1484,18 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
   const { headings, preambleTitles } = useMemo(() => extractHeadings(content), [content]);
   const tree = useMemo(() => buildTree(headings), [headings]);
   const docTitle = useMemo(() => getDocTitle(content), [content]);
+
+  // Focus boundary resolved from the SAME `content` snapshot as `headings`
+  // above, so the cull comparisons below (`heading.index` vs
+  // `focusState.startBlockIndex/endBlockIndex`) never straddle two doc
+  // revisions — the drift that leaked the next section into the focused
+  // outline (task 307). Gated on `[focusBand, content]`, off the keystroke
+  // path. Every downstream consumer (`OutlineNode`, `FocusBand` overlay,
+  // position clamp) reads THIS `focusState`, not a prop.
+  const focusState = useMemo(
+    () => resolveFocusStateFromSnapshot(focusBand, content),
+    [focusBand, content],
+  );
 
   const totalBlocks = useMemo(() => {
     if (!content || !content.content) return 0;
