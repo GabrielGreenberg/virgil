@@ -173,6 +173,20 @@ export const SCOPE_COLOR: Record<SearchScope, string> = Object.fromEntries(
   ]),
 ) as Record<SearchScope, string>;
 
+/** Background FILL for a scope dot (the menu + chip swatches in `SearchPanel`).
+ *  A source-kind scope wears its panel's live accent; `mainText` has no source
+ *  kind, so `useScopeAccent` yields `"transparent"` and the dot falls back to a
+ *  neutral stone fill — the `--ink-muted` token (globals.css, ≈ stone-500), the
+ *  same neutral-ink vocabulary this panel already uses as `text-ink-muted`.
+ *  Named ONCE here so the two dot renderers (`MoreScopesDropdown` + `ScopeChip`)
+ *  can't drift the fallback apart — it was a duplicated raw `#78716c` literal,
+ *  the exact value of `--ink-muted`, before audit-308. NOTE: the neutral case is
+ *  a FILL only; the result-card border/label read transparent as "don't paint"
+ *  and keep their own `{}`/`undefined` fork. */
+export function scopeDotBackground(accent: string): string {
+  return accent === "transparent" ? "var(--ink-muted)" : accent;
+}
+
 /** Default order of scope chips in the panel. */
 export const SCOPE_ORDER: SearchScope[] = [
   "mainText",
