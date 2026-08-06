@@ -182,7 +182,7 @@ export function ErrorCard({
           {title}
         </div>
         {snippet && (
-          <div className="text-xs italic text-[var(--muted)] border-l-2 border-edge-subtle pl-2 py-0.5 mb-1.5 font-mono truncate">
+          <div className="text-xs italic text-ink-muted border-l-2 border-edge-subtle pl-2 py-0.5 mb-1.5 font-mono truncate">
             {snippet}
           </div>
         )}

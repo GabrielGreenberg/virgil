@@ -11,6 +11,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { MIME_CITATION, MIME_BIB_MERGE } from "@/lib/marginalia";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { popKey as buildPopKey } from "@/panels/panel-registry";
+import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
 
 export interface BibEntryCardProps {
@@ -499,11 +500,11 @@ export default function BibEntryCard({
         {fieldsOpen && (
           <div className="mt-1.5 space-y-1.5">
             {requestNoteOpen.has(fieldsDk) && fieldsReviewStatus === "pending" && (
-              <div className="rounded-md border border-amber-200 bg-amber-50/50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className={`${AMBER_ATTENTION_STRIP} rounded-md border overflow-hidden`} onClick={(e) => e.stopPropagation()}>
                 <input type="text" value={requestNoteDrafts[fieldsDk] || ""}
                   onChange={(e) => setRequestNoteDrafts((prev) => ({ ...prev, [fieldsDk]: e.target.value }))}
                   placeholder="Request annotation..."
-                  className="w-full text-xs px-3 py-2 bg-transparent text-ink-body placeholder:text-ink-muted focus:outline-none" />
+                  className="w-full text-xs bg-transparent text-ink-body placeholder:text-ink-muted focus:outline-none" />
               </div>
             )}
             <div className={PANEL.subpod}>
@@ -536,7 +537,7 @@ export default function BibEntryCard({
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); removeEditBibField(field); }}
-                        className="iconbtn-sm text-ink-muted hover:text-red-600 flex-shrink-0"
+                        className="iconbtn-sm text-ink-muted hover:text-danger flex-shrink-0"
                         data-hint={`Remove ${field}`} aria-label={`Remove field ${field}`}
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -595,11 +596,11 @@ export default function BibEntryCard({
         {annotationOpen && (
           <div className="mt-1.5 space-y-1.5">
             {requestNoteOpen.has(notesDk) && notesReviewStatus === "pending" && (
-              <div className="rounded-md border border-amber-200 bg-amber-50/50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className={`${AMBER_ATTENTION_STRIP} rounded-md border overflow-hidden`} onClick={(e) => e.stopPropagation()}>
                 <input type="text" value={requestNoteDrafts[notesDk] || ""}
                   onChange={(e) => setRequestNoteDrafts((prev) => ({ ...prev, [notesDk]: e.target.value }))}
                   placeholder="Request annotation..."
-                  className="w-full text-xs px-3 py-2 bg-transparent text-ink-body placeholder:text-ink-muted focus:outline-none" />
+                  className="w-full text-xs bg-transparent text-ink-body placeholder:text-ink-muted focus:outline-none" />
               </div>
             )}
             <div className={PANEL.subpodWhite}>
