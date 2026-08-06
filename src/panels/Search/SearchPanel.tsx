@@ -29,6 +29,7 @@ import {
   SCOPE_PANEL,
   SCOPE_ORDER,
   SCOPE_TO_CARD_THEME,
+  scopeDotBackground,
   compileQuery,
   buildUuidPosMap,
 } from "@/lib/search-sources";
@@ -1040,8 +1041,7 @@ function MoreScopesDropdown({
                   aria-hidden
                   className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
                   style={{
-                    backgroundColor:
-                      color === "transparent" ? "#78716c" : color,
+                    backgroundColor: scopeDotBackground(color),
                     opacity: enabled ? 1 : 0.4,
                   }}
                 />
@@ -1107,7 +1107,7 @@ function ScopeChip({
         aria-hidden
         className="inline-block w-1.5 h-1.5 rounded-full"
         style={{
-          backgroundColor: color === "transparent" ? "#78716c" : color,
+          backgroundColor: scopeDotBackground(color),
           opacity: enabled ? 1 : 0.4,
         }}
       />

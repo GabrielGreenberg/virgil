@@ -17,6 +17,7 @@ import {
   SCOPE_COLOR,
   SCOPE_TO_CARD_THEME,
   SCOPE_ORDER,
+  scopeDotBackground,
   type SearchScope,
 } from "@/lib/search-sources";
 import { DEFAULT_PANEL_COLORS } from "@/lib/panel-theme";
@@ -56,5 +57,15 @@ describe("SCOPE_COLOR is derived from the theme SSOT (audit-058)", () => {
     for (const [scope, hex] of Object.entries(expected)) {
       expect(SCOPE_COLOR[scope as SearchScope]).toBe(hex);
     }
+  });
+
+  it("resolves the neutral (mainText / transparent) dot fill to the --ink-muted token, not a raw hex (audit-308)", () => {
+    // The two scope-dot renderers used to hardcode the raw `--ink-muted` hex
+    // (byte-for-byte) as the transparent-scope fallback. Fold it onto the token
+    // so the neutral dot tracks the ink vocabulary and the two renderers can't
+    // drift apart.
+    expect(scopeDotBackground("transparent")).toBe("var(--ink-muted)");
+    // A source-kind accent passes through untouched (the colored branch).
+    expect(scopeDotBackground("#9333ea")).toBe("#9333ea");
   });
 });
