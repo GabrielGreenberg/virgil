@@ -20,9 +20,11 @@ const SEVERITY_COLOR: Record<LatexErrorSeverity, string> = {
   warning: theme.accent,
   // `info` is a deliberate severity CONSTANT (steel), not a theme token: it
   // signals "informational, not the panel's alarm color" and must stay
-  // distinct from the warning/error ramp. Do NOT couple it to another
-  // panel's accent (e.g. archive) just because the hex coincides.
-  info: "#7191b0",
+  // distinct from the warning/error ramp. Tokenized as --status-info (its own
+  // dedicated member of the status-dot family) — NOT aliased to another
+  // panel's accent (e.g. archive/--latex-comment-color) just because the hex
+  // coincides.
+  info: "var(--status-info)",
 };
 
 /** Short, stable title derived from rule id / message. Prefers a known rule

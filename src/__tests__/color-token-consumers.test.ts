@@ -110,6 +110,28 @@ describe("drag glow layers derive from the --drag-highlight preference", () => {
 });
 
 /**
+ * ErrorCard's `info` severity color (task 2026-08-07-310).
+ *
+ * `#7191b0` was the last untokenized status literal in a *.tsx — a
+ * STYLE_GUIDE:38 bypass with no CI guard (check:radius covers radii only, and
+ * the per-file guards above don't scan src/panels/Errors/). It is latent, not
+ * live: `"info"` is a declared LatexErrorSeverity member but no producer emits
+ * it yet, so the raw hex would ship the instant a future lint/compile rule sets
+ * severity:"info". Folded onto a DEDICATED --status-info (its own member of the
+ * status-dot family task 135 established) — NOT aliased to the coincidental
+ * --latex-comment-color / archive accent, honoring ErrorCard's own intent.
+ */
+describe("ErrorCard info severity reads a status token, not a raw hex", () => {
+  it("defines --status-info in the status-dot family", () => {
+    expect(globals).toMatch(/--status-info:\s*#7191b0\s*;/);
+  });
+
+  it("leaves no #7191b0 literal in src/panels/Errors/ErrorCard.tsx", () => {
+    expect(read("src/panels/Errors/ErrorCard.tsx")).not.toContain("#7191b0");
+  });
+});
+
+/**
  * The PROMOTE-DEFAULTS block re-declares promoted preference tokens on the same
  * :root ON PURPOSE — CSS last-wins lets one managed block override the
  * descriptive declarations above without disturbing the comments that explain
