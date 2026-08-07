@@ -827,8 +827,12 @@ const BackgroundTab = forwardRef<
 
 // Pinned state colors the icon itself blue. The button chrome (ring,
 // background) stays neutral so the affordance reads as "ON" without
-// dominating the tab strip.
-const PIN_ACTIVE_COLOR = "#2563eb";
+// dominating the tab strip. The active color resolves from the app-wide
+// accent-blue SSOT so the pinned tab follows a theme's accent instead of a
+// frozen literal — same "illuminated/active" role as StackIcon / drop-mode
+// Indicator, and the same tokenized idiom the silo's Toaster/LibraryView
+// use for --danger. The token value is byte-identical to the old literal.
+const PIN_ACTIVE_COLOR = "var(--accent-blue)";
 
 function PinButton({
   pinned,
