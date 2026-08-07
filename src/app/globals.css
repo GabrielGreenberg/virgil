@@ -383,6 +383,7 @@
   --status-ok: #22c55e;           /* green — success / done (≈ green-500) */
   --status-warn: #eab308;         /* yellow — pending / working (≈ yellow-500) */
   --status-warn-strong: #a16207;  /* darker amber stroke companion to --status-warn (IconZap outline; pinned to its prior hex — not a scalar darken of --status-warn, so a color-mix would desync) */
+  --status-info: #7191b0;         /* steel — informational severity; deliberately NOT the alarm ramp (error/warning) */
 
   /* Interaction */
   --ring-drag-target: #fcd34d; /* drop-target highlight ring (≈ amber-300) */
