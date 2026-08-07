@@ -345,7 +345,7 @@ function Footer({
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {saveError && (
-          <span style={{ fontSize: 12, color: "#c0392b" }}>{saveError}</span>
+          <span style={{ fontSize: 12, color: "var(--danger)" }}>{saveError}</span>
         )}
         <button
           type="button"
@@ -673,7 +673,7 @@ function RawView({
         }}
       />
       {error && (
-        <div style={{ fontSize: 12, color: "#c0392b" }}>{error}</div>
+        <div style={{ fontSize: 12, color: "var(--danger)" }}>{error}</div>
       )}
     </div>
   );
