@@ -350,6 +350,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // body to seed the note with); a confirm guards the body-dropping case.
     morph: { to: "highlight", lossy: true, drops: ["body", "title"] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -381,6 +382,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // (REP-F6-03) and produced a confirm that lied ("drops the body and title").
     morph: { to: "note", lossy: false, drops: [] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -412,6 +414,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: "in-text",
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -435,6 +438,13 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: "margin",
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose
+    // The ONLY excerpt-scoped kind (task 308): an archive snippet's body is a
+    // verbatim slice of the document — whatever the user archived, up to a whole
+    // section (heading + body + sub-sections). It therefore mounts the full
+    // main-document vocabulary, and the Archive action's delete is gated by
+    // `canMountInCardBody` so a future vocabulary gap refuses instead of
+    // destroying. Every other kind holds authored card prose → "card".
+    bodySchema: "excerpt",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -462,6 +472,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: "margin",
     morph: null,
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -484,6 +495,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: null,
     morph: null,
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true, // StackCardKind: "bibliography"
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -509,6 +521,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: "in-text",
     morph: null,
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -550,6 +563,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // non-lossy/silent (declared on `revision-suggestion.morph`).
     morph: { to: "revision-suggestion", lossy: true, drops: ["formatting", "aiRequest"] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -579,6 +593,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // (198). The REVERSE stays silent (`cutter-suggestion.morph`).
     morph: { to: "cutter-suggestion", lossy: true, drops: ["formatting", "aiRequest"] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -607,6 +622,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: "margin",
     morph: { to: "cutter-comment", lossy: false, drops: [] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -633,6 +649,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: "margin",
     morph: { to: "revision-comment", lossy: false, drops: [] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -661,6 +678,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // no home on the FROM (report) side, so it doesn't drop here.
     morph: { to: "report-request", lossy: true, drops: ["title", "byline"] },
     bodyClass: "sans", // R11: Report is apparatus → 12px Inter (fixes the variant=footnote serif declared-vs-rendered mismatch)
+    bodySchema: "card",
     stackable: false, // not in StackCardKind
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -689,6 +707,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // carries across.
     morph: { to: "report", lossy: true, drops: ["aiRequest"] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: false,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -722,6 +741,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: null,
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose (fixes example 12→15)
+    bodySchema: "card",
     stackable: true, // declared in StackCardKind (its float's snapshotForStack returns null today — R2)
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -750,6 +770,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: null,
     morph: null,
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: false,
     poppable: false, // RATIFIED not poppable (§3.5) — the sole non-poppable kind
     toFloatable: PLACEHOLDER_TO_FLOATABLE, // never registered → stays null

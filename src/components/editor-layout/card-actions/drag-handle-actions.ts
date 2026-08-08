@@ -59,6 +59,8 @@ import {
   posBlockAllowsAction,
 } from "@/text-objects/text-object-registry";
 import { isAtomNode } from "@/lib/tiptap/atom-registry";
+import { canMountInCardBody } from "@/lib/tiptap/borrowed-schema";
+import { bodySchemaForCardKind } from "@/cards/predicates";
 import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import type {
   ConfirmDescriptor,
@@ -614,6 +616,44 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // resulting doc is schema-valid in all cases.
           const slice = ed.state.doc.slice(extended.from, extended.to);
           const richContent = sliceToDocJson(slice);
+          // ── THE NEVER-DESTROY INVARIANT (task 308) ─────────────────────
+          // A destructive lifecycle action must never delete content its
+          // capture destination cannot hold. Archive is the one action that
+          // deletes AND captures, so it is the one that has to ask.
+          //
+          // This existed as a silent data-loss hole: the capture above is
+          // faithful (it carries whatever the slice had — `heading`,
+          // `blockquote`, `codeBlock`, `horizontalRule`, the expex family,
+          // `highlight`/`textColor` marks), and the archive card body's schema
+          // did not admit those. TipTap does NOT throw on the mismatch —
+          // `createNodeFromContent` swallows the `RangeError` and returns an
+          // EMPTY document — so the section was deleted from the doc and the
+          // card rendered blank, with no error anywhere. Archiving a section was
+          // total loss from the user's view.
+          //
+          // The schema widening (`bodySchema: "excerpt"`) is what makes the
+          // known kinds WORK; this check is what makes the CLASS impossible —
+          // any future node/mark the document gains and the excerpt surface
+          // hasn't caught up on refuses here instead of destroying. Runs BEFORE
+          // `cleanupAndComputeDeleteRange`, so an abort leaves the document and
+          // every sidecar completely untouched.
+          const mountCheck = canMountInCardBody(
+            richContent,
+            bodySchemaForCardKind("archive"),
+          );
+          if (!mountCheck.ok) {
+            console.warn(
+              "[Archive] refused — the capture cannot mount in the archive card body; " +
+                "the document was NOT modified.",
+              { reason: mountCheck.reason, ref },
+            );
+            notify({
+              message:
+                "Can't archive this — the Archive panel can't hold part of it, " +
+                "so nothing was removed.",
+            });
+            break;
+          }
           // B2 (post-refactor followup): resolve the snippet's anchor
           // BEFORE deletion. The pre-delete `paragraphId` is the source
           // block's own uuid — for a whole-paragraph archive that uuid

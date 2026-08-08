@@ -280,6 +280,25 @@ export interface CardMeta {
    *  declared class to the typography row so the two never drift. The mutable
    *  per-field override registry (the user's text-size stepper) is unchanged. */
   bodyClass: "borrowed" | "sans";
+  /** Which SCHEMA this kind's body mounts (task 308) — orthogonal to
+   *  {@link bodyClass}, which is typography only. `"card"` is the narrow
+   *  authored-prose surface (`CARD_STARTER_KIT_CONFIG`: no heading / blockquote
+   *  / codeBlock / horizontalRule, no expex, no highlight / textColor marks).
+   *  `"excerpt"` is the full main-document vocabulary, for a kind whose body
+   *  holds a verbatim SLICE OF THE DOCUMENT rather than prose the user typed
+   *  into the card.
+   *
+   *  Declared per kind rather than inferred from `bodyClass`: "renders in the
+   *  main-text serif face" and "can contain arbitrary document structure" are
+   *  different questions, and three of the four `bodyClass: "borrowed"` kinds
+   *  (footnote / example) hold authored or kind-specific content, not an
+   *  arbitrary excerpt. Resolved ONCE in `EditableCard` and threaded to both
+   *  body surfaces, so a kind can never render through two schemas.
+   *
+   *  A kind that declares `"excerpt"` is also asserting the other half of the
+   *  contract: any DESTRUCTIVE capture writing into it is gated by
+   *  `canMountInCardBody` (never delete what the destination cannot hold). */
+  bodySchema: import("@/lib/tiptap/borrowed-schema").CardBodySchemaScope;
   /** AF integration point. Returns the shared `Floatable` presence, or `null`
    *  when this kind is not poppable (`error`). MUST be a pure per-id resolver —
    *  resolve one entity by id from `ctx`; NO full-doc descent (keystroke
