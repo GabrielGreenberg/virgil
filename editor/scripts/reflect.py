@@ -114,6 +114,27 @@ BUCKET_TITLES = {
 }
 BUCKET_ORDER = ["issues", "streamlining", "alignment", "userTagged"]
 
+# The canonical rendering of an EMPTY bucket.  `_render_buckets` writes it, every
+# reader must recognise it, and — the part that used to be missing — the tier
+# resolver must treat it as empty too.  It was previously a magic string known to
+# the writer here and re-typed as an inline literal in dream.py's reader, with
+# nothing tying the two together: a memo that filled in the loop's own
+# empty-bucket convention (`userTagged: "None."`) was read as a genuine user tag
+# and HARD-set to tier=flagged, so contentless memos arrived as the next dream's
+# top-priority "read these first" signal — across every skill, not just dream.
+# One sentinel, one normalizer, shared by writer + reader + tier resolver.
+EMPTY_BUCKET = "None."
+
+
+def bucket_body(raw) -> str | None:
+    """A bucket's real content, or None if it is empty — including the rendered
+    `EMPTY_BUCKET` placeholder, which round-trips out of `_render_buckets` and
+    must never be mistaken for content by whatever reads it back."""
+    body = (raw or "").strip()
+    if not body or body == EMPTY_BUCKET:
+        return None
+    return body
+
 
 def _max_tier(a: str, b: str) -> str:
     return a if TIER_ORDER.get(a, 0) >= TIER_ORDER.get(b, 0) else b
@@ -401,8 +422,7 @@ def _render_buckets(buckets: dict) -> list[str]:
     out: list[str] = []
     for key in BUCKET_ORDER:
         out.append(f"## {BUCKET_TITLES[key]}")
-        body = (buckets.get(key) or "").strip()
-        out.append(body if body else "None.")
+        out.append(bucket_body(buckets.get(key)) or EMPTY_BUCKET)
         out.append("")
     return out
 
@@ -501,7 +521,7 @@ def main(argv: list[str]) -> int:
 
     fix_now = bool(a.fix_now or memo.get("fixNow"))
     new_tags = [t.strip() for t in (a.tag or []) if t.strip()]
-    json_user_tagged = (in_buckets.get("userTagged") or "").strip()
+    json_user_tagged = bucket_body(in_buckets.get("userTagged")) or ""
     if new_tags or json_user_tagged:
         tier = TIER_FLAGGED  # user-tagged is always flagged (§3)
     if fix_now:

@@ -74,6 +74,7 @@ from reflect import (  # noqa: E402  (sibling module in editor/scripts/)
     TIER_ORDER,
     TIER_UNREMARKABLE,
     _parse_memo,
+    bucket_body,
 )
 
 # Result-lenses the dream audits (design §4; README "What chip 18 consumes").
@@ -230,7 +231,7 @@ def _load_memo(path: Path, memos_root: Path) -> dict:
         rel = path.name
     pids = [s.strip() for s in (fm.get("paragraphIds") or "").split(",") if s.strip()]
     buckets = {k: v for k in BUCKET_ORDER
-               if (v := (sections.get(k) or "").strip()) and v != "None."}
+               if (v := bucket_body(sections.get(k))) is not None}
     return {
         "path": rel,
         "skill": fm.get("skill", "?"),
