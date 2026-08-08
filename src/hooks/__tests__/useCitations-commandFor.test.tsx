@@ -2,7 +2,7 @@
 //
 // Pins `useCitations.commandFor(id)` — the read accessor the citation drop
 // spec's "anchor the unanchored" create branch consumes
-// (`ctx.citations.commandFor`). It must:
+// (`ctx.atomCards.citation`, task 233; formerly `ctx.citations`). It must:
 //   - return the card's serialized `\cite{…}` command for a keyed citation,
 //   - return null for an empty / keyless DRAFT (no parseable citekey),
 //   - return null for an unknown id.

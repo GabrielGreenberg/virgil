@@ -148,6 +148,7 @@ import { useSuggestions } from "@/hooks/useSuggestions";
 import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
 import { useFootnotes } from "@/hooks/useFootnotes";
+import { selectAtomlessFootnoteRefs } from "@/panels/Footnotes/atomless-refs";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useAutoApplyPendingChanges } from "@/hooks/useAutoApplyPendingChanges";
 import { usePristineCardManager } from "@/hooks/usePristineCardManager";
@@ -175,6 +176,7 @@ import {
 } from "@/panels/_shared/card-archive-actions";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
+import { buildInlineAtomCardApis } from "./drop-mode/atom-card-apis";
 import type { StackPullApi } from "./drop-mode/types";
 import { StackIcon } from "./stack/StackIcon";
 import { StackStrip } from "./stack/StackStrip";
@@ -2310,14 +2312,31 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     }),
     [reportsHook.cards, reportsHook.addCardParagraphId, reportsHook.removeCardParagraphId],
   );
-  // Read accessor for the citation drop spec's "anchor the unanchored" create
-  // branch (the F downstream gap, now wired). `commandFor` returns the card's
-  // serialized `\cite{…}` (or null for an empty/keyless draft); the spec reads
-  // it to build the fresh inline atom. `commandFor` is already a stable
-  // callback (it reads `stateRef`), so this memo never churns.
-  const dropCitationsApi = useMemo(
-    () => ({ commandFor: citationsHook.commandFor }),
-    [citationsHook.commandFor],
+  // The ONE wiring site for every inline-atom kind's "anchor the unanchored"
+  // create-branch accessor (task 233). Per kind it supplies (a) the atom attrs
+  // only the CARD knows — a footnote's body, a citation's `\cite{…}` — because
+  // an unanchored card has no marker to read them off, and (b) the anchor
+  // reconcile that clears the ref's `unanchored`/`archived` intent once the
+  // atom lands. Previously this was one hand-added `DropCtx` field per kind:
+  // citation got its five edits, footnote got none, and its create branch
+  // silently planted an EMPTY body — destroying the user's footnote text.
+  // `buildInlineAtomCardApis` is a `Record` over the kind union, so the next
+  // kind can't be half-wired. Every source here is a stable `stateRef`-reading
+  // callback, so this memo never churns.
+  const dropAtomCardApis = useMemo(
+    () =>
+      buildInlineAtomCardApis({
+        footnoteContentFor: footnotesHook.contentFor,
+        markFootnoteAnchored: footnotesHook.markAnchored,
+        citationCommandFor: citationsHook.commandFor,
+        markCitationAnchored: citationsHook.markAnchored,
+      }),
+    [
+      footnotesHook.contentFor,
+      footnotesHook.markAnchored,
+      citationsHook.commandFor,
+      citationsHook.markAnchored,
+    ],
   );
 
   // The margin-pin re-anchor gesture no longer dispatches a
@@ -2696,16 +2715,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     return m;
   }, [footnotesHook.footnoteRefs]);
 
-  // Bug sweep #3: the ATOMLESS footnote refs (archived or unanchored) the
-  // Footnotes panel lists alongside live anchored footnotes + orphans. Anchored
-  // footnotes come from the live editor (footnoteInfos); an archived/unanchored
-  // ref has no `\footnote` atom, so it lives only in the footnotes.json sidecar.
-  // Pure derivation off footnoteRefs — recomputes only when the sidecar changes
-  // (archive toggle / add / delete), never on a plain keystroke.
-  const unanchoredFootnoteRefs = useMemo(
-    () => footnotesHook.footnoteRefs.filter((f) => f.archived || f.unanchored),
-    [footnotesHook.footnoteRefs],
-  );
 
   // ── Phase 1c — gutter-driven Keep / Revert for an applied pending change ──
   // The persistent margin-gutter Keep/Revert affordance (attached below to the
@@ -4396,6 +4405,33 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [editor, rev.footnotes],
   );
 
+  // Bug sweep #3: the ATOMLESS footnote refs (archived or unanchored) the
+  // Footnotes panel lists alongside live anchored footnotes + orphans. Anchored
+  // footnotes come from the live editor (footnoteInfos); an archived/unanchored
+  // ref has no `\footnote` atom, so it lives only in the footnotes.json sidecar.
+  //
+  // ATOMLESS is the operative word, and the sidecar flags alone don't establish
+  // it (task 233). `resolveAnchorState`'s law — **a live marker wins
+  // unconditionally over declared intent** — applies here too: a ref whose atom
+  // IS in the doc is anchored, whatever the sidecar still says. Filtering on the
+  // flags alone listed such a ref a SECOND time, as a stale parked duplicate of
+  // the footnote already rendering live from `footnoteInfos`. That happens
+  // whenever the flag outlives the atom's return: re-placing an unanchored card
+  // via the drop button, undoing an archive (Cmd+Z restores the spliced-out
+  // atom, nothing rewrites the sidecar), or a `\footnote` re-typed in the code
+  // view. The drop path also clears the flag at the source (`markAnchored`);
+  // this is the derivation that can't be bypassed. It suppresses the duplicate
+  // RENDER — it does not rewrite the sidecar, so a stale flag still reaches
+  // `archivedIds` above (see the selector's own doc for that residual).
+  //
+  // Both inputs are structurally gated (`footnoteRefs` = sidecar collection,
+  // `footnoteInfos` = `rev.footnotes` counter), so this stays off the keystroke
+  // path.
+  const unanchoredFootnoteRefs = useMemo(
+    () => selectAtomlessFootnoteRefs(footnotesHook.footnoteRefs, footnoteInfos),
+    [footnotesHook.footnoteRefs, footnoteInfos],
+  );
+
   // Live ExampleInfo list — same trigger cadence as footnoteInfos.
   // Powers the popped-out example card renderer below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5393,7 +5429,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               cutterCards={dropCutterApi}
               revisions={dropRevisionsApi}
               reports={dropReportsApi}
-              citations={dropCitationsApi}
+              atomCards={dropAtomCardApis}
               stack={dropStackApi}
             />
           )}
