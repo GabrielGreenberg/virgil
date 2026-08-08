@@ -110,6 +110,27 @@ describe("SmartQuotes dash input rules", () => {
     ed.destroy();
   });
 
+  it("text typed AFTER a latexVerbatim run does not inherit it (task 264)", () => {
+    // The carrier is `inclusive: false`. It has to be: `code: true` above
+    // removes the type-time smart-quote net and the mark's serializer removes
+    // the save-time one, so inherited stray prose would emit a raw `"` into
+    // the `.tex` with nothing left to normalize it. Unmarked, the typed text
+    // takes the ordinary prose path and still serializes to a valid pair.
+    const ed = new Editor({
+      element: document.body.appendChild(document.createElement("div")),
+      extensions: [Document, Paragraph, Text, Code, CodeBlock, LatexVerbatimMark, SmartQuotes],
+      content: '<p><span data-latex-verbatim="">\\verb|x|</span></p>',
+    });
+    ed.commands.setTextSelection(ed.state.doc.content.size);
+    typeText(ed, ' says "hi"');
+    const json = ed.getJSON() as { content?: { content?: { marks?: { type: string }[]; text?: string }[] }[] };
+    const runs = json.content?.[0]?.content ?? [];
+    const tail = runs[runs.length - 1];
+    expect(tail.marks ?? []).toEqual([]);
+    expect(serializeBodyOnly(ed.getJSON())).toContain('\\verb|x| says ``hi\'\'');
+    ed.destroy();
+  });
+
   it("still converts inside a latexCommand mark (unchanged by task 264)", () => {
     // The sibling carrier deliberately does NOT gate: smartening a quote typed
     // into a stray inherited `latexCommand` span is what keeps it emitting

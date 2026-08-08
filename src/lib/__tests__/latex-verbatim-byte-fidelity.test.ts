@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { parseLatex } from "@/lib/latex-parser";
-import { serializeBodyOnly as serializeBody } from "@/lib/latex-serializer";
+import {
+  assignUuids,
+  serializeBodyOnly as serializeBody,
+} from "@/lib/latex-serializer";
 import { richJsonToLatex, richLatexToJson } from "@/lib/footnote-content";
 import {
   hasVerbatimMark,
@@ -71,6 +74,41 @@ describe("verbatim-family block bodies are byte-literal (task 264)", () => {
     });
   }
 
+  for (const env of VERBATIM_ENVS_FULL) {
+    it(`preserves an interior blank-line run in an argument-bearing ${env}`, () => {
+      // The serializer's `collapseBlankRuns` stash used to require a newline
+      // IMMEDIATELY after `\begin{env}`, so the two members that normally
+      // carry an argument never stashed — every `minted` block (its language
+      // argument is MANDATORY) and every option-bearing `lstlisting` had its
+      // body run through the `\n{3,}` collapse. A PEP8 listing silently lost
+      // one of its two blank lines between top-level defs on the first save.
+      const body = `def a():\n    pass\n\n\ndef b():\n    pass`;
+      const block = `\\begin{${env}}${envArg(env)}\n${body}\n\\end{${env}}`;
+      expect(serializeBody(parseBody(block))).toContain(block);
+    });
+
+    it(`keeps a stable uuid and mints no orphan anchor for ${env}`, () => {
+      // Every family member now produces a uuid-bearing node, so the
+      // serializer emits a `%!v:` anchor after `\end{env}`. The parser's
+      // harvest list covered only bare `verbatim`, so the other three's anchor
+      // was re-read as a STANDALONE empty paragraph: fresh uuid every save
+      // (orphaning anchored cards) plus one stray `%!v:` line per save,
+      // unbounded. Three real cycles must be a fixed point.
+      let tex = `Prose.\n\n\\begin{${env}}${envArg(env)}\nx = "hi"\n\\end{${env}}\n\nAfter.`;
+      const seen: string[] = [];
+      for (let i = 0; i < 3; i++) {
+        const doc = parseBody(tex);
+        assignUuids(doc);
+        tex = serializeBody(doc);
+        seen.push(tex);
+      }
+      expect(seen[1], `${env} must not drift between saves`).toBe(seen[0]);
+      expect(seen[2]).toBe(seen[0]);
+      // Exactly three anchors — prose, block, prose. No orphans accumulating.
+      expect((seen[2].match(/%!v:/g) ?? []).length).toBe(3);
+    });
+  }
+
   it("carries the verbatim mark on every non-`verbatim` family member", () => {
     // Bare `verbatim` is the one member with a modeled node (codeBlock, whose
     // markless byte-raw path predates this task); the other three ride the
@@ -116,6 +154,18 @@ describe("inline \\verb payloads are byte-literal (task 264)", () => {
       expect(richJsonToLatex(richLatexToJson(src))).toBe(src);
     });
   }
+
+  it("does not match a \\verb run whose close is on the NEXT line", () => {
+    // LaTeX forbids a \verb run crossing a line, and the lexer's drop
+    // projection has always cut at EOL. The anchored matcher now stops there
+    // too, so the node tree and the projection agree about which bytes are
+    // verbatim.
+    expect(matchInlineVerbAt('\\verb|open\nclose |', 0)).toBe(-1);
+    const src = `A \\verb|open\nand | later.`;
+    const out = serializeBody(parseBody(src));
+    expect(out).not.toContain("latexVerbatim");
+    expect(out).toContain("\\verb");
+  });
 
   it("does not mis-lex \\verbatim / \\verbdef as \\verb + delimiter", () => {
     // The delimiter must be a non-letter — otherwise `\verbatim` reads as

@@ -26,16 +26,31 @@ import { LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
 export const LatexVerbatimMark = Mark.create({
   name: LATEX_VERBATIM_MARK,
 
-  // The TYPE-TIME half of the same law. TipTap's input- and paste-rule runner
-  // refuses to fire on text adjacent to a mark whose spec is `code` — the same
-  // gate that already protects inline code and code blocks. Without it,
-  // SmartQuotes would turn a `"` typed inside a `\verb|…|` run or a listing
-  // body into a curly `“`, which this mark's byte-literal serializer then
-  // writes straight into the `.tex`: the identical corruption arriving through
-  // the keyboard instead of through save. (Its `latexCommand` sibling is
-  // deliberately NOT `code` — smartening typed quotes there is what keeps an
-  // inherited stray mark round-tripping to valid `.tex`.)
+  // The TYPE-TIME half of the same law. TipTap's INPUT-rule runner refuses to
+  // fire on text adjacent to a mark whose spec is `code` — the same gate that
+  // already protects inline code and code blocks. Without it, SmartQuotes
+  // would turn a `"` typed inside a `\verb|…|` run or a listing body into a
+  // curly `“`, which this mark's byte-literal serializer then writes straight
+  // into the `.tex`: the identical corruption arriving through the keyboard
+  // instead of through save. (Its `latexCommand` sibling is deliberately NOT
+  // `code` — smartening typed quotes there is what keeps an inherited stray
+  // mark round-tripping to valid `.tex`.)
+  //
+  // NOTE the gate is input-rules ONLY: TipTap's paste-rule runner tests the
+  // NODE spec and never inspects marks, so a future `addPasteRules` typographic
+  // transform would NOT be declined here and would need its own guard. Virgil
+  // registers no paste rules today.
   code: true,
+
+  // NOT inclusive: text typed at the trailing edge must NOT inherit the
+  // carrier. `code: true` above removes the type-time smart-quote net, and
+  // this mark's serializer removes the save-time one, so inherited stray prose
+  // would emit raw `"`/`--` into the `.tex` with nothing to normalize it —
+  // strictly worse than the `latexCommand` inheritance this carrier was split
+  // out of. Interior text keeps the mark either way; only the boundary
+  // changes, and the boundary of a `\verb|…|` run is its closing delimiter, so
+  // extending it was never right.
+  inclusive: false,
 
   parseHTML() {
     return [{ tag: "span[data-latex-verbatim]" }];

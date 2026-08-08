@@ -1642,16 +1642,25 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
           : ctx.src.slice(ctx.pos);
       ctx.pos = envEnd !== -1 ? envEnd + `\\end{${env}}`.length : ctx.src.length;
 
-      // Check for a trailing %!v:xxxx UUID anchor right after \end{env}
-      let envUuid: string | null = null;
-      if (
+      // Check for a trailing %!v:xxxx UUID anchor right after \end{env}.
+      // The whole verbatim FAMILY is listed via the SSOT, not just bare
+      // `verbatim`: every family member now produces a uuid-bearing node
+      // (codeBlock for `verbatim`, the byte-literal carrier paragraph for the
+      // rest), so the serializer emits an anchor after `\end{env}` for all
+      // four. Harvesting for only one of them meant the other three's anchor
+      // was left in the stream and re-read as a STANDALONE empty paragraph:
+      // the block got a fresh uuid on every save (orphaning any card anchored
+      // to it) and the `.tex` grew one stray `%!v:` line per save, unbounded
+      // (task 264).
+      const isUuidAnchoredEnv =
+        isLiteralEnv ||
         env === "itemize" ||
         env === "enumerate" ||
-        env === "verbatim" ||
         env === "quote" ||
         env === "figure" ||
-        env === "figure*"
-      ) {
+        env === "figure*";
+      let envUuid: string | null = null;
+      if (isUuidAnchoredEnv) {
         const afterEnd = ctx.src.slice(ctx.pos);
         const uuidMatch = afterEnd.match(NODE_UUID_ANCHOR);
         if (uuidMatch) {
@@ -1681,6 +1690,7 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       if (isLiteralEnv && env !== "verbatim") {
         parent.content.push({
           type: "paragraph",
+          ...(envUuid ? { attrs: { uuid: envUuid } } : {}),
           content: [
             {
               type: "text",

@@ -126,19 +126,40 @@ export function inlineVerbOpenRe(): RegExp {
   return new RegExp(`\\\\verb(\\*?)(${INLINE_VERB_DELIM})`, "g");
 }
 
-/** Anchored form: does a `\verb<delim>…<delim>` run start at `i`? Returns the
- *  run's exclusive end index (so `text.slice(i, end)` is the whole literal
- *  spelling, delimiters included) or -1. Shared by BOTH inline parsers — the
- *  main one in `latex-parser.ts` and the footnote/card fork in
- *  `footnote-content.ts` — so the two can't drift on what counts as verbatim. */
+/** Sticky twin of the same opener, for the anchored matcher below. Module-
+ *  scoped and `lastIndex`-driven so the parse hot path (one call per backslash
+ *  in every paragraph) allocates neither a RegExp nor a sliced string. */
+const INLINE_VERB_OPEN_STICKY = new RegExp(
+  `\\\\verb(\\*?)(${INLINE_VERB_DELIM})`,
+  "y",
+);
+
+/**
+ * Anchored form: does a `\verb<delim>…<delim>` run start at `i`? Returns the
+ * run's exclusive end index (so `text.slice(i, end)` is the whole literal
+ * spelling, delimiters included) or -1.
+ *
+ * Shared by BOTH inline parsers — the main one in `latex-parser.ts` and the
+ * footnote/card fork in `footnote-content.ts` — so the two can't drift on what
+ * counts as verbatim.
+ *
+ * The close search stops at the next newline, matching LaTeX (a `\verb` run
+ * cannot cross a line) AND matching {@link stripInlineVerb}, which scans
+ * line-by-line. Without the bound the two disagreed about where an
+ * unterminated run ends: the node-producing parsers would close it on a
+ * delimiter several lines later while the drop projection cut it at EOL, so
+ * the same bytes were verbatim to one silo and prose to the other.
+ */
 export function matchInlineVerbAt(text: string, i: number): number {
-  const m = new RegExp(`^\\\\verb(\\*?)(${INLINE_VERB_DELIM})`).exec(
-    text.slice(i),
-  );
+  INLINE_VERB_OPEN_STICKY.lastIndex = i;
+  const m = INLINE_VERB_OPEN_STICKY.exec(text);
   if (!m) return -1;
   const payloadStart = i + m[0].length;
   const closeIdx = text.indexOf(m[2], payloadStart);
-  return closeIdx === -1 ? -1 : closeIdx + 1;
+  if (closeIdx === -1) return -1;
+  const eol = text.indexOf("\n", payloadStart);
+  if (eol !== -1 && eol < closeIdx) return -1;
+  return closeIdx + 1;
 }
 
 export interface ProjectLiveLatexOptions {
@@ -204,10 +225,12 @@ function stripCommentTail(line: string): string {
  *  right after `\verb`/`\verb*` and must be a non-letter (so `\verbatim`,
  *  `\verbdef`, etc. are left untouched), non-`*`, non-space char — the same
  *  boundary the parser's inline-verb matcher uses — literally so: both read
- *  the {@link inlineVerbOpenRe} / {@link matchInlineVerbAt} pair above, so the
- *  drop projection and the node-producing parsers can't drift on what counts as
- *  a verb run. An unterminated `\verb` on the line drops to end-of-line (verb
- *  runs do not cross a newline). */
+ *  the {@link inlineVerbOpenRe} / {@link matchInlineVerbAt} pair above, and
+ *  both stop the close search at the newline, so the drop projection and the
+ *  node-producing parsers can't drift on what counts as a verb run. An
+ *  unterminated `\verb` on the line drops to end-of-line here (verb runs do
+ *  not cross a newline); over there it simply doesn't match, and the text
+ *  falls through as ordinary prose. */
 function stripInlineVerb(line: string): string {
   const re = inlineVerbOpenRe();
   let out = "";

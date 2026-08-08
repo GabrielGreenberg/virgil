@@ -938,12 +938,24 @@ function serializeInline(node: JSONContent): string {
  * bodies keep their interior blank runs too (task 243). A capture-group
  * backreference (`\1`) pairs each `\begin{env}` with its own `\end{env}`, and
  * the alternation is longest-first so `verbatim*` is tried before `verbatim`.
+ *
+ * The `(?:[…]|{…})*` run after the env name is load-bearing (task 264): two of
+ * the four family members are normally written WITH an argument —
+ * `\begin{lstlisting}[language=Python]`, and `\begin{minted}{python}` whose
+ * language argument is MANDATORY, so no real `minted` block has a newline
+ * immediately after `\begin{minted}`. Requiring that newline meant those
+ * blocks never stashed and the `\n{3,}` collapse below ran straight over their
+ * bodies: a PEP8 listing lost one of its two blank lines between top-level
+ * defs on the FIRST save, silently and idempotently. Task 243 unified the
+ * VOCABULARY here but the pattern still only fit the no-argument spelling.
  */
 const VERBATIM_BLOCK_RE = new RegExp(
   `\\\\begin\\{(${[...VERBATIM_ENVS_FULL]
     .sort((a, b) => b.length - a.length)
     .map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|")})\\}\\n[\\s\\S]*?\\n\\\\end\\{\\1\\}`,
+    .join(
+      "|",
+    )})\\}(?:\\[[^\\]\\n]*\\]|\\{[^}\\n]*\\})*\\n[\\s\\S]*?\\n\\\\end\\{\\1\\}`,
   "g",
 );
 function collapseBlankRuns(s: string): string {
