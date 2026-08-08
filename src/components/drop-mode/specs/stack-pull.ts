@@ -22,6 +22,7 @@ import { Node as PMNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import type { JSONContent } from "@tiptap/react";
 import type { DropDecision, DropSpec, Placement } from "../types";
+import { fitNodesAtInsert } from "./drop-context";
 import { readStackItem } from "@/hooks/useStack";
 import type { StackItem, StackPayload } from "@/lib/stack/types";
 import { generateShortId } from "@/lib/uuid";
@@ -169,8 +170,16 @@ function insertParagraph(
     return;
   }
   if (!node) return;
-  const tr = editor.state.tr.insert(placement.insertPos, node);
-  selectInserted(tr, placement.insertPos, node.nodeSize);
+  // Container fit (task 257) — a pull is an INSERT with no source delete, but a
+  // bare paragraph spliced into an `exampleItemList` / `bulletList` corrupts the
+  // container it lands in exactly as a move does (the fitter splits it, both
+  // halves keeping one uuid). Fit or refuse; refusing costs nothing, since the
+  // stack item is a copy that stays in the stack.
+  const fit = fitNodesAtInsert(editor, placement.insertPos, [node]);
+  if (fit.kind === "reject") return;
+  const fitted = fit.nodes[0];
+  const tr = editor.state.tr.insert(placement.insertPos, fitted);
+  selectInserted(tr, placement.insertPos, fitted.nodeSize);
   editor.view.dispatch(tr);
   editor.view.focus();
 }
@@ -197,8 +206,14 @@ function insertHeading(
     }
   }
   if (nodes.length === 0) return;
-  const tr = editor.state.tr.insert(placement.insertPos, nodes);
-  const totalSize = nodes.reduce((s, n) => s + n.nodeSize, 0);
+  // Same container fit as the paragraph payload — atomic over the whole
+  // heading+body run (one unfittable node refuses the pull rather than landing
+  // a partial section).
+  const fit = fitNodesAtInsert(editor, placement.insertPos, nodes);
+  if (fit.kind === "reject") return;
+  const fitted = fit.nodes;
+  const tr = editor.state.tr.insert(placement.insertPos, fitted as PMNode[]);
+  const totalSize = fitted.reduce((s, n) => s + n.nodeSize, 0);
   selectInserted(tr, placement.insertPos, totalSize);
   editor.view.dispatch(tr);
   editor.view.focus();

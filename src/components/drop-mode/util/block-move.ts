@@ -16,6 +16,7 @@
 import { Node as PMNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import type { DropSpec, Placement } from "../types";
+import { fitNodesAtInsert } from "../specs/drop-context";
 import { parseAnyKey } from "@/floats/float-key";
 
 export interface BlockMoveOptions {
@@ -45,7 +46,16 @@ export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
       const src = locateSource(opts, placement, cardKey);
       if (!src) return;
       const { editor: targetEditor, insertPos } = placement;
-      const { editor: sourceEditor, node, from, to } = src;
+      const { editor: sourceEditor, node: sourceNode, from, to } = src;
+      // The shared container-fit gate (task 257) — this factory asked NOTHING
+      // about the drop context, so an exampleBlock card released in another
+      // example's item gap spliced an `exampleBlock` into `exampleItemList` and
+      // the fitter tore that example in two (duplicate uuid), the same class the
+      // two move specs were hitting from their own half-answers. It fits or it
+      // refuses; a refusal returns before the delete, leaving the doc untouched.
+      const fit = fitNodesAtInsert(targetEditor, insertPos, [sourceNode]);
+      if (fit.kind === "reject") return;
+      const node = fit.nodes[0];
       if (targetEditor === sourceEditor) {
         const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
         const tr = targetEditor.state.tr.delete(from, to);

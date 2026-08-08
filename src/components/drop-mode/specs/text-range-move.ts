@@ -13,10 +13,14 @@
  * "between-blocks"]`. Over text the hit-test yields an inline caret and the
  * run MOVES to it (L3f-2). In a block gap it yields a between-blocks
  * placement and the run drops as BLOCK content, fit to the gap's context
- * (L3f-3): a top-level gap → a new paragraph, a list gap → a list item, a
- * blockquote → a paragraph inside the quote. A within-one-paragraph fragment
+ * (L3f-3) through the shared container-fit SSOT: a top-level gap → a new
+ * paragraph, a list gap → a list item, an expex item gap → a new example item,
+ * a single example's widened body / a blockquote → a paragraph inside it, and a
+ * gap that can hold none of those → a refusal. A within-one-paragraph fragment
  * becomes its OWN paragraph (NOT merged into a neighbour — that is the
- * inline-cursor move's job); a multi-block range preserves its blocks.
+ * inline-cursor move's job); a multi-block range preserves its blocks, each
+ * fitted individually (N blocks into a list / example gap → N items, matching
+ * every other wrap site).
  *
  * The moved slice has every `linkedAnchor` mark STRIPPED
  * (`stripLinkedAnchorMarks`, mirroring `LinkedAnchorGuard.transformPasted`):
@@ -38,7 +42,7 @@ import {
   rangeSliceToBlocks,
   stripLinkedAnchorMarks,
 } from "@/lib/linked-anchor-range";
-import { classifyParentAt } from "./drop-context";
+import { fitNodesAtInsert } from "./drop-context";
 import type { DropCtx, DropSpec, Placement } from "../types";
 
 interface RangeSource {
@@ -161,19 +165,27 @@ function applyRangeBetweenBlocks(
   const slice = stripLinkedAnchorMarks(sourceEditor.state.doc.slice(from, to));
   if (slice.size === 0) return;
   const schema = sourceEditor.state.schema;
-  let nodes = rangeSliceToBlocks(slice, schema);
-  if (nodes.length === 0) return;
+  const blocks = rangeSliceToBlocks(slice, schema);
+  if (blocks.length === 0) return;
 
-  // Fit the drop context (mirror `buildWrap`): a gap inside a list wraps each
-  // block in a list item so the run JOINS the list (a bare paragraph would
-  // split it); a blockquote / top-level gap takes the paragraph(s) directly
-  // (ProseMirror places a paragraph inside the quote at a quote-internal
-  // position, and at top level as a sibling block).
-  const parentKind = classifyParentAt(targetEditor, insertPos);
-  if (parentKind === "bulletList" || parentKind === "orderedList") {
-    const listItem = schema.nodes.listItem;
-    if (listItem) nodes = nodes.map((n) => listItem.create(null, [n]));
-  }
+  // Fit the drop context through the ONE container-fit SSOT (`fitNodesAtInsert`
+  // → `fitNodeInContainer`), the same gate the whole-node moves pass through: a
+  // top-level / blockquote gap takes the paragraph(s) bare, a list gap wraps
+  // each block in a fresh `listItem` so the run JOINS the list, an expex
+  // between-items gap wraps each in a fresh `exampleItem` so it joins the
+  // EXAMPLE, and a single example's widened body takes it bare. This replaced a
+  // list-only literal that restated exactly one of those facts: at an expex gap
+  // it inserted a bare paragraph into `exampleItemList` and ProseMirror's fitter
+  // split the example in two — both halves keeping the same uuid, the moved text
+  // stranded at top level between them (task 257).
+  //
+  // A payload that fits NOWHERE here refuses outright rather than letting the
+  // fitter improvise: this move deletes the source in the same transaction, so
+  // an unrepresentable insert would destroy or relocate the user's text. A
+  // refusal leaves the selection exactly where it was.
+  const fit = fitNodesAtInsert(targetEditor, insertPos, blocks);
+  if (fit.kind === "reject") return;
+  const nodes = fit.nodes;
 
   if (targetEditor === sourceEditor) {
     const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
