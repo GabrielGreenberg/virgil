@@ -482,7 +482,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
         </svg>
         PDF
         {vbar.pdfStale && pdfView && (
-          <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 ml-1" data-hint="PDF is out of date" aria-label="PDF is out of date" />
+          <span className="w-1.5 h-1.5 rounded-full ml-1" style={{ backgroundColor: "var(--status-warn)" }} data-hint="PDF is out of date" aria-label="PDF is out of date" />
         )}
       </button>
       </>)}
