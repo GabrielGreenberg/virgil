@@ -228,19 +228,29 @@ export function assertContentCoverage(): void {
           `confirm. Name the user-content field(s).`,
       );
     }
-    // No declared field may appear in BOTH the counted lists and the
-    // aiPrefilled (don't-count) list — that's a contradiction the walker can't
-    // resolve.
-    const counted = new Set<string>([
-      ...(c.bodyField ? [c.bodyField] : []),
-      ...c.textFields,
-    ]);
-    for (const f of c.aiPrefilledFields) {
-      if (counted.has(f)) {
-        console.error(
-          `[CardContent] "${k}" lists "${f}" as BOTH counted and aiPrefilled ` +
-            `(don't-count) — a field can't be both.`,
-        );
+    // No declared field may appear in more than ONE list — always-counted
+    // (`bodyField`/`textFields`), never-counted (`aiPrefilledFields`), and
+    // human-only (`authorConditionalFields`) are mutually exclusive verdicts
+    // the walker can't reconcile. Checked pairwise across ALL the lists (not
+    // just counted-vs-aiPrefilled) so the author-conditional axis can't be
+    // added on top of an existing verdict and silently win or lose (task 241).
+    const seen = new Map<string, string>();
+    const lists: ReadonlyArray<readonly [string, readonly string[]]> = [
+      ["counted", [...(c.bodyField ? [c.bodyField] : []), ...c.textFields]],
+      ["aiPrefilled", c.aiPrefilledFields],
+      ["authorConditional", c.authorConditionalFields],
+    ];
+    for (const [listName, fields] of lists) {
+      for (const f of fields) {
+        const prior = seen.get(f);
+        if (prior !== undefined) {
+          console.error(
+            `[CardContent] "${k}" lists "${f}" as BOTH ${prior} and ` +
+              `${listName} — a field can carry only one verdict.`,
+          );
+        } else {
+          seen.set(f, listName);
+        }
       }
     }
   }
@@ -341,7 +351,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "note",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     // A note carries a rich body + an optional user title.
-    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -408,7 +418,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // caller); the `\footnote` title (`\thanks` acknowledgement label) is an
     // extra user field. FN-A1-02: a title-only footnote IS content (its marker
     // delete must orphan + confirm), so `title` counts.
-    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "in-text",
@@ -432,7 +442,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // R18 ratified: NO cascade — archive survives anchor-paragraph deletion.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     // An archive snippet carries a rich body + an optional display title.
-    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -466,7 +476,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // `notes` textarea (TodoRow). Both must be visible to the has-content confirm
     // (SSOT §T4 3.1) — a `text:"" notes:"…"` todo is reachable, so gating on
     // `text` alone silently lost a notes-only todo on delete (task 067).
-    content: { bodyField: null, textFields: ["text", "notes"], aiPrefilledFields: [] },
+    content: { bodyField: null, textFields: ["text", "notes"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -515,7 +525,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // deleting the card removes the in-text `\cite{}` atom, so a citation with
     // keys must confirm (CI-F7-01 / OMNI-F7-01). The `keys` array counts when
     // non-empty.
-    content: { bodyField: null, textFields: ["keys"], aiPrefilledFields: [] },
+    content: { bodyField: null, textFields: ["keys"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "in-text",
@@ -543,7 +553,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "revision",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     // A revision comment carries a rich body + its plain-text mirror.
-    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -581,7 +591,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "cut",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     // A cutter comment carries a rich body + its plain-text mirror.
-    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -609,13 +619,19 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: "cut",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
-    // An AI suggestion arrives with `original_text`/`suggested_text` prefilled —
-    // those are NOT user content. Only the user-typed `user_text`/`explanation`
-    // count toward the delete-confirm.
+    // `original_text` is a read-only capture of the targeted passage on EVERY
+    // surface (the human field grid renders it `readOnly`; an AI card renders no
+    // grid at all) and is recoverable from the document → never counted.
+    // `suggested_text` is AUTHOR-CONDITIONAL (task 241): AI prefill on an AI
+    // card, but on a human card it's the typed replacement the apply path runs
+    // (`replacement = user_text or suggested_text`) — counting it only for a
+    // human record keeps "dismiss an untouched AI suggestion freely" AND stops
+    // the silent hard-delete of a human draft whose only content is that field.
     content: {
       bodyField: null,
       textFields: ["user_text", "explanation"],
-      aiPrefilledFields: ["original_text", "suggested_text"],
+      aiPrefilledFields: ["original_text"],
+      authorConditionalFields: ["suggested_text"],
     },
     dropSpec: null,
     droppable: true,
@@ -638,11 +654,13 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: "revision",
     lifecycle: { clone: true, delete: true, bindAnchor: true }, // provider re-keyed suggestion→here at the flip
-    // Same as the cutter suggestion: only the user-typed fields count.
+    // Same as the cutter suggestion: `original_text` never counts, and
+    // `suggested_text` counts iff the record is human-authored (task 241).
     content: {
       bodyField: null,
       textFields: ["user_text", "explanation"],
-      aiPrefilledFields: ["original_text", "suggested_text"],
+      aiPrefilledFields: ["original_text"],
+      authorConditionalFields: ["suggested_text"],
     },
     dropSpec: null,
     droppable: true,
@@ -669,7 +687,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // A report carries a user-authored title + a rich body (+ its plain-text
     // mirror). REP-F7-01: a titled-but-empty-body report IS content — the title
     // must trigger the delete-confirm, so `title` counts.
-    content: { bodyField: "content", textFields: ["title", "text"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["title", "text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -697,7 +715,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // permanent: Mode-A paragraph-anchored, no cascade reaches it.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     // A report request carries a rich body + its plain-text mirror.
-    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -730,7 +748,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // card-level user field is the panel-only display `title`. Declared so the
     // kind is never silently un-classified (coverage assertion), even though its
     // delete rides the exampleBlock TextObject lifecycle, not a panel-trash.
-    content: { bodyField: null, textFields: ["title"], aiPrefilledFields: [] },
+    content: { bodyField: null, textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     // NO drop button: example carries a `dropSpec` (exampleDropSpec) but it is a
     // `between-blocks` block content-MOVE, not a card re-anchor — the drop button

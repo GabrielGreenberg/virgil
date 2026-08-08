@@ -15,7 +15,8 @@ import type { CardKind } from "../types";
  *   • `cardHasContent` classifies every kind correctly, including the cases the
  *     old per-kind switch missed: report-with-title (REP-F7-01),
  *     citation-with-keys (CI-F7-01 / OMNI-F7-01), footnote-with-title (FN-A1-02),
- *     suggestion-with-only-AI-prefilled-fields (must NOT count).
+ *     an untouched AI suggestion (must NOT count) vs. a human suggestion typed
+ *     only into `suggested_text` (must count — task 241).
  */
 
 const NO_USER_CONTENT: ReadonlySet<CardKind> = new Set<CardKind>([
@@ -61,13 +62,28 @@ describe("content-facet coverage (T4 §3.1)", () => {
     }
   });
 
-  it("no field is BOTH counted and aiPrefilled (don't-count)", () => {
+  it("no field carries two verdicts (counted / aiPrefilled / authorConditional)", () => {
+    // Checked pairwise across ALL the lists, not just counted-vs-aiPrefilled:
+    // the author-conditional axis (task 241) is a third mutually-exclusive
+    // verdict, and a field on two lists is a contradiction the walker resolves
+    // by accident of ordering.
     for (const k of CARD_KINDS) {
       const c = CARD_REGISTRY[k].content;
       if (c === null) continue;
-      const counted = new Set<string>([...(c.bodyField ? [c.bodyField] : []), ...c.textFields]);
-      for (const f of c.aiPrefilledFields) {
-        expect(counted.has(f), `${k}: "${f}" is both counted and aiPrefilled`).toBe(false);
+      const lists: ReadonlyArray<readonly [string, readonly string[]]> = [
+        ["counted", [...(c.bodyField ? [c.bodyField] : []), ...c.textFields]],
+        ["aiPrefilled", c.aiPrefilledFields],
+        ["authorConditional", c.authorConditionalFields],
+      ];
+      const seen = new Map<string, string>();
+      for (const [name, fields] of lists) {
+        for (const f of fields) {
+          expect(
+            seen.get(f),
+            `${k}: "${f}" is both ${seen.get(f)} and ${name}`,
+          ).toBeUndefined();
+          seen.set(f, name);
+        }
       }
     }
   });
@@ -108,19 +124,26 @@ describe("cardHasContent — registry-driven walker classifies every kind", () =
     expect(cardHasContent("footnote", { content: emptyBody, title: "" })).toBe(false);
   });
 
-  it("a suggestion with ONLY AI-prefilled fields does NOT count; user fields do", () => {
-    // original_text/suggested_text are AI-prefilled → not user content
+  it("task 241: an UNTOUCHED AI suggestion does NOT count; user fields do", () => {
+    // Re-ratified with the author made EXPLICIT. The original case asserted
+    // "original_text + suggested_text = no content" with no `author` on the
+    // fixture, which silently encoded the AI reading of a record shape both
+    // authors share — the premise behind the 241 bug. On an AI card that's
+    // still right (nothing here is user-typed; the card renders no editable
+    // grid), so dismissing it stays nag-free.
     expect(
       cardHasContent("revision-suggestion", {
+        author: "ai",
         original_text: "old",
         suggested_text: "new",
         explanation: "",
         user_text: "",
       }),
     ).toBe(false);
-    // the user-typed explanation/user_text DO count
+    // the user-typed explanation/user_text DO count, on either authorship
     expect(
       cardHasContent("revision-suggestion", {
+        author: "ai",
         original_text: "old",
         suggested_text: "new",
         explanation: "because",
@@ -129,12 +152,42 @@ describe("cardHasContent — registry-driven walker classifies every kind", () =
     ).toBe(true);
     expect(
       cardHasContent("cutter-suggestion", {
+        author: "human",
         original_text: "old",
         suggested_text: "new",
         explanation: "",
         user_text: "keep this",
       }),
     ).toBe(true);
+  });
+
+  it("task 241: a HUMAN suggestion typed only into `suggested_text` HAS content", () => {
+    // The 067-class hole, one field over: `suggested_text` is a live textarea on
+    // the human composition grid AND the apply path's replacement
+    // (`user_text || suggested_text`), so a human draft carrying only that field
+    // must confirm before delete. The derived guard lives in
+    // `suggestion-content-model.test.ts`; this is the behavioral pin.
+    for (const k of ["revision-suggestion", "cutter-suggestion"] as const) {
+      expect(
+        cardHasContent(k, {
+          author: "human",
+          original_text: "old",
+          suggested_text: "cut this",
+          explanation: "",
+          user_text: "",
+        }),
+      ).toBe(true);
+      // …and the same record read as AI-authored does not (prefill, not typing).
+      expect(
+        cardHasContent(k, {
+          author: "ai",
+          original_text: "old",
+          suggested_text: "cut this",
+          explanation: "",
+          user_text: "",
+        }),
+      ).toBe(false);
+    }
   });
 
   it("a note / archive counts body OR title; a todo counts its text line", () => {

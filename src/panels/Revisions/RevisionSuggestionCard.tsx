@@ -25,6 +25,7 @@ import {
   FIELD_ORDER,
   FieldBlock,
   PendingAiRecordBody,
+  READONLY_HUMAN_FIELDS,
   StaleNotice,
   SuggestionTrailing,
   type SuggestionField,
@@ -226,15 +227,17 @@ export function RevisionSuggestionCard({
         onClick={(e) => e.stopPropagation()}
       >
         {/* This branch is HUMAN-authored only (AI cards render the minimal
-            Insert-below body above), so `original_text` is the sole read-only
-            field and the AI-only `instructions` field never applies. */}
+            Insert-below body above), so the read-only set is just
+            `original_text` (READONLY_HUMAN_FIELDS — the shared SSOT the
+            delete-confirm content model is pinned against) and the AI-only
+            `instructions` field never applies. */}
         {FIELD_ORDER.map((field) => (
           <FieldBlock
             key={field}
             field={field}
             value={card[field]}
             onChange={(v) => onUpdateField(card.id, field, v)}
-            readOnly={field === "original_text"}
+            readOnly={READONLY_HUMAN_FIELDS.has(field)}
             kindHint={field === "original_text" ? anchorKind : null}
             panelKey="revision"
           />

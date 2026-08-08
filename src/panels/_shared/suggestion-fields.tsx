@@ -27,12 +27,16 @@ import type { PanelBodyKey } from "@/lib/panel-typography";
 import type { PanelThemeKey } from "@/lib/panel-theme";
 import type { CardKind } from "@/panels/_shared/types";
 
-export type SuggestionField =
-  | "original_text"
-  | "suggested_text"
-  | "explanation"
-  | "user_text"
-  | "instructions";
+// The field vocabulary itself (the union, the grid order, the read-only set)
+// is pure data and lives in its own leaf so non-UI code — notably the content
+// model's derived guard — can read it without pulling the panel widgets in.
+// Re-exported here so every existing call site keeps working.
+export {
+  FIELD_ORDER,
+  READONLY_HUMAN_FIELDS,
+  type SuggestionField,
+} from "./suggestion-field-vocabulary";
+import type { SuggestionField } from "./suggestion-field-vocabulary";
 
 /** The two cards share a
  *  `"pending" | "applied" | "stale" | "accepted" | "rejected"` status union.
@@ -89,13 +93,6 @@ export const FIELD_TEXTAREA_CLASS: Record<SuggestionField, string> = {
   instructions:
     "w-full bg-surface-muted border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[36px]",
 };
-
-export const FIELD_ORDER: SuggestionField[] = [
-  "original_text",
-  "suggested_text",
-  "explanation",
-  "user_text",
-];
 
 // Per the design rule: substantive fields show a word count + copy button next
 // to the section title. Explanation is meta and skips both.

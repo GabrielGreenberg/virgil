@@ -57,13 +57,19 @@ function makeSuggestion(
   // The two kinds share a byte-identical body shape (`kind: "suggestion"` + the
   // 5 suggestion fields), so one factory serves both. Author must be "human" so
   // the field-grid body (not the minimal AI Insert-below body) renders.
+  //
+  // `suggested_text` is EMPTY in the base fixture (task 241): on a human record
+  // it is the author's typed replacement and therefore real content, so a
+  // fixture carrying it is not "pristine" — the cases below that assert a
+  // no-confirm delete would be asserting the data-loss bug. Cases that want it
+  // populated pass it explicitly.
   return {
     kind: "suggestion",
     id: "s1",
     createdAt: "2026-07-27T00:00:00.000Z",
     author: "human",
     original_text: "the original passage",
-    suggested_text: "a suggested replacement",
+    suggested_text: "",
     explanation: "",
     user_text: "",
     instructions: "",
@@ -144,14 +150,26 @@ describe.each(KINDS)("$name docked delete-confirm (task 240)", ({ Card, shellAtt
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith("s1"));
   });
 
-  it("a pristine suggestion (only aiPrefilled original/suggested text) trash deletes immediately — no confirm", () => {
+  it("a pristine suggestion (only the captured original_text) trash deletes immediately — no confirm", () => {
     const card = makeSuggestion({ user_text: "", explanation: "" });
-    // Only aiPrefilled fields are set → NOT content-bearing by the SSOT.
+    // Only `original_text` is set — a read-only capture no author typed → NOT
+    // content-bearing by the SSOT.
     expect(cardHasContent("cutter-suggestion", card)).toBe(false);
     const { onDelete } = renderCard(Card, ref, card, false);
     fireEvent.click(screen.getByLabelText("Delete"));
     expect(screen.queryByText(CONFIRM_TEXT)).toBeNull();
     expect(onDelete).toHaveBeenCalledWith("s1");
+  });
+
+  it("task 241: a HUMAN suggestion typed only into `suggested_text` opens the confirm", () => {
+    // The field the pre-241 descriptor called AI prefill. On a human card it's
+    // the typed, applyable replacement — one click from silent loss before.
+    const card = makeSuggestion({ suggested_text: "a typed replacement" });
+    expect(cardHasContent("cutter-suggestion", card)).toBe(true);
+    const { onDelete } = renderCard(Card, ref, card, false);
+    fireEvent.click(screen.getByLabelText("Delete"));
+    expect(screen.getByText(CONFIRM_TEXT)).toBeTruthy();
+    expect(onDelete).not.toHaveBeenCalled();
   });
 
   it("Delete key on a content-bearing selected card opens the confirm (does NOT delete)", () => {
