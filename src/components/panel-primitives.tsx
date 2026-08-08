@@ -28,7 +28,8 @@ import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
-import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable } from "@/cards/predicates";
+import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable, bodySchemaForCardKind } from "@/cards/predicates";
+import type { CardBodySchemaScope } from "@/lib/tiptap-extensions";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
 import { DropChevrons } from "./icons/DropChevrons";
 import { JumpChevron } from "./icons/JumpChevron";
@@ -1154,6 +1155,15 @@ export function EditableCard({
     !!cardKind &&
     CARD_REGISTRY[cardKind].bodyClass === "borrowed" &&
     compressedContent != null;
+  // Task 308 — the ONE place a card's body vocabulary is resolved. Derived from
+  // the registry `bodySchema` facet and handed to BOTH body surfaces below
+  // (RichTextField when expanded, BorrowedMainText when compressed), so a kind's
+  // two views can never mount different schemas. Falls back to the narrow
+  // authored-prose scope when the caller passes no kind — the historical
+  // behavior for every non-card consumer of this primitive.
+  const schemaScope: CardBodySchemaScope = kind
+    ? bodySchemaForCardKind(kind)
+    : "card";
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -1389,6 +1399,7 @@ export function EditableCard({
                   value={compressedContent}
                   instanceKey={`compressed:${cardKind}:${id}`}
                   variant="footnote"
+                  schemaScope={schemaScope}
                   bodyStyle={compressedBody}
                 />
               ) : (
@@ -1430,6 +1441,7 @@ export function EditableCard({
           value={value}
           placeholder={placeholder}
           variant={variant}
+          schemaScope={schemaScope}
           selected={selected}
           muted={muted}
           onChange={onChange}

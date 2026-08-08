@@ -50,8 +50,14 @@ export {
 } from "./graphics-block";
 export {
   buildBorrowedAtomSchema,
+  buildCardBodySchema,
+  canMountInCardBody,
+  starterKitConfigForScope,
   CARD_STARTER_KIT_CONFIG,
+  EXCERPT_STARTER_KIT_CONFIG,
   BORROWED_INLINE_ATOM_NAMES,
   BORROWED_BLOCK_ATOM_NAMES,
   type BorrowedSchemaOptions,
+  type CardBodySchemaScope,
+  type CardBodyMountCheck,
 } from "./borrowed-schema";
