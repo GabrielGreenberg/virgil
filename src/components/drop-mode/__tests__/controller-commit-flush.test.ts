@@ -41,6 +41,10 @@ vi.mock("@/lib/storage", () => {
 let mockPlacement: Placement | null = null;
 vi.mock("../hit-test", () => ({
   hitTest: () => mockPlacement,
+  // Mint-at-commit exports the controller consults on commit; these fixtures
+  // always carry real (non-sentinel) paragraph ids.
+  isUnmintedParagraphId: (id: string) => id.startsWith("unminted@"),
+  mintPlacementUuid: (_editor: unknown, id: string) => id,
 }));
 
 import type { Editor } from "@tiptap/react";

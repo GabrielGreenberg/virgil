@@ -95,7 +95,9 @@ export function hitTest(
     if (intoExpex) return intoExpex;
   }
 
-  const block = resolveAnchorableBlock(editor, posResult.pos);
+  // Never mint on the move path — a uuid-less block rides a pos-keyed
+  // sentinel until commit (mintPlacementUuid in the controller).
+  const block = resolveAnchorableBlock(editor, posResult.pos, { mint: false });
   if (!block) return null;
 
   const blockRect = block.dom.getBoundingClientRect();
@@ -159,7 +161,13 @@ interface AnchorableBlockInfo {
 export function resolveAnchorableBlock(
   editor: Editor,
   pos: number,
+  opts?: { mint?: boolean },
 ): AnchorableBlockInfo | null {
+  // Default TRUE preserves the historical contract for any direct caller;
+  // the per-move hitTest passes { mint: false } and the real mint happens
+  // once at commit (mintPlacementUuid) — minting per pointermove was the D4
+  // drag cliff (full doc walk + dispatch + synchronous .tex flush per move).
+  const mint = opts?.mint ?? true;
   const doc = editor.state.doc;
   if (pos < 0 || pos > doc.content.size) return null;
   const $pos = doc.resolve(pos);
@@ -175,8 +183,14 @@ export function resolveAnchorableBlock(
     const resolved = resolveAnchorableNode(editor.view, pos);
     if (resolved) {
       // Mint (if missing) through the SSOT — honors DEFERRING_PARENTS, tags the
-      // tx with the anchor-mint flush signal, dedups UUIDs doc-wide.
-      const uuid = ensureAnchorUuid(editor.view, pos);
+      // tx with the anchor-mint flush signal, dedups UUIDs doc-wide. In
+      // mint:false mode a uuid-less block gets a pos-keyed sentinel instead;
+      // stable for indicator identity while hovering (no doc changes mid-drag
+      // once per-move mints are gone).
+      const uuid = mint
+        ? ensureAnchorUuid(editor.view, pos)
+        : ((resolved.node.attrs?.uuid as string | undefined) ??
+          unmintedParagraphId(resolved.nodePos));
       if (uuid) {
         // Re-read nodePos AFTER the mint: `setNodeMarkup` keeps positions
         // stable (same node, same size), so `resolved.nodePos` is still valid.
@@ -218,7 +232,9 @@ export function resolveAnchorableBlock(
   }
   if (!bestNode) return null;
   let uuid: string | undefined = bestNode.attrs?.uuid as string | undefined;
-  if (!uuid) {
+  if (!uuid && !mint) {
+    uuid = unmintedParagraphId(bestPos);
+  } else if (!uuid) {
     const existing = new Set<string>();
     doc.descendants((n) => {
       if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
@@ -237,6 +253,47 @@ export function resolveAnchorableBlock(
   const domAt = editor.view.nodeDOM(bestPos);
   if (!(domAt instanceof HTMLElement)) return null;
   return { blockPos: bestPos, depth: 0, uuid, dom: domAt };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Deferred minting (mint-at-commit)
+// ─────────────────────────────────────────────────────────────────────
+//
+// The per-move hit-test never mints: a uuid-less block's placement carries a
+// pos-keyed sentinel id, and the ONE mint happens at commit via
+// `mintPlacementUuid` — through the same `ensureAnchorUuid` SSOT (honors
+// DEFERRING_PARENTS, anchor-mint flush signal, doc-wide dedup).
+
+const UNMINTED_PREFIX = "unminted@";
+
+function unmintedParagraphId(blockPos: number): string {
+  return `${UNMINTED_PREFIX}${blockPos}`;
+}
+
+export function isUnmintedParagraphId(id: string): boolean {
+  return id.startsWith(UNMINTED_PREFIX);
+}
+
+/**
+ * Resolve a sentinel paragraphId to a real minted uuid at commit time.
+ * Returns null when the block vanished out from under the gesture (the
+ * caller should treat the drop as a no-op).
+ */
+export function mintPlacementUuid(editor: Editor, id: string): string | null {
+  if (!isUnmintedParagraphId(id)) return id;
+  const blockPos = Number(id.slice(UNMINTED_PREFIX.length));
+  if (!Number.isFinite(blockPos)) return null;
+  const doc = editor.state.doc;
+  if (blockPos < 0 || blockPos >= doc.content.size) return null;
+  const node = doc.nodeAt(blockPos);
+  if (!node || !isAnchorableNode(node.type)) return null;
+  // `ensureAnchorUuid` walks up from a pos INSIDE the node; blockPos + 1 is
+  // inside for any non-leaf block. Leaf atoms (nodeSize 1) anchor at their own
+  // position.
+  return ensureAnchorUuid(
+    editor.view,
+    node.nodeSize > 1 ? blockPos + 1 : blockPos,
+  );
 }
 
 /**

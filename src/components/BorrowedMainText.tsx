@@ -48,6 +48,7 @@ import {
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
+import { registerEditorMount } from "@/lib/editor-census-probe";
 
 export interface BorrowedMainTextProps {
   /** The card's already-resolved body. JSONContent (a `doc`), or anything
@@ -171,6 +172,9 @@ export function BorrowedMainText({
     // leave the body on the old vocabulary.
     [instanceKey, schemaScope],
   );
+
+  // Editor-census probe (__editorCensus): one live-instance tick per mount.
+  useEffect(() => registerEditorMount("borrowed-main-text"), []);
 
   // ── Read-only value-sync (FIX 2 / A9 review) ─────────────────────────────
   // A consumer may key the editor on a CONTENT-INDEPENDENT identity (e.g.

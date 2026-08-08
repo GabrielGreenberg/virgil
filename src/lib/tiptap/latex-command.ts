@@ -122,24 +122,67 @@ export const LatexCommandMark = Mark.create({
       return i - start;
     }
 
+    /** Paint `.latex-cmd` inline decos over the bare-text commands in one
+     *  text node (skips text already carrying the latexCommand mark, which
+     *  renders its own `.latex-cmd` span). Returns how many decos it added. */
+    function decorateTextNode(
+      decos: Decoration[],
+      node: any,
+      pos: number,
+    ): number {
+      if (!node.isText || !node.text) return 0;
+      if (node.marks.some((m: any) => m.type === markType)) return 0;
+      const text = node.text as string;
+      let added = 0;
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] !== "\\") continue;
+        // Skip \\ (double backslash)
+        if (i > 0 && text[i - 1] === "\\") { i++; continue; }
+        const len = matchCommandLength(text, i);
+        if (len > 0) {
+          decos.push(Decoration.inline(pos + i, pos + i + len, { class: "latex-cmd" }));
+          added++;
+          i += len - 1; // advance past the match
+        }
+      }
+      return added;
+    }
+
     function buildDecorations(doc: any): DecorationSet {
       const decos: Decoration[] = [];
       doc.descendants((node: any, pos: number) => {
-        if (!node.isText || !node.text) return;
-        // Skip if the entire node already has the latexCommand mark
-        if (node.marks.some((m: any) => m.type === markType)) return;
-
-        const text = node.text as string;
-        for (let i = 0; i < text.length; i++) {
-          if (text[i] !== "\\") continue;
-          // Skip \\ (double backslash)
-          if (i > 0 && text[i - 1] === "\\") { i++; continue; }
-          const len = matchCommandLength(text, i);
-          if (len > 0) {
-            decos.push(Decoration.inline(pos + i, pos + i + len, { class: "latex-cmd" }));
-            i += len - 1; // advance past the match
+        if (node.type?.name === "paragraph") {
+          // Per-paragraph pass: paint the inline decos AND decide whether the
+          // paragraph is "command-only" — the DOM-semantics twin of the old
+          // `p:has(> .latex-cmd:first-child:last-child)` rhythm selector
+          // (perf Wave 0, plan P5.1): exactly ONE element child, and it is a
+          // `.latex-cmd` span. Bare unmarked text renders as text nodes (not
+          // elements); each inline deco, each latexCommand-marked text run,
+          // each other-marked run, and each inline atom renders one element.
+          let cmdElements = 0;
+          let otherElements = 0;
+          node.forEach((child: any, offset: number) => {
+            if (child.isText) {
+              if (child.marks.some((m: any) => m.type === markType)) {
+                cmdElements++;
+              } else if (child.marks.length > 0) {
+                otherElements++;
+              } else {
+                cmdElements += decorateTextNode(decos, child, pos + 1 + offset);
+              }
+            } else {
+              otherElements++;
+            }
+          });
+          if (cmdElements === 1 && otherElements === 0) {
+            decos.push(
+              Decoration.node(pos, pos + node.nodeSize, { class: "p-cmd-only" }),
+            );
           }
+          return false; // children handled above
         }
+        decorateTextNode(decos, node, pos);
+        return undefined;
       });
       return DecorationSet.create(doc, decos);
     }

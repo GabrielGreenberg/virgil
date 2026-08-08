@@ -483,6 +483,23 @@ export function useAnchorHighlightReconciler({
     // ── Panel cards live outside the editor root (some in portals) and are
     // React DOM, not PM nodes — raw setAttribute causes no redraw there, so
     // sweep + restamp the [data-card-key]-bearing subset independently. ────
+    // The popped-card window ring used to select the FloatingPanel via
+    // `:has([data-card-hovered])` — the inner attr doesn't inherit up. That
+    // :has() was a style-invalidation amplifier (perf Wave 0, plan P5.1), so
+    // the reconciler now stamps `data-contains-active-card` UPWARD onto
+    // `closest('[data-floating-panel]')` at write time — O(active cards),
+    // exactly when it already stamps the card attrs.
+    const stalePanelHosts = document.querySelectorAll<HTMLElement>(
+      "[data-floating-panel][data-contains-active-card]",
+    );
+    for (const el of stalePanelHosts) {
+      el.removeAttribute("data-contains-active-card");
+    }
+    const stampPanelHost = (cardEl: HTMLElement) => {
+      cardEl
+        .closest<HTMLElement>("[data-floating-panel]")
+        ?.setAttribute("data-contains-active-card", "true");
+    };
     const stalePanelCards = document.querySelectorAll<HTMLElement>(
       `[data-card-key][${DATA_CARD_SELECTED}], [data-card-key][${DATA_CARD_HOVERED}]`,
     );
@@ -494,13 +511,19 @@ export function useAnchorHighlightReconciler({
       const matches = document.querySelectorAll<HTMLElement>(
         `[data-card-key="${key}"]`,
       );
-      for (const el of matches) el.setAttribute(DATA_CARD_SELECTED, "true");
+      for (const el of matches) {
+        el.setAttribute(DATA_CARD_SELECTED, "true");
+        stampPanelHost(el);
+      }
     }
     for (const key of hoveredCardKeys) {
       const matches = document.querySelectorAll<HTMLElement>(
         `[data-card-key="${key}"]`,
       );
-      for (const el of matches) el.setAttribute(DATA_CARD_HOVERED, "true");
+      for (const el of matches) {
+        el.setAttribute(DATA_CARD_HOVERED, "true");
+        stampPanelHost(el);
+      }
     }
   }, [editor, selected, hover, stableCollections]);
 }

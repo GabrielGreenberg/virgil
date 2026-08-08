@@ -895,7 +895,10 @@ function DragHandle() {
 
 /* ── Editable pod component ────────────────────────────────────────── */
 
-function EditablePod({
+// Memoized with pod-taking STABLE callbacks (no per-pod closures at the render
+// site), so a dragover storm re-renders at most the pods whose isDragging /
+// dropPosition actually flipped — not all N per event.
+const EditablePod = memo(function EditablePod({
   pod,
   isDragging,
   dropPosition,
@@ -912,13 +915,13 @@ function EditablePod({
   isDragging: boolean;
   dropPosition: "above" | "below" | null;
   isCollapsed: boolean;
-  onToggleCollapse?: () => void;
-  onDragStart: (e: React.DragEvent) => void;
+  onToggleCollapse: (podId: string) => void;
+  onDragStart: (pod: OutlinePod, e: React.DragEvent) => void;
   onDragEnd: () => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
-  onDrop: (e: React.DragEvent) => void;
-  onRename: (newText: string) => void;
+  onDragOver: (podId: string, e: React.DragEvent) => void;
+  onDragLeave: (podId: string) => void;
+  onDrop: (podId: string, e: React.DragEvent) => void;
+  onRename: (pod: OutlinePod, newText: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(pod.text);
@@ -934,7 +937,7 @@ function EditablePod({
   const commitRename = () => {
     const trimmed = editText.trim();
     if (trimmed && trimmed !== pod.text) {
-      onRename(trimmed);
+      onRename(pod, trimmed);
     }
     setEditing(false);
   };
@@ -949,16 +952,16 @@ function EditablePod({
   return (
     <div
       className="relative"
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
+      onDragOver={(e) => onDragOver(pod.id, e)}
+      onDragLeave={() => onDragLeave(pod.id)}
+      onDrop={(e) => onDrop(pod.id, e)}
     >
       {dropPosition === "above" && (
         <div className="absolute top-0 left-2 right-2 h-[2px] bg-[var(--accent)] rounded-full z-10 -translate-y-1/2" />
       )}
       <div
         draggable
-        onDragStart={onDragStart}
+        onDragStart={(e) => onDragStart(pod, e)}
         onDragEnd={onDragEnd}
         className={`flex items-center gap-1.5 rounded-md border transition-all cursor-grab active:cursor-grabbing ${
           isDragging
@@ -982,7 +985,7 @@ function EditablePod({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onToggleCollapse?.();
+              onToggleCollapse(pod.id);
             }}
             onMouseDown={(e) => e.stopPropagation()}
             className="p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0"
@@ -1043,7 +1046,7 @@ function EditablePod({
       )}
     </div>
   );
-}
+});
 
 /* ── Editable outline (edit mode container) ────────────────────────── */
 
@@ -1116,7 +1119,24 @@ function EditableOutline({
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const midY = rect.top + rect.height / 2;
     const position = e.clientY < midY ? "above" : "below";
-    setDropTarget({ podId, position });
+    // Equality bail: HTML5 dragover fires uncoalesced at raw event rate, and
+    // an unconditional fresh object here re-rendered every pod per event.
+    // Returning the same reference lets React skip the render entirely, so a
+    // hover only costs a rect read until the target actually changes.
+    setDropTarget((prev) =>
+      prev && prev.podId === podId && prev.position === position
+        ? prev
+        : { podId, position },
+    );
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingId(null);
+    setDropTarget(null);
+  }, []);
+
+  const handleDragLeave = useCallback((podId: string) => {
+    setDropTarget((prev) => (prev?.podId === podId ? null : prev));
   }, []);
 
   const handleDrop = useCallback((targetPodId: string, e: React.DragEvent) => {
@@ -1176,19 +1196,13 @@ function EditableOutline({
             dropIndicator?.podId === pod.id ? dropIndicator.position : null
           }
           isCollapsed={collapsed.has(pod.id)}
-          onToggleCollapse={
-            pod.type === "heading" && pod.hasCollapsibleChildren
-              ? () => onToggleCollapse(pod.id)
-              : undefined
-          }
-          onDragStart={(e) => handleDragStart(pod, e)}
-          onDragEnd={() => { setDraggingId(null); setDropTarget(null); }}
-          onDragOver={(e) => handleDragOver(pod.id, e)}
-          onDragLeave={() => {
-            setDropTarget((prev) => prev?.podId === pod.id ? null : prev);
-          }}
-          onDrop={(e) => handleDrop(pod.id, e)}
-          onRename={(newText) => handleRename(pod, newText)}
+          onToggleCollapse={onToggleCollapse}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onRename={handleRename}
         />
       ))}
     </div>
