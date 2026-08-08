@@ -25,6 +25,7 @@ import {
   type CardBodySchemaScope,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { registerEditorMount } from "@/lib/editor-census-probe";
 import { generateShortId } from "@/lib/uuid";
 import { MIME_CITATION, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
 import type { PanelBodyKey } from "@/lib/panel-typography";
@@ -441,6 +442,9 @@ function RichTextFieldImpl({
   // at construction — a scope change without a remount would silently leave the
   // body on the old vocabulary.
   }, [instanceKey, schemaScope]);
+
+  // Editor-census probe (__editorCensus): one live-instance tick per mount.
+  useEffect(() => registerEditorMount("rich-text-field"), []);
 
   // External value sync — only when the editor isn't focused (otherwise we'd
   // wipe the caret on every debounced parent update). We also refresh

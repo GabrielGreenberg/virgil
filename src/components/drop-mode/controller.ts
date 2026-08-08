@@ -25,7 +25,7 @@
 
 import { useEffect, useState } from "react";
 import type { DropCtx, DropSession, DropSpec, Placement } from "./types";
-import { hitTest } from "./hit-test";
+import { hitTest, isUnmintedParagraphId, mintPlacementUuid } from "./hit-test";
 import { lookupSpec } from "./registry";
 import { parseAnyKey } from "@/floats/float-key";
 
@@ -287,10 +287,26 @@ export async function commitDropSession(): Promise<void> {
   if (!session || !activeCtx) return;
   const s = session;
   const ctx = activeCtx;
-  const placement = s.placement;
+  let placement = s.placement;
   if (!placement) {
     cancelDropSession();
     return;
+  }
+  // Mint-at-commit: the per-move hit-test never mints (the D4 drag cliff —
+  // full doc walk + dispatch + synchronous .tex flush per pointermove). A
+  // uuid-less target rode a pos-keyed sentinel; resolve it to a real minted
+  // uuid NOW, through the same ensureAnchorUuid SSOT, exactly once per
+  // gesture. A vanished block (sentinel no longer resolvable) is a no-op.
+  if (
+    placement.kind === "paragraph-side" &&
+    isUnmintedParagraphId(placement.paragraphId)
+  ) {
+    const minted = mintPlacementUuid(placement.editor, placement.paragraphId);
+    if (!minted) {
+      cancelDropSession();
+      return;
+    }
+    placement = { ...placement, paragraphId: minted };
   }
   const decision = s.spec.classifyDrop(placement, s.cardKey, ctx);
   if (decision.kind === "no-op") {

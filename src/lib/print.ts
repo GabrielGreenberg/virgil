@@ -7,6 +7,11 @@
  */
 
 import type { PanelKind } from "@/panels/_shared/types";
+import {
+  requestAppendices,
+  releaseAppendices,
+  getPrintIntent,
+} from "@/lib/print-intent";
 
 export type PrintElementKey =
   | "title"
@@ -135,6 +140,12 @@ function applyPrintAttrs(options: PrintOptions): () => void {
 }
 
 export async function runPrint(options: PrintOptions): Promise<void> {
+  // Mount the appendix tree first and wait for its post-commit ack — the
+  // appendices exist only during an active print since perf Wave 0
+  // (print-intent.ts has the full story). Falls through on timeout so a
+  // doc-less window still prints.
+  await requestAppendices(options);
+
   const cleanup = applyPrintAttrs(options);
 
   if (document.fonts?.ready) {
@@ -146,6 +157,7 @@ export async function runPrint(options: PrintOptions): Promise<void> {
     if (done) return;
     done = true;
     cleanup();
+    releaseAppendices();
     window.removeEventListener("afterprint", finish);
     mql.removeEventListener("change", onMqlChange);
   };
@@ -157,4 +169,24 @@ export async function runPrint(options: PrintOptions): Promise<void> {
   mql.addEventListener("change", onMqlChange);
 
   window.print();
+}
+
+// ── Native File→Print fallback ─────────────────────────────────────────
+// Cmd+P is intercepted (EditorLayout → PrintDialog → runPrint), but the
+// browser's own menu item fires `beforeprint` with no chance to await a
+// mount. Best-effort: activate the appendices synchronously so React can
+// often commit them before the snapshot (Chromium yields between
+// beforeprint and rasterization more often than not); release on
+// afterprint. A missed race prints without appendices — the documented
+// trade for not keeping hundreds of hidden card editors alive full-time.
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeprint", () => {
+    if (getPrintIntent().active) return; // runPrint owns this cycle
+    void requestAppendices(DEFAULT_PRINT_OPTIONS);
+    const off = () => {
+      releaseAppendices();
+      window.removeEventListener("afterprint", off);
+    };
+    window.addEventListener("afterprint", off);
+  });
 }

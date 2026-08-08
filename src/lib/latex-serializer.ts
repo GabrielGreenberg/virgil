@@ -1,4 +1,4 @@
-import { JSONContent } from "@tiptap/react";
+import type { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { generateShortId } from "@/lib/uuid";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
@@ -88,6 +88,13 @@ const UUID_BEARING_NODE_TYPES = new Set([
   "graphicsBlock",
   "exampleBlock",
   "exampleItem",
+  // The \maketitle stand-in declares the uuid attr and both serializer
+  // (`%!v:` anchor emission) and parser already round-trip it — but its
+  // absence HERE meant assignUuids never minted for it, so it reached the
+  // editor uuid-less and the drop-mode hit-test minted mid-drag (full doc
+  // walk + synchronous .tex flush per pointermove — the D4 drag cliff,
+  // MEMO_PERF_DEEP_RESEARCH_2026_08_08.md §5).
+  "maketitleMarker",
 ]);
 
 const DEFAULT_POSTAMBLE = `
@@ -240,7 +247,7 @@ function serializeTitleField(node: JSONContent): string {
   return `\\${field}{${rawPrefix}${inner}}${anchor}\n`;
 }
 
-function collectPreambleTitleFields(doc: JSONContent): JSONContent[] {
+export function collectPreambleTitleFields(doc: JSONContent): JSONContent[] {
   // Walk the whole doc tree and collect every titleField. Title/author/
   // date are ALWAYS preamble residents — that's their LaTeX semantics —
   // so we don't gate on a per-node flag. Dedup by `field` (first
@@ -975,6 +982,118 @@ function collapseBlankRuns(s: string): string {
   });
 }
 
+/** One top-level block's serialized LaTeX + the requirements its emit-sites
+ *  declared — the per-block unit `serializeToLatex` assembles from, and the
+ *  cacheable entry for the Wave-1 incremental pipeline (cache key = PM node
+ *  identity; a block's output depends on nothing outside its own subtree). */
+export interface TopLevelBlockLatex {
+  latex: string;
+  requirementIds: readonly string[];
+  bibFamily: BibFamily | null;
+}
+
+/**
+ * Serialize ONE top-level block with its own requirement collector.
+ * Top level ⇒ `suppressChildUuids = false`, `listDepth = 0` (always true for
+ * doc children), so the emitted bytes are exactly the block's slice of a
+ * whole-doc `serializeNode(doc)` walk.
+ */
+export function serializeTopLevelBlock(node: JSONContent): TopLevelBlockLatex {
+  const collector = createRequirementCollector();
+  const prevCollector = activeCollector;
+  activeCollector = collector;
+  let latex: string;
+  try {
+    latex = serializeNode(node);
+  } finally {
+    activeCollector = prevCollector;
+  }
+  return {
+    latex,
+    requirementIds: [...collector.ids],
+    bibFamily: collector.bibFamily,
+  };
+}
+
+/**
+ * Fold per-block declared bib families exactly the way one whole-walk
+ * collector would have: first concrete family wins; a DIFFERENT later family
+ * is a conflict that resolves to natbib (the absorbing baseline —
+ * latex-requirement-collector.ts `needBibFamily`). Per-block folding composes
+ * with this cross-block fold because "natbib" is absorbing whether it arrived
+ * as a declaration or as a conflict resolution.
+ */
+function foldBibFamilies(parts: readonly TopLevelBlockLatex[]): BibFamily | null {
+  let fam: BibFamily | null = null;
+  for (const p of parts) {
+    if (!p.bibFamily) continue;
+    if (fam === null) fam = p.bibFamily;
+    else if (fam !== p.bibFamily) fam = "natbib";
+  }
+  return fam;
+}
+
+export interface AssembleLatexOptions {
+  preamble?: string;
+  postamble?: string;
+  bibFamily?: BibFamily | null;
+  onRequirementConflict?: (conflict: BibFamilyConflict) => void;
+}
+
+/**
+ * Assemble a full `.tex` from per-block pieces — byte-identical to what the
+ * historical whole-doc `serializeToLatex` walk produced from the same doc
+ * (the doc case was always `map + join` over top-level children; the tails
+ * below are the joined-string passes that genuinely span block boundaries).
+ */
+export function assembleLatex(
+  parts: readonly TopLevelBlockLatex[],
+  preambleTitleFields: JSONContent[],
+  options?: AssembleLatexOptions,
+): string {
+  const body = collapseBlankRuns(parts.map((p) => p.latex).join("")).trim();
+
+  // Requirements pass runs on EVERY serialize — including the no-options
+  // DEFAULT_PREAMBLE fallback — so a body that emits expex / graphicx /
+  // tikz / cite commands always has the matching \usepackage (and every
+  // `\v*id` shim) by the time the .tex hits disk. `||` (not `??`): an
+  // empty-string preamble falls back to the default, as before.
+  //
+  // The DECLARED set (per-block requirementIds, from emit-sites) is UNIONed
+  // with the FALLBACK detector (detectBodyRequirements, for hand-typed raw
+  // LaTeX). The two never subtract, so the result is a superset-improvement
+  // over the old detector-only set — byte-stable for existing docs (the
+  // emit-sites declare exactly what the regexes were catching, plus
+  // previously-missed cases).
+  const required = detectBodyRequirements(body);
+  for (const p of parts) for (const id of p.requirementIds) required.add(id);
+
+  // Bib family: prefer the authoritative per-doc choice; else the family the
+  // cite emit-sites declared. The declared/authoritative family is reconciled
+  // against the preamble by ensurePreambleRequirements (inject the RIGHT
+  // family; warn — never delete — on a hard conflict).
+  const declaredFamily: BibFamily | null =
+    options?.bibFamily ?? foldBibFamilies(parts);
+
+  const rawPreamble = ensurePreambleRequirements(
+    options?.preamble || DEFAULT_PREAMBLE,
+    required,
+    {
+      declaredBibFamily: declaredFamily,
+      onBibFamilyConflict: options?.onRequirementConflict,
+    },
+  );
+  // Re-inject preamble-sourced \title/\author/\date right before
+  // \begin{document}. They live in the doc tree (so the editor can show
+  // them), but the user intends them to live in the preamble.
+  const preamble = injectTitleFieldsIntoPreamble(
+    rawPreamble,
+    preambleTitleFields,
+  );
+  const postamble = options?.postamble ?? DEFAULT_POSTAMBLE;
+  return preamble + body + postamble;
+}
+
 export function serializeToLatex(
   doc: JSONContent,
   options?: {
@@ -997,54 +1116,12 @@ export function serializeToLatex(
     onRequirementConflict?: (conflict: BibFamilyConflict) => void;
   },
 ): string {
-  // Seed a per-serialize collector and set it as the active side channel for
-  // the walk. Cleared in `finally` so body-only projections never see it.
-  const collector = createRequirementCollector();
-  const prevCollector = activeCollector;
-  activeCollector = collector;
-  let body: string;
-  try {
-    body = collapseBlankRuns(serializeNode(doc)).trim();
-  } finally {
-    activeCollector = prevCollector;
-  }
-
-  // Requirements pass runs on EVERY serialize — including the no-options
-  // DEFAULT_PREAMBLE fallback — so a body that emits expex / graphicx /
-  // tikz / cite commands always has the matching \usepackage (and every
-  // `\v*id` shim) by the time the .tex hits disk. `||` (not `??`): an
-  // empty-string preamble falls back to the default, as before.
-  //
-  // The DECLARED set (collector.ids, from emit-sites) is UNIONed with the
-  // FALLBACK detector (detectBodyRequirements, for hand-typed raw LaTeX). The
-  // two never subtract, so the result is a superset-improvement over the old
-  // detector-only set — byte-stable for existing docs (the emit-sites declare
-  // exactly what the regexes were catching, plus previously-missed cases).
-  const required = detectBodyRequirements(body);
-  for (const id of collector.ids) required.add(id);
-
-  // Bib family: prefer the authoritative per-doc choice; else the family the
-  // cite emit-sites declared. The declared/authoritative family is reconciled
-  // against the preamble by ensurePreambleRequirements (inject the RIGHT
-  // family; warn — never delete — on a hard conflict).
-  const declaredFamily: BibFamily | null =
-    options?.bibFamily ?? collector.bibFamily;
-
-  const rawPreamble = ensurePreambleRequirements(
-    options?.preamble || DEFAULT_PREAMBLE,
-    required,
-    {
-      declaredBibFamily: declaredFamily,
-      onBibFamilyConflict: options?.onRequirementConflict,
-    },
-  );
-  // Re-inject preamble-sourced \title/\author/\date right before
-  // \begin{document}. They live in the doc tree (so the editor can show
-  // them), but the user intends them to live in the preamble.
-  const preambleFields = collectPreambleTitleFields(doc);
-  const preamble = injectTitleFieldsIntoPreamble(rawPreamble, preambleFields);
-  const postamble = options?.postamble ?? DEFAULT_POSTAMBLE;
-  return preamble + body + postamble;
+  // ONE code path (perf Wave 0, plan P2-S1): the whole-doc serialize is the
+  // per-block serialize + assembly. The Wave-1 incremental pipeline memoizes
+  // `serializeTopLevelBlock` per PM node; this function stays the cold path
+  // and the byte-identity oracle.
+  const parts = (doc.content ?? []).map((n) => serializeTopLevelBlock(n));
+  return assembleLatex(parts, collectPreambleTitleFields(doc), options);
 }
 
 export function serializeBodyOnly(doc: JSONContent): string {
@@ -1237,14 +1314,17 @@ export function assignUuids(doc: JSONContent): void {
     ) {
       ensureUuid(node);
     }
-    // Atom-like block nodes always get a UUID
+    // Atom-like block nodes always get a UUID. maketitleMarker included
+    // (D4 drag-cliff fix): uuid-less, it forced the drop hit-test to mint
+    // mid-drag; minting here at load kills that path.
     if (
       (node.type === "displayMath" ||
         node.type === "latexComment" ||
         node.type === "codeBlock" ||
         node.type === "exampleBlock" ||
         node.type === "figureBlock" ||
-        node.type === "graphicsBlock") &&
+        node.type === "graphicsBlock" ||
+        node.type === "maketitleMarker") &&
       !node.attrs?.uuid
     ) {
       ensureUuid(node);

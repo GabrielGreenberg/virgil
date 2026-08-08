@@ -15,6 +15,7 @@ import {
   compressedBodyStyle,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
+import { registerEditorMount } from "@/lib/editor-census-probe";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -264,6 +265,9 @@ function ExampleCardEditor({
       writeBackToMain(ed.getJSON());
     },
   });
+
+  // Editor-census probe (__editorCensus): one live-instance tick per mount.
+  useEffect(() => registerEditorMount("example-card"), []);
 
   // Keep the embedded editor's editability in lock-step with the main doc's,
   // in case read-only mode toggles after mount (collab pen handoff). The

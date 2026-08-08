@@ -1,8 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { PRINT_PANEL_ORDER, type PrintOptions, type PrintPanelKey } from "@/lib/print";
+import { notifyAppendicesReady } from "@/lib/print-intent";
 
 interface PrintAppendicesProps {
   options: PrintOptions;
@@ -17,6 +18,14 @@ export default function PrintAppendices({
   options,
   renderPanel,
 }: PrintAppendicesProps) {
+  // Ack the print-intent store one frame after commit, so runPrint's
+  // await resolves only once the appendix DOM actually exists (perf Wave 0:
+  // this tree mounts only during an active print).
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => notifyAppendicesReady());
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   return (
     <div className="print-only" aria-hidden="true">
       {PRINT_PANEL_ORDER.filter((kind) => options.panels[kind]).map((kind) => (

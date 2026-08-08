@@ -1062,23 +1062,27 @@ textarea,
 .heading-wrapper-l0 .heading-fold-chevron {
   top: calc(var(--font-headers-h0-size, 2.1rem) * 0.75 - 7px);
 }
-.heading-wrapper h1 ~ .heading-fold-chevron,
-.heading-wrapper:has(h1) .heading-fold-chevron {
+/* Level classes, not :has(hN): the NodeView stamps heading-wrapper-l{N} at
+   construction and a level change recreates the view (update() returns false
+   on level diff — editor-extensions.ts), so the class is always correct.
+   :has() with descendant-change triggers was a per-keystroke style-
+   invalidation amplifier in large docs (perf Wave 0, plan P5.1). */
+.heading-wrapper-l1 .heading-fold-chevron {
   top: calc(var(--font-headers-h1-size, 1.75rem) * 0.75 - 7px);
 }
-.heading-wrapper:has(h2) .heading-fold-chevron {
+.heading-wrapper-l2 .heading-fold-chevron {
   top: calc(var(--font-headers-h2-size, 1.35rem) * 0.75 - 7px);
 }
-.heading-wrapper:has(h3) .heading-fold-chevron {
+.heading-wrapper-l3 .heading-fold-chevron {
   top: calc(var(--font-headers-h3-size, 1.15rem) * 0.75 - 7px);
 }
-.heading-wrapper:has(h4) .heading-fold-chevron {
+.heading-wrapper-l4 .heading-fold-chevron {
   top: calc(1rem * 0.75 - 7px);
 }
-.heading-wrapper:has(h5) .heading-fold-chevron {
+.heading-wrapper-l5 .heading-fold-chevron {
   top: calc(var(--font-headers-h5-size, 1rem) * 0.75 - 7px);
 }
-.heading-wrapper:has(h6) .heading-fold-chevron {
+.heading-wrapper-l6 .heading-fold-chevron {
   top: calc(var(--font-headers-h6-size, 0.95rem) * 0.75 - 7px);
 }
 
@@ -1420,7 +1424,7 @@ textarea,
    the first code line instead of floating above an empty annotation row. */
 .par-title-wrapper.has-add-btn:not(.has-title):not(.is-editing-title) > .par-title-annotation,
 .list-title-wrapper.has-add-btn:not(.has-title):not(.is-editing-title) > .par-title-annotation,
-.tex-block:not(:has(.par-title-text)) > .par-title-annotation {
+.tex-block:not(.has-par-title) > .par-title-annotation {
   position: absolute;
   bottom: 100%;
   left: 0;
@@ -3169,9 +3173,10 @@ body.card-outline-chrome [data-card-key]:hover {
  * style otherwise wins over a stylesheet rule). The accent
  * (`--link-anchor-color`) is propagated onto the FloatingPanel root via the
  * card floatable's `accentTint` (FloatWindow → FloatingPanel), since the var
- * the inner card stamps does not inherit UP to the `:has()` host. */
-body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-hovered="true"]),
-body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-selected="true"]) {
+ * the inner card stamps does not inherit UP to the host.
+ * `data-contains-active-card` replaces the old `:has([data-card-*])` — the
+ * reconciler stamps it upward at write time (perf Wave 0, plan P5.1). */
+body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"][data-contains-active-card="true"] {
   box-shadow:
     var(--card-shadow-ambient),
     0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent)
@@ -3478,9 +3483,13 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
  * drop bar. Keyed on the session attr the controller already stamps, so it
  * also covers the block/float grabs (harmless — those don't start on text).
  * Prevents only NEW selection; the grab plugin clears any in-progress one via
- * getSelection().removeAllRanges() at the threshold-cross. */
-body[data-drop-mode-active="true"],
-body[data-drop-mode-active="true"] * {
+ * getSelection().removeAllRanges() at the threshold-cross.
+ * Body-only, NOT `body[...] *`: user-select inherits, and the universal
+ * descendant form forced a full-tree style recalc (measured 36 ms at 18.5k
+ * DOM nodes) at drag start AND end. No in-repo rule declares a competing
+ * user-select value, and contenteditable computes the inherited `none`
+ * (verified empirically) — so inheritance is behavior-identical here. */
+body[data-drop-mode-active="true"] {
   user-select: none;
 }
 /* Indicator transitions:
@@ -3573,8 +3582,14 @@ body[data-drop-mode-active="true"] * {
  * The DELIBERATE tightening of a RUN of command lines is intentional, so it
  * stays — but it now lives ENTIRELY on the adjacent-sibling rule below, and
  * tightens the gap-bearing `margin-top` rather than mutating the typed line's
- * own baseline. No base `:has()` override → no self-shift on the keystroke. */
-.tiptap p:has(> .latex-cmd:first-child:last-child) + p:has(> .latex-cmd:first-child:last-child) {
+ * own baseline. No self-shift on the keystroke.
+ *
+ * `p-cmd-only` is a NODE DECORATION painted by the latex-command plugin
+ * (exactly one element child and it's a .latex-cmd — the DOM semantics the
+ * old `p:has(> .latex-cmd:first-child:last-child)` selector had). The
+ * `:has()` + sibling-combinator form was the worst-case Blink invalidation
+ * shape on the typing path (perf Wave 0, plan P5.1). */
+.tiptap p.p-cmd-only + p.p-cmd-only {
   margin-top: 0.15em;
 }
 
