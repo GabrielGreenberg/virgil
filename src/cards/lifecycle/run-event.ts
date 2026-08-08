@@ -154,13 +154,19 @@ export function appliedSpliceSettleMessage(
     splice.mode === "delete"
       ? "the marked text is struck for deletion but still there"
       : "the suggested text has replaced the original";
+  // The affirmative button carries out what the card PROPOSED, which in delete
+  // mode means removing the text — so name it. "Keep the change" is true for
+  // both modes but reads as "keep the words" over a pending deletion, and this
+  // button is the one that can't be undone by a second glance.
+  const keepLabel =
+    splice.mode === "delete" ? "Keep the deletion" : "Keep the change";
   const morph = CARD_REGISTRY[fromKind].morph;
   if (event === "morph" && morph) {
     const toLabel = CARD_REGISTRY[morph.to].label;
     return {
       title: `Change to ${toLabel}?`,
       message: `This change is still live in your document — ${state}. A ${toLabel} can't manage it, so settle it first.`,
-      keepLabel: "Keep the change",
+      keepLabel,
       revertLabel: "Revert to original",
       cancelLabel: "Cancel",
     };
@@ -169,7 +175,7 @@ export function appliedSpliceSettleMessage(
   return {
     title: `Delete this ${label.toLowerCase()}?`,
     message: `Its change is still live in your document — ${state}. Deleting the card leaves nothing to manage it, so settle it first.`,
-    keepLabel: "Keep the change",
+    keepLabel,
     revertLabel: "Revert to original",
     cancelLabel: "Cancel",
   };

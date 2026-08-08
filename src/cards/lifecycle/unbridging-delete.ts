@@ -69,24 +69,31 @@ export interface UnbridgingDeleteDeps {
  * an empty card), so the executor runs with `hasContent: false` and an
  * always-true confirm — no double-confirm. (The executor may still raise its
  * SETTLE prompt when the card owns a live in-document splice — a different
- * question, about the document rather than the card; see `run-event.ts`.) The
- * returned fn is fire-and-forget
- * (the executor is async because the bridge write is); callers invoke it exactly
- * like the raw delete it replaces.
+ * question, about the document rather than the card; see `run-event.ts`.)
+ *
+ * IT REPORTS WHETHER IT COMMITTED. The delete used to be unrefusable, so
+ * fire-and-forget was honest and callers could destroy adjacent state (strip an
+ * inline mark) ahead of it. Since SETTLE the delete CAN decline — a cancelled
+ * keep/revert prompt leaves the card alive — so the signature says so: it
+ * resolves true iff the card was actually removed. A caller that tears down
+ * something the card owns must await this and skip the teardown on false, or
+ * it mutilates a card the user just chose to keep. Callers that ignore the
+ * result still work exactly as before (a `Promise<boolean>` is assignable
+ * wherever the old `void` delete was).
  */
 export function makeUnbridgingDelete(
   deps: UnbridgingDeleteDeps,
-): (id: string) => void {
-  return (id: string) => {
+): (id: string) => Promise<boolean> {
+  return async (id: string) => {
     const kind = deps.resolveKind(id);
     if (!kind) {
       // Card already gone / unresolvable — nothing to unbridge or signal; just
       // run the raw mutation so a stale caller still gets the delete it asked
       // for.
-      void deps.rawDelete(id);
-      return;
+      await deps.rawDelete(id);
+      return true;
     }
-    void runCardLifecycleEvent(
+    return runCardLifecycleEvent(
       { type: "delete", kind, id, hasContent: false },
       {
         confirm: async () => true, // upstream already confirmed

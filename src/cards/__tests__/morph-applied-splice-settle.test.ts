@@ -113,6 +113,9 @@ describe("appliedSpliceSettleMessage — generated, mode-honest copy", () => {
     // A pending DELETE must never be described as an applied replacement — the
     // user is deciding what happens to their document.
     expect(copy.message).not.toContain("replaced the original");
+    // The affirmative button carries out the DELETION here; naming it "keep the
+    // change" over struck text reads as "keep the words", i.e. the opposite.
+    expect(copy.keepLabel).toBe("Keep the deletion");
   });
 
   it("the delete leg asks about deleting the card, not converting it", () => {

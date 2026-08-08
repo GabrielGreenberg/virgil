@@ -12,7 +12,10 @@
  *
  *   2. **Last-anchor card with content**: ask the user via the shared
  *      "This item has text. Delete it?" dialog. Cancel is a true no-op —
- *      both the link and the card are preserved.
+ *      both the link and the card are preserved. The same holds for a
+ *      DOWNSTREAM refusal: a card owning a live applied splice raises the
+ *      lifecycle SETTLE prompt (task 238) and its Cancel keeps the card, so
+ *      this helper strips no mark unless the delete reports it committed.
  *
  *   3. **Last-anchor card with no content**: delete the card silently.
  *      The user wouldn't lose anything they typed.
@@ -62,8 +65,11 @@ export interface MarginItemHandlers<TCard extends CardWithLinks = CardWithLinks>
   contentKind: CardContentKind | ((card: TCard) => CardContentKind);
   /** Remove one paragraph link from the card (the "unanchor" path). */
   unanchor: (cardId: string, paragraphId: string) => void;
-  /** Hard-delete the card from its hook's state. */
-  delete: (cardId: string) => void;
+  /** Hard-delete the card from its hook's state. Returns `false` when the
+   *  delete DECLINED — the lifecycle executor's SETTLE prompt can be cancelled
+   *  for a card that owns a live in-document splice (task 238), and a cancel
+   *  means the card survives. A handler that can't decline may return `void`. */
+  delete: (cardId: string) => void | boolean | Promise<void | boolean>;
 }
 
 export interface DeleteMarginItemArgs {
@@ -117,11 +123,21 @@ export async function deleteMarginItem(args: DeleteMarginItemArgs): Promise<void
     if (!ok) return; // Cancel: link and card both preserved.
   }
 
-  // Strip the inline mark (if any) so the highlight clears, then hard-delete.
+  // Hard-delete FIRST, then strip the inline mark so the highlight clears.
+  //
+  // The order matters and it used to be the other way round. That was safe
+  // while a delete could not refuse; since the lifecycle SETTLE obligation
+  // (task 238) it can — a card owning a live applied splice raises a
+  // keep/revert prompt whose Cancel keeps the card. Stripping first would then
+  // leave a SURVIVING card with its text-range mark torn out of the document
+  // (and `removeLinkedAnchor` unsets every `linkedAnchor` over that range, so
+  // the colocated blue pending mark goes with it), healed only by a reload.
+  // "Cancel is a true no-op" is this file's contract — keep it true.
+  const committed = await handlers.delete(cardId);
+  if (committed === false) return; // declined downstream: card + mark preserved
   if (anchorId && editor) {
     removeLinkedAnchor(editor, anchorId);
   }
-  handlers.delete(cardId);
 }
 
 // ---------------------------------------------------------------------------
