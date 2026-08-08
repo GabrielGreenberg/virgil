@@ -90,12 +90,13 @@ export interface CreateAtomArgs<K extends InlineAtomCardKind | undefined = undef
    * off, so anything the atom can't regenerate (a footnote's body) has to come
    * from here or be DESTROYED.
    *
-   * `null` means either the accessor isn't wired in this doc or the hook
-   * declined (an empty draft). Each factory decides which it is: the citation
-   * declines (a keyless `\cite{}` can never serialize), the footnote falls back
-   * to the empty create shape (an empty body is a legal footnote). A factory
-   * must never treat `null` as "use the empty shape" for a field that carries
-   * user content.
+   * `null` means the accessor isn't wired in this doc, or the hook declined (an
+   * empty draft citation). Both of today's factories REFUSE on it — a rebuild
+   * that can't read what it needs must not fill the gap from a default. That is
+   * the whole lesson of 233: the empty-body fallback looked like graceful
+   * degradation and was the data loss. A factory may only treat `null` as a
+   * usable default for a field that carries no user content and that the atom
+   * could regenerate anyway.
    */
   cardAttrs: CardAttrsOf<K> | null;
 }
