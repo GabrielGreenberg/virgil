@@ -295,9 +295,15 @@ Be honest and unsparing — "the first dreams will be the worst," and the only w
 the dream improves at dreaming is by reading its past self-critiques. A
 `skill=dream` memo is read first by the next dream (it's your own track record).
 
-**Recursion guard — skip step 7 on a self-referential no-op.** `select` emits
-`selfReferentialOnly: true` when the only memos since the last dream are the
-dream's OWN prior self-reflections (`nonDreamMemoCount == 0`). When that flag is
+**Recursion guard — skip step 7 on a no-signal no-op.** `select` emits
+`selfReferentialOnly: true` whenever **no** memo since the last dream came from a
+real skill run (`nonDreamMemoCount == 0`) — that covers a window holding only the
+dream's OWN prior self-reflections *and* an **empty** window, which is the
+strongest no-signal case, not an exemption. (Read the flag; never re-derive the
+condition by eye from `memoCount`. The empty window is precisely where a
+by-eye reading goes wrong, and doing so re-opens the two-night oscillator:
+suppress on the self-memo night → empty window next night → write a fresh
+contentless memo → suppress again → …) When that flag is
 true **and** this run acted/proposed/refused **nothing** (a pure no-op), do
 **not** write a step-7 memo — a self-reflection with no real skill signal to
 reflect on is exactly what perpetuates the infinite self-referential recursion

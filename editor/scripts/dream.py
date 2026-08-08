@@ -316,12 +316,22 @@ def cmd_select(_argv: list[str]) -> int:
     summ = _summarize(recs)
 
     new_marker = _memo_sort_key(recs[-1]) if recs else (marker or ("", ""))
-    # Self-referential-only window: the only memos since the last dream are the
-    # dream's OWN self-reflections (step 7).  No real skill-run signal exists, so
-    # writing another self-reflection perpetuates an infinite no-op recursion.
-    # Surface this once here (SSOT) so the skill can suppress step 7 and break it.
+    # No-real-signal window: NOTHING since the last dream came from a real skill
+    # run — the window holds only the dream's OWN self-reflections (step 7), or
+    # nothing at all.  Writing another self-reflection here perpetuates an
+    # infinite no-op recursion, so surface the fact once here (SSOT) and let the
+    # skill suppress step 7 on it.
+    #
+    # The predicate is `no non-dream memos`, FULL STOP — an EMPTY window counts.
+    # It used to carry a `bool(recs)` conjunct, which exempted the zero-memo case
+    # and turned the guard into a two-night oscillator: a no-op night with one
+    # stale self-memo suppressed correctly, which left the NEXT window empty,
+    # which read as "not self-referential" and wrote a fresh contentless memo,
+    # which re-primed the cycle.  The 2026-08-06 → 08-07 → 08-08 digests trace
+    # exactly that loop.  Zero memos is the STRONGEST no-signal case, not an
+    # exemption from the guard that exists to catch it.
     non_dream = [r for r in recs if r["skill"] != "dream"]
-    self_referential_only = bool(recs) and not non_dream
+    self_referential_only = not non_dream
     out = {
         "devMode": True,
         # §1 preflight, computed from source so it survives a stale served prompt:
