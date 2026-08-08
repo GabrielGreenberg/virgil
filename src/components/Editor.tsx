@@ -11,7 +11,6 @@ import {
   jumpToLink,
   jumpToCard,
   deleteLink,
-  resolveAnchorRange,
 } from "@/links/links";
 import type { Link as VirgilLink, CardWithLinks } from "@/links/links";
 import { applyLinkedAnchorsImpl } from "@/links/_shared/apply-linked-anchors";
@@ -47,6 +46,11 @@ import { ActiveTextObjectProvider } from "@/text-objects/active-text-object-cont
 import { SelectionActionsMenu } from "./SelectionActionsMenu";
 import { SlashCommandPopup } from "./SlashCommandPopup";
 import { sectionFoldingPluginKey } from "@/lib/section-folding";
+import {
+  setTransientHighlights,
+  clearTransientHighlights,
+  TRANSIENT_HIGHLIGHT_COLOR,
+} from "@/lib/tiptap/transient-highlight";
 import type { HeadingTypePick } from "./HeadingTypeMenu";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 
@@ -109,13 +113,15 @@ interface EditorProps {
   isLabelTaken?: (candidate: string, excludeLabel: string | null) => boolean;
   /** Ref to a Set of paragraph UUIDs that have marginalia anchored to them */
   anchoredUuidsRef?: React.RefObject<Set<string>>;
-  /**
-   * Currently active linked-anchor id. When set, the mark for that id is
-   * highlighted. Takes priority over `highlightText` but not `highlightRange`.
-   */
-  activeAnchorId?: string | null;
-  /** Color token used for the active anchor highlight. Defaults to yellow. */
-  activeAnchorColor?: string | null;
+  /* NOTE (task 120): `activeAnchorId` / `activeAnchorColor` used to live here
+   * and drove a third branch of `applyHighlight`. They were a migration orphan
+   * — NOTHING ever passed them (the sole `<VirgilEditor>` mount is in
+   * `EditorPane`, with no spread), so the branch was unreachable. The
+   * linked-anchor hover/selection highlight is owned by `useLinkHighlight`
+   * (the `data-link-highlight` CSS coupling on the `.linked-anchor` span) and
+   * `AnchorHighlightDecorator` (the node/atom attrs). Both props and the branch
+   * are gone; a future consumer paints through `setTransientHighlights`, which
+   * takes a per-band color for exactly this shape. */
   /** Predicate reporting whether a given texBlock uuid is currently
    *  popped out. The TexBlock NodeView consults this on every render to
    *  toggle the `.is-popped` class on its wrapper (dim the in-doc pod
@@ -410,17 +416,13 @@ function installBusStatsProbe() {
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, texBlockIsPoppedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, texBlockIsPoppedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
   highlightTextRef.current = highlightText;
   const highlightRangeRef = useRef(highlightRange);
   highlightRangeRef.current = highlightRange;
-  const activeAnchorIdRef = useRef(activeAnchorId);
-  activeAnchorIdRef.current = activeAnchorId;
-  const activeAnchorColorRef = useRef(activeAnchorColor);
-  activeAnchorColorRef.current = activeAnchorColor;
 
   const onCitationDropRef = useRef(onCitationDrop);
   onCitationDropRef.current = onCitationDrop;
@@ -867,7 +869,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const range = findTextRange(editor, oldText);
       if (!range) return false;
 
-      editor.chain().selectAll().unsetHighlight().run();
+      // Drop the transient band before splicing — a meta-only dispatch, so
+      // unlike the old select-all-then-unset-the-mark clear it adds no history
+      // entry in front of the real replacement (and can't erase a user mark).
+      clearTransientHighlights(editor.view);
 
       if (newText) {
         editor
@@ -1708,29 +1713,39 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
   }), [editor]);
 
+  /**
+   * Paint the ONE live transient highlight band, or clear it.
+   *
+   * Every band here is view-only — a search hit, a diagnostics error range, a
+   * revision's quoted text. None of it is document content, so none of it is a
+   * MARK any more: the band is a ProseMirror decoration replaced by a meta-only
+   * transaction (see `lib/tiptap/transient-highlight.ts`, task 120).
+   * Consequences of the swap, all of them the point:
+   *
+   *  - **Never a history entry.** Clicking a search result used to record a
+   *    mark-add, wiping the redo branch; the clear-on-close recorded an unset
+   *    that the next Cmd+Z UNDID, resurrecting the amber band with the panel
+   *    already closed.
+   *  - **Never `docChanged`.** A hover no longer dirties the document or arms
+   *    the `useDocument` autosaver — no phantom disk write on an unedited doc.
+   *  - **Never touches the user's marks or selection.** The old painter cleared
+   *    by selecting the WHOLE doc and unsetting the highlight mark (which would
+   *    erase a real user highlight too), and had to put the SELECTION on the
+   *    range to apply the mark at all — hence the collapse-to-`prevSelection`
+   *    dance that existed only to hide the grey inactive-selection ghost. A
+   *    decoration needs no selection, so the user's own selection survives.
+   *
+   * Both surviving bands are NAVIGATIONAL — they scroll into view and land the
+   * caret at the range start, because that is the point of a jump. (The third
+   * branch, a linked-anchor hover band keyed off an `activeAnchorId` prop, was
+   * an unreachable orphan and is gone — see the prop note on `EditorProps`.)
+   */
   const applyHighlight = useCallback(() => {
     if (!editor) return;
 
-    // Remember where the user's selection is so we can restore it after the
-    // selectAll-then-unset dance. Without this, when there's nothing new to
-    // highlight (e.g. clearing on click-away), the editor's selection is left
-    // spanning the entire doc — the browser renders this as a grey
-    // "inactive selection" ghost whenever the editor is blurred.
-    const prevSelection = editor.state.selection;
-    editor.chain().selectAll().unsetHighlight().setTextSelection(prevSelection.from).run();
-
-    // Position-based highlight (from search panel) takes priority
-    const range = highlightRangeRef.current;
-    if (range) {
+    const scrollRangeIntoView = (from: number) => {
       try {
-        editor
-          .chain()
-          .setTextSelection(range)
-          .setHighlight({ color: "#fbbf2480" })
-          .setTextSelection(range.from)
-          .run();
-
-        const domAtPos = editor.view.domAtPos(range.from);
+        const domAtPos = editor.view.domAtPos(from);
         if (domAtPos.node instanceof HTMLElement || domAtPos.node.parentElement) {
           const el =
             domAtPos.node instanceof HTMLElement
@@ -1739,57 +1754,44 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           el?.scrollIntoView({ behavior: "instant", block: "center" });
         }
       } catch { /* pos out of range after edit */ }
+    };
+
+    // Position-based highlight (search panel / diagnostics) takes priority.
+    const range = highlightRangeRef.current;
+    if (range) {
+      setTransientHighlights(editor.view, [
+        { from: range.from, to: range.to, color: TRANSIENT_HIGHLIGHT_COLOR },
+      ]);
+      try {
+        editor.commands.setTextSelection(range.from);
+      } catch { /* pos out of range after edit */ }
+      scrollRangeIntoView(range.from);
       return;
     }
 
-    // Linked-anchor highlight — driven by hover/click of margin icon or card.
-    // Does NOT scroll (avoids jumping the viewport every time the user hovers).
-    const anchorId = activeAnchorIdRef.current;
-    if (anchorId) {
-      const anchorRange = resolveAnchorRange(editor, anchorId);
-      if (anchorRange) {
-        try {
-          editor
-            .chain()
-            .setTextSelection(anchorRange)
-            .setHighlight({ color: activeAnchorColorRef.current || "#fbbf2480" })
-            .setTextSelection(anchorRange.from)
-            .run();
-        } catch { /* pos out of range */ }
-        return;
-      }
+    // Text-based highlight (from revisions/suggestions).
+    const textRange = highlightTextRef.current
+      ? findTextRange(editor, highlightTextRef.current)
+      : null;
+    if (!textRange) {
+      clearTransientHighlights(editor.view);
+      return;
     }
 
-    // Text-based highlight (from revisions/suggestions)
-    if (!highlightTextRef.current) return;
-
-    const textRange = findTextRange(editor, highlightTextRef.current);
-    if (!textRange) return;
-
-    editor
-      .chain()
-      .setTextSelection(textRange)
-      .setHighlight({ color: "#fbbf2480" })
-      .setTextSelection(textRange.from)
-      .run();
-
-    const domAtPos = editor.view.domAtPos(textRange.from);
-    if (domAtPos.node instanceof HTMLElement || domAtPos.node.parentElement) {
-      const el =
-        domAtPos.node instanceof HTMLElement
-          ? domAtPos.node
-          : domAtPos.node.parentElement;
-      el?.scrollIntoView({ behavior: "instant", block: "center" });
-    }
+    setTransientHighlights(editor.view, [
+      { from: textRange.from, to: textRange.to, color: TRANSIENT_HIGHLIGHT_COLOR },
+    ]);
+    try {
+      editor.commands.setTextSelection(textRange.from);
+    } catch { /* pos out of range after edit */ }
+    scrollRangeIntoView(textRange.from);
   }, [editor]);
 
   useEffect(() => {
     highlightTextRef.current = highlightText;
     highlightRangeRef.current = highlightRange;
-    activeAnchorIdRef.current = activeAnchorId;
-    activeAnchorColorRef.current = activeAnchorColor;
     applyHighlight();
-  }, [highlightText, highlightRange, activeAnchorId, activeAnchorColor, applyHighlight]);
+  }, [highlightText, highlightRange, applyHighlight]);
 
   // Keep the stable editor ref in sync for TextObjectGrabHandle and
   // anything else that needs a non-rerendering handle.
