@@ -51,6 +51,7 @@ import {
   Citation,
   LabelRef,
   LatexCommandMark,
+  LatexVerbatimMark,
   SlashPopupExtension,
   LabelHandler,
   TitleField,
@@ -1890,6 +1891,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     // synced node attrs). Decision 8.
     ...(isMain ? [ExpexNumbering] : []),
     LatexCommandMark,
+    LatexVerbatimMark,
     // Direct in-text Atom grab (footnote/citation/ref/inline math →
     // drag to a new inline cursor). Ungated: present on every surface
     // (main + card bodies) so any editor's atoms are graspable. Reads the
