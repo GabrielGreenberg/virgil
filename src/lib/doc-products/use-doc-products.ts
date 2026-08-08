@@ -10,10 +10,11 @@
  * has the editor instance (EditorLayout's latestDoc replacement).
  *
  * Flag: `docProductsEnabled` — localStorage `virgil:doc-products`, default
- * OFF in S2 (the legacy hooks run), flipped ON after soak (plan S3), the
- * legacy path deleted in S6. Read once at module load (the print-gate
- * kill-switch pattern): toggling requires a reload, which is exactly the
- * A/B discipline the rollout wants.
+ * ON with `"off"` as the kill-switch (the print-gate pattern; flipped from
+ * default-OFF at the end of Wave 1 with the legacy hooks kept intact as
+ * the soak safety net — their deletion is the post-soak S6 follow-up).
+ * Read once at module load: toggling requires a reload, which is exactly
+ * the A/B discipline the rollout wants.
  */
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
@@ -31,9 +32,9 @@ import "./probe";
 export const docProductsEnabled: boolean = (() => {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem("virgil:doc-products") === "on";
+    return window.localStorage.getItem("virgil:doc-products") !== "off";
   } catch {
-    return false;
+    return true;
   }
 })();
 
