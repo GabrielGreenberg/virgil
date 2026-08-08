@@ -686,6 +686,17 @@ as a darker shade of the paper. Destructive confirms use `variant="danger"`.
 and discard-unsaved. Anchors near the source element, not screen
 center.
 
+**Two answers plus a way out.** `ConfirmDialog` takes an optional
+`secondaryLabel`/`onSecondary` pair rendering a third button between Cancel and
+the primary action, and `useConfirmDialog()` exposes `choose()` alongside
+`confirm()` — same pending slot, same mounted dialog, resolving
+`"confirm" | "secondary" | "cancel"` instead of a boolean. Reach for it when the
+question has **two real answers** and the alternative would be picking one on the
+user's behalf ("this applied change is still live in your document: keep it,
+revert it, or cancel" — task 238). Do NOT use it to stack unrelated actions: the
+two answers must be the two ways of resolving the SAME question, and Cancel must
+stay the safe outcome, since Esc and the backdrop both resolve to it.
+
 ### Positioning variants — one shell, principled variety
 
 `SystemDialog` has a `variant` axis so surfaces that predate it fold onto the

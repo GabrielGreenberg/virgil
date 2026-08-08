@@ -305,9 +305,11 @@ import {
   previewOriginal as previewOriginalSuggestion,
   previewSuggested as previewSuggestedSuggestion,
   insertSuggestionBelow,
+  settleAppliedChangeForLifecycle,
   type PendingChangeCardDeps,
   type InsertBelowCardDeps,
 } from "@/links/pending-change-actions";
+import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
 import {
   isAppliedPending,
   collectAppliedPendingIds,
@@ -1251,9 +1253,137 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const cutterHookRaw = useCutter(docId, cutPristine);
   const reportsHookRaw = useReports(docId, reportPristine);
   const revisionsHookRaw = useRevisions(docId, revisionPristine);
-  // Lossy-morph confirm (note→highlight, report↔report-request). Distinct
-  // dialog instance so it coexists with the other confirm dialogs.
-  const { confirm: confirmMorph, dialog: confirmMorphDialog } = useConfirmDialog();
+  // Per-family deps bag for the shared `pending-change-actions` sequence. Built
+  // fresh at ACTION time (a click) so it reads the live cards; its `useCallback`
+  // identity is keystroke-stable (deps: the keystroke-stable hook object), which
+  // is what keeps the controller/index/bulk memos below stable across typing.
+  // Bound to the RAW hooks (the wrapped `revisionsHook`/`cutterHook` memos below
+  // only swap `convertCard`/`deleteCard`; the card arrays + setters these read
+  // are the same objects), so the SAME bag serves both the card-surface verbs
+  // further down AND the lifecycle SETTLE obligation declared just below — one
+  // definition, no second copy to drift (task 238).
+  const revisionPendingDeps = useCallback(
+    (): PendingChangeCardDeps<RevisionSuggestionCard["status"]> => ({
+      getAppliedChange: (cid) =>
+        revisionsHookRaw.cards.find(
+          (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
+        )?.appliedChange,
+      setSuggestionStatus: revisionsHookRaw.setSuggestionStatus,
+      setArchived: revisionsHookRaw.setArchived,
+      setAppliedChange: revisionsHookRaw.setAppliedChange,
+      family: "revision-suggestion",
+      acceptedStatus: "accepted",
+      rejectedStatus: "rejected",
+    }),
+    [revisionsHookRaw],
+  );
+  const cutterPendingDeps = useCallback(
+    (): PendingChangeCardDeps<CutterSuggestionCard["status"]> => ({
+      getAppliedChange: (cid) =>
+        cutterHookRaw.cards.find(
+          (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+        )?.appliedChange,
+      setSuggestionStatus: cutterHookRaw.setSuggestionStatus,
+      setArchived: cutterHookRaw.setArchived,
+      setAppliedChange: cutterHookRaw.setAppliedChange,
+      family: "cutter-suggestion",
+      acceptedStatus: "accepted",
+      rejectedStatus: "rejected",
+    }),
+    [cutterHookRaw],
+  );
+  // Lossy-morph confirm (note→highlight, report↔report-request) AND the
+  // lifecycle SETTLE prompt (task 238) — one dialog instance serves both, since
+  // a lifecycle event raises them strictly in sequence. Distinct instance so it
+  // coexists with the other confirm dialogs.
+  const {
+    confirm: confirmMorph,
+    choose: chooseLifecycle,
+    dialog: confirmMorphDialog,
+  } = useConfirmDialog();
+
+  // ── The SETTLE obligation's host wiring (task 238) ──────────────────────
+  // A `status:"applied"` suggestion owns a LIVE range in the document (the blue
+  // `pending-ai-change` mark described by `appliedChange`). A morph to a comment
+  // — or a delete — ends the record that manages it, so the executor must settle
+  // that splice first or the range is orphaned: Keep/Revert can no longer
+  // resolve it (`isAppliedPending` requires kind+status+descriptor) and on
+  // reload the reaper strips the mark, leaving unreviewed AI text in the `.tex`
+  // with nothing to revert it.
+  //
+  // ONE bag, kind-agnostic, threaded to EVERY lifecycle door (the morph
+  // chokepoint below + all five `makeUnbridgingDelete` wrappers). The executor
+  // gates it on `ownsAppliedSplice`, so there is no per-kind wiring to forget
+  // when a kind later joins the pending-change family; the wiring guardrail
+  // (`applied-splice-wiring-guardrail.test.ts`) pins that every door passes it.
+  //
+  // KEYSTROKE SANCTITY: a `useMemo` over the keystroke-stable card arrays; it
+  // subscribes to nothing and runs only on an explicit lifecycle click.
+  const appliedSpliceOps = useMemo<AppliedSpliceOps>(
+    () => ({
+      get: (kind, id) => {
+        // Flag-OFF no card can ever reach `status:"applied"`, so this is the
+        // byte-identical no-op path (no prompt, no settle).
+        if (!isPendingChangesOn()) return null;
+        const card =
+          kind === "revision-suggestion"
+            ? revisionsHookRaw.cards.find(
+                (c): c is RevisionSuggestionCard =>
+                  c.id === id && c.kind === "suggestion",
+              )
+            : cutterHookRaw.cards.find(
+                (c): c is CutterSuggestionCard =>
+                  c.id === id && c.kind === "suggestion",
+              );
+        // The SAME membership predicate the pill + omni bulk use — never a
+        // second spelling of "is this card applied-pending".
+        if (!card || !isAppliedPending(card) || !card.appliedChange) return null;
+        return {
+          anchorId: card.appliedChange.anchorId,
+          mode: card.appliedChange.mode,
+        };
+      },
+      ask: async (prompt) => {
+        const choice = await chooseLifecycle({
+          title: prompt.title,
+          message: prompt.message,
+          confirmLabel: prompt.keepLabel,
+          secondaryLabel: prompt.revertLabel,
+          cancelLabel: prompt.cancelLabel,
+          tone: "default",
+        });
+        if (choice === "confirm") return "keep";
+        if (choice === "secondary") return "revert";
+        return null;
+      },
+      settle: (kind, id, resolution) => {
+        const ed = editorInstanceRef.current;
+        // REFUSE rather than orphan: with no editor there is no way to splice
+        // the document, so returning false aborts the whole lifecycle event and
+        // leaves the applied card exactly as it was — recoverable — instead of
+        // ending its record over a range nothing can then manage.
+        if (!ed) return false;
+        settleAppliedChangeForLifecycle(
+          ed,
+          id,
+          docId,
+          kind === "revision-suggestion"
+            ? revisionPendingDeps()
+            : cutterPendingDeps(),
+          resolution,
+        );
+        return true;
+      },
+    }),
+    [
+      revisionsHookRaw.cards,
+      cutterHookRaw.cards,
+      chooseLifecycle,
+      docId,
+      revisionPendingDeps,
+      cutterPendingDeps,
+    ],
+  );
   // ── The A9 morph chokepoint (generalized) ──────────────────────────────
   // EVERY kind-chevron morph — note↔highlight, revision/cutter comment↔
   // suggestion, report↔report-request — fires through `convertCardWithRemap`.
@@ -1319,6 +1449,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               // ctx fields are only read on the add path, so a placeholder is fine.
               text: "",
             }),
+          // SETTLE — an applied suggestion's live blue range is resolved (kept
+          // or reverted) before the kind flips, so it can't outlive the record
+          // that manages it (task 238). Inert for every other kind.
+          appliedSplice: appliedSpliceOps,
           mutate: () => {
             // Dispatch to the owning panel hook with its expected data toKind.
             switch (fromCardKind) {
@@ -1365,7 +1499,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       }
       viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
     },
-    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, docId],
+    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, appliedSpliceOps, docId],
   );
   // The SINGLE ai-requests.json writer for the DELETE leg (task 219). A delete
   // is a TERMINAL transition like archive (task 093): the card is gone, so the
@@ -1442,8 +1576,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         },
         rawDelete: revisionsHookRaw.deleteCard,
         unbridge: unbridgeOnDelete,
+        appliedSplice: appliedSpliceOps,
       }),
-    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeOnDelete],
+    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeOnDelete, appliedSpliceOps],
   );
   const deleteCutterCard = useMemo(
     () =>
@@ -1455,8 +1590,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         },
         rawDelete: cutterHookRaw.deleteCard,
         unbridge: unbridgeOnDelete,
+        appliedSplice: appliedSpliceOps,
       }),
-    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeOnDelete],
+    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeOnDelete, appliedSpliceOps],
   );
   const revisionsHook = useMemo(
     () => ({ ...revisionsHookRaw, convertCard: convertRevisionCard, deleteCard: deleteRevisionCard }),
@@ -1509,8 +1645,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         },
         rawDelete: reportsHookRaw.deleteCard,
         unbridge: unbridgeOnDelete,
+        appliedSplice: appliedSpliceOps,
       }),
-    [reportsHookRaw.cards, reportsHookRaw.deleteCard, unbridgeOnDelete],
+    [reportsHookRaw.cards, reportsHookRaw.deleteCard, unbridgeOnDelete, appliedSpliceOps],
   );
   const reportsHook = useMemo(
     () => ({
@@ -1532,8 +1669,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         },
         rawDelete: notesHookRaw.deleteNote,
         unbridge: unbridgeOnDelete,
+        appliedSplice: appliedSpliceOps,
       }),
-    [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeOnDelete],
+    [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeOnDelete, appliedSpliceOps],
   );
   const notesHook = useMemo(
     () => ({ ...notesHookRaw, convertCard: convertNotesCard, deleteNote: deleteNoteCard }),
@@ -1550,8 +1688,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           todosHookRaw.items.some((t) => t.id === id) ? "todo" : null,
         rawDelete: todosHookRaw.deleteItem,
         unbridge: unbridgeOnDelete,
+        appliedSplice: appliedSpliceOps,
       }),
-    [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeOnDelete],
+    [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeOnDelete, appliedSpliceOps],
   );
   const todosHook = useMemo(
     () => ({ ...todosHookRaw, deleteItem: deleteTodoItem }),
@@ -2741,41 +2880,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // applied handler is ever
   // emitted, so these are unreachable — byte-identical OFF). `editor` is the
   // reactive instance the rest of EditorPane threads.
-  // Per-family deps bag for the shared `pending-change-actions` sequence. Built
-  // fresh at ACTION time (a click) so it reads the live cards; its `useCallback`
-  // identity is keystroke-stable (deps: the keystroke-stable hook object), which
-  // is what keeps the controller/index/bulk memos below stable across typing.
-  const revisionPendingDeps = useCallback(
-    (): PendingChangeCardDeps<RevisionSuggestionCard["status"]> => ({
-      getAppliedChange: (cid) =>
-        revisionsHook.cards.find(
-          (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
-        )?.appliedChange,
-      setSuggestionStatus: revisionsHook.setSuggestionStatus,
-      setArchived: revisionsHook.setArchived,
-      setAppliedChange: revisionsHook.setAppliedChange,
-      family: "revision-suggestion",
-      acceptedStatus: "accepted",
-      rejectedStatus: "rejected",
-    }),
-    [revisionsHook],
-  );
-  const cutterPendingDeps = useCallback(
-    (): PendingChangeCardDeps<CutterSuggestionCard["status"]> => ({
-      getAppliedChange: (cid) =>
-        cutterHook.cards.find(
-          (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
-        )?.appliedChange,
-      setSuggestionStatus: cutterHook.setSuggestionStatus,
-      setArchived: cutterHook.setArchived,
-      setAppliedChange: cutterHook.setAppliedChange,
-      family: "cutter-suggestion",
-      acceptedStatus: "accepted",
-      rejectedStatus: "rejected",
-    }),
-    [cutterHook],
-  );
-
   // Per-card COMMIT closures (Check = keep, Cross = dismiss-preserves), threaded
   // to the gutter marker / pill / omni bulk index. The flag + editor-mounted
   // guard lives here (flag-OFF: no applied card ever exists, so these are
