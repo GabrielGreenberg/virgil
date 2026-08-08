@@ -414,6 +414,14 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         bodyParts.push("\n  ");
         bodyParts.push(`\\caption${shortArg}{${captionTex}}`);
       }
+      // NOTE (task 245): when the author wrote the label INSIDE the caption
+      // (`\caption{Foo \label{fig:x}}`, idiomatic), the caption child re-emits
+      // those bytes and this emits a second copy — a duplicate `\label` in the
+      // .tex. Suppressing it by testing whether `captionTex` contains the label
+      // was tried and REVERTED: a caption that merely quotes `\label{fig:x}`
+      // (`\verb|\label{fig:x}|`) passes that test, so the figure's real
+      // declaration got deleted instead. The emit side needs the parser to say
+      // WHERE the label lived, not a byte heuristic — filed separately.
       if (label) {
         bodyParts.push("\n  ");
         bodyParts.push(`\\label{${label}}`);
