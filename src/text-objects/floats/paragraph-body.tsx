@@ -36,6 +36,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
@@ -44,6 +45,7 @@ import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  type SourceRange,
 } from "@/lib/float-sync";
 import type { TextObjectFloatBodyProps } from "../types";
 
@@ -64,13 +66,8 @@ export function ParagraphBody({
   const initial = useMemo(() => {
     let paragraphNode: JSONContent | null = null;
     if (mainEditor) {
-      mainEditor.state.doc.descendants((node) => {
-        if (node.type.name === "paragraph" && node.attrs?.uuid === uuid) {
-          paragraphNode = node.toJSON() as JSONContent;
-          return false;
-        }
-        return true;
-      });
+      const src = findSourceNodeByUuid(mainEditor.state.doc, uuid, "paragraph");
+      if (src) paragraphNode = src.node.toJSON() as JSONContent;
     }
     return {
       doc: {
@@ -152,18 +149,17 @@ export function ParagraphBody({
     if (!ed) return;
     const firstPar = doc.content?.[0];
     if (!firstPar || firstPar.type !== "paragraph") return;
-    let pos: number | null = null;
-    let targetNode: PMNode | null = null;
-    ed.state.doc.descendants((n, p) => {
-      if (n.type.name === "paragraph" && n.attrs?.uuid === uuid) {
-        pos = p;
-        targetNode = n;
-        return false;
-      }
-      return true;
-    });
-    if (pos == null || !targetNode) return;
-    const found: PMNode = targetNode;
+    // The live source range doubles as this write's position hint, so the
+    // float→main direction stops walking the doc on every float keystroke too.
+    const src = findSourceNodeByUuid(
+      ed.state.doc,
+      uuid,
+      "paragraph",
+      sourceRangeRef.current,
+    );
+    if (!src) return;
+    const pos = src.start;
+    const found: PMNode = src.node;
     try {
       const fragment = (firstPar.content ?? []).map((c) =>
         ed.state.schema.nodeFromJSON(c),
@@ -187,16 +183,9 @@ export function ParagraphBody({
   }
 
   const readSource = useCallback(
-    (doc: PMNode) => {
-      let found: PMNode | null = null;
-      doc.descendants((node) => {
-        if (node.type.name === "paragraph" && node.attrs?.uuid === uuid) {
-          found = node;
-          return false;
-        }
-        return true;
-      });
-      if (!found) {
+    (doc: PMNode, hint: SourceRange | null) => {
+      const src = findSourceNodeByUuid(doc, uuid, "paragraph", hint);
+      if (!src) {
         return {
           doc: { type: "doc", content: [{ type: "paragraph" }] } as JSONContent,
           missing: true,
@@ -204,19 +193,19 @@ export function ParagraphBody({
       }
       // Sync the FULL node (attrs incl. parTitle + uuid), so the inline `+T`
       // NodeView renders the current title.
-      const node = found as PMNode;
       return {
         doc: {
           type: "doc",
-          content: [node.toJSON() as JSONContent],
+          content: [src.node.toJSON() as JSONContent],
         } as JSONContent,
         missing: false,
+        range: { from: src.start, to: src.end },
       };
     },
     [uuid],
   );
 
-  const { sourceMissing } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

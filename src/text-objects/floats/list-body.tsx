@@ -37,6 +37,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
@@ -46,6 +47,7 @@ import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  type SourceRange,
 } from "@/lib/float-sync";
 import type { TextObjectFloatBodyProps } from "../types";
 
@@ -56,25 +58,21 @@ interface ListSource {
   typeName: "bulletList" | "orderedList";
 }
 
-function findListByUuid(doc: PMNode, uuid: string): ListSource | null {
-  let result: ListSource | null = null;
-  doc.descendants((node, pos) => {
-    if (result) return false;
-    if (
-      (node.type.name === "bulletList" || node.type.name === "orderedList") &&
-      node.attrs?.uuid === uuid
-    ) {
-      result = {
-        start: pos,
-        end: pos + node.nodeSize,
-        node,
-        typeName: node.type.name as "bulletList" | "orderedList",
-      };
-      return false;
-    }
-    return true;
-  });
-  return result;
+const LIST_TYPES = ["bulletList", "orderedList"] as const;
+
+function findListByUuid(
+  doc: PMNode,
+  uuid: string,
+  hint?: SourceRange | null,
+): ListSource | null {
+  const src = findSourceNodeByUuid(doc, uuid, LIST_TYPES, hint);
+  if (!src) return null;
+  return {
+    start: src.start,
+    end: src.end,
+    node: src.node,
+    typeName: src.node.type.name as "bulletList" | "orderedList",
+  };
 }
 
 export function ListBody({
@@ -199,7 +197,9 @@ export function ListBody({
   function writeBackToMain(doc: JSONContent) {
     const ed = ref.current?.getEditor();
     if (!ed) return;
-    const src = findListByUuid(ed.state.doc, uuid);
+    // The live source range doubles as this write's position hint (task 140),
+    // so the float→main direction stops walking the doc per float keystroke.
+    const src = findListByUuid(ed.state.doc, uuid, sourceRangeRef.current);
     if (!src) return;
     const incoming = doc.content ?? [];
     if (incoming.length === 0) return;
@@ -229,8 +229,8 @@ export function ListBody({
   }
 
   const readSource = useCallback(
-    (doc: PMNode) => {
-      const src = findListByUuid(doc, uuid);
+    (doc: PMNode, hint: SourceRange | null) => {
+      const src = findListByUuid(doc, uuid, hint);
       if (!src) {
         return {
           doc: {
@@ -256,12 +256,13 @@ export function ListBody({
           content: [src.node.toJSON() as JSONContent],
         } as JSONContent,
         missing: false,
+        range: { from: src.start, to: src.end },
       };
     },
     [uuid],
   );
 
-  const { sourceMissing } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

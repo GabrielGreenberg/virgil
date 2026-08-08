@@ -36,6 +36,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
@@ -45,6 +46,7 @@ import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  type SourceRange,
 } from "@/lib/float-sync";
 import { generateShortId } from "@/lib/uuid";
 import type { TextObjectFloatBodyProps } from "../types";
@@ -75,6 +77,13 @@ export interface ListItemSource {
   parentKind: ListKind;
   /** Numbering inherited by the wrapper (orderedList only; inert for bullet). */
   numbering: ListNumbering;
+  /** The enclosing list's OWN range — this float's source region (task 140).
+   *  The item's own range is not enough: the wrapper's `start`/`type` come from
+   *  the parent list's attrs and the ordinal from the item's index in it, so a
+   *  sibling inserted ABOVE the item (or a change to the list's own attrs)
+   *  renumbers the float without touching the item itself. Null only if the
+   *  item somehow resolves at the doc root. */
+  containerRange: SourceRange | null;
 }
 
 /** Find a listItem by uuid AND report its immediate parent list kind + the
@@ -85,31 +94,25 @@ export interface ListItemSource {
 export function findListItemByUuid(
   doc: PMNode,
   uuid: string,
+  hint?: SourceRange | null,
 ): ListItemSource | null {
-  let result: ListItemSource | null = null;
-  doc.descendants((node, pos, parent, index) => {
-    if (result) return false;
-    if (node.type.name === "listItem" && node.attrs?.uuid === uuid) {
-      const isOrdered = parent?.type.name === "orderedList";
-      result = {
-        start: pos,
-        end: pos + node.nodeSize,
-        node,
-        parentKind: isOrdered ? "orderedList" : "bulletList",
-        numbering: {
-          ordinal: isOrdered
-            ? ((parent?.attrs.start ?? 1) as number) + index
-            : 1,
-          listType: isOrdered
-            ? ((parent?.attrs.type ?? null) as string | null)
-            : null,
-        },
-      };
-      return false;
-    }
-    return true;
-  });
-  return result;
+  const src = findSourceNodeByUuid(doc, uuid, "listItem", hint);
+  if (!src) return null;
+  const { node, parent, index } = src;
+  const isOrdered = parent?.type.name === "orderedList";
+  return {
+    start: src.start,
+    end: src.end,
+    node,
+    parentKind: isOrdered ? "orderedList" : "bulletList",
+    numbering: {
+      ordinal: isOrdered ? ((parent?.attrs.start ?? 1) as number) + index : 1,
+      listType: isOrdered
+        ? ((parent?.attrs.type ?? null) as string | null)
+        : null,
+    },
+    containerRange: src.parentRange,
+  };
 }
 
 /** Build the float-doc wrapper for an item — the `list > item` envelope, and
@@ -161,8 +164,9 @@ export function resolveInnerWriteback(
   doc: PMNode,
   uuid: string,
   floatDoc: JSONContent,
+  hint?: SourceRange | null,
 ): InnerWriteback | null {
-  const src = findListItemByUuid(doc, uuid);
+  const src = findListItemByUuid(doc, uuid, hint);
   if (!src) return null;
   const wrapper = (floatDoc.content ?? [])[0];
   if (
@@ -333,7 +337,14 @@ export function ListItemBody({
   function writeBackToMain(floatDoc: JSONContent) {
     const ed = ref.current?.getEditor();
     if (!ed) return;
-    const wb = resolveInnerWriteback(ed.state.doc, uuid, floatDoc);
+    // The live source range doubles as this write's position hint (task 140),
+    // so the float→main direction stops walking the doc per float keystroke.
+    const wb = resolveInnerWriteback(
+      ed.state.doc,
+      uuid,
+      floatDoc,
+      sourceRangeRef.current,
+    );
     if (!wb) return;
     try {
       const tr = ed.state.tr.replaceWith(wb.from, wb.to, wb.items);
@@ -346,8 +357,8 @@ export function ListItemBody({
   }
 
   const readSource = useCallback(
-    (doc: PMNode) => {
-      const src = findListItemByUuid(doc, uuid);
+    (doc: PMNode, hint: SourceRange | null) => {
+      const src = findListItemByUuid(doc, uuid, hint);
       if (!src) {
         return {
           doc: {
@@ -375,12 +386,14 @@ export function ListItemBody({
           ],
         } as JSONContent,
         missing: false,
+        // The whole enclosing list, not just the item — see `containerRange`.
+        range: src.containerRange ?? { from: src.start, to: src.end },
       };
     },
     [uuid],
   );
 
-  const { sourceMissing } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

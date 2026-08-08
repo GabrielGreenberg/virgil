@@ -13,14 +13,27 @@
  *    must tag the transaction with `tr.setMeta(FLOAT_WRITE_META, floatId)`
  *    so this hook's main-listener skips its own echo.
  *  - Main → float: this hook subscribes to the main editor's transactions.
- *    For each transaction that wasn't ours, it calls `readSource(doc)`. If
- *    the source content differs from what's currently in the float, the
- *    float's content is replaced via `setContent(..., false)` (the false
- *    suppresses the float's `onUpdate`, breaking the feedback loop).
+ *    For each transaction that wasn't ours AND that actually touched this
+ *    float's source region, it calls `readSource(doc, hint)`. If the source
+ *    content differs from what's currently in the float, the float's content
+ *    is replaced via `setContent(..., false)` (the false suppresses the
+ *    float's `onUpdate`, breaking the feedback loop).
  *  - Stale source: when `readSource` reports `missing: true`, the hook
  *    flips `sourceMissing` on. If a later transaction makes the source
  *    available again (e.g. undo restored a deleted paragraph), the flag
  *    clears and sync resumes.
+ *
+ * Source-touch gate (task 140 — the keystroke-sanctity half): `readSource` is
+ * O(doc) in every body, so calling it for EVERY docChanged transaction made
+ * each main-editor keystroke cost a full-document walk PER OPEN FLOAT. A body
+ * that reports its source's `range` gets that walk gated behind
+ * `trackSourceRange` — one O(steps) pass that maps the range forward and asks
+ * whether any step intersected it. Typing anywhere but inside the mirrored
+ * region now costs a few integer comparisons per float; the same live range
+ * then rides back INTO `readSource` as a position hint, so even the touching
+ * keystroke resolves its source in O(depth) instead of walking. A body that
+ * reports no range keeps the old always-read behavior — the gate is opt-in and
+ * fails safe.
  *
  * Cursor preservation: the float's current selection {from, to} is
  * captured before `setContent` and MAPPED through the structural diff
@@ -29,9 +42,12 @@
  * it at a stale raw offset (EX-F8-02 class).
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
+import { trackSourceRange, type SourceRange } from "@/lib/float-source-range";
+
+export type { SourceRange };
 
 /**
  * Kinds the source-missing banner can describe. Roughly tracks
@@ -118,16 +134,31 @@ export interface UseMainTransactionSyncArgs {
    *  so this hook's listener can skip its own echoes. */
   floatId: string;
   /** Called once on attach (seed) and again after every main transaction
-   *  that isn't this float's own write-back AND actually changed the doc.
-   *  Selection-only transactions never reach it. */
+   *  that isn't this float's own write-back, actually changed the doc, AND
+   *  touched this float's source region (see `sourceRangeRef`). Selection-only
+   *  transactions never reach it. */
   onMainDocChanged: () => void;
+  /** The float's LIVE source region in the main doc — the gate's input and
+   *  output. The hook maps it forward through every docChanged transaction
+   *  (including this float's own write-backs, which move it too) and, when it
+   *  holds a range, skips `onMainDocChanged` for transactions whose steps
+   *  didn't intersect it.
+   *
+   *  `null` means "position unknown" — the source is missing, or the body
+   *  doesn't report a range — and disables the gate (every docChanged
+   *  transaction fires, the pre-task-140 behavior). That fail-safe default is
+   *  load-bearing for the missing case: a float whose source was deleted must
+   *  keep re-reading so an undo that restores it is noticed. */
+  sourceRangeRef?: RefObject<SourceRange | null>;
 }
 
 /**
  * Low-level main→float subscription shared by every float body. Owns the
- * two gates the keystroke-sanctity rule (AGENTS.md) requires of any
- * main-editor transaction listener whose callback does O(doc) work:
- * the own-write `FLOAT_WRITE_META` filter and the `docChanged` gate.
+ * three gates the keystroke-sanctity rule (AGENTS.md) requires of any
+ * main-editor transaction listener whose callback does O(doc) work: the
+ * own-write `FLOAT_WRITE_META` filter, the `docChanged` gate, and the
+ * source-touch gate that keeps the O(doc) callback off the keystroke path
+ * entirely (task 140).
  *
  * `useFloatMainSync` layers the TipTap-on-TipTap doc replacement on top;
  * non-TipTap bodies (tex-block-body's CodeMirror-over-string-attr) consume
@@ -138,21 +169,57 @@ export function useMainTransactionSync({
   mainEditor,
   floatId,
   onMainDocChanged,
+  sourceRangeRef,
 }: UseMainTransactionSyncArgs): void {
   useEffect(() => {
     if (!mainEditor) return;
 
     // Seed once on attach: cover the case where main was edited while the
-    // float was unmounted, or where the float seeded from a stale value.
+    // float was unmounted, or where the float seeded from a stale value. This
+    // is also what primes `sourceRangeRef` — until it runs the gate is open.
     onMainDocChanged();
 
     const handler = ({
       transaction,
+      appendedTransactions,
     }: {
       transaction: import("@tiptap/pm/state").Transaction;
+      appendedTransactions?: import("@tiptap/pm/state").Transaction[];
     }) => {
+      // The APPENDED transactions matter as much as the root one. TipTap emits
+      // this event once per dispatch, carrying the root transaction plus
+      // whatever the `appendTransaction` plugins produced (uuid backfill,
+      // footnote/example renumbering, structural guards) — and those land in
+      // the state too. Reading only `transaction` would leave the tracked range
+      // un-mapped for their steps, which is how a gate goes silently stale. The
+      // old always-re-read code was immune to this only because it never
+      // tracked anything.
+      const all = appendedTransactions?.length
+        ? [transaction, ...appendedTransactions]
+        : [transaction];
+
+      // Track the source region FIRST, and across every docChanged transaction
+      // here — including this float's own write-back and ones we go on to skip.
+      let docChanged = false;
+      let touched = false;
+      let range = sourceRangeRef?.current ?? null;
+      for (const tr of all) {
+        if (!tr.docChanged) continue;
+        docChanged = true;
+        if (!range) {
+          // No known region — the gate is open by design (see `sourceRangeRef`).
+          touched = true;
+          continue;
+        }
+        const tracked = trackSourceRange(tr, range);
+        range = tracked.mapped;
+        if (tracked.touched) touched = true;
+      }
+      if (sourceRangeRef) sourceRangeRef.current = range;
+
+      if (!docChanged) return;
       if (transaction.getMeta(FLOAT_WRITE_META) === floatId) return;
-      if (!transaction.docChanged) return;
+      if (!touched) return;
       onMainDocChanged();
     };
 
@@ -160,7 +227,7 @@ export function useMainTransactionSync({
     return () => {
       mainEditor.off("transaction", handler);
     };
-  }, [mainEditor, floatId, onMainDocChanged]);
+  }, [mainEditor, floatId, onMainDocChanged, sourceRangeRef]);
 }
 
 export interface ReadSourceResult {
@@ -169,6 +236,12 @@ export interface ReadSourceResult {
   doc: JSONContent;
   /** True when the source UUID / range no longer resolves in main. */
   missing: boolean;
+  /** Where the source sits in the main doc RIGHT NOW — the node range for a
+   *  single-node body, the whole section for a heading, the marked run for a
+   *  linked range. Reporting it opts this float into the source-touch gate
+   *  (task 140) and, on the next read, into the position-hint fast path.
+   *  Omit (or `null`) to keep the ungated read-on-every-transaction behavior. */
+  range?: SourceRange | null;
 }
 
 export interface UseFloatMainSyncArgs {
@@ -177,9 +250,18 @@ export interface UseFloatMainSyncArgs {
   /** Stable id used to tag transactions the caller dispatches into main,
    *  so this hook's listener can skip its own echoes. */
   floatId: string;
-  /** Pure function reading from the main doc snapshot. Called for every
-   *  main transaction that isn't this float's own write. */
-  readSource: (doc: import("@tiptap/pm/model").Node) => ReadSourceResult;
+  /** Pure function reading from the main doc snapshot. Called for every main
+   *  transaction that isn't this float's own write AND touched the source.
+   *
+   *  `hint` is the float's live source range, mapped forward from the last
+   *  read — a body should use it to resolve its source without walking the
+   *  doc, and MUST verify what it finds there (identity + extent) before
+   *  trusting it. It is `null` on the seed read and whenever the source's
+   *  position is unknown. */
+  readSource: (
+    doc: import("@tiptap/pm/model").Node,
+    hint: SourceRange | null,
+  ) => ReadSourceResult;
 }
 
 export function useFloatMainSync({
@@ -187,12 +269,27 @@ export function useFloatMainSync({
   floatEditor,
   floatId,
   readSource,
-}: UseFloatMainSyncArgs): { sourceMissing: boolean } {
+}: UseFloatMainSyncArgs): {
+  sourceMissing: boolean;
+  /** The float's live source range in main — mapped through every transaction
+   *  by `useMainTransactionSync`. Bodies pass it as the position hint for
+   *  their float→main write-back, so that direction stops walking the doc on
+   *  every float keystroke too. Read-only for callers; a `ref` (not state) so
+   *  tracking it never re-renders. */
+  sourceRangeRef: RefObject<SourceRange | null>;
+} {
   const [sourceMissing, setSourceMissing] = useState(false);
+  const sourceRangeRef = useRef<SourceRange | null>(null);
 
   const onMainDocChanged = useCallback(() => {
     if (!mainEditor || !floatEditor) return;
-    syncFromMain(mainEditor, floatEditor, readSource, setSourceMissing);
+    syncFromMain(
+      mainEditor,
+      floatEditor,
+      readSource,
+      setSourceMissing,
+      sourceRangeRef,
+    );
   }, [mainEditor, floatEditor, readSource]);
 
   useMainTransactionSync({
@@ -201,9 +298,10 @@ export function useFloatMainSync({
     mainEditor: floatEditor ? mainEditor : null,
     floatId,
     onMainDocChanged,
+    sourceRangeRef,
   });
 
-  return { sourceMissing };
+  return { sourceMissing, sourceRangeRef };
 }
 
 function syncFromMain(
@@ -211,8 +309,17 @@ function syncFromMain(
   floatEditor: Editor,
   readSource: UseFloatMainSyncArgs["readSource"],
   setSourceMissing: (v: boolean) => void,
+  sourceRangeRef: RefObject<SourceRange | null>,
 ): void {
-  const { doc, missing } = readSource(mainEditor.state.doc);
+  const { doc, missing, range } = readSource(
+    mainEditor.state.doc,
+    sourceRangeRef.current,
+  );
+  // Re-arm the gate from the read we just did. A missing source (or a body
+  // that reports no range) parks it at null, which OPENS the gate — exactly
+  // what a disconnected float needs so an undo that restores its source is
+  // seen.
+  sourceRangeRef.current = missing ? null : (range ?? null);
   if (missing) {
     setSourceMissing(true);
     return;

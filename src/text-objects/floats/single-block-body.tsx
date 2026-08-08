@@ -65,6 +65,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
@@ -74,6 +75,7 @@ import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  type SourceRange,
 } from "@/lib/float-sync";
 import { parseTextObjectPopoutKey } from "../text-object-registry";
 import type { TextObjectFloatBodyProps, TextObjectKind } from "../types";
@@ -181,17 +183,10 @@ function findBlockByUuid(
   doc: PMNode,
   schemaType: string,
   uuid: string,
+  hint?: SourceRange | null,
 ): BlockSource | null {
-  let result: BlockSource | null = null;
-  doc.descendants((node, pos) => {
-    if (result) return false;
-    if (node.type.name === schemaType && node.attrs?.uuid === uuid) {
-      result = { start: pos, end: pos + node.nodeSize, node };
-      return false;
-    }
-    return true;
-  });
-  return result;
+  const src = findSourceNodeByUuid(doc, uuid, schemaType, hint);
+  return src ? { start: src.start, end: src.end, node: src.node } : null;
 }
 
 /** Valid empty placeholder for a kind — used as the seed/missing fallback
@@ -331,7 +326,14 @@ export function SingleBlockBody({
   function writeBackToMain(doc: JSONContent) {
     const ed = ref.current?.getEditor();
     if (!ed) return;
-    const src = findBlockByUuid(ed.state.doc, config.schemaType, uuid);
+    // The live source range doubles as this write's position hint (task 140),
+    // so the float→main direction stops walking the doc per float keystroke.
+    const src = findBlockByUuid(
+      ed.state.doc,
+      config.schemaType,
+      uuid,
+      sourceRangeRef.current,
+    );
     if (!src) return;
     const incoming = doc.content ?? [];
     if (incoming.length === 0) return;
@@ -360,8 +362,8 @@ export function SingleBlockBody({
   }
 
   const readSource = useCallback(
-    (doc: PMNode) => {
-      const src = findBlockByUuid(doc, config.schemaType, uuid);
+    (doc: PMNode, hint: SourceRange | null) => {
+      const src = findBlockByUuid(doc, config.schemaType, uuid, hint);
       if (!src) {
         return {
           doc: {
@@ -377,12 +379,13 @@ export function SingleBlockBody({
           content: [src.node.toJSON() as JSONContent],
         } as JSONContent,
         missing: false,
+        range: { from: src.start, to: src.end },
       };
     },
     [config, uuid],
   );
 
-  const { sourceMissing } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,
