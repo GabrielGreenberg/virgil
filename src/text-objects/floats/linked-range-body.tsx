@@ -213,13 +213,13 @@ export function LinkedRangeBody({
       tr.setMeta(FLOAT_WRITE_META, floatId);
       if (!tr.docChanged) return;
       ed.view.dispatch(tr);
-      // Re-track the range to span the newly written content. `tr.replace`
-      // grows the doc by `slice.size`, so the new content occupies
-      // [from, from + slice.size) (the open ends merged into the boundaries).
-      // The tracker already mapped the range through our own dispatch above to
-      // exactly this; restated because the arithmetic is the contract of the
-      // replace, not an incidental consequence of it.
-      sourceRangeRef.current = { from: r.from, to: r.from + slice.size };
+      // No range write here. `useMainTransactionSync` ran synchronously inside
+      // the dispatch above and already mapped the range through this
+      // transaction AND its appended ones. Restating the root-only arithmetic
+      // (`{r.from, r.from + slice.size}`) would agree in the ordinary case and
+      // CLOBBER the tracker whenever a plugin resized the region on top of our
+      // write — which is exactly the case where the tracker is the only one
+      // that knows.
     } catch {
       /* schema mismatch / stale range — swallow */
     }

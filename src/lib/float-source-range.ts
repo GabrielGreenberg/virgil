@@ -28,9 +28,17 @@
  * Why positional rather than `StructureDiff`-driven: the float has to react to
  * in-paragraph text edits to its source, which are structurally-null (no
  * DocStructureBus event, no `contentChangedUuids` entry for a uuid-less block,
- * and no diff at ALL for an attr-only step like a footnote renumber or a
- * `parTitle` write). Step ranges are the one signal that sees every kind of
- * change, so the gate built on them can be both cheap AND complete.
+ * and no diff at ALL for an attr-only step). The transaction's STEPS are the
+ * one signal that sees every kind of change, so a gate built on them can be
+ * both cheap and complete.
+ *
+ * Note the word STEPS, not step maps. A step map describes how positions MOVE;
+ * a step that moves nothing (`AddMarkStep`, `RemoveMarkStep`, the node-mark
+ * pair, `AttrStep`, `DocAttrStep`) contributes `StepMap.empty` while its
+ * transaction is still `docChanged`. Reading only the maps would therefore
+ * report "nothing happened" for bolding a word inside the mirrored paragraph —
+ * silently stale, and then destructive, because the float's next write-back
+ * rebuilds the source from its stale copy. `stepTouches` covers that gap.
  *
  * Boundary convention — a source range is a NODE range `[from, to)`:
  * `from` maps with assoc `+1` and `to` with assoc `-1`, so content inserted at
@@ -90,14 +98,22 @@ export function trackSourceRange(
   let to = range.to;
   let touched = false;
 
-  for (const map of tr.mapping.maps) {
+  // `maps` is 1:1 with `steps` — `Transform.addStep` appends exactly one map
+  // per step — and we need the pairing, because a step's MAP is not always a
+  // description of what it changed (see `stepTouches`).
+  const { maps } = tr.mapping;
+  for (let i = 0; i < maps.length; i++) {
+    const map = maps[i];
     if (!touched) {
+      let hadRange = false;
       map.forEach((oldStart, oldEnd) => {
+        hadRange = true;
         // Inclusive on both ends: a step that merely abuts the range can still
         // grow or shrink it (a heading inserted right after a section's last
         // block shortens the section; a sibling deleted at `to` lengthens it).
         if (oldStart <= to && oldEnd >= from) touched = true;
       });
+      if (!hadRange && stepTouches(tr.steps[i], from, to)) touched = true;
     }
     from = map.map(from, 1);
     to = map.map(to, -1);
@@ -109,6 +125,37 @@ export function trackSourceRange(
   if (to < from) to = from;
 
   return { touched, mapped: { from, to } };
+}
+
+/**
+ * Does a step whose StepMap has NO ranges touch `[from, to]`?
+ *
+ * A step map describes how positions MOVE, not what changed — and a step that
+ * moves nothing returns `StepMap.empty`. Six do: `AddMarkStep` /
+ * `RemoveMarkStep` (`from`/`to`), `AddNodeMarkStep` / `RemoveNodeMarkStep` /
+ * `AttrStep` (`pos`), and `DocAttrStep` (no position at all). Their
+ * transactions are still `docChanged`, so a gate that read only the maps would
+ * report "nothing happened" for bolding a word — the mirrored float would keep
+ * showing unbolded text, and its next write-back would rebuild the paragraph
+ * from that stale copy and DELETE the mark from the document. Hence: when a
+ * step contributes no ranges, ask the step itself, and fail safe (re-read) for
+ * a shape we don't recognize.
+ */
+function stepTouches(
+  step: Transaction["steps"][number] | undefined,
+  from: number,
+  to: number,
+): boolean {
+  if (!step) return true;
+  const s = step as unknown as { from?: unknown; to?: unknown; pos?: unknown };
+  if (typeof s.from === "number" && typeof s.to === "number") {
+    return s.from <= to && s.to >= from;
+  }
+  if (typeof s.pos === "number") {
+    return s.pos <= to && s.pos >= from;
+  }
+  // DocAttrStep, or a step type that didn't exist when this was written.
+  return true;
 }
 
 /** The parent's own range at a resolved position, or null at the doc root. */

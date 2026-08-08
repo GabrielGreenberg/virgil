@@ -333,6 +333,94 @@ describe("float source-touch gate — the tracked range stays honest", () => {
     expect(float.state.doc.textContent).toBe("Qbody 3");
   });
 
+  // A step map describes how positions MOVE, so a step that moves nothing
+  // (AddMark / RemoveMark / node-mark / Attr / DocAttr) contributes
+  // StepMap.empty while its transaction is still docChanged. A gate reading
+  // only the maps sees "nothing happened" — the float keeps showing unbolded
+  // text, and its next keystroke writes that stale copy back over the source,
+  // DELETING the mark from the document. These are the cases that class costs.
+
+  it("fires for a MARK applied inside the source (empty step map)", () => {
+    const main = mount(mainDoc(4));
+    const { calls, float } = mountParagraphFloat(main, "p3");
+    const p3 = findSourceNodeByUuid(main.state.doc, "p3", "paragraph")!;
+
+    act(() => {
+      main.view.dispatch(
+        main.state.tr.addMark(
+          p3.start + 1,
+          p3.end - 1,
+          main.state.schema.marks.bold.create(),
+        ),
+      );
+    });
+
+    expect(calls.n).toBe(2);
+    let bolded = false;
+    float.state.doc.descendants((n) => {
+      if (n.marks.some((m) => m.type.name === "bold")) bolded = true;
+      return true;
+    });
+    expect(bolded).toBe(true);
+  });
+
+  it("does NOT fire for a mark applied to a different paragraph", () => {
+    const main = mount(mainDoc(4));
+    const { calls } = mountParagraphFloat(main, "p3");
+    const p1 = findSourceNodeByUuid(main.state.doc, "p1", "paragraph")!;
+
+    act(() => {
+      main.view.dispatch(
+        main.state.tr.addMark(
+          p1.start + 1,
+          p1.end - 1,
+          main.state.schema.marks.bold.create(),
+        ),
+      );
+    });
+
+    expect(calls.n).toBe(1);
+  });
+
+  it("fires for an AttrStep on the source node (empty step map)", () => {
+    const main = mount(mainDoc(4));
+    const { calls } = mountParagraphFloat(main, "p3");
+    const p3 = findSourceNodeByUuid(main.state.doc, "p3", "paragraph")!;
+
+    act(() => {
+      main.view.dispatch(
+        main.state.tr.setNodeAttribute(p3.start, "parTitle", "A title"),
+      );
+    });
+
+    expect(calls.n).toBe(2);
+  });
+
+  it("re-reads when a PLUGIN reshaped our own write on top of it", () => {
+    // The echo to ignore is the float's own write — not what the document's
+    // plugins then did to it. Here the write-back turns the source into a
+    // "% …" paragraph, and main's latexComment normalizer appends a
+    // transaction replacing it with a latexComment node. Skipping on the
+    // own-write meta alone would leave the float showing a paragraph that no
+    // longer exists, with a range describing a node of the wrong size.
+    const main = mount(mainDoc(4));
+    const { calls, float } = mountParagraphFloat(main, "p3");
+    const seeded = calls.n;
+
+    act(() => {
+      const tr = main.state.tr.insertText("% ", insideBlock(main, "p3"));
+      tr.setMeta(FLOAT_WRITE_META, "par:p3");
+      main.view.dispatch(tr);
+    });
+
+    expect(main.state.doc.child(2).type.name).toBe("latexComment");
+    expect(calls.n).toBe(seeded + 1);
+    // The source paragraph is gone, so the float reports it missing — which
+    // parks the range at null and reopens the gate, instead of leaving a
+    // phantom region behind for the next write-back to target.
+    expect(float).toBeTruthy();
+  });
+
   it("does no work for a selection-only transaction", () => {
     const main = mount(mainDoc(4));
     const { calls } = mountParagraphFloat(main, "p3");
@@ -408,6 +496,46 @@ describe("trackSourceRange — node-range boundary conventions", () => {
     );
 
     expect(touched).toBe(false);
+  });
+
+  it("flags a step whose StepMap is EMPTY but whose own range overlaps", () => {
+    const main = mount(mainDoc(3));
+    const p2 = findSourceNodeByUuid(main.state.doc, "p2", "paragraph")!;
+    const p1 = findSourceNodeByUuid(main.state.doc, "p1", "paragraph")!;
+
+    // AddMarkStep moves nothing, so its map contributes no ranges at all —
+    // the map-only test that shipped first reported `touched: false` here.
+    const inside = track(main, { from: p2.start, to: p2.end }, (tr) =>
+      tr.addMark(p2.start + 1, p2.end - 1, main.state.schema.marks.bold.create()),
+    );
+    expect(inside.touched).toBe(true);
+    expect(inside.mapped).toEqual({ from: p2.start, to: p2.end });
+
+    const elsewhere = track(main, { from: p2.start, to: p2.end }, (tr) =>
+      tr.addMark(p1.start + 1, p1.end - 1, main.state.schema.marks.bold.create()),
+    );
+    expect(elsewhere.touched).toBe(false);
+  });
+
+  it("flags an AttrStep on the range's own node and not on a distant one", () => {
+    const main = mount(mainDoc(4));
+    const p2 = findSourceNodeByUuid(main.state.doc, "p2", "paragraph")!;
+    const p4 = findSourceNodeByUuid(main.state.doc, "p4", "paragraph")!;
+
+    expect(
+      track(main, { from: p2.start, to: p2.end }, (tr) =>
+        tr.setNodeAttribute(p2.start, "parTitle", "x"),
+      ).touched,
+    ).toBe(true);
+
+    // p4 is not adjacent. (p3 WOULD flag: its start IS p2's end, and boundary
+    // touches count — same inclusive convention as the range test, so the cost
+    // of an ambiguous edge is a wasted read, never a missed one.)
+    expect(
+      track(main, { from: p2.start, to: p2.end }, (tr) =>
+        tr.setNodeAttribute(p4.start, "parTitle", "x"),
+      ).touched,
+    ).toBe(false);
   });
 
   it("keeps the range well-formed when a delete swallows it whole", () => {

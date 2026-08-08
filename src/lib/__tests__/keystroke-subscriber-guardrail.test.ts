@@ -95,7 +95,7 @@ const PERMITTED_KEYSTROKE_SUBSCRIBERS: Record<string, string> = {
   "lib/code-pane-bridge.ts":
     "TipTap→code sync: docChanged-gated + own-write ('syncing') filtered, then a debounced serialize — O(1) per tx.",
   "lib/float-sync.tsx":
-    "One subscription per OPEN text-object float: docChanged-gated + own-write meta filter + the source-touch gate (task 140) — the handler maps the float's live source range through the transaction's step maps (and its appendedTransactions') and calls readSource ONLY if a step intersected it, O(steps) per tx. The third gate is the load-bearing one: readSource is O(doc) in every body, so the first two alone cost a full-document walk per keystroke per open float. This entry's previous text ('O(1) per tx') described the subscriber and not its callback — see the header note.",
+    "One subscription per OPEN text-object float: docChanged-gated + own-write meta filter + the source-touch gate (task 140) — the handler maps the float's live source range through the transaction's steps (and its appendedTransactions') and calls readSource ONLY if a step intersected it, O(steps) per tx. The third gate is the load-bearing one: readSource is O(doc) in every body, so the first two alone cost a full-document walk per keystroke per open float. This entry's previous text ('O(1) per tx') described the subscriber and not its callback — see the header note.",
   "text-objects/TextObjectGrabHandle.tsx":
     "docChanged-gated, cheap handle reposition.",
 };

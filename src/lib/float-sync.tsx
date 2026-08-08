@@ -198,28 +198,38 @@ export function useMainTransactionSync({
         ? [transaction, ...appendedTransactions]
         : [transaction];
 
+      // The echo to ignore is our OWN write — not what the document's plugins
+      // then did on top of it. An appended transaction that reshaped our write
+      // (a uuid re-mint on a split-off sibling, a renumber, the latexComment
+      // normalizer replacing the block outright) left the source different from
+      // what the float believes it wrote, so that one must re-read. Re-reading
+      // there cannot loop: the reseed runs `setContent(…, { emitUpdate: false })`,
+      // so it never provokes another write-back.
+      const ownWrite = transaction.getMeta(FLOAT_WRITE_META) === floatId;
+
       // Track the source region FIRST, and across every docChanged transaction
-      // here — including this float's own write-back and ones we go on to skip.
+      // here — including our own write and ones we go on to skip.
       let docChanged = false;
-      let touched = false;
+      let touchedByOthers = false;
       let range = sourceRangeRef?.current ?? null;
-      for (const tr of all) {
+      for (let i = 0; i < all.length; i++) {
+        const tr = all[i];
         if (!tr.docChanged) continue;
         docChanged = true;
+        const ours = ownWrite && i === 0;
         if (!range) {
           // No known region — the gate is open by design (see `sourceRangeRef`).
-          touched = true;
+          if (!ours) touchedByOthers = true;
           continue;
         }
         const tracked = trackSourceRange(tr, range);
         range = tracked.mapped;
-        if (tracked.touched) touched = true;
+        if (tracked.touched && !ours) touchedByOthers = true;
       }
       if (sourceRangeRef) sourceRangeRef.current = range;
 
       if (!docChanged) return;
-      if (transaction.getMeta(FLOAT_WRITE_META) === floatId) return;
-      if (!touched) return;
+      if (!touchedByOthers) return;
       onMainDocChanged();
     };
 
