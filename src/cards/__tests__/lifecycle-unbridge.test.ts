@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   runCardLifecycleEvent,
+  unbridgeModeFor,
   type CardLifecycleDeps,
+  type LifecycleEvent,
 } from "../lifecycle/run-event";
 import { CARD_REGISTRY, assertMorphCoverage } from "../card-registry";
 import { CARD_KINDS } from "../predicates";
 import type { CardKind } from "../types";
+import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
 // Side-effect: register every morph converter onto CARD_REGISTRY so
 // assertMorphCoverage()'s converter check doesn't false-fire below.
 import "../morphs";
@@ -17,24 +20,36 @@ import "../morphs";
  * inbox entry never strands (REP-F5-01 / REP-F6-01 / REP-F7-02 / REP-F8-01 /
  * OMNI-F6-01). A morph that CARRIES aiRequest across (note↔highlight) must NOT
  * unbridge.
+ *
+ * SINCE TASK 313, ALSO THE MODE. This file previously stubbed
+ * `unbridgeAiRequest` with a `vi.fn` and asserted only called/not-called —
+ * which is exactly why the morph leg could run in `"toggle"` mode for months
+ * with every test green. The stub now RECORDS the mode and every firing case
+ * asserts it, so the two terminal transitions can't silently re-fork.
  */
 
 function makeDeps(): {
   d: CardLifecycleDeps;
   order: string[];
   unbridgeArgs: Array<[CardKind, string]>;
+  unbridgeModes: AiRequestSyncMode[];
 } {
   const order: string[] = [];
   const unbridgeArgs: Array<[CardKind, string]> = [];
+  const unbridgeModes: AiRequestSyncMode[] = [];
   return {
     order,
     unbridgeArgs,
+    unbridgeModes,
     d: {
       confirm: vi.fn(async () => true),
-      unbridgeAiRequest: vi.fn(async (kind: CardKind, id: string) => {
-        order.push("unbridge");
-        unbridgeArgs.push([kind, id]);
-      }),
+      unbridgeAiRequest: vi.fn(
+        async (kind: CardKind, id: string, mode: AiRequestSyncMode) => {
+          order.push("unbridge");
+          unbridgeArgs.push([kind, id]);
+          unbridgeModes.push(mode);
+        },
+      ),
       mutate: vi.fn(() => {
         order.push("mutate");
       }),
@@ -51,6 +66,10 @@ describe("morph unbridge", () => {
   it("report-request → report UNBRIDGES the FROM kind BEFORE mutate", async () => {
     await runCardLifecycleEvent({ type: "morph", fromKind: "report-request", id: "q1" }, ctx.d);
     expect(ctx.unbridgeArgs).toEqual([["report-request", "q1"]]);
+    // TERMINATE, not toggle (313): a report-request answered by an L3 propose
+    // responder carries an `in-progress`+`resultId` row, which a toggle-off
+    // deliberately preserves and therefore would NOT close.
+    expect(ctx.unbridgeModes).toEqual(["terminate"]);
     // The inbox must clear before the data mutation so the entry is gone in the
     // same logical step (no window where the card is a report but the inbox
     // still links a report-request).
@@ -78,12 +97,14 @@ describe("morph unbridge", () => {
   it("revision-comment → revision-suggestion UNBRIDGES the FROM kind BEFORE mutate (198)", async () => {
     await runCardLifecycleEvent({ type: "morph", fromKind: "revision-comment", id: "rc1" }, ctx.d);
     expect(ctx.unbridgeArgs).toEqual([["revision-comment", "rc1"]]);
+    expect(ctx.unbridgeModes).toEqual(["terminate"]);
     expect(ctx.order).toEqual(["unbridge", "mutate"]);
   });
 
   it("cutter-comment → cutter-suggestion UNBRIDGES the FROM kind BEFORE mutate (198)", async () => {
     await runCardLifecycleEvent({ type: "morph", fromKind: "cutter-comment", id: "cc1" }, ctx.d);
     expect(ctx.unbridgeArgs).toEqual([["cutter-comment", "cc1"]]);
+    expect(ctx.unbridgeModes).toEqual(["terminate"]);
     expect(ctx.order).toEqual(["unbridge", "mutate"]);
   });
 
@@ -109,6 +130,7 @@ describe("delete unbridge", () => {
       ctx.d,
     );
     expect(ctx.unbridgeArgs).toEqual([["report-request", "q1"]]);
+    expect(ctx.unbridgeModes).toEqual(["terminate"]);
     expect(ctx.order).toEqual(["unbridge", "mutate"]);
   });
 
@@ -130,6 +152,45 @@ describe("delete unbridge", () => {
     expect(ok).toBe(false);
     expect(d2.d.unbridgeAiRequest).not.toHaveBeenCalled();
     expect(d2.order).toEqual([]);
+  });
+});
+
+/**
+ * Task 313 — the MODE half of the obligation, pinned over the WHOLE event union
+ * rather than case-by-case.
+ *
+ * The `Record` below is exhaustive by construction: a third `LifecycleEvent`
+ * type is a compile error HERE as well as in `unbridgeModeFor` itself, so a new
+ * transition can't be added and left to inherit a mode by accident — someone has
+ * to state its terminality in both places, which is the point.
+ */
+describe("unbridgeModeFor — every lifecycle transition is TERMINAL", () => {
+  const MODE_BY_EVENT: Record<LifecycleEvent["type"], AiRequestSyncMode> = {
+    // The card is gone.
+    delete: "terminate",
+    // The card's aiRequest identity is gone; the TO kind has no routing, so no
+    // later toggle could ever clear the row.
+    morph: "terminate",
+  };
+
+  for (const [type, expected] of Object.entries(MODE_BY_EVENT) as Array<
+    [LifecycleEvent["type"], AiRequestSyncMode]
+  >) {
+    it(`${type} → ${expected}`, () => {
+      expect(unbridgeModeFor(type)).toBe(expected);
+    });
+  }
+
+  it("no lifecycle transition discharges in the reversible 'toggle' mode", () => {
+    // The regression this whole task closed: `"toggle"` matches through
+    // `isRequestOpen`, which reports an answered-L3 row (`in-progress` +
+    // `resultId`) as CLOSED — so the drop finds nothing and the row lives on,
+    // on a kind that can never toggle again.
+    const modes = Object.keys(MODE_BY_EVENT).map((t) =>
+      unbridgeModeFor(t as LifecycleEvent["type"]),
+    );
+    expect(modes).not.toContain("toggle");
+    expect(modes.length).toBeGreaterThan(0); // guard the guard: not vacuous
   });
 });
 
