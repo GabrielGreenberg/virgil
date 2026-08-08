@@ -134,7 +134,12 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
   return (
     <NodeViewWrapper
       ref={wrapperRef as React.Ref<HTMLDivElement>}
-      className={`tex-block group relative${isPopped ? " is-popped" : ""}`}
+      // has-par-title replaces the CSS-side `:not(:has(.par-title-text))`
+      // (style-invalidation cost — perf Wave 0, plan P5.1). Stamped exactly
+      // when the .par-title-text span renders (title present and not
+      // currently replaced by the edit input), so the annotation-overlay
+      // rule fires for byte-identical states.
+      className={`tex-block group relative${isPopped ? " is-popped" : ""}${title && !(editingTitle && !collapsed) ? " has-par-title" : ""}`}
     >
       {/* +T title affordance — hidden when collapsed and there's no title. */}
       {(!collapsed || title) && (
