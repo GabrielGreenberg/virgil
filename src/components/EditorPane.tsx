@@ -55,6 +55,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type RefObject,
 } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
@@ -132,6 +133,11 @@ import { useAiRequestCardMigration } from "@/hooks/useAiRequestCardMigration";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { useDocument } from "@/hooks/useDocument";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
+import {
+  getPrintIntent,
+  subscribePrintIntent,
+  printGateEnabled,
+} from "@/lib/print-intent";
 import { readPdf } from "@/lib/storage";
 import { useEditorUIState } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
@@ -1675,6 +1681,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const isVisible = useIsVisible();
   const isVisibleRef = useRef(isVisible);
   isVisibleRef.current = isVisible;
+
+  // Print-intent gate (perf Wave 0): the appendix tree mounts only during an
+  // active print, and never in a hidden keep-alive pane. Kill-switch
+  // localStorage["virgil:print-gate"]="off" restores the always-mounted
+  // legacy behavior.
+  const printIntent = useSyncExternalStore(
+    subscribePrintIntent,
+    getPrintIntent,
+    getPrintIntent,
+  );
 
   // ── Per-doc editor UI state (last-edited paragraph + section folds) ──
   // Captures cursor paragraph (debounced) and fold state (immediate) to
@@ -6571,10 +6587,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                  *  panel renders via `<PaneRailBody>` so the print
                  *  output reuses the same panel components (and their
                  *  data hooks) as the live rail. Reader doesn't pass
-                 *  `viewPrefs` so this stays dormant. */}
-                {viewPrefs && (overrideEditor ?? editor) && (
+                 *  `viewPrefs` so this stays dormant.
+                 *  Perf Wave 0: mounts ONLY during an active print (the
+                 *  print-intent handshake) and never in a hidden
+                 *  keep-alive pane — the always-mounted appendix was one
+                 *  live editor per collapsed footnote card, duplicated. */}
+                {(printGateEnabled
+                  ? printIntent.active && isVisible
+                  : true) &&
+                viewPrefs &&
+                (overrideEditor ?? editor) && (
                   <PrintAppendices
-                    options={viewPrefs.prefs.printOptions}
+                    options={printIntent.options ?? viewPrefs.prefs.printOptions}
                     renderPanel={(kind: PrintPanelKey) => (
                       <PaneRailBody
                         side="left"
