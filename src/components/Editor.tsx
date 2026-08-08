@@ -49,6 +49,7 @@ import { SlashCommandPopup } from "./SlashCommandPopup";
 import { sectionFoldingPluginKey } from "@/lib/section-folding";
 import type { HeadingTypePick } from "./HeadingTypeMenu";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { registerEditorMount } from "@/lib/editor-census-probe";
 
 /**
  * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
@@ -785,6 +786,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   useEffect(() => {
     if (editor && onEditorReady) onEditorReady(editor);
   }, [editor, onEditorReady]);
+
+  // Editor-census probe (__editorCensus): one live-instance tick per mount.
+  useEffect(() => registerEditorMount("main"), []);
 
   // No `setEditable` sync: PM stays `editable: true` for the entire
   // lifetime of the view so native selection always works. Read-only

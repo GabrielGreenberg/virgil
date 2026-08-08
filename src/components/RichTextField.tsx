@@ -24,6 +24,7 @@ import {
   buildBorrowedAtomSchema,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { registerEditorMount } from "@/lib/editor-census-probe";
 import { generateShortId } from "@/lib/uuid";
 import { MIME_CITATION, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
 import type { PanelBodyKey } from "@/lib/panel-typography";
@@ -420,6 +421,9 @@ function RichTextFieldImpl({
   // out from under us). This is the simplest way to keep state coherent
   // when the parent recycles a single component for many items.
   }, [instanceKey]);
+
+  // Editor-census probe (__editorCensus): one live-instance tick per mount.
+  useEffect(() => registerEditorMount("rich-text-field"), []);
 
   // External value sync — only when the editor isn't focused (otherwise we'd
   // wipe the caret on every debounced parent update). We also refresh
