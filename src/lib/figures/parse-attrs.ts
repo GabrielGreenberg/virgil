@@ -244,8 +244,8 @@ function readEnvArg(src: string, pos: number): { name: string; end: number } {
  *
  *  Two rules keep the skip from OVER-reaching, since anything it swallows is
  *  invisible to the rest of the scan:
- *   • only `\lstinline` gets the `[options]` pre-scan, and that scan is
- *     bracket-NESTING aware (`[keywordstyle=[2]\color{red}]` is a listings
+ *   • only `\lstinline` gets the `[options]` pre-scan, and it is brace-… sorry,
+ *     BRACKET-nesting aware (`[keywordstyle=[2]\color{red}]` is a listings
  *     idiom). `\verb` has NO optional argument — a `[` after it IS the
  *     delimiter (`\verb[x[`), so scanning for a `]` there would run into the
  *     next line and eat the figure's caption.

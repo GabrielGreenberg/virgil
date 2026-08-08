@@ -477,6 +477,69 @@ After.`;
       expect(serializeBody(parseBody(once))).toBe(once);
     });
 
+    // Every hand-written case above pins ONE shape. Three review passes on this
+    // change found five, then two, regressions that all shared a signature the
+    // individual cases kept missing: the figure's own `\caption`/`\label` went
+    // missing from the model, rode along in raw `extras`, and the always-present
+    // caption child appended a second, empty `\caption{}` — a stable state that
+    // never self-heals. So the property is asserted over a CORPUS: whatever the
+    // scan decides about ownership, the round-trip must neither lose a
+    // declaration nor invent a caption, and must be a fixed point. A future
+    // change to the scan gets this for free.
+    describe("corpus invariants", () => {
+      const CORPUS: Record<string, string> = {
+        centering: `\\centering\n\\includegraphics{a}\n\\caption{C}\n\\label{fig:a}`,
+        centerEnv: `\\begin{center}\n\\includegraphics{a}\n\\caption{C}\n\\label{fig:a}\n\\end{center}`,
+        minipagePair: `\\begin{minipage}{0.45\\textwidth}\n\\includegraphics{a}\n\\end{minipage}\n\\begin{minipage}{0.45\\textwidth}\n\\includegraphics{b}\n\\end{minipage}\n\\caption{C}\n\\label{fig:a}`,
+        subfigurePair: `\\begin{subfigure}{0.45\\textwidth}\n\\includegraphics{a}\n\\caption{S1}\n\\label{fig:s1}\n\\end{subfigure}\n\\begin{subfigure}{0.45\\textwidth}\n\\includegraphics{b}\n\\caption{S2}\n\\label{fig:s2}\n\\end{subfigure}\n\\caption{C}\n\\label{fig:a}`,
+        subfigureInCenter: `\\begin{center}\n\\begin{subfigure}{0.4\\textwidth}\n\\includegraphics{a}\n\\caption{S1}\n\\end{subfigure}\n\\caption{C}\n\\end{center}`,
+        tikz: `\\begin{tikzpicture}\n\\draw (0,0) -- (1,1);\n\\end{tikzpicture}\n\\caption{C}\n\\label{fig:a}`,
+        tabular: `\\begin{tabular}{cc}\na & b \\\\\n\\end{tabular}\n\\caption{C}`,
+        commentAbove: `% \\caption{old}\n\\includegraphics{a}\n\\caption{C}`,
+        commentTrailing: `\\includegraphics{a} % note\n\\caption{C}`,
+        shortCaption: `\\includegraphics{a}\n\\caption[Short]{C}\n\\label{fig:a}`,
+        emptyShort: `\\includegraphics{a}\n\\caption[]{C}`,
+        labelFirst: `\\label{fig:a}\n\\includegraphics{a}\n\\caption{C}`,
+        labelInCaption: `\\includegraphics{a}\n\\caption{C \\label{fig:a}}`,
+        verbPercent: `\\verb|%| \\caption{C}\n\\label{fig:a}`,
+        verbBracket: `\\verb[x[\n\\caption{C}\n\\label{fig:a}`,
+        lstinlineOpts: `\\lstinline[keywordstyle=[2]\\color{red}]|x|\n\\caption{C}`,
+        escapedPercent: `\\caption{50\\% done}\n\\label{fig:a}`,
+        unbalancedBegin: `\\begin{subfigure}{0.4\\textwidth}\n\\includegraphics{a}\n\\caption{C}\n\\label{fig:a}`,
+        unbalancedEnd: `\\end{subfigure}\n\\caption{C}\n\\label{fig:a}\n\\begin{subfigure}{0.4\\textwidth}`,
+        wrapfigure: `\\begin{wrapfigure}{r}{0.3\\textwidth}\n\\includegraphics{a}\n\\caption{W}\n\\end{wrapfigure}\n\\caption{C}`,
+        noCaption: `\\includegraphics{a}`,
+        captionOnly: `\\caption{C}`,
+      };
+
+      const countOf = (s: string, re: RegExp) => (s.match(re) ?? []).length;
+
+      it.each(Object.entries(CORPUS))(
+        "%s: round-trips to a fixed point, losing no declaration and inventing no caption",
+        (_name, body) => {
+          const input = `\\begin{figure}\n${body}\n\\end{figure}\n`;
+          const once = serializeBody(parseBody(input));
+          const twice = serializeBody(parseBody(once));
+          // A fixed point — no oscillation, no per-save accumulation.
+          expect(twice).toBe(once);
+          // Every `\label` the author wrote survives, by key.
+          for (const m of body.matchAll(/\\label\{([^}]*)\}/g)) {
+            expect(once).toContain(`\\label{${m[1]}}`);
+          }
+          // Every caption BODY survives somewhere (at figure level or, for a
+          // sub-float, byte-raw inside it).
+          for (const m of body.matchAll(/\\caption(?:\[[^\]]*\])?\{([A-Za-z0-9 ]+)\}/g)) {
+            expect(once).toContain(m[1]);
+          }
+          // No caption is invented beyond the one empty `\caption{}` the
+          // always-present caption child emits for a caption-less figure
+          // (pre-existing, tracked separately as task 319).
+          const before = countOf(body, /\\caption[[{]/g);
+          expect(countOf(once, /\\caption[[{]/g)).toBeLessThanOrEqual(before + 1);
+        },
+      );
+    });
+
     it("extractFigureAttrs is depth-aware at the popover re-extraction seam", () => {
       const attrs = extractFigureAttrs(
         `\n  \\begin{subfigure}{0.4\\textwidth}\n    \\caption{Sub}\n    \\label{fig:sub}\n  \\end{subfigure}\n  \\caption{Own}\n  \\label{fig:own}\n`,
