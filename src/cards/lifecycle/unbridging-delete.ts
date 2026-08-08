@@ -40,6 +40,7 @@
 
 import type { CardKind } from "../types";
 import { runCardLifecycleEvent } from "./run-event";
+import type { AppliedSpliceOps } from "./applied-splice";
 
 export interface UnbridgingDeleteDeps {
   /** Resolve the registry `CardKind` of the card being deleted (e.g. a cutter
@@ -53,6 +54,12 @@ export interface UnbridgingDeleteDeps {
    *  in `"terminate"` mode; a no-op for a kind with no routing (the executor
    *  only calls this when `CARD_REGISTRY[kind].aiRequest != null`). */
   unbridge: (kind: CardKind, id: string) => void | Promise<void>;
+  /** The SETTLE obligation, forwarded to the executor (task 238). Pass the ONE
+   *  host-wide ops bag to EVERY delete door regardless of kind — it is
+   *  kind-agnostic and the executor gates it on `ownsAppliedSplice`, so there is
+   *  no per-kind wiring decision to get wrong when a kind later joins the
+   *  pending-change family. Omitted → the step is skipped. */
+  appliedSplice?: AppliedSpliceOps;
 }
 
 /**
@@ -60,7 +67,10 @@ export interface UnbridgingDeleteDeps {
  * content-confirm is assumed to have already happened upstream (the margin
  * marker's `deleteMarginItem`, the panel's own confirm, or a pristine discard of
  * an empty card), so the executor runs with `hasContent: false` and an
- * always-true confirm — no double-confirm. The returned fn is fire-and-forget
+ * always-true confirm — no double-confirm. (The executor may still raise its
+ * SETTLE prompt when the card owns a live in-document splice — a different
+ * question, about the document rather than the card; see `run-event.ts`.) The
+ * returned fn is fire-and-forget
  * (the executor is async because the bridge write is); callers invoke it exactly
  * like the raw delete it replaces.
  */
@@ -82,6 +92,7 @@ export function makeUnbridgingDelete(
         confirm: async () => true, // upstream already confirmed
         unbridgeAiRequest: deps.unbridge,
         mutate: () => deps.rawDelete(id),
+        appliedSplice: deps.appliedSplice,
       },
     );
   };

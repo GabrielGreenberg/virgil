@@ -69,6 +69,7 @@ import {
   previewSuggested,
   applySuggestion,
   insertSuggestionBelow,
+  settleAppliedChangeForLifecycle,
   type AppliedChangeDescriptor,
   type PendingChangeCardDeps,
   type InsertBelowCardDeps,
@@ -207,6 +208,68 @@ describe("dismissSuggestion (dismiss-PRESERVES)", () => {
     setPreviewDir("c1", "original");
     dismissSuggestion(editor, "c1", "doc-9", makeDeps(true));
     expect(getPreviewDir("c1")).toBe("suggested");
+  });
+});
+
+// ── Task 238 — the LIFECYCLE settle (same commits, deliberately no archive) ──
+describe("settleAppliedChangeForLifecycle", () => {
+  it("keep: splices + flushes + clears the descriptor, and does NOT archive", () => {
+    const deps = makeDeps(true);
+    settleAppliedChangeForLifecycle(editor, "c1", "doc-9", deps, "keep");
+
+    expect(keepPendingChange).toHaveBeenCalledTimes(1);
+    expect(flushPendingForDoc).toHaveBeenCalledWith("doc-9");
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "accepted");
+    // The descriptor MUST be cleared — a surviving `appliedChange` on a record
+    // whose card is about to be converted/deleted is precisely the orphan this
+    // obligation exists to prevent (238).
+    expect(deps.setAppliedChange).toHaveBeenCalledWith("c1", undefined);
+    // ...but the card is about to morph or be deleted, so archiving it would
+    // hand the morph target a record the user never archived (hidden from its
+    // own panel). This is the ONE axis where the settle differs from Keep.
+    expect(deps.setArchived).not.toHaveBeenCalled();
+  });
+
+  it("revert: byte-restores the original + clears the descriptor, no archive", () => {
+    const deps = makeDeps(true);
+    settleAppliedChangeForLifecycle(editor, "c1", "doc-9", deps, "revert");
+
+    expect(revertPendingChange).toHaveBeenCalledTimes(1);
+    expect(keepPendingChange).not.toHaveBeenCalled();
+    expect(deps.setSuggestionStatus).toHaveBeenCalledWith("c1", "rejected");
+    expect(deps.setAppliedChange).toHaveBeenCalledWith("c1", undefined);
+    expect(deps.setArchived).not.toHaveBeenCalled();
+  });
+
+  it("keep reconciles from appliedChange when mid-preview on the original", () => {
+    setPreviewDir("c1", "original");
+    settleAppliedChangeForLifecycle(editor, "c1", "doc-9", makeDeps(true), "keep");
+    // Same determinism rule as Check: re-apply the suggested view from the
+    // canonical descriptor BEFORE keeping, never from the transient doc text.
+    expect(applyPendingChange).toHaveBeenCalledTimes(1);
+    expect(keepPendingChange).toHaveBeenCalledTimes(1);
+    expect(getPreviewDir("c1")).toBe("suggested");
+  });
+
+  it("no-ops when the card carries no appliedChange", () => {
+    const deps = makeDeps(false);
+    settleAppliedChangeForLifecycle(editor, "c1", "doc-9", deps, "revert");
+
+    expect(revertPendingChange).not.toHaveBeenCalled();
+    expect(flushPendingForDoc).not.toHaveBeenCalled();
+    expect(deps.setAppliedChange).not.toHaveBeenCalled();
+  });
+
+  it("settles a delete-mode splice through the same path", () => {
+    const deps = makeDeps(true, deleteAc);
+    settleAppliedChangeForLifecycle(editor, "c1", "doc-9", deps, "revert");
+    expect(revertPendingChange).toHaveBeenCalledWith(editor, {
+      anchorUuid: "P1",
+      originalText: "old text",
+      replacement: "",
+      mode: "delete",
+      anchorId: "anc-1",
+    });
   });
 });
 
