@@ -816,6 +816,49 @@ def upsert_catalog_entry(
     return e
 
 
+# ── per-paper references.bib writer ───────────────────────────────────
+#
+# THE single writer for a paper's own row in papers/<citekey>/references.bib.
+# Every caller goes through it (index_paper's index-time stamp and its
+# `_resync_references_bib`, triage_apply's bib-only folder creation) so the
+# upsert contract can't be re-opened by one of them.
+#
+# Why an upsert and not a re-emit: `references.bib` is a single-entry mirror
+# of the master.bib row only UNTIL /library/deep-index runs. Its step 3f
+# (/library/clean-bibliography) replaces the file with the paper's **actual
+# cited works** — see clean-bibliography.md ("we're replacing it with the
+# paper's actual cited works") and deep-index.md ("Each paper's
+# references.bib is self-contained"). Three writers used to `write_text` a
+# single emitted entry over the whole file, so authenticating, applying a
+# manual bib edit to, or re-indexing a deep-indexed paper silently collapsed
+# a dozens-entry bibliography to one. The loss then propagated: the next
+# /library/merge-bibs found one entry where there had been many and reported
+# a clean run (task 168).
+#
+# No lock: unlike master.bib / catalog.json / inbox.json this file is
+# per-paper, and library skills are parallel-safe only ACROSS citekeys.
+
+
+def write_paper_bib_entry(
+    paper_dir: Path,
+    citekey: str,
+    entry_type: str,
+    fields: dict[str, str],
+) -> None:
+    """Upsert ONE entry into `paper_dir/references.bib`.
+
+    Creates the file (and folder) when absent — that's the first-index path,
+    and it yields the familiar single-entry mirror. When the file already
+    holds other entries they survive byte-identically.
+    """
+    from _bib_parse import upsert_entry_text  # lazy: sibling, avoids a cycle
+
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    refs = paper_dir / "references.bib"
+    existing = refs.read_text() if refs.exists() else ""
+    refs.write_text(upsert_entry_text(existing, citekey, entry_type, fields))
+
+
 # ── bib-import flag (per-paper references.bib → master.bib) ───────────
 #
 # `bib.imported` marks that a paper's references.bib has been folded into

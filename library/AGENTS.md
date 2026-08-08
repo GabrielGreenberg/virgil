@@ -263,6 +263,66 @@ remember and no deadlock surface. The atomic write pattern (temp-file
 + fsync + `os.replace`) ensures lock-free readers always see either
 the old or the new contents, never a partially-written file.
 
+## `references.bib` is upsert-only
+
+> **A paper's own row in `papers/<citekey>/references.bib` is written by
+> exactly one function — `_tools.write_paper_bib_entry` — and it UPSERTS.
+> Never `write_text` a freshly emitted entry over that file, from Python or
+> from a skill.**
+
+(Other writers of the file exist and are fine: they either append
+(`populate_references_bib_from_itemize`, `synthesize_canonical_entries`) or
+rewrite in place (`fuzzy_citekey_disambiguate`, `repair_etal_citekeys`), so
+they derive their output from the existing text. The one sanctioned WHOLE-file
+rewrite is `/library/clean-bibliography` step 3f, which is what puts the cited
+works there in the first place.)
+
+`references.bib` is a single-entry mirror of the master.bib row only until
+`/library/deep-index` runs. Its step 3f (`/library/clean-bibliography`)
+replaces the file with the paper's **actual cited works** — dozens of entries,
+of which the paper's own row is just one — and from then on the file is
+self-contained (`deep-index.md`: "Each paper's `references.bib` is
+self-contained"). A writer that re-emits the whole file from that single row
+therefore destroys a deep-indexed paper's whole bibliography, and the loss is
+silent both ways: nothing errors, and the next `/library/merge-bibs` finds one
+entry where there had been many and reports a clean run.
+
+That was live in **four** places at once (task 168): three in Python —
+`index_paper`'s index-time stamp, its `_resync_references_bib` (which
+`/library/authenticate-bib` step 5 calls unconditionally), and
+`triage_apply`'s bib-only folder creation — plus one in **skill prose**, where
+`apply-bib-edit.md` step 3 simply told the agent to "re-emit" the file by
+hand. That fourth one is the reason the fix isn't a guard per Python caller: a
+skill's prose alone can reopen the hole, so the doctrine has to be stated as
+well as coded, and every skill step now points at the helper.
+
+The code half is structural: `write_paper_bib_entry` splices via the SSOT
+parser's pure `_bib_parse.upsert_entry_text`, so **every other entry survives
+byte-identically** and the merge semantics are a strict superset of the old
+behavior for a single-entry (or absent) file. Fresh indexing is unchanged.
+
+**When the splice can't be proved safe, it refuses** (`BibSpliceRefused`) and
+leaves the file byte-for-byte untouched — never a best-guess write. The parser
+is quote-unaware, so on a malformed `.bib` a single entry's computed span can
+run straight *through* a real neighbour (a `{` surplus in one value pairing
+with a `}` surplus in a later one), and splicing that span would delete it —
+re-creating the very bug, from the fix. The three refusals: the target's
+braces didn't balance; its span covers another line-anchored `@type{key,`; or
+the block about to be written is itself unbalanced. Callers surface the
+message (index-time it's logged and indexing continues) and a human repairs
+the bib.
+
+Unlike `master.bib`, this file takes no lock — it's per-paper, and library
+skills are parallel-safe only across citekeys.
+
+CI: [library/scripts/tests/test_references_bib_upsert.py](scripts/tests/test_references_bib_upsert.py)
+pins the byte-identical-survival contract, the refusals, and a grep of
+`library/scripts/` for the re-emit form. Nothing in CI runs Python directly, so
+[library/lib/\_\_tests\_\_/references-bib-upsert-python.test.ts](lib/__tests__/references-bib-upsert-python.test.ts)
+shells out to it — that's what puts it under the same `npx vitest run` that
+gates everything else. (The suite carries its own no-pytest runner for this
+reason; the other `library/scripts/tests/*` suites remain manual.)
+
 ## Memo discipline
 
 Skills that write markdown memos as part of their work follow a fixed convention.

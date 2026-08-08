@@ -128,11 +128,36 @@ All paths below are relative to the library root.
    prior authentication. The existing `% bib.state = ...` comment is
    preserved when you omit the flag.
 
-3. **Re-emit `papers/<citekey>/references.bib`.** This is a single-entry
-   mirror of the master.bib block, byte-identical except for the trailing
-   newline. Skip this step if `papers/<citekey>/` doesn't exist
-   (legitimate: the user may have edited a hand-added bib entry that has
-   no indexed paper folder yet).
+3. **Sync `papers/<citekey>/references.bib`** through the shared helper —
+   the same one `/library/authenticate-bib` step 5 calls. Note this is the
+   one command in this skill that does **not** interpolate `"$CITEKEY"`
+   into the program text: a `$VAR` inside a heredoc/`-c` program is not
+   expanded, so the key is passed as **argv** instead.
+
+   ```bash
+   python3 - "$CITEKEY" <<'PY'
+   import sys; from pathlib import Path
+   sys.path.insert(0, ".virgil/scripts/library")
+   from index_paper import _resync_references_bib
+   ok = _resync_references_bib(Path("."), sys.argv[1])
+   print("references.bib resynced" if ok
+         else "paper dir or master row missing — skipped")
+   PY
+   ```
+
+   It **upserts**: only the `<citekey>` block is replaced, every other
+   entry survives byte-identically, and it returns False (no-op) when
+   `papers/<citekey>/` doesn't exist — legitimate, since the user may have
+   edited a hand-added bib entry that has no indexed paper folder yet.
+   On a `.bib` too malformed to splice safely it raises `BibSpliceRefused`
+   and leaves the file untouched; report that verbatim and continue.
+
+   Do **not** hand-write this file with a whole-file `Write` of one
+   emitted entry. `references.bib` is a single-entry mirror of the
+   master.bib block only until `/library/deep-index` runs: step 3f
+   replaces it with the paper's **actual cited works**, so a re-emit
+   destroys a deep-indexed paper's whole bibliography — and the loss
+   propagates silently into the next `/library/merge-bibs` (task 168).
 
 4. **Update `.virgil/catalog.json`** via the locked CLI shim. Compute
    the field changes first (compare old vs new for each field).

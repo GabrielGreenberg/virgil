@@ -153,3 +153,9 @@ is the always-on fallback for digital-native PDFs.
 - The library orchestrator handles `master.bib`, `.virgil/catalog.json`, and
   `.virgil/notifications/inbox.json` updates via Python CLI shims with file
   locks — you don't write to them directly.
+- **Never overwrite `papers/<citekey>/references.bib` with a single emitted
+  entry.** It's a one-entry mirror of the master.bib row only until
+  `/library:deep-index` runs — after that it holds the paper's *actual cited
+  works*, and a whole-file re-emit silently destroys them. Sync that one row
+  through `_resync_references_bib` (`.virgil/scripts/library/index_paper.py`),
+  which upserts and leaves every other entry byte-identical.

@@ -59,8 +59,9 @@ Operates on `papers/$ARGUMENTS/main.tex` and
 - **Step 3e** — itemize the References section, emit one `\item` per
   entry with `\textbf{<author portion>}`, and build the citekey table.
 - **Step 3f** — emit `papers/$ARGUMENTS/references.bib` from the
-  itemized entries, overwriting the single-entry seed
-  `index_paper.py` previously stamped there.
+  itemized entries, overwriting whatever is there (on a first pass, the
+  seed row `index_paper.py` stamped; on a re-run, the previous emission
+  plus that row).
 - **Step 3g** — rewrite inline citations in the body text to natbib
   `\cite{…}` family commands.
 
@@ -298,10 +299,19 @@ authors; downstream rendering relies on BibTeX-canonical separators.
 
 ## Step 3f — Emit / populate `references.bib`
 
-Write `papers/$ARGUMENTS/references.bib`, **overwriting** whatever
-`index_paper.py` previously stamped there (the original is a single-entry
-mirror of `master.bib`; we're replacing it with the paper's actual cited
-works).
+Write `papers/$ARGUMENTS/references.bib`, **overwriting** whatever is
+there — we're replacing it with the paper's actual cited works. This is
+the one skill allowed to rewrite the whole file; everywhere else the
+paper's own row is *upserted* through `_tools.write_paper_bib_entry` so
+these cited works survive (task 168 — see library/AGENTS.md
+"`references.bib` is upsert-only").
+
+On a first pass what's there is the single-entry seed `index_paper.py`
+stamped. On a **re-run over an already-deep-indexed paper** it is the
+previous emission — plus, if `/library/authenticate-bib`,
+`/library/apply-bib-edit`, or a re-index has run since, the paper's own
+row upserted back in. Don't treat a >1-entry file as evidence 3f already
+ran correctly; the idempotency clause below is the test.
 
 > **Idempotency.** On a re-run where the in-document bibliography is
 > unchanged (per §3e's idempotency clause, the itemize was left alone)
