@@ -414,7 +414,12 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         bodyParts.push("\n  ");
         bodyParts.push(`\\caption${shortArg}{${captionTex}}`);
       }
-      if (label) {
+      // Emit the label ONCE, from wherever it lives. `\caption{Foo \label{fig:x}}`
+      // is idiomatic LaTeX: the parser reads that label into the `label` attr so
+      // `\ref` still resolves, but the caption child re-emits those same bytes
+      // inside the caption — so re-emitting here would write a DUPLICATE
+      // `\label` into the user's .tex on the first save (task 245).
+      if (label && !captionTex.includes(`\\label{${label}}`)) {
         bodyParts.push("\n  ");
         bodyParts.push(`\\label{${label}}`);
       }

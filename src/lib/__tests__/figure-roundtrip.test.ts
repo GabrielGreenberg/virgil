@@ -186,6 +186,153 @@ After.`;
     expect(withoutShort.shortCaption).toBeNull();
   });
 
+  // ---------------------------------------------------------------------
+  // task 245 — a `\caption` / `\label` belongs to the figure only if it LIVES
+  // at figure depth. First-match `indexOf` extraction was blind to three kinds
+  // of containment, and each one produced a non-idempotent round-trip because
+  // `extras` stripped different bytes than the serializer re-emitted.
+  // ---------------------------------------------------------------------
+  describe("caption/label containment (task 245)", () => {
+    const nested = `\\begin{figure}
+  \\begin{subfigure}{0.4\\textwidth}
+    \\includegraphics{a}
+    \\caption{Sub A}
+    \\label{fig:suba}
+  \\end{subfigure}
+  \\caption{Main}
+  \\label{fig:main}
+\\end{figure}\n`;
+
+    it("takes the figure's OWN caption, not a nested subfigure's", () => {
+      const json = parseBody(nested);
+      const figs = findByType(json, "figureBlock");
+      expect(figs).toHaveLength(1);
+      const captionText = (findByType(figs[0], "figureCaption")[0].content || [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("");
+      expect(captionText).toBe("Main");
+      // The figure's own label survives — the old global `\label` strip
+      // hoisted `fig:suba` and DELETED `fig:main` outright.
+      expect(figs[0].attrs?.label).toBe("fig:main");
+      // The subfigure rides along in `extras` byte-raw, subcaption included.
+      const extras = figs[0].attrs?.extras as string;
+      expect(extras).toContain("\\begin{subfigure}{0.4\\textwidth}");
+      expect(extras).toContain("\\caption{Sub A}");
+      expect(extras).toContain("\\label{fig:suba}");
+      expect(extras).not.toContain("\\caption{Main}");
+      expect(extras).not.toContain("\\label{fig:main}");
+    });
+
+    it("round-trips a nested subfigure to a fixed point (no relocation, no oscillation)", () => {
+      const once = serializeBody(parseBody(nested));
+      const twice = serializeBody(parseBody(once));
+      // The oscillation: pre-fix the two captions swapped places every cycle.
+      expect(twice).toBe(once);
+      // Exactly one figure-level caption, and the subcaption is still INSIDE
+      // its subfigure (it used to be ripped up to figure level).
+      expect(once.match(/\\caption\{/g)).toHaveLength(2);
+      const subStart = once.indexOf("\\begin{subfigure}");
+      const subEnd = once.indexOf("\\end{subfigure}");
+      expect(subStart).toBeGreaterThan(-1);
+      expect(once.indexOf("\\caption{Sub A}")).toBeGreaterThan(subStart);
+      expect(once.indexOf("\\caption{Sub A}")).toBeLessThan(subEnd);
+      expect(once.indexOf("\\label{fig:suba}")).toBeLessThan(subEnd);
+      // …and the figure's own caption/label sit outside it.
+      expect(once.indexOf("\\caption{Main}")).toBeGreaterThan(subEnd);
+      expect(once).toContain("\\label{fig:main}");
+    });
+
+    it("ignores a commented-out \\caption", () => {
+      const input = `\\begin{figure}
+  \\includegraphics{a}
+  % \\caption{TODO write me}
+  \\caption{Real}
+\\end{figure}\n`;
+      const json = parseBody(input);
+      const figs = findByType(json, "figureBlock");
+      const captionText = (findByType(figs[0], "figureCaption")[0].content || [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("");
+      expect(captionText).toBe("Real");
+      const once = serializeBody(json);
+      expect(serializeBody(parseBody(once))).toBe(once);
+      // The comment is preserved verbatim, and the real caption is not doubled.
+      expect(once).toContain("% \\caption{TODO write me}");
+      expect(once.match(/\n\s*\\caption\{Real\}/g)).toHaveLength(1);
+    });
+
+    it("emits a caption-carried \\label once (no duplicate at figure level)", () => {
+      const input = `\\begin{figure}
+  \\includegraphics{a}
+  \\caption{Foo \\label{fig:x}}
+\\end{figure}\n`;
+      const json = parseBody(input);
+      const figs = findByType(json, "figureBlock");
+      // Still read into the attr, so `\ref{fig:x}` resolves to this figure…
+      expect(figs[0].attrs?.label).toBe("fig:x");
+      const once = serializeBody(json);
+      // …but written exactly once, inside the caption where the author put it.
+      expect(once.match(/\\label\{fig:x\}/g)).toHaveLength(1);
+      expect(once).toContain("\\caption{Foo \\label{fig:x}}");
+      expect(serializeBody(parseBody(once))).toBe(once);
+    });
+
+    it("leaves the flat multi-\\includegraphics figure untouched (regression)", () => {
+      const input = `\\begin{figure}
+  \\centering
+  \\includegraphics[width=0.3\\textwidth]{a}
+  \\includegraphics[width=0.3\\textwidth]{b}
+  \\caption{Side by side.}
+  \\label{fig:pair}
+\\end{figure}\n`;
+      const json = parseBody(input);
+      const figs = findByType(json, "figureBlock");
+      expect(figs[0].attrs?.sources).toHaveLength(2);
+      expect(figs[0].attrs?.label).toBe("fig:pair");
+      const extras = figs[0].attrs?.extras as string;
+      expect(extras).toContain("\\centering");
+      expect(extras).toContain("\\includegraphics[width=0.3\\textwidth]{a}");
+      expect(extras).not.toContain("\\caption");
+      expect(extras).not.toContain("\\label");
+      const once = serializeBody(json);
+      expect(once).toContain("\\caption{Side by side.}");
+      expect(once).toContain("\\label{fig:pair}");
+      expect(serializeBody(parseBody(once))).toBe(once);
+    });
+
+    it("keeps a nested caption when the figure has none of its own", () => {
+      const input = `\\begin{figure}
+  \\begin{subfigure}{0.4\\textwidth}
+    \\includegraphics{a}
+    \\caption{Only sub}
+  \\end{subfigure}
+\\end{figure}\n`;
+      const json = parseBody(input);
+      const figs = findByType(json, "figureBlock");
+      const captionText = (findByType(figs[0], "figureCaption")[0].content || [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("");
+      expect(captionText).toBe("");
+      const once = serializeBody(json);
+      const subEnd = once.indexOf("\\end{subfigure}");
+      expect(once.indexOf("\\caption{Only sub}")).toBeLessThan(subEnd);
+      expect(serializeBody(parseBody(once))).toBe(once);
+    });
+
+    it("extractFigureAttrs is depth-aware at the popover re-extraction seam", () => {
+      const attrs = extractFigureAttrs(
+        `\n  \\begin{subfigure}{0.4\\textwidth}\n    \\caption{Sub}\n    \\label{fig:sub}\n  \\end{subfigure}\n  \\caption{Own}\n  \\label{fig:own}\n`,
+      );
+      expect(attrs.caption).toBe("Own");
+      expect(attrs.label).toBe("fig:own");
+      expect(attrs.extras).toContain("\\caption{Sub}");
+      expect(attrs.extras).toContain("\\label{fig:sub}");
+    });
+  });
+
   it("numbers multiple figures sequentially", () => {
     const input = `\\begin{figure}
   \\includegraphics{a}
