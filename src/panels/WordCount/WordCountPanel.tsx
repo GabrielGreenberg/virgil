@@ -8,6 +8,7 @@ import {
   useWordCountConfig,
 } from "@/hooks/useWordCountConfig";
 import { Panel } from "@/panels/_shared/Panel";
+import { CardMetaLabel } from "@/components/panel-primitives";
 
 interface WordCountPanelProps {
   counts: WordCounts;
@@ -22,9 +23,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
       <span className="text-base font-medium text-ink-strong tabular-nums">
         {value}
       </span>
-      <span className="text-[10px] text-[var(--muted)] uppercase tracking-wide">
-        {label}
-      </span>
+      <CardMetaLabel>{label}</CardMetaLabel>
     </div>
   );
 }
@@ -63,17 +62,13 @@ export default function WordCountPanel({
           <span className="text-base font-medium text-ink-strong tabular-nums leading-none">
             {filteredTotal.toLocaleString()}
           </span>
-          <span className="text-[11px] text-[var(--muted)] uppercase tracking-wide">
-            words
-          </span>
+          <CardMetaLabel className="leading-none">words</CardMetaLabel>
         </div>
         <div className="flex items-baseline gap-1.5">
           <span className="text-base font-medium text-ink-strong tabular-nums leading-none">
             {filteredChars.toLocaleString()}
           </span>
-          <span className="text-[11px] text-[var(--muted)] uppercase tracking-wide">
-            chars
-          </span>
+          <CardMetaLabel className="leading-none">chars</CardMetaLabel>
         </div>
       </div>
 

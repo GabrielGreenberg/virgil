@@ -52,6 +52,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { useMainEditable } from "@/components/editor-layout/contexts/editor-ref";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -62,6 +63,7 @@ import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  type SourceRange,
 } from "@/lib/float-sync";
 import { generateShortId } from "@/lib/uuid";
 import type { TextObjectFloatBodyProps } from "../types";
@@ -86,6 +88,12 @@ export interface ExampleItemSource {
    *  wrapper. null only if the item somehow isn't inside an exampleBlock
    *  (schema-impossible; defensive → wrapper falls back to defaults). */
   numbering: ExampleBlockNumbering | null;
+  /** The enclosing exampleBlock's OWN range — this float's source region
+   *  (task 140). The item's own range is not enough: the wrapper renders the
+   *  block's `(N)` / kind / tag, so a renumber (a `setNodeMarkup` on the BLOCK)
+   *  or a sibling item inserted above changes what this float shows without
+   *  touching the item. Null only if no exampleBlock ancestor resolves. */
+  containerRange: SourceRange | null;
 }
 
 /** Find an exampleItem by uuid AND capture its enclosing exampleBlock's
@@ -96,42 +104,43 @@ export interface ExampleItemSource {
 export function findExampleItemByUuid(
   doc: PMNode,
   uuid: string,
+  hint?: SourceRange | null,
 ): ExampleItemSource | null {
-  let result: ExampleItemSource | null = null;
-  doc.descendants((node, pos) => {
-    if (result) return false;
-    if (node.type.name === "exampleItem" && node.attrs?.uuid === uuid) {
-      result = {
-        start: pos,
-        end: pos + node.nodeSize,
-        node,
-        numbering: enclosingBlockNumbering(doc, pos),
-      };
-      return false;
-    }
-    return true;
-  });
-  return result;
+  const src = findSourceNodeByUuid(doc, uuid, "exampleItem", hint);
+  if (!src) return null;
+  const enclosing = enclosingBlock(doc, src.start);
+  return {
+    start: src.start,
+    end: src.end,
+    node: src.node,
+    numbering: enclosing?.numbering ?? null,
+    containerRange: enclosing?.range ?? null,
+  };
 }
 
-/** Walk up from the item position to its enclosing exampleBlock and read the
- *  render attrs the float wrapper inherits. The block is always an ancestor by
- *  schema (`exampleBlock > exampleItemList > exampleItem`); we resolve rather
- *  than use `descendants`' immediate-parent arg, which is the exampleItemList —
- *  one level too shallow. */
-function enclosingBlockNumbering(
+/** Walk up from the item position to its enclosing exampleBlock and read both
+ *  the render attrs the float wrapper inherits AND the block's own range. The
+ *  block is always an ancestor by schema (`exampleBlock > exampleItemList >
+ *  exampleItem`); we resolve rather than use `descendants`' immediate-parent
+ *  arg, which is the exampleItemList — one level too shallow. The range is what
+ *  the float watches (task 140): the numbering it renders belongs to the BLOCK,
+ *  so the block is the region whose changes must reach it. */
+function enclosingBlock(
   doc: PMNode,
   itemPos: number,
-): ExampleBlockNumbering | null {
+): { numbering: ExampleBlockNumbering; range: SourceRange } | null {
   const $pos = doc.resolve(itemPos);
-  for (let d = $pos.depth; d >= 0; d--) {
+  for (let d = $pos.depth; d >= 1; d--) {
     const anc = $pos.node(d);
     if (anc.type.name === "exampleBlock") {
       return {
-        number: anc.attrs.number,
-        kind: anc.attrs.kind,
-        exnoOverride: anc.attrs.exnoOverride,
-        tag: anc.attrs.tag,
+        numbering: {
+          number: anc.attrs.number,
+          kind: anc.attrs.kind,
+          exnoOverride: anc.attrs.exnoOverride,
+          tag: anc.attrs.tag,
+        },
+        range: { from: $pos.before(d), to: $pos.after(d) },
       };
     }
   }
@@ -189,8 +198,9 @@ export function resolveInnerWriteback(
   doc: PMNode,
   uuid: string,
   floatDoc: JSONContent,
+  hint?: SourceRange | null,
 ): InnerWriteback | null {
-  const src = findExampleItemByUuid(doc, uuid);
+  const src = findExampleItemByUuid(doc, uuid, hint);
   if (!src) return null;
   const block = (floatDoc.content ?? [])[0];
   if (!block || block.type !== "exampleBlock") return null;
@@ -365,7 +375,14 @@ export function ExampleItemBody({
   function writeBackToMain(floatDoc: JSONContent) {
     const ed = ref.current?.getEditor();
     if (!ed) return;
-    const wb = resolveInnerWriteback(ed.state.doc, uuid, floatDoc);
+    // The live source range doubles as this write's position hint (task 140),
+    // so the float→main direction stops walking the doc per float keystroke.
+    const wb = resolveInnerWriteback(
+      ed.state.doc,
+      uuid,
+      floatDoc,
+      sourceRangeRef.current,
+    );
     if (!wb) return;
     try {
       const tr = ed.state.tr.replaceWith(wb.from, wb.to, wb.items);
@@ -378,8 +395,8 @@ export function ExampleItemBody({
   }
 
   const readSource = useCallback(
-    (doc: PMNode) => {
-      const src = findExampleItemByUuid(doc, uuid);
+    (doc: PMNode, hint: SourceRange | null) => {
+      const src = findExampleItemByUuid(doc, uuid, hint);
       if (!src) {
         return {
           doc: {
@@ -406,12 +423,15 @@ export function ExampleItemBody({
           ],
         } as JSONContent,
         missing: false,
+        // The whole enclosing exampleBlock, not just the item — see
+        // `containerRange`.
+        range: src.containerRange ?? { from: src.start, to: src.end },
       };
     },
     [uuid],
   );
 
-  const { sourceMissing } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

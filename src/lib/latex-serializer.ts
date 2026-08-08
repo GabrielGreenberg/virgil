@@ -8,7 +8,12 @@ import {
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
 import { typographyToLatex, smartenStraightQuotes } from "@/lib/latex-typography";
-import { extractBraced, isEscaped, VERBATIM_ENVS_FULL } from "@/lib/latex-lexer";
+import {
+  extractBraced,
+  hasVerbatimMark,
+  isEscaped,
+  VERBATIM_ENVS_FULL,
+} from "@/lib/latex-lexer";
 import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
 import { classifyCiteFamily } from "@/lib/bib-family";
 import {
@@ -101,6 +106,15 @@ function serializeMarks(
   marks?: { type: string; attrs?: Record<string, unknown> }[]
 ): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
+
+  // latexVerbatim mark: BYTE-LITERAL LaTeX (an inline `\verb<delim>…<delim>`
+  // run, or a `VERBATIM_ENVS_FULL` env with no modeled node). Emit it exactly
+  // as parsed — no escaping, and above all no `smartenStraightQuotes`: inside
+  // verbatim a `"` IS a straight ASCII quote, and rewriting it to ``/'' both
+  // corrupts the user's source bytes and renders as literal backticks in the
+  // compiled PDF. Checked BEFORE the `latexCommand` branch so the stricter
+  // carrier wins if a node ever ends up carrying both (task 264).
+  if (hasVerbatimMark(marks)) return text;
 
   // latexCommand mark: text is already raw LaTeX — return as-is, except
   // that uncompilable ASCII / smart quotes get smart-LaTeX-ified so they
@@ -931,12 +945,24 @@ function serializeInline(node: JSONContent): string {
  * bodies keep their interior blank runs too (task 243). A capture-group
  * backreference (`\1`) pairs each `\begin{env}` with its own `\end{env}`, and
  * the alternation is longest-first so `verbatim*` is tried before `verbatim`.
+ *
+ * The `(?:[…]|{…})*` run after the env name is load-bearing (task 264): two of
+ * the four family members are normally written WITH an argument —
+ * `\begin{lstlisting}[language=Python]`, and `\begin{minted}{python}` whose
+ * language argument is MANDATORY, so no real `minted` block has a newline
+ * immediately after `\begin{minted}`. Requiring that newline meant those
+ * blocks never stashed and the `\n{3,}` collapse below ran straight over their
+ * bodies: a PEP8 listing lost one of its two blank lines between top-level
+ * defs on the FIRST save, silently and idempotently. Task 243 unified the
+ * VOCABULARY here but the pattern still only fit the no-argument spelling.
  */
 const VERBATIM_BLOCK_RE = new RegExp(
   `\\\\begin\\{(${[...VERBATIM_ENVS_FULL]
     .sort((a, b) => b.length - a.length)
     .map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|")})\\}\\n[\\s\\S]*?\\n\\\\end\\{\\1\\}`,
+    .join(
+      "|",
+    )})\\}(?:\\[[^\\]\\n]*\\]|\\{[^}\\n]*\\})*\\n[\\s\\S]*?\\n\\\\end\\{\\1\\}`,
   "g",
 );
 function collapseBlankRuns(s: string): string {

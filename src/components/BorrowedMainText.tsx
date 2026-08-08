@@ -42,8 +42,9 @@ import { useEffect, useMemo, useRef } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
-  CARD_STARTER_KIT_CONFIG,
-  buildBorrowedAtomSchema,
+  starterKitConfigForScope,
+  buildCardBodySchema,
+  type CardBodySchemaScope,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
@@ -79,6 +80,13 @@ export interface BorrowedMainTextProps {
    *  being masked by the global `.tiptap p { font-size: var(--editor-font-size) }`
    *  rule. Without this the body renders at the 1.05rem fallback (~16.8px). */
   bodyStyle?: React.CSSProperties;
+  /** Which body vocabulary to mount (task 308). Defaults to `"card"` — the
+   *  narrow authored-prose surface. `"excerpt"` mounts the full main-document
+   *  vocabulary and is what a kind holding a verbatim document slice needs;
+   *  `EditableCard` derives it from the card kind (`bodySchemaForCardKind`) and
+   *  passes the SAME value here and to `RichTextField`, so a card's compressed
+   *  and expanded views can never disagree about what they can render. */
+  schemaScope?: CardBodySchemaScope;
 }
 
 /** Rewrite citation nodes so their `displayText` reflects the current
@@ -114,6 +122,7 @@ export function BorrowedMainText({
   className,
   style,
   bodyStyle,
+  schemaScope = "card",
 }: BorrowedMainTextProps) {
   // Citation resolver: the explicit prop wins; otherwise fall back to the
   // surrounding CitationDisplayProvider (nullable — the throwing hook is for
@@ -134,16 +143,19 @@ export function BorrowedMainText({
       editable: false,
       immediatelyRender: false,
       extensions: [
-        // Shared card-body StarterKit config (SSOT in borrowed-schema.ts).
-        StarterKit.configure({ ...CARD_STARTER_KIT_CONFIG }),
-        // Shared card-context inline-atom + block-atom-preview sub-schema
-        // (borrowed-schema.ts — backlog #11). `includeLabelRefFootnote: true`
-        // adds the read-only `\ref` (LabelRef) + nested footnote markers
-        // (Footnote) this borrowed surface needs — RichTextField omits those.
-        // Read-only, so no Placeholder / TabIndent layer. Adding a new atom
-        // kind there surfaces it here automatically (the contract test gates
-        // the main editor too).
-        ...buildBorrowedAtomSchema({ includeLabelRefFootnote: true }),
+        // Scope-resolved card-body StarterKit config (SSOT in
+        // borrowed-schema.ts). `"card"` is the narrow footnote/note surface;
+        // `"excerpt"` keeps StarterKit's full block vocabulary because the body
+        // holds a verbatim document slice (task 308).
+        StarterKit.configure({ ...starterKitConfigForScope(schemaScope) }),
+        // Scope-resolved inline-atom + block sub-schema (borrowed-schema.ts —
+        // backlog #11). `includeLabelRefFootnote: true` adds the read-only
+        // `\ref` (LabelRef) + nested footnote markers (Footnote) this borrowed
+        // surface needs — RichTextField's "card" scope omits those. Read-only,
+        // so no Placeholder / TabIndent layer. Adding a new atom kind there
+        // surfaces it here automatically (the contract test gates the main
+        // editor too).
+        ...buildCardBodySchema(schemaScope, { includeLabelRefFootnote: true }),
       ],
       content: resolved,
       editorProps: {
@@ -155,7 +167,10 @@ export function BorrowedMainText({
       },
     },
     // Remount when the card identity changes (same contract as RichTextField).
-    [instanceKey],
+    // `schemaScope` joins it because it selects the SCHEMA: the extension array
+    // is read once at construction, so a scope change with no remount would
+    // leave the body on the old vocabulary.
+    [instanceKey, schemaScope],
   );
 
   // Editor-census probe (__editorCensus): one live-instance tick per mount.

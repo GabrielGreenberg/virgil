@@ -10,7 +10,7 @@
  * Canonical bucketing rules:
  *   - inline math counts toward the SURROUNDING CONTEXT bucket (mainText in
  *     a paragraph, headings in a heading) — "Math" = displayMath only;
- *   - text marked `latexCommand` is raw LaTeX, not prose — only its
+ *   - text marked `latexCommand` / `latexVerbatim` is raw LaTeX, not prose — only its
  *     `\caption{...}` payloads count (as captions);
  *   - citations are reference markers, never prose;
  *   - footnote content → footnotes, latexComment text → comments.
@@ -21,6 +21,7 @@
  */
 
 import type { JSONContent } from "@tiptap/react";
+import { LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
 
 export type Category =
   | "mainText"
@@ -146,9 +147,15 @@ export function collectCategoryParts(node: JSONContent): Record<Category, string
 
   const collectInline = (n: JSONContent, bucket: string[]) => {
     if (n.type === "text" && n.text) {
-      // Text marked as latexCommand is raw LaTeX — not prose.
+      // Text marked as latexCommand — or as the byte-literal `latexVerbatim`
+      // carrier — is raw LaTeX, not prose.
       // Extract any \caption{...} text into captions, skip the rest.
-      if (n.marks?.some((m) => m.type === "latexCommand")) {
+      if (
+        n.marks?.some(
+          (m) =>
+            m.type === "latexCommand" || m.type === LATEX_VERBATIM_MARK,
+        )
+      ) {
         for (const c of extractCaptionText(n.text)) cats.captions.push(c);
         return;
       }

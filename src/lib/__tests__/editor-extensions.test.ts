@@ -79,6 +79,7 @@ const EXPECTED_MAIN_ORDER = [
   "glossCell",
   "expexNumbering",
   "latexCommand",
+  "latexVerbatim",
   "inlineAtomGrab",
   "slashPopup",
   "smartQuotes",
@@ -93,6 +94,7 @@ const EXPECTED_MAIN_ORDER = [
   "tabIndent",
   "pgmarkChip",
   "anchorHighlightDecorator",
+  "transientHighlightDecorator",
   "readOnlyEnforcer",
 ];
 
@@ -152,6 +154,7 @@ const EXPECTED_FLOAT_ORDER = [
   "proseGlossRow",
   "glossCell",
   "latexCommand",
+  "latexVerbatim",
   "inlineAtomGrab",
   "linkedAnchor",
   "linkedAnchorGuard",
@@ -179,6 +182,7 @@ const MAIN_ONLY_NAMES = [
   "marginaliaAnchorGuard",
   "pgmarkChip",
   "anchorHighlightDecorator",
+  "transientHighlightDecorator",
   "readOnlyEnforcer",
 ];
 

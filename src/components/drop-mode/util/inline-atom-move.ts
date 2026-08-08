@@ -42,7 +42,13 @@ import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { getRegisteredEditors } from "../target-registry";
 import { parseAnyKey } from "@/floats/float-key";
-import type { DropCtx, DropSpec, PlacementKind } from "../types";
+import type {
+  DropCtx,
+  DropSpec,
+  InlineAtomCardAttrs,
+  InlineAtomCardKind,
+  PlacementKind,
+} from "../types";
 
 export interface AtomLocation {
   editor: Editor;
@@ -52,12 +58,19 @@ export interface AtomLocation {
 }
 
 /**
+ * The per-kind card attrs a create factory receives, or `null` for a spec that
+ * declares no `cardApiKind` (the id-less in-text grab kinds).
+ */
+type CardAttrsOf<K extends InlineAtomCardKind | undefined> =
+  K extends InlineAtomCardKind ? InlineAtomCardAttrs[K] : never;
+
+/**
  * Inputs handed to an opt-in `createAtom` factory (the "anchor the
  * unanchored" branch). The factory builds a fresh inline-atom node for a
  * card whose marker doesn't exist in any editor yet, reusing the card's
  * EXISTING id so the new atom and the card stay coupled.
  */
-export interface CreateAtomArgs {
+export interface CreateAtomArgs<K extends InlineAtomCardKind | undefined = undefined> {
   /** The card's EXISTING entity id (footnoteId / citationId), parsed from
    *  the drop's `cardKey`. The built node MUST carry this — minting a fresh
    *  id would orphan the card from its marker. */
@@ -68,15 +81,43 @@ export interface CreateAtomArgs {
   /** The full drop `cardKey`, for factories that need more than the id. */
   cardKey: string;
   /** The per-doc drop context, so a factory can consult a hook accessor
-   *  (e.g. the citation command lookup) it needs to populate node attrs. */
+   *  it needs beyond the resolved `cardAttrs`. */
   ctx: DropCtx;
+  /**
+   * The CARD-AUTHORITATIVE atom attrs, already resolved from
+   * `ctx.atomCards[cardApiKind].atomAttrsFor(id)` — the whole point of the
+   * create branch (task 233). An unanchored card has no marker to read attrs
+   * off, so anything the atom can't regenerate (a footnote's body) has to come
+   * from here or be DESTROYED.
+   *
+   * `null` means the accessor isn't wired in this doc, or the hook declined (an
+   * empty draft citation). Both of today's factories REFUSE on it — a rebuild
+   * that can't read what it needs must not fill the gap from a default. That is
+   * the whole lesson of 233: the empty-body fallback looked like graceful
+   * degradation and was the data loss. A factory may only treat `null` as a
+   * usable default for a field that carries no user content and that the atom
+   * could regenerate anyway.
+   */
+  cardAttrs: CardAttrsOf<K> | null;
 }
 
-export interface InlineAtomMoveOptions {
+export interface InlineAtomMoveOptions<
+  K extends InlineAtomCardKind | undefined = undefined,
+> {
   /** Schema node name (e.g. "footnote") — for the default by-id resolver. */
   nodeName?: string;
   /** Attribute carrying the entity id (e.g. "footnoteId") — by-id resolver. */
   idAttr?: string;
+  /**
+   * The inline-atom CARD KIND whose `ctx.atomCards` entry this spec's create
+   * branch reads (task 233). Declaring it does three things at once: the
+   * factory resolves `cardAttrs` for `createAtom`, it calls the hook's
+   * `onAnchored(id)` after a successful insert so the card sheds its
+   * `unanchored`/`archived` intent, and it surfaces on the built spec as
+   * `requiresCardApi` so the contract test can assert the accessor is actually
+   * wired. Omit for the id-less in-text grab (no card, nothing to read).
+   */
+  cardApiKind?: K;
   /**
    * Override source resolution. The in-text grab passes this to resolve
    * the source from a position captured at mousedown rather than by
@@ -102,7 +143,7 @@ export interface InlineAtomMoveOptions {
    * `\footnote{}` / `\cite{}` create paths build) but substitute the card's
    * EXISTING id — it must NEVER mint a new one (that orphans the card).
    */
-  createAtom?: (args: CreateAtomArgs) => PMNode | null;
+  createAtom?: (args: CreateAtomArgs<K>) => PMNode | null;
   /** Reject cross-editor drops (the in-text grab is same-editor only). */
   sameEditorOnly?: boolean;
   /** Post-move selection: select the moved node (default) or a caret
@@ -112,7 +153,9 @@ export interface InlineAtomMoveOptions {
   allowedPlacements?: ReadonlyArray<PlacementKind>;
 }
 
-export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
+export function inlineAtomMoveSpec<
+  K extends InlineAtomCardKind | undefined = undefined,
+>(opts: InlineAtomMoveOptions<K>): DropSpec {
   const resolve = (cardKey: string, ctx: DropCtx): AtomLocation | null =>
     opts.resolveSource
       ? opts.resolveSource(cardKey, ctx)
@@ -121,6 +164,14 @@ export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
   return {
     allowedPlacements: opts.allowedPlacements ?? ["inline-cursor"],
     targetScope: "any-editor",
+    // Surface BOTH halves of the create-branch obligation on the spec, from the
+    // mechanism itself: that this spec rebuilds an atom at all, and which ctx
+    // accessor it declared for the card's half of it. The contract test asserts
+    // the implication (`createsAtom ⇒ requiresCardApi`) — keying the guard on
+    // the DECLARATION alone would have walked straight past the pre-233
+    // footnote spec, which rebuilt an atom and declared nothing.
+    createsAtom: !!opts.createAtom,
+    requiresCardApi: opts.cardApiKind,
     classifyDrop(placement, cardKey, ctx) {
       if (placement.kind !== "inline-cursor") return { kind: "no-op" };
       const src = resolve(cardKey, ctx);
@@ -162,7 +213,30 @@ export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
         // drop position. A silent insert — never a confirm.
         if (opts.createAtom) {
           const node = buildCreateNode(opts, placement, cardKey, ctx);
-          if (node) insertNewAtom(placement.editor, placement.pos, node, opts.select);
+          if (node) {
+            insertNewAtom(placement.editor, placement.pos, node, opts.select);
+            // The OTHER half of anchoring (task 233): the card is now in the
+            // prose, so its own "parked, re-placeable" intent must clear.
+            // Without this the sidecar keeps `unanchored` (and, for a card that
+            // got here via archive → unarchive, `archived`), and a panel that
+            // lists atomless refs straight from the sidecar renders the same
+            // entity twice — live in the prose AND as a stale parked duplicate.
+            //
+            // MAIN EDITOR ONLY. This spec's `targetScope` is `"any-editor"`, so
+            // the atom can legitimately land in a card body (an archive card's
+            // excerpt-scope field mounts `footnote`) — but the panels resolve
+            // "is it anchored?" against the MAIN doc alone (`getFootnotes()` /
+            // the citation position map). Clearing the parked intent for an
+            // atom the panel can't see would hide the card from BOTH lists at
+            // once: no flags left for the atomless list, no marker in the main
+            // doc for the anchored one. Reconcile only where the derivation can
+            // corroborate it; a card-body drop leaves the card parked, which is
+            // what the panel still shows.
+            const id = extractId(cardKey);
+            if (id && opts.cardApiKind && placement.editor === ctx.mainEditor) {
+              cardApiFor(opts.cardApiKind, ctx)?.onAnchored?.(id);
+            }
+          }
         }
         return;
       }
@@ -204,8 +278,8 @@ export function inlineAtomMoveSpec(opts: InlineAtomMoveOptions): DropSpec {
  * so `classifyDrop` can use it as a "can this card be created?" probe and
  * `applyDrop` can reuse the same construction.
  */
-function buildCreateNode(
-  opts: InlineAtomMoveOptions,
+function buildCreateNode<K extends InlineAtomCardKind | undefined>(
+  opts: InlineAtomMoveOptions<K>,
   placement: Extract<Parameters<DropSpec["applyDrop"]>[0], { kind: "inline-cursor" }>,
   cardKey: string,
   ctx: DropCtx,
@@ -213,7 +287,43 @@ function buildCreateNode(
   if (!opts.createAtom) return null;
   const id = extractId(cardKey);
   if (!id) return null;
-  return opts.createAtom({ id, schema: placement.editor.schema, cardKey, ctx });
+  // Resolve the card-authoritative attrs ONCE, here, so every factory reads
+  // them the same way and none can forget to (task 233 was exactly that
+  // forgetting). `null` when the kind declares no accessor, the accessor isn't
+  // wired in this doc, or the hook declined.
+  let cardAttrs: unknown = null;
+  if (opts.cardApiKind) {
+    const api = cardApiFor(opts.cardApiKind, ctx);
+    if (!api && process.env.NODE_ENV !== "production") {
+      // The registered-but-unwired shape, made loud instead of silent. Every
+      // factory declines on a null `cardAttrs`, so the drop is a no-op rather
+      // than a lossy rebuild — but a no-op drop reads as "the gesture is
+      // broken," and this says why.
+      console.warn(
+        `[DropMode] "${opts.cardApiKind}" declares a create branch but no ` +
+          `ctx.atomCards.${opts.cardApiKind} accessor is wired in this doc — ` +
+          `the drop declines rather than rebuild the atom from a default. ` +
+          `Wire it in EditorPane via buildInlineAtomCardApis.`,
+      );
+    }
+    cardAttrs = api?.atomAttrsFor(id) ?? null;
+  }
+  return opts.createAtom({
+    id,
+    schema: placement.editor.schema,
+    cardKey,
+    ctx,
+    cardAttrs: cardAttrs as CardAttrsOf<K> | null,
+  });
+}
+
+/** The one lookup into the registry-keyed inline-atom ctx bag. Typed per kind
+ *  so a factory's `cardAttrs` narrows to that kind's payload. */
+function cardApiFor<K extends InlineAtomCardKind>(
+  kind: K,
+  ctx: DropCtx,
+): NonNullable<DropCtx["atomCards"]>[K] | undefined {
+  return ctx.atomCards?.[kind];
 }
 
 /**
@@ -350,7 +460,7 @@ function parkCaretBeforeChange(editor: Editor, pos: number): void {
  *  looking for an inline atom with the matching id. Used by the by-id
  *  (float-header) resolver only. */
 function locateAtom(
-  opts: InlineAtomMoveOptions,
+  opts: Pick<InlineAtomMoveOptions, "nodeName" | "idAttr">,
   id: string | null,
   mainEditor: Editor | null,
 ): AtomLocation | null {

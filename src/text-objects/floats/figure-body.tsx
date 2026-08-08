@@ -39,6 +39,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import { useDocWriteHandleOrNull } from "@/components/editor-layout/DocPipeline";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { parseAnyKey } from "@/floats/float-key";
@@ -49,6 +50,7 @@ import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  type SourceRange,
 } from "@/lib/float-sync";
 import type { TextObjectFloatBodyProps } from "../types";
 
@@ -64,17 +66,10 @@ function findFigureByUuid(
   doc: PMNode,
   uuid: string,
   kind: FigureKind,
+  hint?: SourceRange | null,
 ): FigureSource | null {
-  let result: FigureSource | null = null;
-  doc.descendants((node, pos) => {
-    if (result) return false;
-    if (node.type.name === kind && node.attrs?.uuid === uuid) {
-      result = { start: pos, end: pos + node.nodeSize, node };
-      return false;
-    }
-    return true;
-  });
-  return result;
+  const src = findSourceNodeByUuid(doc, uuid, kind, hint);
+  return src ? { start: src.start, end: src.end, node: src.node } : null;
 }
 
 // Kind-appropriate empty seed/fallback. figureBlock keeps its optional
@@ -178,7 +173,9 @@ export function FigureBody({
   function writeBackToMain(doc: JSONContent) {
     const ed = ref.current?.getEditor();
     if (!ed) return;
-    const src = findFigureByUuid(ed.state.doc, uuid, kind);
+    // The live source range doubles as this write's position hint (task 140),
+    // so the float→main direction stops walking the doc per float keystroke.
+    const src = findFigureByUuid(ed.state.doc, uuid, kind, sourceRangeRef.current);
     if (!src) return;
     const incoming = doc.content ?? [];
     if (incoming.length === 0) return;
@@ -203,8 +200,8 @@ export function FigureBody({
   }
 
   const readSource = useCallback(
-    (doc: PMNode) => {
-      const src = findFigureByUuid(doc, uuid, kind);
+    (doc: PMNode, hint: SourceRange | null) => {
+      const src = findFigureByUuid(doc, uuid, kind, hint);
       if (!src) {
         return {
           doc: {
@@ -220,12 +217,13 @@ export function FigureBody({
           content: [src.node.toJSON() as JSONContent],
         } as JSONContent,
         missing: false,
+        range: { from: src.start, to: src.end },
       };
     },
     [uuid, kind],
   );
 
-  const { sourceMissing } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

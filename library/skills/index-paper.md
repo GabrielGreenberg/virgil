@@ -5,8 +5,9 @@ description: |
   Triggers on: "index <citekey>", "process the paper for X", "extract
   this PDF into the library", "Virgil, index <author year>", "add
   <citekey> to my library". Produces `papers/<citekey>/main.tex` (with
-  `\pgmark{N}` anchors for PDFs), a single-entry references.bib,
-  empty Virgil sidecars, and an authenticated catalog row. Light —
+  `\pgmark{N}` anchors for PDFs), this paper's row upserted into
+  references.bib, empty Virgil sidecars, and an authenticated catalog
+  row. Light —
   safe to invoke from a paper session with --library. Does NOT trigger
   for newly-dropped files in unsorted/ (use /triage-pdf first) or for
   cleaning up an already-indexed paper (use /deep-index). Args:
@@ -144,7 +145,10 @@ you to disambiguate something.
    OCR. Bib auth still runs.
 
    In both cases:
-   - writes single-entry `references.bib` mirror
+   - upserts this paper's own row into `references.bib` (on a first index
+     that's the familiar single-entry mirror; on a **re-index of a
+     deep-indexed paper** the cited works `/library/clean-bibliography`
+     put there survive untouched)
    - initializes empty `virgil/{virgil,notes,footnotes}.json` sidecars
    - authenticates the .bib entry against Crossref/OpenAlex/Semantic Scholar/arXiv
    - updates `.virgil/catalog.json` (`pdf.format` records the source format) and bumps `.virgil/catalog-version.txt`
@@ -390,9 +394,10 @@ you to disambiguate something.
    rm /tmp/<citekey>-tier-fields.json
    ```
 
-   Then re-emit the single-entry `papers/<citekey>/references.bib`
-   mirror to match (use `_resync_references_bib` from `index_paper`,
-   like `/authenticate-bib` step 5), and patch the `\title{}` /
+   Then sync this paper's own row in `papers/<citekey>/references.bib`
+   to match (use `_resync_references_bib` from `index_paper`, like
+   `/authenticate-bib` step 5 — it **upserts** that one entry and leaves
+   every other entry in the file untouched), and patch the `\title{}` /
    `\author{}` / `\date{}` lines at the top of
    `papers/<citekey>/main.tex` if any of those changed. `tex_emit.py`
    only sees the bib at extraction time, so a correction made in step 4

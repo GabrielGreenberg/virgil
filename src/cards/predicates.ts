@@ -18,6 +18,7 @@ import type { CardKind, CardMeta } from "./types";
 import type { PanelKind } from "@/panels/_shared/types";
 import type { PanelThemeKey } from "@/lib/panel-theme";
 import type { AiRequestKind, AiRequestLink } from "@/lib/types";
+import type { CardBodySchemaScope } from "@/lib/tiptap/borrowed-schema";
 import { LEGACY_TOKEN_CROSSWALK } from "./legacy-token-crosswalk";
 
 /** All card kinds, in registry declaration order. */
@@ -136,6 +137,21 @@ export const collabClaimScope = (k: CardKind): PanelThemeKey =>
  *  override sits on top; this fixes the declared fallback class.) */
 export const bodyVariantForCardKind = (k: CardKind): "footnote" | "note" =>
   CARD_REGISTRY[k].bodyClass === "borrowed" ? "footnote" : "note";
+
+/** Which SCHEMA a kind's body mounts — DERIVED from the registry `bodySchema`
+ *  facet (task 308), never hand-picked per surface. `"excerpt"` kinds hold a
+ *  verbatim slice of the main document and get the full document vocabulary;
+ *  everyone else gets the narrow authored-prose surface. Read ONCE in
+ *  `EditableCard`, which threads the result to both body surfaces, so a kind's
+ *  expanded and compressed views can never disagree about what they can hold. */
+export const bodySchemaForCardKind = (k: CardKind): CardBodySchemaScope =>
+  CARD_REGISTRY[k].bodySchema;
+
+/** The kinds whose bodies hold document excerpts. Every DESTRUCTIVE capture
+ *  action must target one of these AND gate its delete on `canMountInCardBody`
+ *  — that pair is the never-delete-what-you-cannot-restore invariant. */
+export const excerptCardKinds = (): CardKind[] =>
+  CARD_KINDS.filter((k) => CARD_REGISTRY[k].bodySchema === "excerpt");
 
 /** Whether a kind can morph in place into its sibling (the A9 kind-chevron).
  *  The 4 morphing pairs (note↔highlight, revision-/cutter-comment↔suggestion,

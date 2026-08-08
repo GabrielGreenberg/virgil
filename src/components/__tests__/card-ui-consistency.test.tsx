@@ -184,6 +184,23 @@ describe("G1: the ratified body-padding token", () => {
   });
 });
 
+describe("T2 (typography drift): no stray 11px label in the Word Count panel", () => {
+  // The ratified META tier is 10px/500 (`.card-meta-label`); the STYLE_GUIDE
+  // calls anything at 10.5/11/11.5px a stray. WordCountPanel's uppercase unit
+  // captions ("words"/"chars"/"Words"/"Characters") drifted to text-[11px]
+  // hand-rolled soup (task 312) — pin them to the CardMetaLabel primitive so
+  // the previously-unguarded stray-size class can't regress. Source-read pin
+  // (like the T4 fontStack pin) to avoid mounting the panel.
+  it("WordCountPanel.tsx routes unit captions through CardMetaLabel, no text-[11px]", () => {
+    const src = readFileSync(
+      resolve(__dirname, "../../panels/WordCount/WordCountPanel.tsx"),
+      "utf8",
+    );
+    expect(src).not.toMatch(/text-\[11px\]/);
+    expect(src).toMatch(/CardMetaLabel/);
+  });
+});
+
 describe("T4: preview-chrome sites have no local fontStack helper", () => {
   const SITES = [
     "../FontsDialog.tsx",

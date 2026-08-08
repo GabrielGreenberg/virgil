@@ -340,16 +340,34 @@ directory).
    Record only the changes you actually applied in `bib.fieldChanges`
    (step 6). If you applied a type change, say so in the reply.
 
-5. **Re-emit `references.bib`** from the updated master.bib entry:
+5. **Sync `references.bib`** from the updated master.bib entry. The citekey
+   goes in as **argv**, not interpolated into the program — a `$VAR` inside
+   `python3 -c '…'` single quotes is never expanded by the shell, so that
+   form silently resyncs nothing:
    ```bash
-   python3 -c '
+   python3 - "<citekey>" <<'PY'
    import sys; from pathlib import Path
    sys.path.insert(0, ".virgil/scripts/library")
    from index_paper import _resync_references_bib
-   ok = _resync_references_bib(Path("."), "<citekey>")
-   print("references.bib resynced" if ok else "no paper dir — skipped")
-   '
+   ok = _resync_references_bib(Path("."), sys.argv[1])
+   print("references.bib resynced" if ok
+         else "paper dir or master row missing — skipped")
+   PY
    ```
+
+   The helper **upserts** — it replaces only the `<citekey>` block and
+   leaves every other entry in the file byte-identical. That matters
+   because `papers/<citekey>/references.bib` is a single-entry mirror of
+   master.bib only until `/library/deep-index` runs: step 3f replaces it
+   with the paper's **actual cited works**. Never hand-write this file
+   with a whole-file `Write` of one emitted entry — that is exactly the
+   truncation this helper exists to prevent (task 168).
+
+   On a `.bib` malformed enough that the splice can't be made safely (an
+   unbalanced brace in a value), the helper raises `BibSpliceRefused` and
+   leaves the file **untouched** — losing entries is never the fallback.
+   Report the message verbatim and move on to step 6; the bib needs a human
+   repair.
 
 6. **Update .virgil/catalog.json** — derive top-level fields from master.bib so
    they can't drift. Build `bib_status` from the helper's `AuthResult`
