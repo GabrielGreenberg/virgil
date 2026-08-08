@@ -3,6 +3,7 @@ import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import {
   serializeToLatex,
   mergeTitlesIntoStylePreamble,
+  assignUuids,
 } from "@/lib/latex-serializer";
 
 const ARTICLE_TEX = `\\documentclass[11pt]{article}
@@ -233,5 +234,33 @@ Hello.
     const merged = mergeTitlesIntoStylePreamble(oldLatex, newPreamble);
     expect(merged).toMatch(/\\title\{Paper\} %!v:abcd/);
     expect(merged).toMatch(/\\author\{Me\} %!v:1234/);
+  });
+
+  it("assignUuids mints for \\maketitle and the %!v: anchor round-trips", () => {
+    // The D4 drag-cliff class (MEMO_PERF_DEEP_RESEARCH_2026_08_08.md §5):
+    // maketitleMarker was absent from UUID_BEARING_NODE_TYPES, so it reached
+    // the editor uuid-less and the drop hit-test minted mid-drag. With it in
+    // the set, the load-time assignUuids pass mints; the anchor must then
+    // survive serialize → parse.
+    const doc = parseLatex(ARTICLE_TEX);
+    assignUuids(doc);
+    const marker = (doc.content ?? []).find(
+      (n) => n.type === "maketitleMarker",
+    );
+    expect(marker).toBeDefined();
+    expect(marker?.attrs?.uuid).toMatch(/^[0-9a-f]{4}$/);
+
+    const delimiters = extractPreambleAndPostamble(ARTICLE_TEX);
+    const out = serializeToLatex(doc, delimiters ?? undefined);
+    const anchored = new RegExp(
+      `\\\\maketitle %!v:${marker?.attrs?.uuid as string}`,
+    );
+    expect(out).toMatch(anchored);
+
+    const reparsed = parseLatex(out);
+    const marker2 = (reparsed.content ?? []).find(
+      (n) => n.type === "maketitleMarker",
+    );
+    expect(marker2?.attrs?.uuid).toBe(marker?.attrs?.uuid);
   });
 });

@@ -83,6 +83,13 @@ const UUID_BEARING_NODE_TYPES = new Set([
   "graphicsBlock",
   "exampleBlock",
   "exampleItem",
+  // The \maketitle stand-in declares the uuid attr and both serializer
+  // (`%!v:` anchor emission) and parser already round-trip it — but its
+  // absence HERE meant assignUuids never minted for it, so it reached the
+  // editor uuid-less and the drop-mode hit-test minted mid-drag (full doc
+  // walk + synchronous .tex flush per pointermove — the D4 drag cliff,
+  // MEMO_PERF_DEEP_RESEARCH_2026_08_08.md §5).
+  "maketitleMarker",
 ]);
 
 const DEFAULT_POSTAMBLE = `
@@ -1211,14 +1218,17 @@ export function assignUuids(doc: JSONContent): void {
     ) {
       ensureUuid(node);
     }
-    // Atom-like block nodes always get a UUID
+    // Atom-like block nodes always get a UUID. maketitleMarker included
+    // (D4 drag-cliff fix): uuid-less, it forced the drop hit-test to mint
+    // mid-drag; minting here at load kills that path.
     if (
       (node.type === "displayMath" ||
         node.type === "latexComment" ||
         node.type === "codeBlock" ||
         node.type === "exampleBlock" ||
         node.type === "figureBlock" ||
-        node.type === "graphicsBlock") &&
+        node.type === "graphicsBlock" ||
+        node.type === "maketitleMarker") &&
       !node.attrs?.uuid
     ) {
       ensureUuid(node);
