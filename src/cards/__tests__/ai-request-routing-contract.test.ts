@@ -91,6 +91,7 @@ describe("AI-request routing contract (R29)", () => {
         "card-123",
         true,
         { text: "hello", paragraphIds: ["p1"] },
+        "toggle",
       );
       expect(written.length).toBe(1);
       expect(written[0].file).toBe("ai-requests.json");
@@ -110,7 +111,7 @@ describe("AI-request routing contract (R29)", () => {
     // AIWindow composer, not a per-card flag) — the bridge must not write.
     await bridgeCardAiRequestFlag("doc-test", "citation", "card-123", true, {
       text: "hello",
-    });
+    }, "toggle");
     expect(written.length).toBe(0);
     errSpy.mockRestore();
   });

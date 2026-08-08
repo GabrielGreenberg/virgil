@@ -20,7 +20,9 @@
  *      pending `ai-requests.json` entry in the SAME logical step — so a
  *      report-request→report morph (or a delete of a flagged report-request)
  *      never strands a phantom inbox entry (REP-F5-01 / REP-F6-01 / REP-F7-02 /
- *      REP-F8-01 / OMNI-F6-01).
+ *      REP-F8-01 / OMNI-F6-01). The obligation owns its MODE as well as its
+ *      firing (`unbridgeModeFor`, task 313): both event types are TERMINAL, so
+ *      both discharge in `"terminate"` — the caller forwards, never decides.
  *   4. SIGNAL   — publish ONE `card-deleted` / `card-morphed` signal (the D6
  *      seam) that W2b's reconciler consumes to prune / re-key `cardStore`
  *      (REP-F6-02 / OMNI-F6-02 for the sidecar kinds).
@@ -59,6 +61,9 @@ import {
   type AppliedSpliceSummary,
 } from "./applied-splice";
 import type { PendingChangeFamily } from "@/links/apply-suggestion";
+// Type-only: the executor decides the MODE (see `unbridgeModeFor`), but never
+// touches the bridge itself — the import is erased, so purity is preserved.
+import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
 
 /** The injected obligations the executor discharges. The caller (EditorPane)
  *  wires these to the live confirm dialog, the ai-request bridge, and the
@@ -72,10 +77,19 @@ export interface CardLifecycleDeps {
     cancelLabel?: string;
     tone?: "default" | "danger";
   }) => Promise<boolean>;
-  /** Clear the pending `ai-requests.json` entry for an aiRequest-bearing card.
+  /** Discharge the linked `ai-requests.json` row for an aiRequest-bearing card.
    *  Called with the kind that HAS the routing (the FROM kind on a lossy morph,
-   *  the deleted kind on a delete). A no-op if there's no open entry. */
-  unbridgeAiRequest: (kind: CardKind, id: string) => void | Promise<void>;
+   *  the deleted kind on a delete) and — since task 313 — the **mode the
+   *  executor decided** (`unbridgeModeFor`). The implementation is a pure
+   *  FORWARDER: it must pass `mode` straight through to
+   *  `bridgeCardAiRequestFlag`, never substitute a literal of its own. That is
+   *  the whole point — the mode is a property of the transition, and a call site
+   *  that re-picks it is the fork task 313 closed. A no-op if no row matches. */
+  unbridgeAiRequest: (
+    kind: CardKind,
+    id: string,
+    mode: AiRequestSyncMode,
+  ) => void | Promise<void>;
   /** Perform the data mutation (the per-doc hook op). Awaited so the signal /
    *  remap that follow see the post-mutation state. */
   mutate: () => void | Promise<void>;
@@ -91,6 +105,73 @@ export interface CardLifecycleDeps {
 export type LifecycleEvent =
   | { type: "delete"; kind: CardKind; id: string; hasContent: boolean }
   | { type: "morph"; fromKind: CardKind; id: string };
+
+/**
+ * The MODE half of the UNBRIDGE obligation (task 313) — the executor's answer to
+ * "how does this transition discharge the row?", derived from the EVENT rather
+ * than chosen by whoever wired the callback.
+ *
+ * WHY THIS IS A FUNCTION AND NOT A LITERAL AT THE CALL SITE. Task 198 pinned
+ * *whether* a morph unbridges (the `drops` biconditional in
+ * `assertMorphCoverage`) but left the *mode* smeared across three EditorPane call
+ * sites — and it silently forked: delete passed `"terminate"`, archive passed
+ * `"terminate"`, and the morph callback passed nothing at all, so it inherited
+ * the bridge's `"toggle"` default. The two modes differ exactly on the state
+ * that matters here: `"toggle"` matches through `isRequestOpen`, which reports
+ * an **answered-L3** row (`in-progress` + a non-empty `resultId`) as CLOSED — so
+ * the drop found no row and the morph left it live forever. `"terminate"`
+ * matches through `isLinkedNonTerminal`, which ignores openness and closes it.
+ * The user path is ordinary: file a revision comment → an L3 responder drafts a
+ * proposal (the row becomes answered-L3) → flip the kind chevron
+ * comment→suggestion → the row is stranded on a routing-less kind that can never
+ * toggle again, and archiving the survivor can't reach it either.
+ *
+ * BOTH EVENTS ARE TERMINAL, WHICH IS WHY BOTH ANSWER `"terminate"`. A delete
+ * removes the card; a flag-dropping morph removes the card's aiRequest identity
+ * — 198's own write-up equates the two, and archive (093) already treats "the
+ * card is gone" as grounds to close an answered-L3 row regardless of openness.
+ * `"toggle"`'s deliberate protection of that row (task 043) is a REVERSIBLE
+ * flag's semantics: the checkbox can be re-ticked, so the proposal's `resultId`
+ * must survive a stray untick. Neither of these transitions is reversible in
+ * that sense, so the protection has nothing left to protect — and the morph
+ * least of all: every reverse converter hard-sets `aiRequest: false`, and a
+ * re-tick matches only OPEN rows, so the card could never re-associate with the
+ * row it stranded even if the user flipped the kind straight back.
+ *
+ * IT CHANGES THE PLAIN-OPEN CASE TOO, INTENTIONALLY. The two modes differ on
+ * every row, not just the answered-L3 one this was reported for: a toggle-off
+ * FILTERS the row out of `ai-requests.json`, while terminate MAPS it to
+ * `complete`. So a morph now leaves a resolved entry where it used to leave no
+ * trace. That is the point rather than a side effect — it is what delete and
+ * archive already do, and it is the truer record: the user did ask, and the ask
+ * ended when the card stopped being the kind that could carry it.
+ *
+ * The switch is EXHAUSTIVE ON THE UNION with no default: a third `LifecycleEvent`
+ * type is a compile error here (TS2366 — no ending return) until someone states
+ * its terminality, rather than silently inheriting a mode. Same
+ * declared-and-unwired-is-a-compile-error discipline as `AppliedSpliceOps`'
+ * `PendingChangeFamily` keying.
+ *
+ * It takes the event TYPE, not the event, so the doors that discharge the same
+ * obligation WITHOUT riding the executor can ask the same question — today
+ * `makeUnbridgingFootnoteDelete`, which deliberately skips the executor (a
+ * footnote's cardStore prune is already owned by the W2b bus reconciler, so the
+ * D6 signal would double-prune) but is a delete in every way that matters here.
+ * A door that can't reach the executor must still not re-answer this.
+ */
+export function unbridgeModeFor(
+  eventType: LifecycleEvent["type"],
+): AiRequestSyncMode {
+  switch (eventType) {
+    // The card is gone.
+    case "delete":
+      return "terminate";
+    // The card's aiRequest identity is gone (the TO kind carries no routing, so
+    // there is no next toggle that could ever clear the row).
+    case "morph":
+      return "terminate";
+  }
+}
 
 /**
  * Build the generated morph-confirm copy from the declared `drops` set — never
@@ -245,9 +326,10 @@ export async function runCardLifecycleEvent(
     // 3. UNBRIDGE — fire BEFORE the mutation so the pending inbox entry is
     //    cleared in the same logical step. Only when the morph DROPS aiRequest
     //    (the FROM kind had routing, the TO kind doesn't — assertMorphCoverage
-    //    pins that "aiRequest" is only declared in exactly that case).
+    //    pins that "aiRequest" is only declared in exactly that case). The MODE
+    //    comes from the event, not the caller (313).
     if (morph.drops.includes("aiRequest")) {
-      await deps.unbridgeAiRequest(ev.fromKind, ev.id);
+      await deps.unbridgeAiRequest(ev.fromKind, ev.id, unbridgeModeFor(ev.type));
     }
 
     // 4. MUTATE (the per-doc hook flips the on-disk kind via the morph transform).
@@ -279,9 +361,11 @@ export async function runCardLifecycleEvent(
   if (!(await settleAppliedSplice(ev, deps))) return false;
 
   // 3. UNBRIDGE — a delete of an aiRequest-bearing kind drops its flag → clear
-  //    the pending inbox entry (REP-F7-02, the symmetric delete leak).
+  //    the pending inbox entry (REP-F7-02, the symmetric delete leak). Same
+  //    event-derived mode as the morph leg (313) — previously the one leg that
+  //    happened to be wired right, by a literal at its call site.
   if (CARD_REGISTRY[ev.kind].aiRequest != null) {
-    await deps.unbridgeAiRequest(ev.kind, ev.id);
+    await deps.unbridgeAiRequest(ev.kind, ev.id, unbridgeModeFor(ev.type));
   }
 
   // 4. MUTATE.

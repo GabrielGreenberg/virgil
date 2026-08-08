@@ -64,7 +64,7 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
       text: "refreshed text",
       paragraphIds: ["p-new"],
       selectedText: "new selection",
-    });
+    }, "toggle");
 
     expect(written).toHaveLength(1);
     const reqs = written[0].data.requests;
@@ -83,7 +83,7 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
     seeded.state = { requests: [linkedRequest()] };
     // `text: ""` falls back to the old text; omitted paragraphIds /
     // selectedText (undefined) keep the stored ones via `??`.
-    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "" });
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "" }, "toggle");
 
     expect(written).toHaveLength(1);
     const r = written[0].data.requests[0];
@@ -100,7 +100,7 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
         linkedRequest({ id: "req-other", linkedTo: { panel: "todos", cardId: "card-2" } }),
       ],
     };
-    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" });
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "toggle");
 
     expect(written).toHaveLength(1);
     expect(written[0].data.requests.map((r) => r.id)).toEqual(["req-other"]);
@@ -108,7 +108,7 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
 
   it("(b') value=false with no open linked request is a pure no-op (no write at all)", async () => {
     seeded.state = { requests: [linkedRequest({ status: "complete" })] };
-    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" });
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "toggle");
     // Terminal requests are not "open" — nothing to drop, nothing written
     // (the terminal record is the skill's audit trail; value=false must not
     // erase it).
@@ -120,7 +120,7 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
     await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, {
       text: "second ask",
       paragraphIds: ["p-2"],
-    });
+    }, "toggle");
 
     expect(written).toHaveLength(1);
     const reqs = written[0].data.requests;
@@ -140,7 +140,7 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
 
   it("(c') terminal status 'failed' re-files too (both v1 terminal statuses)", async () => {
     seeded.state = { requests: [linkedRequest({ status: "failed" })] };
-    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "retry" });
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "retry" }, "toggle");
 
     expect(written).toHaveLength(1);
     const reqs = written[0].data.requests;
@@ -154,7 +154,7 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
     // The open-request match now delegates to `isRequestOpen` — e.g. a request
     // a skill already marked in-flight must not be duplicated by a re-toggle.
     seeded.state = { requests: [linkedRequest({ status: "submitted" as AiRequest["status"] })] };
-    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "nudge" });
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "nudge" }, "toggle");
 
     expect(written).toHaveLength(1);
     const reqs = written[0].data.requests;
@@ -179,7 +179,7 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
     await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, {
       text: "please try again",
       paragraphIds: ["p-2"],
-    });
+    }, "toggle");
 
     expect(written).toHaveLength(1);
     const reqs = written[0].data.requests;
@@ -202,7 +202,7 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
     seeded.state = {
       requests: [linkedRequest({ status: "in-progress", resultId: "card-proposal-1" })],
     };
-    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" });
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", false, { text: "" }, "toggle");
     // Answered ⇒ not open ⇒ nothing to drop ⇒ no write. The accept/reject flow
     // and the proposal card's origin pointer keep their `resultId`.
     expect(written).toHaveLength(0);
@@ -212,7 +212,7 @@ describe("bridgeCardAiRequestFlag idempotency (re-toggle classes)", () => {
     // A skill mid-flight (its proposal card hasn't landed yet) has no resultId,
     // so it is still open — a re-toggle updates in place, never duplicates.
     seeded.state = { requests: [linkedRequest({ status: "in-progress" })] };
-    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "still working?" });
+    await bridgeCardAiRequestFlag("doc", "todo", "card-1", true, { text: "still working?" }, "toggle");
 
     expect(written).toHaveLength(1);
     const reqs = written[0].data.requests;

@@ -31,7 +31,11 @@ describe("makeUnbridgingFootnoteDelete", () => {
     del("fn-1", remove);
 
     // Unbridge fires with the footnote kind + the exact id, then remove runs.
-    expect(unbridge).toHaveBeenCalledWith("footnote", "fn-1");
+    // The MODE is not this door's to pick: it comes from the shared
+    // `unbridgeModeFor("delete")` SSOT (task 313). This door is precisely the
+    // one that skips `runCardLifecycleEvent` — for its signal obligations, not
+    // for this decision — so it is the one most at risk of drifting.
+    expect(unbridge).toHaveBeenCalledWith("footnote", "fn-1", "terminate");
     expect(remove).toHaveBeenCalledWith("fn-1");
     expect(calls).toEqual(["unbridge:footnote:fn-1", "remove:fn-1"]);
   });
@@ -48,8 +52,8 @@ describe("makeUnbridgingFootnoteDelete", () => {
     expect(splice).toHaveBeenCalledWith("fn-splice");
     expect(refDelete).toHaveBeenCalledWith("fn-ref");
     // Each delete unbridges its own id under the footnote kind.
-    expect(unbridge).toHaveBeenNthCalledWith(1, "footnote", "fn-splice");
-    expect(unbridge).toHaveBeenNthCalledWith(2, "footnote", "fn-ref");
+    expect(unbridge).toHaveBeenNthCalledWith(1, "footnote", "fn-splice", "terminate");
+    expect(unbridge).toHaveBeenNthCalledWith(2, "footnote", "fn-ref", "terminate");
   });
 
   it("does not await the (async) unbridge — fire-and-forget, remove still runs synchronously", () => {

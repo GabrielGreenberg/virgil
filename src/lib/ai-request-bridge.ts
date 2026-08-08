@@ -67,14 +67,26 @@ export interface BridgeContext {
 /**
  * How the bridge should reconcile a card's linked `ai-requests.json` row.
  *
- * - `"toggle"` (default) — the reversible per-card flag semantics: `value=true`
+ * - `"toggle"` — the reversible per-card flag semantics: `value=true`
  *   adds/refreshes an OPEN row, `value=false` drops it. Deliberately protects an
  *   answered-L3 row (`in-progress`+`resultId`) from a stray toggle-off (task 043).
- * - `"terminate"` — the card is **gone** (archived). A terminal transition:
- *   close EVERY linked NON-terminal row (each a plain open row OR an answered-L3
- *   row) to `complete` regardless of current openness — a card can carry two at
- *   once (task 253). The UI twin of the Python `close_linked_request(force=True)`
- *   on `cmd_archive` (task 093).
+ * - `"terminate"` — the card is **gone** (archived / deleted), or has left its
+ *   aiRequest identity (a flag-dropping morph). A terminal transition: close
+ *   EVERY linked NON-terminal row (each a plain open row OR an answered-L3 row)
+ *   to `complete` regardless of current openness — a card can carry two at once
+ *   (task 253). The UI twin of the Python `close_linked_request(force=True)` on
+ *   `cmd_archive` (task 093).
+ *
+ * THERE IS NO DEFAULT, DELIBERATELY (task 313). `mode` used to default to
+ * `"toggle"`, which read as a harmless convenience and was in fact the reason a
+ * real bug stayed silent: the morph leg's unbridge callback was written
+ * `(kind, cardId) => bridgeCardAiRequestFlag(docId, kind, cardId, false, ctx)`
+ * — the terminal transition simply never mentioned a mode, inherited the
+ * reversible one, and left answered-L3 rows live forever. An omitted mode is
+ * never a safe guess here, because the two clients want opposite fail-safes: a
+ * checkbox must PRESERVE an answered row, a card that is going away must CLOSE
+ * it. So every writer states which it is, and forgetting is a compile error
+ * rather than a silent vote for reversibility.
  */
 export type AiRequestSyncMode = "toggle" | "terminate";
 
@@ -102,7 +114,9 @@ export async function bridgeCardAiRequestFlag(
   cardId: string,
   value: boolean,
   ctx: BridgeContext,
-  mode: AiRequestSyncMode = "toggle",
+  // REQUIRED — see `AiRequestSyncMode`. The former `= "toggle"` default is what
+  // made task 313's stranded answered-L3 rows invisible.
+  mode: AiRequestSyncMode,
 ): Promise<void> {
   if (!docId) return;
   const routing = CARD_REGISTRY[cardKind].aiRequest;

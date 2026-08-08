@@ -31,13 +31,20 @@
  * routes through it, so a future entry point can't silently reintroduce the
  * strand.
  *
- * TERMINATE, NOT DROP. `unbridge` is wired by the caller to run the bridge in
- * `"terminate"` mode (like archive, task 093): the footnote is *gone*, so the
- * linked row closes regardless of current openness — including an answered-L3
- * proposal (`in-progress` + `resultId`) a `value=false` toggle would preserve
- * (task 043). Terminate is idempotent: it writes nothing when no linked
- * non-terminal row exists, so routing an UNflagged footnote's delete through
- * this helper mints no spurious terminal row.
+ * TERMINATE, NOT DROP. The bridge runs in `"terminate"` mode (like archive, task
+ * 093): the footnote is *gone*, so the linked row closes regardless of current
+ * openness — including an answered-L3 proposal (`in-progress` + `resultId`) a
+ * `value=false` toggle would preserve (task 043). Terminate is idempotent: it
+ * writes nothing when no linked non-terminal row exists, so routing an UNflagged
+ * footnote's delete through this helper mints no spurious terminal row.
+ *
+ * AND IT ASKS THE SAME SSOT THE EXECUTOR DOES (task 313). This door is the one
+ * that skips `runCardLifecycleEvent` (see above), so it is exactly the door that
+ * would drift if the mode were "wired by the caller" — which is how the sibling
+ * morph leg came to inherit `"toggle"` and strand answered-L3 rows. It therefore
+ * derives the mode from `unbridgeModeFor("delete")` rather than spelling a
+ * literal: skipping the executor's OTHER obligations is a deliberate choice
+ * about signals, not a licence to re-answer this one.
  *
  * FIRE-AND-FORGET ORDERING. `unbridge` is dispatched (not awaited) and `remove`
  * runs synchronously right after — matching every pre-252 site, where the bridge
@@ -48,11 +55,19 @@
  * transaction.
  */
 
+import { unbridgeModeFor } from "./run-event";
+import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
+
 export interface UnbridgingFootnoteDeleteDeps {
-  /** Close the linked `ai-requests.json` row. Wired by the caller to the bridge
-   *  in `"terminate"` mode (a no-op when the footnote carries no linked
-   *  non-terminal row). */
-  unbridge: (kind: "footnote", id: string) => void | Promise<void>;
+  /** Close the linked `ai-requests.json` row. A pure FORWARDER onto the bridge:
+   *  the `mode` is supplied here from `unbridgeModeFor("delete")` and must be
+   *  passed straight through, never re-picked (task 313). A no-op when the
+   *  footnote carries no linked non-terminal row. */
+  unbridge: (
+    kind: "footnote",
+    id: string,
+    mode: AiRequestSyncMode,
+  ) => void | Promise<void>;
 }
 
 /**
@@ -64,7 +79,7 @@ export function makeUnbridgingFootnoteDelete(
   deps: UnbridgingFootnoteDeleteDeps,
 ): (id: string, remove: (id: string) => void) => void {
   return (id, remove) => {
-    void deps.unbridge("footnote", id);
+    void deps.unbridge("footnote", id, unbridgeModeFor("delete"));
     remove(id);
   };
 }
