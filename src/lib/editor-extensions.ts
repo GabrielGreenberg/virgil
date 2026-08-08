@@ -27,6 +27,7 @@ import { generateShortId } from "@/lib/uuid";
 import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
 import { UUID_ATTR_SPEC, makeUuidAttr, stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
+import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
 import { DocStructureObserver, readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { BlockUuidBackfill } from "@/lib/tiptap/block-uuid-backfill";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
@@ -1939,6 +1940,14 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
           // never redraws the node (the listItem/heading hover-cull root).
           // See anchor-highlight-deco.ts.
           AnchorHighlightDecorator,
+          // Paints every TRANSIENT text-range band (search result, diagnostics
+          // error range, linked-anchor hover, revision/suggestion text) as an
+          // inline decoration instead of a `highlight` MARK. A mark is document
+          // content: it was history-recorded (clicking a search result ate the
+          // redo branch; Cmd+Z after closing search resurrected the band) and
+          // `docChanged` (it dirtied + autosaved an unedited doc). See
+          // transient-highlight.ts — task 120.
+          TransientHighlightDecorator,
           // Read-only enforcement plugin: rejects any transaction that
           // mutates the document when the host's `editable` is false. For
           // surface "main" this reads the `editableRef` mirror of the React
