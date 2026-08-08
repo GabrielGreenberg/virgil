@@ -28,14 +28,18 @@ import {
   parseTextObjectPopoutKey,
   TEXT_OBJECT_REGISTRY,
 } from "@/text-objects/text-object-registry";
-import { buildWrap, isCompatibleParent } from "@/text-objects/drop-adapters";
+import { isCompatibleParent, tryBuildWrap } from "@/text-objects/drop-adapters";
 import type {
   DropTarget,
   MoveSource,
   TextObjectKind,
   TextObjectSourceContext,
 } from "@/text-objects/types";
-import { canDropDirectAt, classifyParentAt } from "./drop-context";
+import {
+  canDropDirectAt,
+  classifyParentAt,
+  fitNodesAtInsert,
+} from "./drop-context";
 import type { DropSpec, Placement } from "../types";
 
 export const textObjectDropSpec: DropSpec = {
@@ -110,10 +114,40 @@ export const textObjectDropSpec: DropSpec = {
     // (today only headings collect multiple, and they never wrap).
     let toInsert: ReadonlyArray<PMNode> = src.move.nodes;
     if (action.kind === "wrap") {
-      toInsert = toInsert.map((n) =>
-        buildWrap(targetEditor.state.schema, n, action.parentKind),
-      );
+      // `tryBuildWrap`, not `buildWrap`: the wrap is built with `createChecked`,
+      // so a wrapper that cannot HOLD this node is a null rather than a
+      // silently-invalid node. The adapter approved the wrap's placement, not
+      // its content, so refuse rather than fabricate (task 257).
+      const wrapped: PMNode[] = [];
+      for (const n of toInsert) {
+        const w = tryBuildWrap(targetEditor.state.schema, n, action.parentKind);
+        if (!w) return;
+        wrapped.push(w);
+      }
+      toInsert = wrapped;
     }
+
+    // The adapter above expresses what this KIND prefers; the container-fit
+    // SSOT below is the authority on what this CONTAINER can actually hold
+    // (task 257). The two are not the same question, and the gap between them
+    // was a live corruption: the registry adapters know expex and the
+    // sub-object containers but nothing about lists, so a paragraph block-move
+    // released in a list-item gap drop-directed a bare paragraph into
+    // `bulletList` (content `listItem+`) and ProseMirror's fitter split the
+    // list in two — both halves keeping the SAME uuid — exactly the mirror of
+    // the expex tear the text-range move was producing from its own list-only
+    // literal. Routing both through `fitNodesAtInsert` retires the pair and
+    // every future container kind with them.
+    //
+    // A no-op net: where the adapter's answer is already valid here (every case
+    // its `canPlaceHere` gate approves), the fit reports `direct` and the nodes
+    // pass through byte-for-byte. Where nothing fits, this returns BEFORE the
+    // transaction is built, so the source is never deleted.
+    const fit = fitNodesAtInsert(targetEditor, placement.insertPos, toInsert, {
+      prefer: src.sourceContext.parentKind,
+    });
+    if (fit.kind === "reject") return;
+    toInsert = fit.nodes;
 
     const sameEditor = targetEditor === src.editor;
     if (sameEditor) {
@@ -125,8 +159,13 @@ export const textObjectDropSpec: DropSpec = {
       const tr = targetEditor.state.tr.delete(src.move.from, src.move.to);
       let cursor = adjustedInsert;
       for (const n of toInsert) {
+        // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
+        // container fit sanctions an insert the fitter PADS, which adds more
+        // than the node itself — advancing by the node's size alone would put
+        // the next block inside or before this one (task 257 review).
+        const before = tr.doc.content.size;
         tr.insert(cursor, n);
-        cursor += n.nodeSize;
+        cursor += tr.doc.content.size - before;
       }
       // Select the inserted block(s).
       const selStart = adjustedInsert + 1;
@@ -148,8 +187,13 @@ export const textObjectDropSpec: DropSpec = {
     const insertTr = targetEditor.state.tr;
     let cursor = placement.insertPos;
     for (const n of toInsert) {
+      // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
+      // container fit sanctions an insert the fitter PADS, which adds more
+      // than the node itself — advancing by the node's size alone would put
+      // the next block inside or before this one (task 257 review).
+      const before = insertTr.doc.content.size;
       insertTr.insert(cursor, n);
-      cursor += n.nodeSize;
+      cursor += insertTr.doc.content.size - before;
     }
     targetEditor.view.dispatch(insertTr);
     targetEditor.view.focus();

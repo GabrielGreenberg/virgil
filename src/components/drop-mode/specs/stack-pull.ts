@@ -22,10 +22,12 @@ import { Node as PMNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import type { JSONContent } from "@tiptap/react";
 import type { DropDecision, DropSpec, Placement } from "../types";
+import { fitNodesAtInsert } from "./drop-context";
 import { readStackItem } from "@/hooks/useStack";
 import type { StackItem, StackPayload } from "@/lib/stack/types";
 import { generateShortId } from "@/lib/uuid";
 import { remintNestedAtomIds } from "@/lib/inline-content";
+import { rangeSliceToBlocks } from "@/lib/linked-anchor-range";
 import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 
 const ALLOWED_PLACEMENTS: ReadonlyArray<Placement["kind"]> = [
@@ -135,8 +137,43 @@ function insertText(
     console.error("[stack-pull] failed to rehydrate text slice:", err);
     return;
   }
-  const target =
-    placement.kind === "inline-cursor" ? placement.pos : placement.insertPos;
+  if (placement.kind === "between-blocks") {
+    // In a block gap the slice lands as BLOCK content — the same payload shape,
+    // and the same container question, as the text-range move's between-blocks
+    // branch, so it uses the same two primitives: `rangeSliceToBlocks` for the
+    // block form (an inline run → one paragraph, a multi-block range → its
+    // blocks) and the container fit for where those blocks may go. Left as an
+    // open-slice `tr.replace` it tore its container exactly like the bare-node
+    // inserts did (task 257): a pull into an expex item gap SPLIT the
+    // `exampleItemList` in two, so the example grew a second item list — its
+    // sub-numbering restarting — with the pulled text demoted to body prose
+    // between the halves.
+    const blocks = rangeSliceToBlocks(slice, editor.state.schema);
+    if (blocks.length === 0) return;
+    const fit = fitNodesAtInsert(editor, placement.insertPos, blocks);
+    if (fit.kind === "reject") return;
+    const blockTr = editor.state.tr;
+    let cursor = placement.insertPos;
+    for (const n of fit.nodes) {
+      // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
+      // container fit sanctions an insert the fitter PADS, which adds more
+      // than the node itself — advancing by the node's size alone would put
+      // the next block inside or before this one (task 257 review).
+      const before = blockTr.doc.content.size;
+      blockTr.insert(cursor, n);
+      cursor += blockTr.doc.content.size - before;
+    }
+    selectInserted(blockTr, placement.insertPos, cursor - placement.insertPos);
+    editor.view.dispatch(blockTr);
+    editor.view.focus();
+    return;
+  }
+  const target = placement.pos;
+  // container-fit-exempt: the INLINE-CURSOR branch — an open slice merging with
+  // the text around a caret is exactly what ProseMirror's fitter is for, and no
+  // container is being entered. The between-blocks branch above goes through the
+  // fit (the region-level guard cannot tell the two branches apart, so this says
+  // which one is which).
   const tr = editor.state.tr.replace(target, target, slice);
   // Try to select what was inserted so the user can see the landing point.
   try {
@@ -169,8 +206,16 @@ function insertParagraph(
     return;
   }
   if (!node) return;
-  const tr = editor.state.tr.insert(placement.insertPos, node);
-  selectInserted(tr, placement.insertPos, node.nodeSize);
+  // Container fit (task 257) — a pull is an INSERT with no source delete, but a
+  // bare paragraph spliced into an `exampleItemList` / `bulletList` corrupts the
+  // container it lands in exactly as a move does (the fitter splits it, both
+  // halves keeping one uuid). Fit or refuse; refusing costs nothing, since the
+  // stack item is a copy that stays in the stack.
+  const fit = fitNodesAtInsert(editor, placement.insertPos, [node]);
+  if (fit.kind === "reject") return;
+  const fitted = fit.nodes[0];
+  const tr = editor.state.tr.insert(placement.insertPos, fitted);
+  selectInserted(tr, placement.insertPos, fitted.nodeSize);
   editor.view.dispatch(tr);
   editor.view.focus();
 }
@@ -197,8 +242,14 @@ function insertHeading(
     }
   }
   if (nodes.length === 0) return;
-  const tr = editor.state.tr.insert(placement.insertPos, nodes);
-  const totalSize = nodes.reduce((s, n) => s + n.nodeSize, 0);
+  // Same container fit as the paragraph payload — atomic over the whole
+  // heading+body run (one unfittable node refuses the pull rather than landing
+  // a partial section).
+  const fit = fitNodesAtInsert(editor, placement.insertPos, nodes);
+  if (fit.kind === "reject") return;
+  const fitted = fit.nodes;
+  const tr = editor.state.tr.insert(placement.insertPos, fitted as PMNode[]);
+  const totalSize = fitted.reduce((s, n) => s + n.nodeSize, 0);
   selectInserted(tr, placement.insertPos, totalSize);
   editor.view.dispatch(tr);
   editor.view.focus();
