@@ -1384,6 +1384,29 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       cutterPendingDeps,
     ],
   );
+  // The ONE `ai-requests.json` forwarder for the LIFECYCLE legs — delete AND
+  // morph, the two terminal transitions `runCardLifecycleEvent` executes. It is
+  // deliberately mode-DUMB: the executor derives the mode from the event
+  // (`unbridgeModeFor`, task 313) and this passes it through untouched.
+  //
+  // It used to be two callbacks that each picked a mode, and they forked. The
+  // delete leg (task 219) passed `"terminate"` with a paragraph of comment
+  // explaining why a gone card must close even an answered-L3 row
+  // (`in-progress`+`resultId`) that a reversible `value=false` toggle protects
+  // (task 043); the morph leg passed NO mode at all and inherited the bridge's
+  // `"toggle"` default — so a comment→suggestion flip after an L3 responder had
+  // drafted its proposal left the row live forever, on a routing-less kind with
+  // no next toggle to clear it. Same obligation, same terminality, opposite
+  // behaviour, because the decision lived at the call site. Now there is one
+  // decision, upstream, and this is a forwarder — `value=false` is likewise
+  // irrelevant under terminate (the bridge ignores it there) and kept only so
+  // the signature still reads as the drop it is.
+  const unbridgeAiRequestRow = useCallback(
+    (kind: CardKind, id: string, mode: AiRequestSyncMode) =>
+      // ctx fields are read only on the ADD path, so a placeholder is fine.
+      bridgeCardAiRequestFlag(docId, kind, id, false, { text: "" }, mode),
+    [docId],
+  );
   // ── The A9 morph chokepoint (generalized) ──────────────────────────────
   // EVERY kind-chevron morph — note↔highlight, revision/cutter comment↔
   // suggestion, report↔report-request — fires through `convertCardWithRemap`.
@@ -1443,12 +1466,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         { type: "morph", fromKind: fromCardKind, id },
         {
           confirm: confirmMorph,
-          unbridgeAiRequest: (kind, cardId) =>
-            bridgeCardAiRequestFlag(docId, kind, cardId, false, {
-              // value=false drops the existing entry by {panel, cardId}; the
-              // ctx fields are only read on the add path, so a placeholder is fine.
-              text: "",
-            }),
+          // The SAME forwarder the delete leg uses — the executor decides the
+          // mode (313), so the two terminal transitions can't diverge again.
+          unbridgeAiRequest: unbridgeAiRequestRow,
           // SETTLE — an applied suggestion's live blue range is resolved (kept
           // or reverted) before the kind flips, so it can't outlive the record
           // that manages it (task 238). Inert for every other kind.
@@ -1499,22 +1519,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       }
       viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
     },
-    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, appliedSpliceOps, docId],
-  );
-  // The SINGLE ai-requests.json writer for the DELETE leg (task 219). A delete
-  // is a TERMINAL transition like archive (task 093): the card is gone, so the
-  // linked open row must close regardless of current openness — including an
-  // answered-L3 proposal (`in-progress`+`resultId`) that a reversible
-  // `value=false` toggle deliberately preserves (task 043). We therefore run the
-  // bridge in `"terminate"` mode (the `value` arg is irrelevant there), NOT the
-  // `value=false` drop the report leg historically used — applied uniformly to
-  // every flag-bearing kind so delete can't strand a row archive would have
-  // closed. There is no card flag to lower afterward (the card is being deleted),
-  // so — unlike `clearAiRequestForKind` (archive) — this only closes the row.
-  const unbridgeOnDelete = useCallback(
-    (kind: CardKind, id: string) =>
-      bridgeCardAiRequestFlag(docId, kind, id, false, { text: "" }, "terminate"),
-    [docId],
+    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, appliedSpliceOps, unbridgeAiRequestRow],
   );
   // Per-pair adapters that take each card's legacy `(id, dataToKind)` signature,
   // resolve the FROM spine kind, and delegate to the generalized chokepoint —
@@ -1575,10 +1580,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           return c.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
         },
         rawDelete: revisionsHookRaw.deleteCard,
-        unbridge: unbridgeOnDelete,
+        unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
       }),
-    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeOnDelete, appliedSpliceOps],
+    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const deleteCutterCard = useMemo(
     () =>
@@ -1589,10 +1594,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           return c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
         },
         rawDelete: cutterHookRaw.deleteCard,
-        unbridge: unbridgeOnDelete,
+        unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
       }),
-    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeOnDelete, appliedSpliceOps],
+    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const revisionsHook = useMemo(
     () => ({ ...revisionsHookRaw, convertCard: convertRevisionCard, deleteCard: deleteRevisionCard }),
@@ -1635,7 +1640,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `makeUnbridgingDelete` composition every other flag-bearing kind now uses
   // (task 219), so the delete leg is declared once, not re-inlined per kind. A
   // plain `report` (no routing) resolves to `"report"` and the executor no-ops
-  // the unbridge. Terminate semantics come from the shared `unbridgeOnDelete`.
+  // the unbridge. Terminate semantics come from the EXECUTOR (`unbridgeModeFor`,
+  // task 313); `unbridgeAiRequestRow` only forwards them to the bridge.
   const deleteReportCard = useMemo(
     () =>
       makeUnbridgingDelete({
@@ -1644,10 +1650,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           return c?.kind === "report-request" ? "report-request" : "report";
         },
         rawDelete: reportsHookRaw.deleteCard,
-        unbridge: unbridgeOnDelete,
+        unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
       }),
-    [reportsHookRaw.cards, reportsHookRaw.deleteCard, unbridgeOnDelete, appliedSpliceOps],
+    [reportsHookRaw.cards, reportsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const reportsHook = useMemo(
     () => ({
@@ -1668,10 +1674,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           return c ? (c.kind as CardKind) : null;
         },
         rawDelete: notesHookRaw.deleteNote,
-        unbridge: unbridgeOnDelete,
+        unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
       }),
-    [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeOnDelete, appliedSpliceOps],
+    [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const notesHook = useMemo(
     () => ({ ...notesHookRaw, convertCard: convertNotesCard, deleteNote: deleteNoteCard }),
@@ -1687,10 +1693,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         resolveKind: (id) =>
           todosHookRaw.items.some((t) => t.id === id) ? "todo" : null,
         rawDelete: todosHookRaw.deleteItem,
-        unbridge: unbridgeOnDelete,
+        unbridge: unbridgeAiRequestRow,
         appliedSplice: appliedSpliceOps,
       }),
-    [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeOnDelete, appliedSpliceOps],
+    [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const todosHook = useMemo(
     () => ({ ...todosHookRaw, deleteItem: deleteTodoItem }),
@@ -1743,8 +1749,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // mechanism varies — editor-handle splice vs sidecar ref delete — see the
   // helper's header). Each caller supplies only its own `remove`. (task 252)
   const deleteFootnoteUnbridged = useMemo(
-    () => makeUnbridgingFootnoteDelete({ unbridge: unbridgeOnDelete }),
-    [unbridgeOnDelete],
+    () => makeUnbridgingFootnoteDelete({ unbridge: unbridgeAiRequestRow }),
+    [unbridgeAiRequestRow],
   );
   // Permanently trashing an UNANCHORED footnote ref (the atom is already gone —
   // e.g. an in-editor marker deletion left a flagged orphan ref that KEPT its

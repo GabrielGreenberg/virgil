@@ -80,7 +80,10 @@ describe("makeUnbridgingDelete", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(spies.unbridge).toHaveBeenCalledWith(kind, "card-1");
+      // …in TERMINATE mode, decided by the executor from the event (task 313).
+      // A delete's row must close even when it is an answered-L3 proposal a
+      // reversible toggle-off would deliberately preserve.
+      expect(spies.unbridge).toHaveBeenCalledWith(kind, "card-1", "terminate");
       expect(spies.rawDelete).toHaveBeenCalledWith("card-1");
       // The inbox row must clear BEFORE the card is removed, so there is no
       // window where the card is gone but the row still links it.
