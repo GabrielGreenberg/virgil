@@ -19,6 +19,8 @@ import {
   findMatchingGloss,
   isEscaped,
   findUnescaped,
+  matchInlineVerbAt,
+  verbatimMark,
   VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
 
@@ -311,35 +313,30 @@ export function parseInlineContent(
       // \verb<delim>…<delim> and \verb*<delim>…<delim> — verbatim. The
       // delimiter-paired payload is LITERAL (`--` is two hyphens, `\'e` is raw)
       // and must be excluded from the dash/accent transforms (memo §A). We
-      // consume the whole `\verb|…|` and emit the payload as a code-marked text
-      // node (round-trips through the serializer's code path, which suppresses
-      // typography). Without this the payload fell into the plain buffer and
-      // got glyphified (the D2 verbatim regression).
-      // `\verb` is a control word, so it is terminated by a non-letter — its
-      // delimiter must NOT be a letter (else `\verbatim` would mis-match as
-      // `\verb` + delimiter `a`). The delimiter is any single non-letter char
-      // (LaTeX also forbids `*` and space as the delimiter).
-      const verbMatch = rest.match(/^\\verb(\*?)([^a-zA-Z*\s])/);
-      if (verbMatch) {
-        const delim = verbMatch[2];
-        const payloadStart = i + verbMatch[0].length;
-        const closeIdx = text.indexOf(delim, payloadStart);
-        if (closeIdx !== -1) {
-          flush();
-          // Preserve the exact `\verb<delim>…<delim>` spelling so it round-
-          // trips: a `code` mark would serialize to `\texttt{…}` (wrong — and
-          // would re-run typography on edit), so we keep the literal command
-          // form as a raw latexCommand. The serializer's latexCommand path
-          // returns it as-is, so the source stays byte-faithful AND excluded
-          // from the dash/accent transforms.
-          nodes.push({
-            type: "text",
-            text: text.slice(i, closeIdx + 1),
-            marks: [{ type: "latexCommand" }],
-          });
-          i = closeIdx + 1;
-          continue;
-        }
+      // consume the whole `\verb|…|` and emit it as ONE byte-literal node.
+      // Delimiter boundary rules (a non-letter, non-`*`, non-space char, so
+      // `\verbatim`/`\verbdef` don't mis-lex) live in the lexer's shared
+      // `matchInlineVerbAt`, which the footnote/card inline parser reads too.
+      const verbEnd = matchInlineVerbAt(text, i);
+      if (verbEnd !== -1) {
+        flush();
+        // Preserve the exact `\verb<delim>…<delim>` spelling so it round-trips:
+        // a `code` mark would serialize to `\texttt{…}` (wrong — and would
+        // re-run typography on edit), so we keep the literal command form on
+        // the VERBATIM carrier. Until task 264 this rode the undifferentiated
+        // `latexCommand` mark, whose serializer path smart-quotes — so the
+        // "stays byte-faithful" claim this comment used to make was false for
+        // quotes: `\verb|x="hi"|` came back as ``\verb|x=``hi''|``, and
+        // `\verb"code"` (quote as the DELIMITER) came back as ``\verb``code''``,
+        // which is not even a valid `\verb` invocation. `latexVerbatim` is
+        // returned untouched by every serializer, so the claim is now true.
+        nodes.push({
+          type: "text",
+          text: text.slice(i, verbEnd),
+          marks: [verbatimMark()],
+        });
+        i = verbEnd;
+        continue;
       }
 
       // \textbf{...}
@@ -1661,6 +1658,38 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
           envUuid = uuidMatch[1];
           ctx.pos += uuidMatch[0].length;
         }
+      }
+
+      // The verbatim FAMILY is byte-literal, and that must drive NODE
+      // PRODUCTION, not just the end-finding above. Task 243 unified the
+      // first-close-wins leg on `VERBATIM_ENVS_FULL` but left this switch with
+      // a single `case "verbatim"`, so the other three members fell to
+      // `default:` — a plain `latexCommand`-marked paragraph, whose serializer
+      // path runs the prose smart-quote reverse-map. A `lstlisting` body
+      // reading `x = "hi"` therefore came back `x = ``hi''` on the FIRST save:
+      // silent, durable source corruption, idempotent on the corrupted form
+      // (task 264).
+      //
+      // Bare `verbatim` keeps its richer byte-preserving `codeBlock` (below).
+      // The other members have no modeled node yet — Virgil doesn't render
+      // `lstlisting` options or `minted` languages — so they ride the VERBATIM
+      // CARRIER: the whole `\begin{env}…\end{env}` preserved byte-for-byte,
+      // env name and arguments included, and flagged so no serializer ever
+      // runs typography over it. That defers rich rendering without deferring
+      // correctness, and a fifth family member added to the SSOT is now
+      // byte-safe by construction instead of silently corrupting.
+      if (isLiteralEnv && env !== "verbatim") {
+        parent.content.push({
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: `\\begin{${env}}${optArg}${envContent}\\end{${env}}`,
+              marks: [verbatimMark()],
+            },
+          ],
+        });
+        continue;
       }
 
       switch (env) {

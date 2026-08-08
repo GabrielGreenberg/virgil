@@ -2,6 +2,56 @@ import { Mark, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { COMMAND_MAP } from "./commands";
+import { LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
+
+/**
+ * BYTE-LITERAL raw LaTeX — the verbatim carrier (task 264).
+ *
+ * Its sibling `latexCommand` below means "raw LaTeX the editor doesn't model,"
+ * and its serializer path deliberately smart-quotes so a mark TipTap inherited
+ * onto stray prose still round-trips to valid `.tex`. `latexVerbatim` means
+ * something stricter: "these bytes are literal" — an inline `\verb<delim>…`
+ * run, or a `VERBATIM_ENVS_FULL` environment with no modeled node. Every
+ * serializer returns this text EXACTLY as parsed; running the prose
+ * typographic reverse-map over it corrupts the user's source (it rewrote
+ * `x = "hi"` inside a `lstlisting` to ``x = ``hi''`` on the first save).
+ *
+ * Rationale for a separate mark rather than an attr on `latexCommand`, plus
+ * the carrier contract, live with the name in `latex-lexer.ts`.
+ *
+ * It renders with the same grey-monospace `latex-cmd` class as its sibling —
+ * this is a serialization distinction, not a visual one — plus a
+ * `latex-verbatim` hook for any future styling.
+ */
+export const LatexVerbatimMark = Mark.create({
+  name: LATEX_VERBATIM_MARK,
+
+  // The TYPE-TIME half of the same law. TipTap's input- and paste-rule runner
+  // refuses to fire on text adjacent to a mark whose spec is `code` — the same
+  // gate that already protects inline code and code blocks. Without it,
+  // SmartQuotes would turn a `"` typed inside a `\verb|…|` run or a listing
+  // body into a curly `“`, which this mark's byte-literal serializer then
+  // writes straight into the `.tex`: the identical corruption arriving through
+  // the keyboard instead of through save. (Its `latexCommand` sibling is
+  // deliberately NOT `code` — smartening typed quotes there is what keeps an
+  // inherited stray mark round-tripping to valid `.tex`.)
+  code: true,
+
+  parseHTML() {
+    return [{ tag: "span[data-latex-verbatim]" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-latex-verbatim": "",
+        class: "latex-cmd latex-verbatim",
+      }),
+      0,
+    ];
+  },
+});
 
 /** Grey-monospace styling for unhandled LaTeX commands, plus Enter-to-execute. */
 export const LatexCommandMark = Mark.create({

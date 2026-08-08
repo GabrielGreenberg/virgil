@@ -9,6 +9,7 @@ import {
   countWords,
   extractCaptionText,
 } from "@/lib/word-count-core";
+import { LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
 
 export type { WordCounts };
 export { CATEGORY_LABELS, countWords };
@@ -27,7 +28,15 @@ function getSelectionCounts(editor: Editor): SelectionCounts | null {
     if (node.isText && node.text) {
       // Raw LaTeX (e.g. \cite{foo}, unhandled commands) — skip, but pull
       // any \caption{...} text out so figure/table captions still count.
-      if (node.marks.some((m) => m.type.name === "latexCommand")) {
+      // `latexVerbatim` (a \verb run / verbatim-family env) is raw LaTeX for
+      // the same reason `latexCommand` is — excluded on the same terms.
+      if (
+        node.marks.some(
+          (m) =>
+            m.type.name === "latexCommand" ||
+            m.type.name === LATEX_VERBATIM_MARK,
+        )
+      ) {
         for (const c of extractCaptionText(node.text)) parts.push(c);
         return false;
       }

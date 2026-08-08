@@ -62,6 +62,7 @@ import {
   LabelRef,
   Footnote,
   LatexCommandMark,
+  LatexVerbatimMark,
   TexBlock,
   FigureBlock,
   FigureCaption,
@@ -99,6 +100,7 @@ export const BORROWED_INLINE_ATOM_NAMES = [
   "labelRef",
   "footnote",
   "latexCommand",
+  "latexVerbatim",
   "displayMath",
 ] as const;
 
@@ -170,6 +172,7 @@ export function buildBorrowedAtomSchema(
     ...(wantLabelRef ? [LabelRef] : []),
     ...(wantFootnote ? [Footnote] : []),
     LatexCommandMark,
+    LatexVerbatimMark,
     DisplayMath,
     // ── Block-atom previews (cardContext: compact static preview) ────────
     // These mirror the main editor's schema so JSONContent carrying a block

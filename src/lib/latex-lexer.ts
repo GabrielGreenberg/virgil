@@ -56,13 +56,90 @@ export { isEscaped, findUnescaped };
  *  Kept exactly as today so `projectDetectableBody` stays byte-identical. */
 export const VERBATIM_ENVS_NARROW = ["verbatim", "verbatim*"] as const;
 
-/** The FULL verbatim family — what document-class scanning uses. */
+/** The FULL verbatim family — what document-class scanning uses, AND the set
+ *  whose bodies the parser must treat as BYTE-LITERAL (see the carrier below). */
 export const VERBATIM_ENVS_FULL = [
   "verbatim",
   "verbatim*",
   "lstlisting",
   "minted",
 ] as const;
+
+// ---------------------------------------------------------------------------
+// The verbatim CARRIER — one mark for "these bytes are literal" (task 264)
+// ---------------------------------------------------------------------------
+//
+// Verbatim content is byte-literal by LaTeX's own grammar: inside `\verb|…|`
+// or a `VERBATIM_ENVS_FULL` body, a `"` is a straight ASCII quote, `--` is two
+// hyphens, and `\'e` is a backslash followed by two letters. So the serializer
+// must emit those bytes EXACTLY as parsed — no char-escaping, and crucially no
+// typographic reverse-map.
+//
+// Before task 264 the parser carried both of these on the undifferentiated
+// `latexCommand` mark, whose serializer path runs `smartenStraightQuotes`. That
+// smartening is INTENTIONAL there (a `latexCommand` mark TipTap inherited onto
+// stray prose should still round-trip to valid `.tex`), so verbatim content got
+// silently corrupted on the FIRST save: `print("hi")` → ``print(``hi'')``,
+// durably, and — the env being verbatim — visibly wrong in the compiled PDF.
+//
+// `latexVerbatim` is that second carrier. It is a SEPARATE mark rather than an
+// attr on `latexCommand` for two reasons: (1) ProseMirror's `Mark.toJSON()`
+// emits an `attrs` key as soon as a mark type declares ANY attribute, which
+// would have changed the JSON shape of every existing `latexCommand` mark and
+// broken the two production `JSON.stringify` identity checks that compare
+// live-editor JSON against parser-produced JSON (`RichTextField`'s external
+// value sync, `useDocument`'s anchor-commit dedupe); (2) two DIFFERENT mark
+// types can never be merged into one text node by ProseMirror, so a verbatim
+// run abutting a stray `latexCommand` run stays distinguishable — an attr on
+// one shared type would fuse under mark inheritance.
+//
+// The mark is re-derived from the source bytes on every parse, so it needs no
+// representation in the `.tex` and nothing to migrate.
+
+/** Mark name for BYTE-LITERAL raw LaTeX (a `\verb` run or a verbatim-family
+ *  env). The string lives here — beside the family SSOT and reachable from the
+ *  tiptap-free parser/serializer modules — and the TipTap `Mark.create` in
+ *  `src/lib/tiptap/latex-command.ts` reads it. */
+export const LATEX_VERBATIM_MARK = "latexVerbatim";
+
+/** The mark object every verbatim-emitting parser branch pushes. */
+export function verbatimMark(): { type: string } {
+  return { type: LATEX_VERBATIM_MARK };
+}
+
+/** True when a mark list carries the verbatim carrier — the ONE test every
+ *  serializer consults before running any typographic transform. */
+export function hasVerbatimMark(
+  marks: readonly { type: string }[] | undefined,
+): boolean {
+  return !!marks?.some((m) => m.type === LATEX_VERBATIM_MARK);
+}
+
+/** The inline-`\verb` delimiter class, as ONE definition. `\verb` is a control
+ *  WORD, so it is terminated by a non-letter — the delimiter must not be a
+ *  letter (else `\verbatim` / `\verbdef` mis-lex as `\verb` + a delimiter), and
+ *  LaTeX also forbids `*` and whitespace. */
+const INLINE_VERB_DELIM = "[^a-zA-Z*\\s]";
+
+/** Global scanner form — `\verb*?<delim>`, for stripping passes. */
+export function inlineVerbOpenRe(): RegExp {
+  return new RegExp(`\\\\verb(\\*?)(${INLINE_VERB_DELIM})`, "g");
+}
+
+/** Anchored form: does a `\verb<delim>…<delim>` run start at `i`? Returns the
+ *  run's exclusive end index (so `text.slice(i, end)` is the whole literal
+ *  spelling, delimiters included) or -1. Shared by BOTH inline parsers — the
+ *  main one in `latex-parser.ts` and the footnote/card fork in
+ *  `footnote-content.ts` — so the two can't drift on what counts as verbatim. */
+export function matchInlineVerbAt(text: string, i: number): number {
+  const m = new RegExp(`^\\\\verb(\\*?)(${INLINE_VERB_DELIM})`).exec(
+    text.slice(i),
+  );
+  if (!m) return -1;
+  const payloadStart = i + m[0].length;
+  const closeIdx = text.indexOf(m[2], payloadStart);
+  return closeIdx === -1 ? -1 : closeIdx + 1;
+}
 
 export interface ProjectLiveLatexOptions {
   /** Verbatim-family environments whose CONTENTS are dropped. Default: the
@@ -126,15 +203,18 @@ function stripCommentTail(line: string): string {
  *  single line, leaving everything else intact. The delimiter is the char
  *  right after `\verb`/`\verb*` and must be a non-letter (so `\verbatim`,
  *  `\verbdef`, etc. are left untouched), non-`*`, non-space char — the same
- *  boundary the parser's inline-verb matcher uses. An unterminated `\verb`
- *  on the line drops to end-of-line (verb runs do not cross a newline). */
+ *  boundary the parser's inline-verb matcher uses — literally so: both read
+ *  the {@link inlineVerbOpenRe} / {@link matchInlineVerbAt} pair above, so the
+ *  drop projection and the node-producing parsers can't drift on what counts as
+ *  a verb run. An unterminated `\verb` on the line drops to end-of-line (verb
+ *  runs do not cross a newline). */
 function stripInlineVerb(line: string): string {
-  const re = /\\verb\*?([^a-zA-Z*\s])/g;
+  const re = inlineVerbOpenRe();
   let out = "";
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(line)) !== null) {
-    const delim = m[1];
+    const delim = m[2];
     out += line.slice(last, m.index);
     const payloadStart = m.index + m[0].length;
     const close = line.indexOf(delim, payloadStart);

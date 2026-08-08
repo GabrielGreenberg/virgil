@@ -8,7 +8,12 @@ import {
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
 import { typographyToLatex, smartenStraightQuotes } from "@/lib/latex-typography";
-import { extractBraced, isEscaped, VERBATIM_ENVS_FULL } from "@/lib/latex-lexer";
+import {
+  extractBraced,
+  hasVerbatimMark,
+  isEscaped,
+  VERBATIM_ENVS_FULL,
+} from "@/lib/latex-lexer";
 import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
 import { classifyCiteFamily } from "@/lib/bib-family";
 import {
@@ -94,6 +99,15 @@ function serializeMarks(
   marks?: { type: string; attrs?: Record<string, unknown> }[]
 ): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
+
+  // latexVerbatim mark: BYTE-LITERAL LaTeX (an inline `\verb<delim>…<delim>`
+  // run, or a `VERBATIM_ENVS_FULL` env with no modeled node). Emit it exactly
+  // as parsed — no escaping, and above all no `smartenStraightQuotes`: inside
+  // verbatim a `"` IS a straight ASCII quote, and rewriting it to ``/'' both
+  // corrupts the user's source bytes and renders as literal backticks in the
+  // compiled PDF. Checked BEFORE the `latexCommand` branch so the stricter
+  // carrier wins if a node ever ends up carrying both (task 264).
+  if (hasVerbatimMark(marks)) return text;
 
   // latexCommand mark: text is already raw LaTeX — return as-is, except
   // that uncompilable ASCII / smart quotes get smart-LaTeX-ified so they
