@@ -3478,9 +3478,13 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
  * drop bar. Keyed on the session attr the controller already stamps, so it
  * also covers the block/float grabs (harmless — those don't start on text).
  * Prevents only NEW selection; the grab plugin clears any in-progress one via
- * getSelection().removeAllRanges() at the threshold-cross. */
-body[data-drop-mode-active="true"],
-body[data-drop-mode-active="true"] * {
+ * getSelection().removeAllRanges() at the threshold-cross.
+ * Body-only, NOT `body[...] *`: user-select inherits, and the universal
+ * descendant form forced a full-tree style recalc (measured 36 ms at 18.5k
+ * DOM nodes) at drag start AND end. No in-repo rule declares a competing
+ * user-select value, and contenteditable computes the inherited `none`
+ * (verified empirically) — so inheritance is behavior-identical here. */
+body[data-drop-mode-active="true"] {
   user-select: none;
 }
 /* Indicator transitions:
