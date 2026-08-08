@@ -263,20 +263,109 @@ After.`;
       expect(once.match(/\n\s*\\caption\{Real\}/g)).toHaveLength(1);
     });
 
-    it("emits a caption-carried \\label once (no duplicate at figure level)", () => {
+    it("reads a caption-carried \\label into the attr so \\ref still resolves", () => {
       const input = `\\begin{figure}
   \\includegraphics{a}
   \\caption{Foo \\label{fig:x}}
 \\end{figure}\n`;
       const json = parseBody(input);
       const figs = findByType(json, "figureBlock");
-      // Still read into the attr, so `\ref{fig:x}` resolves to this figure…
       expect(figs[0].attrs?.label).toBe("fig:x");
       const once = serializeBody(json);
-      // …but written exactly once, inside the caption where the author put it.
-      expect(once.match(/\\label\{fig:x\}/g)).toHaveLength(1);
       expect(once).toContain("\\caption{Foo \\label{fig:x}}");
       expect(serializeBody(parseBody(once))).toBe(once);
+    });
+
+    // A caption that QUOTES a label declares nothing. The verbatim skip keeps
+    // the scan from reading it as the figure's label — and the figure's REAL
+    // declaration, on the line below, is the one that reaches the attr.
+    it("ignores a \\label quoted inside \\verb in the caption", () => {
+      const input = `\\begin{figure}
+  \\includegraphics{a}
+  \\caption{Write \\verb|\\label{fig:x}| here}
+  \\label{fig:real}
+\\end{figure}\n`;
+      const json = parseBody(input);
+      const figs = findByType(json, "figureBlock");
+      expect(figs[0].attrs?.label).toBe("fig:real");
+      const once = serializeBody(json);
+      expect(once).toContain("\\label{fig:real}");
+      expect(serializeBody(parseBody(once))).toBe(once);
+    });
+
+    // A `%` inside inline verbatim is a percent sign, not a comment start —
+    // the scan must not skip the rest of that line and lose the caption.
+    it("does not read a \\verb-quoted % as a comment", () => {
+      const input = `\\begin{figure}
+  \\includegraphics{a}
+  \\verb|%| \\caption{Foo}
+  \\label{fig:v}
+\\end{figure}\n`;
+      const json = parseBody(input);
+      const figs = findByType(json, "figureBlock");
+      const captionText = (findByType(figs[0], "figureCaption")[0].content || [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("");
+      expect(captionText).toBe("Foo");
+      expect(figs[0].attrs?.label).toBe("fig:v");
+      const once = serializeBody(json);
+      expect(once.match(/\\caption\{/g)).toHaveLength(1);
+      expect(serializeBody(parseBody(once))).toBe(once);
+    });
+
+    // A BOX env is not a float: LaTeX binds a `\caption` inside `center` /
+    // `minipage` to the enclosing figure, and depth-counting it stranded the
+    // figure's own caption in `extras` while the always-present caption child
+    // still emitted an empty `\caption{}` — two captions, two figure numbers.
+    it.each(["center", "minipage{\\textwidth}"])(
+      "treats a non-float %s wrapper as transparent",
+      (env) => {
+        const name = env.split("{")[0];
+        const input = `\\begin{figure}
+\\begin{${env}}
+\\includegraphics{a}
+\\caption{Foo}
+\\label{fig:x}
+\\end{${name}}
+\\end{figure}\n`;
+        const json = parseBody(input);
+        const figs = findByType(json, "figureBlock");
+        const captionText = (findByType(figs[0], "figureCaption")[0].content || [])
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("");
+        expect(captionText).toBe("Foo");
+        expect(figs[0].attrs?.label).toBe("fig:x");
+        const once = serializeBody(json);
+        expect(once.match(/\\caption\{/g)).toHaveLength(1);
+        expect(once).not.toContain("\\caption{}");
+        expect(serializeBody(parseBody(once))).toBe(once);
+      },
+    );
+
+    // An unmatched `\begin{…}` (LaTeX shown as sample code) must not bury the
+    // caption at an unreachable depth — that appended a fresh empty
+    // `\caption{}` on EVERY save, growing without bound.
+    it("falls back to depth-blind extraction on an unbalanced body", () => {
+      const input = `\\begin{figure}
+\\begin{subfigure}{0.4\\textwidth}
+\\includegraphics{a}
+\\caption{How to open a subfigure}
+\\label{fig:code}
+\\end{figure}\n`;
+      const json = parseBody(input);
+      const figs = findByType(json, "figureBlock");
+      const captionText = (findByType(figs[0], "figureCaption")[0].content || [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("");
+      expect(captionText).toBe("How to open a subfigure");
+      expect(figs[0].attrs?.label).toBe("fig:code");
+      const once = serializeBody(json);
+      const twice = serializeBody(parseBody(once));
+      expect(twice).toBe(once);
+      expect(once.match(/\\caption\{/g)).toHaveLength(1);
     });
 
     it("leaves the flat multi-\\includegraphics figure untouched (regression)", () => {

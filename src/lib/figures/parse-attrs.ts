@@ -140,7 +140,7 @@ export function extractFigureSources(envContent: string): FigureSource[] {
 // round-trip, because the extractor and the serializer disagreed about which
 // bytes had been consumed:
 //
-//   1. A NESTED ENVIRONMENT. `\begin{subfigure}…\caption{Sub A}…\end{subfigure}`
+//   1. A SUB-FLOAT ENVIRONMENT. `\begin{subfigure}…\caption{Sub A}…\end{subfigure}`
 //      handed its subcaption up to the figure, leaving the real
 //      `\caption{Main}` behind in `extras` — so the serializer emitted BOTH,
 //      at figure level, and the two swapped places on every save. The
@@ -148,19 +148,53 @@ export function extractFigureSources(envContent: string): FigureSource[] {
 //      `\label` strip deleted the figure's own `\label` outright.
 //   2. A COMMENT. `% \caption{TODO write me}` above a real caption won, with
 //      the identical two-caption oscillation.
-//   3. THE CAPTION'S OWN ARGUMENT. `\caption{Foo \label{fig:x}}` (idiomatic)
-//      hoisted the label into the `label` attr while the caption child kept
-//      re-emitting it inside the caption — a DUPLICATE `\label` written into
-//      the user's .tex on the first save.
+//   3. INLINE VERBATIM. A `%` inside `\verb|%|` read as a comment start and
+//      blinded the rest of that line.
 //
 // So one lexical scan answers "where does this live?" for both commands at
-// once: comments skipped, `\begin`/`\end` depth counted (any env name — the
-// nested env need not be a figure), and every hit reported with the byte range
-// it occupies so `extras` can strip EXACTLY what the serializer re-emits.
-// Anything inside a nested environment is never touched: it rides along in
-// `extras` byte-raw, which is what keeps a subfigure intact without Virgil
-// having to model subfigures.
+// once, and every hit is reported with the byte range it occupies so `extras`
+// can strip EXACTLY what the serializer re-emits. Anything inside a sub-float
+// is never touched: it rides along in `extras` byte-raw, which is what keeps a
+// subfigure intact without Virgil having to model subfigures.
+//
+// TWO RULES KEEP THE SCAN FROM OVER-REACHING, both learned from the adversarial
+// review of the first cut, where a *blind* `\begin`/`\end` depth counter was
+// strictly worse than the `indexOf` it replaced:
+//
+//   • DEPTH COUNTS ONLY CAPTION-OWNING ENVIRONMENTS. `center`, `minipage`,
+//     `adjustbox` are boxes, not floats: LaTeX binds a `\caption` inside them
+//     to the enclosing `figure`, and `\begin{center}…\caption{Foo}…\end{center}`
+//     is a *very* common idiom. Counting them hid the figure's own caption in
+//     `extras` while the always-present caption child still emitted an empty
+//     `\caption{}` at figure level — two captions and two consumed figure
+//     numbers, silently, on the first save. Only the environments that really
+//     redefine caption ownership are opaque; every other env stays transparent,
+//     which is exactly the old first-match behavior, so no un-listed env can
+//     regress.
+//   • AN UNBALANCED BODY FORFEITS DEPTH-AWARENESS. A stray `\begin{…}` with no
+//     `\end` (LaTeX shown as sample code, or a body caught mid-edit) left depth
+//     permanently above zero, so the caption was never found and a fresh empty
+//     `\caption{}` was appended on EVERY save — unbounded accumulation. When the
+//     scan ends unbalanced, the nesting can't be trusted, so it re-runs
+//     depth-blind: back to first-match, never worse than before this change.
 // ---------------------------------------------------------------------------
+
+/** Environments whose `\caption` belongs to THEM, not to the enclosing figure.
+ *  Everything not listed here is transparent (a box, not a float). Starred
+ *  forms are matched by the un-starred name. */
+const CAPTION_OWNING_ENVS = new Set([
+  // subcaption / subfig / subfloat families
+  "subfigure",
+  "subtable",
+  "subfloat",
+  "subcaptionblock",
+  // wrapfig — its own float
+  "wrapfigure",
+  "wraptable",
+  // a nested float (illegal in LaTeX, but if present its caption is its own)
+  "figure",
+  "table",
+]);
 
 /** A command hit: the byte range it occupies in the env body, plus its parts. */
 interface CommandHit {
@@ -175,16 +209,18 @@ interface CaptionHit extends CommandHit {
 
 interface LabelHit extends CommandHit {
   /** True when this `\label` sits INSIDE the figure's own `\caption{…}` body.
-   *  It still names the figure (so `\ref` resolves), but the caption child
-   *  already carries the bytes — the serializer must not re-emit it. */
+   *  It still names the figure (so `\ref` resolves), and `extras` must NOT cut
+   *  it separately — the caption range it lives in is cut whole. */
   inCaption: boolean;
 }
 
 interface FigureBodyScan {
   caption: CaptionHit | null;
-  /** Figure-own-depth `\label`s in source order. Nested-env labels are absent
-   *  by construction — they belong to the nested env and stay in `extras`. */
+  /** Figure-own-depth `\label`s in source order. Sub-float labels are absent by
+   *  construction — they belong to the sub-float and stay in `extras`. */
   labels: LabelHit[];
+  /** True when `\begin`/`\end` of caption-owning envs didn't balance. */
+  unbalanced: boolean;
 }
 
 /** Matches a LaTeX control WORD (`\caption`, `\begin`, `\includegraphics*`).
@@ -192,19 +228,39 @@ interface FigureBodyScan {
  *  consumed two bytes at a time and can't be misread as commands. */
 const CONTROL_WORD_RE = /^\\([a-zA-Z@]+)\*?/;
 
-/** Skip a `{…}` argument starting at or after `pos` (whitespace tolerated). */
-function skipBracedArg(src: string, pos: number): number {
+/** Read a `{envname}` argument at or after `pos`. */
+function readEnvArg(src: string, pos: number): { name: string; end: number } {
   let i = pos;
   while (i < src.length && /\s/.test(src[i])) i++;
   const braced = findBracedBody(src, i);
-  return braced ? braced.end : pos;
+  if (!braced) return { name: "", end: pos };
+  return { name: braced.body.trim().replace(/\*$/, ""), end: braced.end };
+}
+
+/** Skip past inline verbatim (`\verb<d>…<d>`, `\lstinline[opts]<d>…<d>`), whose
+ *  body is literal text: a `%` in there is a percent sign, not a comment, and a
+ *  `\label{…}` in there declares nothing. Returns the index after the closing
+ *  delimiter, or `pos` when this isn't a delimited form. */
+function skipInlineVerbatim(src: string, pos: number): number {
+  let i = pos;
+  // \lstinline may carry an optional [options] before the delimiter.
+  if (src[i] === "[") {
+    const close = src.indexOf("]", i);
+    if (close === -1) return pos;
+    i = close + 1;
+  }
+  const delim = src[i];
+  if (!delim || /[\sA-Za-z*]/.test(delim)) return pos;
+  const close = src.indexOf(delim === "{" ? "}" : delim, i + 1);
+  return close === -1 ? pos : close + 1;
 }
 
 /** One lexical pass over a figure env body: find the figure's OWN `\caption`
- *  and `\label`s — skipping comments and everything nested inside a
- *  `\begin{…}…\end{…}`. See the block comment above for why this is a scan
- *  and not an `indexOf`. */
-function scanFigureBody(envContent: string): FigureBodyScan {
+ *  and `\label`s — skipping comments and inline verbatim, and treating a
+ *  caption-owning environment as opaque. See the block comment above for why
+ *  this is a scan and not an `indexOf`, and for the two rules that keep it from
+ *  over-reaching. `ignoreDepth` is the unbalanced-body fallback. */
+function scanFigureBody(envContent: string, ignoreDepth = false): FigureBodyScan {
   const labels: LabelHit[] = [];
   let caption: CaptionHit | null = null;
   let depth = 0;
@@ -231,14 +287,18 @@ function scanFigureBody(envContent: string): FigureBodyScan {
     }
     const name = m[1];
     const afterName = i + m[0].length;
-    if (name === "begin") {
-      depth++;
-      i = skipBracedArg(envContent, afterName);
+    if (name === "verb" || name === "lstinline") {
+      const after = skipInlineVerbatim(envContent, afterName);
+      i = after > afterName ? after : afterName;
       continue;
     }
-    if (name === "end") {
-      depth = Math.max(0, depth - 1);
-      i = skipBracedArg(envContent, afterName);
+    if (name === "begin" || name === "end") {
+      const env = readEnvArg(envContent, afterName);
+      // Only a caption-owning env changes ownership; a box env is transparent.
+      if (!ignoreDepth && CAPTION_OWNING_ENVS.has(env.name)) {
+        depth += name === "begin" ? 1 : -1;
+      }
+      i = env.end > afterName ? env.end : afterName;
       continue;
     }
     if (depth === 0 && name === "caption" && !caption) {
@@ -257,8 +317,8 @@ function scanFigureBody(envContent: string): FigureBodyScan {
       if (braced) {
         caption = { start: i, end: braced.end, body: braced.body, short };
         // Keep scanning INSIDE the caption body: a `\label` in there still
-        // names the figure. It is recorded `inCaption` so the serializer emits
-        // it once (from the caption child) instead of twice.
+        // names the figure (`\caption{Foo \label{fig:x}}` is idiomatic), so it
+        // must reach the `label` attr for `\ref` to resolve.
         i = j + 1;
         continue;
       }
@@ -282,7 +342,17 @@ function scanFigureBody(envContent: string): FigureBodyScan {
     }
     i = afterName;
   }
-  return { caption, labels };
+  return { caption, labels, unbalanced: depth !== 0 };
+}
+
+/** `scanFigureBody` + the unbalanced-body fallback. A body whose caption-owning
+ *  `\begin`/`\end` don't pair (sample LaTeX shown inside a listing, or a body
+ *  caught mid-edit) can't be reasoned about by depth, and pretending otherwise
+ *  buries the figure's real caption — so it re-scans depth-blind, which is the
+ *  pre-245 first-match behavior and therefore never worse. */
+function scanFigure(envContent: string): FigureBodyScan {
+  const scan = scanFigureBody(envContent);
+  return scan.unbalanced ? scanFigureBody(envContent, true) : scan;
 }
 
 /** Extract the figure-own `\caption` — its long braced body plus the optional
@@ -297,7 +367,7 @@ export function extractCaption(envContent: string): {
   body: string;
   short: string | null;
 } {
-  const hit = scanFigureBody(envContent).caption;
+  const hit = scanFigure(envContent).caption;
   return { body: hit ? hit.body : "", short: hit ? hit.short : null };
 }
 
@@ -306,7 +376,7 @@ export function extractCaption(envContent: string): {
  *  none. A `\label` inside a nested `subfigure` belongs to that subfigure and
  *  is deliberately NOT read here. */
 export function extractLabel(envContent: string): string {
-  return scanFigureBody(envContent).labels[0]?.body ?? "";
+  return scanFigure(envContent).labels[0]?.body ?? "";
 }
 
 /** Strip the figure's own `\caption{balanced}` and its figure-depth `\label`s
@@ -344,7 +414,7 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
   // ONE scan feeds caption, label and extras — so the bytes `extras` strips
   // are exactly the bytes the serializer re-emits, which is what makes the
   // round-trip a fixed point.
-  const scan = scanFigureBody(envContent);
+  const scan = scanFigure(envContent);
   return {
     source: first?.path ?? null,
     widthPercent: first?.widthPercent ?? null,
