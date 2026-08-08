@@ -347,6 +347,72 @@ After.`;
     // An unmatched `\begin{…}` (LaTeX shown as sample code) must not bury the
     // caption at an unreachable depth — that appended a fresh empty
     // `\caption{}` on EVERY save, growing without bound.
+    // The mirror direction: an `\end` with no `\begin` puts the scan BELOW
+    // figure level, and a later stray `\begin` nets the counter back to zero —
+    // so "did it end at zero?" is not the question. The excursion is what
+    // forfeits depth-awareness.
+    it("falls back when depth dips NEGATIVE and returns to zero", () => {
+      const input = `\\begin{figure}
+\\end{subfigure}
+\\caption{Real}
+\\label{fig:a}
+\\begin{subfigure}{0.4\\textwidth}
+\\end{figure}\n`;
+      const json = parseBody(input);
+      const figs = findByType(json, "figureBlock");
+      const captionText = (findByType(figs[0], "figureCaption")[0].content || [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("");
+      expect(captionText).toBe("Real");
+      expect(figs[0].attrs?.label).toBe("fig:a");
+      const once = serializeBody(json);
+      expect(once.match(/\\caption\{/g)).toHaveLength(1);
+      expect(serializeBody(parseBody(once))).toBe(once);
+    });
+
+    // `\verb` has no optional argument, so a `[` after it IS the delimiter —
+    // scanning for a `]` ran into the caption on the next line and swallowed it.
+    it("treats `[` after \\verb as the delimiter, not an option bracket", () => {
+      const input = `\\begin{figure}
+  \\verb[x[
+  \\caption{Real [1]}
+  \\label{fig:a}
+\\end{figure}\n`;
+      const json = parseBody(input);
+      const figs = findByType(json, "figureBlock");
+      const captionText = (findByType(figs[0], "figureCaption")[0].content || [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("");
+      expect(captionText).toContain("Real");
+      expect(figs[0].attrs?.label).toBe("fig:a");
+      const once = serializeBody(json);
+      expect(once.match(/\\caption\{/g)).toHaveLength(1);
+      expect(serializeBody(parseBody(once))).toBe(once);
+    });
+
+    // A listings option list can nest brackets; a flat `indexOf("]")` stopped
+    // inside one and then guessed a delimiter that swallowed the caption.
+    it("handles a nested bracket in a \\lstinline option list", () => {
+      const input = `\\begin{figure}
+  \\lstinline[keywordstyle=[2]\\color{red}]|x|
+  \\caption{Real}
+  \\label{fig:a}
+\\end{figure}\n`;
+      const json = parseBody(input);
+      const figs = findByType(json, "figureBlock");
+      const captionText = (findByType(figs[0], "figureCaption")[0].content || [])
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("");
+      expect(captionText).toBe("Real");
+      expect(figs[0].attrs?.label).toBe("fig:a");
+      const once = serializeBody(json);
+      expect(once.match(/\\caption\{/g)).toHaveLength(1);
+      expect(serializeBody(parseBody(once))).toBe(once);
+    });
+
     it("falls back to depth-blind extraction on an unbalanced body", () => {
       const input = `\\begin{figure}
 \\begin{subfigure}{0.4\\textwidth}

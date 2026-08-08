@@ -240,19 +240,45 @@ function readEnvArg(src: string, pos: number): { name: string; end: number } {
 /** Skip past inline verbatim (`\verb<d>…<d>`, `\lstinline[opts]<d>…<d>`), whose
  *  body is literal text: a `%` in there is a percent sign, not a comment, and a
  *  `\label{…}` in there declares nothing. Returns the index after the closing
- *  delimiter, or `pos` when this isn't a delimited form. */
-function skipInlineVerbatim(src: string, pos: number): number {
+ *  delimiter, or `pos` when the shape isn't recognized.
+ *
+ *  Two rules keep the skip from OVER-reaching, since anything it swallows is
+ *  invisible to the rest of the scan:
+ *   • only `\lstinline` gets the `[options]` pre-scan, and that scan is
+ *     bracket-NESTING aware (`[keywordstyle=[2]\color{red}]` is a listings
+ *     idiom). `\verb` has NO optional argument — a `[` after it IS the
+ *     delimiter (`\verb[x[`), so scanning for a `]` there would run into the
+ *     next line and eat the figure's caption.
+ *   • both the option list and the closing delimiter must be found ON THE SAME
+ *     LINE. A `\verb` argument cannot contain a newline in LaTeX, so a
+ *     delimiter that "matches" further down the file is not a match — it is a
+ *     shape we don't understand, and the safe answer is to skip nothing. */
+function skipInlineVerbatim(src: string, pos: number, allowOptions: boolean): number {
+  const nl = src.indexOf("\n", pos);
+  const lineEnd = nl === -1 ? src.length : nl;
   let i = pos;
-  // \lstinline may carry an optional [options] before the delimiter.
-  if (src[i] === "[") {
-    const close = src.indexOf("]", i);
-    if (close === -1) return pos;
-    i = close + 1;
+  if (allowOptions && src[i] === "[") {
+    let bracket = 0;
+    let j = i;
+    for (; j < lineEnd; j++) {
+      if (src[j] === "[") bracket++;
+      else if (src[j] === "]") {
+        bracket--;
+        if (bracket === 0) {
+          j++;
+          break;
+        }
+      }
+    }
+    if (bracket !== 0) return pos;
+    i = j;
   }
   const delim = src[i];
-  if (!delim || /[\sA-Za-z*]/.test(delim)) return pos;
-  const close = src.indexOf(delim === "{" ? "}" : delim, i + 1);
-  return close === -1 ? pos : close + 1;
+  // A letter/space/star isn't a delimiter, and a brace one is degenerate
+  // (`\verb{x{` closes on `{`, not `}`) — refuse rather than guess.
+  if (!delim || /[\sA-Za-z*{}]/.test(delim)) return pos;
+  const close = src.indexOf(delim, i + 1);
+  return close === -1 || close >= lineEnd ? pos : close + 1;
 }
 
 /** One lexical pass over a figure env body: find the figure's OWN `\caption`
@@ -264,6 +290,7 @@ function scanFigureBody(envContent: string, ignoreDepth = false): FigureBodyScan
   const labels: LabelHit[] = [];
   let caption: CaptionHit | null = null;
   let depth = 0;
+  let wentNegative = false;
   let i = 0;
   while (i < envContent.length) {
     const ch = envContent[i];
@@ -288,7 +315,7 @@ function scanFigureBody(envContent: string, ignoreDepth = false): FigureBodyScan
     const name = m[1];
     const afterName = i + m[0].length;
     if (name === "verb" || name === "lstinline") {
-      const after = skipInlineVerbatim(envContent, afterName);
+      const after = skipInlineVerbatim(envContent, afterName, name === "lstinline");
       i = after > afterName ? after : afterName;
       continue;
     }
@@ -297,6 +324,15 @@ function scanFigureBody(envContent: string, ignoreDepth = false): FigureBodyScan
       // Only a caption-owning env changes ownership; a box env is transparent.
       if (!ignoreDepth && CAPTION_OWNING_ENVS.has(env.name)) {
         depth += name === "begin" ? 1 : -1;
+        // An `\end` with no matching `\begin` puts the scan BELOW figure level,
+        // where the `depth === 0` guards silently skip the figure's own caption.
+        // Clamping alone would hide that: a later stray `\begin` brings the
+        // count back to 0 and the body reports balanced while the caption has
+        // already been walked past. So the excursion is remembered.
+        if (depth < 0) {
+          depth = 0;
+          wentNegative = true;
+        }
       }
       i = env.end > afterName ? env.end : afterName;
       continue;
@@ -342,7 +378,7 @@ function scanFigureBody(envContent: string, ignoreDepth = false): FigureBodyScan
     }
     i = afterName;
   }
-  return { caption, labels, unbalanced: depth !== 0 };
+  return { caption, labels, unbalanced: depth !== 0 || wentNegative };
 }
 
 /** `scanFigureBody` + the unbalanced-body fallback. A body whose caption-owning
