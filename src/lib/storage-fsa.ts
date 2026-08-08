@@ -33,6 +33,7 @@ import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import {
   serializeToLatex,
   assignUuids,
+  needsUuidWork,
   extractSidecarData,
 } from "@/lib/latex-serializer";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
@@ -63,7 +64,12 @@ import {
   type DocumentTemplate,
 } from "@/lib/document-templates";
 import { getLibraryHandle } from "@library/lib/library-folder";
-import { stampDiskFingerprint, fingerprintOf } from "@/lib/disk-ledger";
+import {
+  stampDiskFingerprint,
+  fingerprintOf,
+  getDiskFingerprint,
+  hashContent,
+} from "@/lib/disk-ledger";
 import {
   detectPreambleBibFamily,
   detectCommandBibFamily,
@@ -562,6 +568,19 @@ async function writeReStampedTexOnLoad(
   });
 }
 
+/** Per-doc save-path caches (perf Wave 1 / S3). Module-level, in-memory:
+ *  - delimiters keyed on the .tex content hash the ledger already tracks,
+ *    so a steady-state autosave skips the full-file disk read;
+ *  - the last-written sidecar hash, half of the byte-equality skip;
+ *  - the last forensic-snapshot time, rate-limiting plain autosaves. */
+const delimiterCacheByDoc = new Map<
+  string,
+  { texHash: string; delimiters: { preamble: string; postamble: string } }
+>();
+const lastSidecarHashByDoc = new Map<string, string>();
+const lastSnapshotAtByDoc = new Map<string, number>();
+const SNAPSHOT_MIN_INTERVAL_MS = 60_000;
+
 export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
@@ -572,28 +591,39 @@ export async function writeDocBundle(
     const meta = await getDocMetaOrThrow(h.docId);
     const virgil = await getVirgilSubdir(docHandle);
 
-    // Recover any UUIDs whose paragraph markers were stripped by an
-    // external edit, then assign new UUIDs to fresh paragraphs.
-    const existingSidecar = await safeReadJson<VirgilSidecar>(
-      virgil,
-      "virgil.json",
-      DEFAULT_SIDECAR,
-    );
-    // recoverOrphanedUuids disabled — fingerprint matching causes UUID collisions.
-    // Lost UUIDs get fresh ones via assignUuids instead.
-    assignUuids(content);
+    // (S3) assignUuids demoted behind its read-only twin: with the editor's
+    // BlockUuidBackfill live this is a steady-state no-op, and skipping the
+    // mutation makes it safe for callers to hand us the DocProducts
+    // pipeline's SHARED docJson (whose cached entries must never mutate).
+    // When work IS needed, deep-copy and mutate the copy.
+    // (recoverOrphanedUuids stays disabled — fingerprint matching caused
+    // UUID collisions; its unused sidecar pre-read is gone with it.)
+    if (needsUuidWork(content)) {
+      content = JSON.parse(JSON.stringify(content)) as JSONContent;
+      assignUuids(content);
+    }
 
     // Preserve the user's preamble/postamble verbatim across the
     // parse/serialize round-trip. The editor never sees them, so we
-    // read them straight off the existing .tex file on every save —
-    // UNLESS the caller supplies fresher delimiters (the code pane's
-    // preamble-edit commit), in which case the disk copy is exactly
-    // what's stale and re-reading it would resurrect the old preamble.
-    const delimiters =
-      opts?.delimiters ??
-      extractPreambleAndPostamble(
-        await safeReadText(docHandle, meta.texFilename, ""),
-      );
+    // read them off the existing .tex on save — UNLESS the caller supplies
+    // fresher delimiters (the code pane's preamble-edit commit), in which
+    // case the disk copy is exactly what's stale — with an in-memory cache
+    // keyed on the ledger's .tex content hash (S3): when the file on disk
+    // is byte-identical to what we last stamped, the cached extraction is
+    // exact and the full-file read is skipped.
+    let delimiters = opts?.delimiters;
+    if (!delimiters) {
+      const ledgerHash = getDiskFingerprint(h.docId, meta.texFilename)?.hash;
+      const cached = delimiterCacheByDoc.get(h.docId);
+      if (ledgerHash && cached && cached.texHash === ledgerHash) {
+        delimiters = cached.delimiters;
+      } else {
+        delimiters =
+          extractPreambleAndPostamble(
+            await safeReadText(docHandle, meta.texFilename, ""),
+          ) ?? undefined;
+      }
+    }
 
     const newSidecar = extractSidecarData(content);
     // For brand-new / empty docs with no \begin{document} marker yet,
@@ -619,11 +649,38 @@ export async function writeDocBundle(
       serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
     }
     const latex = serializeToLatex(content, serializeOpts);
+    const latexHash = hashContent(latex);
+    const sidecarJson = JSON.stringify(newSidecar, null, 2);
+    const sidecarHash = hashContent(sidecarJson);
+
+    // (S3) Byte-equality gate: when BOTH outputs are identical to what this
+    // session last put on disk (the ledger tracks the .tex hash; the
+    // sidecar hash is cached at write), the whole tail — forensic snapshot,
+    // two file writes, timestamp touch, ledger re-stat — is a no-op. This
+    // kills re-armed-debounce and drag-mint-flush no-op saves outright. An
+    // EXTERNAL disk edit changes the ledger hash via the DiskWatcher, so
+    // this never masks a real divergence.
+    const ledgerTexHash = getDiskFingerprint(h.docId, meta.texFilename)?.hash;
+    if (
+      ledgerTexHash === latexHash &&
+      lastSidecarHashByDoc.get(h.docId) === sidecarHash
+    ) {
+      return;
+    }
 
     // Shadow snapshot the prior bundle BEFORE overwriting. This is the
     // forensic safety net: if a regression ever slipped past the
     // pipeline check, the user can recover from virgil/.history/.
-    await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
+    // (S3) Rate-limited for plain autosaves — at most one snapshot per
+    // minute of continuous work — but ALWAYS taken for a discrete
+    // delimiters commit (a code-pane preamble edit is exactly the risky
+    // kind of save the forensic net exists for).
+    const now = Date.now();
+    const lastSnap = lastSnapshotAtByDoc.get(h.docId) ?? 0;
+    if (opts?.delimiters || now - lastSnap > SNAPSHOT_MIN_INTERVAL_MS) {
+      await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
+      lastSnapshotAtByDoc.set(h.docId, now);
+    }
 
     const texFh = await docHandle.getFileHandle(meta.texFilename, {
       create: true,
@@ -633,7 +690,7 @@ export async function writeDocBundle(
     const sidecarFh = await virgil.getFileHandle("virgil.json", {
       create: true,
     });
-    await writeTextToHandle(sidecarFh, JSON.stringify(newSidecar, null, 2));
+    await writeTextToHandle(sidecarFh, sidecarJson);
 
     // editor-state.json is owned by useEditorUIState, not the bundle save.
 
@@ -641,6 +698,19 @@ export async function writeDocBundle(
     // Stamp the ledger with the FINAL serialized .tex that hit disk (preamble
     // preserved), not the JSONContent — so the next poll matches exactly.
     await stampLedger(h.docId, meta.texFilename, latex);
+    lastSidecarHashByDoc.set(h.docId, sidecarHash);
+    // Cache the delimiters as they exist in the FILE WE JUST WROTE (the
+    // serializer may have injected requirements into the preamble), keyed on
+    // its hash — the next steady-state autosave skips the full-file read.
+    const writtenDelimiters = extractPreambleAndPostamble(latex);
+    if (writtenDelimiters) {
+      delimiterCacheByDoc.set(h.docId, {
+        texHash: latexHash,
+        delimiters: writtenDelimiters,
+      });
+    } else {
+      delimiterCacheByDoc.delete(h.docId);
+    }
   });
 }
 

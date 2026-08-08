@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { JSONContent, type Editor } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
 import { isAnchorMintTransaction } from "@/lib/anchor-mint-signal";
+import { getDocProducts } from "@/lib/doc-products/pipeline";
 import { readDocBundle, writeDocBundle } from "@/lib/storage";
 import { isStalePipelineError } from "@/lib/multi-window/doc-pipeline";
 import { useDocWriteHandle } from "@/components/editor-layout/DocPipeline";
@@ -363,7 +364,13 @@ export function useDocument() {
       saveTimerRef.current = null;
       const editor = editorRef.current;
       if (!editor || editor.isDestroyed) return;
-      const doc = editor.getJSON();
+      // Perf Wave 1 (S3): prefer the DocProducts pipeline's synchronously-
+      // refreshed shared docJson — O(changed blocks), identity-stable for
+      // unchanged blocks — over a fresh O(doc) deep copy. writeDocBundle is
+      // mutation-safe for the shared snapshot (needsUuidWork copy-on-write).
+      // Null pipeline (flag off / not mounted) falls back to getJSON.
+      const doc =
+        getDocProducts(editor)?.ensureFresh().docJson ?? editor.getJSON();
       // Populate the snapshot ref so the unmount cleanup (which fires
       // after the editor is destroyed) has something to flush.
       latestContentRef.current = doc;
@@ -405,7 +412,12 @@ export function useDocument() {
     }
     const editor = editorRef.current;
     if (!editor || editor.isDestroyed) return;
-    const doc = editor.getJSON();
+    // Perf Wave 1 (S3): shared pipeline snapshot when mounted (see
+    // debouncedSave) — a mint flush during a drag no longer pays a full
+    // deep copy, and writeDocBundle's byte-equality gate makes a
+    // no-change flush skip the disk tail entirely.
+    const doc =
+      getDocProducts(editor)?.ensureFresh().docJson ?? editor.getJSON();
     latestContentRef.current = doc;
     void save(doc, takeDelimitersOpts());
   }, [save, debouncedSave, takeDelimitersOpts]);
@@ -493,14 +505,23 @@ export function useDocument() {
   const flushAnchorCommit = useCallback((_paragraphId?: string) => {
     const editor = editorRef.current;
     if (!editor || editor.isDestroyed) return;
-    const doc = editor.getJSON();
     // Coalesce with any mint-flush this gesture already armed: nothing new to
     // persist since the last save → no-op (dedupes the double-flush).
-    if (
-      lastSavedRef.current !== null &&
-      JSON.stringify(doc) === JSON.stringify(lastSavedRef.current)
-    ) {
-      return;
+    // Perf Wave 1 (S3): with the pipeline mounted, both the last save and
+    // this read use the SAME identity-stable shared docJson, so the dedupe
+    // is an O(1) reference compare instead of two O(doc) stringifies.
+    const products = getDocProducts(editor);
+    if (products) {
+      const doc = products.ensureFresh().docJson;
+      if (doc !== null && doc === lastSavedRef.current) return;
+    } else {
+      const doc = editor.getJSON();
+      if (
+        lastSavedRef.current !== null &&
+        JSON.stringify(doc) === JSON.stringify(lastSavedRef.current)
+      ) {
+        return;
+      }
     }
     // AUTOSAVE-CLOBBER GUARD: inherited from `flushNow`, which re-arms the
     // debounce (instead of writing) while an external change is unresolved — so

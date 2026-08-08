@@ -39,6 +39,7 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import {
   assembleLatex,
   collectPreambleTitleFields,
+  type AssembleLatexOptions,
 } from "@/lib/latex-serializer";
 import { computeWordCounts, type WordCounts } from "@/lib/word-count-core";
 import { readTex } from "@/lib/storage";
@@ -88,6 +89,11 @@ export interface DocProducts {
   /** Code-view feed (raw CodeMirror text) — flips the suppression latch the
    *  same way useLatexSource.setSourceText did. */
   setExternalSourceFeed(text: string): void;
+  /** Assemble a full `.tex` with the CALLER's delimiters/family through the
+   *  shared per-block caches — the code-pane bridge's 150 ms flush, which
+   *  must keep its OWN (possibly unsaved) preamble, never the pipeline's
+   *  disk-derived one. O(changed blocks) + the joined-string tails. */
+  assembleSourceWith(opts: AssembleLatexOptions): string;
   subscribe(fn: () => void): () => void;
   destroy(): void;
 }
@@ -294,6 +300,19 @@ export function createDocProducts(
     setExternalSourceFeed(text: string) {
       externalFed = true;
       if (text !== snapshot.sourceText) publish({ sourceText: text });
+    },
+    assembleSourceWith(opts) {
+      const doc = editor.state.doc;
+      const parts = [];
+      for (let i = 0; i < doc.childCount; i++) {
+        parts.push(getBlockLatex(doc.child(i)));
+      }
+      pipelineStats.assemblies++;
+      return assembleLatex(
+        parts,
+        collectPreambleTitleFields(refreshDocJson()),
+        opts,
+      );
     },
     subscribe(fn: () => void) {
       subscribers.add(fn);

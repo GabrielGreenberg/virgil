@@ -12,6 +12,7 @@ import {
   extractPreambleAndPostamble,
 } from "@/lib/latex-parser";
 import { serializeToLatex } from "@/lib/latex-serializer";
+import { getDocProducts } from "@/lib/doc-products/pipeline";
 import {
   createCodePaneBridge,
   type CodePaneBridge,
@@ -173,17 +174,25 @@ export default function CodeEditor({
         const extracted = extractPreambleAndPostamble(diskText);
         preambleRef.current = extracted?.preamble;
         postambleRef.current = extracted?.postamble;
-        const initial = serializeToLatex(editor.getJSON(), {
-          preamble: preambleRef.current,
-          postamble: postambleRef.current,
-        });
+        // Perf Wave 1 (S3): per-block caches when the pipeline is mounted.
+        const initial =
+          getDocProducts(editor)?.assembleSourceWith({
+            preamble: preambleRef.current,
+            postamble: postambleRef.current,
+          }) ??
+          serializeToLatex(editor.getJSON(), {
+            preamble: preambleRef.current,
+            postamble: postambleRef.current,
+          });
         setValue(initial);
         onTextChange?.(initial);
       })
       .catch(() => {
         if (cancelled) return;
         // Fall back to a serialize with default preamble.
-        const fallback = serializeToLatex(editor.getJSON());
+        const fallback =
+          getDocProducts(editor)?.assembleSourceWith({}) ??
+          serializeToLatex(editor.getJSON());
         setValue(fallback);
         onTextChange?.(fallback);
       });

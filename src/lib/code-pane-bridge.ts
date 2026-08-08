@@ -48,6 +48,7 @@ import {
   extractPreambleAndPostamble,
 } from "@/lib/latex-parser";
 import { serializeToLatex } from "@/lib/latex-serializer";
+import { getDocProducts } from "@/lib/doc-products/pipeline";
 import {
   getRanges,
   getLineRangeForUuid,
@@ -276,13 +277,20 @@ export function createCodePaneBridge(
     }
     let latex: string;
     try {
-      const json = editor.getJSON();
-      latex = serializeToLatex(json, {
+      // Perf Wave 1 (S3): route through the DocProducts per-block caches
+      // when the pipeline is mounted — O(changed blocks) instead of a full
+      // getJSON + serialize on the 150 ms code-view clock. The bridge keeps
+      // its OWN delimiters (it may hold an unsaved preamble edit; the
+      // pipeline's disk-derived ones would resurrect the stale preamble).
+      const assembleOpts = {
         preamble,
         postamble,
         bibFamily: opts.getBibFamily?.() ?? null,
         onRequirementConflict: opts.onBibFamilyConflict,
-      });
+      };
+      latex =
+        getDocProducts(editor)?.assembleSourceWith(assembleOpts) ??
+        serializeToLatex(editor.getJSON(), assembleOpts);
     } catch (err) {
       // Serialization should never fail under normal use; log and bail.
       console.error("[code-pane-bridge] serialize failed:", err);
