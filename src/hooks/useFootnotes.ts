@@ -131,6 +131,54 @@ export function useFootnotes(
     });
   }, [persist, pristine]);
 
+  /** The card's live body, read by the footnote drop spec's "anchor the
+   *  unanchored" create branch (`ctx.atomCards.footnote.atomAttrsFor`). An
+   *  atomless ref — archived, or born unanchored from the panel "+" — has NO
+   *  `\footnote` node anywhere, so the rebuilt atom's `content` attr can come
+   *  from here and NOWHERE else: skipping this read is what silently destroyed
+   *  the user's footnote text on a re-place (task 233). Normalized through the
+   *  same `normalizeRichContent` the load migration and `cloneFootnote` use, so
+   *  a legacy HTML-string body rebuilds as a proper doc. Reads `stateRef` for a
+   *  stable identity (mirrors `useCitations.commandFor`).
+   *
+   *  DEEP-COPIED on the way out. `normalizeRichContent` returns its INPUT when
+   *  the body is already a clean doc, so handing it straight to
+   *  `footnoteNodeType.create({ content })` would leave the sidecar ref and the
+   *  new ProseMirror node aliasing one mutable JSON tree — the exact footgun
+   *  the footnote node's `content` attr defaults to `null` to avoid
+   *  (footnote.ts). */
+  const contentFor = useCallback(
+    (id: string): JSONContent | null => {
+      const ref = stateRef.current.footnotes.find((f) => f.id === id);
+      return ref ? structuredClone(normalizeRichContent(ref.content)) : null;
+    },
+    [],
+  );
+
+  /** Reconcile a ref's own anchor intent once its `\footnote` atom is back in
+   *  the prose (the drop spec's `onAnchored`). Clears BOTH flags, mirroring the
+   *  citation twin's re-anchor rule: `setArchived(true)` sets `archived` +
+   *  `unanchored` JOINTLY (archiving splices the atom out), so re-anchoring must
+   *  un-set both — the footnote is a live in-text note again, neither archived
+   *  nor a parked draft. Without this the sidecar keeps declaring `unanchored`
+   *  and the panel lists the same footnote twice: live from the editor, and
+   *  again as a stale atomless ref (task 233). Idempotent + no-write when
+   *  neither flag is set, so an ordinary drop of an already-anchored card
+   *  touches no sidecar. */
+  const markAnchored = useCallback((id: string) => {
+    const current = stateRef.current;
+    const ref = current.footnotes.find((f) => f.id === id);
+    if (!ref || (!ref.unanchored && !ref.archived)) return;
+    const next = {
+      footnotes: current.footnotes.map((f) =>
+        f.id === id ? { ...f, unanchored: undefined, archived: undefined } : f,
+      ),
+    };
+    stateRef.current = next;
+    setState(next);
+    persist(next);
+  }, [persist]);
+
   /** Flip a footnote ref's archived (set-aside) flag. The caller (EditorPane's
    *  archive handler) additionally splices the `\footnote` atom out of the doc;
    *  the now-atomless ref survives `syncFromEditor` as an unanchored entry (the
@@ -260,6 +308,8 @@ export function useFootnotes(
       setFootnoteAiRequest,
       cloneFootnote,
       syncFromEditor,
+      contentFor,
+      markAnchored,
     }),
     [
       state.footnotes,
@@ -270,6 +320,8 @@ export function useFootnotes(
       setFootnoteAiRequest,
       cloneFootnote,
       syncFromEditor,
+      contentFor,
+      markAnchored,
     ],
   );
 }

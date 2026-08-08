@@ -9,8 +9,16 @@
  * substantive logic. This file imports the REAL `footnoteDropSpec` and
  * `citationDropSpec` and exercises THEIR `createAtom` bodies end-to-end:
  *
- *  - footnote → a node with `footnoteId === <card id>` AND the canonical
- *    content doc (`{ type: "doc", content: [{ type: "paragraph" }] }`, number 0);
+ *  - footnote → a node with `footnoteId === <card id>` AND **the card's REAL
+ *    BODY**, read from `ctx.atomCards.footnote` (task 233). This file used to
+ *    assert the hard-coded EMPTY body as expected — pinning a data-loss bug as
+ *    the contract: re-placing an archived footnote planted an empty atom, and
+ *    since `getFootnotes()` re-derives the panel (and the serialized
+ *    `\footnote{}`) from the node, the user's text was destroyed in both. The
+ *    empty doc is now only the NO-ACCESSOR fallback, asserted separately;
+ *  - footnote → the drop also calls `onAnchored(id)`, so the card sheds the
+ *    `unanchored`/`archived` intent that would otherwise leave it listed a
+ *    second time as a parked duplicate of the now-live footnote;
  *  - citation with a valid `commandFor(id)` → a node with
  *    `citationId === <card id>` and the RESOLVED `command`;
  *  - citation whose `commandFor(id)` returns '' OR `\cite{}` (keyless) →
@@ -151,41 +159,73 @@ describe("Chip F FOLD 1 — REAL footnote/citation drop specs (anchor the unanch
   describe("footnoteDropSpec (real factory)", () => {
     const FN_ID = "fn-real-7k";
     const FN_KEY = `float:card:footnote:${FN_ID}`;
+    /** The card's real body — the thing the pre-233 factory threw away. */
+    const BODY = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Smith (2020) argues X" }] },
+      ],
+    };
+    const EMPTY_BODY = { type: "doc", content: [{ type: "paragraph" }] };
+
+    /** A ctx wired the way `EditorPane` wires it: the footnotes hook supplies
+     *  the card's live body + the anchor reconcile. `anchored` records the
+     *  `onAnchored(id)` calls so the reconcile half is asserted too. */
+    function ctxWithBody(
+      editor: Editor,
+      content: unknown,
+      anchored: string[] = [],
+    ): DropCtx {
+      return {
+        mainEditor: editor,
+        atomCards: {
+          footnote: {
+            atomAttrsFor: (id: string) => (id === FN_ID ? { content } : { content: EMPTY_BODY }),
+            onAnchored: (id: string) => anchored.push(id),
+          },
+        },
+      } as unknown as DropCtx;
+    }
 
     it("classifyDrop returns `apply` (no atom + real createAtom)", () => {
       const h = liveEditor(docWithoutAtom());
       const d = footnoteDropSpec.classifyDrop(
         inlineCursor(h.editor, 3),
         FN_KEY,
-        { mainEditor: h.editor } as unknown as DropCtx,
+        ctxWithBody(h.editor, BODY),
       );
       expect(d.kind).toBe("apply");
       expect(d.kind).not.toBe("confirm");
     });
 
-    it("applyDrop inserts a footnote carrying the card's EXISTING id + the canonical content doc", () => {
+    it("applyDrop preserves the CARD'S BODY in the new atom (task 233 — the data-loss fix)", () => {
       const h = liveEditor(docWithoutAtom());
+      const anchored: string[] = [];
       expect(findAtom(h.getState().doc, "footnote")).toBeNull();
 
       footnoteDropSpec.applyDrop(
         inlineCursor(h.editor, 3),
         FN_KEY,
-        { mainEditor: h.editor } as unknown as DropCtx,
+        ctxWithBody(h.editor, BODY, anchored),
       );
 
       const atom = findAtom(h.getState().doc, "footnote");
       expect(atom).not.toBeNull();
       // (a) footnoteId === the card id — NO fresh id minted.
       expect(atom!.node.attrs.footnoteId).toBe(FN_ID);
-      // The canonical empty-body content doc the `\footnote` create path builds.
-      expect(atom!.node.attrs.content).toEqual({
-        type: "doc",
-        content: [{ type: "paragraph" }],
-      });
+      // (b) THE FIX: the body survives the re-place. Fails on main, which
+      // hard-coded the empty doc here — and since `getFootnotes()` re-derives
+      // both the panel and the serialized `\footnote{}` from this attr, the
+      // text was gone from the document, not merely from the card.
+      expect(atom!.node.attrs.content).toEqual(BODY);
+      expect(atom!.node.attrs.content).not.toEqual(EMPTY_BODY);
       // number 0 — the renumber pass assigns the live number.
       expect(atom!.node.attrs.number).toBe(0);
       // Landed at the drop position.
       expect(atom!.from).toBe(3);
+      // (c) the reconcile half: the card is anchored now, so its hook is told
+      // exactly once, with its own id.
+      expect(anchored).toEqual([FN_ID]);
       // FOLD 2 undo-park: a selection-only parking tr at the insert pos
       // precedes the insert (addToHistory:false, TextSelection, not docChanged).
       expect(h.dispatched).toHaveLength(2);
@@ -193,6 +233,65 @@ describe("Chip F FOLD 1 — REAL footnote/citation drop specs (anchor the unanch
       expect(h.dispatched[0].getMeta("addToHistory")).toBe(false);
       expect(h.dispatched[0].selection.constructor.name).toBe("TextSelection");
       expect(h.dispatched[1].docChanged).toBe(true);
+    });
+
+    it("no accessor wired → DECLINES rather than plant an empty body (a lossy rebuild refuses)", () => {
+      const h = liveEditor(docWithoutAtom());
+      const ctx = { mainEditor: h.editor } as unknown as DropCtx;
+      // A declared-but-unwired accessor is loud in dev — a silent no-op drop
+      // reads as "the gesture is broken" with no way to tell why.
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      // Falling back to the empty create shape here would BE task 233: the body
+      // is unread in footnotes.json, the empty atom serializes an empty
+      // `\footnote{}` into the .tex, and the ref then drops off the atomless
+      // list because its atom is live — the text reachable from nowhere.
+      // Refusing leaves the card parked with its text.
+      expect(footnoteDropSpec.classifyDrop(inlineCursor(h.editor, 3), FN_KEY, ctx).kind).toBe(
+        "no-op",
+      );
+      footnoteDropSpec.applyDrop(inlineCursor(h.editor, 3), FN_KEY, ctx);
+
+      expect(findAtom(h.getState().doc, "footnote")).toBeNull();
+      expect(h.dispatched).toHaveLength(0);
+      expect(warn).toHaveBeenCalled();
+      expect(String(warn.mock.calls[0][0])).toContain("atomCards.footnote");
+      warn.mockRestore();
+    });
+
+    it("does NOT reconcile a drop into a NON-main editor (the panel couldn't corroborate it)", () => {
+      // `targetScope: "any-editor"` — a card body can host a footnote atom. But
+      // the panel resolves "anchored?" from the MAIN doc only, so clearing the
+      // parked intent for an atom it can't see would hide the card from both
+      // the anchored list and the atomless one.
+      const h = liveEditor(docWithoutAtom());
+      const other = liveEditor(docWithoutAtom());
+      const anchored: string[] = [];
+      const ctx = {
+        ...(ctxWithBody(h.editor, BODY, anchored) as unknown as Record<string, unknown>),
+        mainEditor: h.editor,
+      } as unknown as DropCtx;
+
+      footnoteDropSpec.applyDrop(inlineCursor(other.editor, 3), FN_KEY, ctx);
+
+      // The atom still lands where the user dropped it …
+      expect(findAtom(other.getState().doc, "footnote")).not.toBeNull();
+      // … but the card stays parked.
+      expect(anchored).toEqual([]);
+    });
+
+    it("a genuinely empty card body anchors as the empty doc (no false decline)", () => {
+      const h = liveEditor(docWithoutAtom());
+      const anchored: string[] = [];
+      footnoteDropSpec.applyDrop(
+        inlineCursor(h.editor, 3),
+        FN_KEY,
+        ctxWithBody(h.editor, EMPTY_BODY, anchored),
+      );
+      const atom = findAtom(h.getState().doc, "footnote");
+      expect(atom).not.toBeNull();
+      expect(atom!.node.attrs.content).toEqual(EMPTY_BODY);
+      expect(anchored).toEqual([FN_ID]);
     });
   });
 
@@ -206,7 +305,11 @@ describe("Chip F FOLD 1 — REAL footnote/citation drop specs (anchor the unanch
     function ctxWithCommand(editor: Editor, command: string | null): DropCtx {
       return {
         mainEditor: editor,
-        citations: { commandFor: (id: string) => (id === CITE_ID ? command : null) },
+        atomCards: {
+          citation: {
+            atomAttrsFor: (id: string) => ({ command: id === CITE_ID ? command : null }),
+          },
+        },
       } as unknown as DropCtx;
     }
 
@@ -255,7 +358,11 @@ describe("Chip F FOLD 1 — REAL footnote/citation drop specs (anchor the unanch
     function ctxWithCommand(editor: Editor, command: string | null): DropCtx {
       return {
         mainEditor: editor,
-        citations: { commandFor: (id: string) => (id === CITE_ID ? command : null) },
+        atomCards: {
+          citation: {
+            atomAttrsFor: (id: string) => ({ command: id === CITE_ID ? command : null }),
+          },
+        },
       } as unknown as DropCtx;
     }
 

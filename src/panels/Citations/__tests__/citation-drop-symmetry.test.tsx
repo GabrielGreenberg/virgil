@@ -131,14 +131,19 @@ const CITE_ID = "sym-cite";
 const CITE_KEY = `float:card:citation:${CITE_ID}`;
 
 /** SPEC LEG (real): does `citationDropSpec` classify `apply` for this command?
- *  The spec reads the command via `ctx.citations.commandFor(id)` — which after
- *  FOLD 3 returns `citationCommandOrNull(cit.command)`; we feed the raw command
- *  and let the spec's OWN `citationCommandOrNull` gate decide. */
+ *  The spec reads the command via the shared inline-atom card accessor
+ *  (`ctx.atomCards.citation.atomAttrsFor(id)`, task 233) — which is fed by
+ *  `commandFor`, returning `citationCommandOrNull(cit.command)`; we feed the raw
+ *  command and let the spec's OWN `citationCommandOrNull` gate decide. */
 function specWouldAnchor(command: string): boolean {
   const { editor } = liveEditor();
   const ctx = {
     mainEditor: editor,
-    citations: { commandFor: (id: string) => (id === CITE_ID ? command : null) },
+    atomCards: {
+      citation: {
+        atomAttrsFor: (id: string) => ({ command: id === CITE_ID ? command : null }),
+      },
+    },
   } as unknown as DropCtx;
   return citationDropSpec.classifyDrop(inlineCursor(editor, 3), CITE_KEY, ctx).kind === "apply";
 }
