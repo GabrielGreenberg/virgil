@@ -1941,8 +1941,9 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
           // See anchor-highlight-deco.ts.
           AnchorHighlightDecorator,
           // Paints every TRANSIENT text-range band (search result, diagnostics
-          // error range, linked-anchor hover, revision/suggestion text) as an
-          // inline decoration instead of a `highlight` MARK. A mark is document
+          // error range, revision/suggestion text) as an inline decoration —
+          // the text-range sibling of the node/atom decorator just above —
+          // instead of a `highlight` MARK. A mark is document
           // content: it was history-recorded (clicking a search result ate the
           // redo branch; Cmd+Z after closing search resurrected the band) and
           // `docChanged` (it dirtied + autosaved an unedited doc). See

@@ -7,10 +7,14 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 /**
  * TransientHighlightDecorator — the ONE carrier for every *transient* (view-only,
  * never-persisted) text-range highlight the app paints over the main document:
- * the search-result band, the diagnostics error range, the linked-anchor
- * hover/click band, and the revision/suggestion text band.
+ * the search-result band, the diagnostics error range, and the
+ * revision/suggestion text band. (The linked-anchor hover/click band is NOT
+ * here — it is painted on the anchor mark itself by `useLinkHighlight`'s
+ * `data-link-highlight` coupling plus `AnchorHighlightDecorator`. A fourth
+ * branch of `applyHighlight` claimed it via an `activeAnchorId` prop that no
+ * caller ever passed; task 120 deleted that orphan.)
  *
- * THE BUG THIS FIXES (root-root, task 120). All four used to be painted as
+ * THE BUG THIS FIXES (root-root, task 120). All of them used to be painted as
  * ordinary `highlight` MARKS by `Editor.applyHighlight` — real document
  * mutations, dispatched WITHOUT `addToHistory: false`. A transient, UI-derived
  * signal was therefore living in the document, with three consequences that
@@ -62,8 +66,9 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
  *  the class can never land on a document node's element. */
 export const TRANSIENT_HIGHLIGHT_CLASS = "virgil-transient-highlight";
 
-/** The amber every transient consumer but the linked-anchor band uses. Was
- *  inlined at three call sites in `Editor.applyHighlight`. */
+/** The amber every transient band uses today. Was inlined at three call sites
+ *  in `Editor.applyHighlight`. The per-target `color` stays a parameter because
+ *  a tinted band (per-card accent) is the natural next consumer. */
 export const TRANSIENT_HIGHLIGHT_COLOR = "#fbbf2480";
 
 /** One transient band, in live PM coordinates at dispatch time. */
@@ -71,7 +76,7 @@ export type TransientHighlightTarget = {
   from: number;
   to: number;
   /** Any CSS color. Callers pass {@link TRANSIENT_HIGHLIGHT_COLOR} unless they
-   *  carry a per-card tint. */
+   *  carry a tint of their own. */
   color: string;
 };
 

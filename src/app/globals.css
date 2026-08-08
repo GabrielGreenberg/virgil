@@ -4124,11 +4124,15 @@ body[data-drop-mode-active="true"] * {
   background-color: var(--comment-bg, rgba(147, 197, 253, 0.25));
 }
 
-/* Transient highlight bands — search result, diagnostics error range, hovered
-   linked anchor, revision text. NOT document marks (task 120): a ProseMirror
-   inline decoration owns the span, and the per-consumer color rides an inline
-   style, so this rule only carries the geometry. Deliberately identical to
-   `.tiptap mark` above so the mark → decoration swap is pixel-neutral. */
+/* Transient highlight bands — search result, diagnostics error range, revision
+   text. NOT document marks (task 120): a ProseMirror inline decoration owns the
+   span, and the per-consumer color rides an inline style, so this rule only
+   carries the geometry. Deliberately identical to `.tiptap mark` above so the
+   mark → decoration swap is pixel-neutral. Safe to leave at this specificity
+   ONLY because the decoration declares `nodeName: "span"` and therefore always
+   paints its own wrapper — without that, a band covering a citation pill or
+   footnote marker would land this padding/border on the ATOM's element and
+   outrank `.citation-node` / `.footnote-marker`. */
 .tiptap .virgil-transient-highlight {
   border-radius: var(--radius-xs);
   padding: 0 1px;
