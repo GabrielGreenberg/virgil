@@ -37,13 +37,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tools import (
     append_inbox_item,
     bump_catalog_version,
-    emit_bib_entry,
     lock_catalog,
     paper_has_holdings,
     read_catalog,
     read_master_bib,
     update_master_bib_entry,
     write_catalog,
+    write_paper_bib_entry,
 )
 
 
@@ -155,9 +155,10 @@ def _virgil_sidecars(paper_dir: Path) -> None:
             p.write_text(json.dumps(content, indent=2) + "\n")
 
 
-def _write_references_bib(paper_dir: Path, citekey: str, entry_type: str, fields: dict[str, str]) -> None:
-    paper_dir.mkdir(parents=True, exist_ok=True)
-    (paper_dir / "references.bib").write_text(emit_bib_entry(citekey, entry_type, fields))
+# `_write_references_bib` used to `write_text` a single emitted entry over the
+# whole file. A .bib drop whose citekey collides with an ALREADY-DEEP-INDEXED
+# paper therefore replaced that paper's cited works with one entry. Routed
+# through the shared upsert writer (task 168).
 
 
 def _upsert_catalog_row_bib_only(
@@ -413,7 +414,7 @@ def apply_bib_row(
     # Per-paper folder + sidecars (no source file, no main.tex).
     paper_dir = library / "papers" / citekey
     _virgil_sidecars(paper_dir)
-    _write_references_bib(paper_dir, citekey, entry_type, merged_fields)
+    write_paper_bib_entry(paper_dir, citekey, entry_type, merged_fields)
 
     # Catalog row (bib-only).
     _upsert_catalog_row_bib_only(
