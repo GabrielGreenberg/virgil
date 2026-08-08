@@ -18,6 +18,10 @@ import { type SectionPathEntry, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
+import {
+  useDocJson,
+  docProductsEnabled,
+} from "@/lib/doc-products/use-doc-products";
 import { useMyPapers } from "@/hooks/useMyPapers";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { useUpdateAvailable } from "@/hooks/useUpdateAvailable";
@@ -1127,6 +1131,13 @@ export default function EditorLayout() {
     toggleZenMode();
   }, [toggleZenMode]);
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
+  // Flag-on (perf Wave 1): the DocProducts pipeline's shared docJson replaces
+  // the legacy setLatestDoc feed (editor-ops handleUpdate no-ops). Reads fall
+  // through to `latestDoc` while the pipeline hasn't produced yet.
+  const pipelineDocJson = useDocJson(docProductsEnabled ? editorInstance : null);
+  const latestDocEffective = docProductsEnabled
+    ? (pipelineDocJson ?? latestDoc)
+    : latestDoc;
   // Per-category structural revisions — the keystroke-safe replacement for
   // the old per-keystroke `editorDocVersion` counter and the `latestDoc`-keyed
   // card derivations. Each counter bumps ONLY when its structural entity
@@ -2126,7 +2137,7 @@ export default function EditorLayout() {
   });
 
   // ── Focus mode helpers ─────────────────────────────────────────────
-  const docForOutline = latestDoc;
+  const docForOutline = latestDocEffective;
   const outlineHeadings = useMemo(() => extractHeadings(docForOutline).headings, [docForOutline]);
 
   // T5 Pillar C-2 (OUT-F2-01 / OUT-F8-02): the focus engine's heading-index +
@@ -2879,7 +2890,7 @@ export default function EditorLayout() {
     // live editor doc (the same JSON the code editor will reserialize
     // from disk; close enough for a line lookup).
     let line: number | undefined;
-    if (!paraId && latestDoc) {
+    if (!paraId && latestDocEffective) {
       try {
         const editor = editorRef.current?.getEditor();
         if (editor) {
@@ -2894,7 +2905,7 @@ export default function EditorLayout() {
           const snippet = editor.state.doc.textBetween(start, end, " ").trim();
           const words = snippet.split(/\s+/).filter((w) => w.length > 3);
           if (words.length >= 2) {
-            const latex = serializeToLatex(latestDoc);
+            const latex = serializeToLatex(latestDocEffective);
             for (let len = Math.min(words.length, 6); len >= 2; len--) {
               const phrase = words.slice(0, len).join(".*?");
               const re = new RegExp(phrase, "s");
@@ -2915,7 +2926,7 @@ export default function EditorLayout() {
     // live so the code-pane bridge can sync edits both directions.
     setPdfView(false);
     setCodeView(true);
-  }, [latestDoc]);
+  }, [latestDocEffective]);
 
   const switchToVisualView = useCallback(() => {
     // In the split-pane layout there's no longer a separate "code

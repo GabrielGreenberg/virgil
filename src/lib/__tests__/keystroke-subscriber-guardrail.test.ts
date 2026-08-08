@@ -94,6 +94,8 @@ const PERMITTED_KEYSTROKE_SUBSCRIBERS: Record<string, string> = {
     "300 ms debounce, then the full doc walk — the per-keystroke cost is just the timer reset (O(1)).",
   "lib/code-pane-bridge.ts":
     "TipTap→code sync: docChanged-gated + own-write ('syncing') filtered, then a debounced serialize — O(1) per tx.",
+  "lib/doc-products/pipeline.ts":
+    "THE single DocProducts subscriber (perf Wave 1): the update handler is a dirty flag + one timer reset (O(1)); all O(doc)/O(changed) product work (per-block toJSON/serialize misses, assembly tails, word counts) runs in the 300 ms interactive tier or the requestLowPriority idle tier, off the keystroke path. Flag-on it REPLACES the useLatexSource + useWordCount + EditorPane outline-tick + editor-ops latestDoc subscribers (those entries remain while the flag-off legacy path exists; deleted in Wave-1 S6).",
   "lib/float-sync.tsx":
     "One subscription per OPEN text-object float: docChanged-gated + own-write meta filter + the source-touch gate (task 140) — the handler maps the float's live source range through the transaction's steps (and its appendedTransactions') and calls readSource ONLY if a step intersected it, O(steps) per tx. The third gate is the load-bearing one: readSource is O(doc) in every body, so the first two alone cost a full-document walk per keystroke per open float. This entry's previous text ('O(1) per tx') described the subscriber and not its callback — see the header note.",
   "text-objects/TextObjectGrabHandle.tsx":

@@ -1398,6 +1398,130 @@ export function assignUuids(doc: JSONContent): void {
   dedupInlineId("footnote", "footnoteId");
 }
 
+/**
+ * Read-only twin of `assignUuids`: true iff a run would MUTATE the doc.
+ *
+ * (Perf Wave 1 / S3.) With `BlockUuidBackfill` live in the editor, every
+ * anchorable block already carries a unique uuid by the end of the inserting
+ * transaction — so at save time this is almost always false, and the save
+ * path can (a) skip the four mutation walks and (b) safely receive the
+ * DocProducts pipeline's SHARED docJson, whose cached per-block entries must
+ * never be mutated. When it returns true, the caller deep-copies and runs
+ * the real `assignUuids` on the copy. Drift between the two is pinned by
+ * `latex-serializer-needs-uuid-work.test.ts` (predicate ⇔ mutation).
+ */
+export function needsUuidWork(doc: JSONContent): boolean {
+  const CONTAINER_TYPES = new Set(["bulletList", "orderedList", "blockquote"]);
+  let work = false;
+
+  // Pass 1 mirror: duplicate uuids among bearing nodes.
+  const seen = new Set<string>();
+  function dedup(node: JSONContent) {
+    if (work) return;
+    if (UUID_BEARING_NODE_TYPES.has(node.type!) && node.attrs?.uuid) {
+      const uuid = node.attrs.uuid as string;
+      if (seen.has(uuid)) {
+        work = true;
+        return;
+      }
+      seen.add(uuid);
+    }
+    node.content?.forEach(dedup);
+  }
+  dedup(doc);
+  if (work) return true;
+
+  // Pass 2 mirror: any node the assign ladder would touch.
+  function assign(node: JSONContent, insideContainer = false) {
+    if (work) return;
+    if (insideContainer && node.type === "paragraph" && node.attrs?.uuid) {
+      work = true; // assignUuids would CLEAR uuid/parTitle here
+      return;
+    }
+    if (CONTAINER_TYPES.has(node.type!)) {
+      if (!node.attrs?.uuid) {
+        work = true;
+        return;
+      }
+      node.content?.forEach((child) => assign(child, true));
+      return;
+    }
+    if (node.type === "listItem") {
+      if (!node.attrs?.uuid) {
+        work = true;
+        return;
+      }
+      node.content?.forEach((child) => assign(child, true));
+      return;
+    }
+    if (
+      (node.type === "heading" || node.type === "titleField") &&
+      !node.attrs?.uuid
+    ) {
+      work = true;
+      return;
+    }
+    if (
+      node.type === "paragraph" &&
+      !insideContainer &&
+      node.content &&
+      node.content.length > 0 &&
+      !node.attrs?.uuid
+    ) {
+      work = true;
+      return;
+    }
+    if (
+      (node.type === "displayMath" ||
+        node.type === "latexComment" ||
+        node.type === "codeBlock" ||
+        node.type === "exampleBlock" ||
+        node.type === "figureBlock" ||
+        node.type === "graphicsBlock" ||
+        node.type === "maketitleMarker") &&
+      !node.attrs?.uuid
+    ) {
+      work = true;
+      return;
+    }
+    node.content?.forEach((child) => assign(child, insideContainer));
+  }
+  assign(doc);
+  if (work) return true;
+
+  // Pass 3 mirror: inline-id dedup/fill (citation:citationId,
+  // footnote:footnoteId) — duplicate OR missing/empty id means the fill
+  // walk would write.
+  function inlineIdWork(typeName: string, attrName: string): boolean {
+    const localSeen = new Set<string>();
+    let found = false;
+    const walkChildren = (node: JSONContent, fn: (n: JSONContent) => void) => {
+      node.content?.forEach(fn);
+      const attrContent = node.attrs?.content;
+      if (Array.isArray(attrContent)) {
+        for (const child of attrContent as JSONContent[]) fn(child);
+      } else if (attrContent && typeof attrContent === "object") {
+        fn(attrContent as JSONContent);
+      }
+    };
+    const walk = (node: JSONContent) => {
+      if (found) return;
+      if (node.type === typeName) {
+        const id = node.attrs?.[attrName] as string | undefined;
+        if (!id || localSeen.has(id)) {
+          found = true;
+          return;
+        }
+        localSeen.add(id);
+      }
+      walkChildren(node, walk);
+    };
+    walk(doc);
+    return found;
+  }
+  return inlineIdWork("citation", "citationId") || inlineIdWork("footnote", "footnoteId");
+}
+
 /** Recursively extract plain text from a JSONContent subtree. */
 function extractPlainText(node: JSONContent): string {
   if (node.type === "text") return node.text || "";
