@@ -51,6 +51,7 @@ import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  type SourceRange,
 } from "@/lib/float-sync";
 import type { TextObjectFloatBodyProps } from "../types";
 
@@ -169,7 +170,14 @@ export function HeadingBody({
   function writeBackToMain(doc: JSONContent) {
     const ed = ref.current?.getEditor();
     if (!ed) return;
-    const range = getSectionRangeByUuid(ed.state.doc, uuid);
+    // The live section range doubles as this write's position hint (task 140),
+    // so the float→main direction stops re-scanning the doc's top level on
+    // every float keystroke.
+    const range = getSectionRangeByUuid(
+      ed.state.doc,
+      uuid,
+      sourceRangeRef.current,
+    );
     if (!range) return;
     const incoming = doc.content ?? [];
     if (incoming.length === 0) return;
@@ -208,8 +216,8 @@ export function HeadingBody({
   }
 
   const readSource = useCallback(
-    (doc: PMNode) => {
-      const range = getSectionRangeByUuid(doc, uuid);
+    (doc: PMNode, hint: SourceRange | null) => {
+      const range = getSectionRangeByUuid(doc, uuid, hint);
       if (!range) {
         return {
           doc: {
@@ -225,12 +233,16 @@ export function HeadingBody({
           content: range.nodes.map((n) => n.toJSON() as JSONContent),
         } as JSONContent,
         missing: false,
+        // The WHOLE section, not just the heading: an edit to any block inside
+        // it must re-read, and a heading inserted at either boundary (which
+        // re-scopes the section) touches an endpoint.
+        range: { from: range.start, to: range.end },
       };
     },
     [uuid],
   );
 
-  const { sourceMissing } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

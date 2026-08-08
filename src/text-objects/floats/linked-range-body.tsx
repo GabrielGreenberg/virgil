@@ -84,10 +84,6 @@ export function LinkedRangeBody({
   const mainEditor = ref.current?.getEditor() ?? null;
   const floatId = `lrange:${anchorId}`;
 
-  // Live range tracked across main transactions. Initialized once from
-  // the current doc; re-derived if the mark vanishes and reappears.
-  const rangeRef = useRef<{ from: number; to: number } | null>(null);
-
   const seed = useMemo(() => {
     if (!mainEditor) {
       return {
@@ -102,7 +98,9 @@ export function LinkedRangeBody({
         missing: true,
       };
     }
-    rangeRef.current = range;
+    // No range write here: `useFloatMainSync` seeds (and thereafter tracks)
+    // the live range itself on attach, and this memo runs during render —
+    // before the hook exists.
     return { doc: sliceAsDoc(mainEditor.state.doc, range), missing: false };
     // Seed once on mount; thereafter useFloatMainSync drives main→float.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,7 +182,11 @@ export function LinkedRangeBody({
   function writeBackToMain(floatDoc: JSONContent) {
     const ed = ref.current?.getEditor();
     if (!ed) return;
-    const r = rangeRef.current;
+    // The shared tracker's live range IS this float's range — it is mapped
+    // through every main transaction (task 140), so it stays correct even on
+    // the transactions the source-touch gate now skips. A second, locally
+    // maintained copy would silently drift the moment a skip happened.
+    const r = sourceRangeRef.current;
     if (!r) return;
     try {
       // Reconstruct the edited block nodes from the float doc — the same blocks
@@ -211,35 +213,39 @@ export function LinkedRangeBody({
       tr.setMeta(FLOAT_WRITE_META, floatId);
       if (!tr.docChanged) return;
       ed.view.dispatch(tr);
-      // Re-track the range to span the newly written content. `tr.replace`
-      // grows the doc by `slice.size`, so the new content occupies
-      // [from, from + slice.size) (the open ends merged into the boundaries).
-      rangeRef.current = { from: r.from, to: r.from + slice.size };
+      // No range write here. `useMainTransactionSync` ran synchronously inside
+      // the dispatch above and already mapped the range through this
+      // transaction AND its appended ones. Restating the root-only arithmetic
+      // (`{r.from, r.from + slice.size}`) would agree in the ordinary case and
+      // CLOBBER the tracker whenever a plugin resized the region on top of our
+      // write — which is exactly the case where the tracker is the only one
+      // that knows.
     } catch {
       /* schema mismatch / stale range — swallow */
     }
   }
 
-  // Track the range across main transactions: any non-float change in
-  // the main doc may shift the range or invalidate it (mark vanished).
-  // Re-derive from the live mark on every read for correctness.
+  // Re-derive from the live mark whenever a transaction touched the range —
+  // the mark's extent is the truth, and only it can tell us the run grew at a
+  // boundary. The reported range re-arms the source-touch gate, so foreign
+  // edits elsewhere in the doc no longer reach this walk at all. (No hint
+  // fast-path: a marked run has no single node to resolve, so `findLinked-
+  // AnchorRange` still scans — now only on transactions that touched us.)
   const readSource = useCallback(
     (doc: PMNode) => {
       const range = findLinkedAnchorRange(doc, anchorId);
       if (!range) {
-        rangeRef.current = null;
         return {
           doc: { type: "doc", content: [{ type: "paragraph" }] } as JSONContent,
           missing: true,
         };
       }
-      rangeRef.current = range;
-      return { doc: sliceAsDoc(doc, range), missing: false };
+      return { doc: sliceAsDoc(doc, range), missing: false, range };
     },
     [anchorId],
   );
 
-  const { sourceMissing } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

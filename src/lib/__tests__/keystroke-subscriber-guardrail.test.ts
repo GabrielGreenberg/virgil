@@ -22,7 +22,18 @@
 // like the keystroke-sanctity prose list and `PERMITTED_SCROLL_REPOSITIONERS`,
 // the allowlist + per-entry justification is what makes it robust: a human
 // confirms each listed site is genuinely O(1)/O(edit-size); the test only guards
-// against a NEW *unlisted* site appearing. The prose list in AGENTS.md and this
+// against a NEW *unlisted* site appearing.
+//
+// A JUSTIFICATION MUST DESCRIBE THE CALLBACK, NOT JUST THE GATE. The grep can
+// see the `editor.on(...)` call form and the conditionals around it; it cannot
+// see the cost of what the handler CALLS. `lib/float-sync.tsx` sat here reading
+// "docChanged-gated + own-write meta filter — O(1) per tx" — true of the
+// subscriber, silent about the O(doc) `readSource` behind it — so this test was
+// green while every main keystroke walked the whole document once per open
+// text-object float (task 140). When adding or reviewing an entry, name what
+// the handler ultimately runs and why THAT is bounded. The behavioral half of
+// that particular fix lives in `float-source-touch-gate.test.tsx`, which counts
+// the callback's invocations instead of trusting a sentence. The prose list in AGENTS.md and this
 // allowlist are cross-references of the same reality — keep them in sync.
 //
 // Scope notes (mirroring task 042's scoping cautions):
@@ -84,7 +95,7 @@ const PERMITTED_KEYSTROKE_SUBSCRIBERS: Record<string, string> = {
   "lib/code-pane-bridge.ts":
     "TipTap→code sync: docChanged-gated + own-write ('syncing') filtered, then a debounced serialize — O(1) per tx.",
   "lib/float-sync.tsx":
-    "docChanged-gated + own-write meta filter — O(1) per tx.",
+    "One subscription per OPEN text-object float: docChanged-gated + own-write meta filter + the source-touch gate (task 140) — the handler maps the float's live source range through the transaction's steps (and its appendedTransactions') and calls readSource ONLY if a step intersected it, O(steps) per tx. The third gate is the load-bearing one: readSource is O(doc) in every body, so the first two alone cost a full-document walk per keystroke per open float. This entry's previous text ('O(1) per tx') described the subscriber and not its callback — see the header note.",
   "text-objects/TextObjectGrabHandle.tsx":
     "docChanged-gated, cheap handle reposition.",
 };

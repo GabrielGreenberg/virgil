@@ -1,4 +1,5 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { SourceRange } from "@/lib/float-source-range";
 
 /**
  * Locate the document range that belongs to the section anchored by a
@@ -15,40 +16,83 @@ import type { Node as PMNode } from "@tiptap/pm/model";
  * Returns `null` when no heading with the given uuid exists, or when
  * the heading is not a top-level child (sections only fold at the doc
  * root, matching the section-folding plugin's behavior).
+ *
+ * `hint` is a previously-returned range for the SAME heading (the heading
+ * float tracks one across transactions). When its `from` still resolves to
+ * that heading at the doc root, the leading scan is skipped and the walk
+ * starts at the section — so re-reading a section costs O(section), not
+ * O(doc). A hint that no longer verifies costs nothing but the check.
  */
 export function getSectionRangeByUuid(
   doc: PMNode,
   headingUuid: string,
+  hint?: SourceRange | null,
 ): { start: number; end: number; level: number; nodes: PMNode[] } | null {
-  let foundLevel: number | null = null;
-  let startPos: number | null = null;
-  let endPos: number | null = null;
-  const nodes: PMNode[] = [];
-  let collecting = false;
-  doc.forEach((node, offset) => {
-    if (collecting) {
-      if (
-        node.type.name === "heading" &&
-        (node.attrs.level as number) <= foundLevel!
-      ) {
-        if (endPos === null) endPos = offset;
-        collecting = false;
-        return;
+  let index = hintedHeadingIndex(doc, headingUuid, hint);
+  let offset = index === null ? 0 : hint!.from;
+
+  if (index === null) {
+    let i = 0;
+    for (; i < doc.childCount; i++) {
+      const child = doc.child(i);
+      if (child.type.name === "heading" && child.attrs?.uuid === headingUuid) {
+        break;
       }
-      nodes.push(node);
-    } else if (
-      node.type.name === "heading" &&
-      node.attrs?.uuid === headingUuid
-    ) {
-      foundLevel = node.attrs.level as number;
-      startPos = offset;
-      nodes.push(node);
-      collecting = true;
+      offset += child.nodeSize;
     }
-  });
-  if (startPos === null || foundLevel === null) return null;
-  if (endPos === null) endPos = doc.content.size;
-  return { start: startPos, end: endPos, level: foundLevel, nodes };
+    if (i >= doc.childCount) return null;
+    index = i;
+  }
+
+  const heading = doc.child(index);
+  const level = heading.attrs.level as number;
+  const start = offset;
+  const nodes: PMNode[] = [heading];
+  offset += heading.nodeSize;
+
+  let end = doc.content.size;
+  for (let j = index + 1; j < doc.childCount; j++) {
+    const child = doc.child(j);
+    if (
+      child.type.name === "heading" &&
+      (child.attrs.level as number) <= level
+    ) {
+      end = offset;
+      break;
+    }
+    nodes.push(child);
+    offset += child.nodeSize;
+  }
+
+  return { start, end, level, nodes };
+}
+
+/** Top-level child index the hint points at, if it still names our heading. */
+function hintedHeadingIndex(
+  doc: PMNode,
+  headingUuid: string,
+  hint: SourceRange | null | undefined,
+): number | null {
+  if (!hint) return null;
+  if (hint.from < 0 || hint.from >= doc.content.size) return null;
+  let $pos;
+  try {
+    $pos = doc.resolve(hint.from);
+  } catch {
+    return null;
+  }
+  // Sections only exist at the doc root; a hint pointing inside a block is
+  // either stale or was never one of ours.
+  if ($pos.depth !== 0) return null;
+  const node = $pos.nodeAfter;
+  if (
+    !node ||
+    node.type.name !== "heading" ||
+    node.attrs?.uuid !== headingUuid
+  ) {
+    return null;
+  }
+  return $pos.index();
 }
 
 /**
