@@ -155,8 +155,13 @@ function insertText(
     const blockTr = editor.state.tr;
     let cursor = placement.insertPos;
     for (const n of fit.nodes) {
+      // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
+      // container fit sanctions an insert the fitter PADS, which adds more
+      // than the node itself — advancing by the node's size alone would put
+      // the next block inside or before this one (task 257 review).
+      const before = blockTr.doc.content.size;
       blockTr.insert(cursor, n);
-      cursor += n.nodeSize;
+      cursor += blockTr.doc.content.size - before;
     }
     selectInserted(blockTr, placement.insertPos, cursor - placement.insertPos);
     editor.view.dispatch(blockTr);
@@ -164,6 +169,11 @@ function insertText(
     return;
   }
   const target = placement.pos;
+  // container-fit-exempt: the INLINE-CURSOR branch — an open slice merging with
+  // the text around a caret is exactly what ProseMirror's fitter is for, and no
+  // container is being entered. The between-blocks branch above goes through the
+  // fit (the region-level guard cannot tell the two branches apart, so this says
+  // which one is which).
   const tr = editor.state.tr.replace(target, target, slice);
   // Try to select what was inserted so the user can see the landing point.
   try {

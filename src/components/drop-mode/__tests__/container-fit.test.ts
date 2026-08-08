@@ -805,6 +805,74 @@ describe("fitNodesAtInsert — atomic over the payload", () => {
     expect(findByType(torn, "bulletList").every((n) => n.uuid === "L")).toBe(true);
   });
 
+  it("a same-type NESTING is allowed: the payload's own subtree is credited, not just its root", () => {
+    // A `bulletList` released at a `listItem`'s index 0. Direct is invalid
+    // (`(paragraph|graphicsBlock) block*` wants a paragraph first) and no
+    // wrapper fits, so the probe decides — and the payload brings BOTH a
+    // `bulletList` and two `listItem`s, each of which is also an ancestor type
+    // here. Crediting only the payload's ROOT type read those children as a
+    // tear and refused a drop the fitter handles by padding.
+    const d = schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          attrs: { uuid: "OUTER" },
+          content: [
+            {
+              type: "listItem",
+              attrs: { uuid: "li1" },
+              content: [{ type: "paragraph", content: [{ type: "text", text: "one" }] }],
+            },
+          ],
+        },
+      ],
+    });
+    const { editor } = mockEditor(d);
+    const li = findByType(d, "listItem")[0];
+    const payload = schema.nodes.bulletList.create({ uuid: "INNER" }, [
+      schema.nodes.listItem.create({ uuid: "n1" }, schema.nodes.paragraph.create(null, schema.text("a"))),
+      schema.nodes.listItem.create({ uuid: "n2" }, schema.nodes.paragraph.create(null, schema.text("b"))),
+    ]);
+
+    const fit = fitNodesAtInsert(editor, li.pos + 1, [payload]);
+    expect(fit.kind).toBe("ok");
+    const landed = editor.state.tr.insert(li.pos + 1, payload).doc;
+    expect(() => landed.check()).not.toThrow();
+    expect(findByType(landed, "bulletList")).toHaveLength(2); // outer + the nested one
+    expect(uuidsAreUnique(landed)).toBe(true); // …and nothing was torn
+  });
+
+  it("the probe refuses a fitter outcome that SWALLOWS the payload", () => {
+    // The rung exists to prevent content loss, so "the doc changed" is not
+    // enough — the trial must have grown by at least the payload. An insert the
+    // fitter can only satisfy by dropping the content reads as a tear.
+    const d = docWithExampleAndMarkedRange();
+    const { editor } = mockEditor(d);
+    const gloss = schema.nodes.exampleGloss;
+    expect(gloss).toBeDefined();
+    // An exampleGloss at a TOP-LEVEL gap: invalid there, unwrappable, and the
+    // depth-0 position has no ancestor to tear — so the payload-landed test is
+    // the only thing standing between this and a silent swallow.
+    const payload = gloss.createAndFill();
+    if (payload) {
+      const trial = (() => {
+        try {
+          return editor.state.tr.insert(d.firstChild!.nodeSize, payload).doc;
+        } catch {
+          return null;
+        }
+      })();
+      const grew =
+        trial !== null && trial.content.size - d.content.size >= payload.nodeSize;
+      // Whatever the fitter does here, the fit's verdict must AGREE with it:
+      // ok only if the payload really landed.
+      expect(fitNodesAtInsert(editor, d.firstChild!.nodeSize, [payload]).kind).toBe(
+        grew ? "ok" : "reject",
+      );
+    }
+  });
+
   it("an out-of-range insert position rejects rather than throwing", () => {
     const d = docWithExampleAndMarkedRange();
     const { editor } = mockEditor(d);

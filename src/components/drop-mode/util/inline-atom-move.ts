@@ -251,6 +251,9 @@ export function inlineAtomMoveSpec<
       // delete in source. Order matters less for atoms than for
       // paragraphs because PM positions are decoupled across editors.
       // (Unreachable when sameEditorOnly — classifyDrop already no-op'd.)
+      // container-fit-exempt: an INLINE atom at an inline-cursor position inside a
+      // textblock — there is no block-in-container fit to decide and no container
+      // the fitter could split to accommodate it.
       const insertTr = targetEditor.state.tr.insert(insertPos, node);
       try {
         insertTr.setSelection(NodeSelection.create(insertTr.doc, insertPos));
@@ -356,6 +359,7 @@ function insertNewAtom(
   // Park a caret at the insert pos so the insert's `selectionBefore` (captured
   // by prosemirror-history) is on-screen where the atom appears — see jsdoc.
   parkCaretBeforeChange(editor, insertPos);
+  // container-fit-exempt: inline atom at an inline cursor (see above).
   const tr = editor.state.tr.insert(insertPos, node);
   try {
     tr.setSelection(
@@ -402,6 +406,7 @@ function moveInlineAtomWithin(
   parkCaretBeforeChange(editor, from);
   const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
   const tr = editor.state.tr.delete(from, to);
+  // container-fit-exempt: inline atom at an inline cursor (see above).
   tr.insert(adjustedInsert, node);
   try {
     tr.setSelection(

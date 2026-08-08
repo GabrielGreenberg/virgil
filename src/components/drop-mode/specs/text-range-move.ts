@@ -104,6 +104,9 @@ export const textRangeMoveDropSpec: DropSpec = {
       // adjusted for the delete (mirrors block-move / inline-atom-move).
       const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
       const tr = targetEditor.state.tr.delete(from, to);
+      // container-fit-exempt: the INLINE-CURSOR move — an open slice merging with
+      // the text around a caret is exactly what ProseMirror's fitter is for, and
+      // no container is being entered. The between-blocks branch below fits.
       tr.replace(adjustedInsert, adjustedInsert, slice);
       selectInserted(tr, adjustedInsert, slice.size);
       targetEditor.view.dispatch(tr);
@@ -112,6 +115,7 @@ export const textRangeMoveDropSpec: DropSpec = {
     }
 
     // Cross-editor: insert into the target first, then delete from the source.
+    // container-fit-exempt: the same inline-cursor move, cross-editor.
     const insertTr = targetEditor.state.tr.replace(insertPos, insertPos, slice);
     selectInserted(insertTr, insertPos, slice.size);
     targetEditor.view.dispatch(insertTr);
@@ -192,8 +196,13 @@ function applyRangeBetweenBlocks(
     const tr = targetEditor.state.tr.delete(from, to);
     let cursor = adjustedInsert;
     for (const n of nodes) {
+      // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
+      // container fit sanctions an insert the fitter PADS, which adds more
+      // than the node itself — advancing by the node's size alone would put
+      // the next block inside or before this one (task 257 review).
+      const before = tr.doc.content.size;
       tr.insert(cursor, n);
-      cursor += n.nodeSize;
+      cursor += tr.doc.content.size - before;
     }
     selectBlocks(tr, adjustedInsert, cursor);
     targetEditor.view.dispatch(tr);
@@ -205,8 +214,13 @@ function applyRangeBetweenBlocks(
   const insertTr = targetEditor.state.tr;
   let cursor = insertPos;
   for (const n of nodes) {
+    // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
+    // container fit sanctions an insert the fitter PADS, which adds more
+    // than the node itself — advancing by the node's size alone would put
+    // the next block inside or before this one (task 257 review).
+    const before = insertTr.doc.content.size;
     insertTr.insert(cursor, n);
-    cursor += n.nodeSize;
+    cursor += insertTr.doc.content.size - before;
   }
   selectBlocks(insertTr, insertPos, cursor);
   targetEditor.view.dispatch(insertTr);

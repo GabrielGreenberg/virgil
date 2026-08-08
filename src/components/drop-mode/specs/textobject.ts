@@ -159,8 +159,13 @@ export const textObjectDropSpec: DropSpec = {
       const tr = targetEditor.state.tr.delete(src.move.from, src.move.to);
       let cursor = adjustedInsert;
       for (const n of toInsert) {
+        // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
+        // container fit sanctions an insert the fitter PADS, which adds more
+        // than the node itself — advancing by the node's size alone would put
+        // the next block inside or before this one (task 257 review).
+        const before = tr.doc.content.size;
         tr.insert(cursor, n);
-        cursor += n.nodeSize;
+        cursor += tr.doc.content.size - before;
       }
       // Select the inserted block(s).
       const selStart = adjustedInsert + 1;
@@ -182,8 +187,13 @@ export const textObjectDropSpec: DropSpec = {
     const insertTr = targetEditor.state.tr;
     let cursor = placement.insertPos;
     for (const n of toInsert) {
+      // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
+      // container fit sanctions an insert the fitter PADS, which adds more
+      // than the node itself — advancing by the node's size alone would put
+      // the next block inside or before this one (task 257 review).
+      const before = insertTr.doc.content.size;
       insertTr.insert(cursor, n);
-      cursor += n.nodeSize;
+      cursor += insertTr.doc.content.size - before;
     }
     targetEditor.view.dispatch(insertTr);
     targetEditor.view.focus();
