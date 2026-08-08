@@ -142,6 +142,11 @@ import { readPdf } from "@/lib/storage";
 import { useEditorUIState } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
 import { useLatexSource } from "@/hooks/useLatexSource";
+import {
+  useDocProductsHost,
+  docProductsEnabled,
+} from "@/lib/doc-products/use-doc-products";
+import { useSelectionCounts } from "@/hooks/useSelectionCounts";
 import { useDiagnostics, DiagnosticsProvider, useDiagnosticsContext } from "@/hooks/useDiagnostics";
 import { asBibFamily } from "@/lib/bib-family";
 import { useWordCount } from "@/hooks/useWordCount";
@@ -949,7 +954,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // structural counter) actually changes.
   const [outlineDocTick, setOutlineDocTick] = useState(0);
   useEffect(() => {
-    if (!editor) return;
+    // Flag-on the DocProducts pipeline's Tier A owns the debounced doc
+    // snapshot — this legacy tick subscriber stays unmounted.
+    if (!editor || docProductsEnabled) return;
     let t: ReturnType<typeof setTimeout> | null = null;
     const bump = () => {
       if (t) clearTimeout(t);
@@ -985,8 +992,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // signals (editor never reassigns in place, so it alone would never refresh).
   // This accepted "unnecessary dependencies" warning matches the `rev.*`-gated
   // sibling memos in this file (citationOrder / footnoteInfos / examples).
+  // Flag-on: the DocProducts pipeline's shared docJson replaces this memo
+  // (`outlineContentEffective` below, computed after the host mounts) and
+  // the legacy getJSON here stays fully disabled.
   const outlineContent = useMemo<JSONContent | null>(
-    () => (editor && !isTier1CDisabled() ? (editor.getJSON() as JSONContent) : null),
+    () =>
+      editor && !docProductsEnabled && !isTier1CDisabled()
+        ? (editor.getJSON() as JSONContent)
+        : null,
     [editor, rev.headings, rev.blocks, rev.labels, outlineDocTick],
   );
 
@@ -2115,15 +2128,44 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `sourceText` serializes the LIVE TipTap doc (independent of the code view),
   // so lint / snippets / jump-anchors populate even when the code pane is never
   // opened — the fix for "diagnostics empty until code view is opened once".
-  const { sourceText, setSourceText } = useLatexSource({
+  // DocProducts pipeline (perf Wave 1, flag `virgil:doc-products`). When ON,
+  // it owns the single debounced doc→products computation (docJson /
+  // sourceText / word counts) and the legacy per-consumer hooks below are
+  // disabled by passing them a null editor. Both hook sets stay statically
+  // mounted (React hook rules); the flag only steers which one does work.
+  const docProductsHost = useDocProductsHost({
     editor,
     docId,
     codeViewActive: codeView,
-    // Thread the authoritative bib family so `sourceText`'s preamble matches the
-    // compiler's / code-pane's bibFamily-aware serialization (line-number parity
-    // when the family injects a \usepackage). A getter, read at serialize time.
     getBibFamily: () => asBibFamily(citationsHook.bibPackage),
+    isVisible,
+    enabled: docProductsEnabled,
   });
+  const { sourceText: legacySourceText, setSourceText: legacySetSourceText } =
+    useLatexSource({
+      editor: docProductsEnabled ? null : editor,
+      docId,
+      codeViewActive: codeView,
+      // Thread the authoritative bib family so `sourceText`'s preamble matches the
+      // compiler's / code-pane's bibFamily-aware serialization (line-number parity
+      // when the family injects a \usepackage). A getter, read at serialize time.
+      getBibFamily: () => asBibFamily(citationsHook.bibPackage),
+    });
+  const sourceText = docProductsEnabled
+    ? docProductsHost.snapshot.sourceText
+    : legacySourceText;
+  const setSourceText = useMemo(() => {
+    if (!docProductsEnabled) return legacySetSourceText;
+    return (text: string) => {
+      docProductsHost.setExternalSourceFeed?.(text);
+    };
+    // setExternalSourceFeed is a stable passthrough to the ref'd pipeline.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legacySetSourceText, docProductsHost.setExternalSourceFeed === null]);
+  // Outline snapshot: pipeline docJson when flag-on, legacy memo otherwise.
+  const outlineContentEffective = docProductsEnabled
+    ? docProductsHost.snapshot.docJson
+    : outlineContent;
   const knownBibKeys = useMemo(
     () => citationsHook.bibEntries.map((e) => e.key),
     [citationsHook.bibEntries],
@@ -2195,8 +2237,21 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   }, [pdfView, docId]);
 
   // Word counts — surfaces in the WordCount panel below. Cheap to
-  // compute even when the panel isn't open.
-  const wordCountHook = useWordCount(editor);
+  // compute even when the panel isn't open. Flag-on: content counts come
+  // from the pipeline's shared docJson (Tier B), selection counts from the
+  // extracted selection hook; the legacy hook is disabled via null editor.
+  const legacyWordCountHook = useWordCount(docProductsEnabled ? null : editor);
+  const selectionCounts = useSelectionCounts(docProductsEnabled ? editor : null);
+  const wordCountHook = useMemo<ReturnType<typeof useWordCount>>(() => {
+    if (!docProductsEnabled) return legacyWordCountHook;
+    return {
+      counts: docProductsHost.snapshot.wordCounts ?? {
+        total: 0, characters: 0, sentences: 0, readingTime: "0 min",
+        categories: {}, characterCategories: {},
+      },
+      selection: selectionCounts,
+    };
+  }, [legacyWordCountHook, docProductsHost.snapshot.wordCounts, selectionCounts]);
 
   // Citation creation handlers — `handleCitationCreated` lands as
   // `onCitationCreated` in the `CitationDisplayContext` so panel
@@ -5664,7 +5719,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     side={panelSide}
                     panelKind={pid as PanelKind}
                     editor={editor}
-                    content={outlineContent}
+                    content={outlineContentEffective}
                     examples={examples}
                     docId={docId}
                     citationsHook={citationsHook}
@@ -5728,7 +5783,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       side={panelSide}
                       panelKind={pid as PanelKind}
                       editor={editor}
-                      content={outlineContent}
+                      content={outlineContentEffective}
                       examples={examples}
                       docId={docId}
                       citationsHook={citationsHook}

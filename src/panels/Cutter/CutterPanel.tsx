@@ -10,6 +10,10 @@ import type {
 } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { useWordCount } from "@/hooks/useWordCount";
+import {
+  docProductsEnabled,
+  useWordCountsProduct,
+} from "@/lib/doc-products/use-doc-products";
 import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
@@ -79,7 +83,18 @@ export default function CutterPanel({
   editor?: Editor | null;
   recentlyAddedId?: string | null;
 }) {
-  const { counts } = useWordCount(editor ?? null);
+  // Flag-on (perf Wave 1) the pipeline's shared product replaces what used
+  // to be a SECOND full useWordCount instance on the same editor (a
+  // duplicate 47ms whole-doc walk per typing pause at 2,883 blocks).
+  const { counts: legacyCounts } = useWordCount(
+    docProductsEnabled ? null : (editor ?? null),
+  );
+  const productCounts = useWordCountsProduct(
+    docProductsEnabled ? (editor ?? null) : null,
+  );
+  const counts = docProductsEnabled
+    ? (productCounts ?? { total: 0, characters: 0, sentences: 0, readingTime: "0 min", categories: {}, characterCategories: {} })
+    : legacyCounts;
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = cards.map((c) =>

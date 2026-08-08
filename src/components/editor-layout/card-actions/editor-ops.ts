@@ -8,6 +8,7 @@ import {
   renameParTitleByUuid,
   updateHeadingLabelByUuid,
 } from "@/lib/tiptap/structural-edit";
+import { docProductsEnabled } from "@/lib/doc-products/use-doc-products";
 
 /**
  * Editor-scope action handlers: update debouncing, scroll routing across
@@ -48,6 +49,11 @@ export function useEditorOps(deps: {
 
   const handleUpdate = useCallback(
     (editor: Editor) => {
+      // Flag-on (perf Wave 1): the DocProducts pipeline owns the shared doc
+      // snapshot; EditorLayout reads it via useDocJson and this legacy
+      // getJSON feed stays dead. (This was the one un-guardrailed O(doc)
+      // subscriber — it rides the TipTap onUpdate OPTION, not editor.on.)
+      if (docProductsEnabled) return;
       if (latestDocTimerRef.current) clearTimeout(latestDocTimerRef.current);
       // Defer `editor.getJSON()` to inside the 300 ms timeout — the
       // serialization cost is O(doc-size) and pre-fix ran on every
