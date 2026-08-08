@@ -27,6 +27,7 @@ import { readStackItem } from "@/hooks/useStack";
 import type { StackItem, StackPayload } from "@/lib/stack/types";
 import { generateShortId } from "@/lib/uuid";
 import { remintNestedAtomIds } from "@/lib/inline-content";
+import { rangeSliceToBlocks } from "@/lib/linked-anchor-range";
 import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 
 const ALLOWED_PLACEMENTS: ReadonlyArray<Placement["kind"]> = [
@@ -136,8 +137,33 @@ function insertText(
     console.error("[stack-pull] failed to rehydrate text slice:", err);
     return;
   }
-  const target =
-    placement.kind === "inline-cursor" ? placement.pos : placement.insertPos;
+  if (placement.kind === "between-blocks") {
+    // In a block gap the slice lands as BLOCK content — the same payload shape,
+    // and the same container question, as the text-range move's between-blocks
+    // branch, so it uses the same two primitives: `rangeSliceToBlocks` for the
+    // block form (an inline run → one paragraph, a multi-block range → its
+    // blocks) and the container fit for where those blocks may go. Left as an
+    // open-slice `tr.replace` it tore its container exactly like the bare-node
+    // inserts did (task 257): a pull into an expex item gap SPLIT the
+    // `exampleItemList` in two, so the example grew a second item list — its
+    // sub-numbering restarting — with the pulled text demoted to body prose
+    // between the halves.
+    const blocks = rangeSliceToBlocks(slice, editor.state.schema);
+    if (blocks.length === 0) return;
+    const fit = fitNodesAtInsert(editor, placement.insertPos, blocks);
+    if (fit.kind === "reject") return;
+    const blockTr = editor.state.tr;
+    let cursor = placement.insertPos;
+    for (const n of fit.nodes) {
+      blockTr.insert(cursor, n);
+      cursor += n.nodeSize;
+    }
+    selectInserted(blockTr, placement.insertPos, cursor - placement.insertPos);
+    editor.view.dispatch(blockTr);
+    editor.view.focus();
+    return;
+  }
+  const target = placement.pos;
   const tr = editor.state.tr.replace(target, target, slice);
   // Try to select what was inserted so the user can see the landing point.
   try {

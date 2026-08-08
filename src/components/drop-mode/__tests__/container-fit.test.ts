@@ -34,6 +34,9 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+const { readStackItemMock } = vi.hoisted(() => ({ readStackItemMock: vi.fn() }));
+vi.mock("@/hooks/useStack", () => ({ readStackItem: readStackItemMock }));
+
 vi.mock("@/lib/storage", () => {
   const STORAGE_FNS = [
     "readSidecar", "readSidecarIfExists", "writeSidecar", "readTex", "writeTex",
@@ -62,6 +65,7 @@ import {
 import { fitNodeInContainer } from "@/text-objects/drop-adapters";
 import { blockMoveSpec } from "../util/block-move";
 import { fitNodesAtInsert } from "../specs/drop-context";
+import { stackPullDropSpec } from "../specs/stack-pull";
 import { textObjectDropSpec } from "../specs/textobject";
 import { textRangeMoveDropSpec } from "../specs/text-range-move";
 import type { DropCtx, Placement } from "../types";
@@ -561,6 +565,80 @@ describe("whole-node move into a list (the mirror of 257)", () => {
     );
 
     expect(dispatched).toHaveLength(0);
+  });
+});
+
+// ── 3b. The stack-pull doors ────────────────────────────────────────────────
+
+describe("stack pull into an expex example", () => {
+  it("a TEXT payload in the item gap joins the example — it no longer splits the item list", () => {
+    // The slice door. Left as an open-slice `tr.replace` this tore the
+    // `exampleItemList` in two, so the example grew a SECOND item list (its
+    // sub-numbering restarting) with the pulled text demoted to body prose
+    // between the halves — the same class as the bare-node inserts.
+    const d = docWithExampleAndMarkedRange();
+    const { editor, dispatched } = mockEditor(d);
+    const items = findByType(d, "exampleItem");
+    readStackItemMock.mockReturnValue({
+      id: "s1",
+      payload: {
+        kind: "text",
+        slice: {
+          content: [{ type: "paragraph", content: [{ type: "text", text: "PULLED" }] }],
+          openStart: 1,
+          openEnd: 1,
+        },
+      },
+    });
+
+    stackPullDropSpec.applyDrop(
+      betweenBlocks(editor, items[1].pos),
+      "stack-pull:s1",
+      { mainEditor: editor } as unknown as DropCtx,
+    );
+
+    const result = dispatched[0].doc;
+    expect(() => result.check()).not.toThrow();
+    expect(findByType(result, "exampleItemList")).toHaveLength(1); // NOT split
+    const list = findByType(result, "exampleItemList")[0].node;
+    expect(list.childCount).toBe(3);
+    expect([
+      list.child(0).textContent,
+      list.child(1).textContent,
+      list.child(2).textContent,
+    ]).toEqual(["alpha", "PULLED", "beta"]);
+    expect(list.child(1).type.name).toBe("exampleItem");
+  });
+
+  it("a PARAGRAPH payload in the item gap joins it too (the bare-node door)", () => {
+    const d = docWithExampleAndMarkedRange();
+    const { editor, dispatched } = mockEditor(d);
+    const items = findByType(d, "exampleItem");
+    readStackItemMock.mockReturnValue({
+      id: "s2",
+      payload: {
+        kind: "paragraph",
+        node: {
+          type: "paragraph",
+          attrs: { uuid: "old" },
+          content: [{ type: "text", text: "PULLED" }],
+        },
+      },
+    });
+
+    stackPullDropSpec.applyDrop(
+      betweenBlocks(editor, items[1].pos),
+      "stack-pull:s2",
+      { mainEditor: editor } as unknown as DropCtx,
+    );
+
+    const result = dispatched[0].doc;
+    expect(() => result.check()).not.toThrow();
+    expect(findByType(result, "exampleBlock")).toHaveLength(1);
+    const list = findByType(result, "exampleItemList")[0].node;
+    expect(list.childCount).toBe(3);
+    expect(list.child(1).type.name).toBe("exampleItem");
+    expect(list.child(1).textContent).toBe("PULLED");
   });
 });
 
