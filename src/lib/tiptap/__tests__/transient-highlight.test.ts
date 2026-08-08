@@ -75,7 +75,7 @@ function mainCtx(): EditorExtensionsCtx {
 
 const editors: Editor[] = [];
 
-function mountEditor(): Editor {
+function mountEditor(withAtom = false): Editor {
   const element = document.createElement("div");
   document.body.appendChild(element);
   const editor = new Editor({
@@ -88,7 +88,20 @@ function mountEditor(): Editor {
         {
           type: "paragraph",
           attrs: { uuid: PARA_UUID },
-          content: [{ type: "text", text: "alpha beta gamma delta" }],
+          content: withAtom
+            ? [
+                { type: "text", text: "alpha beta " },
+                {
+                  type: "citation",
+                  attrs: {
+                    citationId: "c1",
+                    command: "\\cite{foo}",
+                    displayText: "Foo 2020",
+                  },
+                },
+                { type: "text", text: " gamma delta" },
+              ]
+            : [{ type: "text", text: "alpha beta gamma delta" }],
         },
       ],
     },
@@ -159,6 +172,52 @@ describe("transient highlights are decorations, not document marks", () => {
     expect(span?.style.backgroundColor).not.toBe("");
     // No <mark> — the old carrier is gone.
     expect(editor.view.dom.querySelector("mark")).toBeNull();
+  });
+
+  it("always builds its OWN wrapper — never restyles a document node's element", () => {
+    // THE TRAP: a covering inline decoration over an inline LEAF (citation
+    // pill, footnote marker, inline math) is applied by PM as an OUTER
+    // decoration, and `computeOuterDeco` takes the `needsWrap === false` path
+    // for an element-DOM child — merging our `class`/`style` straight onto the
+    // ATOM's own element. `.tiptap .virgil-transient-highlight` (0,2,0) then
+    // outranks `.citation-node`/`.footnote-marker` (0,1,0) and rewrites their
+    // padding + border, and the inline background replaces the pill's own.
+    // `nodeName: "span"` forces a wrapper in BOTH cases — what the old <mark>
+    // did, which is why the mark carrier never had this failure mode.
+    const editor = mountEditor(true);
+    const pill = editor.view.dom.querySelector(
+      '[data-type="citation"]',
+    ) as HTMLElement;
+    expect(pill).not.toBeNull();
+
+    // Band the WHOLE paragraph — the diagnostics whole-paragraph fallback.
+    setTransientHighlights(editor.view, [
+      { from: 1, to: editor.state.doc.content.size - 1, color: TRANSIENT_HIGHLIGHT_COLOR },
+    ]);
+
+    const banded = editor.view.dom.querySelector(
+      `[data-type="citation"].${TRANSIENT_HIGHLIGHT_CLASS}`,
+    );
+    expect(banded).toBeNull();
+    // The pill keeps its own element untouched: no class, no inline background.
+    const livePill = editor.view.dom.querySelector(
+      '[data-type="citation"]',
+    ) as HTMLElement;
+    expect(livePill.classList.contains(TRANSIENT_HIGHLIGHT_CLASS)).toBe(false);
+    expect(livePill.style.backgroundColor).toBe("");
+    // …and the band is carried by wrapper spans that hold ONLY our class, so
+    // the geometry rule can never reach a document node.
+    const wrappers = Array.from(
+      editor.view.dom.querySelectorAll(`.${TRANSIENT_HIGHLIGHT_CLASS}`),
+    ) as HTMLElement[];
+    expect(wrappers.length).toBeGreaterThan(0);
+    for (const w of wrappers) {
+      expect(w.tagName).toBe("SPAN");
+      expect(Array.from(w.classList)).toEqual([TRANSIENT_HIGHLIGHT_CLASS]);
+    }
+    // The pill is INSIDE a wrapper — the band still reads as continuous, the
+    // same containment the old <mark> produced.
+    expect(wrappers.some((w) => w.contains(livePill))).toBe(true);
   });
 
   it("dispatches a META-ONLY transaction — no steps, no docChanged, no update event", () => {

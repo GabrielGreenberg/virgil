@@ -56,9 +56,10 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
  */
 
 /** Geometry class for the painted span; the COLOR rides an inline style because
- *  it varies per consumer (amber default, per-card tint for anchors). Mirrors
- *  `.tiptap mark` in globals.css so the swap from mark → decoration is
- *  pixel-neutral. */
+ *  it varies per consumer. Mirrors `.tiptap mark` in globals.css so the swap
+ *  from mark → decoration is pixel-neutral — which holds only because the
+ *  decoration always builds its OWN wrapper element (see `nodeName` below), so
+ *  the class can never land on a document node's element. */
 export const TRANSIENT_HIGHLIGHT_CLASS = "virgil-transient-highlight";
 
 /** The amber every transient consumer but the linked-anchor band uses. Was
@@ -98,6 +99,18 @@ function buildSet(
         t.from,
         t.to,
         {
+          // `nodeName` is load-bearing, not decoration. Without it, a band that
+          // COVERS an inline leaf (citation pill, footnote marker, inline math)
+          // is applied as an OUTER decoration and PM merges `class`/`style`
+          // straight onto the ATOM's own element (`computeOuterDeco` takes the
+          // `needsWrap === false` path for an element-DOM child). Our class then
+          // outranks `.citation-node` / `.footnote-marker` on specificity and
+          // rewrites their padding + border, and the inline background replaces
+          // the pill's own. Naming the element forces PM to build a WRAPPER in
+          // both cases (text child and element child alike) — exactly what the
+          // old `<mark>` did, which is why the mark carrier never had this
+          // failure mode. The atom's own DOM is then left completely untouched.
+          nodeName: "span",
           class: TRANSIENT_HIGHLIGHT_CLASS,
           style: `background-color:${t.color}`,
         },
