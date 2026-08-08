@@ -26,7 +26,8 @@
  *    true if any text node contains visible (non-whitespace) text.
  *  - `cardHasContent(kind, card)` reads the kind's declared `content` descriptor
  *    and checks every counted field (the rich `bodyField` walked for visible
- *    text; the `textFields` matched as non-empty string or non-empty array).
+ *    text; the `textFields` matched as non-empty string or non-empty array) —
+ *    plus, on a human-authored record, the `authorConditionalFields` (task 241).
  */
 
 import { CARD_REGISTRY } from "./card-registry";
@@ -72,6 +73,16 @@ function textFieldHasContent(card: Record<string, unknown>, field: string): bool
   return false;
 }
 
+/** True iff the record reads as AI-authored. Mirrors the sidecar migrations'
+ *  own normalization (`author === "ai" ? "ai" : "human"`, `useCutter` /
+ *  `useRevisions`): anything that isn't the literal `"ai"` — including an
+ *  ABSENT `author` on a partial record — is human. That default also fails
+ *  SAFE: the author-conditional fields then count, so the worst case is a
+ *  confirm the user didn't need, never a silent delete of typed text. */
+function isAiAuthored(rec: Record<string, unknown>): boolean {
+  return rec.author === "ai";
+}
+
 /**
  * True iff the card has user-authored content worth warning about before
  * destruction. The single registry-driven walker over the kind's declared
@@ -80,10 +91,17 @@ function textFieldHasContent(card: Record<string, unknown>, field: string): bool
  * correct behavior for those kinds.
  *
  * Accepts any `CardKind`. The card record is matched against the descriptor's
- * field names: `bodyField` (a JSONContent body, walked for visible text) +
- * `textFields` (plain string or array). `aiPrefilledFields` are NOT read — they
- * are AI-prefilled (the suggestion family's `original_text`/`suggested_text`)
- * and don't count as user content.
+ * field names, on two axes:
+ *
+ *  - UNCONDITIONAL — `bodyField` (a JSONContent body, walked for visible text)
+ *    + `textFields` (plain string or array).
+ *  - AUTHOR-CONDITIONAL — `authorConditionalFields` count only when the record
+ *    is NOT AI-authored (task 241). The suggestion family's `suggested_text` is
+ *    AI prefill on an AI card (which never renders an editable field grid) and
+ *    the human author's typed, apply-load-bearing replacement on a human card.
+ *
+ * `aiPrefilledFields` are NEVER read — they're the fields no author types
+ * (`original_text`, a read-only capture of the targeted passage).
  */
 export function cardHasContent(kind: CardKind, card: unknown): boolean {
   if (!card || typeof card !== "object") return false;
@@ -93,6 +111,11 @@ export function cardHasContent(kind: CardKind, card: unknown): boolean {
   if (model.bodyField && hasJsonContent(rec[model.bodyField])) return true;
   for (const f of model.textFields) {
     if (textFieldHasContent(rec, f)) return true;
+  }
+  if (!isAiAuthored(rec)) {
+    for (const f of model.authorConditionalFields) {
+      if (textFieldHasContent(rec, f)) return true;
+    }
   }
   return false;
 }

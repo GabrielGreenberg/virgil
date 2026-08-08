@@ -119,10 +119,12 @@ export type MorphDropField = "title" | "byline" | "aiRequest" | "body" | "keys" 
  *  named field must exist on the kind's record type (pinned by
  *  `assertContentCoverage`).
  *
- *  All three field lists are matched against the card record by name. A field
+ *  All four field lists are matched against the card record by name. A field
  *  holding a Tiptap JSONContent doc (`bodyField`) is walked for visible text;
- *  the `textFields` / `extraUserFields` are matched as plain-string-or-array
- *  (non-empty array of keys, or trimmed-non-empty string). */
+ *  the `textFields` / `authorConditionalFields` are matched as
+ *  plain-string-or-array (non-empty array of keys, or trimmed-non-empty
+ *  string). No field may appear in more than one list — that's a contradiction
+ *  the walker can't resolve, and `assertContentCoverage` rejects it. */
 export interface CardContentModel {
   /** Rich-body JSONContent field name on the record (e.g. `"content"`), or
    *  `null` for kinds whose body lives elsewhere (footnote body rides
@@ -132,11 +134,31 @@ export interface CardContentModel {
    *  todo/report-request/report; `"title"` on report/footnote/note). A trimmed
    *  non-empty string, or a non-empty array (e.g. citation `keys`). */
   textFields: readonly string[];
-  /** AI-prefilled fields that DON'T count as user content (the suggestion
-   *  family's `original_text` / `suggested_text` arrive filled by the AI). Named
-   *  here for documentation + the coverage assertion; the walker never reads
-   *  them — it only consults `bodyField` + `textFields`. */
+  /** AI-prefilled fields that DON'T count as user content — the suggestion
+   *  family's `original_text`, which is a read-only capture of the targeted
+   *  passage on EVERY surface (AI or human authorship) and is recoverable from
+   *  the document itself. Named here for documentation + the coverage
+   *  assertion; the walker never reads them.
+   *
+   *  This list is for fields NO author can type into. A field whose
+   *  user-content-ness depends on WHO authored the record belongs in
+   *  {@link authorConditionalFields} — see the note there (task 241). */
   aiPrefilledFields: readonly string[];
+  /** Fields that count as user content ONLY on a **human-authored** record —
+   *  i.e. when `card.author !== "ai"` (an absent `author` reads as human,
+   *  matching the sidecar migrations' own default, and failing SAFE toward
+   *  confirming).
+   *
+   *  Why the model needs this axis (task 241): a static per-kind descriptor
+   *  can't express a field whose user-content-ness depends on the record. The
+   *  suggestion family's `suggested_text` is AI *prefill* on an AI card (which
+   *  never renders the editable field grid — see `PendingAiRecordBody`) but the
+   *  human author's typed, apply-load-bearing replacement on a human card
+   *  (`replacement = user_text or suggested_text`, `apply_response.py`). Listed
+   *  as `aiPrefilledFields` it read as EMPTY for a human draft whose only
+   *  content was a typed replacement — hard-deleted with no confirm, and
+   *  asymmetric with the apply path that treats it as real content. */
+  authorConditionalFields: readonly string[];
 }
 
 /** Per-`CardKind` SSOT. Mirrors `TextObjectMeta`. */
@@ -203,7 +225,8 @@ export interface CardMeta {
    *  actually has.
    *
    *  The walker (`cardHasContent`) treats the card as "has content" iff ANY
-   *  declared body/text/extra field is non-empty (visible text). `null` for the
+   *  declared body/text field is non-empty (visible text) — plus, on a
+   *  non-AI-authored record, any `authorConditionalFields` entry. `null` for the
    *  system kinds with no user content (`bib`/`error`) and for `highlight`
    *  (a color + range, no user-typed body) — a `null` descriptor ALWAYS reports
    *  "no content" (delete without confirm), which is the correct behavior for
