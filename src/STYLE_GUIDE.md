@@ -1442,6 +1442,27 @@ tracks any width purely by layout. Rules that generalize:
   layout still owning the size.
 - **Inactive tabs are flat** (BackgroundTab / InlineTabLabel) — no
   silhouette, by design.
+- **A page-edge row has ONE painter, and the layer that overlaps it is
+  not it.** A strip that pulls itself over a body's 1px top border (the
+  negative-margin seam above) does so only so its ACTIVE-TAB CHILD can
+  cover that row under the tab's own footprint — which makes the strip a
+  clip/positioning box, never a paint box. CSS backgrounds fill the
+  **padding** box, so an opaque field on such a layer erases the border
+  across its whole width: under every inactive tab, in the inter-tab
+  gaps, along the tail, and through the swoop-foot valleys that
+  `bridgeSpan: "body"` deliberately leaves open *because* the border is
+  meant to show there. Paint the field ONCE, on the container that owns
+  it, and let descendants paint over it; if a layer in the seam genuinely
+  needs its own field, clip it above the row (`background-clip`, a
+  gradient stopping 1px short) rather than covering it. Do **not** answer
+  a missing baseline with a second painter (a strip-wide
+  `inset 0 -1px 0` shadow): two painters on one device row coincide only
+  at integer layout positions, which is the sub-pixel double-line class.
+  Guarded in `library/components/panel-tabs/__tests__/` — both a
+  block-scoped source census over seam-overlapping style blocks and a
+  RENDERED assertion, because the older contract pinned the border
+  *string* and stayed green for a year in which that border painted no
+  pixels (task 2026-08-09-324).
 
 ## Library tab — double-tab pattern
 

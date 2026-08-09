@@ -214,9 +214,20 @@ export default function MyPapersPod({
               right: 6,
               marginTop: 2,
               background: "var(--pod-editor, var(--surface))",
-              // Library surface: edges ride --library-edge, never the warm
-              // top-bar token (task 048; guard in tab-chrome-contracts.test.ts).
-              border: "var(--pod-border, 1px solid var(--library-edge))",
+              // A FLOATING MENU, not a library page edge — so it wears the
+              // app-wide menu border like every other dropdown
+              // (TabPlusMenu / HeadingTypeMenu / DragHandleMenu …). Task 048's
+              // --library-edge re-toning governs page-EDGE chrome (tab strokes,
+              // the body frame, the NavPod frame): surfaces that must read as
+              // one continuous manila page. This popup sits ABOVE the surface
+              // and has no page edge to harmonize with.
+              // The old value was `var(--pod-border, 1px solid
+              // var(--library-edge))` — a fallback that could never fire,
+              // since --pod-border is defined in globals.css :root, so the
+              // stated library-edge intent was dead code and this menu has
+              // always rendered in --border-light (task 324: a comment that
+              // asserts a render that cannot happen).
+              border: "var(--pod-border)",
               boxShadow: "var(--pod-shadow)",
               borderRadius: "var(--pod-radius, 8px)",
               padding: "6px 0",

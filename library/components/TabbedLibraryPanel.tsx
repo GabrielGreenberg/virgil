@@ -449,7 +449,12 @@ export default function TabbedLibraryPanel({
           // backdrop, and the page outline (border + rounded corners) lives on
           // the BODY below, so the active tab integrates into the page edge and
           // the outline continues under the inactive tabs. (Was a unifying
-          // border/radius/overflow wrapper.)
+          // border/radius/overflow wrapper.) That last clause only became TRUE
+          // in task 324 — the strip's own opaque --library-bg had been painting
+          // over the body's border row across the whole panel width; see the
+          // seam-row comment in PanelTabStrip.tsx. Transparent here because the
+          // FIELD is painted once, by the panel container above (padding 6 +
+          // --library-bg), and every descendant paints over it.
           background: "transparent",
         }}
       >
@@ -482,10 +487,21 @@ export default function TabbedLibraryPanel({
         // horizontally by STRIP_SIDE_PAD (the same pad the tab strip uses), so
         // its rounded TOP corners begin exactly under the outermost tabs'
         // swoop feet — the task-047 "no wing" invariant, now a pure layout
-        // relationship. The active tab's open-bottomed stroke + bottom fill
-        // row merge into this border's top edge (the strip's z-index paints
-        // the tab's seam row over the border under the active tab). Paper-kind
-        // tabs fill the warm Virgil canvas; other kinds use --surface.
+        // relationship.
+        //
+        // THIS BORDER IS THE SOLE PAINTER OF THE BASELINE ROW (task 324), and
+        // the only thing allowed to cover any of it is the ACTIVE tab's own
+        // footprint: the tab's open-bottomed stroke + its 1px bottom fill row
+        // (the caps' bridge rects + the middle div's fill) paint above this
+        // border because the strip is z-index 20 while the body is z-auto — so
+        // the tab merges into the page while the border continues, uncovered,
+        // beside it. The strip itself paints NOTHING: an opaque background
+        // there covers this row across the FULL panel width (backgrounds fill
+        // the PADDING box, and the strip's -1px bottom margin puts this row
+        // inside its 1px bottom padding), which is what made the page outline
+        // read as "spotty" from task 048 until 324. Any future strip-level
+        // paint must stop above the seam row.
+        // Paper-kind tabs fill the warm Virgil canvas; other kinds use --surface.
         <div
           style={{
             position: "relative",
