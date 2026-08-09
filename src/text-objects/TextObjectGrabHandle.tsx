@@ -854,12 +854,12 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     // pointer is in the margin hover zone, and an OS window drag delivers no
     // pointer events to the page — so during that gesture there is nothing on
     // screen to look detached. The scroll path stays live.
-    const resizePark = parkDuringLayoutGesture(
+    const gesturePark = parkDuringLayoutGesture(
       scheduleRaf,
       LAYOUT_SITE_GRAB_HANDLE,
     );
     const onResize = () => {
-      resizePark.fire();
+      gesturePark.fire();
     };
     const onMouseMove = (e: MouseEvent) => {
       // Always-on tracking: hover is the primary discovery mechanism, so
@@ -873,12 +873,19 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       if (!cache.containsHoverZone(e.clientX, e.clientY)) {
         if (mousePosRef.current !== null) {
           mousePosRef.current = null;
-          scheduleRaf();
+          gesturePark.fire();
         }
         return;
       }
       mousePosRef.current = { clientX: e.clientX, clientY: e.clientY };
-      scheduleRaf();
+      // Through the park (perf Wave 2): the resolver behind this RAF is the
+      // O(doc) `[data-uuid]` rect sweep, and a CONTENT drag keeps the
+      // pointer moving for its whole duration — mid-gesture the handle sits
+      // invisible under the drag ghost, so re-resolving per frame is pure
+      // waste. Parked moves stash latest-wins and settle in ONE resolve at
+      // the gesture's end edge; outside a gesture `fire()` runs inline and
+      // hover behaves exactly as before.
+      gesturePark.fire();
     };
     const onDocSelectionChange = () => {
       const editor = editorRef.current;
@@ -945,7 +952,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       prevEditor = null;
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
-      resizePark.dispose();
+      gesturePark.dispose();
       if (installSelectionChange) {
         document.removeEventListener("selectionchange", onDocSelectionChange);
       }

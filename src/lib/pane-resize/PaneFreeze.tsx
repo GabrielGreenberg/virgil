@@ -25,7 +25,22 @@
 // window listeners. SSR-safe: renders plain divs; all DOM work is effect-side.
 
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
-import { isLayoutGestureActive, onLayoutGestureChange } from "./layout-gesture-bus";
+import {
+  hasActiveLayoutGesture,
+  onLayoutGestureSetChange,
+  type LayoutGestureKind,
+} from "./layout-gesture-bus";
+
+// The freeze reacts to gestures that RESIZE the pane — a divider drag or an
+// OS window resize. A CONTENT drag (a drop-mode session) must never freeze:
+// the frozen pane can be the very editor hosting the drag (the Library
+// Reader's .tex branch mounts an EditorPane inside a PaneFreeze), and
+// absolutely-positioning its content mid-gesture shifts the geometry the
+// drop hit-test reads. Filtered via the set-aware predicate, NOT the edge
+// listener's `info.kind` — under overlap the main channel's begin and end
+// can carry DIFFERENT kinds, so an info filter would skip the unfreeze and
+// leave the pane locked.
+const FREEZE_KINDS: readonly LayoutGestureKind[] = ["pane", "window"];
 
 export interface PaneFreezeProps {
   /**
@@ -79,10 +94,11 @@ const INNER_STYLE: CSSProperties = {
 
 /**
  * Wrap a pane's content so it is width-frozen for the duration of any
- * pane-resize gesture. Keyed on the LayoutGestureBus edges ONLY — a y-axis or
- * unrelated-pane gesture still toggles the lock, but locking a box to the
- * width it already has (and that the gesture never changes) is a visual
- * no-op, and the two edge toggles are O(1); axis-filtering here would be
+ * RESIZE-family layout gesture (pane divider or OS window — never a content
+ * drag; see FREEZE_KINDS). Keyed on the LayoutGestureBus set channel — a
+ * y-axis or unrelated-pane gesture still toggles the lock, but locking a box
+ * to the width it already has (and that the gesture never changes) is a
+ * visual no-op, and the edge toggles are O(1); axis-filtering here would be
  * consumer knowledge the wrapper deliberately doesn't have.
  */
 export function PaneFreeze({ anchor, style, children }: PaneFreezeProps) {
@@ -93,7 +109,13 @@ export function PaneFreeze({ anchor, style, children }: PaneFreezeProps) {
   anchorRef.current = anchor;
 
   useEffect(() => {
+    // Idempotence latch: the set-change channel fires per MEMBERSHIP change,
+    // so a second resize-family gesture joining mid-freeze re-invokes
+    // `reconcile` — without the latch that would re-read the (already
+    // frozen, hence meaningless) width mid-gesture.
+    let frozen = false;
     const freeze = () => {
+      if (frozen) return;
       const inner = innerRef.current;
       if (!inner) return;
       // ONE layout read, on the begin edge only. The bus begin fires from the
@@ -109,8 +131,10 @@ export function PaneFreeze({ anchor, style, children }: PaneFreezeProps) {
       s.bottom = "0";
       s[anchorRef.current] = "0";
       s.width = `${w}px`;
+      frozen = true;
     };
     const unfreeze = () => {
+      frozen = false;
       const inner = innerRef.current;
       if (!inner) return;
       const s = inner.style;
@@ -121,18 +145,24 @@ export function PaneFreeze({ anchor, style, children }: PaneFreezeProps) {
       s.right = "";
       s.width = "";
     };
+    // Recompute the desired state from the active SET on every membership
+    // change — idempotent under any interleaving of pane / window / content
+    // gestures, including the overlap the edge channel can't express (a
+    // resize gesture ending while a content drag is still live must unfreeze
+    // NOW, not when the content drag ends).
+    const reconcile = () => {
+      if (hasActiveLayoutGesture(FREEZE_KINDS)) freeze();
+      else unfreeze();
+    };
     // A gesture can already be in flight when this mounts (keep-alive
     // remount / StrictMode effect replay mid-drag) — adopt the frozen state.
-    if (isLayoutGestureActive()) freeze();
-    const off = onLayoutGestureChange((active) => {
-      if (active) freeze();
-      else unfreeze();
-    });
+    reconcile();
+    const off = onLayoutGestureSetChange(reconcile);
     return () => {
       off();
       // Never leave a lock behind the subscription that would release it
-      // (StrictMode replays cleanup while mounted; the re-run's isLayoutGestureActive
-      // check re-freezes if a drag is still live).
+      // (StrictMode replays cleanup while mounted; the re-run's reconcile
+      // re-freezes if a resize gesture is still live).
       unfreeze();
     };
   }, []);

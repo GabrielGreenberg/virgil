@@ -127,3 +127,94 @@ describe("layout-gesture-bus", () => {
     expect(measures).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Perf Wave 2 — the content publisher, the set channel, and kind filtering.
+// ---------------------------------------------------------------------------
+
+import {
+  beginContentGesture,
+  endContentGesture,
+  hasActiveLayoutGesture,
+  onLayoutGestureSetChange,
+} from "../layout-gesture-bus";
+
+describe("content publisher (drop-mode sessions)", () => {
+  it("begin/end publish ordinary bus edges with kind 'content'", () => {
+    const calls: Array<[boolean, LayoutGestureInfo]> = [];
+    onLayoutGestureChange((active, info) => calls.push([active, info]));
+    beginContentGesture("float:card:note:n1");
+    expect(isLayoutGestureActive()).toBe(true);
+    expect(hasActiveLayoutGesture(["content"])).toBe(true);
+    endContentGesture();
+    expect(isLayoutGestureActive()).toBe(false);
+    expect(calls.map(([a, i]) => [a, i.kind])).toEqual([
+      [true, "content"],
+      [false, "content"],
+    ]);
+  });
+
+  it("is single-flight: a second begin while one is live is swallowed, and one end clears it", () => {
+    beginContentGesture("a");
+    beginContentGesture("b"); // programming error upstream — must not double-enter
+    endContentGesture();
+    expect(isLayoutGestureActive()).toBe(false);
+  });
+
+  it("end without a live content gesture is a no-op (idempotent cancel funnel)", () => {
+    const calls: boolean[] = [];
+    onLayoutGestureChange((active) => calls.push(active));
+    endContentGesture();
+    expect(calls).toEqual([]);
+    // The double-end shape the controller actually produces: commit entry
+    // ends it, then endDropSession ends it again.
+    beginContentGesture("a");
+    endContentGesture();
+    endContentGesture();
+    expect(calls).toEqual([true, false]);
+  });
+});
+
+describe("hasActiveLayoutGesture — kind-filtered predicate", () => {
+  it("answers per kind family, not per the whole set", () => {
+    beginContentGesture("a");
+    expect(hasActiveLayoutGesture(["pane", "window"])).toBe(false);
+    expect(hasActiveLayoutGesture(["content"])).toBe(true);
+    beginLayoutGesture(INFO); // pane joins
+    expect(hasActiveLayoutGesture(["pane", "window"])).toBe(true);
+    endLayoutGesture(INFO);
+    // Content still live: resize-family predicate must flip back NOW.
+    expect(hasActiveLayoutGesture(["pane", "window"])).toBe(false);
+    expect(isLayoutGestureActive()).toBe(true);
+    endContentGesture();
+  });
+});
+
+describe("onLayoutGestureSetChange — every gesture's own edges, even under overlap", () => {
+  it("delivers begin AND end per gesture where the main channel collapses to outermost", () => {
+    const setCalls: Array<[boolean, string]> = [];
+    const mainCalls: Array<[boolean, string]> = [];
+    onLayoutGestureSetChange((began, info) => setCalls.push([began, `${info.kind}:${info.id}`]));
+    onLayoutGestureChange((active, info) => mainCalls.push([active, `${info.kind}:${info.id}`]));
+
+    // window begins → content begins → window ends → content ends.
+    beginLayoutGesture({ kind: "window", id: "window", axis: "both" });
+    beginContentGesture("drag-1");
+    endLayoutGesture({ kind: "window", id: "window", axis: "both" });
+    endContentGesture();
+
+    // Main channel: only the outermost edges, carrying DIFFERENT gestures —
+    // exactly why an info.kind filter there is unsound.
+    expect(mainCalls).toEqual([
+      [true, "window:window"],
+      [false, "content:drag-1"],
+    ]);
+    // Set channel: all four membership changes, each with its own info.
+    expect(setCalls).toEqual([
+      [true, "window:window"],
+      [true, "content:drag-1"],
+      [false, "window:window"],
+      [false, "content:drag-1"],
+    ]);
+  });
+});

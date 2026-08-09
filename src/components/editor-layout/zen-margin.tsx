@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef } from "react";
-import { usePaneResizeHandle, onLayoutGestureChange } from "@/lib/pane-resize";
+import { usePaneResizeHandle, onLayoutGestureSetChange } from "@/lib/pane-resize";
 import type { Side } from "@/hooks/useViewPrefs";
 
 /**
@@ -121,9 +121,14 @@ export function ZenMargin({
   });
   useEffect(
     () =>
-      onLayoutGestureChange((active, info) => {
+      // The SET channel, not the outermost-edge channel: an id filter on the
+      // latter strands `isResizing` when gestures overlap (this gesture's end
+      // is swallowed while another is live and its edge arrives carrying a
+      // different info). Here every gesture's own begin AND end always
+      // arrive, so the id filter is sound.
+      onLayoutGestureSetChange((began, info) => {
         if (info.id !== gestureId) return;
-        if (active) {
+        if (began) {
           onSyncBeforeDragRef.current?.();
           onResizingChangeRef.current?.(true);
         } else {

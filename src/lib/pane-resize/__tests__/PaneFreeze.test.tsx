@@ -236,3 +236,55 @@ describe("PaneFreeze", () => {
     expect(el.style.height).toBe("100%");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Perf Wave 2 — the freeze is RESIZE-family only, reconciled from the set.
+// ---------------------------------------------------------------------------
+
+import { beginContentGesture, endContentGesture } from "../layout-gesture-bus";
+
+describe("PaneFreeze × content gestures", () => {
+  it("a content drag never freezes (the pane can be the editor HOSTING the drag)", () => {
+    const { container } = render(
+      <PaneFreeze anchor="right">
+        <div>content</div>
+      </PaneFreeze>,
+    );
+    beginContentGesture("float:card:note:n1");
+    expect(inner(container).style.position).toBe("");
+    expect(inner(container).style.width).toBe("");
+    endContentGesture();
+  });
+
+  it("a resize gesture ending while a content drag is live unfreezes THEN — not at content end", () => {
+    // The overlap the outermost-edge channel cannot express: an info.kind
+    // filter there would strand the lock until the content drag ends (or
+    // forever, if it filtered the end edge away entirely).
+    const { container } = render(
+      <PaneFreeze anchor="right">
+        <div>content</div>
+      </PaneFreeze>,
+    );
+    beginLayoutGesture({ kind: "window", id: "window", axis: "both" });
+    expect(inner(container).style.position).toBe("absolute");
+    beginContentGesture("drag-1");
+    // Still frozen — the resize gesture is live.
+    expect(inner(container).style.position).toBe("absolute");
+    endLayoutGesture({ kind: "window", id: "window", axis: "both" });
+    // Unfrozen NOW, while the content gesture is still live.
+    expect(inner(container).style.position).toBe("");
+    expect(inner(container).style.width).toBe("");
+    endContentGesture();
+  });
+
+  it("adoption on mount ignores a live content gesture", () => {
+    beginContentGesture("drag-1");
+    const { container } = render(
+      <PaneFreeze anchor="left">
+        <div>content</div>
+      </PaneFreeze>,
+    );
+    expect(inner(container).style.position).toBe("");
+    endContentGesture();
+  });
+});

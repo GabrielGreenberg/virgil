@@ -12,10 +12,13 @@ export {
   type PaneResizeHandleProps,
 } from "./use-pane-resize-handle";
 export {
+  hasActiveLayoutGesture,
   isLayoutGestureActive,
   onLayoutGestureChange,
+  onLayoutGestureSetChange,
   type LayoutGestureInfo,
   type LayoutGestureKind,
+  type LayoutGestureSetListener,
 } from "./layout-gesture-bus";
 export { PaneFreeze, type PaneFreezeProps } from "./PaneFreeze";
 export {

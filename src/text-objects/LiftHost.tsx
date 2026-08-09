@@ -71,6 +71,7 @@ import {
   TEXT_FLOAT_BODY_PAD_Y,
   TEXT_FLOAT_BORDER,
 } from "@/floats/float-policy";
+import { isMissedRelease } from "@/lib/pane-resize/pointer-invariants";
 import { LiftedTextOverlay } from "./LiftedTextOverlay";
 import type { TextObjectKind, TextObjectRef } from "./types";
 
@@ -478,6 +479,17 @@ export function LiftHost({ editorRef, children }: Props) {
       const onMove = (mv: MouseEvent) => {
         // Triggered + lifted-overlay path → drive overlay cursor + mode.
         if (!liveOverlay) return;
+        // Missed-release failsafe (the pane-engine invariant, task 185): a
+        // move with the primary button no longer held means the mouseup was
+        // swallowed (iframe, context menu, outside the window). Abort as a
+        // cancel WITHOUT incorporating this event's coordinate — `cleanup()`
+        // tears down the overlay, strips a transient anchor, and cancels the
+        // drop session (which ends the bus's content gesture, un-parking
+        // every geometry follower).
+        if (isMissedRelease(mv)) {
+          cleanup();
+          return;
+        }
         const inContent = cacheRef.current.containsContentZone(
           mv.clientX,
           mv.clientY,
