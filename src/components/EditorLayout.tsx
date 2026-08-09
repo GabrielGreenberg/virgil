@@ -6,6 +6,10 @@ import VirgilEditor, { EditorHandle } from "./Editor";
 import { LoadingScreen } from "./LoadingScreen";
 import FramedViewerSurface from "./FramedViewerSurface";
 import { setFocusBandMeta } from "@/lib/focus-view";
+import {
+  computeSectionPathAt,
+  geomBreadcrumbEnabled,
+} from "@/lib/editor-geometry/section-path";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
@@ -1828,6 +1832,34 @@ export default function EditorLayout() {
       // Bailing leaves the last-good section path in place (the cursor/scroll
       // can't change while hidden) and avoids caching a 0-coord breadcrumb.
       if ((scrollEl as HTMLElement).offsetHeight === 0) return;
+      // Wave-2 C2: ONE posAtCoords at the reference line + binary search over
+      // the structure snapshot, instead of the O(headings + titles)
+      // coordsAtPos walk below. Null (no bus / hit-test miss) falls through
+      // to the legacy walk; kill-switch `virgil:geom-breadcrumb = "off"`.
+      if (geomBreadcrumbEnabled()) {
+        const fsFast = focusStateRef.current;
+        const fast = computeSectionPathAt(
+          editorInstance,
+          view,
+          scrollEl,
+          fsFast.active && fsFast.locked
+            ? { start: fsFast.startBlockIndex, end: fsFast.endBlockIndex }
+            : null,
+        );
+        if (fast) {
+          setCurrentSectionPath((prev) => {
+            const next = fast.path;
+            if (prev.length === next.length && prev.every((v, i) => v.text === next[i].text && v.index === next[i].index && v.sectionNumber === next[i].sectionNumber)) {
+              return prev;
+            }
+            return next;
+          });
+          setCurrentParTitleIndex((prev) =>
+            prev === fast.parTitleIndex ? prev : fast.parTitleIndex,
+          );
+          return;
+        }
+      }
       const doc = editorInstance.state.doc;
       // Collect all top-level headings with their text + level + DOM top
       const scrollRect = scrollEl.getBoundingClientRect();
@@ -1996,6 +2028,29 @@ export default function EditorLayout() {
     const compute = () => {
       // Keep-alive: skip when the mirror pane is hidden (see the main-pane note).
       if ((scrollEl as HTMLElement).offsetHeight === 0) return;
+      // Wave-2 C2 fast path — see the main pane above. Same derivation
+      // against the MIRROR view (shared state, own viewport).
+      if (editorInstance && geomBreadcrumbEnabled()) {
+        const fsFast = focusStateRef.current;
+        const fast = computeSectionPathAt(
+          editorInstance,
+          mirrorView,
+          scrollEl,
+          fsFast.active && fsFast.locked
+            ? { start: fsFast.startBlockIndex, end: fsFast.endBlockIndex }
+            : null,
+        );
+        if (fast) {
+          setMirrorSectionPath((prev) => {
+            const next = fast.path;
+            return prev.length === next.length && prev.every((v, i) => v.text === next[i].text && v.index === next[i].index && v.sectionNumber === next[i].sectionNumber) ? prev : next;
+          });
+          setMirrorParTitleIndex((prev) =>
+            prev === fast.parTitleIndex ? prev : fast.parTitleIndex,
+          );
+          return;
+        }
+      }
       const doc = mirrorView.state.doc;
       const scrollRect = scrollEl.getBoundingClientRect();
       // Same shared section-active line + bottom clamp as the canonical pane —
