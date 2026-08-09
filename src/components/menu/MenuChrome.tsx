@@ -5,11 +5,17 @@
  * menu chrome, stated once.
  *
  * Both were literal class strings copied across every menu that groups its rows
- * (`my-1 border-t border-edge-subtle` ×10, the uppercase section caption ×7 at
- * the time of extraction — MenuBar's ViewMenu, the omni filter menu, the
- * Bibliography and Citations kebabs, CardViewModeMenu). They carry no state and
- * no behavior, which is exactly why they drifted unnoticed: nothing failed when
- * one copy's padding differed.
+ * — `my-1 border-t border-edge-subtle` ×10 and the canonical uppercase caption
+ * ×5 (MenuBar's ViewMenu, the omni filter menu, the Bibliography and Citations
+ * kebabs, CardViewModeMenu), all folded here. They carry no state and no
+ * behavior, which is exactly why they drifted unnoticed: nothing failed when one
+ * copy's padding differed.
+ *
+ * Two near-identical captions are deliberately NOT swapped, and they are the
+ * evidence for the drift: `FontPicker`'s (`px-3 pt-2 pb-1`) and the Citations
+ * bib-key caption (a bare `<span>`, no padding at all) both sit outside a menu,
+ * and adopting menu-row padding there would move real pixels. Fold them in when
+ * those surfaces themselves become menus.
  *
  * `aria-hidden` on the separator and `role="presentation"` on the caption keep
  * them out of the menu's item semantics — a screen reader walks `menuitem`s,

@@ -43,17 +43,17 @@ import { useExternalChangesOrNull } from "@/hooks/useExternalChanges";
 import { useDiskWatcherOrNull } from "@/components/editor-layout/contexts/disk-watcher";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { MenuProvider } from "./menu/MenuProvider";
+import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
-import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import type {
   ExternalChangeState,
   FileChange,
 } from "@/lib/disk-watcher";
 
-const MENU_PLACEMENTS: FloatingMenuPlacement[] = [
-  { side: "below", align: "end" },
-  { side: "above", align: "end" },
-];
+// Drop below the trigger, flip above near the viewport bottom — the ONE
+// button-anchored placement vocabulary, shared with `<AnchoredMenu>` so a
+// fourth copy of this table cannot drift from the other three.
+const MENU_PLACEMENTS = ANCHORED_MENU_PLACEMENTS.end;
 
 /** RefreshCw — a 16px stroke-only circular-arrows glyph (the "reload" affordance). */
 function ReloadIcon() {
