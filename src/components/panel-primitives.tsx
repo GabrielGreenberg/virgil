@@ -28,9 +28,10 @@ import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
-import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable, bodySchemaForCardKind } from "@/cards/predicates";
+import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable, isExcerptCardKind, bodySchemaForCardKind } from "@/cards/predicates";
 import type { CardBodySchemaScope } from "@/lib/tiptap-extensions";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
+import { useCardRestoreActions } from "@/panels/_shared/card-restore-actions";
 import { DropChevrons } from "./icons/DropChevrons";
 import { JumpChevron } from "./icons/JumpChevron";
 import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
@@ -1193,6 +1194,19 @@ export function EditableCard({
   const cardArchived = archivable && cardArchive.isArchived(id);
   const doArchive = archivable ? () => cardArchive.archive(kind, id) : undefined;
 
+  // Restore-to-document — the un-archive verb, self-wired from its own actions
+  // context on the SAME terms as the archive affordance above (task 106). Shows
+  // iff the kind's body is a document EXCERPT (registry-derived, so a future
+  // excerpt kind inherits it) AND a real provider is mounted. Threading this as
+  // a prop is precisely what left the feature dead for a year: declared on the
+  // panel, drilled through three layers, never destructured.
+  const cardRestore = useCardRestoreActions();
+  // Not on an already-SET-ASIDE card: a successful restore is what put it in
+  // that state, so the control there could only refuse. (The user un-sets-aside
+  // first if they want to hand the excerpt back a second time.)
+  const restorable = isExcerptCardKind(kind) && cardRestore.enabled && !cardArchived;
+  const doRestore = restorable ? () => cardRestore.restore(kind, id) : undefined;
+
   /** Check whether the card has any visible USER content. Routes through the
    *  kind-aware `cardHasContent` (the SAME predicate `deleteMarginItem` uses),
    *  passing the card's content body + title — so the confirm sees the title a
@@ -1271,6 +1285,11 @@ export function EditableCard({
           draggable={false}
           onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         >
+          {/* No `MenuRestore` twin here, deliberately: the only excerpt kind
+              (`archive`) renders with `inlineDelete`, which suppresses this
+              menu entirely — a menu item it can never reach would be exactly
+              the dead affordance task 106 exists to kill. Add one WITH a
+              surface that renders it, if a future excerpt kind needs it. */}
           {menuContent ?? ((onDelete || doArchive) ? (
             <ItemMenu>
               {doArchive && (
@@ -1307,6 +1326,7 @@ export function EditableCard({
       onHeaderActivate={onHeaderActivate}
       onTrashClick={inlineDelete && onDelete ? tryDelete : undefined}
       onArchiveClick={inlineDelete ? doArchive : undefined}
+      onRestoreClick={inlineDelete ? doRestore : undefined}
       isArchived={cardArchived}
       extraCardClass={extraCardClass ? `${cursorClass} ${extraCardClass}` : cursorClass}
       title={title}
@@ -1955,6 +1975,39 @@ export function CardArchiveButton({
 }
 
 /**
+ * Restore-to-document affordance — the un-archive verb, and the third member of
+ * the bottom-right overlay cluster (restore · archive · trash, each 22px apart,
+ * hover-revealed). Renders only on an EXCERPT-bodied card (`isExcerptCardKind`),
+ * whose body holds a verbatim slice of the document rather than authored prose:
+ * pressing it hands that slice back to the prose at the caret and retires the
+ * card.
+ *
+ * Deliberately NOT the box-and-arrow glyph `CardArchiveButton` shows in its
+ * unarchived state — the two would sit 22px apart meaning different things. A
+ * return arrow reads as "put it back where it came from", which is the verb.
+ * Neutral tone: nothing is destroyed (the content moves), so this is not a
+ * danger action. Requires the outer card wrapper to be `position: relative`. */
+export function CardRestoreButton({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      className="iconbtn-sm absolute bottom-1.5 right-[3.125rem] opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
+      aria-label="Restore to document"
+      data-hint="Restore to document"
+      data-hint-pos="above"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="9 14 4 9 9 4" />
+        <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+      </svg>
+    </button>
+  );
+}
+
+/**
  * Universal card wrapper. One source of truth for:
  *   - outer card div (`group relative`, themed border + selection state)
  *   - popped-out state (removes rounding/border, fills floating window)
@@ -1977,6 +2030,10 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  first (atom-bearing kinds). Gated identically to `onTrashClick`
    *  (hover-revealed, suppressed while collapsed). */
   onArchiveClick?: () => void;
+  /** When provided, renders a bottom-right RESTORE-to-document button left of
+   *  the archive button — the un-archive verb for excerpt-bodied cards. Gated
+   *  identically to `onTrashClick`. */
+  onRestoreClick?: () => void;
   /** Whether this card is currently archived — flips the archive button to its
    *  "Unarchive" affordance. */
   isArchived?: boolean;
@@ -2079,6 +2136,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     onTogglePopout,
     onTrashClick,
     onArchiveClick,
+    onRestoreClick,
     isArchived,
     extraCardClass,
     className,
@@ -2458,6 +2516,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
             </div>
           )}
         </>
+      )}
+      {onRestoreClick && !isCollapsed && (
+        <CardRestoreButton onClick={onRestoreClick} />
       )}
       {onArchiveClick && !isCollapsed && (
         <CardArchiveButton onClick={onArchiveClick} isArchived={isArchived} />

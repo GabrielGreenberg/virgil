@@ -180,11 +180,15 @@ import { makeUnbridgingDelete } from "@/cards/lifecycle/unbridging-delete";
 import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footnote-delete";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
-import { isCardKind, panelForCardKind, isArchivable, archiveRemovesAtom } from "@/cards/predicates";
+import { isCardKind, panelForCardKind, isArchivable, archiveRemovesAtom, excerptCardKinds } from "@/cards/predicates";
 import {
   CardArchiveActionsProvider,
   type CardArchiveActionsApi,
 } from "@/panels/_shared/card-archive-actions";
+import {
+  CardRestoreActionsProvider,
+  type CardRestoreActionsApi,
+} from "@/panels/_shared/card-restore-actions";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
 import { buildInlineAtomCardApis } from "./drop-mode/atom-card-apis";
@@ -4467,24 +4471,48 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       return 0;
     });
   }, [archiveHook.snippets, rev.blocks, editor]);
-  // ArchiveHost callbacks — Reader chrome hides this panel, so insert
-  // / restore / delete / capture all go through the hook directly with
-  // no shell-side coordination. The full "archive selection from
-  // editor" flow (which spawns a floating card) lands when the
-  // toolbar/popout system moves into EditorPane.
-  const handleArchiveInsert = useCallback((id: string) => {
-    const found = archiveHook.snippets.find((s) => s.id === id);
-    if (found && innerRef.current) {
-      innerRef.current.restoreArchive(found.content);
-      archiveHook.deleteSnippet(id);
-      setSelectedArchiveId(null);
-    }
-  }, [archiveHook]);
+  // ArchiveHost callbacks — Reader chrome hides this panel, so restore /
+  // delete / capture all go through the hook directly with no shell-side
+  // coordination. The full "archive selection from editor" flow (which spawns a
+  // floating card) lands when the toolbar/popout system moves into EditorPane.
+  //
+  // ONE verb. There used to be two — `handleArchiveInsert` (find →
+  // restoreArchive → deleteSnippet) and `handleArchiveRestore` (restoreSnippet →
+  // restoreArchive) — doing the same thing in opposite orders, and both were
+  // unreachable: the `onInsert`/`onRestore` props they fed were drilled to
+  // `ArchivePanel` and never destructured, so there was no way to un-archive
+  // text at all. Un-archiving is a MOVE, and a move has one direction: the
+  // content lands in the document, then the card that was holding it retires.
+  // `restoreSnippet` takes the landing function so that order cannot be
+  // inverted by a caller (see its note in useArchive).
   const handleArchiveRestore = useCallback((id: string) => {
-    const snippet = archiveHook.restoreSnippet(id);
-    if (snippet) innerRef.current?.restoreArchive(snippet.content);
+    const restored = archiveHook.restoreSnippet(
+      id,
+      (content) => innerRef.current?.restoreArchive(content) ?? false,
+    );
+    if (!restored) {
+      // Nothing left the Archive — say so, and say what to do. The card body is
+      // the ONLY copy of this prose (it was deleted from the document when
+      // archived), so a silent no-op reads as "the button is broken" and a
+      // silent success would be data loss. The overwhelmingly common refusal is
+      // the caret sitting somewhere a block insert would tear (inside an
+      // example, a list, a heading, a gloss row) — hence the instruction rather
+      // than an apology.
+      dragHandleNotify({
+        message:
+          "Couldn't put this back. Click in an ordinary paragraph where the " +
+          "text should go, then try again — it can't be dropped inside a " +
+          "heading, list, or example. Nothing was removed from the Archive.",
+      });
+      return;
+    }
     setSelectedArchiveId(null);
-  }, [archiveHook]);
+    // Depends on the CALLBACK, not the whole hook object: `archiveHook`'s
+    // identity changes on every snippet edit, and this feeds a context value
+    // that every card consumes — the same stability argument
+    // `card-archive-actions` makes in its module doc. `restoreSnippet` is
+    // stable per doc (it reads the live snippets off `stateRef`).
+  }, [archiveHook.restoreSnippet, dragHandleNotify]);
   const handleArchiveDelete = useCallback((id: string) => {
     archiveHook.deleteSnippet(id);
     setSelectedArchiveId(null);
@@ -5490,6 +5518,42 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [archiveCard],
   );
 
+  /** Restore-to-document (task 106) — the affordance every EXCERPT-bodied card
+   *  carries. Membership is registry-derived (`isExcerptCardKind`), so the
+   *  handler map is keyed by kind and pinned to that set by the dev assertion
+   *  below: a future kind that declares `bodySchema: "excerpt"` and lands here
+   *  unwired is LOUD, rather than showing a button that does nothing. (The
+   *  inline-atom `atomCards` bag gets this as a compile error because its
+   *  membership is a type union; `bodySchema` is a runtime facet, so the same
+   *  obligation is asserted at boot instead.) */
+  const cardRestoreActions = useMemo<CardRestoreActionsApi>(() => {
+    const byKind: Partial<Record<CardKind, (id: string) => void>> = {
+      archive: handleArchiveRestore,
+    };
+    if (process.env.NODE_ENV !== "production") {
+      for (const k of excerptCardKinds()) {
+        if (!byKind[k]) {
+          console.error(
+            `[CardRestoreActions] "${k}" declares bodySchema:"excerpt" (its body ` +
+              `holds the only copy of a document slice) but no restore-to-document ` +
+              `handler is wired — the card would show a dead affordance.`,
+          );
+        }
+      }
+    }
+    return {
+      // Only where the host can actually take the content back. A restricted
+      // chrome (the Library Reader, `editableCardKinds: ["note"]`) mounts this
+      // same EditorPane and can surface an archive card through the omni
+      // cascade — with `enabled: true` it would render a control whose every
+      // press fails, since the read-only editor swallows the insert. Hiding it
+      // is the honest answer; the refusal dialog is for a caret in the wrong
+      // place, not for a host that was never going to accept anything.
+      enabled: !chrome.editableCardKinds,
+      restore: (kind, id) => byKind[kind]?.(id),
+    };
+  }, [handleArchiveRestore, chrome.editableCardKinds]);
+
   return (
     // This pane's per-doc store provider. Dominates the editor text, marginalia,
     // panels, and every floating/popout portal (React context flows through
@@ -5529,6 +5593,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         <CollabProvider value={collab}>
         <CardArchiveViewProvider value={cardArchiveViewApi}>
         <CardArchiveActionsProvider value={cardArchiveActions}>
+        <CardRestoreActionsProvider value={cardRestoreActions}>
         {archiveConfirm && (
           <ConfirmDialog
             open
@@ -5761,8 +5826,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     revisionsHook={revisionsHook}
                     sortedArchiveSnippets={sortedArchiveSnippets}
                     anchoredArchiveIds={anchoredArchiveIds}
-                    onArchiveInsert={handleArchiveInsert}
-                    onArchiveRestore={handleArchiveRestore}
                     onArchiveDelete={handleArchiveDelete}
                     onAddFootnote={handleAddFootnote}
                     onEditFootnote={handleEditFootnote}
@@ -5825,8 +5888,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       revisionsHook={revisionsHook}
                       sortedArchiveSnippets={sortedArchiveSnippets}
                       anchoredArchiveIds={anchoredArchiveIds}
-                      onArchiveInsert={handleArchiveInsert}
-                      onArchiveRestore={handleArchiveRestore}
                       onArchiveDelete={handleArchiveDelete}
                         onAddFootnote={handleAddFootnote}
                       onEditFootnote={handleEditFootnote}
@@ -5958,8 +6019,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 revisionsHook={revisionsHook}
                 sortedArchiveSnippets={sortedArchiveSnippets}
                 anchoredArchiveIds={anchoredArchiveIds}
-                onArchiveInsert={handleArchiveInsert}
-                onArchiveRestore={handleArchiveRestore}
                 onArchiveDelete={handleArchiveDelete}
                 onAddFootnote={handleAddFootnote}
                 onEditFootnote={handleEditFootnote}
@@ -6841,8 +6900,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         revisionsHook={revisionsHook}
                         sortedArchiveSnippets={sortedArchiveSnippets}
                         anchoredArchiveIds={anchoredArchiveIds}
-                        onArchiveInsert={handleArchiveInsert}
-                        onArchiveRestore={handleArchiveRestore}
                         onArchiveDelete={handleArchiveDelete}
                             onAddFootnote={handleAddFootnote}
                         onEditFootnote={handleEditFootnote}
@@ -7055,8 +7112,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 revisionsHook={revisionsHook}
                 sortedArchiveSnippets={sortedArchiveSnippets}
                 anchoredArchiveIds={anchoredArchiveIds}
-                onArchiveInsert={handleArchiveInsert}
-                onArchiveRestore={handleArchiveRestore}
                 onArchiveDelete={handleArchiveDelete}
                 onAddFootnote={handleAddFootnote}
                 onEditFootnote={handleEditFootnote}
@@ -7138,6 +7193,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           {confirmMorphDialog}
         </LiftHost>
         </PoppedCardsContext.Provider>
+        </CardRestoreActionsProvider>
         </CardArchiveActionsProvider>
         </CardArchiveViewProvider>
         </CollabProvider>
@@ -7216,8 +7272,6 @@ interface PaneRailProps {
   revisionsHook: ReturnType<typeof useRevisions>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   anchoredArchiveIds: Set<string>;
-  onArchiveInsert: (id: string) => void;
-  onArchiveRestore: (id: string) => void;
   onArchiveDelete: (id: string) => void;
   onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
@@ -7403,8 +7457,6 @@ function PaneRail({
   revisionsHook,
   sortedArchiveSnippets,
   anchoredArchiveIds,
-  onArchiveInsert,
-  onArchiveRestore,
   onArchiveDelete,
   onAddFootnote,
   onEditFootnote,
@@ -7671,8 +7723,6 @@ interface PaneRailBodyProps {
   revisionsHook: ReturnType<typeof useRevisions>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   anchoredArchiveIds: Set<string>;
-  onArchiveInsert: (id: string) => void;
-  onArchiveRestore: (id: string) => void;
   onArchiveDelete: (id: string) => void;
   onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
@@ -7749,8 +7799,6 @@ function PaneRailBody({
   revisionsHook,
   sortedArchiveSnippets,
   anchoredArchiveIds,
-  onArchiveInsert,
-  onArchiveRestore,
   onArchiveDelete,
   onAddFootnote,
   onEditFootnote,
@@ -7851,7 +7899,6 @@ function PaneRailBody({
         bibEntries={citationsHook.bibEntries}
         citationStyle={citationsHook.citationStyle}
         bibPackage={citationsHook.bibPackage}
-        bibPath={citationsHook.bibPath}
         citationOrder={citationOrder}
         addCitation={citationsHook.addCitation}
         updateCitation={citationsHook.updateCitation}
@@ -7913,13 +7960,9 @@ function PaneRailBody({
   if (panelKind === "archive") {
     return (
       <ArchiveHost
-        side={side}
         sortedArchiveSnippets={sortedArchiveSnippets}
-        archiveSnippets={archiveHook.snippets}
         updateArchiveSnippet={archiveHook.updateSnippet}
         updateArchiveSnippetTitle={archiveHook.updateSnippetTitle}
-        onInsert={onArchiveInsert}
-        onRestore={onArchiveRestore}
         onDelete={onArchiveDelete}
         anchoredIds={anchoredArchiveIds}
       />

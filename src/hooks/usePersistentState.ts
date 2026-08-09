@@ -54,7 +54,14 @@ export interface PersistentStateApi<S> {
   setState: Dispatch<SetStateAction<S>>;
   /** Functional update that also persists the result to disk. */
   update: (fn: (prev: S) => S) => void;
-  /** Write a specific state to disk; used for read-then-write flows. */
+  /**
+   * Write a specific state to disk NOW; used for read-then-write flows that
+   * need the computed `next` synchronously (to return it to their caller).
+   *
+   * An immediate write SUPERSEDES any write `update()` has scheduled — see the
+   * "two doors, one queue" note on the implementation. Callers that don't need
+   * the value back should still prefer `update()`: it coalesces.
+   */
   persist: (s: S) => Promise<void>;
   /** Live mirror of `state` for callers that need synchronous access. */
   stateRef: MutableRefObject<S>;
@@ -225,6 +232,42 @@ export function usePersistentState<S>(
 
   const persist = useCallback(
     async (s: S) => {
+      // ── TWO DOORS, ONE QUEUE ────────────────────────────────────────────
+      // `update()` and `persist()` are both write doors, and only `update()`
+      // used to own the debounce queue — so an immediate write could be
+      // OUTLIVED by an older payload and silently undone ON DISK:
+      //
+      //   updateSnippetTitle(X)  → arms the 300 ms timer with state that
+      //                            still CONTAINS X
+      //   persist(stateWithoutX) → writes X-removed immediately
+      //   …timer fires…          → flushes the pre-removal payload and
+      //                            RESURRECTS X in the sidecar
+      //
+      // In-memory state says X is gone, disk says it's there, and nothing
+      // reconciles until the next `update()` — so with no further edit the
+      // divergence is permanent and X reappears on reload. That was task 106's
+      // `useArchive.restoreSnippet` bug, but the hazard belongs to the
+      // PRIMITIVE rather than to that caller: it is inherent to having two
+      // write doors where only one owns the queue, and it is waiting for the
+      // next read-then-write flow written against this API. (Scope, stated
+      // honestly: the sidecar hooks with their OWN bespoke `persist` —
+      // useFootnotes, useExamples, useAiRequests, useBibReview, useStack,
+      // useEditorUIState — do NOT go through this door and are unaffected.
+      // Among this hook's consumers only `useSuggestions.clearSuggestions`
+      // still calls it directly.) An immediate write is by definition the
+      // newest intent, so it SUPERSEDES anything scheduled — cancel the timer
+      // and drop the stale payload, once, for every caller.
+      //
+      // Precondition on the caller, since this cancels rather than merges: the
+      // payload must already reflect any `update()` issued before it.
+      // `stateRef` refreshes on RENDER, so `update(f); persist({...stateRef
+      // .current})` inside ONE handler would drop `f` — derive the payload from
+      // the same state `update` did, or just use `update`.
+      if (pendingTimerRef.current !== null) {
+        window.clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
+      pendingRef.current = null;
       // Reader-mode safety guard: refuse a write the active chrome disallows
       // (read-only host writing a non-note card sidecar). The note annotation
       // sidecar passes; everything else is dropped silently — the in-memory
@@ -232,6 +275,13 @@ export function usePersistentState<S>(
       if (!writeAllowedRef.current) return;
       const h = resolveHandle();
       if (!h) return;
+      // AFTER both guards, never before. `hasMutatedRef` means "a newer value
+      // is on disk", and its only consumer is the mount-loader's bail — so
+      // stamping it for a write that was suppressed (read-only chrome) or
+      // dropped (pipeline not yet registered) would permanently hide the
+      // sidecar for that doc, leaving every load-gated reconcile running over
+      // the empty default.
+      hasMutatedRef.current = true;
       try {
         await writeSidecar(h, filename, s);
       } catch (err) {
