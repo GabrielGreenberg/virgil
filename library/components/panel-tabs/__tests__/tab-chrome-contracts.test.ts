@@ -89,7 +89,7 @@ describe("body frame — plain CSS border on the manila-radius token (measured S
     expect(body).not.toContain("new ResizeObserver");
     expect(body).not.toContain("frameBox");
     expect(body).not.toContain("buildFramePath");
-    expect(body).not.toContain("isPaneDragging");
+    expect(body).not.toContain("isLayoutGestureActive");
   });
 
   it("the body inset still reads the STRIP_SIDE_PAD SSOT (no-wing relationship intact)", () => {
@@ -120,11 +120,11 @@ describe("strip wiring — ink cushion + seam by construction", () => {
   it("the flush-right tuck observer stays parked on the pane-drag bus (the ONE justified RO)", () => {
     // The single surviving ResizeObserver in the tab chrome's orbit: the
     // flush-right tuck depends on sibling-width sums CSS can't express. It
-    // must stay equality-bailed + parked — via the shared parkDuringPaneDrag
-    // helper (the doctrine forbids hand-rolled isPaneDragging() parks).
+    // must stay equality-bailed + parked — via the shared parkDuringLayoutGesture
+    // helper (the doctrine forbids hand-rolled isLayoutGestureActive() parks).
     expect(strip).toContain("ResizeObserver");
-    expect(strip).toContain("parkDuringPaneDrag");
-    expect(strip).not.toContain("isPaneDragging");
+    expect(strip).toContain("parkDuringLayoutGesture");
+    expect(strip).not.toContain("isLayoutGestureActive");
   });
 });
 

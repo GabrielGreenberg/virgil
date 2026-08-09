@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from "react";
-import { usePaneResizeHandle, onPaneDragChange } from "@/lib/pane-resize";
+import { usePaneResizeHandle, onLayoutGestureChange } from "@/lib/pane-resize";
 import {
   PanelId,
   Side,
@@ -381,7 +381,7 @@ export function PanelColumn({
   });
   useEffect(
     () =>
-      onPaneDragChange((active, info) => {
+      onLayoutGestureChange((active, info) => {
         if (info.id !== gestureId) return;
         if (active) {
           // Engine ordering: getValue() has already measured the true

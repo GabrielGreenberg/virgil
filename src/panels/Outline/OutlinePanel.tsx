@@ -157,7 +157,13 @@ function PositionHighlight({ scrollRef, attr, color, variant }: {
     if (!attr || !scrollRef.current) { setPos(null); return; }
     const el = scrollRef.current.querySelector(`[data-outline-pos="${attr}"]`) as HTMLElement | null;
     if (!el) { setPos(null); return; }
-    setPos({ y: el.offsetTop, h: el.offsetHeight });
+    const y = el.offsetTop;
+    const h = el.offsetHeight;
+    // Equality bail (task 317): the RO/MO pair below fires per frame of a
+    // window or pane resize, and a fresh object literal re-rendered this
+    // overlay every time even when the tracked row had not moved. Its sibling
+    // (the focus band's `measure`) has always bailed; this one didn't.
+    setPos((prev) => (prev && prev.y === y && prev.h === h ? prev : { y, h }));
   }, [attr, scrollRef]);
 
   // Run before paint so the selector lands on the right pixel without a

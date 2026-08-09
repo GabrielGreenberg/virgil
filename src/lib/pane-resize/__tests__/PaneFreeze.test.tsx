@@ -21,20 +21,20 @@ import { render, cleanup } from "@testing-library/react";
 
 import { PaneFreeze } from "../PaneFreeze";
 import {
-  beginPaneDrag,
-  endPaneDrag,
-  __resetPaneDragBusForTest,
-  __paneDragListenerCountForTest,
-  type PaneDragInfo,
-} from "../pane-drag-bus";
+  beginLayoutGesture,
+  endLayoutGesture,
+  __resetLayoutGestureBusForTest,
+  __layoutGestureListenerCountForTest,
+  type LayoutGestureInfo,
+} from "../layout-gesture-bus";
 
-const INFO: PaneDragInfo = { id: "gutter-under-test", axis: "x" };
+const INFO: LayoutGestureInfo = { kind: "pane", id: "gutter-under-test", axis: "x" };
 
 // jsdom has no layout: the begin-edge width read comes from this knob.
 let rectWidth = 480;
 
 beforeEach(() => {
-  __resetPaneDragBusForTest();
+  __resetLayoutGestureBusForTest();
   rectWidth = 480;
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
     () =>
@@ -89,7 +89,7 @@ describe("PaneFreeze", () => {
     );
     expectFree(inner(container));
 
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     expectFrozen(inner(container), "right");
   });
 
@@ -99,7 +99,7 @@ describe("PaneFreeze", () => {
         <div>content</div>
       </PaneFreeze>,
     );
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     expectFrozen(inner(container), "left");
   });
 
@@ -109,15 +109,15 @@ describe("PaneFreeze", () => {
         <div>content</div>
       </PaneFreeze>,
     );
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     expectFrozen(inner(container), "right");
 
-    endPaneDrag(INFO);
+    endLayoutGesture(INFO);
     expectFree(inner(container));
   });
 
   it("adopts an already-in-flight drag on mount (keep-alive remount mid-gesture), incl. under StrictMode's effect replay", () => {
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     const { container } = render(
       <StrictMode>
         <PaneFreeze anchor="right">
@@ -126,10 +126,10 @@ describe("PaneFreeze", () => {
       </StrictMode>,
     );
     // StrictMode ran mount → cleanup(unfreeze) → re-mount; the re-run's
-    // isPaneDragging check must have re-frozen.
+    // isLayoutGestureActive check must have re-frozen.
     expectFrozen(inner(container), "right");
 
-    endPaneDrag(INFO);
+    endLayoutGesture(INFO);
     expectFree(inner(container));
   });
 
@@ -140,9 +140,9 @@ describe("PaneFreeze", () => {
         <div>content</div>
       </PaneFreeze>,
     );
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     expectFree(inner(container));
-    endPaneDrag(INFO);
+    endLayoutGesture(INFO);
     expectFree(inner(container));
   });
 
@@ -154,21 +154,21 @@ describe("PaneFreeze", () => {
     // with the unsubscribe deleted keeps the node inert). Only the count
     // catches a leak: without off(), every paper close/open would strand one
     // listener closure on the module-singleton bus Set for the session.
-    const baseline = __paneDragListenerCountForTest();
+    const baseline = __layoutGestureListenerCountForTest();
     const { container, unmount } = render(
       <PaneFreeze anchor="right">
         <div>content</div>
       </PaneFreeze>,
     );
-    expect(__paneDragListenerCountForTest()).toBe(baseline + 1);
+    expect(__layoutGestureListenerCountForTest()).toBe(baseline + 1);
     const node = inner(container);
     unmount();
-    expect(__paneDragListenerCountForTest()).toBe(baseline);
+    expect(__layoutGestureListenerCountForTest()).toBe(baseline);
 
     // And later gesture edges never touch the discarded node.
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     expectFree(node);
-    endPaneDrag(INFO);
+    endLayoutGesture(INFO);
     expectFree(node);
   });
 
@@ -178,7 +178,7 @@ describe("PaneFreeze", () => {
         <div>before</div>
       </PaneFreeze>,
     );
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     expectFrozen(inner(container), "right");
 
     // The engine's single end-edge store commit re-renders consumers while
@@ -192,7 +192,7 @@ describe("PaneFreeze", () => {
     expectFrozen(inner(container), "right");
     expect(inner(container).textContent).toBe("after");
 
-    endPaneDrag(INFO);
+    endLayoutGesture(INFO);
     expectFree(inner(container));
   });
 
@@ -202,18 +202,18 @@ describe("PaneFreeze", () => {
         <div>content</div>
       </PaneFreeze>,
     );
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     expectFrozen(inner(container), "right");
-    endPaneDrag(INFO);
+    endLayoutGesture(INFO);
 
     rerender(
       <PaneFreeze anchor="left">
         <div>content</div>
       </PaneFreeze>,
     );
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     expectFrozen(inner(container), "left");
-    endPaneDrag(INFO);
+    endLayoutGesture(INFO);
   });
 
   it("merges the consumer style onto the outer clipper but the freeze contract keys win", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef } from "react";
-import { usePaneResizeHandle, onPaneDragChange } from "@/lib/pane-resize";
+import { usePaneResizeHandle, onLayoutGestureChange } from "@/lib/pane-resize";
 import type { Side } from "@/hooks/useViewPrefs";
 
 /**
@@ -121,7 +121,7 @@ export function ZenMargin({
   });
   useEffect(
     () =>
-      onPaneDragChange((active, info) => {
+      onLayoutGestureChange((active, info) => {
         if (info.id !== gestureId) return;
         if (active) {
           onSyncBeforeDragRef.current?.();

@@ -6,33 +6,33 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
-  isPaneDragging,
-  onPaneDragChange,
-  beginPaneDrag,
-  endPaneDrag,
-  __resetPaneDragBusForTest,
-  type PaneDragInfo,
-} from "../pane-drag-bus";
+  isLayoutGestureActive,
+  onLayoutGestureChange,
+  beginLayoutGesture,
+  endLayoutGesture,
+  __resetLayoutGestureBusForTest,
+  type LayoutGestureInfo,
+} from "../layout-gesture-bus";
 
-const INFO: PaneDragInfo = { id: "lib-nav", axis: "x" };
+const INFO: LayoutGestureInfo = { kind: "pane", id: "lib-nav", axis: "x" };
 
 beforeEach(() => {
-  __resetPaneDragBusForTest();
+  __resetLayoutGestureBusForTest();
 });
 
-describe("pane-drag-bus", () => {
+describe("layout-gesture-bus", () => {
   it("is idle by default", () => {
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
   });
 
   it("fires exactly one begin edge and one end edge per gesture", () => {
-    const calls: Array<[boolean, PaneDragInfo]> = [];
-    onPaneDragChange((active, info) => calls.push([active, info]));
+    const calls: Array<[boolean, LayoutGestureInfo]> = [];
+    onLayoutGestureChange((active, info) => calls.push([active, info]));
 
-    beginPaneDrag(INFO);
-    expect(isPaneDragging()).toBe(true);
-    endPaneDrag(INFO);
-    expect(isPaneDragging()).toBe(false);
+    beginLayoutGesture(INFO);
+    expect(isLayoutGestureActive()).toBe(true);
+    endLayoutGesture(INFO);
+    expect(isLayoutGestureActive()).toBe(false);
 
     expect(calls).toEqual([
       [true, INFO],
@@ -42,46 +42,46 @@ describe("pane-drag-bus", () => {
 
   it("swallows a begin while a drag is already active (no double edge)", () => {
     const fn = vi.fn();
-    onPaneDragChange(fn);
-    beginPaneDrag(INFO);
-    beginPaneDrag({ id: "other", axis: "y" });
+    onLayoutGestureChange(fn);
+    beginLayoutGesture(INFO);
+    beginLayoutGesture({ kind: "pane", id: "other", axis: "y" });
     expect(fn).toHaveBeenCalledTimes(1);
     // The interloper's end must not clear the real drag either.
-    endPaneDrag({ id: "other", axis: "y" });
-    expect(isPaneDragging()).toBe(true);
+    endLayoutGesture({ kind: "pane", id: "other", axis: "y" });
+    expect(isLayoutGestureActive()).toBe(true);
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
   it("ignores an end with no active drag or a mismatched id", () => {
     const fn = vi.fn();
-    onPaneDragChange(fn);
-    endPaneDrag(INFO);
+    onLayoutGestureChange(fn);
+    endLayoutGesture(INFO);
     expect(fn).not.toHaveBeenCalled();
 
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     fn.mockClear();
-    endPaneDrag({ id: "someone-else", axis: "x" });
+    endLayoutGesture({ kind: "pane", id: "someone-else", axis: "x" });
     expect(fn).not.toHaveBeenCalled();
-    expect(isPaneDragging()).toBe(true);
+    expect(isLayoutGestureActive()).toBe(true);
   });
 
   it("unsubscribe stops notifications", () => {
     const fn = vi.fn();
-    const off = onPaneDragChange(fn);
+    const off = onLayoutGestureChange(fn);
     off();
-    beginPaneDrag(INFO);
-    endPaneDrag(INFO);
+    beginLayoutGesture(INFO);
+    endLayoutGesture(INFO);
     expect(fn).not.toHaveBeenCalled();
   });
 
   it("gives every subscriber the same edge (the park/settle contract)", () => {
     const a = vi.fn();
     const b = vi.fn();
-    onPaneDragChange(a);
-    onPaneDragChange(b);
+    onLayoutGestureChange(a);
+    onLayoutGestureChange(b);
 
-    beginPaneDrag(INFO);
-    endPaneDrag(INFO);
+    beginLayoutGesture(INFO);
+    endLayoutGesture(INFO);
 
     expect(a.mock.calls).toEqual([
       [true, INFO],
@@ -105,25 +105,25 @@ describe("pane-drag-bus", () => {
     let measures = 0;
     let dirty = false;
     const observerFire = () => {
-      if (isPaneDragging()) {
+      if (isLayoutGestureActive()) {
         dirty = true;
         return;
       }
       measures += 1;
     };
-    onPaneDragChange((active) => {
+    onLayoutGestureChange((active) => {
       if (!active && dirty) {
         dirty = false;
         measures += 1;
       }
     });
 
-    beginPaneDrag(INFO);
+    beginLayoutGesture(INFO);
     // 60 pointermove frames worth of RO fires while dragging → all parked.
     for (let i = 0; i < 60; i++) observerFire();
     expect(measures).toBe(0);
 
-    endPaneDrag(INFO); // one settle
+    endLayoutGesture(INFO); // one settle
     expect(measures).toBe(1);
   });
 });

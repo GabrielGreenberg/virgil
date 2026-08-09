@@ -10,6 +10,8 @@ import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { onFontReady } from "@/lib/text-metrics";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import { LAYOUT_SITE_IN_TEXT_POSITIONS } from "@/lib/layout-gesture-probe";
 import {
   recordKeystrokeWork,
   KEYSTROKE_WORK_INTEXT_RO,
@@ -711,7 +713,16 @@ export function useInTextPositions(
         })()
       : null;
 
-    window.addEventListener("resize", schedule);
+    // The in-text deck re-measures every tracked marker position — parked for
+    // the duration of a continuous layout gesture and settled once at the end
+    // (task 317). Both geometry triggers go through it; the structural-bus and
+    // font-ready paths stay live (they aren't gesture-driven).
+    const geometryPark = parkDuringLayoutGesture(
+      schedule,
+      LAYOUT_SITE_IN_TEXT_POSITIONS,
+    );
+    const onWindowResize = () => geometryPark.fire();
+    window.addEventListener("resize", onWindowResize);
 
     let editorObs: ResizeObserver | null = null;
     try {
@@ -719,7 +730,7 @@ export function useInTextPositions(
       if (editorDom && typeof ResizeObserver !== "undefined") {
         editorObs = new ResizeObserver(() => {
           recordKeystrokeWork(KEYSTROKE_WORK_INTEXT_RO);
-          schedule();
+          geometryPark.fire();
         });
         editorObs.observe(editorDom);
       }
@@ -733,7 +744,8 @@ export function useInTextPositions(
       fontReadyActiveRef.current = false;
       disposeFontReady();
       unsubBlocks?.();
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", onWindowResize);
+      geometryPark.dispose();
       editorObs?.disconnect();
     };
   }, [editor, measure, enabledProp, canMeasureNow]);

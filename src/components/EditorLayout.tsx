@@ -10,6 +10,12 @@ import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import {
+  LAYOUT_SITE_HELPER_ANCHOR,
+  LAYOUT_SITE_SECTION_PATH,
+  LAYOUT_SITE_SECTION_PATH_MIRROR,
+} from "@/lib/layout-gesture-probe";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
 import { useTransientAnchorCleanup } from "@/text-objects/useTransientAnchorCleanup";
 import { type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
@@ -1043,16 +1049,42 @@ export default function EditorLayout() {
     setHelperAnchorRect(helperBtnRef.current?.getBoundingClientRect() ?? null);
     const close = () => { setHelperMenuOpen(false); setCommandsPopoutOpen(false); };
     const refreshAnchor = () => {
-      setHelperAnchorRect(helperBtnRef.current?.getBoundingClientRect() ?? null);
+      const next = helperBtnRef.current?.getBoundingClientRect() ?? null;
+      // Equality bail (task 317). `getBoundingClientRect` returns a FRESH
+      // DOMRect every call, so setting it unconditionally re-rendered this
+      // component — the app ROOT — on every scroll and resize event for as
+      // long as the Help menu stayed open, whether or not the button moved.
+      setHelperAnchorRect((prev) =>
+        prev === next ||
+        (prev !== null &&
+          next !== null &&
+          prev.top === next.top &&
+          prev.left === next.left &&
+          prev.width === next.width &&
+          prev.height === next.height)
+          ? prev
+          : next,
+      );
     };
+    // Parked, not suppressed: the Help button lives in the Virgil bar — LEFT-
+    // anchored top chrome, which a window drag displaces by ~0.001·delta (the
+    // editor column carries `flex: 1000 1 0` between the rails) — so a stale
+    // anchor for the length of a gesture cannot visibly detach the popover,
+    // and the settle re-seats it exactly once.
+    const anchorPark = parkDuringLayoutGesture(
+      refreshAnchor,
+      LAYOUT_SITE_HELPER_ANCHOR,
+    );
+    const onAnchorEvent = () => anchorPark.fire();
     const id = window.setTimeout(() => window.addEventListener("click", close), 0);
-    window.addEventListener("resize", refreshAnchor);
-    window.addEventListener("scroll", refreshAnchor, true);
+    window.addEventListener("resize", onAnchorEvent);
+    window.addEventListener("scroll", onAnchorEvent, true);
     return () => {
       window.clearTimeout(id);
       window.removeEventListener("click", close);
-      window.removeEventListener("resize", refreshAnchor);
-      window.removeEventListener("scroll", refreshAnchor, true);
+      window.removeEventListener("resize", onAnchorEvent);
+      window.removeEventListener("scroll", onAnchorEvent, true);
+      anchorPark.dispose();
     };
   }, [helperMenuOpen]);
 
@@ -1918,14 +1950,22 @@ export default function EditorLayout() {
       if (isTier1BDisabled()) return;
       schedule();
     };
+    // Only the RESIZE path parks (task 317). `compute` walks every heading
+    // calling `coordsAtPos` — ProseMirror's most expensive forced-layout call —
+    // so re-solving it per frame of a window drag is the single heaviest
+    // per-frame cost in the app at ×2 panes (×3 with the Reader). The SCROLL
+    // path stays live: the breadcrumb must follow the scroll it describes.
+    const resizePark = parkDuringLayoutGesture(schedule, LAYOUT_SITE_SECTION_PATH);
+    const onWindowResize = () => resizePark.fire();
     compute();
     scrollEl.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
+    window.addEventListener("resize", onWindowResize);
     editorInstance.on("update", onEditorUpdate);
     return () => {
       cancelAnimationFrame(raf);
       scrollEl.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", onWindowResize);
+      resizePark.dispose();
       editorInstance.off("update", onEditorUpdate);
     };
     // Focus band values are deps so the breadcrumb recomputes when focus
@@ -2021,15 +2061,22 @@ export default function EditorLayout() {
       if (isTier1BDisabled()) return;
       schedule();
     };
+    // Resize path parked, scroll path live — see the main pane above.
+    const resizePark = parkDuringLayoutGesture(
+      schedule,
+      LAYOUT_SITE_SECTION_PATH_MIRROR,
+    );
+    const onWindowResize = () => resizePark.fire();
     compute();
     scrollEl.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
+    window.addEventListener("resize", onWindowResize);
     // Re-compute when the doc changes (shared state with main editor).
     editorInstance?.on("update", onEditorUpdate);
     return () => {
       cancelAnimationFrame(raf);
       scrollEl.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", onWindowResize);
+      resizePark.dispose();
       editorInstance?.off("update", onEditorUpdate);
     };
     // Focus band values are deps so the mirror breadcrumb recomputes on a

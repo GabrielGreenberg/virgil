@@ -20,6 +20,11 @@ import {
 } from "@/lib/keystroke-latency-probe";
 import { rafCoalesced } from "@/lib/raf-coalesced";
 import {
+  isLayoutGestureActive,
+  parkDuringLayoutGesture,
+} from "@/lib/pane-resize";
+import { LAYOUT_SITE_MARGINALIA } from "@/lib/layout-gesture-probe";
+import {
   onFontReady,
   opticalCenterY,
   resolveInlineContextElement,
@@ -453,6 +458,19 @@ export function useMarginaliaRegistry(
 
     const state = stateRef.current;
 
+    // Task 317 — park the MEASURE PASS, never the accumulation. This is the
+    // highest-fire-count follower in the app during a horizontal window drag:
+    // a width change rewraps every paragraph, so the per-block RO delivers one
+    // entry per near-zone block per frame, each funnelling into a host gBCR +
+    // a full doc walk + a `measureBlock` per dirty uuid. `pendingRecompute`
+    // keeps collecting across the whole gesture (that set IS the work list and
+    // must not be dropped); only the RAF measure pass is deferred, so the
+    // gesture costs ONE flush over the union instead of one per frame.
+    const recomputePark = parkDuringLayoutGesture(
+      () => scheduleRecompute(),
+      LAYOUT_SITE_MARGINALIA,
+    );
+
     function notify() {
       state.version = (state.version + 1) | 0;
       for (const cb of state.subscribers) cb();
@@ -526,7 +544,7 @@ export function useMarginaliaRegistry(
           state.pendingRecompute.add(state.docOrder[i]);
         }
       }
-      scheduleRecompute();
+      recomputePark.fire();
     }
 
     /**
@@ -823,6 +841,16 @@ export function useMarginaliaRegistry(
     function onResize(entries: ResizeObserverEntry[]) {
       if (!isVisibleRef.current) return; // hidden editor → boxes are 0; skip
       recordKeystrokeWork(KEYSTROKE_WORK_MARGINALIA_RO);
+      if (isLayoutGestureActive()) {
+        // Mid-gesture the ENTIRE observed set is moving, so the per-entry
+        // invalidation is both redundant and quadratic: `invalidateFromUuid`
+        // is O(docOrder) per entry, and a width change delivers one entry per
+        // block — O(blocks²) per frame at 300+ blocks. Collapse it to one
+        // O(observed) "everything is dirty" mark; the park above then defers
+        // the single measure pass to the gesture's end edge.
+        recomputeAllObserved();
+        return;
+      }
       for (const entry of entries) {
         const el = entry.target as HTMLElement;
         const uuid = el.getAttribute("data-uuid");
@@ -842,7 +870,7 @@ export function useMarginaliaRegistry(
       for (const uuid of state.observed.keys()) {
         state.pendingRecompute.add(uuid);
       }
-      scheduleRecompute();
+      recomputePark.fire();
     }
 
     function onWindowResize() {
@@ -934,6 +962,7 @@ export function useMarginaliaRegistry(
       editor.off("create", tryPrime);
       unsubBus?.();
       disposeFontReady();
+      recomputePark.dispose();
       window.removeEventListener("resize", onWindowResize);
       if (state.rafId) cancelAnimationFrame(state.rafId);
       if (state.observeRetryRafId) cancelAnimationFrame(state.observeRetryRafId);

@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { onPaneDragChange } from "@/lib/pane-resize";
+import {
+  onLayoutGestureChange,
+  parkDuringLayoutGesture,
+} from "@/lib/pane-resize";
+import { LAYOUT_SITE_EDITOR_SCROLLBAR } from "@/lib/layout-gesture-probe";
 import { SCROLLBAR_THUMB_WIDTH, SCROLLBAR_RIGHT_INSET } from "./constants";
 import {
   recordKeystrokeWork,
@@ -56,14 +60,17 @@ export function EditorScrollbar({
   const [dragSuppress, setDragSuppress] = useState(false);
   const fadeTimer = useRef<number | null>(null);
 
-  // Hide the thumb while ANY pane-resize gesture is in flight (the app-wide
-  // pane-drag bus — edge-triggered, never per-frame). The editor column's
-  // width is changing continuously during the drag, so the thumb would
-  // otherwise visibly chase the moving edge. Bus-wide (not per-gesture-id)
-  // on purpose: when the Library Reader hosts this scrollbar, a Library
-  // gutter drag resizes the same column and must suppress it too — the
-  // cross-silo hole the old `virgil:drag-gap-start/end` window events left.
-  useEffect(() => onPaneDragChange((active) => setDragSuppress(active)), []);
+  // Hide the thumb while ANY continuous layout gesture is in flight (the
+  // app-wide layout-gesture bus — edge-triggered, never per-frame). The editor
+  // column's width is changing continuously during the gesture, so the thumb
+  // would otherwise visibly chase the moving edge. Bus-wide (not
+  // per-gesture-id) on purpose: when the Library Reader hosts this scrollbar,
+  // a Library gutter drag resizes the same column and must suppress it too —
+  // the cross-silo hole the old `virgil:drag-gap-start/end` window events
+  // left. Since task 317 widened the bus with the OS window publisher, this
+  // ALSO covers a PWA window drag — the most visible right-side artifact of
+  // that gesture, fixed here with zero code change.
+  useEffect(() => onLayoutGestureChange((active) => setDragSuppress(active)), []);
 
   const scheduleFade = useCallback(() => {
     if (fadeTimer.current !== null) {
@@ -115,9 +122,21 @@ export function EditorScrollbar({
     const lastVars = { h: NaN, vp: NaN, cap: "" };
     let observedPage: HTMLElement | null = null;
 
+    // Task 317: the measure pass is PARKED for the duration of a continuous
+    // layout gesture. It reads `scrollHeight`/`clientHeight` on the whole
+    // document and then writes three CSS vars that re-dirty layout — its
+    // read-before-write discipline holds WITHIN a call and cannot hold ACROSS
+    // calls, so one pass per frame of a window drag is a full-document layout
+    // per frame. The thumb itself is already hidden for the gesture
+    // (`dragSuppress`), so nothing user-visible depends on the interim values.
+    const park = parkDuringLayoutGesture(
+      () => measureAndApply(),
+      LAYOUT_SITE_EDITOR_SCROLLBAR,
+    );
+
     const ro = new ResizeObserver(() => {
       recordKeystrokeWork(KEYSTROKE_WORK_SCROLLBAR_RO);
-      measureAndApply();
+      park.fire();
     });
 
     const measureAndApply = () => {
@@ -214,7 +233,7 @@ export function EditorScrollbar({
       refreshScrollOnly();
       scheduleFade();
     };
-    const onWindowResize = () => measureAndApply();
+    const onWindowResize = () => park.fire();
 
     measureAndApply();
     // Initial mount flash: start visible, then fade so the user gets a
@@ -227,6 +246,7 @@ export function EditorScrollbar({
     return () => {
       row.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onWindowResize);
+      park.dispose();
       ro.disconnect();
       if (fadeTimer.current !== null) {
         window.clearTimeout(fadeTimer.current);

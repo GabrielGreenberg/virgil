@@ -3,7 +3,7 @@
 // PaneFreeze — drag-time content freeze for a heavyweight pane (plan
 // MEMO_LIBRARY_UI_REFACTOR_2026_07_11 §P3).
 //
-// While any pane-resize gesture is in flight (the app-wide PaneDragBus), the
+// While any pane-resize gesture is in flight (the app-wide LayoutGestureBus), the
 // wrapper locks its content to the pre-drag pixel width; the pane itself keeps
 // tracking the pointer via the engine's CSS-var grid writes, and simply CLIPS
 // the frozen content (`overflow: hidden` on the outer node). On the end edge
@@ -25,7 +25,7 @@
 // window listeners. SSR-safe: renders plain divs; all DOM work is effect-side.
 
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
-import { isPaneDragging, onPaneDragChange } from "./pane-drag-bus";
+import { isLayoutGestureActive, onLayoutGestureChange } from "./layout-gesture-bus";
 
 export interface PaneFreezeProps {
   /**
@@ -79,7 +79,7 @@ const INNER_STYLE: CSSProperties = {
 
 /**
  * Wrap a pane's content so it is width-frozen for the duration of any
- * pane-resize gesture. Keyed on the PaneDragBus edges ONLY — a y-axis or
+ * pane-resize gesture. Keyed on the LayoutGestureBus edges ONLY — a y-axis or
  * unrelated-pane gesture still toggles the lock, but locking a box to the
  * width it already has (and that the gesture never changes) is a visual
  * no-op, and the two edge toggles are O(1); axis-filtering here would be
@@ -123,15 +123,15 @@ export function PaneFreeze({ anchor, style, children }: PaneFreezeProps) {
     };
     // A gesture can already be in flight when this mounts (keep-alive
     // remount / StrictMode effect replay mid-drag) — adopt the frozen state.
-    if (isPaneDragging()) freeze();
-    const off = onPaneDragChange((active) => {
+    if (isLayoutGestureActive()) freeze();
+    const off = onLayoutGestureChange((active) => {
       if (active) freeze();
       else unfreeze();
     });
     return () => {
       off();
       // Never leave a lock behind the subscription that would release it
-      // (StrictMode replays cleanup while mounted; the re-run's isPaneDragging
+      // (StrictMode replays cleanup while mounted; the re-run's isLayoutGestureActive
       // check re-freezes if a drag is still live).
       unfreeze();
     };

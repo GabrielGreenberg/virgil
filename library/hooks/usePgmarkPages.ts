@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import { parkDuringPaneDrag } from "@/lib/pane-resize/pane-drag-park";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize/layout-gesture-park";
 
 /** One printed-page anchor recovered from a `\pgmark{label}` decoration. */
 export interface PageMark {
@@ -51,7 +51,7 @@ const PROBE_FRACTION = 0.35;
  * event and on `docChanged` transactions — never per keystroke (the Reader is
  * read-only anyway, so plain transactions don't fire). Layout changes go
  * through a RAF-coalesced ResizeObserver, which additionally PARKS during any
- * pane-resize gesture (app-wide PaneDragBus) and settles once on the end edge.
+ * pane-resize gesture (app-wide LayoutGestureBus) and settles once on the end edge.
  * The current-page index is recomputed on scroll, RAF-coalesced to one compute
  * per frame. No work is proportional to document size on a plain keystroke.
  *
@@ -151,7 +151,7 @@ export function usePgmarkPages(
     if (!editor || editor.isDestroyed || !scrollContainer) return;
     const dom = (editor.view as { dom?: HTMLElement } | undefined)?.dom;
     if (!dom) return;
-    const park = parkDuringPaneDrag(() => {
+    const park = parkDuringLayoutGesture(() => {
       if (roRaf.current !== null) return;
       roRaf.current = requestAnimationFrame(() => {
         roRaf.current = null;
