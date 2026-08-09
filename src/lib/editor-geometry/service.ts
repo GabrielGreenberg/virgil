@@ -238,13 +238,19 @@ let probeInstalled = false;
 function installProbe() {
   if (probeInstalled || typeof window === "undefined") return;
   probeInstalled = true;
-  (
-    window as unknown as { __marginaliaStats?: () => unknown }
-  ).__marginaliaStats = () => {
+  const read = () => {
     const ed = pickProbeEditor(geometryStatsByEditor.keys());
     const stats = ed ? geometryStatsByEditor.get(ed) : undefined;
     return stats ? stats() : null;
   };
+  (
+    window as unknown as { __marginaliaStats?: () => unknown }
+  ).__marginaliaStats = read;
+  // Wave-2 alias: the service outgrew its marginalia origin; both names
+  // read the same focused-editor stats (incl. the blocksAtY hover-path
+  // counters — the mousemove-work visibility no probe had).
+  (window as unknown as { __geometryStats?: () => unknown }).__geometryStats =
+    read;
 }
 
 export interface GeometryStats {
@@ -252,6 +258,11 @@ export interface GeometryStats {
   observed: number;
   recomputes: number;
   version: number;
+  /** Hover-path probe: total blocksAtY calls / how many answered null
+   *  (fell back to a legacy scan). A healthy live editor trends nulls → 0
+   *  after the near-zone populates. */
+  blocksAtYCalls: number;
+  blocksAtYNulls: number;
 }
 
 /** A hover hit from {@link EditorGeometryService.blocksAtY} — the block's
@@ -400,6 +411,10 @@ export function createEditorGeometryService(
   let refCount = 0;
   /** Set for the duration of a started engine; null while stopped. */
   let stopEngine: (() => void) | null = null;
+  // Hover-path probe counters (surfaced by window.__geometryStats — the
+  // mousemove-work visibility the diagnosis flagged as a probe blind spot).
+  let blocksAtYCalls = 0;
+  let blocksAtYNulls = 0;
 
   function notify() {
     version = (version + 1) | 0;
@@ -949,9 +964,15 @@ export function createEditorGeometryService(
       observed: observed.size,
       recomputes,
       version,
+      blocksAtYCalls,
+      blocksAtYNulls,
     }),
     blocksAtY: (clientY) => {
-      if (!visible || !hostEl || observed.size === 0) return null;
+      blocksAtYCalls++;
+      if (!visible || !hostEl || observed.size === 0) {
+        blocksAtYNulls++;
+        return null;
+      }
       const y = clientY - hostEl.getBoundingClientRect().top;
       const hits: { uuid: string; el: HTMLElement; top: number; bottom: number }[] = [];
       for (const [uuid, el] of observed) {

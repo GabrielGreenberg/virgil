@@ -585,11 +585,26 @@ export function useInTextPositions(
   // useLayoutEffect so the first measure runs synchronously after commit;
   // setMeasureVersion schedules a re-render that picks up the new natural
   // data via the useMemo below.
+  // The wiring below must NOT re-arm when `measure` gets a new identity (it
+  // closes over `items`/`resolvePos`, so every card add/remove/reorder mints
+  // one). Pre-wave-2 the wiring effect had `measure` in its deps, so an items
+  // rebuild tore down and re-armed EVERYTHING — including the ~30-frame
+  // settle loop, whose per-frame re-measures are O(cards) `coordsAtPos`: the
+  // diagnosis's S4 "settle loop re-arms on items identity churn" storm. The
+  // long-lived closures read the latest measure through this ref instead;
+  // the small companion effect after the wiring keeps the one-shot
+  // "items changed → re-measure once" behavior.
+  const measureRef = useRef(measure);
   useLayoutEffect(() => {
-    // Keyed on `enabledProp` (NOT visibility): a hidden↔visible flip no longer
-    // tears down / re-arms this wiring, and the cache is RETAINED across a hide
-    // (cleared only on a genuine disable). Re-show is handled by the dedicated
-    // visibility effect below.
+    measureRef.current = measure;
+  }, [measure]);
+
+  useLayoutEffect(() => {
+    // Keyed on `enabledProp` (NOT visibility, NOT `measure`): a
+    // hidden↔visible flip or an items rebuild no longer tears down / re-arms
+    // this wiring, and the cache is RETAINED across a hide (cleared only on
+    // a genuine disable). Re-show is handled by the dedicated visibility
+    // effect below; items changes by the companion one-shot effect.
     if (!enabledProp) {
       if (naturalRef.current.size > 0) {
         naturalRef.current = new Map();
@@ -599,12 +614,6 @@ export function useInTextPositions(
       return;
     }
 
-    // Cold mount / items-change / re-enable: measure once. Gated by canMeasureNow
-    // so it's swallowed while hidden AND during a re-show suppression window (a
-    // switch's upstream re-renders can spuriously re-run this effect — the cached
-    // deck is already correct, so don't re-measure on the flip).
-    if (canMeasureNow()) measure();
-
     if (!editor) return;
 
     const schedule = () => {
@@ -612,7 +621,7 @@ export function useInTextPositions(
       // during the clean-re-show suppression window (swallow the reflow storm).
       if (!canMeasureNow()) return;
       cancelAnimationFrame(computeRafRef.current);
-      computeRafRef.current = requestAnimationFrame(measure);
+      computeRafRef.current = requestAnimationFrame(() => measureRef.current());
     };
 
     // Part A — settle-aware re-measure. The initial `measure()` above races
@@ -637,7 +646,7 @@ export function useInTextPositions(
     let lastSettleHeight = editorDomForSettle?.scrollHeight ?? -1;
     const settleStep = () => {
       if (!canMeasureNow()) return;
-      measure();
+      measureRef.current();
       const h = editorDomForSettle?.scrollHeight ?? -1;
       if (h === lastSettleHeight) {
         settleStable += 1;
@@ -748,7 +757,16 @@ export function useInTextPositions(
       geometryPark.dispose();
       editorObs?.disconnect();
     };
-  }, [editor, measure, enabledProp, canMeasureNow]);
+  }, [editor, enabledProp, canMeasureNow]);
+
+  // Companion one-shot: an items/resolvePos rebuild (fresh `measure`
+  // identity) re-measures ONCE — the behavior the wiring effect's re-run
+  // used to provide, without the teardown/re-arm (settle loop, observers,
+  // park) that came with it.
+  useLayoutEffect(() => {
+    if (!enabledProp) return;
+    if (canMeasureNow()) measure();
+  }, [measure, enabledProp, canMeasureNow]);
 
   // Keep-alive re-show effect — the heart of the instant-switch fix. Fires ONLY
   // on a genuine hidden→visible transition (a tab switch back to this doc), never

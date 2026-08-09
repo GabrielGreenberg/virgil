@@ -38,6 +38,8 @@ import {
   endContentGesture,
 } from "@/lib/pane-resize/layout-gesture-bus";
 import { isMissedRelease } from "@/lib/pane-resize/pointer-invariants";
+import { feedAutoScroll, stopAutoScroll } from "./auto-scroll";
+import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 
 // ── Per-doc context ──────────────────────────────────────────────────
 
@@ -177,6 +179,15 @@ export function cancelDropSession() {
 
 let lastMoveTs = 0;
 let pendingMove: { x: number; y: number; t: ReturnType<typeof setTimeout> } | null = null;
+// Auto-scroll support: the last pointer point (so the loop can re-hit-test
+// while the pointer parks in the edge zone) and the session's scroll
+// container (undefined = not yet resolved this session; null = none).
+let lastPointerX = 0;
+let lastPointerY = 0;
+let sessionScrollEl: HTMLElement | null | undefined;
+const reHitTestAtPointer = () => {
+  if (session) handleMove(lastPointerX, lastPointerY);
+};
 let onMove: ((e: MouseEvent) => void) | null = null;
 let onUp: ((e: MouseEvent) => void) | null = null;
 let onKey: ((e: KeyboardEvent) => void) | null = null;
@@ -197,7 +208,20 @@ function installListeners(opts: { attachMouseUp: boolean }) {
       cancelDropSession();
       return;
     }
+    lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
     handleMove(e.clientX, e.clientY);
+    // Edge-zone auto-scroll (wave 2 P4): scroll container resolved lazily
+    // once per session; the loop re-runs the throttled hit-test at the
+    // parked pointer as content slides underneath, and listener teardown
+    // stops it.
+    if (sessionScrollEl === undefined) {
+      const dom = activeCtx?.mainEditor?.view?.dom as HTMLElement | undefined;
+      sessionScrollEl = (dom ? findEditorScrollFor(dom) : null) as
+        | HTMLElement
+        | null;
+    }
+    feedAutoScroll(sessionScrollEl, e.clientY, reHitTestAtPointer);
   };
   onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") cancelDropSession();
@@ -225,6 +249,8 @@ function installListeners(opts: { attachMouseUp: boolean }) {
 
 function removeListeners() {
   if (typeof window === "undefined") return;
+  stopAutoScroll();
+  sessionScrollEl = undefined;
   if (onMove) window.removeEventListener("mousemove", onMove);
   if (onUp) window.removeEventListener("mouseup", onUp);
   if (onKey) window.removeEventListener("keydown", onKey);
