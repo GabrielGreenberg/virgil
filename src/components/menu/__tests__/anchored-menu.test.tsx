@@ -36,8 +36,10 @@ vi.mock("@/lib/storage", () => ({}));
 
 import { AnchoredMenu } from "../AnchoredMenu";
 import { MenuActionRow } from "../MenuActionRow";
-import { OmniFilterMenu } from "@/panels/Omni/OmniViewPanel";
-import type { OmniCategory } from "@/panels/panel-registry";
+import {
+  OmniFilterMenu,
+  type OmniCategory,
+} from "@/panels/Omni/OmniViewPanel";
 
 afterEach(() => cleanup());
 

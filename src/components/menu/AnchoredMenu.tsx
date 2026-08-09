@@ -40,7 +40,7 @@
  * (`ItemMenu`, whose arbitrary button children can't call `close` themselves).
  */
 
-import { useCallback, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useId, useMemo, useState, type ReactNode } from "react";
 import { MenuProvider } from "./MenuProvider";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 
@@ -135,7 +135,12 @@ export function AnchoredMenu({
 }: AnchoredMenuProps) {
   const [open, setOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
+  // The trigger element in STATE, not a ref — `excludeRefs` is read during
+  // render (it is a prop), and a ref read there is both a lint error and a real
+  // staleness hazard: the value React sees is whatever was current at the last
+  // render, so a trigger that attached after it would be exempted from
+  // click-outside one commit late. State re-renders when the element attaches.
+  const [triggerEl, setTriggerEl] = useState<HTMLButtonElement | null>(null);
   // Unique per instance so two momentarily-coexisting menus don't collide in
   // the cross-backend registry table (`publishRegistry`).
   const menuId = useId();
@@ -147,17 +152,15 @@ export function AnchoredMenu({
   const toggle = useCallback(() => {
     setOpen((o) => {
       const next = !o;
-      setAnchorRect(
-        next ? (btnRef.current?.getBoundingClientRect() ?? null) : null,
-      );
+      setAnchorRect(next ? (triggerEl?.getBoundingClientRect() ?? null) : null);
       return next;
     });
-  }, []);
+  }, [triggerEl]);
   // The live anchor: re-read per RAF-coalesced reposition, so the menu follows
   // its button through a resize/scroll instead of pinning the open-time rect.
   const trackAnchor = useCallback(
-    () => btnRef.current?.getBoundingClientRect() ?? null,
-    [],
+    () => triggerEl?.getBoundingClientRect() ?? null,
+    [triggerEl],
   );
 
   const renderProps = useMemo<AnchoredMenuRenderProps>(
@@ -169,7 +172,7 @@ export function AnchoredMenu({
   return (
     <div className={wrapperClassName}>
       <button
-        ref={btnRef}
+        ref={setTriggerEl}
         type="button"
         // A menu trigger's click is about the menu, never about whatever the
         // button sits inside (a card header's select/collapse, a strip's
@@ -201,7 +204,7 @@ export function AnchoredMenu({
           // The trigger lives outside the portaled menu, so exempt it from
           // click-outside — else the toggle click closes it via mousedown and
           // the click re-opens it (task 094).
-          excludeRefs={[btnRef.current]}
+          excludeRefs={[triggerEl]}
           onClose={close}
           ariaLabel={ariaLabel}
           containerClassName={`${MENU_SURFACE_CLASS}${menuClassName ? ` ${menuClassName}` : ""}`}
