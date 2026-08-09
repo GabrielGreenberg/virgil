@@ -73,7 +73,10 @@ import {
   computeSectionPathAt,
   geomBreadcrumbEnabled,
 } from "@/lib/editor-geometry/section-path";
-import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import {
+  isLayoutGestureActive,
+  parkDuringLayoutGesture,
+} from "@/lib/pane-resize";
 import { LAYOUT_SITE_READER_SECTION_PATH } from "@/lib/layout-gesture-probe";
 import type { SectionPathEntry } from "@/panels/Outline";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
@@ -186,6 +189,11 @@ export function useParaNavHistory(
 
     const checkParagraph = () => {
       if (navigatingRef.current) return;
+      // Wave-2b C6: bare 2s wall-clock poll — gate on page visibility and
+      // layout gestures (same discipline as EditorLayout's recorder; the
+      // hidden-PANE bail lives inside getActiveParagraphId).
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (isLayoutGestureActive()) return;
       const paraId = editorHandleRef.current?.getActiveParagraphId() ?? null;
       if (!paraId || paraId === currentParaRef.current) return;
       currentParaRef.current = paraId;

@@ -14,7 +14,10 @@ import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
-import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import {
+  isLayoutGestureActive,
+  parkDuringLayoutGesture,
+} from "@/lib/pane-resize";
 import {
   LAYOUT_SITE_HELPER_ANCHOR,
   LAYOUT_SITE_SECTION_PATH,
@@ -1599,6 +1602,13 @@ export default function EditorLayout() {
 
     const checkParagraph = () => {
       if (navigatingRef.current) return;
+      // Wave-2b C6: this runs on a bare 2s wall clock — gate it on
+      // page visibility (a backgrounded tab must not poll layout) and on
+      // layout gestures (mid-drag geometry is in flux; the post-gesture
+      // tick reads the settled truth). Hidden keep-alive PANES are handled
+      // inside getActiveParagraphId itself (offsetHeight bail → null).
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (isLayoutGestureActive()) return;
       let paraId: string | null = null;
       if (codeView) {
         paraId = codeEditorHandleRef.current?.getActiveParagraphId() ?? null;

@@ -59,7 +59,7 @@ import { removeTransientAnchor } from "@/links/links";
 import { resolveDomForUuid } from "@/lib/marginalia-blocks";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
-import { useEditorViewportCache } from "@/hooks/useEditorViewportCache";
+import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import {
   TEXT_OBJECT_REGISTRY,
   capPopoutHeight,
@@ -294,7 +294,7 @@ export function LiftHost({ editorRef, children }: Props) {
     header: HTMLDivElement | null;
   }>({ root: null, header: null });
 
-  const { cacheRef } = useEditorViewportCache(editorRef.current);
+  const { frameRef: cacheRef } = useViewportFrame(editorRef.current);
 
   // usePoppedCards + chrome mirrored into refs so the imperative gesture can
   // read the latest value at threshold-cross / release without re-binding the

@@ -44,7 +44,7 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
+import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 import {
   capBandCenterOffset,
   resolveInlineContextElement,
@@ -414,8 +414,8 @@ export function resolveContentEdges(el: HTMLElement): ContentEdges {
  *
  * `editor` / `cache` bound the depth walk to the editor root. `cache` is
  * OPTIONAL: it supplies `editorEl` only as the depth-walk root, and
- * `cache.editorEl` IS `editor.view.dom` (useEditorViewportCache.ts), so
- * omitting it changes nothing but `depth`'s root fallback (identical element).
+ * `cache.editorEl` IS `editor.view.dom` (editor-geometry/viewport-frame.ts),
+ * so omitting it changes nothing but `depth`'s root fallback (identical element).
  * The drop indicator (chip 4a) reads only `contentLeft` / `contentWidth` — not
  * `depth` — and the drop hit-test holds no viewport cache, so it calls this
  * without one. The horizontal fields resolve from `el` + ancestry + the
@@ -424,7 +424,7 @@ export function resolveContentEdges(el: HTMLElement): ContentEdges {
 export function resolveBlockFrame(
   el: HTMLElement,
   editor: Editor,
-  cache?: EditorViewportCache | null,
+  cache?: EditorViewportFrame | null,
 ): BlockFrame {
   // ---- Horizontal content edges (chips 2 / 4a / 4b) ----
   // Composed from the shared `resolveContentEdges` primitive so a full frame
