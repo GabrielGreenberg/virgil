@@ -63,6 +63,7 @@ import {
 } from "../reapply-mode-b-anchors";
 import { applyLinkedAnchorsImpl } from "../apply-linked-anchors";
 import { linkedAnchorRenderAttrs } from "@/lib/tiptap/linked-anchor-attrs";
+import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import { getBus } from "@/lib/tiptap/doc-structure/bus";
 import {
   beginDocPipeline,
@@ -87,7 +88,10 @@ type ParaSpec = {
   // Either plain text, or text broken into runs with optional linkedAnchor
   // marks (so a test can mount a doc that already carries a mark).
   text?: string;
-  runs?: Array<{ text: string; anchor?: { anchorId: string; kind: string } }>;
+  runs?: Array<{
+    text: string;
+    anchor?: { anchorId: string; kind: string; tintColor?: string };
+  }>;
 };
 
 function mountDoc(paras: ParaSpec[]): Editor {
@@ -116,6 +120,9 @@ function mountDoc(paras: ParaSpec[]): Editor {
                           kind: r.anchor.kind,
                           linkId: r.anchor.anchorId,
                           linkKind: "anchor",
+                          ...(r.anchor.tintColor
+                            ? { tintColor: r.anchor.tintColor }
+                            : {}),
                         },
                       },
                     ],
@@ -762,7 +769,7 @@ describe("RC-B — BUG1 reconcile-not-skip (present marks re-stamped authoritati
     editor.destroy();
   });
 
-  it("a present highlight mark missing tintColor gets #fbbf24 restored", () => {
+  it("a present highlight mark missing tintColor gets the accent band restored", () => {
     // The reload mark for a highlight carries no tintColor (serializer dropped
     // it); the kind happens to be "highlight" already, so kind agrees — but the
     // tintColor disagrees, so the reconcile must still re-stamp.
@@ -789,7 +796,45 @@ describe("RC-B — BUG1 reconcile-not-skip (present marks re-stamped authoritati
 
     const attrs = markAttrsFor(editor, "anc-hl");
     expect(attrs?.kind).toBe("highlight");
-    expect(attrs?.tintColor).toBe("#fbbf24");
+    expect(attrs?.tintColor).toBe(defaultTintForLinkedAnchorKind("highlight"));
+    expect(markedTextFor(editor, "anc-hl")).toBe("on me");
+    expect(markRunCountFor(editor, "anc-hl")).toBe(1);
+    editor.destroy();
+  });
+
+  it("a pre-174 mark carrying the FROZEN #fbbf24 heals to the accent sentinel on load", () => {
+    // The migration seam, decided as option (a): highlights written before task
+    // 174 carry the resolved amber in `tintColor`, which would keep them frozen
+    // against a panel-color override forever. Nothing migrates them explicitly —
+    // this reconcile already recomputes every record's tint from the SSOT and
+    // re-stamps any mark that disagrees, so every doc self-heals on first open.
+    const editor = mountDoc([
+      {
+        uuid: "para-A",
+        runs: [
+          { text: "shine " },
+          {
+            text: "on me",
+            anchor: { anchorId: "anc-hl", kind: "highlight", tintColor: "#fbbf24" },
+          },
+          { text: " now" },
+        ],
+      },
+    ]);
+    expect(markAttrsFor(editor, "anc-hl")?.tintColor).toBe("#fbbf24");
+
+    reapplyModeBAnchors(applyLinkedAnchorsHandle(editor), {
+      notes: [],
+      todoItems: [],
+      comments: [],
+      cutterCards: [],
+      reports: [],
+      highlights: [modeBCard("h1", "highlight", "anc-hl", "on me")],
+    });
+
+    const healed = markAttrsFor(editor, "anc-hl");
+    expect(healed?.tintColor).toBe(defaultTintForLinkedAnchorKind("highlight"));
+    expect(healed?.tintColor).not.toBe("#fbbf24");
     expect(markedTextFor(editor, "anc-hl")).toBe("on me");
     expect(markRunCountFor(editor, "anc-hl")).toBe(1);
     editor.destroy();

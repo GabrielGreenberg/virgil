@@ -500,6 +500,24 @@ silently drift when the palette doesn't. Deliberate non-theme
 constants (e.g. the `info` severity steel in `ErrorCard`) get a
 comment saying why they're exempt.
 
+**A kind's color never gets PERSISTED into the document.** Every in-text
+surface of a card kind — the active ring, the Mode-A paragraph rail, the
+persistent highlight band — resolves from the `--link-anchor-accent-<token>`
+`:root` vars `EditorLayout` stamps from the live theme (`IN_TEXT_ANCHOR_ACCENTS`,
+the #27 invariant: an anchor's color derives from the SAME accent source as its
+card outline). Where a paint channel rides a **document attribute** rather than
+a selector — today the `linkedAnchor` mark's `tintColor` — the attribute carries
+an **accent sentinel** (`accent:<token>`, from `accentTintForToken`) that one
+static CSS rule resolves to that var, never a resolved hex. A hex there freezes
+theme state into the user's prose: the highlight band shipped `"#fbbf24"`, copied
+out of `DEFAULT_PANEL_COLORS.highlight` and frozen, so overriding the Highlight
+panel color repainted the card, the float and the ring and left the band — a
+highlight's entire in-text identity — amber forever, on existing *and* new
+highlights, with no state that could fix it (task 174). Reserve a literal for a
+genuinely per-instance hue (the light-blue pending-AI bands), where there is no
+theme to follow. The sentinel also costs nothing at runtime: the override
+repaints live, with no re-stamp pass and no doc walk on a color change.
+
 Selection: border flips to `theme.borderSelected`, header tint flips
 from `headerDefault` to `headerSelected`, separator flips to
 `theme.separatorSelected`, plus a soft `shadow-sm`. The body never

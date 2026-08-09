@@ -57,7 +57,8 @@ import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
  *  `applyLinkedAnchors` record shape.
  *
  *  The optional fields make the re-stamp AUTHORITATIVE (BUG1 reconcile):
- *  - `tintColor`— the kind-derived persistent tint (yellow for highlights),
+ *  - `tintColor`— the kind-derived persistent tint (the theme-accent band for
+ *    highlights, `null` otherwise),
  *    re-applied so a highlight's band survives the `.tex` round-trip.
  *  - `paragraphId` — the card's stored containing-paragraph uuid; Chip 6 scopes
  *    the text search to it (declared here so the record shape is stable).
@@ -149,7 +150,8 @@ function collectModeBRecords(
     const text = textFor(card, ta.anchorText);
     if (!text) continue;
     const kind = kindFor(card);
-    // Tint is kind-derived (yellow only for highlights); a future per-card
+    // Tint is kind-derived (only highlights carry a band, and it is the
+    // theme-accent SENTINEL, not a resolved hex — task 174); a future per-card
     // `highlightColor` override wins when non-null.
     const override = (card as { highlightColor?: string | null }).highlightColor;
     const tintColor =

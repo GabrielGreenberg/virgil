@@ -56,6 +56,7 @@ import {
   pendingMarkAnchorIds,
   type PendingMarkCardLike,
 } from "@/links/_shared/reapply-pending-marks";
+import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 import { setPendingChangesFlag } from "@/lib/pending-changes-flag";
 import { parseLatex } from "@/lib/latex-parser";
 
@@ -640,11 +641,13 @@ describe("revertPendingChange — replace mode restores byte-identical original 
 // back into real `linkedAnchor` marks (preserving their live tint / card / kind),
 // not drop them — dropping is silent destruction of the other anchor.
 
-// A pre-existing highlight anchor (Adobe-style yellow tint) sitting over "brown"
-// in the fox paragraph, built directly into the doc JSON.
+// A pre-existing highlight anchor (Adobe-style persistent tint) sitting over
+// "brown" in the fox paragraph, built directly into the doc JSON.
 const HL_ANCHOR_ID = "hl-anchor";
 const HL_CARD_ID = "hl-card";
-const HL_TINT = "#fbbf24"; // defaultTintForLinkedAnchorKind("highlight")
+// Read from the SSOT, never re-frozen here — the tint's whole point since task
+// 174 is that it is a theme-derived sentinel, not a hex a caller can copy.
+const HL_TINT = defaultTintForLinkedAnchorKind("highlight")!;
 
 function highlightMark() {
   return {
