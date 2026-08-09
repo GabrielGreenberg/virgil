@@ -913,7 +913,12 @@ textarea,
  * bodies, expex bodies). Direct-children of .tiptap already get their
  * gap from the universal inter-block rule above; this preserves rhythm
  * one level down where the universal rule's `> ` scoping doesn't reach.
- * List items explicitly null this via !important on `.tiptap li > p`. */
+ * List items explicitly null this via !important on `.tiptap li > p`.
+ * Wave-4 rhythm audit: KEEP as-is. These are class/tag adjacent-sibling
+ * selectors (no `:has()`, no universal descendant), and the visible-window
+ * trace (docs/perf/style-invalidation-findings.md) measured zero
+ * style/recalc mass on the typing path — sibling invalidation here is
+ * confined to the edited block's neighbors. */
 .tiptap p + p,
 .tiptap .par-title-wrapper + .par-title-wrapper,
 .tiptap .par-title-wrapper + p,
@@ -3514,6 +3519,41 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
  * (verified empirically) — so inheritance is behavior-identical here. */
 body[data-drop-mode-active="true"] {
   user-select: none;
+}
+
+/* ── Wave-4 Stage A containment (flag `virgil:perf-contain` → body class,
+ * stamped by applyPerfBodyFlags in perf-feature-flags.ts; DEFAULT OFF until
+ * soak). `contain: layout style` tells Blink a container's internal layout
+ * and style (counters/quotes) cannot leak out, so a mutation inside one card
+ * or panel list never invalidates layout outside it. Scope decisions, each
+ * deliberate:
+ *  - `[data-card="1"]`, `[data-omni-entry-wrapper]`, `.panel-card-list`
+ *    (the PANEL.list stable hook), `[data-floating-panel="true"]` — all
+ *    verified free of descendants that position against an ancestor OUTSIDE
+ *    the container (card menus + hints portal to document.body; the float
+ *    shell's resize hit-zones position against the shell itself).
+ *  - NO `paint` on any of those: card chrome (halo rings, jump chevrons)
+ *    may protrude, and paint clipping is a visible artifact where layout
+ *    containment is an invisible one. `paint` only on the static borrowed
+ *    leaves, which are sealed HTML by construction.
+ *  - NOT the editor pod: fold chevrons and grab handles protrude into the
+ *    margin by design.
+ * Kill-switch: remove the localStorage flag (or never set it) — the rules
+ * below are inert without the body class. */
+body.perf-contain [data-card="1"] {
+  contain: layout style;
+}
+body.perf-contain [data-omni-entry-wrapper] {
+  contain: layout style;
+}
+body.perf-contain .panel-card-list {
+  contain: layout style;
+}
+body.perf-contain [data-floating-panel="true"] {
+  contain: layout style;
+}
+body.perf-contain .static-borrowed-text {
+  contain: layout style paint;
 }
 /* Indicator transitions:
  * - Fade in on first mount (under 100ms — feels responsive, not flashy).

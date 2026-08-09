@@ -21,7 +21,7 @@ available for the rest of the codebase to adopt.
 
 ### Net behavior change
 
-- Grab handle no longer listens to global mousemove, no longer walks the doc to resolve known-UUID refs, no longer re-installs DOM listeners on viewport-cache version bumps, no longer ships the dead `.par-drag-handle` supersession path. `selectionchange` listener gated to Reader mode (`!editor.isEditable`).
+- Grab handle no longer walks the doc to resolve known-UUID refs, no longer re-installs DOM listeners on viewport-frame version bumps, no longer ships the dead `.par-drag-handle` supersession path. `selectionchange` listener gated to Reader mode (`!editor.isEditable`). *(Corrected, Wave-4 P6: the original "no longer listens to global mousemove" claim was FALSE as written — a document-level mousemove listener is DELIBERATE and remains, so the hover zone can include the margin; it is bounded by the C7 viewport-frame `containsHoverZone` bail and routed through the layout-gesture park, and since Wave-2 C1 the hover resolve itself is the geometry service's `blocksAtY` cached-band lookup, with the O(doc) `[data-uuid]` sweep surviving only under the `virgil:geom-hover` kill-switch. The "viewport cache" this sweep referenced was deleted in Wave-2b C7 — the C7 service frame replaced it.)*
 - `LinkConnector` skips bezier path generation when both endpoints are off-screen.
 - `SlashCommandPopup` RAF-coalesces its scroll/resize-driven `coordsAtPos` recomputes; scroll listener moved to the editor's scroll parent.
 - `SelectionActionsMenu` scroll listener moved to the editor's scroll parent (mousedown/mouseup stay global because the drag can complete outside the editor; resize stays global).
