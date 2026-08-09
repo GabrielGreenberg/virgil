@@ -23,6 +23,7 @@ import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { BorrowedMainText } from "@/components/BorrowedMainText";
+import { useCardTier } from "@/cards/presence";
 import { useEditorRefContextOrNull } from "@/components/editor-layout/contexts/editor-ref";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useExampleContentRevision } from "@/lib/tiptap/doc-structure";
@@ -439,8 +440,18 @@ export function ExampleCard({
   const editorRef = editorCtx?.editorRef ?? null;
   const canEdit = !!editorRef;
 
+  // Presence tier for the COLLAPSED body (perf Wave 3; flag off ⇒ 3 ⇒ the
+  // legacy always-live branch). Policy "near-live": the collapsed expex
+  // projection needs the real NodeViews, so it stays a live read-only editor
+  // NEAR the viewport (tier 2) and becomes a static number + first-line far
+  // from it (tier 1) — the shared-IO near-zone store watches this card's own
+  // element, with a 2s demote dwell so edge jitter can't thrash the editor.
+  const cardElRef = useRef<HTMLDivElement>(null);
+  const collapsedTier = useCardTier("near-live", cardElRef);
+
   const card = (
     <PanelCard
+      ref={cardElRef}
       theme={theme}
       selected={isHaloed}
       onClick={(e) => {
@@ -488,7 +499,7 @@ export function ExampleCard({
               sanctity concern (the editor re-seeds only on the rev.examples /
               contentRev STRUCTURAL counters, never per keystroke), but it
               informs any future panel/omni virtualization decision. */}
-          {canEdit ? (
+          {canEdit && collapsedTier >= 2 ? (
             <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle }}>
               <ExampleCardEditor
                 exampleId={example.exampleId}
@@ -498,6 +509,27 @@ export function ExampleCard({
                 readOnly
                 clampLines={compressedLines}
               />
+            </div>
+          ) : canEdit ? (
+            /* FAR tier (perf Wave 3): the card is outside the viewport
+               near-zone (or the doc-open ramp hasn't reached full policy),
+               so no editor mounts — a static serif line in the expex look:
+               black native-style (N), first line of the body. Promotes to
+               the live projection when the near-zone store reports the card
+               near (IO-paced; 2s demote dwell the other way). Deliberately
+               NO font-mono — that class is the BARE-mount fallback's
+               signature and the collapsed-projection test's discriminator. */
+            <div
+              data-example-tier="static"
+              style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle, ...compressedBodyStyle(compressedLines) }}
+            >
+              <span className="mr-2">({example.number || "?"})</span>
+              {(() => {
+                const text = example.bodyText || example.items[0]?.text || "";
+                const trimmed = text.replace(/\s+/g, " ").trim();
+                if (trimmed) return trimmed;
+                return <CardEmptyText />;
+              })()}
             </div>
           ) : (
             <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle, ...compressedBodyStyle(compressedLines) }}>
