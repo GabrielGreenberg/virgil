@@ -2935,13 +2935,30 @@ textarea,
  * attribute (Adobe-style: stays visible without hover/selection gating
  * and independent of the `data-show-hl-*` toggles below). Carries through
  * the highlight→note morph: changing the card's kind does not strip the
- * tint from the anchored text. Per-instance hue: the mark stamps an inline
- * `--tint-color` (validated hex) and this rule reads it, so amber highlights
- * and the light-blue pending-AI-change mark coexist; default stays yellow.
+ * tint from the anchored text.
+ *
+ * `--tint-color` arrives one of two ways (see `defaultTintForLinkedAnchorKind`
+ * / `accentTintForToken`):
+ *  - a PER-INSTANCE hue — the mark stamps an inline `--tint-color` (validated
+ *    hex), e.g. the light-blue `#bfdbfe` pending-AI bands;
+ *  - the kind's LIVE THEME ACCENT — the mark stamps only the sentinel attr
+ *    `data-tint-color="accent:<token>"` and the rule right below resolves it
+ *    to the `--link-anchor-accent-<token>` var EditorLayout keeps in sync with
+ *    the panel-color override (#27). One rule per token; the `var(…, <hex>)`
+ *    fallback reproduces the shipped default for the pre-mount window / SSR,
+ *    exactly as the Mode-A/Mode-B colour rules above do.
+ *
+ * Task 174: the highlight band used to persist the RESOLVED `#fbbf24` into the
+ * document, so overriding the Highlight panel colour repainted the card, the
+ * float and the in-text active ring and left the band — a highlight's entire
+ * in-text identity, since `highlight` has `markerType: null` — frozen amber.
  *
  * `!important` wins over the kind-based `data-show-hl-*` rules so a note
- * that was born from a highlight still wears the yellow even when "show
+ * that was born from a highlight still wears the tint even when "show
  * note highlights" is toggled on. */
+.linked-anchor[data-tint-color="accent:highlight"] {
+  --tint-color: var(--link-anchor-accent-highlight, #fbbf24);
+}
 .linked-anchor[data-tint-color] {
   background: color-mix(in oklab, var(--tint-color, #fbbf24) 35%, transparent) !important;
 }
@@ -2972,9 +2989,15 @@ textarea,
  * CARD_THEMES / the user override via the same `--link-anchor-accent-<token>`
  * `:root` vars EditorLayout stamps (#27), so a Mode A rail and a Mode B span
  * for the same card share one accent source. (See the Mode B block above for
- * the var-fallback rationale.) */
+ * the var-fallback rationale.)
+ *
+ * No `highlight` rule, deliberately (task 174): `LEGACY_TOKEN_CROSSWALK
+ * .highlight.cssToken` is `null` by documented intent, and the sole writer
+ * (`useAnchorHighlightReconciler` → `cssTokenForCardKind`) omits the attribute
+ * for a null token — so a `[data-paragraph-kind="highlight"]` rule can never
+ * match. A highlight paints in text through the Mode-B tint band above, not a
+ * paragraph rail. Don't "restore" it; wire the crosswalk's cssToken first. */
 [data-paragraph-kind="note"]      { --link-anchor-color: var(--link-anchor-accent-note, #15803d); }
-[data-paragraph-kind="highlight"] { --link-anchor-color: var(--link-anchor-accent-highlight, #fbbf24); }
 [data-paragraph-kind="cut"]       { --link-anchor-color: var(--link-anchor-accent-cut, #b45757); }
 [data-paragraph-kind="comment"]   { --link-anchor-color: var(--link-anchor-accent-comment, #9333ea); }
 [data-paragraph-kind="archive"]   { --link-anchor-color: var(--link-anchor-accent-archive, #7191b0); }

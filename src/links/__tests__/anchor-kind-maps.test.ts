@@ -8,7 +8,7 @@
 //      of the old silent `"note"` default (the BUG1 kind-corruption class at
 //      create time); non-anchor kinds return `null`.
 //   2. `defaultTintForLinkedAnchorKind` is the single source for the highlight
-//      tint (`#fbbf24` for highlight, `null` otherwise) — so create and reload
+//      tint (the theme-accent sentinel for highlight, `null` otherwise) — so create and reload
 //      derive the same tint.
 //
 // The storage stub guards the extension-barrel/@/lib/storage gotcha (links.ts
@@ -140,8 +140,13 @@ describe("links.ts CardKind↔legacy-kind projections agree with the crosswalk S
 });
 
 describe("defaultTintForLinkedAnchorKind — single tint source", () => {
-  it("paints the Adobe yellow only for highlight", () => {
-    expect(defaultTintForLinkedAnchorKind("highlight")).toBe("#fbbf24");
+  it("paints the theme-derived accent band only for highlight", () => {
+    // Task 174: the band is an ACCENT SENTINEL, never a resolved hex — a hex
+    // here would freeze the panel theme into the document (the `#fbbf24`
+    // literal this replaced was byte-identical to DEFAULT_PANEL_COLORS
+    // .highlight, i.e. copied out of the theme and then frozen).
+    expect(defaultTintForLinkedAnchorKind("highlight")).toBe("accent:highlight");
+    expect(defaultTintForLinkedAnchorKind("highlight")).not.toMatch(/^#/);
   });
 
   it("paints no tint for every non-highlight kind", () => {

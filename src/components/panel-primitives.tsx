@@ -38,6 +38,8 @@ import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import RichTextField from "./RichTextField";
 import { BorrowedMainText } from "./BorrowedMainText";
+import { StaticBorrowedText } from "./StaticBorrowedText";
+import { useCardTier } from "@/cards/presence";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";
 import { AnchoredMenu } from "./menu/AnchoredMenu";
@@ -1169,6 +1171,11 @@ export function EditableCard({
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  // Presence tier for the COLLAPSED borrowed body (perf Wave 3; flag off ⇒ 3
+  // ⇒ legacy live branch). Policy "static": collapsed footnote/archive prose
+  // is tier-1 static HTML regardless of nearness. Unconditional hook call;
+  // consulted only inside the compressed borrowed switch.
+  const borrowedTier = useCardTier("static", cardRef);
   // Set during a mouse press on the card so onFocusCapture can tell
   // pointer-driven focus (which the upcoming click will toggle) from
   // keyboard / programmatic focus (which should auto-select). Without
@@ -1415,13 +1422,32 @@ export function EditableCard({
               // text (same projection makeCompressedSummary uses) and show the
               // sentinel, matching the summary branch.
               richJsonToPlainText(compressedContent).trim() ? (
-                <BorrowedMainText
-                  value={compressedContent}
-                  instanceKey={`compressed:${cardKind}:${id}`}
-                  variant="footnote"
-                  schemaScope={schemaScope}
-                  bodyStyle={compressedBody}
-                />
+                // Presence tiers (perf Wave 3, flag virgil:card-tiers). The
+                // collapsed borrowed body's policy is "static": T1 renders the
+                // SAME pipeline as static HTML (StaticBorrowedText) instead of
+                // mounting a read-only editor per collapsed card; T0 (the
+                // doc-open ramp's first commit) shows the plain-text summary.
+                // Flag off ⇒ borrowedTier === 3 ⇒ the legacy live branch,
+                // byte-identical. Everything OUTSIDE this switch — the clamp
+                // div, the C24 empty guard, the title row — is tier-invariant.
+                borrowedTier >= 2 ? (
+                  <BorrowedMainText
+                    value={compressedContent}
+                    instanceKey={`compressed:${cardKind}:${id}`}
+                    variant="footnote"
+                    schemaScope={schemaScope}
+                    bodyStyle={compressedBody}
+                  />
+                ) : borrowedTier === 1 ? (
+                  <StaticBorrowedText
+                    value={compressedContent}
+                    variant="footnote"
+                    schemaScope={schemaScope}
+                    bodyStyle={compressedBody}
+                  />
+                ) : (
+                  makeCompressedSummary(compressedContent, compressedLines)
+                )
               ) : (
                 <CardEmptyText />
               )
