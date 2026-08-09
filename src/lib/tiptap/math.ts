@@ -16,7 +16,10 @@ import { ATOM_REGISTRY } from "./atom-registry";
 
 const INLINE_MATH_ATOM = ATOM_REGISTRY["inline-math"];
 
-function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
+// Exported for the static T1 card tier (StaticBorrowedText's one-shot KaTeX
+// pass over `[data-type="inline-math"|"display-math"]` spans) — the SAME
+// paint the live NodeView runs, placeholder/error sentinels included.
+export function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
   target.innerHTML = "";
   if (!latex) {
     const ph = document.createElement("span");

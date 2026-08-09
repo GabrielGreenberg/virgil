@@ -174,6 +174,7 @@ import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { LiftHost } from "@/text-objects/LiftHost";
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { CardPresenceProvider } from "@/cards/presence";
 import { cardHasContent } from "@/cards/has-content";
 import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
 import { makeUnbridgingDelete } from "@/cards/lifecycle/unbridging-delete";
@@ -5561,6 +5562,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // other — share one interaction store. Mounted INSIDE EditorPane so it covers
     // both the main-app mount and the Library Reader mount.
     <CardStoreProvider store={cardStoreInst}>
+    {/* Presence tiers (perf Wave 3, flag virgil:card-tiers default OFF):
+        one provider per pane, above every card surface — the float map and
+        both docked rails are siblings whose portals keep React-tree
+        position, so this single wrap covers all three surfaces in both app
+        mounts. `ready` (editor + doc content) starts the T0→T1→full ramp;
+        the keep-alive visibility context caps hidden panes at T1. */}
+    <CardPresenceProvider ready={ready}>
     <DiagnosticsProvider value={diagnostics}>
     <PendingChangeControllerProvider value={pendingController}>
     <EditorChromeProvider value={{ ...chrome, menuBar }}>
@@ -7208,6 +7216,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
     </DiagnosticsProvider>
+    </CardPresenceProvider>
     </CardStoreProvider>
   );
 }));
