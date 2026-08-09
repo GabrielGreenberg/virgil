@@ -286,6 +286,13 @@ export function LiftHost({ editorRef, children }: Props) {
   // gesture start, cleared in `cleanup`, so a second `beginLift` (e.g. the
   // float button firing while a grab is mid-flight) is correctly blocked.
   const inFlightRef = useRef(false);
+  // Wave-2 P4: the imperative channel for per-move overlay motion — the
+  // overlay's two portal nodes register here, and the gesture's RAF applies
+  // `translate3d` to them directly (React renders on edges only).
+  const motionTargetsRef = useRef<{
+    root: HTMLDivElement | null;
+    header: HTMLDivElement | null;
+  }>({ root: null, header: null });
 
   const { cacheRef } = useEditorViewportCache(editorRef.current);
 
@@ -476,6 +483,36 @@ export function LiftHost({ editorRef, children }: Props) {
         externalCommit: true,
       });
 
+      // ── Transform-only motion (wave 2 P4, the D3 fix). The pre-wave shape
+      // was a React setOverlay per RAW mousemove — a render of the overlay
+      // (a full section clone for heading lifts) plus `left/top` layout
+      // writes on two `position:fixed` nodes, per event, uncoalesced. Now
+      // React renders only on EDGES (lift start, ghost↔popout flips, doc
+      // leave); the per-move delta is a RAF-coalesced `translate3d` applied
+      // imperatively to the two portal nodes. The React-state base box stays
+      // FROZEN at the gesture-start cursor (`liveOverlay.cursorX/Y` are
+      // never updated per move), so base + transform can never double-count
+      // — a mode-flip re-render recomputes the base chrome box from the same
+      // frozen coords and the DOM keeps the live transform (React never
+      // diffs a style prop it doesn't own). The LIVE cursor lives in the two
+      // closure vars below; the release handlers read those.
+      let liveCursorX = origin.x;
+      let liveCursorY = origin.y;
+      let motionRaf = 0;
+      const applyMotion = () => {
+        motionRaf = 0;
+        const dx = liveCursorX - origin.x;
+        const dy = liveCursorY - origin.y;
+        const t = `translate3d(${dx}px, ${dy}px, 0)`;
+        const targets = motionTargetsRef.current;
+        if (targets.root) targets.root.style.transform = t;
+        if (targets.header) targets.header.style.transform = t;
+      };
+      const scheduleMotion = () => {
+        if (motionRaf) return;
+        motionRaf = requestAnimationFrame(applyMotion);
+      };
+
       const onMove = (mv: MouseEvent) => {
         // Triggered + lifted-overlay path → drive overlay cursor + mode.
         if (!liveOverlay) return;
@@ -490,6 +527,8 @@ export function LiftHost({ editorRef, children }: Props) {
           cleanup();
           return;
         }
+        liveCursorX = mv.clientX;
+        liveCursorY = mv.clientY;
         const inContent = cacheRef.current.containsContentZone(
           mv.clientX,
           mv.clientY,
@@ -505,13 +544,12 @@ export function LiftHost({ editorRef, children }: Props) {
             : inContent
               ? "ghost"
               : "popout";
-        liveOverlay = {
-          ...liveOverlay,
-          cursorX: mv.clientX,
-          cursorY: mv.clientY,
-          mode,
-        };
-        setOverlay(liveOverlay);
+        if (mode !== liveOverlay.mode) {
+          // EDGE: chrome changes — React owns the box; cursor stays frozen.
+          liveOverlay = { ...liveOverlay, mode };
+          setOverlay(liveOverlay);
+        }
+        scheduleMotion();
       };
 
       // Document-leave forces popout mode (decision §8) — the same defensive
@@ -538,10 +576,13 @@ export function LiftHost({ editorRef, children }: Props) {
           grabOffsetY: gy,
           sourceWidth,
           sourceHeight,
-          cursorX,
-          cursorY,
           mode,
         } = liveOverlay;
+        // The LIVE cursor — the React-state cursorX/Y are frozen at the
+        // gesture start (transform-only motion); release math must use the
+        // real pointer position.
+        const cursorX = liveCursorX;
+        const cursorY = liveCursorY;
         const liveRef = liveOverlay.ref;
         // Final mode read uses the up-event coords (slightly more accurate
         // than the last mousemove if the user released between frames). Falls
@@ -666,6 +707,8 @@ export function LiftHost({ editorRef, children }: Props) {
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
         document.documentElement.removeEventListener("mouseleave", onDocLeave);
+        if (motionRaf) cancelAnimationFrame(motionRaf);
+        motionRaf = 0;
         // Release the single-gesture guard so the next lift can start.
         inFlightRef.current = false;
         // Defensive: if the gesture aborted mid-overlay without committing
@@ -750,6 +793,7 @@ export function LiftHost({ editorRef, children }: Props) {
           mode={overlay.mode}
           label={overlay.label}
           viewToggleCls={overlay.viewToggleCls}
+          motionTargetsRef={motionTargetsRef}
         />
       )}
     </LiftHostContext.Provider>

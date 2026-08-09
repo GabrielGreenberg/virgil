@@ -158,6 +158,18 @@ export interface LiftedTextOverlayProps {
    *  useMemo (contenteditable / ids / state attrs stripped, pointer-events
    *  none). Absent / null → default single-element clone. */
   ghostContent?: HTMLElement | null;
+  /**
+   * Wave-2 P4 (transform-only motion): the parent's imperative channel to
+   * the two portal nodes. Per-move cursor deltas are applied by LiftHost
+   * as a RAF-coalesced `translate3d` on these nodes — React renders only
+   * on EDGES (lift start, mode flips), with `cursorX`/`cursorY` frozen at
+   * the gesture-start coords so the JSX base box and the imperative
+   * transform can never double-count. The JSX must therefore never set
+   * `transform` (a style-diff write would clobber the live motion).
+   */
+  motionTargetsRef?: {
+    current: { root: HTMLDivElement | null; header: HTMLDivElement | null };
+  };
 }
 
 export function LiftedTextOverlay({
@@ -173,6 +185,7 @@ export function LiftedTextOverlay({
   label,
   viewToggleCls,
   ghostContent,
+  motionTargetsRef,
 }: LiftedTextOverlayProps) {
   // Sanitize the clone once at mount. cloneNode(true) carries the full
   // subtree, whose `contenteditable` values are mixed: the source block is
@@ -461,6 +474,9 @@ export function LiftedTextOverlay({
   return createPortal(
     <Fragment>
       <div
+        ref={(el) => {
+          if (motionTargetsRef) motionTargetsRef.current.root = el;
+        }}
         className={`lifted-text-overlay${viewToggleCls ? ` ${viewToggleCls}` : ""}`}
         data-lift-mode={mode}
         data-lift-kind={ref.kind}
@@ -471,6 +487,11 @@ export function LiftedTextOverlay({
           top: overlayTop,
           width: overlayWidth,
           height: overlayHeight,
+          // Per-move motion rides an imperative translate3d (see
+          // motionTargetsRef) — the hint keeps both nodes composited so a
+          // move never re-lays-out the clone. `transform` itself must NOT
+          // appear in this style object.
+          willChange: "transform",
         }}
         aria-hidden="true"
       >
@@ -484,6 +505,9 @@ export function LiftedTextOverlay({
         <div ref={bodyRef} className="lifted-text-overlay__body tiptap" />
       </div>
       <div
+        ref={(el) => {
+          if (motionTargetsRef) motionTargetsRef.current.header = el;
+        }}
         className="lifted-text-overlay__header"
         data-lift-mode={mode}
         data-lift-kind={ref.kind}
@@ -493,6 +517,7 @@ export function LiftedTextOverlay({
           top: headerTop,
           width: headerWidth,
           height: HEADER_HEIGHT,
+          willChange: "transform",
         }}
         aria-hidden="true"
       >
