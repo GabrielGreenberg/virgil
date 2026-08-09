@@ -76,7 +76,6 @@ function baseProps(overrides: Partial<PanelProps> = {}): PanelProps {
     bibEntries: [],
     citationStyle: "apa",
     bibPackage: "biblatex",
-    bibPath: "references.bib",
     selectedId: null,
     citationOrder: [],
     onSelect: vi.fn(),

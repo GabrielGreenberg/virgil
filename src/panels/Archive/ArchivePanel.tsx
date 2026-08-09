@@ -18,12 +18,9 @@ interface ArchivePanelProps {
   onSelect: (id: string | null) => void;
   onEdit: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
-  onInsert: (id: string) => void;
-  onRestore: (id: string) => void;
   onDelete: (id: string) => void;
   onJumpToCard?: (card: ArchivedSnippet, sourceEl?: HTMLElement | null) => void;
   anchoredIds?: Set<string>;
-  panelSide: "left" | "right";
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   onEditorFocus?: (editor: any) => void;

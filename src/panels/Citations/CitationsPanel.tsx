@@ -22,7 +22,6 @@ interface CitationsPanelProps {
   bibEntries: BibEntry[];
   citationStyle: string;
   bibPackage: string;
-  bibPath: string;
   selectedId: string | null;
   citationOrder: string[];
   onSelect: (id: string | null) => void;

@@ -147,11 +147,26 @@ export const bodyVariantForCardKind = (k: CardKind): "footnote" | "note" =>
 export const bodySchemaForCardKind = (k: CardKind): CardBodySchemaScope =>
   CARD_REGISTRY[k].bodySchema;
 
+/** Whether a kind's body holds a document EXCERPT (a verbatim slice of the main
+ *  document) rather than authored card prose. One declaration, two duties —
+ *  they are the two directions of the same fact:
+ *
+ *    • CAPTURE — a destructive action that moves document content into such a
+ *      body must gate its delete on `canMountInCardBody` (task 308).
+ *    • RESTORE — such a body is the only copy of prose that left the document,
+ *      so the card carries the un-archive affordance that hands it back
+ *      (task 106). Deriving the affordance from the same facet is what makes a
+ *      future excerpt kind inherit it instead of re-deciding.
+ *
+ *  Today `archive` is the sole member. */
+export const isExcerptCardKind = (k: CardKind): boolean =>
+  CARD_REGISTRY[k].bodySchema === "excerpt";
+
 /** The kinds whose bodies hold document excerpts. Every DESTRUCTIVE capture
  *  action must target one of these AND gate its delete on `canMountInCardBody`
  *  — that pair is the never-delete-what-you-cannot-restore invariant. */
 export const excerptCardKinds = (): CardKind[] =>
-  CARD_KINDS.filter((k) => CARD_REGISTRY[k].bodySchema === "excerpt");
+  CARD_KINDS.filter(isExcerptCardKind);
 
 /** Whether a kind can morph in place into its sibling (the A9 kind-chevron).
  *  The 4 morphing pairs (note↔highlight, revision-/cutter-comment↔suggestion,

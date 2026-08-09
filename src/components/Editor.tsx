@@ -33,6 +33,7 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { restoreExcerptAtCaret } from "@/lib/tiptap/restore-excerpt";
 import { chromeAwareScrollMargin } from "@/lib/tiptap/chrome-scroll-margin";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
@@ -253,7 +254,10 @@ export interface EditorHandle {
   getSelectedText: () => string;
   scrollToHeading: (blockIndex: number) => void;
   archiveSelection: (archiveId: string) => { content: unknown; paragraphId: string | null } | null;
-  restoreArchive: (content: unknown) => void;
+  /** Re-insert an archived excerpt at the caret. Returns whether the content
+   *  actually LANDED — a caller that drops the archive entry afterwards is
+   *  destroying the only copy, so it must not do so on a false. */
+  restoreArchive: (content: unknown) => boolean;
   getFootnotes: () => FootnoteInfo[];
   scrollToFootnote: (footnoteId: string, sourceEl?: HTMLElement | null) => void;
   updateFootnoteContent: (footnoteId: string, newContent: TipJSON) => void;
@@ -1042,24 +1046,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const paragraphId = resolveAnchor();
       return { content: richContent, paragraphId };
     },
-    restoreArchive(content: unknown): void {
-      if (!editor) return;
-      // Insert at current cursor position
-      if (typeof content === "string") {
-        if (content.startsWith("% ")) {
-          const body = content.slice(2);
-          editor.chain().focus().insertContent({
-            type: "latexComment",
-            content: body ? [{ type: "text", text: body }] : [],
-          }).run();
-        } else {
-          editor.chain().focus().insertContent(content).run();
-        }
-      } else {
-        const doc = content as { type?: string; content?: unknown[] };
-        const nodes = doc?.content ?? [];
-        editor.chain().focus().insertContent(nodes).run();
-      }
+    restoreArchive(content: unknown): boolean {
+      // The return leg of the capture law — see `restoreExcerptAtCaret`. It
+      // reports whether the excerpt LANDED, which is what makes it safe for the
+      // caller to then drop the archive entry holding the only copy.
+      return restoreExcerptAtCaret(editor, content);
     },
     getFootnotes(): FootnoteInfo[] {
       const footnotes: FootnoteInfo[] = [];
