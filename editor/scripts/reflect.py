@@ -343,9 +343,31 @@ def _read_task(doc: Path, task_id: str) -> dict:
 # Memo (de)serialization — a tiny flat frontmatter, no YAML dep
 # ---------------------------------------------------------------------------
 
-FM_KEYS = ["skill", "taskId", "kind", "status", "result", "tier", "fixNow",
-           "paragraphIds", "reflectedAt", "skillSha", "skillWorkingSha",
-           "bundleVersion"]
+FM_KEYS = ["skill", "taskId", "doc", "runs", "kind", "status", "result", "tier",
+           "fixNow", "paragraphIds", "reflectedAt", "skillSha",
+           "skillWorkingSha", "bundleVersion"]
+# `doc` and `runs` are the task-less coalescing key's carriers (see
+# `_find_existing`): `doc` is the identity term that must round-trip for the
+# next lookup to match, `runs` the tally that keeps the frequency signal a
+# collapsed burst would otherwise lose. `_render` skips a key absent from the
+# dict, so a task-bearing memo simply carries no `runs` line.
+
+# The keys BOTH dev-loop streams actually populate — the honest statement of the
+# "ONE reader, ONE vocabulary" seam (chip 19). `FM_KEYS` is *this* stream's key
+# list, and `dev_loop.ITER_FM_KEYS` opens with all of it so the two render in the
+# same shape; but declaring a key is not filling it, and `_render` omits a key
+# whose value the writer never supplied. Four keys are memos-only in practice:
+# `skillWorkingSha`/`bundleVersion` (provenance of a SERVED prompt — an iterate
+# run drives the working copy directly, so there is no served artifact to stamp)
+# and `doc`/`runs` (the task-less coalescing key — iterate writes one memo per
+# iteration into `iterations/`, keyed on case+attempt, and names its paper
+# `sandbox`). A round-trip test that walks `FM_KEYS` therefore asserts something
+# neither stream ever promised, and had been failing on the first two since they
+# were added. Walk THIS list to check the shared vocabulary; walk `FM_KEYS` to
+# check the declaration shape. The distinction is the missing notion, not the
+# missing check — same shape as `EMPTY_BUCKET` above.
+SHARED_FM_KEYS = [k for k in FM_KEYS
+                  if k not in ("doc", "runs", "skillWorkingSha", "bundleVersion")]
 
 
 def _parse_memo(text: str) -> tuple[dict, dict]:
@@ -388,15 +410,110 @@ def _user_tag_bullets(body: str) -> list[str]:
     return out
 
 
-def _find_existing(memos_root: Path, skill: str, task_id: str) -> Path | None:
-    """The memo already written for this (skill, Task) pair, if any. Idempotency
-    + after-the-fact tag promotion key on (skill, Task), NOT the time-stamped
-    filename — so re-running the SAME skill updates its one memo, while a
-    different skill on the same Task (the propose→accept lifecycle:
-    draft-suggestion then accept-/reject-suggestion all share a taskId) gets its
-    OWN memo and never clobbers the draft's reflection. Task-less ('-')
-    reflections are never deduped — each gets a fresh file."""
-    if task_id in ("-", "", "none", "None") or not memos_root.is_dir():
+def _is_task_less(task_id: str) -> bool:
+    """The task-less sentinel set, in one place — `spawn_reflection` passes '-'
+    for a writeback that answers no Task, and a hand-run reflect may pass any of
+    the empty spellings."""
+    return task_id in ("-", "", "none", "None")
+
+
+def doc_key(doc: Path) -> str:
+    """The paper a reflection is about, as a stable frontmatter value: the
+    RESOLVED absolute path. The task-less dedup key's middle term (see
+    `_find_existing`), so two papers worked on the same day never merge floors.
+
+    The folder NAME is the tempting choice — the same paper is reached through
+    different prefixes (a synced folder, a worktree checkout, a sample copy),
+    and a path key splits one paper's day into two floors when it is. That was
+    the first cut here, and the capture-slice test refuted it inside a minute:
+    its `sandbox()` mints every paper as `<tmpdir>/paper`, so two genuinely
+    different papers collided on the name and merged into one memo. Which is the
+    same conflation this whole change exists to stop.
+
+    So the two failure modes are not symmetric and the choice is not a toss-up.
+    A path key over-splits: two floors for one paper, mild noise, every word
+    still attributed to the paper that produced it. A name key over-merges: two
+    papers' reflections in one memo, silently, with no way to tell them apart
+    afterwards. Prefer the recoverable failure."""
+    try:
+        return str(doc.resolve())
+    except OSError:
+        return str(doc)
+
+
+def _find_existing(memos_root: Path, skill: str, task_id: str,
+                   doc: Path | None = None, date_str: str | None = None) -> Path | None:
+    """The memo this reflection belongs to, if one already exists.
+
+    TWO identity keys, because there are two kinds of reflection and only one of
+    them has a Task:
+
+    • **Task-bearing** → keyed on (skill, Task), NOT the time-stamped filename —
+      so re-running the SAME skill updates its one memo, while a different skill
+      on the same Task (the propose→accept lifecycle: draft-suggestion then
+      accept-/reject-suggestion all share a taskId) gets its OWN memo and never
+      clobbers the draft's reflection.
+
+    • **Task-less** → keyed on (skill, doc, day). These used to be "never
+      deduped — each gets a fresh file", and that was the single largest source
+      of noise in the whole dev-loop. The tail-trigger fires one floor memo per
+      writeback (`_common.spawn_reflection`) and promises the buckets will be
+      "enriched later via the reflection convention" — but with no dedup key
+      there is no file for a later reflection to FIND, so every task-less floor
+      was contentless by construction and stayed that way. Measured on the night
+      of 2026-08-09: 345 task-less memos in one 32-minute burst of mechanical
+      card ops (edit-card ×104, link-cards ×81, archive-card ×66), of which
+      exactly ONE carried content — and that one was written by hand with
+      `--memo-json`, not by the trigger. The dream's top-priority triage stream
+      was 99.8% files that could never say anything.
+
+      Keying them on (skill, doc, day) makes the promise reachable: the burst
+      collapses to one memo per skill per paper per day carrying `runs: N`, and
+      an agent that later reflects on the same skill lands IN it. The aggregate
+      fact those 104 files existed to record is a count, so a count is what it
+      keeps — the frequency data survives at 1/104 the file count.
+
+      And the noise was the *mild* half. "Never deduped" was not actually true:
+      the mint path is `<HH-MM-SS>-<skill>.md`, so two task-less reflections for
+      one skill in the SAME SECOND resolved to the same filename and the second
+      one **overwrote** the first — a bare `atomic_write`, no merge, since the
+      merge is gated on `existing_path` and that was hard-None here. So the only
+      dedup task-less memos had was accidental, at one-second granularity, and
+      its resolution was silent data loss. The victim is the case that matters
+      most: an agent reflects with real content, does one more card op inside
+      the same second, and the tail-trigger's contentless floor lands on top of
+      its reflection and erases it. At the 68-memos-per-minute rate this burst
+      actually ran at, that is not a hypothetical. A/B on identical input, six
+      task-less writebacks: before → 2 files (four reflections destroyed);
+      after → 1 file, `runs: 6`, content preserved. Keying the lookup turns an
+      accidental clobber into an intentional merge, which is the same fix.
+
+    The task-less lookup is also scoped to the day's directory rather than the
+    whole sink, so it costs O(today) where the task-bearing scan is O(all memos
+    ever) — a scan that is 38 ms at 689 memos and grows without bound, paid
+    inside the 20 s subprocess that blocks every writeback before it prints its
+    result. That residual is untouched here and stated in the digest."""
+    if not memos_root.is_dir():
+        return None
+    if _is_task_less(task_id):
+        # No Task to key on; (skill, doc, day) is the identity instead. Needs
+        # both terms — a caller that supplies neither gets the old behaviour
+        # (a fresh file) rather than a wrong merge.
+        if doc is None or not date_str:
+            return None
+        day_dir = memos_root / date_str
+        if not day_dir.is_dir():
+            return None
+        want = doc_key(doc)
+        for p in sorted(day_dir.glob("*.md")):
+            try:
+                head = p.read_text(encoding="utf-8")[:2000]
+            except OSError:
+                continue
+            fm, _ = _parse_memo(head)
+            if (fm.get("skill") == skill and _is_task_less(str(fm.get("taskId", "")))
+                    and fm.get("doc") == want):
+                return p
         return None
     for p in sorted(memos_root.rglob("*.md")):
         try:
@@ -528,8 +645,12 @@ def main(argv: list[str]) -> int:
         tier = TIER_FLAGGED  # fast-path is a flagged subcase
 
     # ---- merge with any existing memo for this Task (idempotent + additive tags)
+    # The clock is read BEFORE the lookup: the task-less key's third term is the
+    # day, so `date_str` is an input to `_find_existing`, not just to the
+    # filename it may end up minting.
+    iso, date_str, time_str = _now_parts()
     memos_root = _memos_root()
-    existing_path = _find_existing(memos_root, a.skill, a.taskId)
+    existing_path = _find_existing(memos_root, a.skill, a.taskId, doc, date_str)
     prior_fm, prior_buckets, prior_summary = ({}, {}, None)
     if existing_path is not None:
         prior_text = existing_path.read_text(encoding="utf-8")
@@ -561,10 +682,23 @@ def main(argv: list[str]) -> int:
             tag_bullets.append(t)
     buckets["userTagged"] = "\n".join(f"- {t}" for t in tag_bullets)
 
-    iso, date_str, time_str = _now_parts()
+    # A task-less memo is the day's floor for (skill, doc), so it counts the
+    # writebacks that landed in it. Task-bearing memos are one-per-Task and
+    # carry no count (re-running the same skill on one Task is an UPDATE of one
+    # reflection, not two events).
+    runs = None
+    if _is_task_less(a.taskId):
+        try:
+            runs = int(str(prior_fm.get("runs", 0)) or 0) + 1
+        except ValueError:
+            runs = 1
+
     fm = {
         "skill": a.skill,
         "taskId": a.taskId,
+        # The paper this reflection is about — the task-less dedup key's middle
+        # term, so it must be persisted for the next lookup to match on it.
+        "doc": doc_key(doc),
         "kind": kind or "—",
         "status": status or "—",
         "result": result or "",
@@ -588,6 +722,8 @@ def main(argv: list[str]) -> int:
         "_summary": a.summary or memo.get("summary") or prior_summary,
         "_source": task["source"],
     }
+    if runs is not None:
+        fm["runs"] = runs
 
     target = existing_path or (memos_root / date_str / f"{time_str}-{a.skill}.md")
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -599,8 +735,9 @@ def main(argv: list[str]) -> int:
     except ValueError:
         pass
     action = "updated" if existing_path is not None else "wrote"
+    tally = f", run {runs}" if runs is not None and runs > 1 else ""
     print(f"Done: reflected on {a.skill} for {a.taskId} "
-          f"(tier={tier}{', fix-now' if fix_now else ''}). {action} {rel}")
+          f"(tier={tier}{', fix-now' if fix_now else ''}{tally}). {action} {rel}")
     return 0
 
 

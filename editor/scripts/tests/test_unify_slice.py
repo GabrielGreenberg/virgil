@@ -47,7 +47,7 @@ sys.path.insert(0, str(SCRIPTS))
 import reflect  # noqa: E402
 import dream_land  # noqa: E402
 import dev_loop as dl  # noqa: E402
-from reflect import BUCKET_ORDER, FM_KEYS, _parse_memo  # noqa: E402
+from reflect import BUCKET_ORDER, FM_KEYS, SHARED_FM_KEYS, _parse_memo  # noqa: E402
 from dream_land import (  # noqa: E402
     LAND_ACTS, LAND_PROPOSES, LAND_REFUSED,
     B_AGENTS_DONT, B_CONTRACT_SHAPE, B_DEV_GATE,
@@ -113,8 +113,12 @@ _, ifm, isec = iter_memo(
     work / "iterations")
 
 # The SAME reader yields the SAME structure for both: the shared FM keys + 4 buckets.
-for k in FM_KEYS:
+for k in SHARED_FM_KEYS:
     check(k in rfm and k in ifm, f"both streams' frontmatter carries the shared key '{k}'")
+# The memos-only keys are memos-only BY CONSTRUCTION, not by omission — pin that
+# too, so a key silently dropped from the reflect writer still fails somewhere.
+for k in (set(FM_KEYS) - set(SHARED_FM_KEYS)):
+    check(k in rfm and k not in ifm, f"'{k}' is a memos-only key (in reflect, absent from iterations)")
 for bkey in BUCKET_ORDER:
     check(bkey in rsec and bkey in isec, f"both streams parse into the '{bkey}' bucket")
 check(ifm.get("stream") == "iterations", "iterate memo is stream-labeled 'iterations'")
