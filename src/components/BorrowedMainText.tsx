@@ -47,6 +47,7 @@ import {
   type CardBodySchemaScope,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { refreshCitationDisplay } from "@/lib/borrowed-render";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
 import { registerEditorMount } from "@/lib/editor-census-probe";
 
@@ -89,30 +90,8 @@ export interface BorrowedMainTextProps {
   schemaScope?: CardBodySchemaScope;
 }
 
-/** Rewrite citation nodes so their `displayText` reflects the current
- *  bibliography lookup (persisted nodes often saved `displayText=""`). Pure;
- *  runs once at mount on the initial content. */
-function refreshCitationDisplay(
-  doc: JSONContent,
-  resolve: ((command: string) => string) | undefined,
-): JSONContent {
-  if (!resolve) return doc;
-  function walk(node: JSONContent): JSONContent {
-    if (node.type === "citation" && node.attrs) {
-      const command = (node.attrs.command as string) || "";
-      const desired = resolve!(command) || command;
-      if (node.attrs.displayText !== desired) {
-        return { ...node, attrs: { ...node.attrs, displayText: desired } };
-      }
-      return node;
-    }
-    if (node.content) {
-      return { ...node, content: node.content.map(walk) };
-    }
-    return node;
-  }
-  return walk(doc);
-}
+// `refreshCitationDisplay` moved to @/lib/borrowed-render (perf Wave 3) so
+// the live editor and the static T1 tier resolve citations through ONE walk.
 
 export function BorrowedMainText({
   value,

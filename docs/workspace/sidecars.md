@@ -1,4 +1,4 @@
-<!-- last-verified: 0d788512 2026-07-18 -->
+<!-- last-verified: 891c066a 2026-08-10 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -37,7 +37,7 @@ below carry only what's *distinctive*:
 - **`selectedText?: string`** — the Mode-B captured text (undefined for
   paragraph-only / unanchored cards).
 - **`aiRequest: boolean`** — the sticky "I want Claude to act on this" flag the
-  bridge collapses into a Task ([cards.md → the Task Card](cards.md#the-task-card-ai)).
+  bridge collapses into a Task ([cards.md → the Task Card](cards.md#the-task-ai-requestsjson)).
 - **`archived?: boolean`** — set-aside flag (per-card Archive). Absent ≡ active;
   `true` hides the card from the active list / omni / in-doc, surfaced only under
   the View Archives/All menu. On most kinds it's a pure sidecar flip; on the
@@ -195,7 +195,7 @@ being an Archive **text-object** snippet.)
 ## The Task store (`ai-requests.json`)
 
 `AiRequestsState { requests: AiRequest[] }` — the parallel store the cowork loop
-turns on (the `ai` card kind). **Never hand-edit it**; the writeback owns it
+turns on (the retired `ai` kind survives only as `AiRequestKind`, not a CardKind). **Never hand-edit it**; the writeback owns it
 ([structure.md](structure.md#the-write-path)).
 
 ```ts
@@ -216,7 +216,7 @@ AiRequestPayload = { kind: "style-merge"; targetStyleId; targetStyleName;
 The three enum types are **owned by the Cowork section** — don't re-enumerate
 their members or semantics here:
 
-- **`AiRequestKind`** — the 8 Task kinds; listed in [cards.md → the Task Card](cards.md#the-task-card-ai).
+- **`AiRequestKind`** — the 8 Task kinds; listed in [cards.md → the Task Card](cards.md#the-task-ai-requestsjson).
 - **`AiRequestStatus`** (lifecycle) and **`AiRequestResult`** (outcome) — members
   + when each is set: [VIRGIL.md → Status and result vocabulary](../architecture/VIRGIL.md#status-and-result-vocabulary).
   Legacy `draft` / `submitted` statuses still parse and read as open.

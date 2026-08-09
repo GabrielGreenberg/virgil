@@ -1,4 +1,4 @@
-<!-- last-verified: 92cb1405 2026-08-05 -->
+<!-- last-verified: 891c066a 2026-08-10 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
@@ -123,9 +123,10 @@ matches are skipped — so a skill should not rely on recovery for duplicated te
 ## The injected macros
 
 The `\v*` markers are no-op macros, so a `.tex` still compiles outside Virgil.
-`CLASSIC_PREAMBLE` (`src/lib/document-styles.ts`) seeds `\providecommand` no-ops
-for `\vfid` / `\vcid` / `\vexid` (+ `\usepackage{xcolor}`); `ensurePreambleRequirements`
-(`src/lib/latex-requirements.ts`, formerly `ensureVirgilCommands`) tops up **all seven**
+`CLASSIC_PREAMBLE` (`src/lib/document-styles.ts`, now `buildPreamble("\documentclass{article}")`)
+seeds `\providecommand` no-ops for **all seven** `\v*` shims (via `buildPreamble`'s `SHIM_BLOCK`)
+plus the `VIRGIL_BASELINE_PACKAGES` (`inputenc`/`graphicx`/`xcolor`/`amsmath`/`amssymb`/`natbib`/`expex`); `ensurePreambleRequirements`
+(`src/lib/latex-requirements.ts`, formerly `ensureVirgilCommands`) tops up the same **all seven**
 (`SHIM_COMMAND_NAMES`: `\vfid` `\vcid` `\vbid` `\vexid` `\vxid` `\vlid` `\vlidend`) on
 every save, even against a user-authored
 preamble — `\vbid` is declared in the `.tex` preamble (so a `.bib` `\input` or a

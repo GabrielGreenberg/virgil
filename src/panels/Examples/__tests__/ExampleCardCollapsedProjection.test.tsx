@@ -1,32 +1,37 @@
 // @vitest-environment jsdom
 //
-// Chip A fold (#43) — the COLLAPSED example card now renders through the SAME
-// expex editor as expanded, forced read-only + height-clamped, instead of the
-// old hand-built `font-mono (N)` projection. This is the load-bearing #43
-// parity assertion: collapsed ≡ expanded renderer (black native (N) via
-// .expex-number, expex serif/grid), just non-typeable + clipped.
+// Chip A fold (#43), renegotiated for Wave-3 presence tiers — the COLLAPSED
+// example card's renderer is now TIER-CONDITIONAL:
 //
-// We mount the card COLLAPSED (no `isPoppedOut` → `compressed` true) WITH an
-// EditorRefProvider (so `canEdit` is true and the projection — not the bare
-// static fallback — mounts), over an EDITABLE main doc, and pin:
+//   • NEAR the viewport (tier ≥ 2) — and always with the tier flag OFF — it
+//     renders through the SAME expex editor as expanded, forced read-only +
+//     height-clamped (the #43 parity contract, unchanged): black native (N)
+//     via .expex-number, expex serif/grid, non-typeable + clipped.
+//   • FAR from the viewport (tier 1, flag on) — a static serif line
+//     (`data-example-tier="static"`): the number + first line, NO editor
+//     mounted at all. This is the perf win the tier system exists for.
 //
-//   1. the collapsed body hosts a `.example-card-editor.example-card-editor-
-//      collapsed` root — the read-only projection, NOT the static fallback;
-//   2. the embedded editor `isEditable === false` even though the MAIN doc is
-//      editable (the collapsed preview forces read-only on top of editability);
-//   3. a real `.expex-number` renders in the collapsed body, and there is NO
-//      hand-built `span.font-mono` (N) — the number is the native expex glyph,
-//      black (no teal titleColor), not the old projection's mono span.
+// The tier hook is mocked with a controllable answer (the near-zone store is
+// IO-driven and jsdom has no layout); tier 3 = flag off (the default path
+// every pre-Wave-3 assertion ran under), tier 2 = near, tier 1 = far.
 //
-// Teeth check: assertions (1) + (3) together DISTINGUISH the projection from
-// the static fallback (which renders a `span.font-mono` (N) and NO
-// `.example-card-editor`), so this fails if the collapsed branch ever regresses
-// back to the static string.
+// Teeth: the live-projection its assert `.example-card-editor` present +
+// NO `span.font-mono` (the BARE-mount fallback's signature — that branch,
+// keyed on a missing editor context, is untouched by tiers). The FAR its
+// assert the static line by its `data-example-tier` marker, `(7)` text, no
+// `.example-card-editor` anywhere, and — the honest tooth that the perf win
+// is real — the fiber scan finds NO embedded TipTap editor.
 //
 // The extension barrel transitively imports `@/lib/storage` (the known barrel/
 // storage gotcha) — stub it wholesale; nothing here calls a storage fn.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
+
+// Controllable tier answer (3 = flag off / legacy, 2 = near, 1 = far).
+const h = vi.hoisted(() => ({ tier: 3 }));
+vi.mock("@/cards/presence", () => ({
+  useCardTier: () => h.tier,
+}));
 
 vi.mock("@/lib/storage", () => {
   const STORAGE_FNS = [
@@ -197,6 +202,10 @@ function renderCollapsed(editor: TiptapEditor) {
 }
 
 describe("ExampleCard collapsed read-only projection (#43)", () => {
+  afterEach(() => {
+    h.tier = 3; // default back to flag-off/legacy for the sibling its
+  });
+
   it("the collapsed body mounts the read-only expex projection, not the static fallback", () => {
     const editor = buildMain(/* editable */ true);
     let container!: HTMLElement;
@@ -252,6 +261,93 @@ describe("ExampleCard collapsed read-only projection (#43)", () => {
     // … NOT the old hand-built mono (N) span (which carried theme.titleColor /
     // teal). No `font-mono` number lives in the collapsed body.
     expect(body!.querySelector("span.font-mono")).toBeNull();
+    editor.destroy();
+  });
+
+  it("NEAR tier (2): identical live projection — the parity contract survives the tier fork", () => {
+    h.tier = 2;
+    const editor = buildMain(true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCollapsed(editor));
+    });
+    const body = container.querySelector(".example-card-body");
+    expect(
+      body!.querySelector(".example-card-editor.example-card-editor-collapsed"),
+    ).not.toBeNull();
+    expect(body!.querySelector("span.font-mono")).toBeNull();
+    editor.destroy();
+  });
+});
+
+describe("ExampleCard collapsed FAR tier (Wave 3) — static line, zero editors", () => {
+  afterEach(() => {
+    h.tier = 3;
+  });
+
+  it("tier 1 renders the static serif line: number present, no editor root, no live TipTap instance", () => {
+    h.tier = 1;
+    const editor = buildMain(true);
+    let container!: HTMLElement;
+    act(() => {
+      ({ container } = renderCollapsed(editor));
+    });
+    const body = container.querySelector(".example-card-body");
+    expect(body).not.toBeNull();
+    // The static far line, by its own signature …
+    const staticLine = body!.querySelector('[data-example-tier="static"]');
+    expect(staticLine).not.toBeNull();
+    expect(staticLine!.textContent).toContain("(7)");
+    expect(staticLine!.textContent).toContain("Top body.");
+    // … in the expex look, NOT the bare-mount fallback's mono signature …
+    expect(body!.querySelector("span.font-mono")).toBeNull();
+    // … with NO editor mounted anywhere in the collapsed body:
+    expect(body!.querySelector(".example-card-editor")).toBeNull();
+    expect(body!.querySelector(".ProseMirror")).toBeNull();
+    // The honest tooth: the fiber scan that FINDS the live embedded editor in
+    // the near/legacy its finds no NEW instance here — the only editor
+    // reachable from the card subtree is the MAIN doc's (the provider value
+    // an ancestor fiber carries); zero embedded TipTap instances mounted.
+    const found = embeddedEditorFor(body!);
+    expect(found === null || found === editor).toBe(true);
+    editor.destroy();
+  });
+
+  it("a tier flip far→near swaps the static line for the live projection", () => {
+    h.tier = 1;
+    const editor = buildMain(true);
+    let container!: HTMLElement;
+    let rerender!: (ui: React.ReactElement) => void;
+    act(() => {
+      const r = renderCollapsed(editor);
+      container = r.container;
+      rerender = r.rerender;
+    });
+    expect(container.querySelector('[data-example-tier="static"]')).not.toBeNull();
+    // Promote: the near-zone store reported the card near → tier 2.
+    h.tier = 2;
+    act(() => {
+      rerender(
+        <EditorRefProvider
+          value={{
+            editorInstance: editor,
+            editorRef: { current: handleFor(editor) },
+            setOverrideEditor: () => {},
+          }}
+        >
+          <ExampleCard
+            example={exampleInfo}
+            isSelected={false}
+            onSelect={() => {}}
+            onJump={() => {}}
+          />
+        </EditorRefProvider>,
+      );
+    });
+    expect(container.querySelector('[data-example-tier="static"]')).toBeNull();
+    expect(
+      container.querySelector(".example-card-editor.example-card-editor-collapsed"),
+    ).not.toBeNull();
     editor.destroy();
   });
 });

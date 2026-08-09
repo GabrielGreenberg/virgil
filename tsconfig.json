@@ -44,6 +44,10 @@
     ".next-preview-dev/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    // Build artifacts. `out/` is the static-export dir; Turbopack emits at
+    // least one raw .ts into out/_next/static/media (the worker-entry url
+    // asset), so sweeping it into the typecheck breaks every SECOND build.
+    "out"
   ]
 }

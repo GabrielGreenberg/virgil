@@ -1,4 +1,4 @@
-<!-- last-verified: 5f23172d 2026-08-08 -->
+<!-- last-verified: 891c066a 2026-08-10 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory -->
 <!-- covers-code: src/hooks, src/lib/storage-fsa.ts, src/lib/types.ts, src/panels/panel-registry.ts, src/links/link-registry.ts, src/links/resolve-card-anchor.ts, src/lib/anchor-mint-signal.ts, src/text-objects/text-object-registry.ts, src/text-objects/LiftHost.tsx, src/lib/marginalia.ts, src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/view-prefs/registry.ts, src/lib/focus-view.ts, src/lib/identity, src/lib/bib-uid.ts, src/cards/has-content.ts, src/cards/lifecycle -->
 
@@ -25,7 +25,7 @@ Before adding a new panel, link kind, or theme, extend the registry instead of c
 
 ## Key hooks
 
-All in `src/hooks/`. Full list (~50 files) is large; these are the ones most often touched:
+All in `src/hooks/`. Full list (~70 files) is large; these are the ones most often touched:
 
 | Hook | What it owns |
 |---|---|
@@ -207,7 +207,7 @@ Two related abstractions, both now mounted inside EditorPane:
 Anchored cards (notes, todos, cuts, archives, revisions, reports) no longer disappear silently when their host paragraph is deleted or their last anchor is dropped. Two coordinated pieces:
 
 - **Unified delete path** — [src/cards/delete-margin-item.ts](../../src/cards/delete-margin-item.ts) (`deleteMarginItem`) is the single entry point every gutter-marker delete and panel-trash delete routes through. If the gesture removes the card's last anchor, it prompts to delete the whole card (using the "This item has text" confirm via `cardHasContent` in [src/cards/has-content.ts](../../src/cards/has-content.ts)); if other anchors remain, it just drops this link. `cardHasContent` is now a single declarative walker over each kind's `content: CardContentModel` descriptor on `CARD_REGISTRY` (T4) — replacing the per-kind `switch`, so panel-trash and gutter-marker delete-confirms can't miss a content field; the `morph` field's drop-set drives the lossy-morph confirm copy.
-- **Paragraph-deletion guard** — `MarginaliaAnchorGuard` (TipTap extension in [src/lib/tiptap/linked-anchor.ts](../../src/lib/tiptap/linked-anchor.ts)) reads a ref of currently-anchored UUIDs from EditorPane (`anchoredUuidsRef`, populated in `EditorPane.tsx` ~line 3286) and, when a transaction would delete a paragraph carrying an anchor or a `linkedAnchor` mark, re-inserts an empty placeholder at the mapped original position with the same UUID. Covers both gutter-marked paragraphs and Mode-B text-range paragraphs. Configured in `buildEditorExtensions` ([src/lib/editor-extensions.ts](../../src/lib/editor-extensions.ts) ~line 1811).
+- **Paragraph-deletion guard** — `MarginaliaAnchorGuard` (TipTap extension in [src/lib/tiptap/linked-anchor.ts](../../src/lib/tiptap/linked-anchor.ts)) reads a ref of currently-anchored UUIDs from EditorPane (`anchoredUuidsRef`, populated in `EditorPane.tsx` ~line 3600) and, when a transaction would delete a paragraph carrying an anchor or a `linkedAnchor` mark, re-inserts an empty placeholder at the mapped original position with the same UUID. Covers both gutter-marked paragraphs and Mode-B text-range paragraphs. Configured in `buildEditorExtensions` ([src/lib/editor-extensions.ts](../../src/lib/editor-extensions.ts) ~line 1924).
 
 Together: only explicit user gestures (gutter delete or panel trash) destroy a card; incidental editor edits can't orphan one.
 

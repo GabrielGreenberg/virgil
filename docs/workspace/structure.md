@@ -1,4 +1,4 @@
-<!-- last-verified: 153cac0c 2026-07-27 -->
+<!-- last-verified: 891c066a 2026-08-10 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -67,7 +67,7 @@ keyed by source-content sha) and `.history/` (timestamped shadow snapshots of
 `virgil.json` + `editor-state.json`).
 
 The panel surface itself is `PANEL_REGISTRY` (`src/panels/panel-registry.ts`) —
-15 panels, 11 hosting cards (8 single-kind, 3 polymorphic), 4 tool surfaces. A
+15 panels, 11 hosting cards (7 single-kind, 4 polymorphic), 4 tool surfaces. A
 skill targets a **sidecar**, not the Panel UI; per-kind Card detail is
 [cards.md](cards.md).
 

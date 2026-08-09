@@ -23,10 +23,13 @@ function getWorker(): Worker | null {
   if (worker) return worker;
   if (typeof Worker === "undefined") return null;
   try {
-    // Bundler-visible worker entry (webpack + Turbopack both support the
-    // `new Worker(new URL(...))` form — see next/dist/docs turbopack §Magic
-    // Comments for the compatibility contract).
-    worker = new Worker(new URL("./latex-lint.worker.ts", import.meta.url));
+    // Bundler-visible worker entry. The specifier must stay EXTENSION-LESS:
+    // Turbopack (Next 16.2) compiles `new Worker(new URL(...))` into a real
+    // worker chunk only for an extension-less specifier — with an explicit
+    // ".ts" it silently routes the file through the static-asset pipeline
+    // instead, shipping RAW TypeScript that dies at parse time in the worker
+    // and drops every lint onto the main thread via the fallback below.
+    worker = new Worker(new URL("./latex-lint.worker", import.meta.url));
     worker.onmessage = (
       e: MessageEvent<{ runId: number; errors: LatexError[] }>,
     ) => {
