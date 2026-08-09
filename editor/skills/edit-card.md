@@ -8,8 +8,9 @@ description: |
   then routes an `update` op (body → the kind's body field, with the footnote
   `.tex \footnote{}` kept in sync; --field → an arbitrary named field). Does NOT
   compose content (that's chat's job), does NOT create a card (use
-  /editor/create-card), and does NOT edit atom+bib-coupled fields like a citation
-  command (use /editor/find-citation). Args: <docPath> <cardId>
+  /editor/create-card), and REFUSES a citation card outright — `--field` included,
+  not just its command — because its fields are coupled to the `.tex` cite and
+  `references.bib` (use /editor/find-citation). Args: <docPath> <cardId>
   [--body <text>] [--field <k>=<v> …].
 ---
 

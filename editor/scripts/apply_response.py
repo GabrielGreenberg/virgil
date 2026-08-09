@@ -331,24 +331,55 @@ MUTATION_PANEL_POLICY: dict[str, _PanelPolicy] = {
             "examples": "move-card does not apply to $panel cards",
         },
     ),
-    # link — every writeback panel, atom-bearing INCLUDED: the relationship lives
-    # in `relatedCards`, a field separate from the card→text anchor `links`, so it
-    # needs nothing from the .tex and works uniformly across kinds. The two exempt
-    # stores are refused for the same reason `update` refuses them, and it is the
-    # same silent-lost-write class as the citation hole this table closes: a
-    # relationship written onto an archive SNIPPET is dropped by cmd_restore (which
-    # re-appends the verbatim `originalCard`, not the envelope), and one written
-    # into examples.json is overwritten by the app's next .tex re-derive — leaving
-    # a dangling one-sided reference on the other card either way.
+    # link — "may I write this store?" is TWO questions, and `link` is where the
+    # second one bites, because `relatedCards` is a field the app never wrote and
+    # therefore has no obligation to keep:
+    #
+    #   1. is the store OURS to write?  (a PANEL_TO_SIDECAR writeback target)
+    #   2. will the store PRESERVE a field it doesn't own, across the app's own
+    #      re-derive of that row from the .tex?
+    #
+    # An adversarial pass on this table's first draft found the second answer is
+    # NOT uniform across the atom-bearing pair, which is the opposite of what the
+    # draft asserted ("needs nothing from the .tex, so it works uniformly across
+    # kinds" — true of the .tex, false of the .tex-DERIVED rebuild):
+    #
+    #   footnotes — `useFootnotes.syncFromEditor` MERGES (`{...existing, content}`),
+    #     so an agent-written field survives.  → allowed.
+    #   citations — `useCitations.syncFromEditor` REBUILDS every ANCHORED ref from a
+    #     fresh 4-field literal `{id, command, keys, createdAt}` and carries forward
+    #     only `isUnanchored` entries, so the record is silently gone on the next
+    #     doc open while the OTHER card keeps its half — the dangling one-sided
+    #     reference this table refuses archive/examples to avoid.  → refused.
+    #     (The app-side `setArchived` must set `unanchored: true` for exactly this
+    #     reason; the durable fix is to make that sync merge like its footnote twin,
+    #     which would let this row widen again.)
+    #
+    # The two exempt stores are refused on question 1 — they are not writeback
+    # targets — and `archive` also fails question 2 (cmd_restore re-appends the
+    # verbatim `originalCard`, so a record on the snippet ENVELOPE is dropped).
+    # Note the examples reason is ownership only: `useExamples.syncFromEditor` does
+    # merge unknown fields, so the first draft's "overwritten on the next re-derive"
+    # was simply wrong about that store. Stating the true reason matters more than
+    # stating a tidy one.
     "link": _PanelPolicy(
-        allow=frozenset(PANEL_TO_SIDECAR),
+        allow=frozenset(PANEL_TO_SIDECAR) - {"citations"},
         refuse={
+            "citations": (
+                "link refuses a citation ($cardId): the app REBUILDS every anchored citation "
+                "from its .tex atom on doc open (useCitations.syncFromEditor keeps only "
+                "id/command/keys/createdAt, carrying forward only unanchored refs), so a "
+                "relatedCards record is dropped there while the other card keeps its half — a "
+                "dangling one-sided reference. Its footnote twin merges, which is why footnotes "
+                "are allowed. Link the citation's anchoring paragraph cards instead."
+            ),
             "archive": ("link refuses an archived card ($cardId): a relationship written onto the "
                         "snippet envelope is dropped when restore re-appends its originalCard, "
                         "leaving the other card pointing at nothing. Restore it first, then link."),
-            "examples": ("link refuses an example ($cardId): examples.json is a .tex-derived "
-                         "shadow, so the record is overwritten on the app's next re-derive. "
-                         "Link the paragraph's cards instead."),
+            "examples": ("link refuses an example ($cardId): examples.json is the app's "
+                         "\\ex-derived projection, not a writeback target (it is absent from "
+                         "PANEL_TO_SIDECAR for that reason) and a row exists only while its "
+                         "block does. Link the paragraph's cards instead."),
         },
     ),
 }

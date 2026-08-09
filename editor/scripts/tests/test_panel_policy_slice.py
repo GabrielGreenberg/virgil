@@ -207,7 +207,10 @@ check("archived" in op(sb, "update", {"cardId": NATIVE_ARCH, "body": "x"}).stder
 check("example" in op(sb, "update", {"cardId": EXAMPLE, "set": {"x": 1}}).stderr,
       "update still refuses an example (it lives in the .tex)")
 
-print("\n=== link — the two exempt stores refuse (the same silent-lost-write class) ===")
+print("\n=== link — refuses any store that won't KEEP a field it doesn't own ===")
+# `relatedCards` is a field the app never wrote, so the question is not only "is
+# this store ours to write?" but "will the app's own re-derive preserve it?" — and
+# the answer splits the atom-bearing pair, which is why this can't be one set.
 sb = sandbox()
 before_arch, before_notes = digest(sb, "archive.json"), digest(sb, "notes.json")
 r = op(sb, "link", {"cardAId": NOTE, "cardBId": NATIVE_ARCH})
@@ -215,12 +218,24 @@ check(r.returncode != 0, "refuses linking an archived card (restore drops the en
 check(digest(sb, "archive.json") == before_arch and digest(sb, "notes.json") == before_notes,
       "neither side written — a refused link leaves no dangling one-sided reference")
 r = op(sb, "link", {"cardAId": NOTE, "cardBId": EXAMPLE})
-check(r.returncode != 0, "refuses linking an example (examples.json is a .tex-derived shadow)")
+check(r.returncode != 0, "refuses linking an example (not a writeback target)")
 
 sb = sandbox()
+before_cit, before_notes = digest(sb, "citations.json"), digest(sb, "notes.json")
 r = op(sb, "link", {"cardAId": NOTE, "cardBId": CIT})
-check(r.returncode == 0, f"link on a CITATION still succeeds — relatedCards needs nothing from "
-                        f"the .tex (stderr={r.stderr.strip()[:90]})")
+check(r.returncode != 0,
+      "refuses linking a CITATION — useCitations.syncFromEditor rebuilds every anchored ref "
+      "from a 4-field literal on doc open, so the record would vanish while the note kept its "
+      "half (found by an adversarial pass on this table's first draft, which allowed it)")
+check(digest(sb, "citations.json") == before_cit and digest(sb, "notes.json") == before_notes,
+      "neither side written on the citation refusal")
+r = op(sb, "link", {"cardAId": NOTE, "cardBId": FN})
+check(r.returncode == 0,
+      f"link on a FOOTNOTE still succeeds — its syncFromEditor MERGES ({{...existing, content}}), "
+      f"so the record survives; the split is survivability, not atom-bearingness "
+      f"(stderr={r.stderr.strip()[:90]})")
+check((by_id(sb, "footnotes.json", "footnotes", FN) or {}).get("relatedCards"),
+      "the footnote's relatedCards record landed on disk")
 r = op(sb, "link", {"cardAId": NOTE, "cardBId": NOTE2})
 check(r.returncode == 0, "link note↔note still succeeds")
 

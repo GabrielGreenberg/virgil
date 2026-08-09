@@ -5,9 +5,12 @@ description: |
   "connect this comment to the report", "mark this footnote as evidence for that
   note", or as the mechanical step behind cross-referencing cards. Resolves both
   cards via card_by_id.py, then routes a `link` op that adds a reciprocal record
-  to each card's `relatedCards` field (atomic + pen-protected). Works for ANY
-  pair of resolvable cards — including atom-bearing footnotes/citations, since
-  the relationship lives in a dedicated field, not the anchor `links` array. Does
+  to each card's `relatedCards` field (atomic + pen-protected). Works for any
+  pair of cards in a writeback panel — footnotes included, since the relationship
+  lives in a dedicated field, not the anchor `links` array. REFUSES a store that
+  would not keep the record: an archived snippet, an example, or a citation
+  (whose anchored entry the app rebuilds from its `.tex` atom on doc open).
+  Restore an archived card first. Does
   NOT anchor a card to text (use /editor/move-card) and does NOT create cards.
   Args: <docPath> <cardAId> <cardBId> [--kind <relationship>].
 ---
@@ -47,18 +50,24 @@ is all-or-nothing), with the audit notification + version bump.
 
 ## Applicability
 
-- **Any two cards in a writeback panel** can be linked — including
-  `footnote`/`citation`. The relationship is stored in `relatedCards`, a
-  **separate** field from the card→text anchor `links`, so it doesn't violate the
-  "atom-linked cards have no `links`" rule, needs nothing from the `.tex`, and
-  works uniformly across kinds.
-- **Refused** — linking a card to itself; an unresolvable id; and the two
-  **writeback-exempt stores**, because the record would not survive being
-  written there (task 156): a relationship on an `archive.json` **snippet** is
-  dropped when [`restore-card`](restore-card.md) re-appends the verbatim
-  `originalCard`, and one in `examples.json` is overwritten by the app's next
-  `.tex` re-derive — either way leaving a dangling one-sided reference on the
-  card that *was* written. Restore the archived card first, then link it.
+- **Any two cards in a writeback panel** can be linked — `footnote` included. The
+  relationship is stored in `relatedCards`, a **separate** field from the
+  card→text anchor `links`, so it doesn't violate the "atom-linked cards have no
+  `links`" rule and needs nothing from the `.tex`.
+- **Refused** — linking a card to itself; an unresolvable id; and any store that
+  would not **keep** the record (task 156), since `relatedCards` is a field the
+  app never wrote and so has no obligation to preserve:
+  - a **`citation`** — `useCitations.syncFromEditor` rebuilds every *anchored*
+    citation from its `.tex` atom on doc open (`id`/`command`/`keys`/`createdAt`
+    only, carrying forward just the unanchored refs), so the record would be gone
+    on the next open while the other card kept its half. Its footnote twin
+    *merges*, which is why footnotes are fine — the split is survivability, not
+    atom-bearingness. Link the citation's anchoring paragraph cards instead.
+  - an **`archive.json` snippet** — dropped when
+    [`restore-card`](restore-card.md) re-appends the verbatim `originalCard`.
+    Restore it first, then link.
+  - an **`example`** — `examples.json` is the app's `\ex`-derived projection, not
+    a writeback target, and a row lives only as long as its block.
 
 > **Note (manifest gap, flagged).** The manifest defines **no** card↔card
 > relationship field — `links: Link[]` is strictly the card→TextObject anchor (a
