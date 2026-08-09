@@ -139,7 +139,12 @@ async function startAndMove(pid: string): Promise<boolean> {
     origin: { x: 10, y: 10 },
     externalCommit: true, // we drive commit ourselves
   });
-  window.dispatchEvent(new MouseEvent("mousemove", { clientX: 20, clientY: 20 }));
+  // `buttons: 1` — every producer is a hold-drag, and the controller's
+  // missed-release failsafe cancels a session whose move arrives with the
+  // primary button up (isMissedRelease). The fixture must model the hold.
+  window.dispatchEvent(
+    new MouseEvent("mousemove", { clientX: 20, clientY: 20, buttons: 1 }),
+  );
   // Wait past the 16ms throttle so any deferred run fires.
   await new Promise((r) => setTimeout(r, 30));
   return started;
@@ -215,7 +220,7 @@ describe("CHIP-C — controller commit-flush", () => {
     });
     for (let i = 0; i < 5; i++) {
       window.dispatchEvent(
-        new MouseEvent("mousemove", { clientX: 20 + i, clientY: 20 + i }),
+        new MouseEvent("mousemove", { clientX: 20 + i, clientY: 20 + i, buttons: 1 }),
       );
     }
     // Let the throttle's deferred run fire — the placement resolves, but still

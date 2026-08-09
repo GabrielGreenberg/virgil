@@ -33,6 +33,7 @@ import {
   type CitationEntry,
   type DocStructure,
   deriveExampleIdentity,
+  deriveParTitled,
   EMPTY_DIFF,
   type ExampleEntry,
   type FigureEntry,
@@ -82,7 +83,7 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle): void {
     const uuid = (attrs.uuid as string | null | undefined) ?? null;
 
     if (uuid && isAnchorableNode(n.type)) {
-      out.blocks.set(uuid, { uuid, pos, typeName });
+      out.blocks.set(uuid, { uuid, pos, typeName, parTitled: deriveParTitled(attrs) });
     }
 
     if (typeName === "heading" && uuid) {
@@ -369,6 +370,7 @@ export function inspectSteps(
   let footnoteOrderChanged = false;
   let citationOrderChanged = false;
   let blockOrderChanged = false;
+  let blockParTitleChanged = false;
 
   // Lazily-built set of every uuid live in `newDoc`. The ONE block-survivor
   // guard — consulted by BOTH the uuid-AttrStep branch AND the reachable
@@ -579,11 +581,54 @@ export function inspectSteps(
           // `data-uuid`. A genuine rename/death (uuid → null, or a true identity
           // change) leaves `oldUuid` nowhere in the doc → removal still fires.
           if (oldUuid && !uuidSurvivesRemoval(oldUuid)) {
-            removed.blocks.set(oldUuid, { uuid: oldUuid, pos: step.pos, typeName });
+            removed.blocks.set(oldUuid, {
+              uuid: oldUuid,
+              pos: step.pos,
+              typeName,
+              parTitled: deriveParTitled(oldAttrs),
+            });
           }
           if (newUuid) {
-            added.blocks.set(newUuid, { uuid: newUuid, pos: step.pos, typeName });
+            added.blocks.set(newUuid, {
+              uuid: newUuid,
+              pos: step.pos,
+              typeName,
+              parTitled: deriveParTitled(newAttrs),
+            });
           }
+        }
+      }
+
+      // `parTitle` transitions: the tracked datum is the BOOLEAN "renders a
+      // par-title" (`deriveParTitled`), so only a FLIP (null/"" ↔ non-empty)
+      // is structural. Typing inside an existing title changes the string but
+      // not the flag — both sides derive equal, nothing is synthesized, and
+      // the transaction stays structurally null (keystroke sanctity for
+      // title editing). A flip synthesizes same-uuid removed+added entries;
+      // the block reconciler below collapses them into `changedBlocks` +
+      // `blockParTitleChanged` (never `blockOrderChanged` — nothing moved).
+      // The other write path for this attr — `setNodeMarkup`, a
+      // ReplaceAroundStep on a non-leaf — needs no branch here: its range
+      // walk re-collects the block on both sides with `parTitled` derived
+      // fresh, and the same reconciler answers identically.
+      if (attr === "parTitle" && isAnchorableNode(newNode.type) && newUuid) {
+        const oldTitled = deriveParTitled(oldAttrs);
+        const newTitled = deriveParTitled(newAttrs);
+        if (oldTitled !== newTitled) {
+          if (oldUuid) {
+            removed.blocks.set(oldUuid, {
+              uuid: oldUuid,
+              pos: step.pos,
+              typeName,
+              parTitled: oldTitled,
+            });
+          }
+          added.blocks.set(newUuid, {
+            uuid: newUuid,
+            pos: step.pos,
+            typeName,
+            parTitled: newTitled,
+          });
         }
       }
 
@@ -690,10 +735,18 @@ export function inspectSteps(
       // removedBlocks — but its mapped position is stale (the old pos was
       // deleted), so emit it as `changedBlocks` carrying the NEW pos (so the
       // structure index folds it in) and flag the reorder for position-keyed
-      // consumers. Same pos = a no-op/round-trip, so neither.
+      // consumers. Same pos + same parTitled = a no-op/round-trip, so
+      // neither. A same-pos `parTitled` FLIP (title added/removed in place)
+      // rides `changedBlocks` too — the index must fold the new flag — but
+      // wakes `blockParTitleChanged` instead of `blockOrderChanged`, since
+      // nothing moved and position-keyed consumers must stay asleep.
       if (wasRemoved.pos !== entry.pos) {
         changedBlocks.push(entry);
         blockOrderChanged = true;
+        if (wasRemoved.parTitled !== entry.parTitled) blockParTitleChanged = true;
+      } else if (wasRemoved.parTitled !== entry.parTitled) {
+        changedBlocks.push(entry);
+        blockParTitleChanged = true;
       }
       continue;
     }
@@ -886,6 +939,7 @@ export function inspectSteps(
     removedBlocks,
     changedBlocks,
     blockOrderChanged,
+    blockParTitleChanged,
     addedHeadings,
     removedHeadings,
     changedHeadings,

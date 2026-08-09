@@ -62,6 +62,7 @@ import {
   useEditorViewportCache,
   type EditorViewportCache,
 } from "@/hooks/useEditorViewportCache";
+import { geomHoverEnabled, getGeometry } from "@/lib/editor-geometry";
 import { onFontReady, opticalCenterY } from "@/lib/text-metrics";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_GRAB_HANDLE } from "@/lib/layout-gesture-probe";
@@ -271,6 +272,29 @@ function resolveTextObjectsAtMouse(
   if (!cache.containsHoverZone(clientX, clientY)) return EMPTY_RESOLVED;
   const editorEl = editor.view.dom;
   if (!(editorEl instanceof HTMLElement)) return EMPTY_RESOLVED;
+
+  // Wave-2 C1: answer from the editor-geometry service's near-zone cache —
+  // one host-rect read + arithmetic on cached bands, ZERO per-block DOM
+  // reads, already innermost-first. This was the diagnosis's S2/D1 site:
+  // an O(doc) `querySelectorAll("[data-uuid]")` + getBoundingClientRect per
+  // candidate (cull AFTER the read — 1,063 rect reads per frame at 2,883
+  // blocks), re-run per hover RAF and, via the armed mousePosRef, per
+  // KEYSTROKE for the whole typing session. `null` (engine off / hidden /
+  // nothing observed) falls through to the legacy scan; kill-switch
+  // `virgil:geom-hover = "off"`.
+  if (geomHoverEnabled()) {
+    const hits = getGeometry(editor)?.blocksAtY(clientY);
+    if (hits) {
+      const refs: ResolvedRef[] = [];
+      for (const { uuid, el } of hits) {
+        const kind = el.getAttribute("data-text-object-kind");
+        if (kind && isTextObjectKind(kind) && kind !== "linkedRange") {
+          refs.push({ ref: { kind, id: uuid }, el });
+        }
+      }
+      return refs;
+    }
+  }
 
   const candidates = editorEl.querySelectorAll<HTMLElement>("[data-uuid]");
   const matches: Array<{ el: HTMLElement; top: number; bottom: number }> = [];
@@ -854,12 +878,12 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     // pointer is in the margin hover zone, and an OS window drag delivers no
     // pointer events to the page — so during that gesture there is nothing on
     // screen to look detached. The scroll path stays live.
-    const resizePark = parkDuringLayoutGesture(
+    const gesturePark = parkDuringLayoutGesture(
       scheduleRaf,
       LAYOUT_SITE_GRAB_HANDLE,
     );
     const onResize = () => {
-      resizePark.fire();
+      gesturePark.fire();
     };
     const onMouseMove = (e: MouseEvent) => {
       // Always-on tracking: hover is the primary discovery mechanism, so
@@ -873,12 +897,19 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       if (!cache.containsHoverZone(e.clientX, e.clientY)) {
         if (mousePosRef.current !== null) {
           mousePosRef.current = null;
-          scheduleRaf();
+          gesturePark.fire();
         }
         return;
       }
       mousePosRef.current = { clientX: e.clientX, clientY: e.clientY };
-      scheduleRaf();
+      // Through the park (perf Wave 2): the resolver behind this RAF is the
+      // O(doc) `[data-uuid]` rect sweep, and a CONTENT drag keeps the
+      // pointer moving for its whole duration — mid-gesture the handle sits
+      // invisible under the drag ghost, so re-resolving per frame is pure
+      // waste. Parked moves stash latest-wins and settle in ONE resolve at
+      // the gesture's end edge; outside a gesture `fire()` runs inline and
+      // hover behaves exactly as before.
+      gesturePark.fire();
     };
     const onDocSelectionChange = () => {
       const editor = editorRef.current;
@@ -945,7 +976,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       prevEditor = null;
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
-      resizePark.dispose();
+      gesturePark.dispose();
       if (installSelectionChange) {
         document.removeEventListener("selectionchange", onDocSelectionChange);
       }

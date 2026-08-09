@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from "react";
-import { usePaneResizeHandle, onLayoutGestureChange } from "@/lib/pane-resize";
+import { usePaneResizeHandle, onLayoutGestureSetChange } from "@/lib/pane-resize";
 import {
   PanelId,
   Side,
@@ -381,9 +381,11 @@ export function PanelColumn({
   });
   useEffect(
     () =>
-      onLayoutGestureChange((active, info) => {
+      // The SET channel — an id filter on the outermost-edge channel strands
+      // `isResizing` under gesture overlap (see zen-margin's twin).
+      onLayoutGestureSetChange((began, info) => {
         if (info.id !== gestureId) return;
-        if (active) {
+        if (began) {
           // Engine ordering: getValue() has already measured the true
           // pre-drag width; syncing prefs to rendered widths here (before
           // the `1 100`→`0 0`-style min-width lift lands) keeps shrunk

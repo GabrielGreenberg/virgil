@@ -86,8 +86,8 @@ const PERMITTED_RESIZE_LISTENERS: Record<string, string> = {
     "PARK — ONE RAF-coalesced scheduler shared by the resize, RO and scroll paths (it replaced a genuine double registration: `resize` was bound unconditionally-and-synchronously here AND again behind a RAF in the `trackAnchor` effect, so six live call sites re-solved placement twice per event). The menu's anchor is chrome, which a gesture displaces sub-pixel, so parking cannot visibly detach it.",
   "src/hooks/useInTextPositions.ts":
     "PARK — the in-text marker deck re-measures every tracked position; both geometry triggers (window + the editor-dom RO) park, while the structural-bus and font-ready paths stay live because they aren't gesture-driven.",
-  "src/hooks/useMarginaliaRegistry.ts":
-    "PARK the MEASURE PASS, never the accumulation — the highest FIRE-COUNT follower during a horizontal drag (a width change rewraps every paragraph, so the per-block RO delivers one entry per near-zone block per frame). `pendingRecompute` keeps collecting across the gesture (that set IS the work list); only the RAF measure pass defers, so the gesture costs ONE flush over the union. Mid-gesture the per-entry `invalidateFromUuid` — O(docOrder) per entry, i.e. O(blocks²) per frame at 300+ blocks — collapses to one O(observed) all-dirty mark.",
+  "src/lib/editor-geometry/service.ts":
+    "PARK the MEASURE PASS, never the accumulation (the marginalia engine, moved verbatim from useMarginaliaRegistry into the editor-attached geometry service — wave 2 C4) — the highest FIRE-COUNT follower during a horizontal drag (a width change rewraps every paragraph, so the per-block RO delivers one entry per near-zone block per frame). `pendingRecompute` keeps collecting across the gesture (that set IS the work list); only the RAF measure pass defers, so the gesture costs ONE flush over the union. Mid-gesture the per-entry `invalidateFromUuid` — O(docOrder) per entry, i.e. O(blocks²) per frame at 300+ blocks — collapses to one O(observed) all-dirty mark.",
   "src/hooks/useWindowChrome.ts":
     "LIVE, deliberately — see PERMITTED_LIVE_RESIZE_HANDLERS.",
   "src/lib/pane-resize/layout-gesture-bus.ts":

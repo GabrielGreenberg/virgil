@@ -14,6 +14,7 @@
 import type { Node as PMNode, NodeType } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/core";
 import { headingTypeName } from "@/lib/heading-types";
+import { getBus } from "@/lib/tiptap/doc-structure";
 import {
   getSectionRangeByUuid,
   getHeadingLineRangeByUuid,
@@ -333,6 +334,19 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // disappeared concurrently — caller falls back to the static
     // `meta.label`.
     computeLabel: (editor, ref) => {
+      // Bus-first (wave 2): the structure snapshot answers uuid → pos in
+      // O(1), then one nodeAt reads the level — no doc walk. The walk
+      // survives only for busless editors (minimal harnesses); it would be
+      // O(doc) per gesture, which is affordable but pointless when the
+      // index already knows.
+      const entry = getBus(editor)?.structure.blocks.get(ref.id);
+      if (entry) {
+        const n = editor.state.doc.nodeAt(entry.pos);
+        if (n?.type.name === "heading" && n.attrs?.uuid === ref.id) {
+          const level = n.attrs?.level;
+          return typeof level === "number" ? headingTypeName(level) : null;
+        }
+      }
       let node: PMNode | null = null;
       editor.state.doc.descendants((n) => {
         if (node) return false;

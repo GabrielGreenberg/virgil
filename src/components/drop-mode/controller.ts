@@ -28,6 +28,18 @@ import type { DropCtx, DropSession, DropSpec, Placement } from "./types";
 import { hitTest, isUnmintedParagraphId, mintPlacementUuid } from "./hit-test";
 import { lookupSpec } from "./registry";
 import { parseAnyKey } from "@/floats/float-key";
+// The content-gesture publisher pair is imported from the bus MODULE, not the
+// pane-resize barrel — it is publisher-only API (kind pinned to "content"
+// inside the bus so no caller can fake a pane/window edge), and this
+// controller is its one legitimate importer: the single chokepoint every
+// pointer-driven content drag already routes through.
+import {
+  beginContentGesture,
+  endContentGesture,
+} from "@/lib/pane-resize/layout-gesture-bus";
+import { isMissedRelease } from "@/lib/pane-resize/pointer-invariants";
+import { feedAutoScroll, stopAutoScroll } from "./auto-scroll";
+import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 
 // ── Per-doc context ──────────────────────────────────────────────────
 
@@ -122,6 +134,11 @@ export function beginDropSession(opts: {
     inPlace,
   };
   installListeners({ attachMouseUp: opts.externalCommit !== true });
+  // A drop session is a CONTENT layout gesture: publish the begin edge so
+  // every geometry follower on the LayoutGestureBus parks for its duration
+  // (O(1) settles per drag, not O(frames) re-measures). End edges fire at
+  // commit entry (pointer released) and in `endDropSession` — idempotent.
+  beginContentGesture(opts.cardKey);
   // CSS hooks: set crosshair cursor + mark active for both modes. Dim
   // the source float only on the popped-out gesture path — there's no
   // float to dim during a lifted-overlay (in-place) drag.
@@ -140,6 +157,10 @@ export function endDropSession() {
   const key = session.cardKey;
   const inPlace = session.inPlace;
   session = null;
+  // Idempotent (no-op if commit entry already ended it). Every cancel path
+  // funnels here, so a session can never outlive its bus gesture — a wedged
+  // content gesture would hold every parked geometry follower app-wide.
+  endContentGesture();
   removeListeners();
   if (typeof document !== "undefined") {
     document.body.removeAttribute("data-drop-mode-active");
@@ -158,6 +179,15 @@ export function cancelDropSession() {
 
 let lastMoveTs = 0;
 let pendingMove: { x: number; y: number; t: ReturnType<typeof setTimeout> } | null = null;
+// Auto-scroll support: the last pointer point (so the loop can re-hit-test
+// while the pointer parks in the edge zone) and the session's scroll
+// container (undefined = not yet resolved this session; null = none).
+let lastPointerX = 0;
+let lastPointerY = 0;
+let sessionScrollEl: HTMLElement | null | undefined;
+const reHitTestAtPointer = () => {
+  if (session) handleMove(lastPointerX, lastPointerY);
+};
 let onMove: ((e: MouseEvent) => void) | null = null;
 let onUp: ((e: MouseEvent) => void) | null = null;
 let onKey: ((e: KeyboardEvent) => void) | null = null;
@@ -166,7 +196,33 @@ let onEnter: ((e: MouseEvent) => void) | null = null;
 
 function installListeners(opts: { attachMouseUp: boolean }) {
   if (typeof window === "undefined") return;
-  onMove = (e: MouseEvent) => handleMove(e.clientX, e.clientY);
+  onMove = (e: MouseEvent) => {
+    // Missed-release failsafe (the pane-engine invariant, task 185): every
+    // producer is a hold-drag (mousedown → drag → mouseup), so a move with
+    // the primary button no longer held means the release happened where we
+    // never saw it (iframe, context menu, outside the window). End NOW —
+    // with the session now published on the LayoutGestureBus, a wedged
+    // gesture would hold every parked geometry follower app-wide, not just
+    // leak an overlay.
+    if (isMissedRelease(e)) {
+      cancelDropSession();
+      return;
+    }
+    lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
+    handleMove(e.clientX, e.clientY);
+    // Edge-zone auto-scroll (wave 2 P4): scroll container resolved lazily
+    // once per session; the loop re-runs the throttled hit-test at the
+    // parked pointer as content slides underneath, and listener teardown
+    // stops it.
+    if (sessionScrollEl === undefined) {
+      const dom = activeCtx?.mainEditor?.view?.dom as HTMLElement | undefined;
+      sessionScrollEl = (dom ? findEditorScrollFor(dom) : null) as
+        | HTMLElement
+        | null;
+    }
+    feedAutoScroll(sessionScrollEl, e.clientY, reHitTestAtPointer);
+  };
   onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") cancelDropSession();
   };
@@ -193,6 +249,8 @@ function installListeners(opts: { attachMouseUp: boolean }) {
 
 function removeListeners() {
   if (typeof window === "undefined") return;
+  stopAutoScroll();
+  sessionScrollEl = undefined;
   if (onMove) window.removeEventListener("mousemove", onMove);
   if (onUp) window.removeEventListener("mouseup", onUp);
   if (onKey) window.removeEventListener("keydown", onKey);
@@ -285,6 +343,13 @@ function placementsEqual(a: Placement | null, b: Placement | null): boolean {
  */
 export async function commitDropSession(): Promise<void> {
   if (!session || !activeCtx) return;
+  // The POINTER gesture is over the moment commit is entered — end the bus
+  // gesture here, not after the async apply: a confirm dialog must not hold
+  // every parked follower hostage while the user reads it, and the commit's
+  // own structural burst (applyDrop → RO storm) then settles through the
+  // normal live paths, one coalesced pass each. `endDropSession` repeats the
+  // call harmlessly for the cancel legs below.
+  endContentGesture();
   const s = session;
   const ctx = activeCtx;
   let placement = s.placement;

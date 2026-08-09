@@ -69,6 +69,10 @@ import {
   type EditorPaneViewDerivations,
 } from "./build-editor-pane-view-prefs";
 import { SECTION_ACTIVE_LINE_FRACTION } from "./layout-scroll";
+import {
+  computeSectionPathAt,
+  geomBreadcrumbEnabled,
+} from "@/lib/editor-geometry/section-path";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_READER_SECTION_PATH } from "@/lib/layout-gesture-probe";
 import type { SectionPathEntry } from "@/panels/Outline";
@@ -403,6 +407,30 @@ function useReaderSectionPath(
       // every coordsAtPos/rect collapses to 0 — bail and keep the last-good
       // path (scroll can't change while hidden). Mirrors EditorLayout :2011.
       if (scrollEl.offsetHeight === 0) return;
+      // Wave-2 C2 fast path — ONE posAtCoords + binary search over the
+      // structure snapshot; the Reader has no focus band, so no skip. Null
+      // falls through to the legacy walk below.
+      if (geomBreadcrumbEnabled()) {
+        const fast = computeSectionPathAt(editor, view, scrollEl, null);
+        if (fast) {
+          setActiveSectionPath((prev) => {
+            const next = fast.path;
+            return prev.length === next.length &&
+              prev.every(
+                (v, i) =>
+                  v.text === next[i].text &&
+                  v.index === next[i].index &&
+                  v.sectionNumber === next[i].sectionNumber,
+              )
+              ? prev
+              : next;
+          });
+          setActiveParTitleIndex((prev) =>
+            prev === fast.parTitleIndex ? prev : fast.parTitleIndex,
+          );
+          return;
+        }
+      }
       const doc = editor.state.doc;
       const scrollRect = scrollEl.getBoundingClientRect();
 

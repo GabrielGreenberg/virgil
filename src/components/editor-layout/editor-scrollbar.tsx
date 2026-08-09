@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  onLayoutGestureChange,
+  hasActiveLayoutGesture,
+  onLayoutGestureSetChange,
   parkDuringLayoutGesture,
+  type LayoutGestureKind,
 } from "@/lib/pane-resize";
 import { LAYOUT_SITE_EDITOR_SCROLLBAR } from "@/lib/layout-gesture-probe";
 import { SCROLLBAR_THUMB_WIDTH, SCROLLBAR_RIGHT_INSET } from "./constants";
@@ -31,6 +33,11 @@ import {
  */
 const FADE_DELAY = 1000;
 const FADE_DURATION = 300;
+
+/** The gesture families that suppress the thumb — the ones that move the
+ *  editor column's edges. A content drag (drop-mode session) is deliberately
+ *  absent: nothing resizes, and drag auto-scroll wants the thumb visible. */
+const SCROLLBAR_SUPPRESS_KINDS: readonly LayoutGestureKind[] = ["pane", "window"];
 
 export function EditorScrollbar({
   rowRef,
@@ -60,7 +67,7 @@ export function EditorScrollbar({
   const [dragSuppress, setDragSuppress] = useState(false);
   const fadeTimer = useRef<number | null>(null);
 
-  // Hide the thumb while ANY continuous layout gesture is in flight (the
+  // Hide the thumb while a RESIZE-family layout gesture is in flight (the
   // app-wide layout-gesture bus — edge-triggered, never per-frame). The editor
   // column's width is changing continuously during the gesture, so the thumb
   // would otherwise visibly chase the moving edge. Bus-wide (not
@@ -69,8 +76,20 @@ export function EditorScrollbar({
   // the cross-silo hole the old `virgil:drag-gap-start/end` window events
   // left. Since task 317 widened the bus with the OS window publisher, this
   // ALSO covers a PWA window drag — the most visible right-side artifact of
-  // that gesture, fixed here with zero code change.
-  useEffect(() => onLayoutGestureChange((active) => setDragSuppress(active)), []);
+  // that gesture, fixed here with zero code change. KIND-FILTERED since the
+  // content publisher (perf Wave 2): a content drag moves no pane edge, and
+  // hiding the thumb during it would take away the scroll-position feedback
+  // exactly when drag auto-scroll needs it. Recomputed from the active SET
+  // per membership change — the overlap-sound shape (a resize gesture ending
+  // while a content drag lives must restore the thumb then, an edge the
+  // outermost-only channel never reports).
+  useEffect(
+    () =>
+      onLayoutGestureSetChange(() =>
+        setDragSuppress(hasActiveLayoutGesture(SCROLLBAR_SUPPRESS_KINDS)),
+      ),
+    [],
+  );
 
   const scheduleFade = useCallback(() => {
     if (fadeTimer.current !== null) {
