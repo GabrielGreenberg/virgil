@@ -1,4 +1,4 @@
-<!-- last-verified: e940e322 2026-08-02 -->
+<!-- last-verified: 891c066a 2026-08-10 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/links/_shared/types.ts, src/links/links.ts, src/links/resolve-card-anchor.ts, src/links/_shared/reapply-mode-b-anchors.ts, src/links/_shared/apply-linked-anchors.ts, src/links/_shared/normalize-text.ts, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts, src/lib/tiptap/linked-anchor.ts, src/lib/latex-serializer.ts -->
 
@@ -60,7 +60,8 @@ is derived, never declared**:
   Mode-B-capable kinds are the `LinkedAnchorKind` union in
   [src/links/links.ts](../../src/links/links.ts): `note`, `highlight`, **`todo`**
   (gained range-anchor symmetry with note/cutter as of fa7b898/5257b1a),
-  `revision`, `cutter-comment`, `cutter-suggestion`, `report`, `report-request`.
+  `revision`, `cutter-comment`, `cutter-suggestion`, `report`, `report-request`
+  (plus the synthetic AI render sentinels `pending-ai-change` / `pending-ai-request`, both `#bfdbfe`).
 
 Every `"textObject"` anchor also carries a `margin` entry (which side the
 Omni-View icon sits on). Resolution at measure time returns a `LinkResolution`
