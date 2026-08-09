@@ -45,7 +45,10 @@ import type {
 } from "@/lib/types";
 import { isRequestOpen } from "@/lib/ai-request-open";
 import { linkedCardKindFrom } from "@/cards/predicates";
+import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
+import type { PanelThemeKey } from "@/lib/panel-theme";
+import { usePanelCardPalette } from "@/hooks/usePanelTheme";
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
 import { Button } from "./panel-primitives";
@@ -88,79 +91,115 @@ interface AIRequestVM {
   hasUserText: boolean;
   // Optional: kind-specific resolved hint, e.g. resolved bibKey.
   resolvedHint?: string;
+  // Optional per-row theme override: the panel theme of the CARD this request
+  // is linked to, when one resolves. The display `kind` is coarser than the
+  // link (both suggestion families share one chip), so a row that knows its
+  // exact card kind states it here and the chip paints that card's accent.
+  // Absent ⇒ the display kind's family default (`themeKeyForVM`).
+  themeKey?: PanelThemeKey;
 }
 
+/* ── The chip vocabulary (task 178) ──────────────────────────────────
+ *
+ * `KIND_META` carries LABELS and DESCRIPTIONS only. A request chip's colour is
+ * the panel theme of the card kind the request is about, derived live through
+ * `usePanelCardPalette(themeKey)` → the SAME `badgeBg`/`badgeColor` pair the
+ * panels paint their badges with.
+ *
+ * It used to be a private table of `chipBg`/`chipFg` hex literals — the second
+ * per-kind colour vocabulary in the app, agreeing with no panel theme and
+ * subscribing to no override. Beyond the drift that guarantees, it shipped a
+ * straight INVERSION: `panel-todo` wore `#15803d`, byte-identical to the NOTE
+ * accent, while `panel-note` wore a blue belonging to no kind at all. A user who
+ * has learned the colour language of the margin read the inbox wrong.
+ *
+ * The themeKey is read OFF `CARD_REGISTRY` rather than restated, so a kind
+ * re-themed in the registry re-tints its chip for free. And whether a user's
+ * colour override may reach a chip is not decided here: it is decided by
+ * `panel-theme`'s `SYSTEM_THEME_KEYS` for that key, exactly as it is for every
+ * other surface painting that kind. Delegating the policy is the point — one
+ * accent → one colour language, wherever it is rendered.
+ *
+ * The three `bib-*` and two `revision-*` display kinds have no per-card AI-flag
+ * routing to resolve them (nothing in `CARD_REGISTRY.aiRequest` produces them),
+ * so each names the FAMILY it belongs to. Their sub-kind is carried by the
+ * label, not by a hue — "Bib fields" vs "Bib notes" is a distinction the label
+ * makes better than three unrelated colours ever did. */
 const KIND_META: Record<
   AIRequestKind,
-  { label: string; chipBg: string; chipFg: string; description: string }
+  { label: string; description: string; themeKey: PanelThemeKey }
 > = {
   "bib-fields": {
     label: "Bib fields",
-    chipBg: "#eef3fb",
-    chipFg: "#3b6ea8",
     description: "Review the BibTeX fields of an existing entry",
+    themeKey: CARD_REGISTRY.bib.themeKey,
   },
   "bib-notes": {
     label: "Bib notes",
-    chipBg: "#f0f5ea",
-    chipFg: "#5a7a3b",
     description: "Have Claude draft annotation notes for an entry",
+    themeKey: CARD_REGISTRY.bib.themeKey,
   },
   "bib-entry": {
     label: "New entry",
-    chipBg: "#fef4e6",
-    chipFg: "#a16207",
     description: "Find or create a new bibliography entry from a description",
+    themeKey: CARD_REGISTRY.bib.themeKey,
   },
   "revision-general": {
     label: "General",
-    chipBg: "#f3edfb",
-    chipFg: "#7c3aed",
     description: "Open a general revision / dialogue thread with Claude",
+    themeKey: CARD_REGISTRY["revision-comment"].themeKey,
   },
   "revision-text": {
     label: "On selection",
-    chipBg: "#eaf6f4",
-    chipFg: "#0f766e",
     description: "Anchored to selected text — created from the editor",
+    themeKey: CARD_REGISTRY["revision-comment"].themeKey,
   },
   "panel-footnote": {
     label: "Footnote",
-    chipBg: "#fef2f2",
-    chipFg: "#b45757",
     description: "AI request for a footnote",
+    themeKey: CARD_REGISTRY.footnote.themeKey,
   },
   "panel-note": {
     label: "Note",
-    chipBg: "#f0f9ff",
-    chipFg: "#0369a1",
     description: "AI request for a margin note",
+    themeKey: CARD_REGISTRY.note.themeKey,
   },
   "panel-citation": {
     label: "Citation",
-    chipBg: "#fefce8",
-    chipFg: "#a16207",
     description: "AI request for a citation",
+    themeKey: CARD_REGISTRY.citation.themeKey,
   },
   "panel-todo": {
     label: "Todo",
-    chipBg: "#f0fdf4",
-    chipFg: "#15803d",
     description: "AI request for a task",
+    themeKey: CARD_REGISTRY.todo.themeKey,
   },
   "panel-suggestion": {
+    // The display kind AGGREGATES the cutter and revision suggestion families
+    // (`PANEL_KIND_MAP` keys on the request kind alone, which cannot tell them
+    // apart). This is the fallback for a row whose owning card can't be
+    // resolved; a card-linked row overrides it per request with that card's own
+    // theme (`themeKeyForVM`), so a cutter suggestion is never painted the
+    // revision accent — the inversion class, one size down.
     label: "Suggestion",
-    chipBg: "#f3edfb",
-    chipFg: "#7c3aed",
     description: "Apply an accepted Cutter suggestion to the document",
+    themeKey: CARD_REGISTRY["revision-suggestion"].themeKey,
   },
   "panel-report": {
     label: "Report",
-    chipBg: "#eef2ff",
-    chipFg: "#4338ca",
     description: "AI request for a report",
+    themeKey: CARD_REGISTRY["report-request"].themeKey,
   },
 };
+
+/** The theme a request row's chip paints with: the resolved owning card's own
+ *  theme where the row is card-linked, else the display kind's family default.
+ *  The chip answers "which kind of card is this request about?", so it must not
+ *  be less precise than the data — `buildRequests` already resolves the exact
+ *  `CardKind` for every linked row (`linkedCardKindFrom`). */
+function themeKeyForVM(req: Pick<AIRequestVM, "kind" | "themeKey">): PanelThemeKey {
+  return req.themeKey ?? KIND_META[req.kind].themeKey;
+}
 
 const STATUS_META: Record<
   AIRequestStatus,
@@ -313,6 +352,8 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
     out.push({
       id: `panel:${r.id}`,
       kind: PANEL_KIND_MAP[r.kind],
+      // The chip follows the card, not the coarser display kind (task 178).
+      themeKey: linkedKind ? CARD_REGISTRY[linkedKind].themeKey : undefined,
       status: open ? "open" : "resolved",
       label: r.kind,
       snippet: r.text || "(empty draft)",
@@ -798,6 +839,9 @@ function Bucket({
 
 function RequestCard({ req }: { req: AIRequestVM }) {
   const meta = KIND_META[req.kind];
+  // Live-derived, override-subscribed: the SAME badge pair the owning panel
+  // paints (`deriveCardPalette`), never a chip-local literal (task 178).
+  const chip = usePanelCardPalette(themeKeyForVM(req));
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const handleCancel = useCallback(() => {
@@ -812,7 +856,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
     <li className="flex gap-2.5 items-start px-2.5 py-2 rounded-md border border-[var(--border)] bg-surface hover:border-edge-hover transition-colors">
       <span
         className="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium"
-        style={{ background: meta.chipBg, color: meta.chipFg }}
+        style={{ background: chip.badgeBg, color: chip.badgeColor }}
         data-hint={meta.description} aria-label={meta.description}
       >
         {meta.label}

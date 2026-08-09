@@ -39,6 +39,31 @@
 // contained raw NUL bytes, which made `grep` treat it as binary and skip it
 // silently. THIS test reads files with `readFileSync`, so it sees them anyway.
 // That is the point of a guard with teeth: greps lie, allowlists don't.
+//
+// THE SECOND LAW (task 178) — no per-kind colour vocabulary outside the theme
+// ---------------------------------------------------------------------------
+// The first law governs a component that READS the wrong table. Task 178 was a
+// component that DECLARED one: `AIWindow`'s `KIND_META` carried `chipBg`/
+// `chipFg` hex literals per request kind — the second per-kind colour
+// vocabulary in the app, agreeing with no panel theme, subscribing to no
+// override, and (independent of any override) shipping a straight inversion:
+// the Todo chip wore `#15803d`, byte-identical to the NOTE accent, while the
+// Note chip wore a blue belonging to no kind at all. A user who has learned the
+// colour language of the margin read the inbox wrong.
+//
+// The first law could not have caught it, because a hand-rolled table reads
+// nothing. So the second law is about DECLARATIONS: a record keyed by a KIND
+// vocabulary must not carry a colour literal. One accent per kind, in
+// `panel-theme`, derived at the point of paint — that is the whole reason a
+// single colour picker can retint an entire kind.
+//
+// Reach, stated honestly: the detector keys on a `Record<…Kind, …>` type
+// annotation, which is what makes the "this is a KIND vocabulary" claim
+// checkable. A colour table keyed by something else — a STATUS
+// (`AIWindow`'s `STATUS_META`), a collaborator state (`CollabStatusPill`'s
+// `DOT_COLORS`), a `Record<string, string>` — is invisible to it and is a
+// different question (those are state vocabularies, not kind vocabularies).
+// The literal census over those is not this guard's job.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -69,6 +94,43 @@ const PERMITTED_FROZEN_TABLE_READERS: Record<string, string> = {
   "panels/Omni/OmniViewPanel.tsx":
     "`CARD_THEMES.error` on the orphaned badge — same system-accent rationale as ErrorCard.",
 };
+
+// ── The permitted kind-keyed colour-table allowlist (second law) ───────────
+// Keyed `<file>::<declaration>`. An entry must say why the colour is not a
+// paint decision that belongs to `panel-theme` — and the ONLY such reason so
+// far is "nothing paints from it," which is a fact with an expiry date, pinned
+// by its own test below.
+const PERMITTED_KIND_KEYED_COLOR_TABLES: Record<string, string> = {
+  "links/link-registry.ts::LINK_REGISTRY":
+    "`connectorStroke.color` on the footnote/citation entries — DECLARED BUT INERT: `connectorStroke` has zero readers in `src/` and `library/`, so no pixel is painted from it. The moment a connector renderer is built, its colour must come from `useCardTheme(CARD_REGISTRY[cardKind].themeKey)` and this entry must GO, not grow — pinned by the inertness test below.",
+};
+
+/** Every `const NAME: Record<…Kind, …> = { … }` declaration in a file, with its
+ *  balanced object-literal body. Comments are already stripped by the caller,
+ *  so a hex mentioned in prose is not a hit. */
+function kindKeyedRecords(text: string): { name: string; body: string }[] {
+  const out: { name: string; body: string }[] = [];
+  const decl = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*:\s*Record<\s*[A-Za-z_$][\w$]*Kind\b[\s\S]{0,400}?=\s*\{/g;
+  for (const m of text.matchAll(decl)) {
+    const open = m.index! + m[0].length - 1; // index of the body's `{`
+    let depth = 0;
+    let i = open;
+    for (; i < text.length; i++) {
+      const c = text[i];
+      if (c === '"' || c === "'" || c === "`") {
+        // Skip the string literal wholesale (escapes included) so a brace
+        // inside one can't unbalance the scan.
+        const quote = c;
+        for (i++; i < text.length && text[i] !== quote; i++) if (text[i] === "\\") i++;
+        continue;
+      }
+      if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) break;
+    }
+    out.push({ name: m[1], body: text.slice(open, i + 1) });
+  }
+  return out;
+}
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -209,6 +271,87 @@ describe("accent-bypass guardrail — the frozen colour tables are defaults-only
       "/* CARD_THEMES.note is the frozen fold */",
     ].join("\n");
     expect(violationsFor("fake.tsx", runtimeText(correct), "CARD_THEMES")).toEqual([]);
+  });
+
+  it("no kind-keyed record outside the theme SSOT carries a colour literal", () => {
+    const violations: string[] = [];
+
+    for (const file of files) {
+      const rel = path.relative(SRC, file).split(path.sep).join("/");
+      if (rel === "lib/panel-theme.ts") continue; // the SSOT itself
+      for (const { name, body } of kindKeyedRecords(runtimeText(readFileSync(file, "utf8")))) {
+        if (!/#[0-9a-fA-F]{3,8}\b/.test(body)) continue;
+        const key = `${rel}::${name}`;
+        if (PERMITTED_KIND_KEYED_COLOR_TABLES[key]) continue;
+        violations.push(
+          `${key} maps a kind to a colour literal — that is a second per-kind colour ` +
+            `vocabulary. Carry a PanelThemeKey (read off CARD_REGISTRY[...].themeKey) and ` +
+            `derive the colour at paint time via useCardTheme / usePanelCardPalette.`,
+        );
+      }
+    }
+
+    expect(violations, "See THE SECOND LAW at the top of this file.").toEqual([]);
+  });
+
+  it("the one allowlisted kind-keyed colour table is still inert", () => {
+    // The justification on file is "nothing paints from it". That is a fact
+    // about the repo, not a property of the declaration, so it is checked:
+    // wiring a connector renderer must fail CI until the colour derives from
+    // the theme.
+    const readers = files
+      .map((f) => path.relative(SRC, f).split(path.sep).join("/"))
+      .filter((rel) => rel !== "links/link-registry.ts")
+      .filter((rel) => /\bconnectorStroke\b/.test(runtimeText(readFileSync(path.join(SRC, rel), "utf8"))));
+
+    expect(
+      readers,
+      "`connectorStroke` now has a consumer, so its hard-coded colour is being PAINTED. " +
+        "Derive it from useCardTheme(CARD_REGISTRY[cardKind].themeKey) and delete the " +
+        "PERMITTED_KIND_KEYED_COLOR_TABLES entry.",
+    ).toEqual([]);
+  });
+
+  it("the AI-request inbox declares labels, not colours (task 178)", () => {
+    const src = readFileSync(path.join(SRC, "components/AIWindow.tsx"), "utf8");
+    const table = src.slice(src.indexOf("const KIND_META"), src.indexOf("const STATUS_META"));
+
+    expect(table, "KIND_META still declares chip colours").not.toMatch(/chip(Bg|Fg)/);
+    expect(table, "KIND_META still carries a colour literal").not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    // The themeKey is READ off the registry, not restated — so a kind re-themed
+    // in CARD_REGISTRY re-tints its chip for free.
+    expect(table).toMatch(/themeKey: CARD_REGISTRY/);
+    expect(src).toMatch(/usePanelCardPalette\(/);
+  });
+
+  it("the kind-keyed detector catches what it claims to, and only that", () => {
+    const hit = kindKeyedRecords(
+      runtimeText(`const T: Record<CardKind, { bg: string }> = { note: { bg: "#15803d" } };`),
+    );
+    expect(hit).toHaveLength(1);
+    expect(/#[0-9a-fA-F]{3,8}\b/.test(hit[0].body)).toBe(true);
+
+    // A kind record with no colour is not a hit…
+    const clean = kindKeyedRecords(
+      runtimeText(`const M: Record<CardKind, string> = { note: "notes" };`),
+    );
+    expect(/#[0-9a-fA-F]{3,8}\b/.test(clean[0].body)).toBe(false);
+
+    // …a hex in a COMMENT above one is not a hit…
+    const commented = kindKeyedRecords(
+      runtimeText(`// was #15803d\nconst M: Record<CardKind, string> = { note: "notes" };`),
+    );
+    expect(/#[0-9a-fA-F]{3,8}\b/.test(commented[0].body)).toBe(false);
+
+    // …and the body scan stops at the declaration's own closing brace, so a
+    // colour in the NEXT declaration is not attributed to this one.
+    const neighbour = kindKeyedRecords(
+      runtimeText(
+        `const M: Record<CardKind, string> = { note: "}{" };\nconst OTHER = { c: "#15803d" };`,
+      ),
+    );
+    expect(neighbour).toHaveLength(1);
+    expect(/#[0-9a-fA-F]{3,8}\b/.test(neighbour[0].body)).toBe(false);
   });
 
   it("catches the bypasses it claims to catch", () => {
