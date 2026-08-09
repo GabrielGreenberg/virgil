@@ -69,6 +69,8 @@ import {
   type EditorPaneViewDerivations,
 } from "./build-editor-pane-view-prefs";
 import { SECTION_ACTIVE_LINE_FRACTION } from "./layout-scroll";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import { LAYOUT_SITE_READER_SECTION_PATH } from "@/lib/layout-gesture-probe";
 import type { SectionPathEntry } from "@/panels/Outline";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import {
@@ -496,9 +498,17 @@ function useReaderSectionPath(
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(compute);
     };
+    // Resize path parked, scroll path live — the third copy of the breadcrumb
+    // walk (main pane, mirror pane, Reader), each O(headings) `coordsAtPos`
+    // (task 317).
+    const resizePark = parkDuringLayoutGesture(
+      schedule,
+      LAYOUT_SITE_READER_SECTION_PATH,
+    );
+    const onWindowResize = () => resizePark.fire();
     compute();
     scrollEl.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
+    window.addEventListener("resize", onWindowResize);
 
     // Fresh-open breadcrumb fix: the synchronous mount-time compute() above
     // runs BEFORE the doc has laid out, so coordsAtPos reads stale/zero tops
@@ -525,7 +535,8 @@ function useReaderSectionPath(
       cancelAnimationFrame(raf2);
       clearTimeout(settleTimer);
       scrollEl.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", onWindowResize);
+      resizePark.dispose();
     };
   }, [editor, scrollEl]);
 

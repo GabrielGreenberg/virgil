@@ -13,6 +13,8 @@ import { createPortal } from "react-dom";
 import type { StackItem } from "@/lib/stack/types";
 import { StackThumbnail } from "./StackThumbnail";
 import { STACK_INSET_LEFT, STACK_INSET_BOTTOM } from "./StackIcon";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import { LAYOUT_SITE_STACK_STRIP } from "@/lib/layout-gesture-probe";
 
 export interface StackStripProps {
   open: boolean;
@@ -36,9 +38,19 @@ export function StackStrip({ open, items, onRemove }: StackStripProps) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onResize = () => setVw(window.innerWidth);
+    // Parked (task 317): the strip is bottom-LEFT-anchored chrome whose only
+    // width input is `innerWidth`, so a settled value one gesture late is
+    // invisible — whereas a live one re-renders the whole strip per frame.
+    const park = parkDuringLayoutGesture(
+      () => setVw(window.innerWidth),
+      LAYOUT_SITE_STACK_STRIP,
+    );
+    const onResize = () => park.fire();
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      park.dispose();
+    };
   }, []);
 
   if (typeof document === "undefined" || !open) return null;

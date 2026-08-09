@@ -67,6 +67,10 @@ import {
   recordScrollPlacement,
   SCROLL_PORTAL_PENDING_PILL,
 } from "@/lib/scroll-reposition-probe";
+import {
+  isLayoutGestureActive,
+  useLayoutGestureActive,
+} from "@/lib/pane-resize";
 /** A check (Keep) / cross (Dismiss) glyph for the pill's commit icons — mirrors
  *  the applied-card body's commit icons. */
 function PillGlyph({ kind }: { kind: "check" | "cross" }) {
@@ -383,6 +387,12 @@ export function PendingChangePill({
       setPlacement((prev) => (placementsEqual(prev, next) ? prev : next));
     };
     const update = () => {
+      // SUPPRESS during a continuous layout gesture (task 317): the pill is a
+      // text-anchored fixed portal, so it hides for the gesture rather than
+      // parking (a parked pill floats visibly detached from its blue range).
+      // The `gestureActive` render gate below unmounts it; this stops the
+      // scroll/resize/editor events from scheduling placement work meanwhile.
+      if (isLayoutGestureActive()) return;
       if (rafId) return;
       rafId = requestAnimationFrame(() => {
         rafId = 0;
@@ -428,8 +438,12 @@ export function PendingChangePill({
       scrollParent?.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
     };
-    // `cacheVersion` re-runs when the viewport cache changes (sidebar toggle).
-  }, [editorRef, cacheRef, cacheVersion]);
+    // `cacheVersion` is deliberately NOT a dep — it used to tear down and
+    // re-register this whole effect (4× `editor.on` + scroll + resize) on every
+    // viewport-cache bump, and re-ran `run()` synchronously in the effect body,
+    // bypassing the RAF coalescing above. It pokes the shared scheduler below
+    // instead (task 317).
+  }, [editorRef, cacheRef]);
 
   // Re-run placement when the hovered/selected card or the applied index
   // changes — these are cardStore/React changes, NOT editor events, so they
@@ -438,10 +452,21 @@ export function PendingChangePill({
   // changes only on a real mouse move, selection on a click, index on an
   // apply/keep/revert. (The refs above already carry the latest values into
   // `run`; this just triggers it.)
+  // `cacheVersion` joins this poke rather than the subscription effect's deps
+  // (task 317) — a settled viewport cache should recompute the placement, not
+  // rebuild the subscription.
   useEffect(() => {
     scheduleRef.current();
-  }, [hover, selected, index]);
+  }, [hover, selected, index, cacheVersion]);
 
+  // SUPPRESSED for the duration of a pane-divider drag / OS window resize:
+  // hidden while the gesture runs, recomputed exactly once on the end edge.
+  const gestureActive = useLayoutGestureActive();
+  useEffect(() => {
+    if (!gestureActive) scheduleRef.current();
+  }, [gestureActive]);
+
+  if (gestureActive) return null;
   if (!placement.visible || placement.targetKey === null) return null;
   if (typeof document === "undefined") return null;
   const target = index.get(placement.targetKey);

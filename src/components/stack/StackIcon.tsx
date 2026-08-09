@@ -17,6 +17,8 @@ import { useStackDropTarget, setStackIconRect } from "@/lib/stack/stack-drop-tar
 import { MIME_TEXT_INSERT } from "@/lib/marginalia";
 import type { Editor } from "@tiptap/react";
 import { addStackItem } from "@/hooks/useStack";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import { LAYOUT_SITE_STACK_ICON } from "@/lib/layout-gesture-probe";
 
 export interface StackIconProps {
   open: boolean;
@@ -59,9 +61,15 @@ export function StackIcon({
       });
     };
     update();
-    window.addEventListener("resize", update);
+    // Parked (task 317): the icon is bottom-left-anchored and its published
+    // rect is only read by the FloatingPanel hit-test, which cannot fire
+    // mid-gesture (an OS window drag delivers no pointer events to the page).
+    const park = parkDuringLayoutGesture(update, LAYOUT_SITE_STACK_ICON);
+    const onResize = () => park.fire();
+    window.addEventListener("resize", onResize);
     return () => {
-      window.removeEventListener("resize", update);
+      window.removeEventListener("resize", onResize);
+      park.dispose();
       setStackIconRect(null);
     };
   }, []);

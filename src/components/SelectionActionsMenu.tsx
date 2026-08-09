@@ -45,6 +45,10 @@ import {
   computeBoltLeftFromPod,
   MARGINALIA_BOLT_SIZE,
 } from "@/lib/marginalia";
+import {
+  isLayoutGestureActive,
+  onLayoutGestureChange,
+} from "@/lib/pane-resize";
 
 const VIEWPORT_MARGIN = 8;
 // Action-button (collapsed state) dimensions — sized to match one menu row's
@@ -196,6 +200,13 @@ export function SelectionActionsMenu({
   // adds no per-keystroke work (keystroke sanctity).
   const [suppressed, setSuppressed] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  // The placement scheduler, published for the out-of-band pokes below. It is
+  // a REF, not an effect dep, deliberately: `cacheVersion` in the dep array
+  // tore down and re-registered this entire effect (window capture listeners,
+  // scroll, resize, 4× `editor.on`) on every viewport-cache bump — the
+  // amplifier that turned a window-resize storm into a re-subscription storm
+  // (task 317). Same shape as `TextObjectGrabHandle`'s `scheduleRefRef`.
+  const updateRef = useRef<() => void>(() => {});
 
   // Shared viewport-metrics cache. editorRight, scrollTop, scrollBottom
   // are read here per placement compute instead of being re-measured per
@@ -229,7 +240,14 @@ export function SelectionActionsMenu({
     let mouseDownInEditor = false;
     let scrollIdleTimer: number | null = null;
     const SCROLL_IDLE_MS = 120;
-    const isSuppressed = () => mouseDownInEditor || scrollIdleTimer !== null;
+    // A continuous layout gesture (pane-divider drag or OS window resize) is a
+    // third suppression source, alongside editor-mousedown and scroll — the
+    // bolt is a text-anchored `position:fixed` portal, so PARKING it would
+    // leave it visibly detached from the prose. It SUPPRESSES instead: hidden
+    // for the gesture, recomputed once on the end edge (task 317).
+    let gestureActive = isLayoutGestureActive();
+    const isSuppressed = () =>
+      mouseDownInEditor || scrollIdleTimer !== null || gestureActive;
     const run = () => {
       const ed = editorRef.current;
       const next = ed && !ed.isDestroyed
@@ -248,6 +266,7 @@ export function SelectionActionsMenu({
         run();
       });
     };
+    updateRef.current = update;
     // Enter suppression: cancel any pending compute and hide the RESTING bolt
     // via its own `suppressed` channel. Crucially it NO LONGER zeroes
     // `placement` — so an open menu (gated on the logical `placement.visible`,
@@ -330,21 +349,34 @@ export function SelectionActionsMenu({
       editorRef.current?.view.dom ?? null,
     );
     scrollParent?.addEventListener("scroll", onScroll, { passive: true });
-    // Resize is a genuinely global event.
+    // Resize is a genuinely global event. It stays a raw listener because a
+    // ONE-SHOT resize (maximize, zoom, DPR change) must still reposition
+    // immediately — during a continuous gesture `update()` hits the
+    // `gestureActive` suppression above and returns before scheduling a RAF.
     window.addEventListener("resize", update);
+    const offGesture = onLayoutGestureChange((active) => {
+      gestureActive = active;
+      if (active) suppress();
+      else settle();
+    });
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
       if (readyRaf) cancelAnimationFrame(readyRaf);
       if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
       unsubscribe();
+      offGesture();
       window.removeEventListener("mousedown", onMouseDown, true);
       window.removeEventListener("mouseup", onMouseUp, true);
       scrollParent?.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", update);
     };
-    // cacheVersion re-runs the effect when the cache changes (e.g.,
-    // sidebar toggle changes editorRight). cacheRef itself is stable.
-  }, [editorRef, cacheRef, cacheVersion]);
+  }, [editorRef, cacheRef]);
+
+  // Recompute at the settled viewport-cache geometry. Out of the effect above
+  // on purpose — see `updateRef`.
+  useEffect(() => {
+    updateRef.current();
+  }, [cacheVersion]);
 
   // Close the menu when the anchored *identity* changes — selection moved,
   // paragraph changed, mode flipped. `left/top` excluded so scroll re-positions

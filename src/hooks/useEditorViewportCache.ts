@@ -6,6 +6,8 @@ import {
   recordKeystrokeWork,
   KEYSTROKE_WORK_VIEWPORT_CACHE_RO,
 } from "@/lib/keystroke-latency-probe";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import { LAYOUT_SITE_VIEWPORT_CACHE } from "@/lib/layout-gesture-probe";
 
 /**
  * Cached DOM measurements that are stable across keystrokes — the editor's
@@ -27,6 +29,10 @@ import {
  *   - ResizeObserver on the editor element (catches sidebar toggles, pane
  *     drags that don't fire window resize)
  *   - ResizeObserver on the scroll parent
+ *
+ * All three geometry triggers are PARKED on the layout-gesture bus, so a
+ * continuous gesture (pane-divider drag or OS window resize) costs ONE refresh
+ * on its end edge instead of one per frame × 4 mounted instances.
  *
  * Consumers read `cacheRef.current` for ad-hoc reads (no re-render) and
  * depend on `version` in their effect deps when they need to re-run on
@@ -287,19 +293,32 @@ export function useEditorViewportCache(editor: Editor | null): {
 
     refresh();
 
+    // Park BOTH triggers on the layout-gesture bus (task 317). This is the
+    // single highest-leverage park in the app: `refresh()` is a
+    // `getComputedStyle` + 4× `getBoundingClientRect` + two `closest()` walks
+    // + a `getComputedStyle`-per-ancestor `findScrollParent`, its equality
+    // bail structurally cannot hold mid-gesture (the rects really are moving),
+    // and the hook is mounted ×4 live (LiftHost, TextObjectGrabHandle,
+    // PendingChangePill, SelectionActionsMenu) — each with its own RO on the
+    // same two elements. Nothing user-visible reads the cache mid-gesture:
+    // its consumers are overlays that SUPPRESS for the duration.
+    const park = parkDuringLayoutGesture(refresh, LAYOUT_SITE_VIEWPORT_CACHE);
+
     const ro = new ResizeObserver(() => {
       recordKeystrokeWork(KEYSTROKE_WORK_VIEWPORT_CACHE_RO);
-      refresh();
+      park.fire();
     });
     ro.observe(editorEl);
     const sp = findScrollParent(editorEl);
     if (sp) ro.observe(sp);
 
-    window.addEventListener("resize", refresh);
+    const onWindowResize = () => park.fire();
+    window.addEventListener("resize", onWindowResize);
 
     return () => {
       ro.disconnect();
-      window.removeEventListener("resize", refresh);
+      window.removeEventListener("resize", onWindowResize);
+      park.dispose();
       cacheRef.current = EMPTY_CACHE;
     };
   }, [editor]);

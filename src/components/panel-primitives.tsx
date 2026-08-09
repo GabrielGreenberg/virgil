@@ -2131,8 +2131,18 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     if (!el) return;
     const header = el.firstElementChild as HTMLElement | null;
     if (!header) return;
+    // Equality-bailed (task 317). The RO fires once per card per frame of a
+    // window/pane resize — every card in every open panel — and an
+    // unconditional `setProperty` re-dirties layout on each one even when the
+    // header height did not move (the editor-observer law's read-before-write
+    // rule; the bail is also what terminates the var-write → resize → RO
+    // feedback loop).
+    let lastH = NaN;
     const update = () => {
-      el.style.setProperty("--pc-header-h", `${header.getBoundingClientRect().height}px`);
+      const h = header.getBoundingClientRect().height;
+      if (h === lastH) return;
+      lastH = h;
+      el.style.setProperty("--pc-header-h", `${h}px`);
     };
     update();
     const ro = new ResizeObserver(update);

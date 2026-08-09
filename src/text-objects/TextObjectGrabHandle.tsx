@@ -63,6 +63,8 @@ import {
   type EditorViewportCache,
 } from "@/hooks/useEditorViewportCache";
 import { onFontReady, opticalCenterY } from "@/lib/text-metrics";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import { LAYOUT_SITE_GRAB_HANDLE } from "@/lib/layout-gesture-probe";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
@@ -848,8 +850,16 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       // no separate cache to invalidate.
       scheduleRaf();
     };
+    // Parked, not suppressed (task 317). A grab handle only exists while the
+    // pointer is in the margin hover zone, and an OS window drag delivers no
+    // pointer events to the page — so during that gesture there is nothing on
+    // screen to look detached. The scroll path stays live.
+    const resizePark = parkDuringLayoutGesture(
+      scheduleRaf,
+      LAYOUT_SITE_GRAB_HANDLE,
+    );
     const onResize = () => {
-      scheduleRaf();
+      resizePark.fire();
     };
     const onMouseMove = (e: MouseEvent) => {
       // Always-on tracking: hover is the primary discovery mechanism, so
@@ -935,6 +945,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       prevEditor = null;
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
+      resizePark.dispose();
       if (installSelectionChange) {
         document.removeEventListener("selectionchange", onDocSelectionChange);
       }
