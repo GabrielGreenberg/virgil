@@ -52,6 +52,34 @@ is premultiplied, so it is exactly the live token at that alpha, and it keeps
 tracking the token when the value changes. Never re-spell a channel triple.
 (There is no CI guard for this yet — `check:radius` covers radii only.)
 
+### Which tokens have a Tailwind utility
+
+A token minted in `:root` does **not** get a Tailwind utility for free. Only
+tokens re-declared in the `@theme inline` blocks of `globals.css` emit classes
+— today the `--ink-*`/`--edge-*`/`--surface-*` scales, `--accent`,
+`--accent-light`, `--btn-primary`, `--menu-roving-bg`, `--overlay-scrim`,
+`--danger`/`--danger-soft`, `--ring-drag-target`, `--background`/`--foreground`,
+the four font families and the radius scale. Read the block; don't trust that
+list.
+
+Both ways of ignoring the boundary fail **silently**:
+
+- `bg-pod-panel`, `text-par-title-color` — no `--color-*` entry, so Tailwind
+  emits **no class at all**. No error, no style, nothing to grep for.
+- `bg-amber-50`, `text-amber-600` — a real Tailwind *default* utility, so you
+  get a color: the wrong one. `--amber-50` is the repo's warm `#fef9e7`;
+  Tailwind v4's `amber-50` is a cooler `#fffbeb`. This spelling satisfies both
+  rules above (it *is* a utility, and it is *not* a hex literal) while
+  bypassing the token — which is why it has drifted twice and earned two
+  bespoke guards (`examples-amber-token.test.ts`,
+  `bibliography-amber-strip-convergence.test.ts`).
+
+For a token with no utility, consume it as `var(--token)` — usually the
+Tailwind arbitrary value `bg-[var(--pod-editor)]` / `text-[var(--muted)]`,
+which is the prevailing form (~190 sites), or an inline `style`. Add it to
+`@theme inline` only if it earns a first-class utility; the raw Tailwind
+palette spelling is never the answer.
+
 The token scales:
 
 - **Ink** (text, light → dark): `ink-faint`, `ink-muted`, `ink-subtle`,
@@ -185,6 +213,21 @@ Editor scale: H1 1.75rem/700, H2 1.35rem/600, H3 1.15rem/600, body
 tracking-wider (`PanelHeader`), card title `--par-title-size`
 (0.78rem ≈ 12.5px)/500, badge 10px/600.
 
+**Type is viewport-invariant. Geometry adapts to width; type never does.**
+There is not one width-based media query, `@container` rule, responsive text
+utility (`md:text-*`) or `vw`-sized font in `src/` or `library/` — the only
+`@media` blocks are `prefers-reduced-motion`, `display-mode:
+window-controls-overlay` and `print`. This is easy to break by analogy,
+because the app *does* respond to width everywhere else (the page column is
+clamped between `--page-min` and `--page-max`, zen margins collapse,
+`--margin-col-handle-inset` exists for narrow viewports). The reason is
+**ownership, not aesthetics**: every editor size is a user preference
+(`--editor-font-size`, `--font-headers-h1/-h2/-h3-size`, wired in
+`src/lib/preferences-tree.ts`), so a breakpoint or a `clamp(…vw…)` silently
+overrides a value the user set by hand and cannot get back. If type must
+respond to something, respond to the user's own token via `calc()` — as the
+fold-chevron offsets already do — never to the viewport.
+
 ### In-card type scale — meta vs content (UI-consistency sweep)
 
 Inside a card body there are exactly **two tiers** (ratified 2026-06-12);
@@ -276,8 +319,15 @@ the AI-marker label. No letter-spacing on body text.
 
 ## Spacing & icons
 
-4-pixel grid. `--pod-gap: 10px` is the canonical pod-to-pod gap; don't
-override.
+4-pixel grid — and it is a prohibition, not a preference. Spacing comes from
+Tailwind's scale (half-steps included: `0.5`=2, `1.5`=6, `2.5`=10); don't
+hand-author `p-[5px]` or `gap-[7px]`. The **one** exception is aligning to a
+non-grid asset — an icon's optical center, a fixed glyph width — and a site
+that takes it says what it aligns to, the way the Virgil-bar seam cluster's
+`mb-[3px]` does. (No CI guard here, unlike the radius scale; the ratio today
+is ~870 scale-based utilities to ~24 arbitrary ones, nearly all of them the
+sanctioned exception.) `--pod-gap: 10px` is the canonical pod-to-pod gap;
+don't override.
 
 Three icon-button sizes: `iconbtn-sm` (20×20), `iconbtn-md` (24×24,
 default), `iconbtn-lg` (32×32). The visual SVG inside is smaller than
@@ -322,12 +372,35 @@ Five states. One implementation each.
 
 - **Hover.** Two utility classes: `hover-on-light` (resting bg is
   white-ish) and `hover-on-dark` (resting bg is a darker pod). Both
-  transition background-color 120ms.
+  transition background-color 120ms — so **don't add Tailwind's
+  `transition-colors` alongside them.** The utilities are unlayered and
+  Tailwind's is in `@layer utilities`, so the utility class always loses;
+  pairing them looks like it does something and does nothing. Same for
+  `iconbtn-*` and `.topbarbtn`, which own their own transition.
+  Hover **never changes elevation** — no `hover:shadow-*`, no lift. Shadow
+  here is a property of the surface tier (pods/cards carry their ambient
+  shadow, floats carry `--shadow-float`), not a response to the cursor;
+  there is not one hover-elevation rule in either silo. Border-color hover
+  *is* sanctioned and prescribed — it is the card rule (`edge-hover` →
+  `edge-strong`) and the omni-bin pill's. The exception is icon buttons
+  (`iconbtn-*`, `.topbarbtn`): background and text color only, never a
+  border.
 - **Selection.** Always themed. There is no default selection color.
   Each card kind reads its theme's `borderSelected` and
   `headerSelected`.
 - **Focus.** `focus-visible:ring-2 ring-edge-strong` (offset 1).
-  Inputs use a thicker border instead of a ring.
+  Inputs use a thicker border instead of a ring. Never leave the UA default
+  ring, and never strip it bare: `outline: none` is legal only where the same
+  rule supplies the replacement — the model is `.iconbtn-*` / `.topbarbtn`
+  (`outline: none` + `box-shadow: 0 0 0 2px var(--edge-strong)`). Two
+  standing exceptions, both deliberate: a **contenteditable** surface (the
+  `.tiptap` body, the float bodies, `RichTextField`, `BorrowedMainText`)
+  strips with no replacement because the caret is the indicator, and a
+  **card wrapper** strips because themed selection is. Everything else that
+  takes keyboard focus supplies a ring or a thickened border. (Honest state:
+  of ~55 `outline-none` sites ~24 supply nothing; most are those two
+  exceptions, but the `BibEntryCard` request-note inputs and
+  `ManageStylesModal`'s already-`edge-strong` field are real gaps.)
 - **Active.** `translate-y-[0.5px]` on press.
 - **Disabled.** `opacity-40 pointer-events-none`.
 
@@ -359,6 +432,21 @@ A theme has five tokens: `accent`, `borderSelected`, `headerDefault`,
 (`badgeBg`, `titleColor`, etc.) derive from `accent` via
 `themeFromAccent()` in `src/lib/panel-theme.ts`.
 
+**Every value `themeFromAccent()` emits is a solid `#rrggbb`** — never
+`rgba()`, never a `color-mix(…, transparent)`. Header tints are pre-mixed
+over white (`blendOverWhite`) rather than composited at paint time, and this
+is the one place the Tokens section's `color-mix` advice does *not* apply. A
+theme token is a **surface fill read by more than one parent**:
+`theme.headerDefault` paints the docked card header over `bg-surface` (white)
+and is handed straight through as the float `headerTint` over `--pod-panel`,
+so a translucent value would render the same card two different colors
+depending on whether it is popped out. Alpha still belongs at the
+*consumption* site, over the card's own opaque surface — the hover/select
+ring's `color-mix(in oklab, var(--link-anchor-color) 50%, transparent)` is
+correct. `panel-theme-key-freeze.test.ts` pins the hex format, but only for
+the fields in its frozen `REQUIRED_PALETTE_FIELDS` list: a NEW palette field
+must be added there in the same commit or it ships unchecked.
+
 Eleven themes, four families:
 
 - **Anchored-to-text (warm):** `footnote` (rust), `citation` (amber),
@@ -376,6 +464,20 @@ A card renders via `<PanelCard theme={…} selected={…}>`. The frame
 (border, header strip, separator, body, popout, trash) is identical
 across themes; only the colors differ. **Every card has a theme.** A
 card without a theme is a bug.
+
+**No theme is neutral.** A list whose rows POINT AT other kinds — search
+results being the live case — resolves the theme **per row from the row's
+source kind**, never by picking one existing theme as a stand-in. The 2026
+migration tried `comment` as a pseudo-neutral and hit the dead end: none of
+footnote/note/archive/todo/bib/citation/aiRequest/cut/example reads as
+neutral, and a borrowed theme silently asserts a kind the row isn't. The
+worked example is `SCOPE_TO_CARD_THEME` (`src/lib/search-sources.ts`), the
+SSOT that `SearchPanel` feeds to `useCardTheme` per result and from which
+the rest-state accent is derived rather than differentiated in parallel; two
+guards pin it (`scope-color-theme.test.ts`,
+`card-theme-override-guardrail.test.ts`). This is about *pointing*, not
+provenance: `ArchiveCard`'s one `useCardTheme("archive")` over cards that
+came from many panels is correct, because `archive` is the row's own kind.
 
 **No bespoke card headers.** Pass `kind` (+ `kindLabelOverride` when the
 registry label differs from the card's overline, e.g. `bib` →
@@ -605,6 +707,15 @@ Sizes: `sm` 24px / 12px font, `md` 32px / 13px (default), `lg` 40px /
 Modal footers: rightmost is primary, then ghost cancel to its left,
 destructive (if any) far left. Tab right + enter must not delete.
 
+**Don't hand-roll a button** — don't mix Tailwind utilities to imitate a
+variant. Reach for `<Button variant size>`; if you need a new look, extend the
+primitive (that is how `warm` replaced the scattered `bg-blue-100` /
+`bg-emerald-600` patterns). Omitting `variant` is fine: it means `secondary`.
+Same rule for icon buttons — put `.iconbtn-{xs,sm,md,lg}` on the `<button>`
+rather than authoring padding, hover and active classes by hand. Enforcement
+here is by convention only (no CI guard), so older surfaces still carry
+hand-rolled offenders; don't copy them.
+
 **Out of scope for the five variants:** toggle buttons with stateful
 active styling (sidebar strips, top-bar mode toggles). They don't fit
 `<Button>` and stay hand-rolled — a future `toggle` variant could
@@ -717,8 +828,21 @@ taupe `--control-selected`, NOT the saturated `--accent` brown) so it reads
 as a darker shade of the paper. Destructive confirms use `variant="danger"`.
 
 `<ConfirmDialog>` is a `sm` modal pre-wired for delete-with-content
-and discard-unsaved. Anchors near the source element, not screen
-center.
+and discard-unsaved.
+
+**Placement follows the SCOPE of what the dialog acts on, not the component.**
+A confirm whose consequence is app- or document-wide centers and takes the
+scrim; a confirm acting on ONE object the user can see — a card, a block, a
+request row — passes `anchorRef` so it opens against the thing it is about to
+change. Centering a surgical confirm asks the user to approve a destruction
+with nothing on screen binding the question to its target. `anchorRef` keeps
+`variant="modal"` (scrim stays; `system-dialog.tsx` places it on the anchor
+and clamps to the viewport) — it is not the scrimless `variant="anchored"`
+popover, and the imperative `useConfirmDialog()` correctly centers because it
+has no source element. The codebase is not uniform yet: the card-delete family
+(`TodoRow`, the `panel-primitives` card delete) anchors, while
+`TexBlockNodeView`, `AIWindow` and the `EditorPane` archive confirms still
+center and should adopt `anchorRef` when next touched.
 
 **Two answers plus a way out.** `ConfirmDialog` takes an optional
 `secondaryLabel`/`onSecondary` pair rendering a third button between Cancel and
@@ -874,6 +998,25 @@ number. Full ladder, low → high:
 (CSS can't import TS), which mirrors the value; the test guards the mirror.
 
 ## Drag
+
+**Never call `e.dataTransfer.setDragImage` yourself.** An HTML5 drag hands its
+visual to the OS, which then tracks the cursor anywhere — including up into the
+browser/OS title bar, where the image vanishes, the cursor flips to "no-drop",
+or the drag reads as a window tear-off. None of that is controllable from the
+page. So a drag source that wants a preview goes through
+`attachClampedDragGhost` (`src/lib/drag-ghost.ts`): it suppresses the native
+preview with a 1×1 transparent image, portals a `position:fixed` ghost onto
+`document.body`, repositions RAF-coalesced on document `dragover`, and clamps
+to the viewport so the ghost can ride over the Virgil bar but never into
+OS-controlled space. `buildTextDragGhost` is the token-backed builder for the
+label pill, so no surface re-authors that chrome. CI (`drag-ghost.test.ts`)
+greps both silos and fails on any raw `.setDragImage(` outside the SSOT.
+
+Stated honestly, the enforced invariant is "*if* you set a drag image it goes
+through the SSOT" — not "every drag has a custom ghost." The library
+column-header reorder (`LeftList.tsx`) is a real HTML5 drag source that keeps
+the native preview; it drags a small button and carries no identity, so it is a
+judgment call the guard is structurally blind to, not an enforced exemption.
 
 Three categories.
 
