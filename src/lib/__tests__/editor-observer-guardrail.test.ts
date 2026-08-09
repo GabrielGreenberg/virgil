@@ -83,8 +83,8 @@ const PERMITTED_RESIZE_OBSERVERS: Record<string, string> = {
     "Observes the floating menu's own element; reposition is RAF-coalesced with a (left,top) equality bail (also on the scroll-reposition allowlist), and parked on the layout-gesture bus. The RAF claim was FALSE until task 317 — `resize` was registered twice, once unconditionally and SYNCHRONOUSLY outside the RAF path, so six live call sites re-solved placement twice per event with one of them off-frame. The RO and the resize now share ONE parked scheduler; a justification that describes only the observer is worth nothing if a second registration bypasses it.",
   "hooks/useInTextPositions.ts":
     "Observes editor.view.dom for wrap-induced reflow; the callback only calls the RAF-coalesced schedule() — the measure pass is viewport-gated (NEAR_ZONE) and runs once per frame.",
-  "hooks/useMarginaliaRegistry.ts":
-    "Per-[data-uuid]-block ROs; onResize bails when the editor is hidden and feeds per-uuid invalidation into a RAF-coalesced recompute.",
+  "lib/editor-geometry/service.ts":
+    "Per-[data-uuid]-block ROs (the marginalia engine, moved verbatim from useMarginaliaRegistry into the editor-attached geometry service — wave 2 C4); onResize bails when the editor is hidden and feeds per-uuid invalidation into a RAF-coalesced, gesture-parked recompute.",
   "panels/Outline/OutlinePanel.tsx":
     "Observes the panel's own scroller/container — panel-local, open-only, bounded row measure.",
 };
