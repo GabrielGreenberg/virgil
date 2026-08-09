@@ -193,6 +193,62 @@ Then drag the OS **window** edge with the Library tab open and read
 `window.__layoutGestureStats()`: every parked site must report `settles === 0`
 during the drag and exactly 1 after release.
 
+## Projection coordinate spaces — a projection that renders is a projection that mutates
+
+> **Where a hook exposes a DISPLAYED projection of persisted state, every
+> input expressed in that projection's coordinates is translated back at the
+> hook boundary — by the same module that built the projection. No mutator
+> reads a raw index or a raw `activeId` while a projection exists.**
+
+`useLibraryTabs` is the app's one live instance of this shape. It keeps two
+notions of "the tab list" and "the active tab": the **raw** persisted
+`PanelTabsState` (what every mutation splices) and the **displayed**
+projection the strip actually renders — synthetic per-doc project tabs
+spliced in after Central, `activeId` overridden to the current doc's project
+tab. Everything the *user* expresses is stated in displayed coordinates,
+because the displayed list is the only one they can see.
+
+Feeding such a value to a raw-space mutator is one bug class with as many
+symptoms as there are consumers (task 131). Two were live, each looking
+complete on its own terms: `PanelTabStrip.computeInsertionIndex` measured the
+rendered strip and `moveTab` spliced that index into raw `openIds`, so with N
+project tabs a reorder landed N slots off — and a mid-list drop *silently did
+nothing*, which reads as an unresponsive UI rather than a wrong one; and
+`openLibrary`/`openPaper` resolved their replace target from raw `activeId`,
+which with a doc open still pointed at an unpinned **Central** sitting behind
+the projection, so opening a library mapped Central out of `openIds` and it
+vanished though the user never closed it and it wasn't even highlighted.
+
+The SSOT is [library/lib/panel-tab-coords.ts](lib/panel-tab-coords.ts): the
+projection (`projectLeftTabs`) and both inverses
+(`displayedIndexToRaw`, `resolveReplaceTargetId`) in one pure module, so they
+cannot drift. Three rules it earned:
+
+- **Translate at the boundary, once, unconditionally.** `moveTab` converts the
+  incoming index against the same snapshot the user was looking at, before any
+  reducer runs. A panel with no projection has displayed === raw, so the
+  translation is the identity — which is why every mutator routes through it
+  rather than branching on the panel. A branch is a place to forget.
+- **Count membership; don't subtract a count.** The raw index is *how many raw
+  ids precede that displayed point* — total by construction, needing no
+  assumption about where the projection put its synthetic ids. It also gives
+  the right answer where the mapping is genuinely many-to-one: a raw tab can
+  never render between Central and the project tabs, so those adjacent
+  displayed insertion points collapse to one raw slot.
+- **A synthetic tab has no slot to give up.** When the displayed active id
+  isn't in raw `openIds`, the open APPENDS. Falling back to "replace whatever
+  raw `activeId` still points at" is exactly the Central-vanishing bug.
+
+Contracts: [panel-tab-coords.test.ts](lib/__tests__/panel-tab-coords.test.ts)
+(pure) and
+[useLibraryTabs.coords.test.tsx](hooks/__tests__/useLibraryTabs.coords.test.tsx)
+(the mutators actually route through it — both members fail on the
+implementation they were written against). Residual, stated honestly: the
+strip's drop caret is still drawn at the raw displayed index, so a drop
+aimed between Central and the first project tab shows the caret there and the
+tab settles just after the project tabs — the nearest representable slot.
+Cosmetic, and it would take the strip knowing the projection to fix.
+
 ## Storage
 
 - **IndexedDB**: shared `"virgil"` DB / `"kv"` store, key `"library-folder-handle"` (consolidated with the rest of Virgil's persistence — see `library/lib/library-folder.ts`).
