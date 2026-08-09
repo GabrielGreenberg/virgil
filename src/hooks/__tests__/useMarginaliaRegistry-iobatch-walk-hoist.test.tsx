@@ -161,7 +161,7 @@ describe("useMarginaliaRegistry — IO batch resolves positions with ONE walk (h
     globalThis.cancelAnimationFrame = realCaf;
   });
 
-  it("a K-entry ENTER batch performs exactly ONE walkAnchorableBlocks (was K)", () => {
+  it("a K-entry ENTER batch performs ZERO walkAnchorableBlocks (bus-resolved; was K, then 1)", () => {
     const { editor, els } = mountDoc();
     walkMock.mockReturnValue(
       UUIDS.map((uuid, i) => ({ uuid, pos: 1 + i * 6, isAtom: false })),
@@ -178,8 +178,13 @@ describe("useMarginaliaRegistry — IO batch resolves positions with ONE walk (h
       io.fireBatchIntersecting(els);
     });
 
-    // THE TOOTH: one walk for the whole batch, not one per entry.
-    expect(walkMock).toHaveBeenCalledTimes(1);
+    // THE TOOTH, strengthened by wave-2 S3b: measurement positions resolve
+    // from the DocStructure snapshot (this harness mounts the full main
+    // extension set, so the bus is live and covers UUIDS), so the batch pays
+    // ZERO doc walks — the walk survives only as the observer-less-editor
+    // fallback (still exercised by the transient-walk-cull suite through
+    // `syncObservedSet`, which deliberately keeps the walk as its source).
+    expect(walkMock).toHaveBeenCalledTimes(0);
 
     editor.destroy();
   });

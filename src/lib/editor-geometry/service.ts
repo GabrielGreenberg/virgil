@@ -335,6 +335,11 @@ export function createEditorGeometryService(
   let pendingRecompute = new Set<string>();
   /** Document order of every live UUID — kept in sync on structure-change. */
   let docOrder: string[] = [];
+  /** uuid → index into `docOrder` — the O(1) twin of the old
+   *  `docOrder.indexOf` (which made each RO entry O(doc), i.e. O(blocks²)
+   *  per reflow frame before the gesture short-circuit). Rebuilt with
+   *  `docOrder` in `syncObservedSet`, structural-event-paced. */
+  let orderIndex = new Map<string, number>();
   let version = 0;
   let recomputes = 0;
   let rafId = 0;
@@ -384,6 +389,49 @@ export function createEditorGeometryService(
     else scheduleRecompute();
   }
 
+  /**
+   * uuid → { pos, isAtom } resolver for a measurement pass — LAZY, built at
+   * most once per pass, and nothing is resolved when no measurable entry
+   * needs it (a pure viewport-LEAVE batch pays zero).
+   *
+   * BUS-FIRST (wave 2 S3b): positions come from the DocStructure snapshot —
+   * the observer maintains them O(edit) per transaction and the `structure`
+   * getter materializes pending step-maps at read time, so the read is
+   * always current. `isAtom` derives from the schema by `typeName`
+   * (`isAnchorableAtom` = anchorable ∧ atom, and every entry is anchorable
+   * by construction). Coverage is identical to `walkAnchorableBlocks` BY
+   * CONSTRUCTION — both are "descendants ∧ isAnchorableNode ∧ non-null
+   * uuid" — so the walk survives only as the fallback for editors mounted
+   * WITHOUT the observer (minimal harnesses), where the bus map is absent
+   * or empty.
+   */
+  function makePosResolver(): (
+    uuid: string,
+  ) => { pos: number; isAtom: boolean } | undefined {
+    let resolve:
+      | ((uuid: string) => { pos: number; isAtom: boolean } | undefined)
+      | null = null;
+    const build = () => {
+      const structure = getBus(editor)?.structure;
+      if (structure && structure.blocks.size > 0) {
+        const nodes = editor.schema.nodes;
+        return (uuid: string) => {
+          const e = structure.blocks.get(uuid);
+          if (!e) return undefined;
+          return { pos: e.pos, isAtom: nodes[e.typeName]?.isAtom === true };
+        };
+      }
+      const posByUuid = new Map<string, { pos: number; isAtom: boolean }>();
+      for (const b of walkAnchorableBlocks(editor))
+        posByUuid.set(b.uuid, { pos: b.pos, isAtom: b.isAtom });
+      return (uuid: string) => posByUuid.get(uuid);
+    };
+    return (uuid) => {
+      if (!resolve) resolve = build();
+      return resolve(uuid);
+    };
+  }
+
   function flushRecompute() {
     if (!editor || editor.isDestroyed || !visible) return;
     if (pendingRecompute.size === 0) return;
@@ -394,12 +442,7 @@ export function createEditorGeometryService(
     pendingRecompute = new Set();
     recomputes++;
 
-    // Build a uuid → pos map by walking the doc once. Doing it inline
-    // beats keeping a parallel uuid→pos map in sync with TipTap's
-    // node lifecycle (positions shift on every structural edit).
-    const blocks = walkAnchorableBlocks(editor);
-    const posByUuid = new Map<string, { pos: number; isAtom: boolean }>();
-    for (const b of blocks) posByUuid.set(b.uuid, { pos: b.pos, isAtom: b.isAtom });
+    const resolvePos = makePosResolver();
 
     let changed = false;
     for (const uuid of pending) {
@@ -408,7 +451,7 @@ export function createEditorGeometryService(
         if (cache.delete(uuid)) changed = true;
         continue;
       }
-      const meta = posByUuid.get(uuid);
+      const meta = resolvePos(uuid);
       if (!meta) {
         if (cache.delete(uuid)) changed = true;
         continue;
@@ -435,12 +478,21 @@ export function createEditorGeometryService(
    * computing the delta from a possibly-stale cached height).
    */
   function invalidateFromUuid(uuid: string) {
-    const idx = docOrder.indexOf(uuid);
-    if (idx < 0) {
-      pendingRecompute.add(uuid);
-    } else {
-      for (let i = idx; i < docOrder.length; i++) {
-        pendingRecompute.add(docOrder[i]);
+    pendingRecompute.add(uuid);
+    const idx = orderIndex.get(uuid);
+    if (idx !== undefined) {
+      // Blocks BELOW the resized one shift by its height delta — but only
+      // OBSERVED (near-zone) blocks have metrics to refresh, so the cascade
+      // intersects with `observed`: O(observed) per RO entry, not O(doc
+      // tail) (S3b — with the O(1) `orderIndex` lookup replacing the old
+      // O(doc) `indexOf`, a reflow entry costs O(near-zone) total). An
+      // off-zone block below re-measures on its own IO ENTER; a DETACHED
+      // block's kept-alive cache entry now survives an unrelated cascade
+      // too, which is what the detach path always intended ("stale metrics
+      // beat a culled marker until the re-observe re-measures").
+      for (const u of observed.keys()) {
+        const i = orderIndex.get(u);
+        if (i !== undefined && i >= idx) pendingRecompute.add(u);
       }
     }
     fireRecompute();
@@ -536,6 +588,7 @@ export function createEditorGeometryService(
     pendingObserve = nextPending;
     observeAttempts = nextAttempts;
     docOrder = nextOrder;
+    orderIndex = new Map(nextOrder.map((u, i) => [u, i]));
     if (changed) notify();
 
     // Self-driven retry: a first-paint observe miss, a retry-cap eviction,
@@ -575,18 +628,11 @@ export function createEditorGeometryService(
     if (!host) return;
     const hostRect = host.getBoundingClientRect();
 
-    // Resolve positions with ONE doc walk per IO batch — O(doc + K), not one
-    // walk per ENTER entry (the O(K × doc) re-show storm). Built LAZILY so a
-    // pure viewport-LEAVE batch (scroll-away) pays nothing.
-    let posByUuid: Map<string, { pos: number; isAtom: boolean }> | null = null;
-    const blocksFor = () => {
-      if (!posByUuid) {
-        posByUuid = new Map();
-        for (const b of walkAnchorableBlocks(editor))
-          posByUuid.set(b.uuid, { pos: b.pos, isAtom: b.isAtom });
-      }
-      return posByUuid;
-    };
+    // Positions resolve LAZILY once per IO batch — bus-first via the
+    // structure snapshot (zero doc walks; S3b), the one-walk fallback only
+    // for observer-less editors. A pure viewport-LEAVE batch (scroll-away)
+    // resolves nothing and pays nothing.
+    const resolvePos = makePosResolver();
 
     let changed = false;
     for (const entry of entries) {
@@ -599,9 +645,9 @@ export function createEditorGeometryService(
           observed.set(uuid, el);
           resizeObserver?.observe(el);
         }
-        // Resolve pos from the once-per-batch walk (positions can have
-        // shifted since the last walk, e.g. an upstream paragraph split).
-        const meta = blocksFor().get(uuid);
+        // Resolve pos from the once-per-batch resolver (positions can have
+        // shifted since the last sync, e.g. an upstream paragraph split).
+        const meta = resolvePos(uuid);
         if (!meta) continue;
         const next = measureBlock(editor, meta.pos, meta.isAtom, hostRect, uuid);
         if (!next) continue;
@@ -768,10 +814,17 @@ export function createEditorGeometryService(
           const coalescedSync = rafCoalesced(() => syncObservedSet());
           const u1 = bus.onBlocksAdded(coalescedSync.schedule);
           const u2 = bus.onBlocksRemoved(coalescedSync.schedule);
+          // Order changes too (S3b): a drag-reorder preserves the uuid SET,
+          // so added/removed never fire — but `docOrder`/`orderIndex` (the
+          // invalidation cascade's notion of "below") went stale until the
+          // next add/remove. Same coalesced sync; fires only on a real
+          // reorder, never on a keystroke.
+          const u3 = bus.onBlockOrderChanged(coalescedSync.schedule);
           return () => {
             coalescedSync.cancel();
             u1();
             u2();
+            u3();
           };
         })()
       : null;
