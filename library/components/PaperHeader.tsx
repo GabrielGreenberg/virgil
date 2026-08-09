@@ -1,25 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { BibEntry } from "@library/lib/types";
 import type { CatalogEntry, IndexedState } from "@library/lib/catalog";
 import {
-  cancelBibReview,
-  cancelDeepIndex,
-  cancelImportBib,
-  cancelPaperReview,
-  queueBibReview,
-  queueDeepIndex,
-  queueImportBib,
-  queuePaperReview,
-  readBibReviewState,
-  readDeepIndexState,
-  readImportBibState,
-  readPaperReviewState,
-} from "@library/lib/bib-edit";
-import { writeQueueEntry } from "@library/lib/queue";
-import type { QueueEntry } from "@library/lib/queue";
-import { deleteFile, readJsonFile, SUBDIRS } from "@library/lib/library-storage";
+  PAPER_REQUESTS,
+  PAPER_REQUESTS_BY_KIND,
+  type PaperRequestKind,
+} from "@library/lib/paper-ai-requests";
+import {
+  isQueued,
+  refreshQueueState,
+  useQueueState,
+} from "@library/lib/queue-state-store";
 import { formatBibliography } from "@library/lib/bib-parser";
 import { ExpandedFields } from "./BibCard";
 import { IndexedPill, BibPill, BibImportedPill } from "./StatusPill";
@@ -76,15 +69,17 @@ interface Props {
   textPodRect?: { left: number; width: number } | null;
 }
 
-type RequestKind = "index" | "deep" | "bib" | "doc" | "importbib";
+type RequestKind = PaperRequestKind;
 
-const REQUESTS: { kind: RequestKind; label: string }[] = [
-  { kind: "index", label: "Index" },
-  { kind: "deep", label: "Deep index" },
-  { kind: "bib", label: "Bib review" },
-  { kind: "doc", label: "Doc review" },
-  { kind: "importbib", label: "Import bib" },
-];
+/** Per-kind all-false seed, shared by the `busy` state and the derived
+ *  `queued` map so neither can enumerate the kinds differently. */
+const ALL_FALSE: Record<RequestKind, boolean> = {
+  index: false,
+  deep: false,
+  bib: false,
+  doc: false,
+  importbib: false,
+};
 
 /** Sole header for a paper-file tab — a narrow, centered warm-sheet pod
  *  (max-width ~620px, margin-inline auto) with three EQUAL-width columns:
@@ -116,76 +111,32 @@ export default function PaperHeader({
   const [expanded, setExpanded] = useState(false);
   const [instructions, setInstructions] = useState("");
   const [flash, setFlash] = useState<string | null>(null);
-  // Per-kind queued state. Index and bib share `queue/<citekey>.json` so
-  // they're effectively mutually exclusive on disk; the UI reflects whatever
-  // ends up there after each toggle.
-  const [queued, setQueued] = useState<Record<RequestKind, boolean>>({
-    index: false,
-    deep: false,
-    bib: false,
-    doc: false,
-    importbib: false,
-  });
-  const [busy, setBusy] = useState<Record<RequestKind, boolean>>({
-    index: false,
-    deep: false,
-    bib: false,
-    doc: false,
-    importbib: false,
-  });
+  const [busy, setBusy] = useState<Record<RequestKind, boolean>>(ALL_FALSE);
 
   const isIndexed = indexedState === "indexed" || indexedState === "deepIndexed";
   const indexNeeded = indexedState === "none" || indexedState === "failed";
 
-  // Refresh all queue states for this citekey.
-  const refreshAll = async () => {
-    if (!handle || !citekey) {
-      setQueued({ index: false, deep: false, bib: false, doc: false, importbib: false });
-      return;
+  // Per-kind queued state, DERIVED from the shared queue-state store rather
+  // than read once per mount. This header is kept alive by `ReaderLRU`
+  // (`KeepAliveSlot` hides it with `display:none` instead of unmounting), so a
+  // `[handle, citekey]` effect never re-runs for the whole life of the tab —
+  // which is how the checkboxes and the menu's count badge kept claiming
+  // "queued" after a background skill drained the queue (task 132). The store
+  // polls the queue directory on the same 6 s cowork cadence the catalog and
+  // the row dots use, and every local writer pushes through it, so this reads
+  // truthfully without adding a single disk read of its own.
+  const queueSnapshot = useQueueState(handle);
+  const queued = useMemo(() => {
+    // No library handle → nothing is filable and nothing is cancellable, so
+    // the boxes read empty rather than borrowing the store's snapshot (which
+    // belongs to a library this header isn't connected to).
+    if (!handle || !citekey) return ALL_FALSE;
+    const out = { ...ALL_FALSE };
+    for (const req of PAPER_REQUESTS) {
+      out[req.kind] = isQueued(queueSnapshot, citekey, req.queueKind);
     }
-    const [bibR, docR, deepR, importR, shared] = await Promise.all([
-      readBibReviewState(handle, citekey),
-      readPaperReviewState(handle, citekey),
-      readDeepIndexState(handle, citekey),
-      readImportBibState(handle, citekey),
-      readJsonFile<QueueEntry>(handle, `${SUBDIRS.queue}/${citekey}.json`),
-    ]);
-    const indexQueued = !!shared && shared.kind === "index" && shared.status === "requested";
-    setQueued({
-      index: indexQueued,
-      deep: !!deepR,
-      bib: !!bibR,
-      doc: !!docR,
-      importbib: !!importR,
-    });
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!handle || !citekey) {
-      setQueued({ index: false, deep: false, bib: false, doc: false, importbib: false });
-      return;
-    }
-    void (async () => {
-      const [bibR, docR, deepR, importR, shared] = await Promise.all([
-        readBibReviewState(handle, citekey),
-        readPaperReviewState(handle, citekey),
-        readDeepIndexState(handle, citekey),
-        readImportBibState(handle, citekey),
-        readJsonFile<QueueEntry>(handle, `${SUBDIRS.queue}/${citekey}.json`),
-      ]);
-      if (cancelled) return;
-      const indexQueued = !!shared && shared.kind === "index" && shared.status === "requested";
-      setQueued({
-        index: indexQueued,
-        deep: !!deepR,
-        bib: !!bibR,
-        doc: !!docR,
-        importbib: !!importR,
-      });
-    })();
-    return () => { cancelled = true; };
-  }, [handle, citekey]);
+    return out;
+  }, [queueSnapshot, citekey, handle]);
 
   const flashFor = (msg: string) => {
     setFlash(msg);
@@ -195,52 +146,31 @@ export default function PaperHeader({
   const setKindBusy = (kind: RequestKind, b: boolean) =>
     setBusy((cur) => ({ ...cur, [kind]: b }));
 
-  const queueIndex = async (note: string) => {
-    if (!handle || !citekey) return;
-    const entry: QueueEntry = {
-      kind: "index",
-      status: "requested",
-      citekey,
-      requestedAt: new Date().toISOString(),
-      attempts: 0,
-      ...(note.length > 0 ? { note } : {}),
-    };
-    await writeQueueEntry(handle, entry);
-  };
-
-  const cancelIndex = async () => {
-    if (!handle || !citekey) return;
-    const path = `${SUBDIRS.queue}/${citekey}.json`;
-    const cur = await readJsonFile<QueueEntry>(handle, path);
-    if (cur && cur.kind === "index" && cur.status === "requested") {
-      await deleteFile(handle, path);
-    }
-  };
-
   const onToggle = async (kind: RequestKind, nextChecked: boolean) => {
     if (!handle || !citekey) return;
     if (busy[kind]) return;
-    const note = instructions.trim();
+    const req = PAPER_REQUESTS_BY_KIND[kind];
+    const ctx = {
+      root: handle,
+      citekey,
+      note: instructions.trim(),
+      indexNeeded,
+    };
     setKindBusy(kind, true);
     try {
       if (nextChecked) {
-        if (kind === "index") await queueIndex(note);
-        else if (kind === "deep") await queueDeepIndex(handle, citekey, note, indexNeeded);
-        else if (kind === "bib") await queueBibReview(handle, citekey, note);
-        else if (kind === "importbib") await queueImportBib(handle, citekey, note);
-        else await queuePaperReview(handle, citekey, note);
+        await req.enqueue(ctx);
         flashFor("queued ✓");
       } else {
-        if (kind === "index") await cancelIndex();
-        else if (kind === "deep") await cancelDeepIndex(handle, citekey);
-        else if (kind === "bib") await cancelBibReview(handle, citekey);
-        else if (kind === "importbib") await cancelImportBib(handle, citekey);
-        else await cancelPaperReview(handle, citekey);
+        await req.cancel(ctx);
         flashFor("cancelled");
       }
-      // Refresh all queued states — index/bib share a slot on disk, so a
-      // toggle on one can implicitly clear the other.
-      await refreshAll();
+      // Re-read the queue rather than trusting our own write: index/bib share
+      // `queue/<citekey>.json`, so a toggle on one can implicitly clear the
+      // other, and a deep-index request can plant a companion index entry.
+      // Pushing it through the shared store also updates the list's row dot
+      // (and any other open reader) in the same beat.
+      await refreshQueueState();
     } catch (e) {
       flashFor(`failed: ${(e as Error).message}`);
     } finally {
@@ -248,18 +178,15 @@ export default function PaperHeader({
     }
   };
 
-  // Disabled state per checkbox.
+  // Disabled state per checkbox — the precondition is declared on the request
+  // descriptor, so a new kind states its own rule instead of growing another
+  // branch here.
   const disabledFor = (kind: RequestKind): { disabled: boolean; title?: string } => {
     if (!handle || !citekey) return { disabled: true };
     if (busy[kind]) return { disabled: true };
-    if (kind === "doc") {
-      // Doc review needs the paper text to exist.
-      if (!isIndexed) return { disabled: true, title: "Index the paper first to file a document AI request" };
-    }
-    if (kind === "importbib") {
-      // Importing folds the paper's references.bib into master.bib — needs
-      // an indexed paper (no references.bib otherwise).
-      if (!isIndexed) return { disabled: true, title: "Index the paper first to import its bibliography" };
+    const requiresIndexed = PAPER_REQUESTS_BY_KIND[kind].requiresIndexed;
+    if (requiresIndexed && !isIndexed) {
+      return { disabled: true, title: requiresIndexed };
     }
     return { disabled: false };
   };
@@ -388,9 +315,10 @@ export default function PaperHeader({
     return "No PDF";
   })();
 
-  // Build the dropdown items from the static REQUESTS list + live queued/disabled
-  // state. Order + labels match the old checkbox row.
-  const aiRequestItems: AiRequestItem<RequestKind>[] = REQUESTS.map(
+  // Build the dropdown items from the request descriptors + live
+  // queued/disabled state. Order + labels come from the same table the toggle
+  // dispatch and the queue-kind mapping do.
+  const aiRequestItems: AiRequestItem<RequestKind>[] = PAPER_REQUESTS.map(
     ({ kind, label }) => {
       const { disabled, title } = disabledFor(kind);
       return { kind, label, checked: queued[kind], disabled, title };

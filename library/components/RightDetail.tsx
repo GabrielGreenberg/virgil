@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { queueBibEdit } from "@library/lib/bib-edit";
+import { refreshQueueState } from "@library/lib/queue-state-store";
 import { isSynthesizedRaw } from "@library/lib/reconstruct-bibtex";
 import {
   resetPaperViewModeOnOpen,
@@ -390,6 +391,9 @@ export default function RightDetail({
               onClose={() => setEditOpen(false)}
               onSave={async (type, fields) => {
                 await queueBibEdit(handle, entry.citekey!, { type, fields });
+                // A bib edit is a queue write: push it through the queue's one
+                // notification channel so the row dot lights immediately.
+                await refreshQueueState();
                 onBibChanged?.();
               }}
             />
@@ -455,6 +459,7 @@ export default function RightDetail({
             onClose={() => setEditOpen(false)}
             onSave={async (type, fields) => {
               await queueBibEdit(handle, entry.citekey!, { type, fields });
+              await refreshQueueState();
               onBibChanged?.();
             }}
           />
