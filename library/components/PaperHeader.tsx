@@ -123,8 +123,9 @@ export default function PaperHeader({
   // which is how the checkboxes and the menu's count badge kept claiming
   // "queued" after a background skill drained the queue (task 132). The store
   // polls the queue directory on the same 6 s cowork cadence the catalog and
-  // the row dots use, and every local writer pushes through it, so this reads
-  // truthfully without adding a single disk read of its own.
+  // the row dots use, and every local writer pushes through it. Inside the
+  // Library tab that scan is already running for the list's row dots, so N
+  // kept-alive headers cost nothing extra.
   const queueSnapshot = useQueueState(handle);
   const queued = useMemo(() => {
     // No library handle → nothing is filable and nothing is cancellable, so

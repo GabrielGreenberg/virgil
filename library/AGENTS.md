@@ -79,10 +79,12 @@ paper's open reader header, and the dot lagged a poll behind the click.
 Three rules the store earns:
 
 - **One scan, many consumers.** `useQueueState(handle)` refcounts a single
-  directory scan (`catalog-store`'s tactic), so the header derives its five
-  checkboxes from the scan the row dots were already paying for — **zero**
-  added disk reads — and the two surfaces answer from the same bytes, so they
-  cannot disagree.
+  directory scan (`catalog-store`'s tactic), so inside the Library tab the
+  header derives its five checkboxes from the scan the row dots were already
+  paying for — **zero** added disk reads, however many readers are kept alive —
+  and both surfaces answer from the same bytes, so they cannot disagree. (In a
+  standalone outer paper tab there is no list, so the scan is that surface's
+  own: one polled directory listing in place of five one-shot file reads.)
 - **The kind comes from the ENTRY, not the filename.** `index` and
   `authenticate` share `queue/<citekey>.json`, so only the entry's own `kind`
   separates them; reading by filename also meant a second table to keep in
