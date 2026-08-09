@@ -1559,8 +1559,11 @@ export function AiRequestCheckbox({
 
 /** Reusable class-string tokens. */
 export const PANEL = {
-  /** Scrollable list container wrapping all cards. */
-  list: "flex-1 overflow-y-auto px-2 py-2 space-y-2",
+  /** Scrollable list container wrapping all cards. The leading
+   *  `panel-card-list` token is a STABLE hook (not a Tailwind utility) —
+   *  Wave-4 Stage A keys `body.perf-contain .panel-card-list` containment
+   *  on it, so every consumer of this constant inherits the rule. */
+  list: "panel-card-list flex-1 overflow-y-auto px-2 py-2 space-y-2",
   /** Standard card-body padding (UI-consistency sweep, ratified
    *  2026-06-12). One token for EditableCard's expanded body and the
    *  bespoke bodies (citation rows, todo, highlight, AI request).

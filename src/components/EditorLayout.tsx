@@ -14,6 +14,7 @@ import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
+import { applyPerfBodyFlags } from "@/lib/perf-feature-flags";
 import {
   isLayoutGestureActive,
   parkDuringLayoutGesture,
@@ -430,6 +431,9 @@ export default function EditorLayout() {
 
   useEffect(() => { setDevStorage(isDevStorage); }, []);
   useEffect(() => { setOpfsOk(opfsAvailable()); }, []);
+  // Wave-4 Stage A: stamp the CSS-scoped perf flags (body.perf-contain) once
+  // at shell boot — the stylesheet is the consumer; a flip applies on reload.
+  useEffect(() => { applyPerfBodyFlags(); }, []);
   const exampleAvailable = opfsOk && !devStorage;
 
   // Hooks read from disk, so we gate their docId on the permission
