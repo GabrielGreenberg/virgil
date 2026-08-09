@@ -47,11 +47,18 @@ is all-or-nothing), with the audit notification + version bump.
 
 ## Applicability
 
-- **Any two resolvable cards** can be linked — including `footnote`/`citation`.
-  The relationship is stored in `relatedCards`, a **separate** field from the
-  card→text anchor `links`, so it doesn't violate the "atom-linked cards have no
-  `links`" rule and works uniformly across kinds.
-- **Refused** — linking a card to itself; an unresolvable id.
+- **Any two cards in a writeback panel** can be linked — including
+  `footnote`/`citation`. The relationship is stored in `relatedCards`, a
+  **separate** field from the card→text anchor `links`, so it doesn't violate the
+  "atom-linked cards have no `links`" rule, needs nothing from the `.tex`, and
+  works uniformly across kinds.
+- **Refused** — linking a card to itself; an unresolvable id; and the two
+  **writeback-exempt stores**, because the record would not survive being
+  written there (task 156): a relationship on an `archive.json` **snippet** is
+  dropped when [`restore-card`](restore-card.md) re-appends the verbatim
+  `originalCard`, and one in `examples.json` is overwritten by the app's next
+  `.tex` re-derive — either way leaving a dangling one-sided reference on the
+  card that *was* written. Restore the archived card first, then link it.
 
 > **Note (manifest gap, flagged).** The manifest defines **no** card↔card
 > relationship field — `links: Link[]` is strictly the card→TextObject anchor (a

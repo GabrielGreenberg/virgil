@@ -47,7 +47,14 @@ under the pen**, with the audit notification + version bump.
   `originalPanel` + `originalCard`).
 - **Refused** — a **native** archive snippet (user-cut text archived in the app,
   not via this skill): it has no recorded origin, so the op refuses rather than
-  guess a destination. Restore it by hand if intended.
+  guess a destination. Restore it by hand if intended. A card that isn't in
+  `archive.json` at all is refused by the shared panel policy below, which names
+  the panel it actually lives in.
+
+> **Enforcement (task 156).** `archive` is this op's only legal source panel, and
+> that is declared — not re-derived — in `apply_response.MUTATION_PANEL_POLICY`:
+> one allow-list table per op, exhaustive over the card-store universe, asked by
+> every mutation op.
 
 ## Reply
 

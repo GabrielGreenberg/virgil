@@ -147,6 +147,7 @@ import re
 import sys
 import uuid
 from pathlib import Path
+from typing import NamedTuple
 
 from _common import (
     NODE_UUID_REGEX,
@@ -213,8 +214,168 @@ SUBCOMMANDS = {
 # that's out of scope for the sidecar-level mutation ops — they refuse + flag.
 ATOM_BEARING_PANELS = {"footnotes", "citations"}
 
+# Card-hosting sidecars that are NOT writeback targets (WRITEBACK_EXEMPT_PANELS in
+# tools/check-coherence.mjs) but ARE stores a card id resolves into. Declared here,
+# beside PANEL_TO_SIDECAR, so the panel UNIVERSE is one table: the applicability
+# policy below asserts itself exhaustive over it at import time, which it cannot do
+# if half the universe lives in the module that imports this one. card_by_id
+# re-exports both names as its search order (it imports this module; this one only
+# imports it lazily, inside handlers, so the cycle stays broken).
+EXTRA_CARD_SIDECARS = {
+    "archive": ("archive.json", "snippets"),
+    "examples": ("examples.json", "examples"),
+}
+ALL_CARD_SIDECARS: dict[str, tuple[str, str]] = {**PANEL_TO_SIDECAR, **EXTRA_CARD_SIDECARS}
+
 # Skills use this to pick a subcommand from a Task's safetyLevel (spec §8).
 SAFETY_LEVEL_SUBCOMMAND = {1: "write-silent", 2: "write-with-comment", 3: "complete-task"}
+
+
+# --- Panel applicability: the ONE table every existing-card mutation op asks ---
+#
+# Each op used to hand-enumerate its own refused panels inline, and the five card
+# CRUD skill markdowns carry a SECOND, hand-written copy of the same table. That
+# fork is what produced task 2026-07-17-156: `cmd_update` guarded `archive` and
+# `examples` and forgot `citations`, while its `cmd_archive`/`cmd_move` siblings
+# both refused it — so `update {"set":{"command":"citep"}}` on a citation card
+# rewrote `citations.json` alone while the `.tex \vcid\cite{}` marker and the
+# `references.bib` entry stayed put: precisely the desync edit-card.md promises
+# the op prevents. Nothing failed, nothing warned; the written contract was the
+# only thing standing between an agent and the corruption, and it over-promised.
+#
+# So applicability is declared ONCE, per op, as an **allow-list** over the panel
+# universe above. Allow-list, not deny-list, is the load-bearing half: a panel
+# nobody classified is REFUSED, so a future sidecar (a `figures` store, say)
+# cannot inherit "silently mutable" the way `citations` did. `refuse` exists only
+# to supply the specific, actionable message — an undeclared panel still refuses,
+# with a generic one.
+#
+# The messages ARE the agent-facing contract, so each mirrors the "Refused" /
+# "Deferred" bullet of its skill doc, and `$kind` / `$panel` / `$cardId` are
+# substituted at refusal time (plain replacement, not `.format`, so a message may
+# carry LaTeX braces). Two invariants are asserted at import time, below
+# MUTATION_OPS: every op is governed (panel-gated here, or kind-gated), and every
+# op's allow ∪ refuse covers the whole universe — so adding a panel or an op
+# fails on import until someone classifies it. The behavioral half is pinned in
+# editor/scripts/tests/test_panel_policy_slice.py.
+class _PanelPolicy(NamedTuple):
+    allow: frozenset      # panels the op may write
+    refuse: dict          # panel → specific refusal message (the contract text)
+
+
+_ALL_PANELS = frozenset(ALL_CARD_SIDECARS)
+_ANCHORED_PANEL_CARDS = frozenset({"notes", "todos", "cutter", "revisions", "reports"})
+
+_NOT_ARCHIVED = "card $cardId is not archived (it's in $panel) — nothing to restore"
+
+# The two refusals that are ABOUT the atom-bearing set rather than about one panel,
+# so they are written once and spread over `ATOM_BEARING_PANELS` — a third
+# atom-bearing store then inherits the right *message*, not just the allow-list's
+# generic refusal. (`update` deliberately does NOT spread them: footnotes is on its
+# allow-list and citations carries its own bib-coupled reason. That asymmetry is the
+# whole finding — see the note on update's row.)
+_ATOM_BEARING_ARCHIVE_REFUSAL = (
+    "archive-card on a $kind (atom-bearing) is not supported: its id is its \\v*id "
+    "marker, so archiving would orphan the .tex atom. Delete the atom in-document instead."
+)
+_ATOM_BEARING_MOVE_REFUSAL = (
+    "move-card on a $kind (atom-bearing) is deferred: re-anchoring means relocating its "
+    "\\v*id marker + \\footnote/\\cite in the .tex (an atom move), not a sidecar edit. "
+    "anchoring.md: \"the paragraph anchor follows the Atom\" — move the atom in-document."
+)
+
+MUTATION_PANEL_POLICY: dict[str, _PanelPolicy] = {
+    # update — the anchored panel cards, plus footnotes: a footnote BODY edit is a
+    # real, intended feature of this op (`_BODY_RICH_ONLY` + the `.tex \footnote{}`
+    # sync below), which is why the guard must be citation-specific and NOT
+    # `hit.panel in ATOM_BEARING_PANELS` — the naive "copy the sibling guard" fix
+    # would break footnote editing.
+    "update": _PanelPolicy(
+        allow=_ANCHORED_PANEL_CARDS | {"footnotes"},
+        refuse={
+            "citations": (
+                "update refuses a citation: its `command`/`keys` are coupled to the .tex "
+                "\\vcid…\\cite marker AND the references.bib entry, so a sidecar-only edit "
+                "desyncs all three (durably for an unanchored card — the re-anchor rebuild "
+                "reads `command` back to plant the \\cite). Change a cite via find-citation, "
+                "or rename its citekey via the renameCitekey contract op."
+            ),
+            "archive": "card $cardId is archived — restore it before editing",
+            "examples": ("an example lives in the .tex (\\ex…\\xe), not a mutable card — "
+                         "edit the document block"),
+        },
+    ),
+    # archive — the anchored panel cards only. Atom-bearing cards would orphan
+    # their marker; examples.json is a .tex shadow; archive.json is the target.
+    "archive": _PanelPolicy(
+        allow=_ANCHORED_PANEL_CARDS,
+        refuse={
+            **{p: _ATOM_BEARING_ARCHIVE_REFUSAL for p in ATOM_BEARING_PANELS},
+            "archive": "card $cardId is already archived",
+            "examples": "an example lives in the .tex, not a card store — it can't be archived",
+        },
+    ),
+    # restore — the mirror image: archive is the ONLY legal source.
+    "restore": _PanelPolicy(
+        allow=frozenset({"archive"}),
+        refuse={p: _NOT_ARCHIVED for p in _ALL_PANELS - {"archive"}},
+    ),
+    # move — the anchored panel cards. Atom-bearing is a deferral, not a denial:
+    # "the paragraph anchor follows the Atom" (anchoring.md), so the move happens
+    # in the document.
+    "move": _PanelPolicy(
+        allow=_ANCHORED_PANEL_CARDS,
+        refuse={
+            **{p: _ATOM_BEARING_MOVE_REFUSAL for p in ATOM_BEARING_PANELS},
+            "archive": "move-card does not apply to $panel cards",
+            "examples": "move-card does not apply to $panel cards",
+        },
+    ),
+    # link — every writeback panel, atom-bearing INCLUDED: the relationship lives
+    # in `relatedCards`, a field separate from the card→text anchor `links`, so it
+    # needs nothing from the .tex and works uniformly across kinds. The two exempt
+    # stores are refused for the same reason `update` refuses them, and it is the
+    # same silent-lost-write class as the citation hole this table closes: a
+    # relationship written onto an archive SNIPPET is dropped by cmd_restore (which
+    # re-appends the verbatim `originalCard`, not the envelope), and one written
+    # into examples.json is overwritten by the app's next .tex re-derive — leaving
+    # a dangling one-sided reference on the other card either way.
+    "link": _PanelPolicy(
+        allow=frozenset(PANEL_TO_SIDECAR),
+        refuse={
+            "archive": ("link refuses an archived card ($cardId): a relationship written onto the "
+                        "snippet envelope is dropped when restore re-appends its originalCard, "
+                        "leaving the other card pointing at nothing. Restore it first, then link."),
+            "examples": ("link refuses an example ($cardId): examples.json is a .tex-derived "
+                         "shadow, so the record is overwritten on the app's next re-derive. "
+                         "Link the paragraph's cards instead."),
+        },
+    ),
+}
+
+# accept / reject are gated by KIND, not by panel (SUGGESTION_KINDS — a proposal
+# card is legal in whichever panel hosts it, and illegal everywhere else however
+# mutable that panel is), so they are deliberately absent from the table above.
+# Naming them here is what keeps the op dimension exhaustive: a new mutation op
+# must declare a panel policy or join this set.
+KIND_GATED_MUTATION_OPS = {"accept", "reject"}
+
+
+def _guard_panel(op_name: str, hit, kind: str) -> None:
+    """Refuse an op whose applicability list does not admit the card's panel.
+    The ONE door for "may <op> touch a card living in <panel>?" — every mutation
+    handler calls it right after resolving the card."""
+    policy = MUTATION_PANEL_POLICY.get(op_name)
+    if policy is None or hit.panel in policy.allow:
+        return
+    msg = policy.refuse.get(hit.panel) or (
+        f"{op_name} does not apply to a $kind: panel $panel is not on {op_name}'s "
+        f"applicability list, so the op refuses rather than write a store it doesn't own"
+    )
+    card_id = hit.card.get("id") if isinstance(hit.card, dict) else None
+    die(msg.replace("$kind", str(kind))
+           .replace("$panel", str(hit.panel))
+           .replace("$cardId", str(card_id)))
 
 
 def parse_op_json(arg: str) -> dict:
@@ -1189,8 +1350,12 @@ def _mutation_commit(
 # map is the only kind knowledge the otherwise kind-agnostic contract carries
 # for editing — justified because the body field genuinely differs by kind.
 # Named-field edits (`set`) stay fully generic. Kinds absent from all three sets
-# have no single editable plain body (highlight / citation / the suggestion
-# family / example) → `--body` is refused; edit their named fields with `--field`.
+# have no single editable plain body (highlight / the suggestion family) →
+# `--body` is refused; edit their named fields with `--field`. `citation` and
+# `example` never reach here at all: their whole PANEL is refused upstream by
+# MUTATION_PANEL_POLICY, which is the difference between "this kind has no plain
+# body" (a `--body`-only limit) and "this store is not ours to write" (task 156 —
+# relying on the former to imply the latter is what left `--field` wide open).
 _BODY_PLAIN = {"todo"}                                            # → `text`
 _BODY_RICH_ONLY = {"note", "footnote"}                            # → `content`
 _BODY_RICH_MIRROR = {"report", "report-request", "comment", "cutter-comment"}  # → `content` + `text`
@@ -1232,11 +1397,8 @@ def cmd_update(doc: Path, op: dict) -> dict:
     hit = find_card(doc, card_id)
     if hit is None:
         die(f"card not found: {card_id}")
-    if hit.panel == "archive":
-        die(f"card {card_id} is archived — restore it before editing")
-    if hit.panel == "examples":
-        die("an example lives in the .tex (\\ex…\\xe), not a mutable card — edit the document block")
     kind = card_kind(hit)
+    _guard_panel("update", hit, kind)
 
     txn = _Txn(doc)
     card = txn.card_ref(hit.filename, hit.list_key, card_id)
@@ -1279,13 +1441,7 @@ def cmd_archive(doc: Path, op: dict) -> dict:
     if hit is None:
         die(f"card not found: {card_id}")
     kind = card_kind(hit)
-    if hit.panel == "archive":
-        die(f"card {card_id} is already archived")
-    if hit.panel in ATOM_BEARING_PANELS:
-        die(f"archive-card on a {kind} (atom-bearing) is not supported: its id is its \\v*id "
-            f"marker, so archiving would orphan the .tex atom. Delete the atom in-document instead.")
-    if hit.panel == "examples":
-        die("an example lives in the .tex, not a card store — it can't be archived")
+    _guard_panel("archive", hit, kind)
 
     original = hit.card  # a detached snapshot (read by card_by_id, not the txn)
     # Terminal-transition resolve, Leg B (restore): archiving a flagged card
@@ -1333,7 +1489,7 @@ def cmd_archive(doc: Path, op: dict) -> dict:
 
 def cmd_restore(doc: Path, op: dict) -> dict:
     """Move a card back from archive.json to the panel it came from."""
-    from card_by_id import find_card
+    from card_by_id import find_card, card_kind
 
     card_id = op.get("cardId")
     if not card_id:
@@ -1341,8 +1497,7 @@ def cmd_restore(doc: Path, op: dict) -> dict:
     hit = find_card(doc, card_id)
     if hit is None:
         die(f"card not found: {card_id}")
-    if hit.panel != "archive":
-        die(f"card {card_id} is not archived (it's in {hit.panel}) — nothing to restore")
+    _guard_panel("restore", hit, card_kind(hit))
     snippet = hit.card
     original_panel = snippet.get("originalPanel")
     original_card = snippet.get("originalCard")
@@ -1384,12 +1539,7 @@ def cmd_move(doc: Path, op: dict) -> dict:
     if hit is None:
         die(f"card not found: {card_id}")
     kind = card_kind(hit)
-    if hit.panel in ATOM_BEARING_PANELS:
-        die(f"move-card on a {kind} (atom-bearing) is deferred: re-anchoring means relocating its "
-            f"\\v*id marker + \\footnote/\\cite in the .tex (an atom move), not a sidecar edit. "
-            f"anchoring.md: \"the paragraph anchor follows the Atom\" — move the atom in-document.")
-    if hit.panel in ("archive", "examples"):
-        die(f"move-card does not apply to {hit.panel} cards")
+    _guard_panel("move", hit, kind)
 
     tex = find_tex_file(doc).read_text(encoding="utf-8")
     known = {u["uuid"] for u in find_paragraph_uuids(tex)}
@@ -1476,6 +1626,8 @@ def cmd_link(doc: Path, op: dict) -> dict:
     if hit_b is None:
         die(f"card not found: {b_id}")
     kind_a, kind_b = card_kind(hit_a), card_kind(hit_b)
+    _guard_panel("link", hit_a, kind_a)
+    _guard_panel("link", hit_b, kind_b)
 
     txn = _Txn(doc)
     card_a = txn.card_ref(hit_a.filename, hit_a.list_key, a_id)
@@ -1660,6 +1812,32 @@ MUTATION_OPS = {
     "accept": cmd_accept,
     "reject": cmd_reject,
 }
+
+
+# Boot assertions on the applicability SSOT (the analogue of the TS side's
+# compile-error-on-an-unwired-union-member: a mutation op or a card store added
+# without classifying it fails on IMPORT, before it can write anything).
+_ungoverned_ops = set(MUTATION_OPS) - set(MUTATION_PANEL_POLICY) - KIND_GATED_MUTATION_OPS
+if _ungoverned_ops:
+    raise RuntimeError(
+        f"ungoverned mutation op(s) {sorted(_ungoverned_ops)}: declare a MUTATION_PANEL_POLICY "
+        f"row (which panels may it write?) or add it to KIND_GATED_MUTATION_OPS with the kind "
+        f"predicate that gates it — task 2026-07-17-156"
+    )
+_stale_policy_ops = set(MUTATION_PANEL_POLICY) - set(MUTATION_OPS)
+if _stale_policy_ops:
+    raise RuntimeError(f"MUTATION_PANEL_POLICY names non-ops {sorted(_stale_policy_ops)}")
+for _op, _pol in MUTATION_PANEL_POLICY.items():
+    _unclassified = _ALL_PANELS - _pol.allow - set(_pol.refuse)
+    if _unclassified:
+        raise RuntimeError(
+            f"MUTATION_PANEL_POLICY[{_op!r}] classifies neither allow nor refuse for panel(s) "
+            f"{sorted(_unclassified)}. The runtime refuses them (allow-list, fail-safe), but say "
+            f"so explicitly with the message an agent should read — task 2026-07-17-156"
+        )
+    _unknown = (_pol.allow | set(_pol.refuse)) - _ALL_PANELS
+    if _unknown:
+        raise RuntimeError(f"MUTATION_PANEL_POLICY[{_op!r}] names unknown panel(s) {sorted(_unknown)}")
 
 
 # ---------------------------------------------------------------------------
