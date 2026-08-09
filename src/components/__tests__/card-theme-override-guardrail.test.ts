@@ -39,6 +39,41 @@
 // contained raw NUL bytes, which made `grep` treat it as binary and skip it
 // silently. THIS test reads files with `readFileSync`, so it sees them anyway.
 // That is the point of a guard with teeth: greps lie, allowlists don't.
+//
+// THE SECOND LAW (task 178) — no per-kind colour vocabulary outside the theme
+// ---------------------------------------------------------------------------
+// The first law governs a component that READS the wrong table. Task 178 was a
+// component that DECLARED one: `AIWindow`'s `KIND_META` carried `chipBg`/
+// `chipFg` hex literals per request kind — the second per-kind colour
+// vocabulary in the app, agreeing with no panel theme, subscribing to no
+// override, and (independent of any override) shipping a straight inversion:
+// the Todo chip wore `#15803d`, byte-identical to the NOTE accent, while the
+// Note chip wore a blue belonging to no kind at all. A user who has learned the
+// colour language of the margin read the inbox wrong.
+//
+// The first law could not have caught it, because a hand-rolled table reads
+// nothing. So the second law is about DECLARATIONS: a record keyed by a KIND
+// vocabulary must not carry a colour literal. One accent per kind, in
+// `panel-theme`, derived at the point of paint — that is the whole reason a
+// single colour picker can retint an entire kind.
+//
+// Reach, stated honestly, in three parts:
+//   • KEY — the detector keys on a `Record<…Kind, …>` type annotation, which is
+//     what makes the "this is a KIND vocabulary" claim checkable. A colour table
+//     keyed by something else — a STATUS (`AIWindow`'s `STATUS_META`), a
+//     collaborator state (`CollabStatusPill`'s `DOT_COLORS`), a
+//     `Record<string, string>` — is invisible to it and is a different question
+//     (those are state vocabularies, not kind vocabularies). Type-alias,
+//     `satisfies` and interface-typed indirections evade the annotation too;
+//     they are bypasses a reviewer must catch, not ones this grep can.
+//   • VALUE — `COLOR_LITERAL` covers hex, the `rgb()/hsl()/oklch()` function
+//     family, and the Tailwind palette class form. NOT bare CSS colour names:
+//     a bare word can't be told from a value that merely reads like one
+//     (`severity: "red"`), and a guard that fails a correct file trains people
+//     to distrust it.
+//   • SILO — both `src/` and `library/` are censused, each with its own
+//     allowlist (the library twin deliberately empty), as every sibling law
+//     does. A one-silo census is how ungoverned sites accumulate.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -49,6 +84,7 @@ import { SYSTEM_THEME_KEYS, type PanelThemeKey } from "@/lib/panel-theme";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../.."); // src/
+const LIBRARY = path.resolve(SRC, "../library"); // the library silo
 
 /** The frozen shipped-defaults tables, each mapped to the file that DEFINES it
  *  (exempt by construction — that's where the fold legitimately lives). */
@@ -69,6 +105,113 @@ const PERMITTED_FROZEN_TABLE_READERS: Record<string, string> = {
   "panels/Omni/OmniViewPanel.tsx":
     "`CARD_THEMES.error` on the orphaned badge — same system-accent rationale as ErrorCard.",
 };
+
+// ── The permitted kind-keyed colour-table allowlist (second law) ───────────
+// Keyed `<file>::<declaration>`, one allowlist per silo (the library twin is
+// deliberately empty — same shape as every sibling law). An entry must say why
+// the colour is not a paint decision that belongs to `panel-theme` — and the
+// ONLY such reason so far is "nothing paints from it," which is a fact with an
+// expiry date, pinned by its own test below.
+const PERMITTED_KIND_KEYED_COLOR_TABLES: Record<string, string> = {
+  "links/link-registry.ts::LINK_REGISTRY":
+    "`connectorStroke.color` on the footnote/citation entries — DECLARED BUT INERT: `connectorStroke` has zero readers in EITHER silo, so no pixel is painted from it. The moment a connector renderer is built, its colour must come from `useCardTheme(CARD_REGISTRY[cardKind].themeKey)` and this entry must GO, not grow — pinned by the inertness test below.",
+};
+const PERMITTED_LIBRARY_KIND_KEYED_COLOR_TABLES: Record<string, string> = {};
+
+/** Colour LITERALS, in every dialect this repo actually paints in: hex,
+ *  `rgb()/rgba()`, `hsl()/hsla()`, the modern CSS colour functions, and the
+ *  Tailwind palette class form the pre-`panel-theme` `CARD_THEMES` was written
+ *  in (`bg-green-700`) — which is the dialect a re-introduction is most likely
+ *  to arrive in, since that is the one this table family originally used.
+ *
+ *  Deliberately NOT here: CSS named colours (`forestgreen`). A bare word cannot
+ *  be told from a value that merely reads like one (`severity: "red"`), and a
+ *  guard that fails a correct file trains people to distrust it — the lesson
+ *  this file's own comment-stripper carries. */
+const COLOR_LITERAL =
+  /#[0-9a-fA-F]{3,8}\b|\b(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color)\s*\(|\b(?:bg|text|border|ring|from|via|to|fill|stroke|decoration|outline|shadow|accent|caret|divide|placeholder)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/;
+
+/** Index of the `>` matching the `<` at `from`, or -1. `=>` is not a closer. */
+function matchAngle(text: string, from: number): number {
+  let depth = 0;
+  for (let i = from; i < text.length; i++) {
+    const c = text[i];
+    if (c === "<") depth++;
+    else if (c === ">") {
+      if (text[i - 1] === "=") continue; // an arrow inside the generic
+      if (--depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** The object literal starting at `open`, or null if it doesn't close.
+ *
+ *  String literals are skipped so a brace inside one can't unbalance the scan —
+ *  but a `'` is only treated as a string opener in EXPRESSION position, because
+ *  in a `.tsx` body the commonest apostrophe is JSX prose ("don't"), and reading
+ *  that as an opener would run the scan to EOF and hand a later declaration's
+ *  colours to this one. An unclosed scan returns null rather than the file tail:
+ *  a body this can't parse is reported as nothing, never as a violation. */
+function balancedObject(text: string, open: number): string | null {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "`" || (c === "'" && /[:,([={|?\s]/.test(text[i - 1] ?? ""))) {
+      const quote = c;
+      let closed = false;
+      for (i++; i < text.length; i++) {
+        if (text[i] === "\\") { i++; continue; }
+        if (text[i] === quote) { closed = true; break; }
+      }
+      if (!closed) return null;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return text.slice(open, i + 1);
+  }
+  return null;
+}
+
+/** Every `const NAME: Record<…Kind, …> = { … }` declaration in a file, with its
+ *  balanced object-literal body. Comments are already stripped by the caller,
+ *  so a hex mentioned in prose is not a hit.
+ *
+ *  The initializer is ANCHORED to the declaration: the generic is walked to its
+ *  matching `>` and the body must begin immediately after it. An earlier version
+ *  searched forward for the next `= {` within 400 chars, which slid past a
+ *  declaration whose initializer is not an object literal (`Record<CardKind, …>
+ *  = Object.fromEntries(…)` — four live instances) and attributed the NEXT
+ *  declaration's body to it: a false CI failure naming a table that carries no
+ *  colour at all. */
+function kindKeyedRecords(text: string): { name: string; body: string }[] {
+  const out: { name: string; body: string }[] = [];
+  const head = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*:\s*Record\s*</g;
+  for (const m of text.matchAll(head)) {
+    const lt = m.index! + m[0].length - 1;
+    const gt = matchAngle(text, lt);
+    if (gt < 0) continue;
+
+    // The KEY type is the generic's first top-level argument. A vocabulary
+    // named `…Kind` is what makes "this is a per-kind table" checkable.
+    const generic = text.slice(lt + 1, gt);
+    let d = 0;
+    let cut = generic.length;
+    for (let i = 0; i < generic.length; i++) {
+      const c = generic[i];
+      if (c === "<" || c === "(" || c === "{" || c === "[") d++;
+      else if (c === ">" || c === ")" || c === "}" || c === "]") d--;
+      else if (c === "," && d === 0) { cut = i; break; }
+    }
+    if (!/\w*Kind\b/.test(generic.slice(0, cut))) continue;
+
+    const init = /^\s*=\s*\{/.exec(text.slice(gt + 1));
+    if (!init) continue; // not an object-literal initializer — nothing to read
+    const body = balancedObject(text, gt + init[0].length);
+    if (body != null) out.push({ name: m[1], body });
+  }
+  return out;
+}
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -141,6 +284,7 @@ function violationsFor(rel: string, text: string, table: string): string[] {
 
 describe("accent-bypass guardrail — the frozen colour tables are defaults-only", () => {
   const files = walk(SRC);
+  const libraryFiles = walk(LIBRARY);
 
   it("no rendered app source reads a frozen colour table for a user-overridable kind", () => {
     const violations: string[] = [];
@@ -209,6 +353,128 @@ describe("accent-bypass guardrail — the frozen colour tables are defaults-only
       "/* CARD_THEMES.note is the frozen fold */",
     ].join("\n");
     expect(violationsFor("fake.tsx", runtimeText(correct), "CARD_THEMES")).toEqual([]);
+  });
+
+  it.each([
+    ["src", SRC, files, PERMITTED_KIND_KEYED_COLOR_TABLES],
+    ["library", LIBRARY, libraryFiles, PERMITTED_LIBRARY_KIND_KEYED_COLOR_TABLES],
+  ] as const)(
+    "no kind-keyed record in %s carries a colour literal",
+    (_silo, root, siloFiles, allowlist) => {
+      const violations: string[] = [];
+
+      for (const file of siloFiles) {
+        const rel = path.relative(root, file).split(path.sep).join("/");
+        if (rel === "lib/panel-theme.ts") continue; // the SSOT itself
+        for (const { name, body } of kindKeyedRecords(runtimeText(readFileSync(file, "utf8")))) {
+          if (!COLOR_LITERAL.test(body)) continue;
+          const key = `${rel}::${name}`;
+          if (allowlist[key]) continue;
+          violations.push(
+            `${key} maps a kind to a colour literal — that is a second per-kind colour ` +
+              `vocabulary. Carry a PanelThemeKey (read off CARD_REGISTRY[...].themeKey) and ` +
+              `derive the colour at paint time via useCardTheme / usePanelCardPalette.`,
+          );
+        }
+      }
+
+      // A silo that silently scans nothing is a guard with no teeth (a moved
+      // directory would look exactly like compliance).
+      expect(siloFiles.length, `the ${_silo} census scanned no files`).toBeGreaterThan(50);
+      expect(violations, "See THE SECOND LAW at the top of this file.").toEqual([]);
+    },
+  );
+
+  it("the one allowlisted kind-keyed colour table is still inert", () => {
+    // The justification on file is "nothing paints from it". That is a fact
+    // about the repo, not a property of the declaration, so it is checked in
+    // BOTH silos: wiring a connector renderer anywhere must fail CI until the
+    // colour derives from the theme. (`library/` imports `src/` through the
+    // `@/` alias, so a library-side renderer can reach LINK_REGISTRY.)
+    const readers = [
+      ...files.map((f) => ["src", path.relative(SRC, f).split(path.sep).join("/"), f] as const),
+      ...libraryFiles.map((f) => ["library", path.relative(LIBRARY, f).split(path.sep).join("/"), f] as const),
+    ]
+      .filter(([silo, rel]) => !(silo === "src" && rel === "links/link-registry.ts"))
+      .filter(([, , full]) => /\bconnectorStroke\b/.test(runtimeText(readFileSync(full, "utf8"))))
+      .map(([silo, rel]) => `${silo}/${rel}`);
+
+    expect(
+      readers,
+      "`connectorStroke` now has a consumer, so its hard-coded colour is being PAINTED. " +
+        "Derive it from useCardTheme(CARD_REGISTRY[cardKind].themeKey) and delete the " +
+        "PERMITTED_KIND_KEYED_COLOR_TABLES entry.",
+    ).toEqual([]);
+  });
+
+  it("the AI-request inbox declares labels, not colours (task 178)", () => {
+    const src = readFileSync(path.join(SRC, "components/AIWindow.tsx"), "utf8");
+    const table = src.slice(src.indexOf("const KIND_META"), src.indexOf("const STATUS_META"));
+
+    expect(table, "KIND_META still declares chip colours").not.toMatch(/chip(Bg|Fg)/);
+    expect(table, "KIND_META still carries a colour literal").not.toMatch(COLOR_LITERAL);
+    // The themeKey is READ off the registry, not restated — so a kind re-themed
+    // in CARD_REGISTRY re-tints its chip for free.
+    expect(table).toMatch(/themeKey: CARD_REGISTRY/);
+    expect(src).toMatch(/usePanelCardPalette\(/);
+  });
+
+  /** Does the detector flag this source? (the second law, end to end) */
+  function flags(src: string): boolean {
+    return kindKeyedRecords(runtimeText(src)).some((r) => COLOR_LITERAL.test(r.body));
+  }
+
+  it("the kind-keyed detector catches the colour DIALECTS a re-introduction arrives in", () => {
+    // The law is "no colour literal", not "no hex" — the retired table family
+    // was originally written in Tailwind classes, so hex-only would have missed
+    // its own most likely resurrection.
+    for (const value of [
+      '"#15803d"',
+      '"rgb(21, 128, 61)"',
+      '"rgba(21,128,61,.12)"',
+      '"hsl(142 72% 29%)"',
+      '"oklch(52% .13 150)"',
+      '"bg-green-700"',
+      '"text-emerald-50"',
+    ]) {
+      expect(
+        flags(`const CHIP: Record<AIRequestKind, { bg: string }> = { "panel-todo": { bg: ${value} } };`),
+        `dialect ${value} slipped past the second law`,
+      ).toBe(true);
+    }
+  });
+
+  it("the kind-keyed detector does NOT flag correct code (the false-positive pins)", () => {
+    // A kind record with no colour.
+    expect(flags(`const M: Record<CardKind, string> = { note: "notes" };`)).toBe(false);
+    // A colour in a COMMENT above one.
+    expect(flags(`// was #15803d\nconst M: Record<CardKind, string> = { note: "notes" };`)).toBe(false);
+    // A colour in the NEXT declaration — the body scan stops at its own brace.
+    expect(
+      flags(`const M: Record<CardKind, string> = { note: "}{" };\nconst OTHER = { c: "#15803d" };`),
+    ).toBe(false);
+    // A DERIVED table (`Object.fromEntries`, four live instances in `src/`)
+    // followed by an unrelated colour: the initializer is anchored to the
+    // declaration, so the later literal is not attributed to it. An earlier
+    // version searched forward for the next `= {` and failed CI here, naming a
+    // fold that carries no colour at all.
+    expect(
+      flags(
+        `const CARD_TITLE_LABELS: Record<CardKind, string> = Object.fromEntries(\n` +
+          `  CARD_KINDS.map((k) => [k, CARD_REGISTRY[k].titleLabel]),\n) as Record<CardKind, string>;\n` +
+          `const DOT = { warn: "#d4a843" };`,
+      ),
+    ).toBe(false);
+    // A JSX apostrophe inside a body must not make the string-skip run to EOF
+    // and swallow a later declaration's colours.
+    expect(
+      flags(
+        `const R: Record<CardKind, ReactNode> = { note: <span>don't</span> };\n` +
+          `const DOT = { warn: "#d4a843" };`,
+      ),
+    ).toBe(false);
+    // A non-kind vocabulary is a different question (stated in the law's reach).
+    expect(flags(`const S: Record<AIRequestStatus, string> = { open: "#d97706" };`)).toBe(false);
   });
 
   it("catches the bypasses it claims to catch", () => {

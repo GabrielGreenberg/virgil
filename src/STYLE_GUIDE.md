@@ -527,6 +527,24 @@ silently drift when the palette doesn't. Deliberate non-theme
 constants (e.g. the `info` severity steel in `ErrorCard`) get a
 comment saying why they're exempt.
 
+**A per-kind color table is the theme, or it is a second theme.** This binds any
+surface that colors BY KIND, not just cards — chips, dots, pills, connectors.
+State the kind's `PanelThemeKey` (read off `CARD_REGISTRY[kind].themeKey`, so a
+re-theme in the registry propagates) and derive the paint where it is painted
+(`useCardTheme` / `usePanelCardPalette`). Whether a user override may reach the
+surface is then not a decision the surface makes — `SYSTEM_THEME_KEYS` answers it
+per key, the same answer every other surface of that kind gets. The AI-request
+inbox was the counter-example (task 178): a private `chipBg`/`chipFg` table that
+agreed with no panel theme and painted the **Todo** chip the **Note** accent
+exactly, so the inbox contradicted the margin. A request kind with no card of its
+own (`bib-*`, `revision-*`) names the family it belongs to; its sub-kind is
+carried by the LABEL, which distinguishes better than an unrelated hue. And where
+a display kind is coarser than the data (one "Suggestion" chip over the cutter
+and revision families), the surface resolves the exact kind per row rather than
+picking one family's accent for both — the same "no theme is neutral" rule as
+search results, one size down. CI: `card-theme-override-guardrail.test.ts`
+(second law) fails any `Record<…Kind, …>` carrying a color literal.
+
 **A kind's color never gets PERSISTED into the document.** Every in-text
 surface of a card kind — the active ring, the Mode-A paragraph rail, the
 persistent highlight band — resolves from the `--link-anchor-accent-<token>`
