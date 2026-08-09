@@ -254,6 +254,31 @@ export interface GeometryStats {
   version: number;
 }
 
+/** A hover hit from {@link EditorGeometryService.blocksAtY} — the block's
+ *  uuid plus its live node DOM (the element the IO observes, which IS
+ *  `editor.view.nodeDOM(pos)` for the block). */
+export interface BlockAtY {
+  uuid: string;
+  el: HTMLElement;
+}
+
+/**
+ * Kill-switch for the service-backed hover resolvers (grab handle + the
+ * par-title band): `localStorage["virgil:geom-hover"] = "off"` reverts to
+ * the legacy full-document scans (which also remain the automatic fallback
+ * whenever `blocksAtY` cannot answer).
+ */
+export function geomHoverEnabled(): boolean {
+  try {
+    return (
+      typeof localStorage === "undefined" ||
+      localStorage.getItem("virgil:geom-hover") !== "off"
+    );
+  } catch {
+    return true;
+  }
+}
+
 export interface EditorGeometryService {
   /** The editor this service is attached to (identity check for adapters). */
   readonly editor: Editor;
@@ -274,6 +299,22 @@ export interface EditorGeometryService {
    *  intersection enter/leave, observed-set sync) — the correct re-render
    *  trigger; `recomputes` bumps only on `flushRecompute`. */
   stats(): GeometryStats;
+  /**
+   * Innermost-first anchorable blocks whose vertical band contains
+   * `clientY` (viewport coords) — the hover-path replacement for the
+   * O(doc) `querySelectorAll("[data-uuid]")` + rect-per-candidate sweep
+   * (diagnosis S2/D1: 1,063 rect reads per mousemove at 2,883 blocks).
+   * Answers from the near-zone CACHE: one host-rect read converts to host
+   * space, then every containment test is arithmetic on cached metrics —
+   * zero per-block DOM reads. Bands can lag a reflow by a frame until the
+   * RO re-measures; hover affordances tolerate that by construction (they
+   * re-schedule on the same RO).
+   *
+   * Returns `null` when it CANNOT answer (engine not started / hidden /
+   * nothing observed yet) — callers fall back to their legacy scan — and
+   * `[]` when the answer is genuinely "no block at this Y" (a gap).
+   */
+  blocksAtY(clientY: number): BlockAtY[] | null;
   /**
    * Keep-alive visibility. While `false` (hidden pane) every measurement
    * callback is inert — observers still fire on display:none flips but
@@ -909,6 +950,24 @@ export function createEditorGeometryService(
       recomputes,
       version,
     }),
+    blocksAtY: (clientY) => {
+      if (!visible || !hostEl || observed.size === 0) return null;
+      const y = clientY - hostEl.getBoundingClientRect().top;
+      const hits: { uuid: string; el: HTMLElement; top: number; bottom: number }[] = [];
+      for (const [uuid, el] of observed) {
+        const m = cache.get(uuid);
+        if (!m) continue;
+        const top = m.domTop;
+        const bottom = m.domTop + m.height;
+        if (y < top || y > bottom) continue;
+        hits.push({ uuid, el, top, bottom });
+      }
+      // Innermost-first via band containment: when ranges nest, the
+      // narrower-Y range is the inner one — larger top first, then smaller
+      // bottom (the legacy resolver's exact sort, on cached numbers).
+      hits.sort((a, b) => (a.top !== b.top ? b.top - a.top : a.bottom - b.bottom));
+      return hits.map((h) => ({ uuid: h.uuid, el: h.el }));
+    },
     setVisible: (v) => {
       visible = v;
     },

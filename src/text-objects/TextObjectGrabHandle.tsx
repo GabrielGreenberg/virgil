@@ -62,6 +62,7 @@ import {
   useEditorViewportCache,
   type EditorViewportCache,
 } from "@/hooks/useEditorViewportCache";
+import { geomHoverEnabled, getGeometry } from "@/lib/editor-geometry";
 import { onFontReady, opticalCenterY } from "@/lib/text-metrics";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_GRAB_HANDLE } from "@/lib/layout-gesture-probe";
@@ -271,6 +272,29 @@ function resolveTextObjectsAtMouse(
   if (!cache.containsHoverZone(clientX, clientY)) return EMPTY_RESOLVED;
   const editorEl = editor.view.dom;
   if (!(editorEl instanceof HTMLElement)) return EMPTY_RESOLVED;
+
+  // Wave-2 C1: answer from the editor-geometry service's near-zone cache —
+  // one host-rect read + arithmetic on cached bands, ZERO per-block DOM
+  // reads, already innermost-first. This was the diagnosis's S2/D1 site:
+  // an O(doc) `querySelectorAll("[data-uuid]")` + getBoundingClientRect per
+  // candidate (cull AFTER the read — 1,063 rect reads per frame at 2,883
+  // blocks), re-run per hover RAF and, via the armed mousePosRef, per
+  // KEYSTROKE for the whole typing session. `null` (engine off / hidden /
+  // nothing observed) falls through to the legacy scan; kill-switch
+  // `virgil:geom-hover = "off"`.
+  if (geomHoverEnabled()) {
+    const hits = getGeometry(editor)?.blocksAtY(clientY);
+    if (hits) {
+      const refs: ResolvedRef[] = [];
+      for (const { uuid, el } of hits) {
+        const kind = el.getAttribute("data-text-object-kind");
+        if (kind && isTextObjectKind(kind) && kind !== "linkedRange") {
+          refs.push({ ref: { kind, id: uuid }, el });
+        }
+      }
+      return refs;
+    }
+  }
 
   const candidates = editorEl.querySelectorAll<HTMLElement>("[data-uuid]");
   const matches: Array<{ el: HTMLElement; top: number; bottom: number }> = [];

@@ -2,6 +2,7 @@
 
 import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
 import { pickProbeEditor } from "@/lib/active-editor-probe";
+import { geomHoverEnabled, getGeometry } from "@/lib/editor-geometry";
 import { installKeystrokeLatencyProbe } from "@/lib/keystroke-latency-probe";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
@@ -827,6 +828,37 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       prev = next;
     };
     const onMove = (e: MouseEvent) => {
+      // Wave-2 C3: this ran the full-document scan below on EVERY raw
+      // mousemove, uncoalesced — the diagnosis's D1 (8.7 ms + 1,063 rect
+      // reads per move at 2,883 blocks, during drags and plain mouse travel
+      // alike). The service path asks the near-zone cache which block band
+      // contains the Y (zero per-block DOM reads), then rect-checks only
+      // THAT block's own title wrapper — innermost-first, so a nested
+      // block's wrapper can't shadow its container's. Null (engine off /
+      // nothing observed) falls through to the legacy scan; kill-switch
+      // `virgil:geom-hover = "off"`.
+      if (editor && geomHoverEnabled()) {
+        const hits = getGeometry(editor)?.blocksAtY(e.clientY);
+        if (hits) {
+          let found: Element | null = null;
+          for (const { el } of hits) {
+            const wrapper = el.querySelector(
+              ".par-title-wrapper.has-text, .list-title-wrapper.has-text",
+            );
+            // Only THIS block's own wrapper counts — a wrapper belonging to
+            // a nested child block resolves to the child's [data-uuid] and
+            // is (or was) its own hit.
+            if (!wrapper || wrapper.closest("[data-uuid]") !== el) continue;
+            const r = wrapper.getBoundingClientRect();
+            if (e.clientY >= r.top && e.clientY <= r.bottom) {
+              found = wrapper;
+              break;
+            }
+          }
+          setHovered(found);
+          return;
+        }
+      }
       const wrappers = dom.querySelectorAll(
         ".par-title-wrapper.has-text, .list-title-wrapper.has-text",
       );
