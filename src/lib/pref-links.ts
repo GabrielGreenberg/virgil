@@ -14,6 +14,7 @@
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import { subscribeToStorageKey } from "@/lib/cross-window-storage";
+import { lightnessOf, withLightness } from "@/lib/color-math";
 
 /** Only color-valued prefs are linkable right now. */
 export type LinkableKey = keyof EditorPreferences;
@@ -47,72 +48,22 @@ export interface LinkState {
   locked: boolean;
 }
 
-/* ── HSL / hex utilities (self-contained; no global dependencies) ─── */
+/* ── HSL / hex utilities ───────────────────────────────────────────
+ *
+ * These used to be a byte-identical second copy of the conversion helpers in
+ * `panel-theme.ts`; both now import the one dependency-free `color-math`
+ * module (task 176), which is also where the WCAG contrast primitives live.
+ *
+ * Lightness is the RIGHT dial here, and this is not the bug class that module
+ * header warns about: a pref link expresses a user-authored *relative* step
+ * between two chrome colors ("Library tab steps up from Virgil bar"), not a
+ * claim about legibility. A contrast target would be wrong for it. */
 
-function hexToRgb(hex: string): [number, number, number] {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return [0, 0, 0];
-  const v = parseInt(m[1], 16);
-  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  const c = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, "0");
-  return `#${c(r)}${c(g)}${c(b)}`;
-}
-
-function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  let h = 0, s = 0;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
-    }
-    h *= 60;
-  }
-  return [h, s, l];
-}
-
-function hslToRgb(h: number, s: number, l: number): [number, number, number] {
-  h = ((h % 360) + 360) % 360;
-  s = Math.max(0, Math.min(1, s));
-  l = Math.max(0, Math.min(1, l));
-  if (s === 0) {
-    const v = l * 255;
-    return [v, v, v];
-  }
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  const k = (n: number) => {
-    const t = (h / 60 + n + 6) % 6;
-    if (t < 1) return p + (q - p) * t;
-    if (t < 3) return q;
-    if (t < 4) return p + (q - p) * (4 - t);
-    return p;
-  };
-  return [k(2) * 255, k(0) * 255, k(4) * 255];
-}
-
-/** L of `hex`, in 0..1. */
-export function lightnessOf(hex: string): number {
-  const [r, g, b] = hexToRgb(hex);
-  const [, , l] = rgbToHsl(r, g, b);
-  return l;
-}
+export { lightnessOf };
 
 /** Return `parentHex` shifted by `deltaL` in HSL lightness. */
 export function applyLightnessDelta(parentHex: string, deltaL: number): string {
-  const [r, g, b] = hexToRgb(parentHex);
-  const [h, s, l] = rgbToHsl(r, g, b);
-  const newL = Math.max(0, Math.min(1, l + deltaL));
-  const [r2, g2, b2] = hslToRgb(h, s, newL);
-  return rgbToHex(r2, g2, b2);
+  return withLightness(parentHex, Math.max(0, Math.min(1, lightnessOf(parentHex) + deltaL)));
 }
 
 /* ── Defaults: computed from DEFAULT_PREFS at module load ──────────── */
