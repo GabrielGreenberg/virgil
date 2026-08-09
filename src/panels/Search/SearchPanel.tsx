@@ -972,6 +972,14 @@ function MoreScopesDropdown({
       ariaLabel="More scopes"
       align="start"
       triggerHint="More scopes"
+      // The count badge lives INSIDE the trigger, so before the shell owned the
+      // button the accessible name was computed from its contents ("More 3").
+      // A static `aria-label` would silently swallow that — assistive tech would
+      // hear the same name with zero or five overflow scopes on — so the count
+      // is folded into the name rather than dropped.
+      triggerAriaLabel={
+        enabledCount > 0 ? `More scopes, ${enabledCount} on` : "More scopes"
+      }
       wrapperClassName="relative"
       menuClassName="min-w-[140px]"
       triggerClassName={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${

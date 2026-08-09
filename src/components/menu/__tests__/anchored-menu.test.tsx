@@ -34,7 +34,7 @@ import { render, cleanup, fireEvent, screen, act } from "@testing-library/react"
 // `@/lib/storage-fsa` resolution failure).
 vi.mock("@/lib/storage", () => ({}));
 
-import { AnchoredMenu } from "../AnchoredMenu";
+import { AnchoredMenu, ANCHORED_MENU_PLACEMENTS } from "../AnchoredMenu";
 import { MenuActionRow } from "../MenuActionRow";
 import {
   OmniFilterMenu,
@@ -106,6 +106,24 @@ describe("AnchoredMenu — the guards the shell owns", () => {
     expect(menu()).toBeTruthy();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(menu()).toBeNull();
+  });
+
+  it("offers a horizontal escape before giving up the preferred vertical side", () => {
+    // `fits()` tests all four viewport edges at once, and the fallback is the
+    // LAST candidate. So a list of only [below-start, above-start] answers a
+    // purely HORIZONTAL overflow with "go above and clamp" — which for a
+    // panel-header "+" near the top of the window clamps to the sliver above it
+    // and turns a two-row menu into a scrollbar. The product must be enumerated,
+    // vertical preference first, and the preferred cross-alignment must lead.
+    for (const align of ["start", "end"] as const) {
+      const list = ANCHORED_MENU_PLACEMENTS[align];
+      expect(list).toHaveLength(4);
+      expect(list[0]).toEqual({ side: "below", align });
+      expect(list[1].side).toBe("below");
+      expect(list[1].align).not.toBe(align);
+      expect(list.slice(2).map((p) => p.side)).toEqual(["above", "above"]);
+      expect(list[2].align).toBe(align);
+    }
   });
 
   it("clamps its height and scrolls instead of overflowing the viewport", async () => {

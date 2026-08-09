@@ -48,12 +48,26 @@ export type AnchoredMenuAlign = "start" | "end";
 
 /**
  * The one placement vocabulary for a button-anchored dropdown: drop below,
- * flip above near the viewport bottom. `start` aligns the menu's left edge to
- * the trigger's (a left-edge trigger drops rightward); `end` aligns the right
- * edges (a right-edge trigger drops leftward). `useFloatingMenuPosition` tries
- * them in order against the MEASURED menu and clamps the loser, so a rich body
- * (checkbox rows + a section header) can't overflow the way a caller-estimated
- * `POPUP_H` did.
+ * flip above near the viewport bottom, flip sideways when the menu is wider
+ * than the space its preferred alignment leaves. `start` aligns the menu's left
+ * edge to the trigger's (a left-edge trigger drops rightward); `end` aligns the
+ * right edges (a right-edge trigger drops leftward). `useFloatingMenuPosition`
+ * tries them in order against the MEASURED menu and clamps the loser, so a rich
+ * body (checkbox rows + a section header) can't overflow the way a
+ * caller-estimated `POPUP_H` did.
+ *
+ * BOTH cross-alignments are listed under each preference, and that is a
+ * correctness requirement rather than thoroughness. `fits()` tests all four
+ * viewport edges at once, so a purely HORIZONTAL overflow fails every candidate
+ * that shares one alignment — and the fallback is the LAST placement in the
+ * list. A two-entry `[below-start, above-start]` therefore answered "the menu is
+ * too wide" with "put it above and clamp it", which for a trigger near the top
+ * of the window (a panel header's "+") means clamping to the sliver of space
+ * above it: a two-row menu becomes a scrollbar. The hand-rolled menu this
+ * replaced chose its axes INDEPENDENTLY (`flipUp` and `flipLeft` were separate
+ * booleans), and that behavior is preserved here by enumerating the product in
+ * preference order — vertical preference first, then the horizontal escape,
+ * before giving up the preferred side.
  */
 export const ANCHORED_MENU_PLACEMENTS: Record<
   AnchoredMenuAlign,
@@ -61,11 +75,15 @@ export const ANCHORED_MENU_PLACEMENTS: Record<
 > = {
   start: [
     { side: "below", align: "start" },
+    { side: "below", align: "end" },
     { side: "above", align: "start" },
+    { side: "above", align: "end" },
   ],
   end: [
     { side: "below", align: "end" },
+    { side: "below", align: "start" },
     { side: "above", align: "end" },
+    { side: "above", align: "start" },
   ],
 };
 
