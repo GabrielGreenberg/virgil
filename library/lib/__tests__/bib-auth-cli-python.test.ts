@@ -21,7 +21,13 @@ const REPO_ROOT = path.resolve(__dirname, "../../..");
 const SUITE = path.join(REPO_ROOT, "library/scripts/tests/test_bib_auth_cli.py");
 
 describe("bib_auth.py CLI contract (Python)", () => {
-  it("passes library/scripts/tests/test_bib_auth_cli.py", () => {
+  // Timeout (task 163 drive-by): the suite is network-free but costs ~5.6 s of
+  // interpreter + import time, so under vitest's 5 s default it failed on most
+  // full-suite runs and passed when run alone — a guard that flakes red is a
+  // guard people learn to ignore, which is the failure mode this whole file
+  // exists to prevent. Its sibling `references-bib-upsert-python.test.ts` is
+  // fast enough not to need one.
+  it("passes library/scripts/tests/test_bib_auth_cli.py", { timeout: 60_000 }, () => {
     let output: string;
     try {
       output = execFileSync("python3", [SUITE], {
