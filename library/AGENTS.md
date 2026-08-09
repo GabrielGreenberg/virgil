@@ -46,7 +46,7 @@ Imports use `@library/*` (alias to `./library/*` in `tsconfig.json` and `vitest.
 
 ## Cowork pattern
 
-Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writes intent files; Claude (running in a separate session, ideally `/loop /library/index-pending`) drains them and writes back. The frontend never invokes Claude directly. Two channels:
+Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writes intent files; Claude (running in a separate session, ideally `/loop /library/index-pending`) drains them and writes back. The frontend never invokes Claude directly. Three channels:
 
 1. `catalog-version.txt` — bumped on every skill run; the frontend polls this 1-byte file every 6s (see `library/lib/catalog.ts` and `library/lib/catalog-store.ts`).
 2. `notifications/inbox.json` — append-only ring buffer for toasts.

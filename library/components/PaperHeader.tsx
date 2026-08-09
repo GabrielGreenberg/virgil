@@ -198,7 +198,14 @@ export default function PaperHeader({
   const authorText = fields.author ?? (entry.authors?.join(", ") ?? "");
   const yearText = fields.year ?? (entry.year ? String(entry.year) : "");
 
+  // Disclosure for the instructions field. `queued` is now externally polled,
+  // so gating purely on it would let a background drain unmount a textarea the
+  // user has the caret in — the field would vanish and focus fall back to
+  // `<body>` mid-sentence. The note is the user's INTENT, not disk truth, and
+  // it is attached to the next request they check (see `onToggle`), so a
+  // non-empty note holds the field open on its own.
   const anyChecked = Object.values(queued).some(Boolean);
+  const showInstructions = anyChecked || instructions.length > 0;
 
   const apaHtml = bib ? formatBibliography(bib, "apa") : undefined;
 
@@ -606,7 +613,7 @@ export default function PaperHeader({
 
         {/* Instructions textarea — full width below the row, gated on a
             checked request. */}
-        {anyChecked && (
+        {showInstructions && (
           <div
             style={{
               display: "flex",

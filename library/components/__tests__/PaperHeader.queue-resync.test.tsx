@@ -161,6 +161,36 @@ describe("PaperHeader — AI-request state re-syncs without a remount (task 132)
     ).toEqual(["Bib review"]);
   });
 
+  it("does not yank the instructions field out from under a typing user when the queue drains", async () => {
+    // The cost of making `queued` externally polled: the instructions
+    // disclosure used to move only on the user's own toggle. Gating it purely
+    // on live queue state lets a background drain unmount a focused textarea
+    // mid-sentence. The note is the user's intent, not disk truth.
+    disk.files.set("alpha2020-deepindex.json", {
+      kind: "deepIndex",
+      status: "requested",
+      citekey: "alpha2020",
+    });
+    const { refreshQueueState } = await import("@library/lib/queue-state-store");
+    await mountHeader();
+    await act(flush);
+
+    const field = screen.getByLabelText("instructions") as HTMLTextAreaElement;
+    field.focus();
+    fireEvent.change(field, { target: { value: "focus on the appendix" } });
+
+    disk.files.delete("alpha2020-deepindex.json");
+    await act(async () => {
+      void refreshQueueState();
+      await flush();
+    });
+
+    const after = screen.getByLabelText("instructions") as HTMLTextAreaElement;
+    expect(after).toBe(field);
+    expect(after.value).toBe("focus on the appendix");
+    expect(document.activeElement).toBe(after);
+  });
+
   it("tells `index` and `bib` apart though they share one queue file", async () => {
     disk.files.set("alpha2020.json", {
       kind: "index",
