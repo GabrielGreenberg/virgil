@@ -242,6 +242,37 @@ describe("task 007 — between-blocks bar width = insert SCOPE", () => {
   });
 });
 
+describe("wave-2b C8 — the builder honors a pre-read rect (one layout read per move)", () => {
+  it("with preReadRect: ZERO own rect reads, identical placement; without: exactly one", () => {
+    const d = doc(para("solo", "p1"));
+    const box = rectOf({
+      left: COLUMN_LEFT,
+      width: COLUMN_WIDTH,
+      top: 300,
+      bottom: 340,
+      height: 40,
+    });
+    let reads = 0;
+    const pEl = document.createElement("p");
+    pEl.getBoundingClientRect = () => {
+      reads++;
+      return box;
+    };
+    const editor = mockEditor(d, () => pEl);
+    const p = findByType(d, "paragraph")[0];
+    const info = { blockPos: p.pos, depth: 1, uuid: "p1", dom: pEl };
+
+    const threaded = asBetween(
+      makeBetweenBlocksPlacement(editor, info, 290, false, box),
+    );
+    expect(reads).toBe(0); // hitTest's classification read is REUSED
+    const reRead = asBetween(makeBetweenBlocksPlacement(editor, info, 290));
+    expect(reads).toBe(1); // rect-less callers (R3 peer path) pay one read
+    expect(threaded.rect).toEqual(reRead.rect);
+    expect(threaded.insertPos).toBe(reRead.insertPos);
+  });
+});
+
 describe("task 007 — expex new-item bar spans the BODY column", () => {
   // A single-item example; a text block dragged into its top / bottom edge band
   // → a HORIZONTAL new-item bar. Its width must reach the example body's RIGHT

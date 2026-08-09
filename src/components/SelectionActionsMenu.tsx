@@ -32,9 +32,10 @@ import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
 import { useHint } from "./Hint";
 import {
-  useEditorViewportCache,
-  type EditorViewportCache,
-} from "@/hooks/useEditorViewportCache";
+  coordsAtPosCached,
+  type EditorViewportFrame,
+} from "@/lib/editor-geometry";
+import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 import {
@@ -91,7 +92,7 @@ interface Placement {
  * editor metrics. The `cache` object holds podRight, editorRight, scrollTop,
  * scrollBottom — values that only change on resize / layout shift.
  */
-function computePlacement(editor: Editor, cache: EditorViewportCache): Placement {
+function computePlacement(editor: Editor, cache: EditorViewportFrame): Placement {
   const sel = editor.state.selection;
   if (sel instanceof NodeSelection) return INVISIBLE_PLACEMENT;
   // Cursor-only mode is gated on focus so the button doesn't materialize
@@ -107,12 +108,11 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
   const anchor = resolveAnchorableNode(editor.view, head);
   const anchorNodePos = anchor?.nodePos ?? null;
 
-  let headCoords: { left: number; top: number; bottom: number };
-  try {
-    headCoords = editor.view.coordsAtPos(head);
-  } catch {
-    return INVISIBLE_PLACEMENT;
-  }
+  // Through the geometry service's per-frame memo (C7): the pill and any
+  // other same-frame placement pass reading this pos share ONE forced-layout
+  // read. Null = the old catch path.
+  const headCoords = coordsAtPosCached(editor, head);
+  if (!headCoords) return INVISIBLE_PLACEMENT;
 
   const scrollTop = cache.scrollTop;
   const scrollBottom = cache.scrollBottom;
@@ -208,12 +208,13 @@ export function SelectionActionsMenu({
   // (task 317). Same shape as `TextObjectGrabHandle`'s `scheduleRefRef`.
   const updateRef = useRef<() => void>(() => {});
 
-  // Shared viewport-metrics cache. editorRight, scrollTop, scrollBottom
-  // are read here per placement compute instead of being re-measured per
-  // RAF. The cache refreshes only on resize / ResizeObserver-detected
-  // layout changes. `version` participates in the effect deps so the
-  // compute re-runs when the cache changes (e.g., sidebar toggle).
-  const { cacheRef, version: cacheVersion } = useEditorViewportCache(
+  // Shared viewport frame (geometry service, C7). editorRight, scrollTop,
+  // scrollBottom are read here per placement compute instead of being
+  // re-measured per RAF. The frame refreshes only on resize /
+  // RO-detected layout changes — ONE engine per pane now, not a private
+  // observer per consumer. `version` participates in the poke effect below
+  // so the compute re-runs when the frame changes (e.g., sidebar toggle).
+  const { frameRef: cacheRef, version: cacheVersion } = useViewportFrame(
     editorRef.current,
   );
 

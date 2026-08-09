@@ -40,3 +40,24 @@ export function getGeometry(
   if (!editor) return null;
   return (editor as unknown as EditorWithGeometry)[GEOMETRY_KEY] ?? null;
 }
+
+/**
+ * `view.coordsAtPos(pos)` through the editor's geometry service memo when
+ * one is attached (per-frame + per-doc dedup — see the service JSDoc),
+ * falling back to a direct read for service-less editors (harnesses). Never
+ * throws: a failed resolve returns null, which callers treat as their
+ * existing `coordsAtPos` catch path.
+ */
+export function coordsAtPosCached(
+  editor: Editor,
+  pos: number,
+): { left: number; right: number; top: number; bottom: number } | null {
+  const service = getGeometry(editor);
+  if (service) return service.coordsAtPosCached(pos);
+  try {
+    const c = editor.view.coordsAtPos(pos);
+    return { left: c.left, right: c.right, top: c.top, bottom: c.bottom };
+  } catch {
+    return null;
+  }
+}

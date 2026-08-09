@@ -40,18 +40,31 @@ import {
   walkAnchorableBlocks,
   resolveDomForUuid,
 } from "@/lib/marginalia-blocks";
-import { findRowScroll } from "@/components/editor-layout/layout-scroll";
+import {
+  findEditorScrollFor,
+  findRowScroll,
+} from "@/components/editor-layout/layout-scroll";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import {
   recordKeystrokeWork,
   KEYSTROKE_WORK_MARGINALIA_RO,
+  KEYSTROKE_WORK_VIEWPORT_CACHE_RO,
 } from "@/lib/keystroke-latency-probe";
 import { rafCoalesced } from "@/lib/raf-coalesced";
 import {
   isLayoutGestureActive,
   parkDuringLayoutGesture,
 } from "@/lib/pane-resize";
-import { LAYOUT_SITE_MARGINALIA } from "@/lib/layout-gesture-probe";
+import {
+  LAYOUT_SITE_MARGINALIA,
+  LAYOUT_SITE_VIEWPORT_CACHE,
+} from "@/lib/layout-gesture-probe";
+import {
+  computeViewportFrame,
+  viewportFramesEqual,
+  EMPTY_VIEWPORT_FRAME,
+  type EditorViewportFrame,
+} from "./viewport-frame";
 import {
   onFontReady,
   opticalCenterY,
@@ -327,6 +340,39 @@ export interface EditorGeometryService {
    */
   blocksAtY(clientY: number): BlockAtY[] | null;
   /**
+   * The editor's viewport frame (text edges, pod rect, scroll band, portal
+   * context) — ONE cached measurement per editor, refreshed only on real
+   * layout change (engine RO on the editor/scroll elements, window resize,
+   * layout-gesture end edge). Replaces the per-consumer
+   * `useEditorViewportCache` instances (C7). Returns the EMPTY frame until
+   * the engine's first refresh — consumers already bail on
+   * `editorEl === null` / `offsetHeight === 0`, exactly as they did against
+   * the hook's initial EMPTY_CACHE.
+   */
+  getViewportFrame(): EditorViewportFrame;
+  /** Fires when a committed viewport refresh CHANGED the frame (the
+   *  equality bail holds otherwise). Separate channel from `subscribe` —
+   *  metrics churn (near-zone enter/leave) must not re-run caret-placement
+   *  effects, and a frame refresh must not re-render marginalia. */
+  subscribeViewport(cb: () => void): () => void;
+  /** Monotonic committed-refresh counter — the `useSyncExternalStore`
+   *  snapshot for `subscribeViewport` consumers (the hook's `version`). */
+  viewportVersion(): number;
+  /**
+   * `view.coordsAtPos(pos)` behind a per-frame, per-doc memo: entries are
+   * keyed on the live `state.doc` identity (any edit invalidates) and the
+   * whole memo clears on the next animation frame (scroll/resize between
+   * frames invalidates). Within one frame at one doc, N consumers reading
+   * the same pos pay ONE forced-layout read (the caret-placement
+   * consolidation half of C7). Returns null where `coordsAtPos` throws —
+   * callers treat it as their existing catch path. NOT safe against a
+   *  same-frame layout WRITE between two reads; the placement consumers
+   *  are all read-only RAF passes, which is the contract.
+   */
+  coordsAtPosCached(
+    pos: number,
+  ): { left: number; right: number; top: number; bottom: number } | null;
+  /**
    * Keep-alive visibility. While `false` (hidden pane) every measurement
    * callback is inert — observers still fire on display:none flips but
    * would read 0-boxes and cache garbage. The adapter hook feeds this from
@@ -416,9 +462,92 @@ export function createEditorGeometryService(
   let blocksAtYCalls = 0;
   let blocksAtYNulls = 0;
 
+  // ── Viewport frame (C7) ──────────────────────────────────────────────────
+  // ONE cached frame per editor, its own subscriber channel (frame changes
+  // must not re-render marginalia and metrics churn must not re-run
+  // caret-placement effects). The identities the RO branch discriminates on:
+  // the editor element + its scroll container ride the SAME ResizeObserver
+  // as the near-zone blocks, so the whole engine still owns exactly one RO.
+  let viewportFrame: EditorViewportFrame = EMPTY_VIEWPORT_FRAME;
+  let viewportVersionCount = 0;
+  const viewportSubscribers = new Set<() => void>();
+  let viewportEditorEl: HTMLElement | null = null;
+  let viewportScrollEl: HTMLElement | null = null;
+  /** Parks the frame refresh across a continuous layout gesture (the hook's
+   *  single highest-leverage park, retained: the refresh's equality bail
+   *  structurally cannot hold mid-gesture). Created per engine start. */
+  let viewportPark: ReturnType<typeof parkDuringLayoutGesture> | null = null;
+
+  // coordsAtPos per-frame memo (C7). Keyed on the live doc identity (any
+  // edit invalidates immediately) and cleared on the next animation frame
+  // (scroll between frames invalidates). See the interface JSDoc.
+  let coordsMemo: Map<
+    number,
+    { left: number; right: number; top: number; bottom: number }
+  > | null = null;
+  let coordsMemoDoc: unknown = null;
+  let coordsMemoClearScheduled = false;
+
   function notify() {
     version = (version + 1) | 0;
     for (const cb of subscribers) cb();
+  }
+
+  /**
+   * Measure + commit the viewport frame. Equality-bailed: an RO burst that
+   * settles on identical geometry bumps nothing and re-runs no consumer
+   * effect. The hidden-editor bail lives in `computeViewportFrame` (null →
+   * keep the previous frame — the stale-geometry cascade guard).
+   */
+  function refreshViewportFrame() {
+    if (!editor || editor.isDestroyed) return;
+    let editorEl: HTMLElement | null = null;
+    try {
+      editorEl = editor.view.dom as HTMLElement;
+    } catch {
+      return;
+    }
+    if (!editorEl) return;
+    const next = computeViewportFrame(editorEl);
+    if (!next) return;
+    if (viewportFramesEqual(viewportFrame, next)) return;
+    viewportFrame = next;
+    viewportVersionCount = (viewportVersionCount + 1) | 0;
+    for (const cb of viewportSubscribers) cb();
+  }
+
+  /** Route a frame invalidation through the gesture park (one settle per
+   *  gesture); outside a gesture it refreshes inline on this frame. */
+  function fireViewportRefresh() {
+    if (viewportPark) viewportPark.fire();
+    else refreshViewportFrame();
+  }
+
+  /**
+   * Observe the editor element + its scroll container with the engine's
+   * ResizeObserver and prime the first frame. Runs at engine start (and is
+   * re-entrant for the re-prime path): identities are re-resolved so a
+   * swapped scroll container is re-observed rather than leaked.
+   */
+  function wireViewportObservation() {
+    let editorEl: HTMLElement | null = null;
+    try {
+      editorEl = (editor.view?.dom as HTMLElement) ?? null;
+    } catch {
+      editorEl = null;
+    }
+    if (!editorEl) return;
+    const scrollEl = findEditorScrollFor(editorEl);
+    if (resizeObserver) {
+      if (viewportEditorEl && viewportEditorEl !== editorEl)
+        resizeObserver.unobserve(viewportEditorEl);
+      if (viewportScrollEl && viewportScrollEl !== scrollEl)
+        resizeObserver.unobserve(viewportScrollEl);
+      resizeObserver.observe(editorEl);
+      if (scrollEl) resizeObserver.observe(scrollEl);
+    }
+    viewportEditorEl = editorEl;
+    viewportScrollEl = scrollEl;
   }
 
   // Task 317 — park the MEASURE PASS, never the accumulation. This is the
@@ -796,6 +925,23 @@ export function createEditorGeometryService(
   function onResize(entries: ResizeObserverEntry[]) {
     if (!visible) return; // hidden editor → boxes are 0; skip
     recordKeystrokeWork(KEYSTROKE_WORK_MARGINALIA_RO);
+    // Viewport-frame targets first (C7): the editor element and its scroll
+    // container ride this same observer. Their resize invalidates the FRAME,
+    // not any block — and it must fire BEFORE the gesture short-circuit
+    // below, because mid-gesture the park is exactly what should stash it
+    // (skipping it here would mean no settle on the gesture's end edge).
+    let viewportHit = false;
+    for (const entry of entries) {
+      const el = entry.target;
+      if (el === viewportEditorEl || el === viewportScrollEl) {
+        viewportHit = true;
+        break;
+      }
+    }
+    if (viewportHit) {
+      recordKeystrokeWork(KEYSTROKE_WORK_VIEWPORT_CACHE_RO);
+      fireViewportRefresh();
+    }
     if (isLayoutGestureActive()) {
       // Mid-gesture the ENTIRE observed set is moving, so the per-entry
       // invalidation is both redundant and quadratic: `invalidateFromUuid`
@@ -831,14 +977,25 @@ export function createEditorGeometryService(
   function onWindowResize() {
     // Belt-and-suspenders: ResizeObserver covers per-element box changes
     // but not (e.g.) viewport-only DPR changes that don't resize any
-    // observed element. Re-measure everything observed.
+    // observed element. Re-measure everything observed — and the viewport
+    // frame (its scroll band can move without either observed element
+    // resizing, e.g. a window height change with a fixed-height row).
     recomputeAllObserved();
+    fireViewportRefresh();
   }
 
   /** First-measure pass on engine start. */
   function prime() {
     const host = resolveMarginaliaHost(editor);
-    if (!host) return;
+    if (!host) {
+      // No marginalia host (harness / non-pane editor): the block engine
+      // can't run, but the viewport frame (C7) still can — it needs only
+      // the view DOM. Without the RO it refreshes on window resize +
+      // gesture edges only, which is the honest floor for such editors.
+      wireViewportObservation();
+      refreshViewportFrame();
+      return;
+    }
     hostEl = host;
 
     const root = resolveRoot();
@@ -848,6 +1005,11 @@ export function createEditorGeometryService(
     });
     resizeObserver = new ResizeObserver(onResize);
 
+    // Viewport-frame elements ride the SAME observer as the near-zone
+    // blocks (C7) — the engine still owns exactly one ResizeObserver.
+    wireViewportObservation();
+    refreshViewportFrame();
+
     syncObservedSet();
   }
 
@@ -856,6 +1018,14 @@ export function createEditorGeometryService(
     recomputePark = parkDuringLayoutGesture(
       () => scheduleRecompute(),
       LAYOUT_SITE_MARGINALIA,
+    );
+    // Viewport-frame park (C7): the refresh is a getComputedStyle + 4×
+    // getBoundingClientRect pass whose equality bail cannot hold mid-gesture
+    // (the rects really are moving) — one settle on the end edge. Same site
+    // id the retired per-consumer hook reported under.
+    viewportPark = parkDuringLayoutGesture(
+      () => refreshViewportFrame(),
+      LAYOUT_SITE_VIEWPORT_CACHE,
     );
 
     // Subscribe to the DocStructureObserver — wakes only when blocks are
@@ -927,6 +1097,8 @@ export function createEditorGeometryService(
       disposeFontReady();
       recomputePark?.dispose();
       recomputePark = null;
+      viewportPark?.dispose();
+      viewportPark = null;
       window.removeEventListener("resize", onWindowResize);
       if (rafId) cancelAnimationFrame(rafId);
       rafId = 0;
@@ -947,6 +1119,14 @@ export function createEditorGeometryService(
       docOrder = [];
       pendingRecompute.clear();
       hostEl = null;
+      // Viewport frame: reset to EMPTY (the hook's cleanup contract) so a
+      // late reader after the last release sees the same not-ready frame a
+      // pre-start reader does. No notify — subscribers are releasing too.
+      viewportFrame = EMPTY_VIEWPORT_FRAME;
+      viewportEditorEl = null;
+      viewportScrollEl = null;
+      coordsMemo = null;
+      coordsMemoDoc = null;
     };
   }
 
@@ -988,6 +1168,49 @@ export function createEditorGeometryService(
       // bottom (the legacy resolver's exact sort, on cached numbers).
       hits.sort((a, b) => (a.top !== b.top ? b.top - a.top : a.bottom - b.bottom));
       return hits.map((h) => ({ uuid: h.uuid, el: h.el }));
+    },
+    getViewportFrame: () => viewportFrame,
+    subscribeViewport: (cb) => {
+      viewportSubscribers.add(cb);
+      return () => {
+        viewportSubscribers.delete(cb);
+      };
+    },
+    viewportVersion: () => viewportVersionCount,
+    coordsAtPosCached: (pos) => {
+      if (!editor || editor.isDestroyed) return null;
+      let doc: unknown;
+      try {
+        doc = editor.state.doc;
+      } catch {
+        return null;
+      }
+      if (!coordsMemo || coordsMemoDoc !== doc) {
+        coordsMemo = new Map();
+        coordsMemoDoc = doc;
+      }
+      const hit = coordsMemo.get(pos);
+      if (hit) return hit;
+      let c: { left: number; right: number; top: number; bottom: number };
+      try {
+        c = editor.view.coordsAtPos(pos);
+      } catch {
+        return null;
+      }
+      const out = { left: c.left, right: c.right, top: c.top, bottom: c.bottom };
+      coordsMemo.set(pos, out);
+      // Frame-scoped: the clear is RAF-scheduled on first population, so
+      // scroll/resize between frames can never serve a stale line box. (RAF
+      // callbacks run in scheduling order — this clear, armed in frame N,
+      // runs before any consumer RAF armed by a frame-N+1 event.)
+      if (!coordsMemoClearScheduled && typeof requestAnimationFrame !== "undefined") {
+        coordsMemoClearScheduled = true;
+        requestAnimationFrame(() => {
+          coordsMemoClearScheduled = false;
+          coordsMemo = null;
+        });
+      }
+      return out;
     },
     setVisible: (v) => {
       visible = v;

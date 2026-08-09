@@ -58,10 +58,8 @@ import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { hydrateSelectionToTextObject } from "./hydrate-selection";
 import { resolveDomForUuid } from "@/lib/marginalia-blocks";
 import { useDragHandleMenu } from "@/components/editor-layout/card-actions/drag-handle-menu-context";
-import {
-  useEditorViewportCache,
-  type EditorViewportCache,
-} from "@/hooks/useEditorViewportCache";
+import { type EditorViewportFrame } from "@/lib/editor-geometry";
+import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import { geomHoverEnabled, getGeometry } from "@/lib/editor-geometry";
 import { onFontReady, opticalCenterY } from "@/lib/text-metrics";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
@@ -265,7 +263,7 @@ function refKey(ref: TextObjectRef | SelectionRef): string {
  */
 function resolveTextObjectsAtMouse(
   editor: Editor,
-  cache: EditorViewportCache,
+  cache: EditorViewportFrame,
   clientX: number,
   clientY: number,
 ): ResolvedRef[] {
@@ -358,7 +356,7 @@ const EMPTY_RESOLVED: ResolvedRef[] = [];
  */
 function computePlacement(
   editor: Editor,
-  cache: EditorViewportCache,
+  cache: EditorViewportFrame,
   ref: TextObjectRef | SelectionRef,
   preEl: HTMLElement | null,
 ): Placement | null {
@@ -542,7 +540,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
   // effect below.
   const scheduleRefRef = useRef<() => void>(() => {});
 
-  const { cacheRef, version: cacheVersion } = useEditorViewportCache(
+  const { frameRef: cacheRef, version: cacheVersion } = useViewportFrame(
     editorRef.current,
   );
 

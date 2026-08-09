@@ -100,6 +100,11 @@ export function hitTest(
   const block = resolveAnchorableBlock(editor, posResult.pos, { mint: false });
   if (!block) return null;
 
+  // ONE rect read per move for this block (wave-2b C8): the classification
+  // read below is THREADED into the placement builders, which used to
+  // re-read the same element's rect — 2 forced-layout reads per throttled
+  // mousemove where one suffices. (The builders keep their own read as the
+  // fallback for callers that arrive without one, e.g. the R3 peer path.)
   const blockRect = block.dom.getBoundingClientRect();
   const inText = y >= blockRect.top && y <= blockRect.bottom;
   const inGap = !inText;
@@ -107,13 +112,13 @@ export function hitTest(
   // Walk priority order; return the first placement that matches.
   for (const kind of spec.allowedPlacements) {
     if (kind === "between-blocks" && inGap) {
-      return makeBetweenBlocksPlacement(editor, block, y);
+      return makeBetweenBlocksPlacement(editor, block, y, false, blockRect);
     }
     if (kind === "inline-cursor" && inText) {
       return makeInlineCursorPlacement(editor, posResult.pos);
     }
     if (kind === "paragraph-side") {
-      return makeParagraphSidePlacement(editor, block, x);
+      return makeParagraphSidePlacement(editor, block, x, blockRect);
     }
   }
   return null;
@@ -694,8 +699,12 @@ export function makeBetweenBlocksPlacement(
   block: AnchorableBlockInfo,
   cursorY: number,
   snapToMidpoint = false,
+  // The caller's already-read rect for `block.dom` (C8 — hitTest threads its
+  // classification read). Optional: paths that arrive without one (R3 peer
+  // resolution) pay the single read here instead.
+  preReadRect?: DOMRect,
 ): Placement {
-  const blockRect = block.dom.getBoundingClientRect();
+  const blockRect = preReadRect ?? block.dom.getBoundingClientRect();
   // Cursor above the threshold → insert before; below → insert after. For
   // sub-item peer drops (R3) the threshold is the block's vertical MIDPOINT
   // (Notion-style), so the line snaps to the nearest item boundary as the
@@ -763,8 +772,10 @@ function makeParagraphSidePlacement(
   editor: Editor,
   block: AnchorableBlockInfo,
   cursorX: number,
+  // See makeBetweenBlocksPlacement — hitTest's classification read, threaded.
+  preReadRect?: DOMRect,
 ): Placement {
-  const blockRect = block.dom.getBoundingClientRect();
+  const blockRect = preReadRect ?? block.dom.getBoundingClientRect();
   const side: "left" | "right" =
     cursorX < blockRect.left + blockRect.width / 2 ? "left" : "right";
   // Bar position: 8px outside the block on the chosen side.
