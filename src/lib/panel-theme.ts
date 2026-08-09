@@ -33,6 +33,12 @@ export type PanelThemeKey =
 // promotion pipeline can rewrite them without touching TS source.
 import defaultPanelColorsJson from "./panel-theme.defaults.json";
 import { subscribeToStorageKey } from "./cross-window-storage";
+import {
+  hexToRgb,
+  rgbToHex,
+  inkOn,
+  atContrastAgainst,
+} from "./color-math";
 
 /** Base hex used to seed each panel's palette by default. */
 export const DEFAULT_PANEL_COLORS: Record<PanelThemeKey, string> =
@@ -67,57 +73,6 @@ export const PRESET_COLORS: { name: string; hex: string }[] = [
 
 /* ── Color utilities ─────────────────────────────────────────────── */
 
-/** Parse a `#rrggbb` hex to `[r, g, b]` in 0..255. Returns [0,0,0] on error. */
-function hexToRgb(hex: string): [number, number, number] {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!m) return [0, 0, 0];
-  const v = parseInt(m[1], 16);
-  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  const c = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, "0");
-  return `#${c(r)}${c(g)}${c(b)}`;
-}
-
-function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  let h = 0, s = 0;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
-    }
-    h *= 60;
-  }
-  return [h, s, l];
-}
-
-function hslToRgb(h: number, s: number, l: number): [number, number, number] {
-  h = ((h % 360) + 360) % 360;
-  s = Math.max(0, Math.min(1, s));
-  l = Math.max(0, Math.min(1, l));
-  if (s === 0) {
-    const v = l * 255;
-    return [v, v, v];
-  }
-  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-  const p = 2 * l - q;
-  const k = (n: number) => {
-    const t = (h / 60 + n + 6) % 6;
-    if (t < 1) return p + (q - p) * t;
-    if (t < 3) return q;
-    if (t < 4) return p + (q - p) * (4 - t);
-    return p;
-  };
-  return [k(2) * 255, k(0) * 255, k(4) * 255];
-}
-
 /** Mix `hex` with white by `amount` (0..1 = full white). Returns `#rrggbb`. */
 function tint(hex: string, amount: number): string {
   const [r, g, b] = hexToRgb(hex);
@@ -128,23 +83,49 @@ function tint(hex: string, amount: number): string {
   );
 }
 
-/** Return a version of `hex` adjusted toward a target lightness. */
-function atLightness(hex: string, targetL: number): string {
-  const [r, g, b] = hexToRgb(hex);
-  const [h, s] = rgbToHsl(r, g, b);
-  const [r2, g2, b2] = hslToRgb(h, s, targetL);
-  return rgbToHex(r2, g2, b2);
-}
+/* ── The contrast contract (task 176) ────────────────────────────────
+ *
+ * Everything a theme paints derives from ONE accent hex — the good part of
+ * this design, and the reason a single color picker can retint a whole kind.
+ * But two of the transforms used to reason in **HSL lightness as a stand-in
+ * for perceived contrast**, which is hue-blind: `readableOnWhite` passed any
+ * accent under `l < 0.45` through undarkened (teal `#14b8a6` shipped as body
+ * text at **2.22:1**) and `borderSelected` sat at the absolute coordinate
+ * `atLightness(accent, 0.62)`, so the strength of the same "this card is
+ * selected" cue varied from 1.36:1 to 5.62:1 depending only on which hue the
+ * picker happened to offer.
+ *
+ * Both are now **contrast targets measured against the surface the value
+ * actually lands on** (`inkOn` / `atContrastAgainst` in `color-math.ts`), which
+ * is what the old comments already claimed to do. Hue and saturation are still
+ * carried through untouched — the ink is the accent, moved along its own
+ * lightness axis only as far as legibility requires.
+ *
+ * There are deliberately **no per-kind exceptions**. A hand-tuned escape in
+ * this file is exactly the thing that drifts silently (the palette is what a
+ * user retints, so an exception is only ever right for the shipped hex).
+ * `highlight` was the one candidate — its badge ink darkens from `#af7f03` to
+ * a deeper amber — and it does not need one: a highlight's *in-text* identity
+ * is the band, which paints from the live accent var (task 174), not from this
+ * ink. The amber survives where it carries meaning.
+ *
+ * Pinned by `__tests__/panel-theme-contrast.test.ts` over BOTH color tables,
+ * so the next preset cannot be added by eye.
+ */
 
-/** Derive a text color from a base that has enough contrast on white. */
-function readableOnWhite(hex: string): string {
-  const [r, g, b] = hexToRgb(hex);
-  const [h, s, l] = rgbToHsl(r, g, b);
-  // Ensure minimum darkness for legibility against near-white backgrounds.
-  if (l < 0.45) return hex;
-  const [r2, g2, b2] = hslToRgb(h, Math.max(0.3, s), 0.35);
-  return rgbToHex(r2, g2, b2);
-}
+/** WCAG AA for normal-size text. Not a large-text surface: badges are 10px
+ *  (`panel-primitives.tsx` BADGE_BASE) and card titles ~12.5px/500
+ *  (`TITLE_STYLE`), both under every large-text exemption. */
+export const TEXT_CONTRAST_MIN = 4.5;
+
+/** WCAG's non-text floor, used as the selected-card border's TARGET: every
+ *  kind's selection cue meets it and exceeds it by as little as the 8-bit
+ *  quantization allows, so they all read with the same strength. A floor first
+ *  and a target second — `atContrastAgainst` will not round below it. */
+export const AFFORDANCE_CONTRAST_TARGET = 3;
+
+/** The page surface a card and its border sit on (`--surface`, globals.css). */
+const SURFACE = "#ffffff";
 
 /* ── Derived palettes ────────────────────────────────────────────── */
 
@@ -184,19 +165,89 @@ function blendOverWhite(tintHex: string, alpha: number): string {
   return rgbToHex(mix(r), mix(g), mix(b));
 }
 
+/** Every field an accent paints that themed TEXT can land on, stated ONCE.
+ *
+ *  The palette fills read from here and so does the ink's contrast search, so
+ *  the two can never name different numbers — re-tuning a tint moves the fill
+ *  and the legibility target together, and a field ADDED here automatically
+ *  enters the search rather than waiting to be remembered. (Which matters more
+ *  than it looks: the whole bug class this file just retired was one quantity
+ *  described in two places.) */
+function inkSurfaces(baseHex: string) {
+  return {
+    badgeBg:        tint(baseHex, 0.88),
+    headerDefault:  blendOverWhite(tint(baseHex, 0.85), 0.35),
+    headerSelected: blendOverWhite(tint(baseHex, 0.82), 0.7),
+    markerBg:       tint(baseHex, 0.92),
+  };
+}
+
+/** THE ink for an accent — one value for badge text, card titles and the
+ *  marginalia glyph alike.
+ *
+ *  One ink rather than three per-surface inks: they are the same identity seen
+ *  in three places, and a per-surface search would make the marker glyph read
+ *  measurably brighter than the badge text beside it for no reason a user could
+ *  name. So the search targets the darkest surface in the set and every lighter
+ *  one clears by construction. `SURFACE` joins the list because a themed title
+ *  can also sit on the plain white card body. */
+export function accentInk(baseHex: string): string {
+  return inkOn(
+    baseHex,
+    [...Object.values(inkSurfaces(baseHex)), SURFACE],
+    TEXT_CONTRAST_MIN,
+  );
+}
+
+/* ── Derivation memo ─────────────────────────────────────────────────
+ *
+ * A palette is a pure function of one hex, and `useCardTheme` re-derives on
+ * every render of every card — so the derivation is memoized by accent. That
+ * was merely tidy while the transforms were a dozen arithmetic ops; with a
+ * contrast search behind them it is what keeps the search off the render path,
+ * and it hands every consumer a STABLE object identity for free (the old
+ * fresh-object-per-render defeated any downstream memo comparing by reference).
+ *
+ * Keys are accent hexes, so the map is naturally small — but a color picker
+ * dragged through a gradient can mint hundreds, hence the cap. Values are
+ * frozen because they are now shared: a palette is a value, not a scratch
+ * object. */
+const PALETTE_CACHE_LIMIT = 512;
+
+function memoByAccent<T>(cache: Map<string, T>, accent: string, make: () => T): T {
+  const hit = cache.get(accent);
+  if (hit !== undefined) return hit;
+  if (cache.size >= PALETTE_CACHE_LIMIT) cache.clear();
+  const made = make();
+  cache.set(accent, made);
+  return made;
+}
+
+const cardPaletteCache = new Map<string, DerivedCardPalette>();
+const markerPaletteCache = new Map<string, DerivedMarkerPalette>();
+const themeCache = new Map<string, CardTheme>();
+
 /** Derive the full card palette from a base hex.
  *  Header tints are pre-mixed with white into solid hexes (no rgba),
  *  so they apply cleanly via inline style without compositing surprises
  *  on tinted parents. */
 export function deriveCardPalette(baseHex: string): DerivedCardPalette {
-  const badgeBg = tint(baseHex, 0.88);
+  return memoByAccent(cardPaletteCache, baseHex, () =>
+    Object.freeze(computeCardPalette(baseHex)));
+}
+
+function computeCardPalette(baseHex: string): DerivedCardPalette {
+  const { badgeBg, headerDefault, headerSelected } = inkSurfaces(baseHex);
   const badgeBorder = tint(baseHex, 0.35);
-  const badgeColor = readableOnWhite(baseHex);
+  const badgeColor = accentInk(baseHex);
   return {
-    headerDefault:    blendOverWhite(tint(baseHex, 0.85), 0.35),
-    headerSelected:   blendOverWhite(tint(baseHex, 0.82), 0.7),
+    headerDefault,
+    headerSelected,
     separatorSelected: tint(baseHex, 0.55),
-    borderSelected:   atLightness(baseHex, 0.62),
+    // A contrast TARGET against the surface the border sits on, not an
+    // absolute lightness coordinate — so the selected state reads with the
+    // same strength for a near-black accent and a neon one alike.
+    borderSelected:   atContrastAgainst(baseHex, SURFACE, AFFORDANCE_CONTRAST_TARGET),
     badgeBg,
     badgeColor,
     badgeBorder,
@@ -206,11 +257,11 @@ export function deriveCardPalette(baseHex: string): DerivedCardPalette {
 
 /** Derive the marginalia marker palette from a base hex. */
 export function deriveMarkerPalette(baseHex: string): DerivedMarkerPalette {
-  return {
-    color: readableOnWhite(baseHex),
-    bg: tint(baseHex, 0.92),
+  return memoByAccent(markerPaletteCache, baseHex, () => Object.freeze({
+    color: accentInk(baseHex),
+    bg: inkSurfaces(baseHex).markerBg,
     border: tint(baseHex, 0.45),
-  };
+  }));
 }
 
 /** Alias for `deriveMarkerPalette` to read fluently at MARKER_META call sites. */
@@ -224,7 +275,8 @@ export interface CardTheme extends DerivedCardPalette {
 
 /** Build a complete CardTheme from one accent hex. */
 export function themeFromAccent(accent: string): CardTheme {
-  return { accent, ...deriveCardPalette(accent) };
+  return memoByAccent(themeCache, accent, () =>
+    Object.freeze({ accent, ...deriveCardPalette(accent) }));
 }
 
 /* ── Mutable override registry + subscriptions ───────────────────── */

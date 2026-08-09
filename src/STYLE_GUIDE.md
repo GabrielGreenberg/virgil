@@ -447,6 +447,33 @@ correct. `panel-theme-key-freeze.test.ts` pins the hex format, but only for
 the fields in its frozen `REQUIRED_PALETTE_FIELDS` list: a NEW palette field
 must be added there in the same commit or it ships unchecked.
 
+**A derived value states the contrast it needs; it never approximates it with
+a lightness coordinate.** HSL lightness is hue-blind — `l = 0.40` says nothing
+about how bright a color *reads*, and the error is largest exactly where the
+palette offers its most saturated hues. So the derivation measures WCAG
+relative luminance against the surface a value actually lands on
+(`src/lib/color-math.ts`: `contrastRatio`, `inkOn`, `atContrastAgainst`), and
+moves only lightness to reach it, carrying hue and saturation through:
+
+- **Text ink** (`badgeColor` = `titleColor` = the marginalia glyph — one
+  `accentInk` per accent, not three per-surface inks) clears **4.5:1** against
+  the *darkest* surface it can land on. 10px badges and ~12.5px/500 titles are
+  normal-size text; no large-text exemption applies.
+- **Non-text affordances** (`borderSelected`) target **3:1** against
+  `--surface`. A *target*, not a floor: the point is that a selected Note and a
+  selected Report read as equally selected. An absolute coordinate cannot do
+  that — `atLightness(accent, 0.62)` lightened dark accents and darkened light
+  ones, so the same cue ranged from 1.36:1 to 5.62:1 depending only on hue.
+
+The ink is the accent, darkened only as far as legibility requires — a
+genuinely dark accent is its own ink. **No per-kind exceptions**: a hand-tuned
+escape is only ever right for the shipped hex, and the palette is the one thing
+a user retints. Both tables (`DEFAULT_PANEL_COLORS` and the `PRESET_COLORS` the
+picker offers) are pinned by `panel-theme-contrast.test.ts`, which measures with
+its own WCAG implementation rather than the one it guards — so a preset can no
+longer be added by eye. Palettes are memoized by accent and frozen: a palette is
+a value, not a scratch object.
+
 Eleven themes, four families:
 
 - **Anchored-to-text (warm):** `footnote` (rust), `citation` (amber),
