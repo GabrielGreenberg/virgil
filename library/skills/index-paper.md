@@ -271,9 +271,13 @@ you to disambiguate something.
    `Author` / `Source` / `Vol.` substrings — the title was a
    triage-time stub and the orchestrator's title-fuzz never had a
    chance. Re-extract the actual title from the PDF cover page
-   (the bold/large-font line above the byline) and re-run
-   `bib_auth.authenticate(...)` with the corrected title before
-   declaring failure.
+   (the bold/large-font line above the byline) and re-run the helper
+   with the corrected title before declaring failure — `--title`
+   overrides just that seed, leaving the rest of the entry verbatim:
+   ```bash
+   python3 .virgil/scripts/library/bib_auth.py --citekey "<citekey>" \
+     --library . --title "<corrected title from the cover page>"
+   ```
 
    **Cross-check fallback when pgmarks are unreliable.** When
    `indexed.pgmarkPosition = "unknown"` or all/most pgmarks carry

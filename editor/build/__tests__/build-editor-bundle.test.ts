@@ -37,9 +37,24 @@ describe("rewriteScriptPathsForPaper", () => {
     expect(rewriteScriptPathsForPaper(once)).toBe(once);
   });
 
-  it("leaves the library helper prefix untouched", () => {
-    // sync-bib-to-library reaches into `.virgil/scripts/library/…` — only the
-    // EDITOR prefix is a paper/repo mismatch; the library one must not move.
+  it("maps the LIBRARY helper prefix too", () => {
+    // An editor skill legitimately reaches for a library helper —
+    // find-citation shells out to bib_auth.py for the Library-first half of
+    // the find-or-surface doctrine — and skill-sync lands library scripts at
+    // `.virgil/scripts/library/` in every managed folder. Before task 158 only
+    // the editor prefix moved, so that one invocation was unresolvable from a
+    // paper root: the same drift as a fabricated flag, in the path.
+    expect(
+      rewriteScriptPathsForPaper("python3 library/scripts/bib_auth.py --query x"),
+    ).toBe("python3 .virgil/scripts/library/bib_auth.py --query x");
+    const once = rewriteScriptPathsForPaper("python3 library/scripts/bib_auth.py");
+    expect(rewriteScriptPathsForPaper(once)).toBe(once);
+  });
+
+  it("leaves the bare (no-slash) library candidate token intact", () => {
+    // The dual-path loops carry `library/scripts` with NO trailing slash as a
+    // resolver candidate. It is a token, not a path prefix, and the
+    // trailing-slash scoping is what keeps it out of the rewrite.
     const s = 'for p in (".virgil/scripts/library", "library/scripts")';
     expect(rewriteScriptPathsForPaper(s)).toBe(s);
   });
@@ -72,16 +87,19 @@ describe("paper-bundle guardrail over real skill sources", () => {
     expect(skillSources.length).toBeGreaterThan(20);
   });
 
-  it("every skill's paper copy resolves helpers under .virgil/scripts/editor/", () => {
-    // After the build rewrite, no paper-bundle markdown may still reference the
-    // repo-relative `editor/scripts/` prefix — every such reference would break
+  it("every skill's paper copy resolves helpers under .virgil/scripts/", () => {
+    // After the build rewrite, no paper-bundle markdown may still reference a
+    // repo-relative `<silo>/scripts/` prefix — every such reference would break
     // when the skill runs from a paper-folder cwd. If a new skill invokes a
     // helper via a path form this substring rewrite can't reach, this fails.
     for (const { name, text } of skillSources) {
-      expect(
-        rewriteScriptPathsForPaper(text),
-        `${name}: paper bundle still references editor/scripts/`,
-      ).not.toContain("editor/scripts/");
+      const rewritten = rewriteScriptPathsForPaper(text);
+      for (const prefix of ["editor/scripts/", "library/scripts/"]) {
+        expect(
+          rewritten,
+          `${name}: paper bundle still references ${prefix}`,
+        ).not.toContain(prefix);
+      }
     }
   });
 

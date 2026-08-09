@@ -53,6 +53,38 @@ strongest, cheapest source: it reuses the user's own verified metadata
 and citekey conventions instead of minting a divergent entry. This step
 is the reason the doctrine is Library-first, not database-first.
 
+**Calling `bib_auth.py`.** The helper has TWO modes, and picking the wrong
+one is how a sourcing skill talks itself into the failure path with a good
+answer in hand. State the mode explicitly; there is no useful default.
+
+- **Discovery** — you're looking for a work you don't have yet:
+  `bib_auth.py --query "<free text>" [--type article] [--limit N]`.
+  Prints `{"mode": "search", "candidates": [...]}`: ranked records from
+  Crossref / OpenAlex / Semantic Scholar / arXiv (plus OpenLibrary +
+  Google Books for book types). Each candidate is a **lead**, and its
+  `score` is title similarity — your skill's acceptance bar still decides
+  whether it's found. Never authenticate a description: the seed title
+  can't match, so the verdict is `failed` even when the top hit is right.
+- **Verification** — you hold a specific entry and want a verdict:
+  `bib_auth.py --citekey <key> [--library <root>]`, or
+  `bib_auth.py --fields-file <entry.json> [--type <bibtex-type>]` when the
+  entry isn't in the Library's `master.bib`. Prints the `AuthResult`
+  (`state`, `matched_record`, `field_changes`). Both doors exist to carry
+  the entry's own fields in **verbatim**: `doi`, `eprint`, `isbn`,
+  `journal` and `url` drive the fast-paths that fix bad metadata, so an
+  entry reduced to a title gets only the fuzzy search. `--citekey`
+  additionally passes the library root through, enabling the recovery
+  chain over `papers/<key>/`. Prefer either to hand-marshalling the values
+  into a `python3 -c` snippet, which is where transcription and
+  shell-quoting errors come from. Individual seeds can be overridden —
+  `bib_auth.py --citekey <key> --title "<corrected>" --author "<a>" --type <t>`
+  — and positional `<title> [author…]` still works.
+
+The flags above are checked against the script's real interface by
+`library/lib/__tests__/skill-script-cli-guardrail.test.ts`, for every skill
+in both silos — a documented flag no script declares fails CI, and that
+includes the interpreter-less forms written here.
+
 **3. Then external authoritative sources.** If the Library has no match,
 search Crossref → OpenAlex → Semantic Scholar → arXiv (and
 OpenLibrary / Google Books / Internet Archive for books) — in that order

@@ -85,29 +85,34 @@ directory).
 
 1. **Read the citekey's current fields** from `master.bib`.
 
-2. **Run the helper.** Pass `library` and `citekey` so the recovery chain
-   can read the indexed paper at `papers/<citekey>/main.tex`. The Python
-   pipeline lives at `.virgil/scripts/library/`.
-
-   **Pass `title`, `authors_list`, and `fields_dict` exactly as they
-   appear in `master.bib` — verbatim, with no cleanup or normalization.
-   The helper is responsible for fixing bad metadata via the DOI fast-
-   path, arXiv-ID fast-path, recovery chain, etc. Cleaning up before
-   passing in defeats the recovery logic.**
+2. **Run the helper.** `--citekey` reads title / authors / fields /
+   entry-type straight out of `master.bib` and threads the library root
+   through, so the recovery chain can read the indexed paper at
+   `papers/<citekey>/main.tex`. The Python pipeline lives at
+   `.virgil/scripts/library/`.
    ```bash
-   python3 -c '
-   import sys, json
-   from pathlib import Path
-   sys.path.insert(0, ".virgil/scripts/library")
-   from bib_auth import authenticate
-   from dataclasses import asdict
-   # Fill in title and authors from master.bib for citekey, verbatim
-   r = authenticate(<title>, <authors_list>, <fields_dict>,
-                    entry_type=<entry_type>,
-                    library=Path("."), citekey=<citekey>)
-   print(json.dumps(asdict(r), indent=2))
-   '
+   python3 .virgil/scripts/library/bib_auth.py --citekey <citekey> --library .
    ```
+   Prints the `AuthResult` as JSON (`state`, `sources`, `score`,
+   `matched_record`, `field_changes`, `proposed_type`).
+
+   **Don't hand-marshal the seed values.** The entry must reach the helper
+   exactly as it appears in `master.bib` — verbatim, no cleanup, no
+   normalization — because the DOI fast-path, arXiv-ID fast-path and
+   recovery chain are what fix bad metadata; cleaning up first defeats
+   them. `--citekey` guarantees that by construction, where retyping the
+   fields into a `python3 -c` snippet cannot (an apostrophe or a brace
+   accent in a title breaks the shell quoting outright).
+
+   Two overrides exist for the cases the bib alone can't express, both
+   keeping the rest of the entry verbatim: `--title "<corrected>"` re-runs
+   the search with a different seed — for when the bib's title is a
+   triage-time stub the helper's own recovery chain couldn't get past, and
+   you have the real one from the PDF cover page (`/library/index-paper`
+   step 3 spells that case out) — and `--type <bibtex-type>` overrides a
+   wrong `@type`. The Python API (`from bib_auth import authenticate`)
+   remains for scripts that already hold the fields in memory —
+   `index_paper.py` and `merge_paper_references.py` use it.
 
    **What the helper does automatically (no skill-level backstop needed):**
 
@@ -380,8 +385,8 @@ directory).
    sys.path.insert(0, ".virgil/scripts/library")
    from index_paper import _sync_catalog_entry_from_master
 
-   # `r` is the AuthResult dict from step 2 (deserialize the JSON
-   # printed there, or rebuild it in-process). `tier1_changes` is the
+   # `r` is the AuthResult dict from step 2 (deserialize the JSON the
+   # helper printed — don't re-run it). `tier1_changes` is the
    # extra field-change list you produced in step 3 — same shape as
    # the helper's: list of {"field": str, "from": str, "to": str,
    # "source": str, "at": ISO8601 str} dicts. May be [].
