@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { onPaneDragChange } from "@/lib/pane-resize";
+import { onLayoutGestureChange } from "@/lib/pane-resize";
 import { SCROLLBAR_THUMB_WIDTH, SCROLLBAR_RIGHT_INSET } from "./constants";
 import {
   recordKeystrokeWork,
@@ -63,7 +63,7 @@ export function EditorScrollbar({
   // on purpose: when the Library Reader hosts this scrollbar, a Library
   // gutter drag resizes the same column and must suppress it too — the
   // cross-silo hole the old `virgil:drag-gap-start/end` window events left.
-  useEffect(() => onPaneDragChange((active) => setDragSuppress(active)), []);
+  useEffect(() => onLayoutGestureChange((active) => setDragSuppress(active)), []);
 
   const scheduleFade = useCallback(() => {
     if (fadeTimer.current !== null) {

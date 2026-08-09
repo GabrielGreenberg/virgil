@@ -22,12 +22,12 @@ import PaperRender from "./PaperRender";
 import PdfView from "./PdfView";
 // Drag-time followers of the app-wide pane-resize bus (sanctioned cross-silo
 // bridge, see library/CLAUDE.md "Don't"): PaneFreeze width-locks the reader
-// subtree for the length of a gutter gesture; parkDuringPaneDrag stashes the
+// subtree for the length of a gutter gesture; parkDuringLayoutGesture stashes the
 // two per-frame feedback paths below as defense-in-depth behind that freeze.
 import {
   PaneFreeze,
-  parkDuringPaneDrag,
-  type PaneDragPark,
+  parkDuringLayoutGesture,
+  type LayoutGesturePark,
 } from "@/lib/pane-resize";
 // Shared framed-viewer surface (inset + pod border/radius/shadow), the same
 // component the docs-side compiled-PDF pane renders through — sanctioned
@@ -140,7 +140,7 @@ export default function RightDetail({
     // fire (font swap, image load) stashes dirty and the end edge reconciles
     // ONCE instead of riding a pointer frame into the setTextPodRect →
     // PaperHeader podAlign cascade.
-    const park = parkDuringPaneDrag(() => schedule());
+    const park = parkDuringLayoutGesture(() => schedule());
     const ro = new ResizeObserver(() => park.fire());
     const measure = () => {
       if (cancelled) return;
@@ -229,11 +229,11 @@ export default function RightDetail({
   // the end edge instead of re-rendering RightDetail per pointer frame. The
   // park's bus subscription is owned by the effect; outside its lifetime the
   // callback applies directly (never drops a viewer event).
-  const pdfParkRef = useRef<PaneDragPark<
+  const pdfParkRef = useRef<LayoutGesturePark<
     [PdfPageState, (page: number) => void]
   > | null>(null);
   useEffect(() => {
-    const park = parkDuringPaneDrag(applyPdfPageState);
+    const park = parkDuringLayoutGesture(applyPdfPageState);
     pdfParkRef.current = park;
     return () => {
       pdfParkRef.current = null;

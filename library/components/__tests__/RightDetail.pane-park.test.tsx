@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
 // PHASE-4 WIRING (plan §P3, defense-in-depth parks): RightDetail's two
-// per-frame feedback paths must route through `parkDuringPaneDrag`, driven
-// here through REAL PaneDragBus edges — the park calls are silent wiring
+// per-frame feedback paths must route through `parkDuringLayoutGesture`, driven
+// here through REAL LayoutGestureBus edges — the park calls are silent wiring
 // whose deletion no other suite would surface (the primitive has its own
 // unit suite; this pins the CONSUMER sites):
 //
@@ -27,11 +27,11 @@ import type { BibEntry } from "@library/lib/types";
 import type { CatalogEntry } from "@library/lib/catalog";
 import { __resetViewSessionForTests } from "@library/lib/view-session-store";
 import {
-  beginPaneDrag,
-  endPaneDrag,
-  __resetPaneDragBusForTest,
-  type PaneDragInfo,
-} from "@/lib/pane-resize/pane-drag-bus";
+  beginLayoutGesture,
+  endLayoutGesture,
+  __resetLayoutGestureBusForTest,
+  type LayoutGestureInfo,
+} from "@/lib/pane-resize/layout-gesture-bus";
 import type { PdfPageState } from "@library/lib/pdf-pgmark-adapter";
 import type { PgmarkPages } from "@library/hooks/usePgmarkPages";
 
@@ -121,7 +121,7 @@ const docxEntry: CatalogEntry = {
   pdf: { present: false }, // → Text branch (no PDF on disk)
 } as CatalogEntry;
 
-const DRAG: PaneDragInfo = { id: "gutter-under-test", axis: "x" };
+const DRAG: LayoutGestureInfo = { kind: "pane", id: "gutter-under-test", axis: "x" };
 
 // Controllable ResizeObserver — the textPodRect effect's RO is the only one
 // live in these renders (usePgmarkPages gets a null editor and bails).
@@ -155,7 +155,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  __resetPaneDragBusForTest();
+  __resetLayoutGestureBusForTest();
   vi.unstubAllGlobals();
 });
 
@@ -184,14 +184,14 @@ describe("RightDetail pane-drag parks (per-frame feedback stashed for the gestur
     // Mid-drag: a storm of viewer events parks — the header must not see any
     // of them ride a pointer frame.
     act(() => {
-      beginPaneDrag(DRAG);
+      beginLayoutGesture(DRAG);
       send({ pagesCount: 5, currentPage: 3 });
       send({ pagesCount: 5, currentPage: 4 });
     });
     expect((lastHeader().pgmarkPages as PgmarkPages).currentLabel).toBe("2");
 
     // End edge: exactly one settle, latest args winning.
-    act(() => endPaneDrag(DRAG));
+    act(() => endLayoutGesture(DRAG));
     expect((lastHeader().pgmarkPages as PgmarkPages).currentLabel).toBe("4");
   });
 
@@ -230,7 +230,7 @@ describe("RightDetail pane-drag parks (per-frame feedback stashed for the gestur
     // header keeps the pre-drag rect (no setTextPodRect → podAlign cascade
     // riding pointer frames).
     act(() => {
-      beginPaneDrag(DRAG);
+      beginLayoutGesture(DRAG);
     });
     frameRect = { left: 40, width: 480 };
     act(() => {
@@ -240,7 +240,7 @@ describe("RightDetail pane-drag parks (per-frame feedback stashed for the gestur
     expect(lastHeader().textPodRect).toEqual({ left: 40, width: 600 });
 
     // End edge: one settle re-measure picks up the final geometry.
-    act(() => endPaneDrag(DRAG));
+    act(() => endLayoutGesture(DRAG));
     expect(lastHeader().textPodRect).toEqual({ left: 40, width: 480 });
   });
 });

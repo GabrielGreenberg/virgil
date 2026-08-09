@@ -22,7 +22,7 @@ import {
   STRIP_SIDE_PAD,
   STRIP_TOP_HEADROOM,
 } from "@/components/chrome/folder-tab-geometry";
-import { parkDuringPaneDrag } from "@/lib/pane-resize";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 
 // F#15 inactive-tab floor: inactive tabs absorb the squeeze first and
 // ellipsize their names down to this width before the active tab compresses.
@@ -177,7 +177,7 @@ export function PanelTabStrip({
   // express (no "am I flush with my scroll container's edge" selector), and
   // it toggles a discrete art variant (the tucked right cap), not a style
   // that could stretch. Equality-bailed boolean + RAF-coalesced + parked on
-  // the PaneDragBus below.
+  // the LayoutGestureBus below.
   useEffect(() => {
     const panel = panelRef?.current;
     if (!panel) {
@@ -196,13 +196,13 @@ export function PanelTabStrip({
       const flush = Math.abs(t.right - (p.right - STRIP_SIDE_PAD)) <= 2;
       setActiveFlushRight((prev) => (prev === flush ? prev : flush));
     };
-    // Parked during a pane-resize drag (parkDuringPaneDrag on the app-wide
+    // Parked during a pane-resize drag (parkDuringLayoutGesture on the app-wide
     // bus): this measure is already RAF-coalesced + equality-gated so it
     // rarely setStates, but parking also skips its two per-frame
     // getBoundingClientRect reads. The tuck settles once on the end edge; the
     // silhouette itself is layout-driven and tracks the drag live, so a
     // one-gesture-stale tuck is the only deferred geometry.
-    const park = parkDuringPaneDrag(() => {
+    const park = parkDuringLayoutGesture(() => {
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;

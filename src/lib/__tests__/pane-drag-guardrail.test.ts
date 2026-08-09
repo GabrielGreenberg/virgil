@@ -8,7 +8,7 @@
 // `src/lib/pane-resize/` (`usePaneResizeHandle`) — pointer capture on the
 // handle, element-scoped listeners, button gates, missed-release failsafe,
 // drag shield, RAF-coalesced imperative apply(), commit-once persistence,
-// edge-only PaneDragBus. The failure class this kills: a bespoke
+// edge-only LayoutGestureBus. The failure class this kills: a bespoke
 // window-listener drag handler that loses its pointerup to an iframe
 // (hang + ghost-resume + spurious commit), thrashes per-frame React
 // state/store/localStorage, or wedges a park flag forever.
@@ -89,19 +89,19 @@ const PERMITTED_WINDOW_DRAG_GESTURES: Record<string, string> = {
 // per drag frame → per-frame Library re-renders) and the measured-chrome
 // class (RO → setState → SVG re-path) dead — neither can land without a new
 // RO, and no other guardrail grep sees one. A new RO must either park via
-// `parkDuringPaneDrag` (when it could fire mid-gesture) or carry an
+// `parkDuringLayoutGesture` (when it could fire mid-gesture) or carry an
 // equality-bail justification, in BOTH places.
 const PERMITTED_LIBRARY_RESIZE_OBSERVERS: Record<string, string> = {
   "library/components/panel-tabs/PanelTabStrip.tsx":
-    "Flush-right tuck measure — the ONE surviving chrome RO (whether the active tab sits flush with the body's right edge is a cross-subtree sum CSS can't express); RAF-coalesced, equality-bailed boolean, parked via parkDuringPaneDrag.",
+    "Flush-right tuck measure — the ONE surviving chrome RO (whether the active tab sits flush with the body's right edge is a cross-subtree sum CSS can't express); RAF-coalesced, equality-bailed boolean, parked via parkDuringLayoutGesture.",
   "library/components/LeftList.tsx":
     "Rows-viewport measure — virtualization window height; equality-bailed setState (a horizontal gutter drag doesn't change the height, so mid-drag fires bail to the same state).",
   "library/components/RightDetail.tsx":
-    "textPodRect header↔pod pinning — RAF-coalesced, ±0.5px equality gate, parked via parkDuringPaneDrag (defense-in-depth behind the PaneFreeze width lock).",
+    "textPodRect header↔pod pinning — RAF-coalesced, ±0.5px equality gate, parked via parkDuringLayoutGesture (defense-in-depth behind the PaneFreeze width lock).",
   "library/components/PaperHeader.tsx":
     "Narrow flag — boolean threshold from borderBoxSize; React bails unless the 560px line is crossed mid-gesture.",
   "library/hooks/usePgmarkPages.ts":
-    "\\pgmark chip re-scan — RAF-coalesced, parked via parkDuringPaneDrag, and the `pages` array is identity-gated (label+docY) so consumer memos (PaperRender → EditorPane) hold.",
+    "\\pgmark chip re-scan — RAF-coalesced, parked via parkDuringLayoutGesture, and the `pages` array is identity-gated (label+docY) so consumer memos (PaperRender → EditorPane) hold.",
 };
 
 /** Strip comments so doctrine prose (this repo documents the banned call
@@ -363,7 +363,7 @@ describe("pane-drag guardrail — retired primitives stay dead", () => {
   });
 
   it("no live code dispatches or listens for the retired virgil:drag-gap events", () => {
-    // Replaced by the PaneDragBus (edge-only, engine-internal begin/end).
+    // Replaced by the LayoutGestureBus (edge-only, engine-internal begin/end).
     for (const f of files) {
       const src = stripComments(f.source);
       expect(
@@ -390,7 +390,7 @@ describe("pane-drag guardrail — library ResizeObserver census", () => {
     // library silo. First ask whether layout can express the relationship
     // (container query, constant caps + stretchable middle — the
     // FolderTabChrome pattern); if it genuinely needs an RO, park it via
-    // `parkDuringPaneDrag` when it could fire mid-gesture, equality-bail its
+    // `parkDuringLayoutGesture` when it could fire mid-gesture, equality-bail its
     // setState, and add it here + to the library/AGENTS.md census with the
     // same justification.
     expect(detected).toEqual(
