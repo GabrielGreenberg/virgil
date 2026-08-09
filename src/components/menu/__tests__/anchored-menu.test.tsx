@@ -36,6 +36,7 @@ vi.mock("@/lib/storage", () => ({}));
 
 import { AnchoredMenu, ANCHORED_MENU_PLACEMENTS } from "../AnchoredMenu";
 import { MenuActionRow } from "../MenuActionRow";
+import { ItemMenu } from "@/components/panel-primitives";
 import {
   OmniFilterMenu,
   type OmniCategory,
@@ -138,18 +139,20 @@ describe("AnchoredMenu — the guards the shell owns", () => {
     expect(style.maxHeight).not.toBe("");
   });
 
-  it("maxHeight is refusable — a menu hosting an absolute popup must not become a scroll container", async () => {
-    // `ItemMenu` passes `maxHeight={false}` and the reason is structural, not
-    // cosmetic: `overflow-y: auto` makes the menu a scroll container, which
-    // CLIPS absolutely-positioned descendants (and `overflow-x` computes to
-    // `auto` with it, so on both axes). Every panel-header kebab's first row is
-    // a `<PanelThemePicker>` whose 168px swatch grid is exactly such a popup,
-    // inside a `min-w-[100px]` menu. If someone removes the opt-out, this fails
-    // instead of the swatches silently losing their right half.
+  it("ItemMenu does NOT become a scroll container — it hosts an absolute popup", async () => {
+    // Renders the real `ItemMenu`, not a stand-in, because the CALL SITE is what
+    // has to keep the opt-out: `overflow-y: auto` makes the menu a scroll
+    // container, which clips absolutely-positioned descendants (and `overflow-x`
+    // computes to `auto` with it, so on both axes), and every panel-header
+    // kebab's first row is a `<PanelThemePicker>` whose 168px swatch grid is
+    // exactly such a popup inside a `min-w-[100px]` menu. A test that mounted
+    // its own `<AnchoredMenu maxHeight={false}>` would prove the shell honours
+    // the prop and nothing about the site that needs it — deleting
+    // `maxHeight={false}` from panel-primitives would leave the suite green.
     const { container } = render(
-      <AnchoredMenu ariaLabel="Options" trigger={() => "⋯"} maxHeight={false}>
-        <MenuActionRow id="one" label="One" onSelect={() => {}} />
-      </AnchoredMenu>,
+      <ItemMenu>
+        <button type="button">Row</button>
+      </ItemMenu>,
     );
     fireEvent.click(triggerIn(container));
     await settleDismissListener();

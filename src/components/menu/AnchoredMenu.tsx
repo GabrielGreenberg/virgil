@@ -130,6 +130,14 @@ export interface AnchoredMenuProps {
    * survive repeated activation stop propagation themselves
    * (`MenuToggleRow keepMenuOpen`). Default false — prefer the `children`
    * render prop's explicit `close`.
+   *
+   * Known limit, inherited from the primitive rather than introduced here: this
+   * is a DOM click handler, and the keyboard controller activates a REGISTERED
+   * row by calling its `run()` directly (no DOM event), so Enter/Space on such a
+   * row runs the action without closing. `ItemMenu`'s children are opaque
+   * buttons that register nothing, so nothing reaches that path today — but a
+   * row that must close on keyboard activation should call `close()` itself
+   * rather than rely on this flag.
    */
   closeOnInsideClick?: boolean;
   /** Clamp the menu's height to the space available + scroll. Default true. */

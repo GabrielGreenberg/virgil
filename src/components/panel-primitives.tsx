@@ -2641,10 +2641,15 @@ function HeaderAddDropdown({
       )}
     >
       {({ close, anchorRect }) =>
-        options.map((o) => (
+        options.map((o, i) => (
           <MenuActionRow
             key={o.label}
-            id={o.label}
+            // The id becomes a real DOM `id` (and, wherever a menu wires
+            // `getActiveDescendantHost`, an `aria-activedescendant` reference),
+            // and HTML forbids whitespace in one — every add-menu label has a
+            // space in it ("Search library…"). Slugged, with the index kept so
+            // two labels that slug alike can't collide in the registry.
+            id={`${i}-${o.label.replace(/[^a-zA-Z0-9_-]+/g, "-")}`}
             label={o.label}
             disabled={o.disabled}
             onSelect={() => {
