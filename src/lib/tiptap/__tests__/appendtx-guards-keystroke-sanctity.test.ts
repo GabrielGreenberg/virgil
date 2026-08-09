@@ -157,7 +157,7 @@ describe("touchedBlockPositions — O(edit-size), not O(doc)", () => {
       const p10 = structure.blocks.get("p10")!;
       const diff: StructureDiff = {
         ...EMPTY_DIFF,
-        addedBlocks: [{ uuid: "p10", pos: p10.pos, typeName: "paragraph" }],
+        addedBlocks: [{ uuid: "p10", pos: p10.pos, typeName: "paragraph", parTitled: false }],
       };
       const positions = touchedBlockPositions(diff, editor.state, editor.state.doc);
       expect(positions).toEqual([p10.pos]);

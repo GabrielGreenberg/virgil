@@ -22,6 +22,29 @@ export interface BlockEntry {
   pos: number;
   /** Top-level node type name (heading / paragraph / exampleBlock / figureBlock / ...). */
   typeName: string;
+  /** True iff the block carries a non-empty `parTitle` attribute (the Virgil
+   *  paragraph title rendered above the block — paragraph / titled lists /
+   *  texBlock / exampleBlock all declare it). Part of the section-path
+   *  vocabulary: the breadcrumb derives from headings ∪ parTitled blocks, so
+   *  a geometry consumer can read the titled set from the snapshot instead of
+   *  walking the doc. Derived via `deriveParTitled` (shared by BOTH
+   *  extractors, the `deriveExampleIdentity` discipline). */
+  parTitled: boolean;
+}
+
+/**
+ * Shared `parTitled` derivation — used by BOTH entity extractors
+ * (`buildInitial` load walk and `inspectNodeAt`/the AttrStep branch of the
+ * per-transaction path) so the two can never disagree on what "titled" means.
+ * The flag is the BOOLEAN "renders a par-title", not the title text: the
+ * NodeViews coerce empty strings to null (`(attrs.parTitle as string) || null`),
+ * so non-empty-string is the render condition. Typing INSIDE an existing title
+ * changes the string without flipping this boolean — which is what keeps
+ * title-editing off the structural wake path.
+ */
+export function deriveParTitled(attrs: { parTitle?: unknown } | Record<string, unknown>): boolean {
+  const t = (attrs as { parTitle?: unknown }).parTitle;
+  return typeof t === "string" && t.length > 0;
 }
 
 export interface HeadingEntry {
@@ -246,6 +269,15 @@ export interface StructureDiff {
    *  consumers (focus band, fold filter) to re-resolve. A plain in-paragraph
    *  keystroke never touches a block's opening token, so it cannot set this. */
   blockOrderChanged: boolean;
+  /** True iff some block's `parTitled` flag FLIPPED (a title was added to or
+   *  removed from a block; same uuid, position unchanged). The flipped entries
+   *  ride `changedBlocks` (so `applyDiff` folds the new flag into the index)
+   *  WITHOUT setting `blockOrderChanged` — a title flip moves nothing, so
+   *  position-keyed consumers stay asleep; section-path consumers (breadcrumb
+   *  vocabulary) wake on this instead. Typing inside an existing title edits
+   *  the string without flipping the boolean → no entry, no flag — the
+   *  keystroke-sanctity path for title editing. */
+  blockParTitleChanged: boolean;
 
   // Sub-views — independently consumable so subscribers don't have to
   // filter `addedBlocks` themselves.
@@ -322,6 +354,7 @@ export const EMPTY_DIFF: StructureDiff = {
   removedBlocks: [],
   changedBlocks: [],
   blockOrderChanged: false,
+  blockParTitleChanged: false,
   addedHeadings: [],
   removedHeadings: [],
   changedHeadings: [],
@@ -354,6 +387,7 @@ export function isEmptyDiff(diff: StructureDiff): boolean {
     diff.removedBlocks.length === 0 &&
     diff.changedBlocks.length === 0 &&
     !diff.blockOrderChanged &&
+    !diff.blockParTitleChanged &&
     diff.addedHeadings.length === 0 &&
     diff.removedHeadings.length === 0 &&
     diff.changedHeadings.length === 0 &&
@@ -399,6 +433,7 @@ export function diffHasStructuralEntries(diff: StructureDiff): boolean {
     diff.removedBlocks.length === 0 &&
     diff.changedBlocks.length === 0 &&
     !diff.blockOrderChanged &&
+    !diff.blockParTitleChanged &&
     diff.addedHeadings.length === 0 &&
     diff.removedHeadings.length === 0 &&
     diff.changedHeadings.length === 0 &&

@@ -260,14 +260,14 @@ describe("applyDiff", () => {
     const prev = makeBaseStructure();
     const removeP2: StructureDiff = {
       ...EMPTY_DIFF,
-      removedBlocks: [{ uuid: "p2", pos: 99, typeName: "paragraph" }],
+      removedBlocks: [{ uuid: "p2", pos: 99, typeName: "paragraph", parTitled: false }],
     };
     const afterRemove = applyDiff(prev, removeP2);
     expect([...afterRemove.blocks.keys()].sort()).toEqual(["h1", "p1"]);
 
     const addP3: StructureDiff = {
       ...EMPTY_DIFF,
-      addedBlocks: [{ uuid: "p3", pos: 50, typeName: "paragraph" }],
+      addedBlocks: [{ uuid: "p3", pos: 50, typeName: "paragraph", parTitled: false }],
     };
     const afterAdd = applyDiff(afterRemove, addP3);
     expect([...afterAdd.blocks.keys()].sort()).toEqual(["h1", "p1", "p3"]);
@@ -277,7 +277,7 @@ describe("applyDiff", () => {
     const prev = makeBaseStructure();
     const moveP2: StructureDiff = {
       ...EMPTY_DIFF,
-      changedBlocks: [{ uuid: "p2", pos: 3, typeName: "paragraph" }],
+      changedBlocks: [{ uuid: "p2", pos: 3, typeName: "paragraph", parTitled: false }],
       blockOrderChanged: true,
     };
     const next = applyDiff(prev, moveP2);

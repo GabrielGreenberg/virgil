@@ -22,6 +22,7 @@ import {
   type BlockEntry,
   type CitationEntry,
   deriveExampleIdentity,
+  deriveParTitled,
   type DocStructure,
   EMPTY_STRUCTURE,
   type ExampleEntry,
@@ -80,7 +81,12 @@ export function buildInitial(doc: PMNode): DocStructure {
     // Anchorable block — every entity-bearing node has a UUID, including
     // headings / figureBlock / exampleBlock / paragraph / etc.
     if (uuid && isAnchorableNode(node.type)) {
-      blocks.set(uuid, { uuid, pos, typeName });
+      blocks.set(uuid, {
+        uuid,
+        pos,
+        typeName,
+        parTitled: deriveParTitled(node.attrs as Record<string, unknown>),
+      });
     }
 
     if (typeName === "heading" && uuid) {

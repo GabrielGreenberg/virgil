@@ -64,6 +64,11 @@ export interface DocStructureBus {
    *  (no block entered/left, but document order changed). Position-keyed
    *  consumers (focus band, fold filter) re-resolve on this. */
   onBlockOrderChanged(fn: DiffHandler): Unsub;
+  /** Fires when some block's `parTitled` flag FLIPPED in place (a paragraph
+   *  title added or removed — same uuid, unchanged position). Section-path
+   *  vocabulary consumers (breadcrumb) re-derive on this; position-keyed
+   *  consumers don't need it. Typing inside an existing title never fires it. */
+  onBlockParTitlesChanged(fn: DiffHandler): Unsub;
 
   onHeadingsAdded(fn: HeadingHandler): Unsub;
   onHeadingsRemoved(fn: HeadingHandler): Unsub;
@@ -174,6 +179,7 @@ export function diffWakesStructuralWatchers(diff: StructureDiff): boolean {
     diff.addedBlocks.length > 0 ||
     diff.removedBlocks.length > 0 ||
     diff.blockOrderChanged ||
+    diff.blockParTitleChanged ||
     diff.addedHeadings.length > 0 ||
     diff.removedHeadings.length > 0 ||
     diff.changedHeadings.length > 0 ||
@@ -207,6 +213,7 @@ export function createDocStructureBus(): DocStructureBus {
   const blocksAdded = makeList<BlockHandler>();
   const blocksRemoved = makeList<BlockHandler>();
   const blockOrderChanged = makeList<DiffHandler>();
+  const blockParTitlesChanged = makeList<DiffHandler>();
 
   const headingsAdded = makeList<HeadingHandler>();
   const headingsRemoved = makeList<HeadingHandler>();
@@ -280,6 +287,7 @@ export function createDocStructureBus(): DocStructureBus {
       if (diff.addedBlocks.length > 0) blocksAdded.emit((fn) => fn(diff.addedBlocks, s()));
       if (diff.removedBlocks.length > 0) blocksRemoved.emit((fn) => fn(diff.removedBlocks, s()));
       if (diff.blockOrderChanged) blockOrderChanged.emit((fn) => fn(diff, s()));
+      if (diff.blockParTitleChanged) blockParTitlesChanged.emit((fn) => fn(diff, s()));
 
       if (diff.addedHeadings.length > 0) headingsAdded.emit((fn) => fn(diff.addedHeadings, s()));
       if (diff.removedHeadings.length > 0) headingsRemoved.emit((fn) => fn(diff.removedHeadings, s()));
@@ -367,6 +375,7 @@ export function createDocStructureBus(): DocStructureBus {
     onBlocksAdded: blocksAdded.add,
     onBlocksRemoved: blocksRemoved.add,
     onBlockOrderChanged: blockOrderChanged.add,
+    onBlockParTitlesChanged: blockParTitlesChanged.add,
     onHeadingsAdded: headingsAdded.add,
     onHeadingsRemoved: headingsRemoved.add,
     onHeadingsChanged: headingsChanged.add,
