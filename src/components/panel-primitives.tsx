@@ -40,8 +40,8 @@ import RichTextField from "./RichTextField";
 import { BorrowedMainText } from "./BorrowedMainText";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";
-import { MenuProvider } from "./menu/MenuProvider";
-import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
+import { AnchoredMenu } from "./menu/AnchoredMenu";
+import { MenuActionRow } from "./menu/MenuActionRow";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -2598,8 +2598,17 @@ export function PanelHeader({
 
 /** "+" button that, when clicked, drops a small dropdown menu of choices
  *  (instead of firing a single onAdd). Used by panels that host more than
- *  one card kind. Mirrors the flip-on-overflow / click-outside-to-close
- *  pattern from `DocStyleDropdown`. */
+ *  one card kind.
+ *
+ *  Folded onto `<AnchoredMenu>` (task 143). What it hand-rolled before: a
+ *  `document` mousedown closer, and a flip computed off a HARD-CODED size
+ *  estimate (`POPUP_H = 28 · options.length + 8`, `POPUP_W = 160`) that no row
+ *  height was ever checked against — with no clamp behind it, so an estimate
+ *  that ran short simply pushed rows off the viewport. The shell measures the
+ *  rendered menu instead, clamps + scrolls what still doesn't fit, re-anchors
+ *  on resize, and adds the Escape the old menu never had. The option contract
+ *  (label / disabled / the trigger rect handed to `onClick` so the Bibliography
+ *  picker can anchor to "+") is unchanged. */
 function HeaderAddDropdown({
   options,
 }: {
@@ -2609,65 +2618,15 @@ function HeaderAddDropdown({
     disabled?: boolean;
   }[];
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const triggerRectRef = useRef<DOMRect | null>(null);
-  const [pos, setPos] = useState<{
-    top?: number;
-    bottom?: number;
-    left?: number;
-    right?: number;
-  }>({});
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-
-  const handleToggle = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      triggerRectRef.current = r;
-      const POPUP_H = 28 * options.length + 8;
-      const POPUP_W = 160;
-      const GAP = 4;
-      const flipUp =
-        r.bottom + GAP + POPUP_H > window.innerHeight && r.top > POPUP_H + GAP;
-      const flipLeft =
-        r.left + POPUP_W > window.innerWidth - 4 &&
-        window.innerWidth - r.right > POPUP_W;
-      const vertical = flipUp
-        ? { bottom: window.innerHeight - r.top + GAP }
-        : { top: r.bottom + GAP };
-      const horizontal = flipLeft
-        ? { right: window.innerWidth - r.right }
-        : { left: r.left };
-      setPos({ ...vertical, ...horizontal });
-    }
-    setOpen(!open);
-  };
-
-  const pick = (onClick: (anchorRect?: DOMRect) => void) => {
-    const rect = triggerRectRef.current ?? undefined;
-    setOpen(false);
-    onClick(rect ?? undefined);
-  };
-
   return (
-    <div ref={ref} className="relative inline-flex items-center">
-      <button
-        ref={btnRef}
-        onClick={handleToggle}
-        className="iconbtn-sm"
-        data-hint="Add"
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
+    <AnchoredMenu
+      ariaLabel="Add"
+      align="start"
+      triggerHint="Add"
+      triggerClassName="iconbtn-sm"
+      wrapperClassName="relative inline-flex items-center"
+      menuClassName="min-w-[140px]"
+      trigger={() => (
         <svg
           width="14"
           height="14"
@@ -2679,39 +2638,23 @@ function HeaderAddDropdown({
         >
           <path d="M12 5v14M5 12h14" />
         </svg>
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="fixed bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-[60] min-w-[140px]"
-          style={{
-            top: pos.top,
-            bottom: pos.bottom,
-            left: pos.left,
-            right: pos.right,
-          }}
-        >
-          {options.map((o) => (
-            <button
-              key={o.label}
-              role="menuitem"
-              disabled={o.disabled}
-              onClick={() => {
-                if (o.disabled) return;
-                pick(o.onClick);
-              }}
-              className={
-                o.disabled
-                  ? "w-full text-left px-3 py-1 text-sm text-ink-faint cursor-not-allowed"
-                  : "w-full text-left px-3 py-1 text-sm text-[var(--foreground)] hover-on-light"
-              }
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
       )}
-    </div>
+    >
+      {({ close, anchorRect }) =>
+        options.map((o) => (
+          <MenuActionRow
+            key={o.label}
+            id={o.label}
+            label={o.label}
+            disabled={o.disabled}
+            onSelect={() => {
+              close();
+              o.onClick(anchorRect ?? undefined);
+            }}
+          />
+        ))
+      }
+    </AnchoredMenu>
   );
 }
 
@@ -2836,22 +2779,6 @@ export function BandDivider({
 
 /* ── Three-dot item menu ─────────────────────────────────────────── */
 
-// Anchor the dropdown below its trigger, flipping above near the viewport
-// bottom. `align="left"` (panel-header menus, near the panel's left edge)
-// drops rightward (align:start); `align="right"` (card menus, near a card's
-// right edge) drops leftward (align:end). Matches the sibling topbar kebabs
-// (ExternalChangeBadge / CollabStatusPill) — one placement vocabulary.
-const ITEM_MENU_PLACEMENTS: Record<"left" | "right", FloatingMenuPlacement[]> = {
-  left: [
-    { side: "below", align: "start" },
-    { side: "above", align: "start" },
-  ],
-  right: [
-    { side: "below", align: "end" },
-    { side: "above", align: "end" },
-  ],
-};
-
 export function ItemMenu({
   children,
   align = "right",
@@ -2866,12 +2793,6 @@ export function ItemMenu({
    *  menu's contents are narrower than that (Outline's is "View options"). */
   hint?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  // Unique per instance so two momentarily-coexisting menus don't collide in
-  // the cross-backend registry table (`publishRegistry`).
-  const menuId = useId();
   // Auto-injected text-size widget for any panel-header menu inside a Panel.
   // Card-level menus (align="right") are skipped. The widget is appended
   // INTO the first child of the menu (the standard color-swatch + view-toggle
@@ -2904,76 +2825,42 @@ export function ItemMenu({
     );
   }, [children, injectTextSize, bodyKey]);
 
-  const close = useCallback(() => {
-    setOpen(false);
-    setAnchorRect(null);
-  }, []);
-  const toggle = useCallback(() => {
-    setOpen((o) => {
-      const next = !o;
-      setAnchorRect(next ? (btnRef.current?.getBoundingClientRect() ?? null) : null);
-      return next;
-    });
-  }, []);
-  const trackAnchor = useCallback(
-    () => btnRef.current?.getBoundingClientRect() ?? null,
-    [],
-  );
-
   // Panel-header menus sit at the far left and use a bare button (no
   // rounded lozenge / hover background) for a lighter-weight look.
   // Card-level menus keep the button-style treatment.
   const isPanelHeader = align === "left";
   return (
-    <div className={`relative shrink-0${isPanelHeader ? " -ml-3" : ""}`}>
-      <button
-        ref={btnRef}
-        onClick={(e) => { e.stopPropagation(); toggle(); }}
-        className={isPanelHeader ? "iconbtn-sm" : "iconbtn-md"}
-        data-hint={hint}
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
+    // Folded onto the canonical `<Menu>` primitive in task 180 (retiring a
+    // hand-rolled `fixed z-[9999]` portal + bespoke mousedown listener that was
+    // trapped below floats in a stacking context and collided with
+    // DROP_INDICATOR_Z), and onto `<AnchoredMenu>` in task 143 — which is the
+    // same fold one level further out: the open-state / anchor-rect /
+    // trackAnchor / excludeRefs / trigger-ARIA plumbing this component used to
+    // own is the very plumbing the three remaining hand-rolled dropdowns each
+    // re-derived (and each dropped a different guard from). `closeOnInsideClick`
+    // preserves this menu's "any click inside dismisses" semantics + the
+    // stopPropagation fence against the card header, which its opaque, arbitrary
+    // button children can't express themselves. Chrome kept byte-identical
+    // apart from the added `maxHeight` clamp.
+    <AnchoredMenu
+      ariaLabel="Options"
+      align={align === "left" ? "start" : "end"}
+      gap={4}
+      triggerHint={hint}
+      triggerClassName={isPanelHeader ? "iconbtn-sm" : "iconbtn-md"}
+      wrapperClassName={`relative shrink-0${isPanelHeader ? " -ml-3" : ""}`}
+      menuClassName="min-w-[100px]"
+      closeOnInsideClick
+      trigger={() => (
         <svg width={isPanelHeader ? 14 : 16} height={isPanelHeader ? 14 : 16} viewBox="0 0 24 24" fill="currentColor" stroke="none">
           <circle cx="12" cy="5" r="2" />
           <circle cx="12" cy="12" r="2" />
           <circle cx="12" cy="19" r="2" />
         </svg>
-      </button>
-      {open && anchorRect && (
-        // Folded onto the canonical `<Menu>` primitive (MenuProvider): one
-        // dismiss controller (mousedown-outside + Escape), one keyboard/roving
-        // controller, and body-portaled at OPEN_CHROME_MENU_Z — retiring this
-        // menu's old hand-rolled `fixed z-[9999]` portal + bespoke mousedown
-        // listener, which was trapped below floats in a stacking context and
-        // collided with DROP_INDICATOR_Z. Chrome kept byte-identical.
-        <MenuProvider
-          id={`item-menu-${menuId}`}
-          layout="list"
-          role="menu"
-          portal
-          anchorRect={anchorRect}
-          placements={ITEM_MENU_PLACEMENTS[align]}
-          gap={4}
-          trackAnchor={trackAnchor}
-          // The kebab trigger lives outside the portaled menu, so exempt it from
-          // click-outside (else the toggle click self-closes the menu).
-          excludeRefs={[btnRef.current]}
-          onClose={close}
-          ariaLabel="Options"
-          containerClassName="bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 min-w-[100px]"
-        >
-          {/* Close-on-any-click + the stopPropagation fence: menu items fire on
-              onMouseDown/onClick, and this wrapper's onClick closes the menu and
-              keeps the click from bubbling (React tree, through the portal) to
-              the card header's toggle+select or the root's body contract —
-              preserving the old DOM-nested dropdown's exact semantics. */}
-          <div onClick={(e) => { e.stopPropagation(); close(); }}>
-            {enhancedChildren}
-          </div>
-        </MenuProvider>
       )}
-    </div>
+    >
+      {enhancedChildren}
+    </AnchoredMenu>
   );
 }
 

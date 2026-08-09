@@ -28,6 +28,9 @@ import {
   MenuDelete,
   MenuArchive,
 } from "@/components/panel-primitives";
+import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
+import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
+import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import {
   omniPinStore,
   usePinRequest,
@@ -203,6 +206,23 @@ function categoryOf(item: { id: string; parentCardId?: string }): OmniCategory |
  *
  * "Default view" resets the side's enabled categories to its registry
  * defaults — i.e. the categories whose native panels live on this side.
+ *
+ * Folded onto `<AnchoredMenu>` (task 143). This menu is where the cost of the
+ * stalled migration was actually user-visible: its trigger is pinned to the
+ * BOTTOM of the strip (`mt-auto`), and the hand-rolled placement set
+ * `top = rect.bottom + 4` unconditionally — no flip-up, no clamp, no
+ * `max-height`. On a short viewport with a full strip the whole "Display"
+ * cluster therefore rendered below the fold with nothing to scroll. The
+ * primitive measures the rendered menu, flips it above when it doesn't fit,
+ * and scrolls it when it fits neither way.
+ *
+ * The rows are the shared `<MenuToggleRow>` — so they gain
+ * `role="menuitemcheckbox"` + `aria-checked` + arrow-nav, and the ✓ column
+ * stops being a width-jittering conditional. Closing stays explicit (this menu
+ * mounts no close-on-inside-click wrapper): the category rows toggle and the
+ * menu stays open — several in one visit, as before — while "Default view" is a
+ * one-shot and closes itself. `keepMenuOpen` is the row's own fence keeping the
+ * activating click off the strip beneath it.
  */
 export function OmniFilterMenu({
   side,
@@ -219,30 +239,6 @@ export function OmniFilterMenu({
   categorySides: Record<OmniCategory, "left" | "right">;
   defaultCategories: OmniCategory[];
 }) {
-  const [open, setOpen] = useState(false);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
-
-  useEffect(() => {
-    if (!open) return;
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      const top = r.bottom + 4;
-      setPos(side === "left"
-        ? { top, left: r.left }
-        : { top, right: window.innerWidth - r.right });
-    }
-    const handler = (e: MouseEvent) => {
-      if (
-        menuRef.current && !menuRef.current.contains(e.target as Node) &&
-        btnRef.current && !btnRef.current.contains(e.target as Node)
-      ) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open, side]);
-
   // Each strip's filter menu lists only the panels currently placed on
   // that strip's side. When the user drags a panel between strips, the
   // `categorySides` map updates (via prefs.placements) and the panel's
@@ -254,57 +250,56 @@ export function OmniFilterMenu({
     return defaultCategories.every((c) => enabled.has(c));
   }, [enabled, defaultCategories]);
 
-  const renderRow = (cat: OmniCategory) => (
-    <button
-      key={cat}
-      onMouseDown={(e) => { e.preventDefault(); onToggle(cat); }}
-      className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-    >
-      <span>{CATEGORY_LABELS[cat] ?? cat}</span>
-      <span className="text-[var(--accent)]">{enabled.has(cat) ? "✓" : ""}</span>
-    </button>
-  );
-
   return (
-    <div className="relative shrink-0">
-      <button
-        ref={btnRef}
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className="p-1.5 rounded text-[var(--muted)] hover:text-ink-body hover-on-light flex items-center justify-center"
-        aria-label="Filter"
-        data-hint="Filter"
-      >
+    <AnchoredMenu
+      ariaLabel="Filter"
+      // The menu opens OUTWARD, away from its strip: a left-strip trigger
+      // drops rightward (align:start), a right-strip trigger leftward
+      // (align:end) — the same per-side anchoring the hand-rolled version
+      // expressed as a `left`-vs-`right` style branch, now stated as a
+      // placement the primitive can also FLIP when the space below runs out.
+      align={side === "left" ? "start" : "end"}
+      triggerHint="Filter"
+      triggerClassName="p-1.5 rounded text-[var(--muted)] hover:text-ink-body hover-on-light flex items-center justify-center"
+      menuClassName="min-w-[160px]"
+      trigger={() => (
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
           <circle cx="3" cy="8" r="1.5" />
           <circle cx="8" cy="8" r="1.5" />
           <circle cx="13" cy="8" r="1.5" />
         </svg>
-      </button>
-      {open && (
-        <div
-          ref={menuRef}
-          className="fixed bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-[9999] min-w-[160px]"
-          style={pos}
-        >
-          <button
-            onMouseDown={(e) => { e.preventDefault(); onSelectDefault(); setOpen(false); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-          >
-            <span>Default view</span>
-            <span className="text-[var(--accent)]">{isDefault ? "✓" : ""}</span>
-          </button>
+      )}
+    >
+      {({ close }) => (
+        <>
+          <MenuToggleRow
+            id="omni-default-view"
+            label="Default view"
+            checked={isDefault}
+            onToggle={() => {
+              onSelectDefault();
+              close();
+            }}
+          />
           {localCats.length > 0 && (
             <>
-              <div className="my-1 border-t border-edge-subtle" />
-              <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-                Display
-              </div>
-              {localCats.map(renderRow)}
+              <MenuSeparator />
+              <MenuSectionLabel>Display</MenuSectionLabel>
+              {localCats.map((cat) => (
+                <MenuToggleRow
+                  key={cat}
+                  id={`omni-cat-${cat}`}
+                  label={CATEGORY_LABELS[cat] ?? cat}
+                  checked={enabled.has(cat)}
+                  keepMenuOpen
+                  onToggle={() => onToggle(cat)}
+                />
+              ))}
             </>
           )}
-        </div>
+        </>
       )}
-    </div>
+    </AnchoredMenu>
   );
 }
 

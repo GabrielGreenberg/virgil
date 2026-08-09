@@ -5,6 +5,7 @@ import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
 import { Button, ItemMenu, PANEL, useListNavKeys } from "@/components/panel-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
+import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
 import { serializeBibForExport } from "@/lib/bib-parser";
 import { mintBibUid } from "@/lib/bib-uid";
@@ -603,10 +604,8 @@ function BibliographyPanel({
       <div className="px-3 py-1.5 flex items-center justify-end gap-2">
         <PanelThemePicker panelKey="bib" label="Bibliography color" />
       </div>
-      <div className="my-1 border-t border-edge-subtle" />
-      <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-        Display
-      </div>
+      <MenuSeparator />
+      <MenuSectionLabel>Display</MenuSectionLabel>
       <button
         className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
         onClick={() => setFilter("cited")}
@@ -625,7 +624,7 @@ function BibliographyPanel({
           {filter === "all" ? "✓" : ""}
         </span>
       </button>
-      <div className="my-1 border-t border-edge-subtle" />
+      <MenuSeparator />
       <button
         className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
           citedKeys.size > 0

@@ -8,6 +8,7 @@
  * filter for the same panel. Distinct from the text-object Archive PANEL.
  */
 
+import { MenuSeparator } from "@/components/menu/MenuChrome";
 import { useCardArchiveView, type CardArchiveView } from "./card-archive-view";
 import type { PanelKind } from "./types";
 
@@ -22,7 +23,7 @@ export function CardViewModeMenuItems({ kind }: { kind: PanelKind }) {
   const current = getView(kind);
   return (
     <>
-      <div className="my-1 border-t border-edge-subtle" />
+      <MenuSeparator />
       {OPTIONS.map((o) => {
         const selected = current === o.mode;
         return (
