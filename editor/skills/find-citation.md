@@ -90,11 +90,24 @@ card so the user can drag it into the document.
 
    Then use Crossref + OpenAlex + Semantic Scholar (in that
    order of preference) to find a real, citable paper that matches the
-   request's description. Try the library's authentication helper
-   first:
+   request's description. Try the library's search helper first — its
+   `--query` mode is the DISCOVERY door (see
+   [_find-or-surface.md](_find-or-surface.md), "Calling `bib_auth.py`"):
    ```bash
-   python3 library/scripts/bib_auth.py --query "<query string>" --type article
+   python3 library/scripts/bib_auth.py --query "<query string>" --type "<kind>"
    ```
+   It prints `{"mode": "search", "candidates": [...]}` — ranked records
+   from every source, **not** a verdict. Treat each candidate as a lead
+   and hold it to the acceptance bar below; a high `score` is title
+   similarity, not verification.
+
+   **Set `--type` from the work the request describes, or omit it.** It
+   is a real filter, not a label: `article` narrows Crossref to
+   journal articles, and `book`/`incollection`/`inbook` are what bring
+   OpenLibrary and Google Books into the search at all. Passing
+   `article` for a book request excludes the only catalogs that hold
+   it. When the request doesn't say, omit the flag and search wide.
+
    Fall through to WebSearch + WebFetch (with the same source
    priority) if `bib_auth.py` is unavailable from this `cwd` OR
    errors with `ModuleNotFoundError` (deps not installed). Don't try

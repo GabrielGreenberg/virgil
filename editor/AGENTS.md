@@ -403,6 +403,26 @@ Inline `jq` in the skill markdown is fine for one-field reads or
 simple status filters. Don't reimplement the paragraph-UUID regex in a
 skill — call `get_para_context.py`.
 
+> **An invocation you write is an invocation an agent runs.** A skill is a
+> prompt, so a documented flag the script never declared is a live defect, not
+> a typo — and argv doesn't complain. `bib_auth.py` had no argparse at all
+> while `find-citation` and `answer-bib-review` invoked it with
+> `--query`/`--citekey`/`--title`/`--author`/`--type`; every one landed as a
+> positional (`title="--query"`), so the lookup returned *garbage rather than
+> an error* and the skills' only fallback trigger was `ModuleNotFoundError`
+> (task 158). CI:
+> [library/lib/\_\_tests\_\_/skill-script-cli-guardrail.test.ts](../library/lib/__tests__/skill-script-cli-guardrail.test.ts)
+> reads every `<script>.py …` invocation in BOTH silos' skills — with or
+> without a `python3` token, since `create-card.md` elides the interpreter and
+> `setup.md` keeps it in a shell variable — and fails any `--flag` that
+> appears nowhere in that script's source. Its allowlists are empty and should
+> stay so: an entry there is a skill telling an agent to run something that
+> can't work. The check is deliberately parse-agnostic (a third of the
+> pipeline hand-rolls its argv walk), and a *commented* line is not an
+> invocation. Paths get the same treatment from the other end — the paper
+> bundle rewrites `editor/scripts/` **and** `library/scripts/` to their
+> `.virgil/scripts/<silo>/` locations, so write the repo-relative form.
+
 ## Future work (intentionally deferred)
 
 - **End-user folder sync — landed.** The build now emits

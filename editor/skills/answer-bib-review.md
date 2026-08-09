@@ -81,13 +81,26 @@ Three modes:
 
 2. **For `type: "fields"`:**
    - Look up the entry against Crossref → OpenAlex → Semantic Scholar
-     → arXiv (in that order). Try the library's auth helper:
+     → arXiv (in that order). Try the library's auth helper. Write
+     step 1's `fields` object to a file and hand it over **verbatim,
+     with no cleanup** — the DOI, arXiv-ID and ISBN fast-paths read
+     those fields, and they are what fix bad metadata, so pre-tidying
+     defeats them:
      ```bash
-     python3 "$scripts_library/bib_auth.py" --citekey <bibKey> \
-                                            --title "<existing title>" \
-                                            --author "<existing author>" \
-                                            --type article
+     printf '%s' '<the fields object from bib_resolve.py>' > /tmp/<bibKey>-fields.json
+     python3 "$scripts_library/bib_auth.py" --fields-file /tmp/<bibKey>-fields.json \
+                                            --type "<the entry's @type>"
      ```
+     It prints an `AuthResult` — `state`, `matched_record`,
+     `field_changes`. (`--title` / `--author` override the file's
+     values when you need a corrected seed.) The `<bibKey>` here names
+     a work cited by *this paper*, which usually isn't a library
+     entry, so don't reach for `--citekey`; that mode reads the
+     library's own `master.bib`
+     ([_find-or-surface.md](_find-or-surface.md), "Calling
+     `bib_auth.py`"). Use it only when the key really is a library
+     entry, adding `--library <root>`.
+
      If it errors with `ModuleNotFoundError` (deps not installed) or
      can't resolve from `cwd`, fall through to direct Crossref /
      OpenAlex lookups via stdlib `urllib.request` (both expose JSON

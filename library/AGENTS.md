@@ -515,6 +515,64 @@ monolithic `deep-index.md` will land iteratively):
 
 Edit the source under `library/skills/`; rerun `npm run build:library-bundle` (or `npm run dev` / `npm run build`, which auto-run via `predev` / `prebuild` hooks) to regenerate `.claude/commands/library/` and `public/skill-bundle/`.
 
+### A documented invocation is an executed invocation
+
+> **Every `--flag` a skill prints in a `python3 …/<script>.py` line must exist
+> in that script. A skill is a prompt: an agent runs the line verbatim, and
+> argv does not complain.**
+
+`bib_auth.py` had no argparse at all — one positional entry,
+`<title> [<author>…]` — while `/editor/find-citation` invoked it with
+`--query --type` and `/editor/answer-bib-review` with
+`--citekey --title --author --type` (task 158). Each flag landed as a
+positional (`title="--query"`, everything after it an "author"), so the helper
+came back with a *plausible wrong answer* instead of an error, and the skills'
+only fallback trigger was `ModuleNotFoundError`. Nothing could have caught it:
+types don't cross the markdown↔Python boundary and neither bundle build reads
+the invocations it ships.
+
+CI:
+[library/lib/\_\_tests\_\_/skill-script-cli-guardrail.test.ts](lib/__tests__/skill-script-cli-guardrail.test.ts)
+scans both silos' skill markdown and fails any flag absent from the invoked
+script's source, or any script that doesn't exist. Both allowlists are EMPTY
+and belong that way — an entry is a skill telling an agent to run something
+that can't work, so build the flag or fix the doc. Three rules it earned:
+
+- **Literal presence, not `add_argument`.** Roughly a third of this pipeline
+  hand-rolls its argv walk (`repair_pgmarks.py`, `audit_deepindex.py`,
+  `format_references_section.py`) and those flags are real; demanding argparse
+  would flag four healthy call sites and teach the next person to silence the
+  guard. Honest residual: the loose rule can be immunised by the script's own
+  help text (`bib_auth.py`'s epilog prints its flags), which is why that
+  script additionally has a suite driving the real parser.
+- **An interpreter token is not what makes it an invocation.** The first
+  version anchored on `python3`, and an adversarial pass immediately found the
+  hole it left: `_find-or-surface.md` — the cross-silo SSOT for *how to call
+  `bib_auth.py`* — writes its forms bare, so the guard read nothing there
+  while the file asserted right below them that CI checked those flags. Same
+  for `create-card.md`'s eleven per-kind examples and `setup.md`'s
+  `"$PY" …/setup.py --force`. The bare form is scoped harder (the basename
+  must resolve to a known script, and a `--flag` must follow) and added 25
+  invocations, including `--limit`, which no other call site reached.
+- **A commented line is documentation, not an invocation** — which is how
+  `di-clean-prose.md`'s explicit "script doesn't exist yet" placeholder stays
+  legal without an allowlist entry.
+
+The sentinel test pins bib_auth's whole flag set by name, so removing the last
+call site that documents a flag goes red rather than quietly un-covering it.
+
+`bib_auth.py`'s own CLI now states the fork its two callers always had:
+`--query` is DISCOVERY (ranked candidates from every source — running an
+authenticator against a free-text description is meaningless, since the seed
+title can't match and the verdict is `failed` even on a perfect hit), and
+`--citekey`/`--title` is VERIFICATION (the `AuthResult`). `--citekey` reads the
+entry out of `master.bib` verbatim and threads the library root through for
+the recovery chain, which retired `authenticate-bib.md`'s hand-marshalled
+`python3 -c` snippet — a shape that couldn't survive an apostrophe in a title.
+Contract: [library/scripts/tests/test_bib_auth_cli.py](scripts/tests/test_bib_auth_cli.py),
+run under `npx vitest` via
+[bib-auth-cli-python.test.ts](lib/__tests__/bib-auth-cli-python.test.ts).
+
 ## One-off-script promotion rule
 
 Any one-off Python script written under `/tmp/<paper>/` or inline
