@@ -62,12 +62,19 @@ export type AnchoredMenuAlign = "start" | "end";
  * that shares one alignment — and the fallback is the LAST placement in the
  * list. A two-entry `[below-start, above-start]` therefore answered "the menu is
  * too wide" with "put it above and clamp it", which for a trigger near the top
- * of the window (a panel header's "+") means clamping to the sliver of space
- * above it: a two-row menu becomes a scrollbar. The hand-rolled menu this
- * replaced chose its axes INDEPENDENTLY (`flipUp` and `flipLeft` were separate
- * booleans), and that behavior is preserved here by enumerating the product in
- * preference order — vertical preference first, then the horizontal escape,
- * before giving up the preferred side.
+ * of the window (a panel header's "+" in a narrowed right column) means clamping
+ * to the sliver of space above it: a two-row menu becomes a ~28px scroll box.
+ *
+ * Stated precisely, because the tempting version is wrong: the hand-rolled menu
+ * did NOT get this right and is not the standard being restored. Its `flipLeft`
+ * required `r.left + 160 > vw - 4` AND `vw - r.right > 160`, which together
+ * imply a trigger under 4px wide — unreachable for a 20px `iconbtn-sm`, so it
+ * never fired and the old menu simply overflowed the right edge by a few pixels.
+ * What regressed is subtler and worse: a horizontal overflow now hijacks the
+ * VERTICAL decision and drags the height clamp with it. Enumerating the product
+ * in preference order — vertical preference first, then the horizontal escape,
+ * before giving up the preferred side — is what keeps the two axes from
+ * deciding each other.
  */
 export const ANCHORED_MENU_PLACEMENTS: Record<
   AnchoredMenuAlign,
