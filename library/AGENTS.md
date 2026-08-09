@@ -498,10 +498,12 @@ session opened in this repo:
 - `/library/ai-requests` — drain user-authored AI review requests
 - `/library/iterate-skill <skill-name> <citekey...>` — closed-loop iteration
 
-**Deep-index subskills** (Phase 1 stubs; content migration from the
-monolithic `deep-index.md` will land iteratively):
+**Deep-index subskills.** `/library/deep-index` dispatches all six, in
+this order — the preflight at its Step 0, the rest at its Step 3. Each is
+also callable standalone (`/library/clean-bibliography <citekey>` to
+re-itemize References without re-running the pass):
 
-- `/library/di-preflight <citekey>` — Step 0 / Step 0.5: metadata mismatch, lending-slip, JSTOR boilerplate, multi-article, OCR recovery dispatch, genre routing.
+- `/library/di-preflight <citekey>` — Step 0.0 – 0.6: empty-body / OCR-recovery gate, lending-slip, JSTOR boilerplate, metadata mismatch, multi-article, Caesar/running-header, genre routing, pgmark coverage.
 - `/library/di-clean-prose <citekey>` — Step 3a / 3b / 3c: title, headers, heading hierarchy, drop caps, pgmark alignment.
 - `/library/recover-footnotes <citekey>` — Step 3d full tier ladder.
 - `/library/clean-bibliography <citekey>` — Step 3e / 3f / 3g: References itemization, references.bib emission, citation rewriting.
@@ -514,6 +516,76 @@ monolithic `deep-index.md` will land iteratively):
 - `library/skills/_find-or-surface.md` — the **cross-silo** "find-or-surface, never fabricate, Library-first" doctrine for every citation/bib skill (`authenticate-bib`, `find-citation`, `answer-bib-review`, `draft-footnote`, …). Authored once here; a byte-identical copy lives at `editor/skills/_find-or-surface.md` so the editor bundle ships it too (the two silos land in separate on-disk folders). The copies are kept identical by `library/lib/__tests__/find-or-surface-doctrine.test.ts` — edit **both**.
 
 Edit the source under `library/skills/`; rerun `npm run build:library-bundle` (or `npm run dev` / `npm run build`, which auto-run via `predev` / `prebuild` hooks) to regenerate `.claude/commands/library/` and `public/skill-bundle/`.
+
+### A declared subskill is a dispatched subskill
+
+> **A skill whose frontmatter says "Subskill of /X" must appear in X's
+> dispatch sequence as `Run \`/<silo>/<name>\``. Membership is DERIVED from
+> that self-declaration, not from a list someone maintains — and a
+> cross-reference is not a dispatch.**
+
+`/library/deep-index` declared six subskills and dispatched five (task
+2026-07-18-163). The missing one was `di-preflight`, so on every deep-index
+pass the JSTOR cover-page strip, the interlibrary lending-slip strip, the
+content↔metadata mismatch policy (and its `bib.state = needs-reauth` flip)
+and the pgmark-coverage reconciliation simply never ran — unless an
+operator happened to invoke it by hand, which nothing told them to do and
+no queue kind scheduled. `di-clean-prose.md` opened by saying it "operates
+on `main.tex` after `/library/di-preflight`", and was wrong every time.
+
+Nothing could have caught it. The subskill existed, was reachable as a
+slash command, was documented in this file, was exercised by nine
+`test-corpus.json` rows, and had four Python helpers written for it. Every
+one of those facts is about the *subskill*; none is about the *caller* —
+the same lesson `createsAtom ⇒ requiresCardApi` earned in `src/` (root
+AGENTS.md, task 233): **"registered and reachable" proves nothing about
+whether anything invokes it.**
+
+Three rules it earned:
+
+- **A partial inline copy is worse than no copy.** deep-index carried its
+  own "Genre detection (preflight)" section — the one Step-0 job it *did*
+  do — and the two had drifted: the local copy knew five genre labels,
+  di-preflight six, and the missing `article-vancouver` is precisely the
+  label that decides whether `rewrite_citations --style=bracket-numeric`
+  runs. A duplicate that looks like coverage is what kept the gap
+  invisible. The orchestrator now states the *dispatch* and each subskill
+  documents its own branches.
+- **The dispatch form is the contract, not the mention.** di-preflight was
+  named by four sibling skills and dispatched by none, so the guard
+  requires the imperative `Run \`/library/<name>\`` the orchestrator
+  actually uses. Matching a bare mention would have reported green.
+- **Name the fourth exit.** deep-index's §0 promised "exactly three"
+  permitted exits while §Prerequisites hard-stopped a fourth way
+  (`extraction-empty-body`) that no banner covered. That gate now belongs
+  to di-preflight §0.0 — which *determines* the cause
+  (`recover_ocr_pipeline.py --check-only`: no text layer vs. a failed
+  extraction over one) instead of guessing "scanned PDF", and routes back
+  as `PREFLIGHT_BLOCKED` → the STALLED banner. It never repairs: OCR +
+  re-extraction is `/library/index-paper`'s job, exactly as deep-index's
+  own §"What this command does NOT do" says, and `--force-install` is
+  never passed (ocrmypdf is a `/library/setup` dep, not a 200 MB surprise
+  mid-pass).
+
+CI:
+[library/lib/\_\_tests\_\_/subskill-dispatch-guardrail.test.ts](lib/__tests__/subskill-dispatch-guardrail.test.ts)
+walks both silos: every declared subskill must be dispatched by the
+umbrella it names, that umbrella must exist, and every `/library/…` /
+`/editor/…` slash command any skill points an agent at must resolve to a
+real skill file (the rename half of the same class —
+`/editor/answer-revision-comment` outlived its file once already). Its
+allowlist is EMPTY and belongs that way: wire the dispatch or drop the
+claim. The editor silo has no declarations today, so its hit set is empty
+by fact rather than by exemption; a `/editor/review` subskill that starts
+declaring itself is covered the day it does.
+
+Two things the guard is deliberately honest about. It reads a *self*-
+declaration, so a subskill that never claims membership is invisible to it
+— which is why the claim belongs in frontmatter, the routing copy an agent
+reads first. And its own first draft matched `Subskill of` with a literal
+space, which a wrapped YAML description does not contain: it read the
+corpus as five subskills and reported green on the very file it exists to
+catch. The sentinel leg pins all six by name for that reason.
 
 ### A documented invocation is an executed invocation
 
