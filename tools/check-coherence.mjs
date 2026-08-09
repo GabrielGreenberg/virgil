@@ -833,6 +833,11 @@ const ALLOWLIST_INTERNAL_MARKERS = new Set(["vfid", "vcid", "vlid", "vlidend"]);
 // alternation extractor below can't fully see — it stops at the first source
 // `{`, so it captures only `textbackslash`. Add the other two explicitly.
 const ALLOWLIST_ESCAPE_SPECIALS = new Set(["textasciitilde", "textasciicircum"]);
+// `\verb<delim>…<delim>` / `\verb*` — inline verbatim, genuinely rendered
+// (latex-parser.ts handles it via the delimiter-based verbatim branch →
+// `verbatimMark()`, task 264), but NOT as a `/^\\cmd\{/` literal inside
+// parseInlineContent, so the extractor above can't see it. Add explicitly.
+const ALLOWLIST_VERBATIM_HANDLED = new Set(["verb"]);
 
 /** Parse `KNOWN_CITE_COMMANDS = [ "cite", … ] as const` from cite-commands.ts. */
 function knownCiteCommands() {
@@ -865,6 +870,7 @@ function parserInlineCommands() {
     }
   }
   for (const e of ALLOWLIST_ESCAPE_SPECIALS) out.add(e);
+  for (const e of ALLOWLIST_VERBATIM_HANDLED) out.add(e);
   return out;
 }
 
