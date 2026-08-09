@@ -37,8 +37,8 @@ const h = vi.hoisted(() => {
       bottom: number;
     },
     cache,
-    // STABLE cacheRef identity — the real useEditorViewportCache returns a
-    // stable ref, and SelectionActionsMenu's placement effect lists `cacheRef`
+    // STABLE frameRef identity — the real useViewportFrame returns a stable
+    // ref, and SelectionActionsMenu's placement effect lists `cacheRef`
     // in its deps. A fresh ref each render would churn that effect (clearing the
     // scroll-idle timer mid-gesture), which the component never does in prod.
     cacheRef: { current: cache as unknown },
@@ -47,8 +47,20 @@ const h = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/hooks/useEditorViewportCache", () => ({
-  useEditorViewportCache: () => ({ cacheRef: h.cacheRef, version: 0 }),
+vi.mock("@/lib/editor-geometry/use-viewport-frame", () => ({
+  useViewportFrame: () => ({ frameRef: h.cacheRef, version: 0 }),
+}));
+// The barrel is mocked so the test stays hermetic against the geometry
+// service's import graph; `coordsAtPosCached` passes through to the mocked
+// editor's `coordsAtPos` (exactly the real helper's service-less fallback).
+vi.mock("@/lib/editor-geometry", () => ({
+  coordsAtPosCached: (editor: Editor, pos: number) => {
+    try {
+      return editor.view.coordsAtPos(pos);
+    } catch {
+      return null;
+    }
+  },
 }));
 vi.mock("../ActionsMenuPanel", () => ({
   ActionsMenuPanel: ({

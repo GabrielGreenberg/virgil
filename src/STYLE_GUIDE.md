@@ -914,8 +914,9 @@ consumer reads the same source:
 - `--margin-col-handle-inset` (default `22px`) — the narrow-viewport
   **floor** for handle placement (`editorColumnLeft − this`), below which a
   deeply-indented block's handle won't be pushed off-screen-left. Read by JS
-  via `getComputedStyle` in [src/hooks/useEditorViewportCache.ts](src/hooks/useEditorViewportCache.ts)
-  (`cache.marginInset`) and applied in [src/text-objects/handle-layout.ts](src/text-objects/handle-layout.ts).
+  via `getComputedStyle` in
+  [src/lib/editor-geometry/viewport-frame.ts](src/lib/editor-geometry/viewport-frame.ts)
+  (`frame.marginInset`) and applied in [src/text-objects/handle-layout.ts](src/text-objects/handle-layout.ts).
 - `--margin-handle-gap` (default `0.625em`) — the **one uniform GAP** every
   margin affordance leaves between its RIGHT edge and its block's marker.
   em-based so it scales with the labeled text; resolved PER BLOCK in

@@ -63,7 +63,7 @@ export interface HandleLayoutInput {
    *  floor reference so narrow viewports don't push the handle off-screen. */
   editorColumnLeft: number;
   /** Narrow-viewport floor inset, read from `--margin-col-handle-inset` via
-   *  the EditorViewportCache (`cache.marginInset`). */
+   *  the EditorViewportFrame (`frame.marginInset`). */
   baselineInset: number;
 }
 

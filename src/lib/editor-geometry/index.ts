@@ -5,7 +5,13 @@ export {
   type EditorGeometryService,
   type GeometryStats,
 } from "./service";
-export { getGeometry, getOrCreateGeometry } from "./registry";
+export { getGeometry, getOrCreateGeometry, coordsAtPosCached } from "./registry";
+export {
+  EMPTY_VIEWPORT_FRAME,
+  computeViewportFrame,
+  viewportFramesEqual,
+  type EditorViewportFrame,
+} from "./viewport-frame";
 export {
   computeSectionPathAt,
   geomBreadcrumbEnabled,

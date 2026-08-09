@@ -54,9 +54,10 @@ import {
   type AnchoredCardRef,
 } from "@/links/_shared/anchored-card-store";
 import {
-  useEditorViewportCache,
-  type EditorViewportCache,
-} from "@/hooks/useEditorViewportCache";
+  coordsAtPosCached,
+  type EditorViewportFrame,
+} from "@/lib/editor-geometry";
+import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import {
   opticalCenterY,
@@ -258,7 +259,7 @@ export function pillVerticalSeat(
  *  the editor's viewport. */
 function computePlacement(
   editor: Editor,
-  cache: EditorViewportCache,
+  cache: EditorViewportFrame,
   targetKey: string | null,
   index: PendingChangeIndex,
 ): Placement {
@@ -272,12 +273,10 @@ function computePlacement(
   const range = findLinkedAnchorRange(editor.state.doc, target.anchorId);
   if (!range) return INVISIBLE;
 
-  let coords: { left: number; top: number; bottom: number };
-  try {
-    coords = editor.view.coordsAtPos(range.from);
-  } catch {
-    return INVISIBLE;
-  }
+  // Through the geometry service's per-frame memo (C7) — shared with any
+  // other same-frame placement read of this pos. Null = the old catch path.
+  const coords = coordsAtPosCached(editor, range.from);
+  if (!coords) return INVISIBLE;
 
   const scrollTop = cache.scrollTop;
   const scrollBottom = cache.scrollBottom;
@@ -353,7 +352,7 @@ export function PendingChangePill({
   const indexRef = useRef(index);
   indexRef.current = index;
 
-  const { cacheRef, version: cacheVersion } = useEditorViewportCache(
+  const { frameRef: cacheRef, version: cacheVersion } = useViewportFrame(
     editorRef.current,
   );
   /* eslint-enable react-hooks/refs */
