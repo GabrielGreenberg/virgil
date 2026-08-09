@@ -24,16 +24,16 @@ import { memo, useCallback, useRef, useState, type ReactNode } from "react";
 import { formatRelativeShort } from "@/lib/collab";
 import { useCollabContext } from "@/hooks/useCollab";
 import { MenuProvider } from "./menu/MenuProvider";
+import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
-import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 
 // Anchor the kebab dropdown below its trigger, flipping above when the topbar
 // sits near the viewport bottom. Matches ExternalChangeBadge (the sibling
 // topbar kebab) so the two dropdowns behave identically.
-const MENU_PLACEMENTS: FloatingMenuPlacement[] = [
-  { side: "below", align: "end" },
-  { side: "above", align: "end" },
-];
+// Drop below the trigger, flip above near the viewport bottom — the ONE
+// button-anchored placement vocabulary, shared with `<AnchoredMenu>` so a
+// fourth copy of this table cannot drift from the other three.
+const MENU_PLACEMENTS = ANCHORED_MENU_PLACEMENTS.end;
 
 /** The one interactive row of the collab kebab — "Edit identity…". Registers
  *  into the provider (via `useMenuItem`) so it gains arrow-nav + the roving

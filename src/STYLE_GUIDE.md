@@ -790,7 +790,37 @@ accent ✓ right, `role="menuitemcheckbox"` + `aria-checked`, registered via
 the caller's business (MenuBar's Display rows close from inside their own
 `onToggle`); pass `keepMenuOpen` inside `ItemMenu`, whose children wrapper
 otherwise closes the menu on any bubbled click — a run of independent toggles
-should not dismiss the menu after each one.
+should not dismiss the menu after each one. A row that needs a decorative glyph
+before its label (Search's per-scope colour dot) passes `leading`; state stays
+on `aria-checked`, so the extra node is `aria-hidden` decoration.
+
+**A trigger button that opens a menu is `<AnchoredMenu>`** (`src/components/menu/`),
+not a `useState` + `getBoundingClientRect` of your own. `MenuProvider` owns the
+OPEN menu; `AnchoredMenu` owns the button that opens one — open state, the anchor
+rect, the `trackAnchor` re-read, the `excludeRefs` entry that makes the trigger a
+real toggle, `aria-haspopup`/`aria-expanded`, the surface chrome, and the
+`maxHeight` clamp (on by default). Callers supply the button's CONTENT as a
+function of `open` and the rows as children (or a `({ close, anchorRect })`
+render prop); `closeOnInsideClick` is the opt-in for opaque children that can't
+call `close` themselves (`ItemMenu`). Non-interactive chrome is `<MenuSeparator>`
+/ `<MenuSectionLabel>` — the divider and the small uppercase caption, previously
+copied as class literals into ten and seven places respectively.
+
+Why the shell exists, given the primitive already did (task 143): `ItemMenu` had
+folded onto `MenuProvider` and hard-codes a kebab trigger, so a "+" button, a
+horizontal kebab and a "More ⌄" chip each re-derived the plumbing above — and
+each dropped a *different* guard. The omni filter menu's trigger is pinned to the
+BOTTOM of its strip and set `top = rect.bottom + 4` with no flip and no clamp, so
+on a short viewport its "Display" rows rendered below the fold, unreachable;
+the "+" menu flipped off a hard-coded `POPUP_H = 28 · n + 8` estimate; Search's
+scope menu had no flip in either axis and no menu semantics at all. None
+repositioned on resize; none closed on Escape. CI now greps for the shape:
+[anchored-menu-guardrail.test.ts](components/menu/__tests__/anchored-menu-guardrail.test.ts)
+censuses every DECLARATION (not file — `HeaderAddDropdown` and the migrated
+`ItemMenu` were siblings in one file) that positions a shadowed `fixed`/`absolute`
+surface from a rect it measures itself, in both silos and in both the className
+and inline-style forms. `src/` is drained of menus; the remaining entries are one
+float shell and the two Library-silo holdouts.
 
 ### Z-index ladder
 

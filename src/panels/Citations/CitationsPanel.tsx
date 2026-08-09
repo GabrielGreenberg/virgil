@@ -9,6 +9,7 @@ import {
   useListNavKeys,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
+import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
@@ -306,10 +307,8 @@ function CitationsPanel({
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="citation" label="Citation color" />
           </div>
-          <div className="my-1 border-t border-edge-subtle" />
-          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-            Package
-          </div>
+          <MenuSeparator />
+          <MenuSectionLabel>Package</MenuSectionLabel>
           {BIB_PACKAGES.map((p) => (
             <button
               key={p.value}
@@ -322,10 +321,8 @@ function CitationsPanel({
               </span>
             </button>
           ))}
-          <div className="my-1 border-t border-edge-subtle" />
-          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-            Style
-          </div>
+          <MenuSeparator />
+          <MenuSectionLabel>Style</MenuSectionLabel>
           {STYLES.map((s) => (
             <button
               key={s.value}

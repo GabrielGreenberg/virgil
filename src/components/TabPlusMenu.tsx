@@ -33,10 +33,10 @@ import { EXAMPLE_DOC_ID } from "@/lib/example-doc/example-identity";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
 import { multiWindowSupported } from "@/lib/multi-window/bus";
-import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { IconPlus } from "./editor-layout/panel-icons";
 import { Kbd } from "./Kbd";
 import { MenuProvider } from "./menu/MenuProvider";
+import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
 
 interface Props {
@@ -55,10 +55,10 @@ interface Props {
   exampleAvailable: boolean;
 }
 
-const TAB_PLUS_PLACEMENTS: FloatingMenuPlacement[] = [
-  { side: "below", align: "start" },
-  { side: "above", align: "start" },
-];
+// Drop below the trigger, flip above near the viewport bottom — the ONE
+// button-anchored placement vocabulary, shared with `<AnchoredMenu>` so a
+// fourth copy of this table cannot drift from the other three.
+const TAB_PLUS_PLACEMENTS = ANCHORED_MENU_PLACEMENTS.start;
 
 export function TabPlusMenu({
   docs,

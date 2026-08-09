@@ -7,6 +7,7 @@ import { VIEW_PREF_REGISTRY } from "@/lib/view-prefs/registry";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
 import { MenuToggleRow } from "./menu/MenuToggleRow";
+import { MenuSeparator, MenuSectionLabel } from "./menu/MenuChrome";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 // CHIP 5a: the BlockType dropdown's heading items route through the canonical
 // `headingRun` (SET + numbered:true) in the action registry — the SAME `run()`
@@ -652,7 +653,7 @@ export function ViewMenu({
           containerStyle={{ position: "absolute" }}
         >
         <div ref={dropdownRef}>
-          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Display</div>
+          <MenuSectionLabel>Display</MenuSectionLabel>
           {/* The Display rows are enumerated from VIEW_PREF_REGISTRY (id + label
               + membership). `checked`/`onToggle` stay PROP-controlled — the
               keyboard test mounts ViewMenu with a full prop bag — so these two
@@ -684,7 +685,7 @@ export function ViewMenu({
               />
             ));
           })()}
-          <div className="my-1 border-t border-edge-subtle" />
+          <MenuSeparator />
           <ViewGroupRow id="marginalia-group" label="Marginalia" expanded={marginaliaExpanded} onToggle={() => setMarginaliaExpanded((p) => !p)} />
           {marginaliaExpanded && (
             <>
@@ -752,20 +753,20 @@ export function ViewMenu({
               the same trailing block as Fonts… */}
           {onOpenMarginsMode ? (
             <>
-              <div className="my-1 border-t border-edge-subtle" />
+              <MenuSeparator />
               <ViewActionRow id="margins" label="Margins…" onRun={() => { onOpenMarginsMode(); setOpen(false); }} />
             </>
           ) : null}
           {/* Fonts dialog launcher — sits above the close-all action. */}
           {onOpenFontsDialog ? (
             <>
-              {!onOpenMarginsMode && <div className="my-1 border-t border-edge-subtle" />}
+              {!onOpenMarginsMode && <MenuSeparator />}
               <ViewActionRow id="fonts" label="Fonts…" onRun={() => { onOpenFontsDialog(); setOpen(false); }} />
             </>
           ) : null}
           {onCloseAllPanels && (
             <>
-              <div className="my-1 border-t border-edge-subtle" />
+              <MenuSeparator />
               <ViewActionRow id="close-all" label="Close all panels" onRun={() => { onCloseAllPanels(); setOpen(false); }} />
             </>
           )}

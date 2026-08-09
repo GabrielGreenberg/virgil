@@ -10,6 +10,20 @@
 
 export { MenuProvider } from "./MenuProvider";
 export type { MenuProviderProps } from "./MenuProvider";
+export {
+  AnchoredMenu,
+  ANCHORED_MENU_PLACEMENTS,
+  MENU_SURFACE_CLASS,
+} from "./AnchoredMenu";
+export type {
+  AnchoredMenuProps,
+  AnchoredMenuAlign,
+  AnchoredMenuRenderProps,
+} from "./AnchoredMenu";
+export { MenuActionRow } from "./MenuActionRow";
+export type { MenuActionRowProps } from "./MenuActionRow";
+export { MenuSeparator, MenuSectionLabel } from "./MenuChrome";
+export type { MenuSectionLabelProps } from "./MenuChrome";
 export { MenuItemsFromRegistry } from "./MenuItemsFromRegistry";
 export type {
   MenuItemsFromRegistryProps,

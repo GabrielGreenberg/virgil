@@ -311,10 +311,16 @@ export function useFloatingMenuPosition(
     if (maxHeight && chosenSide) {
       const avail = availableHeightFor(anchor, chosenSide, vh, gap, margin);
       setClampHeight((prev) => (prev === avail ? prev : avail));
-    } else if (clampHeight !== null) {
-      setClampHeight(null);
+    } else {
+      // Functional, so `clampHeight` stays OUT of the dependency list below.
+      // Reading it here made `reposition` change identity on every clamp change
+      // while also being the thing that changes it — and the mount effect keys
+      // on that identity, so with `maxHeight` on, each scroll/resize frame ran
+      // the RAF-scheduled measure and then a SECOND full re-measure from the
+      // re-fired layout effect. The bail keeps the write idempotent.
+      setClampHeight((prev) => (prev === null ? prev : null));
     }
-  }, [stableAnchor, placements, gap, margin, maxHeight, clampHeight]);
+  }, [stableAnchor, placements, gap, margin, maxHeight]);
 
   // Stash the latest reposition fn so the listeners below can call the
   // current implementation without re-subscribing on every change.
