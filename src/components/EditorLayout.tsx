@@ -48,6 +48,7 @@ import { collabClaimsFor } from "@/cards/collab-broadcast";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
 import type { LatexError } from "@/lib/latex-errors";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
+import type { ErrorJump } from "@/panels/Errors";
 import { IconErrors } from "./editor-layout/panel-icons";
 import PrintDialog from "./PrintDialog";
 import FontsDialog from "./FontsDialog";
@@ -1559,6 +1560,19 @@ export default function EditorLayout() {
     paneStateRef.current?.setSelectedErrorId?.(err.id);
     codeEditorHandleRef.current?.scrollToLine?.(err.line, err.column);
   }, []);
+  // The code sidebar's jump capability (task 125): handler + the semantics it
+  // implements, bound here at the handler's own definition so the mount below
+  // states no mode of its own. `"line"` because `scrollToLine` reaches the
+  // error by LINE — which makes a preamble / `\usepackage` error genuinely
+  // reachable here (unlike the visual mounts) and a line-LESS one genuinely
+  // unreachable: `scrollToLine(0)` clamps to line 1, so handing it such an
+  // error would scroll the code pane to the top, move the caret there and
+  // steal focus. The `ErrorsPanel` gate declines it instead; selection (which
+  // is what the click is really for) still happens.
+  const codeErrorJump = useMemo<ErrorJump>(
+    () => ({ mode: "line", jump: codeJump }),
+    [codeJump],
+  );
   // Stable feed for CodeEditor's onTextChange while the code view is open — routes
   // the raw CodeMirror text into the active pane's sourceText (no longer the sole
   // source; the pane serializes TipTap otherwise).
@@ -3763,7 +3777,7 @@ export default function EditorLayout() {
                                 onSelect={setSelectedErrorIdBridge}
                                 dismissedIds={paneState?.dismissedErrorIds ?? EMPTY_ERR_SET}
                                 onDismiss={paneState?.dismissError ?? noop}
-                                onJump={codeJump}
+                                jump={codeErrorJump}
                                 snippets={paneState?.errorSnippets ?? EMPTY_ERR_MAP}
                                 paragraphByErrorId={paneState?.paragraphByErrorId ?? EMPTY_ERR_MAP}
                                 expandedIds={paneState?.expandedErrorIds ?? EMPTY_ERR_SET}

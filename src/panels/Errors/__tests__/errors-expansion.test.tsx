@@ -67,7 +67,9 @@ function renderPanel(overrides: Partial<Parameters<typeof ErrorsPanel>[0]> = {})
     errors: [ERR],
     selectedId: null,
     onSelect: vi.fn(),
-    onJump: vi.fn(),
+    // A `"line"` capability, so ERR (line 3) IS jumpable here and the
+    // "header click does not jump" assertion below stays non-vacuous.
+    jump: { mode: "line" as const, jump: vi.fn() },
     dismissedIds: new Set<string>(),
     onDismiss: vi.fn(),
     expandedIds: new Set<string>(),
@@ -107,7 +109,7 @@ describe("ErrorsPanel controlled expansion contract (R5)", () => {
     expect(props.onSelect).toHaveBeenCalledTimes(1);
     expect(props.onSelect).toHaveBeenCalledWith(ERR.id);
     expect(props.onExpand).not.toHaveBeenCalled();
-    expect(props.onJump).not.toHaveBeenCalled();
+    expect(props.jump.jump).not.toHaveBeenCalled();
   });
 
   it("Enter on the focused header fires the same composition (keyboard a11y)", () => {

@@ -5,6 +5,7 @@ import { cardPopKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { resolveAnchorState } from "@/links/anchor-state";
 import { ErrorCard, errorTitle } from "./ErrorCard";
+import type { ErrorJump } from "./error-jump";
 
 interface BuildArgs {
   errors: LatexError[];
@@ -18,7 +19,10 @@ interface BuildArgs {
   anchoredIds: Set<string>;
   dismissedIds: Set<string>;
   onDismiss: (id: string) => void;
-  onJump: (err: LatexError) => void;
+  /** The omni mirror is a VISUAL mount, so it forwards the same `"anchor"`
+   *  capability the docked panel does (task 125) — handler + semantics
+   *  together, straight from `useDiagnostics`. */
+  jump: ErrorJump;
   findParagraphPos: (uuid: string | null) => number | null;
   /** Panel-local expansion for errors (R5: `error` is non-anchored, so it has
    *  no shared-cardStore slot — the omni host owns this surface's expand set,
@@ -71,8 +75,9 @@ export function buildErrorOmniItems(a: BuildArgs): OmniItem[] {
           onExpand={() => a.onExpand(err.id)}
           onToggleExpanded={() => a.onToggleExpanded(err.id)}
           hasAnchor={a.anchoredIds.has(err.id)}
+          jumpMode={a.jump.mode}
           onSelect={a.setSelectedId}
-          onJump={() => a.onJump(err)}
+          onJump={() => a.jump.jump(err)}
           onDismiss={a.onDismiss}
           extraDataAttrs={{ "data-omni-entry": omniId }}
         />
