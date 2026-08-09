@@ -61,6 +61,11 @@ pen**, with the audit notification + version bump. Fully reversible by
   instead); `example` (lives in the `.tex`); an already-archived snippet;
   `bib`/`ai`/`error` (system/derived). The op refuses these with a clear reason.
 
+> **Enforcement (task 156).** The panel side of that list lives in
+> `apply_response.MUTATION_PANEL_POLICY` — one allow-list table per op, exhaustive
+> over the card-store universe, asked by every mutation op. Read it there rather
+> than trusting this prose; it is where a refusal is actually enforced.
+
 > **Note (manifest extension, flagged).** `archive.json`'s documented
 > `ArchivedSnippet` has no field for *where a card came from*. To make restore
 > lossless this op adds `originalPanel` + `originalCard` to the snippet — a

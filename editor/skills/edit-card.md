@@ -8,8 +8,9 @@ description: |
   then routes an `update` op (body → the kind's body field, with the footnote
   `.tex \footnote{}` kept in sync; --field → an arbitrary named field). Does NOT
   compose content (that's chat's job), does NOT create a card (use
-  /editor/create-card), and does NOT edit atom+bib-coupled fields like a citation
-  command (use /editor/find-citation). Args: <docPath> <cardId>
+  /editor/create-card), and REFUSES a citation card outright — `--field` included,
+  not just its command — because its fields are coupled to the `.tex` cite and
+  `references.bib` (use /editor/find-citation). Args: <docPath> <cardId>
   [--body <text>] [--field <k>=<v> …].
 ---
 
@@ -75,7 +76,17 @@ is **mechanical**: the new body/value is supplied by you/chat, not composed here
   or rename its citekey via the `renameCitekey` contract op —
   [`sync-bib-to-library`](sync-bib-to-library.md)), `example` (lives in the
   `.tex`, not a card),
-  `bib`/`ai`/`error` (system/derived). The op refuses these rather than desync.
+  `bib`/`ai`/`error` (system/derived). The op refuses these rather than desync —
+  a **blanket** citation refusal, `--field` included, since "which fields are
+  coupled?" is its own drift.
+
+> **Enforcement (task 156).** This list is not prose the op is trusted to honor:
+> `apply_response.MUTATION_PANEL_POLICY` is the one table every mutation op asks,
+> declared as an **allow-list** exhaustive over the card-store universe — so a
+> panel nobody classified is refused, and the doc and the code cannot fork the
+> way they had here (`cmd_update` guarded `archive`/`examples`, forgot
+> `citations`, and silently desynced the sidecar from the `.tex` + `.bib` for a
+> year). Contract: `editor/scripts/tests/test_panel_policy_slice.py`.
 
 ## Reply
 

@@ -41,21 +41,17 @@ from _common import die, read_json, resolve_doc, sidecar
 # Import the single source of truth for the writeback panels. apply_response
 # does NOT import this module at load time (its mutation handlers import
 # find_card lazily), so this top-level import is cycle-free.
-from apply_response import PANEL_TO_SIDECAR
-
-# Card-hosting sidecars that are NOT apply_response writeback targets
-# (WRITEBACK_EXEMPT_PANELS in tools/check-coherence.mjs) but are still real card
-# stores we must be able to resolve a card in. Kept tiny + local so it can't be
-# mistaken for a second writeback registry.
-EXTRA_CARD_SIDECARS = {
-    "archive": ("archive.json", "snippets"),
-    "examples": ("examples.json", "examples"),
-}
-
-# The full search order. PANEL_TO_SIDECAR first (the common, mutable case), then
-# the exempt stores. A card id is unique across all of them (v4 entity ids /
-# 4-hex marker ids), so first-match-wins is unambiguous.
-ALL_CARD_SIDECARS: dict[str, tuple[str, str]] = {**PANEL_TO_SIDECAR, **EXTRA_CARD_SIDECARS}
+#
+# The exempt stores (`archive` / `examples`) and the merged search order live
+# there too, beside PANEL_TO_SIDECAR: apply_response's per-op applicability
+# policy asserts itself exhaustive over the panel universe at import time, which
+# it can only do if the universe is one table. Re-exported under their original
+# names — this module remains where you *read* the search order.
+from apply_response import (  # noqa: F401  (re-exported)
+    ALL_CARD_SIDECARS,
+    EXTRA_CARD_SIDECARS,
+    PANEL_TO_SIDECAR,
+)
 
 # Registry CardKind from a card's home panel + on-disk discriminator (the
 # two-taxonomy rule, docs/workspace/cards.md): single-kind panels carry no

@@ -62,6 +62,11 @@ moving it rewrites `links[*].anchor.textObjectIds`, never the document text.
     range needs a fresh `linkedAnchor` mark in the `.tex` — deferred; the op
     refuses.
 
+> **Enforcement (task 156).** The panel side of that list lives in
+> `apply_response.MUTATION_PANEL_POLICY` — one allow-list table per op, exhaustive
+> over the card-store universe, asked by every mutation op. (The Mode-B deferral
+> is an anchor-shape check inside `cmd_move`, not a panel question.)
+
 ## Reply
 
 ```
