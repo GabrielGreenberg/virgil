@@ -1,8 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listDir, readJsonFile, SUBDIRS } from "@library/lib/library-storage";
-import type { NotificationInbox, QueueEntry } from "@library/lib/queue";
+import { readJsonFile, SUBDIRS } from "@library/lib/library-storage";
+import type { NotificationInbox } from "@library/lib/queue";
+import {
+  hasQueuedRequest,
+  useQueueState,
+} from "@library/lib/queue-state-store";
 import {
   loadViewedMap,
   markViewedNow,
@@ -14,7 +18,6 @@ export type RowDotTone = "red" | "green" | null;
 const POLL_MS = 6000;
 
 interface State {
-  pending: Set<string>;
   latestNotifAt: Map<string, string>;
   viewed: ViewedMap;
 }
@@ -24,10 +27,16 @@ export function useRowDotState(handle: FileSystemDirectoryHandle | null): {
   markViewed: (citekey: string) => void;
 } {
   const [state, setState] = useState<State>({
-    pending: new Set(),
     latestNotifAt: new Map(),
     viewed: {},
   });
+
+  // The "a request is pending for this row" half comes from the SHARED
+  // queue-state store — the same scan the reader header derives its
+  // AI-request checkboxes from, so the dot and the checkboxes can never
+  // disagree, and a local queue write reaches both in one `refreshQueueState()`
+  // instead of waiting out a poll (task 132).
+  const queueSnapshot = useQueueState(handle);
 
   // Hydrate viewed map on mount (client-only).
   useEffect(() => {
@@ -44,20 +53,13 @@ export function useRowDotState(handle: FileSystemDirectoryHandle | null): {
 
     const tick = async () => {
       if (stopped) return;
-      const [pending, latestNotifAt] = await Promise.all([
-        scanPending(handle),
-        scanLatestNotifAt(handle),
-      ]);
+      const latestNotifAt = await scanLatestNotifAt(handle);
       if (stopped) return;
-      setState((s) => {
-        if (
-          setsEqual(s.pending, pending) &&
-          mapsEqual(s.latestNotifAt, latestNotifAt)
-        ) {
-          return s;
-        }
-        return { ...s, pending, latestNotifAt };
-      });
+      setState((s) =>
+        mapsEqual(s.latestNotifAt, latestNotifAt)
+          ? s
+          : { ...s, latestNotifAt },
+      );
     };
 
     void tick();
@@ -72,13 +74,13 @@ export function useRowDotState(handle: FileSystemDirectoryHandle | null): {
     (citekey: string | null | undefined): RowDotTone => {
       if (!citekey) return null;
       const s = stateRef.current;
-      if (s.pending.has(citekey)) return "red";
+      if (hasQueuedRequest(queueSnapshot, citekey)) return "red";
       const notif = s.latestNotifAt.get(citekey);
       if (notif && notif > (s.viewed[citekey] ?? "")) return "green";
       return null;
     },
     // stateRef is mutable; consumers re-render via state changes already
-    [state],
+    [state, queueSnapshot],
   );
 
   const markViewed = useCallback((citekey: string) => {
@@ -93,34 +95,6 @@ export function useRowDotState(handle: FileSystemDirectoryHandle | null): {
 // ---------------------------------------------------------------------------
 // Scanners
 // ---------------------------------------------------------------------------
-
-async function scanPending(
-  handle: FileSystemDirectoryHandle,
-): Promise<Set<string>> {
-  const entries = await listDir(handle, SUBDIRS.queue);
-  if (!entries) return new Set();
-  const out = new Set<string>();
-  await Promise.all(
-    entries.map(async (e) => {
-      if (e.kind !== "file") return;
-      if (!e.name.endsWith(".json")) return;
-      // Skip aggregate files and triage entries (no citekey to attach to).
-      if (e.name === "pending-reviews.json") return;
-      if (e.name.startsWith("_triage-")) return;
-      // .done.json is the rotated-stale-done sibling; skip.
-      if (e.name.endsWith(".done.json")) return;
-      const entry = await readJsonFile<QueueEntry>(
-        handle,
-        `${SUBDIRS.queue}/${e.name}`,
-      );
-      if (!entry) return;
-      if (entry.status !== "requested") return;
-      if (!entry.citekey) return;
-      out.add(entry.citekey);
-    }),
-  );
-  return out;
-}
 
 async function scanLatestNotifAt(
   handle: FileSystemDirectoryHandle,
@@ -142,12 +116,6 @@ async function scanLatestNotifAt(
 // ---------------------------------------------------------------------------
 // Equality helpers — avoid re-render storms when the polled data is stable.
 // ---------------------------------------------------------------------------
-
-function setsEqual(a: Set<string>, b: Set<string>): boolean {
-  if (a.size !== b.size) return false;
-  for (const v of a) if (!b.has(v)) return false;
-  return true;
-}
 
 function mapsEqual(a: Map<string, string>, b: Map<string, string>): boolean {
   if (a.size !== b.size) return false;

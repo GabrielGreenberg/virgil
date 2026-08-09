@@ -25,10 +25,11 @@ library/
 ├── hooks/               React hooks (state machines + polling)
 │   ├── useLibraryHandle.ts, useLibraryTabs.ts
 │   ├── useCatalog.ts, useMasterBib.ts, useUnsortedPdfs.ts
-│   ├── useDropPdf.ts, useBibReviewState.ts
+│   ├── useDropPdf.ts
 │   ├── useNotificationStream.ts, useRowDotState.ts
 ├── lib/                 Pure logic + FSA boundary
 │   ├── catalog.ts, catalog-store.ts (module-level singleton for Bibliography façade)
+│   ├── queue-state-store.ts (the queue's poll channel), paper-ai-requests.ts
 │   ├── library-store.ts, library-folder.ts, library-storage.ts
 │   ├── queue.ts, bib-edit.ts, skill-sync.ts
 │   ├── bib-parser.ts, latex-parser.ts, latex-serializer.ts
@@ -45,10 +46,69 @@ Imports use `@library/*` (alias to `./library/*` in `tsconfig.json` and `vitest.
 
 ## Cowork pattern
 
-Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writes intent files; Claude (running in a separate session, ideally `/loop /library/index-pending`) drains them and writes back. The frontend never invokes Claude directly. Two channels:
+Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writes intent files; Claude (running in a separate session, ideally `/loop /library/index-pending`) drains them and writes back. The frontend never invokes Claude directly. Three channels:
 
 1. `catalog-version.txt` — bumped on every skill run; the frontend polls this 1-byte file every 6s (see `library/lib/catalog.ts` and `library/lib/catalog-store.ts`).
 2. `notifications/inbox.json` — append-only ring buffer for toasts.
+3. `queue/*.json` — the INTENT files themselves, polled by
+   [library/lib/queue-state-store.ts](lib/queue-state-store.ts) (below).
+
+### A file written by both sides needs a poll channel — and exactly one
+
+> **Every `.virgil/` file a skill can mutate out of band has ONE shared,
+> refcounted poll in the frontend, and every LOCAL writer of that file pushes
+> through the same channel. A surface never reads such a file on its own
+> cadence — least of all "once, on mount".**
+
+The catalog and the inbox had channels; the queue files did not, and each
+consumer improvised (task 132). `useRowDotState` polled the queue directory
+every 6 s for the list's red dot. `PaperHeader` read five targeted queue files
+ONCE per `(handle, citekey)` mount — and the Reader is **kept alive**
+(`ReaderLRU` wraps it in a `KeepAliveSlot`: `display:none`, not a remount), so
+that effect never re-ran. A background `/loop /library/index-pending` session
+would drain the queue and delete the file, the 6 s catalog poll would
+re-RENDER the header, and the AI-request checkboxes + the `PaperAiRequestsMenu`
+count badge went on claiming "queued" for the whole life of the tab. A
+re-render does not re-run a same-deps effect. A third cadence (focus-regain,
+one kind, in a `useBibReviewState` hook with zero consumers) has been deleted.
+
+The gap ran the other way too: `LibraryView`'s row actions wrote a queue file
+and notified nobody, so a request filed from the list never reached that
+paper's open reader header, and the dot lagged a poll behind the click.
+
+Three rules the store earns:
+
+- **One scan, many consumers.** `useQueueState(handle)` refcounts a single
+  directory scan (`catalog-store`'s tactic), so inside the Library tab the
+  header derives its five checkboxes from the scan the row dots were already
+  paying for — **zero** added disk reads, however many readers are kept alive —
+  and both surfaces answer from the same bytes, so they cannot disagree. (In a
+  standalone outer paper tab there is no list, so the scan is that surface's
+  own: one polled directory listing in place of five one-shot file reads.)
+- **The kind comes from the ENTRY, not the filename.** `index` and
+  `authenticate` share `queue/<citekey>.json`, so only the entry's own `kind`
+  separates them; reading by filename also meant a second table to keep in
+  sync with `queueFilename` (the legacy `-richindex.json` spelling normalizes
+  through `normalizeQueueEntry` for free). The five kinds are declared once in
+  [library/lib/paper-ai-requests.ts](lib/paper-ai-requests.ts) as a `Record`
+  over the union — queue kind + enqueue/cancel + precondition together, so a
+  half-wired kind is a compile error rather than a checkbox that reads one
+  file and writes another.
+- **A local write is a notification.** `refreshQueueState()` re-reads
+  immediately and is awaited by every writer (the header's toggle, the row
+  actions, the bib-edit modal) — never "trust our own write", since a
+  deep-index request plants a companion `index` entry and a bib review can
+  take the slot an index was holding.
+
+Emits are equality-gated: an idle tick over an unchanged queue returns the
+SAME snapshot object, so nothing re-renders (the `catalog-store` R6 rule), and
+newest-scan-wins ordering keeps a scan that started before a write from
+overwriting one that observed it. Contracts:
+[queue-state-store.test.tsx](lib/__tests__/queue-state-store.test.tsx),
+[paper-ai-requests.test.ts](lib/__tests__/paper-ai-requests.test.ts), and
+[PaperHeader.queue-resync.test.tsx](components/__tests__/PaperHeader.queue-resync.test.tsx)
+— which asserts the header WITHOUT unmounting it, the only shape that can
+catch this class.
 
 ## How the Library tab plugs into Virgil
 
