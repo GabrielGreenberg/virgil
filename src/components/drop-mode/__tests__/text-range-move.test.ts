@@ -252,12 +252,17 @@ describe("text-range-move between-blocks drop (L3f-3)", () => {
 
     const result = dispatched[0].doc;
     // The two source paragraphs moved (IN ORDER) to the end as two siblings —
-    // the block structure is preserved. The range covered both paragraphs'
-    // entire CONTENT (not their boundaries), so deleting it leaves one empty
-    // shell where the source was — the same cut semantics the L3f-2 inline
-    // move uses (`delete(from, to)`); a within-paragraph fragment, the common
-    // case, leaves no shell.
-    expect(paraTexts(result)).toEqual(["", "tail", "one", "two"]);
+    // the block structure is preserved.
+    //
+    // This assertion used to read `["", "tail", "one", "two"]` and CEMENTED the
+    // task-320 bug: the range covered both paragraphs' entire CONTENT (not their
+    // boundaries), and a text-bounded `delete(from, to)` can never remove its
+    // first block, so the gesture left a blank paragraph behind — which was also
+    // a second live block still answering to the first source block's `uuid`.
+    // The blank is a residue of the gesture, not authored content; the move now
+    // drops it, and the identity travels with the text. See
+    // `range-move-identity.test.ts` for the identity half.
+    expect(paraTexts(result)).toEqual(["tail", "one", "two"]);
     expect(paraTexts(result).slice(-2)).toEqual(["one", "two"]);
     expect(hasAnchorMark(result)).toBe(false);
   });

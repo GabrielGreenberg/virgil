@@ -28,6 +28,25 @@
  * consistent with paste semantics. The source-side transient mark is removed
  * separately by the grab handle's `removeTransientAnchor` after commit.
  *
+ * IDENTITY (task 320) — "a move conserves identity; a split mints it."
+ * The cut is TEXT-bounded (`findLinkedAnchorRange` returns text positions), so
+ * it can never remove the FIRST source block: `tr.delete(from, to)` opens it and
+ * joins what follows into it. The payload, meanwhile, comes from
+ * `doc.slice(from, to)`, whose block children carry the SOURCE blocks' `uuid`
+ * attrs verbatim. Left alone, a multi-block move therefore leaves two live
+ * blocks answering to one uuid — the moved copy and the source residue — and a
+ * uuid is the anchor identity every card/sidecar resolves against. So this spec
+ * states the identity itself, through the ONE relocation SSOT
+ * (`@/lib/tiptap/node-identity`): stage the deletion, drop the residue the cut
+ * EMPTIED (a blank paragraph left where the text was is litter, not authored
+ * content), then re-mint only the payload ids still live at the destination. A
+ * whole-block move collides with nothing and the identity travels with the text;
+ * a partial-first-block move collides on exactly that block, which keeps its id
+ * at the source while the moved fragment — a new presence — mints a fresh one.
+ * `BlockUuidBackfill` remains the net behind this, never the mechanism: it can
+ * see that two blocks collide but not which one the user meant to keep, and
+ * left to it the empty residue wins and every anchor silently detaches.
+ *
  * The range's home is the main editor (the plain grab is on the main doc), so
  * the source is resolved from `ctx.mainEditor`. Same-editor drops delete +
  * adjusted-insert in one transaction (like block-move); a drop into a card
@@ -35,6 +54,7 @@
  */
 
 import { TextSelection } from "@tiptap/pm/state";
+import type { Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
 import { parseTextObjectPopoutKey } from "@/text-objects/text-object-registry";
 import {
@@ -42,6 +62,12 @@ import {
   rangeSliceToBlocks,
   stripLinkedAnchorMarks,
 } from "@/lib/linked-anchor-range";
+import {
+  collectAtomIds,
+  collectBlockUuids,
+  inheritBlockUuid,
+  remintCollidingIdentity,
+} from "@/lib/tiptap/node-identity";
 import { fitNodesAtInsert } from "./drop-context";
 import type { DropCtx, DropSpec, Placement } from "../types";
 
@@ -99,6 +125,23 @@ export const textRangeMoveDropSpec: DropSpec = {
     const slice = stripLinkedAnchorMarks(sourceEditor.state.doc.slice(from, to));
     if (slice.size === 0) return;
 
+    // The INLINE-CURSOR move is deliberately left exactly as L3f-2 shipped it —
+    // no shell removal, no re-mint — and the reason is the same law, not an
+    // exemption from it. This branch dissolves the run INTO an existing block
+    // rather than materializing new ones, so there is no payload block to hand a
+    // freed identity to: shedding the emptied source block here would destroy its
+    // uuid outright (the between-blocks branch can only shed it because a moved
+    // block is there to inherit it). An empty shell that still answers to its id
+    // is the better of the two, and it is what shipped.
+    //
+    // Re-mint: none needed today. The reason is NOT "the open slice's boundary
+    // blocks never materialize" — with a range whose ends share a container
+    // (`openStart`/`openEnd` ≥ 2) the trailing boundary node DOES materialize
+    // with its source uuid. What keeps it collision-free is that a text-bounded
+    // `tr.delete` joins BACKWARDS, so the block whose id survives at the source
+    // is the leading one, which is precisely the one that merges away here. That
+    // is a property of the delete rather than of this code, so the guarantee
+    // rests on `BlockUuidBackfill` — which is what a net is for.
     if (targetEditor === sourceEditor) {
       // Single transaction: delete the source, then insert at the position
       // adjusted for the delete (mirrors block-move / inline-atom-move).
@@ -147,8 +190,10 @@ function selectInserted(
  * Between-paragraphs move: drop the marked run into a block gap as BLOCK
  * content, fit to the gap's context. Mirrors `textobject.ts`'s element
  * block-move — `classifyParentAt` decides the context, then delete-source +
- * adjusted-insert in one transaction (same-editor) / insert-then-delete
- * (cross-editor), advancing a cursor by each node's size. The difference: the
+ * shed-the-emptied-shell + mapped-insert in one transaction (same-editor) /
+ * insert-then-delete (cross-editor), advancing a cursor by each node's size.
+ * The payload's identity is settled between the cut and the insert — see the
+ * IDENTITY note at the top of this file. The difference from a node move: the
  * payload is the range's slice converted to blocks (`rangeSliceToBlocks` — an
  * inline run → one paragraph, a multi-block range → its blocks), not a whole
  * node, with the `linkedAnchor` mark stripped so the run sheds the transient
@@ -192,10 +237,28 @@ function applyRangeBetweenBlocks(
   const nodes = fit.nodes;
 
   if (targetEditor === sourceEditor) {
-    const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
+    // Stage the cut FIRST, then read identity off the post-cut doc — that is
+    // what makes "did the source presence survive?" the question being asked
+    // (see `node-identity.ts`). Reading it from the pre-delete doc would re-mint
+    // on every move and strand every anchor on the block left behind.
     const tr = targetEditor.state.tr.delete(from, to);
-    let cursor = adjustedInsert;
-    for (const n of nodes) {
+    const shed = dropEmptiedSourceBlock(tr, from, tr.mapping.map(insertPos));
+    const start = shed.protect;
+    // The identity the shell removal freed goes to the moved run — without this
+    // a whole-paragraph range (the commonest form of this gesture) would shed
+    // the source block and carry NO id on the payload, so the uuid would leave
+    // the document entirely and every card anchored to it would orphan.
+    const claimed = shed.freedUuid
+      ? inheritBlockUuid(nodes, shed.freedUuid, targetEditor.state.schema)
+      : nodes;
+    const owned = remintCollidingIdentity(
+      claimed,
+      targetEditor.state.schema,
+      collectBlockUuids(tr.doc),
+      collectAtomIds(tr.doc),
+    );
+    let cursor = start;
+    for (const n of owned) {
       // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
       // container fit sanctions an insert the fitter PADS, which adds more
       // than the node itself — advancing by the node's size alone would put
@@ -204,16 +267,24 @@ function applyRangeBetweenBlocks(
       tr.insert(cursor, n);
       cursor += tr.doc.content.size - before;
     }
-    selectBlocks(tr, adjustedInsert, cursor);
+    selectBlocks(tr, start, cursor);
     targetEditor.view.dispatch(tr);
     targetEditor.view.focus();
     return;
   }
 
   // Cross-editor: insert into the target first, then delete from the source.
+  // The collision set is the TARGET doc's — uniqueness is a per-document
+  // invariant, and the source presence is leaving anyway.
   const insertTr = targetEditor.state.tr;
+  const owned = remintCollidingIdentity(
+    nodes,
+    targetEditor.state.schema,
+    collectBlockUuids(insertTr.doc),
+    collectAtomIds(insertTr.doc),
+  );
   let cursor = insertPos;
-  for (const n of nodes) {
+  for (const n of owned) {
     // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
     // container fit sanctions an insert the fitter PADS, which adds more
     // than the node itself — advancing by the node's size alone would put
@@ -225,8 +296,105 @@ function applyRangeBetweenBlocks(
   selectBlocks(insertTr, insertPos, cursor);
   targetEditor.view.dispatch(insertTr);
   targetEditor.view.focus();
+  // The source sheds its emptied shell too — but the freed uuid is NOT
+  // transferred: the payload landed in a different document, where a main-doc
+  // block id means nothing. Identity uniqueness is a per-document invariant.
   const deleteTr = sourceEditor.state.tr.delete(from, to);
+  dropEmptiedSourceBlock(deleteTr, from);
   sourceEditor.view.dispatch(deleteTr);
+}
+
+/**
+ * Remove the PLAIN PARAGRAPH the cut emptied at the source. Returns the
+ * (possibly re-mapped) `protect` position and the uuid the removal freed, so the
+ * caller can hand that identity to the moved run.
+ *
+ * A text-bounded cut can never remove its FIRST block: `tr.delete(from, to)`
+ * opens that block and joins what follows into it, so a range covering a
+ * paragraph's whole content leaves a blank paragraph sitting where the text used
+ * to be — the residue of a gesture, not authored content. That shell is also
+ * what makes the identity question ambiguous at all: it is a live block still
+ * answering to the uuid the moved text carries.
+ *
+ * PARAGRAPH ONLY, and this is the load-bearing narrowing. `Node.canReplace`
+ * answers "is the PARENT still schema-valid without this child?", which is a
+ * different question from "was this block the residue of the gesture?" — and for
+ * a whole family of textblocks the answer to the first is yes while the answer
+ * to the second is emphatically no, because their EXISTENCE carries meaning
+ * their text does not:
+ *
+ *  • `glossCell` — `alignedGlossRow` is `glossCell*`, so the schema permits the
+ *    removal, and removing one shifts every column to its right against the
+ *    other tiers. Column position IS the semantics of an interlinear gloss, so
+ *    emptying one cell's text and dropping the cell silently destroys the
+ *    alignment (review-caught, measured: a 3-cell `\gla` became 2 against a
+ *    3-cell `\glb`);
+ *  • `proseGlossRow` (the `\glft` line), `titleField` (`\title{}`), `heading`
+ *    (the `\section`, its outline entry and its fold), `codeBlock` — each would
+ *    vanish outright where before an empty one survived, visible and fixable.
+ *
+ * No schema-derived predicate separates those from prose (a `glossCell` is even
+ * its parent's default type), so this asks the narrow question it can answer
+ * honestly: is the shell the schema's plain paragraph, carrying no attribute of
+ * its own beyond the identity being transferred? A wrongly-kept empty paragraph
+ * is visible and one keystroke to fix; a wrongly-removed gloss cell is silent
+ * content corruption. The fail-safe direction picks itself.
+ *
+ * Two further guards: the parent must stay VALID without it (`Node.canReplace`,
+ * which is also what keeps the doc's last remaining block and a `listItem`'s
+ * only paragraph in place), and a `protect` position INSIDE the shell (the
+ * drop's own insert point) vetoes the removal — deleting the block we are about
+ * to insert into would lose the moved text. `protect` defaults to `-1` for the
+ * caller with no insert point in this transaction (the cross-editor source
+ * delete), which no shell can contain.
+ */
+interface ShellRemoval {
+  /** `protect`, carried across the removal. */
+  protect: number;
+  /** The uuid the removed shell was holding, now free to travel. */
+  freedUuid: string | null;
+}
+
+function dropEmptiedSourceBlock(
+  tr: Transaction,
+  cutFrom: number,
+  protect = -1,
+): ShellRemoval {
+  const kept: ShellRemoval = { protect, freedUuid: null };
+  let $cut;
+  try {
+    $cut = tr.doc.resolve(cutFrom);
+  } catch {
+    return kept; // the cut collapsed past a resolvable position — leave it
+  }
+  const depth = $cut.depth;
+  if (depth < 1) return kept;
+  const block = $cut.parent;
+  if (block.content.size > 0) return kept;
+  if (block.type !== tr.doc.type.schema.nodes.paragraph) return kept;
+  // Any non-default attr beyond `uuid` is authored information the emptied text
+  // didn't carry (a `parTitle`, i.e. a `\paragraph{…}` run-in heading) — the
+  // block is then not residue either.
+  for (const [key, value] of Object.entries(block.attrs)) {
+    if (key === "uuid") continue;
+    if (value !== (block.type.spec.attrs?.[key]?.default ?? null)) return kept;
+  }
+  const start = $cut.before(depth);
+  const end = $cut.after(depth);
+  if (protect > start && protect < end) return kept;
+  const parent = $cut.node(depth - 1);
+  const index = $cut.index(depth - 1);
+  if (!parent.canReplace(index, index + 1)) return kept;
+  const freed = block.attrs?.uuid;
+  // Map `protect` through THIS removal only — `tr.mapping` starts at the
+  // transaction's original doc, and `protect` has already been carried through
+  // the steps before it.
+  const mapFrom = tr.steps.length;
+  tr.delete(start, end);
+  return {
+    protect: protect < 0 ? protect : tr.mapping.slice(mapFrom).map(protect),
+    freedUuid: typeof freed === "string" && freed ? freed : null,
+  };
 }
 
 /** Select the inserted block run (just inside the first block to just inside

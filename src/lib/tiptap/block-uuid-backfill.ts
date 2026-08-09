@@ -62,6 +62,29 @@ import { generateShortId } from "@/lib/uuid";
 // exempts it — and a float↔main `setContent` re-sync (every synced block is
 // both removed and re-inserted with its main uuid) keeps every uuid too. Only
 // real copies (e.g. an Enter-split's cloned half) get a fresh id.
+//
+// A NET, NOT A MECHANISM (task 320)
+// This plugin can see that two blocks collide; it cannot see which one the user
+// meant to keep. Left to decide alone it keeps the FIRST occurrence in document
+// order — which for a range move is the empty residue the cut left behind, so
+// the moved text is re-minted and every card anchored to those words silently
+// detaches from them. A gesture that RELOCATES content therefore states its own
+// identity before dispatch (`@/lib/tiptap/node-identity`, the collision rule
+// read off the post-cut doc), and this net catches only what no mechanism
+// declared. Same division of labour as the container fit: the caller decides,
+// the guard refuses to let a mistake through.
+//
+// COORDINATES ARE PER-STEP (task 320)
+// Step `si`'s positions live in `trk.docs[si]`, and reach the final doc through
+// `trk.mapping.slice(si)` — its own map and the ones after it. Reading every
+// step against `trk.before` and the FULL `trk.mapping` re-applies the earlier
+// steps' maps to positions that already reflect them; for the delete-then-insert
+// shape every relocation uses, that collapses the inserted range to nothing and
+// the whole net goes silent while a duplicate lands in the document. (The same
+// law the DocStructureObserver learned — see its multi-step step-inspector.)
+// The RANGE stays the step's own span, never the ranges its StepMap reports: a
+// ReplaceAroundStep's map omits the GAP, and a block lifted out of a
+// listItem/blockquote becomes anchorable entirely inside that gap.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BACKFILL_META = "blockUuidBackfill";
@@ -130,22 +153,42 @@ function planBackfill(
     // be re-walked; harmless since the ids are unique, but skipping is cheaper
     // and makes loop-freedom explicit).
     if (trk.getMeta(BACKFILL_META)) continue;
-    const oldDocK = trk.before;
     for (let si = 0; si < trk.steps.length; si++) {
       const step = trk.steps[si];
+      // The step's own SPAN `[from, to)`, not the ranges its StepMap reports.
+      // The two differ on exactly the case that matters: a `ReplaceAroundStep`'s
+      // map covers only its two SIDE ranges, deliberately omitting the GAP — the
+      // preserved content that changes PARENT. Anchorability here is a function
+      // of the parent (`isDeferredInnerParagraph`), so a paragraph LIFTED out of
+      // a listItem/blockquote to top level becomes a first-class text object
+      // entirely inside that gap; taking ranges from the map alone made every
+      // toggle-list-off / toggle-blockquote-off / Backspace-at-list-start leave
+      // the lifted block with a null uuid, hence no `data-uuid`, hence no grab
+      // handle and no anchorable target — verbatim the bug this plugin exists to
+      // fix (review-caught). Steps that expose no span move no content and can
+      // insert no block, so skipping them loses nothing.
       if (!(step instanceof ReplaceStep || step instanceof ReplaceAroundStep)) {
         continue;
       }
-      // Removed range, in this transaction's pre-doc coordinates.
-      forEachAnchorableStart(oldDocK, step.from, step.to, (node) => {
+      // Coordinates are PER-STEP, not per-transaction (task 320 — the same law
+      // the DocStructureObserver learned): step `si`'s positions live in the doc
+      // BEFORE step si (`trk.docs[si]`), and reach the final doc through the maps
+      // FROM si onward (`trk.mapping.slice(si)`). Reading every step against
+      // `trk.before` + the FULL `trk.mapping` re-applies the earlier steps' maps
+      // to positions that already reflect them, which for a delete-then-insert
+      // transaction collapses the inserted range to nothing — so a multi-block
+      // range move's duplicated uuids reached the document with the net silent.
+      const preDoc = trk.docs[si] ?? trk.before;
+      const stepOnward = trk.mapping.slice(si);
+      // Removed range, in this STEP's pre-doc coordinates.
+      forEachAnchorableStart(preDoc, step.from, step.to, (node) => {
         const u = node.attrs?.uuid;
         if (typeof u === "string" && u) removedUuids.add(u);
       });
-      // Inserted range, mapped into final-doc coordinates. Mirror the
-      // step-inspector's per-step mapping, then compose through any later
-      // transactions in the batch.
-      let from = trk.mapping.map(step.from, -1);
-      let to = trk.mapping.map(step.to, 1);
+      // Inserted range, mapped into final-doc coordinates: this step's own map
+      // and the rest of the transaction's, then any later transaction's.
+      let from = stepOnward.map(step.from, -1);
+      let to = stepOnward.map(step.to, 1);
       for (let j = k + 1; j < transactions.length; j++) {
         from = transactions[j].mapping.map(from, -1);
         to = transactions[j].mapping.map(to, 1);
