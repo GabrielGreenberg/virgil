@@ -2851,6 +2851,17 @@ export function ItemMenu({
       wrapperClassName={`relative shrink-0${isPanelHeader ? " -ml-3" : ""}`}
       menuClassName="min-w-[100px]"
       closeOnInsideClick
+      // The ONE place the shell's default is wrong, and not by a little: the
+      // clamp implies `overflow-y: auto`, and a scroll container clips its
+      // absolutely-positioned descendants (`overflow-x` computes to `auto`
+      // alongside it, so horizontally too). Every panel-header kebab opens with
+      // a `<PanelThemePicker>` row whose swatch grid is an `absolute top-full`
+      // popup 168px wide inside a `min-w-[100px]` menu — clamping here would cut
+      // it off instead of letting it overhang. ItemMenu therefore keeps the
+      // unclamped behavior it has always had; it becomes eligible for the clamp
+      // the day that picker portals itself (it is one of the four
+      // absolute-positioned holdouts the anchored-menu guardrail names).
+      maxHeight={false}
       trigger={() => (
         <svg width={isPanelHeader ? 14 : 16} height={isPanelHeader ? 14 : 16} viewBox="0 0 24 24" fill="currentColor" stroke="none">
           <circle cx="12" cy="5" r="2" />

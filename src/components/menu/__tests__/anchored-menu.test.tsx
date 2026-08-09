@@ -120,6 +120,26 @@ describe("AnchoredMenu — the guards the shell owns", () => {
     expect(style.maxHeight).not.toBe("");
   });
 
+  it("maxHeight is refusable — a menu hosting an absolute popup must not become a scroll container", async () => {
+    // `ItemMenu` passes `maxHeight={false}` and the reason is structural, not
+    // cosmetic: `overflow-y: auto` makes the menu a scroll container, which
+    // CLIPS absolutely-positioned descendants (and `overflow-x` computes to
+    // `auto` with it, so on both axes). Every panel-header kebab's first row is
+    // a `<PanelThemePicker>` whose 168px swatch grid is exactly such a popup,
+    // inside a `min-w-[100px]` menu. If someone removes the opt-out, this fails
+    // instead of the swatches silently losing their right half.
+    const { container } = render(
+      <AnchoredMenu ariaLabel="Options" trigger={() => "⋯"} maxHeight={false}>
+        <MenuActionRow id="one" label="One" onSelect={() => {}} />
+      </AnchoredMenu>,
+    );
+    fireEvent.click(triggerIn(container));
+    await settleDismissListener();
+    const style = (menu() as HTMLElement).style;
+    expect(style.overflowY).toBe("");
+    expect(style.maxHeight).toBe("");
+  });
+
   it("does NOT close on an inside click unless the caller opts in", async () => {
     const onSelect = vi.fn();
     const { container } = render(
