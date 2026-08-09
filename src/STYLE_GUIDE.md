@@ -528,11 +528,16 @@ decision needs the live value (sole case today: `SplitWithCode`'s
 `liveRatio`, driving the compressed-gutter flip + clip fade), LOCAL state
 set from the engine's `apply()` (≤1 per frame) is permitted — children must
 bail on element identity and persistence stays commit-once. Heavyweight pane
-content (iframes, full editors) wraps in `PaneFreeze`; drag-time observers
-park via `parkDuringPaneDrag` (both keyed on the edge-only `PaneDragBus`).
-A bespoke window-listener divider fails CI — the guardrail keys on the
-resize cursor chrome AND the shared `.drag-gap`/`.band-grip` classes above
-(`pane-drag-guardrail.test.ts`); doctrine in AGENTS.md "Pane-drag stability".
+content (iframes, full editors) wraps in `PaneFreeze`; gesture-time observers
+park via `parkDuringLayoutGesture`, and text-anchored overlays suppress via
+`useLayoutGestureActive` (all keyed on the edge-only `LayoutGestureBus`,
+which carries the OS window resize as well as pane drags — a follower wired
+once covers both). A bespoke window-listener divider fails CI — the guardrail
+keys on the resize cursor chrome AND the shared `.drag-gap`/`.band-grip`
+classes above (`pane-drag-guardrail.test.ts`), and a new `resize` listener
+that neither parks nor suppresses fails the census in
+`window-resize-guardrail.test.ts`; doctrine in AGENTS.md "Pane-drag
+stability" + "Layout-gesture stability".
 
 ## Code view
 

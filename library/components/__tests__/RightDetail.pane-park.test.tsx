@@ -243,4 +243,56 @@ describe("RightDetail pane-drag parks (per-frame feedback stashed for the gestur
     act(() => endLayoutGesture(DRAG));
     expect(lastHeader().textPodRect).toEqual({ left: 40, width: 480 });
   });
+
+  it("the WINDOW resize path parks too — the second trigger is the one that gets forgotten", () => {
+    // This effect was task 317's own signature: the RO parked while the window
+    // `resize` listener 38 lines below fed the SAME scheduler raw. PaneFreeze
+    // does not (and cannot) freeze an OS window resize, so that raw path was
+    // the live one for the entire gesture — a per-frame measure →
+    // setTextPodRect → PaperHeader podAlign cascade. Both triggers park now.
+    const scrollEl = document.createElement("div");
+    const frame = document.createElement("div");
+    frame.setAttribute("data-pod-frame", "");
+    let frameRect = { left: 40, width: 600 };
+    frame.getBoundingClientRect = () =>
+      ({
+        left: frameRect.left,
+        width: frameRect.width,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        height: 0,
+      }) as DOMRect;
+    scrollEl.appendChild(frame);
+    cap.readerScrollEl = scrollEl;
+
+    act(() => {
+      render(
+        <RightDetail handle={handle} entry={docxEntry} bib={bib} scope="" panel="right" />,
+      );
+    });
+    expect(lastHeader().textPodRect).toEqual({ left: 40, width: 600 });
+
+    const fireWindowResize = () =>
+      window.dispatchEvent(new Event("resize"));
+
+    // A window gesture is live (published here directly — jsdom fires no real
+    // OS resize burst, and the publisher's own detector is unit-tested).
+    const WINDOW_GESTURE: LayoutGestureInfo = {
+      kind: "window",
+      id: "window",
+      axis: "both",
+    };
+    act(() => beginLayoutGesture(WINDOW_GESTURE));
+    frameRect = { left: 40, width: 420 };
+    act(() => {
+      fireWindowResize();
+      fireWindowResize();
+      fireWindowResize();
+    });
+    expect(lastHeader().textPodRect).toEqual({ left: 40, width: 600 });
+
+    act(() => endLayoutGesture(WINDOW_GESTURE));
+    expect(lastHeader().textPodRect).toEqual({ left: 40, width: 420 });
+  });
 });

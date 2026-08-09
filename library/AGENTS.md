@@ -133,15 +133,25 @@ Library tree. The rules:
   choice. (The ONE sanctioned exception is editor-side and named in root
   AGENTS.md "Pane-drag stability" — `SplitWithCode`'s render-derived
   `liveRatio`; the library silo has none and should stay that way.)
-- **Edge-only bus.** Drag-time coordination rides the app-wide `PaneDragBus`
-  (`isPaneDragging`/`onPaneDragChange` from `@/lib/pane-resize`): listeners
-  fire once on the begin edge and once on the end edge, NEVER per frame. The
-  per-frame geometry stream stays inside the engine.
+- **Edge-only bus.** Gesture-time coordination rides the app-wide
+  `LayoutGestureBus` (`isLayoutGestureActive`/`onLayoutGestureChange` from
+  `@/lib/pane-resize`): listeners fire once on the begin edge and once on the
+  end edge, NEVER per frame. The per-frame geometry stream stays inside the
+  engine. Since task 317 the bus carries TWO gesture families — a pane-divider
+  drag and an **OS window resize** (`kind: "pane" | "window"`) — so a follower
+  wired once is covered for both. Root AGENTS.md "Layout-gesture stability".
 - **Park-and-settle.** Any geometry observer that could fire mid-gesture
-  routes its trigger through `parkDuringPaneDrag` (stash latest, replay ONCE
-  on the end edge) instead of hand-rolling an `isPaneDragging()` check —
-  current parks: `usePgmarkPages`' RO, `RightDetail`'s textPodRect RO and
-  pdf-viewer page-state feedback, `PanelTabStrip`'s flush-right measure.
+  routes its trigger through `parkDuringLayoutGesture` (stash latest, replay
+  ONCE on the end edge) instead of hand-rolling an `isLayoutGestureActive()`
+  check — current parks: `usePgmarkPages`' RO, `RightDetail`'s textPodRect RO
+  **and its window `resize` listener**, `RightDetail`'s pdf-viewer page-state
+  feedback, `PanelTabStrip`'s flush-right measure. That "and" is the whole
+  lesson of task 317: `RightDetail` parked the RO and fed the SAME scheduler
+  raw from a window listener 38 lines below, and since `PaneFreeze` cannot
+  freeze an OS window resize, the unparked path was the live one for the whole
+  gesture. **Every trigger into a scheduler parks, or none of them does.**
+  A new `resize` listener in this silo that neither parks nor suppresses fails
+  the census in `src/lib/__tests__/window-resize-guardrail.test.ts`.
 - **Reader freeze.** `RightDetail` wraps both branch roots (pdf iframe /
   text reader) in `PaneFreeze`, so the heavyweight content is width-locked
   for the gesture and sees exactly ONE resize on release (pdf.js re-scale,
@@ -164,7 +174,7 @@ as the keystroke/scroll lists):
 - [PanelTabStrip.tsx](components/panel-tabs/PanelTabStrip.tsx) flush-right
   tuck measure — the ONE surviving chrome RO (a cross-subtree relationship CSS
   can't express); RAF-coalesced, equality-bailed, parked via
-  `parkDuringPaneDrag`.
+  `parkDuringLayoutGesture`.
 - [LeftList.tsx](components/LeftList.tsx) rows-viewport measure —
   virtualization window height; equality-bailed setState.
 - [RightDetail.tsx](components/RightDetail.tsx) textPodRect — header↔pod
@@ -178,7 +188,10 @@ as the keystroke/scroll lists):
 **Verify live** (dev preview, force-dev-storage): drag each library gutter —
 the outline tracks the edge with no lag/snap; release over the PDF viewer —
 no hang, no ghost-resume; typing leaves `__virgilBusStats().emitCount` flat;
-a full drag fires exactly two `PaneDragBus` edges and one store commit.
+a full drag fires exactly two `LayoutGestureBus` edges and one store commit.
+Then drag the OS **window** edge with the Library tab open and read
+`window.__layoutGestureStats()`: every parked site must report `settles === 0`
+during the drag and exactly 1 after release.
 
 ## Storage
 
@@ -478,4 +491,4 @@ The Reader can be driven live in the dev preview even though the FSA picker does
 
 - Don't add a backend. The cowork pattern is load-bearing.
 - Don't write to `master.bib` or `catalog.json` from the frontend — those are skill outputs.
-- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, `@/components/editor-layout/chrome-*` (sanctioned cross-silo bridges for Reader inheritance), `@/lib/bib-searcher` (the shared fuzzy bib searcher — Library catalog search unifies onto it via `library/lib/catalog-search.ts` rather than duplicating the matcher; it's a leaf-pure `fuse.js`-only module), `@/lib/pane-resize` (the ONE app-wide divider gesture engine + pane-drag bus — every Library resizer runs on it, and the strip's flush-right tuck observer parks on its `isPaneDragging`/`onPaneDragChange` edges; it replaced `library/lib/gutter-drag.ts`. The reader drag-freeze is part of the same sanctioned bridge: `PaneFreeze` wraps both of `RightDetail`'s pdf/text branch roots so a gutter gesture resizes the reader content exactly once, and the `parkDuringPaneDrag` parks in `library/hooks/usePgmarkPages.ts` + `RightDetail` stash their geometry/viewer feedback behind the same bus edges. These are generic shared-layer utilities keyed on the bus — NOT Reader-specific render forks; see the shared-layer note in READER_INHERITANCE.md), and `@/components/chrome/FolderTabChrome` + `@/components/chrome/folder-tab-geometry` (the ONE folder-tab chrome + geometry SSOT shared by the outer Virgil-bar tabs and the inner library tabs — a layout-driven three-piece silhouette with zero ResizeObservers; it replaced the forked `library/components/panel-tabs/folder-path.ts` / `src/components/editor-layout/folder-path.ts` measured path builders). Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.
+- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, `@/components/editor-layout/chrome-*` (sanctioned cross-silo bridges for Reader inheritance), `@/lib/bib-searcher` (the shared fuzzy bib searcher — Library catalog search unifies onto it via `library/lib/catalog-search.ts` rather than duplicating the matcher; it's a leaf-pure `fuse.js`-only module), `@/lib/pane-resize` (the ONE app-wide divider gesture engine + layout-gesture bus — every Library resizer runs on it, and the strip's flush-right tuck observer parks on its `isLayoutGestureActive`/`onLayoutGestureChange` edges; it replaced `library/lib/gutter-drag.ts`. The reader drag-freeze is part of the same sanctioned bridge: `PaneFreeze` wraps both of `RightDetail`'s pdf/text branch roots so a gutter gesture resizes the reader content exactly once, and the `parkDuringLayoutGesture` parks in `library/hooks/usePgmarkPages.ts` + `RightDetail` stash their geometry/viewer feedback behind the same bus edges — which since task 317 also fire for an OS window resize, a gesture `PaneFreeze` structurally cannot freeze. These are generic shared-layer utilities keyed on the bus — NOT Reader-specific render forks; see the shared-layer note in READER_INHERITANCE.md), and `@/components/chrome/FolderTabChrome` + `@/components/chrome/folder-tab-geometry` (the ONE folder-tab chrome + geometry SSOT shared by the outer Virgil-bar tabs and the inner library tabs — a layout-driven three-piece silhouette with zero ResizeObservers; it replaced the forked `library/components/panel-tabs/folder-path.ts` / `src/components/editor-layout/folder-path.ts` measured path builders). Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.

@@ -134,14 +134,22 @@ export default function RightDetail({
     }
     let raf = 0;
     let cancelled = false;
-    // Parked during any pane-resize gesture: mid-drag the whole detail
-    // subtree is width-frozen (the PaneFreeze mount below) so this RO
-    // shouldn't fire at all; the park is defense-in-depth — a mid-gesture
-    // fire (font swap, image load) stashes dirty and the end edge reconciles
-    // ONCE instead of riding a pointer frame into the setTextPodRect →
-    // PaperHeader podAlign cascade.
+    // Parked during any continuous layout gesture — a pane-divider drag or an
+    // OS window resize. Mid-drag the whole detail subtree is width-frozen (the
+    // PaneFreeze mount below) so this RO shouldn't fire at all; the park is
+    // defense-in-depth — a mid-gesture fire (font swap, image load) stashes
+    // dirty and the end edge reconciles ONCE instead of riding a pointer frame
+    // into the setTextPodRect → PaperHeader podAlign cascade.
+    //
+    // BOTH triggers go through it. This effect was the signature of the bug
+    // task 317 fixed: the RO parked while the window `resize` listener 38
+    // lines below fed the SAME scheduler raw — and since PaneFreeze does not
+    // (and cannot) freeze an OS window resize, that raw path was the live one
+    // for the whole gesture. A second subscription is exactly the one that
+    // gets forgotten, which is why there is now one bus and one park.
     const park = parkDuringLayoutGesture(() => schedule());
-    const ro = new ResizeObserver(() => park.fire());
+    const onGeometry = () => park.fire();
+    const ro = new ResizeObserver(onGeometry);
     const measure = () => {
       if (cancelled) return;
       const frame = readerScrollEl.querySelector<HTMLElement>("[data-pod-frame]");
@@ -178,14 +186,14 @@ export default function RightDetail({
       if (polls++ < 180) requestAnimationFrame(poll);
     };
     requestAnimationFrame(poll);
-    window.addEventListener("resize", schedule);
+    window.addEventListener("resize", onGeometry);
     measure();
     return () => {
       cancelled = true;
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
       park.dispose();
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", onGeometry);
     };
   }, [viewMode, readerScrollEl]);
 
