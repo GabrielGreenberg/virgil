@@ -73,7 +73,7 @@ function renderPanel(overrides: Partial<Parameters<typeof ErrorsPanel>[0]> = {})
     errors: [ERR_A, ERR_B],
     selectedId: ERR_A.id,
     onSelect: vi.fn(),
-    onJump: vi.fn(),
+    jump: { mode: "line" as const, jump: vi.fn() },
     dismissedIds: new Set<string>(),
     onDismiss: vi.fn(),
     expandedIds: new Set<string>(),

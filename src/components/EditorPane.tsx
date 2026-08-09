@@ -7582,7 +7582,7 @@ function PaneRail({
           errorSnippets={diagnostics.errorSnippets}
           dismissedErrorIds={diagnostics.dismissedErrorIds}
           dismissError={diagnostics.dismissError}
-          jumpToError={diagnostics.jumpToErrorVisual}
+          errorJump={diagnostics.errorJump}
           selectedErrorId={diagnostics.selectedErrorId}
           setSelectedErrorId={diagnostics.setSelectedErrorId}
           expandedErrorIds={diagnostics.expandedErrorIds}
@@ -8033,7 +8033,7 @@ function PaneRailBody({
         onSelect={diagnostics.setSelectedErrorId}
         dismissedIds={diagnostics.dismissedErrorIds}
         onDismiss={diagnostics.dismissError}
-        onJump={diagnostics.jumpToErrorVisual}
+        jump={diagnostics.errorJump}
         snippets={diagnostics.errorSnippets}
         paragraphByErrorId={diagnostics.paragraphByErrorId}
         expandedIds={diagnostics.expandedErrorIds}

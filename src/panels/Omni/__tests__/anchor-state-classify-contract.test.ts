@@ -221,7 +221,7 @@ describe("omni builder anchorState classification", () => {
       anchoredIds: new Set(["e-anchored"]),
       dismissedIds: new Set(),
       onDismiss: noop,
-      onJump: noop,
+      jump: { mode: "anchor" as const, jump: noop },
       findParagraphPos: (uuid) => (uuid === "live-uuid" ? 99 : null),
       expandedIds: new Set(),
       onExpand: noop,

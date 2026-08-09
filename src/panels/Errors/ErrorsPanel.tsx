@@ -6,22 +6,32 @@ import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import CompileLogDisclosure from "@/components/CompileLogDisclosure";
 import type { LatexError } from "@/lib/latex-errors";
 import { ErrorCard, errorTitle } from "./ErrorCard";
+import { canJumpToError, type ErrorJump } from "./error-jump";
 
 export interface ErrorsPanelProps {
   errors: LatexError[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  /** Jump to the error's location in the rich-text editor. Scrolls the
-   *  mapped paragraph into view and applies a transient highlight to the
-   *  offending range. Always stays in (or switches to) the visual editor —
-   *  never the code view. */
-  onJump: (err: LatexError) => void;
+  /** This mount's jump capability (task 125) — the handler AND the semantics
+   *  it implements, declared together by whoever owns the handler. The docked
+   *  panel and the omni mirror forward the `"anchor"` capability from
+   *  `useDiagnostics` (scroll the mapped paragraph, highlight the offending
+   *  range, never leave the visual editor); the code-view sidebar forwards
+   *  `EditorLayout`'s `"line"` capability (scroll CodeMirror to `err.line`).
+   *  Every jump-issuing path here gates on `canJumpToError` against that mode
+   *  — the cards below AND the keyboard nav — so an error this mount cannot
+   *  reach is never handed to the handler. */
+  jump: ErrorJump;
   /** Maps `err.id` → a short source snippet (e.g. the offending code line).
    *  Shown as the card's quoted header fragment. */
   snippets?: Map<string, string>;
-  /** Maps `err.id` → a paragraph-anchor id when the error's line was
-   *  resolved to a paragraph. Used to dim the jump-target icon when no
-   *  anchor was found. */
+  /** The `err.id`s whose source line resolved to a paragraph. This is the
+   *  jumpability input for an `"anchor"`-mode mount (task 125) — the visual
+   *  jump reaches an error THROUGH that paragraph, so an error missing from
+   *  this set is unreachable there and neither the card nor the keyboard nav
+   *  hands it to the handler. (It was documented as dimming a jump-target
+   *  icon; that affordance renders only on a popped-out card and `error` is
+   *  ratified not poppable, so it has never been the thing this gates.) */
   anchoredIds?: Set<string>;
   dismissedIds: Set<string>;
   onDismiss: (id: string) => void;
@@ -47,7 +57,7 @@ function ErrorsPanel({
   errors,
   selectedId,
   onSelect,
-  onJump,
+  jump,
   snippets,
   anchoredIds,
   dismissedIds,
@@ -99,6 +109,21 @@ function ErrorsPanel({
     return i < 0 ? null : i;
   }, [filtered, selectedId]);
 
+  // The keyboard twin of the card's own gate (task 125). Nav ALWAYS moves the
+  // selection — that's what the arrow keys are for, and selection is what
+  // drives the omni halo and the editor's error highlight — but it only hands
+  // the error to the mount's handler when this mount can actually reach it.
+  // Without this, Arrow/Enter re-opened both defects the card gate closes,
+  // straight past the affordance.
+  const jumpIfReachable = useCallback(
+    (err: LatexError) => {
+      if (canJumpToError(err, jump.mode, anchoredIds?.has(err.id) ?? false)) {
+        jump.jump(err);
+      }
+    },
+    [jump, anchoredIds],
+  );
+
   const handleNavKeys = useCallback(
     (e: React.KeyboardEvent) => {
       if (filtered.length === 0) return;
@@ -107,7 +132,7 @@ function ErrorsPanel({
         const next =
           selectedIdx == null ? 0 : (selectedIdx + 1) % filtered.length;
         onSelect(filtered[next].id);
-        onJump(filtered[next]);
+        jumpIfReachable(filtered[next]);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         const prev =
@@ -115,15 +140,15 @@ function ErrorsPanel({
             ? filtered.length - 1
             : (selectedIdx - 1 + filtered.length) % filtered.length;
         onSelect(filtered[prev].id);
-        onJump(filtered[prev]);
+        jumpIfReachable(filtered[prev]);
       } else if (e.key === "Enter") {
         e.preventDefault();
         const idx = selectedIdx ?? 0;
         onSelect(filtered[idx].id);
-        onJump(filtered[idx]);
+        jumpIfReachable(filtered[idx]);
       }
     },
-    [filtered, selectedIdx, onSelect, onJump],
+    [filtered, selectedIdx, onSelect, jumpIfReachable],
   );
 
   const headerExtras = (
@@ -193,8 +218,9 @@ function ErrorsPanel({
           onExpand={() => onExpand(err.id)}
           onToggleExpanded={() => onToggleExpanded(err.id)}
           hasAnchor={anchoredIds?.has(err.id) ?? false}
+          jumpMode={jump.mode}
           onSelect={onSelect}
-          onJump={() => onJump(err)}
+          onJump={() => jump.jump(err)}
           onDismiss={onDismiss}
         />
       )}

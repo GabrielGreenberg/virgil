@@ -46,6 +46,7 @@ import type {
   CutterCard,
 } from "@/lib/types";
 import type { LatexError } from "@/lib/latex-errors";
+import type { ErrorJump } from "@/panels/Errors";
 import type { FootnoteInfo, ExampleInfo } from "../../Editor";
 import type { CardWithLinks } from "@/links/links";
 import type { FocusState } from "@/hooks/useFocusMode";
@@ -142,7 +143,9 @@ export interface OmniHostProps {
   errorSnippets: Map<string, string>;
   dismissedErrorIds: Set<string>;
   dismissError: (id: string) => void;
-  jumpToError: (err: LatexError) => void;
+  /** The visual errors jump, as an `ErrorJump` capability (task 125) — mode +
+   *  handler together, forwarded whole from `useDiagnostics`. */
+  errorJump: ErrorJump;
   selectedErrorId: string | null;
   setSelectedErrorId: (id: string | null) => void;
   /** Controlled error-card expansion (R5): ONE scope owned by EditorPane,
@@ -555,7 +558,7 @@ export function OmniHost(p: OmniHostProps) {
       anchoredIds: new Set(p.paragraphByErrorId.keys()),
       dismissedIds: p.dismissedErrorIds,
       onDismiss: p.dismissError,
-      onJump: p.jumpToError,
+      jump: p.errorJump,
       findParagraphPos,
       expandedIds: p.expandedErrorIds,
       onExpand: p.expandError,
@@ -643,7 +646,7 @@ export function OmniHost(p: OmniHostProps) {
     p.updateRevisionCommentContent, p.setRevisionCommentAiRequest,
     p.updateRevisionSuggestionField, p.convertRevisionCard, p.deleteRevisionCard,
     // Error handlers
-    p.dismissError, p.jumpToError,
+    p.dismissError, p.errorJump,
     p.expandedErrorIds, p.expandError, p.toggleErrorExpanded,
     // Cutter handlers
     p.updateCutterCommentContent, p.setCutterCommentAiRequest,
