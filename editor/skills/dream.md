@@ -147,6 +147,18 @@ them again re-authors work that already landed. Treat memos written under a
 drifted prompt as evidence about the *stale* version — `skillSha` records the
 SSOT blob at HEAD, so it silently attests to a version that may never have run.
 
+**But date the drift before you discount anything.** Drift means the SSOT and
+the served copy disagree *now*; it says nothing about when they started to. If
+the SSOT edit is NEWER than the memos — someone edited a skill this evening,
+after the day's runs — those memos were written under the version that was
+served at the time, and they are honest evidence about it. Compare the SSOT
+file's mtime against the memo timestamps before deciding which side of the gap
+a memo sits on; discounting a whole night's evidence for a drift that opened
+after it was recorded throws away the only real signal the run has. Both
+readings still end at the same digest entry — the bundle is stale and a human
+must rule on the rebuild — so the cost of confusing them is paid entirely in
+the *detection* step, which is the one that cannot be redone later.
+
 ### 2. Detect cross-memo patterns
 
 This is the judgment the scripts can't do. Over the selected memos:
