@@ -18,3 +18,10 @@ export {
   type SectionPathResult,
   type SectionSkipBand,
 } from "./section-path";
+export {
+  DOC_TOP_SENTINEL,
+  computeActiveBlockId,
+  computeActiveParagraphId,
+  geomActiveBlockEnabled,
+  legacyActiveBlockWalk,
+} from "./active-block";

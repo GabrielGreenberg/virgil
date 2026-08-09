@@ -2,7 +2,11 @@
 
 import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
 import { pickProbeEditor } from "@/lib/active-editor-probe";
-import { geomHoverEnabled, getGeometry } from "@/lib/editor-geometry";
+import {
+  computeActiveParagraphId,
+  geomHoverEnabled,
+  getGeometry,
+} from "@/lib/editor-geometry";
 import { installKeystrokeLatencyProbe } from "@/lib/keystroke-latency-probe";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
@@ -1443,109 +1447,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       stripFootnoteNestedCitation(editor, citationId);
     },
     getActiveParagraphId(): string | null {
+      // Wave-2b C6: the whole contract (hidden-pane bail, __DOC_TOP__
+      // sentinel, ONE-posAtCoords fast path, legacy triple-walk fallback +
+      // kill-switch) lives in editor-geometry/active-block.ts.
       if (!editor) return null;
-      const scrollEl = findEditorScrollFor(editor.view.dom) as HTMLElement | null;
-      if (!scrollEl) return null;
-      const viewTop = scrollEl.scrollTop;
-      const viewBottom = viewTop + scrollEl.clientHeight;
-      const scrollRect = scrollEl.getBoundingClientRect();
-
-      // If scrolled to the very top (title area visible), return sentinel
-      if (viewTop < 10) return "__DOC_TOP__";
-
-      // Helper: get the UUID of a node (paragraph, bulletList, orderedList)
-      const getUuid = (node: any): string | null => node.attrs?.uuid || null;
-      const hasParagraphUuid = (node: any): boolean => {
-        return isAnchorableNode(node.type) && !!node.attrs?.uuid;
-      };
-
-      // Rule 1: Find the paragraph the cursor is in
-      const cursorPos = editor.state.selection.$anchor.pos;
-      let cursorUuid: string | null = null;
-      let cursorNodeTop: number | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (cursorUuid) return false;
-        if (hasParagraphUuid(node)) {
-          const end = pos + node.nodeSize;
-          if (cursorPos >= pos && cursorPos <= end) {
-            cursorUuid = getUuid(node);
-            try {
-              const coords = editor.view.coordsAtPos(pos);
-              cursorNodeTop = coords.top - scrollRect.top + scrollEl.scrollTop;
-            } catch { /* ignore */ }
-          }
-        }
-        return true;
-      });
-
-      // If cursor is in a UUID paragraph and its top is visible, use it
-      if (cursorUuid && cursorNodeTop !== null) {
-        if (cursorNodeTop >= viewTop && cursorNodeTop < viewBottom) {
-          return cursorUuid;
-        }
-      }
-
-      // If cursor wasn't in a UUID paragraph, scan nearest forward/backward
-      if (!cursorUuid) {
-        let bestUuid: string | null = null;
-        let bestDist = Infinity;
-        editor.state.doc.descendants((node, pos) => {
-          if (hasParagraphUuid(node)) {
-            const mid = pos + node.nodeSize / 2;
-            const dist = Math.abs(mid - cursorPos);
-            if (dist < bestDist) {
-              bestDist = dist;
-              bestUuid = getUuid(node);
-            }
-          }
-          return true;
-        });
-        if (bestUuid) {
-          // Check if this nearest paragraph is visible
-          // (we'll fall through to rule 2 visibility check anyway)
-          cursorUuid = bestUuid;
-        }
-      }
-
-      // Rule 2: Cursor's paragraph (or nearest) is off-screen.
-      // Find topmost paragraph whose opening lines are visible.
-      let topmostUuid: string | null = null;
-      let topmostY = Infinity;
-      editor.state.doc.descendants((node, pos) => {
-        if (hasParagraphUuid(node)) {
-          try {
-            const coords = editor.view.coordsAtPos(pos);
-            const nodeTop = coords.top - scrollRect.top + scrollEl.scrollTop;
-            // "Opening lines visible" = the top of the paragraph is in the viewport
-            if (nodeTop >= viewTop && nodeTop < viewBottom && nodeTop < topmostY) {
-              topmostY = nodeTop;
-              topmostUuid = getUuid(node);
-            }
-          } catch { /* ignore */ }
-        }
-        return true;
-      });
-      if (topmostUuid) return topmostUuid;
-
-      // Rule 3: No paragraph has opening lines visible (e.g., middle of a long paragraph).
-      // Find any paragraph that overlaps the viewport.
-      let overlappingUuid: string | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (overlappingUuid) return false;
-        if (hasParagraphUuid(node)) {
-          try {
-            const startCoords = editor.view.coordsAtPos(pos);
-            const endCoords = editor.view.coordsAtPos(pos + node.nodeSize - 1);
-            const nodeTop = startCoords.top - scrollRect.top + scrollEl.scrollTop;
-            const nodeBottom = endCoords.bottom - scrollRect.top + scrollEl.scrollTop;
-            if (nodeBottom > viewTop && nodeTop < viewBottom) {
-              overlappingUuid = getUuid(node);
-            }
-          } catch { /* ignore */ }
-        }
-        return true;
-      });
-      return overlappingUuid ?? cursorUuid;
+      return computeActiveParagraphId(editor);
     },
     scrollToParagraphId(uuid: string): void {
       if (!editor) return;
