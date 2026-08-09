@@ -229,5 +229,43 @@ check(r.returncode == 0 and json.loads(r.stdout).get("ok") is True,
 check(len(memo_files(mem)) == 0, "DEV-off wrote NO memo (the never-ships-to-users gate)")
 
 
+# ── the throwaway-paper guard: a temp sandbox never reaches the DEFAULT sink ──
+# The dominant source of dev-loop noise until 2026-08-09: this suite runs under
+# VIRGIL_DEV=1, and the tail-trigger spawns reflect.py as a subprocess that
+# inherits the ambient env — so a test that pins no sink filed its sandbox's
+# card ops into the human's real ~/.virgil-dev/memos, ~280 per suite run.
+# See _common._is_throwaway_paper.
+print("\n=== throwaway-paper guard (temp sandbox + default sink → no memo) ===")
+import _common  # noqa: E402  (imported here: the guard is the subject, not a helper)
+
+sb = sandbox()
+check(_common._is_throwaway_paper(sb),
+      "a temp-dir paper with NO pinned sink is throwaway (suppressed)")
+check(not _common._is_throwaway_paper(ROOT / "samples/annotation-history"),
+      "a real in-repo paper is never throwaway")
+
+_prev = os.environ.get("VIRGIL_DEV_MEMOS_DIR")
+os.environ["VIRGIL_DEV_MEMOS_DIR"] = tempfile.mkdtemp(prefix="cowork-pin-")
+check(not _common._is_throwaway_paper(sb),
+      "an EXPLICITLY pinned sink always writes, temp paper or not")
+if _prev is None:
+    os.environ.pop("VIRGIL_DEV_MEMOS_DIR", None)
+else:
+    os.environ["VIRGIL_DEV_MEMOS_DIR"] = _prev
+
+# End to end: a real writeback on a temp sandbox, sink unpinned, writes nothing.
+sb = sandbox()
+env = dict(os.environ, VIRGIL_DEV="1"); env.pop("VIRGIL_DEV_MEMOS_DIR", None)
+probe = Path(tempfile.mkdtemp(prefix="cowork-probe-")) / "memos"
+env["VIRGIL_DEV_HOME"] = str(probe.parent)  # a private "default" home to observe
+r = subprocess.run([sys.executable, APPLY, str(sb), "update",
+                    json.dumps({"cardId": NOTE_CARD, "body": "z"})],
+                   capture_output=True, text=True, env=env)
+check(r.returncode == 0 and json.loads(r.stdout).get("ok") is True,
+      "writeback on a temp sandbox still succeeds with the guard on")
+check(not probe.exists() or len(sorted(probe.rglob('*.md'))) == 0,
+      "…and wrote NO memo into the default sink")
+
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

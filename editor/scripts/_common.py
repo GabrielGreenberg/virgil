@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -480,6 +481,40 @@ def source_repo_root() -> Path | None:
     return None
 
 
+def _is_throwaway_paper(doc: Path) -> bool:
+    """True for a reflection about a paper that lives in the system temp dir
+    while the memo sink is the machine-global DEFAULT — i.e. a test sandbox
+    about to write into the human's real dev-loop stream.
+
+    This is the chokepoint fix for the dominant source of dev-loop noise, found
+    on the night of 2026-08-09 and diagnosable in one grep only because the
+    memo now records which paper it is about. The editor test suite runs under
+    `VIRGIL_DEV=1`; the tests that drive `reflect.py` DIRECTLY pin the
+    `VIRGIL_DEV_MEMOS_DIR` seam, but the ones that drive `apply_response` reach
+    reflect through THIS function, which spawns a subprocess inheriting the
+    ambient environment — so the seam they never set resolves to
+    `~/.virgil-dev/memos` and every sandboxed card op files a memo about a
+    `/private/var/folders/.../chip12-xxxx/paper` that ceased to exist seconds
+    later. One suite run adds ~280 of them. The 32-minute, 435-memo burst this
+    night's dream had to read was, on the evidence of its skill mix and its
+    68-per-minute rate, exactly that.
+
+    Fixing it test-side would mean pinning the seam in sixteen files and
+    trusting the seventeenth to remember — which is the shape that produced the
+    bug. So the guard lives at the ONE place every tail-trigger passes through,
+    is derived from `tempfile.gettempdir()` rather than a naming convention,
+    and is scoped so it can only ever suppress the accidental case: an
+    EXPLICITLY pinned sink always writes (that is a caller who has said where
+    the memos go, including every test that pins a temp sink on purpose), and
+    a real paper is never under `$TMPDIR`."""
+    if _dir_override("VIRGIL_DEV_MEMOS_DIR") is not None:
+        return False  # explicitly pinned — the caller has said where these go
+    try:
+        return Path(tempfile.gettempdir()).resolve() in doc.resolve().parents
+    except OSError:
+        return False
+
+
 def spawn_reflection(doc: Path, skill: str, task_id: str = "-", *, timeout: int = 20) -> None:
     """Best-effort DEV-mode capture: fire `/editor/reflect` for a just-completed
     skill so a memo lands for EVERY writeback — the mechanical "day" floor that
@@ -492,9 +527,12 @@ def spawn_reflection(doc: Path, skill: str, task_id: str = "-", *, timeout: int 
     adds a bounded tail latency before the caller sees stdout, in a DEV session.
     `reflect.py` is a sibling of this module, so it resolves from a synced paper
     folder too — sidestepping the skills' markdown script-paths. The four
-    qualitative buckets are enriched later via the reflection convention; this
-    writes the correctly-classified frontmatter floor."""
+    qualitative buckets are enriched later via the reflection convention (which
+    task-less floors can now actually receive — see `reflect._find_existing`);
+    this writes the correctly-classified frontmatter floor."""
     if not dev_mode_enabled():
+        return
+    if _is_throwaway_paper(doc):
         return
     try:
         script = Path(__file__).resolve().parent / "reflect.py"
