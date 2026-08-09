@@ -30,6 +30,11 @@ import {
   IN_TEXT_ANCHOR_ACCENTS,
   inTextAnchorAccentVar,
 } from "@/cards/predicates";
+import {
+  LEGACY_TOKEN_CROSSWALK,
+  accentTokenFromTint,
+  defaultTintForLinkedAnchorKind,
+} from "@/cards/legacy-token-crosswalk";
 import { DEFAULT_PANEL_COLORS } from "@/lib/panel-theme";
 
 /** The CSS tokens the two globals.css blocks select on (Mode A ∪ Mode B). The
@@ -126,5 +131,121 @@ describe("#27 globals.css source — hex tables deleted", () => {
         `globals.css missing var(${row.cssVar}) for token "${row.token}"`,
       ).toBe(true);
     }
+  });
+});
+
+/**
+ * Task 174 — the #27 invariant, extended to the TINT channel.
+ *
+ * The block above guards `--link-anchor-color` (the in-text active ring + the
+ * Mode-A paragraph rail). The persistent tint BAND is a second paint channel on
+ * the same kind, fed by the `linkedAnchor` mark's `tintColor` attr, and it was
+ * the one that escaped: it persisted the RESOLVED `#fbbf24` — byte-identical to
+ * `DEFAULT_PANEL_COLORS.highlight`, i.e. copied out of the theme and then
+ * frozen — so a Highlight panel-color override repainted the card, the float
+ * and the ring while the band, a highlight's entire in-text identity
+ * (`markerType: null`), stayed amber. Nothing caught it because the pre-174
+ * guards only ever looked at `--link-anchor-color`.
+ *
+ * The contract now: a DEFAULT band is an accent sentinel resolved by CSS from
+ * the live var; a PER-INSTANCE hue stays a literal hex.
+ */
+describe("#27 tint channel — the default band derives from the live accent", () => {
+  const css = readFileSync(resolve(__dirname, "../../app/globals.css"), "utf8");
+
+  /** Every `linkedAnchor.kind` the tint SSOT can be asked about: the spine
+   *  kinds (whose mark-attr token equals the spine kind for all but revision)
+   *  plus the legacy `revision`/`cut` aliases and the two render sentinels. */
+  const MARK_KINDS = [
+    ...Object.keys(LEGACY_TOKEN_CROSSWALK),
+    "revision",
+    "cut",
+    "pending-ai-change",
+    "pending-ai-request",
+  ];
+
+  it("the highlight band is a sentinel naming a real accent token — never a frozen hex", () => {
+    const tint = defaultTintForLinkedAnchorKind("highlight");
+    const token = accentTokenFromTint(tint);
+    expect(token, `highlight tint "${tint}" is not an accent sentinel`).toBeTruthy();
+    // The sentinel names a token the accent map actually stamps a :root var for,
+    // and that token's theme is the highlight theme — same source as the ring.
+    const row = IN_TEXT_ANCHOR_ACCENTS.find((r) => r.token === token);
+    expect(row, `no IN_TEXT_ANCHOR_ACCENTS row for sentinel token "${token}"`).toBeTruthy();
+    expect(row!.themeKey).toBe("highlight");
+  });
+
+  it("every accent-sentinel tint resolves to its live var in globals.css", () => {
+    let sentinels = 0;
+    for (const kind of MARK_KINDS) {
+      const tint = defaultTintForLinkedAnchorKind(kind);
+      const token = accentTokenFromTint(tint);
+      if (!token) continue;
+      sentinels++;
+      // The rule that turns the sentinel attr into the live accent. Without it
+      // the band silently falls through to the hardcoded `var()` fallback —
+      // i.e. back to the frozen amber this task removed.
+      const rule = new RegExp(
+        `\\.linked-anchor\\[data-tint-color="${tint}"\\][^}]*--tint-color:\\s*var\\(${inTextAnchorAccentVar(token)}`,
+      );
+      expect(
+        rule.test(css),
+        `globals.css has no rule resolving data-tint-color="${tint}" to var(${inTextAnchorAccentVar(token)})`,
+      ).toBe(true);
+    }
+    // Guard the guard: if the SSOT stops emitting sentinels entirely, the loop
+    // above passes vacuously — exactly the frozen-literal state this pins.
+    expect(sentinels).toBeGreaterThan(0);
+  });
+
+  it("the pending-AI bands stay per-instance literal hues", () => {
+    // These are genuinely per-instance (one shared light blue for BOTH the
+    // applied-change and open-request marks, deliberately — Gabriel 2026-07-03),
+    // not a panel theme, so they must keep riding the inline `--tint-color`.
+    for (const kind of ["pending-ai-change", "pending-ai-request"]) {
+      const tint = defaultTintForLinkedAnchorKind(kind);
+      expect(tint).toBe("#bfdbfe");
+      expect(accentTokenFromTint(tint)).toBeNull();
+    }
+  });
+
+  it("no kind but highlight paints a default band", () => {
+    for (const kind of MARK_KINDS) {
+      if (kind === "highlight" || kind.startsWith("pending-ai-")) continue;
+      expect(
+        defaultTintForLinkedAnchorKind(kind),
+        `kind "${kind}" unexpectedly paints a default tint band`,
+      ).toBeNull();
+    }
+  });
+
+  it("no accent-sentinel rule re-freezes a bare hex", () => {
+    // The block-scoped twin of the `--link-anchor-color` offender census above.
+    // That one is LINE-scoped (its rules are one-liners) and therefore cannot
+    // see this rule family at all, which is how the frozen literal would come
+    // back: a sentinel rule written as `--tint-color: #fbbf24` paints exactly
+    // like the pre-174 code and satisfies every other guard here. A default-hex
+    // `var(…, #xxxxxx)` fallback is fine — that is the pre-mount/SSR default,
+    // not the live source.
+    const blocks = [
+      ...css.matchAll(/\.linked-anchor\[data-tint-color=[^\]]*\]\s*\{([^}]*)\}/g),
+    ];
+    expect(blocks.length).toBeGreaterThan(0);
+    const offenders = blocks
+      .map((m) => m[1])
+      .filter((body) => /--tint-color:\s*#[0-9a-fA-F]{3,8}\s*;/.test(body))
+      .map((body) => body.trim());
+    expect(offenders).toEqual([]);
+  });
+
+  it("the mark never interpolates a sentinel into an inline style", () => {
+    // `linked-anchor.ts` only writes `style: --tint-color: <v>` for a strict
+    // hex. A sentinel reaching the style sink would both break the CSS and
+    // widen an untrusted-value path (the attr rides sidecar JSON).
+    const markSrc = readFileSync(
+      resolve(__dirname, "../../lib/tiptap/linked-anchor.ts"),
+      "utf8",
+    );
+    expect(markSrc).toContain("/^#[0-9a-fA-F]{3,8}$/.test(tint)");
   });
 });

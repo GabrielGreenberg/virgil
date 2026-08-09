@@ -185,7 +185,7 @@ function highlightCard(anchorId: string, id: string): CardWithLinks {
 }
 
 describe("restampLinkedAnchorForKind — a card morph makes the in-doc mark agree immediately", () => {
-  it("note → highlight paints the amber band (tintColor #fbbf24) + highlight token, no reload", () => {
+  it("note → highlight paints the tint band (the accent sentinel) + highlight token, no reload", () => {
     // A freshly-created Mode-B note: no tint, note token.
     const editor = mountDocWithMark({
       anchorId: "n1",
@@ -199,7 +199,9 @@ describe("restampLinkedAnchorForKind — a card morph makes the in-doc mark agre
 
     const attrs = markAttrsFor(editor, "n1");
     expect(attrs?.kind).toBe("highlight");
-    expect(attrs?.tintColor).toBe("#fbbf24"); // the visible amber band
+    // The SSOT value, never a literal — since task 174 the default band is a
+    // theme-derived sentinel CSS resolves to the live highlight accent.
+    expect(attrs?.tintColor).toBe(defaultTintForLinkedAnchorKind("highlight"));
     expect(attrs?.linkCard).toBe("highlight:n1");
     expect(linkedAnchorRenderAttrs(attrs ?? {})["data-link-card"]).toBe(
       "highlight:n1",
@@ -215,9 +217,11 @@ describe("restampLinkedAnchorForKind — a card morph makes the in-doc mark agre
       anchorId: "h1",
       kind: "highlight",
       linkCard: "highlight:h1",
-      tintColor: "#fbbf24",
+      tintColor: defaultTintForLinkedAnchorKind("highlight"),
     });
-    expect(markAttrsFor(editor, "h1")?.tintColor).toBe("#fbbf24");
+    expect(markAttrsFor(editor, "h1")?.tintColor).toBe(
+      defaultTintForLinkedAnchorKind("highlight"),
+    );
 
     restampLinkedAnchorForKind(editor, "h1", "note", "h1");
 
