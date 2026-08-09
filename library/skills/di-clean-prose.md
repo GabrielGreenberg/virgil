@@ -4,7 +4,7 @@ description: |
   headings, restore the heading hierarchy, handle drop caps, and
   align pagination anchors. Triggers on: "clean the prose for
   <citekey>", "fix the headings in this paper", "tidy the title and
-  drop caps for X". Phase 3 of the /deep-index pipeline; invoke
+  drop caps for X". Subskill of /deep-index (its Phase 3); invoke
   directly when only prose-level cleanup is needed. Does NOT trigger
   for footnote recovery (use /recover-footnotes) or bibliography
   cleanup (use /clean-bibliography).
