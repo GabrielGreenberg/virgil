@@ -1559,8 +1559,9 @@ export const PANEL = {
 } as const;
 
 /* ── Button primitive ──────────────────────────────────────────────
-   Five variants, three sizes, codified per docs/virgil-design-system/
-   07-buttons-and-inputs.md. Don't hand-roll filled buttons; pick a
+   Five variants, three sizes, codified in src/STYLE_GUIDE.md ("Buttons"),
+   which also names the surfaces that stay hand-rolled BY DESIGN (stateful
+   toggles). Don't hand-roll filled buttons; pick a
    variant. There is no "blue button" in Virgil — `warm` replaces the
    bg-blue-100 / bg-emerald-600 patterns that used to scatter across
    modal footers and suggestion flows. */

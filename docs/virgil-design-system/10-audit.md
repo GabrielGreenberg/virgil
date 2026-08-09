@@ -1,10 +1,29 @@
+<!-- historical-record: docs/virgil-design-system -->
+> **Historical — not the spec.** Part of the frozen April-2026 design-system
+> migration record. The live style spec is
+> [`src/STYLE_GUIDE.md`](../../src/STYLE_GUIDE.md); where this file and the code
+> disagree, the code is right and this file is history. Start at
+> [README.md](README.md).
+
 # 10 — Audit
 
-Twelve concrete drifts in the current code, each with a fix sentence.
-This is the worklist for `MIGRATION.md`. Items are in **no specific
-order** — `MIGRATION.md` groups them by pass.
+> **This is not a worklist any more.** It *was* the worklist for
+> `MIGRATION.md` in April 2026; the migration ran. Every item below now
+> carries a **Status** line verified against the code on 2026-08-09. Eight
+> landed outright, three landed as a primitive whose consumer sweep is
+> incomplete, one was superseded by a different design — and **two of the
+> three items marked "deferred" have since been decided and built**.
+>
+> Read the Status line before acting on any item. The body under it describes
+> April 2026, not today.
+
+Twelve concrete drifts in the code *as of April 2026*, each with a fix
+sentence. Items are in **no specific order** — `MIGRATION.md` grouped them by
+pass.
 
 ## 1. `CARD_SELECTED` (amber default) still exists
+
+> **Status — LANDED (verified 2026-08-09).** `CARD_SELECTED*` and `panelCard()` are gone (deee7dfa). `src/components/panel-primitives.tsx:399/:418` expose `themedCard(theme, selected, extra)` + `themedCardStyle` reading `theme.borderSelected`; a theme is required on every card consumer.
 
 `src/components/panel-primitives.tsx` defines
 `CARD_SELECTED = "bg-surface border-amber-300 shadow-sm"` plus four
@@ -18,6 +37,8 @@ to pass a theme. Replace the four themed siblings with a single helper
 
 ## 2. Hover backgrounds spelled six ways
 
+> **Status — LANDED (verified 2026-08-09).** `.hover-on-light` / `.hover-on-dark` ship at `src/app/globals.css:530-567`, 86 uses across 38 files. Zero raw `hover:bg-stone-*` remain; 2 `hover:bg-amber-*` survive as a deliberate status tint in `BibEntryCard.tsx`. No CI guard.
+
 `hover:bg-stone-50/50`, `hover:bg-stone-100`, `hover:bg-stone-100/70`,
 `hover:bg-stone-200/50`, `hover:bg-amber-50`, plus inline-styled hovers
 in custom components.
@@ -27,6 +48,8 @@ in custom components.
 `04-interaction.md`.
 
 ## 3. Card-header tints use opacity hacks
+
+> **Status — LANDED (verified 2026-08-09).** Header tints are solid hexes derived by `deriveCardPalette` (`src/lib/panel-theme.ts:191-206`, `blendOverWhite`), and `CARD_THEMES` is now a mechanical fold over `DEFAULT_PANEL_COLORS` (`panel-primitives.tsx:460`). No opacity literal remains on any card header.
 
 `bg-red-100/60`, `bg-emerald-100/50`, `bg-[#fdf8e1]/80`, `bg-[#fef3c3]/40`,
 `bg-stone-100/70` etc. throughout `CARD_THEMES` in
@@ -38,6 +61,8 @@ the same role.
 computed from `accent` via `deriveCardPalette` in `panel-theme.ts`.
 
 ## 4. Theme shape is overgrown
+
+> **Status — LANDED (verified 2026-08-09).** 9c63fc49. A row is still nine members, but eight are DERIVED from one authored `accent` hex (`themeFromAccent`, `src/lib/panel-theme.ts:226`), and the `override` sub-palette plus its three appliers are deleted.
 
 `CARD_THEMES` rows have nine fields each, mixing Tailwind classnames,
 hex strings, and an optional `override` palette for user-color-picked
@@ -51,6 +76,8 @@ from `accent` via `deriveCardPalette`. The `override` system disappears
 
 ## 5. Icon buttons are hand-rolled
 
+> **Status — PARTIAL (verified 2026-08-09).** `.iconbtn-xs/-sm/-md/-lg` (+ danger / on-dark / toggle / accent variants) ship at `src/app/globals.css:575-627`, but only ~23 call sites adopted them; ~37 icon-only buttons in `src/` are still hand-rolled, two of them inside `panel-primitives.tsx` itself. No CI guard. **Before reporting one as drift, check the out-of-scope list now in `src/STYLE_GUIDE.md` (Spacing & icons).**
+
 Eight different icon-button implementations across panel headers,
 top bar, card chrome, modal headers, etc. Each differs in hit area
 (20–32px), padding, hover bg, and focus ring.
@@ -60,6 +87,8 @@ in `globals.css`. Use them everywhere. See
 `03-spacing-and-icons.md`.
 
 ## 6. Buttons have no variant system
+
+> **Status — PARTIAL (verified 2026-08-09).** `<Button>` ships with exactly primary/secondary/warm/danger/ghost × sm/md/lg (`panel-primitives.tsx:1568-1612`) and zero `bg-blue-100`/`bg-emerald-100` action buttons survive — but only 11 files use it and ~6 token-based hand-rolled action buttons remain. No CI guard.
 
 `bg-blue-100 text-blue-800` for "apply"; `bg-emerald-100 text-emerald-800`
 for "accept"; `bg-stone-200 text-stone-800` for "cancel"; raw
@@ -72,6 +101,8 @@ Variants: `primary`, `secondary`, `warm`, `danger`, `ghost`. Sizes:
 replace with `<Button>`.
 
 ## 7. `text-stone-*` and `border-stone-*` everywhere
+
+> **Status — LANDED (verified 2026-08-09).** `src/` has zero `text-`/`border-`/`bg-stone-*`. The ink/edge/surface utilities are real Tailwind colors (`globals.css:472` `@theme`) and dominate (495/154/58 uses). One straggler: `ring-stone-500` in `PanelThemePicker.tsx:85`.
 
 The `--ink-*` and `--edge-*` token scales were added in the last pass,
 but ~200 sites still use raw `text-stone-500`, `border-stone-300`, etc.
@@ -90,6 +121,8 @@ but ~200 sites still use raw `text-stone-500`, `border-stone-300`, etc.
 
 ## 8. Footnote rust appears as 5 different hexes
 
+> **Status — PARTIAL (verified 2026-08-09).** The `--footnote-50/100/200/300/500` scale and its `--footnote-color`/`-bg`/`-bg-hover` aliases shipped (`globals.css:256-287`), but the consumer sweep never ran: ~15 raw `#b45757`/`#fecaca`/`#fef2f2` spellings remain across 13 sites (9 in `globals.css`), and `--par-title-color: #c45a5a` still sits outside the scale.
+
 `#b45757` in some places, `#c45a5a` in `--par-title-color`, `#fef2f2`
 for bg, `#fde8e8` for one-off hover, `#fecaca` for selected. The
 relationship between them is implicit, not codified.
@@ -103,6 +136,8 @@ golds).
 
 ## 9. Active-tab "swoop" creates visual noise
 
+> **Status — SUPERSEDED (verified 2026-08-09).** The pseudo-element swoop + filter chain is gone (tombstone at `globals.css:4437`; `--shadow-ambient-filter` now has zero consumers, and no `TabBar` exists). It was not flattened — it was rebuilt as the CI-pinned `FolderTabChrome` geometry SSOT (`folder-tab-geometry.ts:69`). See `src/STYLE_GUIDE.md` → *Folder tabs*.
+
 The `<TabBar>` active-tab swoop pseudo-element is cute but visually
 loud and uses a complex SVG-outline + filter-shadow chain
 (`--shadow-ambient-filter`).
@@ -111,6 +146,8 @@ loud and uses a complex SVG-outline + filter-shadow chain
 part of this migration; flagged here so it's tracked.
 
 ## 10. Selection ring on inline atoms is amber-hardcoded
+
+> **Status — LANDED (verified 2026-08-09).** 46dfc5a9, and since superseded upward: no amber rgba literal remains in `src/` or `library/`. `globals.css:3078-3093` paints the atom selection ring from the per-kind `--link-anchor-color` (footnotes) and the `--amber-highlight-*` role tokens (citations) — not `--ring-drag-target`.
 
 `.footnote-marker[data-card-selected="true"]` and
 `[data-type="citation"][data-card-selected="true"]` both use
@@ -124,6 +161,8 @@ the literal.
 
 ## 11. 6-dot vs 3-line drag handle distinction
 
+> **Status — RESOLVED (verified 2026-08-09).** Deferred here, but decided since — via option (b), drop text-only. `ec38210` deleted the card text-drag grip from `panel-primitives.tsx`, leaving only the 6-dot grip. `MIME_TEXT_INSERT` survives with zero producers.
+
 Two visually-similar handles do near-identical things (drag entity vs
 drag text-only). Documented in `STYLE_GUIDE.md` but a usability risk.
 
@@ -132,6 +171,8 @@ for text-only, or drop text-only entirely. Not in this migration; track
 for follow-up.
 
 ## 12. Marginalia gutter has no overflow design
+
+> **Status — RESOLVED (verified 2026-08-09).** Deferred here, but built since (2026-06-10, chip-A6/R16): the marginalia grid reserves its last cell for a `+K` overflow pill whose popover lists the hidden markers as fully functional marker buttons — `src/lib/marginalia-grid.ts:155-187` + `src/components/Marginalia.tsx:338-420`.
 
 The 2-column grid handles a few markers per paragraph. A heavily-
 reviewed paragraph (12+ markers) overflows or collides with the next
@@ -145,20 +186,28 @@ follow-up.
 
 ## Summary
 
-| # | Drift | In migration? |
-|---|---|---|
-| 1 | `CARD_SELECTED` amber default | yes (Pass 2) |
-| 2 | Hover bg spelled six ways | yes (Pass 3) |
-| 3 | Card-header opacity hacks | yes (Pass 6) |
-| 4 | Theme shape overgrown | yes (Pass 6) |
-| 5 | Icon buttons hand-rolled | yes (Pass 4) |
-| 6 | No button variant system | yes (Pass 5) |
-| 7 | `text-stone-*` everywhere | yes (Pass 7) |
-| 8 | Footnote rust as 5 hexes | yes (Pass 1) |
-| 9 | Active-tab swoop noise | deferred |
-| 10 | Amber selection ring hardcoded | yes (Pass 1) |
-| 11 | 6-dot vs 3-line drag handles | deferred |
-| 12 | Marginalia overflow design | deferred |
+| # | Drift | In migration? | **Status 2026-08-09** |
+|---|---|---|---|
+| 1 | `CARD_SELECTED` amber default | yes (Pass 2) | landed |
+| 2 | Hover bg spelled six ways | yes (Pass 3) | landed |
+| 3 | Card-header opacity hacks | yes (Pass 6) | landed |
+| 4 | Theme shape overgrown | yes (Pass 6) | landed |
+| 5 | Icon buttons hand-rolled | yes (Pass 4) | **partial** — primitive shipped, ~37 sites unswept |
+| 6 | No button variant system | yes (Pass 5) | **partial** — primitive shipped, ~6 sites unswept |
+| 7 | `text-stone-*` everywhere | yes (Pass 7) | landed (1 straggler) |
+| 8 | Footnote rust as 5 hexes | yes (Pass 1) | **partial** — scale shipped, consumers unswept |
+| 9 | Active-tab swoop noise | deferred | superseded by `FolderTabChrome` |
+| 10 | Amber selection ring hardcoded | yes (Pass 1) | landed, then superseded upward |
+| 11 | 6-dot vs 3-line drag handles | deferred | **decided** — text-only dropped |
+| 12 | Marginalia overflow design | deferred | **built** — `+K` overflow pill |
 
-Nine items roll in. Three deferred — they are real issues but require
-design decisions, not just systematization.
+Nine items rolled into the migration; three were deferred as design
+decisions. All three deferred questions have since been answered — two by
+building the thing, one by rebuilding the surface entirely.
+
+The three **partials** are the only live residue in this file, and they share
+one shape: *the primitive landed and the consumer sweep didn't.* None of them
+has a CI guard, which is why they drifted quietly. If you pick one up, file it
+as its own task — and read `src/STYLE_GUIDE.md` first, because the surfaces
+that are hand-rolled **by design** are enumerated there now (they are not part
+of the remaining sweep).

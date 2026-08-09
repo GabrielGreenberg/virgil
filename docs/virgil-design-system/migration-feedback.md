@@ -1,3 +1,10 @@
+<!-- historical-record: docs/virgil-design-system -->
+> **Historical — not the spec.** Part of the frozen April-2026 design-system
+> migration record. The live style spec is
+> [`src/STYLE_GUIDE.md`](../../src/STYLE_GUIDE.md); where this file and the code
+> disagree, the code is right and this file is history. Start at
+> [README.md](README.md).
+
 # Migration feedback — issues flagged during execution
 
 Running notes accumulated while executing the passes in [MIGRATION.md](MIGRATION.md). Each item is something a future executor or the design author should know — corrections to the plan, environmental gotchas, or judgment calls made on the executor's discretion.

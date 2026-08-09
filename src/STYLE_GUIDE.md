@@ -1,8 +1,14 @@
 # Virgil Style Guide
 
-> Drop-in replacement for `src/STYLE_GUIDE.md`. This file is the
-> in-repo summary of the design system. The full reference lives in
-> `docs/virgil-design-system/`.
+> **This file is the style spec — the only one.** `AGENTS.md` routes every
+> agent here, and where this guide and the code disagree, the reconciliation
+> happens *in this file*, never in a second document.
+>
+> `docs/virgil-design-system/` is the frozen **April-2026 migration record**
+> that produced much of what is written here. It is history, not spec: its
+> numbers were true then and several are wrong now. Every file in it carries a
+> banner saying so, and CI keeps it that way
+> ([spec-authority-guardrail.test.ts](__tests__/spec-authority-guardrail.test.ts)).
 
 ## Visual identity
 
@@ -277,6 +283,24 @@ Three icon-button sizes: `iconbtn-sm` (20×20), `iconbtn-md` (24×24,
 default), `iconbtn-lg` (32×32). The visual SVG inside is smaller than
 the button (14, 16, 20 respectively); the whitespace is the click
 target.
+
+**What `iconbtn-*` deliberately does NOT model.** These are icon-only
+buttons in shape but not in spec terms; each has state or context the
+three utilities can't express, so a hand-rolled implementation here is
+*correct*, not drift. Don't "sweep" them — and don't re-report them as
+a finding:
+
+- Topbar / sidebar-strip / tab-close buttons with accent-text hover or
+  stateful `aria-pressed`-style active styling (`bg-[var(--accent-light)]`
+  + inset shadow). Their own utility is `.topbarbtn` (see **Interaction**).
+- `PanelHeader` Add (blue) and AI-request (sky) buttons — the colored
+  accent hover is an intentional category cue.
+- Formatting toolbars (`BibEntryCard`, `RichTextField`, `MenuBar`, the
+  floating toolbar shell) — own active-state styling plus a dark-context
+  inverted variant `iconbtn-*` can't express.
+- Outline chevrons (10×10 / 12×12 SVGs) — sub-spec sizes by design.
+- `ItemMenu`'s panel-header trigger (`align="left"`) — bare button by
+  design, no rounded lozenge.
 
 Icons are stroke-only, stroke-width 2, round caps and joins, single
 color (`currentColor`). Three exceptions are filled by design: the AI
@@ -580,6 +604,11 @@ Sizes: `sm` 24px / 12px font, `md` 32px / 13px (default), `lg` 40px /
 
 Modal footers: rightmost is primary, then ghost cancel to its left,
 destructive (if any) far left. Tab right + enter must not delete.
+
+**Out of scope for the five variants:** toggle buttons with stateful
+active styling (sidebar strips, top-bar mode toggles). They don't fit
+`<Button>` and stay hand-rolled — a future `toggle` variant could
+subsume them, but until one exists this is not drift.
 
 ## Inputs
 
@@ -1280,5 +1309,7 @@ accept/reject flow.
 Empty-state designs, first-run onboarding, AI-pass review modes, the
 6-dot vs 3-line drag-handle decision, the marginalia overflow design.
 These are real design questions but they are **product decisions**, not
-systematization. Track them separately. See
-`docs/virgil-design-system/10-audit.md` for the deferred list.
+systematization. Track them separately — as tasks, not as a second doc.
+(The three the 2026 migration deferred — the active-tab swoop, the
+6-dot/3-line handles, and marginalia overflow — are recorded in the
+historical `docs/virgil-design-system/10-audit.md` §9/§11/§12.)

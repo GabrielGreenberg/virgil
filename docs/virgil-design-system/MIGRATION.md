@@ -1,4 +1,18 @@
+<!-- historical-record: docs/virgil-design-system -->
+> **Historical — not the spec.** Part of the frozen April-2026 design-system
+> migration record. The live style spec is
+> [`src/STYLE_GUIDE.md`](../../src/STYLE_GUIDE.md); where this file and the code
+> disagree, the code is right and this file is history. Start at
+> [README.md](README.md).
+
 # MIGRATION.md
+
+> **These passes ran.** This is the plan as written in April 2026, kept for its
+> rationale — not a set of instructions to execute. Per-item outcomes are in
+> `10-audit.md` (each item carries a verified Status line). Two referenced
+> paths no longer exist: `patches/` and `11-style-guide.md` were removed when
+> this folder was demoted to a historical record; recover them from
+> `git log --diff-filter=D -- docs/virgil-design-system/`.
 
 Pass-by-pass execution plan. **Do one pass per PR.** Don't combine.
 
@@ -18,6 +32,10 @@ Files touched:
 - `src/app/globals.css` (replace the `:root` token block; see
   `patches/globals.css.patch.md`).
 - `src/STYLE_GUIDE.md` (replace with `11-style-guide.md`).
+  **⚠️ Do not do this.** That instruction was true for one pass in April 2026
+  and inverted afterwards: `src/STYLE_GUIDE.md` is now the maintained spec and
+  a strict superset, so "replacing" it would delete ~1000 lines of current
+  doctrine. `11-style-guide.md` has been removed for exactly this reason.
 
 Concrete changes:
 
