@@ -217,7 +217,14 @@ export interface FolderTabVariantSpec {
   /** Seam-bridge span: "body" bridges only the flat-body run so the body's
    *  top border shows in the swoop valleys (inner tabs, task 053); "full"
    *  bridges the entire base including the feet (outer tabs' historical
-   *  full-width cover of the topbar border). */
+   *  full-width cover of the topbar border). Either way the bridge is scoped
+   *  to ONE TAB's footprint — "full" never paints into the inter-tab gap, so a
+   *  baseline is expected there in both strips.
+   *  NB "body" assumes the body's top border is actually VISIBLE in those
+   *  valleys, which was false until task 324: the library strip's own opaque
+   *  background covered that border across the whole strip, valleys included.
+   *  See the seam-row comment in library/components/panel-tabs/PanelTabStrip.tsx
+   *  before making a valley look "unpainted" by flipping this to "full". */
   bridgeSpan: "body" | "full";
   caps: FolderTabCapSet;
 }

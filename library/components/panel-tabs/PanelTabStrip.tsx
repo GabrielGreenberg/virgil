@@ -405,15 +405,18 @@ export function PanelTabStrip({
         dragStartEvent: e,
         // Clone the whole panel so the ghost outlines a manila file: the
         // active tab's trapezoid on top, the rounded body below. Other
-        // tabs are hidden so only the dragged one is visible; the strip
-        // background is cleared so the trapezoid silhouette stays clean.
+        // tabs are hidden so only the dragged one is visible, which is all
+        // the clone has to do since task 324: the live strip carries NO
+        // background of its own, so the trapezoid silhouette is already
+        // clean and there is nothing left to clear (the ghost used to
+        // override the strip's opaque --library-bg here — the one place
+        // that treated the field as the strip's to paint).
         // drop-shadow follows the combined alpha outline (trapezoid +
         // rounded body), not a bounding square.
         buildGhost: () => {
           const clone = wholePanelEl.cloneNode(true) as HTMLElement;
           const strip = clone.firstElementChild as HTMLElement | null;
           if (strip) {
-            strip.style.background = "transparent";
             for (const child of Array.from(strip.children) as HTMLElement[]) {
               if (child.getAttribute("data-tab-id") !== libId) {
                 child.style.visibility = "hidden";
@@ -463,32 +466,58 @@ export function PanelTabStrip({
         // merges into the page with NO seam line — without changing the
         // strip's outer footprint. The overflowY:hidden scroll-clip would
         // otherwise eat that 1px; the padding keeps it inside the clip box.
-        // The strip bg is the solid --library-bg, so the inter-tab gaps and
-        // the tail past the last tab read as PURE library field — no chrome
-        // there (task 048); the page outline lives ONLY under the ACTIVE tab
-        // (its silhouette stroke + bottom fill row merging into the body
-        // edge). Inactive tabs are deliberately FLAT BackgroundTab divs with
-        // no stroke of their own (task 048) — the only line under them is the
-        // body's top border. Horizontal pad is the STRIP_SIDE_PAD SSOT: the
-        // body below insets by the SAME constant so its rounded top corners
-        // tuck exactly under the outermost tabs' swoop feet (task 047 no-wing).
+        // Horizontal pad is the STRIP_SIDE_PAD SSOT: the body below insets by
+        // the SAME constant so its rounded top corners tuck exactly under the
+        // outermost tabs' swoop feet (task 047 no-wing).
         padding: `${STRIP_TOP_HEADROOM}px ${STRIP_SIDE_PAD}px 1px`,
         marginBottom: -1,
-        // The strip + the (transparent) inactive tabs sit on the LIBRARY
-        // backdrop (--library-bg) so unselected tabs read as part of the
-        // library background; only the active tab's manila fill (--surface /
-        // --background for paper) and the body pop as the white "page".
-        background: "var(--library-bg)",
-        // No strip-wide baseline seam. A former inset bottom-shadow seam in the
-        // --topbar-border token (inset 0 -1px 0) painted a 1px line
-        // across the WHOLE strip — including the inter-tab gaps and the tail — so
-        // the outline ran continuously. But --topbar-border (warm taupe #cbc3b8)
-        // clashed hard over the cool --library-bg field, showing as a discolored
-        // stripe in the gaps (task 048). Dropped: the gaps are now blank library
-        // field, and the surviving page edges (tab strokes, body frame, NavPod)
-        // are re-toned onto --library-edge — a tint of --library-bg that cannot
-        // drift from it. The active-tab merge is unaffected: it rides the
-        // fill-bridge + body border, not this shadow.
+        // ────────────────────────────────────────────────────────────────
+        // THE SEAM ROW HAS ONE PAINTER, AND IT ISN'T THIS ELEMENT (task 324).
+        //
+        // This strip DELIBERATELY overlaps the body's 1px top border row (the
+        // -1px margin above) so its ACTIVE-TAB CHILD can cover that row under
+        // the tab's own footprint. An element that overlaps a page-edge row in
+        // order to let a child paint it must therefore paint NOTHING itself:
+        // CSS backgrounds fill the PADDING box, so any opaque field here
+        // covers the border across the FULL panel width — under the inactive
+        // tabs, in the 2px inter-tab gaps, along the tail past the last tab,
+        // and through the swoop-foot valleys that folder-tab-geometry's
+        // bridgeSpan:"body" leaves unbridged precisely so the body border can
+        // show there. That is exactly what a solid `var(--library-bg)` here
+        // did from task 048 until 324: the ONLY surviving ink was what paints
+        // INSIDE the strip above its background (the active tab's three-piece
+        // chrome), so the manila page outline read as "spotty" — present under
+        // the active tab, decapitated everywhere else, with only the body's
+        // two rounded corner arcs resurfacing below the strip's footprint.
+        //
+        // Nothing is lost by dropping it: the strip's PARENT
+        // (TabbedLibraryPanel's panel container) already paints the identical
+        // --library-bg field, so the headroom, gaps and tail still read as
+        // pure library field, and children paint above a parent background
+        // regardless. Task 048's replacement premise — "the only line under
+        // the inactive tabs is the body's top border" — becomes true here for
+        // the first time. (048 deleted a strip-wide `boxShadow: inset 0 -1px 0`
+        // in the warm top-bar border token because taupe clashed over the cool
+        // library field; an INSET SHADOW paints above its own element's
+        // background and so was immune to this occlusion, which is why the
+        // baseline looked continuous before it and had no owner after.
+        // Re-adding a re-toned shadow is NOT the fix: it would make two
+        // painters own the same device row, the sub-pixel double-line class
+        // task 050 spent a cycle killing.)
+        //
+        // If a future mount ever hosts this strip where the parent does NOT
+        // provide the field, give the strip a background that STOPS ABOVE the
+        // seam row (background-clip / a gradient ending 1px short) — never
+        // opaque paint over the row it does not own.
+        //
+        // One deliberate second-order effect, recorded so it isn't read as a
+        // regression: DropZone's OS-file-drag wash (an inset:0 overlay at
+        // rgba(124,94,60,0.06), z-index auto) used to be blocked across this
+        // strip's whole box by the opaque field, since zIndex 20 below puts the
+        // strip in the positive-z layer above it. The wash now covers the tab
+        // band too — uniform with the rest of the panel, and the only way to
+        // exclude it again would be the opaque paint this comment forbids.
+        background: "transparent",
         flexShrink: 0,
         // F#15: the strip itself must be able to shrink to its panel column
         // (which is min-width:0), so tabs SHARE the width Chrome-style instead

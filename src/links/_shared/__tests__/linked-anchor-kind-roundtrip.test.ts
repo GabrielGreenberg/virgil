@@ -70,6 +70,7 @@ import { applyLinkedAnchorsImpl } from "../apply-linked-anchors";
 import type { ModeBReapplyRecord } from "../reapply-mode-b-anchors";
 import { collectLinksFromEditor, type LinkedAnchorKind } from "@/links/links";
 import { linkedAnchorRenderAttrs } from "@/lib/tiptap/linked-anchor-attrs";
+import { defaultTintForLinkedAnchorKind } from "@/cards/legacy-token-crosswalk";
 
 function mainCtx(): EditorExtensionsCtx {
   return {
@@ -272,7 +273,7 @@ describe("BUG1 — linkedAnchor KIND survives the serialize → parse → reconc
   //   todo            → "todo"
   //   cutter-comment  → "cutter-comment"   (NOT "cut" — that's the cssToken)
   //   report          → "report"
-  //   highlight       → "highlight" + a #fbbf24 tintColor restored
+  //   highlight       → "highlight" + the kind-derived tintColor restored
   // -----------------------------------------------------------------------
   const KIND_TOKEN_CASES: Array<{
     kind: LinkedAnchorKind;
@@ -355,12 +356,13 @@ describe("BUG1 — linkedAnchor KIND survives the serialize → parse → reconc
     editor.destroy();
   });
 
-  it("a highlight reloads without its tint then reconciles #fbbf24 back", () => {
+  it("a highlight reloads without its tint then reconciles the accent band back", () => {
     // The serializer drops `data-tint-color`, so the reload mark carries no
-    // tint. The fix reconstructs it from the KIND (defaultTintForLinkedAnchorKind
-    // → "#fbbf24"), making reload byte-faithful to create.
+    // tint. The fix reconstructs it from the KIND (defaultTintForLinkedAnchorKind),
+    // making reload byte-faithful to create — read from the SSOT rather than a
+    // literal, since task 174 the value is a theme-derived sentinel.
     const { parsed } = serializeThenParse("highlight", "hl1", "shiny span", {
-      tintColor: "#fbbf24",
+      tintColor: defaultTintForLinkedAnchorKind("highlight")!,
     });
     const editor = mountParsed(parsed);
     // PRECONDITION: parser default note, and no tint survived the round-trip.
@@ -375,14 +377,14 @@ describe("BUG1 — linkedAnchor KIND survives the serialize → parse → reconc
         cardId: "hcard",
         // The reload record's tint is the kind-derived default (the load pass
         // routes it through defaultTintForLinkedAnchorKind).
-        tintColor: "#fbbf24",
+        tintColor: defaultTintForLinkedAnchorKind("highlight"),
         paragraphId: "p001",
       },
     ]);
 
     const attrs = markAttrsFor(editor, "hl1");
     expect(attrs?.kind).toBe("highlight");
-    expect(attrs?.tintColor).toBe("#fbbf24");
+    expect(attrs?.tintColor).toBe(defaultTintForLinkedAnchorKind("highlight"));
     expect(markedTextFor(editor, "hl1")).toBe("shiny span");
     expect(markRunCountFor(editor, "hl1")).toBe(1);
     editor.destroy();
