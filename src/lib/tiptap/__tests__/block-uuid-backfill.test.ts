@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from "vitest";
-import { EditorState, Plugin } from "@tiptap/pm/state";
+import { EditorState, Plugin, TextSelection } from "@tiptap/pm/state";
+import { lift } from "@tiptap/pm/commands";
+import { Schema } from "@tiptap/pm/model";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { blockUuidBackfillPlugin } from "@/lib/tiptap/block-uuid-backfill";
 import {
@@ -73,6 +75,52 @@ function blockUuids(d: PMNode): Array<string | null> {
 function afterFirstBlock(state: EditorState): number {
   const first = state.doc.firstChild;
   return first ? first.nodeSize : 0;
+}
+
+// ── A container schema, for the LIFT case (ReplaceAroundStep) ───────────────
+// `fixtures.testSchema` has no wrapper node, and the lift transition needs one:
+// a `paragraph` inside a DEFERRING_PARENT (`blockquote`) correctly carries no
+// uuid of its own, and becomes anchorable the moment it reaches top level.
+const quoteSchema = new Schema({
+  nodes: {
+    doc: { content: "block+" },
+    paragraph: {
+      group: "block",
+      content: "inline*",
+      attrs: { uuid: { default: null } },
+      toDOM: () => ["p", 0],
+    },
+    blockquote: {
+      group: "block",
+      content: "block+",
+      attrs: { uuid: { default: null } },
+      toDOM: () => ["blockquote", 0],
+    },
+    text: { group: "inline" },
+  },
+});
+
+const quoteDoc = (...blocks: PMNode[]) => quoteSchema.node("doc", null, blocks);
+const qPara = (uuid: string | null, txt: string) =>
+  quoteSchema.node("paragraph", { uuid }, txt ? [quoteSchema.text(txt)] : []);
+const blockquote = (...blocks: PMNode[]) =>
+  quoteSchema.node("blockquote", { uuid: "Q1" }, blocks);
+
+function quoteState(initial: PMNode): EditorState {
+  return EditorState.create({
+    schema: quoteSchema,
+    doc: initial,
+    plugins: [observerPlugin(), blockUuidBackfillPlugin()],
+  });
+}
+
+function quoteBlockUuids(d: PMNode): Array<string | null> {
+  const out: Array<string | null> = [];
+  d.descendants((n) => {
+    if (n.type.name === "paragraph") out.push((n.attrs.uuid as string | null) ?? null);
+    return true;
+  });
+  return out;
 }
 
 describe("BlockUuidBackfill", () => {
@@ -157,6 +205,83 @@ describe("BlockUuidBackfill", () => {
     expect(uuids).toContain("aaaa"); // identity preserved across the move
     expect(uuids).toContain("bbbb");
     expect(new Set(uuids).size).toBe(2);
+  });
+
+  // ── Per-step coordinates (task 320) ──────────────────────────────────────
+  // The net was blind to the exact transaction shape every relocation gesture
+  // uses: delete here, insert there, in ONE transaction. It read every step's
+  // positions against `tr.before` and mapped them through the FULL `tr.mapping`,
+  // re-applying the earlier steps' maps to positions that already reflected
+  // them — for an insert BELOW the deleted range that collapses the inserted
+  // range to nothing, so zero candidates, no backfill, and a duplicate uuid
+  // reaching the document with CI green. The direction matters: the same tx with
+  // the insert ABOVE the cut happened to map correctly and did fire, which is
+  // why one of these two cases passed all along.
+  it("re-mints a duplicate inserted BELOW the deleted range in the same tx", () => {
+    const state = makeState(
+      doc(paragraph("aaaa", "Source"), paragraph("bbbb", "Tail")),
+    );
+    // Cut the SOURCE's text only (a text-bounded range move: the block survives
+    // as an empty shell still holding "aaaa"), then insert a copy at the end.
+    const tr = state.tr.delete(1, 1 + "Source".length);
+    tr.insert(tr.doc.content.size, paragraph("aaaa", "Source"));
+    const { state: next, transactions } = state.applyTransaction(tr);
+
+    expect(transactions).toHaveLength(2); // the backfill fired
+    const uuids = blockUuids(next.doc);
+    expect(uuids).toHaveLength(3);
+    expect(new Set(uuids).size).toBe(3);
+    expect(uuids[0]).toBe("aaaa"); // first occurrence keeps it
+    expect(uuids[2]).toMatch(/^[0-9a-f]{4}$/);
+    expect(uuids[2]).not.toBe("aaaa");
+  });
+
+  it("still preserves identity across a multi-step MOVE (delete + re-insert below)", () => {
+    // The mirror of the case above, and the one the per-step fix must not
+    // break: the source block is removed WHOLE, so the re-inserted copy is a
+    // move and keeps its uuid. This only holds if the removed-range walk reads
+    // each step against the doc BEFORE that step.
+    const state = makeState(
+      doc(paragraph("aaaa", "Movable"), paragraph("bbbb", "Anchor")),
+    );
+    const firstSize = state.doc.firstChild!.nodeSize;
+    const tr = state.tr.delete(0, firstSize);
+    tr.insert(tr.doc.content.size, paragraph("aaaa", "Movable (moved)"));
+    const { state: next, transactions } = state.applyTransaction(tr);
+
+    expect(transactions).toHaveLength(1); // nothing needed fixing
+    expect(blockUuids(next.doc)).toEqual(["bbbb", "aaaa"]);
+  });
+
+  // The other half of the per-step change, and the direction that bites HARDEST
+  // if the range is taken from the step's StepMap instead of its span: a
+  // `ReplaceAroundStep`'s map reports only its two SIDE ranges and deliberately
+  // omits the GAP — the preserved content that changes PARENT. Anchorability
+  // here is a function of the parent (`isDeferredInnerParagraph`), so a
+  // paragraph LIFTED out of a blockquote / listItem becomes a first-class text
+  // object entirely inside that gap. Read from the map alone, every
+  // toggle-list-off, toggle-blockquote-off and Backspace-at-list-start left the
+  // lifted block with a NULL uuid — no `data-uuid`, no grab handle, unreachable
+  // as a card/marginalia anchor: verbatim the bug this plugin exists to fix.
+  it("mints for a block LIFTED out of a container (ReplaceAroundStep gap)", () => {
+    const state = quoteState(
+      quoteDoc(blockquote(qPara(null, "inner")), qPara("zzzz", "after")),
+    );
+    // Caret inside the quoted paragraph, then lift it to top level — one
+    // ReplaceAroundStep whose gap carries the paragraph across parents.
+    const sel = TextSelection.create(state.doc, 3);
+    const lifted = state.apply(state.tr.setSelection(sel));
+    let out: EditorState = lifted;
+    lift(lifted, (tr) => {
+      out = lifted.apply(tr);
+    });
+
+    const uuids = quoteBlockUuids(out.doc);
+    expect(out.doc.firstChild?.type.name).toBe("paragraph"); // it really lifted
+    expect(uuids).toHaveLength(2);
+    // The lifted paragraph is now anchorable, so it MUST carry an id.
+    expect(uuids[0]).toMatch(/^[0-9a-f]{4}$/);
+    expect(uuids[1]).toBe("zzzz");
   });
 
   it("fills every block of a multi-block paste (all null uuids → all unique)", () => {
