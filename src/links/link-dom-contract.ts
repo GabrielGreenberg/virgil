@@ -58,7 +58,17 @@ export const DATA_LINK_CARD = "data-link-card";
  *  shape and is intentionally NOT migrated to the `float:` grammar. Do not
  *  conflate the two. */
 export function linkCardKey(kind: CardKind, id: string): string {
-  return `${kind}:${id}`;
+  return linkCardKeyFromToken(kind, id);
+}
+
+/** The same grammar built from a raw TOKEN rather than a spine `CardKind`.
+ *  Two live shapes need it and neither is a `CardKind`: the legacy mark-kind
+ *  namespace the anchor write path resolves through
+ *  (`legacyKindToCardKindString` → `revision-comment`, the `cut` alias), and the
+ *  kindful-but-idless `"<token>:"` a reload restore stamps when it knows the
+ *  kind and not the card. Same one builder — the separator is declared once. */
+export function linkCardKeyFromToken(token: string, id: string): string {
+  return `${token}:${id}`;
 }
 
 /** Inverse of `linkCardKey`. Returns null if the string isn't well-formed. */

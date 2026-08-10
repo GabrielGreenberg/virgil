@@ -9,14 +9,14 @@
 //      applied card whose `appliedChange` was already cleared (a kept card).
 //   2. collectAppliedPendingIds: order-stable ids of exactly the applied set,
 //      across a mixed revision/cutter array.
-//   3. findAppliedPendingByAnchorId: resolves the owning card by the blue mark's
-//      anchorId (the pill's caret-focus lookup), null when none owns the range.
+//
+// A third collector, findAppliedPendingByAnchorId, was pinned here and deleted in
+// task 202b: it had no caller outside this file, and a suite is not a consumer.
 
 import { describe, it, expect } from "vitest";
 import {
   isAppliedPending,
   collectAppliedPendingIds,
-  findAppliedPendingByAnchorId,
 } from "@/links/pending-change-collect";
 import type { RevisionCard, CutterCard } from "@/lib/types";
 
@@ -132,17 +132,3 @@ describe("collectAppliedPendingIds", () => {
   });
 });
 
-describe("findAppliedPendingByAnchorId", () => {
-  it("resolves the owning applied card by anchorId", () => {
-    const cards = [appliedRevision("r1", "a1"), appliedCutter("c1", "a2")];
-    expect(findAppliedPendingByAnchorId(cards, "a2")).toBe("c1");
-    expect(findAppliedPendingByAnchorId(cards, "a1")).toBe("r1");
-  });
-
-  it("returns null when no applied card owns that anchorId", () => {
-    const cards = [appliedRevision("r1", "a1")];
-    expect(findAppliedPendingByAnchorId(cards, "nope")).toBeNull();
-    // A pending suggestion with a matching id-less shape is never matched.
-    expect(findAppliedPendingByAnchorId([pendingRevision("p1")], "a1")).toBeNull();
-  });
-});

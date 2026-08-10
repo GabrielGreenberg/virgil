@@ -16,8 +16,11 @@
  * `collectLinksFromEditor` is pure-ish: it reads the live doc and derives
  * every in-doc `Link` record. It does NOT read card sidecars, so Mode A
  * pure-paragraph anchor links (a card anchored only via `paragraphIds`,
- * with no `linkedAnchor` mark) are NOT returned — the card-side derivation
- * (`derivedLinksForCard`, below) covers those.
+ * with no `linkedAnchor` mark) are NOT returned: nothing in the DOCUMENT marks
+ * them, so they are read from the card record's own persisted `links[]`.
+ * (`derivedLinksForCard`, below, is NOT that source — it is the legacy→canonical
+ * shim `migrateCardLinks` falls back to for a pre-D8 sidecar that has no
+ * `links[]` yet.)
  */
 
 import type { Editor } from "@tiptap/react";
@@ -33,6 +36,7 @@ import { generateEntityId } from "@/lib/uuid";
 import {
   DATA_LINK_ID,
   linkCardKey,
+  linkCardKeyFromToken,
   parseLinkCardKey,
 } from "./link-dom-contract";
 import {
@@ -151,8 +155,9 @@ export function captureParagraphSnapshot(
  *                                            with targetKind "linkedRange" (Mode B)
  *
  * Mode A pure-paragraph anchor links (no linkedAnchor mark) are NOT
- * returned by this function — nothing in the document marks them, so they
- * are read from the card side instead (`derivedLinksForCard`).
+ * returned by this function — nothing in the document marks them, so they are
+ * read from the card record's persisted `links[]` (with `derivedLinksForCard`
+ * as the pre-D8 fallback inside `migrateCardLinks`, not the primary source).
  */
 export function collectLinksFromEditor(editor: Editor): Link[] {
   const doc = editor.state.doc;
@@ -688,7 +693,7 @@ export function createLinkedAnchor(
   const text = editor.state.doc.textBetween(sel.from, sel.to, " ");
   const paragraphId = paragraphUuidAt(editor.state.doc, sel.from) ?? "";
   const cardKind = legacyKindToCardKindString(kind);
-  const linkCard = cardId ? `${cardKind}:${cardId}` : "";
+  const linkCard = cardId ? linkCardKeyFromToken(cardKind, cardId) : "";
   const ok = editor
     .chain()
     .setTextSelection(sel)
@@ -788,7 +793,7 @@ export function updateLinkedAnchorCard(
       kind: legacyKind,
       linkId: anchorId,
       linkKind: "anchor",
-      linkCard: `${cardKind}:${cardId}`,
+      linkCard: linkCardKeyFromToken(cardKind, cardId),
       tintColor,
     })
     .setTextSelection(range.from)
@@ -843,7 +848,7 @@ export function restampLinkedAnchorForKind(
       kind,
       linkId: anchorId,
       linkKind: "anchor",
-      linkCard: `${spineToken}:${cardId}`,
+      linkCard: linkCardKeyFromToken(spineToken, cardId),
       // The SAME kind-derived tint SSOT the create + reload paths read, so the
       // morphed mark's band is byte-identical to a created/reloaded one (amber
       // for highlight, null — no band — for every other kind).
@@ -965,7 +970,7 @@ export function reanchorByText(
   // pending mark stamps `cutter-suggestion:<id>`, not the kind-folded
   // `revision-suggestion:<id>`); fall back to the kind-derived token otherwise.
   const cardKind = opts?.linkCardToken ?? legacyKindToCardKindString(kind);
-  const linkCard = cardId ? `${cardKind}:${cardId}` : "";
+  const linkCard = cardId ? linkCardKeyFromToken(cardKind, cardId) : "";
   const ok = editor
     .chain()
     // Load-time / gesture-time correction: not an undoable user edit.
@@ -1034,25 +1039,6 @@ export function getTextAnchor(
         anchorId: link.anchor.textRange.anchorId,
         anchorText: link.anchor.textRange.textSnapshot,
       };
-    }
-  }
-  return null;
-}
-
-/** The sidecar-persisted `CardKind` of this card's first Mode-B text-range
- *  anchor (`link.target.ref.kind`), or null if the card carries no Mode-B
- *  anchor. This is the authoritative kind owned by the card record — the SSOT
- *  the parser-default `kind:"note"` mark is reconciled against (BUG1). Distinct
- *  from `getTextAnchor`, which returns the anchorId/text but not the kind. */
-export function getTextAnchorCardKind(card: CardWithLinks): CardKind | null {
-  const links = card.links ?? [];
-  for (const link of links) {
-    if (
-      link.anchor.type === "textObject" &&
-      link.anchor.targetKind === "linkedRange" &&
-      link.anchor.textRange
-    ) {
-      return link.target.ref.kind;
     }
   }
   return null;
