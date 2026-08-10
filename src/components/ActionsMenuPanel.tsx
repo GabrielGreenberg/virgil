@@ -362,7 +362,7 @@ export function ActionsMenuPanel({
     //
     // `exampleRun` is pure ProseMirror (operates on `ctx.view`): it reads the
     // live selection off `ctx.view.state` and dispatches there, so the
-    // grab-handle `cardCreation`/`cardLifecycle` slots are intentionally absent
+    // grab-handle `cardCreation` slot is intentionally absent
     // (a pure insert needs none) and `panelRouting` is omitted (the grid inserts
     // inline without a panel hop — matching the grid's prior no-panel-select
     // behavior). We `focus()` first so the doc is focused before the insert (the

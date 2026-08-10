@@ -7,7 +7,7 @@
 // registry spec and invokes `run(ctx)` with a fully-populated `ActionContext`:
 // the right `surface` / `payload`, a synthesized `CursorRef` (kind:"cursor")
 // from the editor's current selection head, and the React-land mocks
-// (`cardCreation` / `cardLifecycle` / `dispatch`) threaded through.
+// (`cardCreation` / `dispatch`) threaded through.
 //
 // WHAT IS PROVEN
 //   1. get/set storage contract — `getEditorActionsHandle()` returns what was
@@ -122,7 +122,6 @@ function buildHandle(
   editor: ActionContext["editor"],
   deps: {
     cardCreation?: ActionContext["cardCreation"];
-    cardLifecycle?: ActionContext["cardLifecycle"];
     dispatch?: ActionContext["dispatch"];
   },
 ): EditorActionsHandle {
@@ -146,10 +145,8 @@ function buildHandle(
         view: ed.view,
         ref,
         surface: seed.surface,
-        position: seed.position,
         canEdit: ed.isEditable,
         cardCreation: deps.cardCreation,
-        cardLifecycle: deps.cardLifecycle,
         dispatch: deps.dispatch,
         payload: seed.payload,
       };
@@ -225,11 +222,10 @@ describe("runAction → spec.run(ctx)", () => {
     (VIRGIL_ACTION_REGISTRY as Record<string, ActionSpec>).citation = tempSpec;
 
     const cardCreation = { __tag: "cc" } as unknown as ActionContext["cardCreation"];
-    const cardLifecycle = { __tag: "cl" } as unknown as ActionContext["cardLifecycle"];
     const dispatch = vi.fn();
 
     try {
-      setEditorActionsHandle(buildHandle(editor, { cardCreation, cardLifecycle, dispatch }));
+      setEditorActionsHandle(buildHandle(editor, { cardCreation, dispatch }));
       getEditorActionsHandle()!.runAction("citation", {
         surface: "slash",
         payload: { citationId: "cit-9" },
@@ -248,7 +244,6 @@ describe("runAction → spec.run(ctx)", () => {
       expect(ref.paragraphId).toBe("para-A");
       // React-land mocks threaded in by the bridge (the surfaces-3/4 supplier).
       expect(ctx.cardCreation).toBe(cardCreation);
-      expect(ctx.cardLifecycle).toBe(cardLifecycle);
       expect(ctx.dispatch).toBe(dispatch);
       // live editor / view present
       expect(ctx.editor).toBe(editor);

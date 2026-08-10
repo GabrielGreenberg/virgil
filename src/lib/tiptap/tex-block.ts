@@ -134,7 +134,7 @@ export function freshTexBlockAttrs(existing: Set<string>): { uuid: string; code:
  * `texRun` is pure ProseMirror (operates on `ctx.view`), so we build a minimal
  * view-only `ActionContext` from `editor.view` — `texRun` reads the live
  * selection off `ctx.view.state` and dispatches there, so the grab-handle
- * `cardCreation`/`cardLifecycle`/`ref` slots are intentionally absent (a pure
+ * `cardCreation`/`ref` slots are intentionally absent (a pure
  * insert needs none). We keep `editor.chain().focus()` first so the editor is
  * focused before the insert (the grid cell is a toolbar button — focus may be
  * on the button, not the doc — matching the former behavior).

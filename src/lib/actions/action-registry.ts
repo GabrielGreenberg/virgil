@@ -58,7 +58,7 @@
  * # The React-land vs ProseMirror-plugin-land boundary (the crux)
  *
  * An `ActionSpec.run()` lives in **React-land** — it closes over the
- * `cardCreation` / `cardLifecycle` APIs, panel state, confirm dialogs, etc.
+ * `cardCreation` API, panel state, confirm dialogs, etc.
  * Surfaces 1 & 2 are React components, so they call `run()` directly.
  *
  * Surfaces 3 & 4 are ProseMirror plugins with only an `EditorView`. They
@@ -72,10 +72,10 @@
  *     CustomEvent("virgil-footnote-input"))`, calls
  *     `getEditorActionsHandle()?.runAction("footnote", { surface: "slash" })`.
  *   - The bridge resolves the spec, **supplies the React APIs**
- *     (`cardCreation` / `cardLifecycle`) into the `ActionContext`, and invokes
+ *     (`cardCreation`) into the `ActionContext`, and invokes
  *     `spec.run(ctx)` in React-land.
  *
- * So `ActionContext.cardCreation` / `.cardLifecycle` are populated DIRECTLY by
+ * So `ActionContext.cardCreation` is populated DIRECTLY by
  * the React caller for surfaces 1 & 2, and BY THE BRIDGE for surfaces 3 & 4.
  * The plugin never touches React; the bridge is the one seam.
  *
@@ -144,7 +144,6 @@ import {
 // `run()` reaches for. Importing the TYPES does NOT instantiate them and
 // does NOT pull React into this module's runtime.
 import type { CardCreationApi } from "@/components/editor-layout/card-actions/card-creation";
-import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 // Type-only (erased): the panel-id + prefs shape the citation soft-route
 // inspects to decide whether to surface OMNI. Importing the TYPE pulls no
 // prefs runtime into this module.
@@ -412,17 +411,32 @@ export interface CursorRef {
  */
 export type ActionRef = DragHandleRef | CursorRef;
 
-/**
- * Where an action's insertion/anchor lands relative to the ref.
- *
- *   - `"cursor"` — at the collapsed caret (the slash/typed default; also the
- *     lightning "insert at cursor" path).
- *   - `"passage-end"` — at the END of the resolved passage. The grab-bar
- *     footnote/citation actions collapse the selection to `range.to` before
- *     inserting the marker; this names that policy declaratively.
- */
-export type ActionPosition = "cursor" | "passage-end";
-
+// ── TWO RETIRED CONTEXT FIELDS (task 227) ──────────────────────────────────
+// Both were fully declared, bridge-threaded and suite-asserted, and both were
+// read by NOTHING — so each documented a capability the registry did not own.
+// A context field is a promise that some `run()` consults it; a field nobody
+// consults is worse than an absent one, because the next agent reaches for the
+// declared path believing it is the enforced one.
+//
+//   • `position` (`ActionPosition = "cursor" | "passage-end"`) claimed to own
+//     insertion PLACEMENT. Placement actually lives where it is applied: the
+//     grab-bar dispatcher collapses the selection to `range.to` for
+//     footnote/citation before inserting the marker ([drag-handle-actions.ts]
+//     `case "footnote"` / `case "citation"`), and slash/typed insert at the
+//     live caret. Nothing ever SET the field either — not one production or
+//     test site passed a value; four suites asserted the forwarding of it.
+//
+//   • `cardLifecycle` (`CardLifecycleApi`) claimed the lifecycle actions
+//     (duplicate / archive / delete) used it to fork/remove sidecar entries.
+//     They do reach a `CardLifecycleApi` — through a different channel:
+//     `cardRun` forwards to `ctx.dispatch` → `useDragHandleActions`, which
+//     closes over its OWN copy from `DragHandleActionsDeps`. The ctx slot was
+//     the "run() closes over it directly" chip that never landed.
+//
+// Re-add either WITH its first real reader, never ahead of one. The honesty
+// census ([__tests__/action-context-honesty.test.ts]) fails any context field
+// nothing consumes — it is what found the second one.
+//
 // ---------------------------------------------------------------------------
 // ActionContext — the bundle passed to applies() / resolveScope() / run()
 // ---------------------------------------------------------------------------
@@ -431,7 +445,7 @@ export type ActionPosition = "cursor" | "passage-end";
  * Everything an action needs to decide applicability, resolve its scope, and
  * run. Built per-invocation by the calling surface (or, for surfaces 3 & 4,
  * by the bridge — which is the ONLY supplier of `cardCreation` /
- * `cardLifecycle` for those surfaces).
+ * `cardCreation` for those surfaces).
  */
 export interface ActionContext {
   /** The live editor (React-land surfaces hold the `Editor`; the bridge has
@@ -479,24 +493,21 @@ export interface ActionContext {
    * `false` (collab on AND partner holds the pen) gates.
    */
   canEdit?: boolean;
-  /** Where the insertion/anchor should land. Defaults are surface-specific
-   *  (slash/typed ⇒ "cursor"; grab footnote/citation ⇒ "passage-end"). */
-  position?: ActionPosition;
   /**
-   * React-land card creation API. **Supplied directly by surfaces 1 & 2**
-   * (they are React components that already hold it) and **by the bridge for
-   * surfaces 3 & 4** (a slash command / input rule cannot reach it). Absent
-   * only on a pure view-only path that needs no card creation. Type-only
+   * React-land card creation API. Surfaces 1 & 2 *could* supply it directly
+   * (they are React components that already hold it) but in practice neither
+   * does — `DragHandleMenu` builds `{ ref, canEdit, view }` and
+   * `ActionsMenuPanel` carries no card APIs — so **the bridge is the sole
+   * supplier today**, for surfaces 3 & 4 (a slash command / input rule cannot
+   * reach React-land). Absent on a pure view-only path that needs no card
+   * creation; `citationRun` / `footnoteRun` bail when it is. Type-only
    * import — this module never instantiates it.
+   *
+   * (The doc here used to assert "Supplied directly by surfaces 1 & 2" for
+   * this field AND for a `cardLifecycle` twin. It was false of both, and the
+   * twin had no reader at all — see the retired-field note under `canEdit`.)
    */
   cardCreation?: CardCreationApi;
-  /**
-   * React-land per-CardKind clone/delete API. Same supply rule as
-   * `cardCreation`: direct for 1 & 2, via the bridge for 3 & 4. Used by the
-   * lifecycle actions (duplicate / archive / delete) to fork/remove sidecar
-   * entries for atoms/anchors in the captured passage.
-   */
-  cardLifecycle?: CardLifecycleApi;
   /**
    * Optional free-form seed payload the bridge threads from the plugin-land
    * caller (e.g. a `\cite`'s pre-allocated `citationId`, or a partial command
@@ -524,7 +535,7 @@ export interface ActionContext {
    *
    * REMOVED by a LATER chip: once each action's dispatch case is relocated
    * INTO its `run()` body, this forwarding slot disappears and `run()`
-   * closes over `cardCreation` / `cardLifecycle` directly. Until then it is
+   * closes over `cardCreation` directly. Until then it is
    * the one seam that lets the registry delegate without copying logic.
    */
   dispatch?: (action: DragHandleAction, ref: DragHandleRef) => void;
@@ -687,7 +698,7 @@ export interface ActionSpec {
    * hide its implementation strategy:
    *
    *   - `"card-creation"` — routes through React-land `cardCreation` /
-   *     `cardLifecycle` (the card actions; citation/footnote).
+   *     `cardCreation` (the card actions; citation/footnote).
    *   - `"prosemirror"`   — a pure PM transaction on `ctx.view` (heading / tex /
    *     example / the block-atom inserts) — no React, no bridge.
    *   - `"tiptap-chain"`  — a pure `editor.chain()…run()` call, with NO bridge
@@ -748,7 +759,7 @@ export interface ActionSpec {
   resolveScope?(ctx: ActionContext): { from: number; to: number };
   /**
    * The single implementation. Lives in React-land (closes over
-   * `ctx.cardCreation` / `ctx.cardLifecycle`). Surfaces 1 & 2 call it
+   * `ctx.cardCreation`). Surfaces 1 & 2 call it
    * directly; surfaces 3 & 4 reach it through the `EditorActionsHandle`
    * bridge, which supplies the React APIs into `ctx` first. May be async
    * (some paths await a confirm dialog).
@@ -768,7 +779,7 @@ export interface ActionSpec {
  *   editorActionsRef.current?.runAction("footnote", { surface: "slash" });
  *
  * The handle's implementation resolves the `ActionSpec`, builds an
- * `ActionContext` — crucially **supplying `cardCreation` / `cardLifecycle`
+ * `ActionContext` — crucially **supplying `cardCreation`
  * from React-land** so the plugin never touches React — and invokes
  * `spec.run(ctx)`.
  *
@@ -793,16 +804,18 @@ export interface EditorActionsHandle {
    *              (defensive — the registry is now the COMPLETE SSOT, so every
    *              `ActionId` resolves to a row).
    * @param seed  The invocation context the plugin can supply. `surface` is
-   *              restricted to the two plugin-land surfaces. `position` and
-   *              `payload` thread the same way they do on `ActionContext`
-   *              (e.g. a `\cite`'s pre-allocated `citationId`). The bridge
-   *              fills in the React APIs + the live editor/view itself.
+   *              restricted to the two plugin-land surfaces. `payload` threads
+   *              the same way it does on `ActionContext` (e.g. a `\cite`'s
+   *              pre-allocated `citationId`). The bridge fills in the React
+   *              APIs + the live editor/view itself. Every member here must
+   *              name an `ActionContext` field a `run()` actually reads — the
+   *              seed can only carry what the context can hold, and the
+   *              context can only declare what something consumes.
    */
   runAction(
     id: ActionId,
     seed: {
       surface: "slash" | "typed";
-      position?: ActionPosition;
       payload?: Record<string, unknown>;
     },
   ): void;

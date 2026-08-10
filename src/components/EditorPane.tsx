@@ -3938,7 +3938,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Ref-stashing (mirrors how EditorPane stashes live values for stable
   // callbacks elsewhere): the published handle reads `bridgeDepsRef.current`
   // — refreshed EVERY render below — so it always sees the CURRENT
-  // editor/cardCreation/cardLifecycle/dispatch WITHOUT re-publishing on each
+  // editor/cardCreation/dispatch WITHOUT re-publishing on each
   // render. The handle object identity is stable (built once in the effect,
   // gated on the reactive `editor` mount), so the publish effect runs only on
   // mount/unmount, not per render.
@@ -3960,7 +3960,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const bridgeClearBlankIfSet = viewPrefs?.clearBlankIfSet ?? stubSetActive;
   const bridgeDepsRef = useRef<{
     cardCreation: typeof cardCreation;
-    cardLifecycle: typeof cardLifecycle;
     dispatch: typeof dragHandleActions.dispatch;
     routingPrefs: typeof bridgeRoutingPrefs;
     setActiveLeft: (id: PanelId) => void;
@@ -3971,7 +3970,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     setSelectedExampleId: typeof setSelectedExampleId;
   }>({
     cardCreation,
-    cardLifecycle,
     dispatch: dragHandleActions.dispatch,
     routingPrefs: bridgeRoutingPrefs,
     setActiveLeft: bridgeSetActiveLeft,
@@ -3983,7 +3981,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   });
   bridgeDepsRef.current = {
     cardCreation,
-    cardLifecycle,
     dispatch: dragHandleActions.dispatch,
     routingPrefs: bridgeRoutingPrefs,
     setActiveLeft: bridgeSetActiveLeft,
@@ -4044,13 +4041,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           view: ed.view,
           ref,
           surface: seed.surface,
-          position: seed.position,
           // CHIP 7b: thread the collab gate into the ctx too (the early-return
           // above already short-circuits, so this is `true` whenever we reach
           // here — but it keeps the `run()` guards' invariant honest).
           canEdit: ed.isEditable,
           cardCreation: deps.cardCreation,
-          cardLifecycle: deps.cardLifecycle,
           dispatch: deps.dispatch,
           payload: seed.payload,
           // The SHARED inline-atom create-popover seam (citation + `\ref`). Both
@@ -4127,7 +4122,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     registerEditorActionsHandle(editor, handle);
     return () => unregisterEditorActionsHandle(editor);
     // Intentionally depends ONLY on `editor` — the live cardCreation /
-    // cardLifecycle / dispatch are read through `bridgeDepsRef` (not closed
+    // dispatch are read through `bridgeDepsRef` (not closed
     // over), and the editor itself is re-read via `innerRef` at call time, so
     // the handle stays stable across renders and re-publishes solely on a
     // mount / editor-swap / unmount. (No exhaustive-deps suppression needed —
