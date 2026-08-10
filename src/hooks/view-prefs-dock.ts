@@ -62,23 +62,31 @@ export interface FloatRect {
   height: number;
 }
 
-/* ── Stack / MRU accessors ────────────────────────────────────────────── */
+/* ── Stack / MRU accessors ─────────────────────────────────────────────
+ * DELIBERATELY MODULE-PRIVATE. These are the pieces an invariant is made of,
+ * not operations — and an exported piece is an invariant waiting to be
+ * skipped: a setter that can reach `withStack` + `bumpMRU` can re-derive the
+ * whole insertion and omit the sentinel clear, which is precisely how task 272
+ * happened, and it would spell none of the census's needles while doing it.
+ * So the engine publishes WHOLE OPERATIONS only (place / remove / close /
+ * open / undock / note-use). A capability a setter genuinely needs is added
+ * here as another operation; it is never assembled at the call site. */
 
-export function stackFor(p: ViewPrefs, side: Side): PanelId[] {
+function stackFor(p: ViewPrefs, side: Side): PanelId[] {
   return side === "left" ? p.dockStack.left : p.dockStack.right;
 }
 
-export function withStack(p: ViewPrefs, side: Side, next: PanelId[]): ViewPrefs {
+function withStack(p: ViewPrefs, side: Side, next: PanelId[]): ViewPrefs {
   return side === "left"
     ? { ...p, dockStack: { ...p.dockStack, left: next } }
     : { ...p, dockStack: { ...p.dockStack, right: next } };
 }
 
-export function mruFor(p: ViewPrefs, side: Side): PanelId[] {
+function mruFor(p: ViewPrefs, side: Side): PanelId[] {
   return side === "left" ? p.panelMRU.left : p.panelMRU.right;
 }
 
-export function withMRU(p: ViewPrefs, side: Side, next: PanelId[]): ViewPrefs {
+function withMRU(p: ViewPrefs, side: Side, next: PanelId[]): ViewPrefs {
   return side === "left"
     ? { ...p, panelMRU: { ...p.panelMRU, left: next } }
     : { ...p, panelMRU: { ...p.panelMRU, right: next } };
@@ -91,14 +99,14 @@ export function isPanelOpen(p: ViewPrefs, id: PanelId): boolean {
 
 /** Bump `id` to the front (most-recent) of its side's MRU. No-op (same
  *  object reference) when already at the front. */
-export function bumpMRU(p: ViewPrefs, side: Side, id: PanelId): ViewPrefs {
+function bumpMRU(p: ViewPrefs, side: Side, id: PanelId): ViewPrefs {
   const cur = mruFor(p, side);
   if (cur[0] === id) return p;
   return withMRU(p, side, [id, ...cur.filter((x) => x !== id)]);
 }
 
 /** Drop `id` from both sides' MRU lists. */
-export function pruneMRU(p: ViewPrefs, id: PanelId): ViewPrefs {
+function pruneMRU(p: ViewPrefs, id: PanelId): ViewPrefs {
   return {
     ...p,
     panelMRU: {
@@ -119,8 +127,14 @@ export function pruneMRU(p: ViewPrefs, id: PanelId): ViewPrefs {
  *  bottom) goes first. Only when EVERY docked panel is tracked does true
  *  MRU recency decide — the least-recently-used tracked panel (MRU
  *  tail→head). The zero-coverage case (empty MRU, e.g. just after a
- *  reload) falls out of the untracked rule as `stack[0]`. */
-export function leastRecentlyUsed(p: ViewPrefs, side: Side): PanelId | null {
+ *  reload) falls out of the untracked rule as `stack[0]`.
+ *
+ *  Private like the mutators above, and for the same reason: victim SELECTION
+ *  is the one piece of this engine that was already shared and already right
+ *  (task 251), so exporting it would only ever serve a caller assembling its
+ *  own cap check — the shape this module exists to retire. Its contract is
+ *  pinned through `placeInStack`. */
+function leastRecentlyUsed(p: ViewPrefs, side: Side): PanelId | null {
   const stack = stackFor(p, side);
   if (stack.length === 0) return null;
   const mru = mruFor(p, side);
@@ -229,6 +243,17 @@ export function removeFromStack(p: ViewPrefs, id: PanelId): ViewPrefs {
 export function closePanel(p: ViewPrefs, id: PanelId): ViewPrefs {
   const next = removeFromStack(p, id);
   return { ...next, poppedOutPanels: next.poppedOutPanels.filter((x) => x !== id) };
+}
+
+/** Note an interaction with a docked panel (open / click / scroll / focus) →
+ *  bump it to most-recent on its side, for LRU eviction. A no-op (same object
+ *  reference) unless `id` really is docked on `side`.
+ *
+ *  An OPERATION rather than a raw `bumpMRU` export: recency is invariant 3,
+ *  and the whole point of this module is that a caller states an intent
+ *  ("this panel was used") rather than assembling the state change. */
+export function notePanelUse(p: ViewPrefs, side: Side, id: PanelId): ViewPrefs {
+  return dockedSideOf(p, id) === side ? bumpMRU(p, side, id) : p;
 }
 
 /** Close every panel — both stacks, both recency lists, every panel float.

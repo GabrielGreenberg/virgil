@@ -26,10 +26,10 @@ import { dockedSideOf } from "./view-prefs-derived";
 import {
   MAX_STACK,
   MIN_BAND_PX,
-  bumpMRU,
   closeAllPanels as closeAllPanelsIn,
   closePanel,
   isPanelOpen,
+  notePanelUse as notePanelUseIn,
   openInMode,
   placeInStack,
   undockToFloat,
@@ -1235,7 +1235,7 @@ export function useViewPrefs(opts?: {
   /** Note an interaction with a docked panel (open / click / scroll /
    *  focus) → bump it to most-recent on its side, for LRU eviction. */
   const notePanelUse = useCallback((side: Side, id: PanelId) => {
-    update((p) => (dockedSideOf(p, id) === side ? bumpMRU(p, side, id) : p));
+    update((p) => notePanelUseIn(p, side, id));
   }, [update]);
 
   const setEditorSplit = useCallback((v: boolean | ((prev: boolean) => boolean)) => {

@@ -23,10 +23,11 @@
  *     a sibling path that re-derived the insertion and forgot one invariant.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { codeOnly } from "@/lib/__tests__/_source-scan";
+import { codeOnly, commentsStripped } from "@/lib/__tests__/_source-scan";
 import { clampStack } from "../dropUnknownPanelIds";
+import * as engine from "../view-prefs-dock";
 import {
   MAX_STACK,
   MIN_BAND_PX,
@@ -34,7 +35,7 @@ import {
   closePanel,
   floatOpen,
   isPanelOpen,
-  leastRecentlyUsed,
+  notePanelUse,
   openInMode,
   placeInStack,
   removeFromStack,
@@ -114,8 +115,8 @@ describe("placeInStack — THE insertion SSOT", () => {
       panelMRU: { left: [C, B, A], right: [] },
     });
     expect(full.dockStack.left.length).toBe(MAX_STACK);
-    const victim = leastRecentlyUsed(full, "left");
-    expect(victim).toBe(A); // MRU tail, full coverage
+    // A is the MRU tail under full coverage → the victim (task 251's policy,
+    // asserted THROUGH the insertion rather than off an exported selector).
     const p = placeInStack(full, D, "left");
     expect(p.dockStack.left).toEqual([B, C, D]);
     expect(p.panelMRU.left).toEqual([D, C, B]);
@@ -254,6 +255,18 @@ describe("the float side + mode dispatch", () => {
     expect(floating.poppedOutPanels).toEqual([A]);
   });
 
+  it("notePanelUse bumps recency only for a panel really docked on that side", () => {
+    const base = prefs({
+      dockStack: { left: [A, B], right: [C] },
+      panelMRU: { left: [A, B], right: [] },
+    });
+    expect(notePanelUse(base, "left", B).panelMRU.left).toEqual([B, A]);
+    // Wrong side, and not docked at all → the SAME object, so `update`'s
+    // identity bail keeps a stray note from arming a persist.
+    expect(notePanelUse(base, "left", C)).toBe(base);
+    expect(notePanelUse(base, "left", D)).toBe(base);
+  });
+
   it("undockToFloat sheds the band, records the mode, and seeds the rect", () => {
     const p = undockToFloat(
       prefs({ dockStack: { left: [A, B], right: [] }, panelMRU: { left: [A, B], right: [] } }),
@@ -273,9 +286,16 @@ describe("the stack ceiling is ONE fact (task 273 member 2)", () => {
     // A defaulted `max = 3` beside `MAX_STACK` is two facts that must agree
     // with nothing forcing equality — and the sole caller passed nothing, so
     // the LOADER silently owned a second ceiling. `Function.length` counts
-    // parameters before the first defaulted one, so this is a runtime proof
-    // that the default is gone and the caller must state the ceiling.
+    // parameters before the first defaulted one, so this proves at runtime
+    // that a `= 3` default is gone.
     expect(clampStack.length).toBe(2);
+    // …but NOT that the parameter is required: `max?: number` erases at emit
+    // and reports the same arity, while `out.length >= undefined` is always
+    // false — no ceiling at all, i.e. a WORSE regression than the drifting
+    // second one. Only the source can say "you must not have made it
+    // optional", so pin the signature.
+    const src = codeOnly(read("src/hooks/dropUnknownPanelIds.ts"));
+    expect(src).toMatch(/export function clampStack\(\s*stack: unknown,\s*max: number,?\s*\)/);
   });
 
   it("truncates a persisted over-deep stack to exactly the ceiling it is given", () => {
@@ -288,10 +308,21 @@ describe("the stack ceiling is ONE fact (task 273 member 2)", () => {
   });
 
   it("the loader reads the engine's ceiling, not a literal of its own", () => {
-    const src = codeOnly(read("src/hooks/useViewPrefs.ts"));
-    const call = /clampStack\(([\s\S]*?)\)\s*as/.exec(src);
-    expect(call, "the loader's clampStack call site").not.toBeNull();
-    expect(call![1]).toContain("MAX_STACK");
+    // Tolerant of how the result is consumed (a cast today, a typed const
+    // tomorrow) — what it pins is that the ARGUMENT is the shared const.
+    expect(codeOnly(read("src/hooks/useViewPrefs.ts"))).toMatch(
+      /clampStack\([^;]*MAX_STACK/,
+    );
+  });
+
+  it("the ceiling is declared exactly once in the whole repo", () => {
+    // Replaces a pin on the literal `MAX_STACK = 3`, which would have failed
+    // on the very ceiling bump its sibling leg advertises as the thing being
+    // protected. What matters is UNIQUENESS, not the value.
+    const decls = sourceFiles().filter((f) =>
+      /(export\s+)?const\s+MAX_STACK\s*=/.test(codeOnly(read(f))),
+    );
+    expect(decls).toEqual(["src/hooks/view-prefs-dock.ts"]);
   });
 });
 
@@ -301,44 +332,96 @@ function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
 }
 
-/** Object-literal writes of the three dock-state carriers. */
-const DOCK_WRITES = ["dockStack:", "panelMRU:", "poppedOutPanels:"] as const;
+/** Every `.ts`/`.tsx` under the two silos, repo-relative. */
+function sourceFiles(): string[] {
+  const out: string[] = [];
+  const walk = (dir: string) => {
+    for (const e of readdirSync(resolve(process.cwd(), dir), { withFileTypes: true })) {
+      if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+      const rel = `${dir}/${e.name}`;
+      if (e.isDirectory()) walk(rel);
+      else if (/\.tsx?$/.test(e.name)) out.push(rel);
+    }
+  };
+  walk("src");
+  walk("library");
+  return out;
+}
+
+/** The three carriers of dock state. Censused as BARE NAMES, not as
+ *  `dockStack:` object-literal keys: the colon form is defeated by ES
+ *  shorthand (`{ ...p, poppedOutPanels }` — the realistic accident, since
+ *  shorthand is idiomatic and reads as a normal setter in review), by
+ *  assignment (`next.dockStack = …`), by in-place mutation, and by a computed
+ *  key. The bare name catches every one, and costs nothing here because the
+ *  censused region references none of them outside comments. */
+const DOCK_CARRIERS = ["dockStack", "panelMRU", "poppedOutPanels"] as const;
 
 describe("hook-body census — dock state is mutated only through the engine", () => {
-  const src = codeOnly(read("src/hooks/useViewPrefs.ts"));
-  const HOOK_ENTRY = "export function useViewPrefs(";
-  const split = src.indexOf(HOOK_ENTRY);
+  // Comments stripped, STRING LITERALS KEPT — so a computed `p["dockStack"]`
+  // is still visible (blanking literals would erase the very needle).
+  const src = commentsStripped(read("src/hooks/useViewPrefs.ts"));
+  // Split BELOW `loadPrefs`, not at the hook entry: the ViewPrefs
+  // declaration, DEFAULT_PREFS and the loader legitimately name the carriers,
+  // but everything after them — including any module-scope helper a future
+  // agent hoists out of the hook (a zero-behavior-change cleanup that would
+  // otherwise walk straight out of the guard) — is covered.
+  const split = src.indexOf("function seedEphemeralPrefs");
   const declarations = src.slice(0, split);
-  const hookBody = src.slice(split);
+  const censused = src.slice(split);
 
   it("can see what it is looking for (canary)", () => {
-    // The needles are real: the ViewPrefs declaration, DEFAULT_PREFS and
-    // loadPrefs all sit ABOVE the hook and legitimately spell them. A census
-    // that matched nothing anywhere would pass vacuously.
+    // The needles are real: they all appear ABOVE the split, legitimately. A
+    // census that matched nothing anywhere would pass vacuously.
     expect(split).toBeGreaterThan(0);
-    for (const needle of DOCK_WRITES) expect(declarations).toContain(needle);
+    for (const needle of DOCK_CARRIERS) expect(declarations).toContain(needle);
     // …and the stripper did not swallow the file.
-    expect(hookBody.length).toBeGreaterThan(10_000);
-    expect(hookBody).toContain("placeInStack(");
+    expect(censused.length).toBeGreaterThan(10_000);
+    expect(censused).toContain("placeInStack(");
   });
 
-  for (const needle of DOCK_WRITES) {
-    it(`no setter in the hook body writes \`${needle}\` itself`, () => {
-      // A setter that spells one of these is re-deriving insertion, eviction
+  for (const needle of DOCK_CARRIERS) {
+    it(`nothing below the loader touches \`${needle}\` directly`, () => {
+      // A setter that names one of these is re-deriving insertion, eviction
       // or the MRU coupling by hand — exactly how `redockPanel` came to omit
       // the sentinel clear while every test stayed green. Route it through
-      // `placeInStack` / `removeFromStack` / `closePanel` / `openInMode`,
-      // or add the capability to the engine.
-      expect(hookBody).not.toContain(needle);
+      // `placeInStack` / `removeFromStack` / `closePanel` / `openInMode` /
+      // `notePanelUse`, or add the capability to the engine.
+      expect(censused).not.toContain(needle);
     });
   }
 
-  it("the engine is the only module that spells the insertion invariants", () => {
-    // `collapsedLeft:`-style sentinel writes are legitimate in the collapse
-    // setters; what must NOT recur is a second copy of the whole
-    // place-a-band-here shape. Pin the engine as the sole home of the cap.
-    expect(hookBody).not.toContain("MAX_STACK");
-    const engine = codeOnly(read("src/hooks/view-prefs-dock.ts"));
-    expect(engine).toContain("MAX_STACK = 3");
+  it("the engine publishes whole OPERATIONS, never the pieces", () => {
+    // The census greps names, so it cannot see a setter that assembles an
+    // insertion out of `withStack` + `bumpMRU` — those spell no carrier at
+    // the call site. The structural answer is that they aren't reachable:
+    // the engine's public surface is operations only. A new export here is a
+    // deliberate decision, and this list is where it gets made.
+    expect(Object.keys(engine).sort()).toEqual([
+      "MAX_STACK",
+      "MIN_BAND_PX",
+      "closeAllPanels",
+      "closePanel",
+      "floatOpen",
+      "isPanelOpen",
+      "notePanelUse",
+      "openInMode",
+      "placeInStack",
+      "removeFromStack",
+      "undockToFloat",
+    ]);
+  });
+
+  it("the cap lives in the engine, not in the hook", () => {
+    expect(censused).not.toContain("MAX_STACK");
   });
 });
+
+/* KNOWN LIMITS, stated rather than papered over. (1) The region ABOVE the
+ * split — the `ViewPrefs` interface, `DEFAULT_PREFS`, `loadPrefs` — is exempt
+ * by construction and the canary depends on it; a hoist above `loadPrefs`
+ * escapes. (2) The float half's other carriers (`panelModes` /
+ * `floatPositions`) are NOT censused, because `setFloatPosition` and the
+ * mode setters write them legitimately; a setter that calls `removeFromStack`
+ * and then re-derives the mode-record + rect-seed halves of `undockToFloat`
+ * by hand would pass. Both are grep limits, not claims. */
