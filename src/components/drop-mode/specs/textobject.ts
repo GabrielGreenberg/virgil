@@ -151,13 +151,30 @@ export const textObjectDropSpec: DropSpec = {
 
     const sameEditor = targetEditor === src.editor;
     if (sameEditor) {
-      const sectionSize = src.move.to - src.move.from;
-      const adjustedInsert =
-        placement.insertPos > src.move.to
-          ? placement.insertPos - sectionSize
-          : placement.insertPos;
       const tr = targetEditor.state.tr.delete(src.move.from, src.move.to);
-      let cursor = adjustedInsert;
+      // ASK the transaction where the insert position went; never predict it —
+      // the same rule the container fit follows about the fitter (task 257) and
+      // the identity net about multi-step transactions (task 320), one door
+      // over. This was `insertPos - (to - from)`, which assumes `tr.delete`
+      // removes exactly the source's declared node size. It does NOT when the
+      // source is the SOLE child of a container whose content expression
+      // forbids emptiness (`exampleItemList` is `exampleItem+`, and expex's own
+      // Tab keymap creates exactly that one-item shape): ProseMirror keeps a
+      // minimal valid residue and removes only part of the range — measured
+      // drift 4 for a sole `exampleItem`. The insert then landed FOUR positions
+      // early, inside the preceding peer item's paragraph, which the fitter can
+      // only accommodate by closing that item — tearing one node into two that
+      // BOTH keep its uuid, with its text severed across the halves, on a
+      // document that still `check()`s clean.
+      //
+      // Every guard upstream is blind to this by construction: `canDropDirect`
+      // and `fitNodesAtInsert` (including its trial-insert probe) both resolve
+      // against the PRE-delete doc, where the position is correct and the fit
+      // honestly reports `direct`. Nothing re-validated after the delete. The
+      // mapping does, for free, and it is also correct for the untouched
+      // direction (a position BEFORE the cut maps to itself).
+      const insertAt = tr.mapping.map(placement.insertPos);
+      let cursor = insertAt;
       for (const n of toInsert) {
         // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
         // container fit sanctions an insert the fitter PADS, which adds more
@@ -168,7 +185,7 @@ export const textObjectDropSpec: DropSpec = {
         cursor += tr.doc.content.size - before;
       }
       // Select the inserted block(s).
-      const selStart = adjustedInsert + 1;
+      const selStart = insertAt + 1;
       const selEnd = cursor - 1;
       if (selEnd > selStart) {
         tr.setSelection(

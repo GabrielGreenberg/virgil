@@ -279,10 +279,18 @@ describe("task 234 — an exampleItem drops into a NESTED item gap", () => {
     expect(outer.child(1).textContent).toBe("two");
   });
 
-  it("NON-REGRESSION: a cross-kind sub-item still no-ops at the nested gap (task 065)", () => {
+  it("NON-REGRESSION: a cross-kind sub-item neither lands nor tears at the nested gap", () => {
     // A listItem released in the same nested exampleItem gap: the true parent
     // rejects a bare listItem AND a fresh bulletList, so the drop is refused —
     // canDropDirect-first widens nothing for a payload the container can't hold.
+    //
+    // Scope, stated honestly: this leg pins the end-to-end OUTCOME (nothing
+    // lands, nothing is torn) and NOT the task-065 adapter gate — the refusal is
+    // over-determined here, since a lost gate would wrap into a `bulletList`
+    // that `fitNodesAtInsert` then rejects on its own, and `dispatched` would
+    // still be empty. The gate itself is pinned where it is decided, by the unit
+    // leg in drop-adapters.test.ts ("the 065 gate is untouched where the schema
+    // REFUSES the bare node"), which does fail if rung 4 loses it.
     const d = schema.nodeFromJSON({
       type: "doc",
       content: [
@@ -318,5 +326,114 @@ describe("task 234 — an exampleItem drops into a NESTED item gap", () => {
       ctx,
     );
     expect(dispatched).toHaveLength(0);
+  });
+});
+
+/**
+ * The position half, surfaced by the adversarial review of the fix above.
+ *
+ * The same-editor commit deletes the source and then inserts, and it used to
+ * PREDICT where the insert position had moved to: `insertPos - (to - from)`.
+ * That assumes `tr.delete` removes exactly the source's declared node size, and
+ * it does not when the source is the SOLE child of a container whose content
+ * expression forbids emptiness — `exampleItemList` is `exampleItem+`, and
+ * expex's own Tab keymap (single → multi) creates precisely that one-item shape.
+ * ProseMirror keeps a minimal valid residue and removes only part of the range,
+ * so the insert landed FOUR positions early, inside the preceding peer item —
+ * which the fitter can only accommodate by closing that item, tearing one node
+ * into two that both keep its uuid, on a document that still `check()`s clean.
+ *
+ * The defect is PRE-EXISTING (the top-tier leg below fails on `main` too), but
+ * the nested tier is where task 234's rung 1 first routes a drop INTO it: before
+ * the fix that gesture was a guaranteed no-op that left the document untouched.
+ * So the two land together. Both legs fail against the `- (to - from)`
+ * arithmetic and pass against `tr.mapping.map(insertPos)`.
+ */
+describe("a sole-item source: the insert position is MAPPED, never predicted", () => {
+  //   exampleBlock M1 > exampleItemList > [exampleItem X "xx"]   ← X is the only item
+  //   exampleBlock M2 > exampleItemList > [exampleItem a "aa"
+  //                                          > exampleItemList > [n1 "nn1", n2 "nn2"]]
+  const soleItemDoc = () =>
+    schema.nodeFromJSON({
+      type: "doc",
+      content: [
+        {
+          type: "exampleBlock",
+          attrs: { uuid: "M1", kind: "multi" },
+          content: [
+            { type: "exampleItemList", content: [item("X", "xx")] },
+          ],
+        },
+        {
+          type: "exampleBlock",
+          attrs: { uuid: "M2", kind: "multi" },
+          content: [
+            {
+              type: "exampleItemList",
+              content: [
+                item("a", "aa", [
+                  {
+                    type: "exampleItemList",
+                    content: [item("n1", "nn1"), item("n2", "nn2")],
+                  },
+                ]),
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+  it("lands in the NESTED gap without tearing the peer item or duplicating its uuid", () => {
+    const d = soleItemDoc();
+    const { editor, dispatched, ctx } = mockEditor(d);
+    const insertPos = findByType(d, "exampleItem").find((i) => i.uuid === "n2")!
+      .pos;
+    textObjectDropSpec.applyDrop(
+      betweenBlocks(editor, insertPos),
+      "textobject:exampleItem:X",
+      ctx,
+    );
+
+    expect(dispatched).toHaveLength(1);
+    const result = dispatched[0].doc;
+    expect(() => result.check()).not.toThrow();
+
+    // The peer item survives WHOLE: one node, one uuid, its text intact.
+    const items = findByType(result, "exampleItem");
+    const n1s = items.filter((i) => i.uuid === "n1");
+    expect(n1s).toHaveLength(1);
+    expect(n1s[0].text).toBe("nn1");
+    // …and the dragged item landed between the two nested peers, as pointed at.
+    const nested = result.child(result.childCount - 1).child(0).child(0).child(1);
+    expect(nested.type.name).toBe("exampleItemList");
+    expect([
+      nested.child(0).textContent,
+      nested.child(1).textContent,
+      nested.child(2).textContent,
+    ]).toEqual(["nn1", "xx", "nn2"]);
+  });
+
+  it("PRE-EXISTING at the TOP tier too: the same sole-item source lands where the indicator pointed", () => {
+    // This position was already drop-direct before task 234 (classifyParentAt
+    // reports the compatible `exampleBlock`), so this leg fails on `main` —
+    // the item silently landed back in its OWN list instead of the target's.
+    const d = soleItemDoc();
+    const { editor, dispatched, ctx } = mockEditor(d);
+    const insertPos = findByType(d, "exampleItem").find((i) => i.uuid === "a")!
+      .pos;
+    textObjectDropSpec.applyDrop(
+      betweenBlocks(editor, insertPos),
+      "textobject:exampleItem:X",
+      ctx,
+    );
+
+    expect(dispatched).toHaveLength(1);
+    const result = dispatched[0].doc;
+    expect(() => result.check()).not.toThrow();
+    const target = result.child(result.childCount - 1).child(0);
+    expect(target.type.name).toBe("exampleItemList");
+    expect(target.child(0).textContent).toBe("xx"); // landed BEFORE item "a"
+    expect(target.child(0).attrs.uuid).toBe("X");
   });
 });
