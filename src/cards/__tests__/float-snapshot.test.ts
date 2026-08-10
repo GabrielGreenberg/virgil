@@ -74,6 +74,11 @@ const mockCtx = {
   notes: [{ kind: "note", id: "note-1", title: "My note", content: richDoc("note body"), createdAt: "t", aiRequest: false, links: [] }],
   highlights: [{ kind: "highlight", id: "hl-1", text: "hi", color: "yellow", createdAt: "t", links: [] }],
   footnotes: [{ footnoteId: "fn-1", content: richDoc("fn body"), number: 1, pos: 5 }],
+  // Task 316: the footnote builder now has an atomless SIDECAR fallback. `fn-1`
+  // resolves live above, so this stays empty — but the field is part of the bag
+  // the builder reads, and a cast-built ctx that omits it is exactly how a
+  // fixture drifts out of the shape it claims to stand in for.
+  unanchoredFootnotes: [],
   archiveSnippets: [{ id: "arch-1", title: "Arch", content: richDoc("arch body"), createdAt: "t", links: [] }],
   cutterCards: [
     { kind: "comment", id: "cut-c-1", text: "cut comment", createdAt: "t", links: [] },

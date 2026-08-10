@@ -647,18 +647,34 @@ A card whose atom was deliberately spliced out and **not** re-inserted —
 an unanchored **citation** or **footnote** ref (archive → unarchive
 round-trip; `CitationRef.unanchored` / `FootnoteRef.unanchored`) — sits
 in its panel wearing a **neutral "drag to anchor" cue**: a **dashed
-border + reduced opacity** (`UNANCHORED_CARD_CLASS = "border-dashed
-opacity-80"`, `panel-primitives.tsx`) plus a hover `title` from
-`unanchoredCardTitle(noun)` ("Unanchored <noun> — drag into the editor to
-anchor it"). This is **not** an error affordance — it is deliberately
-distinct from the `orphaned` ERROR state, whose card keeps its faded
-`BadgeOrphaned` "no anchor" dot. The omni layer already draws the same
-line (an unanchored footnote resolves to the neutral `free` state, not
-`orphaned` — `Footnotes/omni.tsx`); the parked cue is that intent made
-visible on the docked card. **Both twins consume the one const + helper**
-so the citation and footnote unanchored states can't drift apart — add
-any future "parked, re-placeable" card kind to the same SSOT rather than
-re-spelling the classes.
+border + reduced opacity**, plus a hover `title` ("Unanchored <noun> —
+drag into the editor to anchor it"). This is **not** an error affordance
+— it is deliberately distinct from the `orphaned` ERROR state, whose card
+keeps its faded `BadgeOrphaned` "no anchor" dot. The omni layer already
+draws the same line (an unanchored footnote resolves to the neutral
+`free` state, not `orphaned` — `Footnotes/omni.tsx`); the parked cue is
+that intent made visible on the docked card.
+
+**The cue is ONE prop, and it carries the mechanism** (task 316):
+`unanchored={{ kind, cardKey, canAnchor }}` on `EditableCard` /
+`PanelCard`. `UNANCHORED_CARD_CLASS` is module-private and
+`unanchoredCardTitle` is the copy SSOT — a card cannot paint the parked
+look without declaring the `cardKey` that renders its re-anchor drop
+button and arms its header lift. That coupling is the whole point: the
+cue used to be a class + a title spread onto separate props while the key
+was a third, unrelated one, and `UnanchoredFootnoteCard` threaded the
+first two and not the third — so it wore the full "drag into the editor
+to anchor it" chrome, in the docked panel AND in omni, with no way to do
+it. **A promise and its mechanism are one declaration**; a new
+"parked, re-placeable" kind inherits both by using the prop. (`kind` is
+`InlineAtomCardKind` — the kinds whose atom a drop can rebuild — so
+"may wear the cue" and "can be put back" are the same fact.)
+
+`canAnchor` is required and splits the two questions the cue answers: the
+**look** is on for any parked card (a card that cannot anchor is the most
+parked of all), while the **promise** is withheld unless the gesture
+would actually succeed. A footnote always can (its body is the atom's only
+attr); a citation cannot while it is keyless or still a draft record.
 
 ## Panels
 

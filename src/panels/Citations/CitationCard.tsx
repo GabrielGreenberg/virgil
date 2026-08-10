@@ -22,8 +22,6 @@ import {
   CardMetaLabel,
   cardTitleStyle,
   usePanelCardTryDelete,
-  UNANCHORED_CARD_CLASS,
-  unanchoredCardTitle,
 } from "@/components/panel-primitives";
 import { FONT_STACKS } from "@/lib/panel-typography";
 // The `<cardKind>:<cardId>` grammar has one builder (task 202) — the panel
@@ -736,11 +734,11 @@ export function CitationCard({
 
   /* ── Visual state classes ────────────────────────────────────────── */
 
-  const stateClass = isDropTarget
-    ? "ring-2 ring-drag-target ring-offset-0"
-    : !isAnchored
-      ? UNANCHORED_CARD_CLASS
-      : "";
+  // Task 316: the parked cue moved onto the `unanchored` prop (which carries
+  // `cardKey`), so this slot keeps only the drop-target ring. The two used to
+  // be exclusive arms of one ternary; they are different axes (a parked card
+  // can also be hovered as a drop target), so they now compose.
+  const stateClass = isDropTarget ? "ring-2 ring-drag-target ring-offset-0" : "";
 
   const onToggleFromCtx =
     onTogglePopout ??
@@ -832,8 +830,18 @@ export function CitationCard({
           ) as HTMLElement | null,
         )
       }
-      title={
-        !isAnchored && !isDraft ? unanchoredCardTitle("citation") : undefined
+      // Task 316: one declaration for the parked look, its tooltip and the key
+      // that makes the gesture reachable. `canAnchor` UNIFIES the two questions
+      // that used to be asked separately — the tooltip was gated on `!isDraft`
+      // and the button on `dropDisabled`, so a keyless UNANCHORED citation
+      // (reachable without a draft: `persist()` with no valid rows writes an
+      // empty command back to a real citation) promised a drag its own button
+      // refused. Both facts now feed one answer, and the parked LOOK survives
+      // either way, since a card that cannot anchor is the most parked of all.
+      unanchored={
+        !isAnchored
+          ? { kind: "citation", cardKey, canAnchor: !isDraft && !dropDisabled }
+          : undefined
       }
     >
       {compressed ? (
