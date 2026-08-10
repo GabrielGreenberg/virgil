@@ -68,7 +68,16 @@ function callableText(src: string): string {
     .replace(/\/\*[\s\S]*?\*\//g, " ")
     .replace(/(^|[^:])\/\/[^\n]*/g, "$1 ")
     .replace(/export\s*(?:type\s*)?\{[^}]*\}\s*from\s*["'][^"']+["']\s*;?/g, " ")
-    .replace(/export\s*\*\s*(?:as\s+\w+\s*)?from\s*["'][^"']+["']\s*;?/g, " ");
+    .replace(/export\s*\*\s*(?:as\s+\w+\s*)?from\s*["'][^"']+["']\s*;?/g, " ")
+    // The SPLIT barrel: `import { X } from "…"` on one line, `export { X };` on
+    // another. Semantically identical to the one-statement form and already the
+    // idiom in this very directory (`usePlacement.ts`, `resolve-card-anchor.ts`),
+    // so stripping only the one-liner closed ONE SPELLING of the blind spot —
+    // the two lines then counted as two references and any dead export
+    // re-published this way read alive. Only the `export` half is stripped; the
+    // `import` half stays, because an unused import is a lint error and so does
+    // imply a use.
+    .replace(/export\s*(?:type\s*)?\{[^}]*\}\s*;/g, " ");
 }
 
 /** `callableText`, minus STRING content — the form the call census counts in.
@@ -83,6 +92,16 @@ function callableText(src: string): string {
  *  there, finding `"data-link-id"` in a string IS the violation. */
 function referenceText(src: string): string {
   return callableText(src)
+    // Regex literals FIRST. A char class like `["\'`]` — the idiom this very
+    // file uses to match quoted attribute names — leaves a stray backtick in
+    // the code, and the template pass below would then open a pseudo-literal
+    // and swallow everything to the next backtick, newlines included. Measured
+    // before this line existed: 22 files lost >400 chars each, worst 7 KB of a
+    // LIVE source file, and three lost real `export` declarations — so the
+    // census silently stopped seeing anything below them. The lookbehind-ish
+    // guard (not preceded by an identifier char, `)`, `]` or a digit) keeps
+    // division out of it.
+    .replace(/(^|[^A-Za-z0-9_$)\]])\/(?![*/])(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\\\n])+\/[gimsuy]*/g, "$1 ")
     .replace(/`(?:\\.|\$\{[^{}]*\}|[^`\\])*`/g, (lit) =>
       (lit.match(/\$\{[^{}]*\}/g) ?? []).join(" "),
     )
@@ -99,15 +118,33 @@ const LINK_FILES = ALL_FILES.filter(
 
 const VALUE_EXPORT = /^export\s+(?:async\s+)?(?:function|class|const|let)\s+([A-Za-z0-9_]+)/gm;
 
-/** Uses of `name` across both silos, not counting its own declaration. */
-function callSites(name: string, declaredIn: string): number {
+/** Uses of `name` across both silos, not counting its own declaration, split by
+ *  whether the caller is a TEST.
+ *
+ *  The split is the whole point, and this task's own deletion is the proof: run
+ *  the census against the pre-fix tree and `cardKindToLegacyAnchorKind` — which
+ *  that commit deleted as dead and whose suite it had to rewrite — reported
+ *  FOURTEEN callers, all of them in `anchor-kind-maps.test.ts`. A guard that
+ *  counts a suite as a consumer says "alive" about every dead export that was
+ *  ever tested, which in this repo is most of them.
+ *
+ *  Scope, stated plainly: this is a bare-name grep with no module resolution, so
+ *  a dead export whose name collides with a live symbol anywhere in either silo
+ *  reads alive. `cardPopKey` would. That is a real hole and it is not closed
+ *  here; the honest mitigation is that a scaffold usually gets a distinctive
+ *  name, and the alternative is a type-aware pass this suite cannot afford. */
+function callSites(name: string, declaredIn: string): { real: number; testOnly: number } {
   const re = new RegExp(`\\b${name}\\b`, "g");
-  let n = 0;
+  let real = 0;
+  let testOnly = 0;
   for (const [file, text] of REFERENCES) {
-    const hits = (text.match(re) ?? []).length;
-    n += file === declaredIn ? Math.max(0, hits - 1) : hits;
+    let hits = (text.match(re) ?? []).length;
+    if (file === declaredIn) hits = Math.max(0, hits - 1);
+    if (!hits) continue;
+    if (file.includes("__tests__") || /\.test\.tsx?$/.test(file)) testOnly += hits;
+    else real += hits;
   }
-  return n;
+  return { real, testOnly };
 }
 
 /** Uncalled value exports that are deliberately kept, each with its reason.
@@ -122,7 +159,12 @@ function callSites(name: string, declaredIn: string): number {
  *  call sites. An allowlist entry justifying a symbol that needs no
  *  justification is this task's own bug in miniature, so the stale-entry leg
  *  below checks BOTH halves — still declared, and still genuinely uncalled. */
-const PERMITTED_UNCALLED_LINK_EXPORTS: Record<string, string> = {};
+const PERMITTED_UNCALLED_LINK_EXPORTS: Record<string, string> = {
+  "links.ts::reconcileModeAAnchors":
+    "SUPERSEDED, not forgotten. `resolve-card-anchor.ts:26-30` states in code that it 'Subsumes (and will let the load pass replace) the legacy reconcileModeAAnchors / findParagraphIdBySnapshot / isModeAOrphaned helpers in links.ts, all kept exported for their own tests until those tests migrate' — a deliberate, written, in-progress migration whose suite is the parity record. NAMED follow-up: migrate mode-a-reconcile.test.ts onto resolveCardAnchor and delete both. Renew this entry only against that plan, never to quiet CI.",
+  "links.ts::isModeAOrphaned":
+    "Same subsumption, same follow-up — and links.ts:1150 has said 'a test-only predicate for the un-resolvable residue … no production orphan-surfacing UI consumes it yet' since it was written. It is honest scaffolding with a stated owner, which is the one thing that distinguishes it from what task 202 deleted.",
+};
 
 describe("the Link surface exports nothing that nothing calls (task 202)", () => {
   it("censuses a real file set", () => {
@@ -131,19 +173,42 @@ describe("the Link surface exports nothing that nothing calls (task 202)", () =>
     expect(ALL_FILES.length).toBeGreaterThan(500);
   });
 
+  it("the strippers never swallow a declaration", () => {
+    // The guard's own guard. `referenceText` is regex-based, and a regex-based
+    // stripper can run away: before the regex-literal pass was added, one stray
+    // backtick inside a char class opened a pseudo-template that ate the rest of
+    // the file, and three files lost real `export` declarations that way — which
+    // does not FAIL this suite, it silently shrinks what it looks at. So compare
+    // declaration counts before and after stripping, over every file censused.
+    const swallowed: string[] = [];
+    for (const file of LINK_FILES) {
+      const raw = (callableText(readFileSync(file, "utf8")).match(VALUE_EXPORT) ?? []).length;
+      const kept = (REFERENCES.get(file)!.match(VALUE_EXPORT) ?? []).length;
+      if (kept < raw) {
+        swallowed.push(`${path.relative(LINKS, file)}: ${raw} declarations → ${kept} after stripping`);
+      }
+    }
+    expect(swallowed, "referenceText ate part of a censused file").toEqual([]);
+  });
+
   it("every value export in src/links/** has a caller", () => {
     const dead: string[] = [];
     for (const file of LINK_FILES) {
       const rel = path.relative(LINKS, file).split(path.sep).join("/");
       for (const m of REFERENCES.get(file)!.matchAll(VALUE_EXPORT)) {
         const name = m[1];
-        if (callSites(name, file) > 0) continue;
+        const { real, testOnly } = callSites(name, file);
+        if (real > 0) continue;
         const key = `${rel}::${name}`;
         if (PERMITTED_UNCALLED_LINK_EXPORTS[key]) continue;
         dead.push(
-          `${key} is exported and never called. Wire it at the call sites in the ` +
-            `same commit, or delete it. A re-export does not count as a caller — ` +
-            `that is exactly how the Phase-0/1 write half survived for three months.`,
+          testOnly > 0
+            ? `${key} is called ONLY by tests (${testOnly} hit(s)) — a suite is not a ` +
+              `consumer. This is the exact shape of cardKindToLegacyAnchorKind, which ` +
+              `read alive on 14 test hits while being dead in the app.`
+            : `${key} is exported and never called. Wire it at the call sites in the ` +
+              `same commit, or delete it. A re-export does not count as a caller — ` +
+              `that is exactly how the Phase-0/1 write half survived for three months.`,
         );
       }
     }
@@ -167,7 +232,7 @@ describe("the Link surface exports nothing that nothing calls (task 202)", () =>
       const file = declared.get(key);
       expect(file, `${key} is allowlisted but no longer declared`).toBeTruthy();
       expect(
-        callSites(key.split("::")[1], file!),
+        callSites(key.split("::")[1], file!).real,
         `${key} is allowlisted as uncalled but now has callers — drop the entry`,
       ).toBe(0);
     }
@@ -178,8 +243,11 @@ describe("the Link surface exports nothing that nothing calls (task 202)", () =>
     // believing they are the enforced path. Their reappearance is only wrong if
     // it is another scaffold — which the census above already fails — so this
     // leg pins the two whole-FILE deletions the census structurally cannot see.
+    // Recursively, not `path.join(LINKS, name)` — the first draft checked one
+    // directory level, so `_shared/link-registry.ts` would have passed.
+    const basenames = new Set(LINK_FILES.map((f) => path.basename(f)));
     for (const gone of ["link-registry.ts", "link-guard.ts", "link-highlight.ts"]) {
-      expect(existsSync(path.join(LINKS, gone)), `src/links/${gone} is back`).toBe(false);
+      expect([...basenames].filter((b) => b === gone), `${gone} is back`).toEqual([]);
     }
   });
 
@@ -194,7 +262,10 @@ describe("the Link surface exports nothing that nothing calls (task 202)", () =>
     // the forms that actually mislead. Only a reader pins honesty.
     const promises: string[] = [];
     const PROMISE =
-      /\buntil\s+Phase\s+\d|\bPhase\s+\d[^.\n]*\b(?:will|wires?|absorbs?|is a stub|not yet)\b|\bPhase\s+\d\s*:\s*stub|\bnot yet wired\b/i;
+      /\buntil\s+Phase\s+[A-Z]?\d|\bPhase\s+[A-Z]?\d[^.\n]*\b(?:will|wires?|absorbs?|is a stub|not yet)\b|\bPhase\s+[A-Z]?\d\s*:\s*stub|\bnot yet wired\b/i;
+    // Lettered phases count. This subsystem numbers its phases with a LETTER as
+    // often as a digit (`Phase D8 collapsed…`, `Phase G`, `after D9`), so a
+    // digit-only pattern would have exempted the very migration it censuses.
     // ("in Phase 1" is deliberately NOT a promise — this file's own header says
     //  the write door "was scaffolded in Phase 0/1 and never adopted", which is
     //  history. The first draft of this regex failed on that sentence.)
@@ -210,12 +281,26 @@ describe("the Link surface exports nothing that nothing calls (task 202)", () =>
   });
 });
 
-/** A `<cardKind>:<cardId>` token written by hand — the kind spelled out, then
- *  the id interpolated. Anchored tight on purpose: `example-card:${id}` and
- *  `example-body:${id}` are unrelated float/instance keys that a looser pattern
- *  flagged, and a guard that fails correct files trains people to distrust it. */
-const HAND_BUILT_TOKEN =
-  /["'`\s(]?(?:footnote|citation|example|note|highlight|todo|archive|report|report-request|revision-comment|revision-suggestion|cutter-comment|cutter-suggestion):\$\{/;
+/** A `<cardKind>:<cardId>` token written by hand. Two dialects, because the
+ *  first draft knew only one and the anchor WRITE path used the other:
+ *
+ *   - LITERAL kind — `` `citation:${id}` ``. Anchored tight on purpose:
+ *     `example-card:${id}` and `example-body:${id}` are unrelated float and
+ *     instance keys that a looser pattern flagged, and a guard that fails a
+ *     correct file trains people to distrust it. The kind list is deliberately
+ *     wider than `CardKind`: `cut:` and `revision:` are LEGACY tokens the DOM
+ *     still carries (`globals.css` keys off `[data-link-card^="cut:"]`).
+ *   - VARIABLE kind — `` `${cardKind}:${cardId}` ``. This is how
+ *     `createLinkedAnchor`, the morph re-stamp, the pending-mark stamp and the
+ *     reload restore all spelled it while the law claimed nothing did, so it is
+ *     the dialect that mattered most and the one a census keyed on kind NAMES
+ *     structurally cannot see. */
+const LITERAL_KIND_TOKEN =
+  /["'`\s(]?(?:footnote|citation|example|note|highlight|todo|archive|cut|revision|report|report-request|revision-comment|revision-suggestion|cutter-comment|cutter-suggestion):\$\{/;
+const VARIABLE_KIND_TOKEN = /\$\{[^{}]*\}\s*:\s*\$\{|`\s*\$\{[^{}]*\}:/;
+const HAND_BUILT_TOKEN = {
+  test: (line: string) => LITERAL_KIND_TOKEN.test(line) || VARIABLE_KIND_TOKEN.test(line),
+};
 
 describe("the link DOM contract has ONE speller", () => {
   /** The producers: everything that WRITES the attributes (or, for the ghost,
@@ -325,8 +410,8 @@ describe("the link DOM contract has ONE speller", () => {
       "panels/Citations/CitationCard.tsx",
     ]) {
       const text = callableText(readFileSync(path.join(SRC, rel), "utf8"));
-      expect(text, `${rel} hand-builds a linkCard token`).not.toMatch(HAND_BUILT_TOKEN);
-      expect(text, `${rel} should build it with linkCardKey`).toMatch(/linkCardKey\(/);
+      expect(text, `${rel} hand-builds a linkCard token`).not.toMatch(LITERAL_KIND_TOKEN);
+      expect(text, `${rel} should build it with linkCardKey`).toMatch(/linkCardKey/);
     }
   });
 
@@ -344,7 +429,10 @@ describe("the link DOM contract has ONE speller", () => {
       if (file.includes("__tests__")) continue;
       const text = callableText(readFileSync(file, "utf8"));
       for (const line of text.split("\n")) {
-        if (!/data-link-card/.test(line)) continue;
+        // `linkCard` as well as the attribute: the anchor write path builds the
+        // token into a MARK ATTR (`linkCard: …`) that only later becomes
+        // `data-link-card`, so an attribute-only gate missed every write site.
+        if (!/data-link-card|\blinkCard\b/.test(line)) continue;
         if (!HAND_BUILT_TOKEN.test(line)) continue;
         offenders.push(`${path.relative(SRC, file).split(path.sep).join("/")}: ${line.trim()}`);
       }

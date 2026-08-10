@@ -112,8 +112,8 @@ Why the invariant is written down (task 264): `VERBATIM_ENVS_FULL` was unified f
 
 | Kind | Anchor | Marker (in text) | Multiplicity | Card kind(s) |
 |---|---|---|---|---|
-| `footnote` | inline atom (footnote node) | superscript number | 1:1 (structural — each link mints its target card id, so two cannot share one) | footnote |
-| `citation` | inline atom (citation node) | styled pill | 1:1 (same, structural) | citation |
+| `footnote` | inline atom (footnote node) | superscript number | 1:1 by construction at CREATE time (each link mints its own target card id). Not an enforced invariant: copy/pasting an atom in-document duplicates its id, and only `duplicate-slice` and stack-pull re-mint | footnote |
+| `citation` | inline atom (citation node) | styled pill | 1:1 by construction, same caveat | citation |
 | `anchor` | any TextObject (`targetKind`) — paragraph, heading, list item, example item, atom block, or linkedRange | margin icon (+ optional text highlight for `linkedRange`) | many | note, highlight, revision, cut, archive, todo, report |
 
 ### Anchor shape (Mode A / Mode B unified)
@@ -153,7 +153,7 @@ Derivation helper: `isModeB(link)` is now `link.anchor.type === "textObject" && 
 
 Legacy sidecar shapes (`anchor.type: "anchor"` with `paragraphIds`) migrate on read via `migrateCardLinks` in [src/links/migrate-card.ts](../../src/links/migrate-card.ts).
 
-### DOM contract (uniform across all kinds)
+### DOM contract (uniform across all kinds, with one exception)
 
 In-editor markers (footnote atom, citation atom, linkedAnchor mark span) carry:
 
@@ -163,7 +163,11 @@ data-link-kind="footnote | citation | anchor"
 data-link-card="<cardKind>:<cardId>"
 ```
 
-Panel cards carry `data-link-card="<cardKind>:<cardId>"`; multi-anchor cards also carry `data-link-ids="<id1> <id2> …"` (space-separated).
+Panel cards carry the same `data-link-card="<cardKind>:<cardId>"` — that pairing is what makes the token an address both ends can be found by.
+
+**The exception:** a *transient* `linkedAnchor` range handle — a plain selection grab that no card has claimed yet — carries no card, so it emits **no** `data-link-card` at all, and `.linked-anchor:not([data-link-card])` in `globals.css` is what paints it. Every other marker carries all three.
+
+A `data-link-ids="<id1> <id2> …"` attribute for multi-anchor cards was documented here for months and **never existed**: nothing in either silo emitted it, and the constant declaring it was deleted in task 202. [link-surface-honesty.test.ts](../../src/links/__tests__/link-surface-honesty.test.ts) now fails CI if anything starts. Build the token with `linkCardKey` and read it with `parseLinkCardKey` ([link-dom-contract.ts](../../src/links/link-dom-contract.ts)) — never by hand, emitting or querying.
 
 ### Resolution
 
