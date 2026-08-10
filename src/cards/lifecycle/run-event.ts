@@ -9,7 +9,10 @@
  *
  *   1. CONFIRM  — built from `CARD_REGISTRY[kind].morph.drops` (morph) so the
  *      copy can never be direction-blind or lie (REP-F6-03), and from
- *      `cardHasContent` (delete) so every kind's content is seen (W2d-2).
+ *      `cardHasContent` (delete) so every kind's content is seen (W2d-2). Since
+ *      task 303 the morph confirm's TONE is read off that same `drops` set
+ *      (`MORPH_DROP_FIELDS` severity) rather than hardcoded here, so a morph
+ *      that discards a whole rich body warns like the delete of that same body.
  *   2. SETTLE   — when the ending record OWNS a live in-document splice (a
  *      `status:"applied"` suggestion's `appliedChange` → the blue
  *      `pending-ai-change` range), resolve that splice — keep or revert — BEFORE
@@ -52,6 +55,7 @@
  */
 
 import { CARD_REGISTRY } from "../card-registry";
+import { describeDrops, morphDropsTone } from "../morph-drop-fields";
 import type { CardKind } from "../types";
 import { publishCardDeleted, publishCardMorphed } from "./card-lifecycle-signal";
 import {
@@ -177,11 +181,19 @@ export function unbridgeModeFor(
  * Build the generated morph-confirm copy from the declared `drops` set — never
  * hand-mirrored, so it can't drift from the salvage (REP-F6-03). Returns null
  * when nothing drops (a non-lossy morph needs no confirm).
+ *
+ * The TONE ships with the copy (task 303) rather than being picked at the
+ * confirm call site: both are answers to the same question — how much does this
+ * morph destroy — read off the same `drops` set through `MORPH_DROP_FIELDS`. A
+ * literal at the call site is how the two came apart in the first place (every
+ * morph confirmed calmly, including the one that discards a whole rich body,
+ * while an identical DELETE of that body went red).
  */
 export function morphConfirmMessage(fromKind: CardKind): {
   title: string;
   message: string;
   confirmLabel: string;
+  tone: "default" | "danger";
 } | null {
   const morph = CARD_REGISTRY[fromKind].morph;
   if (!morph || morph.drops.length === 0) return null;
@@ -194,24 +206,8 @@ export function morphConfirmMessage(fromKind: CardKind): {
       morph.drops.length > 1 ? "them" : "it"
     }); the text anchor stays. Continue?`,
     confirmLabel: `Make it a ${toLabel}`,
+    tone: morphDropsTone(morph.drops),
   };
-}
-
-/** Render a `drops` set as an English clause. Stable, deterministic ordering
- *  follows the declared array order so the copy is reproducible. */
-function describeDrops(drops: readonly string[]): string {
-  const LABELS: Record<string, string> = {
-    title: "the title",
-    byline: "the author byline",
-    aiRequest: "the AI-request flag",
-    body: "the body",
-    keys: "the cite keys",
-    formatting: "the rich formatting — citations, math, and lists",
-  };
-  const parts = drops.map((d) => LABELS[d] ?? d);
-  if (parts.length === 1) return parts[0];
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
 }
 
 /**
@@ -314,7 +310,11 @@ export async function runCardLifecycleEvent(
         message: copy.message,
         confirmLabel: copy.confirmLabel,
         cancelLabel: "Keep as is",
-        tone: "default",
+        // FORWARDED, never chosen here (303). The tone is a property of what the
+        // morph drops, so it is derived beside the copy that describes the same
+        // drops; a literal at this call site is what let the whole-body morph
+        // confirm as calmly as a title/byline one.
+        tone: copy.tone,
       });
       if (!ok) return false;
     }
