@@ -12,8 +12,9 @@
  *               in a block gap (between-blocks).
  *
  * Which placements a pull may use is PER PAYLOAD, not per spec: see
- * `PLACEMENTS_BY_PAYLOAD` below, the one table the hit-test's affordance and
- * this spec's commit-time validity check both read (task 258).
+ * `placementsForPayload` + `CARD_PLACEMENTS` below — the one table the
+ * hit-test's affordance and this spec's commit-time validity check both read
+ * (task 258).
  *
  * Stack pulls are paste-as-new — every id/uuid is regenerated. Block
  * uuids are reminted by `withFreshUuid`; Card-bearing inline-atom ids
@@ -48,8 +49,9 @@ import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 /**
  * **The per-payload placement table — the ONE answer to "where may THIS
  * payload land?", read by the hit-test (the affordance) and by
- * `classifyDrop` (the commit). {@link placementsForPayload} is its only
- * reader; nothing else restates a placement rule.**
+ * `classifyDrop` (the commit). Nothing restates a placement rule: every other
+ * site in this file DERIVES from these constants ({@link placementsForPayload},
+ * {@link STACK_PULL_PLACEMENT_LISTS}, `ALLOWED_PLACEMENTS`).**
  *
  * Both derive from it; neither restates it. That is the whole of
  * task 258: the spec used to answer the same question twice, from a spec-wide
@@ -106,10 +108,15 @@ const NOWHERE: ReadonlyArray<PlacementKind> = [];
  * documented v1 no-op (the panel ref mirrors an in-text `\ex{…}` block this
  * pull can't synthesize), so every placement it could offer is a lie.
  * `stack-pull-placement-policy.test.ts` re-derives all three groups by running
- * the REAL `applyDrop` against a recording `StackPullApi` — the declaration and
- * the branch cannot drift.
+ * the REAL `applyDrop` against a recording `StackPullApi`, iterating THIS
+ * record's keys (which is why it is exported) — so a kind the compiler forces
+ * someone to declare here is a kind the suite then checks against its branch,
+ * and the declaration and the branch cannot drift.
  */
-const CARD_PLACEMENTS: Record<StackCardKind, ReadonlyArray<PlacementKind>> = {
+export const CARD_PLACEMENTS: Record<
+  StackCardKind,
+  ReadonlyArray<PlacementKind>
+> = {
   note: ANCHORABLE,
   highlight: ANCHORABLE,
   todo: ANCHORABLE,
@@ -142,7 +149,24 @@ export const STACK_PULL_PLACEMENT_LISTS: ReadonlyArray<
   ...Object.values(CARD_PLACEMENTS),
 ])];
 
-/** The ordered placements ONE payload may use — the table's single reader. */
+/**
+ * The ordered placements ONE payload may use — the table's reader, and the
+ * only place a payload is turned into a placement rule.
+ *
+ * **Total by construction, because its input is UNTRUSTED.** A `StackItem`
+ * comes back from `readEnvelope` (useStack.ts), which validates the envelope's
+ * `version` and that `items` is an array and then casts — so a blob written by
+ * an older build, or carrying a card kind since renamed or retired, arrives
+ * here typed as something it is not. Both unknown-shape doors therefore answer
+ * NOWHERE rather than `undefined`: the placement question has an honest answer
+ * for a payload we don't understand ("nowhere"), and `undefined` would be read
+ * two ways downstream — `resolveSessionPlacements` would fall back to the
+ * ENVELOPE (restoring exactly the unreachable order this task removed) and
+ * `isPlacementValidFor` would throw on `.includes` inside `classifyDrop`, which
+ * the controller does not catch, wedging the whole drop session. The `never`
+ * assignment keeps the union exhaustive as a COMPILE error, so a new
+ * `StackPayload` kind still has to state where it may land.
+ */
 function placementsForPayload(
   payload: StackPayload,
 ): ReadonlyArray<PlacementKind> {
@@ -153,7 +177,12 @@ function placementsForPayload(
     case "heading":
       return GAP_ONLY;
     case "card":
-      return CARD_PLACEMENTS[payload.card.cardKind];
+      return CARD_PLACEMENTS[payload.card.cardKind] ?? NOWHERE;
+    default: {
+      const unknown: never = payload;
+      void unknown;
+      return NOWHERE;
+    }
   }
 }
 
@@ -177,9 +206,12 @@ const ALLOWED_PLACEMENTS: ReadonlyArray<PlacementKind> = [
  * `beginDropSession`) — never per pointermove, since `lookup` parses the
  * Stack's whole localStorage envelope.
  *
- * An unresolvable key (a stack item cleared or evicted between the mousedown
- * and now) returns `[]`: `classifyDrop` already refuses it, so offering a
- * landing bar could only promise a drop that will silently do nothing.
+ * An unresolvable key returns `[]` — the honest answer both at mousedown (a
+ * dead key offers no landing site) and later, since the item can be removed
+ * from the Stack DURING the drag. The choice is frozen at mousedown by design;
+ * the payload's continued existence is not guaranteed, which is exactly why
+ * `classifyDrop` re-reads and re-validates at commit rather than trusting a
+ * list minted a gesture ago.
  */
 export function stackPullPlacementsFor(
   cardKey: string,

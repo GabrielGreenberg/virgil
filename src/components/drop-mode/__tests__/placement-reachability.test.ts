@@ -14,20 +14,28 @@
  * Two things make it more than a restatement of the bug:
  *
  *  - it reads the priority rule from `winningPlacementKind` — the SAME function
- *    the hit-test's switch calls — so the guard cannot drift from the loop; and
+ *    the hit-test's switch calls — so the guard cannot drift from that switch
+ *    (scope: the switch is step 6; see the residual in `placement-policy.ts`
+ *    about the two resolvers that run before it); and
  *  - it censuses `placementsFor` specs through their PER-PAYLOAD lists, not
  *    their `allowedPlacements` envelope. Read as a priority order, stack-pull's
  *    envelope is STILL unreachable-complete (it is a union, deliberately), so a
  *    census that asked the envelope would either false-alarm or, if relaxed,
- *    walk straight past the next spec that answers per payload. The grep leg
- *    below is what keeps that door closed: a new `placementsFor` declaration
- *    with no published lists fails here.
+ *    walk straight past the next spec that answers per payload.
+ *
+ * That second point opens a hole, and the hole is closed from the RUNTIME side:
+ * every spec that declares `placementsFor` must publish its lists here, checked
+ * by object identity off the live specs. A source grep would have been the
+ * obvious move and would have been wrong twice over — it would miss the ES
+ * method-shorthand form (`placementsFor(key) {…}`, the idiom `stackPullDropSpec`
+ * already uses for `classifyDrop`/`applyDrop`), and 13 of the ~17 censused specs
+ * are authored in `src/panels/<Panel>/drop-spec.ts`, outside any drop-mode-
+ * directory scan. Asking the objects has neither hole.
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
 import {
+  resolveSessionPlacements,
   unreachablePlacements,
   winningPlacementKind,
 } from "../placement-policy";
@@ -43,8 +51,6 @@ import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
 // Side-effect: fold every card kind's DropSpec onto CARD_REGISTRY[kind].dropSpec.
 import "@/cards/drop-specs";
-
-const DROP_MODE_DIR = join(process.cwd(), "src/components/drop-mode");
 
 /**
  * Every spec a drag session can dispatch: the card kinds' folded specs plus the
@@ -63,29 +69,14 @@ function allSpecs(): Array<{ name: string; spec: DropSpec }> {
   return out;
 }
 
-/** The per-payload lists published by each spec module that answers per
- *  payload. Keyed by path relative to `src/components/drop-mode/` — the grep
- *  leg asserts this key set IS the set of files declaring `placementsFor`. */
-const PER_PAYLOAD_LISTS: Record<
-  string,
+/** The per-payload lists published by each spec that answers per payload,
+ *  keyed by the SPEC OBJECT — so the "did you publish?" leg is a lookup on the
+ *  live spec rather than a guess about where its source lives or how its
+ *  function member is spelled. */
+const PER_PAYLOAD_LISTS = new Map<
+  DropSpec,
   ReadonlyArray<ReadonlyArray<PlacementKind>>
-> = {
-  "specs/stack-pull.ts": STACK_PULL_PLACEMENT_LISTS,
-};
-
-function tsFilesUnder(dir: string): string[] {
-  const out: string[] = [];
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      if (entry === "__tests__") continue;
-      out.push(...tsFilesUnder(full));
-    } else if (entry.endsWith(".ts") || entry.endsWith(".tsx")) {
-      out.push(full);
-    }
-  }
-  return out;
-}
+>([[stackPullDropSpec, STACK_PULL_PLACEMENT_LISTS]]);
 
 describe("every declared placement is reachable", () => {
   const specs = allSpecs();
@@ -102,38 +93,32 @@ describe("every declared placement is reachable", () => {
     },
   );
 
-  it("a spec answering PER PAYLOAD has every one of its lists reachable", () => {
-    for (const [file, lists] of Object.entries(PER_PAYLOAD_LISTS)) {
+  it("EVERY spec declaring placementsFor publishes its per-payload lists", () => {
+    // The leg that keeps leg 1's `!placementsFor` filter from being an escape
+    // hatch: a spec that opts out of the envelope check must opt IN to this one.
+    const perPayload = specs.filter((s) => s.spec.placementsFor);
+    expect(perPayload.length).toBeGreaterThan(0);
+    for (const { name, spec } of perPayload) {
+      expect({ name, published: PER_PAYLOAD_LISTS.has(spec) }).toEqual({
+        name,
+        published: true,
+      });
+    }
+  });
+
+  it("every published per-payload list is reachable end to end", () => {
+    for (const [spec, lists] of PER_PAYLOAD_LISTS) {
       expect(lists.length).toBeGreaterThan(0);
+      const name =
+        specs.find((s) => s.spec === spec)?.name ?? "(unregistered spec)";
       for (const list of lists) {
-        expect({ file, list, dead: unreachablePlacements(list) }).toEqual({
-          file,
+        expect({ name, list, dead: unreachablePlacements(list) }).toEqual({
+          name,
           list,
           dead: [],
         });
       }
     }
-  });
-
-  it("a per-payload list never exceeds its spec's declared envelope", () => {
-    for (const list of STACK_PULL_PLACEMENT_LISTS) {
-      for (const kind of list) {
-        expect(stackPullDropSpec.allowedPlacements).toContain(kind);
-      }
-    }
-  });
-
-  it("every file declaring `placementsFor` publishes its lists here", () => {
-    const declaring: string[] = [];
-    for (const file of tsFilesUnder(DROP_MODE_DIR)) {
-      const src = readFileSync(file, "utf8");
-      // The DECLARATION form (an object property on a spec), not the type
-      // member in `types.ts` nor the read in `placement-policy.ts`.
-      if (/^\s*placementsFor:/m.test(src)) {
-        declaring.push(file.slice(DROP_MODE_DIR.length + 1));
-      }
-    }
-    expect(declaring.sort()).toEqual(Object.keys(PER_PAYLOAD_LISTS).sort());
   });
 });
 
@@ -179,6 +164,29 @@ describe("the priority rule itself", () => {
     expect(
       unreachablePlacements(["paragraph-side", "between-blocks"]),
     ).toEqual(["between-blocks"]);
+  });
+
+  it("a placementsFor that answers with NOTHING fails CLOSED, not back to the envelope", () => {
+    // Unreachable through the type, reachable through untrusted persisted data
+    // (stack-pull's payload comes out of a cast localStorage blob). Falling
+    // back to `allowedPlacements` here would restore the exact union in which
+    // paragraph-side is dead — the defect, for the payload nobody understood.
+    const rogue = {
+      allowedPlacements: [
+        "between-blocks",
+        "inline-cursor",
+        "paragraph-side",
+      ] as ReadonlyArray<PlacementKind>,
+      placementsFor: () => undefined as unknown as ReadonlyArray<PlacementKind>,
+    } as unknown as DropSpec;
+    expect(resolveSessionPlacements(rogue, "whatever:1")).toEqual([]);
+    // …while a spec that declares NO per-payload policy still uses its list.
+    const plain = {
+      allowedPlacements: ["between-blocks"] as ReadonlyArray<PlacementKind>,
+    } as unknown as DropSpec;
+    expect(resolveSessionPlacements(plain, "whatever:1")).toEqual([
+      "between-blocks",
+    ]);
   });
 
   it("an EMPTY list yields nothing anywhere (the honest no-drop payload)", () => {

@@ -131,9 +131,10 @@ export function beginDropSession(opts: {
     kind,
     spec,
     // Resolve the payload-aware placement list ONCE, here (task 258): the
-    // payload behind a cardKey can't change mid-gesture, and the resolution is
-    // free to read persisted state (stack-pull parses its localStorage
-    // envelope) — a cost the throttled per-move hit-test must never pay.
+    // resolution may read persisted state (stack-pull parses its localStorage
+    // envelope), a cost the throttled per-move hit-test must never pay, and
+    // freezing the CHOICE at mousedown keeps the affordance stable. The payload
+    // can still vanish mid-drag, which `classifyDrop` re-checks at commit.
     placements: resolveSessionPlacements(spec, opts.cardKey),
     origin: opts.origin,
     placement: null,

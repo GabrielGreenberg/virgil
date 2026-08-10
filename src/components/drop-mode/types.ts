@@ -363,10 +363,11 @@ export interface DropSpec {
    * (the caret painted, the commit refused, nothing happened).
    *
    * Resolved ONCE per session by `resolveSessionPlacements`, at
-   * `beginDropSession` — never per pointermove. The payload behind a cardKey
-   * cannot change mid-gesture, and the resolution is free to read persisted
-   * state (stack-pull parses its localStorage envelope), which a throttled
-   * mousemove could not afford.
+   * `beginDropSession` — never per pointermove: the resolution is free to read
+   * persisted state (stack-pull parses its localStorage envelope), which a
+   * throttled mousemove could not afford, and freezing the CHOICE at mousedown
+   * keeps the affordance stable for the gesture. The payload can still VANISH
+   * mid-drag (a stack item removed), which is why `classifyDrop` re-reads.
    *
    * The SAME per-payload table must back the spec's `classifyDrop` validity
    * check. The two are one question asked at two times — the affordance and

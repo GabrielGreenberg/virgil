@@ -14,20 +14,33 @@
  * nothing. The `paragraph-side` arm of that check and the whole `paragraphId`
  * anchoring branch behind it were dead code: a pulled card could never anchor.
  *
- * The legs, in the order they'd fail on the pre-fix tree:
+ * The legs. FOUR fail when the pre-fix selection is restored (verified by
+ * temporarily pointing the hit-test's switch back at `spec.allowedPlacements`):
  *   1. a CARD over paragraph TEXT hit-tests to `paragraph-side` (was
  *      `inline-cursor`) — and the commit accepts it and anchors the card;
- *   2. a CARD in a block GAP still lands unanchored (unchanged);
- *   3. a TEXT payload keeps the inline caret over text / the block bar in a gap
- *      (the placement that would have broken under a naive reorder);
- *   4. a PARAGRAPH payload over text now yields NO placement — the honest half
- *      of the same defect (an inviting caret over a commit that refuses it);
- *   5. an `example` card offers no placement anywhere, because its pull is a
+ *   2. a PARAGRAPH (and a HEADING) payload over text now yields NO placement —
+ *      the honest half of the same defect (an inviting caret over a commit that
+ *      refuses it);
+ *   3. an `example` card offers no placement anywhere, because its pull is a
  *      documented no-op;
- *   6. the derivation guard: for EVERY `StackCardKind`, "declares
- *      paragraph-side" ⟺ "its `applyDrop` branch actually passes the
- *      paragraphId to its `ctx.stack` factory" — run against the REAL applyDrop
- *      with a recording API, so the declaration cannot drift from the branch.
+ *   4. an unresolvable key offers none either.
+ *
+ * The rest are NON-REGRESSION pins that hold identically before and after, and
+ * are here because they are what a naive fix breaks: a CARD in a block gap
+ * still lands unanchored, and a TEXT payload keeps the inline caret over text
+ * (which is what reordering the union — the tempting one-line "fix" — would
+ * have destroyed).
+ *
+ * Two structural legs carry the rest of the weight:
+ *   • the WIRING leg drives the real controller (`beginDropSession` + a
+ *     synthetic mousemove), because every other leg calls `hitTest` directly
+ *     and would stay green if `handleMove` were reverted to pass
+ *     `spec.allowedPlacements` — which typechecks, and is the original bug;
+ *   • the DERIVATION leg iterates `CARD_PLACEMENTS`'s own keys and asserts
+ *     "declares paragraph-side" ⟺ "its `applyDrop` branch passes the
+ *     paragraphId to its `ctx.stack` factory", against the REAL applyDrop with
+ *     a recording API — so a kind the compiler forces someone to declare is a
+ *     kind this suite then checks.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -38,6 +51,14 @@ import { hitTest } from "../hit-test";
 import { resolveSessionPlacements } from "../placement-policy";
 import { registerDropTarget } from "../target-registry";
 import {
+  beginDropSession,
+  cancelDropSession,
+  getDropSession,
+  setDropCtx,
+} from "../controller";
+import {
+  CARD_PLACEMENTS,
+  STACK_PULL_PLACEMENT_LISTS,
   stackPullDropSpec,
   stackPullPlacementsFor,
 } from "../specs/stack-pull";
@@ -290,23 +311,49 @@ describe("the other payloads — the placements a naive reorder would have broke
     expect(hit(editor, IN_TEXT_Y)).toBeNull();
     expect(hit(editor, IN_GAP_Y)).toBeNull();
   });
+
+  it("a payload shape this build doesn't know offers nothing and REFUSES — never throws", () => {
+    // `readEnvelope` validates the envelope version and that `items` is an
+    // array, then casts — so an item written by another build, or carrying a
+    // card kind since renamed, arrives typed as something it is not. Both
+    // unknown-shape doors must answer "nowhere": a nullish answer would fall
+    // back to the envelope (restoring the unreachable order) at hover and throw
+    // on `.includes` inside `classifyDrop` at commit, which the controller does
+    // not catch — wedging the session and the whole drop-mode CSS state.
+    for (const rogue of [
+      { kind: "card", card: { cardKind: "retired-kind", data: {} } },
+      { kind: "some-future-payload", blob: 1 },
+    ]) {
+      seedStack(rogue as unknown as StackPayload);
+      expect(stackPullPlacementsFor(KEY)).toEqual([]);
+      expect(resolveSessionPlacements(stackPullDropSpec, KEY)).toEqual([]);
+      expect(hit(editor, IN_TEXT_Y)).toBeNull();
+      expect(hit(editor, IN_GAP_Y)).toBeNull();
+      const { ctx } = recordingCtx(editor);
+      expect(() =>
+        stackPullDropSpec.classifyDrop(
+          paragraphSidePlacement(editor),
+          KEY,
+          ctx,
+        ),
+      ).not.toThrow();
+      expect(
+        stackPullDropSpec.classifyDrop(paragraphSidePlacement(editor), KEY, ctx),
+      ).toEqual({ kind: "no-op" });
+    }
+  });
 });
 
 describe("the per-card-kind table is DERIVED from what applyDrop does", () => {
-  const ALL_CARD_KINDS: StackCardKind[] = [
-    "note",
-    "highlight",
-    "footnote",
-    "citation",
-    "bibliography",
-    "example",
-    "todo",
-    "archive",
-    "revision-comment",
-    "revision-suggestion",
-    "cutter-comment",
-    "cutter-suggestion",
-  ];
+  // The table's OWN keys, not a hand-written twin: `CARD_PLACEMENTS` is a
+  // Record over `StackCardKind`, so a 13th kind is a compile error there — and
+  // iterating it here means that same kind is compared against its branch. A
+  // literal list would satisfy the type and silently skip the new kind.
+  const ALL_CARD_KINDS = Object.keys(CARD_PLACEMENTS) as StackCardKind[];
+
+  it("covers every stackable card kind", () => {
+    expect(ALL_CARD_KINDS.length).toBeGreaterThanOrEqual(12);
+  });
 
   it.each(ALL_CARD_KINDS)(
     "%s: declares paragraph-side ⟺ its branch passes the paragraphId",
@@ -332,5 +379,97 @@ describe("the per-card-kind table is DERIVED from what applyDrop does", () => {
     expect([...stackPullDropSpec.allowedPlacements].sort()).toEqual(
       ["between-blocks", "inline-cursor", "paragraph-side"].sort(),
     );
+  });
+
+  it("every answer this spec can give is one the reachability census sees", () => {
+    // `STACK_PULL_PLACEMENT_LISTS` dedupes by IDENTITY, and the census checks
+    // only what it publishes — so a branch that returned a freshly-built array
+    // would be censused by nothing. Assert the live answers ARE the published
+    // objects, for every payload shape, so that premise is enforced rather
+    // than merely stated in a comment.
+    const payloads: StackPayload[] = [
+      { kind: "text", slice: { content: [] }, plain: "x" },
+      { kind: "paragraph", node: { type: "paragraph" } },
+      { kind: "heading", nodes: [] },
+      ...ALL_CARD_KINDS.map(cardPayload),
+    ];
+    for (const payload of payloads) {
+      seedStack(payload);
+      const answer = stackPullPlacementsFor(KEY);
+      expect({
+        payload: payload.kind,
+        published: STACK_PULL_PLACEMENT_LISTS.includes(answer),
+      }).toEqual({ payload: payload.kind, published: true });
+    }
+  });
+});
+
+describe("the controller WIRING — the list the session resolves is the list the hit-test walks", () => {
+  /**
+   * Every other leg calls `hitTest` directly with a hand-resolved list, so all
+   * of them would stay green if `handleMove` were reverted to pass
+   * `session.spec.allowedPlacements` — which typechecks (both are
+   * `ReadonlyArray<PlacementKind>`) and IS the task-258 bug. This leg is the
+   * one that fails on that revert.
+   */
+  function mouseMove(x: number, y: number) {
+    window.dispatchEvent(
+      // `buttons: 1` — the controller's missed-release failsafe cancels a move
+      // with the primary button no longer held.
+      new MouseEvent("mousemove", { clientX: x, clientY: y, buttons: 1 }),
+    );
+  }
+  /** The controller throttles hit-testing to ~16 ms and DEFERS a too-soon move
+   *  onto a timer, so a move dispatched right after a previous test's may not
+   *  have run yet. Wait past the window before asserting. */
+  const settle = () => new Promise((r) => setTimeout(r, 30));
+
+  it("a card pull driven through beginDropSession lands on paragraph-side over text", async () => {
+    seedStack(cardPayload("note"));
+    const { ctx } = recordingCtx(editor);
+    setDropCtx(ctx);
+    try {
+      expect(
+        beginDropSession({ cardKey: KEY, origin: { x: CURSOR_X, y: 0 } }),
+      ).toBe(true);
+      expect(getDropSession()?.placements).toEqual([
+        "between-blocks",
+        "paragraph-side",
+      ]);
+      mouseMove(CURSOR_X, IN_TEXT_Y);
+      await settle();
+      expect(getDropSession()?.placement?.kind).toBe("paragraph-side");
+    } finally {
+      cancelDropSession();
+      setDropCtx(null);
+    }
+  });
+
+  it("resolves the payload ONCE per gesture, not once per move", async () => {
+    // The documented perf law behind `DropSession.placements`: stack-pull's
+    // resolution parses the whole Stack envelope out of localStorage, so moving
+    // it into the throttled hit-test would put a getItem + JSON.parse on every
+    // pointermove of every drag.
+    seedStack(cardPayload("note"));
+    const { ctx } = recordingCtx(editor);
+    setDropCtx(ctx);
+    const real = Storage.prototype.getItem;
+    let stackReads = 0;
+    Storage.prototype.getItem = function (key: string) {
+      if (key === STACK_STORAGE_KEY) stackReads++;
+      return real.call(this, key);
+    };
+    try {
+      beginDropSession({ cardKey: KEY, origin: { x: CURSOR_X, y: 0 } });
+      const afterBegin = stackReads;
+      for (let i = 0; i < 6; i++) mouseMove(CURSOR_X, IN_TEXT_Y + i);
+      await settle();
+      expect(getDropSession()?.placement?.kind).toBe("paragraph-side");
+      expect(stackReads).toBe(afterBegin);
+    } finally {
+      Storage.prototype.getItem = real;
+      cancelDropSession();
+      setDropCtx(null);
+    }
   });
 });

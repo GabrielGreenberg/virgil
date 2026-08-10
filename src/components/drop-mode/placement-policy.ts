@@ -19,19 +19,33 @@
  * Two structural rules fall out, and both live here:
  *
  *  - **The priority semantics are ONE function.** {@link winningPlacementKind}
- *    IS the hit-test's loop (minus the geometry builders), so the reachability
- *    guard below reads exactly the rule the runtime follows and cannot drift
- *    from it. A guard that re-states the loop is a second copy of the thing
- *    that was wrong.
+ *    IS the hit-test's priority switch (minus the geometry builders), so the
+ *    reachability guard below reads exactly the rule that switch follows and
+ *    cannot drift from it. A guard that re-states the loop is a second copy of
+ *    the thing that was wrong. **Scope, stated because the guard is only as
+ *    honest as its reach:** the switch is step 6 of the hit-test, and TWO
+ *    resolvers run before it (`resolveSubItemPeerBlock`, `resolveBlockIntoExpex`
+ *    — the R3 sub-item peer path and the A1 into-expex path), each gated only on
+ *    `placements.includes("between-blocks")` and each returning a
+ *    `between-blocks` placement for a cursor INSIDE a block's rect. So
+ *    `between-blocks` is reachable for a text-object source wherever it appears
+ *    in the list, and {@link unreachablePlacements} — which models the switch
+ *    alone — would wrongly condemn it in a hypothetical
+ *    `["paragraph-side", "between-blocks"]` spec. No such spec exists (both
+ *    resolvers gate on a `textobject:` source key, and every text-object spec
+ *    declares `between-blocks` first), so the guard is exact today; a future one
+ *    would need this residual folded in rather than the assertion relaxed.
  *  - **A static priority order cannot answer a PER-PAYLOAD question.** When one
  *    spec key covers several payload shapes (stack-pull: a text slice, a
  *    paragraph, a heading, a card), the placement a payload wants over the same
  *    pixel differs — a text slice wants the inline caret, a card wants the
  *    paragraph side. So a spec may narrow its list per payload through
  *    `DropSpec.placementsFor`, resolved ONCE per session by
- *    {@link resolveSessionPlacements} (the payload cannot change mid-drag, and
- *    the resolution may read persisted state — it must never run per
- *    pointermove).
+ *    {@link resolveSessionPlacements}: the resolution may read persisted state,
+ *    so it must never run per pointermove, and freezing the CHOICE at mousedown
+ *    also keeps the affordance stable for the gesture. That is not a claim the
+ *    payload is immortal — a stack item can be removed mid-drag, which is why
+ *    the commit re-reads and re-validates instead of trusting the frozen list.
  */
 
 import type { DropSpec, PlacementKind } from "./types";
@@ -100,13 +114,24 @@ export function unreachablePlacements(
  * envelope (the union of what any payload may use) and is NOT a priority order
  * for such a spec — see `stack-pull.ts`.
  *
- * Called ONCE per session, from `beginDropSession`. Never per pointermove:
- * `placementsFor` may read persisted state (stack-pull parses its localStorage
- * envelope), and the payload behind a cardKey cannot change mid-gesture.
+ * **The fallback is a fork, not a coalesce.** A `placementsFor` that produced
+ * nothing (it cannot, per its type, but its input is untrusted persisted data)
+ * must NOT fall through to the envelope: for the one spec that has one, the
+ * envelope is precisely the union in which `paragraph-side` is unreachable, so
+ * a coalesce would silently restore the defect for exactly the payload nobody
+ * understood. It fails CLOSED instead — offer nothing.
+ *
+ * Called ONCE per session, from `beginDropSession`; never per pointermove,
+ * since `placementsFor` may read persisted state (stack-pull parses its whole
+ * localStorage envelope).
  */
 export function resolveSessionPlacements(
   spec: DropSpec,
   cardKey: string,
 ): ReadonlyArray<PlacementKind> {
-  return spec.placementsFor?.(cardKey) ?? spec.allowedPlacements;
+  if (!spec.placementsFor) return spec.allowedPlacements;
+  return spec.placementsFor(cardKey) ?? NO_PLACEMENTS;
 }
+
+/** The shared empty answer — "this payload can be dropped nowhere". */
+const NO_PLACEMENTS: ReadonlyArray<PlacementKind> = [];
