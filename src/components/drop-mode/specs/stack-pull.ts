@@ -7,7 +7,13 @@
  *  - paragraph → insert single paragraph at between-blocks with fresh uuid
  *  - heading  → insert heading + body at between-blocks with fresh uuids
  *  - card     → upsert any sidecar bib entries, then materialize a fresh
- *               card via the per-doc factories on `ctx.stack`.
+ *               card via the per-doc factories on `ctx.stack` — anchored to
+ *               the paragraph under the cursor (paragraph-side), or unanchored
+ *               in a block gap (between-blocks).
+ *
+ * Which placements a pull may use is PER PAYLOAD, not per spec: see
+ * `PLACEMENTS_BY_PAYLOAD` below, the one table the hit-test's affordance and
+ * this spec's commit-time validity check both read (task 258).
  *
  * Stack pulls are paste-as-new — every id/uuid is regenerated. Block
  * uuids are reminted by `withFreshUuid`; Card-bearing inline-atom ids
@@ -21,23 +27,171 @@
 import { Node as PMNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import type { JSONContent } from "@tiptap/react";
-import type { DropDecision, DropSpec, Placement } from "../types";
+import type {
+  DropDecision,
+  DropSpec,
+  Placement,
+  PlacementKind,
+} from "../types";
 import { fitNodesAtInsert } from "./drop-context";
 import { readStackItem } from "@/hooks/useStack";
-import type { StackItem, StackPayload } from "@/lib/stack/types";
+import type {
+  StackCardKind,
+  StackItem,
+  StackPayload,
+} from "@/lib/stack/types";
 import { generateShortId } from "@/lib/uuid";
 import { remintNestedAtomIds } from "@/lib/inline-content";
 import { rangeSliceToBlocks } from "@/lib/linked-anchor-range";
 import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
 
-const ALLOWED_PLACEMENTS: ReadonlyArray<Placement["kind"]> = [
+/**
+ * **The per-payload placement table — the ONE answer to "where may THIS
+ * payload land?", read by the hit-test (the affordance) and by
+ * `classifyDrop` (the commit). {@link placementsForPayload} is its only
+ * reader; nothing else restates a placement rule.**
+ *
+ * Both derive from it; neither restates it. That is the whole of
+ * task 258: the spec used to answer the same question twice, from a spec-wide
+ * static priority order at hover time and from a per-payload switch at commit
+ * time, and the two disagreed. Because `inGap`/`inText` partition every cursor
+ * position, the spec-wide order `["between-blocks", "inline-cursor",
+ * "paragraph-side"]` made `paragraph-side` structurally unreachable — so a CARD
+ * dropped on paragraph text got an inline caret (which no card kind accepts),
+ * the commit refused it, and the paragraph-anchored pull this spec advertises
+ * was dead code. Per payload the answer is different over the SAME pixel, which
+ * no single static order can express:
+ *
+ *  - `text` — a slice merges INTO the prose: the inline caret over text, the
+ *    block form in a gap.
+ *  - `paragraph` / `heading` — whole blocks; only a gap can hold them. Over
+ *    text the list yields nothing, so no indicator paints at all (before, an
+ *    inviting caret painted over a commit that would refuse it).
+ *  - `card` — split once more, by card KIND (see {@link CARD_PLACEMENTS}): an
+ *    attachment card anchors to a PARAGRAPH (`paragraph-side`, reachable now
+ *    that it is not queued behind `inline-cursor`) or lands unanchored in a
+ *    gap; a footnote/citation/bib pull has no paragraph anchor to take, so it
+ *    is gap-only; an `example` pull is unimplemented, so it offers nothing.
+ *    `inline-cursor` fits no card kind.
+ *
+ * Order matters only against `paragraph-side`, which matches either geometry:
+ * `between-blocks` must precede it so a gap still means "unanchored", leaving
+ * the text world to the side placement. (`between-blocks` and `inline-cursor`
+ * are mutually exclusive, so their relative order never bites.)
+ */
+const INTO_PROSE: ReadonlyArray<PlacementKind> = [
   "between-blocks",
   "inline-cursor",
+];
+/** Anchored to the paragraph under the cursor, or unanchored in a gap. */
+const ANCHORABLE: ReadonlyArray<PlacementKind> = [
+  "between-blocks",
   "paragraph-side",
 ];
+/** A gap only — nothing this payload can do with a position inside prose. */
+const GAP_ONLY: ReadonlyArray<PlacementKind> = ["between-blocks"];
+/** Nowhere: the pull has no implementation, so no bar may invite one. */
+const NOWHERE: ReadonlyArray<PlacementKind> = [];
+
+/**
+ * The card half of the table, keyed on `StackCardKind` so a new stackable card
+ * kind is a COMPILE ERROR until someone states where its pull may land.
+ *
+ * The criterion is mechanical and checkable: a kind gets `paragraph-side` iff
+ * its branch in {@link applyCardDrop} passes `paragraphId` to its `ctx.stack`
+ * factory. The kinds that don't are not oversights — a footnote/citation
+ * belongs to an inline atom and a bib entry to the `.bib`, so v1 pulls them in
+ * as unanchored entries whatever the cursor is over, and a side bar would
+ * promise an anchor that never arrives. `example` gets NOTHING: its branch is a
+ * documented v1 no-op (the panel ref mirrors an in-text `\ex{…}` block this
+ * pull can't synthesize), so every placement it could offer is a lie.
+ * `stack-pull-placement-policy.test.ts` re-derives all three groups by running
+ * the REAL `applyDrop` against a recording `StackPullApi` — the declaration and
+ * the branch cannot drift.
+ */
+const CARD_PLACEMENTS: Record<StackCardKind, ReadonlyArray<PlacementKind>> = {
+  note: ANCHORABLE,
+  highlight: ANCHORABLE,
+  todo: ANCHORABLE,
+  archive: ANCHORABLE,
+  "revision-comment": ANCHORABLE,
+  "revision-suggestion": ANCHORABLE,
+  "cutter-comment": ANCHORABLE,
+  "cutter-suggestion": ANCHORABLE,
+  footnote: GAP_ONLY,
+  citation: GAP_ONLY,
+  bibliography: GAP_ONLY,
+  example: NOWHERE,
+};
+
+/**
+ * Every DISTINCT list `placementsFor` can return, for the reachability census
+ * ([placement-reachability.test.ts](../__tests__/placement-reachability.test.ts)):
+ * a spec that answers per payload can't be censused through its envelope, so it
+ * publishes the lists a session can actually walk. Deduped by IDENTITY, which is
+ * why the four are named constants and every branch below returns one of them —
+ * a branch that inlined its own array would be invisible here.
+ */
+export const STACK_PULL_PLACEMENT_LISTS: ReadonlyArray<
+  ReadonlyArray<PlacementKind>
+> = [...new Set<ReadonlyArray<PlacementKind>>([
+  INTO_PROSE,
+  ANCHORABLE,
+  GAP_ONLY,
+  NOWHERE,
+  ...Object.values(CARD_PLACEMENTS),
+])];
+
+/** The ordered placements ONE payload may use — the table's single reader. */
+function placementsForPayload(
+  payload: StackPayload,
+): ReadonlyArray<PlacementKind> {
+  switch (payload.kind) {
+    case "text":
+      return INTO_PROSE;
+    case "paragraph":
+    case "heading":
+      return GAP_ONLY;
+    case "card":
+      return CARD_PLACEMENTS[payload.card.cardKind];
+  }
+}
+
+/**
+ * The declared ENVELOPE — every placement some payload may use — derived from
+ * the table above rather than hand-listed, so it cannot drift from it.
+ *
+ * Deliberately NOT a priority order: this spec resolves per payload through
+ * `placementsFor`, and no session ever walks this union. (Read as an order it
+ * would still make `paragraph-side` unreachable — which is exactly why the
+ * reachability guard asks a `placementsFor` spec about its per-payload lists,
+ * not about its envelope.)
+ */
+const ALLOWED_PLACEMENTS: ReadonlyArray<PlacementKind> = [
+  ...new Set(STACK_PULL_PLACEMENT_LISTS.flat()),
+];
+
+/**
+ * The ordered placements for ONE pull, by the payload behind `cardKey`.
+ * Resolved once per session (`resolveSessionPlacements`, at
+ * `beginDropSession`) — never per pointermove, since `lookup` parses the
+ * Stack's whole localStorage envelope.
+ *
+ * An unresolvable key (a stack item cleared or evicted between the mousedown
+ * and now) returns `[]`: `classifyDrop` already refuses it, so offering a
+ * landing bar could only promise a drop that will silently do nothing.
+ */
+export function stackPullPlacementsFor(
+  cardKey: string,
+): ReadonlyArray<PlacementKind> {
+  const item = lookup(cardKey);
+  if (!item) return NOWHERE;
+  return placementsForPayload(item.payload);
+}
 
 export const stackPullDropSpec: DropSpec = {
   allowedPlacements: ALLOWED_PLACEMENTS,
+  placementsFor: stackPullPlacementsFor,
   targetScope: "main-only",
   classifyDrop(placement, cardKey, ctx): DropDecision {
     const item = lookup(cardKey);
@@ -84,26 +238,18 @@ function lookup(cardKey: string): StackItem | null {
   return readStackItem(id);
 }
 
+/**
+ * The COMMIT half of the one question, read off the same table the hit-test
+ * walked. It stays as a distinct check rather than being assumed: the hit-test
+ * resolved the list at mousedown, and a payload can be evicted from the Stack
+ * mid-drag — so the commit re-reads and refuses rather than trusting a list
+ * minted a gesture ago.
+ */
 function isPlacementValidFor(
   payload: StackPayload,
   placement: Placement,
 ): boolean {
-  switch (payload.kind) {
-    case "text":
-      return (
-        placement.kind === "inline-cursor" || placement.kind === "between-blocks"
-      );
-    case "paragraph":
-    case "heading":
-      return placement.kind === "between-blocks";
-    case "card":
-      // Cards accept paragraph-side (anchored) or between-blocks
-      // (unanchored). Inline-cursor doesn't fit any card kind in v1.
-      return (
-        placement.kind === "paragraph-side" ||
-        placement.kind === "between-blocks"
-      );
-  }
+  return placementsForPayload(payload).includes(placement.kind);
 }
 
 // ── Text payload ──────────────────────────────────────────────────────
@@ -347,6 +493,12 @@ function applyCardDrop(
   const p = item.payload;
   if (p.kind !== "card") return;
   const card = p.card;
+  // The anchor the pull lands on. `paragraph-side` was unreachable until task
+  // 258 (the hit-test's static order handed every in-text cursor to
+  // `inline-cursor`, which no card kind accepts), so this whole branch — and
+  // every `paragraphId` argument below — was dead code and a pulled card could
+  // only ever land unanchored. Whether a kind can USE it is declared in
+  // `CARD_PLACEMENTS`, which is re-derived from these very calls in CI.
   const paragraphId =
     placement.kind === "paragraph-side" ? placement.paragraphId : null;
 

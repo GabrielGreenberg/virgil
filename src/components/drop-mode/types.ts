@@ -335,8 +335,45 @@ export interface StackPullApi {
  * contributes one spec; the registry composes them into a single record.
  */
 export interface DropSpec {
-  /** Listed in priority order; first matching geometry wins. */
+  /**
+   * Listed in priority order; first matching geometry wins (the loop lives in
+   * `hit-test.ts`, its semantics in `placement-policy.ts`).
+   *
+   * For a spec that declares {@link placementsFor} this is the declared
+   * ENVELOPE — the union of what any payload may use — and NOT a priority
+   * order: the per-payload list is what a session actually walks. Every OTHER
+   * spec carries one payload shape, so here the list is the policy.
+   *
+   * `paragraph-side` matches EITHER geometry, so listing it after both
+   * `between-blocks` and `inline-cursor` makes it unreachable. CI
+   * (`placement-reachability.test.ts`) fails any spec that declares a
+   * placement the loop can never return — the task-258 shape.
+   */
   allowedPlacements: ReadonlyArray<PlacementKind>;
+  /**
+   * Payload-aware refinement of {@link allowedPlacements} (task 258): the
+   * ordered list THIS dragged key may use, or `[]` when the payload can't be
+   * resolved and the drag should offer nothing.
+   *
+   * Declared only by a spec whose one key prefix covers several payload
+   * SHAPES, where a spec-wide static order is structurally unable to express
+   * the truth — `stack-pull:<id>` is the only one today: a text slice wants
+   * the inline caret over paragraph text, a card wants the paragraph side over
+   * the very same pixel, and the loser of a single static order is dead code
+   * (the caret painted, the commit refused, nothing happened).
+   *
+   * Resolved ONCE per session by `resolveSessionPlacements`, at
+   * `beginDropSession` — never per pointermove. The payload behind a cardKey
+   * cannot change mid-gesture, and the resolution is free to read persisted
+   * state (stack-pull parses its localStorage envelope), which a throttled
+   * mousemove could not afford.
+   *
+   * The SAME per-payload table must back the spec's `classifyDrop` validity
+   * check. The two are one question asked at two times — the affordance and
+   * the commit — and the whole defect class is them being answered by
+   * different tables.
+   */
+  placementsFor?: (cardKey: string) => ReadonlyArray<PlacementKind>;
   /**
    * Whether this kind may drop into card-body editors or only the main
    * editor. Attachment cards (note, todo, etc.) anchor to paragraph
@@ -402,6 +439,12 @@ export interface DropSession {
    *  look the spec up in the registry. */
   kind: string;
   spec: DropSpec;
+  /** The ordered placements THIS session may produce — `spec.placementsFor`'s
+   *  answer for this cardKey, else `spec.allowedPlacements`. Resolved once at
+   *  session start (`resolveSessionPlacements`) and handed to every hit-test,
+   *  so a per-payload policy costs one localStorage read per GESTURE rather
+   *  than one per throttled pointermove. */
+  placements: ReadonlyArray<PlacementKind>;
   /** Where the user mousedowned, used by ESC / leave logic. */
   origin: { x: number; y: number };
   /** Current placement under the cursor, or null when not over a valid

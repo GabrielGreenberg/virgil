@@ -26,6 +26,7 @@
 import { useEffect, useState } from "react";
 import type { DropCtx, DropSession, DropSpec, Placement } from "./types";
 import { hitTest, isUnmintedParagraphId, mintPlacementUuid } from "./hit-test";
+import { resolveSessionPlacements } from "./placement-policy";
 import { lookupSpec } from "./registry";
 import { parseAnyKey } from "@/floats/float-key";
 // The content-gesture publisher pair is imported from the bus MODULE, not the
@@ -129,6 +130,11 @@ export function beginDropSession(opts: {
     cardKey: opts.cardKey,
     kind,
     spec,
+    // Resolve the payload-aware placement list ONCE, here (task 258): the
+    // payload behind a cardKey can't change mid-gesture, and the resolution is
+    // free to read persisted state (stack-pull parses its localStorage
+    // envelope) — a cost the throttled per-move hit-test must never pay.
+    placements: resolveSessionPlacements(spec, opts.cardKey),
     origin: opts.origin,
     placement: null,
     inPlace,
@@ -284,6 +290,7 @@ function handleMove(x: number, y: number) {
       x,
       y,
       session.spec,
+      session.placements,
       session.cardKey,
       activeCtx.mainEditor,
     );
