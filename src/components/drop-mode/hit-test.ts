@@ -10,8 +10,14 @@
  *   4. Walk up to the nearest anchorable block; ensure it has a UUID.
  *   5. Classify the cursor as "inGap" (between blocks) or "inText"
  *      (inside a block's text rect).
- *   6. Walk the spec's `allowedPlacements` in priority order; return
- *      the first one whose geometry matches.
+ *   6. Ask `winningPlacementKind` which of the SESSION's placements wins at
+ *      that geometry, and build it.
+ *
+ * Step 6's rule lives in `placement-policy.ts`, not inline here, so the CI
+ * reachability guard reads the same function the loop does (task 258). The
+ * session's list is the spec's per-payload answer when it has one — the
+ * hit-test never resolves it itself, because that resolution may read
+ * persisted state and this runs on every throttled pointermove.
  */
 
 import type { Editor } from "@tiptap/react";
@@ -32,7 +38,8 @@ import {
 import type { TextObjectKind } from "@/text-objects/types";
 import { parseAnyKey } from "@/floats/float-key";
 import { findEditorAtPoint } from "./target-registry";
-import type { DropSpec, Placement, ViewportRect } from "./types";
+import { winningPlacementKind } from "./placement-policy";
+import type { DropSpec, Placement, PlacementKind, ViewportRect } from "./types";
 
 /**
  * Resolve a cursor point to a `Placement` (or null if nothing valid is
@@ -40,11 +47,18 @@ import type { DropSpec, Placement, ViewportRect } from "./types";
  *
  * `sourceCardKey` is the cardKey of the popped-out item being dropped.
  * Used to reject self-drops (target editor belongs to the source card).
+ *
+ * `placements` is the SESSION's ordered list — `DropSession.placements`,
+ * resolved once at `beginDropSession` from `spec.placementsFor` (per payload)
+ * or `spec.allowedPlacements`. Passed in rather than read off the spec here so
+ * a per-payload policy is resolved once per gesture, not once per move; an
+ * EMPTY list is meaningful and yields no placement anywhere.
  */
 export function hitTest(
   x: number,
   y: number,
   spec: DropSpec,
+  placements: ReadonlyArray<PlacementKind>,
   sourceCardKey: string,
   mainEditor: Editor | null,
 ): Placement | null {
@@ -74,7 +88,7 @@ export function hitTest(
   // over a top-level gap (not inside a compatible container), falls through
   // to the existing resolution below — preserving the top-level pull-out
   // (wrap) behavior byte-for-byte.
-  if (spec.allowedPlacements.includes("between-blocks")) {
+  if (placements.includes("between-blocks")) {
     const peer = resolveSubItemPeerBlock(editor, posResult.pos, sourceCardKey);
     if (peer) return makeBetweenBlocksPlacement(editor, peer, y, true);
     // Feature A1 — a lifted text/picture/equation block (paragraph /
@@ -107,21 +121,21 @@ export function hitTest(
   // fallback for callers that arrive without one, e.g. the R3 peer path.)
   const blockRect = block.dom.getBoundingClientRect();
   const inText = y >= blockRect.top && y <= blockRect.bottom;
-  const inGap = !inText;
 
-  // Walk priority order; return the first placement that matches.
-  for (const kind of spec.allowedPlacements) {
-    if (kind === "between-blocks" && inGap) {
+  // Which of the session's placements wins at this geometry — the priority
+  // rule itself lives in `placement-policy.ts` (its `winningPlacementKind` IS
+  // this loop), so the CI reachability guard can read the rule rather than a
+  // second copy of it. Here we only BUILD the winner.
+  switch (winningPlacementKind(placements, inText ? "text" : "gap")) {
+    case "between-blocks":
       return makeBetweenBlocksPlacement(editor, block, y, false, blockRect);
-    }
-    if (kind === "inline-cursor" && inText) {
+    case "inline-cursor":
       return makeInlineCursorPlacement(editor, posResult.pos);
-    }
-    if (kind === "paragraph-side") {
+    case "paragraph-side":
       return makeParagraphSidePlacement(editor, block, x, blockRect);
-    }
+    default:
+      return null;
   }
-  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
