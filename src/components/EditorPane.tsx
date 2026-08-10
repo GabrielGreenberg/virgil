@@ -5067,7 +5067,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // (footnote) do a one-shot doc read here on the drop gesture, but
         // `snapshotForStack` itself is a pure closure over the resolved record
         // — never keystroke-proportional. Returns null for non-stackable kinds
-        // (report / ai / example).
+        // (report / report-request / example — `CARD_REGISTRY[kind].stackable`,
+        // pinned to the Stack vocabulary by `assertStackCoverage`).
         const f = CARD_REGISTRY[parsed.kind].toFloatable(id, popoutsDeps);
         item = f?.snapshotForStack(source) ?? null;
       }

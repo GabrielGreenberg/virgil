@@ -21,8 +21,11 @@
  *   2. a PARAGRAPH (and a HEADING) payload over text now yields NO placement —
  *      the honest half of the same defect (an inviting caret over a commit that
  *      refuses it);
- *   3. an `example` card offers no placement anywhere, because its pull is a
- *      documented no-op;
+ *   3. a card kind this build doesn't carry offers no placement anywhere (until
+ *      task 259 this leg read `example`, a DECLARED kind whose pull was a
+ *      documented no-op; 259 retired the kind rather than keeping the empty
+ *      offer, so the same geometry is now exercised through a retired-kind
+ *      snapshot);
  *   4. an unresolvable key offers none either.
  *
  * The rest are NON-REGRESSION pins that hold identically before and after, and
@@ -64,6 +67,7 @@ import {
 } from "../specs/stack-pull";
 import type { DropCtx, Placement, StackPullApi } from "../types";
 import {
+  STACK_CARD_KINDS,
   STACK_PULL_PREFIX,
   STACK_STORAGE_KEY,
   type StackCardKind,
@@ -300,8 +304,17 @@ describe("the other payloads — the placements a naive reorder would have broke
     expect(hit(editor, IN_GAP_Y)?.kind).toBe("between-blocks");
   });
 
-  it("an EXAMPLE card offers no placement anywhere — its pull is a no-op", () => {
-    seedStack(cardPayload("example"));
+  it("a card kind this build no longer carries offers no placement anywhere", () => {
+    // Was the `example` leg: until task 259 `example` was a DECLARED member of
+    // the vocabulary whose pull branch was a documented no-op, so it offered
+    // nothing anywhere. 259 removed the kind instead of the offer — a kind that
+    // cannot round-trip is not in `STACK_CARD_KINDS` at all — so this is now the
+    // retired-kind door (a snapshot persisted by an older build), which must
+    // answer the same way.
+    seedStack({
+      kind: "card",
+      card: { cardKind: "example", data: {} },
+    } as unknown as StackPayload);
     expect(hit(editor, IN_TEXT_Y)).toBeNull();
     expect(hit(editor, IN_GAP_Y)).toBeNull();
   });
@@ -352,7 +365,22 @@ describe("the per-card-kind table is DERIVED from what applyDrop does", () => {
   const ALL_CARD_KINDS = Object.keys(CARD_PLACEMENTS) as StackCardKind[];
 
   it("covers every stackable card kind", () => {
-    expect(ALL_CARD_KINDS.length).toBeGreaterThanOrEqual(12);
+    expect(new Set(ALL_CARD_KINDS)).toEqual(new Set(STACK_CARD_KINDS));
+  });
+
+  it("no declared kind offers NOWHERE — an empty list is the untrusted-input answer", () => {
+    // Task 259. `example` used to sit in this table declaring `[]`, because its
+    // pull branch did nothing: stackable at every link of the chain by name and
+    // at none in fact. The vocabulary no longer admits such a member, so an
+    // empty placement list can only come from a payload this build doesn't
+    // understand — which is what the retired-kind and evicted-key legs above
+    // assert. Without this, a future kind could be re-added with a placeholder
+    // branch and the per-kind derivation leg below would pass it (`[] ⇔ no
+    // calls` is satisfied by a kind that does nothing at all).
+    for (const kind of ALL_CARD_KINDS) {
+      expect(CARD_PLACEMENTS[kind].length, `${kind}: empty placement list`)
+        .toBeGreaterThan(0);
+    }
   });
 
   it.each(ALL_CARD_KINDS)(

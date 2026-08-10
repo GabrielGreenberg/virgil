@@ -35,9 +35,10 @@ vi.mock("@/lib/storage", () => {
 // builder onto CARD_REGISTRY (side effect).
 import "@/cards/floats";
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { CARD_KINDS } from "@/cards/predicates";
 import type { CardFloatCtx } from "@/cards/card-float-ctx";
 import type { CardKind } from "@/cards/types";
-import type { StackItem } from "@/lib/stack/types";
+import { stackCardKindFor, type StackItem } from "@/lib/stack/types";
 
 const SOURCE = { docId: "doc-1" };
 
@@ -98,38 +99,67 @@ function build(kind: CardKind, id: string) {
   return CARD_REGISTRY[kind].toFloatable(id, mockCtx);
 }
 
-describe("card Floatable.snapshotForStack", () => {
-  // [floatKind, recordId, expected StackCardKind, a field-probe on the data]
-  const stackable: Array<{
-    kind: CardKind;
-    id: string;
-    stackKind: string;
-    probe: (data: Record<string, unknown>) => unknown;
-    expected: unknown;
-  }> = [
-    { kind: "note", id: "note-1", stackKind: "note", probe: (d) => d.title, expected: "My note" },
-    { kind: "highlight", id: "hl-1", stackKind: "highlight", probe: (d) => d.text, expected: "hi" },
-    { kind: "footnote", id: "fn-1", stackKind: "footnote", probe: (d) => d.id, expected: "fn-1" },
-    { kind: "archive", id: "arch-1", stackKind: "archive", probe: (d) => d.title, expected: "Arch" },
-    { kind: "todo", id: "todo-1", stackKind: "todo", probe: (d) => d.text, expected: "do the thing" },
-    { kind: "bib", id: "bib-1", stackKind: "bibliography", probe: (d) => d.key, expected: "bib-1" },
-    { kind: "citation", id: "cit-1", stackKind: "citation", probe: (d) => d.keys, expected: ["bib-1"] },
-    { kind: "revision-comment", id: "rev-c-1", stackKind: "revision-comment", probe: (d) => d.kind, expected: "comment" },
-    { kind: "revision-suggestion", id: "rev-s-1", stackKind: "revision-suggestion", probe: (d) => d.kind, expected: "suggestion" },
-    { kind: "cutter-comment", id: "cut-c-1", stackKind: "cutter-comment", probe: (d) => d.text, expected: "cut comment" },
-    { kind: "cutter-suggestion", id: "cut-s-1", stackKind: "cutter-suggestion", probe: (d) => d.suggested_text, expected: "b" },
-  ];
+/**
+ * The per-kind FIXTURE — a record id in `mockCtx` plus one field probe proving
+ * the snapshot carried the real record, keyed by `CardKind`.
+ *
+ * Task 259 retired the hand-kept `stackable: [...]` array this replaced: it
+ * restated Stack membership a sixth time, so a kind whose snapshot silently
+ * regressed to `() => null` (or a kind added to the Stack and never wired) was
+ * simply absent from the list and the suite stayed green. Membership now comes
+ * from `CARD_REGISTRY[kind].stackable` and the expected Stack name from the
+ * `stackCardKindFor` bridge; this map only supplies the data the assertion
+ * cannot derive. It is typed TOTAL over `CardKind`, so a new kind is a compile
+ * error here, and the "every stackable kind is covered" leg below fails if a
+ * kind becomes stackable without a fixture id.
+ */
+const FIXTURES: Record<
+  CardKind,
+  { id: string; probe: (d: Record<string, unknown>) => unknown; expected: unknown } | null
+> = {
+  note: { id: "note-1", probe: (d) => d.title, expected: "My note" },
+  highlight: { id: "hl-1", probe: (d) => d.text, expected: "hi" },
+  footnote: { id: "fn-1", probe: (d) => d.id, expected: "fn-1" },
+  archive: { id: "arch-1", probe: (d) => d.title, expected: "Arch" },
+  todo: { id: "todo-1", probe: (d) => d.text, expected: "do the thing" },
+  bib: { id: "bib-1", probe: (d) => d.key, expected: "bib-1" },
+  citation: { id: "cit-1", probe: (d) => d.keys, expected: ["bib-1"] },
+  "revision-comment": { id: "rev-c-1", probe: (d) => d.kind, expected: "comment" },
+  "revision-suggestion": { id: "rev-s-1", probe: (d) => d.kind, expected: "suggestion" },
+  "cutter-comment": { id: "cut-c-1", probe: (d) => d.text, expected: "cut comment" },
+  "cutter-suggestion": { id: "cut-s-1", probe: (d) => d.suggested_text, expected: "b" },
+  // Not stackable — a resolvable record so the null-snapshot leg builds a REAL
+  // Floatable rather than passing on an unresolvable id.
+  example: { id: "ex-1", probe: (d) => d, expected: null },
+  report: { id: "report-1", probe: (d) => d, expected: null },
+  "report-request": null, // no fixture record; not stackable either
+  error: null, // not poppable at all (§3.5)
+};
 
-  for (const { kind, id, stackKind, probe, expected } of stackable) {
+describe("card Floatable.snapshotForStack", () => {
+  const stackable = CARD_KINDS.filter((k) => CARD_REGISTRY[k].stackable);
+
+  it("every stackable kind has a fixture (the derivation can't skip one silently)", () => {
+    for (const k of stackable) {
+      expect(FIXTURES[k], `${k}: stackable with no fixture record`).not.toBeNull();
+    }
+    // Canary: the filter really is selecting, not returning everything/nothing.
+    expect(stackable.length).toBeGreaterThan(5);
+    expect(stackable.length).toBeLessThan(CARD_KINDS.length);
+  });
+
+  for (const kind of stackable) {
+    const fx = FIXTURES[kind]!;
+    const stackKind = stackCardKindFor(kind);
     it(`${kind} → StackItem(card:${stackKind})`, () => {
-      const f = build(kind, id);
+      const f = build(kind, fx.id);
       expect(f).not.toBeNull();
       const item = f!.snapshotForStack(SOURCE);
       expect(item).not.toBeNull();
       expect(item!.payload.kind).toBe("card");
       const card = cardPayload(item!);
       expect(card.cardKind).toBe(stackKind);
-      expect(probe(card.data)).toEqual(expected);
+      expect(fx.probe(card.data)).toEqual(fx.expected);
       // The drop source descriptor round-trips onto the item.
       expect(item!.source).toEqual(SOURCE);
     });
@@ -157,15 +187,19 @@ describe("card Floatable.snapshotForStack", () => {
     expect(bibEntries![0].key).toBe("bib-1");
   });
 
-  it("example returns null (R2 — no reachable ExampleRef sidecar)", () => {
-    const f = build("example", "ex-1");
-    expect(f).not.toBeNull();
-    expect(f!.snapshotForStack(SOURCE)).toBeNull();
-  });
-
-  it("report is poppable but not stackable — a built Floatable snapshots null", () => {
-    const f = build("report", "report-1");
-    expect(f).not.toBeNull(); // record resolves → a real Floatable
-    expect(f!.snapshotForStack(SOURCE)).toBeNull(); // …but not stackable
-  });
+  // The other half of the biconditional, also derived: a kind the registry
+  // declares NON-stackable must snapshot null from a real, resolvable record —
+  // a `Floatable` that built fine and refused to serialize, not one that
+  // returned null because the id didn't resolve. `example` (task 259) and
+  // `report` are the two with fixture records.
+  for (const kind of CARD_KINDS.filter(
+    (k) => !CARD_REGISTRY[k].stackable && FIXTURES[k] !== null,
+  )) {
+    it(`${kind} is poppable but NOT stackable — a built Floatable snapshots null`, () => {
+      const f = build(kind, FIXTURES[kind]!.id);
+      expect(f).not.toBeNull(); // record resolves → a real Floatable
+      expect(f!.snapshotForStack(SOURCE)).toBeNull(); // …but not stackable
+      expect(stackCardKindFor(kind)).toBeNull(); // …and the vocabulary agrees
+    });
+  }
 });

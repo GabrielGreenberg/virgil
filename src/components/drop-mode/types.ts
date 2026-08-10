@@ -279,6 +279,15 @@ export type InlineAtomCardApis = {
  * Cards that anchor to a paragraph accept an optional `paragraphId`;
  * when null, the card is unanchored. Bib upsert is no-op when the key
  * already exists.
+ *
+ * **Every per-KIND factory is REQUIRED (task 259).** One method per member of
+ * `STACK_CARD_KINDS` is the last link of the stack-carry chain, and an optional
+ * one is the same silent-loss vector as a missing `applyCardDrop` case: the
+ * branch calls `stack.addX?.(…)`, the host that never wired it makes that a
+ * no-op, and the pulled card vanishes with no compile error, no runtime error
+ * and nothing in the console. Optionality is reserved for per-FIELD
+ * enhancements, where absence loses a side-channel rather than the card
+ * (`setAnnotation`, below).
  */
 export interface StackPullApi {
   /** Add a note. Returns the new card with a fresh id. */
@@ -288,9 +297,8 @@ export interface StackPullApi {
   ) => UserNote;
   /** Add a highlight. v1 stack-pull skips re-anchoring a highlight's
    *  text range (the original mark is gone) — drops always create an
-   *  unanchored highlight or a paragraph-anchored placeholder.
-   *  Absent means highlights aren't supported in this doc. */
-  addHighlight?: (paragraphId: string | null) => HighlightCard;
+   *  unanchored highlight or a paragraph-anchored placeholder. */
+  addHighlight: (paragraphId: string | null) => HighlightCard;
   addTodo: (paragraphId: string | null, seed: { text?: string }) => TodoItem;
   addArchive: (
     paragraphId: string | null,
@@ -325,9 +333,13 @@ export interface StackPullApi {
    *  destination doc's per-doc `annotations.json` sidecar, keyed by citekey.
    *  Called after `upsertBibEntry` on a bibliography/citation pull so the
    *  note survives a cross-doc round-trip (annotations don't ride the
-   *  `BibEntry`). No-op / omitted when the pulled snapshot carried no
-   *  annotation, so a same-doc pull writes nothing spurious. */
-  setAnnotation?: (key: string, html: string) => void;
+   *  `BibEntry`). The CALL is conditional — the branches invoke it only when the
+   *  snapshot carried an annotation, so a same-doc pull writes nothing spurious
+   *  — but the METHOD is required like every other member (task 259): optional
+   *  meant a host could silently drop the user's bib note on every cross-doc
+   *  pull, which is the same shape as a missing per-kind factory, one field
+   *  smaller. */
+  setAnnotation: (key: string, html: string) => void;
 }
 
 /**

@@ -279,11 +279,14 @@ export interface CardMeta {
    *  out-of-tree readers) and PINNED to `drops.length > 0` by
    *  `assertMorphCoverage`, so the two can never diverge. */
   morph: { to: CardKind; lossy: boolean; drops: readonly MorphDropField[] } | null;
-  /** Whether this kind can serialize onto the Stack (was the hand-kept
-   *  `StackCardKind` union). `bib` is stackable despite being `system`, so this
-   *  cannot be derived from `origin`. `example` is declared stackable to mirror
-   *  `StackCardKind` even though its float's `snapshotForStack` returns null for
-   *  it today (no reachable `ExampleRef` sidecar — R2). */
+  /** Whether this kind can serialize onto the Stack. `bib` is stackable despite
+   *  being `system`, so this cannot be derived from `origin` — and the Stack
+   *  spells that kind `"bibliography"`, so it cannot be derived from the name
+   *  either. PINNED to the Stack's real vocabulary (`STACK_CARD_KINDS`,
+   *  `src/lib/stack/card-kinds.ts`) by `assertStackCoverage()` at boot, with the
+   *  mechanisms only a built float / a real drop can answer for pinned in
+   *  `cards/__tests__/stack-coverage.test.ts` (task 259). A kind whose round
+   *  trip isn't built declares `false` — there is no "stackable in principle". */
   stackable: boolean;
   /** Whether this kind can pop out into a `Floatable` window. The single
    *  DECLARATIVE source of truth for poppability: `registerCardFloatable`

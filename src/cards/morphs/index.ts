@@ -34,6 +34,7 @@ import {
   assertMorphCoverage,
   assertPanelTypographyCoverage,
   assertContentCoverage,
+  assertStackCoverage,
 } from "../card-registry";
 import { assertMarkerCoverage } from "../marker-meta";
 import { getTextAnchor } from "@/links/links";
@@ -246,6 +247,7 @@ assertMorphCoverage();
 assertPanelTypographyCoverage();
 assertMarkerCoverage();
 assertContentCoverage();
+assertStackCoverage();
 
 // The per-doc hooks import the morph-application helper from here.
 export { applyCardMorph } from "./apply";
