@@ -38,6 +38,8 @@ import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { useLibraryEntryLookup } from "@/hooks/useLibrary";
 import { OpenEntryLink } from "@/components/library/open-library-entry";
 import { CitekeyPicker } from "./CitekeyPicker";
+import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
+import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -639,26 +641,17 @@ export function CitationCard({
   );
 
   /* ── Overflow popover (* and Aa) ─────────────────────────────────── */
-
-  const [overflowOpen, setOverflowOpen] = useState(false);
-  const overflowAnchorRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!overflowOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (!overflowAnchorRef.current) return;
-      const target = e.target as Node;
-      if (overflowAnchorRef.current.contains(target)) return;
-      // The popover is a sibling inside the same card — allow clicks
-      // inside the card; otherwise close.
-      const card = overflowAnchorRef.current.closest(
-        `[data-link-card="citation:${cit.id}"]`,
-      );
-      if (card && card.contains(target)) return;
-      setOverflowOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [overflowOpen, cit.id]);
+  // Folded onto `<AnchoredMenu>` in task 181 — it had been an `absolute
+  // right-0 top-full … z-50` surface with its own `document` mousedown closer,
+  // no Escape, no flip and no clamp, in a card body that scrolls inside a panel
+  // list. The open state, the anchor rect, the dismissal and the checkbox rows
+  // all belong to the primitive now; what is left here is the two booleans.
+  //
+  // One dismissal semantic DID change, deliberately: the hand-rolled closer
+  // exempted the whole CARD ("allow clicks inside the card; otherwise close"),
+  // so clicking the Type <select> or the Code field left this popover hanging
+  // open beside them. The primitive closes on any click outside the MENU, which
+  // is both the house contract and the better behaviour.
 
   /* ── Header (matches the compressed view in both states) ─────────── */
 
@@ -944,14 +937,14 @@ export function CitationCard({
                   </option>
                 ))}
               </select>
-              <div className="relative">
-                <button
-                  ref={overflowAnchorRef}
-                  type="button"
-                  onClick={() => setOverflowOpen((v) => !v)}
-                  className="iconbtn-sm text-ink-body"
-                  data-hint="More options" aria-label="More options"
-                >
+              <AnchoredMenu
+                ariaLabel="More options"
+                align="end"
+                triggerHint="More options"
+                triggerAriaLabel="More options"
+                triggerClassName="iconbtn-sm text-ink-body"
+                menuClassName="w-44"
+                trigger={() => (
                   <svg
                     width="12"
                     height="12"
@@ -962,40 +955,35 @@ export function CitationCard({
                     <circle cx="12" cy="12" r="1.6" />
                     <circle cx="19" cy="12" r="1.6" />
                   </svg>
-                </button>
-                {overflowOpen && (
-                  <div className="absolute right-0 top-full mt-1 z-50 bg-surface border border-edge-subtle rounded-md shadow-md p-2 space-y-1 w-44">
-                    <label className="flex items-center gap-2 text-xs text-ink-body cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={starred}
-                        onChange={(e) => {
-                          setStarred(e.target.checked);
-                          persist({ starred: e.target.checked });
-                        }}
-                        className="rounded border-edge-hover"
-                      />
-                      <span>
-                        <span className="font-mono">*</span> Full author list
-                      </span>
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-ink-body cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={capitalized}
-                        onChange={(e) => {
-                          setCapitalized(e.target.checked);
-                          persist({ capitalized: e.target.checked });
-                        }}
-                        className="rounded border-edge-hover"
-                      />
-                      <span>
-                        <span className="font-mono">Aa</span> Sentence start
-                      </span>
-                    </label>
-                  </div>
                 )}
-              </div>
+              >
+                {/* No `closeOnInsideClick`: these are toggles the user flips in
+                    runs, and the shell's default is "the caller decides", so the
+                    menu survives repeated activation exactly as the two bare
+                    <label>s did. */}
+                <MenuToggleRow
+                  id="starred"
+                  label="Full author list"
+                  leading={<span className="font-mono" aria-hidden="true">*</span>}
+                  checked={starred}
+                  onToggle={() => {
+                    const next = !starred;
+                    setStarred(next);
+                    persist({ starred: next });
+                  }}
+                />
+                <MenuToggleRow
+                  id="capitalized"
+                  label="Sentence start"
+                  leading={<span className="font-mono" aria-hidden="true">Aa</span>}
+                  checked={capitalized}
+                  onToggle={() => {
+                    const next = !capitalized;
+                    setCapitalized(next);
+                    persist({ capitalized: next });
+                  }}
+                />
+              </AnchoredMenu>
             </div>
 
             <div className="flex items-center gap-1.5 min-w-0">

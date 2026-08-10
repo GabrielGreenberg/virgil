@@ -44,6 +44,7 @@ import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";
 import { AnchoredMenu } from "./menu/AnchoredMenu";
 import { MenuActionRow } from "./menu/MenuActionRow";
+import { useMenuItem } from "./menu/useMenuItem";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -617,6 +618,19 @@ export function CardKindHeader({
   );
 }
 
+/**
+ * The card-type morph dropdown ("Change card type"). Folded onto `AnchoredMenu`
+ * in task 181, retiring an `absolute top-full … z-50` surface with a bespoke
+ * `document.addEventListener("mousedown")` closer, no Escape, no flip/clamp and
+ * no keyboard nav.
+ *
+ * The z-tier was the user-visible half: `z-50` paints BELOW the float layer
+ * (1200–1204), so a popped-out card overlapping this one occluded the open menu
+ * — and being `absolute` rather than portaled, it was also clipped by the panel
+ * list's own scroll container whenever the card sat near the bottom. Both are
+ * properties of the surface, so both are answered by moving the surface, not by
+ * raising a number.
+ */
 function CardKindDropdown({
   kind,
   labelOverride,
@@ -628,61 +642,83 @@ function CardKindDropdown({
   options: CardKind[];
   onChange: (k: CardKind) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (
-        menuRef.current?.contains(e.target as Node) ||
-        buttonRef.current?.contains(e.target as Node)
-      ) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
   return (
-    <span className="relative inline-flex items-center">
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        onMouseDown={(e) => e.stopPropagation()}
-        draggable={false}
-        onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        className="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium hover:text-ink-body transition-colors cursor-pointer bg-transparent p-0"
-        data-hint="Change card type" aria-label="Change card type"
-      >
-        {labelOverride ?? cardTypeLabel(kind)}
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      {open && (
-        <div
-          ref={menuRef}
-          className="absolute top-full left-0 mt-1 z-50 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 min-w-[120px]"
-        >
-          {options.map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-                if (opt !== kind) onChange(opt);
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              className={`w-full text-left text-[11px] uppercase tracking-wider px-3 py-1 hover:bg-surface-muted-strong transition-colors ${opt === kind ? "text-ink-body font-medium" : "text-[var(--muted)]"}`}
-            >
-              {cardTypeLabel(opt)}
-            </button>
-          ))}
-        </div>
+    <AnchoredMenu
+      ariaLabel="Change card type"
+      align="start"
+      triggerHint="Change card type"
+      triggerAriaLabel="Change card type"
+      triggerClassName="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium hover:text-ink-body transition-colors cursor-pointer bg-transparent p-0"
+      wrapperClassName="relative inline-flex items-center"
+      menuClassName="min-w-[120px]"
+      trigger={() => (
+        <>
+          {labelOverride ?? cardTypeLabel(kind)}
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </>
       )}
-    </span>
+    >
+      {({ close }) =>
+        options.map((opt) => (
+          <CardKindOption
+            key={opt}
+            opt={opt}
+            current={kind}
+            onPick={() => {
+              close();
+              if (opt !== kind) onChange(opt);
+            }}
+          />
+        ))
+      }
+    </AnchoredMenu>
+  );
+}
+
+/** One row of the card-type menu. Registered via `useMenuItem` so arrow nav +
+ *  the roving highlight reach it (the hand-rolled version had neither), and
+ *  `aria-checked` states which type the card currently IS — a fact the old
+ *  bolded-text-only row conveyed to sighted users alone.
+ *
+ *  `menuitemradio`, not `menuitemcheckbox`: a card has exactly one kind and
+ *  picking one un-picks the other, which is the radio semantic. (Its sibling
+ *  `MenuToggleRow` is a checkbox correctly — `*` and `Aa` on a citation are
+ *  genuinely independent.) */
+function CardKindOption({
+  opt,
+  current,
+  onPick,
+}: {
+  opt: CardKind;
+  current: CardKind;
+  onPick: () => void;
+}) {
+  const isCurrent = opt === current;
+  const { active, getItemProps } = useMenuItem({
+    id: `kind-${opt}`,
+    role: "menuitemradio",
+    run: onPick,
+  });
+  return (
+    <button
+      {...getItemProps()}
+      // No per-row click fence: `MenuProvider` stops the click at the menu
+      // CONTAINER (task 181), which is what keeps this row from reaching the
+      // unified card header — a `role="button"` whose `onClick` runs
+      // `headerActivate()`, so an unfenced pick would morph the card AND
+      // collapse/select it in one gesture, including on the pick-the-kind-it-
+      // already-is no-op path. A fence here would leave the surface's own `py-1`
+      // padding band unfenced, which is why it belongs one level up.
+      type="button"
+      aria-checked={isCurrent}
+      className={`w-full text-left text-[11px] uppercase tracking-wider px-3 py-1 transition-colors ${
+        isCurrent ? "text-ink-body font-medium" : "text-[var(--muted)]"
+      } ${active ? "bg-surface-muted-strong" : "hover:bg-surface-muted-strong"}`}
+    >
+      {cardTypeLabel(opt)}
+    </button>
   );
 }
 
@@ -2886,17 +2922,20 @@ export function ItemMenu({
       wrapperClassName={`relative shrink-0${isPanelHeader ? " -ml-3" : ""}`}
       menuClassName="min-w-[100px]"
       closeOnInsideClick
-      // The ONE place the shell's default is wrong, and not by a little: the
-      // clamp implies `overflow-y: auto`, and a scroll container clips its
-      // absolutely-positioned descendants (`overflow-x` computes to `auto`
-      // alongside it, so horizontally too). Every panel-header kebab opens with
-      // a `<PanelThemePicker>` row whose swatch grid is an `absolute top-full`
-      // popup 168px wide inside a `min-w-[100px]` menu — clamping here would cut
-      // it off instead of letting it overhang. ItemMenu therefore keeps the
-      // unclamped behavior it has always had; it becomes eligible for the clamp
-      // the day that picker portals itself (it is one of the four
-      // absolute-positioned holdouts the anchored-menu guardrail names).
-      maxHeight={false}
+      // The clamp is ON — the shell's default — as of task 181, and the reason
+      // it was ever off is worth keeping: the clamp implies `overflow-y: auto`,
+      // a scroll container clips its absolutely-positioned descendants (and
+      // `overflow-x` computes to `auto` alongside it, so on both axes), and
+      // every panel-header kebab opens with a `<PanelThemePicker>` row whose
+      // swatch grid used to be exactly such a popup — an `absolute top-full`
+      // surface 168px wide inside a `min-w-[100px]` menu. Clamping then would
+      // have cut the picker off. The picker now PORTALS (its own `AnchoredMenu`,
+      // a body child at the chrome z-tier), so there is nothing left inside this
+      // menu for a scroll container to clip, and the kebab gets what every other
+      // menu already had: a long menu near the bottom of the window flips up and
+      // scrolls instead of rendering rows nobody can reach. Re-introducing a
+      // non-portaled absolute popup as a kebab row would silently re-break this
+      // — put it on the primitive instead.
       trigger={() => (
         <svg width={isPanelHeader ? 14 : 16} height={isPanelHeader ? 14 : 16} viewBox="0 0 24 24" fill="currentColor" stroke="none">
           <circle cx="12" cy="5" r="2" />

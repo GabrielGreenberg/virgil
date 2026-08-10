@@ -139,16 +139,25 @@ describe("AnchoredMenu — the guards the shell owns", () => {
     expect(style.maxHeight).not.toBe("");
   });
 
-  it("ItemMenu does NOT become a scroll container — it hosts an absolute popup", async () => {
-    // Renders the real `ItemMenu`, not a stand-in, because the CALL SITE is what
-    // has to keep the opt-out: `overflow-y: auto` makes the menu a scroll
-    // container, which clips absolutely-positioned descendants (and `overflow-x`
-    // computes to `auto` with it, so on both axes), and every panel-header
-    // kebab's first row is a `<PanelThemePicker>` whose 168px swatch grid is
-    // exactly such a popup inside a `min-w-[100px]` menu. A test that mounted
-    // its own `<AnchoredMenu maxHeight={false}>` would prove the shell honours
-    // the prop and nothing about the site that needs it — deleting
-    // `maxHeight={false}` from panel-primitives would leave the suite green.
+  it("ItemMenu clamps too, now that nothing inside it is a non-portaled popup", async () => {
+    // The INVERSE of what this test asserted before task 181, and the inversion
+    // is the point rather than a loosening.
+    //
+    // `ItemMenu` used to pass `maxHeight={false}`, alone among the shell's
+    // consumers, because the clamp implies `overflow-y: auto`; a scroll
+    // container clips its absolutely-positioned descendants (and `overflow-x`
+    // computes to `auto` alongside it, so on both axes); and every panel-header
+    // kebab's first row is a `<PanelThemePicker>` whose 168px swatch grid was
+    // exactly such a popup inside a `min-w-[100px]` menu. One non-portaled
+    // child cost every kebab in the app its viewport clamp.
+    //
+    // The picker now portals (its own `AnchoredMenu`, a `document.body` child at
+    // the chrome z-tier), so the kebab inherits the shell's default and a long
+    // menu near the bottom of the window flips up and scrolls instead of
+    // rendering rows nobody can reach. Still the REAL `ItemMenu` rather than a
+    // stand-in, for the same reason as before: what has to hold is a property of
+    // the call site, and a test mounting its own `<AnchoredMenu>` would pass
+    // whatever panel-primitives did.
     const { container } = render(
       <ItemMenu>
         <button type="button">Row</button>
@@ -157,8 +166,8 @@ describe("AnchoredMenu — the guards the shell owns", () => {
     fireEvent.click(triggerIn(container));
     await settleDismissListener();
     const style = (menu() as HTMLElement).style;
-    expect(style.overflowY).toBe("");
-    expect(style.maxHeight).toBe("");
+    expect(style.overflowY).toBe("auto");
+    expect(style.maxHeight).not.toBe("");
   });
 
   it("does NOT close on an inside click unless the caller opts in", async () => {
