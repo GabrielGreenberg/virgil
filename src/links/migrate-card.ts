@@ -88,6 +88,10 @@ function migrateLink(rawLink: Link): Link {
     | {
         type: "anchor";
         paragraphIds?: string[];
+        // Still declared so the legacy blob's own shape is described
+        // faithfully; deliberately NOT carried forward — the canonical anchor
+        // has no stored margin side since task 205 (it is resolved live from
+        // the owning panel's dock).
         margin?: { side: "left" | "right" };
         textRange?: { anchorId: string; textSnapshot: string };
       };
@@ -99,13 +103,11 @@ function migrateLink(rawLink: Link): Link {
     const textObjectIds = Array.isArray(legacy.paragraphIds)
       ? legacy.paragraphIds.slice()
       : [];
-    const margin = legacy.margin ?? { side: "right" as const };
     const migrated: LinkAnchor = legacy.textRange
       ? {
           type: "textObject",
           targetKind: "linkedRange",
           textObjectIds,
-          margin,
           textRange: legacy.textRange,
         }
       : {
@@ -115,7 +117,6 @@ function migrateLink(rawLink: Link): Link {
           type: "textObject",
           targetKind: "paragraph",
           textObjectIds,
-          margin,
         };
     return { ...link, anchor: migrated };
   }

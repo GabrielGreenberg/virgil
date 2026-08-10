@@ -125,7 +125,6 @@ export function requestHighlightLink(
       type: "textObject",
       targetKind: "linkedRange",
       textObjectIds: [uuid],
-      margin: { side: "right" },
       textRange: { anchorId, textSnapshot: "" },
     },
     target: { type: "card", ref: { kind: ref.kind, id: ref.id } },

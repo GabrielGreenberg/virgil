@@ -21,7 +21,7 @@ import {
 import { buildFloatKey } from "@/floats/float-key";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
-import type { PanelId } from "@/hooks/useViewPrefs";
+import type { PanelSideMap } from "@/lib/margin-side";
 import {
   deriveMarkerPalette,
   getPanelColor,
@@ -43,8 +43,10 @@ import {
 interface MarginaliaProps {
   editor: Editor | null;
   markers: MarginaliaMarker[];
-  /** Which side each panel is currently docked on (or null if collapsed) */
-  panelSides: Partial<Record<PanelId, "left" | "right" | null>>;
+  /** Which side each panel is currently docked on (or null if collapsed). The
+   *  shape has ONE name — `PanelSideMap` from the margin-side SSOT — so the
+   *  grid, the rail and this component cannot describe it three ways. */
+  panelSides: PanelSideMap;
 }
 
 /**

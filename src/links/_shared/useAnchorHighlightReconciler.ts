@@ -9,7 +9,11 @@
  *                            atoms)
  *   - `data-card-hovered`   (same value vocabulary)
  *   - `data-paragraph-kind` (color token; CSS uses it for the accent rail)
- *   - `data-margin-side`    ("left" | "right"; picks the edge of the rail)
+ *   - `data-margin-side`    ("left" | "right"; picks the edge of the rail —
+ *                            resolved LIVE from the card kind's panel dock via
+ *                            `marginSideForCardKind`, the same authority the
+ *                            marginalia grid packs against, so the rail and the
+ *                            margin marker are never on opposite edges)
  *
  * Replaces the older `useCardSelectionHighlight` + `useCardHoverHighlight`
  * pair, which captured `applied[]` arrays in their closures and relied on
@@ -89,6 +93,10 @@ import {
   type AnchorHighlightTarget,
   type AnchorHighlightAttrs,
 } from "@/lib/tiptap/anchor-highlight-deco";
+import {
+  marginSideForCardKind,
+  type PanelSideMap,
+} from "@/lib/margin-side";
 
 const DATA_CARD_SELECTED = "data-card-selected";
 const DATA_CARD_HOVERED = "data-card-hovered";
@@ -186,7 +194,6 @@ export function appliedChangeLink(
       type: "textObject",
       targetKind: "linkedRange",
       textObjectIds: [ac.anchorUuid],
-      margin: { side: "right" },
       textRange: {
         anchorId: ac.anchorId,
         textSnapshot: ac.replacement || ac.originalText,
@@ -228,6 +235,32 @@ export interface UseAnchorHighlightReconcilerArgs {
    *  the inline kinds (they aren't in `collections`), so without this the prune
    *  effect would never re-fire on an inline delete. T2 §3b.2. */
   atomRevision?: number;
+  /**
+   * Which side each panel is docked on right now — the SAME map the marginalia
+   * grid packs against (`EditorPane`'s `marginaliaPanelSides`).
+   *
+   * The Mode-A paragraph rail is the card's margin chrome, and `globals.css`
+   * says so in as many words ("a kind-colored vertical line on the same side as
+   * the margin marker"). Before task 205 the rail read a `link.anchor.margin.side`
+   * frozen into the sidecar at create time, which knew nothing about docking —
+   * so docking Notes to the LEFT moved the marker and left the rail on the
+   * right. Both now resolve through `marginSideForCardKind` with this map.
+   *
+   * Keystroke-safe: this is a `useMemo` over the placement list, so its identity
+   * changes only on a dock/reorder — never on a keystroke. It is ALSO the map
+   * `<Marginalia>` already memoizes its whole grid pass on, so its stability is
+   * pre-existing load-bearing behavior, not a new obligation.
+   *
+   * REQUIRED, deliberately. It has one production caller, and an optional prop
+   * with an empty-map default would let a future refactor drop that one line
+   * and silently restore the dock-blind behaviour this exists to remove — no
+   * type error, no test failure. A host that genuinely has no strips states so
+   * by passing `{}`; that is a decision, not an inherited default. (AGENTS.md:
+   * "A defaulted argument is a decision nobody made.") A call-site census in
+   * `margin-side-ssot.test.tsx` pins that the production site passes the LIVE
+   * map rather than an empty literal.
+   */
+  panelSides: PanelSideMap;
 }
 
 /** Walk the editor's footnote + citation nodes into a live atom-id set, for the
@@ -258,6 +291,7 @@ export function useAnchorHighlightReconciler({
   collections,
   store,
   atomRevision,
+  panelSides,
 }: UseAnchorHighlightReconcilerArgs): void {
   const selected = useStoreSelection(store);
   const hover = useStoreHover(store);
@@ -391,9 +425,15 @@ export function useAnchorHighlightReconciler({
         // data), which the crosswalk rejects with a console error.
         const kind =
           resolved.kind === "paragraph" ? paragraphKindFor(ref.kind) : null;
+        // The rail's edge comes from the ONE margin-side authority, resolved
+        // against the LIVE dock — the same call `computeMarkerPositions` makes
+        // for the marker itself. It used to read `link.anchor.margin.side`, a
+        // dock-blind value frozen into the sidecar when the anchor was created;
+        // that field is gone (task 205) precisely because a stored copy of a
+        // live answer can only drift from it.
         const side =
-          resolved.kind === "paragraph" && link.anchor.type === "textObject"
-            ? link.anchor.margin.side
+          resolved.kind === "paragraph"
+            ? marginSideForCardKind(ref.kind, panelSides)
             : null;
         intoNode.set(from, {
           shape: "node",
@@ -525,7 +565,12 @@ export function useAnchorHighlightReconciler({
         stampPanelHost(el);
       }
     }
-  }, [editor, selected, hover, stableCollections]);
+    // `panelSides` is a dep because the rail's EDGE is derived from it: re-dock
+    // a panel while a card is selected and the rail must move with the marker
+    // on the same commit. Its identity changes only on a dock/reorder (a
+    // `useMemo` over the placement list upstream), so this adds no per-keystroke
+    // and no per-render work.
+  }, [editor, selected, hover, stableCollections, panelSides]);
 }
 
 /** A resolved in-editor NODE/ATOM target before the selected/hovered attr bag

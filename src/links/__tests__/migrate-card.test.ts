@@ -100,7 +100,13 @@ describe("migrateCardLinks", () => {
       if (result[0].anchor.type === "textObject") {
         expect(result[0].anchor.targetKind).toBe("paragraph");
         expect(result[0].anchor.textObjectIds).toEqual(["p1", "p2"]);
-        expect(result[0].anchor.margin).toEqual({ side: "right" });
+        // The legacy blob's `margin: { side }` is DROPPED, not carried (task
+        // 205): the side a card's margin chrome sits on is resolved live from
+        // its panel's dock, so a migrated anchor must not resurrect a frozen
+        // copy of it.
+        expect(
+          (result[0].anchor as Record<string, unknown>).margin,
+        ).toBeUndefined();
         expect(result[0].anchor.textRange).toBeUndefined();
       }
     });

@@ -60,8 +60,8 @@ Report Request by appending a **Report card authored by AI** to
 3. **Land it via the contract.** The research + composition above is this
    skill's job; the mechanical write is not. Hand the report to
    `create_card.py --kind=report` — it builds the `ReportCard`
-   (`author: "ai"` → the "AI" byline, never "Claude"), anchors it on the
-   **left** margin, flips the Task's `status`/`result`, clears the source flag,
+   (`author: "ai"` → the "AI" byline, never "Claude"), anchors it to the
+   paragraph, flips the Task's `status`/`result`, clears the source flag,
    stamps the `aiOriginRequestId` back-pointer, and bumps the version,
    atomically under the pen. A Report Request with no `safetyLevel` is a direct
    create; if it carries one, `create_card.py` honors it (1 → silent,
@@ -71,14 +71,14 @@ Report Request by appending a **Report card authored by AI** to
      is read from the Task —
      ```bash
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
-         --author ai --title "<short title>" --body "<report body>" --margin left
+         --author ai --title "<short title>" --body "<report body>"
      ```
    - Virtual id (`virtual:reports:<cardId>`): pass the source Report Request's
      paragraph as `--anchor` —
      ```bash
      python3 editor/scripts/create_card.py <docPath> virtual:reports:<cardId> \
          --kind=report --author ai --title "<short title>" \
-         --body "<report body>" --anchor <uuid> --margin left
+         --body "<report body>" --anchor <uuid>
      ```
 
    The source Report Request is never overwritten — `create_card.py` appends a

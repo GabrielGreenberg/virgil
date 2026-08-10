@@ -97,11 +97,11 @@ source request in place.
    ```
    **The link anchor (both paths):** copy the source request's first-link
    `anchor` object **verbatim** — it is already in the canonical on-disk
-   `LinkAnchor` shape (`type: "textObject"` + `textObjectIds` + `margin`,
+   `LinkAnchor` shape (`type: "textObject"` + `textObjectIds`,
    plus `textRange` if the request is Mode B; SSOT
    `src/links/_shared/types.ts`,
    [anchoring.md](../../docs/workspace/anchoring.md)). Copying preserves the
-   mode, paragraph id(s), and margin in one move; do **not** hand-rebuild it
+   mode and paragraph id(s) in one move; do **not** hand-rebuild it
    into the retired `type: "anchor"`/`paragraphIds` form. Then mint a fresh
    link `id`, and set `target.ref.id` to the new card's own id (self-target).
 
