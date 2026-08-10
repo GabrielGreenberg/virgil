@@ -2,10 +2,10 @@
 //
 // The audit finding was a DEAD facet: `TEXT_OBJECT_REGISTRY[kind].sourceMarker`
 // declared `vexid`/`vxid`/`vlid` under a header advertising "source-marker
-// round-trip", and after task 064 removed its last proxy reader NOTHING read it
-// for three months. But the interesting half is what deleting it alone would
+// round-trip", and after task 064 removed its last proxy reader (2026-07-06)
+// NOTHING read it. But the interesting half is what deleting it alone would
 // have left standing: the round trip carried the SAME tokens as hardcoded
-// literals in the serializer (6 emit sites), the parser (7 recognition sites +
+// literals in the serializer (9 emit sites), the parser (7 recognition sites +
 // a block-boundary command list), the footnote-body parser/serializer, the
 // preamble-requirements shim list, the `.bib` uid regexes and a piece of UI
 // copy. Nothing held those copies together. Rename a command in one and Virgil
@@ -327,6 +327,20 @@ function findMark(doc: JSONContent, type: string): Record<string, unknown> | nul
   return found;
 }
 
+/** Concatenated text of every node carrying `type` — so a leg can assert where
+ *  a range STOPS, not merely that it started. */
+function markedText(doc: JSONContent, type: string): string {
+  let out = "";
+  const walkDoc = (n: JSONContent) => {
+    if (n.type === "text" && (n.marks || []).some((mk) => mk.type === type)) {
+      out += n.text || "";
+    }
+    n.content?.forEach(walkDoc);
+  };
+  walkDoc(doc);
+  return out;
+}
+
 /**
  * A marker earns its place by SURVIVING a save→reload, so each one states its
  * own witness. Keyed on `VirgilMarkerId`, so adding a marker to the vocabulary
@@ -370,7 +384,15 @@ const ROUND_TRIP: Record<VirgilMarkerId, () => void> = {
   linkedRangeClose: () => {
     const open = VIRGIL_MARKERS.linkedRangeOpen;
     const close = VIRGIL_MARKERS.linkedRangeClose;
-    const doc = parseBody(`Hello ${emitMarker(open, "dd44")}world${emitMarker(close, "dd44")}.`);
+    const doc = parseBody(
+      `Hello ${emitMarker(open, "dd44")}world${emitMarker(close, "dd44")} tail.`,
+    );
+    // The mark must STOP at the close. Asserting only that the serializer
+    // re-emits `\\vlidend` would pass on a parser that ignored the token
+    // entirely, because `serializeInlineSequence` auto-closes every anchor
+    // still open at the end of a block — so the emit half is over-determined
+    // and the parse half is what this leg has to witness.
+    expect(markedText(doc, "linkedAnchor")).toBe("world");
     expect(serializeBodyOnly(doc)).toContain(emitMarker(close, "dd44"));
   },
   bibEntry: () => {

@@ -10,8 +10,8 @@
  * a kind's id through the LaTeX round trip. This registry is editor-coupled
  * (TipTap `Editor`, the doc-structure bus, the drop adapters), so the parser
  * and serializer can never import it — which is why the `sourceMarker` facet
- * that used to sit here was read by nobody for three months while the round
- * trip kept its own hardcoded copies (task 255). The markers live in
+ * that used to sit here was read by nobody — from task 064 (2026-07-06) until
+ * its deletion — while the round trip kept its own hardcoded copies (task 255). The markers live in
  * `src/lib/latex-markers.ts`, keyed by the entity they identify.
  *
  * SSOT sibling: `src/panels/panel-registry.ts`. (The link layer has no per-kind
