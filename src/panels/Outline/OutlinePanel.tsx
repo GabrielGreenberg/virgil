@@ -8,7 +8,7 @@ import type { FocusState } from "@/hooks/useFocusMode";
 import { sectionRange, INACTIVE_FOCUS_STATE } from "@/hooks/useFocusMode";
 import type { FocusBand } from "@/lib/focus-view";
 import { Panel } from "@/panels/_shared/Panel";
-import { ItemMenu } from "@/components/panel-primitives";
+import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { flattenInlineText } from "@/lib/inline-content";
 import {
@@ -1185,8 +1185,8 @@ function EditableOutline({
 
   if (pods.length === 0) {
     return (
-      <div className="p-6 text-center text-[var(--muted)] text-sm">
-        No sections found.
+      <div className={PANEL.empty}>
+        No sections yet. Type \section in the editor to add one.
       </div>
     );
   }
@@ -1873,8 +1873,8 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
             )}
 
             {tree.length === 0 ? (
-              <div className="p-6 text-center text-[var(--muted)] text-sm">
-                No sections found. Use the Section dropdown in the toolbar to add headings.
+              <div className={PANEL.empty}>
+                No sections yet. Type \section in the editor to add one.
               </div>
             ) : (
               tree.map((node) => (

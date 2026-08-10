@@ -682,8 +682,39 @@ backdrops, glows, gradients, a border, or a header divider.
 Body is a scrollable list with `space-y-2` between cards. No `border-b`
 between cards.
 
-Every panel has a designed empty state — icon, title sentence,
-description, optional example card. "No items yet" is not enough.
+**Empty states are COPY, not chrome.** Every panel's empty body paints from
+the one shared class — `PANEL.empty`
+(`p-6 text-center text-sm text-[var(--muted)]`, `panel-primitives.tsx`) —
+usually through the `emptyState` slot of `CardListPanel`, and directly where
+a panel renders its own body (Outline, Search). No panel hand-rolls that
+class string, and none adds an icon, a title/description tier, or an example
+card: there is no `EmptyState` component, by design, because what carries
+the weight here is the sentence. The contract is that a panel which is
+genuinely empty **names what's missing and teaches the way in** — *"No
+examples. Click the (1) glyph in the formatting toolbar to insert one."* A
+bare *"No items yet"* fails it: it names the absence and teaches nothing. A
+*filter* or *search* miss is exempt from the teaching half (*"No matches
+found."*) — nothing is missing, and the way forward is the query the user
+already has.
+
+Every clause above is pinned by
+[src/__tests__/panel-empty-state-contract.test.ts](__tests__/panel-empty-state-contract.test.ts):
+the class string, the no-second-speller census (both silos), the routing, the
+copy contract at all 16 empty states with each exemption named and its reason
+stated, and the *absence* of the richer composition. Non-panel surfaces that
+carry their own tone — the omni rail's filter line, the font and bib picker
+menus, the AI window — are the census's named exceptions, not panel bodies.
+Build the richer empty state and that last leg fails, which is the intended
+failure: update this paragraph in the same commit.
+
+A **richer** empty state — icon, typographic tiering, an example card — is
+not shipped and is not specified here; it sits under §"What this guide does
+not cover" as an open product question. (This paragraph once asserted that
+richer design as shipped fact. It was a design brief, written in the TODO
+voice in the historical migration record
+(`docs/virgil-design-system/06-panels-and-headers.md`), that turned
+declarative when it was condensed into this guide — which is why the
+contract above is now testable rather than merely written down. Task 184.)
 
 The panel strip (vertical column of toggles) uses 32×32 icon buttons.
 Active toggle: `bg-pod-dark/80 text-ink-strong` — the lit strip icon is
@@ -1553,10 +1584,14 @@ accept/reject flow.
 
 ## What this guide does not cover
 
-Empty-state designs, first-run onboarding, AI-pass review modes, the
-6-dot vs 3-line drag-handle decision, the marginalia overflow design.
-These are real design questions but they are **product decisions**, not
+Empty-state **designs** — icon, typographic tiering, an example card —
+first-run onboarding, AI-pass review modes, the 6-dot vs 3-line
+drag-handle decision, the marginalia overflow design. These are real
+design questions but they are **product decisions**, not
 systematization. Track them separately — as tasks, not as a second doc.
+(What *is* systematized about empty states — the one `PANEL.empty` class
+and the copy contract on it — is under §Panels above; only the richer
+composition stays out here.)
 (The three the 2026 migration deferred — the active-tab swoop, the
 6-dot/3-line handles, and marginalia overflow — are recorded in the
 historical `docs/virgil-design-system/10-audit.md` §9/§11/§12.)
