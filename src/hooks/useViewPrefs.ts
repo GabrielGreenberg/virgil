@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { DEFAULT_PRINT_OPTIONS, type PrintOptions } from "@/lib/print";
-import { computeColumnSpawnRect } from "@/components/editor-layout/spawn-position";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import type { PanelKind } from "@/panels/_shared/types";
 import { getWindowId } from "@/lib/multi-window/window-id";
@@ -23,6 +22,18 @@ import {
   filterPrintPanels,
   clampStack,
 } from "./dropUnknownPanelIds";
+import { dockedSideOf } from "./view-prefs-derived";
+import {
+  MAX_STACK,
+  MIN_BAND_PX,
+  closeAllPanels as closeAllPanelsIn,
+  closePanel,
+  isPanelOpen,
+  notePanelUse as notePanelUseIn,
+  openInMode,
+  placeInStack,
+  undockToFloat,
+} from "./view-prefs-dock";
 
 /** Marginalia card kinds whose visibility is toggled from the View menu. */
 export type MarginaliaType = "note" | "archive" | "todo" | "report";
@@ -70,12 +81,14 @@ export type Half = "top" | "bottom";
  *  window. The mode is per-panel and persists across reloads. */
 export type PanelMode = "docked" | "floating";
 
-/** Max docked panels stacked on one side (the stack ceiling). */
-export const MAX_STACK = 3;
-/** Minimum free vertical space (px) a newly-opened panel needs before it
- *  will displace the least-recently-used band instead of fitting in the
- *  current omni gap. */
-export const MIN_BAND_PX = 140;
+/* `MAX_STACK` (the per-side stack ceiling) and `MIN_BAND_PX` (the breathing
+ * room a newcomer needs before it displaces a band) are declared by the dock
+ * engine — the module that enforces them — and re-exported here for the
+ * components that already import them from this module. ONE declaration: the
+ * load-time `clampStack` truncation reads the same const the runtime
+ * insertions do, so a future ceiling bump can't leave the loader silently
+ * truncating a runtime-legal stack (task 273). */
+export { MAX_STACK, MIN_BAND_PX } from "./view-prefs-dock";
 
 /** One dock slot per band position (0 = top of the stack), up to
  *  MAX_STACK per side. Used as the `data-dock-slot` portal key so each
@@ -718,6 +731,9 @@ export function loadPrefs(): ViewPrefs {
         left: legacyStack(parsed.activeLeft, parsed.activeLeftBottom),
         right: legacyStack(parsed.activeRight, parsed.activeRightBottom),
       },
+      // The SAME ceiling the runtime insertions enforce — never a second
+      // literal (task 273).
+      MAX_STACK,
     ) as ViewPrefs["dockStack"];
     const collapsedLeft = parsed.collapsedLeft ?? parsed.activeLeft === null;
     const collapsedRight = parsed.collapsedRight ?? parsed.activeRight === null;
@@ -1014,36 +1030,16 @@ export function useViewPrefs(opts?: {
     persist(pending.next, pending.prev);
   });
 
-  /* ── Stacked-panel engine (pure helpers) ─────────────────────────── */
-
-  function stackFor(p: ViewPrefs, side: Side): PanelId[] {
-    return side === "left" ? p.dockStack.left : p.dockStack.right;
-  }
-  function withStack(p: ViewPrefs, side: Side, next: PanelId[]): ViewPrefs {
-    return side === "left"
-      ? { ...p, dockStack: { ...p.dockStack, left: next } }
-      : { ...p, dockStack: { ...p.dockStack, right: next } };
-  }
-  function mruFor(p: ViewPrefs, side: Side): PanelId[] {
-    return side === "left" ? p.panelMRU.left : p.panelMRU.right;
-  }
-  function withMRU(p: ViewPrefs, side: Side, next: PanelId[]): ViewPrefs {
-    return side === "left"
-      ? { ...p, panelMRU: { ...p.panelMRU, left: next } }
-      : { ...p, panelMRU: { ...p.panelMRU, right: next } };
-  }
-
-  /** Which side `id` is docked on, or null. */
-  function sideOfDockedPanel(p: ViewPrefs, id: PanelId): Side | null {
-    if (p.dockStack.left.includes(id)) return "left";
-    if (p.dockStack.right.includes(id)) return "right";
-    return null;
-  }
-
-  /** True when `id` is open in any form (docked in a stack or floating). */
-  function isPanelOpen(p: ViewPrefs, id: PanelId): boolean {
-    return p.poppedOutPanels.includes(id) || sideOfDockedPanel(p, id) !== null;
-  }
+  /* ── Stacked-panel engine ─────────────────────────────────────────
+   * The engine itself lives in `./view-prefs-dock` (pure, React-free, unit
+   * -testable without rendering the hook). EVERY setter below routes its
+   * dock mutation through `placeInStack` / `removeFromStack` / `closePanel`
+   * / `openInMode` — none re-derives insertion, eviction or the MRU
+   * coupling inline. That is the whole point of task 273, and the hook-body
+   * census in `view-prefs-dock-engine.test.ts` keeps it true.
+   *
+   * Only side RESOLUTION stays here: it reads `placements` + the registry
+   * rather than mutating dock state. */
 
   /** Resolve the target side for an open: explicit arg → strip placement
    *  → registry default → left. */
@@ -1053,94 +1049,13 @@ export function useViewPrefs(opts?: {
     return side ?? placement?.side ?? registryEntry?.defaultStripSide ?? "left";
   }
 
-  /** Bump `id` to the front (most-recent) of its side's MRU. No-op (same
-   *  object reference) when already at the front. */
-  function bumpMRU(p: ViewPrefs, side: Side, id: PanelId): ViewPrefs {
-    const cur = mruFor(p, side);
-    if (cur[0] === id) return p;
-    return withMRU(p, side, [id, ...cur.filter((x) => x !== id)]);
-  }
-
-  /** Drop `id` from both sides' MRU lists. */
-  function pruneMRU(p: ViewPrefs, id: PanelId): ViewPrefs {
-    return {
-      ...p,
-      panelMRU: {
-        left: p.panelMRU.left.filter((x) => x !== id),
-        right: p.panelMRU.right.filter((x) => x !== id),
-      },
-    };
-  }
-
-  /** The stalest docked panel on `side` — the eviction victim.
-   *
-   *  Recency (`panelMRU`) is SESSION-ONLY: `loadPrefs` restores the full
-   *  `dockStack` on reload but resets the MRU to empty, so a docked panel
-   *  the user hasn't touched THIS session is absent from the MRU entirely —
-   *  and is, by definition, staler than any tracked panel. So an untracked
-   *  band always outranks a tracked one as the victim; among untracked
-   *  bands the oldest-opened (lowest stack index, since opens append at the
-   *  bottom) goes first. Only when EVERY docked panel is tracked does true
-   *  MRU recency decide — the least-recently-used tracked panel (MRU
-   *  tail→head). The zero-coverage case (empty MRU, e.g. just after a
-   *  reload) falls out of the untracked rule as `stack[0]`. */
-  function leastRecentlyUsed(p: ViewPrefs, side: Side): PanelId | null {
-    const stack = stackFor(p, side);
-    if (stack.length === 0) return null;
-    const mru = mruFor(p, side);
-    // An untracked (never-used-this-session) band is stalest — evict the
-    // oldest-opened such (lowest stack index) before any tracked panel.
-    const untracked = stack.find((id) => !mru.includes(id));
-    if (untracked !== undefined) return untracked;
-    // Full coverage: the least-recently-used tracked panel (MRU tail→head).
-    for (let i = mru.length - 1; i >= 0; i--) {
-      if (stack.includes(mru[i])) return mru[i];
-    }
-    return stack[0];
-  }
-
-  /** Shared docked-open: append `id` at the BOTTOM of `side`'s stack if it
-   *  fits (≥ MIN_BAND_PX of free omni space) and the stack has room
-   *  (< MAX_STACK); otherwise evict the least-recently-used band (it just
-   *  closes — never floats) and append. Un-collapses + un-blanks the
-   *  target side, drops any prior float of `id`, and bumps MRU.
-   *  `freeSpacePx` is a one-shot caller measurement of the side's current
-   *  omni gap; omitted ⇒ assume it fits. */
-  function dockOpen(
-    p: ViewPrefs,
-    id: PanelId,
-    side: Side,
-    freeSpacePx?: number,
-  ): ViewPrefs {
-    let next: ViewPrefs = {
-      ...p,
-      panelModes: { ...p.panelModes, [id]: "docked" },
-      collapsedLeft: side === "left" ? false : p.collapsedLeft,
-      collapsedRight: side === "right" ? false : p.collapsedRight,
-      blankLeft: side === "left" ? false : p.blankLeft,
-      blankRight: side === "right" ? false : p.blankRight,
-      poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
-    };
-    const stack = stackFor(next, side);
-    const fits = freeSpacePx == null ? true : freeSpacePx >= MIN_BAND_PX;
-    if (stack.length < MAX_STACK && fits) {
-      next = withStack(next, side, [...stack, id]);
-    } else {
-      const victim = leastRecentlyUsed(next, side);
-      const pruned = victim ? stack.filter((x) => x !== victim) : stack;
-      next = withStack(next, side, [...pruned, id]);
-      if (victim) next = pruneMRU(next, victim);
-    }
-    return bumpMRU(next, side, id);
-  }
-
   /**
    * Open a panel in its preferred mode (docked default, or floating if
    * the user has previously undocked it). Routes strip clicks, marker
    * clicks, and programmatic opens through one entry point.
    *
    * Docked: appends to the bottom of the target side's stack, evicting
-   * the least-recently-used band if there's no room (see `dockOpen`).
+   * the least-recently-used band if there's no room (see `placeInStack`).
    * Floating: appends to poppedOutPanels at the saved float rect (or a
    * fresh column-spawn rect if no rect saved). `freeSpacePx` is the
    * caller's one-shot measurement of the side's omni gap (docked path).
@@ -1149,16 +1064,7 @@ export function useViewPrefs(opts?: {
     if (id === "omni" || id === "blank") return;
     update((p) => {
       if (isPanelOpen(p, id)) return p;
-      const targetSide = resolveSide(p, id, side);
-      const mode: PanelMode = p.panelModes[id] ?? "docked";
-      if (mode === "docked") return dockOpen(p, id, targetSide, freeSpacePx);
-      const savedRect = p.floatPositions[id];
-      const rect = savedRect ?? computeColumnSpawnRect(targetSide);
-      return {
-        ...p,
-        poppedOutPanels: [...p.poppedOutPanels, id],
-        floatPositions: { ...p.floatPositions, [id]: rect },
-      };
+      return openInMode(p, id, resolveSide(p, id, side), freeSpacePx);
     });
   }, [update]);
 
@@ -1173,7 +1079,7 @@ export function useViewPrefs(opts?: {
    * this panel docked" gesture and resets the panel's mode to "docked".
    * Appends to the bottom of the target side's stack; if the side is full
    * (no room and the newcomer doesn't fit the omni gap), the
-   * least-recently-used band is closed to make room (see `dockOpen`).
+   * least-recently-used band is closed to make room (see `placeInStack`).
    * `freeSpacePx` is the caller's one-shot measure of the side's omni gap.
    */
   const openPanelDocked = useCallback(
@@ -1181,7 +1087,7 @@ export function useViewPrefs(opts?: {
       if (id === "omni" || id === "blank") return;
       update((p) => {
         if (isPanelOpen(p, id)) return p;
-        return dockOpen(p, id, resolveSide(p, id, side), freeSpacePx);
+        return placeInStack(p, id, resolveSide(p, id, side), { freeSpacePx });
       });
     },
     [update],
@@ -1223,14 +1129,9 @@ export function useViewPrefs(opts?: {
    *  Leaves collapsed sides collapsed, and leaves the editor split alone
    *  (that has its own toggle). */
   const closeAllPanels = useCallback(() => {
-    update((p) => ({
-      ...p,
-      dockStack: { left: [], right: [] },
-      panelMRU: { left: [], right: [] },
-      poppedOutPanels: [],
-      poppedOutOrigins: {},
-      poppedOutCards: [],
-    }));
+    // Panels via the engine; `poppedOutCards` is the CARD float axis, which
+    // the dock engine deliberately doesn't own.
+    update((p) => ({ ...closeAllPanelsIn(p), poppedOutCards: [] }));
   }, [update]);
 
   /** Suppress the omni background on a side (a clean, empty column).
@@ -1260,29 +1161,11 @@ export function useViewPrefs(opts?: {
   const togglePanel = useCallback(
     (id: PanelId, side?: Side, freeSpacePx?: number) => {
       if (id === "omni" || id === "blank") return;
-      update((p) => {
-        // Closing path
-        if (isPanelOpen(p, id)) {
-          const dockedSide = sideOfDockedPanel(p, id);
-          let next = p;
-          if (dockedSide) {
-            next = withStack(next, dockedSide, stackFor(next, dockedSide).filter((x) => x !== id));
-          }
-          next = pruneMRU(next, id);
-          return { ...next, poppedOutPanels: next.poppedOutPanels.filter((x) => x !== id) };
-        }
-        // Opening path
-        const targetSide = resolveSide(p, id, side);
-        const mode: PanelMode = p.panelModes[id] ?? "docked";
-        if (mode === "docked") return dockOpen(p, id, targetSide, freeSpacePx);
-        const savedRect = p.floatPositions[id];
-        const rect = savedRect ?? computeColumnSpawnRect(targetSide);
-        return {
-          ...p,
-          poppedOutPanels: [...p.poppedOutPanels, id],
-          floatPositions: { ...p.floatPositions, [id]: rect },
-        };
-      });
+      update((p) =>
+        isPanelOpen(p, id)
+          ? closePanel(p, id)
+          : openInMode(p, id, resolveSide(p, id, side), freeSpacePx),
+      );
     },
     [update],
   );
@@ -1297,12 +1180,9 @@ export function useViewPrefs(opts?: {
       let next: ViewPrefs = { ...p, placements: [...otherItems, ...sameItems] };
       // If the panel is currently docked on the OTHER side, relocate its
       // open band to the new side's stack so the band follows its icon.
-      const dockedSide = sideOfDockedPanel(next, id);
-      if (dockedSide && dockedSide !== toSide) {
-        next = withStack(next, dockedSide, stackFor(next, dockedSide).filter((x) => x !== id));
-        next = pruneMRU(next, id);
-        next = dockOpen(next, id, toSide);
-      }
+      // `placeInStack` sheds the old position + its stale recency itself.
+      const dockedSide = dockedSideOf(next, id);
+      if (dockedSide && dockedSide !== toSide) next = placeInStack(next, id, toSide);
       return next;
     });
   }, [update]);
@@ -1355,7 +1235,7 @@ export function useViewPrefs(opts?: {
   /** Note an interaction with a docked panel (open / click / scroll /
    *  focus) → bump it to most-recent on its side, for LRU eviction. */
   const notePanelUse = useCallback((side: Side, id: PanelId) => {
-    update((p) => (sideOfDockedPanel(p, id) === side ? bumpMRU(p, side, id) : p));
+    update((p) => notePanelUseIn(p, side, id));
   }, [update]);
 
   const setEditorSplit = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
@@ -1513,19 +1393,11 @@ export function useViewPrefs(opts?: {
   const closePopout = useCallback((id: PanelId) => {
     update((p) => {
       const { [id]: _droppedOrigin, ...remainingOrigins } = p.poppedOutOrigins;
-      const dockedSide = sideOfDockedPanel(p, id);
-      let next = p;
-      if (dockedSide) {
-        next = withStack(next, dockedSide, stackFor(next, dockedSide).filter((x) => x !== id));
-      }
-      next = pruneMRU(next, id);
-      return {
-        ...next,
-        poppedOutPanels: next.poppedOutPanels.filter((x) => x !== id),
-        poppedOutOrigins: remainingOrigins,
-        // floatPositions + panelHeights intentionally unchanged: the
-        // user's pinned size sticks across close/open cycles.
-      };
+      // `closePanel` drops the band, its recency and the float;
+      // floatPositions + panelHeights intentionally unchanged (the user's
+      // pinned size sticks across close/open cycles). Only the split-half
+      // ORIGIN is forgotten, which is this setter's own business.
+      return { ...closePanel(p, id), poppedOutOrigins: remainingOrigins };
     });
   }, [update]);
 
@@ -1534,27 +1406,9 @@ export function useViewPrefs(opts?: {
    * preferred mode (defaults to docked).
    */
   const togglePopout = useCallback((id: PanelId) => {
-    update((p) => {
-      if (isPanelOpen(p, id)) {
-        const dockedSide = sideOfDockedPanel(p, id);
-        let next = p;
-        if (dockedSide) {
-          next = withStack(next, dockedSide, stackFor(next, dockedSide).filter((x) => x !== id));
-        }
-        next = pruneMRU(next, id);
-        return { ...next, poppedOutPanels: next.poppedOutPanels.filter((x) => x !== id) };
-      }
-      const targetSide = resolveSide(p, id);
-      const mode: PanelMode = p.panelModes[id] ?? "docked";
-      if (mode === "docked") return dockOpen(p, id, targetSide);
-      const savedRect = p.floatPositions[id];
-      const rect = savedRect ?? computeColumnSpawnRect(targetSide);
-      return {
-        ...p,
-        poppedOutPanels: [...p.poppedOutPanels, id],
-        floatPositions: { ...p.floatPositions, [id]: rect },
-      };
-    });
+    update((p) =>
+      isPanelOpen(p, id) ? closePanel(p, id) : openInMode(p, id, resolveSide(p, id)),
+    );
   }, [update]);
 
   /**
@@ -1565,22 +1419,7 @@ export function useViewPrefs(opts?: {
    */
   const undockPanel = useCallback(
     (id: PanelId, initialFloatRect: { x: number; y: number; width: number; height: number }) => {
-      update((p) => {
-        const dockedSide = sideOfDockedPanel(p, id);
-        let next = p;
-        if (dockedSide) {
-          next = withStack(next, dockedSide, stackFor(next, dockedSide).filter((x) => x !== id));
-        }
-        next = pruneMRU(next, id);
-        return {
-          ...next,
-          poppedOutPanels: next.poppedOutPanels.includes(id)
-            ? next.poppedOutPanels
-            : [...next.poppedOutPanels, id],
-          panelModes: { ...next.panelModes, [id]: "floating" },
-          floatPositions: { ...next.floatPositions, [id]: initialFloatRect },
-        };
-      });
+      update((p) => undockToFloat(p, id, initialFloatRect));
     },
     [update],
   );
@@ -1593,39 +1432,14 @@ export function useViewPrefs(opts?: {
    */
   const redockPanel = useCallback(
     (id: PanelId, side: Side, index?: number) => {
-      update((p) => {
-        // Remove any existing float + stack position, then splice into the
-        // target side's stack at `index` (default append). Enforce the cap
-        // by evicting the least-recently-used band if the side is full.
-        // Un-collapse + un-blank the target side, exactly as `dockOpen` does
-        // (task 272): a docked band's portal target only exists in an
-        // expanded column, so redocking onto a collapsed side must expand it
-        // or the just-docked panel renders nothing ("vanishes").
-        let next: ViewPrefs = {
-          ...p,
-          poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
-          panelModes: { ...p.panelModes, [id]: "docked" },
-          collapsedLeft: side === "left" ? false : p.collapsedLeft,
-          collapsedRight: side === "right" ? false : p.collapsedRight,
-          blankLeft: side === "left" ? false : p.blankLeft,
-          blankRight: side === "right" ? false : p.blankRight,
-        };
-        const existingSide = sideOfDockedPanel(next, id);
-        if (existingSide) {
-          next = withStack(next, existingSide, stackFor(next, existingSide).filter((x) => x !== id));
-        }
-        let stack = stackFor(next, side);
-        if (stack.length >= MAX_STACK) {
-          const victim = leastRecentlyUsed(next, side);
-          if (victim) {
-            stack = stack.filter((x) => x !== victim);
-            next = pruneMRU(next, victim);
-          }
-        }
-        const at = index == null ? stack.length : Math.max(0, Math.min(index, stack.length));
-        next = withStack(next, side, [...stack.slice(0, at), id, ...stack.slice(at)]);
-        return bumpMRU(next, side, id);
-      });
+      // The SAME insertion the strip-click open takes, at the user's chosen
+      // slot — so the sentinel clear (task 272: a band's portal target only
+      // exists in an expanded, non-blank column, or the just-docked panel
+      // renders nothing) falls out for free rather than being re-derived.
+      // No `freeSpacePx`: a drag-drop has no measurement, and a deliberate
+      // drop shouldn't be refused — or cost a DIFFERENT band — for
+      // breathing room. Only the hard `MAX_STACK` cap evicts here.
+      update((p) => placeInStack(p, id, side, { index }));
     },
     [update],
   );

@@ -12,9 +12,12 @@
  * otherwise breaks under vitest's `require("@/lib/storage-*")` resolver
  * (see `anchor-route-derivation-contract.test.ts`).
  *
- * `useViewPrefs.ts` RE-EXPORTS these (it imports only types from here, so
- * there is no runtime cycle), so consumers can import from either module —
- * the heavy-chain-sensitive ones import directly from this leaf.
+ * `useViewPrefs.ts` both VALUE-imports and re-exports these, and the dock
+ * engine (`view-prefs-dock.ts`) value-imports them too — so consumers can
+ * take them from either module, with the heavy-chain-sensitive ones coming
+ * straight to this leaf. What keeps the graph acyclic is the direction stated
+ * above: THIS file imports only types from `useViewPrefs`. A value import
+ * added here in the other direction closes the cycle immediately.
  */
 import type { PanelId, Side, ViewPrefs } from "@/hooks/useViewPrefs";
 
