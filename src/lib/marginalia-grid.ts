@@ -18,13 +18,10 @@
 
 import { marginSideForMarkerType, type PanelSideMap } from "./margin-side";
 import {
-  MARGINALIA_COLS,
   MARGINALIA_COL_GAP,
-  MARGINALIA_MARGIN_WIDTH,
   MARGINALIA_ICON_SIZE,
-  MARGINALIA_INNER_PAD,
-  MARGINALIA_GRID_X_RIGHT,
-  ICONS_BLOCK_WIDTH,
+  marginaliaEffectiveCols,
+  marginaliaGridX,
   type AnchorNodeMetrics,
   type GridCell,
   type MarginaliaMarker,
@@ -58,21 +55,16 @@ function cellAt(
   const y =
     node.top + row * node.lineHeight + (node.lineHeight - MARGINALIA_ICON_SIZE) / 2;
 
-  // Pixel X (container-relative). Left margin packs from right (text edge)
-  // toward left (outer edge). Right margin packs from left (text edge) toward
-  // right (outer edge), starting at `MARGINALIA_GRID_X_RIGHT` — the col0 offset
-  // from the right-lane band SSOT, which sits OUTBOARD of the inboard selection
-  // bolt band (so the bolt no longer paints over the markers). `cell.x` here is
-  // relative to the marker container's left edge (`podRight − MARGIN_WIDTH`),
-  // the SAME reference the pod-anchored bolt uses.
+  // Pixel X (container-relative), from the lane SSOT's per-side col0 offset
+  // (`marginaliaGridX`). Left margin packs from the outer edge inward toward
+  // the text; right margin packs from `MARGINALIA_GRID_X_RIGHT` — the col0
+  // offset in the right-lane band list, OUTBOARD of the inboard selection-bolt
+  // band (so the bolt no longer paints over the markers) — outward toward the
+  // scrollbar. `cell.x` is relative to the marker container's own edge
+  // (`podRight − MARGIN_WIDTH_RIGHT` / `podLeft`), the SAME reference the
+  // pod-anchored bolt and the lane-fit predicate use.
   const x =
-    side === "left"
-      ? MARGINALIA_MARGIN_WIDTH -
-        MARGINALIA_INNER_PAD -
-        ICONS_BLOCK_WIDTH +
-        col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP)
-      : MARGINALIA_GRID_X_RIGHT +
-        col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP);
+    marginaliaGridX(side) + col * (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP);
 
   return { col, row, x, y };
 }
@@ -92,6 +84,15 @@ function cellAt(
  *                    `getMetrics` — it goes straight to the `orphans` bucket.
  * @param markers     Flat list of markers from the margin-marker builder
  * @param panelSides  Which side each panel is currently docked on
+ * @param laneFits    Per-side "can this margin host the marker grid at all?",
+ *                    from `markerGridFits` in the lane SSOT (task 214). A side
+ *                    that does NOT fit renders NOTHING — no cells, no "+K"
+ *                    pill, no re-pin dock — because the whole column is
+ *                    pod-anchored at lane offsets the prose has taken back;
+ *                    placing any of it would paint over the last words of the
+ *                    line. Required (not defaulted) so no consumer can inherit
+ *                    a "fits" it never decided; the fail-open case belongs to
+ *                    `markerGridFits`, which owns what unmeasured means.
  * @returns Positioned markers, per-(node, side) overflow groups (R16), and
  *          the orphan markers for the fixed re-pin dock (CHIP-B)
  */
@@ -99,6 +100,7 @@ export function computeMarkerPositions(
   getMetrics: (uuid: string) => AnchorNodeMetrics | null,
   markers: readonly MarginaliaMarker[],
   panelSides: PanelSideMap,
+  laneFits: { left: boolean; right: boolean },
 ): MarkerPositionsResult {
   if (markers.length === 0)
     return { positioned: [], overflowGroups: [], orphans: [] };
@@ -125,6 +127,14 @@ export function computeMarkerPositions(
     // this runs before the metrics gate.
     const side = marginSideForMarkerType(m.type, panelSides, m.side);
 
+    // Task 214 — the CRAMPED regime. Ask BEFORE the orphan branch: the re-pin
+    // dock lives inside the same pod-anchored column, so a side the margin
+    // can't host drops its whole chrome set together (grid cells, "+K" pill,
+    // dock). This mirrors what zen and the read-only reader were already
+    // documented to do — hide — rather than the bolt's tuck, which markers
+    // can't borrow: a two-column grid has no sub-lane left to tuck into.
+    if (!laneFits[side]) continue;
+
     // CHIP-B: an orphan card has no live paragraph — it can't be line-aligned.
     // Carry it to the fixed re-pin dock instead of culling it (the RC2 vanish).
     if (m.unanchored) {
@@ -148,12 +158,13 @@ export function computeMarkerPositions(
   // (col=1 on the left) is reserved across all paragraphs and headings —
   // it's the strip immediately next to the grab handle, kept clear for the
   // paragraph popout button — so the left side uses a single effective
-  // column. The right side keeps both columns.
+  // column (`marginaliaEffectiveCols`, in the lane SSOT because the lane-fit
+  // inset derives from it too). The right side keeps both columns.
   const positioned: PositionedMarker[] = [];
   const overflowGroups: MarkerOverflowGroup[] = [];
 
   for (const g of groups.values()) {
-    const effectiveCols = g.side === "left" ? 1 : MARGINALIA_COLS;
+    const effectiveCols = marginaliaEffectiveCols(g.side);
     const capacity = Math.max(1, g.node.lineCount) * effectiveCols;
     const overflowing = g.items.length > capacity;
     // R16: when overflowing, reserve the LAST cell for the "+K" pill; only

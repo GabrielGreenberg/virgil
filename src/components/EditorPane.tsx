@@ -4345,9 +4345,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // is compressed, the 48px comfort cap WINS — the lane is NOT reserved, so the
   // marker floor never fights the user's deliberate compression-for-code. This
   // mirrors the `!zenMode` term exactly: an intentionally-narrow reading mode
-  // where markers gracefully degrade (non-reserved, same as zen / the Library
-  // reader) rather than eating ~150px+ of prose width. The normal (non-code-
-  // split) editor keeps the floor untouched.
+  // where markers degrade (non-reserved, same as zen / the Library reader)
+  // rather than eating ~150px+ of prose width. The normal (non-code-split)
+  // editor keeps the floor untouched.
+  //
+  // What "degrade" MEANS is decided in `<Marginalia>`, not here (task 214).
+  // This flag governs the FLOOR only; un-reserving it used to leave the grid
+  // still packing at the wide-lane offsets, painting badges over the last words
+  // of every marked line. The grid now asks the lane-regime predicate
+  // (`markerGridFits`) against the MEASURED margin and hides the side it can't
+  // host — so the degradation this comment claims is real, and it holds for
+  // every narrowing path (zen, the reader, a hand-dragged margin), not just
+  // this one flag.
   const marginaliaLaneReserved =
     !!menuBar &&
     menuBar.showMarginalia !== false &&
