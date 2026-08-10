@@ -35,6 +35,14 @@ export const STYLE_LIBRARY_KEY = "virgil-style-library";
  */
 export const STYLE_LIBRARY_VERSION = 2;
 
+// NOTE (task 255): the `\providecommand` lines below are FROZEN HISTORICAL
+// BYTES, deliberately exempt from the "nothing spells a marker by hand" rule
+// (src/lib/latex-markers.ts). They record what two past build generations
+// actually wrote; deriving them from today's vocabulary would change the bytes
+// and seal those libraries out of the v2 migration, whose gate is exact byte
+// equality. The LIVE seed path builds its shim block from the requirements
+// module, which reads the SSOT.
+//
 // Frozen bytes of the v0 CLASSIC_PREAMBLE — the pre-xcolor seed generation
 // (87f8ad38/a293e604, 2026-05-07 → 8471ef99, 2026-05-16): byte-identical to
 // V1 below MINUS the `\usepackage{xcolor}` line. Libraries seeded from a

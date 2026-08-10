@@ -10,6 +10,12 @@
 import type { JSONContent } from "@tiptap/react";
 import { generateShortId } from "@/lib/uuid";
 import {
+  emitMarker,
+  markerArgStart,
+  markerOpensAt,
+  VIRGIL_MARKERS,
+} from "@/lib/latex-markers";
+import {
   matchAccent,
   matchSpecialLetter,
   dashesToGlyphs,
@@ -340,7 +346,7 @@ function serializeInlineNode(node: JSONContent): string {
   if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
   if (node.type === "citation") {
     const cid = node.attrs?.citationId as string | undefined;
-    const idMarker = cid ? `\\vcid{${cid}}` : "";
+    const idMarker = cid ? emitMarker(VIRGIL_MARKERS.citation, cid) : "";
     return `${idMarker}${(node.attrs?.command as string) || ""}`;
   }
   // labelRef (\ref / \getref / \getfullref) — a footnote body can now hold a
@@ -542,9 +548,8 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
 
       // \vcid{uuid} — no-op marker stashing a stable citationId for the
       // next citation command. See parseInlineContent in latex-parser.ts.
-      const vcidMatch = rest.match(/^\\vcid\{/);
-      if (vcidMatch) {
-        const open = i + "\\vcid".length;
+      if (markerOpensAt(text, i, VIRGIL_MARKERS.citation)) {
+        const open = markerArgStart(i, VIRGIL_MARKERS.citation);
         const closed = findClose(text, open);
         if (closed !== -1) {
           pendingCitationId = text.slice(open + 1, closed) || null;

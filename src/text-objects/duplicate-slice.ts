@@ -75,12 +75,15 @@ function inlineAtomCardEntry(
  *
  *  There is therefore NO TextObject kind that should mint a 36-char entity
  *  id. The old `meta.sourceMarker?.idLength === 4` proxy was the bug (task
- *  064): only exampleBlock/exampleItem/linkedRange declare a `sourceMarker`,
+ *  064): only exampleBlock/exampleItem/linkedRange declared a `sourceMarker`,
  *  so the other 13 kinds fell to the `else` and got a `crypto.randomUUID()`
  *  that the 4-hex `%!v:` anchor truncates on the next save+reload — losing
  *  the clone's identity AND leaking the raw `%!v:<uuid>` marker into the
- *  block's own visible text. `sourceMarker` describes the persistence
- *  *mechanism*, not the id *format*; conflating them was the fork.
+ *  block's own visible text. The facet described the persistence *mechanism*,
+ *  not the id *format*; conflating them was the fork. (That facet is gone
+ *  entirely as of task 255 — the marker vocabulary lives in
+ *  `src/lib/latex-markers.ts` — so the proxy is not merely unread now but
+ *  unspellable.)
  *
  *  Pinned by `__tests__/duplicate-slice-idformat.test.ts`, which asserts the
  *  4-hex mint for every kind in `TEXT_OBJECT_REGISTRY` — so a future kind

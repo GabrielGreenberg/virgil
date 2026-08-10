@@ -4,7 +4,15 @@
  * Adding a new kind = one entry here + one schema-group annotation (or
  * mark spec, for range kinds). The rest of the system reads off this
  * registry: grab-handle layout, popout dispatch, drop adapters, drag-
- * menu actions, source-marker round-trip, marginalia placement.
+ * menu actions, marginalia placement.
+ *
+ * NOT here, deliberately: the `\v*` id-marker command vocabulary that carries
+ * a kind's id through the LaTeX round trip. This registry is editor-coupled
+ * (TipTap `Editor`, the doc-structure bus, the drop adapters), so the parser
+ * and serializer can never import it — which is why the `sourceMarker` facet
+ * that used to sit here was read by nobody — from task 064 (2026-07-06) until
+ * its deletion — while the round trip kept its own hardcoded copies (task 255). The markers live in
+ * `src/lib/latex-markers.ts`, keyed by the entity they identify.
  *
  * SSOT sibling: `src/panels/panel-registry.ts`. (The link layer has no per-kind
  * registry — its taxonomy is the `LinkKind` union and its DOM contract is
@@ -648,10 +656,10 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // auto-fit grow burst (FloatingCards gates that on a non-textobject key).
     actions: NON_PROSE_BLOCK_ACTIONS,
     // texBlock uses `%!vtex:begin <uuid>` / `%!vtex:end <uuid>` comment
-    // sentinels for round-trip, not a \v*id command. Left empty here
-    // because the registry's sourceMarker field is the simpler
-    // command-form; the sentinel pair is handled directly by the
-    // parser/serializer for texBlock.
+    // sentinels for round-trip, not a \v*id command — so it appears in
+    // neither marker table: the command-form vocabulary is
+    // `src/lib/latex-markers.ts`, and the sentinel pair is handled directly
+    // by the parser/serializer for texBlock.
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (_doc, _uuid, action) =>
       descriptorForAtomBlock("TeX block", action, {
@@ -728,7 +736,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // popout at handoff. Spawns at authoritative source height; like every
     // textobject float it skips FloatCard's auto-fit grow burst (FloatingCards
     // gates that on a non-textobject key).
-    sourceMarker: { command: "vexid", idLength: 4 },
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForContainer(
@@ -836,7 +843,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // default clone lays out faithfully, exactly like exampleBlock (which also
     // carries no ghost). (Wrapping in `.expex-block` without an `.expex-number`
     // sibling would squash the item into the 1.5em number column.)
-    sourceMarker: { command: "vxid", idLength: 4 },
     dropAdapter: exampleItemDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForSimpleBlock("example item", doc, action, ctx, {
@@ -998,11 +1004,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
         height: Math.max(0, unionBottom - first.top),
       };
     },
-    // Paired markers \vlid{id}…\vlidend{id} — added in Phase E
-    // alongside the multi-paragraph round-trip plumbing. The simple
-    // command form below names the opener; the closer is derived
-    // (`<command>end`).
-    sourceMarker: { command: "vlid", idLength: 4 },
     dropAdapter: topLevelDropAdapter,
     // Always warn — deleting a linkedRange also removes the underlying
     // text and any cards anchored on it (cross-abstraction destructive).

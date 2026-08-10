@@ -35,6 +35,7 @@ import {
   type BibFamilyConflict,
 } from "@/lib/bib-family";
 import { TIKZ_RE } from "@/lib/latex-requirement-collector";
+import { VIRGIL_MARKER_COMMANDS } from "@/lib/latex-markers";
 
 export type LatexRequirementKind = "package" | "shim";
 
@@ -77,21 +78,21 @@ function shimReq(name: string): LatexRequirement {
 }
 
 /**
- * The Virgil entity-id marker shims, in canonical declaration order.
- * `\vbid` marks a bibliography entry's durable surrogate id (in the `.bib`,
- * round-tripped by serializeBibFile). It never appears in the `.tex`, but
- * we declare the no-op so a `.bib` `\input` or a paper opened in raw LaTeX
- * never breaks — mirrors the inline-atom `\vcid`/`\vfid` guards.
+ * The Virgil entity-id marker shims, in canonical declaration order — i.e.
+ * EVERY marker in the vocabulary, read from its SSOT
+ * ([latex-markers.ts](latex-markers.ts)) rather than re-listed here. Every
+ * marker earns a shim by construction: each one is written into a file LaTeX
+ * may be asked to compile, so a new marker cannot be added and left
+ * undeclared (which would break the user's build with a genuine
+ * `Undefined control sequence`).
+ *
+ * That includes the one marker that never appears in the `.tex`: `\vbid`
+ * marks a bibliography entry's durable surrogate id in the `.bib`
+ * (round-tripped by serializeBibFile), and we declare the no-op so a `.bib`
+ * `\input` — or a paper opened in raw LaTeX — never breaks, mirroring the
+ * inline-atom `\vcid`/`\vfid` guards.
  */
-export const SHIM_COMMAND_NAMES = [
-  "vfid",
-  "vcid",
-  "vbid",
-  "vexid",
-  "vxid",
-  "vlid",
-  "vlidend",
-] as const;
+export const SHIM_COMMAND_NAMES: readonly string[] = VIRGIL_MARKER_COMMANDS;
 
 /**
  * Full registry. Packages before shims — this order IS the injection order
