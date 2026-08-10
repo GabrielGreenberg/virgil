@@ -50,7 +50,7 @@ export interface VirgilCommand {
  * the SAME `run()`) and `title`/`author`/`date` (the idempotent `titleFieldRun`,
  * which reads the live doc/selection off `ctx.view.state`).
  *
- * Only safe for view-only actions: `cardCreation` / `cardLifecycle` /
+ * Only safe for view-only actions: `cardCreation` /
  * `panelRouting` / `openAtomCreate` are intentionally absent — a card/atom action
  * (`\cite` / `\footnote` / `\ref`) would no-op here and must route through the
  * bridge (`getEditorActionsHandle`) instead.

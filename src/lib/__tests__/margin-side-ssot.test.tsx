@@ -44,6 +44,13 @@ vi.mock("@/lib/storage", () => {
 
 import fs from "node:fs";
 import path from "node:path";
+// The one-pass comment/literal scanner this census introduced (task 205).
+// It now lives in a shared helper: task 227's action-context census is its
+// THIRD caller, and a routine whose two prior hand-rolled variants each
+// shipped a defect (202b's runaway; this file's own unfalsifiable `orphan`
+// leg) gets ONE copy. Behaviour byte-identical; the why-a-scanner doc moved
+// with it.
+import { codeOnly, commentsStripped } from "./_source-scan";
 import { Editor } from "@tiptap/core";
 import type { Decoration } from "@tiptap/pm/view";
 import { act, renderHook } from "@testing-library/react";
@@ -103,95 +110,6 @@ const PROD_FILES = ALL_FILES.filter((f) => !isTest(f));
  *  different extensions. That blind spot is exactly how a fifth `anchor.margin`
  *  writer survived the first cut of this task. */
 const AGENT_FILES = walkAny(path.join(REPO, "editor"), /\.(py|md)$/);
-
-/**
- * Blank out comments — and, when `keepStrings` is false, string/template
- * literals too — so a census sees CODE.
- *
- * Written as a ONE-PASS SCANNER rather than a chain of regex replaces, because
- * the chain form is the task-202b runaway: stripping template literals before
- * string literals lets a backtick living inside a double-quoted string
- * (`src/lib/latex-typography.ts` has one) open a pseudo-template that eats
- * every line to the next backtick anywhere in the file — 7 kB and nine `export`
- * declarations, silently, with the suite still green. A single left-to-right
- * scan cannot make that mistake: it is already inside the string when it meets
- * the backtick. Quoted strings terminate at a newline, so a stray quote (from
- * an unhandled regex literal, the one construct this does not model) can
- * corrupt at most its own line — and `swallowedDeclarations` below is the
- * self-check that would catch it if it ever cost more than that.
- *
- * `keepStrings: true` is for a needle that must match INSIDE a literal (the
- * `source === "orphan"` comparison): stripping strings there would make the
- * leg unfalsifiable, since the needle requires the quoted word to survive.
- */
-function strip(src: string, keepStrings: boolean): string {
-  let out = "";
-  let i = 0;
-  const n = src.length;
-  while (i < n) {
-    const c = src[i];
-    const d = src[i + 1];
-    if (c === "/" && d === "/") {
-      while (i < n && src[i] !== "\n") i++;
-      continue;
-    }
-    if (c === "/" && d === "*") {
-      i += 2;
-      while (i < n && !(src[i] === "*" && src[i + 1] === "/")) i++;
-      i += 2;
-      continue;
-    }
-    if (c === '"' || c === "'") {
-      const quote = c;
-      const start = i;
-      i++;
-      while (i < n && src[i] !== quote && src[i] !== "\n") {
-        if (src[i] === "\\") i++;
-        i++;
-      }
-      if (i < n && src[i] === quote) i++;
-      out += keepStrings ? src.slice(start, i) : quote + quote;
-      continue;
-    }
-    if (c === "`") {
-      const start = i;
-      i++;
-      let depth = 0;
-      while (i < n) {
-        if (src[i] === "\\") {
-          i += 2;
-          continue;
-        }
-        if (src[i] === "$" && src[i + 1] === "{") {
-          depth++;
-          i += 2;
-          continue;
-        }
-        if (depth > 0 && src[i] === "}") {
-          depth--;
-          i++;
-          continue;
-        }
-        if (depth === 0 && src[i] === "`") {
-          i++;
-          break;
-        }
-        // Code inside `${…}` is real code — keep it even when the surrounding
-        // template text is dropped.
-        if (depth > 0 && !keepStrings) out += src[i];
-        i++;
-      }
-      out += keepStrings ? src.slice(start, i) : "``";
-      continue;
-    }
-    out += c;
-    i++;
-  }
-  return out;
-}
-
-const codeOnly = (src: string) => strip(src, false);
-const commentsStripped = (src: string) => strip(src, true);
 
 /** Files whose CODE (comments + literals stripped) matches `re`. */
 function codeHits(files: string[], re: RegExp): string[] {

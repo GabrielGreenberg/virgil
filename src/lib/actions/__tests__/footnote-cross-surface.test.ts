@@ -184,7 +184,6 @@ function publishHandle(editor: Editor, prefs: ViewPrefs): void {
         view: editor.view,
         ref,
         surface: seed.surface,
-        position: seed.position,
         cardCreation: { createFootnote } as unknown as ActionContext["cardCreation"],
         payload: seed.payload,
         panelRouting: {
