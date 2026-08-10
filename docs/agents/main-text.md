@@ -127,7 +127,6 @@ type LinkAnchor =
       type: "textObject";
       targetKind: TextObjectKind;       // any TextObject kind
       textObjectIds: string[];          // node uuid(s) (or anchorId, for linkedRange)
-      margin: { side: "left" | "right" };
       paragraphSnapshot?: string;       // Mode-A self-healing whole-paragraph text snapshot
       textRange?: { anchorId; textSnapshot };  // present iff targetKind === "linkedRange"
     };
@@ -211,6 +210,8 @@ Grabbing a card's **drop button** (the double-chevron — rightmost control on t
 
 **[src/components/Marginalia.tsx](../../src/components/Marginalia.tsx)** renders the margins (left and right of the editor). Metadata + types live in [src/lib/marginalia.ts](../../src/lib/marginalia.ts); grid-layout math in [src/lib/marginalia-grid.ts](../../src/lib/marginalia-grid.ts).
 
+**Which SIDE a card's margin chrome sits on has ONE owner** — [src/lib/margin-side.ts](../../src/lib/margin-side.ts) (task 205), a `override > live panel dock > PANEL_REGISTRY.defaultStripSide` ladder. Both consumers call it with the same live dock map: the marker grid (`marginSideForMarkerType`) and the Mode-A anchor RAIL in `useAnchorHighlightReconciler` (`marginSideForCardKind` → `data-margin-side`). Before this the rail read a `link.anchor.margin.side` frozen into the sidecar at create time by a hardcoded `inferMarginSide` switch, so docking a right-default panel LEFT moved the marker and left the rail on the right — `globals.css` says the rail paints "on the same side as the margin marker", and it now does. Both the stored field and the two per-row copies of the default (`inferMarginSide`, `MARKER_META.defaultSide`) are deleted; [src/lib/__tests__/margin-side-ssot.test.tsx](../../src/lib/__tests__/margin-side-ssot.test.tsx) drives the real reconciler under a flipped dock and censuses both silos so no second speller comes back.
+
 - **Columns per side**: 2 (`MARGINALIA_COLS`)
 - **Icon size**: 22px squares with 2px row gap
 - **Positioning**: line-aligned per paragraph; scroll-synced via `useSyncExternalStore`
@@ -229,7 +230,7 @@ After the chip-H drop-mode fold (PHASE 1/2, 296280a/79ccdad), the paragraph-anch
 ### Adding a new marginalia type
 
 From the header comment in `src/lib/marginalia.ts` (rewritten after the chip-H drop-mode fold):
-1. Add the token to `MarkerType` (`src/cards/types.ts`), declare it on the owning card kind(s) in `CARD_REGISTRY` (`markerType` field), and add a presentation row to `MARKER_META` (label / defaultSide / icon — panel + accent derive from the registry via `src/cards/marker-meta.ts`).
+1. Add the token to `MarkerType` (`src/cards/types.ts`), declare it on the owning card kind(s) in `CARD_REGISTRY` (`markerType` field), and add a presentation row to `MARKER_META` (label / icon — panel + accent derive from the registry via `src/cards/marker-meta.ts`; the margin SIDE is not a row, see below).
 2. Register a `dropSpec` for each owning card kind (the `textObjectSideReanchorSpec` factory in [src/components/drop-mode/util/text-object-side-reanchor.ts](../../src/components/drop-mode/util/text-object-side-reanchor.ts), wired to a `ParagraphAnchorApi` sub-bag on the `DropCtx`) so the margin pin can re-anchor through the unified drop-mode controller; wire that sub-bag in `EditorPane`'s `DropModeProvider`.
 3. Emit the marker in `EditorPane.tsx`'s `marginaliaMarkers` builder carrying `entityKind` (the real `CardKind`) so the pin's `beginCardDropGesture` builds the correct `float:card:<kind>:<id>` key.
 

@@ -174,7 +174,6 @@ function highlightCard(anchorId: string, id: string): CardWithLinks {
           type: "textObject",
           targetKind: "linkedRange",
           textObjectIds: ["p001"],
-          margin: { side: "right" },
           textRange: { anchorId, textSnapshot: "the span" },
         },
         target: { type: "card", ref: { kind: "highlight", id } },

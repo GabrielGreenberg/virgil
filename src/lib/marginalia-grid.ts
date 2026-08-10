@@ -16,9 +16,8 @@
  * from the useMarginalia hook via AnchorNodeMetrics.
  */
 
-import type { PanelId } from "@/hooks/useViewPrefs";
+import { marginSideForMarkerType, type PanelSideMap } from "./margin-side";
 import {
-  MARKER_META,
   MARGINALIA_COLS,
   MARGINALIA_COL_GAP,
   MARGINALIA_MARGIN_WIDTH,
@@ -99,7 +98,7 @@ function cellAt(
 export function computeMarkerPositions(
   getMetrics: (uuid: string) => AnchorNodeMetrics | null,
   markers: readonly MarginaliaMarker[],
-  panelSides: Partial<Record<PanelId, "left" | "right" | null>>,
+  panelSides: PanelSideMap,
 ): MarkerPositionsResult {
   if (markers.length === 0)
     return { positioned: [], overflowGroups: [], orphans: [] };
@@ -118,12 +117,13 @@ export function computeMarkerPositions(
   }
   const groups = new Map<string, NodeGroup>();
   for (const m of markers) {
-    // Resolve side first: explicit override > current panel dock > default.
-    // Orphans need a side for the dock too, so this runs before the metrics
-    // gate.
-    const meta = MARKER_META[m.type];
-    const dockedSide = panelSides[meta.panelId];
-    const side: "left" | "right" = m.side ?? dockedSide ?? meta.defaultSide;
+    // Resolve side first, through the ONE margin-side authority
+    // (`@/lib/margin-side`): explicit override > current panel dock >
+    // registry default. The anchor rail runs the same call with the same
+    // `panelSides`, which is what keeps the marker and the rail on the same
+    // edge under a non-default dock. Orphans need a side for the dock too, so
+    // this runs before the metrics gate.
+    const side = marginSideForMarkerType(m.type, panelSides, m.side);
 
     // CHIP-B: an orphan card has no live paragraph — it can't be line-aligned.
     // Carry it to the fixed re-pin dock instead of culling it (the RC2 vanish).

@@ -62,7 +62,7 @@ export type ThemeKey = PanelThemeKey;
  * (It used to live in `lib/marginalia.ts`, which made this type layer import
  * from a UI lib module — an inverted edge.) Marker metadata that derives from
  * the registry (owning panel, theme key) lives in `src/cards/marker-meta.ts`;
- * the marginalia-local presentation fields (label / defaultSide / icon) stay
+ * the marginalia-local presentation fields (label / icon) stay
  * in `MARKER_META` (`lib/marginalia.ts`).
  */
 export type MarkerType =

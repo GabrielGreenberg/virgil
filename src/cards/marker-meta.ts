@@ -3,7 +3,7 @@
  * facts that are really CARD facts — which card kinds share a marker
  * namespace, which panel owns it, which theme key colors it — are derived
  * HERE from `CARD_REGISTRY`, the card-spine SSOT. The marginalia-local
- * presentation fields (`label` / `defaultSide` / `icon`) stay in
+ * presentation fields (`label` / `icon`) stay in
  * `MARKER_META` (`src/lib/marginalia.ts`), which composes these helpers.
  *
  * **Cycle-safe by construction**: this module imports only the runtime-leaf

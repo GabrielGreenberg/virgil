@@ -242,7 +242,6 @@ export function collectLinksFromEditor(editor: Editor): Link[] {
         type: "textObject",
         targetKind: "linkedRange",
         textObjectIds: a.paragraphId ? [a.paragraphId] : [],
-        margin: { side: inferMarginSide(a.cardKind) },
         textRange: {
           anchorId,
           textSnapshot: a.textParts.join(""),
@@ -256,24 +255,13 @@ export function collectLinksFromEditor(editor: Editor): Link[] {
   return links;
 }
 
-/** Margin-side default per target card kind. Reads the panel registry's
- *  `defaultStripSide`; falls back to "right". */
-function inferMarginSide(cardKind: CardKind): "left" | "right" {
-  // Lazily imported to avoid a circular at module load.
-  // `MARKER_META` in `src/lib/marginalia.ts` already encodes the default
-  // side per marker type; we just need the CardKind → side mapping here
-  // for `collectLinksFromEditor`'s synthetic Link output. Revisions/cut
-  // are on the right; reports on the left. This defaults to "right" and is
-  // only a HINT on a synthesized link: a real card's side comes from the card
-  // record, which is what every margin surface actually reads.
-  switch (cardKind) {
-    case "report":
-    case "report-request":
-      return "left";
-    default:
-      return "right";
-  }
-}
+// `inferMarginSide` lived here — a hardcoded `report|report-request → left,
+// default → right` switch whose own docstring claimed to read the panel
+// registry and never did, and whose output was frozen into every anchor link's
+// `anchor.margin.side`. Deleted in task 205: the side a card's margin chrome
+// lives on is a LIVE function of where its panel is docked, so it is resolved
+// at read time by `marginSideForCardKind` (`@/lib/margin-side`) — the one
+// authority the marginalia grid and the anchor rail now share.
 
 // ---------------------------------------------------------------------------
 // Public API: create / resolve / jump / delete
@@ -1314,7 +1302,6 @@ function makeAnchorLink(
       type: "textObject",
       targetKind,
       textObjectIds,
-      margin: { side: inferMarginSide(cardKind) },
       ...(textRange ? { textRange } : {}),
       ...(paragraphSnapshot ? { paragraphSnapshot } : {}),
     },
@@ -1501,8 +1488,6 @@ export function derivedLinksForCard(
   card: AnchorCardShape,
 ): Link[] {
   const out: Link[] = [];
-  const side = inferMarginSide(cardKind);
-
   if (card.anchorId) {
     out.push({
       id: card.anchorId,
@@ -1511,7 +1496,6 @@ export function derivedLinksForCard(
         type: "textObject",
         targetKind: "linkedRange",
         textObjectIds: card.paragraphIds?.slice() ?? [],
-        margin: { side },
         textRange: {
           anchorId: card.anchorId,
           textSnapshot: card.anchorText ?? "",
@@ -1534,7 +1518,6 @@ export function derivedLinksForCard(
         // legacy sidecar that hits this branch.
         targetKind: "paragraph",
         textObjectIds: [paragraphId],
-        margin: { side },
       },
       target: { type: "card", ref: { kind: cardKind, id: card.id } },
       createdAt: "",

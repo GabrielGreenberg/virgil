@@ -29,7 +29,22 @@ import type { TextObjectKind } from "./types";
  *  by their LAST child (so a paragraph immediately after a bulletList
  *  anchors to the previous listItem, not the bulletList wrapper).
  *  Includes the invisible exampleItemList wrapper used inside
- *  exampleBlock. */
+ *  exampleBlock.
+ *
+ *  **Deliberately NOT folded onto `TEXT_OBJECT_REGISTRY`** (task 205 M3,
+ *  reviewed and declined — recorded here so a future audit doesn't re-file it
+ *  as a forked taxonomy). This set and its two apparent siblings —
+ *  `DEFERRING_PARENTS` (`@/lib/anchor-uuid`: an inner paragraph defers anchor
+ *  identity UP) and the registry's own `removeOnEmptyChildren` — are three
+ *  ORTHOGONAL structural facts, not one taxonomy split three ways: a
+ *  `bulletList` descends but does not defer; `listItem`/`blockquote`/
+ *  `codeBlock` defer but neither descend nor self-remove; only `exampleBlock`
+ *  is in all three, because it genuinely plays three schema roles. Two of the
+ *  three are already documented single owners. And the fold does not close:
+ *  `exampleItemList` is not a registered `TextObjectKind` and has no registry
+ *  row, so a per-kind `descendsToLastChild` boolean would have to be paired
+ *  with a side-list for it — trading one honest set for a table plus the same
+ *  set. */
 const CONTAINER_DESCEND_KINDS: ReadonlySet<string> = new Set([
   "bulletList",
   "orderedList",

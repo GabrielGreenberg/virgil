@@ -79,7 +79,6 @@ function modeALink(): Link {
       type: "textObject",
       targetKind: "paragraph",
       textObjectIds: ["p1"],
-      margin: { side: "right" },
       // No textRange — Mode A paragraph anchor only.
     },
     target: { type: "card", ref: { kind: "note", id: "n1" } },
@@ -95,7 +94,6 @@ function modeBLink(): Link {
       type: "textObject",
       targetKind: "linkedRange",
       textObjectIds: ["p1"],
-      margin: { side: "right" },
       textRange: { anchorId: "a1", textSnapshot: "some linked text" },
     },
     target: { type: "card", ref: { kind: "note", id: "n1" } },

@@ -456,7 +456,6 @@ function modeBNoteCollections(): EntityCollectionSlots {
       type: "textObject",
       targetKind: "linkedRange",
       textObjectIds: [RANGE_PARA_UUID],
-      margin: { side: "right" },
       textRange: { anchorId: RANGE_ANCHOR_ID, textSnapshot: "anchored" },
     },
     target: { type: "card", ref: { kind: "note", id: NOTE_ID } },
@@ -498,7 +497,13 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
     // the editor's deferred `create` tick first so `editor.isInitialized` is
     // true (the reconciler's `editorReady` guard requires it).
     const recon = renderHook(() =>
-      useAnchorHighlightReconciler({ editor, collections, store: cardStore }),
+      useAnchorHighlightReconciler({
+        editor,
+        collections,
+        store: cardStore,
+        // Mode-B only here — no dock map needed, stated rather than defaulted.
+        panelSides: {},
+      }),
     );
     await waitForEditorInit(editor);
     act(() => {
@@ -533,7 +538,13 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
     const collections = modeBNoteCollections();
 
     const recon = renderHook(() =>
-      useAnchorHighlightReconciler({ editor, collections, store: cardStore }),
+      useAnchorHighlightReconciler({
+        editor,
+        collections,
+        store: cardStore,
+        // Mode-B only here — no dock map needed, stated rather than defaulted.
+        panelSides: {},
+      }),
     );
     await waitForEditorInit(editor);
     act(() => {
@@ -553,7 +564,13 @@ describe("AnchorHighlightDecorator — Mode-B (text-range) raw-attr regression g
     const collections = modeBNoteCollections();
 
     const recon = renderHook(() =>
-      useAnchorHighlightReconciler({ editor, collections, store: cardStore }),
+      useAnchorHighlightReconciler({
+        editor,
+        collections,
+        store: cardStore,
+        // Mode-B only here — no dock map needed, stated rather than defaulted.
+        panelSides: {},
+      }),
     );
     await waitForEditorInit(editor);
     act(() => {

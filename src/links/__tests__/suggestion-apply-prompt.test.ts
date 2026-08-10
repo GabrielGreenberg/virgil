@@ -115,7 +115,6 @@ describe("buildSuggestionApplyPrompt — family lead-in + shape", () => {
               type: "textObject",
               targetKind: "paragraph",
               textObjectIds: ["u1", "u2"],
-              margin: { side: "right" },
             },
             target: {
               type: "card",

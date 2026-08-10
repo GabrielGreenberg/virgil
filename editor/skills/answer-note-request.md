@@ -85,21 +85,22 @@ two paths:
    clears the source flag, and bumps the version, all atomically under the pen.
    The subcommand is chosen from the Task's `safetyLevel` (none → direct create;
    1 → silent; 2 → +comment; 3 → propose) — you don't pick it. Carry the title via
-   `--title`, the margin via `--margin` (notes sit on the **right**).
+   `--title`. Don't pass `--margin`: which side a note's margin chrome sits on
+   follows the Notes panel's dock and is resolved live by the app.
 
    - **Path (c) — standalone** (a real `ai-requests.json` id, no `linkedTo`):
      anchor is read from the Task. Title is a short descriptive subject phrase
      (no `Re:`), matching the convention of existing notes in `notes.json`:
      ```bash
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
-         --body "<your reply>" --title "<subject phrase>" --margin right
+         --body "<your reply>" --title "<subject phrase>"
      ```
    - **Path (b) — sibling note** answering a source note (title `Re: <source title>`):
      - Real `requestId` (bridged flag, `linkedTo.panel == "notes"`): anchor read
        from the Task —
        ```bash
        python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
-           --body "<your reply>" --title "Re: <source title>" --margin right
+           --body "<your reply>" --title "Re: <source title>"
        ```
      - Virtual id (`virtual:notes:<cardId>`, a pre-bridge flag with no Task row):
        pass the source note's paragraph as `--anchor` (from the request's
@@ -107,7 +108,7 @@ two paths:
        ```bash
        python3 editor/scripts/create_card.py <docPath> virtual:notes:<cardId> \
            --kind=note --body "<your reply>" --title "Re: <source title>" \
-           --anchor <uuid> --margin right
+           --anchor <uuid>
        ```
 
    `create_card.py` re-validates the anchor against the `.tex` and refuses if it

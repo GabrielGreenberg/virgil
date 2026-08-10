@@ -31,7 +31,7 @@ Link       { id; kind: "footnote" | "citation" | "anchor"; anchor: LinkAnchor;
              target: { type: "card"; ref: { kind: CardKind; id } }; createdAt }
 LinkAnchor = { type: "inline-atom"; nodeName: "footnote"|"citation"; pos }   // atom link
            | { type: "textObject"; targetKind: TextObjectKind;
-               textObjectIds: string[]; margin: { side: "left"|"right" };
+               textObjectIds: string[];      // no stored margin side — see margin-side.ts
                paragraphSnapshot?: string;                                    // Mode-A self-heal
                textRange?: { anchorId; textSnapshot } }                       // anchor
 ```
@@ -63,8 +63,12 @@ is derived, never declared**:
   `revision`, `cutter-comment`, `cutter-suggestion`, `report`, `report-request`
   (plus the synthetic AI render sentinels `pending-ai-change` / `pending-ai-request`, both `#bfdbfe`).
 
-Every `"textObject"` anchor also carries a `margin` entry (which side the
-Omni-View icon sits on). Resolution at measure time returns a `LinkResolution`
+A `"textObject"` anchor carries NO margin side. It used to (`margin: { side }`,
+read by the Mode-A anchor rail), but which side a card's margin chrome sits on
+follows its PANEL's dock and is resolved live by
+[src/lib/margin-side.ts](../../src/lib/margin-side.ts) — a stored copy could only
+be right until the user re-docked. Skills must not write one.
+Resolution at measure time returns a `LinkResolution`
 (`paragraph` / `text-range` / `inline-atom`) — skills don't compute it; they read
 `textObjectIds` (Mode A) or the `textRange` (Mode B).
 

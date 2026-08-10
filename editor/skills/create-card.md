@@ -90,7 +90,9 @@ full reasoning.
   (default `citet`).
 - `--label "<l>"` / `--item "<row>"` — `\label{}` / a `\pex` row for `example`
   (`--item` is repeatable → a `\pex`/`\a` list; otherwise `--body` → a single `\ex`).
-- `--margin left|right` — gutter side for an anchored card (default `right`).
+- `--margin left|right` — **deprecated, ignored** (accepted so a stale bundle
+  doesn't crash). A card's margin side follows its PANEL's dock and is
+  resolved live by the app (`src/lib/margin-side.ts`); it is not storable.
 
 ## Procedure
 

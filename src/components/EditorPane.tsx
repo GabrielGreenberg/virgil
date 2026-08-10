@@ -297,6 +297,11 @@ import {
   buildResolveIndex,
   resolveCardAnchor,
 } from "@/links/resolve-card-anchor";
+import type { PanelSideMap } from "@/lib/margin-side";
+import {
+  resolveAnchorState,
+  type AnchorIntent,
+} from "@/links/anchor-state";
 import { reapplyModeBAnchors } from "@/links/_shared/reapply-mode-b-anchors";
 import {
   reapplyPendingMarks,
@@ -361,6 +366,12 @@ import {
 // render, which would otherwise re-fire `onPaneStateChange` even when
 // nothing meaningful changed.
 const noop = () => {};
+
+// Stable empty placement list for the (theoretical) host that supplies neither
+// a `placements` prop nor `viewPrefs.prefs.placements`. A module constant so
+// the fallback branch keeps ONE identity across renders — see
+// `effectivePlacements` below for why that is load-bearing.
+const NO_PLACEMENTS: PanelPlacement[] = [];
 
 // Default popped-out card dimensions — the subsystem-wide
 // `FLOAT_DEFAULT_SIZE` (float-policy), so spawn positions stay
@@ -2721,8 +2732,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `viewPrefs.prefs.placements` from `useReaderViewPrefs()`. The
   // empty-array fallback covers the (theoretical) case where neither
   // is supplied — strips render empty rather than crashing.
+  // The `[]` fallback is a module CONSTANT, not a literal: this value seeds
+  // `marginaliaPanelSides`, which is a `useMemo` dep AND (since task 205) a dep
+  // of the anchor-highlight reconcile effect. A fresh `[]` per render would
+  // give both a new identity every render and run their bodies — the marker
+  // grid pass and the reconciler's per-link resolve + document sweep — on every
+  // render of the pane rather than on a real dock change.
   const effectivePlacements: PanelPlacement[] =
-    placements ?? viewPrefs?.prefs.placements ?? [];
+    placements ?? viewPrefs?.prefs.placements ?? NO_PLACEMENTS;
 
   // Error state (selection / dismissals / expansion / snippets /
   // paragraph mapping / jump) is OWNED locally by `useDiagnostics` (P5 item 4)
@@ -3313,7 +3330,30 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         return pids.map((pid) => ({ pid, unanchored: false }));
       }
       const res = resolveCardAnchor(c, editor, resolveIndex);
-      if (res.source === "orphan") {
+      // Classify through the `resolveAnchorState` SSOT rather than re-reading
+      // the resolver's rung-4 `source === "orphan"` residue (task 205 M1). The
+      // margin's question is BINARY — "does this card have a live marker?" —
+      // so it asks for `!== "anchored"` ON TOP of the SSOT rather than running
+      // a second formula beside it, and the margin can no longer disagree with
+      // the omni/panel badges about what "anchored" means.
+      //
+      // The three-way split is deliberately COLLAPSED here, and that is a
+      // margin-specific judgment rather than an oversight: `free` and
+      // `orphaned` differ in blame, not in affordance, and both land in the
+      // re-pin dock. A `free`-flagged card that reaches the dock branch is one
+      // carrying stored anchors that no longer resolve — surfacing it is the
+      // only way back for it, and hiding it would be the RC2 "card vanishes"
+      // bug wearing a badge. (Five of the six callers below skip
+      // `pids.length === 0` outright; the revisions loop guards on the
+      // DISJUNCTION `!revAnchor && pids.length === 0`, so a revision with a
+      // live text anchor and no stored pids does arrive here with an empty
+      // array — and returns `[]` from the branch below, exactly as it did
+      // before.)
+      // Equivalent to the pre-205 formula for every card today (`paragraphId`
+      // is null exactly when `source === "orphan"`); the SSOT is what keeps it
+      // equivalent tomorrow.
+      const state = resolveAnchorState(res.paragraphId, c as AnchorIntent);
+      if (state !== "anchored") {
         // uuid + mark + snapshot all dead → surface, don't vanish. Key on the
         // first stored pid (stable id for the marker + the re-pin gesture).
         return pids.length > 0
@@ -3573,9 +3613,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Derived from `effectivePlacements` so the prop-supplied placements
   // (main app, post-7.8) and the Reader's synthetic right-only fallback
   // both flow through the same path.
-  const marginaliaPanelSides = useMemo<Partial<Record<PanelId, "left" | "right" | null>>>(
+  const marginaliaPanelSides = useMemo<PanelSideMap>(
     () => {
-      const result: Partial<Record<PanelId, "left" | "right" | null>> = {};
+      const result: Record<string, "left" | "right" | null> = {};
       for (const p of effectivePlacements) result[p.id] = p.side;
       return result;
     },
@@ -5185,6 +5225,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   useAnchorHighlightReconciler({
     editor,
     store: cardStoreInst,
+    // The SAME live dock map `<Marginalia>` packs its grid against — so the
+    // Mode-A anchor rail lands on the edge the card's marker is actually on,
+    // not on a side frozen into the sidecar at create time (task 205).
+    panelSides: marginaliaPanelSides,
     // The inline-atom structural counter (footnotes + citations) so the
     // dangling-ref prune re-runs when an inline atom is added/removed — the
     // inline kinds never change `collections` (they aren't in it). T2 §3b.2.

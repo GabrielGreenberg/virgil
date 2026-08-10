@@ -130,7 +130,10 @@ describe("marker-meta derivation (A6/R17)", () => {
     };
     for (const t of FROZEN_MARKER_TYPES) {
       expect(panelForMarkerType(t)).toBe(frozen[t]);
-      expect(MARKER_META[t].panelId).toBe(frozen[t]);
+      // MARKER_META no longer carries a `panelId` column (task 205 — its one
+      // reader, the grid's dock lookup, moved into `marginSideForMarkerType`,
+      // which derives the panel itself). `panelForMarkerType` above IS the
+      // derivation, and it is what the frozen table pins.
     }
   });
 

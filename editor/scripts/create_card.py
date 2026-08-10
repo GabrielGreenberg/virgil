@@ -144,9 +144,16 @@ def _gen_marker_id(doc: Path, macro: str, used: set[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _anchor_link(card_kind: str, card_id: str, anchor_uuid: str, side: str) -> dict:
+def _anchor_link(card_kind: str, card_id: str, anchor_uuid: str) -> dict:
     """A Mode-A paragraph anchor: a `kind:"anchor"` textObject Link from the
-    card to the anchor paragraph (src/links/_shared/types.ts)."""
+    card to the anchor paragraph (src/links/_shared/types.ts).
+
+    NOTE (task 205): the anchor carries NO `margin: {side}`. Which side a
+    card's margin chrome sits on is a live function of where its panel is
+    docked, resolved at read time by `src/lib/margin-side.ts`; the app deleted
+    the stored field along with its one reader, so writing it here would put a
+    key on disk that nothing reads and that cannot be right after the user
+    re-docks a panel."""
     return {
         "id": str(uuid.uuid4()),
         "kind": "anchor",
@@ -154,7 +161,6 @@ def _anchor_link(card_kind: str, card_id: str, anchor_uuid: str, side: str) -> d
             "type": "textObject",
             "targetKind": "paragraph",
             "textObjectIds": [anchor_uuid],
-            "margin": {"side": side or "right"},
         },
         "target": {"type": "card", "ref": {"kind": card_kind, "id": card_id}},
         "createdAt": now_iso(),
@@ -172,7 +178,7 @@ def _comment_note_card(anchor_uuid: str, detail: str, label: str) -> dict:
         "content": _jsoncontent(f"Added a {label} here: {_snippet(detail, 80)}"),
         "createdAt": now_iso(),
         "aiRequest": False,
-        "links": [_anchor_link("note", note_id, anchor_uuid, "right")],
+        "links": [_anchor_link("note", note_id, anchor_uuid)],
     }
 
 
@@ -256,7 +262,7 @@ def _build_note(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
             "content": _jsoncontent(body),
             "createdAt": now_iso(),
             "aiRequest": False,
-            "links": [_anchor_link("note", nid, ctx.anchor, a.margin)],
+            "links": [_anchor_link("note", nid, ctx.anchor)],
         },
         insert=None,
         result_id=nid,
@@ -281,7 +287,7 @@ def _build_todo(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
             "done": False,
             "aiRequest": False,
             "createdAt": now_iso(),
-            "links": [_anchor_link("todo", tid, ctx.anchor, a.margin)],
+            "links": [_anchor_link("todo", tid, ctx.anchor)],
         },
         insert=None,
         result_id=tid,
@@ -312,7 +318,7 @@ def _build_report(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindBuild:
             "text": body,
             "content": _jsoncontent(body),
             "selectedText": ctx.selected_text or "",
-            "links": [_anchor_link("report", rid, ctx.anchor, a.margin)],
+            "links": [_anchor_link("report", rid, ctx.anchor)],
         },
         insert=None,
         result_id=rid,
@@ -341,7 +347,7 @@ def _build_report_request(doc: Path, a: argparse.Namespace, ctx: "Ctx") -> KindB
             "content": _jsoncontent(body),
             "aiRequest": bool(a.ai_request),
             "selectedText": ctx.selected_text or "",
-            "links": [_anchor_link("report-request", rid, ctx.anchor, a.margin)],
+            "links": [_anchor_link("report-request", rid, ctx.anchor)],
         },
         insert=None,
         result_id=rid,
@@ -645,7 +651,16 @@ def main(argv: list[str]) -> int:
     p.add_argument("--accept-task-kind", action="append", dest="accept_task_kind",
                    help="extra Task kind(s) a Workflow-A create may drain (cross-kind answer, "
                         "e.g. a `note` answering a `todo` Task). Repeatable.")
-    p.add_argument("--margin", choices=["left", "right"], default="right", help="anchored-card gutter side")
+    # Accepted but IGNORED since task 205 — kept only so an agent running a
+    # stale skill bundle doesn't crash on an unrecognized flag. The margin side
+    # is no longer storable: it is resolved live from the owning panel's dock
+    # (src/lib/margin-side.ts), so there is nothing for this to set.
+    p.add_argument(
+        "--margin",
+        choices=["left", "right"],
+        default=None,
+        help="(deprecated, ignored) the margin side now follows the panel dock",
+    )
     # note / report
     p.add_argument("--title", help="card title (note, report)")
     # todo
