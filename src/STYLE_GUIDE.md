@@ -1034,9 +1034,28 @@ repositioned on resize; none closed on Escape. CI now greps for the shape:
 [anchored-menu-guardrail.test.ts](components/menu/__tests__/anchored-menu-guardrail.test.ts)
 censuses every DECLARATION (not file — `HeaderAddDropdown` and the migrated
 `ItemMenu` were siblings in one file) that positions a shadowed `fixed`/`absolute`
-surface from a rect it measures itself, in both silos and in both the className
-and inline-style forms. `src/` is drained of menus; the remaining entries are one
-float shell and the two Library-silo holdouts.
+surface, in both silos and in both the className and inline-style forms.
+
+**A menu is anchored by a rect OR by CSS** (task 181), and for a release the
+census only knew the first. A dropdown written `absolute right-0 top-full mt-1 …
+shadow-lg` reads no rect at all — the browser anchors it to the `relative`
+wrapper by layout — so six of them sat in `src/` while CI reported green,
+including `PanelThemePicker` at `z-[9999]` (the literal value of
+`DROP_INDICATOR_Z`, the exact collision `ItemMenu`'s migration comment says it
+was moved off) and `CardKindDropdown`, which lived in the very file whose
+`ItemMenu` had already migrated. Declaration scoping caught the
+file-vouches-for-itself failure; the narrow anchor signal let the site through
+anyway. Both halves of a guard have to hold.
+
+So the reach of the census is: **any absolutely-positioned shadowed surface
+offset from its anchor's edge** — the `*-full` family, an `absolute` + `mt-`/`mb-`
+gap, or the inline `top: "100%"` form. Deliberately *not* "any conditionally
+rendered positioned surface", which would sweep in every dialog and drag ghost
+and turn the allowlist into a filing cabinet. The panel silo is drained; the
+listed entries are one float shell, two Library-silo holdouts, and three named
+CSS-anchored follow-ups (the Fonts-dialog combobox, the library pod's add menu,
+and the Help menu's hover sub-menu) — each with a stated reason it is a
+different job from swapping the shell.
 
 ### Z-index ladder
 

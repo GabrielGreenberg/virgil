@@ -123,7 +123,11 @@ export interface UseMenuItemResult {
 
 /** The prop bag `getItemProps()` returns (design §2.2). */
 export interface MenuItemProps {
-  role: "menuitem" | "menuitemcheckbox" | "option";
+  /** `menuitemradio` joined the union in task 181: the card-kind menu is a
+   *  mutually-exclusive set (a card has exactly one kind and picking one
+   *  un-picks the other), which is the radio semantic — `menuitemcheckbox` is
+   *  for independent toggles like a citation's `*` / `Aa`. */
+  role: "menuitem" | "menuitemcheckbox" | "menuitemradio" | "option";
   id: string;
   "aria-disabled": true | undefined;
   tabIndex: -1;

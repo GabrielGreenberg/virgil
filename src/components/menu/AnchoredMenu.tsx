@@ -40,8 +40,16 @@
  * (`ItemMenu`, whose arbitrary button children can't call `close` themselves).
  */
 
-import { useCallback, useId, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useId,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { MenuProvider } from "./MenuProvider";
+import type { MenuLayout, MenuOrientation, MenuRole } from "./types";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 
 export type AnchoredMenuAlign = "start" | "end";
@@ -112,6 +120,31 @@ export interface AnchoredMenuRenderProps {
 export interface AnchoredMenuProps {
   /** ARIA label for the menu container (and the fallback trigger label). */
   ariaLabel: string;
+  /**
+   * The nav model the body declares — forwarded verbatim to `MenuProvider`
+   * (task 181). Default `"list"`, which is every command menu.
+   *
+   * This exists because the shell's ONE hard-coded `layout="list"` was, on its
+   * own, the reason a whole shape of dropdown had no route onto the primitive.
+   * A swatch GRID (`PanelThemePicker`) navigates in two axes and its rows are
+   * `region: "grid"` cells with `coords`; on a `list` layout the controller runs
+   * `listMove`, which ignores `coords` entirely — so the shell would have
+   * accepted the body, rendered it correctly, and silently navigated it wrong.
+   * A trigger contract that models only one body shape is a trigger contract
+   * every other body shape hand-rolls around, which is the whole failure this
+   * component was built to end.
+   */
+  layout?: MenuLayout;
+  /** List stepping axis, forwarded to `MenuProvider`. Only consulted for the
+   *  `list` layout (a `grid`/`composite` already maps all four arrows). */
+  orientation?: MenuOrientation;
+  /** ARIA container-role fork, forwarded to `MenuProvider`. Default "menu". */
+  role?: MenuRole;
+  /** Container style overrides (width / padding / bespoke chrome), forwarded to
+   *  `MenuProvider`. Merged AFTER the shell's own placement + z-tier, exactly as
+   *  the provider merges it, so a caller can size a swatch grid without
+   *  re-deriving the surface. */
+  containerStyle?: CSSProperties;
   /** Which of the trigger's edges the menu aligns to. Default "start". */
   align?: AnchoredMenuAlign;
   /** Distance trigger→menu in px. Default 4. */
@@ -122,6 +155,10 @@ export interface AnchoredMenuProps {
   trigger: (open: boolean) => ReactNode;
   /** Trigger button className. */
   triggerClassName?: string;
+  /** Trigger button inline style. The shell OWNS the button element, so a
+   *  trigger whose appearance is data-driven (the panel-color swatch, whose fill
+   *  IS the current theme colour) has no other way to express it. */
+  triggerStyle?: CSSProperties;
   /** Trigger tooltip (`data-hint`). */
   triggerHint?: string;
   /** Trigger accessible name. Defaults to `ariaLabel`. */
@@ -154,10 +191,15 @@ export interface AnchoredMenuProps {
 
 export function AnchoredMenu({
   ariaLabel,
+  layout = "list",
+  orientation,
+  role = "menu",
+  containerStyle,
   align = "start",
   gap = 4,
   trigger,
   triggerClassName,
+  triggerStyle,
   triggerHint,
   triggerAriaLabel,
   wrapperClassName = "relative shrink-0",
@@ -215,10 +257,36 @@ export function AnchoredMenu({
           e.stopPropagation();
           toggle();
         }}
+        // A menu trigger must never START A DRAG either (task 181). Menu
+        // triggers live inside card headers, panel headers and tab strips —
+        // surfaces that are themselves HTML5-draggable or run a press-lift
+        // gesture — and the repo's established isolation for a button in that
+        // position is `draggable={false}` + swallowing `dragstart`
+        // (`CardJumpChevron`, `CardDropButton`, and the hand-rolled
+        // `CardKindDropdown` this shell absorbed). The press half is already
+        // covered without a `stopPropagation`: `INTERACTIVE_CONTROL_SELECTOR`
+        // lists `button`, so every gesture built on that SSOT passes a button
+        // press through. The HTML5 drag half is NOT — a mousedown on a plain
+        // child of a `draggable="true"` ancestor starts the ANCESTOR's drag —
+        // so it is stated here once rather than left to each consumer, which is
+        // how `ItemMenu` (a card-header kebab since task 180) came to be missing
+        // it.
+        draggable={false}
+        onDragStart={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+        }}
         className={triggerClassName}
+        style={triggerStyle}
         data-hint={triggerHint}
         aria-label={triggerAriaLabel ?? ariaLabel}
-        aria-haspopup="menu"
+        // DERIVED from the container role rather than hard-coded, now that the
+        // role is a caller's choice: `aria-haspopup` names what the trigger
+        // opens, so a trigger that opens a `role="dialog"` swatch grid
+        // announcing "menu" tells a screen-reader user to expect a command list
+        // and arrow through it. The default is unchanged for every existing
+        // consumer, all of which leave `role` at "menu".
+        aria-haspopup={role === "menu" ? "menu" : role}
         aria-expanded={open}
       >
         {trigger(open)}
@@ -226,8 +294,9 @@ export function AnchoredMenu({
       {open && anchorRect && (
         <MenuProvider
           id={`anchored-menu-${menuId}`}
-          layout="list"
-          role="menu"
+          layout={layout}
+          orientation={orientation}
+          role={role}
           portal
           anchorRect={anchorRect}
           placements={ANCHORED_MENU_PLACEMENTS[align]}
@@ -240,8 +309,13 @@ export function AnchoredMenu({
           excludeRefs={[triggerEl]}
           onClose={close}
           ariaLabel={ariaLabel}
+          containerStyle={containerStyle}
           containerClassName={`${MENU_SURFACE_CLASS}${menuClassName ? ` ${menuClassName}` : ""}`}
         >
+          {/* The click that ESCAPES a menu is fenced by `MenuProvider` at the
+              container (task 181) — it has to be, because the surface's own
+              `py-1` chrome is a hit band outside anything a caller renders.
+              This wrapper is only the `closeOnInsideClick` behaviour. */}
           {closeOnInsideClick ? (
             <div
               onClick={(e) => {

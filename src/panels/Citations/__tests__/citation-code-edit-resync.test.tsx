@@ -50,13 +50,24 @@ class ResizeObserverStub {
 (globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
 
 import { useState } from "react";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import { CitationCard } from "@/panels/Citations/CitationCard";
 import { defaultCardStore as cardStore } from "@/links/_shared/anchored-card-store";
 import { parseCiteCommand } from "@/lib/bib-parser";
 import type { CitationRef } from "@/lib/types";
 
 afterEach(cleanup);
+
+/** `useFloatingMenuPosition` renders the menu `visibility: hidden` until its
+ *  first measurement lands, and Testing Library's `getByRole` skips elements
+ *  hidden from the accessibility tree — so a menu asserted on synchronously is
+ *  a menu that is open, correct, and unqueryable. Flush the measurement (and
+ *  the dismiss controller's `setTimeout(…, 0)`) before asking about rows. */
+async function settleMenu() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
 
 const REF = { kind: "citation" as const, id: "cit1" };
 
@@ -95,7 +106,7 @@ function Harness({ emitted }: { emitted: string[] }) {
 }
 
 describe("CitationCard — raw Code edit resyncs local state (task 078)", () => {
-  it("a key added via the Code field survives a subsequent checkbox toggle", () => {
+  it("a key added via the Code field survives a subsequent checkbox toggle", async () => {
     const emitted: string[] = [];
     render(<Harness emitted={emitted} />);
 
@@ -113,9 +124,14 @@ describe("CitationCard — raw Code edit resyncs local state (task 078)", () => 
     // Toggle the `*` (Full author list) checkbox → fires persist() from the
     // card's local rows. Pre-fix this re-serialized from the STALE single-key
     // rows and dropped `jones`.
+    // The overflow menu folded onto `<AnchoredMenu>` + `<MenuToggleRow>` in
+    // task 181, so the row is a `menuitemcheckbox` carrying `aria-checked`
+    // rather than a native `<input type="checkbox">` inside a `<label>`. Same
+    // click, same handler, same assertion below — only the role changed.
     fireEvent.click(screen.getByLabelText("More options"));
+    await settleMenu();
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /Full author list/i }),
+      screen.getByRole("menuitemcheckbox", { name: /Full author list/i }),
     );
 
     const last = emitted.at(-1)!;
@@ -142,5 +158,48 @@ describe("CitationCard — raw Code edit resyncs local state (task 078)", () => 
     expect(last).toContain("smith");
     expect(last).toContain("jones");
     expect(last).toMatch(/\\citep/);
+  });
+});
+
+// ── Task 181: the overflow menu on the `<Menu>` SSOT ───────────────────────
+//
+// It had been an `absolute right-0 top-full … z-50` surface with its own
+// `document` mousedown closer, no Escape and no flip, inside a card body that
+// scrolls in a panel list. The one behaviour worth pinning beyond the shared
+// contracts is that these are TOGGLES the user flips in runs — the shell's
+// `closeOnInsideClick` is opt-in and deliberately NOT set here, so the menu must
+// survive repeated activation exactly as the two bare `<label>`s did.
+describe("citation overflow menu — task 181", () => {
+  it("survives a run of toggles and closes on Escape", async () => {
+    const emitted: string[] = [];
+    render(<Harness emitted={emitted} />);
+    fireEvent.click(screen.getByLabelText("Expand card"));
+    fireEvent.click(screen.getByLabelText("More options"));
+    await settleMenu();
+
+    const menu = document.body.querySelector('[role="menu"]') as HTMLElement;
+    expect(menu).toBeTruthy();
+    // Portaled to body at the chrome tier, not an in-flow z-50 the panel list
+    // clips when the card sits near the bottom.
+    expect(menu.style.position).toBe("fixed");
+    expect(menu.style.zIndex).toBe("2000");
+
+    const starred = screen.getByRole("menuitemcheckbox", { name: /Full author list/i });
+    const capitalized = screen.getByRole("menuitemcheckbox", { name: /Sentence start/i });
+    expect(starred.getAttribute("aria-checked")).toBe("false");
+
+    fireEvent.click(starred);
+    fireEvent.click(capitalized);
+    // Still open after two toggles, and both states took.
+    expect(document.body.querySelector('[role="menu"]')).toBeTruthy();
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: /Full author list/i })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(emitted.at(-1)).toMatch(/\\Cite\*|\\cite\*/);
+
+    // Escape dismisses — the key the hand-rolled popover ignored entirely.
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.body.querySelector('[role="menu"]')).toBeNull();
   });
 });

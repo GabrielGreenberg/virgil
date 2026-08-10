@@ -373,6 +373,30 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
           e.preventDefault();
         }
       }}
+      // …and the CLICK, for the same reason and with the same scope (task 181).
+      // The mousedown fence above had no click twin, and `createPortal` moves
+      // the DOM node but NOT the React tree — so every click inside a portaled
+      // menu bubbled through every React ancestor of the component that opened
+      // it. Two live consequences, both from menus that had just been migrated
+      // onto this primitive: a card-kind row reached the unified card header
+      // (`role="button"`, `onClick → headerActivate()`), so picking a type also
+      // collapsed and selected the card — including on the pick-the-kind-it-
+      // already-is no-op path; and the panel colour picker nested inside a kebab
+      // reached the kebab's `closeOnInsideClick` wrapper, dismissing it.
+      //
+      // It belongs on the CONTAINER rather than in each body, and that is not a
+      // tidiness preference: this element's own padding (`py-1` on the shared
+      // menu chrome, or any `containerStyle`) is a hit band OUTSIDE every
+      // element a caller renders, so a click landing a few pixels off a row
+      // escaped any fence a consumer could write. Each of the three dropdowns
+      // this primitive absorbed carried some partial version of this — on the
+      // popup, on each row, on an enclosing card div — and the container is the
+      // one place that covers all of them.
+      //
+      // A caller that WANTS an inside click to close its menu already has
+      // `AnchoredMenu closeOnInsideClick`, whose wrapper is a descendant of this
+      // element and therefore runs first.
+      onClick={(e) => e.stopPropagation()}
     >
       <MenuContext.Provider value={ctxValue}>
         <MenuStackContext.Provider value={stackValue}>
