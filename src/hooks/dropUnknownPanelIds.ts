@@ -107,10 +107,18 @@ export function filterPrintPanels(panels: unknown): Record<string, boolean> {
  * side to `max` (the stack ceiling). Order-preserving; malformed input →
  * empty sides. Returned as `string[]`s so this module stays free of the
  * PanelId type (no import cycle with useViewPrefs); the caller casts.
+ *
+ * `max` is REQUIRED and deliberately undefaulted (task 273). It used to carry
+ * its own `= 3` while the runtime insertions read `MAX_STACK`, and the sole
+ * caller passed nothing — two facts that must agree, kept as independent
+ * literals with nothing forcing equality. A ceiling bump would then have left
+ * the LOADER silently truncating a runtime-legal deeper stack on every reload.
+ * A default here is a decision this module isn't entitled to make: the ceiling
+ * belongs to the dock engine, so the caller states it.
  */
 export function clampStack(
   stack: unknown,
-  max = 3,
+  max: number,
 ): { left: string[]; right: string[] } {
   const src = (stack && typeof stack === "object" ? stack : {}) as {
     left?: unknown;
