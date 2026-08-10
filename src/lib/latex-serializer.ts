@@ -1,6 +1,11 @@
 import type { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { generateShortId } from "@/lib/uuid";
+import {
+  emitMarker,
+  INLINE_TEX_MARKERS,
+  VIRGIL_MARKERS,
+} from "@/lib/latex-markers";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
 import {
@@ -520,7 +525,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 
     case "footnote": {
       const fid = node.attrs?.footnoteId as string | undefined;
-      const idMarker = fid ? `\\vfid{${fid}}` : "";
+      const idMarker = fid ? emitMarker(VIRGIL_MARKERS.footnote, fid) : "";
       const cmd = node.attrs?.thanks ? "thanks" : "footnote";
       return `${idMarker}\\${cmd}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
     }
@@ -537,7 +542,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 
     case "citation": {
       const cid = node.attrs?.citationId as string | undefined;
-      const idMarker = cid ? `\\vcid{${cid}}` : "";
+      const idMarker = cid ? emitMarker(VIRGIL_MARKERS.citation, cid) : "";
       const command = (node.attrs?.command as string) || "";
       // Declare the bib family this cite command pins, adjacent to its emit.
       needBibFamily(classifyCiteFamily(command));
@@ -621,7 +626,7 @@ function serializeExampleBlock(node: JSONContent): string {
   need("expex");
   const kind = node.attrs?.kind === "multi" ? "pex" : "ex";
   const uuid = node.attrs?.uuid as string | null;
-  const idMarker = uuid ? `\\vexid{${uuid}}` : "";
+  const idMarker = uuid ? emitMarker(VIRGIL_MARKERS.exampleBlock, uuid) : "";
   const tag = (node.attrs?.tag as string) || "";
   const tagStr = tag ? `<${tag}>` : "";
   const override = (node.attrs?.exnoOverride as string | null) || null;
@@ -707,7 +712,7 @@ function serializeExampleItem(node: JSONContent): string {
   // An `\a` item is an expex construct.
   need("expex");
   const uuid = node.attrs?.uuid as string | null;
-  const idMarker = uuid ? `\\vxid{${uuid}}` : "";
+  const idMarker = uuid ? emitMarker(VIRGIL_MARKERS.exampleItem, uuid) : "";
   const tag = (node.attrs?.tag as string) || "";
   const tagStr = tag ? `<${tag}>` : "";
   // Item-level `\a[exno=N]` override — mirror the block leg
@@ -832,19 +837,19 @@ function serializeExampleGloss(node: JSONContent): string {
  * (`\vcid`) and footnote ids (`\vfid`) (the atom emit sites at :360/:376 and
  * :665/:671). These are NOT real LaTeX — they are private sentinels the parser
  * (`parseInlineContent` / `applyLinkedAnchorBoundaries`) reads back to
- * re-materialize anchors + atoms. Single-sourced here (alongside the emit
- * sites) so any consumer that must treat serialized text as trusted-marker-free
- * — notably the pending-change applicator's splice guard
- * (`containsInternalMarker`) — never drifts from the set the serializer
- * actually produces. Longest-first so the regex alternation matches `\vlidend`
- * before its `\vlid` prefix.
+ * re-materialize anchors + atoms.
+ *
+ * DERIVED, not listed: the set is every marker in the vocabulary SSOT
+ * ([latex-markers.ts](latex-markers.ts)) whose `file` is the `.tex` and whose
+ * `position` is `inline` — the two facets that decide the question, so a
+ * future inline marker joins this guard by declaring itself rather than by
+ * someone remembering this file. (`\vexid`/`\vxid` are block-position and
+ * `\vbid` lives in the `.bib`, so none of them is emitted into the inline
+ * stream this guard protects.) Longest-first so the regex alternation matches
+ * `\vlidend` before its `\vlid` prefix.
  */
-export const INTERNAL_MARKER_COMMANDS = [
-  "vlidend",
-  "vlid",
-  "vcid",
-  "vfid",
-] as const;
+export const INTERNAL_MARKER_COMMANDS: readonly string[] =
+  INLINE_TEX_MARKERS.map((m) => m.command);
 
 const INTERNAL_MARKER_REGEX = new RegExp(
   `\\\\(?:${INTERNAL_MARKER_COMMANDS.join("|")})\\b`,
@@ -889,13 +894,13 @@ function serializeInlineSequence(nodes: JSONContent[]): string {
       }
       for (const id of [...open]) {
         if (!currentIds.has(id)) {
-          out += `\\vlidend{${id}}`;
+          out += emitMarker(VIRGIL_MARKERS.linkedRangeClose, id);
           open.delete(id);
         }
       }
       for (const id of currentIds) {
         if (!open.has(id)) {
-          out += `\\vlid{${id}}`;
+          out += emitMarker(VIRGIL_MARKERS.linkedRangeOpen, id);
           open.add(id);
         }
       }
@@ -905,7 +910,7 @@ function serializeInlineSequence(nodes: JSONContent[]): string {
     }
   }
   for (const id of open) {
-    out += `\\vlidend{${id}}`;
+    out += emitMarker(VIRGIL_MARKERS.linkedRangeClose, id);
   }
   return out;
 }
@@ -919,13 +924,13 @@ function serializeInline(node: JSONContent): string {
   }
   if (node.type === "footnote") {
     const fid = node.attrs?.footnoteId as string | undefined;
-    const idMarker = fid ? `\\vfid{${fid}}` : "";
+    const idMarker = fid ? emitMarker(VIRGIL_MARKERS.footnote, fid) : "";
     const cmd = node.attrs?.thanks ? "thanks" : "footnote";
     return `${idMarker}\\${cmd}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
   }
   if (node.type === "citation") {
     const cid = node.attrs?.citationId as string | undefined;
-    const idMarker = cid ? `\\vcid{${cid}}` : "";
+    const idMarker = cid ? emitMarker(VIRGIL_MARKERS.citation, cid) : "";
     const command = (node.attrs?.command as string) || "";
     needBibFamily(classifyCiteFamily(command));
     return `${idMarker}${command}`;

@@ -5,6 +5,12 @@ import { CITE_NAMES_RE_INLINE, MULTI_CITE_NAMES } from "@/lib/cite-commands";
 import { generateShortId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid";
 import { collectExampleBodyLabelsJSON } from "@/lib/example-refs";
 import {
+  BLOCK_TEX_MARKERS,
+  markerArgStart,
+  markerOpensAt,
+  VIRGIL_MARKERS,
+} from "@/lib/latex-markers";
+import {
   extractFigureAttrs,
   extractGraphicsAttrs,
   matchIncludegraphics,
@@ -23,6 +29,26 @@ import {
   verbatimMark,
   VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
+
+/**
+ * Commands whose appearance at the head of a line ENDS the paragraph being
+ * read. Hoisted to module scope so it compiles once (it is tested per
+ * paragraph-continuation candidate), and built rather than spelled because
+ * Virgil's own block-position markers belong in it: absorb a `\vexid`/`\vxid`
+ * into the preceding paragraph and the next save re-emits it as literal text,
+ * accumulating one stray marker per round trip. Their names come from the
+ * vocabulary SSOT ([latex-markers.ts](latex-markers.ts)), so a future
+ * block-position marker joins this boundary set by declaring itself.
+ */
+const BLOCK_BOUNDARY_COMMAND_RE = new RegExp(
+  "^\\\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|" +
+    "begin|end|\\[|hrulefill|title|author|date|maketitle|includegraphics|" +
+    "noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|" +
+    "usepackage|bibliographystyle|bibliography|tableofcontents|appendix|" +
+    "clearpage|newpage|par|ex|pex|xe|" +
+    BLOCK_TEX_MARKERS.map((m) => m.command).join("|") +
+    "|begingl|endgl)\\b",
+);
 
 interface ParseContext {
   pos: number;
@@ -460,9 +486,8 @@ export function parseInlineContent(
 
       // \vfid{uuid} — no-op marker stashing a stable footnoteId for the
       // next \footnote{...} in the stream. Emitted by the serializer.
-      const vfidMatch = rest.match(/^\\vfid\{/);
-      if (vfidMatch) {
-        const idArg = extractBraced(text, i + "\\vfid".length);
+      if (markerOpensAt(text, i, VIRGIL_MARKERS.footnote)) {
+        const idArg = extractBraced(text, markerArgStart(i, VIRGIL_MARKERS.footnote));
         if (idArg !== null) {
           pendingFootnoteId = idArg.content || null;
           i = idArg.end;
@@ -471,9 +496,8 @@ export function parseInlineContent(
       }
 
       // \vcid{uuid} — same, for citationId.
-      const vcidMatch = rest.match(/^\\vcid\{/);
-      if (vcidMatch) {
-        const idArg = extractBraced(text, i + "\\vcid".length);
+      if (markerOpensAt(text, i, VIRGIL_MARKERS.citation)) {
+        const idArg = extractBraced(text, markerArgStart(i, VIRGIL_MARKERS.citation));
         if (idArg !== null) {
           pendingCitationId = idArg.content || null;
           i = idArg.end;
@@ -486,9 +510,11 @@ export function parseInlineContent(
       // paragraph boundaries; the post-pass `applyLinkedAnchorBoundaries`
       // walks the assembled doc and stamps marks over each open range.
       // Here we emit transient boundary sentinels in the inline stream.
-      const vlidMatch = rest.match(/^\\vlid\{/);
-      if (vlidMatch) {
-        const idArg = extractBraced(text, i + "\\vlid".length);
+      if (markerOpensAt(text, i, VIRGIL_MARKERS.linkedRangeOpen)) {
+        const idArg = extractBraced(
+          text,
+          markerArgStart(i, VIRGIL_MARKERS.linkedRangeOpen),
+        );
         if (idArg !== null) {
           flush();
           nodes.push({
@@ -499,9 +525,11 @@ export function parseInlineContent(
           continue;
         }
       }
-      const vlidendMatch = rest.match(/^\\vlidend\{/);
-      if (vlidendMatch) {
-        const idArg = extractBraced(text, i + "\\vlidend".length);
+      if (markerOpensAt(text, i, VIRGIL_MARKERS.linkedRangeClose)) {
+        const idArg = extractBraced(
+          text,
+          markerArgStart(i, VIRGIL_MARKERS.linkedRangeClose),
+        );
         if (idArg !== null) {
           flush();
           nodes.push({
@@ -1022,7 +1050,7 @@ export function applyLinkedAnchorBoundaries(doc: JSONContent): void {
 
   if (open.length > 0) {
     console.warn(
-      "applyLinkedAnchorBoundaries: unmatched \\vlid opener(s) at EOF; recovery via sidecar reanchoring:",
+      `applyLinkedAnchorBoundaries: unmatched ${VIRGIL_MARKERS.linkedRangeOpen.macro} opener(s) at EOF; recovery via sidecar reanchoring:`,
       open,
     );
   }
@@ -1452,9 +1480,11 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
     // \vexid{uuid} — no-op marker carrying a stable exampleId for the next
     // \ex / \pex we encounter in block context. Emitted by the serializer.
-    const vexidBlockMatch = rest.match(/^\\vexid\{/);
-    if (vexidBlockMatch) {
-      const idArg = extractBraced(ctx.src, ctx.pos + "\\vexid".length);
+    if (markerOpensAt(ctx.src, ctx.pos, VIRGIL_MARKERS.exampleBlock)) {
+      const idArg = extractBraced(
+        ctx.src,
+        markerArgStart(ctx.pos, VIRGIL_MARKERS.exampleBlock),
+      );
       if (idArg !== null) {
         ctx.pendingExampleId = idArg.content || null;
         ctx.pos = idArg.end;
@@ -1470,9 +1500,11 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
     // round-trip. Discard so it doesn't fall through to readParagraph and
     // get absorbed as paragraph text — which would re-serialize on next
     // save and accumulate +1 per cycle.
-    const vxidBlockMatch = rest.match(/^\\vxid\{/);
-    if (vxidBlockMatch) {
-      const idArg = extractBraced(ctx.src, ctx.pos + "\\vxid".length);
+    if (markerOpensAt(ctx.src, ctx.pos, VIRGIL_MARKERS.exampleItem)) {
+      const idArg = extractBraced(
+        ctx.src,
+        markerArgStart(ctx.pos, VIRGIL_MARKERS.exampleItem),
+      );
       if (idArg !== null) {
         ctx.pos = idArg.end;
         continue;
@@ -2128,9 +2160,7 @@ function readParagraph(ctx: ParseContext): string {
         // `paragraph\n\includegraphics{…}` re-merges, absorbing the picture into
         // the paragraph as literal text and losing the graphicsBlock on reload.
         // (`\b` fires fine here — the word ends before the `[`/`{` argument.)
-        /^\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|begin|end|\[|hrulefill|title|author|date|maketitle|includegraphics|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par|ex|pex|xe|vexid|vxid|begingl|endgl)\b/.test(
-          rest
-        )
+        BLOCK_BOUNDARY_COMMAND_RE.test(rest)
       ) {
         // Don't break if the previous content ends with \\ (a hardBreak
         // continuation from shift+enter). Otherwise multi-line LaTeX joined by
@@ -2276,8 +2306,11 @@ function splitPexBody(
       continue;
     }
     // \vxid{xxxx} — id marker preceding the next \a item. Stash and skip.
-    if (body.startsWith("\\vxid{", pos)) {
-      const idArg = extractBraced(body, pos + "\\vxid".length);
+    if (markerOpensAt(body, pos, VIRGIL_MARKERS.exampleItem)) {
+      const idArg = extractBraced(
+        body,
+        markerArgStart(pos, VIRGIL_MARKERS.exampleItem),
+      );
       if (idArg !== null) {
         pendingItemUuid = idArg.content || null;
         pos = idArg.end;

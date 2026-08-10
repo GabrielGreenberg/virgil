@@ -367,6 +367,25 @@ CI: [action-context-honesty.test.ts](src/lib/actions/__tests__/action-context-ho
 
 Flagged, not fixed, and invisible to this guard by construction: `ActionContext.dispatch` has three production reads, and **every one is gated behind `ctx.ref.kind !== "cursor"`** while its sole supplier (the bridge) always synthesizes a `CursorRef` — so no `ctx.dispatch?.()` can fire from that path. The census asks whether a read EXISTS, never whether it can EXECUTE; that is a different guard.
 
+### The vocabulary half: a token two layers must agree on is spelled ONCE
+
+Same law, fourth tense (task 255) — and the one where deleting the dead declaration would have been the *smaller* half of the truth.
+
+The finding was a textbook dead facet: `TEXT_OBJECT_REGISTRY[kind].sourceMarker` declared `vexid`/`vxid`/`vlid` under a header advertising **"source-marker round-trip"** among the things the rest of the system reads off the registry, and after task 064 removed its last proxy reader (`meta.sourceMarker?.idLength === 4`) **nothing read it for three months**. But the round trip it claimed to drive carried the same tokens as hardcoded literals in the serializer's six emit sites, the parser's seven recognition sites *and* its block-boundary command list, the footnote-body parser/serializer, `SHIM_COMMAND_NAMES`, the `.bib` uid regexes, and a line of UI copy in the style editor that named three of the seven. Nothing structural held those copies together.
+
+> **A token that two layers must agree on byte-for-byte is spelled in ONE place, and every layer reads it there. Nothing spells a `\v*` marker command by hand — emitting, parsing, or declaring.**
+
+[src/lib/latex-markers.ts](src/lib/latex-markers.ts) is that place: `VIRGIL_MARKERS`, keyed by the entity each marker identifies, so the record IS the kind→marker map. Four rules it earned:
+
+- **Put the SSOT where the layer that needs it can reach it.** The registry facet was decorative *by construction*, not by neglect: the registry is editor-coupled (TipTap `Editor`, the doc-structure bus, the drop adapters), so the parser and serializer can never import it. That is also why "wire the round-trip to read the registry" was the wrong shape of fix and the module has **zero imports** — a leaf every low-level consumer can take. A facet the layer that needs it cannot import will be re-copied, every time.
+- **Derive the subsets from FACETS, not from a second list.** `containsInternalMarker`'s guard set (the reparse refusal for untrusted suggestion text) is every marker with `file:"tex"` + `position:"inline"`; the parser's block-boundary set is `file:"tex"` + `position:"block"`; `SHIM_COMMAND_NAMES` is *all* of them, because every marker is written into a file LaTeX may compile, so a new one cannot be added and left undeclared. Each facet has real readers — a facet nobody reads is the thing this section is about.
+- **Frozen bytes are DATA, not a spelling.** `style-library.ts`'s `LEGACY_CLASSIC_PREAMBLE_V0`/`_V1` still name three markers inline and must: they record what past build generations wrote, and the v2 migration gate is exact byte equality, so deriving them would seal those libraries out of the upgrade. That is the census's one allowlist entry, and it can only shrink.
+- **The two failure modes are silent in opposite directions.** A renamed command with a stale *parser* makes Virgil emit a document it cannot read back; with a stale *shim list* it emits one LaTeX cannot compile. Neither is a type error, and no round-trip suite could catch either — every one of them spells the token the same way the code it tests does.
+
+Deliberately NOT folded in: the `%!v:xxxx` block anchor and texBlock's `%!vtex:begin/end` sentinel are a different FORM (a trailing comment, no preamble shim) with their own regexes in [uuid.ts](src/lib/uuid.ts); merging two grammars buys a bigger table, not a smaller fork.
+
+CI: [latex-marker-ssot.test.ts](src/lib/__tests__/latex-marker-ssot.test.ts) — the leg with teeth is the **census** (both silos, comments stripped and literals KEPT, since the drift lives in literals), because the module was never the part that could misbehave; a call site spelling its own copy is. It has a THIRD root too (`library/` + `editor/` skill markdown and Python, which the two-silo habit does not reach): markdown cannot import the SSOT, so that leg asserts MEMBERSHIP — every marker-shaped command the skills teach an agent to write is still one the vocabulary knows, which is exactly the rename hazard. `docs/` is deliberately out of that leg, since a design memo may name a marker nobody built. Plus a canary + stripper swallow self-check, the shim/inline-set wiring pins, and a per-marker emit→parse round trip through the REAL parser and serializer, keyed on the `VirgilMarkerId` union so a new marker is a **compile error** until someone states how it survives a save/reload. Three of its legs fail on the pre-fix tree.
+
 ## Style
 
 [src/STYLE_GUIDE.md](src/STYLE_GUIDE.md) is the design-system reference. Check it before building new UI. Update it when a UI decision feels generalizable.
