@@ -9,6 +9,10 @@ import {
 } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { ExampleInfo, EditorHandle } from "@/components/Editor";
+// The `<cardKind>:<cardId>` grammar has one builder (task 202) — the panel
+// card carries the same `data-link-card` token its in-editor marker does, and
+// `parseLinkCardKey` consumers have to keep agreeing with both.
+import { linkCardKey } from "@/links/link-dom-contract";
 import {
   CardEmptyText,
   PanelCard,
@@ -473,7 +477,7 @@ export function ExampleCard({
       isCollapsed={compressed}
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
-      data-link-card={`example:${example.exampleId}`}
+      data-link-card={linkCardKey("example", example.exampleId)}
       {...(extraDataAttrs ?? {})}
       kind="example"
       canJump

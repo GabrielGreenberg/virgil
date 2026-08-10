@@ -1,5 +1,9 @@
 import type { PanelId } from "@/hooks/useViewPrefs";
 import type { SelectionsContextValue } from "./contexts/selections";
+// A selector may spell the ATTRIBUTE name inline, but not the token: the
+// `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
+// is a second speller that silently stops matching if it ever changes (202).
+import { linkCardKey } from "@/links/link-dom-contract";
 
 /**
  * Map a panel id to its "which card is currently selected" state slot
@@ -42,9 +46,9 @@ function panelSelector(panelId: PanelId, id: string): string | null {
   // for footnotes. We OR them so either mode resolves.
   switch (panelId) {
     case "footnotes":
-      return `[data-footnote-entry="${id}"], [data-link-card="footnote:${id}"]`;
+      return `[data-footnote-entry="${id}"], [data-link-card="${linkCardKey("footnote", id)}"]`;
     case "citations":
-      return `[data-link-card="citation:${id}"]`;
+      return `[data-link-card="${linkCardKey("citation", id)}"]`;
     case "archive":
       return `[data-archive-entry="${id}"]`;
     case "notes":

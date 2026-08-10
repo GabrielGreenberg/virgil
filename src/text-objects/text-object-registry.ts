@@ -6,7 +6,10 @@
  * registry: grab-handle layout, popout dispatch, drop adapters, drag-
  * menu actions, source-marker round-trip, marginalia placement.
  *
- * SSOT siblings: `src/panels/panel-registry.ts`, `src/links/link-registry.ts`.
+ * SSOT sibling: `src/panels/panel-registry.ts`. (The link layer has no per-kind
+ * registry — its taxonomy is the `LinkKind` union and its DOM contract is
+ * `src/links/link-dom-contract.ts`; the table that used to sit beside these two
+ * declared behaviour nothing read and was removed in task 202.)
  *
  * See TEXT-OBJECT-REFACTOR.md §3.
  */

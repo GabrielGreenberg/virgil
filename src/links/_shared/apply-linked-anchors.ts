@@ -44,7 +44,7 @@ import type { ModeBReapplyRecord } from "./reapply-mode-b-anchors";
 // linkCard). It does NOT synthesize `linkCard` from the record's `cardId`.
 //
 // WHY: the canonical `data-link-card` grammar is `<spineCardKind>:<id>` (the
-// `linkCardKey` SSOT — `link-registry.ts`), which `parseLinkCardKey` consumers
+// `linkCardKey` SSOT — `link-dom-contract.ts`), which `parseLinkCardKey` consumers
 // (delete-range / drag-handle bindAnchor / duplicate-slice / collectLinksFromEditor)
 // slice back into a spine `CardKind`. The LEGACY mark-`kind` token namespace
 // DIVERGES from the spine kind for exactly the two revision kinds

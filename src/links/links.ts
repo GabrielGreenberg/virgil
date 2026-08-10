@@ -1,18 +1,23 @@
 /**
- * Public API for the Link system.
+ * Public API for the Link system, as it ships.
  *
- * Phase 0: only `collectLinksFromEditor` is implemented. The
- * create/resolve/jump/delete functions throw — callers still use the
- * legacy code paths (footnote CRUD in `Editor.tsx`, the helpers in
- * `src/lib/linked-anchors.ts`, per-entity paragraph-id mutators in
- * `EditorLayout.tsx`). Phases 1–2 absorb those legacy paths into this
- * module.
+ * READ side: `collectLinksFromEditor` derives every in-doc `Link` record
+ * from the live doc; `resolveLink` locates one; `jumpToLink`/`jumpToCard`
+ * navigate; `deleteLink` removes. All live.
  *
- * `collectLinksFromEditor` is pure-ish: it reads the live doc and
- * derives every in-doc `Link` record. It does NOT read card sidecars,
- * so Mode A pure-paragraph anchor links (a card anchored only via
- * `paragraphIds`, with no `linkedAnchor` mark) are NOT returned.
- * Those are added in Phase 2 when card sidecars gain a `links[]` field.
+ * WRITE side: anchors are minted by `createLinkedAnchor` (here) and inline
+ * atoms by the atom commands (`src/lib/tiptap/insert-inline-atom.ts` +
+ * `runAction`). There is deliberately no unified `createLink(kind, …)`
+ * front door — one was scaffolded in Phase 0/1 and never adopted, so it was
+ * removed rather than left as a write path nothing writes through (task 202).
+ * If a unified door is ever wanted, wire it at the call sites in the same
+ * commit; `link-surface-honesty.test.ts` fails an export nothing calls.
+ *
+ * `collectLinksFromEditor` is pure-ish: it reads the live doc and derives
+ * every in-doc `Link` record. It does NOT read card sidecars, so Mode A
+ * pure-paragraph anchor links (a card anchored only via `paragraphIds`,
+ * with no `linkedAnchor` mark) are NOT returned — the card-side derivation
+ * (`derivedLinksForCard`, below) covers those.
  */
 
 import type { Editor } from "@tiptap/react";
@@ -29,7 +34,7 @@ import {
   DATA_LINK_ID,
   linkCardKey,
   parseLinkCardKey,
-} from "./link-registry";
+} from "./link-dom-contract";
 import {
   legacyDataKindForCardKind,
   legacyMarkKindForCardKind,
@@ -40,20 +45,12 @@ import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
 
 // Re-exports so callers import everything from one module.
 export type { Link, LinkAnchor, LinkKind, LinkResolution, LinkTarget, ModeBAnchorLink } from "./_shared/types";
-export { isAnchorLink, isModeB } from "./_shared/types";
-export {
-  LINK_REGISTRY,
-  LinkMultiplicityError,
-  enforceMultiplicity,
-  linkCardKey,
-  parseLinkCardKey,
-  resolveCardKind,
-  resolveLinkPanel,
-  DATA_LINK_ID,
-  DATA_LINK_KIND,
-  DATA_LINK_CARD,
-  DATA_LINK_IDS,
-} from "./link-registry";
+export { isModeB } from "./_shared/types";
+// The DOM contract (`DATA_LINK_*`, `linkCardKey`, `parseLinkCardKey`) is NOT
+// re-exported here. It was, and that is how a dead surface hid for three
+// months: a re-export makes a symbol look referenced to every grep while no
+// caller exists, so the barrel became the only "consumer" of the whole
+// registry subtree (task 202). Import it from `./link-dom-contract` directly.
 
 // ---------------------------------------------------------------------------
 // Kind mapping from legacy `linkedAnchor.kind` attr to CardKind
@@ -154,8 +151,8 @@ export function captureParagraphSnapshot(
  *                                            with targetKind "linkedRange" (Mode B)
  *
  * Mode A pure-paragraph anchor links (no linkedAnchor mark) are NOT
- * returned by this function — they live only in card sidecars until
- * Phase 2.
+ * returned by this function — nothing in the document marks them, so they
+ * are read from the card side instead (`derivedLinksForCard`).
  */
 export function collectLinksFromEditor(editor: Editor): Link[] {
   const doc = editor.state.doc;
@@ -261,8 +258,9 @@ function inferMarginSide(cardKind: CardKind): "left" | "right" {
   // `MARKER_META` in `src/lib/marginalia.ts` already encodes the default
   // side per marker type; we just need the CardKind → side mapping here
   // for `collectLinksFromEditor`'s synthetic Link output. Revisions/cut
-  // are on the right; reports on the left. This defaults to "right"
-  // and is only a hint — Phase 2's real data source is the card record.
+  // are on the right; reports on the left. This defaults to "right" and is
+  // only a HINT on a synthesized link: a real card's side comes from the card
+  // record, which is what every margin surface actually reads.
   switch (cardKind) {
     case "report":
     case "report-request":
@@ -276,203 +274,12 @@ function inferMarginSide(cardKind: CardKind): "left" | "right" {
 // Public API: create / resolve / jump / delete
 // ---------------------------------------------------------------------------
 
-export type CreateLinkArgs =
-  | {
-      kind: "footnote";
-      /** When omitted, a fresh UUID is generated. */
-      targetCardId?: string;
-      /** Tiptap JSONContent for the footnote body. */
-      content?: unknown;
-      title?: string;
-      /** If provided, consume the current selection (Markdown-like
-       *  `\footnote{…}` behavior). Otherwise inserts at cursor. */
-      fromSelection?: boolean;
-    }
-  | {
-      kind: "citation";
-      targetCardId?: string;
-      command: string;
-      displayText?: string;
-    }
-  | {
-      kind: "anchor";
-      /** TextObject kind being anchored to. Use `"linkedRange"` for a
-       *  text-range (Mode B); persistent-node kinds (paragraph, heading,
-       *  listItem, exampleItem, atom blocks, etc.) are Mode A. */
-      targetKind: TextObjectKind;
-      targetCardKind: CardKind;
-      targetCardId: string;
-      textObjectIds: string[];
-      textRange?: { from: number; to: number };
-    };
-
-/** Create a new link. */
-export function createLink(editor: Editor, args: CreateLinkArgs): Link {
-  if (args.kind === "footnote") return createFootnoteLink(editor, args);
-  if (args.kind === "citation") return createCitationLink(editor, args);
-  if (args.kind === "anchor") return createAnchorLink(editor, args);
-  throw new Error(
-    `createLink: kind "${(args as { kind: string }).kind}" not supported.`,
-  );
-}
-
-function createFootnoteLink(
-  editor: Editor,
-  args: Extract<CreateLinkArgs, { kind: "footnote" }>,
-): Link {
-  const linkId = args.targetCardId ?? generateEntityId();
-  const cardKey = linkCardKey("footnote", linkId);
-  let content = args.content ?? null;
-  const chain = editor.chain().focus();
-
-  if (args.fromSelection) {
-    const { from, to } = editor.state.selection;
-    if (from !== to) {
-      const text = editor.state.doc.textBetween(from, to, " ");
-      if (text.trim()) {
-        content = content ?? {
-          type: "doc",
-          content: [{ type: "paragraph", content: [{ type: "text", text }] }],
-        };
-        chain.deleteSelection();
-      }
-    }
-  }
-
-  chain
-    .insertContent({
-      type: "footnote",
-      attrs: {
-        content,
-        title: args.title ?? "",
-        number: 0,
-        footnoteId: linkId,
-        linkId,
-        linkKind: "footnote",
-        linkCard: cardKey,
-      },
-    })
-    .run();
-
-  const pos = findInlineAtomPos(editor, "footnote", linkId);
-  return {
-    id: linkId,
-    kind: "footnote",
-    anchor: { type: "inline-atom", nodeName: "footnote", pos },
-    target: { type: "card", ref: { kind: "footnote", id: linkId } },
-    createdAt: new Date().toISOString(),
-  };
-}
-
-function createAnchorLink(
-  editor: Editor,
-  args: Extract<CreateLinkArgs, { kind: "anchor" }>,
-): Link {
-  const linkId = generateEntityId();
-  const cardKey = linkCardKey(args.targetCardKind, args.targetCardId);
-
-  // Mode B: wrap the text range in a linkedAnchor mark.
-  let textRange: { anchorId: string; textSnapshot: string } | undefined;
-  if (args.textRange) {
-    const { from, to } = args.textRange;
-    if (to > from) {
-      const snapshot = editor.state.doc.textBetween(from, to, " ");
-      const ok = editor
-        .chain()
-        .setTextSelection(args.textRange)
-        .setMark("linkedAnchor", {
-          anchorId: linkId,
-          // `?? "note"` is unreachable-defensive: `createAnchorLink` only ever
-          // runs for an anchor-bearing CardKind, all nine of which map to a real
-          // legacy mark kind. A non-anchor kind would be a caller bug, not the
-          // old silent revision/report mislabel. Reads the crosswalk SSOT
-          // (`legacyMarkKindForCardKind`) directly — no hand-rolled twin.
-          kind: legacyMarkKindForCardKind(args.targetCardKind) ?? "note",
-          linkId,
-          linkKind: "anchor",
-          linkCard: cardKey,
-        })
-        .setTextSelection(from)
-        .run();
-      if (ok) textRange = { anchorId: linkId, textSnapshot: snapshot };
-    }
-  }
-
-  // TextObject ids: either explicit, or derived from the text range's
-  // containing paragraph.
-  let textObjectIds = args.textObjectIds.slice();
-  if (textObjectIds.length === 0 && args.textRange) {
-    const pid = paragraphUuidAt(editor.state.doc, args.textRange.from);
-    if (pid) textObjectIds = [pid];
-  }
-
-  return {
-    id: linkId,
-    kind: "anchor",
-    anchor: {
-      type: "textObject",
-      targetKind: args.targetKind,
-      textObjectIds,
-      margin: { side: inferMarginSide(args.targetCardKind) },
-      ...(textRange ? { textRange } : {}),
-    },
-    target: { type: "card", ref: { kind: args.targetCardKind, id: args.targetCardId } },
-    createdAt: new Date().toISOString(),
-  };
-}
-
-/** Inverse of `linkedAnchorKindToCardKind`: spine `CardKind` → the legacy
- *  `linkedAnchor.kind` mark-attr value. EXHAUSTIVE over the nine anchor-bearing
- *  CardKinds — both revision kinds and both cutter/report kinds fold to their
- *  shared marker namespace (`revision-suggestion` → `revision`, `report-request`
- *  → `report-request`, …). A non-anchor CardKind (footnote / citation / example /
- *  archive / bib / ai / error) never carries a `linkedAnchor` mark and returns
- *  `null` — this REPLACES the old silent `default: "note"` that mislabeled
- *  `revision-suggestion` / `report` / `report-request` anchors as notes (the
- *  BUG1 kind-corruption class, but at create time). Exported for the reload
- *  re-stamp + kind-aware orphan glue. Kept until the mark's `kind` attr is
- *  dropped in Phase 3 cleanup.
- *
- *  Thin adapter over the crosswalk SSOT (`legacyMarkKindForCardKind`) so it can't
- *  drift from the declaration — every value it returns is a `LinkedAnchorKind`
- *  (the crosswalk's mark-kind namespace is a subset of that union). */
-export function cardKindToLegacyAnchorKind(
-  cardKind: CardKind,
-): LinkedAnchorKind | null {
-  return (legacyMarkKindForCardKind(cardKind) as LinkedAnchorKind | null) ?? null;
-}
-
-function createCitationLink(
-  editor: Editor,
-  args: Extract<CreateLinkArgs, { kind: "citation" }>,
-): Link {
-  const linkId = args.targetCardId ?? generateEntityId();
-  const cardKey = linkCardKey("citation", linkId);
-  editor
-    .chain()
-    .focus()
-    .insertContent({
-      type: "citation",
-      attrs: {
-        command: args.command,
-        displayText: args.displayText ?? "",
-        citationId: linkId,
-        linkId,
-        linkKind: "citation",
-        linkCard: cardKey,
-      },
-    })
-    .run();
-
-  const pos = findInlineAtomPos(editor, "citation", linkId);
-  return {
-    id: linkId,
-    kind: "citation",
-    anchor: { type: "inline-atom", nodeName: "citation", pos },
-    target: { type: "card", ref: { kind: "citation", id: linkId } },
-    createdAt: new Date().toISOString(),
-  };
-}
+// The unified create door (`createLink` + its three kind builders) and the
+// `cardKindToLegacyAnchorKind` adapter that only it reached were removed in
+// task 202: zero callers since Phase 1, while real footnote/citation creation
+// went through the atom commands and real anchors through `createLinkedAnchor`
+// below. The crosswalk SSOT they wrapped is live and unchanged
+// (`legacyMarkKindForCardKind` in `@/cards/legacy-token-crosswalk`).
 
 /** Locate `link` in the live editor. Returns null if it's missing. */
 export function resolveLink(
@@ -781,9 +588,10 @@ function removeLinkedAnchorMark(editor: Editor, anchorId: string): void {
 
 // ---------------------------------------------------------------------------
 // Legacy linked-anchor API (absorbed from src/lib/linked-anchors.ts).
-// These five exports preserve the signatures that callers depended on
-// before the Link unification. New code should prefer `createLink`,
-// `resolveLink`, `deleteLink`.
+// These five exports preserve the signatures that callers depended on before
+// the Link unification. "Legacy" is now a historical label, not a deprecation:
+// this line used to send new code to `createLink`, which never had a caller and
+// was deleted in task 202. `createLinkedAnchor` IS the anchor write path.
 // ---------------------------------------------------------------------------
 
 export type LinkedAnchorKind =
@@ -1505,17 +1313,6 @@ export function isModeAOrphaned(
   return hasModeA;
 }
 
-/** Convenience: a Set of all paragraph UUIDs across a list of cards. */
-export function collectAllLinkedParagraphIds(
-  cards: readonly CardWithLinks[],
-): Set<string> {
-  const out = new Set<string>();
-  for (const c of cards) {
-    for (const pid of getLinkedTextObjectIds(c)) out.add(pid);
-  }
-  return out;
-}
-
 function makeAnchorLink(
   cardKind: CardKind,
   cardId: string,
@@ -1645,29 +1442,6 @@ export function removeTextObjectLink<T extends CardWithLinks>(
     });
   }
   return changed ? { ...card, links: next } : card;
-}
-
-/** Replace all paragraph anchors on the card with `textObjectIds`. */
-export function setParagraphLinks<T extends CardWithLinks>(
-  card: T,
-  cardKind: CardKind,
-  textObjectIds: string[],
-): T {
-  const textAnchor = getTextAnchor(card);
-  const links: Link[] = [];
-  if (textAnchor) {
-    links.push(
-      makeAnchorLink(cardKind, card.id, "linkedRange", textObjectIds, {
-        anchorId: textAnchor.anchorId,
-        textSnapshot: textAnchor.anchorText,
-      }),
-    );
-  } else {
-    for (const pid of textObjectIds) {
-      links.push(makeAnchorLink(cardKind, card.id, "paragraph", [pid]));
-    }
-  }
-  return { ...card, links };
 }
 
 /** Set a Mode B text-range anchor on the card. Preserves existing

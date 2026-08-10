@@ -10,6 +10,14 @@ import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
 // from ATOM_REGISTRY (that would silently kill InlineAtomGrab for this kind).
 // Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+// The link DOM contract + the `<cardKind>:<cardId>` grammar, from their one
+// speller (task 202) — a hand-built `footnote:${id}` here was a second copy.
+import {
+  DATA_LINK_CARD,
+  DATA_LINK_ID,
+  DATA_LINK_KIND,
+  linkCardKey,
+} from "@/links/link-dom-contract";
 
 const FOOTNOTE_ATOM = ATOM_REGISTRY.footnote;
 // FN-A1-02: orphan-worthiness reads the SAME registry-driven content model as
@@ -109,15 +117,15 @@ export const Footnote = Node.create<FootnoteOptions>({
       "";
     const linkCard =
       (node.attrs.linkCard as string) ||
-      (footnoteId ? `footnote:${footnoteId}` : "");
+      (footnoteId ? linkCardKey("footnote", footnoteId) : "");
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": FOOTNOTE_ATOM.domType,
         class: FOOTNOTE_ATOM.domClass,
-        "data-link-id": footnoteId,
-        "data-link-kind": "footnote",
-        "data-link-card": linkCard,
+        [DATA_LINK_ID]: footnoteId,
+        [DATA_LINK_KIND]: "footnote",
+        [DATA_LINK_CARD]: linkCard,
         ...(node.attrs.thanks ? { "data-thanks": "true" } : {}),
       }),
       node.attrs.thanks ? "A" : String(node.attrs.number || "1"),

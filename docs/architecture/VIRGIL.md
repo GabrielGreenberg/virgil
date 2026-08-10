@@ -118,7 +118,7 @@ Rule of thumb: if a section would reproduce a JSON schema field-by-field, it ins
 ---
 
 ## Ontology
-<!-- covers-code: src/text-objects/text-object-registry.ts, src/lib/tiptap/atom-registry.ts, src/panels/_shared/types.ts, src/links/link-registry.ts, src/lib/tiptap, src/lib/latex-serializer.ts -->
+<!-- covers-code: src/text-objects/text-object-registry.ts, src/lib/tiptap/atom-registry.ts, src/panels/_shared/types.ts, src/links/link-dom-contract.ts, src/lib/tiptap, src/lib/latex-serializer.ts -->
 
 *Conceptual; frozen in `EDITOR_SKILLS_V1.html` §2 and the brainstorm §20 decisions log. The exhaustive per-marker current-state lives in [UUID marker emission](#uuid-marker-emission) below; the per-kind card taxonomy remains stubbed pending the card refactor.*
 
@@ -243,7 +243,7 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 |---|---|
 | Panel taxonomy | `PANEL_REGISTRY` in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts); `PanelKind` union in [src/panels/_shared/types.ts](../../src/panels/_shared/types.ts) |
 | Card taxonomy | `CARD_REGISTRY` in [src/cards/card-registry.tsx](../../src/cards/card-registry.tsx); `CardKind` / `CardMeta` in [src/cards/types.ts](../../src/cards/types.ts) (`src/panels/_shared/types.ts` re-exports `CardKind`). The satellite tables (`CARD_KEY_PREFIXES`, labels, panel membership, `StackCardKind`) are registry-derived — never hand-kept. |
-| Link kinds | `LINK_REGISTRY` in [src/links/link-registry.ts](../../src/links/link-registry.ts) |
+| Link kinds | The `LinkKind` union in [src/links/_shared/types.ts](../../src/links/_shared/types.ts) — no per-kind registry (task 202 deleted `LINK_REGISTRY` as a table nothing read). The link layer's one SSOT is its DOM contract, [src/links/link-dom-contract.ts](../../src/links/link-dom-contract.ts). |
 | TextObject kinds | `TEXT_OBJECT_REGISTRY` in [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts) |
 | Editing actions (all four surfaces) | `VIRGIL_ACTION_REGISTRY` in [src/lib/actions/action-registry.ts](../../src/lib/actions/action-registry.ts) — one row per action across grab-handle menu, margin bolt (the far-right lightning panel), slash commands, typed-LaTeX input rules. The two live menus render from it; PM→React dispatch via [src/lib/actions/editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts). |
 | Action-menu keyboard behavior | The `<Menu>` primitive in [src/components/menu/](../../src/components/menu/) — build new action menus on `MenuProvider` + `useMenuItem` (one per-provider `MenuRegistry`, arrow/letter nav in `nav-core.ts`); don't roll your own keyboard handling. Migrated menus: grab-bar, lightning panel, color/label/heading/tab-plus popovers, bib-entry combobox, MenuBar block-type + view menus. The slash popup is a documented exception. |
