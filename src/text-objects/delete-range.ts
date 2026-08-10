@@ -28,7 +28,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/react";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 import type { CardKind } from "@/panels/_shared/types";
-import { parseLinkCardKey } from "@/links/link-registry";
+import { parseLinkCardKey } from "@/links/link-dom-contract";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,

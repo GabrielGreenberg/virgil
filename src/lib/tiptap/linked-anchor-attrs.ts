@@ -33,6 +33,14 @@
  */
 
 import { dataLinkCardTokenForLegacyMarkKind } from "@/cards/legacy-token-crosswalk";
+// The DOM contract has one speller (task 202): every producer emits the
+// attribute names from this module, so a rename cannot land at three of four
+// sites. Pinned by `src/links/__tests__/link-surface-honesty.test.ts`.
+import {
+  DATA_LINK_CARD,
+  DATA_LINK_ID,
+  DATA_LINK_KIND,
+} from "@/links/link-dom-contract";
 
 export interface LinkedAnchorAttrsInput {
   anchorId?: unknown;
@@ -71,11 +79,11 @@ export function linkedAnchorRenderAttrs(
 
   const out: Record<string, string> = {
     class: "linked-anchor",
-    "data-link-id": anchorId,
-    "data-link-kind": "anchor",
+    [DATA_LINK_ID]: anchorId,
+    [DATA_LINK_KIND]: "anchor",
   };
   // Omit data-link-card entirely for a transient handle so no colour rule
   // matches; every other anchor always carries it (possibly empty).
-  if (!transient) out["data-link-card"] = linkCard;
+  if (!transient) out[DATA_LINK_CARD] = linkCard;
   return out;
 }

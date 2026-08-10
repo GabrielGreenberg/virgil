@@ -26,6 +26,10 @@ import {
   unanchoredCardTitle,
 } from "@/components/panel-primitives";
 import { FONT_STACKS } from "@/lib/panel-typography";
+// The `<cardKind>:<cardId>` grammar has one builder (task 202) — the panel
+// card carries the same `data-link-card` token its in-editor marker does, and
+// `parseLinkCardKey` consumers have to keep agreeing with both.
+import { linkCardKey } from "@/links/link-dom-contract";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -772,7 +776,7 @@ export function CitationCard({
 
   const card = (
     <PanelCard
-      data-link-card={`citation:${cit.id}`}
+      data-link-card={linkCardKey("citation", cit.id)}
       data-pristine-card-id={cit.id}
       data-card-key={cardKey}
       {...(extraDataAttrs || {})}

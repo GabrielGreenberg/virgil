@@ -23,6 +23,13 @@
  */
 
 import { useSyncExternalStore } from "react";
+// The strip list must mirror what the atom PRODUCERS emit, so it spells the
+// attribute names from the same module they do (task 202).
+import {
+  DATA_LINK_CARD,
+  DATA_LINK_ID,
+  DATA_LINK_KIND,
+} from "@/links/link-dom-contract";
 
 export interface InlineAtomGhostState {
   /** Sanitized, detached clone of the grabbed atom's NodeView DOM. */
@@ -52,11 +59,19 @@ function emit(): void {
  *  identity — stripped so the ghost is a clean visual snapshot. Mirrors the
  *  clone sanitize in `TextObjectGrabHandle`/`LiftedTextOverlay`; the
  *  `data-link-*` / id attrs are atom-specific and defensive (the ghost is
- *  `pointer-events:none`, so its clone never satisfies a hit-test anyway). */
+ *  `pointer-events:none`, so its clone never satisfies a hit-test anyway).
+ *
+ *  Half constant, half literal, on purpose. The first three are the parser-facing
+ *  link DOM CONTRACT and come from its one speller. The rest — including
+ *  `data-link-highlight`, which despite the prefix is transient view state
+ *  written by `useLinkHighlight` and read only by CSS — are private view attrs
+ *  with no cross-repo consumer, so they are not contract members and the
+ *  contract module deliberately does not declare them. If one of them ever gains
+ *  a second producer, single-source it where it is produced, not here. */
 const STRIP_ATTRS = [
-  "data-link-id",
-  "data-link-kind",
-  "data-link-card",
+  DATA_LINK_ID,
+  DATA_LINK_KIND,
+  DATA_LINK_CARD,
   "data-link-highlight",
   "data-tint-color",
   "data-card-hovered",

@@ -106,14 +106,14 @@ Why the invariant is written down (task 264): `VERBATIM_ENVS_FULL` was unified f
 
 ## Link architecture
 
-**SSOT: [src/links/link-registry.ts](../../src/links/link-registry.ts).** Types in [src/links/_shared/types.ts](../../src/links/_shared/types.ts). Resolvers/creators/deleters in [src/links/links.ts](../../src/links/links.ts).
+**SSOT: the `LinkKind` union + `Link` shape in [src/links/_shared/types.ts](../../src/links/_shared/types.ts).** Resolvers/jump/delete + `createLinkedAnchor` in [src/links/links.ts](../../src/links/links.ts); the marker DOM contract in [src/links/link-dom-contract.ts](../../src/links/link-dom-contract.ts). There is no per-kind link registry: `LINK_REGISTRY` was one, nothing read it, and task 202 deleted it — the table below is documentation of what the code does, not a mirror of a runtime table.
 
 ### Three kinds
 
 | Kind | Anchor | Marker (in text) | Multiplicity | Card kind(s) |
 |---|---|---|---|---|
-| `footnote` | inline atom (footnote node) | superscript number | 1:1 | footnote |
-| `citation` | inline atom (citation node) | styled pill | 1:1 | citation |
+| `footnote` | inline atom (footnote node) | superscript number | 1:1 (structural — each link mints its target card id, so two cannot share one) | footnote |
+| `citation` | inline atom (citation node) | styled pill | 1:1 (same, structural) | citation |
 | `anchor` | any TextObject (`targetKind`) — paragraph, heading, list item, example item, atom block, or linkedRange | margin icon (+ optional text highlight for `linkedRange`) | many | note, highlight, revision, cut, archive, todo, report |
 
 ### Anchor shape (Mode A / Mode B unified)

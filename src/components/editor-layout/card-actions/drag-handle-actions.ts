@@ -51,7 +51,7 @@ import { ATOM_CREATE_POPOVER_EVENT } from "@/lib/actions/atom-create";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
-import { parseLinkCardKey } from "@/links/link-registry";
+import { parseLinkCardKey } from "@/links/link-dom-contract";
 import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
   TEXT_OBJECT_REGISTRY,

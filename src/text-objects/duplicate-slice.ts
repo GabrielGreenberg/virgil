@@ -42,7 +42,7 @@ import { isTextObjectKind } from "./text-object-registry";
 import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { generateEntityId, generateShortId } from "@/lib/uuid";
-import { linkCardKey, parseLinkCardKey } from "@/links/link-registry";
+import { linkCardKey, parseLinkCardKey } from "@/links/link-dom-contract";
 import { remintNestedAtomIds } from "@/lib/inline-content";
 
 /** Inline-atom card lookup — node-type-name → { CardKind, id-attr-name }.

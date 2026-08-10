@@ -32,6 +32,13 @@
 import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 
+/** The link taxonomy, declared ONCE. Each kind's behaviour is decided by the
+ *  code that ships it (the atom node specs, `createLinkedAnchor`, the
+ *  highlight reconciler) — there is deliberately no parallel per-kind table
+ *  restating it. One existed (`LINK_REGISTRY`) and drifted into fiction:
+ *  it declared connector strokes for a component that had been deleted and a
+ *  multiplicity rule nothing enforced (task 202). The DOM attributes each
+ *  kind's marker carries are in `../link-dom-contract.ts`. */
 export type LinkKind = "footnote" | "citation" | "anchor";
 
 export type LinkAnchor =
@@ -103,10 +110,6 @@ export type ModeBAnchorLink = Link & {
     textRange: NonNullable<Extract<LinkAnchor, { type: "textObject" }>["textRange"]>;
   };
 };
-
-export function isAnchorLink(link: Link): link is Link & { anchor: Extract<LinkAnchor, { type: "textObject" }> } {
-  return link.anchor.type === "textObject";
-}
 
 export function isModeB(link: Link): link is ModeBAnchorLink {
   return link.anchor.type === "textObject" && link.anchor.targetKind === "linkedRange";

@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Per-CardKind lifecycle SSOT. Sister of [panel-registry.ts](./panel-registry.ts) and
- * [src/links/link-registry.ts](../links/link-registry.ts). Mirrors the
+ * Per-CardKind lifecycle SSOT. Sister of [panel-registry.ts](./panel-registry.ts).
+ * Mirrors the
  * `registerFloatBody` / `floatBodyComponent` slot pattern in
  * [src/text-objects/text-object-registry.ts](../text-objects/text-object-registry.ts).
  *

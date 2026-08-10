@@ -2,6 +2,8 @@
 
 Working memo. Captures the design conversation that produced it, the implementation plan, and progress through the refactor. The implementing session should read this end-to-end before touching code, and consult it whenever a question arises about scope or shape.
 
+> **Correction, 2026-08-10 (task 202).** This memo repeatedly names `LINK_REGISTRY` / `src/links/link-registry.ts` as an SSOT sibling of `TEXT_OBJECT_REGISTRY` and `PANEL_REGISTRY`. It was one on paper and never in fact — nothing read it — and it has been deleted. The link layer's taxonomy is the `LinkKind` union in [src/links/\_shared/types.ts](src/links/_shared/types.ts) and its one SSOT is the DOM contract in [src/links/link-dom-contract.ts](src/links/link-dom-contract.ts). The rest of this memo is left as written; it is a record of what was planned, not a description of what ships.
+
 ---
 
 ## Progress (updated 2026-05-26, session 10 — grab-handle visibility regression resolved; portal moved out of pod's clipPath subtree)

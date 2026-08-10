@@ -155,22 +155,16 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
   }, [selection, editor, collections]);
 }
 
-/** Imperative escape hatch for callers that need to set selection without
- *  triggering placement (e.g. Search → openItemInPanel). The flag is
- *  consumed by `usePlacement`'s effect on every entry (including the entry
- *  triggered by this very setSelection call), so the suppression is
- *  reliable. No microtask clear: `useEffect` is a passive (macrotask)
- *  effect, so a microtask clear would race and consume the flag BEFORE
- *  the effect runs. */
+/** The suppress flag. Consumed by `usePlacement`'s effect on every entry
+ *  (including the entry triggered by the very setter that raised it), so the
+ *  suppression is reliable. No microtask clear: `useEffect` is a passive
+ *  (macrotask) effect, so a microtask clear would race and consume the flag
+ *  BEFORE the effect runs.
+ *
+ *  A second, store-taking raiser (`setSelectionWithoutPlacement`) sat here
+ *  with zero callers and was removed in task 202 — every real caller raises
+ *  the flag then calls its own setter, which is the shape below. */
 let _suppressNextPlacement = false;
-export function setSelectionWithoutPlacement(
-  store: CardStore,
-  ref: AnchoredCardRef | null,
-): void {
-  _suppressNextPlacement = true;
-  if (ref) store.select(ref);
-  else store.clearSelection();
-}
 
 /** Imperative escape hatch for callers that change selection via the
  *  legacy slot setters (which route through cardStore.select) and

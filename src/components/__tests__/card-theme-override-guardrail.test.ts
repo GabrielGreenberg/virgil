@@ -76,7 +76,7 @@
 //     does. A one-silo census is how ungoverned sites accumulate.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -112,10 +112,12 @@ const PERMITTED_FROZEN_TABLE_READERS: Record<string, string> = {
 // the colour is not a paint decision that belongs to `panel-theme` — and the
 // ONLY such reason so far is "nothing paints from it," which is a fact with an
 // expiry date, pinned by its own test below.
-const PERMITTED_KIND_KEYED_COLOR_TABLES: Record<string, string> = {
-  "links/link-registry.ts::LINK_REGISTRY":
-    "`connectorStroke.color` on the footnote/citation entries — DECLARED BUT INERT: `connectorStroke` has zero readers in EITHER silo, so no pixel is painted from it. The moment a connector renderer is built, its colour must come from `useCardTheme(CARD_REGISTRY[cardKind].themeKey)` and this entry must GO, not grow — pinned by the inertness test below.",
-};
+// EMPTY, and that is the point. Its one entry was `LINK_REGISTRY.connectorStroke`
+// — declared-but-inert stroke colours for a connector component that had already
+// been hard-deleted. Task 178 wrote "the moment a connector renderer is built
+// this entry must GO, not grow"; task 202 found the whole table was dead and
+// deleted it, so the entry went the other way. The test below pins the deletion.
+const PERMITTED_KIND_KEYED_COLOR_TABLES: Record<string, string> = {};
 const PERMITTED_LIBRARY_KIND_KEYED_COLOR_TABLES: Record<string, string> = {};
 
 /** Colour LITERALS, in every dialect this repo actually paints in: hex,
@@ -385,26 +387,36 @@ describe("accent-bypass guardrail — the frozen colour tables are defaults-only
     },
   );
 
-  it("the one allowlisted kind-keyed colour table is still inert", () => {
-    // The justification on file is "nothing paints from it". That is a fact
-    // about the repo, not a property of the declaration, so it is checked in
-    // BOTH silos: wiring a connector renderer anywhere must fail CI until the
-    // colour derives from the theme. (`library/` imports `src/` through the
-    // `@/` alias, so a library-side renderer can reach LINK_REGISTRY.)
-    const readers = [
+  it("no connector stroke palette exists to be painted from (task 178 → 202)", () => {
+    // 178 allowlisted `LINK_REGISTRY.connectorStroke` on the strength of
+    // "nothing paints from it" — a fact about the repo with an expiry date.
+    // 202 collected: the table it lived on declared connector styles for a
+    // component deleted in 96675ca1, a multiplicity rule nothing enforced, and
+    // a card-kind mapping decided elsewhere, so the whole table went. Checked
+    // in BOTH silos (`library/` reaches `src/` through the `@/` alias): a
+    // connector renderer may absolutely be built, but its colour comes from
+    // `useCardTheme(CARD_REGISTRY[cardKind].themeKey)`, never from a per-kind
+    // stroke table reinstated here.
+    const declarers = [
       ...files.map((f) => ["src", path.relative(SRC, f).split(path.sep).join("/"), f] as const),
       ...libraryFiles.map((f) => ["library", path.relative(LIBRARY, f).split(path.sep).join("/"), f] as const),
     ]
-      .filter(([silo, rel]) => !(silo === "src" && rel === "links/link-registry.ts"))
       .filter(([, , full]) => /\bconnectorStroke\b/.test(runtimeText(readFileSync(full, "utf8"))))
       .map(([silo, rel]) => `${silo}/${rel}`);
 
     expect(
-      readers,
-      "`connectorStroke` now has a consumer, so its hard-coded colour is being PAINTED. " +
-        "Derive it from useCardTheme(CARD_REGISTRY[cardKind].themeKey) and delete the " +
-        "PERMITTED_KIND_KEYED_COLOR_TABLES entry.",
+      declarers,
+      "`connectorStroke` is back. A connector's colour must derive from " +
+        "useCardTheme(CARD_REGISTRY[cardKind].themeKey) at paint time, not from a " +
+        "per-kind stroke table — see THE SECOND LAW at the top of this file.",
     ).toEqual([]);
+
+    // And the dead SSOT it hung on stays retired.
+    expect(
+      existsSync(path.join(SRC, "links/link-registry.ts")),
+      "src/links/link-registry.ts is back — it was deleted in task 202 as a " +
+        "registry nothing read; the live half is src/links/link-dom-contract.ts.",
+    ).toBe(false);
   });
 
   it("the AI-request inbox declares labels, not colours (task 178)", () => {

@@ -3,10 +3,14 @@
 // CHIP 1 foundation — the CardKind↔LinkedAnchorKind crosswalk + the tint SSOT.
 //
 // These pin the two map-completeness fixes the unified anchor fix depends on:
-//   1. `cardKindToLegacyAnchorKind` is EXHAUSTIVE — `revision-suggestion`,
-//      `report`, and `report-request` now stamp their CORRECT mark kind instead
+//   1. `legacyMarkKindForCardKind` is EXHAUSTIVE — `revision-suggestion`,
+//      `report`, and `report-request` stamp their CORRECT mark kind instead
 //      of the old silent `"note"` default (the BUG1 kind-corruption class at
-//      create time); non-anchor kinds return `null`.
+//      create time); non-anchor kinds return `null`. (Task 202 deleted the
+//      `cardKindToLegacyAnchorKind` pass-through these legs used to call — its
+//      only reachable caller was the dead `createAnchorLink` — so they now
+//      assert on the crosswalk SSOT itself, which is what they were always
+//      really pinning.)
 //   2. `defaultTintForLinkedAnchorKind` is the single source for the highlight
 //      tint (the theme-accent sentinel for highlight, `null` otherwise) — so create and reload
 //      derive the same tint.
@@ -33,7 +37,6 @@ vi.mock("@/lib/storage", () => {
 });
 
 import {
-  cardKindToLegacyAnchorKind,
   legacyAnchorKindToCardKind,
   legacyKindToCardKindString,
 } from "@/links/links";
@@ -44,29 +47,29 @@ import {
   legacyMarkKindToCardKind,
 } from "@/cards/legacy-token-crosswalk";
 
-describe("cardKindToLegacyAnchorKind — exhaustive, no silent note default", () => {
+describe("legacyMarkKindForCardKind — exhaustive, no silent note default", () => {
   it("folds both revision kinds to the shared `revision` marker", () => {
-    expect(cardKindToLegacyAnchorKind("revision-comment")).toBe("revision");
-    expect(cardKindToLegacyAnchorKind("revision-suggestion")).toBe("revision");
+    expect(legacyMarkKindForCardKind("revision-comment")).toBe("revision");
+    expect(legacyMarkKindForCardKind("revision-suggestion")).toBe("revision");
   });
 
   it("maps report / report-request to their own kinds (was mislabeled `note`)", () => {
-    expect(cardKindToLegacyAnchorKind("report")).toBe("report");
-    expect(cardKindToLegacyAnchorKind("report-request")).toBe("report-request");
+    expect(legacyMarkKindForCardKind("report")).toBe("report");
+    expect(legacyMarkKindForCardKind("report-request")).toBe("report-request");
   });
 
   it("passes the simple anchor kinds through", () => {
-    expect(cardKindToLegacyAnchorKind("note")).toBe("note");
-    expect(cardKindToLegacyAnchorKind("highlight")).toBe("highlight");
-    expect(cardKindToLegacyAnchorKind("todo")).toBe("todo");
-    expect(cardKindToLegacyAnchorKind("cutter-comment")).toBe("cutter-comment");
-    expect(cardKindToLegacyAnchorKind("cutter-suggestion")).toBe("cutter-suggestion");
+    expect(legacyMarkKindForCardKind("note")).toBe("note");
+    expect(legacyMarkKindForCardKind("highlight")).toBe("highlight");
+    expect(legacyMarkKindForCardKind("todo")).toBe("todo");
+    expect(legacyMarkKindForCardKind("cutter-comment")).toBe("cutter-comment");
+    expect(legacyMarkKindForCardKind("cutter-suggestion")).toBe("cutter-suggestion");
   });
 
   it("returns null for non-anchor kinds (no silent note fallback)", () => {
-    expect(cardKindToLegacyAnchorKind("footnote")).toBeNull();
-    expect(cardKindToLegacyAnchorKind("citation")).toBeNull();
-    expect(cardKindToLegacyAnchorKind("archive")).toBeNull();
+    expect(legacyMarkKindForCardKind("footnote")).toBeNull();
+    expect(legacyMarkKindForCardKind("citation")).toBeNull();
+    expect(legacyMarkKindForCardKind("archive")).toBeNull();
   });
 
   it("round-trips through legacyKindToCardKindString to a real data-link-card token", () => {
@@ -122,9 +125,17 @@ describe("links.ts CardKind↔legacy-kind projections agree with the crosswalk S
     "footnote", "citation", "example", "archive", "bib", "error",
   ];
 
-  it("cardKindToLegacyAnchorKind == legacyMarkKindForCardKind for every CardKind", () => {
-    for (const kind of [...ANCHOR_CARD_KINDS, ...NON_ANCHOR_CARD_KINDS]) {
-      expect(cardKindToLegacyAnchorKind(kind)).toBe(legacyMarkKindForCardKind(kind));
+  it("legacyMarkKindForCardKind answers every CardKind — mark kind or null", () => {
+    // The old leg here asserted the deleted `cardKindToLegacyAnchorKind`
+    // pass-through equalled its SSOT; with the alias gone that reads as
+    // `x === x`. What it was standing in for is TOTALITY: no CardKind falls
+    // through to `undefined`, which is how the pre-203 hand-rolled copy
+    // silently dropped todo / report / report-request.
+    for (const kind of ANCHOR_CARD_KINDS) {
+      expect(legacyMarkKindForCardKind(kind), kind).toBeTruthy();
+    }
+    for (const kind of NON_ANCHOR_CARD_KINDS) {
+      expect(legacyMarkKindForCardKind(kind), kind).toBeNull();
     }
   });
 

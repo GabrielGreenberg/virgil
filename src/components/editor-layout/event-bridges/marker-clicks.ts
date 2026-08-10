@@ -1,6 +1,10 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { Editor } from "@tiptap/react";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+// A selector may spell the ATTRIBUTE name inline, but not the token: the
+// `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
+// is a second speller that silently stops matching if it ever changes (202).
+import { linkCardKey } from "@/links/link-dom-contract";
 // Pure dock-stack derivation — imported from the LEAF (not the hook module) so
 // this bridge stays clear of `useViewPrefs`'s heavy `OmniViewPanel` → storage
 // runtime chain (see view-prefs-derived.ts + anchor-route-derivation-contract).
@@ -285,7 +289,7 @@ export function useMarkerClickBridges(deps: {
       openForCard(
         {
           omniKey: cardPopKey("footnote", detail.footnoteId),
-          entrySelector: `[data-footnote-entry="${detail.footnoteId}"], [data-link-card="footnote:${detail.footnoteId}"]`,
+          entrySelector: `[data-footnote-entry="${detail.footnoteId}"], [data-link-card="${linkCardKey("footnote", detail.footnoteId)}"]`,
           panelId: "footnotes",
           cardKind: "footnote",
           // skipScroll: alignment is handled by shifting the omni cards
@@ -330,7 +334,7 @@ export function useMarkerClickBridges(deps: {
       openForCard(
         {
           omniKey: cardPopKey("citation", detail.citationId),
-          entrySelector: `[data-link-card="citation:${detail.citationId}"]`,
+          entrySelector: `[data-link-card="${linkCardKey("citation", detail.citationId)}"]`,
           panelId: "citations",
           cardKind: "citation",
           // skipScroll: alignment is handled by shifting the omni cards
