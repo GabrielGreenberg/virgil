@@ -128,18 +128,24 @@ all of them), and emits one JSON blob:
   own pattern detection.
 
 **Preflight — are you running the current prompt?** This skill is *distributed*:
-the copy that actually runs is a built artifact under `.claude/commands/editor/`
-(and the skill bundles), regenerated only by `npm run build:skill-bundles`
+the copy that actually runs is a built artifact — the skill BUNDLE that
+skill-sync writes into a paper's `.virgil/`, mirrored for dev convenience under
+`.claude/commands/editor/` — regenerated only by `npm run build:skill-bundles`
 (`predev`/`prebuild`). So a skill edit — including one a past dream authored and
 landed — is **not live until the bundle is rebuilt**, and the gap is invisible
-from inside the prompt. Confirm it before you detect anything:
+from inside the prompt.
 
-```bash
-for s in editor/skills/*.md; do c=".claude/commands/editor/$(basename "$s")";
-  [ -f "$c" ] && ! diff -q "$s" "$c" >/dev/null && echo "DRIFT $s"; done
-```
+`select` already computed it for you: read its **`drift`** field, a list of repo
+paths whose source differs from the bytes the bundle shipped. Don't re-derive it
+in the shell — `select` runs from source rather than from the served text, so
+it is immune to the very drift it reports, and it asks the **bundle's own
+manifest**, which covers every carrier: the command markdowns, the `_`-prefixed
+shared includes, and the `.py`/`.json` helpers the skills invoke. A check keyed
+on the `.claude/commands/` mirror instead sees only non-underscore markdown and
+reports green for the rest — on 2026-08-10 that hid a stale `create_card.py`
+sitting behind seven stale skills from the same commit.
 
-If any skill drifted — **that is the night's top finding**, ahead of anything in
+If anything drifted — **that is the night's top finding**, ahead of anything in
 the memos. Record it in the digest with the rebuild command. Then **read the
 SSOT (`editor/skills/…`), not your own served text, for the rest of the run**:
 the fixes the memos seem to call for may already exist upstream, and proposing

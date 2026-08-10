@@ -51,6 +51,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -137,40 +138,122 @@ def _dream_sha() -> str:
         return "unknown"
 
 
-def _detect_skill_drift() -> list[str]:
-    """Names of editor skills whose SSOT (`editor/skills/<name>.md`) differs from
-    the *served* built artifact (`.claude/commands/editor/<name>.md`) — i.e. a
-    landed skill edit not yet shipped by `npm run build:skill-bundles`.
+def _paper_script_prefixes(repo: Path) -> list[tuple[str, str]] | None:
+    """The builder's `PAPER_SCRIPT_PREFIXES`, READ from the builder rather than
+    re-spelled here.
 
-    This is the §1 preflight the dream markdown describes, hoisted OUT of the
-    distributed prompt into `select` (which always runs from source, never the
-    bundle) so it is immune to the very drift it detects: a dream served the
-    stale prompt still sees `drift` in this output because `select` computed it
-    from disk, not from the served text. Best-effort and never fatal — an
-    unresolvable source repo or a checkout without a built `.claude/commands/`
-    (e.g. a synced paper copy) yields `[]`, since drift is only meaningful in a
-    repo that carries both halves."""
+    A skill source invokes its helpers repo-relative (`python3
+    editor/scripts/X.py`); the paper bundle rewrites that prefix at the bundle
+    boundary, so the shipped bytes differ from the SSOT bytes BY DESIGN. A drift
+    check must apply the same rewrite before diffing or it reports every command
+    markdown as drifted — a false positive on every file, every night, which is
+    the fastest way to make the check ignorable.
+
+    Those prefixes are a token two layers must agree on byte-for-byte, so they
+    get ONE spelling (build-editor-bundle.mjs) and this side parses it out.
+
+    The parse is keyed on the SILO TOKEN, not on the builder's container
+    syntax — it collects the `"<silo>/scripts/"` and `".virgil/scripts/<silo>/"`
+    string literals anywhere in the file and pairs them by silo. That is
+    deliberate: the constant has already changed shape once (task 158 replaced a
+    single `REPO_SCRIPT_PREFIX`/`PAPER_SCRIPT_PREFIX` pair with a two-silo
+    `PAPER_SCRIPT_PREFIXES` array when `find-citation` began reaching for a
+    library helper), and a regex pinned to either container would have gone
+    quietly None — i.e. disarmed this whole check — the day it changed. The silo
+    token is the actual invariant: it is what `skill-sync.ts diskPathFor` keys
+    on.
+
+    A parse failure returns None and the caller yields no drift — fail CLOSED,
+    because a guessed prefix produces exactly the all-files false positive
+    above. `test_dream_drift.test_real_builder_constant_is_still_parseable` is
+    the canary that keeps a fail-closed parse from failing SILENTLY forever."""
+    src = repo / "editor" / "build" / "build-editor-bundle.mjs"
+    try:
+        text = src.read_text()
+    except Exception:
+        return None
+    targets = {m: f".virgil/scripts/{m}/"
+               for m in re.findall(r'"\.virgil/scripts/(\w+)/"', text)}
+    sources = {m: f"{m}/scripts/" for m in re.findall(r'"(\w+)/scripts/"', text)}
+    pairs = [(sources[silo], targets[silo])
+             for silo in sorted(targets) if silo in sources]
+    return pairs or None
+
+
+def _detect_skill_drift() -> list[str]:
+    """Repo paths whose SSOT differs from the bytes the editor skill bundle
+    actually SHIPPED — i.e. a landed edit not yet published by
+    `npm run build:skill-bundles`.
+
+    Keyed on the bundle's own `bundle-manifest.json`, because **the bundle is
+    the artifact that reaches an agent** and the manifest is its record of what
+    it shipped. Membership in `files` IS the shipped-ness test, which is what
+    lets this ask the question uniformly over every carrier: the command
+    markdowns, the `_`-prefixed shared includes, AND the `.py`/`.json` helpers
+    the skills invoke.
+
+    It deliberately no longer consults `.claude/commands/editor/`. That mirror
+    is a DEV convenience written by the same `main()` in the same run, so it
+    cannot drift from the bundle independently — but it carries only
+    non-underscore markdown (build-editor-bundle.mjs skips `_`-prefixed names
+    when mirroring, and never mirrors scripts at all), so a check keyed on it is
+    structurally blind to roughly a third of what ships and reports GREEN for
+    the blind part. Measured on 2026-08-10: the mirror check saw 7 drifted
+    skills and could not see that `create_card.py` — the helper those very
+    skills invoke — was stale in the bundle from the same commit (4b453a5c).
+    A prompt and its helper going stale together is what kept that invisible;
+    it stays invisible right up until one of them is rebuilt alone.
+
+    Still the §1 preflight, still hoisted OUT of the distributed prompt into
+    `select` (which always runs from source, never the bundle) so it is immune
+    to the very drift it detects. Best-effort and never fatal — an unresolvable
+    source repo, an unbuilt bundle (e.g. a synced paper copy), or an unparseable
+    rewrite table yields `[]`."""
     repo = source_repo_root()
     if repo is None:
         return []
-    skills_dir = repo / "editor" / "skills"
-    served_dir = repo / ".claude" / "commands" / "editor"
-    if not skills_dir.is_dir() or not served_dir.is_dir():
+    bundle_dir = repo / "public" / "skill-bundle" / "editor"
+    manifest = bundle_dir / "bundle-manifest.json"
+    if not manifest.is_file():
         return []
-    drifted: list[str] = []
+    prefixes = _paper_script_prefixes(repo)
+    if prefixes is None:
+        return []
     try:
-        for ssot in sorted(skills_dir.glob("*.md")):
-            served = served_dir / ssot.name
-            if not served.is_file():
-                continue  # not-yet-built new skill isn't "drift" against a peer
-            try:
-                if ssot.read_text() != served.read_text():
-                    drifted.append(ssot.name)
-            except Exception:
-                continue
+        files = json.loads(manifest.read_text()).get("files", [])
     except Exception:
-        return drifted
-    return drifted
+        return []
+
+    # bundlePath → repoPath, the inverse of build-editor-bundle.mjs buildSources.
+    roots = (("claude-commands/", "editor/skills/"), ("scripts/", "editor/scripts/"))
+    drifted: list[str] = []
+    for bundle_path in files:
+        if not isinstance(bundle_path, str):
+            continue
+        repo_rel = next(
+            (dst + bundle_path[len(src):] for src, dst in roots
+             if bundle_path.startswith(src)),
+            None,
+        )
+        if repo_rel is None:
+            continue  # a bundle member with no SSOT twin (e.g. the manifest)
+        try:
+            raw = (repo / repo_rel).read_text()
+            shipped = (bundle_dir / bundle_path).read_text()
+        except Exception:
+            # An SSOT file the manifest lists but disk no longer has is a real
+            # staleness signal; an unreadable shipped file is not diffable.
+            if not (repo / repo_rel).is_file():
+                drifted.append(repo_rel)
+            continue
+        # isPaperCommandMarkdown(bundlePath) — the command markdowns are the
+        # only members rewritten on the way into the bundle.
+        if bundle_path.startswith("claude-commands/") and bundle_path.endswith(".md"):
+            for a, b in prefixes:
+                raw = raw.replace(a, b)
+        if raw != shipped:
+            drifted.append(repo_rel)
+    return sorted(drifted)
 
 
 # ---------------------------------------------------------------------------
