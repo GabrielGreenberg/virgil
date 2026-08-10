@@ -1427,6 +1427,18 @@ matching panel theme accent via `markerPaletteFromAccent()`.
 Click → opens panel + selects card + scrolls. Cmd-click → opens
 without scrolling. Hover → highlights linked text range.
 
+**Cramped margins hide the side (task 214).** The columns are pod-anchored at
+fixed lane offsets while the prose edge moves with the margin, so a margin too
+narrow to host the lane would paint badges over the text. Every margin-lane
+element asks the same predicate — `laneSlotClearsProse(inset, available)` in
+`src/lib/marginalia.ts`, given the MEASURED pod-edge → text-edge distance — and
+degrades in its own way: the selection bolt TUCKS against the scrollbar (task
+045), the marker grid HIDES that side outright (cells, "+K" pill and orphan
+dock together — a two-column grid has no sub-lane to tuck into). Thresholds are
+derived from where each element actually paints: bolt ≥ 104px, right grid
+≥ 70px, left grid ≥ 52px. Reachable in the compressed code-split (48px comfort
+gutter), zen, and any hand-dragged margin below the floor.
+
 **Orphan dock ("unanchored — click to re-pin").** A card whose anchor can
 no longer be resolved to any live paragraph (its stored UUID, its
 `linkedAnchor` mark, and its text snapshot are all dead — the resolver SSOT

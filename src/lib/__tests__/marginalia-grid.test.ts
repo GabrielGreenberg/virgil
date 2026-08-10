@@ -21,6 +21,11 @@ import {
 
 const LINE_HEIGHT = 24;
 
+/** Both lanes host the grid — the normal markers-on editor. The cramped
+ *  regime (a margin too narrow for the lane) has its own suite:
+ *  `marginalia-lane-regime.test.ts`. */
+const BOTH_FIT = { left: true, right: true } as const;
+
 function metricsFor(lineCount: number): AnchorNodeMetrics {
   return {
     id: "p1",
@@ -76,6 +81,7 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
       (uuid) => (uuid === "p1" ? metricsFor(1) : null),
       markers,
       {},
+      BOTH_FIT,
     );
 
     expect(positioned.map((m) => m.entityId)).toEqual(["m1"]);
@@ -109,6 +115,7 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
       () => metricsFor(2),
       markers,
       {},
+      BOTH_FIT,
     );
 
     expect(positioned.map((m) => m.entityId)).toEqual(["m1"]);
@@ -139,6 +146,7 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
       () => metricsFor(2),
       markers,
       {},
+      BOTH_FIT,
     );
 
     expect(overflowGroups).toEqual([]);
@@ -161,6 +169,7 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
       () => metricsFor(1),
       markers,
       {},
+      BOTH_FIT,
     );
 
     expect(positioned).toEqual([]);
@@ -180,6 +189,7 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
       () => metricsFor(1),
       [marker(1, "left")],
       {},
+      BOTH_FIT,
     );
     expect(overflowGroups).toEqual([]);
     expect(positioned.map((m) => m.entityId)).toEqual(["m1"]);
@@ -199,6 +209,7 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
       () => metricsFor(0),
       markers,
       {},
+      BOTH_FIT,
     );
     expect(positioned).toEqual([]);
     expect(overflowGroups).toHaveLength(1);
@@ -213,6 +224,7 @@ describe("computeMarkerPositions overflow (A6/R16)", () => {
       () => null,
       markers,
       {},
+      BOTH_FIT,
     );
     expect(positioned).toEqual([]);
     expect(overflowGroups).toEqual([]);
@@ -238,6 +250,7 @@ describe("computeMarkerPositions — CHIP-B orphan + no-cull", () => {
       () => null, // no metrics for anyone
       [m],
       {},
+      BOTH_FIT,
     );
     expect(positioned).toEqual([]);
     expect(overflowGroups).toEqual([]);
@@ -256,6 +269,7 @@ describe("computeMarkerPositions — CHIP-B orphan + no-cull", () => {
       },
       [m],
       {},
+      BOTH_FIT,
     );
     expect(orphans).toHaveLength(1);
     expect(orphans[0].side).toBe("left");
@@ -268,6 +282,7 @@ describe("computeMarkerPositions — CHIP-B orphan + no-cull", () => {
       (uuid) => (uuid === "p1" ? metricsFor(2) : null),
       [live, orphan],
       {},
+      BOTH_FIT,
     );
     expect(positioned.map((m) => m.entityId)).toEqual(["m1"]);
     expect(orphans.map((m) => m.entityId)).toEqual(["m2"]);
@@ -284,6 +299,7 @@ describe("computeMarkerPositions — CHIP-B orphan + no-cull", () => {
       () => null,
       [resolvedButUnmeasured],
       {},
+      BOTH_FIT,
     );
     expect(positioned).toEqual([]);
     expect(overflowGroups).toEqual([]);

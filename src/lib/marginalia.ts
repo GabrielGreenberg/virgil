@@ -565,6 +565,115 @@ export const MARGINALIA_MARGIN_WIDTH = MARGINALIA_MARGIN_WIDTH_LEFT;
 export const MARGINALIA_MIN_MARGIN_RIGHT = MARGINALIA_MARGIN_WIDTH_RIGHT;
 export const MARGINALIA_MIN_MARGIN_LEFT = MARGINALIA_MARGIN_WIDTH_LEFT;
 
+// ── Lane regime: does a pod-anchored lane element still clear the prose? ─────
+//
+// Every element in the lane is POD-anchored — its x is a fixed offset from the
+// pod edge — while the prose text edge moves with the margin. So they all face
+// the SAME question: at this margin, does my slot still land in the margin, or
+// back over the text? Before task 214 each consumer answered it separately, or
+// not at all:
+//
+//   - the margin FLOOR asked it as a flag (`laneReserved` → `Math.max`);
+//   - the BOLT asked it inline (`inboard >= editorRight + INNER_PAD`);
+//   - the MARKER GRID never asked. It packed at the fixed 104-lane offsets
+//     whatever the margin was, so a compressed code-split (48px comfort gutter,
+//     lane NOT reserved) put col0's opaque badge 14px INBOARD of the text edge,
+//     painting over the last words of every marked line — reachable with no
+//     user action beyond opening the Code pane.
+//
+// ONE predicate now answers it for all of them, parameterized by the only thing
+// that differs between elements: `inset`, how far the element's INNERMOST edge
+// (the edge nearest the prose) sits from the pod edge on its side. Both sides
+// reduce to the same arithmetic because both containers are pod-anchored:
+//   right: element edge = podRight − inset, text edge = podRight − available
+//   left:  element edge = podLeft  + inset, text edge = podLeft  + available
+// so clearance ⟺ `available − inset ≥ INNER_PAD` either way.
+//
+// `available` is the MEASURED pod-edge→text-edge distance on that side
+// (`podRight − editorRight`, `contentLeft − podLeft` from the geometry
+// service's viewport frame) — not the `--editor-pl/pr` pref, so a pod clipped
+// by the code split (where podRight is the VISIBLE edge) is answered honestly.
+
+/**
+ * Does a pod-anchored lane element whose innermost edge sits `inset` px from
+ * the pod edge still clear the prose by `MARGINALIA_INNER_PAD`, given the
+ * `available` margin on that side? THE lane-regime predicate — the bolt's
+ * inboard/cramped fork and the marker grid's show/hide fork are the same
+ * question asked about two different slots.
+ */
+export function laneSlotClearsProse(inset: number, available: number): boolean {
+  return available - inset >= MARGINALIA_INNER_PAD;
+}
+
+/**
+ * Effective marker COLUMNS on a side. The left grid uses a single column: its
+ * inner-left slot is reserved across all paragraphs and headings for the
+ * paragraph popout button, so a marker never lands there. Lives here (not in
+ * the grid module) because the grid's placement AND the lane-fit inset below
+ * both depend on it — two readers, one statement.
+ */
+export function marginaliaEffectiveCols(side: "left" | "right"): number {
+  return side === "left" ? 1 : MARGINALIA_COLS;
+}
+
+/**
+ * Container-relative x of the marker grid's col0 on the LEFT side. The left
+ * lane packs [OUTER_PAD][col0][gap][reserved popout slot][INNER_PAD][text], so
+ * col0 starts one outer pad in (= 22). Named to mirror
+ * `MARGINALIA_GRID_X_RIGHT` so `cellAt` reads a GRID_X_<side> constant on both
+ * sides instead of restating one side's arithmetic inline.
+ */
+export const MARGINALIA_GRID_X_LEFT =
+  MARGINALIA_MARGIN_WIDTH_LEFT - MARGINALIA_INNER_PAD - ICONS_BLOCK_WIDTH;
+
+/** Container-relative x of the marker grid's col0 on `side`. */
+export function marginaliaGridX(side: "left" | "right"): number {
+  return side === "left" ? MARGINALIA_GRID_X_LEFT : MARGINALIA_GRID_X_RIGHT;
+}
+
+/**
+ * How far the marker grid's INNERMOST painted edge sits from the pod edge on
+ * `side` — the grid's `inset` for {@link laneSlotClearsProse}. Derived from the
+ * same col0 offset + effective-column count `cellAt` packs against, so it
+ * cannot drift from where the badges actually land:
+ *
+ *   right — cells run outward from col0, so the innermost edge is col0's LEFT
+ *           edge: `WIDTH_RIGHT − GRID_X_RIGHT` = 62 (grid needs ≥ 70px margin).
+ *   left  — cells run inward from col0, so the innermost edge is the icon
+ *           block's RIGHT edge: `GRID_X_LEFT + blockWidth` = 44 (≥ 52px).
+ *
+ * The two thresholds differ, and that is the point: the bolt sits INBOARD of
+ * the markers, so it tucks at margins where the markers still fit honestly.
+ */
+export function marginGridInset(side: "left" | "right"): number {
+  const cols = marginaliaEffectiveCols(side);
+  const blockWidth =
+    cols * MARGINALIA_ICON_SIZE + (cols - 1) * MARGINALIA_COL_GAP;
+  return side === "left"
+    ? marginaliaGridX("left") + blockWidth
+    : MARGINALIA_MARGIN_WIDTH_RIGHT - marginaliaGridX("right");
+}
+
+/**
+ * Does the marker grid fit on `side` at this `available` margin? The ONE
+ * producer of the show/hide answer the grid consumes (`computeMarkerPositions`
+ * takes the resolved booleans, so no call site re-derives this).
+ *
+ * `available === null` means geometry is not measured yet (the pre-refresh
+ * EMPTY viewport frame, a hidden pane, a detached editor). That FAILS OPEN —
+ * markers render exactly as they did before this predicate existed — because
+ * a zeroed frame is indistinguishable from a zero-width margin, and hiding
+ * every marker on an unmeasured editor would be a far worse failure than the
+ * overlap this guards.
+ */
+export function markerGridFits(
+  side: "left" | "right",
+  available: number | null,
+): boolean {
+  if (available === null || !Number.isFinite(available)) return true;
+  return laneSlotClearsProse(marginGridInset(side), available);
+}
+
 /** The COMFORTABLE per-side horizontal gutter the editor caps margins at when
  *  the Code pane is open and compressing the editor. A building block of
  *  SplitWithCode's EDITOR_PANE_COMPRESSED_MIN_PX (≈300px prose + one of these
@@ -656,7 +765,17 @@ export function computeBoltLeftFromPod({
 }): number {
   const inboard =
     podRight - MARGINALIA_MARGIN_WIDTH_RIGHT + MARGINALIA_BOLT_X_RIGHT;
-  if (inboard >= editorRight + MARGINALIA_INNER_PAD) return inboard;
+  // The inboard slot is taken only while it clears the prose — asked through
+  // the shared lane-regime predicate (task 214), with the bolt's own inset:
+  // its innermost edge is `WIDTH_RIGHT − BOLT_X_RIGHT` = 96 from the pod edge,
+  // so this reduces to `available ≥ 104` exactly as the inline comparison it
+  // replaces did. The marker grid asks the SAME question with ITS inset, so
+  // "which lane elements survive this margin?" has one answer, not three.
+  if (laneSlotClearsProse(
+      MARGINALIA_MARGIN_WIDTH_RIGHT - MARGINALIA_BOLT_X_RIGHT,
+      podRight - editorRight,
+    ))
+    return inboard;
   // Cramped code-view gutter — tuck the bolt against the scrollbar, but FLOOR it
   // at the prose edge so it never overshoots back over the text. The gutter tuck
   // (`podRight − SCROLLBAR_GUTTER − BOLT_SCROLLBAR_GAP − BOLT`) is a fixed
