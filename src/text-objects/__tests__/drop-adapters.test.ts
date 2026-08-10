@@ -214,6 +214,105 @@ describe("blockIntoExpexDropAdapter", () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Task 234 — rung 1 of the shared ladder, as a law over EVERY registered
+// adapter rather than a fact about the two that were fixed.
+//
+// The bug was one adapter deciding wrap-vs-direct from `classifyParentAt`'s
+// lossy verdict while the schema at the TRUE immediate parent said the bare
+// node was welcome. That is not a property of `exampleItem`: it is available to
+// any adapter that consults the proxy first, at any position where an
+// UNREGISTERED container sits between the insert point and the nearest
+// registered ancestor. So the obligation is DERIVED from the registry — a
+// future adapter (or a future kind pointed at an existing one) inherits it, and
+// re-introducing a proxy-first branch fails here without anyone remembering to
+// extend a list.
+//
+// The target below is deliberately adversarial in both directions: it reports
+// the proxy verdict that tempted the wrap (`inside-incompatible-parent`) AND a
+// `canPlaceHere` that would sanction one. Neither may outrank the schema.
+// ---------------------------------------------------------------------------
+describe("canDropDirect-first is a law over every registered dropAdapter (task 234)", () => {
+  const ADAPTERS = [
+    ...new Set(
+      (Object.keys(TEXT_OBJECT_REGISTRY) as TextObjectKind[]).map(
+        (kind) => TEXT_OBJECT_REGISTRY[kind].dropAdapter,
+      ),
+    ),
+  ];
+  // A canary: if the registry stops exposing adapters (or this reads the wrong
+  // facet), the loop below would pass vacuously.
+  it("censuses every distinct adapter on the registry", () => {
+    expect(ADAPTERS.length).toBeGreaterThanOrEqual(4);
+    expect(ADAPTERS).toContain(listItemDropAdapter);
+    expect(ADAPTERS).toContain(exampleItemDropAdapter);
+    expect(ADAPTERS).toContain(blockIntoExpexDropAdapter);
+    expect(ADAPTERS).toContain(topLevelDropAdapter);
+  });
+
+  for (const [i, adapter] of ADAPTERS.entries()) {
+    it(`adapter #${i} (${adapter.name || "anonymous"}) drops DIRECT when the true immediate parent accepts the bare node`, () => {
+      const result = adapter(
+        {
+          kind: "listItem",
+          id: "s1",
+          sourceContext: { parentKind: "bulletList" },
+        },
+        {
+          kind: "inside-incompatible-parent",
+          parentKind: "exampleItem",
+          canDropDirect: true,
+          canPlaceHere: () => true,
+        },
+      );
+      expect(result).toEqual({ kind: "drop-direct" });
+    });
+  }
+
+  it("THE ORIGINAL SHAPE: the nested-xlist signature is drop-direct, not the pre-234 no-op", () => {
+    // An `exampleItem` released between two NESTED items. `classifyParentAt`
+    // skips the unregistered `exampleItemList` and lands on the enclosing
+    // `exampleItem` → "incompatible"; the fresh `exampleBlock` the wrap branch
+    // would fabricate is invalid inside an `exampleItemList` → canPlaceHere
+    // false; and the TRUE immediate parent (content `exampleItem+`) accepts the
+    // bare item. Pre-234 that combination fell to the task-065 no-op and the
+    // drop silently did nothing.
+    const result = exampleItemDropAdapter(
+      {
+        kind: "exampleItem",
+        id: "x1",
+        sourceContext: { parentKind: "exampleBlock" },
+      },
+      {
+        kind: "inside-incompatible-parent",
+        parentKind: "exampleItem",
+        canDropDirect: true,
+        canPlaceHere: () => false,
+      },
+    );
+    expect(result).toEqual({ kind: "drop-direct" });
+  });
+
+  it("and the 065 gate is untouched where the schema REFUSES the bare node", () => {
+    // Same proxy verdict, opposite schema answer → still the no-op that keeps a
+    // here-invalid wrap from splitting the container.
+    const result = exampleItemDropAdapter(
+      {
+        kind: "exampleItem",
+        id: "x1",
+        sourceContext: { parentKind: "exampleBlock" },
+      },
+      {
+        kind: "inside-incompatible-parent",
+        parentKind: "bulletList",
+        canDropDirect: false,
+        canPlaceHere: () => false,
+      },
+    );
+    expect(result).toEqual({ kind: "no-op" });
+  });
+});
+
 describe("topLevelDropAdapter", () => {
   it("always drops directly", () => {
     const result = topLevelDropAdapter(
