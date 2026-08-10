@@ -18,29 +18,25 @@ import type {
   BibEntry,
   CitationRef,
   CutterCard,
-  ExampleRef,
   FootnoteRef,
   HighlightCard,
   RevisionCard,
   TodoItem,
   UserNote,
 } from "@/lib/types";
+import type { StackCardKind } from "./card-kinds";
 
-/** Card kinds the Stack can carry as a snapshot. Mirrors the registry
- *  prefixes used in `cardPopKey()`. */
-export type StackCardKind =
-  | "note"
-  | "highlight"
-  | "footnote"
-  | "citation"
-  | "bibliography"
-  | "example"
-  | "todo"
-  | "archive"
-  | "revision-comment"   // RevisionRequestCard (disk kind: "comment")
-  | "revision-suggestion"
-  | "cutter-comment"
-  | "cutter-suggestion";
+// The vocabulary itself lives in `./card-kinds` — a zero-runtime-import leaf, so
+// `cards/card-registry.tsx` (a documented runtime leaf) can read it to pin its
+// `stackable` facet. Re-exported here because this module is the Stack's type
+// entry point and every existing consumer imports the union from it.
+export type { StackCardKind } from "./card-kinds";
+export {
+  CARD_KIND_BY_STACK_CARD_KIND,
+  STACK_CARD_KINDS,
+  isStackableCardKind,
+  stackCardKindFor,
+} from "./card-kinds";
 
 /** Per-card-kind snapshot payload. The `data` field carries the source
  *  card's serialized record verbatim; consumers re-serialize on pull,
@@ -70,7 +66,6 @@ export type StackCardSnapshot =
        *  the entry had no annotation. */
       annotation?: string;
     }
-  | { cardKind: "example"; data: ExampleRef }
   | { cardKind: "todo"; data: TodoItem }
   | { cardKind: "archive"; data: ArchivedSnippet }
   | { cardKind: "revision-comment"; data: Extract<RevisionCard, { kind: "comment" }> }
@@ -86,6 +81,27 @@ export type StackCardSnapshot =
       cardKind: "cutter-suggestion";
       data: Extract<CutterCard, { kind: "suggestion" }>;
     };
+
+/**
+ * Compile-time pin (task 259): the payload union covers EXACTLY the vocabulary.
+ *
+ * These two are separate declarations by necessity — the union carries a
+ * different `data` shape per member, which no `Record` over `StackCardKind` can
+ * express — so a member added to one and not the other is precisely the drift
+ * this file exists to prevent. Adding to `STACK_CARD_KINDS` without a payload
+ * variant (or the reverse) fails here, at the declaration, rather than silently
+ * at whichever switch is reached first.
+ */
+type ExactlyTheVocabulary<A, B> = [A] extends [B]
+  ? [B] extends [A]
+    ? true
+    : never
+  : never;
+const _snapshotsCoverVocabulary: ExactlyTheVocabulary<
+  StackCardSnapshot["cardKind"],
+  StackCardKind
+> = true;
+void _snapshotsCoverVocabulary;
 
 /** Discriminated union of all snapshot payloads. */
 export type StackPayload =

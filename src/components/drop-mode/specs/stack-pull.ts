@@ -73,8 +73,7 @@ import { atomMetaForNodeName } from "@/lib/tiptap/atom-registry";
  *    attachment card anchors to a PARAGRAPH (`paragraph-side`, reachable now
  *    that it is not queued behind `inline-cursor`) or lands unanchored in a
  *    gap; a footnote/citation/bib pull has no paragraph anchor to take, so it
- *    is gap-only; an `example` pull is unimplemented, so it offers nothing.
- *    `inline-cursor` fits no card kind.
+ *    is gap-only. `inline-cursor` fits no card kind.
  *
  * Order matters only against `paragraph-side`, which matches either geometry:
  * `between-blocks` must precede it so a gap still means "unanchored", leaving
@@ -92,7 +91,11 @@ const ANCHORABLE: ReadonlyArray<PlacementKind> = [
 ];
 /** A gap only — nothing this payload can do with a position inside prose. */
 const GAP_ONLY: ReadonlyArray<PlacementKind> = ["between-blocks"];
-/** Nowhere: the pull has no implementation, so no bar may invite one. */
+/** Nowhere: this build cannot land the payload, so no bar may invite one. Since
+ *  task 259 no *declared* payload answers NOWHERE — a card kind with no working
+ *  pull is not in the Stack vocabulary at all — so this is exactly the
+ *  untrusted-input answer (an unresolvable key, a payload shape or card kind
+ *  from another build). */
 const NOWHERE: ReadonlyArray<PlacementKind> = [];
 
 /**
@@ -104,14 +107,18 @@ const NOWHERE: ReadonlyArray<PlacementKind> = [];
  * factory. The kinds that don't are not oversights — a footnote/citation
  * belongs to an inline atom and a bib entry to the `.bib`, so v1 pulls them in
  * as unanchored entries whatever the cursor is over, and a side bar would
- * promise an anchor that never arrives. `example` gets NOTHING: its branch is a
- * documented v1 no-op (the panel ref mirrors an in-text `\ex{…}` block this
- * pull can't synthesize), so every placement it could offer is a lie.
- * `stack-pull-placement-policy.test.ts` re-derives all three groups by running
- * the REAL `applyDrop` against a recording `StackPullApi`, iterating THIS
- * record's keys (which is why it is exported) — so a kind the compiler forces
- * someone to declare here is a kind the suite then checks against its branch,
- * and the declaration and the branch cannot drift.
+ * promise an anchor that never arrives.
+ * `stack-pull-placement-policy.test.ts` re-derives both groups by running the
+ * REAL `applyDrop` against a recording `StackPullApi`, iterating THIS record's
+ * keys (which is why it is exported) — so a kind the compiler forces someone to
+ * declare here is a kind the suite then checks against its branch, and the
+ * declaration and the branch cannot drift.
+ *
+ * Since task 259 no member may declare NOWHERE: a card kind whose pull does
+ * nothing is not in `STACK_CARD_KINDS` at all, so it never reaches this table.
+ * (`example` was the standing case — `stackable:true` with a null snapshot, an
+ * empty placement list and a placeholder branch, i.e. stackable in name at every
+ * link of the chain and in fact at none.)
  */
 export const CARD_PLACEMENTS: Record<
   StackCardKind,
@@ -128,7 +135,6 @@ export const CARD_PLACEMENTS: Record<
   footnote: GAP_ONLY,
   citation: GAP_ONLY,
   bibliography: GAP_ONLY,
-  example: NOWHERE,
 };
 
 /**
@@ -243,21 +249,30 @@ export const stackPullDropSpec: DropSpec = {
     if (!main || placement.editor !== main) return;
     const p = item.payload;
 
-    if (p.kind === "text") {
-      insertText(main, placement, p);
-      return;
-    }
-    if (p.kind === "paragraph") {
-      insertParagraph(main, placement, p);
-      return;
-    }
-    if (p.kind === "heading") {
-      insertHeading(main, placement, p);
-      return;
-    }
-    if (p.kind === "card") {
-      applyCardDrop(item, placement, ctx);
-      return;
+    // Exhaustive over `StackPayload` (task 259), for the same reason the card
+    // switch below is: an if-chain with no final arm makes a new payload kind a
+    // drop that paints its bar, runs its commit and inserts nothing. The unknown
+    // arm returns quietly rather than throwing — the payload comes from a
+    // persisted envelope `readEnvelope` validates only shallowly, and the
+    // hit-test has already refused it a placement (`placementsForPayload`).
+    switch (p.kind) {
+      case "text":
+        insertText(main, placement, p);
+        return;
+      case "paragraph":
+        insertParagraph(main, placement, p);
+        return;
+      case "heading":
+        insertHeading(main, placement, p);
+        return;
+      case "card":
+        applyCardDrop(item, placement, ctx);
+        return;
+      default: {
+        const unhandled: never = p;
+        void unhandled;
+        return;
+      }
     }
   },
   postDrop: "keep",
@@ -546,7 +561,7 @@ function applyCardDrop(
     const anns = "bibAnnotations" in card ? card.bibAnnotations : undefined;
     if (anns) {
       for (const [key, html] of Object.entries(anns)) {
-        if (html) stack.setAnnotation?.(key, html);
+        if (html) stack.setAnnotation(key, html);
       }
     }
   }
@@ -559,12 +574,13 @@ function applyCardDrop(
       });
       return;
     case "highlight":
-      // Highlights ride a text-range mark in the source doc — we have
-      // no mark to attach here. v1: create a paragraph-anchored
-      // placeholder if the spec exposes addHighlight, else fall back to
-      // a note created from the highlight color (unusual; skip when
-      // addHighlight is absent).
-      stack.addHighlight?.(paragraphId);
+      // Highlights ride a text-range mark in the source doc — we have no mark to
+      // attach here, so v1 creates a paragraph-anchored (or unanchored)
+      // placeholder. `addHighlight` is REQUIRED on `StackPullApi` since task
+      // 259: it was optional, and an optional per-KIND factory is the same
+      // silent-loss vector as a missing switch case — a host that omitted it
+      // made every highlight pull do nothing, with no error anywhere.
+      stack.addHighlight(paragraphId);
       return;
     case "footnote":
       stack.addFootnote(card.data);
@@ -578,7 +594,7 @@ function applyCardDrop(
       // cross-doc pull doesn't silently lose it. Only fires when the snapshot
       // carried one, so a same-doc pull writes nothing spurious.
       if ("annotation" in card && card.annotation) {
-        stack.setAnnotation?.(card.data.key, card.annotation);
+        stack.setAnnotation(card.data.key, card.annotation);
       }
       return;
     case "todo":
@@ -602,12 +618,23 @@ function applyCardDrop(
     case "cutter-suggestion":
       stack.addCutterSuggestion(paragraphId, card.data);
       return;
-    case "example":
-      // Examples are tied to in-text \ex{...} blocks; the panel ref is
-      // a sidecar mirror, not the source of truth. v1: no-op (the user
-      // can't usefully drop a sidecar-only example into a new doc
-      // without the matching \ex block). Future: synthesize an
-      // exampleBlock node.
+    default: {
+      // **The silent-loss backstop (task 259).** Every case above ends in a
+      // `ctx.stack` call, so a kind with no case here dropped onto the Stack
+      // fine and VANISHED on pull: no compile error (the switch was
+      // non-exhaustive and the function returns void), no runtime error, no
+      // failing test. A member added to `STACK_CARD_KINDS` without a branch is
+      // now a compile error at this line.
+      //
+      // The runtime `return` still matters: `readEnvelope` validates the
+      // envelope and then casts, so a persisted item written by another build —
+      // or carrying a kind since retired — arrives typed as something it is not.
+      // It is refused rather than crashing the drop session, matching
+      // `placementsForPayload`'s unknown-shape door (the hit-test already
+      // offered it no placement, so this is unreachable through the UI).
+      const unhandled: never = card;
+      void unhandled;
       return;
+    }
   }
 }

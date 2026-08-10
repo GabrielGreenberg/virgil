@@ -28,6 +28,16 @@ import type { CardKind, CardMeta } from "./types";
 import type { CardFloatCtx } from "./card-float-ctx";
 import type { Floatable } from "@/floats/types";
 import type { DropSpec, PlacementKind } from "@/components/drop-mode/types";
+// The Stack's card vocabulary (task 259). A runtime import, and safe as one:
+// `stack/card-kinds` has ZERO runtime imports of its own (its only import is a
+// type-only `CardKind` from `./types`, erased at compile time), so it cannot
+// re-form the `panel-registry → predicates → card-registry → …` cycle this
+// module's leaf-ness exists to prevent.
+import {
+  CARD_KIND_BY_STACK_CARD_KIND,
+  STACK_CARD_KINDS,
+  stackCardKindFor,
+} from "@/lib/stack/card-kinds";
 
 /**
  * `toFloatable` registration — mirrors the text-object registry's
@@ -304,6 +314,90 @@ export function assertDropFacetCoverage(): void {
           `dropPlacement=${JSON.stringify(meta.dropPlacement)} — droppable must ` +
           `equal (dropPlacement !== null).`,
       );
+    }
+  }
+}
+
+/**
+ * Dev-only: pin the declared `stackable` facet to the Stack's real vocabulary
+ * (`STACK_CARD_KINDS`, `src/lib/stack/card-kinds.ts`), the fourth sibling of
+ * `assertMorphCoverage` / `assertContentCoverage` / `assertDropFacetCoverage`
+ * and the one drop-adjacent facet that never grew a guard (task 259).
+ *
+ * "Which card kinds the Stack carries" was hand-restated in six places that all
+ * failed SILENTLY on a mismatch — a card dropped onto the Stack fine and
+ * vanished on pull, with no compile error, no runtime error and no failing test
+ * — and the facet had already drifted: `example` declared `stackable: true`
+ * while its float snapshotted `null`, its placement list was empty and its pull
+ * branch was a documented no-op.
+ *
+ * What this pins, and why each half is here rather than in the contract test:
+ *  - `stackable ⇔ the kind is in the Stack vocabulary`. The declaration and the
+ *    union are the two mirrors furthest apart in the tree, and both are readable
+ *    at boot, so this is the pair that gets an assertion rather than a suite.
+ *  - `stackable ⇒ poppable`. The ONLY capture path is a popped float's
+ *    `snapshotForStack` (`EditorPane`'s `virgil-stack-drop` handler), so a
+ *    stackable non-poppable kind could never reach the Stack at all.
+ *  - the bridge is INJECTIVE and lands on real kinds. `CARD_KIND_BY_STACK_CARD_KIND`
+ *    is total over the vocabulary by type, but two members mapping to one
+ *    `CardKind` would silently collapse the derived inverse map — the "bib" ↔
+ *    "bibliography" rename is exactly the shape that invites it.
+ *
+ * The mechanisms a boot assertion structurally cannot reach — whether a built
+ * `Floatable`'s `snapshotForStack` is real, and whether a kind's `applyCardDrop`
+ * branch actually calls its `StackPullApi` factory — need a built float and a
+ * real drop, so they are pinned with teeth in
+ * `cards/__tests__/stack-coverage.test.ts`. Call once at boot (alongside
+ * `assertMorphCoverage`).
+ *
+ * **No allowlist, deliberately.** `assertContentCoverage`'s `allowedNull` carves
+ * out kinds that legitimately have no content — a true statement about the app.
+ * There is no true statement of the form "this kind is stackable but cannot be
+ * stacked": a kind whose round trip isn't built is declared `stackable: false`
+ * and left out of `STACK_CARD_KINDS` until it is (re-add it WITH its first real
+ * mechanism, the same rule the `src/links/` export census enforces).
+ */
+export function assertStackCoverage(): void {
+  if (process.env.NODE_ENV === "production") return;
+  for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
+    const meta = CARD_REGISTRY[k];
+    const carried = stackCardKindFor(k);
+    if (meta.stackable !== (carried !== null)) {
+      console.error(
+        `[CardStack] "${k}" declares stackable=${meta.stackable} but the Stack ` +
+          `vocabulary ${carried !== null ? "DOES" : "does NOT"} carry it ` +
+          `(STACK_CARD_KINDS, src/lib/stack/card-kinds.ts). The declared facet ` +
+          `drifted from the mechanism: wire the kind through the vocabulary + ` +
+          `its snapshot/pull branches, or declare stackable:false.`,
+      );
+    }
+    if (meta.stackable && !meta.poppable) {
+      console.error(
+        `[CardStack] "${k}" is stackable but not poppable — the only capture ` +
+          `path is a popped float's snapshotForStack, so it could never reach ` +
+          `the Stack.`,
+      );
+    }
+  }
+  const seen = new Map<CardKind, string>();
+  for (const s of STACK_CARD_KINDS) {
+    const k = CARD_KIND_BY_STACK_CARD_KIND[s];
+    if (!(k in CARD_REGISTRY)) {
+      console.error(
+        `[CardStack] Stack kind "${s}" maps to card kind "${k}", which is not ` +
+          `in CARD_REGISTRY (a renamed CardKind still typechecks here).`,
+      );
+      continue;
+    }
+    const prior = seen.get(k);
+    if (prior !== undefined) {
+      console.error(
+        `[CardStack] Stack kinds "${prior}" and "${s}" both map to card kind ` +
+          `"${k}" — the derived CardKind→StackCardKind map keeps only one, so ` +
+          `the other's snapshots would be built under the wrong name.`,
+      );
+    } else {
+      seen.set(k, s);
     }
   }
 }
@@ -760,7 +854,14 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose (fixes example 12→15)
     bodySchema: "card",
-    stackable: true, // declared in StackCardKind (its float's snapshotForStack returns null today — R2)
+    // NOT stackable, and honestly so since task 259. It declared `true` to
+    // mirror a `StackCardKind` membership that no link of the chain honored: the
+    // float snapshotted null, the placement list was empty, and the pull branch
+    // was a documented placeholder. An example's content is the in-text
+    // `\ex{…}` block, not the sidecar ref, so a real pull has to synthesize an
+    // `exampleBlock` node; when that lands, flip this and add "example" back to
+    // STACK_CARD_KINDS — the compiler then names every other site.
+    stackable: false,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },

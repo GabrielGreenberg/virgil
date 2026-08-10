@@ -124,8 +124,11 @@ export interface Floatable {
    *  `dropCardKey` so `beginCardDropGesture` can look the spec up. */
   canDrop?: boolean;
 
-  /** Serialize onto the Stack. Returns null when this kind isn't stackable
-   *  (ai / error / examples / text-object sub-objects). */
+  /** Serialize onto the Stack. Returns null when this kind isn't stackable.
+   *  For a CARD float that is `CARD_REGISTRY[kind].stackable === false`
+   *  (`report` / `report-request` / `example`; `error` is not poppable at all),
+   *  pinned to the Stack's vocabulary by `assertStackCoverage()`; for a
+   *  text-object float, a source that can't be resolved. */
   snapshotForStack(source: {
     docId: string | null;
     docTitle?: string;

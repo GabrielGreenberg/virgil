@@ -21,7 +21,6 @@ import type {
   BibEntry,
   CitationRef,
   CutterCard,
-  ExampleRef,
   FootnoteRef,
   HighlightCard,
   RevisionCard,
@@ -380,9 +379,6 @@ export function snapshotCard(
       };
       break;
     }
-    case "example":
-      card = { cardKind, data: cloned as unknown as ExampleRef };
-      break;
     case "todo":
       card = { cardKind, data: cloned as unknown as TodoItem };
       break;
@@ -416,8 +412,17 @@ export function snapshotCard(
         data: cloned as unknown as Extract<CutterCard, { kind: "suggestion" }>,
       };
       break;
-    default:
+    default: {
+      // Exhaustive over the vocabulary (task 259) — a kind added to
+      // `STACK_CARD_KINDS` with no case here is a COMPILE error, not a snapshot
+      // that silently returns null and leaves the drop gesture doing nothing.
+      // The runtime `return null` stays because the input is not always trusted:
+      // a persisted envelope written by another build can reach the pull path
+      // carrying a kind this build has retired.
+      const unhandled: never = cardKind;
+      void unhandled;
       return null;
+    }
   }
 
   return {
@@ -434,51 +439,70 @@ export function snapshotCard(
 export function summarizeStackItem(item: StackItem, maxChars = 220): string {
   const p = item.payload;
   let text = "";
-  if (p.kind === "text") {
-    text = p.plain;
-  } else if (p.kind === "paragraph") {
-    text = richJsonToPlainText(p.node);
-  } else if (p.kind === "heading") {
-    text = p.nodes.map((n) => richJsonToPlainText(n)).join(" — ");
-  } else if (p.kind === "card") {
-    const c = p.card;
-    switch (c.cardKind) {
-      case "note":
-        text = c.data.title || richJsonToPlainText(c.data.content);
-        break;
-      case "highlight":
-        text = "(highlight)";
-        break;
-      case "footnote":
-        text = richJsonToPlainText(c.data.content);
-        break;
-      case "citation":
-        text = (c.data.keys || []).join(", ") || c.data.command;
-        break;
-      case "bibliography":
-        text = `${c.data.key}${c.data.fields?.title ? ": " + c.data.fields.title : ""}`;
-        break;
-      case "example":
-        text = c.data.title || c.data.label || c.data.tag || "(example)";
-        break;
-      case "todo":
-        text = c.data.text;
-        break;
-      case "archive":
-        text = c.data.title || richJsonToPlainText(c.data.content);
-        break;
-      case "revision-comment":
-      case "cutter-comment":
-        text = c.data.text || richJsonToPlainText(c.data.content);
-        break;
-      case "revision-suggestion":
-      case "cutter-suggestion":
-        text =
-          c.data.user_text ||
-          c.data.suggested_text ||
-          c.data.original_text ||
-          c.data.explanation;
-        break;
+  // Both switches are exhaustive over their union (task 259). A payload kind or
+  // card kind with no arm renders an unlabelled thumbnail, which reads as
+  // corrupt and invites the X — the mildest member of the silent-drift family
+  // this task closed, but the same drift. The unknown arms fall through to the
+  // empty label rather than throwing: a persisted envelope is only shallowly
+  // validated, so a retired kind can still arrive here.
+  switch (p.kind) {
+    case "text":
+      text = p.plain;
+      break;
+    case "paragraph":
+      text = richJsonToPlainText(p.node);
+      break;
+    case "heading":
+      text = p.nodes.map((n) => richJsonToPlainText(n)).join(" — ");
+      break;
+    case "card": {
+      const c = p.card;
+      switch (c.cardKind) {
+        case "note":
+          text = c.data.title || richJsonToPlainText(c.data.content);
+          break;
+        case "highlight":
+          text = "(highlight)";
+          break;
+        case "footnote":
+          text = richJsonToPlainText(c.data.content);
+          break;
+        case "citation":
+          text = (c.data.keys || []).join(", ") || c.data.command;
+          break;
+        case "bibliography":
+          text = `${c.data.key}${c.data.fields?.title ? ": " + c.data.fields.title : ""}`;
+          break;
+        case "todo":
+          text = c.data.text;
+          break;
+        case "archive":
+          text = c.data.title || richJsonToPlainText(c.data.content);
+          break;
+        case "revision-comment":
+        case "cutter-comment":
+          text = c.data.text || richJsonToPlainText(c.data.content);
+          break;
+        case "revision-suggestion":
+        case "cutter-suggestion":
+          text =
+            c.data.user_text ||
+            c.data.suggested_text ||
+            c.data.original_text ||
+            c.data.explanation;
+          break;
+        default: {
+          const unhandledCard: never = c;
+          void unhandledCard;
+          break;
+        }
+      }
+      break;
+    }
+    default: {
+      const unhandledPayload: never = p;
+      void unhandledPayload;
+      break;
     }
   }
   text = text.replace(/\s+/g, " ").trim();
