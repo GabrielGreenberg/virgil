@@ -4893,6 +4893,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       notes: notesHook.notes,
       highlights: notesHook.highlights,
       footnotes: footnoteInfos,
+      unanchoredFootnotes: unanchoredFootnoteRefs,
       archiveSnippets: archiveHook.snippets,
       cutterCards: cutterHook.cards,
       todoItems: todosHook.items,
@@ -4950,6 +4951,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       handleEditFootnote,
       handleDeleteFootnote,
       handleEditFootnoteTitle,
+      // The atomless card's DELETE half must be the unanchored one (see its own
+      // comment above). Its EDIT half is plain `handleEditFootnote`, above —
+      // the answer both other surfaces already give (`footnotes-host.tsx`
+      // `onEditUnanchored={p.onEdit}`, `omni-host.tsx`
+      // `onEditUnanchored: p.handleEditFootnote`), because that handler's
+      // `EditorHandle.updateFootnoteContent` leg finds no node and no-ops,
+      // leaving exactly the sidecar mirror a parked ref needs.
+      handleDeleteUnanchoredFootnote,
       footnoteAiRequests,
       setFootnoteAiRequest: footnotesHook.setFootnoteAiRequest,
 
@@ -5022,7 +5031,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       selectedCitationId, selectedCommentId,
       selectedExampleId,
       handleCitationCreated, handleEditFootnote, handleDeleteFootnote,
-      handleDeleteCitation,
+      handleDeleteCitation, unanchoredFootnoteRefs, handleDeleteUnanchoredFootnote,
       handleEditFootnoteTitle, handleArchiveDelete,
       convertCutterCard, convertReportCard, convertNotesCard,
     ],

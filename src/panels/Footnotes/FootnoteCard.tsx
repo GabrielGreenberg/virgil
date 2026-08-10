@@ -10,8 +10,6 @@ import {
   BadgeLabel,
   BadgeOrphaned,
   makeCompressedSummary,
-  UNANCHORED_CARD_CLASS,
-  unanchoredCardTitle,
 } from "@/components/panel-primitives";
 import { bodyVariantForCardKind } from "@/cards/predicates";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
@@ -279,6 +277,10 @@ export interface UnanchoredFootnoteCardProps {
   wrapperClassName?: string;
   wrapperStyle?: React.CSSProperties;
   extraDataAttrs?: Record<string, string>;
+  /** Set by the float builder when this card renders inside a popped-out
+   *  window: suppresses the in-card header (AF's `FloatChrome` owns it) and
+   *  pins the body open, exactly as the anchored twin does. */
+  isPoppedOut?: boolean;
 }
 
 /**
@@ -288,6 +290,12 @@ export interface UnanchoredFootnoteCardProps {
  * marker → no jump), but the EditableCard chrome's archive control (gated on the
  * cardArchive context + `isArchivable("footnote")`) drives archive ⇄ unarchive
  * — so the user re-surfaces or permanently removes it from the Archives view.
+ *
+ * Task 316: it also wears the parked cue, and the cue now CARRIES the card key
+ * ({@link UnanchoredCardCue}) — so the "drag into the editor to anchor it"
+ * tooltip this card has always shown is finally reachable: the header renders
+ * the drop button, and the header lift pops it out (the float builder resolves
+ * an atomless ref from the sidecar, so the lift lands on a real window).
  */
 export function UnanchoredFootnoteCard({
   footnote: fn,
@@ -301,6 +309,7 @@ export function UnanchoredFootnoteCard({
   wrapperClassName,
   wrapperStyle,
   extraDataAttrs,
+  isPoppedOut,
 }: UnanchoredFootnoteCardProps) {
   const handleEdit = useCallback(
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
@@ -311,7 +320,11 @@ export function UnanchoredFootnoteCard({
   const compressedLines = useCompressedLines();
   const ac = useAnchoredCard({ kind: "footnote", id: fn.id });
   const isHaloed = ac.selected || isSelected;
-  const compressed = !ac.expanded;
+  const compressed = !ac.expanded && !isPoppedOut;
+  // Same key the anchored twin builds (`cardPopKey("footnote", id)`); a
+  // `FootnoteRef.id` IS the footnoteId the atom would carry, so the key is
+  // stable across park → re-anchor.
+  const cardKey = popKey("footnotes", fn.id);
   const compressedSummary = compressed
     ? (makeCompressedSummary(content, compressedLines) || "")
     : undefined;
@@ -333,8 +346,19 @@ export function UnanchoredFootnoteCard({
       // badge (its omni state is neutral `free`, see Footnotes/omni.tsx). No
       // `footnoteBadge` is passed: the parked chrome, not a badge, distinguishes
       // it from both the numbered (anchored) and BadgeOrphaned (error) siblings.
-      extraCardClass={UNANCHORED_CARD_CLASS}
-      title={unanchoredCardTitle("footnote")}
+      //
+      // Task 316: the cue carries the card key, so the tooltip's promise is
+      // backed by a real drop button + header lift. The docked panel and omni
+      // both mount THIS component, so neither call site has to remember.
+      // `canAnchor` is unconditionally true here, and that is a statement about
+      // footnotes rather than an omission: the body is the atom's only attr and
+      // an empty body is a legal footnote, so a parked footnote can ALWAYS
+      // rebuild its marker (`CardDropButton`'s own doc: "Footnotes are always
+      // enabled"). The citation twin, whose atom needs a citekey, answers no
+      // while it is keyless.
+      unanchored={{ kind: "footnote", cardKey, canAnchor: true }}
+      isPoppedOut={isPoppedOut}
+      chromeless={isPoppedOut}
       // No in-text marker for an atomless ref, so body click is select+expand
       // only (no jump) — same composition as an orphan card.
       onClick={() => ac.onBodyActivate({ onSelect })}

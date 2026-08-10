@@ -35,6 +35,7 @@ import { useCardRestoreActions } from "@/panels/_shared/card-restore-actions";
 import { DropChevrons } from "./icons/DropChevrons";
 import { JumpChevron } from "./icons/JumpChevron";
 import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
+import type { InlineAtomCardKind } from "./drop-mode/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import RichTextField from "./RichTextField";
 import { BorrowedMainText } from "./BorrowedMainText";
@@ -524,13 +525,71 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
  *  panel with a NEUTRAL "drag into the editor to anchor it" cue: a dashed border
  *  + reduced opacity. This is deliberately DISTINCT from BOTH the anchored rest
  *  state (solid border, full opacity) AND the `orphaned` ERROR state (which
- *  keeps its faded {@link BadgeOrphaned} "no anchor" dot). Both the Citation and
- *  Footnote unanchored cards consume these so the two twins can't drift apart. */
-export const UNANCHORED_CARD_CLASS = "border-dashed opacity-80";
+ *  keeps its faded {@link BadgeOrphaned} "no anchor" dot).
+ *
+ *  **Module-private on purpose (task 316).** It is reached ONLY through the
+ *  {@link UnanchoredCardCue} prop, which also carries the `cardKey` — see that
+ *  type for why the look and the mechanism must be one declaration. */
+const UNANCHORED_CARD_CLASS = "border-dashed opacity-80";
 
-/** Tooltip for an unanchored/parked card — pairs with {@link UNANCHORED_CARD_CLASS}. */
-export function unanchoredCardTitle(noun: "citation" | "footnote"): string {
+/** Tooltip copy for an unanchored/parked card — the string SSOT, paired with
+ *  the private cue class by {@link PanelCard}. Exported for the contract suites
+ *  that assert the rendered tooltip; a title alone paints no cue, so exporting
+ *  it cannot reopen the drift door the class closes. */
+export function unanchoredCardTitle(noun: ParkedCardKind): string {
   return `Unanchored ${noun} — drag into the editor to anchor it`;
+}
+
+/** The card kinds that can be PARKED and later re-anchored — derived from
+ *  {@link InlineAtomCardKind}, the kinds whose inline atom a drop can REBUILD
+ *  (`src/components/drop-mode/atom-card-apis.ts`). That derivation is the
+ *  point: "may wear the parked cue" and "can be put back" are the same fact,
+ *  so a future inline-atom kind inherits both at once instead of being added
+ *  to a hand-kept noun list. */
+export type ParkedCardKind = InlineAtomCardKind;
+
+/**
+ * The parked ("unanchored") rest state, declared as ONE fact.
+ *
+ * Task 316 — why this is a prop and not two loose values. The cue used to be a
+ * class constant plus a title helper that each card spread onto separate props
+ * by hand, while the thing that makes the cue ACTIONABLE — the `cardKey` that
+ * renders {@link CardDropButton} and arms the header lift — was a third,
+ * unrelated prop. `CitationCard` threaded all three; `UnanchoredFootnoteCard`
+ * threaded the first two. So the footnote card wore the full "drag into the
+ * editor to anchor it" chrome, in the docked panel AND in omni, with no drop
+ * affordance anywhere — a promise with no mechanism, and nothing could catch
+ * it: the cue's own doc claimed the shared constants kept the twins in
+ * lockstep, and they did, on everything except the prop that mattered.
+ *
+ * Now the look and the mechanism are the same declaration: paint the cue and
+ * you have necessarily threaded the key. A card that omits the key does not
+ * compile, which is the one guard that catches the ORIGINAL shape (a test of
+ * the cue constants never could — the constants were never the part that
+ * misbehaved).
+ */
+export interface UnanchoredCardCue {
+  /** The parked kind — supplies the tooltip noun. */
+  kind: ParkedCardKind;
+  /** The canonical `float:card:<kind>:<id>` key (always `cardPopKey`, never a
+   *  hand-built literal). Threaded into {@link PanelCard}'s `cardKey`, so
+   *  declaring the cue IS wiring the re-anchor gesture. (A card that also
+   *  passes `cardKey` outright — the citation twin does, since an ANCHORED
+   *  citation needs one too — passes the same `cardPopKey` value; the explicit
+   *  prop wins.) */
+  cardKey: string;
+  /** Whether the card can produce its atom RIGHT NOW. Required, not defaulted:
+   *  the two twins answer it from different facts (a footnote always can — its
+   *  body is the only attr and an empty body is a legal footnote; a citation
+   *  cannot while it is a keyless draft, nor while it is a not-yet-created
+   *  draft record whose id `commandFor` can't resolve), and a default would be
+   *  a decision nobody made.
+   *
+   *  False keeps the parked LOOK (the card really is parked — that is the state
+   *  the cue exists to distinguish) and withholds only the "drag into the
+   *  editor to anchor it" PROMISE. Withholding both would erase the one state
+   *  cue the most-broken card in the panel has. */
+  canAnchor: boolean;
 }
 
 /** Small uppercase overline naming the card type ("Citation", "Footnote", …).
@@ -1149,9 +1208,13 @@ export interface EditableCardProps {
    *  {@link UNANCHORED_CARD_CLASS} dashed/opacity parked cue). Additive: default
    *  `undefined` leaves every existing card's chrome unchanged. */
   extraCardClass?: string;
-  /** Native `title` (hover tooltip) forwarded to the card root — used for the
-   *  unanchored/parked cue's "drag to anchor" hint ({@link unanchoredCardTitle}). */
+  /** Native `title` (hover tooltip) forwarded to the card root. The parked
+   *  cue's own hint comes from {@link unanchored}, not from here. */
   title?: string;
+  /** The deliberately-parked rest state — forwarded verbatim to `PanelCard`.
+   *  See {@link UnanchoredCardCue}: it carries the `cardKey`, so a card that
+   *  wears the cue has necessarily wired the re-anchor gesture. */
+  unanchored?: UnanchoredCardCue;
 }
 
 /**
@@ -1173,7 +1236,7 @@ export function EditableCard({
   onTogglePopout, isPoppedOut, cardKey,
   compressed, compressedSummary, compressedContent, onToggleExpanded, onHeaderActivate,
   kind, kindLabelOverride, kindOptions, onKindChange,
-  canJump, onJump, chromeless, forceReadOnly, extraCardClass, title,
+  canJump, onJump, chromeless, forceReadOnly, extraCardClass, title, unanchored,
 }: EditableCardProps) {
   // Chrome-driven read-only mode: when the host has set
   // `editableCardKinds` and this card's kind isn't on the list, the
@@ -1373,6 +1436,7 @@ export function EditableCard({
       isArchived={cardArchived}
       extraCardClass={extraCardClass ? `${cursorClass} ${extraCardClass}` : cursorClass}
       title={title}
+      unanchored={unanchored}
       draggable={cardDraggable}
       onDragStart={onDragStart}
       tabIndex={selected ? 0 : -1}
@@ -2112,6 +2176,13 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  with `onTogglePopout`, mousedown on the card's header element
    *  becomes a drag-to-popout gesture. */
   cardKey?: string;
+  /** The deliberately-parked rest state ({@link UnanchoredCardCue}): paints the
+   *  dashed/reduced-opacity cue, supplies the "drag into the editor to anchor
+   *  it" tooltip, AND supplies `cardKey` when the caller passes none — one
+   *  declaration for the look and the mechanism (task 316). Composes with
+   *  `extraCardClass` rather than replacing it: a parked card that is also a
+   *  drop target is two true states, not a choice between them. */
+  unanchored?: UnanchoredCardCue;
   /** When true, the card is in its collapsed/minimized (compressed) form. Docked,
    *  this equals `!expanded`. It no longer gates the lift-off drag — lift works
    *  in both states now (`onWrapperMouseDown`) — it only suppresses the
@@ -2208,7 +2279,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     className,
     style,
     onClick,
-    cardKey,
+    cardKey: cardKeyProp,
+    unanchored,
+    title: titleProp,
     isCollapsed,
     onToggleExpanded,
     onHeaderActivate,
@@ -2229,6 +2302,27 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   },
   ref,
 ) {
+  // ── The parked cue, resolved once (task 316) ──────────────────────
+  // The cue owns all three of its halves so no card can render two of them:
+  //  - the KEY it carries is the card key when the caller passes none, which
+  //    is what makes the drop button + header lift reachable;
+  //  - the CLASS is appended to `extraCardClass` (never replaces it — a
+  //    drop-target ring and a parked border are different axes and may both
+  //    be true);
+  //  - the TITLE is withheld unless the cue says the card can anchor NOW, so it
+  //    never promises a gesture that would decline. `canAnchor` is the CARD's
+  //    answer rather than a read of `dropDisabled` here: that prop's contract
+  //    is "consulted only for a droppable kind, ignored otherwise", and a cue
+  //    silently suppressed by an unset `dropDisabled` on some future kind would
+  //    be a second question asked of one flag.
+  const cardKey = cardKeyProp ?? unanchored?.cardKey;
+  const cardClass = unanchored
+    ? `${extraCardClass ? `${extraCardClass} ` : ""}${UNANCHORED_CARD_CLASS}`
+    : extraCardClass;
+  const title =
+    titleProp ??
+    (unanchored?.canAnchor ? unanchoredCardTitle(unanchored.kind) : undefined);
+
   /** Unified header rendering: when `kind` is provided, PanelCard owns the
    *  header. Single source of truth for header layout, height, slots, and
    *  popped-out chrome. Cards pass kind + slots and supply only the body
@@ -2439,7 +2533,8 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // card via `[data-omni-entry]:not([data-selected])` without depending on
       // class internals. Present-only when selected (CSS matches on presence).
       data-selected={selected ? "" : undefined}
-      className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`}
+      title={title}
+      className={`group relative ${themedCard(theme, selected, cardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`}
       style={{
         ...themedCardStyle(theme, selected, { isPoppedOut }),
         // Kind color for the card hover/selected outline rules (the
