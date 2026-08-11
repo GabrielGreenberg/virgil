@@ -6,6 +6,14 @@
 > Known oracle corrections (live code is truth): **display-math is NOT lazy-uuid** — `BlockUuidBackfill`
 > assigns a non-null anchor uuid on insert (RESULTS-realstack finding #2); **`\ref` on a `figureBlock`
 > is `ok`, not disabled** — figureBlock is a non-atom block (finding #4, jsdoc corrected in code).
+>
+> **SUPERSEDED for three kinds by task 148 (2026-08-11).** Every cell below that reads
+> `disabled` for **footnote / citation / suggest-edit** on **`bulletList`, `orderedList`,
+> `exampleBlock`** is now `ok`: those three are prose-bodied CONTAINERS, the old
+> `NON_PROSE_BLOCK_ACTIONS` premise was false for them, and both menu surfaces now resolve the
+> question positionally through `blockRangeAllowsAction`. `figureBlock` keeps all three
+> `disabled` (its only body is a `figureCaption`, which the landing rule refuses). Live truth:
+> `src/lib/actions/__tests__/container-body-inline-insert.test.ts` + AGENTS.md "The premise half".
 
 Machine-readable companion: [`cells.json`](cells.json) — the flat Cartesian (action × applicableKind × surface) list the live sweep iterates. Live-sweep harness: [`_harness.js`](_harness.js) (inject via `preview_eval`; acquires `window.__v = {main, dh, cc}`).
 
