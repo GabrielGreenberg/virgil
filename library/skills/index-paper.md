@@ -400,7 +400,7 @@ you to disambiguate something.
 
    Then sync this paper's own row in `papers/<citekey>/references.bib`
    to match (use `_resync_references_bib` from `index_paper`, like
-   `/authenticate-bib` step 5 — it **upserts** that one entry and leaves
+   `/authenticate-bib` step 6 — it **upserts** that one entry and leaves
    every other entry in the file untouched), and patch the `\title{}` /
    `\author{}` / `\date{}` lines at the top of
    `papers/<citekey>/main.tex` if any of those changed. `tex_emit.py`

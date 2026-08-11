@@ -90,7 +90,18 @@ def main() -> int:
     args = ap.parse_args()
 
     library = _resolve_library(args.library)
-    patch = json.loads(args.patch_file.read_text())
+    # Read+parse INSIDE the guarded region so exit 1 means exactly one thing.
+    # These lines used to sit above the `try`, so an unparseable or missing
+    # patch file escaped as an uncaught exception and CPython exited 1 — the
+    # same code the KeyError below uses for "no catalog row for this citekey".
+    # A caller branching on the code (authenticate-bib.md's pre-flight persist
+    # does) then reports a failed write as a benign reference-only entry. Both
+    # of these are refusals, not missing rows, so both are 2.
+    try:
+        patch = json.loads(args.patch_file.read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"cannot read patch file {args.patch_file}: {e}", file=sys.stderr)
+        return 2
     if not isinstance(patch, dict):
         print(f"patch file must contain a JSON object, got {type(patch).__name__}",
               file=sys.stderr)

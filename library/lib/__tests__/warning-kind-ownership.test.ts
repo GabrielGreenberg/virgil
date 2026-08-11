@@ -1,14 +1,18 @@
 /**
  * Warning-kind ownership guardrail (task 323).
  *
- * `indexed.warnings` carries eight recomputed-per-pass kinds, and after this
- * task they have TWO owners rather than one: `/library/clean-bibliography`
- * persists its three at source (because `synthesize_canonical_entries.py`,
- * later in that same subskill, gates entirely on reading `missing-bib-entry:`
- * back out of the catalog — a write deferred to `deep-index.md` step 5, which
- * runs after the whole §3 dispatch, made synthesis a guaranteed no-op on every
- * first pass), while step 5 keeps the five whose kinds have no same-run
- * consumer.
+ * `indexed.warnings` carries nine recomputed-per-pass kinds across THREE owners.
+ * `/library/clean-bibliography` persists its three at source (because
+ * `synthesize_canonical_entries.py`, later in that same subskill, gates entirely
+ * on reading `missing-bib-entry:` back out of the catalog — a write deferred to
+ * `deep-index.md` step 5, which runs after the whole §3 dispatch, made synthesis
+ * a guaranteed no-op on every first pass); step 5 keeps the five whose kinds have
+ * no same-run consumer; and `/library/authenticate-bib` owns `bib-coherence:`
+ * (task 322), which is produced OUTSIDE the deep-index pass entirely — that skill
+ * runs standalone, often from a paper session. The third owner is why the
+ * double-declaration leg matters more than it did with two: deep-index §5 has no
+ * way to know it must not declare a kind it never computes, other than this
+ * census and the prose it holds in sync.
  *
  * A split ownership has exactly one new failure mode, and it is silent in both
  * directions: **a kind declared by two owners**. `--recompute-warning-kind`
@@ -26,12 +30,16 @@
  * which is the sharpest available argument for the rule.
  *
  * Honest limits. (1) The agreement leg asks only that both prose SSOTs NAME all
- * eight kinds; only a reader can tell whether a sentence assigns them
+ * nine kinds; only a reader can tell whether a sentence assigns them
  * correctly. It catches the realistic accident — a kind added to one list and
  * forgotten in the other — not a well-formed lie. (2) Ownership is pinned for
- * the eight; kinds outside them (`metadata-mismatch`) have one producer each,
- * so only the SHAPE leg governs them. (3) A fence is read as text: this proves
- * what an agent is told to run, never that the agent ran it.
+ * the nine; kinds outside them (`metadata-mismatch`, declared by
+ * `di-preflight.md`) have one producer each, so only the SHAPE and
+ * double-declaration legs govern them. That `metadata-mismatch` sits outside a
+ * census whose producer IS a deep-index subskill is a pre-existing gap, recorded
+ * rather than swept — closing it means deciding whether it is step-5-owned or
+ * subskill-owned, which is a design call, not a test edit. (3) A fence is read as
+ * text: this proves what an agent is told to run, never that the agent ran it.
  */
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
@@ -56,7 +64,16 @@ const STEP5_OWNED = [
   "pgmark-out-of-order",
 ] as const;
 
-const EIGHT: string[] = [...SUBSKILL_OWNED, ...STEP5_OWNED];
+/**
+ * Persisted by `/library/authenticate-bib` step 7 — the verdict of the advisory
+ * cross-field pre-flight its step 2 ran, re-checked after that run's own master.bib
+ * repairs, because a finding the run itself resolved must not be filed (task 322).
+ * NOT a deep-index subskill: it runs standalone, so no step in that pass may
+ * declare this kind, and a line it wrote stands until the next authentication.
+ */
+const AUTH_OWNED = ["bib-coherence"] as const;
+
+const RECOMPUTED: string[] = [...SUBSKILL_OWNED, ...STEP5_OWNED, ...AUTH_OWNED];
 
 const DECLARATION = /--recompute-warning-kind\s+([A-Za-z][A-Za-z0-9-]*)/g;
 
@@ -146,12 +163,13 @@ function skillFiles(): string[] {
 const OWNERS: Record<string, readonly string[]> = {
   "clean-bibliography.md": SUBSKILL_OWNED,
   "deep-index.md": STEP5_OWNED,
+  "authenticate-bib.md": AUTH_OWNED,
 };
 
 describe("recomputed warning-kind ownership", () => {
   it("each owner declares exactly its own kinds", () => {
     for (const [file, expected] of Object.entries(OWNERS)) {
-      const declared = [...declaredBy(file)].filter((k) => EIGHT.includes(k));
+      const declared = [...declaredBy(file)].filter((k) => RECOMPUTED.includes(k));
       expect(declared.sort(), `${file} declares the wrong kinds`).toEqual(
         [...expected].sort(),
       );
@@ -161,7 +179,7 @@ describe("recomputed warning-kind ownership", () => {
   it("clean-bibliography's main branch declares all three in ONE fence", () => {
     // The file-level union above structurally CANNOT see this, and the gap it
     // hides is a regression rather than a residual: before the ownership split,
-    // deep-index §5 dropped every one of the eight prefixes on every pass, so
+    // deep-index §5 dropped every one of those prefixes on every pass, so
     // an author-year pass cleared a `numeric-citation-style:` line left by an
     // earlier pass that mis-detected the source. Post-split §5 is forbidden
     // from declaring it, so if no clean-bibliography fence declares it
@@ -198,11 +216,11 @@ describe("recomputed warning-kind ownership", () => {
     ).toEqual([]);
   });
 
-  it("both prose SSOTs name all eight recomputed kinds", () => {
+  it("both prose SSOTs name all nine recomputed kinds", () => {
     // A partial inline copy is the task-163 disease: it reads as coverage.
     for (const file of ["deep-index.md", "_doctrine.md"]) {
       const src = read(file);
-      const missing = EIGHT.filter((k) => !src.includes(`${k}:`));
+      const missing = RECOMPUTED.filter((k) => !src.includes(`${k}:`));
       expect(missing, `${file} omits recomputed kinds`).toEqual([]);
     }
   });

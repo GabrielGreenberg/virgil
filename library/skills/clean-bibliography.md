@@ -807,22 +807,26 @@ catch-all sweep from `/library/index-pending`.)
 python3 .virgil/scripts/library/invalidate_bib_imports.py $ARGUMENTS
 ```
 
-## Coherence check (unwired helper — run it manually)
+## Coherence check (the cover-page leg — the cross-field leg has a caller)
 
-Cross-field coherence + PDF cover-page check. **No skill currently invokes
-this**: `authenticate-bib.md` does not call it, and this invocation is the
-only reference to `validate_bib_coherence.py` anywhere in the skill tree. It
-is a working script, not a wired pipeline step — the earlier heading claimed
-it was "called from /library/authenticate-bib", which was never true.
+`validate_bib_coherence.py` has two legs, and only one of them is yours to
+run by hand.
 
-Run it by hand when a paper's bib fields look internally inconsistent (e.g.
-an `@article` with a publisher but no journal), or when a PDF's cover page
-disagrees with the entry:
+Its **cross-field** leg (entry type vs. field set) is a dispatched pipeline
+step: [`/library/authenticate-bib`](authenticate-bib.md) step 2 runs it as an
+advisory pre-flight before the network search — `--json --no-cover-check` — and
+its step 7 re-checks and records anything still standing as a `bib-coherence:`
+line on the catalog row (task 322). Don't duplicate that here; re-authenticate the entry instead.
+
+Its **cover-page** leg is not run there, deliberately: cover-page-vs-bib
+checking belongs to `/library/di-preflight`'s `detect_metadata_mismatch.py`,
+which has a richer `kind` taxonomy and an auto-resolution policy. Run this
+script by hand for its simpler view of a specific PDF — when a paper's cover
+page and its bib entry look like different works:
 
 ```bash
 python3 .virgil/scripts/library/validate_bib_coherence.py $ARGUMENTS
 ```
 
-It only reports; it writes nothing. Whether it should become a real
-pre-authentication gate inside `/library/authenticate-bib` is an open
-question, not settled here.
+It only reports; it writes nothing. A paper with no source on disk, or one
+whose source is a `.docx`/`.tex`, skips the cover leg rather than failing it.
