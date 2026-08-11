@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
 import { PanelCard, PANEL, Chevron, Button, CardJumpTarget, cardTitleStyle } from "./panel-primitives";
+import { Input } from "./field-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -518,22 +519,22 @@ export default function BibEntryCard({
                   {/* Editable @type and key */}
                   <div className="flex gap-1 items-start">
                     <span className="font-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">@type:</span>
-                    <input type="text" value={editBibType}
+                    <Input value={editBibType} density="dense"
                       onChange={(e) => setEditBibType(e.target.value)}
-                      className="flex-1 font-mono border border-edge-subtle rounded px-1 py-0.5 text-xs" />
+                      className="flex-1 font-mono px-1 py-0.5 text-xs" />
                   </div>
                   <div className="flex gap-1 items-start">
                     <span className="font-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">key:</span>
-                    <input type="text" value={editBibKey}
+                    <Input value={editBibKey} density="dense"
                       onChange={(e) => setEditBibKey(e.target.value)}
-                      className="flex-1 font-mono border border-edge-subtle rounded px-1 py-0.5 text-xs" />
+                      className="flex-1 font-mono px-1 py-0.5 text-xs" />
                   </div>
                   {Object.entries(editBibFields).map(([field, val]) => (
                     <div key={field} className="flex gap-1 items-start">
                       <span className="font-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">{field}:</span>
-                      <input type="text" value={val}
+                      <Input value={val} density="dense"
                         onChange={(e) => setEditBibFields((prev) => ({ ...prev, [field]: e.target.value }))}
-                        className="flex-1 font-mono border border-edge-subtle rounded px-1 py-0.5 text-xs" />
+                        className="flex-1 font-mono px-1 py-0.5 text-xs" />
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); removeEditBibField(field); }}

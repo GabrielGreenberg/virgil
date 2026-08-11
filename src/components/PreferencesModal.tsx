@@ -5,6 +5,7 @@ import type { EditorPreferences, PreferencePreset } from "@/hooks/usePreferences
 import type { GlobalTransforms } from "@/lib/color-transforms";
 import { PREFERENCES_TREE } from "@/lib/preferences-tree";
 import PreferenceTree from "./PreferenceTree";
+import { Input, Select } from "./field-primitives";
 import SmartPreferences from "./SmartPreferences";
 import SystemDialog, { useSystemDialogDrag } from "./system-dialog";
 
@@ -112,10 +113,10 @@ function PresetBar({
 
   return (
     <div className="flex items-center gap-2">
-      <select
+      <Select
         value={selected}
         onChange={handleSelectChange}
-        className="flex-1 text-xs bg-surface border border-edge-subtle rounded px-2 py-1.5 text-ink-body outline-none focus:border-[var(--accent)]"
+        className="flex-1 text-xs px-2 py-1.5"
       >
         <option value="">Load preset...</option>
         {presets.map((p) => (
@@ -123,18 +124,17 @@ function PresetBar({
             {p.name}{p.builtIn ? " (built-in)" : ""}
           </option>
         ))}
-      </select>
+      </Select>
 
       {saving ? (
-        <input
+        <Input
           ref={inputRef}
-          type="text"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={() => { if (!newName.trim()) setSaving(false); }}
           placeholder="Preset name"
-          className="text-xs border border-edge-hover rounded px-2 py-1.5 w-28 outline-none focus:border-[var(--accent)]"
+          className="text-xs px-2 py-1.5 w-28"
         />
       ) : null}
 

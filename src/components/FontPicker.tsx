@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Input } from "./field-primitives";
 import { MAIN_TEXT_FONTS } from "@/lib/preferences-tree";
 import { resolvePreviewFontStack } from "@/lib/panel-typography";
 
@@ -74,13 +75,13 @@ export default function FontPicker({
           style={{ maxHeight: 360 }}
         >
           <div className="p-2 border-b border-edge-subtle">
-            <input
+            <Input
               ref={inputRef}
-              type="text"
+              density="dense"
               placeholder="Search fonts…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full px-2 py-1.5 rounded border border-edge-subtle bg-surface text-sm text-ink-body focus:outline-none focus:ring-1 focus:ring-edge-hover focus:border-edge-hover"
+              className="w-full px-2 py-1.5 text-sm"
             />
           </div>
           <div className="overflow-y-auto" style={{ maxHeight: 300 }}>

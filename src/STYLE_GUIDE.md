@@ -906,9 +906,53 @@ subsume them, but until one exists this is not drift.
 border to `edge-strong`; no ring on inputs. Placeholder is
 `text-ink-muted`.
 
+**Use the primitive: `<Input>` / `<Select>` / `<Textarea>`
+([src/components/field-primitives.tsx](components/field-primitives.tsx)).**
+Don't mix Tailwind utilities to imitate one — the same rule `<Button>`
+carries, for the same reason. This spec was prose-only until task 190, and
+roughly half of ~50 field sites had drifted off it: ten spelled
+`focus:border-[var(--accent)]` (the saturated, user-overridable brown — a
+field that focuses to it re-colors itself with the user's card palette),
+three added a spec-forbidden `focus:ring-1`, and the 4px `rounded` was
+near-universal. The primitive is a leaf module (React and nothing else), so
+dialogs and preference rows can take it without pulling the card stack in
+behind a text box.
+
+**The primitive owns the CHROME; the call site owns the BOX.** Background,
+border, radius, focus, placeholder, disabled — those are the axes that
+drifted, and they come from `fieldChrome()`. Width, padding and font-size
+stay in `className`: a modal field and a citation-row micro-field
+legitimately differ there and never drifted. Two axes are declared rather
+than appended, because a caller's utility and a baked one that set the same
+property are resolved by *stylesheet* order, not class order:
+
+| Prop | Values | When |
+|---|---|---|
+| `tone` | `surface` (default) · `muted` · `transparent` | The field's background. |
+| `density` | `control` (default, `rounded-md` 6px) · `dense` (`rounded-sm` 4px) | Which rung of the radius scale — see "Radius scale": a primary control is 6px, a "form input inside a popover" (card micro-field, popover, inline card row) is 4px. |
+| `invalid` | boolean | Conflict state: border + text flip to `--danger`. Never hand-spell a red. |
+
+**Intended exceptions, so the next audit doesn't re-file them.** A
+*chromeless* field is a different control and stays hand-rolled: a bare
+search box inside a container that already paints the border (Search,
+Errors, the bib picker), a `border-b` inline rename editor (tab strip,
+outline), a NodeView field styled from `globals.css`. So are the non-text
+natives — range sliders, color swatches, checkboxes and radios — which
+`<Input>` cannot even express (`TextInputType` makes `type="color"` a
+compile error). The **numeric steppers** (`SizeStepper`,
+`PanelTextSizeRow`) are NOT exceptions: they are ordinary fields with
+`tabular-nums`, and they dropped their rings to match this spec.
+
 Card title input is borderless except a `border-bottom: 1px solid
 theme.titleColor` on focus, transparent bg, sans 0.78rem weight 500.
-Don't reuse this style.
+Don't reuse this style. (It is already its own primitive, `CardTitleInput`
+— the pattern that made the missing ordinary one conspicuous.)
+
+CI: [field-chrome-guardrail.test.ts](lib/__tests__/field-chrome-guardrail.test.ts)
+censuses both silos — every raw `<input>`/`<select>`/`<textarea>` painting
+its own chrome must be on `PERMITTED_BESPOKE_FIELDS` (empty; a hit is
+migrate-it), and the accent-focus and ring bans hold over primitive calls
+too, since `className="focus:ring-1"` is the same defect one indirection in.
 
 Toggle: 22×14 pill, off `bg-edge-hover`, on `bg-accent`.
 Checkbox: 16×16 box, off `border-edge-strong`, on `bg-accent`.

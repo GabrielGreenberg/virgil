@@ -23,6 +23,7 @@ import {
   cardTitleStyle,
   usePanelCardTryDelete,
 } from "@/components/panel-primitives";
+import { Input, Select } from "@/components/field-primitives";
 import { FONT_STACKS } from "@/lib/panel-typography";
 // The `<cardKind>:<cardId>` grammar has one builder (task 202) — the panel
 // card carries the same `data-link-card` token its in-editor marker does, and
@@ -930,7 +931,7 @@ export function CitationCard({
           >
             <div className="flex items-center gap-1.5">
               <CardMetaLabel className="shrink-0">Type</CardMetaLabel>
-              <select
+              <Select
                 value={type}
                 onChange={(e) => {
                   // Honor the user's base-command choice, but let the plural/
@@ -941,14 +942,15 @@ export function CitationCard({
                   setType(v);
                   persist({ type: v });
                 }}
-                className="text-xs card-mono border border-edge-hover rounded px-1.5 py-0.5 bg-surface min-w-0"
+                density="dense"
+                className="text-xs card-mono px-1.5 py-0.5 min-w-0"
               >
                 {types.map((t) => (
                   <option key={t.value} value={t.value}>
                     {t.label}
                   </option>
                 ))}
-              </select>
+              </Select>
               <AnchoredMenu
                 ariaLabel="More options"
                 align="end"
@@ -1001,10 +1003,9 @@ export function CitationCard({
             <div className="flex items-center gap-1.5 min-w-0">
               <CardMetaLabel className="shrink-0">Code</CardMetaLabel>
               {codeDraft !== null ? (
-                <input
+                <Input
                   ref={codeInputRef}
                   autoFocus
-                  type="text"
                   value={codeDraft}
                   onChange={(e) => updateCodeDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -1015,7 +1016,8 @@ export function CitationCard({
                   }}
                   onBlur={commitCodeDraft}
                   spellCheck={false}
-                  className="text-[10px] card-mono text-ink-body bg-surface border border-edge-strong rounded px-1 py-0 outline-none flex-1 min-w-0 focus:ring-0"
+                  density="dense"
+                  className="text-[10px] card-mono px-1 py-0 flex-1 min-w-0"
                 />
               ) : (
                 <button
@@ -1217,9 +1219,8 @@ function CitationKeyRow({
     <span className="ml-1.5 inline-flex items-center gap-1 align-baseline whitespace-nowrap text-[10px] text-[var(--muted)]">
       {pgOpen ? (
         <>
-          <input
+          <Input
             ref={pgInputRef}
-            type="text"
             value={pgDraft}
             onChange={(e) => setPgDraft(e.target.value)}
             onBlur={commitPg}
@@ -1236,7 +1237,8 @@ function CitationKeyRow({
               }
             }}
             placeholder="range"
-            className="w-14 text-[10px] card-mono border border-edge-subtle rounded px-1 py-0 bg-surface focus:border-edge-strong outline-none"
+            density="dense"
+            className="w-14 text-[10px] card-mono px-1 py-0"
           />
           {!row.postnote && pgDraft === "" && (
             <button
@@ -1509,12 +1511,11 @@ function EmptyRowSearchInput({
   const displayValue = pickerOpenHere ? pickerQuery ?? "" : "";
 
   return (
-    <input
+    <Input
       ref={(el) => {
         inputRef.current = el;
         registerAnchor(el);
       }}
-      type="text"
       value={displayValue}
       placeholder="Add from library…"
       onFocus={(e) => {
@@ -1530,7 +1531,9 @@ function EmptyRowSearchInput({
         }
       }}
       onClick={(e) => e.stopPropagation()}
-      className="flex-1 min-w-0 text-ink-body placeholder:text-ink-body bg-transparent border border-dashed border-edge-subtle rounded px-2 py-1 outline-none hover:border-edge-hover focus:border-edge-strong focus:border-solid"
+      tone="transparent"
+      density="dense"
+      className="flex-1 min-w-0 px-2 py-1 border-dashed hover:border-edge-hover focus:border-solid"
     />
   );
 }

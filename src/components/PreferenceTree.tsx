@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { PrefNode, PrefGroup, PrefLeaf, PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
 import { isLeaf } from "@/lib/preferences-tree";
+import { Input, Select } from "./field-primitives";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 
@@ -97,18 +98,17 @@ export function ColorPref({
           onChange={(e) => onChange(e.target.value)}
           className="w-6 h-6 rounded border border-edge-subtle cursor-pointer p-0 bg-transparent"
         />
-        <input
-          type="text"
+        <Input
           value={localHex}
           onChange={(e) => setLocalHex(e.target.value)}
           onBlur={commitHex}
           onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
           spellCheck={false}
-          className={`text-[11px] font-mono w-[70px] px-1 py-0.5 border rounded bg-transparent outline-none ${
-            invalid
-              ? "border-red-300 text-danger"
-              : "border-edge-subtle text-ink-subtle focus:border-[var(--accent)]"
-          }`}
+          tone="transparent"
+          density="dense"
+          ink="subtle"
+          invalid={invalid}
+          className="text-[11px] font-mono w-[70px] px-1 py-0.5"
         />
         {!isDefault && (
           <button
@@ -139,15 +139,15 @@ export function FontPref({
   return (
     <div className="flex items-center gap-3 py-1">
       <PrefLabel label={label} description={description} />
-      <select
+      <Select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-1 text-xs bg-surface border border-edge-subtle rounded px-2 py-1 text-ink-body outline-none focus:border-[var(--accent)]"
+        className="flex-1 text-xs px-2 py-1"
       >
         {options.map((f) => (
           <option key={f} value={f}>{f}</option>
         ))}
-      </select>
+      </Select>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
 import { Button, ItemMenu, PANEL, useListNavKeys } from "@/components/panel-primitives";
+import { Input, Textarea } from "@/components/field-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
@@ -700,9 +701,8 @@ function BibliographyPanel({
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <input
+            <Input
               ref={searchInputRef}
-              type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -713,7 +713,8 @@ function BibliographyPanel({
                   ? "Search local bibliography…"
                   : "Search library…"
               }
-              className="flex-1 min-w-0 text-xs bg-surface border border-edge-subtle rounded px-2 py-1 outline-none focus:border-edge-strong"
+              density="dense"
+              className="flex-1 min-w-0 text-xs px-2 py-1"
             />
             <div className="flex items-center bg-surface border border-edge-subtle rounded overflow-hidden shrink-0">
               <button
@@ -844,13 +845,14 @@ function BibliographyPanel({
               </svg>
             </button>
           </div>
-          <textarea
+          <Textarea
             ref={requestInputRef}
             value={requestText}
             onChange={(e) => setRequestText(e.target.value)}
             onKeyDown={onRequestKeyDown}
             placeholder="Describe the bibliography entry you need..."
-            className="w-full text-xs bg-surface border border-edge-subtle rounded px-2 py-1.5 outline-none focus:border-edge-strong resize-none"
+            density="dense"
+            className="w-full text-xs px-2 py-1.5 resize-none"
             rows={3}
           />
           <div className="flex justify-end gap-1.5 mt-1.5">

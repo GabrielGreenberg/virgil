@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { RevisionsTracker } from "@/lib/types";
+import { Input } from "@/components/field-primitives";
 
 interface RevisionsTrackerStripProps {
   tracker: RevisionsTracker | null;
@@ -54,9 +55,10 @@ export function RevisionsTrackerStrip({
     return (
       <div className="px-3 py-1.5 flex items-center gap-2 text-[11px] border-b border-edge-subtle">
         <span className="text-[var(--muted)]">{summary}</span>
-        <input
+        <Input
           ref={inputRef}
           type="number"
+          density="dense"
           min={0}
           inputMode="numeric"
           value={draft}
@@ -72,7 +74,8 @@ export function RevisionsTrackerStrip({
           }}
           onBlur={commit}
           placeholder="goal"
-          className="ml-auto w-20 bg-surface border border-[var(--border)] rounded px-1.5 py-0.5 text-[11px] text-ink-strong focus:outline-none focus:border-edge-strong"
+          ink="strong"
+          className="ml-auto w-20 px-1.5 py-0.5 text-[11px]"
         />
       </div>
     );
