@@ -9,7 +9,11 @@
  * so plugins, decorations, and node views all behave consistently. The
  * mirror updates its local state on every editor transaction.
  *
- * Used by EditorLayout to provide a session-only main-editor split-screen.
+ * PARKED — its only consumer is `SplitEditorPanes`, which task 115 confirmed
+ * as deliberately unmounted (read that file's header for why, and for what
+ * re-mounting either of them now costs). It stays on the keystroke-sanctity
+ * allowlist because it still subscribes to `editor.on('transaction')` if
+ * something mounts it.
  */
 
 import { useEffect, useRef } from "react";

@@ -140,16 +140,25 @@ function posToAttr(pos: ResolvedPosition | null): string | null {
  * instead of a thin bar sliding up and down the gutter (#3). It reuses the
  * by-`data-outline-pos` measurement and paints a soft full-width tint BEHIND
  * the row (rows sit at zIndex 5 with transparent backgrounds, so the tint
- * shows through). `variant` distinguishes the canonical pane ("fill", a soft
+ * shows through).
+ *
+ * It used to take a `variant`: "fill" (this soft red wash, the canonical
+ * pane's current-section selector) vs "edge" (a slim green bar tracking the
+ * MIRROR pane of a split editor). The editor split was retired in task 115 —
+ * the toggle flipped a persisted pref no pane read, and with no mirror the
+ * mirror section path resolved to Document-start, so one click painted a
+ * permanent green bar on the Outline's title row that survived reloads. The
+ * mirror was the "edge" branch's ONLY caller, so the variant went with it.
+ *
+ * (Historic text: `variant` distinguished the canonical pane ("fill", a soft
  * red wash — the primary current-section selector) from the mirror pane
- * ("edge", a slim accent bar) so a split view shows both without two clashing
- * washes.
+ * ("edge", a slim accent bar) so a split view showed both without two
+ * clashing washes.)
  */
-function PositionHighlight({ scrollRef, attr, color, variant }: {
+function PositionHighlight({ scrollRef, attr, color }: {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   attr: string | null;
   color: string;
-  variant: "fill" | "edge";
 }) {
   const [pos, setPos] = useState<{ y: number; h: number } | null>(null);
 
@@ -190,27 +199,6 @@ function PositionHighlight({ scrollRef, attr, color, variant }: {
   // the row). Behind the rows it was covered — so hovering the current row made
   // the selector vanish. It's a translucent, pointer-events-none wash, so it
   // reads over the hover without eating clicks or hiding the text.
-  if (variant === "edge") {
-    return (
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width: 3,
-          borderRadius: 1.5,
-          background: color,
-          opacity: 0.75,
-          transform: `translateY(${pos.y}px)`,
-          height: pos.h,
-          transition: "transform 200ms ease-out, height 200ms ease-out, opacity 200ms ease",
-          pointerEvents: "none",
-          zIndex: 6,
-        }}
-      />
-    );
-  }
-
   return (
     <div
       style={{
@@ -342,12 +330,6 @@ interface OutlinePanelProps {
       reader is currently reading, or null if none. Used to move the
       position chevron onto a paragraph row when par titles are enabled. */
   activeParTitleIndex?: number | null;
-  /** True when the editor is in split-pane mode. */
-  editorSplit?: boolean;
-  /** Heading chain for the mirror (second) pane. */
-  mirrorSectionPath?: SectionPathEntry[];
-  /** Active parTitle index for the mirror pane. */
-  mirrorParTitleIndex?: number | null;
   /** Focus mode band — the UUID-anchored truth from `useFocusMode.band`, null
    *  when the feature isn't wired. The outline resolves it to index boundaries
    *  against its OWN `content` snapshot (`resolveFocusStateFromSnapshot`), so
@@ -1466,7 +1448,7 @@ function FocusBand({
 
 /* ── Main OutlinePanel ─────────────────────────────────────────────── */
 
-function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, isLabelTaken, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex, focusBand, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
+function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, isLabelTaken, activeSectionPath, activeParTitleIndex, focusBand, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
   // View prefs come from the shared external store — survive reload AND the
   // docked↔popped-out remount (OUT-#7). No per-instance useState/localStorage.
   const prefs = useSyncExternalStore(
@@ -1582,14 +1564,6 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
     const raw = resolvePosition(activeSectionPath, activeParTitleIndex, headings, collapsed, showTitles, preambleTitles);
     return clampToFocus(raw);
   }, [showPosition, activeSectionPath, activeParTitleIndex, headings, collapsed, showTitles, preambleTitles, clampToFocus]);
-
-  const pos2 = useMemo(() => {
-    if (!showPosition || !editorSplit) return null;
-    const raw = resolvePosition(mirrorSectionPath, mirrorParTitleIndex, headings, collapsed, showTitles, preambleTitles);
-    return clampToFocus(raw);
-  }, [showPosition, editorSplit, mirrorSectionPath, mirrorParTitleIndex, headings, collapsed, showTitles, preambleTitles, clampToFocus]);
-
-  const isSplit = !!editorSplit;
 
   // Collapse/expand-all replace ONLY this doc's fold bucket — they can no
   // longer wipe another paper's persisted folds (task 111 member 1).
@@ -1785,13 +1759,12 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
               />
             )}
             {/* Current-position selector — a soft full-row tint behind the
-                active section (#3), not a sliding bar. Mirror pane (split) gets
-                a slim green edge so both panes stay legible. */}
+                active section (#3), not a sliding bar. There is exactly ONE:
+                the mirror pane's green edge bar retired with the editor split
+                (task 115), where it had been painting Document-start with no
+                mirror to track. */}
             {showPosition && (
-              <>
-                <PositionHighlight scrollRef={scrollRef} attr={posToAttr(pos1)} color="rgba(180, 87, 87, 0.13)" variant="fill" />
-                {isSplit && <PositionHighlight scrollRef={scrollRef} attr={posToAttr(pos2)} color="#5b8a72" variant="edge" />}
-              </>
+              <PositionHighlight scrollRef={scrollRef} attr={posToAttr(pos1)} color="rgba(180, 87, 87, 0.13)" />
             )}
 
             {/* Fixed top row — document start / title. Hidden when locked

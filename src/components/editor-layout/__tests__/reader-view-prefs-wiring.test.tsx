@@ -249,8 +249,6 @@ describe("useReaderView — section path / breadcrumb (F#16 deferred half)", () 
     const path = result.current.viewPrefs.activeSectionPath;
     expect(path.map((e) => e.text)).toEqual(["Intro", "Background"]);
     expect(path.map((e) => e.sectionNumber)).toEqual(["1", "1.1"]);
-    // Mirror stays empty (single-pane Reader).
-    expect(result.current.viewPrefs.mirrorSectionPath).toEqual([]);
   });
 
   it("stays EMPTY when there is no scroll container yet (null scrollEl)", () => {
@@ -287,7 +285,6 @@ describe("useReaderView — menuBar bundle (F#16)", () => {
     expect(typeof menuBar.showCardTitles).toBe("boolean");
     expect(typeof menuBar.showLatexComments).toBe("boolean");
     expect(typeof menuBar.omniDimResting).toBe("boolean");
-    expect(menuBar.activeSplitPane).toBe("top");
 
     // Divider levels are walked from the doc's heading nodes (levels 1 & 2).
     expect(menuBar.availableDividerLevels.has(1)).toBe(true);
@@ -308,7 +305,6 @@ describe("useReaderView — menuBar bundle (F#16)", () => {
       "toggleDividerLevel",
       "setDividerWidth",
       "setShowHighlights",
-      "toggleEditorSplit",
       "closeAllPanels",
       "paraNavBack",
       "paraNavForward",

@@ -17,9 +17,6 @@ export interface OutlineHostProps {
   isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
   activeSectionPath: SectionPathEntry[];
   activeParTitleIndex: number | null;
-  editorSplit: boolean;
-  mirrorSectionPath: SectionPathEntry[];
-  mirrorParTitleIndex: number | null;
   /** UUID-anchored focus band; OutlinePanel resolves it to index boundaries
    *  against its own snapshot (task 307). */
   focusBand: FocusBand | null;
@@ -44,9 +41,6 @@ export function OutlineHost(p: OutlineHostProps) {
       isLabelTaken={p.isLabelTaken}
       activeSectionPath={p.activeSectionPath}
       activeParTitleIndex={p.activeParTitleIndex}
-      editorSplit={p.editorSplit}
-      mirrorSectionPath={p.mirrorSectionPath}
-      mirrorParTitleIndex={p.mirrorParTitleIndex}
       focusBand={p.focusBand}
       onFocusActivate={p.onFocusActivate}
       onFocusDeactivate={p.onFocusDeactivate}

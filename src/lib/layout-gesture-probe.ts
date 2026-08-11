@@ -44,7 +44,6 @@ export const LAYOUT_SITE_VIEWPORT_CACHE = "viewport-cache";
 export const LAYOUT_SITE_MARGINALIA = "marginalia-registry";
 export const LAYOUT_SITE_EDITOR_SCROLLBAR = "editor-scrollbar";
 export const LAYOUT_SITE_SECTION_PATH = "section-path";
-export const LAYOUT_SITE_SECTION_PATH_MIRROR = "section-path-mirror";
 export const LAYOUT_SITE_READER_SECTION_PATH = "reader-section-path";
 export const LAYOUT_SITE_IN_TEXT_POSITIONS = "in-text-positions";
 export const LAYOUT_SITE_STACK_STRIP = "stack-strip";

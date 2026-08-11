@@ -132,10 +132,6 @@ export interface ViewPrefs extends RegistryPrefs {
   blankLeft: boolean;
   blankRight: boolean;
   panelWidths: Record<string, number>; // keyed by `${side}`
-  /** Whether the main editor is split into two panes. */
-  editorSplit: boolean;
-  /** 0..1 — top pane ratio when editor is split. */
-  editorSplitRatio: number;
   /** 0..1 — *editor* pane ratio when the Code pane split is engaged
    *  (split-with-code primitive). 0.55 = editor slightly wider than code.
    *  Persisted globally so the splitter feels stable across docs. */
@@ -225,6 +221,18 @@ export { dockedSideOf, dockStackTop, isPanelDocked } from "./view-prefs-derived"
 // `printOptions` is filled in from DEFAULT_PRINT_OPTIONS (owned by
 // print.ts) and `omniCategories` from DEFAULT_OMNI_CATEGORIES (derived
 // from the panel registry) rather than duplicated into the JSON.
+/** Pref keys a past build persisted for a feature that no longer exists.
+ *  Deleted from the saved blob at load (see `loadPrefs`), so a stale value
+ *  can neither reach the live prefs object nor round-trip back to disk.
+ *
+ *  - `editorSplit` / `editorSplitRatio`: the two-pane editor split. Its render
+ *    site was dropped in a refactor, leaving a MenuBar toggle that flipped a
+ *    persisted pref no pane read — and one click painted a permanent phantom
+ *    mirror indicator on the Outline that survived reloads. Retired in task
+ *    115; the machinery is parked (unmounted) in `split-editor-panes.tsx`.
+ */
+const RETIRED_PREF_KEYS = ["editorSplit", "editorSplitRatio"] as const;
+
 const DEFAULT_PREFS: ViewPrefs = {
   // Registry defaults FIRST so the 8 promoted decoration/highlight fields
   // (showMarginalia, dividerLevels, …) and `bibFilter` get a value; the JSON
@@ -746,6 +754,16 @@ export function loadPrefs(): ViewPrefs {
     ]) {
       delete (parsed as Record<string, unknown>)[k];
     }
+    // Retired prefs: keys that were persisted by a past build and whose
+    // FEATURE no longer exists. `loadPrefs` returns `{...DEFAULT_PREFS,
+    // ...parsed}`, so without this a retired key survives as an untyped
+    // member of the live prefs object and is re-serialized on every write —
+    // forever, invisible to the type system, and ready to be read back with a
+    // stale value by anything that reuses the name. Scrubbing here drops it
+    // from the blob on the first write after upgrade.
+    for (const k of RETIRED_PREF_KEYS) {
+      delete (parsed as Record<string, unknown>)[k];
+    }
 
     // Bug 5: popped-out PANELS now re-float on reload (the float rect already
     // persists via `floatPositions`; only the "is currently floating" state
@@ -1126,8 +1144,7 @@ export function useViewPrefs(opts?: {
 
   /** Close any open panels and pop-outs, but leave the side columns
    *  themselves expanded (they fall back to the omni-view background).
-   *  Leaves collapsed sides collapsed, and leaves the editor split alone
-   *  (that has its own toggle). */
+   *  Leaves collapsed sides collapsed. */
   const closeAllPanels = useCallback(() => {
     // Panels via the engine; `poppedOutCards` is the CARD float axis, which
     // the dock engine deliberately doesn't own.
@@ -1236,10 +1253,6 @@ export function useViewPrefs(opts?: {
    *  focus) → bump it to most-recent on its side, for LRU eviction. */
   const notePanelUse = useCallback((side: Side, id: PanelId) => {
     update((p) => notePanelUseIn(p, side, id));
-  }, [update]);
-
-  const setEditorSplit = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
-    update((p) => ({ ...p, editorSplit: typeof v === "function" ? v(p.editorSplit) : v }));
   }, [update]);
 
   const setShowHighlights = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
@@ -1516,10 +1529,6 @@ export function useViewPrefs(opts?: {
     [update],
   );
 
-  const setEditorSplitRatio = useCallback((ratio: number) => {
-    update((p) => ({ ...p, editorSplitRatio: Math.max(0.15, Math.min(0.85, ratio)) }));
-  }, [update]);
-
   const setCodePaneRatio = useCallback((ratio: number) => {
     update((p) => ({ ...p, codePaneRatio: Math.max(0.05, Math.min(0.95, ratio)) }));
   }, [update]);
@@ -1607,8 +1616,6 @@ export function useViewPrefs(opts?: {
     clearPanelHeight,
     tradePanelHeights,
     notePanelUse,
-    setEditorSplit,
-    setEditorSplitRatio,
     setCodePaneRatio,
     setPageWidth,
     setEditorLeftMargin,

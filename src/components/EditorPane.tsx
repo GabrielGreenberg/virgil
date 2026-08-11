@@ -420,8 +420,6 @@ export interface EditorPaneViewPrefs {
   // ── Section path (OutlineHost) ──────────────────────────────────
   activeSectionPath: SectionPathEntry[];
   activeParTitleIndex: number | null;
-  mirrorSectionPath: SectionPathEntry[];
-  mirrorParTitleIndex: number | null;
 
   // ── Setters / mutators ──────────────────────────────────────────
   setIsResizingPanels: (r: boolean) => void;
@@ -605,8 +603,6 @@ export interface EditorPaneMenuBarBundle {
   availableDividerLevels: Set<import("./MenuBar").DividerLevel>;
   activeDividerLevels: Set<import("./MenuBar").DividerLevel>;
   dividerWidth: import("./MenuBar").DividerWidth;
-  editorSplit: boolean;
-  activeSplitPane: "top" | "bottom";
 
   // ── Toggle setters ─────────────────────────────────────────────
   onToggleParTitles: () => void;
@@ -621,7 +617,6 @@ export interface EditorPaneMenuBarBundle {
   toggleDividerLevel: (level: import("./MenuBar").DividerLevel) => void;
   setDividerWidth: (w: import("./MenuBar").DividerWidth) => void;
   setShowHighlights: (v: boolean) => void;
-  toggleEditorSplit: () => void;
   closeAllPanels: () => void;
 
   // ── Para nav (back/forward through paragraph history) ──────────
@@ -2713,8 +2708,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         blankLeft: false,
         blankRight: false,
         panelWidths: {},
-        editorSplit: false,
-        editorSplitRatio: 0.5,
         poppedOutPanels: [],
         poppedOutOrigins: {},
         floatPositions: {},
@@ -6469,9 +6462,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       onToggleOmniDimResting={menuBar.onToggleOmniDimResting}
                       cardOutlineChrome={menuBar.cardOutlineChrome}
                       onToggleCardOutline={menuBar.onToggleCardOutline}
-                      editorSplit={menuBar.editorSplit}
-                      onToggleEditorSplit={menuBar.toggleEditorSplit}
-                      activeSplitPane={menuBar.editorSplit ? menuBar.activeSplitPane : undefined}
                       showMarginalia={menuBar.showMarginalia}
                       onToggleMarginalia={menuBar.toggleMarginalia}
                       hiddenMarginaliaTypes={menuBar.hiddenMarginaliaTypes}
@@ -7913,9 +7903,6 @@ function PaneRailBody({
         isLabelTaken={viewPrefs.isLabelTaken}
         activeSectionPath={viewPrefs.activeSectionPath}
         activeParTitleIndex={viewPrefs.activeParTitleIndex}
-        editorSplit={viewPrefs.prefs.editorSplit}
-        mirrorSectionPath={viewPrefs.mirrorSectionPath}
-        mirrorParTitleIndex={viewPrefs.mirrorParTitleIndex}
         focusBand={viewPrefs.focusBand}
         onFocusActivate={viewPrefs.onFocusActivate}
         onFocusDeactivate={viewPrefs.onFocusDeactivate}
