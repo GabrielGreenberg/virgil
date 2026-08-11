@@ -234,6 +234,14 @@ const paragraphSidePlacement = (editor: Editor): Placement => ({
   rect: { x: 0, y: 0, width: 2, height: 20 },
 });
 
+/** A block gap — the one geometry EVERY card kind's list admits. */
+const betweenBlocksPlacement = (editor: Editor): Placement => ({
+  kind: "between-blocks",
+  editor,
+  insertPos: editor.state.doc.content.size,
+  rect: { x: 0, y: 0, width: 300, height: 2 },
+});
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 let editor: Editor;
@@ -388,17 +396,39 @@ describe("the per-card-kind table is DERIVED from what applyDrop does", () => {
     (cardKind) => {
       seedStack(cardPayload(cardKind));
       const declared = stackPullPlacementsFor(KEY);
-      const { ctx, calls } = recordingCtx(editor);
 
-      // Run the REAL apply at a paragraph-side placement, whatever the
-      // declaration says — the point is to compare the two.
-      stackPullDropSpec.applyDrop(paragraphSidePlacement(editor), KEY, ctx);
-      const anchored = calls.some((c) => c.args.includes(PARA_ID));
+      // RENEGOTIATED by task 321 — net stronger, with one loss named. This leg
+      // used to drive the apply at a paragraph-side placement "whatever the
+      // declaration says", because `applyDrop` consulted `isPlacementValidFor`
+      // nowhere — only `classifyDrop` did, so a direct apply ran the branch at a
+      // geometry the spec would have refused. Both doors are now derived from
+      // one `planDrop`, so the commit enforces the table too, and the
+      // declaration is checked at BOTH geometries instead:
+      //
+      //   • a GAP (every kind's list admits it) — the branch must create
+      //     something, unanchored. This is the leg that keeps the paragraph-side
+      //     half below from being vacuously satisfied by a kind that does
+      //     nothing at all, which is what the old `[] ⇔ no calls` line covered.
+      //   • the SIDE — anchored iff declared, and REFUSED outright when not.
+      //
+      // THE LOSS, stated: because the commit now refuses a geometry the table
+      // doesn't declare, the ⟸ direction is satisfied by that refusal rather
+      // than by the branch ignoring a paragraphId. A gap-only kind whose branch
+      // WOULD anchor if it were ever reached is no longer detected here — it is
+      // unreachable through the spec, which is why this is a coverage loss and
+      // not a correctness one. The harmful direction (a kind declaring
+      // paragraph-side whose branch drops the anchor) still bites.
+      const gap = recordingCtx(editor);
+      stackPullDropSpec.applyDrop(betweenBlocksPlacement(editor), KEY, gap.ctx);
+      expect(gap.calls.length, `${cardKind}: no factory ran at a gap`)
+        .toBeGreaterThan(0);
+      expect(gap.calls.some((c) => c.args.includes(PARA_ID))).toBe(false);
 
+      const side = recordingCtx(editor);
+      stackPullDropSpec.applyDrop(paragraphSidePlacement(editor), KEY, side.ctx);
+      const anchored = side.calls.some((c) => c.args.includes(PARA_ID));
       expect(declared.includes("paragraph-side")).toBe(anchored);
-      // And an EMPTY declaration means the branch does nothing at all — the
-      // only honest reason to offer no landing site.
-      expect(declared.length === 0).toBe(calls.length === 0);
+      expect(declared.includes("paragraph-side")).toBe(side.calls.length > 0);
     },
   );
 

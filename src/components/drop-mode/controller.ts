@@ -439,7 +439,15 @@ function finishApply(
   if (applied && placement.kind === "paragraph-side") {
     ctx.requestAnchorFlush?.(placement.paragraphId);
   }
-  if (spec.postDrop === "close") {
+  // `postDrop: "close"` dismisses the popped-out float, so it is gated on the
+  // same report the flush above is (task 321). It used to run unconditionally:
+  // an `applyDrop` that THREW logged to the console and still closed the float,
+  // which is the harshest form of this bug class — the card the user was
+  // dragging disappears on the one path where something actually went wrong.
+  // (The silent half — a spec that refuses by returning — no longer reaches
+  // here at all: a planned spec resolves its refusals in `planDrop`, so
+  // `classifyDrop` reports `no-op` and `commitDropSession` cancels.)
+  if (applied && spec.postDrop === "close") {
     ctx.closePopout(cardKey);
   }
   endDropSession();

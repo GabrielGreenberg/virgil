@@ -40,29 +40,34 @@ import {
   classifyParentAt,
   fitNodesAtInsert,
 } from "./drop-context";
-import type { DropSpec, Placement } from "../types";
+import { plannedDropSpec } from "../planned-spec";
+import type { DropPlan, DropSpec, Placement } from "../types";
 
-export const textObjectDropSpec: DropSpec = {
+export const textObjectDropSpec: DropSpec = plannedDropSpec({
   allowedPlacements: ["between-blocks"],
   targetScope: "any-editor",
-  classifyDrop(placement, cardKey) {
-    if (placement.kind !== "between-blocks") return { kind: "no-op" };
+  postDrop: "close",
+  /**
+   * ONE resolution, two doors (task 321). Every refusal below — an
+   * unresolvable source, a self-drop, the adapter's task-065 `no-op`, a wrapper
+   * that cannot hold the node, the container fit's `reject` — used to live only
+   * in `applyDrop`, so `classifyDrop` said `apply`, `finishApply` saw no throw,
+   * `postDrop: "close"` dismissed the float, and the document was untouched.
+   * Resolving them here makes them a `no-op` decision: the session cancels and
+   * the popout survives.
+   */
+  planDrop(placement, cardKey): DropPlan | null {
+    if (placement.kind !== "between-blocks") return null;
     const src = locate(placement, cardKey);
-    if (!src) return { kind: "no-op" };
+    if (!src) return null;
     // No-op if the drop position is inside the source's own range.
     if (
       placement.editor === src.editor &&
       placement.insertPos >= src.move.from &&
       placement.insertPos <= src.move.to
     ) {
-      return { kind: "no-op" };
+      return null;
     }
-    return { kind: "apply" };
-  },
-  applyDrop(placement, cardKey) {
-    if (placement.kind !== "between-blocks") return;
-    const src = locate(placement, cardKey);
-    if (!src) return;
     const targetEditor = placement.editor;
     const targetParentKind = classifyParentAt(targetEditor, placement.insertPos);
     // Feature A2 — schema-driven wrap-vs-direct. Compute whether the source node
@@ -105,7 +110,7 @@ export const textObjectDropSpec: DropSpec = {
     );
     // A wrap adapter returns `no-op` when the wrap it would fabricate is invalid
     // at the true immediate parent (task 065) — reject the drop, insert nothing.
-    if (action.kind === "no-op") return;
+    if (action.kind === "no-op") return null;
 
     // Build the node(s) to insert. For drop-direct: the original
     // collected nodes. For wrap: wrap each top-level source node in a
@@ -121,7 +126,7 @@ export const textObjectDropSpec: DropSpec = {
       const wrapped: PMNode[] = [];
       for (const n of toInsert) {
         const w = tryBuildWrap(targetEditor.state.schema, n, action.parentKind);
-        if (!w) return;
+        if (!w) return null;
         wrapped.push(w);
       }
       toInsert = wrapped;
@@ -146,11 +151,18 @@ export const textObjectDropSpec: DropSpec = {
     const fit = fitNodesAtInsert(targetEditor, placement.insertPos, toInsert, {
       prefer: src.sourceContext.parentKind,
     });
-    if (fit.kind === "reject") return;
+    if (fit.kind === "reject") return null;
     toInsert = fit.nodes;
 
-    const sameEditor = targetEditor === src.editor;
-    if (sameEditor) {
+    // Everything above RESOLVES (and can still refuse); everything below BUILDS
+    // the transaction the drop would dispatch, and `commit` only dispatches it.
+    // The build stays inside the plan for two reasons: a splice that can throw
+    // is then a refusal rather than a half-applied gesture, and the container
+    // fit above stays in the same declaration as the splices it governs, which
+    // is exactly what `container-fit-guardrail` checks. `applyDrop` re-plans
+    // immediately before committing (planned-spec.ts), so these transactions are
+    // always built against the live state they are dispatched into.
+    if (targetEditor === src.editor) {
       const tr = targetEditor.state.tr.delete(src.move.from, src.move.to);
       // ASK the transaction where the insert position went; never predict it —
       // the same rule the container fit follows about the fitter (task 257) and
@@ -195,9 +207,12 @@ export const textObjectDropSpec: DropSpec = {
           ),
         );
       }
-      targetEditor.view.dispatch(tr);
-      targetEditor.view.focus();
-      return;
+      return {
+        commit: () => {
+          targetEditor.view.dispatch(tr);
+          targetEditor.view.focus();
+        },
+      };
     }
 
     // Cross-editor: insert first, then delete from source.
@@ -212,13 +227,25 @@ export const textObjectDropSpec: DropSpec = {
       insertTr.insert(cursor, n);
       cursor += insertTr.doc.content.size - before;
     }
-    targetEditor.view.dispatch(insertTr);
-    targetEditor.view.focus();
-    const deleteTr = src.editor.state.tr.delete(src.move.from, src.move.to);
-    src.editor.view.dispatch(deleteTr);
+    const sourceEditor = src.editor;
+    const { from, to } = src.move;
+    return {
+      commit: () => {
+        targetEditor.view.dispatch(insertTr);
+        targetEditor.view.focus();
+        // The source delete is built HERE, not in the plan: it is dispatched
+        // AFTER a transaction landed in another editor, and ProseMirror throws
+        // `Applying a mismatched transaction` on a tr whose base doc is no
+        // longer the live one. The insert can't move the source doc today (the
+        // only non-main target is a card body), but building it in the plan
+        // would stake that on it — and this is the pre-321 order restored, at
+        // zero cost. The insert above is the one that must be pre-built: it is
+        // the splice the container fit governs.
+        sourceEditor.view.dispatch(sourceEditor.state.tr.delete(from, to));
+      },
+    };
   },
-  postDrop: "close",
-};
+});
 
 // ---------------------------------------------------------------------------
 // Source resolution

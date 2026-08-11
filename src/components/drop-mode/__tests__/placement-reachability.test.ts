@@ -40,9 +40,7 @@ import {
   winningPlacementKind,
 } from "../placement-policy";
 import type { DropSpec, PlacementKind } from "../types";
-import { textObjectDropSpec } from "../specs/textobject";
-import { textRangeMoveDropSpec } from "../specs/text-range-move";
-import { inTextAtomGrabSpec } from "../specs/in-text-atom-grab";
+import { MODULE_DROP_SPECS } from "../registry";
 import {
   stackPullDropSpec,
   STACK_PULL_PLACEMENT_LISTS,
@@ -54,7 +52,10 @@ import "@/cards/drop-specs";
 
 /**
  * Every spec a drag session can dispatch: the card kinds' folded specs plus the
- * four module-level ones (`registry.ts`'s whole dispatch surface).
+ * module-level ones. The second half comes from `registry.ts`'s own
+ * `MODULE_DROP_SPECS` rather than a list kept here — this file and
+ * `planned-decision-guardrail.test.ts` each used to keep a copy, and a copy is
+ * only as complete as whoever adds the next transient spec remembers to be.
  */
 function allSpecs(): Array<{ name: string; spec: DropSpec }> {
   const out: Array<{ name: string; spec: DropSpec }> = [];
@@ -62,10 +63,7 @@ function allSpecs(): Array<{ name: string; spec: DropSpec }> {
     const spec = CARD_REGISTRY[k].dropSpec;
     if (spec) out.push({ name: `CARD_REGISTRY.${k}`, spec });
   }
-  out.push({ name: "textObjectDropSpec", spec: textObjectDropSpec });
-  out.push({ name: "textRangeMoveDropSpec", spec: textRangeMoveDropSpec });
-  out.push({ name: "inTextAtomGrabSpec", spec: inTextAtomGrabSpec });
-  out.push({ name: "stackPullDropSpec", spec: stackPullDropSpec });
+  out.push(...MODULE_DROP_SPECS);
   return out;
 }
 
@@ -83,7 +81,7 @@ describe("every declared placement is reachable", () => {
 
   it("censuses a non-trivial set of specs (the census isn't blind)", () => {
     expect(specs.length).toBeGreaterThanOrEqual(8);
-    expect(specs.map((s) => s.name)).toContain("stackPullDropSpec");
+    expect(specs.map((s) => s.name)).toContain("stack-pull");
   });
 
   it.each(specs.filter((s) => !s.spec.placementsFor).map((s) => [s.name, s.spec] as const))(
