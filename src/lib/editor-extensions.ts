@@ -25,6 +25,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
+import { figureEmitsCaption } from "@/lib/figures/env-body";
 import { UUID_ATTR_SPEC, makeUuidAttr, stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
@@ -1566,12 +1567,46 @@ export function createHeadingWithLabel(
             // Walk figureBlocks in document order. Numbered figures get
             // sequential 1-based numbers; unnumbered figures get
             // `figureNumber: null` and are skipped by the counter.
+            //
+            // "Numbered" asks the SAME question the emitter asks (task 319):
+            // a float takes a number iff it carries a `\caption`, so a
+            // caption-less figure — which since 319 no longer gains a phantom
+            // `\caption{}` on save — is skipped here exactly as LaTeX skips it.
+            // Counting one the PDF won't would put every later figure's number,
+            // and the `\ref` display text resolved from it below, off by one.
+            // The caption test reads the child's `textContent` — O(caption), on
+            // a walk that already visits this node, and strictly downstream of
+            // the structural gate above, so it adds nothing to a plain
+            // keystroke.
+            //
+            // KNOWN STALENESS, same shape as the labelRef trade-off documented
+            // in that gate: typing the FIRST character into a caption-less
+            // figure's caption is a pure content edit, so the observer reports
+            // no `changedFigures` and this numberer doesn't re-run. The `.tex`
+            // gains its `\caption` on save and LaTeX numbers it, while Virgil's
+            // chrome shows no number until the next structural change (or
+            // reload, where the parser's `numberFigures` settles it). A missing
+            // number on the figure being edited, transiently — against the
+            // alternative of counting a figure the PDF never numbers, which is
+            // permanently wrong for every LATER figure and every `\ref` to
+            // them, in a document that was only opened.
+            // The reverse direction is not stale at all: clearing a real
+            // caption's text leaves `hasCaption` true, so the figure keeps
+            // both its `\caption{}` and its number.
             const figureUpdates: { pos: number; figureNumber: number | null }[] = [];
             const figureMap = new Map<string, string>();
             let figureCounter = 0;
             newState.doc.descendants((nd, pos) => {
               if (nd.type.name !== "figureBlock") return true;
-              const isNumbered = nd.attrs.numbered !== false;
+              const capChild = nd.firstChild;
+              const isNumbered =
+                nd.attrs.numbered !== false &&
+                figureEmitsCaption(
+                  nd.attrs.hasCaption !== false,
+                  capChild?.type.name === "figureCaption"
+                    ? capChild.textContent
+                    : "",
+                );
               let next: number | null = null;
               if (isNumbered) {
                 figureCounter += 1;

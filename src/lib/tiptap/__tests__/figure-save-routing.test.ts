@@ -44,68 +44,31 @@ import StarterKit from "@tiptap/starter-kit";
 import { FigureBlock } from "@/lib/tiptap/figure-block";
 import { GraphicsBlock } from "@/lib/tiptap/graphics-block";
 import { FigureCaption } from "@/lib/tiptap/figure-caption";
-import { extractFigureAttrs, extractGraphicsAttrs } from "@/lib/figures/parse-attrs";
-import { parseInlineContent } from "@/lib/latex-parser";
+import {
+  applyFigureEnvBodyEdit,
+  applyFigureExtrasEdit,
+  applyGraphicsCommandEdit,
+} from "@/lib/figures/apply-env-body";
 
-// The exact body of EditorLayout.handleFigureSave, extracted so the test pins
-// the real save contract: resolve the node at `pos` IN THE OWNING editor, then
-// (figureBlock) re-extract structured attrs + re-tokenize the figureCaption
-// child, or (graphicsBlock) re-extract the command attrs. Targeting the wrong
-// editor is exactly the EX-F4-02 corruption this guards against.
+// The REAL save contract, not a transcription of it (tasks 318/319).
+//
+// This helper used to be a hand-copied body of `EditorLayout.handleFigureSave`,
+// under a comment claiming it pinned "the exact save contract" — and it had
+// already fallen behind the thing it pinned: task 263 added `shortCaption` to
+// the production writeback and not to this copy, so the suite went green over
+// a version of the contract that predates the byte it protects. A test that
+// re-implements what it tests can only pin what someone remembered to copy.
+//
+// The production sites now share ONE writeback, and this drives it. What the
+// helper still owns is the DISPATCH — which door a `pos` goes through — since
+// that is what `handleFigureSave` decides, and targeting the wrong editor is
+// the EX-F4-02 corruption these locks exist for.
 function saveFigure(editor: Editor, pos: number, newText: string): boolean {
   if (!editor || editor.isDestroyed) return false;
-  if (pos < 0 || pos >= editor.state.doc.content.size) return false;
-  const node = editor.state.doc.nodeAt(pos);
-  if (!node) return false;
-  if (node.type.name === "figureBlock") {
-    const attrs = extractFigureAttrs(newText);
-    const captionInline = parseInlineContent(attrs.caption);
-    let captionNode;
-    try {
-      captionNode = editor.state.schema.nodeFromJSON({
-        type: "figureCaption",
-        content: captionInline,
-      });
-    } catch {
-      captionNode = editor.state.schema.nodeFromJSON({
-        type: "figureCaption",
-        content: attrs.caption ? [{ type: "text", text: attrs.caption }] : [],
-      });
-    }
-    const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
-      ...node.attrs,
-      extras: attrs.extras,
-      source: attrs.source,
-      widthPercent: attrs.widthPercent,
-      sources: attrs.sources,
-      label: attrs.label,
-    });
-    const refreshed = tr.doc.nodeAt(pos);
-    if (refreshed) {
-      const inside = pos + 1;
-      if (refreshed.firstChild?.type.name === "figureCaption") {
-        const captionEnd = inside + refreshed.firstChild.nodeSize;
-        tr.replaceWith(inside, captionEnd, captionNode);
-      } else {
-        tr.insert(inside, captionNode);
-      }
-    }
-    editor.view.dispatch(tr);
-    return true;
-  }
-  if (node.type.name === "graphicsBlock") {
-    const attrs = extractGraphicsAttrs(newText.trim());
-    editor.view.dispatch(
-      editor.state.tr.setNodeMarkup(pos, undefined, {
-        ...node.attrs,
-        command: attrs ? attrs.command : newText.trim(),
-        source: attrs ? attrs.source : "",
-        widthPercent: attrs ? attrs.widthPercent : null,
-      }),
-    );
-    return true;
-  }
-  return false;
+  return (
+    applyFigureEnvBodyEdit(editor, pos, newText) ||
+    applyGraphicsCommandEdit(editor, pos, newText)
+  );
 }
 
 // `figureFloat` is the figure node's only mode flag (there is no `surface`
@@ -304,6 +267,129 @@ describe("figure save routes to the owning editor (EX-F4-02 figure twin)", () =>
     } finally {
       main.editor.destroy();
       main.element.remove();
+    }
+  });
+});
+
+// ── tasks 318 + 319 ─────────────────────────────────────────────────────────
+// The writeback's own contract, against a REAL editor: what the popover save
+// re-threads, and what the visual chrome is allowed to touch. These are the
+// legs the hand-copied helper above could not have had — it never carried the
+// fields whose loss they pin.
+describe("figure writeback re-threads every declared fact", () => {
+  it("threads hasCaption + shortCaption back off the edited body", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "Before" },
+      "main",
+    );
+    try {
+      const pos = posOf(editor, "figureBlock");
+      expect(
+        saveFigure(
+          editor,
+          pos,
+          "\\includegraphics{a.png}\n\\caption[Short]{Long}\n\\label{fig:a}",
+        ),
+      ).toBe(true);
+      expect(attrsAt(editor, pos).shortCaption).toBe("Short");
+      expect(attrsAt(editor, pos).hasCaption).toBe(true);
+      expect(captionTextAt(editor, pos)).toBe("Long");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  // Removing the `\caption` line in the popover is a real edit: the figure
+  // becomes caption-less (and therefore unnumbered) rather than silently
+  // regaining an empty caption on the next save.
+  it("lets the popover REMOVE a caption", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "Before" },
+      "main",
+    );
+    try {
+      const pos = posOf(editor, "figureBlock");
+      expect(saveFigure(editor, pos, "\\includegraphics{a.png}")).toBe(true);
+      expect(attrsAt(editor, pos).hasCaption).toBe(false);
+      expect(captionTextAt(editor, pos)).toBe("");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  // The width stepper / file picker own `extras` and nothing else. They used to
+  // rebuild the WHOLE env from a plain-text projection of the caption, so every
+  // click dropped the `[short]` bracket, flattened any citation or mark in the
+  // caption, and re-indented the body two spaces further right.
+  it("chrome width/path edits leave caption, label and provenance untouched", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "Keep me" },
+      "main",
+    );
+    try {
+      const pos = posOf(editor, "figureBlock");
+      // Seed the fields a whole-env round-trip would lose.
+      editor.view.dispatch(
+        editor.state.tr.setNodeMarkup(pos, undefined, {
+          ...editor.state.doc.nodeAt(pos)!.attrs,
+          shortCaption: "Short",
+          hasCaption: true,
+        }),
+      );
+      const before = attrsAt(editor, pos);
+      expect(
+        applyFigureExtrasEdit(
+          editor,
+          pos,
+          "\\centering\n\\includegraphics[width=0.9\\textwidth]{a.png}",
+        ),
+      ).toBe(true);
+      const after = attrsAt(editor, pos);
+      expect(after.widthPercent).toBe(90);
+      expect(after.extras).toBe(
+        "\\centering\n\\includegraphics[width=0.9\\textwidth]{a.png}",
+      );
+      expect(after.shortCaption).toBe("Short");
+      expect(after.hasCaption).toBe(true);
+      expect(after.label).toBe(before.label);
+      expect(captionTextAt(editor, pos)).toBe("Keep me");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  it("refuses a pos that holds the other node kind", () => {
+    const fig = mountFigure({ source: "a.png", caption: "C" }, "main");
+    const gfx = mountGraphics("b.png", "main");
+    try {
+      expect(
+        applyGraphicsCommandEdit(
+          fig.editor,
+          posOf(fig.editor, "figureBlock"),
+          "\\includegraphics{z.png}",
+        ),
+      ).toBe(false);
+      expect(
+        applyFigureEnvBodyEdit(
+          gfx.editor,
+          posOf(gfx.editor, "graphicsBlock"),
+          "\\includegraphics{z.png}\n\\caption{C}",
+        ),
+      ).toBe(false);
+      expect(attrsAt(fig.editor, posOf(fig.editor, "figureBlock")).source).toBe(
+        "a.png",
+      );
+      expect(attrsAt(gfx.editor, posOf(gfx.editor, "graphicsBlock")).source).toBe(
+        "b.png",
+      );
+    } finally {
+      fig.editor.destroy();
+      fig.element.remove();
+      gfx.editor.destroy();
+      gfx.element.remove();
     }
   });
 });

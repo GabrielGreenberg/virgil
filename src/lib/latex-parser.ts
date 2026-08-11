@@ -15,6 +15,7 @@ import {
   extractGraphicsAttrs,
   matchIncludegraphics,
 } from "@/lib/figures/parse-attrs";
+import { figureEmitsCaption } from "@/lib/figures/env-body";
 import {
   matchAccent,
   matchSpecialLetter,
@@ -1202,14 +1203,39 @@ function numberExamples(node: JSONContent): void {
  *  - `ref` → bare text (`"3"`).
  *  - `getref` / `getfullref` → parenthesized (`"(3)"`, `"(3b)"`).
  */
+/** Plain text of a JSON inline sequence — the pre-editor twin of ProseMirror's
+ *  `node.textContent`, so the caption test below can ask the same question the
+ *  live numberer asks of a mounted node. */
+function jsonTextContent(node: JSONContent): string {
+  if (typeof node.text === "string") return node.text;
+  return (node.content || []).map(jsonTextContent).join("");
+}
+
+/** Does this parsed `figureBlock` carry a caption in the emitted `.tex`? Same
+ *  predicate the emitter uses, read off the JSON node. */
+function figureJsonEmitsCaption(n: JSONContent): boolean {
+  const child = (n.content || []).find((c) => c.type === "figureCaption");
+  return figureEmitsCaption(
+    n.attrs?.hasCaption !== false,
+    child ? jsonTextContent(child) : "",
+  );
+}
+
 /** Assign sequential 1-based numbers to numbered figureBlocks in document
  *  order. Mirrors the live `sectionNumbers` plugin in `Editor.tsx` so the
- *  prefix is ready on first paint without waiting for a no-op edit. */
+ *  prefix is ready on first paint without waiting for a no-op edit.
+ *
+ *  A figure only takes a number if it will carry a `\caption` — that is LaTeX's
+ *  own rule, and since task 319 stopped inventing an empty caption for a
+ *  caption-less env, honouring it here is what keeps the on-screen `Figure N:`
+ *  (and the `\ref` display text resolved from it, just below) equal to the
+ *  number the compiled PDF will print. Counting a figure LaTeX skips would put
+ *  every LATER figure's number — and every `\ref` to it — off by one. */
 function numberFigures(node: JSONContent): void {
   let counter = 0;
   function walk(n: JSONContent) {
     if (n.type === "figureBlock") {
-      if (n.attrs?.numbered !== false) {
+      if (n.attrs?.numbered !== false && figureJsonEmitsCaption(n)) {
         counter++;
         n.attrs = { ...(n.attrs || {}), figureNumber: counter };
       } else {
@@ -1800,6 +1826,10 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
               widthPercent: figAttrs.widthPercent,
               sources: figAttrs.sources,
               label: figAttrs.label,
+              // Did the source carry a `\caption` command? The child below is
+              // ALWAYS built (see its comment), so it cannot answer this and
+              // the emitter must not be left inferring it (task 319).
+              hasCaption: figAttrs.hasCaption,
               shortCaption: figAttrs.shortCaption,
               numbered: true,
               figureNumber: null,

@@ -6,6 +6,7 @@ import {
   INLINE_TEX_MARKERS,
   VIRGIL_MARKERS,
 } from "@/lib/latex-markers";
+import { buildFigureEnvBody } from "@/lib/figures/env-body";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
 import {
@@ -405,34 +406,22 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         : "";
       const anchor = uuid ? ` %!v:${uuid}` : "";
       const envName = starred ? "figure*" : "figure";
-      const bodyParts: string[] = [];
-      if (extras) {
-        bodyParts.push("\n");
-        bodyParts.push(extras);
-      }
-      if (captionChild) {
-        // Re-emit the optional `[short]` list-of-figures argument opaquely when
-        // present (task 263); a bracket-free caption stays byte-identical.
-        const shortCaption = node.attrs?.shortCaption as string | null;
-        const shortArg =
-          typeof shortCaption === "string" ? `[${shortCaption}]` : "";
-        bodyParts.push("\n  ");
-        bodyParts.push(`\\caption${shortArg}{${captionTex}}`);
-      }
-      // NOTE (task 245): when the author wrote the label INSIDE the caption
-      // (`\caption{Foo \label{fig:x}}`, idiomatic), the caption child re-emits
-      // those bytes and this emits a second copy — a duplicate `\label` in the
-      // .tex. Suppressing it by testing whether `captionTex` contains the label
-      // was tried and REVERTED: a caption that merely quotes `\label{fig:x}`
-      // (`\verb|\label{fig:x}|`) passes that test, so the figure's real
-      // declaration got deleted instead. The emit side needs the parser to say
-      // WHERE the label lived, not a byte heuristic — filed separately.
-      if (label) {
-        bodyParts.push("\n  ");
-        bodyParts.push(`\\label{${label}}`);
-      }
-      bodyParts.push("\n");
-      return `\\begin{${envName}}${placement}${bodyParts.join("")}\\end{${envName}}${anchor}\n\n`;
+      // Tasks 318 + 319: the env body is built by the ONE builder shared with
+      // the popover surface, off DECLARED facts — `hasCaption` (did the source
+      // carry a `\caption` command at all; the always-present caption child
+      // cannot answer that, and emitting on its presence gave every
+      // caption-less figure a number-consuming `\caption{}`) and the caption's
+      // own scanned bytes (which is what tells a `\label` DECLARATION inside
+      // the caption from one merely quoted in `\verb`, the distinction the
+      // reverted substring test of task 245 could not make).
+      const body = buildFigureEnvBody({
+        extras,
+        captionTex,
+        hasCaption: node.attrs?.hasCaption !== false,
+        shortCaption: (node.attrs?.shortCaption as string | null) ?? null,
+        label,
+      });
+      return `\\begin{${envName}}${placement}${body}\\end{${envName}}${anchor}\n\n`;
     }
 
     case "graphicsBlock": {

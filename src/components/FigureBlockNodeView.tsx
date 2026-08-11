@@ -4,21 +4,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import {
   canEditWidthInOptions,
-  extractFigureAttrs,
-  extractGraphicsAttrs,
   type FigureSource,
   withReplacedFigurePath,
   withUpdatedFigureWidth,
 } from "@/lib/figures/parse-attrs";
+import { buildFigureEnvBody } from "@/lib/figures/env-body";
+import {
+  applyFigureEnvBodyEdit,
+  applyFigureExtrasEdit,
+  applyGraphicsCommandEdit,
+} from "@/lib/figures/apply-env-body";
 import { useResolvedFigureUrl } from "@/hooks/useResolvedFigureUrl";
 // Route through the storage facade, not directly at the FSA backend — the
 // dev backend has its own `importFigureFile` that PUTs to the dev API.
 // `pickFigureFile` encapsulates the FSA-picker vs hidden-`<input>` dispatch.
 import { getDocWriteHandle, importFigureFile } from "@/lib/storage";
 import { pickFigureFile } from "@/lib/figures/pick-file";
-import { parseInlineContent } from "@/lib/latex-parser";
 import type { FigureBlockOptions } from "@/lib/tiptap/figure-block";
-import { synthesizeFigureRaw } from "@/lib/tiptap/figure-block";
 import { resolveBlockFrame } from "@/text-objects/block-frame";
 import FigureAnnotation from "./FigureAnnotation";
 
@@ -47,12 +49,21 @@ function figurePopoverRaw(node: NodeViewProps["node"]): string {
   if (node.type.name !== "figureBlock") {
     return (node.attrs.command as string | undefined) || "";
   }
-  const extras = (node.attrs.extras as string | undefined) || "";
-  const label = (node.attrs.label as string | undefined) || "";
   const captionChild = node.firstChild;
-  const captionText =
-    captionChild?.type.name === "figureCaption" ? captionChild.textContent : "";
-  return synthesizeFigureRaw(extras, captionText, label);
+  // Tasks 318/319: built by the SAME builder the serializer uses, so what the
+  // popover shows is what the file holds — including the `[short]` LoF bracket
+  // the retired local synthesizer never emitted (opening the popover on
+  // `\caption[Short]{Long}` and saving it unchanged used to DELETE the short
+  // caption), and including the absence of a `\caption` on a caption-less
+  // figure, which the user can now add or remove here as a first-class edit.
+  return buildFigureEnvBody({
+    extras: (node.attrs.extras as string | undefined) || "",
+    captionTex:
+      captionChild?.type.name === "figureCaption" ? captionChild.textContent : "",
+    hasCaption: node.attrs.hasCaption !== false,
+    shortCaption: (node.attrs.shortCaption as string | null | undefined) ?? null,
+    label: (node.attrs.label as string | undefined) || "",
+  });
 }
 
 // Shared node view for both `figureBlock` and `graphicsBlock`. The node
@@ -367,15 +378,8 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     : (node.attrs.command as string | undefined) || "";
 
   // The popover seed: a faithful view of the env body for the "edit raw"
-  // surface, synthesized from extras + caption text + label. Routed through the
-  // shared `figurePopoverRaw` so the page and the float (FigureFloatView) can
-  // never drift on what raw the popover opens. `captionTextContent` is still
-  // derived here because the width/path mutators below re-attach it.
-  const captionChild = node.firstChild;
-  const captionTextContent =
-    isFigure && captionChild?.type.name === "figureCaption"
-      ? captionChild.textContent
-      : "";
+  // surface. Routed through the shared `figurePopoverRaw` so the page and the
+  // float (FigureFloatView) can never drift on what raw the popover opens.
   const popoverRaw = useMemo(() => figurePopoverRaw(node), [node]);
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -432,95 +436,37 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     return p ?? null;
   }, [getPos]);
 
-  // `updateFromText` runs the appropriate extractor on the new text and
-  // dispatches a setNodeMarkup transaction. Mirrors EditorLayout's
-  // handleFigureSave so the popover and visual chrome stay in sync.
-  //
-  // For figureBlock: `newText` is a synthesised env body (caption + label
-  // included). We re-extract the structured attrs (extras, label, sources,
-  // …) and replace the figureCaption child with freshly-tokenized inline
-  // content. The chrome's width/path mutators feed in env-body strings with
-  // the caption intact, so re-tokenizing on every call is safe — it's a
-  // no-op in the common case.
+  // `updateFromText` is the POPOVER save path: `newText` is a whole env body
+  // the user edited, so every structured attr — including whether it still
+  // carries a `\caption` command — is re-extracted from it. Routed through the
+  // ONE writeback shared with EditorLayout's `handleFigureSave` (tasks
+  // 318/319), which the two used to re-implement side by side.
   const updateFromText = (newText: string) => {
     const pos = typeof getPos === "function" ? getPos() : undefined;
     if (pos == null) return;
     if (isFigure) {
-      const attrs = extractFigureAttrs(newText);
-      const captionInline = parseInlineContent(attrs.caption);
-      let captionNode: ReturnType<
-        typeof editor.state.schema.nodeFromJSON
-      > | null = null;
-      try {
-        captionNode = editor.state.schema.nodeFromJSON({
-          type: "figureCaption",
-          content: captionInline,
-        });
-      } catch {
-        // Schema rejection (e.g. unknown inline node) — fall back to plain
-        // text so the user's caption isn't lost on a malformed edit.
-        captionNode = editor.state.schema.nodeFromJSON({
-          type: "figureCaption",
-          content: attrs.caption
-            ? [{ type: "text", text: attrs.caption }]
-            : [],
-        });
-      }
-      const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
-        ...node.attrs,
-        extras: attrs.extras,
-        source: attrs.source,
-        widthPercent: attrs.widthPercent,
-        sources: attrs.sources,
-        label: attrs.label,
-        // Re-thread the optional `\caption[<short>]` LoF arg from the edited
-        // source so adding/changing/removing the bracket in the popover isn't
-        // silently ignored (task 263 — the parse-then-drop class, on the
-        // popover edit path).
-        shortCaption: attrs.shortCaption,
-      });
-      if (captionNode) {
-        // Replace the existing figureCaption child (if any) with the new
-        // one. The first child's start position is pos + 1 inside the
-        // figureBlock node.
-        const refreshed = tr.doc.nodeAt(pos);
-        if (refreshed) {
-          const inside = pos + 1;
-          if (refreshed.firstChild?.type.name === "figureCaption") {
-            const captionEnd = inside + refreshed.firstChild.nodeSize;
-            tr.replaceWith(inside, captionEnd, captionNode);
-          } else {
-            tr.insert(inside, captionNode);
-          }
-        }
-      }
-      editor.view.dispatch(tr);
+      applyFigureEnvBodyEdit(editor, pos, newText);
     } else {
-      const attrs = extractGraphicsAttrs(newText.trim());
-      if (!attrs) return;
-      editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(pos, undefined, {
-          ...node.attrs,
-          command: attrs.command,
-          source: attrs.source,
-          widthPercent: attrs.widthPercent,
-        }),
-      );
+      applyGraphicsCommandEdit(editor, pos, newText);
     }
   };
 
+  // The width stepper and the file picker rewrite the `\includegraphics` line,
+  // which lives entirely in `extras` — so for a figureBlock they patch THAT and
+  // nothing else. Round-tripping a synthesized whole env through the popover
+  // writeback (what these did before) meant projecting the caption down to
+  // plain text and re-tokenizing it on every click, which silently flattened
+  // any citation/mark/math in it, dropped the `[short]` LoF bracket, and
+  // re-indented `extras` by two more spaces each time. A graphicsBlock has no
+  // `extras` — its whole source IS the command — so it keeps the text door.
   const applyScale = (newPercent: number) => {
     const clamped = clampPercent(newPercent);
     if (clamped === currentPercent) return;
     const next = withUpdatedFigureWidth(mutableSource, clamped);
     if (next == null) return;
-    // The mutator only touched `\includegraphics`; for figureBlock the
-    // synthesized env body needs the current caption + label re-attached
-    // so updateFromText's extractor sees a complete env and rebuilds the
-    // figureCaption child faithfully (a no-op in this case since caption
-    // text didn't change).
     if (isFigure) {
-      updateFromText(synthesizeFigureRaw(next, captionTextContent, label));
+      const pos = typeof getPos === "function" ? getPos() : undefined;
+      if (pos != null) applyFigureExtrasEdit(editor, pos, next);
     } else {
       updateFromText(next);
     }
@@ -530,7 +476,8 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     const next = withReplacedFigurePath(mutableSource, newPath);
     if (next == null) return;
     if (isFigure) {
-      updateFromText(synthesizeFigureRaw(next, captionTextContent, label));
+      const pos = typeof getPos === "function" ? getPos() : undefined;
+      if (pos != null) applyFigureExtrasEdit(editor, pos, next);
     } else {
       updateFromText(next);
     }

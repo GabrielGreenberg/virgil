@@ -9,6 +9,7 @@ import {
   withReplacedFigurePath,
   withUpdatedFigureWidth,
 } from "@/lib/figures/parse-attrs";
+import { buildFigureEnvBody } from "@/lib/figures/env-body";
 
 function parseBody(input: string): JSONContent {
   const wrapped = `\\documentclass{article}\\begin{document}\n${input}\n\\end{document}`;
@@ -522,22 +523,178 @@ After.`;
           const twice = serializeBody(parseBody(once));
           // A fixed point — no oscillation, no per-save accumulation.
           expect(twice).toBe(once);
-          // Every `\label` the author wrote survives, by key.
+          // Every `\label` the author wrote survives, by key — and EXACTLY
+          // once. The count is the task-318 half: a label written inside the
+          // caption used to reach the file twice, once from the caption's own
+          // bytes and once from the attr, giving LaTeX a "multiply defined"
+          // warning on the first save of a file Virgil merely opened.
           for (const m of body.matchAll(/\\label\{([^}]*)\}/g)) {
             expect(once).toContain(`\\label{${m[1]}}`);
+            expect(
+              countOf(once, new RegExp(`\\\\label\\{${m[1]}\\}`, "g")),
+            ).toBe(1);
           }
           // Every caption BODY survives somewhere (at figure level or, for a
           // sub-float, byte-raw inside it).
           for (const m of body.matchAll(/\\caption(?:\[[^\]]*\])?\{([A-Za-z0-9 ]+)\}/g)) {
             expect(once).toContain(m[1]);
           }
-          // No caption is invented beyond the one empty `\caption{}` the
-          // always-present caption child emits for a caption-less figure
-          // (pre-existing, tracked separately as task 319).
+          // NO caption is invented — not even the empty `\caption{}` the
+          // always-present caption child used to emit for a caption-less
+          // figure. In LaTeX that byte is not cosmetic: it consumes a figure
+          // number and adds a blank List-of-Figures row, renumbering every
+          // later `\ref` (task 319). This bound was `before + 1` while that
+          // was tolerated; it is an equality now.
           const before = countOf(body, /\\caption[[{]/g);
-          expect(countOf(once, /\\caption[[{]/g)).toBeLessThanOrEqual(before + 1);
+          expect(countOf(once, /\\caption[[{]/g)).toBe(before);
         },
       );
+    });
+
+    // ── tasks 318 + 319 ───────────────────────────────────────────────────
+    // Both are the same shape: the model recorded WHAT a figure's caption and
+    // label say and not WHETHER / WHERE the source wrote them, so the emitter
+    // had to guess from bytes. It now emits from declared facts — `hasCaption`
+    // provenance, and the caption's own SCANNED bytes for the label. Every leg
+    // below fails on the pre-fix tree.
+    describe("caption/label provenance (tasks 318, 319)", () => {
+      it("emits a caption-carried \\label exactly ONCE, inside the caption", () => {
+        const input = `\\begin{figure}
+  \\includegraphics{a}
+  \\caption{Foo \\label{fig:x}}
+\\end{figure}\n`;
+        const json = parseBody(input);
+        const figs = findByType(json, "figureBlock");
+        // The attr still names the figure, so `\ref` resolves and the lozenge
+        // shows the key — the caption is merely where the bytes live.
+        expect(figs[0].attrs?.label).toBe("fig:x");
+        expect(figs[0].attrs?.hasCaption).toBe(true);
+        const once = serializeBody(json);
+        expect(once).toContain("\\caption{Foo \\label{fig:x}}");
+        expect(once.match(/\\label\{fig:x\}/g)).toHaveLength(1);
+        expect(serializeBody(parseBody(once))).toBe(once);
+      });
+
+      // THE GUARD ON THE REVERTED FIX. Suppressing the figure-level emit by
+      // testing whether the caption text CONTAINS `\label{fig:x}` passes here
+      // and deletes the figure's real declaration — which is why task 245
+      // reverted it. The question is answered by the same lexical scan the
+      // extractor uses, so a label QUOTED in `\verb` declares nothing.
+      it("keeps the real \\label when the caption merely QUOTES the same key", () => {
+        const input = `\\begin{figure}
+  \\includegraphics{a}
+  \\caption{Write \\verb|\\label{fig:x}| here}
+  \\label{fig:x}
+\\end{figure}\n`;
+        const json = parseBody(input);
+        expect(findByType(json, "figureBlock")[0].attrs?.label).toBe("fig:x");
+        const once = serializeBody(json);
+        // The declaration survives at figure level — on its own line, i.e.
+        // outside the caption braces that only quote it.
+        expect(once).toMatch(/\n\s*\\label\{fig:x\}/);
+        expect(once).toContain("\\verb|\\label{fig:x}|");
+        expect(serializeBody(parseBody(once))).toBe(once);
+      });
+
+      // A stored `labelInCaption` flag would go stale the moment the lozenge
+      // renames the label; deriving the answer from the live caption keeps the
+      // declaration reachable — the caption's own bytes are now a DIFFERENT
+      // key, so the figure-level `\label` is emitted again.
+      it("re-emits the figure-level \\label when a rename leaves the caption behind", () => {
+        const json = parseBody(
+          `\\begin{figure}\n  \\includegraphics{a}\n  \\caption{Foo \\label{fig:x}}\n\\end{figure}\n`,
+        );
+        const fig = findByType(json, "figureBlock")[0];
+        fig.attrs = { ...(fig.attrs || {}), label: "fig:renamed" };
+        const once = serializeBody(json);
+        expect(once).toMatch(/\n\s*\\label\{fig:renamed\}/);
+        expect(once).toContain("\\caption{Foo \\label{fig:x}}");
+      });
+
+      it("round-trips a caption-less figure without inventing \\caption{}", () => {
+        const input = `\\begin{figure}\n  \\includegraphics{a}\n\\end{figure}\n`;
+        const json = parseBody(input);
+        const figs = findByType(json, "figureBlock");
+        expect(figs[0].attrs?.hasCaption).toBe(false);
+        // LaTeX leaves a caption-less float unnumbered, so Virgil's own
+        // `Figure N:` chrome must not claim a number the PDF won't print.
+        expect(figs[0].attrs?.figureNumber).toBe(null);
+        const once = serializeBody(json);
+        expect(once).not.toContain("\\caption");
+        expect(serializeBody(parseBody(once))).toBe(once);
+      });
+
+      it("does not let a caption-less figure consume a later figure's number", () => {
+        const input = `\\begin{figure}
+  \\includegraphics{a}
+\\end{figure}
+
+\\begin{figure}
+  \\includegraphics{b}
+  \\caption{First real one}
+\\end{figure}\n`;
+        const figs = findByType(parseBody(input), "figureBlock");
+        expect(figs[0].attrs?.figureNumber).toBe(null);
+        expect(figs[1].attrs?.figureNumber).toBe(1);
+      });
+
+      // The second-order requirement of choosing "emit only what the source
+      // had": a figure that HAD a caption keeps `\caption{}` when the user
+      // empties the text, so it cannot silently lose its LaTeX number (and
+      // every `\ref` to it) through an ordinary editing keystroke.
+      it("keeps \\caption{} when a real caption's text is cleared in the editor", () => {
+        const once = serializeBody({
+          type: "doc",
+          content: [
+            {
+              type: "figureBlock",
+              attrs: { extras: "\n  \\includegraphics{a}", label: "", hasCaption: true },
+              content: [{ type: "figureCaption" }],
+            },
+          ],
+        });
+        expect(once).toContain("\\caption{}");
+      });
+
+      // …and the converse: text typed into a caption-less figure reaches the
+      // file, so the user can caption one without visiting the popover.
+      it("emits a caption once the user types one into a caption-less figure", () => {
+        const doc: JSONContent = {
+          type: "doc",
+          content: [
+            {
+              type: "figureBlock",
+              attrs: { extras: "\n  \\includegraphics{a}", label: "", hasCaption: false },
+              content: [
+                { type: "figureCaption", content: [{ type: "text", text: "Typed later" }] },
+              ],
+            },
+          ],
+        };
+        expect(serializeBody(doc)).toContain("\\caption{Typed later}");
+      });
+
+      // The popover surface used to rebuild the env with a SECOND, hand-written
+      // builder that never emitted the `[short]` bracket — so opening the
+      // source popover on `\caption[Short]{Long}` and saving it unchanged
+      // deleted task 263's byte. One builder, so it cannot drift again.
+      it("builds the popover's raw env body with the serializer's own bytes", () => {
+        const input = `\\begin{figure}\n  \\includegraphics{a}\n  \\caption[Short]{Long}\n  \\label{fig:a}\n\\end{figure}\n`;
+        const fig = findByType(parseBody(input), "figureBlock")[0];
+        const captionChild = findByType(fig, "figureCaption")[0];
+        const raw = buildFigureEnvBody({
+          extras: fig.attrs?.extras as string,
+          captionTex: (captionChild.content || [])
+            .map((c) => c.text ?? "")
+            .join(""),
+          hasCaption: fig.attrs?.hasCaption !== false,
+          shortCaption: (fig.attrs?.shortCaption as string | null) ?? null,
+          label: (fig.attrs?.label as string) ?? "",
+        });
+        expect(raw).toContain("\\caption[Short]{Long}");
+        // …and it IS the serializer's body, byte for byte.
+        expect(serializeBody(parseBody(input))).toContain(raw);
+      });
     });
 
     it("extractFigureAttrs is depth-aware at the popover re-extraction seam", () => {

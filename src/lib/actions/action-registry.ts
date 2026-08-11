@@ -126,20 +126,21 @@ import type { AtomCreateKind, OpenAtomCreateOpts } from "./atom-create";
 // value import is free for every consumer of this registry.
 import { smartInsertBlock } from "@/lib/tiptap/smart-insert";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
-// VALUE imports: the figure/graphics fresh-attrs builders + the figure raw
-// synthesizer. `figureRun` / `graphicsRun` seed the new block with the SAME stub
-// attrs the former `insertFigureBlock` / `insertGraphicsBlock` did (so the empty
-// `\includegraphics` shape is byte-identical), and `figureRun` synthesizes the
-// popover's `raw` seed from the new figure's attrs via `synthesizeFigureRaw`.
-// Imported from `figure-attrs.ts` (the React-free leaf, CHIP 6a) — NOT from
-// `figure-block.ts` / `graphics-block.ts`, whose React NodeView + `@/lib/storage`
-// graph must NOT be pulled into this registry (it's imported in node-env /
-// jsdom vitests without the storage mock).
+// VALUE imports: the figure/graphics fresh-attrs builders. `figureRun` /
+// `graphicsRun` seed the new block with the SAME stub attrs the former
+// `insertFigureBlock` / `insertGraphicsBlock` did (so the empty
+// `\includegraphics` shape is byte-identical). Imported from `figure-attrs.ts`
+// (the React-free leaf, CHIP 6a) — NOT from `figure-block.ts` /
+// `graphics-block.ts`, whose React NodeView + `@/lib/storage` graph must NOT be
+// pulled into this registry (it's imported in node-env / jsdom vitests without
+// the storage mock).
 import {
   freshFigureBlockAttrs,
   freshGraphicsBlockAttrs,
-  synthesizeFigureRaw,
 } from "@/lib/tiptap/figure-attrs";
+// The popover's `raw` seed comes from the ONE env-body builder the serializer
+// uses (tasks 318/319) — a pure leaf over `figures/parse-attrs`, no React.
+import { buildFigureEnvBody } from "@/lib/figures/env-body";
 // Type-only (erased at compile time): the React-land APIs an action's
 // `run()` reaches for. Importing the TYPES does NOT instantiate them and
 // does NOT pull React into this module's runtime.
@@ -2189,7 +2190,15 @@ export function figureRun(ctx: ActionContext): void {
     if (!(dom instanceof HTMLElement)) return;
     openInsertPopover(ctx, {
       kind: "figureBlock",
-      raw: synthesizeFigureRaw(attrs.extras, "", attrs.label),
+      // The ONE env-body builder (tasks 318/319) — the seed the user edits is
+      // byte-for-byte what the serializer would write for these attrs.
+      raw: buildFigureEnvBody({
+        extras: attrs.extras,
+        captionTex: "",
+        hasCaption: attrs.hasCaption,
+        shortCaption: null,
+        label: attrs.label,
+      }),
       pos: found,
       rect: dom.getBoundingClientRect(),
     });
