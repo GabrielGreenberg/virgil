@@ -814,9 +814,9 @@ run by hand.
 
 Its **cross-field** leg (entry type vs. field set) is a dispatched pipeline
 step: [`/library/authenticate-bib`](authenticate-bib.md) step 2 runs it as an
-advisory pre-flight before the network search — `--json --no-cover-check` —
-and records anything it finds as a `bib-coherence:` line on the catalog row
-(task 322). Don't duplicate that here; re-authenticate the entry instead.
+advisory pre-flight before the network search — `--json --no-cover-check` — and
+its step 7 re-checks and records anything still standing as a `bib-coherence:`
+line on the catalog row (task 322). Don't duplicate that here; re-authenticate the entry instead.
 
 Its **cover-page** leg is not run there, deliberately: cover-page-vs-bib
 checking belongs to `/library/di-preflight`'s `detect_metadata_mismatch.py`,

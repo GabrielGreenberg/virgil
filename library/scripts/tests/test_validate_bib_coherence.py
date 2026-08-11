@@ -313,6 +313,89 @@ def test_findings_prefix_as_a_bib_coherence_kind(tmp_path):
     check(cleared == ["pgmark-gap: 12-14"], f"stale finding not cleared: {cleared!r}")
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# 5. The persist channel: exit 1 must mean exactly ONE thing
+# ─────────────────────────────────────────────────────────────────────────
+
+def _shim(lib: Path, *args: str):
+    return subprocess.run(
+        [sys.executable, str(Path(_SCRIPTS) / "update_catalog_entry.py"), *args,
+         "--library", str(lib)],
+        capture_output=True, text=True,
+    )
+
+
+def _lib_with_row(tmp_path: Path) -> Path:
+    lib = _make_library(tmp_path, BOOK)
+    (lib / ".virgil" / "catalog.json").write_text(
+        json.dumps({"version": 1, "entries": [{"citekey": "bringhurst1992"}]}, indent=2),
+        encoding="utf-8",
+    )
+    return lib
+
+
+def test_shim_exit_1_means_no_catalog_row_and_nothing_else(tmp_path):
+    """`authenticate-bib.md` step 7 branches on this: exit 1 makes it report
+    "reference-only entry; not recorded" and continue. `json.loads` used to sit
+    ABOVE the shim's `try`, so an unparseable or missing patch file exited 1
+    too — CPython's generic uncaught-exception code — and the skill would state
+    something false about the library on a write that simply failed. Both are
+    refusals, so both are 2; exit 1 is now only the missing row."""
+    lib = _lib_with_row(tmp_path)
+    good = tmp_path / "good.json"
+    good.write_text(json.dumps({"indexed": {"warnings": ["bib-coherence: x"]}}),
+                    encoding="utf-8")
+
+    r = _shim(lib, "nosuchkey", "--patch-file", str(good),
+              "--recompute-warning-kind", "bib-coherence")
+    check(r.returncode == 1, f"missing row must exit 1, got {r.returncode}: {r.stderr}")
+
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"indexed": {"warnings": ["bib-coherence: he said "hi""]}}',
+                   encoding="utf-8")
+    r = _shim(lib, "bringhurst1992", "--patch-file", str(bad),
+              "--recompute-warning-kind", "bib-coherence")
+    check(r.returncode == 2, f"unparseable patch must exit 2, got {r.returncode}")
+    check("Traceback" not in r.stderr, f"unhandled exception leaked:\n{r.stderr}")
+
+    r = _shim(lib, "bringhurst1992", "--patch-file", str(tmp_path / "gone.json"),
+              "--recompute-warning-kind", "bib-coherence")
+    check(r.returncode == 2, f"missing patch file must exit 2, got {r.returncode}")
+    check("Traceback" not in r.stderr, f"unhandled exception leaked:\n{r.stderr}")
+
+    r = _shim(lib, "bringhurst1992", "--patch-file", str(good),
+              "--recompute-warning-kind", "bib-coherence")
+    check(r.returncode == 0, f"good write must exit 0, got {r.returncode}: {r.stderr}")
+
+
+def test_a_findings_line_with_an_apostrophe_round_trips_through_the_shim(tmp_path):
+    """The realistic malformed-patch trigger, closed at the source rather than
+    trusted to care: a value carrying an apostrophe makes Python's `!r` switch
+    to DOUBLE quotes, so the finding text contains a bare `"`. Under `--json`
+    the report is `json.dumps`-escaped, so an agent copying what it SEES writes
+    valid JSON — this pins that end-to-end, since the skill's persist fence is
+    hand-authored JSON."""
+    lib = _lib_with_row(tmp_path)
+    (lib / "master.bib").write_text(
+        "@phdthesis{bringhurst1992,\n  title = {T},\n"
+        "  journal = {Nowhere's Journal},\n  school = {MIT},\n}\n",
+        encoding="utf-8",
+    )
+    _, report = _run(lib, "bringhurst1992", "--json", "--no-cover-check")
+    finding = report["findings"][0]
+    check('"' in finding, "fixture no longer produces a repr with double quotes")
+    patch = tmp_path / "p.json"
+    # Exactly what an agent transcribing the printed report produces.
+    patch.write_text(json.dumps({"indexed": {"warnings": [f"bib-coherence: {finding}"]}}),
+                     encoding="utf-8")
+    r = _shim(lib, "bringhurst1992", "--patch-file", str(patch),
+              "--recompute-warning-kind", "bib-coherence")
+    check(r.returncode == 0, f"apostrophe finding rejected: {r.returncode} {r.stderr}")
+    row = json.loads((lib / ".virgil" / "catalog.json").read_text())["entries"][0]
+    check(row["indexed"]["warnings"] == [f"bib-coherence: {finding}"],
+          f"round trip lost the finding: {row['indexed']!r}")
+
+
 def _run_standalone() -> int:
     """Run without pytest (it isn't installed everywhere), supplying the one
     fixture these tests use (`tmp_path`) from `tempfile`."""

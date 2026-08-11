@@ -308,7 +308,9 @@ the same split `deep-index.md` §5 states; the two must agree:
   nothing and one late owner stays coherent. The asymmetry is chosen,
   not drift.
 - **Outside the deep-index pass entirely**, persisted by
-  `/library/authenticate-bib` step 2: `bib-coherence:` (task 322). That
+  `/library/authenticate-bib` step 7 — computed by its step-2 pre-flight and
+  re-checked at the write, so a finding that skill's own type repair resolved
+  never lands: `bib-coherence:` (task 322). That
   skill runs standalone — often from a paper session, never as a deep-index
   subskill — so no step here may declare its kind, and a line it wrote
   stands until the next authentication of that entry. Listed so the census

@@ -123,45 +123,17 @@ directory).
    it is a live `urlopen` with a 10 s timeout, and this step must stay cheap
    and local.
 
-   **Persist the verdict** so a finding outlives the run and reaches the
-   Library UI. Run this **whether or not there were findings** — the kind is
-   declared either way, and a declared kind with an empty array is how a
-   finding the user has since fixed stops being flagged (append-if-absent
-   could never clear it):
-
-   ```bash
-   cat > /tmp/<citekey>-coherence.json <<'EOF'
-   {
-     "indexed": {
-       "warnings": [
-         "bib-coherence: @phdthesis should not have `journal` field (value: '...')"
-       ]
-     }
-   }
-   EOF
-   python3 .virgil/scripts/library/update_catalog_entry.py "<citekey>" \
-     --patch-file /tmp/<citekey>-coherence.json \
-     --recompute-warning-kind bib-coherence
-   rm /tmp/<citekey>-coherence.json
-   ```
-
-   Every line must start `bib-coherence: ` — the shim drops and re-appends by
-   exact head, and a fresh line whose head isn't a declared kind is refused
-   outright (it could never be dropped by a later pass, so it would duplicate
-   forever). `bib-coherence` is **this skill's** warning kind: no deep-index
-   step declares it, so nothing else clears it, and a finding survives until
-   the next authentication of this entry.
-
-   Handle the shim's own exit codes — this is a catalog write inside a skill
-   that deliberately serves entries with no catalog row:
-
-   - **exit 1** — no catalog row for this citekey (a reference-only entry:
-     cited but not held, so the F#4 gate never minted one). There is nothing
-     to write. Note it in the reply and **continue** — an advisory warning
-     that cannot be filed must not end an authentication run.
-   - **exit 2** — a real refusal (malformed patch, or a row whose
-     `indexed.warnings` is not a list). Report the message verbatim and
-     continue; the row needs a human repair.
+   **This step READS; it does not persist.** Carry the findings forward in
+   your working notes — step 7 re-runs the checker and writes the verdict
+   then. That split is deliberate and it is the whole reason the ordering is
+   safe: steps 3–5 can *repair* the incoherence this step just found (the
+   `--type` override above, or a `proposed_type` of `unpublished` and step
+   5's `--drop-field` retirement table, which removes the offending field
+   outright). A verdict persisted here would describe an entry that no longer
+   exists by the end of the run — and `deep-index.md` reads
+   `indexed.warnings` on resume as its outstanding-work agenda whose stated
+   remedy for a `bib-coherence:` line is another full network
+   re-authentication. Compute early, persist once the answer is final.
 
    Do **not** set `bib.state = needs-reauth` here. `_tools.py` defines that
    state as "re-run `/library/authenticate-bib`", which is circular from
@@ -533,7 +505,62 @@ directory).
    ```
    `_sync_catalog_entry_from_master` *replaces* the catalog row's `bib`
    block wholesale — the merge with `prior_changes` above is what makes
-   `fieldChanges` accumulate across runs.
+   `fieldChanges` accumulate across runs. It writes only `bib` and the
+   top-level fields, never `indexed`, so it cannot disturb the warnings
+   written below.
+
+   **Then persist the coherence verdict** — the second half of step 2, landed
+   here because this is the last point in the run where the answer is final.
+   Re-run the same checker against the master.bib you have now (step 5 may
+   have changed the entry type or dropped the offending field), and write
+   whatever it says:
+
+   ```bash
+   python3 .virgil/scripts/library/validate_bib_coherence.py "<citekey>" --json --no-cover-check
+   ```
+
+   ```bash
+   # One line per finding from THAT run, `bib-coherence: ` + the finding text
+   # verbatim. If it reported none, write an empty array — the flag is still
+   # declared, and that is how a finding fixed during this run (or by the user
+   # since the last run) stops being flagged. Append-if-absent could never
+   # clear it, which is why this channel is a per-kind RECOMPUTE.
+   cat > /tmp/<citekey>-coherence.json <<'EOF'
+   {
+     "indexed": {
+       "warnings": [
+         "bib-coherence: @phdthesis should not have `journal` field (value: '...')"
+       ]
+     }
+   }
+   EOF
+   python3 .virgil/scripts/library/update_catalog_entry.py "<citekey>" \
+     --patch-file /tmp/<citekey>-coherence.json \
+     --recompute-warning-kind bib-coherence
+   rm /tmp/<citekey>-coherence.json
+   ```
+
+   Every line must start `bib-coherence: ` — the shim drops and re-appends by
+   exact head, and a fresh line whose head isn't a declared kind is refused
+   outright (it could never be dropped by a later pass, so it would duplicate
+   forever). `bib-coherence` is **this skill's** warning kind: no deep-index
+   step declares it, so nothing else clears it, and a finding survives until
+   the next authentication of this entry. The row is not rendered in the
+   Library UI — its readers are `deep-index.md`'s resume agenda and the next
+   run of this skill — which is why the reply-format line is not optional.
+
+   Exit codes, in a skill that deliberately serves entries with no catalog
+   row:
+
+   - **exit 1** — no catalog row for this citekey (a reference-only entry:
+     cited but not held, so the F#4 gate never minted one). There is nothing
+     to write. Note it in the reply and **continue** — an advisory warning
+     that cannot be filed must not end an authentication run.
+   - **exit 2** — a refusal, and the write did not happen: an unreadable or
+     malformed patch file, or a row whose `indexed.warnings` is not a list.
+     Report the message verbatim and continue; it needs a human repair.
+   - **anything else** — treat as exit 2. The write did not happen; say so
+     rather than guessing which branch it was.
 
 8. **Append a notification** via the locked CLI shim. (No need to bump
    `catalog-version.txt` separately — step 7's
@@ -596,19 +623,25 @@ directory).
 
 ## Reply format
 
-**Always lead with the step-2 pre-flight verdict**, on its own line before
-the state line below. It is advisory, so nothing downstream stops on it —
-which is exactly why it has to be *said*: an unreported advisory finding is
-indistinguishable from no finding.
+**Always lead with the coherence line**, on its own line before the state
+line below. It is advisory, so nothing downstream stops on it — which is
+exactly why it has to be *said*: an unreported advisory finding is
+indistinguishable from no finding, and the catalog row it lands on is not
+rendered anywhere the user looks.
 
-If step 2 produced findings:
-> `Pre-flight: <N> cross-field coherence finding(s) — <first finding>. Recorded as bib-coherence: in the catalog row.` (add `Catalog row absent (reference-only entry); not recorded.` when the shim exited 1)
+Report BOTH ends when they differ — what step 2 found, and what step 7's
+re-check says after the repairs:
 
-If it produced none:
+> `Pre-flight: <N> cross-field coherence finding(s) — <first finding>; resolved by the type change (now coherent).`
+
+If step 7's re-check still finds them:
+> `Pre-flight: <N> cross-field coherence finding(s) — <first finding>. Recorded as bib-coherence: on the catalog row.` (add `Catalog row absent (reference-only entry); not recorded.` when the shim exited 1, or the shim's message verbatim on exit 2)
+
+If step 2 found none:
 > `Pre-flight: coherent (@<entry_type>).`
 
-If it could not read the entry (`{"error": …}`), that is the whole reply —
-report the message verbatim and stop; the auth step reads the same file.
+If step 2 could not read the entry (`{"error": …}`), that is the whole reply
+— report the message verbatim and stop; the auth step reads the same file.
 
 Then, for the terminal state:
 

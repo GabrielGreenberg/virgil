@@ -481,7 +481,8 @@ keep deferring to it. The same split is stated in
 [_doctrine.md](_doctrine.md) §Persistence convergence — they must agree.
 
 `bib-coherence:` is produced by [`/library/authenticate-bib`](authenticate-bib.md)
-step 2, which is not part of this pass and can run standalone (even from a
+(computed in its step 2, persisted in its step 7 once the run's own repairs are
+in), which is not part of this pass and can run standalone (even from a
 paper session). It is listed here only so this census stays complete: **do
 not declare it below.** Deep-index does not recompute it, so declaring it
 would delete that skill's findings, and a line it wrote stands until the
