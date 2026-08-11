@@ -699,9 +699,22 @@ kind's existing lines are dropped from the row and yours appended, while
 every other kind — and every `<kind>-false-positive:` suppression, whose
 head differs — survives byte-identically.
 
-**Author-year sources** (the normal path) — declare both kinds §3g owns.
-Include an EMPTY array for a kind that produced nothing this pass; that is
-how a gap resolved since the last pass stops being flagged:
+**Author-year sources** (the normal path) — declare **all three** kinds §3g
+owns. The array is ONE list holding the fresh lines for ALL declared kinds; a
+declared kind that produced nothing this pass simply contributes no lines, and
+that is how a finding resolved since the last pass stops being flagged.
+**Keep every flag even when a kind produced nothing** — dropping a flag is what
+leaves its stale lines on the row. If §3g found nothing at all, run this with an
+empty array and all three flags still declared.
+
+`numeric-citation-style` is declared here with (normally) no line behind it,
+and that is deliberate: reaching this branch means §3g's style detection ran
+and concluded the source is NOT Vancouver, which is a real recompute of that
+question. Omitting it strands a `numeric-citation-style:` line written by an
+earlier pass that mis-detected the source — permanently, since nothing else
+clears it — and `deep-index.md` reads `indexed.warnings` on resume as the
+outstanding-work agenda, so the paper would report "inline rewrite skipped"
+forever on a pass where the rewrite ran.
 
 ```bash
 cat > /tmp/$ARGUMENTS-cleanbib-warnings.json <<'EOF'
@@ -717,7 +730,8 @@ EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
   --patch-file /tmp/$ARGUMENTS-cleanbib-warnings.json \
   --recompute-warning-kind missing-bib-entry \
-  --recompute-warning-kind ambiguous-citation
+  --recompute-warning-kind ambiguous-citation \
+  --recompute-warning-kind numeric-citation-style
 rm /tmp/$ARGUMENTS-cleanbib-warnings.json
 ```
 
@@ -742,9 +756,22 @@ python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
 rm /tmp/$ARGUMENTS-cleanbib-warnings.json
 ```
 
-Declare only what you recomputed. The shim refuses a run that names a kind
-with no `indexed.warnings` array in the patch — an implied empty there would
-let a patch meant for one field wipe a whole kind.
+Declare only what you recomputed — and every line you supply must be of a kind
+you declared. The shim REFUSES (exit 2, nothing written) on three shapes: a
+kind named with no `indexed.warnings` array in the patch (an implied empty
+there would let a patch meant for one field wipe a whole kind); a line whose
+head is not among the declared kinds (it could never be dropped by a later
+pass, so it would duplicate on every run — the typo'd-flag shape); and a row
+whose stored `warnings` is not a list.
+
+**Why the two branches are asymmetric.** The author-year branch declares all
+three because reaching it means §3g answered all three questions (no gaps, no
+ambiguities, not Vancouver). The numeric branch declares only its own because
+it genuinely did NOT compute the other two — the missing-bib lookup keys on
+author surnames, which numeric prose does not carry (see §3g), so declaring
+them would delete a prior author-year pass's real findings on the strength of a
+pass that never looked. The asymmetry is one-sided by construction, not an
+oversight.
 
 Known and accepted: synthesis (next section) appends entries to
 `references.bib` that resolve some of the `missing-bib-entry:` lines you just

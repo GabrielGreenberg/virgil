@@ -284,6 +284,67 @@ def test_merge_runs_against_the_row_not_the_patch_on_an_nfd_citekey(tmp_path):
     )
 
 
+def test_an_undeclared_fresh_line_refuses(tmp_path):
+    """The typo'd-kind shape, and the reason it needs a REFUSAL rather than
+    care: declare `missing-bib-entrie`, supply `missing-bib-entry:` lines, and
+    nothing is ever dropped — the merge silently degrades to append-only, the
+    shim reports success, and the row grows by one line per pass forever."""
+    lib = _make_library(tmp_path, [{
+        "citekey": "smith2001",
+        "indexed": {"warnings": ["missing-bib-entry: Smith 1998"]},
+    }])
+    raised = None
+    try:
+        _tools.update_catalog_entry(
+            lib, "smith2001",
+            {"indexed": {"warnings": ["missing-bib-entry: Jones 2004"]}},
+            recompute_warning_kinds=["missing-bib-entrie"],
+        )
+    except ValueError as e:
+        raised = e
+    check(raised is not None, "no ValueError on an undeclared fresh line")
+    check(_row(lib, "smith2001")["indexed"]["warnings"]
+          == ["missing-bib-entry: Smith 1998"], "row modified despite refusal")
+
+
+def test_a_malformed_row_warnings_value_refuses(tmp_path):
+    """`for w in "pgmark-gap: 3"` iterates CHARACTERS. Merging into that would
+    rewrite the row from them — a malformed row is a human's repair, not this
+    function's guess."""
+    lib = _make_library(tmp_path, [{
+        "citekey": "smith2001",
+        "indexed": {"warnings": "missing-bib-entry: Smith 1998"},
+    }])
+    raised = None
+    try:
+        _tools.update_catalog_entry(
+            lib, "smith2001",
+            {"indexed": {"warnings": ["missing-bib-entry: Jones 2004"]}},
+            recompute_warning_kinds=["missing-bib-entry"],
+        )
+    except ValueError as e:
+        raised = e
+    check(raised is not None, "no ValueError on a non-list row warnings value")
+    check(_row(lib, "smith2001")["indexed"]["warnings"]
+          == "missing-bib-entry: Smith 1998", "row modified despite refusal")
+
+
+def test_an_empty_kind_list_still_selects_merge_mode_not_replace(tmp_path):
+    """`None` means "legacy replace"; a LIST — even empty — means "merge".
+    A caller that computed its kind list and got [] means "I dropped nothing",
+    and handing that back the CLOBBER path is the exact surprise this whole
+    change exists to remove."""
+    lib = _make_library(tmp_path, [{
+        "citekey": "smith2001",
+        "indexed": {"warnings": ["pgmark-gap: 3"]},
+    }])
+    _tools.update_catalog_entry(
+        lib, "smith2001", {"indexed": {"warnings": []}}, recompute_warning_kinds=[],
+    )
+    check(_row(lib, "smith2001")["indexed"]["warnings"] == ["pgmark-gap: 3"],
+          "an empty kind list took the whole-array replace path")
+
+
 def test_merge_on_a_row_with_no_indexed_warnings_yet(tmp_path):
     lib = _make_library(tmp_path, [{"citekey": "smith2001"}])
     _tools.update_catalog_entry(
@@ -308,6 +369,36 @@ def test_suppression_categories_reads_an_nfd_row():
     }]}
     got = _tools.suppression_categories_from_catalog(catalog, nfc, prefix="pgmark-")
     check(got == {"gap"}, f"NFD row not matched: {got!r}")
+
+
+def test_pgmark_baseline_reads_both_halves_off_an_nfd_row():
+    """A pre-existing sibling of the same class, closed alongside because the
+    two halves of ONE function would otherwise disagree.
+
+    `_baseline_kinds_from_catalog` reads suppressions through the shared
+    (NFC-insensitive) reader and prior-pass findings through its own compare.
+    Left raw, an NFD-spelled row resolved the suppressions and NOT the prior
+    findings, so every finding read as "new" and re-blocked the convergence
+    loop on exactly the papers whose citekeys carry diacritics.
+    """
+    import pgmark_validate  # noqa: PLC0415 — imported here to keep the module optional
+
+    nfd = unicodedata.normalize("NFD", "čerić2001")
+    nfc = unicodedata.normalize("NFC", "čerić2001")
+    check(nfd != nfc, "fixture is not actually NFD-vs-NFC distinct")
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        cat = Path(td) / "catalog.json"
+        cat.write_text(json.dumps({"entries": [{
+            "citekey": nfd,
+            "indexed": {"warnings": [
+                "pgmark-gap: 12-14",
+                "pgmark-duplicate-false-positive: verified by hand",
+            ]},
+        }]}), encoding="utf-8")
+        got = pgmark_validate._baseline_kinds_from_catalog(cat, nfc)
+    check(got == {"gap", "duplicate"},
+          f"NFD row: one or both halves blind ({got!r})")
 
 
 def test_synthesis_reads_warnings_off_an_nfd_row(tmp_path):
@@ -425,6 +516,14 @@ def _run_standalone() -> int:
 
 
 if __name__ == "__main__":
+    # `--standalone` forces the built-in runner regardless of whether pytest is
+    # installed. The vitest shell passes it, because that shell asserts on the
+    # "<n>/<n> passed" tally this runner prints — under pytest the tally is
+    # absent and the JS test would fail on a machine where the Python suite
+    # actually PASSED, which is a guard failing for a reason unrelated to what
+    # it guards.
+    if "--standalone" in sys.argv:
+        raise SystemExit(_run_standalone())
     try:
         import pytest
     except ImportError:

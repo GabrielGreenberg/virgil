@@ -34,7 +34,11 @@ describe("catalog warnings per-kind recompute merge (Python)", () => {
   it("passes library/scripts/tests/test_warning_recompute_merge.py", () => {
     let output: string;
     try {
-      output = execFileSync("python3", [SUITE], {
+      // `--standalone` forces the suite's built-in runner: this assertion reads
+      // the "<n>/<n> passed" tally it prints, which pytest (if installed on the
+      // machine) would replace with its own format — failing this guard for a
+      // reason that has nothing to do with what it guards.
+      output = execFileSync("python3", [SUITE, "--standalone"], {
         cwd: REPO_ROOT,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],

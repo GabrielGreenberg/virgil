@@ -821,12 +821,30 @@ def update_catalog_entry(
     is pinned by `test_parser_hardening.py`. The merge is opt-in AT THE
     CALL because only the caller knows which kinds it recomputed.
 
-    Declaring kinds with no `indexed.warnings` array in the patch is a
-    `ValueError`, not an implied empty: an implied empty would let a
-    patch that meant to set only `indexed.state` wipe every line of the
-    declared kinds. A defaulted answer here is a decision nobody made.
+    `None` selects the legacy whole-array replace; a LIST — even an empty
+    one — selects merge mode. The two are deliberately distinguishable:
+    a caller that computes its kind list and gets `[]` means "I dropped
+    nothing", and silently handing that back the CLOBBER path is the one
+    surprise this whole change exists to remove.
+
+    Three shapes REFUSE with `ValueError`, all before anything is
+    written, because each is a way for a well-formed call to corrupt the
+    row silently:
+
+    * declaring kinds with no `indexed.warnings` array in the patch — an
+      implied empty would let a patch that meant to set only
+      `indexed.state` wipe every line of the declared kinds;
+    * a FRESH line whose head is not among the declared kinds — that
+      line can never be dropped by a later pass, so it duplicates on
+      every run (the typo'd-kind shape: declare `missing-bib-entrie`,
+      supply `missing-bib-entry:` lines, and the merge degrades to
+      append-only while the shim reports success); and
+    * a row whose stored `indexed.warnings` is not a list — iterating a
+      string yields one entry per CHARACTER and would rewrite the row
+      from them. A malformed row is for a human to repair, not for this
+      to guess at.
     """
-    if recompute_warning_kinds:
+    if recompute_warning_kinds is not None:
         indexed_patch = patch.get("indexed")
         fresh = indexed_patch.get("warnings") if isinstance(indexed_patch, dict) else None
         if not isinstance(fresh, list):
@@ -835,6 +853,24 @@ def update_catalog_entry(
                 "to be a list of the fresh lines for those kinds (use [] to "
                 "clear them); got "
                 f"{type(fresh).__name__}"
+            )
+        declared = {
+            k.strip() for k in recompute_warning_kinds
+            if isinstance(k, str) and k.strip()
+        }
+        undeclared = sorted({
+            w.split(":", 1)[0] for w in fresh
+            if isinstance(w, str) and w.split(":", 1)[0] not in declared
+        } | {
+            "<non-string>" for w in fresh if not isinstance(w, str)
+        })
+        if undeclared:
+            raise ValueError(
+                "every fresh warning line's head must be a declared kind — "
+                f"undeclared: {', '.join(undeclared)}; declared: "
+                f"{', '.join(sorted(declared)) or '(none)'}. An undeclared "
+                "line is never dropped by a later pass, so it duplicates on "
+                "every run."
             )
     with lock_catalog(library):
         catalog = read_catalog(library)
@@ -845,8 +881,16 @@ def update_catalog_entry(
                 break
         if target is None:
             raise KeyError(f"catalog.json: no entry for citekey {citekey!r}")
-        if recompute_warning_kinds:
-            current = (target.get("indexed") or {}).get("warnings") or []
+        if recompute_warning_kinds is not None:
+            current = (target.get("indexed") or {}).get("warnings")
+            if current is None:
+                current = []
+            if not isinstance(current, list):
+                raise ValueError(
+                    f"catalog.json: indexed.warnings for {citekey!r} is a "
+                    f"{type(current).__name__}, not a list — refusing to merge "
+                    "into a malformed row"
+                )
             merged = merge_indexed_warnings(
                 current, recompute_warning_kinds, patch["indexed"]["warnings"],
             )
