@@ -165,10 +165,28 @@ updates the catalog, sets `bib.state = needs-reauth`, updates the
 in-file `\title{...}`.
 
 For other non-`none` kinds (`title-only-missing`,
-`author-only-missing`, `both-missing`), append an outstanding-work
-item to the catalog entry's `warnings` array via
-`update_catalog_entry.py` with a patch like
-`{"warnings": ["metadata-mismatch: <kind>"]}`. The doctrine §"Self-check"
+`author-only-missing`, `both-missing`), record an outstanding-work item
+on the catalog entry via `update_catalog_entry.py`. The array lives at
+`indexed.warnings` — **not** at the entry top level; every reader
+(`suppression_categories_from_catalog`, `pgmark_validate.py`,
+`synthesize_canonical_entries.py`, the frontend row) looks only there, so
+a top-level `warnings` key is invisible to all of them. And a bare
+`"warnings": [...]` patch REPLACES the row's array, deleting every other
+kind on it, so declare the kind you recomputed and let the shim merge:
+
+```bash
+cat > /tmp/$ARGUMENTS-mismatch-warning.json <<'EOF'
+{ "indexed": { "warnings": ["metadata-mismatch: <kind>"] } }
+EOF
+python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
+  --patch-file /tmp/$ARGUMENTS-mismatch-warning.json \
+  --recompute-warning-kind metadata-mismatch
+rm /tmp/$ARGUMENTS-mismatch-warning.json
+```
+
+`metadata-mismatch` is recomputed per preflight pass: pass an empty
+array (with the kind still declared) when this pass finds no mismatch,
+so a resolved one stops being flagged. The doctrine §"Self-check"
 favors *applying* the auto-resolution policy when the file content
 clearly matches the citekey's named work (e.g., a dissertation whose
 `\title{...}` is blank but whose body matches the bib title); reach

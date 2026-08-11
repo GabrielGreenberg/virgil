@@ -46,6 +46,10 @@ import urllib.request
 from pathlib import Path
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _tools import citekey_matches  # noqa: E402
+
 CROSSREF_URL = "https://api.crossref.org/works"
 UA = "virgil-library/synthesize-canonical (mailto:gabriel.greenberg@gmail.com)"
 
@@ -69,7 +73,11 @@ def _read_catalog_warnings(library: Path, citekey: str) -> list[str]:
     except (OSError, json.JSONDecodeError):
         return []
     for entry in data.get("entries", []):
-        if entry.get("citekey") != citekey:
+        # NFC-insensitive: the writer normalizes the citekey, so a raw `!=`
+        # returns [] on an NFD-spelled row and synthesis silently reports
+        # "no missing-bib-entry warnings" on exactly the papers whose
+        # citekeys carry diacritics (Tichý / Čerić / López).
+        if not citekey_matches(entry.get("citekey", ""), citekey):
             continue
         warnings = (entry.get("indexed") or {}).get("warnings") or []
         return [w for w in warnings if isinstance(w, str)]
