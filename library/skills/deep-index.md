@@ -447,26 +447,49 @@ Other `indexed` fields (`extractor`, `footnoteCount`, etc.) and the
 top-level `updatedAt` are preserved automatically — the patch script
 deep-merges nested objects and only the keys you include get replaced.
 
-**Warnings recompute (eight prefixes).** The `warnings` array is
-append-only across passes EXCEPT for these eight prefixes, which are
-recomputed every pass:
+**Warnings recompute — eight kinds, and step 5 owns FIVE of them.**
+The `warnings` array is append-only across passes EXCEPT for eight
+kinds, which are recomputed every pass. They split by producer:
 
 ```
-missing-bib-entry:         ambiguous-citation:        pgmark-duplicate:
-footnote-recovery-needed:  numeric-citation-style:    pgmark-gap:
-examples-not-converted:                               pgmark-out-of-order:
+step-5-owned (recompute here)          subskill-owned (already persisted)
+─────────────────────────────          ──────────────────────────────────
+footnote-recovery-needed:              missing-bib-entry:
+examples-not-converted:                ambiguous-citation:
+pgmark-duplicate:                      numeric-citation-style:
+pgmark-gap:
+pgmark-out-of-order:
 ```
 
-Read existing `indexed.warnings`; drop any line starting with one of
-those prefixes; concatenate the fresh lines from §3d
-(`footnote-recovery-needed:`, at most one), §3g (`missing-bib-entry:`,
-`ambiguous-citation:` per unique pair, OR a single
-`numeric-citation-style:` for Vancouver sources), §3.h₂
-(`examples-not-converted:` per skipped region), and §3i's validator
-(`pgmark-duplicate:` / `pgmark-gap:` / `pgmark-out-of-order:` against
-the post-repair file). Other warning kinds are preserved untouched.
+The three on the right belong to `/library/clean-bibliography`, which
+**persists them itself** at the end of §3g — because
+`synthesize_canonical_entries.py`, later in that same subskill, gates
+entirely on reading `missing-bib-entry:` back out of the catalog. Step 5
+runs after the whole §3 dispatch, so owning them here made synthesis a
+guaranteed no-op on every first pass (task 323). **Do not carry them in
+this patch and do not declare them below** — this write no longer sees
+them, and declaring a kind you did not recompute deletes another step's
+findings.
 
-Why the three pgmark-continuity prefixes recompute: §1b's
+The five on the left have no same-run consumer (nothing reads
+`footnote-recovery-needed:` / `examples-not-converted:` /
+`pgmark-*:` within the producing pass), so step 5 remains their
+coherent owner and `/library/recover-footnotes` + `/library/di-examples`
+keep deferring to it. The same split is stated in
+[_doctrine.md](_doctrine.md) §Persistence convergence — they must agree.
+
+Concatenate the fresh lines from §3d (`footnote-recovery-needed:`, at
+most one), §3.h₂ (`examples-not-converted:` per skipped region), and
+§3i's validator (`pgmark-duplicate:` / `pgmark-gap:` /
+`pgmark-out-of-order:` against the post-repair file). You do **not**
+need to read the existing array and re-supply it: pass
+`--recompute-warning-kind` per kind and the shim drops exactly those
+kinds' lines against the row's live array, under the catalog lock,
+leaving every other kind — and every `<kind>-false-positive:`
+suppression — byte-identical. Declare a kind even when it produced
+nothing this pass; that is how a resolved finding stops being flagged.
+
+Why the three pgmark-continuity kinds recompute: §1b's
 `repair_pgmarks.py` removes spurious anchors; §3i emits fresh
 continuity findings against the repaired file; pre-repair entries are
 stale.
@@ -483,12 +506,17 @@ cat > /tmp/$ARGUMENTS-deepindex-patch.json <<'EOF'
     "state": "deepIndexed",
     "lastIndexedAt": "<ISO>",
     "exampleCount": <N>,
-    "warnings": [<recomputed warnings array>]
+    "warnings": [<fresh lines for the five step-5-owned kinds only>]
   }
 }
 EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-deepindex-patch.json
+  --patch-file /tmp/$ARGUMENTS-deepindex-patch.json \
+  --recompute-warning-kind footnote-recovery-needed \
+  --recompute-warning-kind examples-not-converted \
+  --recompute-warning-kind pgmark-duplicate \
+  --recompute-warning-kind pgmark-gap \
+  --recompute-warning-kind pgmark-out-of-order
 rm /tmp/$ARGUMENTS-deepindex-patch.json
 ```
 

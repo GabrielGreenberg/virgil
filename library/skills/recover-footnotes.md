@@ -400,6 +400,16 @@ footnotes in PDF source not present in main.tex"` for the catalog-row
 step to merge into `entry.indexed.warnings`, and continue. Do not
 block the deep-index pass on this.
 
+**Why this kind defers to step 5 rather than persisting here.**
+`/library/clean-bibliography` persists its three kinds at source
+(task 323) because its OWN next step reads them back out of the catalog
+within the same run. Nothing reads `footnote-recovery-needed:` inside
+the producing pass, so persist-at-source would buy nothing here and
+`deep-index.md` §5 remains its coherent owner. Running standalone, say
+plainly in your reply that the line was computed and is persisted by a
+`/library/deep-index` pass (or its step 5), not by this run. The
+asymmetry with clean-bibliography is chosen, not drift.
+
 **How to derive `<count>` (must be deterministic across re-runs).**
 Run `pdfinfo papers/$ARGUMENTS/$ARGUMENTS.pdf | grep '^Pages:'` to
 get the page count K. Then extract every line of `pdftotext` output

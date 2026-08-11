@@ -61,7 +61,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tools import suppression_categories_from_catalog  # noqa: E402
+from _tools import citekey_matches, suppression_categories_from_catalog  # noqa: E402
 
 
 PGMARK_RE = re.compile(r"\\pgmark(?:\[([a-zA-Z]+)\])?\{([^}]*)\}")
@@ -721,7 +721,13 @@ def _baseline_kinds_from_catalog(
     # emitted findings from a previous pass). Suffix `-false-positive` entries
     # are handled above, so skip them here.
     for e in catalog.get("entries", []):
-        if e.get("citekey") == citekey:
+        # NFC-insensitive, like the suppression half three lines above (which
+        # goes through the shared reader). A raw compare here made the two
+        # halves of THIS function disagree on an NFD-spelled row: suppressions
+        # resolved and prior-pass findings did not, so every finding read as
+        # "new" and re-blocked the convergence loop on exactly the papers whose
+        # citekeys carry diacritics.
+        if citekey_matches(e.get("citekey", ""), citekey):
             warnings = (e.get("indexed") or {}).get("warnings") or []
             for w in warnings:
                 if not (isinstance(w, str) and w.startswith("pgmark-") and ":" in w):

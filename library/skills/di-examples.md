@@ -434,6 +434,16 @@ In any of those cases, leave the region alone and emit a warning of
 the form `examples-not-converted: <reason> near pgmark <N>` for
 step 5 to merge into `entry.indexed.warnings`.
 
+> **Why this kind defers to step 5 rather than persisting here.**
+> `/library/clean-bibliography` persists its three kinds at source
+> (task 323) because its OWN next step reads them back out of the
+> catalog within the same run. Nothing reads `examples-not-converted:`
+> inside the producing pass, so persist-at-source would buy nothing here
+> and `deep-index.md` §5 remains its coherent owner. Running standalone,
+> say plainly in your reply that the lines were computed and are
+> persisted by a `/library/deep-index` pass (or its step 5), not by this
+> run. The asymmetry with clean-bibliography is chosen, not drift.
+
 > **Locator fallback for pgmark-less papers.** When the catalog row
 > has `indexed.pgmarkCount == 0` (DOCX-native, plain-text imports,
 > etc.), the "near pgmark <N>" suffix has no meaningful value — the

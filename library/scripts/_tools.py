@@ -454,7 +454,12 @@ def suppression_categories_from_catalog(
     """
     out: set[str] = set()
     for e in catalog.get("entries", []):
-        if e.get("citekey") != citekey:
+        # NFC-insensitive, like every other row lookup in this module: the
+        # WRITE side normalizes (`add_validator_suppression` calls
+        # `normalize_citekey`), so a raw `!=` here returns nothing at all on
+        # an NFD-spelled row (Tichý / Čerić / López) and the suppression the
+        # operator just added reads as absent.
+        if not citekey_matches(e.get("citekey", ""), citekey):
             continue
         indexed = e.get("indexed") or {}
         for w in indexed.get("warnings", []) or []:
@@ -725,7 +730,72 @@ def _deep_merge(dst: dict, src: dict) -> None:
             dst[k] = v
 
 
-def update_catalog_entry(library: Path, citekey: str, patch: dict) -> None:
+def merge_indexed_warnings(
+    existing: list, owned_kinds, fresh: list,
+) -> list:
+    """Per-KIND recompute-replace over an `indexed.warnings` array.
+
+    For each declared kind K, drop every existing line whose HEAD
+    (`line.split(":", 1)[0]`) EQUALS K, then append `fresh` in order.
+    Every other line survives byte-identically and in its original
+    order — including lines of kinds this pass did not recompute, and
+    including non-string junk (preserved rather than silently dropped).
+
+    Why this exists
+    ---------------
+    The catalog patch channel replaces arrays (`_deep_merge`: "arrays
+    and scalars replace"), so a subskill that wanted to persist its own
+    freshly-computed warnings had exactly two options — clobber every
+    other kind on the row, or defer the write to one late owner. The
+    library chose deferral, which is why `/library/clean-bibliography`'s
+    `missing-bib-entry:` lines were persisted by `deep-index.md` step 5
+    AFTER the Bibliography-synthesis step that reads them (task 323).
+
+    Why EXACT head-equality, not `startswith`
+    -----------------------------------------
+    `<kind>-false-positive:` is a real, operator-authored suppression
+    family with its OWN append-if-absent writer
+    (`add_validator_suppression.py`), and readers rely on the two
+    families staying distinguishable (`pgmark_validate.py`'s baseline,
+    `suppression_categories_from_catalog`). `missing-bib-entry-
+    false-positive:` is representable, so a `startswith("missing-bib-
+    entry")` drop would eat a verified suppression. Two semantics for
+    two families — recompute-replace here, append-if-absent there; do
+    not unify them.
+
+    Why REPLACE, not union-by-line
+    ------------------------------
+    These prefixes are defined as recomputed-per-pass (`_doctrine.md`
+    §Persistence convergence): "if a missing entry from a prior pass has
+    since been added to references.bib, the rerun drops it from
+    warnings." Union is monotone — it can never drop — so resolved gaps
+    would stay flagged forever.
+
+    Authority scoping (the rule that keeps the fix from becoming the
+    bug): a caller declares ONLY the kinds it actually recomputed this
+    pass. Declaring a kind with zero fresh lines correctly CLEARS stale
+    ones; declaring a kind you did not recompute silently deletes
+    another pass's findings.
+    """
+    owned = {
+        k.strip() for k in (owned_kinds or [])
+        if isinstance(k, str) and k.strip()
+    }
+    out = [
+        w for w in (existing or [])
+        if not (isinstance(w, str) and w.split(":", 1)[0] in owned)
+    ]
+    out.extend(fresh or [])
+    return out
+
+
+def update_catalog_entry(
+    library: Path,
+    citekey: str,
+    patch: dict,
+    *,
+    recompute_warning_kinds=None,
+) -> None:
     """Apply `patch` to the catalog entry for `citekey`. Self-locks.
 
     Deep-merge semantics: nested objects merge, arrays/scalars replace.
@@ -736,7 +806,72 @@ def update_catalog_entry(library: Path, citekey: str, patch: dict) -> None:
     Raises `KeyError` if the entry is not present — callers update
     rows that already exist. Use `upsert_catalog_entry` to add new
     rows.
+
+    `recompute_warning_kinds` (opt-in, keyword-only)
+    ------------------------------------------------
+    When supplied, `patch["indexed"]["warnings"]` is read as the FRESH
+    lines for those kinds and merged against the row's CURRENT array via
+    `merge_indexed_warnings` — inside this lock, so the read-modify-write
+    is atomic — before `_deep_merge` runs. Called WITHOUT it, behavior is
+    byte-identical to before: the patch's array replaces the row's.
+
+    `_deep_merge` itself is deliberately UNMODIFIED. It is shared with
+    `upsert_catalog_entry` (index_paper, merge_paper_references), where
+    list-replace governs `authors`/`tags`/`importedKeys`/`pdf`/`bib` and
+    is pinned by `test_parser_hardening.py`. The merge is opt-in AT THE
+    CALL because only the caller knows which kinds it recomputed.
+
+    `None` selects the legacy whole-array replace; a LIST — even an empty
+    one — selects merge mode. The two are deliberately distinguishable:
+    a caller that computes its kind list and gets `[]` means "I dropped
+    nothing", and silently handing that back the CLOBBER path is the one
+    surprise this whole change exists to remove.
+
+    Three shapes REFUSE with `ValueError`, all before anything is
+    written, because each is a way for a well-formed call to corrupt the
+    row silently:
+
+    * declaring kinds with no `indexed.warnings` array in the patch — an
+      implied empty would let a patch that meant to set only
+      `indexed.state` wipe every line of the declared kinds;
+    * a FRESH line whose head is not among the declared kinds — that
+      line can never be dropped by a later pass, so it duplicates on
+      every run (the typo'd-kind shape: declare `missing-bib-entrie`,
+      supply `missing-bib-entry:` lines, and the merge degrades to
+      append-only while the shim reports success); and
+    * a row whose stored `indexed.warnings` is not a list — iterating a
+      string yields one entry per CHARACTER and would rewrite the row
+      from them. A malformed row is for a human to repair, not for this
+      to guess at.
     """
+    if recompute_warning_kinds is not None:
+        indexed_patch = patch.get("indexed")
+        fresh = indexed_patch.get("warnings") if isinstance(indexed_patch, dict) else None
+        if not isinstance(fresh, list):
+            raise ValueError(
+                "recompute_warning_kinds requires patch['indexed']['warnings'] "
+                "to be a list of the fresh lines for those kinds (use [] to "
+                "clear them); got "
+                f"{type(fresh).__name__}"
+            )
+        declared = {
+            k.strip() for k in recompute_warning_kinds
+            if isinstance(k, str) and k.strip()
+        }
+        undeclared = sorted({
+            w.split(":", 1)[0] for w in fresh
+            if isinstance(w, str) and w.split(":", 1)[0] not in declared
+        } | {
+            "<non-string>" for w in fresh if not isinstance(w, str)
+        })
+        if undeclared:
+            raise ValueError(
+                "every fresh warning line's head must be a declared kind — "
+                f"undeclared: {', '.join(undeclared)}; declared: "
+                f"{', '.join(sorted(declared)) or '(none)'}. An undeclared "
+                "line is never dropped by a later pass, so it duplicates on "
+                "every run."
+            )
     with lock_catalog(library):
         catalog = read_catalog(library)
         target = None
@@ -746,6 +881,24 @@ def update_catalog_entry(library: Path, citekey: str, patch: dict) -> None:
                 break
         if target is None:
             raise KeyError(f"catalog.json: no entry for citekey {citekey!r}")
+        if recompute_warning_kinds is not None:
+            current = (target.get("indexed") or {}).get("warnings")
+            if current is None:
+                current = []
+            if not isinstance(current, list):
+                raise ValueError(
+                    f"catalog.json: indexed.warnings for {citekey!r} is a "
+                    f"{type(current).__name__}, not a list — refusing to merge "
+                    "into a malformed row"
+                )
+            merged = merge_indexed_warnings(
+                current, recompute_warning_kinds, patch["indexed"]["warnings"],
+            )
+            # Copy rather than mutate — the caller's patch is theirs.
+            patch = {
+                **patch,
+                "indexed": {**patch["indexed"], "warnings": merged},
+            }
         _deep_merge(target, patch)
         target["updatedAt"] = _now()
         write_catalog(library, catalog)
