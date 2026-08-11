@@ -40,12 +40,23 @@
  *  4. **BEHAVIOUR** — the real specs against a container that genuinely refuses:
  *     `classifyDrop` reports `no-op` and `applyDrop` dispatches nothing, with a
  *     control case at a gap that accepts, so the legs can't pass vacuously.
+ *
+ * **Two limits, stated rather than implied** — a guard that overstates its reach
+ * is the failure mode this file is about. (a) Leg 1 asks its question per FILE,
+ * so a module that imports the factory for one spec and hand-writes a second one
+ * carrying the fit still reads clean; the per-SITE version of that question is
+ * `container-fit-guardrail`'s, and leg 2 catches the case that matters (a spec
+ * reachable from the registry). (b) Leg 1 walks `src/components/drop-mode/` only,
+ * so a fit inside a `src/panels/<Panel>/drop-spec.ts` is invisible to it — leg 2
+ * is the coverage there, since every card kind's spec is censused off
+ * `CARD_REGISTRY` whatever file it was authored in.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { commentsStripped } from "@/lib/__tests__/_source-scan";
 import { Schema, type Node as PMNode } from "@tiptap/pm/model";
 import { EditorState, type Transaction } from "@tiptap/pm/state";
 import type { Editor } from "@tiptap/react";
@@ -61,11 +72,13 @@ vi.mock("@/lib/storage", () => {
   );
 });
 
-import { plannedDropSpec } from "../planned-spec";
+import { hasDerivedDecision, plannedDropSpec } from "../planned-spec";
 import { fitNodesAtInsert } from "../specs/drop-context";
+import { MODULE_DROP_SPECS } from "../registry";
+// Leg 4 drives these three directly (leg 2 reaches every spec through the
+// registry surface above).
 import { textObjectDropSpec } from "../specs/textobject";
 import { textRangeMoveDropSpec } from "../specs/text-range-move";
-import { inTextAtomGrabSpec } from "../specs/in-text-atom-grab";
 import { stackPullDropSpec } from "../specs/stack-pull";
 import { blockMoveSpec } from "../util/block-move";
 import type {
@@ -108,25 +121,40 @@ function walkSource(dir: string): string[] {
   return out;
 }
 
+/**
+ * Both needles run against COMMENTS-STRIPPED source, through the shared
+ * one-pass scanner (`_source-scan.ts`). This is the fourth census in the repo to
+ * need that, and the first three each re-derived it wrong — a prose header that
+ * merely NAMES `plannedDropSpec` ("unlike `plannedDropSpec`, this spec resolves
+ * at commit…") would otherwise vouch for a file that hand-writes both doors
+ * around a fit. String literals are kept: neither needle can hide in one, and
+ * blanking them is how task 205's leg became unfalsifiable.
+ */
+function code(rel: string): string {
+  return commentsStripped(readFileSync(path.join(DROP_MODE, rel), "utf8"));
+}
+
 /** Files that CALL `fitNodesAtInsert` (the declaration itself doesn't count). */
 export function filesCallingContainerFit(root = DROP_MODE): string[] {
   const hits: string[] = [];
   for (const full of walkSource(root)) {
-    const lines = readFileSync(full, "utf8").split("\n");
-    const calls = lines.some(
-      (l) =>
-        /\bfitNodesAtInsert\(/.test(l) &&
-        !/^\s*(\/\/|\*|\/\*)/.test(l) &&
-        !/function\s+fitNodesAtInsert/.test(l),
-    );
-    if (calls) hits.push(path.relative(root, full).split(path.sep).join("/"));
+    const rel = path.relative(root, full).split(path.sep).join("/");
+    const src = commentsStripped(readFileSync(full, "utf8"));
+    const calls = src
+      .split("\n")
+      .some(
+        (l) =>
+          /\bfitNodesAtInsert\s*\(/.test(l) &&
+          !/function\s+fitNodesAtInsert/.test(l),
+      );
+    if (calls) hits.push(rel);
   }
   return hits.sort();
 }
 
+/** A CALL, not a mention — `plannedDropSpec(` in real code. */
 function referencesPlannedFactory(rel: string): boolean {
-  const src = readFileSync(path.join(DROP_MODE, rel), "utf8");
-  return /\bplannedDropSpec\b/.test(src);
+  return /\bplannedDropSpec\s*\(/.test(code(rel));
 }
 
 describe("census — a spec that can refuse states ONE resolution", () => {
@@ -135,6 +163,23 @@ describe("census — a spec that can refuse states ONE resolution", () => {
     expect(files.length).toBeGreaterThanOrEqual(4);
     expect(files).toContain("specs/textobject.ts");
     expect(files).toContain("util/block-move.ts");
+    // The fit's own DECLARATION is not a call site.
+    expect(files).not.toContain("specs/drop-context.ts");
+  });
+
+  it("CANARY — the factory needle can answer NO", () => {
+    // A leg that only ever reports `true` would pass this census forever. Two
+    // real files answer either way: `drop-context.ts` never calls the factory,
+    // `specs/textobject.ts` does.
+    expect(referencesPlannedFactory("specs/drop-context.ts")).toBe(false);
+    expect(referencesPlannedFactory("specs/textobject.ts")).toBe(true);
+    // …and a mention in PROSE does not vouch for a file (the shape that made
+    // three earlier censuses in this repo unsound).
+    expect(
+      /\bplannedDropSpec\s*\(/.test(
+        commentsStripped("// unlike plannedDropSpec(opts), this one is bespoke\nconst x = 1;"),
+      ),
+    ).toBe(false);
   });
 
   it("every drop-mode file that calls fitNodesAtInsert builds through plannedDropSpec", () => {
@@ -169,7 +214,7 @@ const PERMITTED_HAND_WRITTEN_DECISIONS: Record<string, string> = {
   // the same pure `buildCreateNode` probe on both sides.
   "CARD_REGISTRY.footnote": "inlineAtomMoveSpec — shared resolve + create probe",
   "CARD_REGISTRY.citation": "inlineAtomMoveSpec — shared resolve + create probe",
-  inTextAtomGrabSpec: "inlineAtomMoveSpec — shared resolve + create probe",
+  "atom-grab": "inlineAtomMoveSpec — shared resolve + create probe",
   // `textObjectSideReanchorSpec` — every `applyDrop` guard (kind, `!api`,
   // `!id || !exists`) has a one-for-one twin in `classifyDrop`, read off the
   // same `getApi(ctx)`. It is also the repo's only `confirm` producer, so no
@@ -187,17 +232,17 @@ const PERMITTED_HAND_WRITTEN_DECISIONS: Record<string, string> = {
   "CARD_REGISTRY.cutter-suggestion": "textObjectSideReanchorSpec — mirrored guards",
 };
 
-/** Every spec a drag session can dispatch — `registry.ts`'s whole surface. */
+/** Every spec a drag session can dispatch — `registry.ts`'s whole surface. The
+ *  module half is read from `MODULE_DROP_SPECS` (which derives its transient
+ *  entries from the dispatch table itself), so a fifth transient spec joins this
+ *  census and `placement-reachability`'s without anyone extending a list. */
 function allSpecs(): Array<{ name: string; spec: DropSpec }> {
   const out: Array<{ name: string; spec: DropSpec }> = [];
   for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
     const spec = CARD_REGISTRY[k].dropSpec;
     if (spec) out.push({ name: `CARD_REGISTRY.${k}`, spec });
   }
-  out.push({ name: "textObjectDropSpec", spec: textObjectDropSpec });
-  out.push({ name: "textRangeMoveDropSpec", spec: textRangeMoveDropSpec });
-  out.push({ name: "inTextAtomGrabSpec", spec: inTextAtomGrabSpec });
-  out.push({ name: "stackPullDropSpec", spec: stackPullDropSpec });
+  out.push(...MODULE_DROP_SPECS);
   return out;
 }
 
@@ -211,7 +256,7 @@ describe("census — every dispatchable spec derives its decision or justifies n
 
   it("each spec exposes planDrop, or is allowlisted with a reason", () => {
     const unaccounted = specs
-      .filter((s) => typeof s.spec.planDrop !== "function")
+      .filter((s) => !hasDerivedDecision(s.spec))
       .map((s) => s.name)
       .filter((name) => !(name in PERMITTED_HAND_WRITTEN_DECISIONS))
       .sort();
@@ -225,13 +270,13 @@ describe("census — every dispatchable spec derives its decision or justifies n
     for (const name of [
       "textObjectDropSpec",
       "textRangeMoveDropSpec",
-      "stackPullDropSpec",
+      "stack-pull",
       "CARD_REGISTRY.example",
     ]) {
       const spec = specs.find((s) => s.name === name);
-      expect({ name, planned: typeof spec?.spec.planDrop }).toEqual({
+      expect({ name, derived: !!spec && hasDerivedDecision(spec.spec) }).toEqual({
         name,
-        planned: "function",
+        derived: true,
       });
       expect(name in PERMITTED_HAND_WRITTEN_DECISIONS).toBe(false);
     }
@@ -310,6 +355,45 @@ describe("plannedDropSpec — the decision IS the plan", () => {
     spec.classifyDrop(nowhere, "k", emptyCtx); // generation 1, discarded
     spec.applyDrop(nowhere, "k", emptyCtx); // generation 2, the one that runs
     expect(committed).toEqual([2]);
+  });
+
+  it("a planner that THROWS is a refusal, on BOTH doors", () => {
+    // The containment leg. `planDrop` runs from `classifyDrop` too, and that
+    // door's caller (`commitDropSession`) has no `try` — and is `async`, so an
+    // escaped throw becomes a rejected promise at `void commitDropSession()`
+    // and at LiftHost's two `await`s, leaving the session, its window
+    // listeners, the body attr and the lift overlay alive after mouseup.
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const spec = plannedDropSpec({
+      allowedPlacements: ["between-blocks"],
+      targetScope: "any-editor",
+      postDrop: "close",
+      planDrop: () => {
+        throw new Error("planner exploded");
+      },
+    });
+    expect(spec.classifyDrop(nowhere, "k", emptyCtx)).toEqual({ kind: "no-op" });
+    expect(() => spec.applyDrop(nowhere, "k", emptyCtx)).not.toThrow();
+    expect(errors).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it("BRANDED — a spec that overrides a derived door is not a planned spec", () => {
+    // Publishing `planDrop` alone is not enough: `{ ...plannedDropSpec(opts),
+    // applyDrop(…) { /* hand-written */ } }` carries the field while running two
+    // independent doors again — the original shape, with CI green. Leg 2 asks
+    // `hasDerivedDecision`, which compares both door identities.
+    const planned = plannedDropSpec({
+      allowedPlacements: ["between-blocks"],
+      targetScope: "any-editor",
+      postDrop: "close",
+      planDrop: () => null,
+    });
+    expect(hasDerivedDecision(planned)).toBe(true);
+
+    const forked: DropSpec = { ...planned, applyDrop: () => {} };
+    expect(typeof forked.planDrop).toBe("function"); // still published…
+    expect(hasDerivedDecision(forked)).toBe(false); // …but no longer derived.
   });
 
   it("the planner is published on the built spec (leg 2 reads it)", () => {
@@ -576,6 +660,20 @@ describe("stack-pull refusals reach the decision too", () => {
     ).toEqual({ kind: "no-op" });
     stackPullDropSpec.applyDrop(gap(editor, acceptedPos(d)), STACK_KEY, ctx);
     expect(calls).toEqual([]);
+
+    // Control — the SAME seeded payload at the SAME position, with the sub-bag
+    // wired, does create the card. Without this, a `seedStack` shape drift or a
+    // renamed storage key would satisfy the leg above while proving nothing.
+    const wired = stackCtx(editor, true);
+    expect(
+      stackPullDropSpec.classifyDrop(
+        gap(editor, acceptedPos(d)),
+        STACK_KEY,
+        wired.ctx,
+      ),
+    ).toEqual({ kind: "apply" });
+    stackPullDropSpec.applyDrop(gap(editor, acceptedPos(d)), STACK_KEY, wired.ctx);
+    expect(wired.calls).toEqual(["addNote"]);
   });
 
   it("an EMPTY text slice is a refusal, not a blank paragraph", () => {
@@ -593,5 +691,18 @@ describe("stack-pull refusals reach the decision too", () => {
     ).toEqual({ kind: "no-op" });
     stackPullDropSpec.applyDrop(gap(editor, acceptedPos(d)), STACK_KEY, ctx);
     expect(dispatched).toHaveLength(0);
+
+    // Control — a NON-empty slice through the same door lands, so the refusal
+    // above is the size guard and not a broken lookup.
+    seedStack({
+      kind: "text",
+      slice: { content: [{ type: "paragraph", content: [{ type: "text", text: "hi" }] }] },
+      plain: "hi",
+    } as unknown as StackPayload);
+    expect(
+      stackPullDropSpec.classifyDrop(gap(editor, acceptedPos(d)), STACK_KEY, ctx),
+    ).toEqual({ kind: "apply" });
+    stackPullDropSpec.applyDrop(gap(editor, acceptedPos(d)), STACK_KEY, ctx);
+    expect(dispatched).toHaveLength(1);
   });
 });

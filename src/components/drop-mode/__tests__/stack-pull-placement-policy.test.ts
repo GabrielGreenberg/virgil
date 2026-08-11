@@ -397,7 +397,7 @@ describe("the per-card-kind table is DERIVED from what applyDrop does", () => {
       seedStack(cardPayload(cardKind));
       const declared = stackPullPlacementsFor(KEY);
 
-      // RENEGOTIATED by task 321, and in the strengthening direction. This leg
+      // RENEGOTIATED by task 321 — net stronger, with one loss named. This leg
       // used to drive the apply at a paragraph-side placement "whatever the
       // declaration says", because `applyDrop` consulted `isPlacementValidFor`
       // nowhere — only `classifyDrop` did, so a direct apply ran the branch at a
@@ -410,6 +410,14 @@ describe("the per-card-kind table is DERIVED from what applyDrop does", () => {
       //     half below from being vacuously satisfied by a kind that does
       //     nothing at all, which is what the old `[] ⇔ no calls` line covered.
       //   • the SIDE — anchored iff declared, and REFUSED outright when not.
+      //
+      // THE LOSS, stated: because the commit now refuses a geometry the table
+      // doesn't declare, the ⟸ direction is satisfied by that refusal rather
+      // than by the branch ignoring a paragraphId. A gap-only kind whose branch
+      // WOULD anchor if it were ever reached is no longer detected here — it is
+      // unreachable through the spec, which is why this is a coverage loss and
+      // not a correctness one. The harmful direction (a kind declaring
+      // paragraph-side whose branch drops the anchor) still bites.
       const gap = recordingCtx(editor);
       stackPullDropSpec.applyDrop(betweenBlocksPlacement(editor), KEY, gap.ctx);
       expect(gap.calls.length, `${cardKind}: no factory ran at a gap`)

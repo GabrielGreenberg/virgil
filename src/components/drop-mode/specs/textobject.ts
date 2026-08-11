@@ -227,13 +227,21 @@ export const textObjectDropSpec: DropSpec = plannedDropSpec({
       insertTr.insert(cursor, n);
       cursor += insertTr.doc.content.size - before;
     }
-    const deleteTr = src.editor.state.tr.delete(src.move.from, src.move.to);
     const sourceEditor = src.editor;
+    const { from, to } = src.move;
     return {
       commit: () => {
         targetEditor.view.dispatch(insertTr);
         targetEditor.view.focus();
-        sourceEditor.view.dispatch(deleteTr);
+        // The source delete is built HERE, not in the plan: it is dispatched
+        // AFTER a transaction landed in another editor, and ProseMirror throws
+        // `Applying a mismatched transaction` on a tr whose base doc is no
+        // longer the live one. The insert can't move the source doc today (the
+        // only non-main target is a card body), but building it in the plan
+        // would stake that on it — and this is the pre-321 order restored, at
+        // zero cost. The insert above is the one that must be pre-built: it is
+        // the splice the container fit governs.
+        sourceEditor.view.dispatch(sourceEditor.state.tr.delete(from, to));
       },
     };
   },

@@ -73,12 +73,14 @@ export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
       }
       const insertTr = targetEditor.state.tr.insert(insertPos, node);
       selectInsertedBlock(insertTr, insertPos, node.nodeSize);
-      const deleteTr = sourceEditor.state.tr.delete(from, to);
       return {
         commit: () => {
           targetEditor.view.dispatch(insertTr);
           targetEditor.view.focus();
-          sourceEditor.view.dispatch(deleteTr);
+          // Built HERE, after the target insert has landed — see the same note
+          // in `specs/textobject.ts`. A transaction is bound to the doc it was
+          // built from, and this one is dispatched second.
+          sourceEditor.view.dispatch(sourceEditor.state.tr.delete(from, to));
         },
       };
     },
