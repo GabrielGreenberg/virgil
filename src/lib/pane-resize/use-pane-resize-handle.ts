@@ -121,9 +121,10 @@ type EndMode =
  * It does NOT own the divider's LOOK: put `drag-gap drag-gap-{h,v} band-grip`
  * on the element yourself (STYLE_GUIDE "Resize gutters"). A consumer that
  * genuinely isn't a pane gutter and wears different chrome must say so on
- * `PERMITTED_UNCHROMED_RESIZERS` in `pane-drag-guardrail.test.ts` — and still
- * take its colors from the gutter family (`--edge-hover`/`--drag-highlight`),
- * so a divider can never paint a one-off accent.
+ * `PERMITTED_UNCHROMED_RESIZERS` in `pane-drag-guardrail.test.ts` (keyed per
+ * handle, not per file) — and still take its colors from the gutter family
+ * (`--drag-highlight` on hover, an escalated drag state under `.dragging`), so
+ * a divider can never paint a one-off accent.
  */
 export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps {
   // Latest spec by ref so the pointerdown closure never goes stale while the

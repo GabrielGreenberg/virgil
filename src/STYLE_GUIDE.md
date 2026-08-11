@@ -769,11 +769,13 @@ has focus**: no per-pod stripe, ring, border, or shadow-change on focus.
 ## Resize gutters
 
 Every draggable divider in the app — the panel-band dividers, the
-panel↔editor gutters, the code splitter, zen margins, and the three
+panel↔editor gutters, the code splitter, zen margins, and three of the four
 Library resizers — shares ONE grip chrome: `.drag-gap.drag-gap-{h,v}
 .band-grip`. The strip is **invisible at rest** (only the resize cursor
-shows) and reveals a single centered **grip pill** on hover AND drag —
-`--edge-hover` → `--drag-highlight` accent, widening on its short axis
+shows) and reveals a single centered **grip pill** on hover AND drag. The
+pill's rest background is `--edge-hover`, but it rests at `opacity: 0`, so
+the color a user ever *sees* is `--drag-highlight` on both hover and drag;
+what distinguishes them is SIZE, growing along the pill's long axis
 (28→40→44px). It's orientation-agnostic from one rule set in `globals.css`:
 a horizontal gutter gets a wide-short pill on `::before`; a vertical gutter
 a tall-thin pill on `::after` (its `::before` is the hit-area extension).
@@ -786,19 +788,27 @@ opaque `--background` backing (they occlude omni cards showing through);
 **no other gutter opts in** — every other resizer stays transparent at rest.
 
 **The engine returns no chrome, so CI checks the other half.** Every
-`usePaneResizeHandle` consumer must render `band-grip`, or sit on
-`PERMITTED_UNCHROMED_RESIZERS` (`pane-drag-guardrail.test.ts`) with a stated
-reason — and an exception buys a different *shape*, never a different
-palette: it still rests transparent, hovers to `--edge-hover`, and paints
-`--drag-highlight` under the engine's `.dragging` class. Today there is
-exactly one: the Library list's **column boundary** (`.list-col-resizer`,
-`library.css`), which lives in a content-height header row where the 28→44px
-pill would overflow and clip. Adopting the pill there needs the shared grip
-to become **length-aware** first (clamp the pill's long axis to its strip's
-extent) — a change to chrome shared by nine other sites, and its own task.
-Before task 189 that one resizer painted `--accent` from React
+`usePaneResizeHandle` handle must render `band-grip` **on its own element**,
+or sit on `PERMITTED_UNCHROMED_RESIZERS` (`pane-drag-guardrail.test.ts`,
+keyed per handle rather than per file) with a stated reason — and an
+exception buys a different *shape*, never a different palette or a different
+state→color mapping: it rests transparent, paints `--drag-highlight` on
+hover, and ESCALATES on drag under the engine's `.dragging` class. Today
+there is exactly one: the Library list's **column boundary**
+(`.list-col-resizer`, `library.css`), which lives in a content-height header
+row where the 28→44px pill would overflow and clip; having no size axis of
+its own to grow along, it escalates with `--drag-glow-line` instead of a
+width change. Adopting the pill there needs the shared grip to become
+**length-aware** first (clamp the pill's long axis to its strip's extent) — a
+change to chrome shared by nine other sites, and its own task. Before task
+189 that one resizer painted `--accent` from React
 `onMouseEnter`/`onMouseLeave`, which also left `.dragging` unused, so hover
 and active drag looked identical.
+
+This governs **engine-driven dividers**. A gesture the engine's shape doesn't
+fit may stay bespoke (AGENTS.md "Pane-drag stability" names them), and its
+chrome is its own affair — the Outline focus-band edge handles paint
+`--accent` legitimately, and are not a violation of the sentence above.
 
 ### Accessibility posture (recorded, not deferred by accident)
 
@@ -810,14 +820,17 @@ operated is worse than one that stays quiet.**
 
 For resizers that means: the engine emits `aria-hidden` on every handle, and
 no divider carries `role="separator"` / `aria-orientation` / `aria-label`.
-Until task 189 four of the ten gutters did — a *named, valueless,
-non-operable* splitter ("Resize My Papers pod"), while the other six said
-nothing and none of the fifteen resizers in the app (10 engine + 5
-`FloatingPanel` edges) was focusable or arrow-operable. The five float edges
-had the same defect one step further gone: `aria-label` on a bare `<div>`,
-whose implicit role is `generic` — which ARIA forbids naming, so the labels
-were inert. Both are CI-pinned (`pane-drag-guardrail.test.ts`, empty
-allowlist).
+Until task 189 four of the ten engine handles did — a *named, valueless,
+non-operable* splitter ("Resize My Papers pod") — while the other six said
+nothing. **Nothing in the app that resizes anything is focusable or
+arrow-operable**: not the 10 engine handles, not `FloatingPanel`'s 5 edges,
+not `EditorPane`'s 4 margin guides, not the Outline focus band's 2. (Those
+are source sites, not painted counts — the Library list renders its column
+boundary once per boundary.) The bespoke families had the same defect one
+step further gone: `aria-label` on a bare `<div>`, whose implicit role is
+`generic` — which ARIA forbids naming, so the labels were inert, announcing
+nothing while reading to every developer as a contract. All CI-pinned
+(`pane-drag-guardrail.test.ts`, empty allowlist).
 
 What it would take to change the posture, whenever it is worth doing: make
 handles focusable, add arrow-key resize through the same `clamp`/`commit`

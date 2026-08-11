@@ -1024,11 +1024,14 @@ function Resizer({
   // (~24-28px), not a pane gutter, and the shared pill is a 28px lozenge
   // growing to 44px on drag, which would overflow and clip here. It is the
   // one entry on `PERMITTED_UNCHROMED_RESIZERS` (pane-drag-guardrail), and it
-  // still takes the gutter family's TOKENS: rest transparent → `--edge-hover`
-  // on hover → `--drag-highlight` while dragging. Before task 189 it painted
-  // `--accent` from React `onMouseEnter`/`onMouseLeave` handlers, which put a
-  // one-off brown on the divider family AND left the engine's `.dragging`
-  // class inert, so hover and active drag rendered identically.
+  // still takes the gutter family's TOKENS *and its state→color mapping*: rest
+  // transparent → `--drag-highlight` on hover → the same blue plus
+  // `--drag-glow-line` while dragging (the family escalates the drag state by
+  // growing its pill; this bar's track is a fixed width, so it escalates by
+  // glow instead). Before task 189 it painted `--accent` from React
+  // `onMouseEnter`/`onMouseLeave` handlers, which put a one-off brown on the
+  // divider family AND left the engine's `.dragging` class inert, so hover and
+  // active drag rendered identically.
   // No role/aria-label: pointer-only, `aria-hidden` from the engine props.
   return (
     <div

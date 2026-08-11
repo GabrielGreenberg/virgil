@@ -681,21 +681,30 @@
    and clip. The row Spacers occupy the same track in every row and paint no
    background, so the boundary reads as invisible until the header is hovered.
 
-   What it does NOT get to fork is the divider family's COLORS: rest
-   transparent → `--edge-hover` on hover → `--drag-highlight` while the engine
-   holds `.dragging`. Pre-189 this was `--accent` (#7c5e3c) painted from React
-   mouseenter/mouseleave handlers, which also left `.dragging` inert — hover
-   and active drag were indistinguishable. Hover is the quiet stone edge
-   rather than the blue because this bar spans a whole column boundary, not a
-   short centered pill; the blue is reserved for the live gesture. */
+   What it does NOT get to fork is the divider family's COLORS or its
+   state→color MAPPING. The shared pill rests INVISIBLE (its `--edge-hover`
+   background sits at `opacity: 0`), paints `--drag-highlight` on hover, and
+   escalates on drag by growing 40px→44px rather than by recoloring. This bar
+   has no size axis to grow along — its track is a fixed `RESIZER_WIDTH` in the
+   header grid — so the drag escalation is the family's own `--drag-glow-line`
+   instead, which adds emphasis without touching layout.
+
+   Hovering to `--edge-hover` was tried and is wrong twice over: it is not what
+   the family does (that token is the pill's *rest* value, never painted), and
+   #d6d3d1 on the header's `--surface` is ~1.35:1 — a weaker affordance than
+   the `--accent` (#7c5e3c) bar this replaced, on the app's smallest drag
+   target. Pre-189 that accent was painted from React mouseenter/mouseleave
+   handlers, which also left `.dragging` inert, so hover and active drag were
+   indistinguishable. */
 .list-col-resizer {
   cursor: col-resize;
   background: transparent;
-  transition: background 120ms ease;
+  transition: background 120ms ease, box-shadow 120ms ease;
 }
 .list-col-resizer:hover {
-  background: var(--edge-hover);
+  background: var(--drag-highlight);
 }
 .list-col-resizer.dragging {
   background: var(--drag-highlight);
+  box-shadow: var(--drag-glow-line);
 }
