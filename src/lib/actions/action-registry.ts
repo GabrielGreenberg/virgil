@@ -183,6 +183,8 @@ import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
   posBlockAllowsAction,
+  blockRangeAllowsAction,
+  INLINE_INSERT_ACTIONS,
   posHostsBlockInsert,
   blockTypeHostsBlockInsert,
 } from "@/text-objects/text-object-registry";
@@ -981,32 +983,55 @@ function cardApplies(
  * unification (task 061).
  *
  *   - A kind-bearing `TextObjectRef` (the grab-bar) reads its curated set
- *     directly via `kindAllowsCardAction` — UNCHANGED.
+ *     directly via `kindAllowsCardAction` — the POLICY layer.
  *   - A GESTURE ref (a bare `cursor` / `selection` from the slash, typed, and
- *     lightning surfaces) has no TextObject kind, so it resolves the caret's
- *     CONTAINING block kind and consults the SAME curated set
- *     (`posBlockAllowsAction`). This is what stops `/cite` · `\cite{}` (and the
- *     footnote twins) from inserting an inline atom into a `titleField` /
- *     non-prose block — matching the grey-out the grab-bar already shows.
+ *     lightning surfaces) has no TextObject kind, so it resolves its position
+ *     and consults the SAME curated set (`blockRangeAllowsAction`). This is what
+ *     stops `/cite` · `\cite{}` (and the footnote twins) from inserting an
+ *     inline atom into a `titleField` / non-prose block — matching the grey-out
+ *     the grab-bar already shows.
+ *   - task 148 — for the `INLINE_INSERT_ACTIONS` family a BLOCK ref asks
+ *     positionally TOO, over the range the dispatcher will resolve
+ *     (`cardResolveScope`, which mirrors `resolveRefRange`). A container's own
+ *     node hosts no inline content while its BODY does, so its kind is simply
+ *     not the thing that can answer: reading it greyed footnote / citation /
+ *     suggest-edit on an example or a list while the lightning bolt enabled all
+ *     three at a caret one position inside. The two layers COMPOSE, policy
+ *     first: `titleField` still refuses Citation (a title has no bibliography)
+ *     though the schema would host it.
  *
  * Defensive: a probe that didn't thread a live `view` (the minimal
  * `{ ref, canEdit }` context the grab/lightning menu-decoration passes) falls
  * back to the historic "allow", so it degrades to prior behavior rather than
  * throwing — the same short-circuit `kindAllowsCardAction` gave gesture refs
- * before this change.
+ * before this change. A block ref whose node is NOT in this doc (a stale handle,
+ * a unit-test probe) likewise falls back to its curated set: the positional
+ * layer can only tighten, never invent an answer it has no position for.
  */
 function cardActionAllowedForCtx(id: CardActionId, ctx: ActionContext): boolean {
   const ref = ctx.ref;
-  if (ref.kind !== "cursor" && ref.kind !== "selection") {
-    return kindAllowsCardAction(ref, id);
-  }
-  const doc = ctx.view?.state?.doc;
+  const raw = ctx.view?.state?.doc;
   // No live view threaded (the minimal `{ ref, canEdit }` menu-decoration ctx),
   // or a non-PM mock doc (unit-test probe) → historic gesture-ref "allow", so we
   // degrade to prior behavior rather than throw on a doc without `resolve`.
-  if (!doc || typeof doc.resolve !== "function") return true;
-  const pos = ref.kind === "cursor" ? ref.pos : ref.from;
-  return posBlockAllowsAction(doc, pos, id as DragHandleAction);
+  const doc = raw && typeof raw.resolve === "function" ? raw : null;
+
+  if (ref.kind !== "cursor" && ref.kind !== "selection") {
+    if (!kindAllowsCardAction(ref, id)) return false;
+    if (!doc || !INLINE_INSERT_ACTIONS.has(id as DragHandleAction)) return true;
+    const scope = cardResolveScope(id, ctx);
+    if (!scope) return true;
+    return blockRangeAllowsAction(
+      doc,
+      scope.from,
+      scope.to,
+      id as DragHandleAction,
+    );
+  }
+  if (!doc) return true;
+  const from = ref.kind === "cursor" ? ref.pos : ref.from;
+  const to = ref.kind === "cursor" ? ref.pos : ref.to;
+  return blockRangeAllowsAction(doc, from, to, id as DragHandleAction);
 }
 
 /**

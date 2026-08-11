@@ -56,7 +56,9 @@ import type { ConfirmOptions } from "@/components/ConfirmDialog";
 import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
-  posBlockAllowsAction,
+  blockRangeAllowsAction,
+  inlineInsertPos,
+  INLINE_INSERT_ACTIONS,
 } from "@/text-objects/text-object-registry";
 import { isAtomNode } from "@/lib/tiptap/atom-registry";
 import { canMountInCardBody } from "@/lib/tiptap/borrowed-schema";
@@ -220,19 +222,23 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
 
       // Defense-in-depth (task 145): the grab-bar's SELECTION ref reaches this
       // legacy dispatcher DIRECTLY, bypassing `runAction`'s applies() gate. The
-      // menu decoration now greys a container-invalid action (a selection inside
-      // a titleField/codeBlock/latexComment can't click Citation/footnote/
-      // suggest-edit/highlight), but re-check the CONTAINING block here too via
-      // the SSOT `posBlockAllowsAction` so no inline atom/mark can land in a
-      // block whose schema rejects it — even by a programmatic dispatch — the
-      // enforcement point is not the menu alone. Only gesture SELECTION refs need
-      // this: a block ref carries a TextObject kind the menu already curates, and
-      // its resolved range may not sit in a prose container. Lifecycle actions
-      // are exempt (a selection delete/archive acts on the selected text).
+      // menu decoration greys a container-invalid action (a selection inside a
+      // titleField/codeBlock/latexComment can't click Citation/footnote/
+      // suggest-edit/highlight), but re-check here too via the SSOT
+      // `blockRangeAllowsAction` so no inline atom/mark can land in a block
+      // whose schema rejects it — even by a programmatic dispatch — the
+      // enforcement point is not the menu alone.
+      //
+      // task 148 dropped the `ref.kind === "selection"` restriction, and the
+      // reason is the same reason the menu had to stop reading a container's
+      // kind: a BLOCK ref's curated set says what may be done TO the block,
+      // while these four act at a position INSIDE it, which for a container is
+      // in its BODY. Asking the RESOLVED RANGE — the very range spliced below —
+      // is the one question that answers both. Lifecycle actions stay exempt (a
+      // delete/archive acts on the selected text, always safe).
       if (
-        ref.kind === "selection" &&
         CONTAINER_SENSITIVE_ACTIONS.has(action) &&
-        !posBlockAllowsAction(ed.state.doc, resolved.from, action)
+        !blockRangeAllowsAction(ed.state.doc, resolved.from, resolved.to, action)
       ) {
         return;
       }
@@ -303,9 +309,11 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // Footnote anchor goes at the end of the passage. Collapse the
           // selection there before calling createFootnote — its
           // `fromSelection: false` path inserts an empty footnote atom at
-          // the current cursor.
+          // the current cursor. `inlineInsertPos` is what makes "the end of
+          // the passage" a TEXT position for a container ref, where `range.to`
+          // is a position between block children (task 148).
           try {
-            ed.commands.setTextSelection(range.to);
+            ed.commands.setTextSelection(inlineInsertPos(ed.state.doc, range.to));
           } catch {
             /* ignore */
           }
@@ -328,7 +336,12 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           // leave `panelId` / `focusCardKey` null — there's no card to route yet.
           if (typeof window !== "undefined") {
             try {
-              const coords = ed.view.coordsAtPos(range.to);
+              // Same normalization as the footnote twin: the popover's commit
+              // calls `insertInlineAtom({ at: pos })`, which clamps to doc
+              // bounds only — so a container ref's raw content-range end would
+              // materialize the `\cite{}` in a fabricated trailing block.
+              const atPos = inlineInsertPos(ed.state.doc, range.to);
+              const coords = ed.view.coordsAtPos(atPos);
               const rect = new DOMRect(
                 coords.left,
                 coords.top,
@@ -342,7 +355,7 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
               // so the commit always reads `pos` in the right pos-space.
               window.dispatchEvent(
                 new CustomEvent(ATOM_CREATE_POPOVER_EVENT, {
-                  detail: { kind: "citation", rect, pos: range.to, editor: ed },
+                  detail: { kind: "citation", rect, pos: atPos, editor: ed },
                 }),
               );
             } catch {
@@ -1068,21 +1081,23 @@ const LIFECYCLE_ACTIONS: ReadonlySet<DragHandleAction> = new Set([
 
 // The card actions whose result is an INLINE ATOM (footnote/citation) or an
 // inline MARK (highlight/suggest-edit) embedded in the block's text — so the
-// containing block's schema decides whether they're valid. These are exactly
-// the actions the curated `NON_PROSE_BLOCK_ACTIONS` / `MARKLESS_BLOCK_ACTIONS`
-// / `TITLE_FIELD_ACTIONS` sets drop for a non-prose / markless / title block.
-// Task 145 re-checks the container for these on a SELECTION-ref dispatch as
-// defense-in-depth: the menu decoration now greys them (so a user can't click
-// through), but a selection ref bypasses `runAction`, so the dispatch itself
-// also guards — no `\title{\cite{}}` corruption / dead codeBlock click can land
-// even by a programmatic dispatch. Lifecycle actions are NOT here: a selection
+// containing block's schema decides whether they're valid. Task 145 re-checks
+// the container for these on dispatch as defense-in-depth: the menu decoration
+// greys them (so a user can't click through), but the grab bar reaches this
+// dispatcher directly, bypassing `runAction`, so the dispatch itself also
+// guards — no `\title{\cite{}}` corruption / dead codeBlock click can land even
+// by a programmatic dispatch. Lifecycle actions are NOT here: a selection
 // delete/archive acts on the selected TEXT (always safe), not on the singleton
 // title block the curated set protects — gating those would over-grey.
+//
+// DERIVED from `INLINE_INSERT_ACTIONS` (task 148), the family whose
+// applicability is a property of the target TEXTBLOCK rather than of the ref's
+// kind, plus `highlight` — mark-backed like `suggest-edit`, but deliberately
+// left OUT of that family because the true atom blocks keep it as a pinned
+// clean no-op, so it stays a per-KIND answer.
 const CONTAINER_SENSITIVE_ACTIONS: ReadonlySet<DragHandleAction> = new Set([
-  "footnote",
-  "citation",
-  "suggest-edit",
-  "highlight",
+  ...INLINE_INSERT_ACTIONS,
+  "highlight" as DragHandleAction,
 ]);
 
 function actionClass(action: DragHandleAction): ResolveAction {
