@@ -22,7 +22,6 @@ import {
 import {
   LAYOUT_SITE_HELPER_ANCHOR,
   LAYOUT_SITE_SECTION_PATH,
-  LAYOUT_SITE_SECTION_PATH_MIRROR,
 } from "@/lib/layout-gesture-probe";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
 import { useTransientAnchorCleanup } from "@/text-objects/useTransientAnchorCleanup";
@@ -627,8 +626,6 @@ export default function EditorLayout() {
     clearPanelHeight,
     tradePanelHeights,
     notePanelUse,
-    setEditorSplit,
-    setEditorSplitRatio,
     setCodePaneRatio,
     setShowHighlights,
     toggleHighlightType,
@@ -667,13 +664,6 @@ export default function EditorLayout() {
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
 
-  const editorSplit = prefs.editorSplit;
-  const editorSplitRatio = prefs.editorSplitRatio;
-
-  // Which pane last received focus — used to route panel interactions
-  // (outline clicks, note jumps, etc.) to the pane the user is in.
-  const [activeSplitPane, setActiveSplitPane] = useState<"top" | "bottom">("top");
-  const mirrorViewRef = useRef<import("prosemirror-view").EditorView | null>(null);
 
   // Editor column ref — kept here as a placeholder; the actual
   // editor column rendering lives inside EditorPane post-7.8.
@@ -2015,7 +2005,7 @@ export default function EditorLayout() {
     // Only the RESIZE path parks (task 317). `compute` walks every heading
     // calling `coordsAtPos` — ProseMirror's most expensive forced-layout call —
     // so re-solving it per frame of a window drag is the single heaviest
-    // per-frame cost in the app at ×2 panes (×3 with the Reader). The SCROLL
+    // per-frame cost in the app at ×1 pane (×2 with the Reader). The SCROLL
     // path stays live: the breadcrumb must follow the scroll it describes.
     const resizePark = parkDuringLayoutGesture(schedule, LAYOUT_SITE_SECTION_PATH);
     const onWindowResize = () => resizePark.fire();
@@ -2038,137 +2028,15 @@ export default function EditorLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorInstance, focusMode.state.active, focusMode.state.locked, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex]);
 
-  // Mirror (second pane) position tracking — same logic as above but
-  // scoped to the mirror ProseMirror view's scroll container.
-  const [mirrorSectionPath, setMirrorSectionPath] = useState<SectionPathEntry[]>([]);
-  const [mirrorParTitleIndex, setMirrorParTitleIndex] = useState<number | null>(null);
-  // Re-run when the mirror view is (re)created: we store a generation
-  // counter that bumps whenever onMirrorViewReady fires.
-  const [mirrorViewGen, setMirrorViewGen] = useState(0);
-  useEffect(() => {
-    const mirrorView = mirrorViewRef.current;
-    if (!editorSplit || !mirrorView) {
-      setMirrorSectionPath([]);
-      setMirrorParTitleIndex(null);
-      return;
-    }
-    const scrollEl = findEditorScrollFor(mirrorView.dom);
-    if (!scrollEl) return;
-
-    const compute = () => {
-      // Keep-alive: skip when the mirror pane is hidden (see the main-pane note).
-      if ((scrollEl as HTMLElement).offsetHeight === 0) return;
-      // Wave-2 C2 fast path — see the main pane above. Same derivation
-      // against the MIRROR view (shared state, own viewport).
-      if (editorInstance && geomBreadcrumbEnabled()) {
-        const fsFast = focusStateRef.current;
-        const fast = computeSectionPathAt(
-          editorInstance,
-          mirrorView,
-          scrollEl,
-          fsFast.active && fsFast.locked
-            ? { start: fsFast.startBlockIndex, end: fsFast.endBlockIndex }
-            : null,
-        );
-        if (fast) {
-          setMirrorSectionPath((prev) => {
-            const next = fast.path;
-            return prev.length === next.length && prev.every((v, i) => v.text === next[i].text && v.index === next[i].index && v.sectionNumber === next[i].sectionNumber) ? prev : next;
-          });
-          setMirrorParTitleIndex((prev) =>
-            prev === fast.parTitleIndex ? prev : fast.parTitleIndex,
-          );
-          return;
-        }
-      }
-      const doc = mirrorView.state.doc;
-      const scrollRect = scrollEl.getBoundingClientRect();
-      // Same shared section-active line + bottom clamp as the canonical pane —
-      // see note above.
-      const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
-      const atBottom = maxScroll > 4 && maxScroll - scrollEl.scrollTop <= 2;
-      const referenceY = atBottom
-        ? scrollRect.bottom
-        : scrollRect.top + scrollRect.height * SECTION_ACTIVE_LINE_FRACTION;
-
-      const stack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
-      let lastCrossedStack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
-      let activeParTitleIdx: number | null = null;
-
-      // Mirror shares the main editor's state, so the focus band + decorations
-      // apply here too — skip out-of-band (hidden) blocks ONLY when LOCKED, for
-      // the same reason as the main pane: a mere focus selection hides nothing
-      // now (CHIP A), so out-of-band blocks report real coords and must not be
-      // skipped.
-      const fs = focusStateRef.current;
-      const skipHidden = fs.active && fs.locked;
-
-      doc.forEach((node, offset, index) => {
-        if (skipHidden && (index < fs.startBlockIndex || index > fs.endBlockIndex)) return;
-
-        if (node.type.name === "heading" && node.attrs?.level) {
-          const level = node.attrs.level as number;
-          let headingTop: number | null = null;
-          try { headingTop = mirrorView.coordsAtPos(offset + 1).top; } catch { headingTop = null; }
-          if (headingTop == null) return;
-          if (headingTop <= referenceY) {
-            while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
-            stack.push({ level, text: node.textContent || "Untitled", index, sectionNumber: (node.attrs?.sectionNumber as string) ?? null });
-            lastCrossedStack = [...stack];
-            activeParTitleIdx = null;
-          }
-          return;
-        }
-        if (
-          (node.type.name === "paragraph" || node.type.name === "bulletList" || node.type.name === "orderedList") &&
-          node.attrs?.parTitle
-        ) {
-          let top: number | null = null;
-          try { top = mirrorView.coordsAtPos(offset + 1).top; } catch { top = null; }
-          if (top != null && top <= referenceY) activeParTitleIdx = index;
-        }
-      });
-
-      const path: SectionPathEntry[] = lastCrossedStack.map((s) => ({ text: s.text, index: s.index, sectionNumber: s.sectionNumber }));
-      setMirrorSectionPath((prev) =>
-        prev.length === path.length && prev.every((v, i) => v.text === path[i].text && v.index === path[i].index && v.sectionNumber === path[i].sectionNumber) ? prev : path,
-      );
-      setMirrorParTitleIndex((prev) => (prev === activeParTitleIdx ? prev : activeParTitleIdx));
-    };
-
-    let raf = 0;
-    const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(compute); };
-    // Editor-update path wrapped so the perf-flag gate (Tier 1 B) can
-    // suppress per-keystroke recompute on the mirror pane while leaving
-    // scroll/resize-driven recomputes live. Same `off()`-needs-same-ref
-    // reason as the main pane above.
-    const onEditorUpdate = () => {
-      if (isTier1BDisabled()) return;
-      schedule();
-    };
-    // Resize path parked, scroll path live — see the main pane above.
-    const resizePark = parkDuringLayoutGesture(
-      schedule,
-      LAYOUT_SITE_SECTION_PATH_MIRROR,
-    );
-    const onWindowResize = () => resizePark.fire();
-    compute();
-    scrollEl.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", onWindowResize);
-    // Re-compute when the doc changes (shared state with main editor).
-    editorInstance?.on("update", onEditorUpdate);
-    return () => {
-      cancelAnimationFrame(raf);
-      scrollEl.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", onWindowResize);
-      resizePark.dispose();
-      editorInstance?.off("update", onEditorUpdate);
-    };
-    // Focus band values are deps so the mirror breadcrumb recomputes on a
-    // focus toggle/move/lock (meta-only tx — see the main pane's note). `locked`
-    // is a dep because skipHidden is now lock-gated (CHIP A).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorSplit, mirrorViewGen, editorInstance, focusMode.state.active, focusMode.state.locked, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex]);
+  // The MIRROR (second pane) position tracker lived here — a second copy of
+  // the breadcrumb recompute above, scoped to the mirror ProseMirror view's
+  // scroll container, plus its `mirrorSectionPath` / `mirrorParTitleIndex` /
+  // `mirrorViewGen` state and its own `editor.on('update')` subscription
+  // (which is why the keystroke-sanctity allowlist named two subscribers for
+  // this file). It was maintained for a pane nothing mounted: the split's
+  // render site was dropped in a refactor, so `mirrorViewRef.current` was
+  // permanently null and the effect took its clear-and-return branch on every
+  // run. Retired with the split in task 115.
 
   // Derive footnotes list from editor state (sorted by document position).
   // Recomputes on `editorInstance` change (initial mount + doc-switch remount)
@@ -2260,9 +2128,6 @@ export default function EditorLayout() {
     handleRenameParTitle,
   } = useEditorOps({
     editorRef,
-    mirrorViewRef,
-    editorSplit,
-    activeSplitPane,
     setLatestDoc,
     // T3 (W3a): the label commit shares the live warning's predicate.
     isLabelTaken: checkLabelTaken,
@@ -2452,8 +2317,6 @@ export default function EditorLayout() {
     availableDividerLevels,
     activeDividerLevels,
     dividerWidth,
-    editorSplit,
-    activeSplitPane,
     onToggleParTitles: toggleParTitles,
     onToggleCardTitles: toggleCardTitles,
     onToggleLatexComments: toggleLatexComments,
@@ -2466,7 +2329,6 @@ export default function EditorLayout() {
     toggleDividerLevel,
     setDividerWidth,
     setShowHighlights,
-    toggleEditorSplit: () => setEditorSplit((s) => !s),
     closeAllPanels,
     paraNavBack,
     paraNavForward,
@@ -2487,8 +2349,6 @@ export default function EditorLayout() {
     availableDividerLevels,
     activeDividerLevels,
     dividerWidth,
-    editorSplit,
-    activeSplitPane,
     toggleParTitles,
     toggleCardTitles,
     toggleLatexComments,
@@ -2501,7 +2361,6 @@ export default function EditorLayout() {
     toggleDividerLevel,
     setDividerWidth,
     setShowHighlights,
-    setEditorSplit,
     closeAllPanels,
     paraNavBack,
     paraNavForward,
@@ -2828,14 +2687,10 @@ export default function EditorLayout() {
     () => ({
       activeSectionPath: currentSectionPath,
       activeParTitleIndex: currentParTitleIndex,
-      mirrorSectionPath,
-      mirrorParTitleIndex,
     }),
     [
       currentSectionPath,
       currentParTitleIndex,
-      mirrorSectionPath,
-      mirrorParTitleIndex,
     ],
   );
 
@@ -3176,24 +3031,10 @@ export default function EditorLayout() {
   // detection is fully covered by the per-doc pane. (Removed from the
   // keystroke-sanctity allowlist accordingly — see AGENTS.md.)
 
-  // Track focus on the canonical editor — interactions with the top pane
-  // mark it active so panels route their jumps there.
-  useEffect(() => {
-    if (!editorInstance) return;
-    const dom = editorInstance.view.dom as HTMLElement;
-    const mark = () => setActiveSplitPane("top");
-    dom.addEventListener("focusin", mark);
-    dom.addEventListener("mousedown", mark);
-    return () => {
-      dom.removeEventListener("focusin", mark);
-      dom.removeEventListener("mousedown", mark);
-    };
-  }, [editorInstance]);
-
-  // Reset to the top pane whenever the split closes.
-  useEffect(() => {
-    if (!editorSplit) setActiveSplitPane("top");
-  }, [editorSplit]);
+  // The `activeSplitPane` trackers lived here (a focusin/mousedown pair that
+  // marked the canonical editor as the active pane, and a reset when the split
+  // closed). With one pane there is nothing to disambiguate — retired with the
+  // editor split in task 115.
 
   // Boot-load the per-user theming prefs (panel colors / typography /
   // pref links) and keep this tree subscribed to panel-color changes.

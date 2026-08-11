@@ -101,8 +101,6 @@ export interface EditorMutationHandlers {
 export interface EditorPaneSectionPaths {
   activeSectionPath: SectionPathEntry[];
   activeParTitleIndex: number | null;
-  mirrorSectionPath: SectionPathEntry[];
-  mirrorParTitleIndex: number | null;
 }
 
 /** Stable empty section-paths — for inactive keep-alive panes (their bundle
@@ -111,8 +109,6 @@ export interface EditorPaneSectionPaths {
 export const EMPTY_SECTION_PATHS: EditorPaneSectionPaths = Object.freeze({
   activeSectionPath: Object.freeze([]) as unknown as SectionPathEntry[],
   activeParTitleIndex: null,
-  mirrorSectionPath: Object.freeze([]) as unknown as SectionPathEntry[],
-  mirrorParTitleIndex: null,
 });
 
 /** Stable empty orphaned-footnote list — the builder's default (Phase 5b) and
@@ -188,8 +184,6 @@ export function buildEditorPaneViewPrefs(
     // ── Section path (OutlineHost) — Phase 5a: from the split arg ────
     activeSectionPath: sectionPaths.activeSectionPath,
     activeParTitleIndex: sectionPaths.activeParTitleIndex,
-    mirrorSectionPath: sectionPaths.mirrorSectionPath,
-    mirrorParTitleIndex: sectionPaths.mirrorParTitleIndex,
 
     // ── Layout setters / mutators (verbatim from the engine) ────────
     setIsResizingPanels: editorHandlers.setIsResizingPanels,

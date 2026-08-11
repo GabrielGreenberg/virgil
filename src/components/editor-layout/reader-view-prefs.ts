@@ -327,10 +327,6 @@ function useReaderMenuBarBundle(
       availableDividerLevels,
       activeDividerLevels,
       dividerWidth: vp.prefs.dividerWidth,
-      editorSplit: vp.prefs.editorSplit,
-      // Reader is single-pane; the split toggle has no real second pane (it's
-      // wired below for type-completeness). Hardcode the active pane.
-      activeSplitPane: "top",
 
       // ── Toggle setters (all off the same ephemeral `vp`) ────────
       onToggleParTitles: vp.toggleParTitles,
@@ -345,9 +341,6 @@ function useReaderMenuBarBundle(
       toggleDividerLevel: vp.toggleDividerLevel,
       setDividerWidth: vp.setDividerWidth,
       setShowHighlights: vp.setShowHighlights,
-      // Single-pane Reader: the split toggle rides the real ephemeral setter
-      // for type-completeness (session-only; no real second pane is rendered).
-      toggleEditorSplit: () => vp.setEditorSplit((s) => !s),
       closeAllPanels: vp.closeAllPanels,
 
       // ── Paragraph back/forward nav (functional port) ────────────
@@ -371,8 +364,8 @@ function useReaderMenuBarBundle(
  * Reader breadcrumb / Outline-active-line section path (F#16 deferred half).
  *
  * A FUNCTIONAL port of EditorLayout's section-path recompute
- * (`EditorLayout.tsx:2000-2117`), trimmed for the Reader: single-pane (no
- * mirror), no focus mode (no out-of-band skip). It derives the
+ * (`EditorLayout.tsx:2000-2117`), trimmed for the Reader: no focus mode (no
+ * out-of-band skip). It derives the
  * `activeSectionPath` — the section breadcrumb you are scrolled INTO — plus the
  * active parTitle index, exactly as the main app does (same
  * `SECTION_ACTIVE_LINE_FRACTION = 0.25` reference line + the same bottom-clamp
@@ -534,9 +527,9 @@ function useReaderSectionPath(
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(compute);
     };
-    // Resize path parked, scroll path live — the third copy of the breadcrumb
-    // walk (main pane, mirror pane, Reader), each O(headings) `coordsAtPos`
-    // (task 317).
+    // Resize path parked, scroll path live — the second copy of the breadcrumb
+    // walk (main pane, Reader; the mirror pane's copy retired with the editor
+    // split in task 115), each O(headings) `coordsAtPos` (task 317).
     const resizePark = parkDuringLayoutGesture(
       schedule,
       LAYOUT_SITE_READER_SECTION_PATH,
@@ -576,13 +569,10 @@ function useReaderSectionPath(
     };
   }, [editor, scrollEl]);
 
-  // Reader is single-pane — no mirror view, so the mirror fields stay empty.
   return useMemo<EditorPaneSectionPaths>(
     () => ({
       activeSectionPath,
       activeParTitleIndex,
-      mirrorSectionPath: [],
-      mirrorParTitleIndex: null,
     }),
     [activeSectionPath, activeParTitleIndex],
   );

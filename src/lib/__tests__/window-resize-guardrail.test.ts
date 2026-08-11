@@ -65,7 +65,7 @@ const PERMITTED_RESIZE_LISTENERS: Record<string, string> = {
   "library/components/RightDetail.tsx":
     "PARK — the textPodRect header↔pod measure. BOTH triggers (its ResizeObserver and this window listener) route through the same `parkDuringLayoutGesture`; the split between them was task 317's own signature, since PaneFreeze cannot freeze an OS window resize and the raw path was therefore the live one for the whole gesture.",
   "src/components/EditorLayout.tsx":
-    "PARK ×3 — the Help-menu anchor rect (left-anchored Virgil-bar chrome, displaced ~0.001·delta by a width drag, so a gesture-stale anchor cannot visibly detach the popover) and the main + mirror section-path breadcrumb walks (each O(headings) `coordsAtPos`, ProseMirror's most expensive forced-layout call). The RESIZE path parks; the scroll path stays live, because a breadcrumb must follow the scroll it describes.",
+    "PARK ×2 — the Help-menu anchor rect (left-anchored Virgil-bar chrome, displaced ~0.001·delta by a width drag, so a gesture-stale anchor cannot visibly detach the popover) and the main section-path breadcrumb walk (O(headings) `coordsAtPos`, ProseMirror's most expensive forced-layout call; the MIRROR pane's twin park retired with the editor split in task 115). The RESIZE path parks; the scroll path stays live, because a breadcrumb must follow the scroll it describes.",
   "src/components/PendingChangePill.tsx":
     "SUPPRESS — a text-anchored fixed portal; `update()` returns early while a gesture is live and the render gate hides the pill, settling on the end edge. Parking would leave the pill floating beside the wrong line.",
   "src/components/SelectionActionsMenu.tsx":
@@ -75,7 +75,7 @@ const PERMITTED_RESIZE_LISTENERS: Record<string, string> = {
   "src/components/editor-layout/editor-scrollbar.tsx":
     "PARK + SUPPRESS — the measure pass parks (a full-document layout read → 3 CSS-var writes that re-dirty layout; its read-before-write held within a call and never across calls), and the thumb itself suppresses on the bus edges. This is the single most visible right-side artifact: the thumb is right-anchored on a column with `flex: 1000 1 0`, so it otherwise chases the moving edge a commit behind.",
   "src/components/editor-layout/reader-view-prefs.ts":
-    "PARK — the third copy of the breadcrumb walk (main pane, mirror pane, Reader), same O(headings) `coordsAtPos` cost and the same resize-parks/scroll-stays-live split as EditorLayout's two.",
+    "PARK — the second copy of the breadcrumb walk (main pane, Reader; the mirror pane's copy retired with the editor split in task 115), same O(headings) `coordsAtPos` cost and the same resize-parks/scroll-stays-live split as EditorLayout's one.",
   "src/components/stack/StackIcon.tsx":
     "PARK — publishes the stack icon's viewport rect for the FloatingPanel hit-test. Bottom-left-anchored, and the only consumer is a hit-test that cannot fire mid-gesture (an OS window drag delivers no pointer events to the page).",
   "src/components/stack/StackStrip.tsx":

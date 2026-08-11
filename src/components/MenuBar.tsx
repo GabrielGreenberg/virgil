@@ -85,9 +85,6 @@ interface MenuBarProps {
   onToggleOmniDimResting: () => void;
   cardOutlineChrome: boolean;
   onToggleCardOutline: () => void;
-  editorSplit?: boolean;
-  onToggleEditorSplit?: () => void;
-  activeSplitPane?: "top" | "bottom";
   showMarginalia: boolean;
   onToggleMarginalia: () => void;
   hiddenMarginaliaTypes: Set<MarginaliaType>;
@@ -778,7 +775,10 @@ export function ViewMenu({
 }
 
 /** Shared button row rendered inside the docked MenuBar. Renders the
- *  View menu + collab pill + paragraph nav + editor-split toggle. */
+ *  View menu + collab pill + paragraph nav. (The editor-split toggle was
+ *  RETIRED in task 115 — it flipped a persisted pref no pane read, and the
+ *  click left a phantom mirror indicator on the Outline that survived
+ *  reloads. See `split-editor-panes.tsx` for the parked machinery.) */
 function MenuBarContent({
   editor,
   showParTitles, onToggleParTitles,
@@ -787,7 +787,6 @@ function MenuBarContent({
   showHeadingLabels, onToggleHeadingLabels,
   omniDimResting, onToggleOmniDimResting,
   cardOutlineChrome, onToggleCardOutline,
-  editorSplit, onToggleEditorSplit, activeSplitPane,
   showMarginalia, onToggleMarginalia,
   hiddenMarginaliaTypes, onToggleMarginaliaType,
   showHighlights, onToggleHighlights,
@@ -878,26 +877,6 @@ function MenuBarContent({
             </button>
           )}
         </div>
-      )}
-
-      {/* Split toggle */}
-      {onToggleEditorSplit && (
-        <button
-          onClick={onToggleEditorSplit}
-          className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
-          data-hint="Split editor"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            {editorSplit && activeSplitPane === "top" && (
-              <rect x="4" y="4" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
-            )}
-            {editorSplit && activeSplitPane === "bottom" && (
-              <rect x="4" y="12" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
-            )}
-            <rect x="4" y="4" width="16" height="16" rx="1.5" />
-            <line x1="4" y1="12" x2="20" y2="12" />
-          </svg>
-        </button>
       )}
 
       {kebabAtEnd && viewMenu}
