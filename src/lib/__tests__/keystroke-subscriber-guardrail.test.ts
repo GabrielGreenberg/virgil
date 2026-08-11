@@ -132,9 +132,9 @@ const PERMITTED_SELECTION_SUBSCRIBERS: Record<string, string> = {
   "hooks/useEditorUIState.ts":
     "[cost: O(depth)/event + 400 ms debounced sidecar write] Caret-paragraph channel: synchronous paragraphUuidAtSelection ancestor walk (O(depth), notifies only on paragraph CHANGE via caretNotifyRef — the shared channel useAutoApplyPendingChanges and the EditorPane riders piggyback on, deliberately no extra subscribers) + a 400 ms debounced last-paragraph persist.",
   "hooks/useSelectionCounts.ts":
-    "[cost: O(1)/event; debounced body O(selection)] Flag-on selection-counts half of the old useWordCount (Wave 1): 50 ms timer reset per event; the debounced getSelectionCounts is O(1) null on a caret and one nodesBetween bounded to the selection otherwise. Mutually exclusive with useWordCount's twin (docProductsEnabled picks exactly one).",
+    "[cost: O(1)/event; debounced body O(top-level index)+O(selection)] Flag-on selection-counts half of the old useWordCount (Wave 1): 50 ms timer reset per event; the debounced getSelectionCounts is O(1) null on a CARET (from === to, which every plain keystroke and caret move takes) and otherwise a doc.slice(from,to,true) — a structure-sharing cut whose top-level Fragment.cut scans block children up to the selection end (arithmetic only, same scan the pre-122 nodesBetween walked) — then toJSON + the canonical walker over the selected subtree. Mutually exclusive with useWordCount's twin (docProductsEnabled picks exactly one).",
   "hooks/useWordCount.ts":
-    "[cost: O(1)/event; debounced body O(selection)] Legacy flag-off twin of useSelectionCounts — same 50 ms debounce + selection-bounded count; dead when docProductsEnabled.",
+    "[cost: O(1)/event; debounced body O(top-level index)+O(selection)] Legacy flag-off twin of useSelectionCounts — same 50 ms debounce and the same getSelectionCounts body; dead when docProductsEnabled.",
   "lib/code-pane-bridge.ts":
     "[cost: O(1)/event; RAF body O(depth) + cached range lookup] Code-band sync (mounted only while the code pane is open): disposed check + RAF-pending bail; the RAF body is one active-uuid ancestor walk + a WeakMap-cached char-range lookup (re-parse O(source) only after a code-doc change) + a {from,to} equality bail before the CM dispatch.",
   "text-objects/TextObjectGrabHandle.tsx":

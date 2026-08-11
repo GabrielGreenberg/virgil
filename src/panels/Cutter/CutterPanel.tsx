@@ -10,6 +10,11 @@ import type {
 } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { useWordCount } from "@/hooks/useWordCount";
+import { useWordCountConfig } from "@/hooks/useWordCountConfig";
+import {
+  EMPTY_CATEGORY_COUNTS,
+  includedTotals,
+} from "@/lib/word-count-core";
 import {
   docProductsEnabled,
   useWordCountsProduct,
@@ -93,8 +98,17 @@ export default function CutterPanel({
     docProductsEnabled ? (editor ?? null) : null,
   );
   const counts = docProductsEnabled
-    ? (productCounts ?? { total: 0, characters: 0, sentences: 0, readingTime: "0 min", categories: {}, characterCategories: {} })
+    ? (productCounts ?? EMPTY_CATEGORY_COUNTS)
     : legacyCounts;
+
+  // The cut goal counts what the Word Count panel counts — same tallies, same
+  // include-set, one filter door (task 122). It used to read the precomputed
+  // unfiltered `counts.total`, so with the default config (comments OFF) a
+  // document the panel called 10 words drove a goal measured against 15, and
+  // the baseline `initialWords` this strip captures on first set was frozen
+  // on that other ruler for the goal's whole life.
+  const { config: wordCountConfig } = useWordCountConfig();
+  const currentWords = includedTotals(counts, wordCountConfig.include).words;
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = cards.map((c) =>
@@ -129,7 +143,7 @@ export default function CutterPanel({
       panelExtras={
         <CutterGoalStrip
           goal={goal}
-          currentWords={counts.total}
+          currentWords={currentWords}
           onSetGoal={onSetGoal}
           onClearGoal={onClearGoal}
         />

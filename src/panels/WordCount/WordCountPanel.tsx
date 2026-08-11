@@ -1,6 +1,6 @@
 "use client";
 
-import type { WordCounts, SelectionCounts } from "@/hooks/useWordCount";
+import { type CategoryCounts, includedTotals } from "@/lib/word-count-core";
 import {
   type Category,
   ALL_CATEGORIES,
@@ -11,8 +11,8 @@ import { Panel } from "@/panels/_shared/Panel";
 import { CardMetaLabel } from "@/components/panel-primitives";
 
 interface WordCountPanelProps {
-  counts: WordCounts;
-  selection: SelectionCounts | null;
+  counts: CategoryCounts;
+  selection: CategoryCounts | null;
 }
 
 const ALL_CATS: Category[] = ALL_CATEGORIES;
@@ -37,23 +37,18 @@ export default function WordCountPanel({
   const visible = (cat: Category) => config.include[cat] ?? true;
   const toggleCat = (cat: Category) => setInclude(cat, !visible(cat));
 
-  const filteredTotal = ALL_CATS.reduce(
-    (sum, cat) => sum + (visible(cat) ? (counts.categories[cat] ?? 0) : 0),
-    0,
+  // Words and chars come from the ONE filter door in word-count-core, which
+  // the Cutter goal strip and the selection counter read too — this panel's
+  // headline is no longer a private reduce that its siblings had no way to
+  // share (task 122). `config.include` is the same include-set the Outline's
+  // per-section sums gate on.
+  const { words: filteredTotal, characters: filteredChars } = includedTotals(
+    counts,
+    config.include,
   );
+  const selectionTotals = includedTotals(selection, config.include);
 
-  // Chars share ONE include-set SSOT with words — same reduce over the same
-  // visible(cat) set, so the two headline stats never disagree on scope
-  // (task 121). Falls back to the raw whole-doc total if a category's
-  // per-cat chars are absent (e.g. the initial empty-state counts).
-  const filteredChars = ALL_CATS.reduce(
-    (sum, cat) => sum + (visible(cat) ? (counts.characterCategories[cat] ?? 0) : 0),
-    0,
-  );
-
-  const catsWithWords = ALL_CATS.filter(
-    (c) => (counts.categories[c] ?? 0) > 0,
-  );
+  const catsWithWords = ALL_CATS.filter((c) => (counts.words[c] ?? 0) > 0);
 
   return (
     <Panel kind="wordcount">
@@ -77,8 +72,8 @@ export default function WordCountPanel({
           Selection
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-1">
-          <Stat label="Words" value={selection?.words ?? 0} />
-          <Stat label="Characters" value={selection?.characters ?? 0} />
+          <Stat label="Words" value={selectionTotals.words} />
+          <Stat label="Characters" value={selectionTotals.characters} />
         </div>
       </div>
 
@@ -90,7 +85,7 @@ export default function WordCountPanel({
             </span>
           </div>
           {catsWithWords.map((cat, i) => {
-            const wc = counts.categories[cat] ?? 0;
+            const wc = counts.words[cat] ?? 0;
             const included = visible(cat);
             const pct =
               filteredTotal > 0 && included
