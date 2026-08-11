@@ -10,11 +10,13 @@
 //     edit and re-extracts attrs from whatever comes back.
 //
 // They used to be two hand-written builders, and they had already drifted: the
-// popover's copy emitted no `[short]` list-of-figures bracket, so opening the
-// source popover on `\caption[Short]{Long}` and saving it unchanged DELETED the
-// short caption (task 263's byte, silently). Whatever the second builder forgets
-// is not merely rendered wrong — it is ERASED from the model on the next
-// round-trip. So there is one builder, and every rebuild goes through it.
+// popover's copy emitted no `[short]` list-of-figures bracket, so every rebuild
+// through it DELETED task 263's byte, silently — the width stepper and file
+// picker on every click (they re-synthesized the whole env and re-extracted it),
+// and the source popover as soon as the user changed any other part of the body.
+// Whatever the second builder forgets is not merely rendered wrong — it is
+// ERASED from the model on the next round-trip. So there is one builder, and
+// every rebuild goes through it.
 //
 // It emits from DECLARED facts, never from bytes it re-reads:
 //
@@ -50,29 +52,100 @@ export interface FigureEnvBodyParts {
 
 /** Will this figure carry a `\caption` in the emitted `.tex`?
  *
- *  The source's own answer, plus one concession to editing: caption text the
- *  user has TYPED into a previously caption-less figure must reach the file.
- *  The converse deliberately does not hold — clearing the text of a figure
+ *  The source's own answer, plus one concession to editing: caption content the
+ *  user has ADDED to a previously caption-less figure must reach the file.
+ *  The converse deliberately does not hold — clearing the content of a figure
  *  that HAD a caption still emits `\caption{}`, so a figure cannot silently
  *  lose its LaTeX number (and every `\ref` to it) because someone emptied a
  *  caption in the editor.
  *
  *  This is also what decides whether the figure is NUMBERED: in LaTeX a float
- *  is numbered iff it has a `\caption`, so both numberers (`numberFigures` in
- *  the parser, and its live twin in the section-numbering plugin) read this
- *  same predicate. If they didn't, Virgil's `Figure N:` chrome — and the `\ref`
- *  display text resolved from it — would count a figure the PDF does not. */
-export function figureEmitsCaption(hasCaption: boolean, captionTex: string): boolean {
-  return hasCaption || captionTex.trim().length > 0;
+ *  is numbered iff it has a `\caption`, so the numberers (`numberFigures` in
+ *  the parser, its live twin in the section-numbering plugin, and the
+ *  `FigureEntry.emitsCaption` fact the structural diff carries so those two are
+ *  woken when the answer changes) read this same predicate. If they didn't,
+ *  Virgil's `Figure N:` chrome — and the `\ref` display text resolved from it —
+ *  would count a figure the PDF does not.
+ *
+ *  The second argument is a BOOLEAN, not the caption text, precisely because
+ *  its callers hold the caption in different representations and an implicit
+ *  projection is where they would drift: the emitter has serialized LaTeX, the
+ *  numberers have a live node. Each takes the matching projection below, so
+ *  "does this caption have content" is asked once per representation and
+ *  answered the same way. Feeding it `node.textContent` — the obvious move —
+ *  is exactly the drift: an inline atom (a `\cite`, an `$x$`) reports `""`
+ *  there while serializing to real bytes, so a caption holding only a citation
+ *  would be emitted by one side and uncounted by the other. */
+export function figureEmitsCaption(
+  hasCaption: boolean,
+  captionHasContent: boolean,
+): boolean {
+  return hasCaption || captionHasContent;
+}
+
+/** The emit-side projection: does the SERIALIZED caption carry bytes?
+ *  Module-private — the emit side is in here, and a published projection with
+ *  no outside caller is the dead-export shape `AGENTS.md` legislates against. */
+function captionTexHasContent(captionTex: string): boolean {
+  return captionTex.trim().length > 0;
+}
+
+/** The live-node projection, structurally typed so this module keeps its
+ *  zero-import leaf status (the round-trip layer imports it, and cannot take
+ *  an editor-coupled dependency — the same rule `latex-markers.ts` earned).
+ *
+ *  "Has content" is any non-text child (every inline atom serializes to real
+ *  bytes) or any text child with a non-space character — which is the same
+ *  answer `captionTexHasContent` gives over those same children's bytes. */
+export interface CaptionNodeLike {
+  readonly childCount: number;
+  child(index: number): { readonly isText: boolean; readonly text?: string | null };
+}
+
+export function captionNodeHasContent(
+  caption: CaptionNodeLike | null | undefined,
+): boolean {
+  if (!caption) return false;
+  for (let i = 0; i < caption.childCount; i++) {
+    const child = caption.child(i);
+    if (!child.isText) return true;
+    if ((child.text ?? "").trim().length > 0) return true;
+  }
+  return false;
+}
+
+/** The whole question, off a live `figureBlock` node — the ONE reader for
+ *  every editor-side site that needs it (the section-numbering plugin, and the
+ *  `FigureEntry.emitsCaption` fact the structural diff carries so that plugin
+ *  is woken when the answer changes). Structurally typed for the same
+ *  zero-import reason as `CaptionNodeLike`; a ProseMirror `Node` satisfies it. */
+export interface FigureNodeLike {
+  readonly attrs: Record<string, unknown>;
+  readonly firstChild:
+    | (CaptionNodeLike & { readonly type: { readonly name: string } })
+    | null;
+}
+
+export function figureNodeEmitsCaption(fig: FigureNodeLike): boolean {
+  const child = fig.firstChild;
+  return figureEmitsCaption(
+    fig.attrs.hasCaption !== false,
+    captionNodeHasContent(child?.type.name === "figureCaption" ? child : null),
+  );
+}
+
+/** The emit side's own read of the shared predicate. */
+function partsEmitCaption(parts: FigureEnvBodyParts): boolean {
+  return figureEmitsCaption(parts.hasCaption, captionTexHasContent(parts.captionTex));
 }
 
 /** Will this figure carry a figure-level `\label{...}` in the emitted `.tex`?
  *  False when the label's declaration lives inside the caption body that is
  *  about to be emitted — those bytes are the declaration, and writing a second
  *  copy is the duplicate `\label` of task 318. */
-export function figureEmitsLabel(parts: FigureEnvBodyParts): boolean {
+function figureEmitsLabel(parts: FigureEnvBodyParts): boolean {
   if (!parts.label) return false;
-  if (!figureEmitsCaption(parts.hasCaption, parts.captionTex)) return true;
+  if (!partsEmitCaption(parts)) return true;
   return !captionDeclaresLabel(parts.captionTex, parts.label);
 }
 
@@ -87,7 +160,7 @@ export function buildFigureEnvBody(parts: FigureEnvBodyParts): string {
     out.push("\n");
     out.push(extras);
   }
-  if (figureEmitsCaption(parts.hasCaption, parts.captionTex)) {
+  if (partsEmitCaption(parts)) {
     // The `[short]` LoF argument rides through opaquely (task 263); a
     // bracket-free caption stays byte-identical.
     const shortArg =

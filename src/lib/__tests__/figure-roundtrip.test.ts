@@ -675,9 +675,8 @@ After.`;
       });
 
       // The popover surface used to rebuild the env with a SECOND, hand-written
-      // builder that never emitted the `[short]` bracket — so opening the
-      // source popover on `\caption[Short]{Long}` and saving it unchanged
-      // deleted task 263's byte. One builder, so it cannot drift again.
+      // builder that never emitted the `[short]` bracket — so every rebuild
+      // through it deleted task 263's byte. One builder, so it cannot drift.
       it("builds the popover's raw env body with the serializer's own bytes", () => {
         const input = `\\begin{figure}\n  \\includegraphics{a}\n  \\caption[Short]{Long}\n  \\label{fig:a}\n\\end{figure}\n`;
         const fig = findByType(parseBody(input), "figureBlock")[0];

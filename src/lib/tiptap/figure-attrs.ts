@@ -61,10 +61,10 @@ export function freshFigureBlockAttrs(existing: Set<string>): FreshFigureBlockAt
 
 // NOTE (tasks 318/319): `synthesizeFigureRaw` — this module's second, hand-
 // written copy of the serializer's env-body builder — is RETIRED. It had
-// already drifted (no `[short]` LoF bracket, so the popover erased task 263's
-// byte on a no-op save), and each new declared fact would have had to be
-// remembered in two places. Rebuilds now go through the ONE builder,
-// `buildFigureEnvBody` in `@/lib/figures/env-body`.
+// already drifted (no `[short]` LoF bracket, so every rebuild through it erased
+// task 263's byte), and each new declared fact would have had to be remembered
+// in two places. Rebuilds now go through the ONE builder, `buildFigureEnvBody`
+// in `@/lib/figures/env-body`.
 
 // ── graphicsBlock ──────────────────────────────────────────────────────────
 

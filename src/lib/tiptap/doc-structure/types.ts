@@ -179,6 +179,17 @@ export interface FigureEntry {
   numbered: boolean;
   /** Current `figureNumber` attribute (numberer updates this). */
   number: number | null;
+  /** Will this figure carry a `\caption` in the emitted `.tex` (tasks
+   *  318/319 — `figureNodeEmitsCaption`)? A NUMBERING input, so it belongs to
+   *  the structural comparison beside `numbered`: LaTeX numbers a float iff it
+   *  is captioned, and a popover caption add/remove that the diff couldn't see
+   *  left every LATER figure's on-screen number — and every `\ref` resolved
+   *  from it — off by one until some unrelated structural edit came along.
+   *  Deliberately a BOOLEAN and not the caption text: typing inside an already
+   *  non-empty caption derives equal on both sides and stays structurally null
+   *  (the `parTitled` precedent), so only the empty↔non-empty transition, which
+   *  is exactly the transition that changes the number, wakes the numberer. */
+  emitsCaption: boolean;
 }
 
 export interface LabelEntry {

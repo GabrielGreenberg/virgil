@@ -17,6 +17,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { inlineAtoms } from "@/lib/inline-content";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import {
   type AnchorEntry,
   type BlockEntry,
@@ -125,6 +126,7 @@ export function buildInitial(doc: PMNode): DocStructure {
         label: attrs.label ?? "",
         numbered: attrs.numbered !== false,
         number: attrs.figureNumber ?? null,
+        emitsCaption: figureNodeEmitsCaption(node),
       });
       if (attrs.label) {
         labels.set(attrs.label, {

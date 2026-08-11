@@ -2666,9 +2666,12 @@ export default function EditorLayout() {
   // mis-target / corrupt the wrong node — the very corruption the dropped
   // `figureFloat` click-suppression prevented (by making float figures inert).
   const handleFigureSave = useCallback((editor: Editor, pos: number, newText: string) => {
-    // Tasks 318/319: the attr re-thread lives in ONE place shared with the
-    // NodeView's own `updateFromText` — the two used to be hand-written twins
-    // and had already drifted (`shortCaption` reached only one of them).
+    // Tasks 318/319: this is the SOLE env-body save path for both kinds (the
+    // figure NodeView's chrome mutators patch `extras` / `command` directly and
+    // never rebuild a whole env). The attr re-thread lives in the shared
+    // writeback module, which this and the NodeView's own copy used to
+    // re-implement side by side — and had already drifted, `shortCaption`
+    // reaching only one of them.
     //
     // Both doors carry the bounds + kind guard internally: the popover outlives
     // the click, so by save time the owning editor may have re-seeded (the

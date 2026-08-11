@@ -8,9 +8,8 @@ import {
   withReplacedFigurePath,
   withUpdatedFigureWidth,
 } from "@/lib/figures/parse-attrs";
-import { buildFigureEnvBody } from "@/lib/figures/env-body";
+import { buildFigureEnvBody, figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import {
-  applyFigureEnvBodyEdit,
   applyFigureExtrasEdit,
   applyGraphicsCommandEdit,
 } from "@/lib/figures/apply-env-body";
@@ -51,11 +50,14 @@ function figurePopoverRaw(node: NodeViewProps["node"]): string {
   }
   const captionChild = node.firstChild;
   // Tasks 318/319: built by the SAME builder the serializer uses, so what the
-  // popover shows is what the file holds — including the `[short]` LoF bracket
-  // the retired local synthesizer never emitted (opening the popover on
-  // `\caption[Short]{Long}` and saving it unchanged used to DELETE the short
-  // caption), and including the absence of a `\caption` on a caption-less
-  // figure, which the user can now add or remove here as a first-class edit.
+  // popover shows is what the file holds. Two consequences the retired local
+  // synthesizer got wrong: the `[short]` LoF bracket now appears (it emitted
+  // none, so the user was shown a body missing a byte their file had — and any
+  // save that changed something ELSE re-extracted from that body and DELETED
+  // task 263's bracket; a literally untouched save was safe, since
+  // `NodeEditPopover.commit` dispatches only when the text differs), and a
+  // caption-less figure shows no `\caption` line, which the user can now add or
+  // remove here as a first-class edit.
   return buildFigureEnvBody({
     extras: (node.attrs.extras as string | undefined) || "",
     captionTex:
@@ -366,6 +368,10 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   const numbered = node.attrs.numbered !== false;
   const figureNumber = node.attrs.figureNumber as string | number | null;
   const extras = (node.attrs.extras as string | undefined) || "";
+  // Whether LaTeX will give this float a number at all — read from the SAME
+  // predicate the emitter and the numberers use, so the lozenge's `#` toggle
+  // can't offer a switch with nothing behind it (tasks 318/319).
+  const canNumber = isFigure && figureNodeEmitsCaption(node);
 
   // The source-of-truth string for width/path mutators. For figureBlock this
   // is `extras` (env body minus \caption{} and \label{}, both of which we
@@ -436,51 +442,41 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
     return p ?? null;
   }, [getPos]);
 
-  // `updateFromText` is the POPOVER save path: `newText` is a whole env body
-  // the user edited, so every structured attr — including whether it still
-  // carries a `\caption` command — is re-extracted from it. Routed through the
-  // ONE writeback shared with EditorLayout's `handleFigureSave` (tasks
-  // 318/319), which the two used to re-implement side by side.
-  const updateFromText = (newText: string) => {
+  // The width stepper and the file picker rewrite the `\includegraphics` line.
+  // For a figureBlock that line lives entirely in `extras`, so they patch THAT
+  // and nothing else; a graphicsBlock has no `extras` — its whole source IS the
+  // `command` attr — so it re-extracts from the rewritten command.
+  //
+  // Both used to funnel through a shared `updateFromText` that synthesized a
+  // WHOLE env body and re-extracted it, which meant projecting the caption down
+  // to plain text and re-tokenizing it on every click: any citation / mark /
+  // math in the caption was flattened, the `[short]` LoF bracket was dropped,
+  // and `extras` gained two more spaces of indent each time. Note this is NOT
+  // the popover's save path, despite the old name — a source-popover save for
+  // EITHER kind routes `virgil-figure-click` → `EditorLayout.handleFigureSave`,
+  // which shares the same writeback module (tasks 318/319).
+  const applyToGraphicsSource = (next: string) => {
     const pos = typeof getPos === "function" ? getPos() : undefined;
     if (pos == null) return;
     if (isFigure) {
-      applyFigureEnvBodyEdit(editor, pos, newText);
+      applyFigureExtrasEdit(editor, pos, next);
     } else {
-      applyGraphicsCommandEdit(editor, pos, newText);
+      applyGraphicsCommandEdit(editor, pos, next);
     }
   };
 
-  // The width stepper and the file picker rewrite the `\includegraphics` line,
-  // which lives entirely in `extras` — so for a figureBlock they patch THAT and
-  // nothing else. Round-tripping a synthesized whole env through the popover
-  // writeback (what these did before) meant projecting the caption down to
-  // plain text and re-tokenizing it on every click, which silently flattened
-  // any citation/mark/math in it, dropped the `[short]` LoF bracket, and
-  // re-indented `extras` by two more spaces each time. A graphicsBlock has no
-  // `extras` — its whole source IS the command — so it keeps the text door.
   const applyScale = (newPercent: number) => {
     const clamped = clampPercent(newPercent);
     if (clamped === currentPercent) return;
     const next = withUpdatedFigureWidth(mutableSource, clamped);
     if (next == null) return;
-    if (isFigure) {
-      const pos = typeof getPos === "function" ? getPos() : undefined;
-      if (pos != null) applyFigureExtrasEdit(editor, pos, next);
-    } else {
-      updateFromText(next);
-    }
+    applyToGraphicsSource(next);
   };
 
   const applyPath = (newPath: string) => {
     const next = withReplacedFigurePath(mutableSource, newPath);
     if (next == null) return;
-    if (isFigure) {
-      const pos = typeof getPos === "function" ? getPos() : undefined;
-      if (pos != null) applyFigureExtrasEdit(editor, pos, next);
-    } else {
-      updateFromText(next);
-    }
+    applyToGraphicsSource(next);
   };
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -728,6 +724,7 @@ function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
               editor={editor}
               label={label}
               numbered={numbered}
+              canNumber={canNumber}
               getFigurePos={getFigurePos}
               onConfirmRename={opts.onConfirmLabelRenameRef?.current ?? null}
               onConfirmDelete={opts.onConfirmFigureDeleteRef?.current ?? null}

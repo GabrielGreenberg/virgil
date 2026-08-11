@@ -49,6 +49,9 @@ import {
   applyFigureExtrasEdit,
   applyGraphicsCommandEdit,
 } from "@/lib/figures/apply-env-body";
+import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import { inspectSteps } from "@/lib/tiptap/doc-structure/step-inspector";
+import type { Transaction } from "@tiptap/pm/state";
 
 // The REAL save contract, not a transcription of it (tasks 318/319).
 //
@@ -103,6 +106,10 @@ function mountFigure(
             label: "fig:orig",
             numbered: true,
             figureNumber: "1",
+            // A uuid, because the structural observer keys figure entries on
+            // one — an entry-less figure reports no change of any kind, which
+            // would make the two diff legs below vacuously "pass".
+            uuid: "figuuid1",
           },
           content: [
             { type: "figureCaption", content: [{ type: "text", text: args.caption }] },
@@ -310,7 +317,12 @@ describe("figure writeback re-threads every declared fact", () => {
     );
     try {
       const pos = posOf(editor, "figureBlock");
-      expect(saveFigure(editor, pos, "\\includegraphics{a.png}")).toBe(true);
+      // The `\label` is KEPT deliberately: a body that also dropped it would
+      // fire `changedFigures` off the label alone, and the leg would pass with
+      // the caption fact absent from the comparison entirely.
+      expect(
+        saveFigure(editor, pos, "\\includegraphics{a.png}\n\\label{fig:orig}"),
+      ).toBe(true);
       expect(attrsAt(editor, pos).hasCaption).toBe(false);
       expect(captionTextAt(editor, pos)).toBe("");
     } finally {
@@ -355,6 +367,108 @@ describe("figure writeback re-threads every declared fact", () => {
       expect(after.hasCaption).toBe(true);
       expect(after.label).toBe(before.label);
       expect(captionTextAt(editor, pos)).toBe("Keep me");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  // The numbering half. "Does this figure carry a caption" is a NUMBERING
+  // input, so the structural diff has to carry it — otherwise a popover
+  // caption removal left every LATER figure's on-screen number, and every
+  // `\ref` resolved from it, one too high until an unrelated structural edit
+  // came along. `emitsCaption` on `FigureEntry` is what wakes the numberer.
+  //
+  // Driven through the REAL writeback rather than a hand-built attr flip: the
+  // removal is TWO changes in one transaction (the `hasCaption` attr AND the
+  // caption child emptying), and either alone leaves the answer unchanged —
+  // which is exactly what makes a hand-written approximation of this leg pass
+  // while proving nothing.
+  it("a popover caption removal is a STRUCTURAL change the numberer can see", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "Before" },
+      "main",
+    );
+    // Tap the view so the leg inspects the transaction PRODUCTION dispatched.
+    const seen: Transaction[] = [];
+    const realDispatch = editor.view.dispatch.bind(editor.view);
+    editor.view.dispatch = (tr: Transaction) => {
+      seen.push(tr);
+      realDispatch(tr);
+    };
+    try {
+      const pos = posOf(editor, "figureBlock");
+      const before = editor.state.doc;
+      expect(figureNodeEmitsCaption(editor.state.doc.nodeAt(pos)!)).toBe(true);
+      // The `\label` is KEPT deliberately: a body that also dropped it would
+      // fire `changedFigures` off the label alone, and the leg would pass with
+      // the caption fact absent from the comparison entirely.
+      expect(
+        saveFigure(editor, pos, "\\includegraphics{a.png}\n\\label{fig:orig}"),
+      ).toBe(true);
+      expect(figureNodeEmitsCaption(editor.state.doc.nodeAt(pos)!)).toBe(false);
+      expect(seen).toHaveLength(1);
+      const diff = inspectSteps(seen[0], before, seen[0].doc);
+      expect(diff.changedFigures.map((f) => f.emitsCaption)).toEqual([false]);
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  // …while typing inside an ALREADY non-empty caption must stay structurally
+  // null: the fact is a BOOLEAN, so both sides derive equal and the numberer
+  // is not woken on a keystroke (keystroke sanctity).
+  it("typing inside a non-empty caption is NOT a structural figure change", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "Before" },
+      "main",
+    );
+    try {
+      const pos = posOf(editor, "figureBlock");
+      const tr = editor.state.tr.insertText("!", pos + 2);
+      const diff = inspectSteps(tr, editor.state.doc, tr.doc);
+      expect(diff.changedFigures.length).toBe(0);
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  // An inline ATOM has no `textContent` — a naive text projection reports ""
+  // for a caption holding only a `\cite`, so the emitter would write the
+  // caption while the numberer skipped the figure.
+  it("counts a caption that holds only an inline atom as a caption", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "x" },
+      "main",
+    );
+    try {
+      const pos = posOf(editor, "figureBlock");
+      const fig = editor.state.doc.nodeAt(pos)!;
+      // A leaf inline node with no text — the shape every citation / inline
+      // math atom has. `textContent` is "" for it; the projection must not be.
+      expect(figureNodeEmitsCaption(fig)).toBe(true);
+      expect(
+        figureNodeEmitsCaption({
+          attrs: { hasCaption: false },
+          firstChild: {
+            type: { name: "figureCaption" },
+            childCount: 1,
+            child: () => ({ isText: false }),
+          },
+        }),
+      ).toBe(true);
+      expect(
+        figureNodeEmitsCaption({
+          attrs: { hasCaption: false },
+          firstChild: {
+            type: { name: "figureCaption" },
+            childCount: 1,
+            child: () => ({ isText: true, text: "   " }),
+          },
+        }),
+      ).toBe(false);
     } finally {
       editor.destroy();
       element.remove();
