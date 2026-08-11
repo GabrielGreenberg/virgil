@@ -100,7 +100,8 @@ shared checkout — the human drives it live and prior dream runs leave work her
 This was hard-won lore across several nights; it is now an explicit step.
 
 - **Check-first, don't fork.** Run `git worktree list` and `git branch --list 'dream/*'`. If a `dream/<date>` branch/worktree already holds the complementary half of what you were about to do, **compose onto it** rather than opening a competing branch — two dream branches editing the same script produce merge conflicts and split provenance.
-- **Preserve provenance of a prior run's uncommitted change.** If the existing dream worktree has an *uncommitted* change from an earlier run (a finished, dream-voiced proposal left in the working tree), commit **that** as its own commit first — attributing it to the run that authored it — *then* stack your own change on top. Never fold another run's work into your commit; it conflates authorship on a shared checkout.
+- **Composing onto a prior branch inherits its BASE — refresh it before you reason.** §4 branches a fresh dream off `main`, so it reads current code; the bullet above composes onto a *prior* dream branch, whose base is whatever `main` was on that earlier night — and nothing ever advances it, so a stack's staleness compounds one night per night. (Measured 2026-08-11: the 08-03 → 08-09 → 08-10 stack sat **227 commits** behind `main`, eight days out.) The visible cost is merge risk, which git will at least tell you about. The dangerous one is silent: the dream **justifies** a change by reading code `main` has already moved — on 2026-08-10 that nearly shipped a regex pinned to a builder constant `main` had already reshaped, caught only because that run happened to add a canary. So before authoring on an inherited branch, merge `main` into it and re-run the editor suite; then read every premise — every constant, signature and call site your reasoning leans on — from the refreshed tree, never from the inherited one. If the merge conflicts, that *is* the night's finding: surface it in the digest and stop, rather than resolving another run's work blind.
+- **Preserve provenance of a prior run's uncommitted change.** If the existing dream worktree has an *uncommitted* change from an earlier run (a finished, dream-voiced proposal left in the working tree), commit **that** as its own commit first — attributing it to the run that authored it — *then* stack your own change on top. Never fold another run's work into your commit; it conflates authorship on a shared checkout. The committed branch keeps its original `dream/<prior-date>` name, so tonight's digest points its `git merge dream/<prior-date>` hint at an *earlier* date than the digest itself — that date skew is correct, not staleness: a finished proposal's rightful home is the branch that authored it, and a prior-date `dream/*` branch carrying its own completed work should never be read as orphaned.
 - **Built-artifact regeneration is a human ruling, never a self-heal.** Regenerating a distributed artifact — most importantly rebuilding/deploying the skill bundle (`npm run build:skill-bundles`) — is out of bounds for an unattended run on a live shared checkout, even when a stale bundle is demonstrably the loop's bottleneck. Do **not** run it. Surface it in the digest as a ruling owed to the human, and keep surfacing it until they rule.
 
 ### 1. Read the memos since the last dream
@@ -128,24 +129,42 @@ all of them), and emits one JSON blob:
   own pattern detection.
 
 **Preflight — are you running the current prompt?** This skill is *distributed*:
-the copy that actually runs is a built artifact under `.claude/commands/editor/`
-(and the skill bundles), regenerated only by `npm run build:skill-bundles`
+the copy that actually runs is a built artifact — the skill BUNDLE that
+skill-sync writes into a paper's `.virgil/`, mirrored for dev convenience under
+`.claude/commands/editor/` — regenerated only by `npm run build:skill-bundles`
 (`predev`/`prebuild`). So a skill edit — including one a past dream authored and
 landed — is **not live until the bundle is rebuilt**, and the gap is invisible
-from inside the prompt. Confirm it before you detect anything:
+from inside the prompt.
 
-```bash
-for s in editor/skills/*.md; do c=".claude/commands/editor/$(basename "$s")";
-  [ -f "$c" ] && ! diff -q "$s" "$c" >/dev/null && echo "DRIFT $s"; done
-```
+`select` already computed it for you: read its **`drift`** field, a list of repo
+paths whose source differs from the bytes the bundle shipped. Don't re-derive it
+in the shell — `select` runs from source rather than from the served text, so
+it is immune to the very drift it reports, and it asks the **bundle's own
+manifest**, which covers every carrier: the command markdowns, the `_`-prefixed
+shared includes, and the `.py`/`.json` helpers the skills invoke. A check keyed
+on the `.claude/commands/` mirror instead sees only non-underscore markdown and
+reports green for the rest — on 2026-08-10 that hid a stale `create_card.py`
+sitting behind seven stale skills from the same commit.
 
-If any skill drifted — **that is the night's top finding**, ahead of anything in
+If anything drifted — **that is the night's top finding**, ahead of anything in
 the memos. Record it in the digest with the rebuild command. Then **read the
 SSOT (`editor/skills/…`), not your own served text, for the rest of the run**:
 the fixes the memos seem to call for may already exist upstream, and proposing
 them again re-authors work that already landed. Treat memos written under a
 drifted prompt as evidence about the *stale* version — `skillSha` records the
 SSOT blob at HEAD, so it silently attests to a version that may never have run.
+
+**But date the drift before you discount anything.** Drift means the SSOT and
+the served copy disagree *now*; it says nothing about when they started to. If
+the SSOT edit is NEWER than the memos — someone edited a skill this evening,
+after the day's runs — those memos were written under the version that was
+served at the time, and they are honest evidence about it. Compare the SSOT
+file's mtime against the memo timestamps before deciding which side of the gap
+a memo sits on; discounting a whole night's evidence for a drift that opened
+after it was recorded throws away the only real signal the run has. Both
+readings still end at the same digest entry — the bundle is stale and a human
+must rule on the rebuild — so the cost of confusing them is paid entirely in
+the *detection* step, which is the one that cannot be redone later.
 
 ### 2. Detect cross-memo patterns
 
@@ -295,9 +314,15 @@ Be honest and unsparing — "the first dreams will be the worst," and the only w
 the dream improves at dreaming is by reading its past self-critiques. A
 `skill=dream` memo is read first by the next dream (it's your own track record).
 
-**Recursion guard — skip step 7 on a self-referential no-op.** `select` emits
-`selfReferentialOnly: true` when the only memos since the last dream are the
-dream's OWN prior self-reflections (`nonDreamMemoCount == 0`). When that flag is
+**Recursion guard — skip step 7 on a no-signal no-op.** `select` emits
+`selfReferentialOnly: true` whenever **no** memo since the last dream came from a
+real skill run (`nonDreamMemoCount == 0`) — that covers a window holding only the
+dream's OWN prior self-reflections *and* an **empty** window, which is the
+strongest no-signal case, not an exemption. (Read the flag; never re-derive the
+condition by eye from `memoCount`. The empty window is precisely where a
+by-eye reading goes wrong, and doing so re-opens the two-night oscillator:
+suppress on the self-memo night → empty window next night → write a fresh
+contentless memo → suppress again → …) When that flag is
 true **and** this run acted/proposed/refused **nothing** (a pure no-op), do
 **not** write a step-7 memo — a self-reflection with no real skill signal to
 reflect on is exactly what perpetuates the infinite self-referential recursion

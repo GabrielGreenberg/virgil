@@ -51,6 +51,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -74,6 +75,7 @@ from reflect import (  # noqa: E402  (sibling module in editor/scripts/)
     TIER_ORDER,
     TIER_UNREMARKABLE,
     _parse_memo,
+    bucket_body,
 )
 
 # Result-lenses the dream audits (design §4; README "What chip 18 consumes").
@@ -136,6 +138,124 @@ def _dream_sha() -> str:
         return "unknown"
 
 
+def _paper_script_prefixes(repo: Path) -> list[tuple[str, str]] | None:
+    """The builder's `PAPER_SCRIPT_PREFIXES`, READ from the builder rather than
+    re-spelled here.
+
+    A skill source invokes its helpers repo-relative (`python3
+    editor/scripts/X.py`); the paper bundle rewrites that prefix at the bundle
+    boundary, so the shipped bytes differ from the SSOT bytes BY DESIGN. A drift
+    check must apply the same rewrite before diffing or it reports every command
+    markdown as drifted — a false positive on every file, every night, which is
+    the fastest way to make the check ignorable.
+
+    Those prefixes are a token two layers must agree on byte-for-byte, so they
+    get ONE spelling (build-editor-bundle.mjs) and this side parses it out.
+
+    The parse is keyed on the SILO TOKEN, not on the builder's container
+    syntax — it collects the `"<silo>/scripts/"` and `".virgil/scripts/<silo>/"`
+    string literals anywhere in the file and pairs them by silo. That is
+    deliberate: the constant has already changed shape once (task 158 replaced a
+    single `REPO_SCRIPT_PREFIX`/`PAPER_SCRIPT_PREFIX` pair with a two-silo
+    `PAPER_SCRIPT_PREFIXES` array when `find-citation` began reaching for a
+    library helper), and a regex pinned to either container would have gone
+    quietly None — i.e. disarmed this whole check — the day it changed. The silo
+    token is the actual invariant: it is what `skill-sync.ts diskPathFor` keys
+    on.
+
+    A parse failure returns None and the caller yields no drift — fail CLOSED,
+    because a guessed prefix produces exactly the all-files false positive
+    above. `test_dream_drift.test_real_builder_constant_is_still_parseable` is
+    the canary that keeps a fail-closed parse from failing SILENTLY forever."""
+    src = repo / "editor" / "build" / "build-editor-bundle.mjs"
+    try:
+        text = src.read_text()
+    except Exception:
+        return None
+    targets = {m: f".virgil/scripts/{m}/"
+               for m in re.findall(r'"\.virgil/scripts/(\w+)/"', text)}
+    sources = {m: f"{m}/scripts/" for m in re.findall(r'"(\w+)/scripts/"', text)}
+    pairs = [(sources[silo], targets[silo])
+             for silo in sorted(targets) if silo in sources]
+    return pairs or None
+
+
+def _detect_skill_drift() -> list[str]:
+    """Repo paths whose SSOT differs from the bytes the editor skill bundle
+    actually SHIPPED — i.e. a landed edit not yet published by
+    `npm run build:skill-bundles`.
+
+    Keyed on the bundle's own `bundle-manifest.json`, because **the bundle is
+    the artifact that reaches an agent** and the manifest is its record of what
+    it shipped. Membership in `files` IS the shipped-ness test, which is what
+    lets this ask the question uniformly over every carrier: the command
+    markdowns, the `_`-prefixed shared includes, AND the `.py`/`.json` helpers
+    the skills invoke.
+
+    It deliberately no longer consults `.claude/commands/editor/`. That mirror
+    is a DEV convenience written by the same `main()` in the same run, so it
+    cannot drift from the bundle independently — but it carries only
+    non-underscore markdown (build-editor-bundle.mjs skips `_`-prefixed names
+    when mirroring, and never mirrors scripts at all), so a check keyed on it is
+    structurally blind to roughly a third of what ships and reports GREEN for
+    the blind part. Measured on 2026-08-10: the mirror check saw 7 drifted
+    skills and could not see that `create_card.py` — the helper those very
+    skills invoke — was stale in the bundle from the same commit (4b453a5c).
+    A prompt and its helper going stale together is what kept that invisible;
+    it stays invisible right up until one of them is rebuilt alone.
+
+    Still the §1 preflight, still hoisted OUT of the distributed prompt into
+    `select` (which always runs from source, never the bundle) so it is immune
+    to the very drift it detects. Best-effort and never fatal — an unresolvable
+    source repo, an unbuilt bundle (e.g. a synced paper copy), or an unparseable
+    rewrite table yields `[]`."""
+    repo = source_repo_root()
+    if repo is None:
+        return []
+    bundle_dir = repo / "public" / "skill-bundle" / "editor"
+    manifest = bundle_dir / "bundle-manifest.json"
+    if not manifest.is_file():
+        return []
+    prefixes = _paper_script_prefixes(repo)
+    if prefixes is None:
+        return []
+    try:
+        files = json.loads(manifest.read_text()).get("files", [])
+    except Exception:
+        return []
+
+    # bundlePath → repoPath, the inverse of build-editor-bundle.mjs buildSources.
+    roots = (("claude-commands/", "editor/skills/"), ("scripts/", "editor/scripts/"))
+    drifted: list[str] = []
+    for bundle_path in files:
+        if not isinstance(bundle_path, str):
+            continue
+        repo_rel = next(
+            (dst + bundle_path[len(src):] for src, dst in roots
+             if bundle_path.startswith(src)),
+            None,
+        )
+        if repo_rel is None:
+            continue  # a bundle member with no SSOT twin (e.g. the manifest)
+        try:
+            raw = (repo / repo_rel).read_text()
+            shipped = (bundle_dir / bundle_path).read_text()
+        except Exception:
+            # An SSOT file the manifest lists but disk no longer has is a real
+            # staleness signal; an unreadable shipped file is not diffable.
+            if not (repo / repo_rel).is_file():
+                drifted.append(repo_rel)
+            continue
+        # isPaperCommandMarkdown(bundlePath) — the command markdowns are the
+        # only members rewritten on the way into the bundle.
+        if bundle_path.startswith("claude-commands/") and bundle_path.endswith(".md"):
+            for a, b in prefixes:
+                raw = raw.replace(a, b)
+        if raw != shipped:
+            drifted.append(repo_rel)
+    return sorted(drifted)
+
+
 # ---------------------------------------------------------------------------
 # Memo ordering + the since-last-dream marker
 # ---------------------------------------------------------------------------
@@ -194,7 +314,7 @@ def _load_memo(path: Path, memos_root: Path) -> dict:
         rel = path.name
     pids = [s.strip() for s in (fm.get("paragraphIds") or "").split(",") if s.strip()]
     buckets = {k: v for k in BUCKET_ORDER
-               if (v := (sections.get(k) or "").strip()) and v != "None."}
+               if (v := bucket_body(sections.get(k))) is not None}
     return {
         "path": rel,
         "skill": fm.get("skill", "?"),
@@ -280,14 +400,28 @@ def cmd_select(_argv: list[str]) -> int:
     summ = _summarize(recs)
 
     new_marker = _memo_sort_key(recs[-1]) if recs else (marker or ("", ""))
-    # Self-referential-only window: the only memos since the last dream are the
-    # dream's OWN self-reflections (step 7).  No real skill-run signal exists, so
-    # writing another self-reflection perpetuates an infinite no-op recursion.
-    # Surface this once here (SSOT) so the skill can suppress step 7 and break it.
+    # No-real-signal window: NOTHING since the last dream came from a real skill
+    # run — the window holds only the dream's OWN self-reflections (step 7), or
+    # nothing at all.  Writing another self-reflection here perpetuates an
+    # infinite no-op recursion, so surface the fact once here (SSOT) and let the
+    # skill suppress step 7 on it.
+    #
+    # The predicate is `no non-dream memos`, FULL STOP — an EMPTY window counts.
+    # It used to carry a `bool(recs)` conjunct, which exempted the zero-memo case
+    # and turned the guard into a two-night oscillator: a no-op night with one
+    # stale self-memo suppressed correctly, which left the NEXT window empty,
+    # which read as "not self-referential" and wrote a fresh contentless memo,
+    # which re-primed the cycle.  The 2026-08-06 → 08-07 → 08-08 digests trace
+    # exactly that loop.  Zero memos is the STRONGEST no-signal case, not an
+    # exemption from the guard that exists to catch it.
     non_dream = [r for r in recs if r["skill"] != "dream"]
-    self_referential_only = bool(recs) and not non_dream
+    self_referential_only = not non_dream
     out = {
         "devMode": True,
+        # §1 preflight, computed from source so it survives a stale served prompt:
+        # SSOT skills that differ from the built .claude/commands artifact (a
+        # landed edit not yet rebuilt). Non-empty => the night's top finding.
+        "drift": _detect_skill_drift(),
         "selfReferentialOnly": self_referential_only,
         "nonDreamMemoCount": len(non_dream),
         # Canonical UTC date — the branch name (step 4) keys off THIS, never a

@@ -12,7 +12,8 @@ the VIRGIL_DEV_MEMOS_DIR / VIRGIL_REFLECT_NOW seams. Asserts:
   • the agent's four buckets land under their titles
   • the user-tag tier promotion (noted → flagged) + idempotent accumulation
   • the --fix-now fast-path flag (→ flagged)
-  • idempotency (same Task → one memo; Task-less → fresh files)
+  • idempotency (same Task → one memo; Task-less → one floor per skill/doc/day,
+    tallied in `runs`, merging rather than clobbering a same-second sibling)
   • a bib-review Task (status-only, no result)
   • the frontmatter round-trips (what chip 18's dream reads)
 
@@ -260,12 +261,51 @@ run(mem, str(sb), "accept-suggestion", rid, "--memo-json",
 check(fm_of(only_memo(mem)).get("tier") == "flagged", "low self-confidence → flagged")
 
 
-# ── Task-less ops are NOT deduped (each gets a fresh memo) ───────────────────
-print("\n=== Task-less ops not deduped ===")
+# ── Task-less ops COALESCE per (skill, doc, day) ─────────────────────────────
+# They used to be "never deduped — each gets a fresh file", which made the
+# tail-trigger's floor un-enrichable by construction (no key → nothing for a
+# later reflection to find) and left its only dedup to filename collision at
+# one-second granularity, which CLOBBERS rather than merges. See
+# reflect._find_existing.
+print("\n=== Task-less ops coalesce per (skill, doc, day) ===")
 sb = sandbox(); mem = tempfile.mkdtemp(prefix="chip17m-")
 run(mem, str(sb), "archive-card", "-", now="2026-06-06T09:00:00")
 run(mem, str(sb), "archive-card", "-", now="2026-06-06T09:00:01")
-check(len(memo_files(mem)) == 2, "two Task-less reflections → two memos")
+check(len(memo_files(mem)) == 1, "two Task-less reflections → ONE memo (the day's floor)")
+check(fm_of(only_memo(mem)).get("runs") == "2", "the floor tallies runs=2")
+check(fm_of(only_memo(mem)).get("doc") == str(sb.resolve()),
+      "the floor names its paper (resolved path — two same-named papers must not merge)")
+
+# A different SKILL on the same day gets its own floor.
+run(mem, str(sb), "edit-card", "-", now="2026-06-06T09:00:02")
+check(len(memo_files(mem)) == 2, "a different skill → its own floor")
+
+# A different DAY gets its own floor (the key's third term).
+run(mem, str(sb), "archive-card", "-", now="2026-06-07T09:00:00")
+check(len(memo_files(mem)) == 3, "the next day → a fresh floor")
+
+# THE POINT: content survives a same-second contentless tail-trigger. Before the
+# key existed, the second call overwrote the first and the reflection was lost.
+sb2 = sandbox(); mem2 = tempfile.mkdtemp(prefix="chip17m-")
+run(mem2, str(sb2), "edit-card", "-", "--memo-json",
+    '{"buckets": {"issues": "REAL SIGNAL"}}', now="2026-06-06T09:00:00")
+run(mem2, str(sb2), "edit-card", "-", now="2026-06-06T09:00:00")  # same second
+check(len(memo_files(mem2)) == 1, "same-second task-less pair → one memo")
+check("REAL SIGNAL" in body_of(only_memo(mem2)),
+      "a contentless floor MERGES into the reflection instead of clobbering it")
+
+# Two papers on the same day never merge their floors.
+sb3 = sandbox(); mem3 = tempfile.mkdtemp(prefix="chip17m-")
+run(mem3, str(sb), "edit-card", "-", now="2026-06-06T09:00:00")
+run(mem3, str(sb3), "edit-card", "-", now="2026-06-06T09:00:01")
+check(len(memo_files(mem3)) == 2, "two papers, same skill+day → two floors")
+
+# Task-BEARING memos carry no runs tally (one memo per Task is an update, not a
+# second event).
+sb4 = sandbox(); mem4 = tempfile.mkdtemp(prefix="chip17m-")
+rid4 = set_task(sb4, 0, status="complete", result="accepted")
+run(mem4, str(sb4), "accept-suggestion", rid4, now="2026-06-06T09:00:00")
+check(fm_of(only_memo(mem4)).get("runs") is None, "a task-bearing memo has no runs key")
 
 
 # ── propose→accept lifecycle: two skills, one taskId → two memos ────────────

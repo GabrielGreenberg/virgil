@@ -81,13 +81,16 @@ from _common import atomic_write, iterations_root as _shared_iterations_root
 # The shared READER + the bucket/tier VOCABULARY — reused, not re-implemented.
 from reflect import (  # noqa: E402  (sibling module in editor/scripts/)
     BUCKET_TITLES,
+    EMPTY_BUCKET,
     FM_KEYS,
+    SHARED_FM_KEYS,
     TIER_FLAGGED,
     TIER_NOTED,
     TIER_UNREMARKABLE,
     _parse_memo,
     _render_buckets,
     _skill_sha,
+    bucket_body,
 )
 
 # The shared boundary GUARD — reused, not re-implemented.
@@ -103,7 +106,8 @@ from dream_land import (  # noqa: E402
 # whole spine from one place — the reader, the vocabulary, and the guard live in
 # reflect/dream_land; this is just the named door onto them.
 __all__ = [
-    "BUCKET_TITLES", "FM_KEYS", "_parse_memo", "_render_buckets",
+    "BUCKET_TITLES", "FM_KEYS", "SHARED_FM_KEYS", "_parse_memo", "_render_buckets",
+    "EMPTY_BUCKET", "bucket_body",
     "TIER_FLAGGED", "TIER_NOTED", "TIER_UNREMARKABLE",
     "classify_change", "Verdict", "LAND_ACTS", "LAND_PROPOSES", "LAND_REFUSED",
     "SEVERITY_BLOCK", "SEVERITY_NICE", "ITER_RESULTS", "ITER_FM_KEYS",
