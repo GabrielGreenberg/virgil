@@ -21,6 +21,7 @@ import SystemDialog, {
   SystemDialogFooter,
   SystemDialogHeader,
 } from "./system-dialog";
+import { Input } from "./field-primitives";
 import { SHIM_COMMAND_NAMES } from "@/lib/latex-requirements";
 
 const editorTheme = EditorView.theme({
@@ -156,13 +157,12 @@ export default function StyleEditorModal({
         <label className="block text-[11px] font-medium text-ink-subtle uppercase tracking-wide mb-1.5">
           Name
         </label>
-        <input
+        <Input
           ref={nameRef}
-          type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="My style"
-          className="w-full px-3 py-1.5 text-sm bg-surface border border-edge-subtle rounded-md focus:border-edge-strong focus:outline-none text-ink-body"
+          className="w-full px-3 py-1.5 text-sm"
         />
         {nameError && (
           <p className="text-[11px] text-[var(--danger,#b91c1c)] mt-1">

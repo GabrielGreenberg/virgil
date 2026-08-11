@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Input } from "./field-primitives";
 import {
   DEFAULT_PANEL_TYPOGRAPHY,
   setPanelTypographyField,
@@ -49,9 +50,11 @@ export default function PanelTextSize({ panelKey }: { panelKey: PanelBodyKey }) 
       onClick={stop}
       onMouseDown={stop}
     >
-      <input
+      <Input
         type="number"
-        className="panel-text-size-input bg-surface-muted-strong border border-edge-subtle rounded text-xs tabular-nums text-ink-body focus:outline-none focus:ring-1 focus:ring-edge-hover"
+        tone="muted"
+        density="dense"
+        className="panel-text-size-input text-xs tabular-nums"
         min={MIN}
         max={MAX}
         value={displayValue}

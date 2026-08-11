@@ -38,6 +38,7 @@ import SystemDialog, {
   SystemDialogHeader,
   type SystemDialogSize,
 } from "./system-dialog";
+import { Input } from "./field-primitives";
 
 /* ── Option types ────────────────────────────────────────────────── */
 
@@ -287,9 +288,8 @@ function PromptDialog({
             {message}
           </div>
         )}
-        <input
+        <Input
           ref={inputRef}
-          type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
@@ -299,7 +299,7 @@ function PromptDialog({
             }
           }}
           placeholder={placeholder}
-          className="w-full px-3 py-1.5 text-sm bg-surface border border-edge-subtle rounded-md focus:border-edge-strong focus:outline-none text-ink-body"
+          className="w-full px-3 py-1.5 text-sm"
         />
       </SystemDialogBody>
       <SystemDialogFooter>

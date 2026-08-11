@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useState, type ReactNode } from "react";
+import { Input } from "./field-primitives";
 import SystemDialog, {
   SystemDialogBody,
   SystemDialogButton,
@@ -65,8 +66,7 @@ export default function CollaboratorIdentityDialog({
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] text-ink-subtle">Display name</span>
-            <input
-              type="text"
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
@@ -78,7 +78,7 @@ export default function CollaboratorIdentityDialog({
               maxLength={40}
               placeholder="e.g. Sam"
               autoFocus
-              className="h-7 px-2 rounded border border-edge-strong bg-surface text-sm text-ink-body outline-none focus:border-accent"
+              className="h-7 px-2 text-sm"
             />
           </label>
           <div className="flex flex-col gap-1">

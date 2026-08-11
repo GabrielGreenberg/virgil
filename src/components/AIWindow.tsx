@@ -52,6 +52,7 @@ import { usePanelCardPalette } from "@/hooks/usePanelTheme";
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
 import { Button } from "./panel-primitives";
+import { Input, Select, Textarea } from "./field-primitives";
 import { useTabIndent } from "@/hooks/useTabIndent";
 
 export type AIRequestKind =
@@ -685,13 +686,14 @@ export default function AIWindow({
                         <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">
                           New request
                         </span>
-                        <select
+                        <Select
                           value={composerKind}
                           onChange={(e) => {
                             setComposerKind(e.target.value as AIRequestKind);
                             setComposerBibKey("");
                           }}
-                          className="text-xs bg-surface border border-[var(--border)] rounded px-1.5 py-0.5 text-ink-body"
+                          density="dense"
+                          className="text-xs px-1.5 py-0.5"
                         >
                           <option value="revision-general">General dialogue</option>
                           <option value="bib-entry">New bibliography entry</option>
@@ -706,7 +708,7 @@ export default function AIWindow({
                             <option value="panel-footnote">Footnote request</option>
                             <option value="panel-citation">Citation request</option>
                           </optgroup>
-                        </select>
+                        </Select>
                         <span className="text-[11px] text-ink-muted truncate">
                           {KIND_META[composerKind].description}
                         </span>
@@ -715,12 +717,13 @@ export default function AIWindow({
                       {composerNeedsBibKey && (
                         <div className="flex items-center gap-2 mb-2">
                           <label className="text-[11px] text-ink-subtle">Entry key</label>
-                          <input
+                          <Input
                             list="ai-window-bib-keys"
                             value={composerBibKey}
                             onChange={(e) => setComposerBibKey(e.target.value)}
                             placeholder="e.g. smith2020"
-                            className="flex-1 text-xs bg-surface border border-[var(--border)] rounded px-2 py-1 text-ink-body placeholder:text-ink-muted focus:outline-none focus:border-[var(--accent)]"
+                            density="dense"
+                            className="flex-1 text-xs px-2 py-1"
                           />
                           <datalist id="ai-window-bib-keys">
                             {bibEntries.map((b) => (
@@ -733,7 +736,7 @@ export default function AIWindow({
                       )}
 
                       <div className="flex items-end gap-2">
-                        <textarea
+                        <Textarea
                           value={composerText}
                           onChange={(e) => setComposerText(e.target.value)}
                           placeholder={
@@ -745,7 +748,8 @@ export default function AIWindow({
                           }
                           rows={3}
                           onKeyDown={onComposerKeyDown}
-                          className="flex-1 text-xs bg-surface border border-[var(--border)] rounded px-2 py-1.5 text-ink-body placeholder:text-ink-muted focus:outline-none focus:border-[var(--accent)] resize-none"
+                          density="dense"
+                          className="flex-1 text-xs px-2 py-1.5 resize-none"
                         />
                         <div className="flex flex-col gap-1.5">
                           <Button
@@ -941,12 +945,14 @@ function ConnectWithClaude() {
           <div className="text-[11px] text-ink-subtle mb-2">
             Default model used for new requests.
           </div>
-          <select
+          <Select
             disabled
-            className="text-xs bg-surface-muted border border-edge-subtle rounded px-2 py-1 text-ink-subtle cursor-not-allowed"
+            ink="subtle"
+            density="dense"
+            className="text-xs px-2 py-1"
           >
             <option>Claude (workspace default)</option>
-          </select>
+          </Select>
         </div>
 
         <div className="rounded-md border border-[var(--border)] bg-surface px-3 py-2.5">

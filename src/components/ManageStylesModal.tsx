@@ -23,6 +23,7 @@ import SystemDialog, {
   SystemDialogHeader,
 } from "./system-dialog";
 import StyleEditorModal from "./StyleEditorModal";
+import { Input, Select } from "./field-primitives";
 import StyleApplyDialog from "./StyleApplyDialog";
 import DocTypeChangeDialog from "./DocTypeChangeDialog";
 import type { StyleEntry } from "@/lib/document-styles";
@@ -360,19 +361,19 @@ export default function ManageStylesModal({
               >
                 Document type
               </label>
-              <select
+              <Select
                 id="doc-type-select"
                 value={currentClass}
                 disabled={!!pendingMerge}
                 onChange={(e) => void changeDocType(e.target.value)}
-                className="text-xs bg-surface border border-edge-subtle rounded px-2 py-1 text-ink-body outline-none focus:border-[var(--accent)] disabled:opacity-40 disabled:cursor-not-allowed"
+                className="text-xs px-2 py-1"
               >
                 {classChoices.map((c) => (
                   <option key={c.className} value={c.className}>
                     {c.label}
                   </option>
                 ))}
-              </select>
+              </Select>
               <span className="text-[11px] text-ink-subtle">
                 Changes <code className="font-mono">\documentclass</code>.
               </span>
@@ -444,9 +445,8 @@ export default function ManageStylesModal({
                     )}
                     <div className="flex items-center gap-2 min-w-0">
                       {isRenaming ? (
-                        <input
+                        <Input
                           autoFocus
-                          type="text"
                           value={renameValue}
                           onChange={(e) => setRenameValue(e.target.value)}
                           onBlur={() => commitRename(s.id)}
@@ -454,7 +454,7 @@ export default function ManageStylesModal({
                             if (e.key === "Enter") commitRename(s.id);
                             else if (e.key === "Escape") setRenamingId(null);
                           }}
-                          className="flex-1 px-2 py-1 text-sm bg-surface border border-edge-strong rounded focus:outline-none text-ink-body"
+                          className="flex-1 px-2 py-1 text-sm"
                         />
                       ) : (
                         <>

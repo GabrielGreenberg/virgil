@@ -7,6 +7,7 @@ import SystemDialog, {
   SystemDialogFooter,
   SystemDialogHeader,
 } from "./system-dialog";
+import { Input } from "./field-primitives";
 import { DOC_TYPES, DEFAULT_DOC_TYPE_ID } from "@/lib/doc-types";
 
 interface NewDocumentModalProps {
@@ -67,9 +68,8 @@ export default function NewDocumentModal({
         <label className="block text-[11px] font-medium text-ink-subtle uppercase tracking-wide mb-1.5">
           Name
         </label>
-        <input
+        <Input
           ref={nameRef}
-          type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
@@ -80,7 +80,7 @@ export default function NewDocumentModal({
           }}
           placeholder="My paper"
           disabled={busy}
-          className="w-full px-3 py-1.5 text-sm bg-surface border border-edge-subtle rounded-md focus:border-edge-strong focus:outline-none text-ink-body"
+          className="w-full px-3 py-1.5 text-sm"
         />
       </SystemDialogBody>
 

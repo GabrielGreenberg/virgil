@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Input } from "./field-primitives";
 
 interface SizeStepperProps {
   value: number;
@@ -43,8 +44,9 @@ export default function SizeStepper({
 
   return (
     <div className="flex items-center gap-1.5">
-      <input
+      <Input
         type="number"
+        density="dense"
         min={min}
         max={max}
         step={step}
@@ -58,7 +60,7 @@ export default function SizeStepper({
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur();
         }}
-        className="w-16 px-2 py-1 rounded border border-edge-subtle bg-surface text-sm tabular-nums text-ink-body focus:outline-none focus:ring-1 focus:ring-edge-hover focus:border-edge-hover"
+        className="w-16 px-2 py-1 text-sm tabular-nums"
         style={{ fontVariantNumeric: "tabular-nums" }}
       />
       <button

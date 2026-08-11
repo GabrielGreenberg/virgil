@@ -14,6 +14,7 @@ import SystemDialog, {
   SystemDialogFooter,
   SystemDialogHeader,
 } from "./system-dialog";
+import { Select } from "./field-primitives";
 import type { DocumentClassMismatch, SectioningCommand } from "@/lib/document-class";
 
 export type MismatchResolution =
@@ -82,19 +83,19 @@ export default function DocumentClassMismatchDialog({
         <label className="block mt-4 mb-1 text-[11px] text-ink-subtle font-medium">
           Switch document class to:
         </label>
-        <select
+        <Select
           value={choice}
           onChange={(e) =>
             mismatch && setOverrideChoice({ mismatch, value: e.target.value })
           }
-          className="w-full text-xs bg-surface border border-edge-subtle rounded px-2 py-1.5 text-ink-body outline-none focus:border-[var(--accent)]"
+          className="w-full text-xs px-2 py-1.5"
         >
           {mismatch.suggestions.map((name) => (
             <option key={name} value={name}>
               {name}
             </option>
           ))}
-        </select>
+        </Select>
       </SystemDialogBody>
       <SystemDialogFooter>
         <SystemDialogButton onClick={handleCancel}>Cancel</SystemDialogButton>

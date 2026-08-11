@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { SMART_PREFERENCES, type SmartSection, type SmartItem } from "@/lib/smart-preferences";
 import { ColorPref, SliderPref, FontPref } from "./PreferenceTree";
+import { Input, Select } from "./field-primitives";
 import type { EditorPreferences } from "@/hooks/usePreferences";
 import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 import type { PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
@@ -135,16 +136,17 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
   return (
     <>
       <div className="text-xs text-ink-body py-1">{PANEL_BODY_LABELS[panelKey]}</div>
-      <select
+      <Select
         value={typo.fontFamily}
         onChange={(e) => setField("fontFamily", e.target.value)}
-        className="text-xs bg-surface border border-edge-subtle rounded px-1.5 py-0.5 text-ink-body outline-none focus:border-[var(--accent)]"
+        density="dense"
+        className="text-xs px-1.5 py-0.5"
         style={{ fontFamily: resolveFontStack(typo.fontFamily) }}
       >
         {PANEL_BODY_FONT_OPTIONS.map((f) => (
           <option key={f} value={f} style={{ fontFamily: resolveFontStack(f) }}>{f}</option>
         ))}
-      </select>
+      </Select>
       <div className="flex items-center gap-1">
         <input
           type="range"
@@ -164,15 +166,17 @@ function PanelTypographyGridRow({ panelKey }: { panelKey: PanelBodyKey }) {
           onChange={(e) => setField("color", e.target.value)}
           className="w-5 h-5 rounded border border-edge-subtle cursor-pointer p-0 bg-transparent"
         />
-        <input
-          type="text"
+        <Input
           value={typo.color}
           onChange={(e) => {
             const v = e.target.value.trim().toLowerCase();
             if (/^#[0-9a-f]{6}$/.test(v)) setField("color", v);
           }}
           spellCheck={false}
-          className="text-[10px] font-mono w-[60px] px-1 py-0.5 border border-edge-subtle rounded bg-transparent text-ink-subtle outline-none focus:border-[var(--accent)]"
+          tone="transparent"
+          ink="subtle"
+          density="dense"
+          className="text-[10px] font-mono w-[60px] px-1 py-0.5"
         />
       </div>
       <button
