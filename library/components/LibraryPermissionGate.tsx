@@ -1,6 +1,7 @@
 "use client";
 
 import LibraryPaneFill from "./LibraryPaneFill";
+import { FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
   onGrant: () => void;
@@ -13,7 +14,7 @@ interface Props {
 export default function LibraryPermissionGate({ onGrant, onReset, pickerError }: Props) {
   return (
     <LibraryPaneFill center style={{ gap: 12, padding: 32 }}>
-      <h2 style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 500 }}>
+      <h2 style={{ fontFamily: FONT_SERIF, fontSize: 22, fontWeight: 500 }}>
         Permission needed
       </h2>
       <p style={{ color: "var(--muted)", maxWidth: 460, textAlign: "center" }}>

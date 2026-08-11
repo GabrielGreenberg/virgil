@@ -23,6 +23,7 @@ import { InlineTabLabel } from "./InlineTabLabel";
 import { TabSeparator } from "./TabSeparator";
 import { TabPlusMenu } from "../TabPlusMenu";
 import { PaperDropIndicator } from "./PaperDropIndicator";
+import { FONT_MONO } from "@/lib/font-stacks";
 
 // Negative margins applied to the active folder-tab wrapper so promoting a
 // tab from inline → folder keeps the surrounding strip pixel-stable. Kept
@@ -220,7 +221,7 @@ function TabStripImpl(props: TabStripProps) {
             >
               <span
                 className="text-[13px] leading-4 truncate min-w-0"
-                style={{ fontFamily: "var(--mono)" }}
+                style={{ fontFamily: FONT_MONO }}
               >
                 {citekey}
               </span>

@@ -8,6 +8,7 @@ import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { Dot, StatusPills } from "./StatusPill";
 import RowActionMenu from "./RowActionMenu";
+import { FONT_MONO } from "@/lib/font-stacks";
 
 export interface RowActions {
   /** Behavior depends on the active library:
@@ -178,7 +179,7 @@ function LeftListRow({ entry, bib, selected, gridTemplate, colOrder, entryKey, o
           >
             <code
               style={{
-                fontFamily: "var(--mono)",
+                fontFamily: FONT_MONO,
                 fontSize: 11,
                 color: "var(--accent)",
                 whiteSpace: "nowrap",

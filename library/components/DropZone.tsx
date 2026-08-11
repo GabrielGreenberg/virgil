@@ -1,5 +1,7 @@
 "use client";
 
+import { FONT_SERIF } from "@/lib/font-stacks";
+
 interface Props {
   dragActive: boolean;
   children: React.ReactNode;
@@ -37,7 +39,7 @@ export default function DropZone({ dragActive, children }: Props) {
             pointerEvents: "none",
             fontSize: 18,
             color: "var(--accent)",
-            fontFamily: "var(--serif)",
+            fontFamily: FONT_SERIF,
           }}
         >
           Drop PDF, Word, .tex, or .bib files to add to the library

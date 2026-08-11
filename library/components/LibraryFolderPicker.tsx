@@ -1,6 +1,7 @@
 "use client";
 
 import LibraryPaneFill from "./LibraryPaneFill";
+import { FONT_MONO, FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
   onPick: () => void;
@@ -13,12 +14,12 @@ interface Props {
 export default function LibraryFolderPicker({ onPick, pickerError }: Props) {
   return (
     <LibraryPaneFill center style={{ gap: 16, padding: 32 }}>
-      <h1 style={{ fontFamily: "var(--serif)", fontSize: 32, fontWeight: 500 }}>
+      <h1 style={{ fontFamily: FONT_SERIF, fontSize: 32, fontWeight: 500 }}>
         Virgil Library
       </h1>
       <p style={{ color: "var(--muted)", maxWidth: 480, textAlign: "center" }}>
         Pick a folder to use as your library root. The recommended location is{" "}
-        <code style={{ fontFamily: "var(--mono)" }}>~/Virgil-Library/</code>.
+        <code style={{ fontFamily: FONT_MONO }}>~/Virgil-Library/</code>.
         Virgil Library will create <code>master.bib</code>, the <code>papers/</code> and
         {" "}<code>unsorted/</code> folders, plus hidden <code>.claude/</code> and
         {" "}<code>.virgil/</code> folders for skill commands and runtime state.

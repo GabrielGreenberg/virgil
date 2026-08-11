@@ -2,6 +2,7 @@
 
 import { PopoutButton } from "@/components/panel-primitives";
 import { JumpChevron } from "@/components/icons/JumpChevron";
+import { FONT_SANS } from "@/lib/font-stacks";
 
 /**
  * Shared INNER content of a TextObject float header — the kind label, a
@@ -36,14 +37,14 @@ import { JumpChevron } from "@/components/icons/JumpChevron";
  * on any kind. (Closes the shared-header cleanup deferred in L1.7.)
  */
 
-/** The UI-chrome sans stack, mirrored verbatim from `body` (globals.css
- *  ~544) and the other chrome font rules. Set explicitly on the label so
- *  it resolves the same in the editor-column portal (overlay) and under
- *  `document.body` (real popout) — while still honoring the user's
- *  `--font-sans-override`, exactly as the real popout's inherited value
- *  did before. */
-const FLOAT_HEADER_FONT_FAMILY =
-  'var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif';
+/** The UI-chrome sans stack. Set explicitly on the label so it resolves the
+ *  same in the editor-column portal (overlay) and under `document.body` (real
+ *  popout) — while still honoring the user's `--font-sans-override`, exactly
+ *  as the real popout's inherited value did before. It comes from the
+ *  font-stack SSOT rather than a copy of `body`'s rule: this comment and its
+ *  twin in `FloatChrome` both warned about drift between three hand-spelled
+ *  copies of one chain, which is what the SSOT retired (task 170). */
+const FLOAT_HEADER_FONT_FAMILY = FONT_SANS;
 
 /** Inert handler for the overlay's non-interactive X (PopoutButton requires
  *  an `onClick`; the overlay header's `pointer-events: none` means it never

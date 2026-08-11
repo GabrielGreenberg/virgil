@@ -2,6 +2,7 @@
 
 import { memo, type ReactNode } from "react";
 import { IconX } from "./panel-icons";
+import { FONT_MONO } from "@/lib/font-stacks";
 
 /**
  * Inline (inactive) tab label rendered as flat clickable text in the Virgil
@@ -79,7 +80,7 @@ function InlineTabLabelImpl({
       {icon ? <span className="relative inline-flex">{icon}</span> : null}
       <span
         className="relative text-[13px] leading-4 truncate max-w-[220px]"
-        style={monospace ? { fontFamily: "var(--mono)" } : undefined}
+        style={monospace ? { fontFamily: FONT_MONO } : undefined}
       >
         {label}
       </span>

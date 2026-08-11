@@ -17,6 +17,7 @@ import {
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import NavPod from "./NavPod";
 import RowMenu, { type RowMenuEntry } from "./RowMenu";
+import { FONT_MONO } from "@/lib/font-stacks";
 
 interface Props {
   registry: Registry;
@@ -393,7 +394,7 @@ function SectionHeader({
           color: "var(--muted)",
           textTransform: "uppercase",
           letterSpacing: "0.06em",
-          fontFamily: "var(--mono, ui-monospace, monospace)",
+          fontFamily: FONT_MONO,
         }}
       >
         {children}

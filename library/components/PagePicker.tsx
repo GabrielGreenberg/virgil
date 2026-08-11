@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { PgmarkPages } from "@library/hooks/usePgmarkPages";
+import { FONT_MONO } from "@/lib/font-stacks";
 
 /** `[label] / count` printed-page selector — seeds the input with the current
  *  page label, jumps to the typed LABEL on Enter / go. Renders nothing for
@@ -44,7 +45,7 @@ export default function PagePicker({
         display: "inline-flex",
         alignItems: "center",
         gap: 4,
-        fontFamily: "var(--mono)",
+        fontFamily: FONT_MONO,
         fontSize: 11,
         color: "var(--muted)",
         flexShrink: 0,
@@ -82,7 +83,7 @@ export default function PagePicker({
           // Dense: a fixed short box (border-box) so it sits clear of the 26px
           // band's top/bottom edges instead of nearly filling it.
           ...(dense ? { height: 16, lineHeight: "14px" } : null),
-          fontFamily: "var(--mono)",
+          fontFamily: FONT_MONO,
           fontSize: 11,
           textAlign: "center",
           color: "var(--foreground)",

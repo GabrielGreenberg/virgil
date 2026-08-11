@@ -74,6 +74,35 @@ Both ways of ignoring the boundary fail **silently**:
   bespoke guards (`examples-amber-token.test.ts`,
   `bibliography-amber-strip-convergence.test.ts`).
 
+There is a third silent failure on the same axis, and it is the loudest-looking
+of the three while being the quietest in practice: **a `var(--token)` naming a
+token nothing defines.** With no fallback that is CSS's guaranteed-invalid
+value — the whole declaration is dropped, and for an inherited property the
+element just keeps whatever it inherited. `--mono` and `--serif` were spelled
+48 times (44 in `library/`, 4 across three `src/` files) and defined *nowhere*, so every
+monospace page-picker, tab label and citekey, and every serif dialog heading,
+rendered in the surrounding sans for a year. With a fallback it is *decoration*:
+the fallback is the real value, and a retone never reaches it — which is how a
+design-system patch's `--pod-shadow-light` outlived the patch, consumed by
+`library.css` and instructed by the docs.
+
+> **A `var(--token)` is a claim the token exists.** It must be defined in
+> `globals.css`/`library.css`, declared by `next/font` in `layout.tsx`, or
+> written at runtime (`setProperty`, an inline style key, a `cssVar:` registry
+> row). CI: [src/\_\_tests\_\_/phantom-css-var.test.ts](__tests__/phantom-css-var.test.ts)
+> reads all three channels; a fallback-less read of an undefined token fails
+> (allowlist EMPTY), and a fallback-carrying one must be recorded in a
+> shrink-only census with the reason it is still open.
+
+**Font families are CHAINS, and they are spelled once.** A `font-family` here
+is the user's override pref → the `next/font` variable → the load-window
+fallbacks, and every rung is load-bearing. Import `FONT_SANS` / `FONT_SERIF` /
+`FONT_MONO` from [src/lib/font-stacks.ts](lib/font-stacks.ts) in `.tsx`; write
+the identical chain in a stylesheet (CSS cannot import). Never a bare
+`var(--font-mono)` — that skips the user's override — and never a fourth
+hand-spelled copy: there were three of the sans chain before the SSOT, two of
+them carrying comments about not letting the third drift.
+
 For a token with no utility, consume it as `var(--token)` — usually the
 Tailwind arbitrary value `bg-[var(--pod-editor)]` / `text-[var(--muted)]`,
 which is the prevailing form (~190 sites), or an inline `style`. Add it to

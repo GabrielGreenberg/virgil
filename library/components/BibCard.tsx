@@ -10,6 +10,7 @@ import {
   knownFieldsForType,
 } from "@library/lib/bib-edit";
 import { reconstructBibtex } from "@library/lib/reconstruct-bibtex";
+import { FONT_MONO, FONT_SANS, FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
   entry: BibEntry | null;
@@ -129,11 +130,11 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
         border: "var(--pod-border)",
         borderRadius: "var(--pod-radius)",
         boxShadow: "var(--pod-shadow)",
-        fontFamily: "var(--serif)",
+        fontFamily: FONT_SERIF,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6, gap: 8 }}>
-        <code style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--muted)" }}>
+        <code style={{ fontFamily: FONT_MONO, fontSize: 12, color: "var(--muted)" }}>
           @{entry.type}{`{${entry.key}}`}
         </code>
         <button
@@ -146,7 +147,7 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
             border: "1px solid var(--border-light)",
             borderRadius: "var(--radius-sm)",
             padding: "2px 8px",
-            fontFamily: "var(--mono)",
+            fontFamily: FONT_MONO,
             fontSize: 11,
             color: "var(--muted)",
             cursor: "pointer",
@@ -171,7 +172,7 @@ export default function BibCard({ entry, citekey, onEdit, onAIReview, aiReviewQu
         {fields.pages ? ` · pp. ${fields.pages}` : ""}
       </div>
       {fields.doi && (
-        <div style={{ marginTop: 8, fontSize: 12, fontFamily: "var(--mono)", color: "var(--muted)" }}>
+        <div style={{ marginTop: 8, fontSize: 12, fontFamily: FONT_MONO, color: "var(--muted)" }}>
           doi:{fields.doi}
         </div>
       )}
@@ -241,7 +242,7 @@ export function AiNotePanel({
     >
       <div
         style={{
-          fontFamily: "var(--mono)",
+          fontFamily: FONT_MONO,
           fontSize: 11,
           letterSpacing: "0.05em",
           textTransform: "uppercase",
@@ -263,7 +264,7 @@ export function AiNotePanel({
           border: "1px solid var(--border-light)",
           borderRadius: "var(--radius-sm)",
           background: "var(--surface)",
-          fontFamily: "var(--sans, inherit)",
+          fontFamily: FONT_SANS,
           fontSize: 13,
           lineHeight: 1.4,
           resize: "vertical",
@@ -291,7 +292,7 @@ export function AiNotePanel({
         <span
           style={{
             marginLeft: "auto",
-            fontFamily: "var(--mono)",
+            fontFamily: FONT_MONO,
             fontSize: 10,
             color: "var(--muted)",
           }}
@@ -361,7 +362,7 @@ function FieldGroup({
     <div>
       <div
         style={{
-          fontFamily: "var(--mono)",
+          fontFamily: FONT_MONO,
           fontSize: 10,
           letterSpacing: "0.06em",
           textTransform: "uppercase",
@@ -394,7 +395,7 @@ function FieldRow({ fieldKey, value }: { fieldKey: string; value: string }) {
     <>
       <div
         style={{
-          fontFamily: "var(--mono)",
+          fontFamily: FONT_MONO,
           fontSize: 12,
           color: "var(--muted)",
           paddingTop: 1,
@@ -467,7 +468,7 @@ function ActionRow({
       {flash && (
         <span
           style={{
-            fontFamily: "var(--mono)",
+            fontFamily: FONT_MONO,
             fontSize: 11,
             color: "var(--accent, var(--muted))",
           }}
@@ -529,7 +530,7 @@ function ActionButton({
         borderRadius: "var(--radius-sm)",
         padding: "4px 10px",
         fontSize: 12,
-        fontFamily: "var(--sans, inherit)",
+        fontFamily: FONT_SANS,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.55 : 1,
         boxShadow: pressed ? "inset 0 1px 2px rgba(0,0,0,0.2)" : undefined,

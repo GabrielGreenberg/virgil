@@ -19,6 +19,7 @@ import { getSession, setListScrollQuiet } from "@library/lib/view-session-store"
 import type { PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PageScrollLozenge from "./PageScrollLozenge";
 import PagePicker from "./PagePicker";
+import { FONT_MONO } from "@/lib/font-stacks";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -393,7 +394,7 @@ function PaperReader({
           background: "var(--pill-red-bg)",
           color: "var(--pill-red-fg)",
           borderRadius: "var(--radius-md)",
-          fontFamily: "var(--mono)",
+          fontFamily: FONT_MONO,
           fontSize: 12,
           whiteSpace: "pre-wrap",
           margin: 16,
