@@ -124,9 +124,7 @@ describe("buildEditorPaneViewPrefs — section-path isolation (Phase 5a)", () =>
 
     // Section paths are pinned to the SAME frozen empty constants.
     expect(a.activeSectionPath).toBe(b.activeSectionPath);
-    expect(a.mirrorSectionPath).toBe(b.mirrorSectionPath);
     expect(a.activeParTitleIndex).toBe(b.activeParTitleIndex);
-    expect(a.mirrorParTitleIndex).toBe(b.mirrorParTitleIndex);
 
     // And every other field carried through is referentially identical, so a
     // shallow prop compare of the two bundles would report them equal.
@@ -143,14 +141,10 @@ describe("buildEditorPaneViewPrefs — section-path isolation (Phase 5a)", () =>
     const sp1: EditorPaneSectionPaths = {
       activeSectionPath: path1,
       activeParTitleIndex: 0,
-      mirrorSectionPath: [],
-      mirrorParTitleIndex: null,
     };
     const sp2: EditorPaneSectionPaths = {
       activeSectionPath: path2,
       activeParTitleIndex: 3,
-      mirrorSectionPath: [],
-      mirrorParTitleIndex: null,
     };
 
     const a = buildEditorPaneViewPrefs(VP, HANDLERS, VIEW, sp1);

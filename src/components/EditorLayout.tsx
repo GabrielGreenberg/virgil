@@ -6,10 +6,23 @@ import VirgilEditor, { EditorHandle } from "./Editor";
 import { LoadingScreen } from "./LoadingScreen";
 import FramedViewerSurface from "./FramedViewerSurface";
 import { setFocusBandMeta } from "@/lib/focus-view";
+import {
+  computeSectionPathAt,
+  geomBreadcrumbEnabled,
+} from "@/lib/editor-geometry/section-path";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
+import { applyPerfBodyFlags } from "@/lib/perf-feature-flags";
+import {
+  isLayoutGestureActive,
+  parkDuringLayoutGesture,
+} from "@/lib/pane-resize";
+import {
+  LAYOUT_SITE_HELPER_ANCHOR,
+  LAYOUT_SITE_SECTION_PATH,
+} from "@/lib/layout-gesture-probe";
 import { migrateDocAwarePopoutKey } from "@/text-objects/post-load-migrations";
 import { useTransientAnchorCleanup } from "@/text-objects/useTransientAnchorCleanup";
 import { type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
@@ -18,6 +31,10 @@ import { type SectionPathEntry, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
+import {
+  useDocJson,
+  docProductsEnabled,
+} from "@/lib/doc-products/use-doc-products";
 import { useMyPapers } from "@/hooks/useMyPapers";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
 import { useUpdateAvailable } from "@/hooks/useUpdateAvailable";
@@ -34,6 +51,7 @@ import { collabClaimsFor } from "@/cards/collab-broadcast";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
 import type { LatexError } from "@/lib/latex-errors";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
+import type { ErrorJump } from "@/panels/Errors";
 import { IconErrors } from "./editor-layout/panel-icons";
 import PrintDialog from "./PrintDialog";
 import FontsDialog from "./FontsDialog";
@@ -182,8 +200,10 @@ import { ATOM_REGISTRY, CARD_ATOM_DOM_SELECTOR } from "@/lib/tiptap/atom-registr
 import { serializeCiteCommand } from "@/lib/bib-parser";
 import { generateShortId } from "@/lib/uuid";
 import NodeEditPopover from "./NodeEditPopover";
-import { extractFigureAttrs, extractGraphicsAttrs } from "@/lib/figures/parse-attrs";
-import { parseInlineContent as parseInlineLatexForCaption } from "@/lib/latex-parser";
+import {
+  applyFigureEnvBodyEdit,
+  applyGraphicsCommandEdit,
+} from "@/lib/figures/apply-env-body";
 import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
 import { useFocusMode } from "@/hooks/useFocusMode";
@@ -412,6 +432,9 @@ export default function EditorLayout() {
 
   useEffect(() => { setDevStorage(isDevStorage); }, []);
   useEffect(() => { setOpfsOk(opfsAvailable()); }, []);
+  // Wave-4 Stage A: stamp the CSS-scoped perf flags (body.perf-contain) once
+  // at shell boot — the stylesheet is the consumer; a flip applies on reload.
+  useEffect(() => { applyPerfBodyFlags(); }, []);
   const exampleAvailable = opfsOk && !devStorage;
 
   // Hooks read from disk, so we gate their docId on the permission
@@ -603,8 +626,6 @@ export default function EditorLayout() {
     clearPanelHeight,
     tradePanelHeights,
     notePanelUse,
-    setEditorSplit,
-    setEditorSplitRatio,
     setCodePaneRatio,
     setShowHighlights,
     toggleHighlightType,
@@ -643,13 +664,6 @@ export default function EditorLayout() {
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
 
-  const editorSplit = prefs.editorSplit;
-  const editorSplitRatio = prefs.editorSplitRatio;
-
-  // Which pane last received focus — used to route panel interactions
-  // (outline clicks, note jumps, etc.) to the pane the user is in.
-  const [activeSplitPane, setActiveSplitPane] = useState<"top" | "bottom">("top");
-  const mirrorViewRef = useRef<import("prosemirror-view").EditorView | null>(null);
 
   // Editor column ref — kept here as a placeholder; the actual
   // editor column rendering lives inside EditorPane post-7.8.
@@ -1039,16 +1053,42 @@ export default function EditorLayout() {
     setHelperAnchorRect(helperBtnRef.current?.getBoundingClientRect() ?? null);
     const close = () => { setHelperMenuOpen(false); setCommandsPopoutOpen(false); };
     const refreshAnchor = () => {
-      setHelperAnchorRect(helperBtnRef.current?.getBoundingClientRect() ?? null);
+      const next = helperBtnRef.current?.getBoundingClientRect() ?? null;
+      // Equality bail (task 317). `getBoundingClientRect` returns a FRESH
+      // DOMRect every call, so setting it unconditionally re-rendered this
+      // component — the app ROOT — on every scroll and resize event for as
+      // long as the Help menu stayed open, whether or not the button moved.
+      setHelperAnchorRect((prev) =>
+        prev === next ||
+        (prev !== null &&
+          next !== null &&
+          prev.top === next.top &&
+          prev.left === next.left &&
+          prev.width === next.width &&
+          prev.height === next.height)
+          ? prev
+          : next,
+      );
     };
+    // Parked, not suppressed: the Help button lives in the Virgil bar — LEFT-
+    // anchored top chrome, which a window drag displaces by ~0.001·delta (the
+    // editor column carries `flex: 1000 1 0` between the rails) — so a stale
+    // anchor for the length of a gesture cannot visibly detach the popover,
+    // and the settle re-seats it exactly once.
+    const anchorPark = parkDuringLayoutGesture(
+      refreshAnchor,
+      LAYOUT_SITE_HELPER_ANCHOR,
+    );
+    const onAnchorEvent = () => anchorPark.fire();
     const id = window.setTimeout(() => window.addEventListener("click", close), 0);
-    window.addEventListener("resize", refreshAnchor);
-    window.addEventListener("scroll", refreshAnchor, true);
+    window.addEventListener("resize", onAnchorEvent);
+    window.addEventListener("scroll", onAnchorEvent, true);
     return () => {
       window.clearTimeout(id);
       window.removeEventListener("click", close);
-      window.removeEventListener("resize", refreshAnchor);
-      window.removeEventListener("scroll", refreshAnchor, true);
+      window.removeEventListener("resize", onAnchorEvent);
+      window.removeEventListener("scroll", onAnchorEvent, true);
+      anchorPark.dispose();
     };
   }, [helperMenuOpen]);
 
@@ -1127,6 +1167,13 @@ export default function EditorLayout() {
     toggleZenMode();
   }, [toggleZenMode]);
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
+  // Flag-on (perf Wave 1): the DocProducts pipeline's shared docJson replaces
+  // the legacy setLatestDoc feed (editor-ops handleUpdate no-ops). Reads fall
+  // through to `latestDoc` while the pipeline hasn't produced yet.
+  const pipelineDocJson = useDocJson(docProductsEnabled ? editorInstance : null);
+  const latestDocEffective = docProductsEnabled
+    ? (pipelineDocJson ?? latestDoc)
+    : latestDoc;
   // Per-category structural revisions — the keystroke-safe replacement for
   // the old per-keystroke `editorDocVersion` counter and the `latestDoc`-keyed
   // card derivations. Each counter bumps ONLY when its structural entity
@@ -1512,6 +1559,19 @@ export default function EditorLayout() {
     paneStateRef.current?.setSelectedErrorId?.(err.id);
     codeEditorHandleRef.current?.scrollToLine?.(err.line, err.column);
   }, []);
+  // The code sidebar's jump capability (task 125): handler + the semantics it
+  // implements, bound here at the handler's own definition so the mount below
+  // states no mode of its own. `"line"` because `scrollToLine` reaches the
+  // error by LINE — which makes a preamble / `\usepackage` error genuinely
+  // reachable here (unlike the visual mounts) and a line-LESS one genuinely
+  // unreachable: `scrollToLine(0)` clamps to line 1, so handing it such an
+  // error would scroll the code pane to the top, move the caret there and
+  // steal focus. The `ErrorsPanel` gate declines it instead; selection (which
+  // is what the click is really for) still happens.
+  const codeErrorJump = useMemo<ErrorJump>(
+    () => ({ mode: "line", jump: codeJump }),
+    [codeJump],
+  );
   // Stable feed for CodeEditor's onTextChange while the code view is open — routes
   // the raw CodeMirror text into the active pane's sourceText (no longer the sole
   // source; the pane serializes TipTap otherwise).
@@ -1538,6 +1598,13 @@ export default function EditorLayout() {
 
     const checkParagraph = () => {
       if (navigatingRef.current) return;
+      // Wave-2b C6: this runs on a bare 2s wall clock — gate it on
+      // page visibility (a backgrounded tab must not poll layout) and on
+      // layout gestures (mid-drag geometry is in flux; the post-gesture
+      // tick reads the settled truth). Hidden keep-alive PANES are handled
+      // inside getActiveParagraphId itself (offsetHeight bail → null).
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (isLayoutGestureActive()) return;
       let paraId: string | null = null;
       if (codeView) {
         paraId = codeEditorHandleRef.current?.getActiveParagraphId() ?? null;
@@ -1785,6 +1852,34 @@ export default function EditorLayout() {
       // Bailing leaves the last-good section path in place (the cursor/scroll
       // can't change while hidden) and avoids caching a 0-coord breadcrumb.
       if ((scrollEl as HTMLElement).offsetHeight === 0) return;
+      // Wave-2 C2: ONE posAtCoords at the reference line + binary search over
+      // the structure snapshot, instead of the O(headings + titles)
+      // coordsAtPos walk below. Null (no bus / hit-test miss) falls through
+      // to the legacy walk; kill-switch `virgil:geom-breadcrumb = "off"`.
+      if (geomBreadcrumbEnabled()) {
+        const fsFast = focusStateRef.current;
+        const fast = computeSectionPathAt(
+          editorInstance,
+          view,
+          scrollEl,
+          fsFast.active && fsFast.locked
+            ? { start: fsFast.startBlockIndex, end: fsFast.endBlockIndex }
+            : null,
+        );
+        if (fast) {
+          setCurrentSectionPath((prev) => {
+            const next = fast.path;
+            if (prev.length === next.length && prev.every((v, i) => v.text === next[i].text && v.index === next[i].index && v.sectionNumber === next[i].sectionNumber)) {
+              return prev;
+            }
+            return next;
+          });
+          setCurrentParTitleIndex((prev) =>
+            prev === fast.parTitleIndex ? prev : fast.parTitleIndex,
+          );
+          return;
+        }
+      }
       const doc = editorInstance.state.doc;
       // Collect all top-level headings with their text + level + DOM top
       const scrollRect = scrollEl.getBoundingClientRect();
@@ -1907,14 +2002,22 @@ export default function EditorLayout() {
       if (isTier1BDisabled()) return;
       schedule();
     };
+    // Only the RESIZE path parks (task 317). `compute` walks every heading
+    // calling `coordsAtPos` — ProseMirror's most expensive forced-layout call —
+    // so re-solving it per frame of a window drag is the single heaviest
+    // per-frame cost in the app at ×1 pane (×2 with the Reader). The SCROLL
+    // path stays live: the breadcrumb must follow the scroll it describes.
+    const resizePark = parkDuringLayoutGesture(schedule, LAYOUT_SITE_SECTION_PATH);
+    const onWindowResize = () => resizePark.fire();
     compute();
     scrollEl.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
+    window.addEventListener("resize", onWindowResize);
     editorInstance.on("update", onEditorUpdate);
     return () => {
       cancelAnimationFrame(raf);
       scrollEl.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", onWindowResize);
+      resizePark.dispose();
       editorInstance.off("update", onEditorUpdate);
     };
     // Focus band values are deps so the breadcrumb recomputes when focus
@@ -1925,107 +2028,15 @@ export default function EditorLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorInstance, focusMode.state.active, focusMode.state.locked, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex]);
 
-  // Mirror (second pane) position tracking — same logic as above but
-  // scoped to the mirror ProseMirror view's scroll container.
-  const [mirrorSectionPath, setMirrorSectionPath] = useState<SectionPathEntry[]>([]);
-  const [mirrorParTitleIndex, setMirrorParTitleIndex] = useState<number | null>(null);
-  // Re-run when the mirror view is (re)created: we store a generation
-  // counter that bumps whenever onMirrorViewReady fires.
-  const [mirrorViewGen, setMirrorViewGen] = useState(0);
-  useEffect(() => {
-    const mirrorView = mirrorViewRef.current;
-    if (!editorSplit || !mirrorView) {
-      setMirrorSectionPath([]);
-      setMirrorParTitleIndex(null);
-      return;
-    }
-    const scrollEl = findEditorScrollFor(mirrorView.dom);
-    if (!scrollEl) return;
-
-    const compute = () => {
-      // Keep-alive: skip when the mirror pane is hidden (see the main-pane note).
-      if ((scrollEl as HTMLElement).offsetHeight === 0) return;
-      const doc = mirrorView.state.doc;
-      const scrollRect = scrollEl.getBoundingClientRect();
-      // Same shared section-active line + bottom clamp as the canonical pane —
-      // see note above.
-      const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
-      const atBottom = maxScroll > 4 && maxScroll - scrollEl.scrollTop <= 2;
-      const referenceY = atBottom
-        ? scrollRect.bottom
-        : scrollRect.top + scrollRect.height * SECTION_ACTIVE_LINE_FRACTION;
-
-      const stack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
-      let lastCrossedStack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
-      let activeParTitleIdx: number | null = null;
-
-      // Mirror shares the main editor's state, so the focus band + decorations
-      // apply here too — skip out-of-band (hidden) blocks ONLY when LOCKED, for
-      // the same reason as the main pane: a mere focus selection hides nothing
-      // now (CHIP A), so out-of-band blocks report real coords and must not be
-      // skipped.
-      const fs = focusStateRef.current;
-      const skipHidden = fs.active && fs.locked;
-
-      doc.forEach((node, offset, index) => {
-        if (skipHidden && (index < fs.startBlockIndex || index > fs.endBlockIndex)) return;
-
-        if (node.type.name === "heading" && node.attrs?.level) {
-          const level = node.attrs.level as number;
-          let headingTop: number | null = null;
-          try { headingTop = mirrorView.coordsAtPos(offset + 1).top; } catch { headingTop = null; }
-          if (headingTop == null) return;
-          if (headingTop <= referenceY) {
-            while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
-            stack.push({ level, text: node.textContent || "Untitled", index, sectionNumber: (node.attrs?.sectionNumber as string) ?? null });
-            lastCrossedStack = [...stack];
-            activeParTitleIdx = null;
-          }
-          return;
-        }
-        if (
-          (node.type.name === "paragraph" || node.type.name === "bulletList" || node.type.name === "orderedList") &&
-          node.attrs?.parTitle
-        ) {
-          let top: number | null = null;
-          try { top = mirrorView.coordsAtPos(offset + 1).top; } catch { top = null; }
-          if (top != null && top <= referenceY) activeParTitleIdx = index;
-        }
-      });
-
-      const path: SectionPathEntry[] = lastCrossedStack.map((s) => ({ text: s.text, index: s.index, sectionNumber: s.sectionNumber }));
-      setMirrorSectionPath((prev) =>
-        prev.length === path.length && prev.every((v, i) => v.text === path[i].text && v.index === path[i].index && v.sectionNumber === path[i].sectionNumber) ? prev : path,
-      );
-      setMirrorParTitleIndex((prev) => (prev === activeParTitleIdx ? prev : activeParTitleIdx));
-    };
-
-    let raf = 0;
-    const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(compute); };
-    // Editor-update path wrapped so the perf-flag gate (Tier 1 B) can
-    // suppress per-keystroke recompute on the mirror pane while leaving
-    // scroll/resize-driven recomputes live. Same `off()`-needs-same-ref
-    // reason as the main pane above.
-    const onEditorUpdate = () => {
-      if (isTier1BDisabled()) return;
-      schedule();
-    };
-    compute();
-    scrollEl.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
-    // Re-compute when the doc changes (shared state with main editor).
-    editorInstance?.on("update", onEditorUpdate);
-    return () => {
-      cancelAnimationFrame(raf);
-      scrollEl.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
-      editorInstance?.off("update", onEditorUpdate);
-    };
-    // Focus band values are deps so the mirror breadcrumb recomputes on a
-    // focus toggle/move/lock (meta-only tx — see the main pane's note). `locked`
-    // is a dep because skipHidden is now lock-gated (CHIP A).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorSplit, mirrorViewGen, editorInstance, focusMode.state.active, focusMode.state.locked, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex]);
+  // The MIRROR (second pane) position tracker lived here — a second copy of
+  // the breadcrumb recompute above, scoped to the mirror ProseMirror view's
+  // scroll container, plus its `mirrorSectionPath` / `mirrorParTitleIndex` /
+  // `mirrorViewGen` state and its own `editor.on('update')` subscription
+  // (which is why the keystroke-sanctity allowlist named two subscribers for
+  // this file). It was maintained for a pane nothing mounted: the split's
+  // render site was dropped in a refactor, so `mirrorViewRef.current` was
+  // permanently null and the effect took its clear-and-return branch on every
+  // run. Retired with the split in task 115.
 
   // Derive footnotes list from editor state (sorted by document position).
   // Recomputes on `editorInstance` change (initial mount + doc-switch remount)
@@ -2117,16 +2128,13 @@ export default function EditorLayout() {
     handleRenameParTitle,
   } = useEditorOps({
     editorRef,
-    mirrorViewRef,
-    editorSplit,
-    activeSplitPane,
     setLatestDoc,
     // T3 (W3a): the label commit shares the live warning's predicate.
     isLabelTaken: checkLabelTaken,
   });
 
   // ── Focus mode helpers ─────────────────────────────────────────────
-  const docForOutline = latestDoc;
+  const docForOutline = latestDocEffective;
   const outlineHeadings = useMemo(() => extractHeadings(docForOutline).headings, [docForOutline]);
 
   // T5 Pillar C-2 (OUT-F2-01 / OUT-F8-02): the focus engine's heading-index +
@@ -2309,8 +2317,6 @@ export default function EditorLayout() {
     availableDividerLevels,
     activeDividerLevels,
     dividerWidth,
-    editorSplit,
-    activeSplitPane,
     onToggleParTitles: toggleParTitles,
     onToggleCardTitles: toggleCardTitles,
     onToggleLatexComments: toggleLatexComments,
@@ -2323,7 +2329,6 @@ export default function EditorLayout() {
     toggleDividerLevel,
     setDividerWidth,
     setShowHighlights,
-    toggleEditorSplit: () => setEditorSplit((s) => !s),
     closeAllPanels,
     paraNavBack,
     paraNavForward,
@@ -2344,8 +2349,6 @@ export default function EditorLayout() {
     availableDividerLevels,
     activeDividerLevels,
     dividerWidth,
-    editorSplit,
-    activeSplitPane,
     toggleParTitles,
     toggleCardTitles,
     toggleLatexComments,
@@ -2358,7 +2361,6 @@ export default function EditorLayout() {
     toggleDividerLevel,
     setDividerWidth,
     setShowHighlights,
-    setEditorSplit,
     closeAllPanels,
     paraNavBack,
     paraNavForward,
@@ -2523,83 +2525,20 @@ export default function EditorLayout() {
   // mis-target / corrupt the wrong node — the very corruption the dropped
   // `figureFloat` click-suppression prevented (by making float figures inert).
   const handleFigureSave = useCallback((editor: Editor, pos: number, newText: string) => {
-    if (!editor || editor.isDestroyed) return;
-    // The popover outlives the click, so by save time the owning editor may
-    // have re-seeded (the figure float re-syncs from MAIN) and shifted `pos`
-    // past the doc end — `nodeAt` THROWS on an out-of-range pos. Guard the
-    // bounds so a stale pos is a safe no-op, never a crash. Mirrors
-    // handleMathSave.
-    if (pos < 0 || pos >= editor.state.doc.content.size) return;
-    const node = editor.state.doc.nodeAt(pos);
-    if (!node) return;
-    if (node.type.name === "figureBlock") {
-      const attrs = extractFigureAttrs(newText);
-      // Rebuild the figureCaption child node from the new caption text.
-      // The popover is one of two surfaces that can edit captions; re-
-      // tokenize the body so inline marks/citations end up as structured
-      // nodes (\cite{}, $math$, \textbf{}, etc.).
-      const captionInline = parseInlineLatexForCaption(attrs.caption);
-      let captionNode;
-      try {
-        captionNode = editor.state.schema.nodeFromJSON({
-          type: "figureCaption",
-          content: captionInline,
-        });
-      } catch {
-        // Fall back to plain text so the user's caption isn't lost on a
-        // malformed inline parse.
-        captionNode = editor.state.schema.nodeFromJSON({
-          type: "figureCaption",
-          content: attrs.caption ? [{ type: "text", text: attrs.caption }] : [],
-        });
-      }
-      const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
-        ...node.attrs,
-        extras: attrs.extras,
-        source: attrs.source,
-        widthPercent: attrs.widthPercent,
-        sources: attrs.sources,
-        label: attrs.label,
-        // Re-thread the optional `\caption[<short>]` LoF arg from the edited
-        // source so adding/changing/removing the bracket in the popover isn't
-        // silently ignored (task 263 — the parse-then-drop class, on the
-        // popover edit path).
-        shortCaption: attrs.shortCaption,
-      });
-      const refreshed = tr.doc.nodeAt(pos);
-      if (refreshed) {
-        const inside = pos + 1;
-        if (refreshed.firstChild?.type.name === "figureCaption") {
-          const captionEnd = inside + refreshed.firstChild.nodeSize;
-          tr.replaceWith(inside, captionEnd, captionNode);
-        } else {
-          tr.insert(inside, captionNode);
-        }
-      }
-      editor.view.dispatch(tr);
-    } else if (node.type.name === "graphicsBlock") {
-      const attrs = extractGraphicsAttrs(newText.trim());
-      if (attrs) {
-        editor.view.dispatch(
-          editor.state.tr.setNodeMarkup(pos, undefined, {
-            ...node.attrs,
-            command: attrs.command,
-            source: attrs.source,
-            widthPercent: attrs.widthPercent,
-          }),
-        );
-      } else {
-        // Couldn't parse — keep verbatim text on `command` so the user
-        // can fix the typo without losing their edit.
-        editor.view.dispatch(
-          editor.state.tr.setNodeMarkup(pos, undefined, {
-            ...node.attrs,
-            command: newText.trim(),
-            source: "",
-            widthPercent: null,
-          }),
-        );
-      }
+    // Tasks 318/319: this is the SOLE env-body save path for both kinds (the
+    // figure NodeView's chrome mutators patch `extras` / `command` directly and
+    // never rebuild a whole env). The attr re-thread lives in the shared
+    // writeback module, which this and the NodeView's own copy used to
+    // re-implement side by side — and had already drifted, `shortCaption`
+    // reaching only one of them.
+    //
+    // Both doors carry the bounds + kind guard internally: the popover outlives
+    // the click, so by save time the owning editor may have re-seeded (the
+    // figure float re-syncs from MAIN) and shifted `pos` past the doc end,
+    // where `nodeAt` THROWS. A stale pos is a safe no-op. (Mirrors
+    // handleMathSave.)
+    if (!applyFigureEnvBodyEdit(editor, pos, newText)) {
+      applyGraphicsCommandEdit(editor, pos, newText);
     }
   }, []);
 
@@ -2712,6 +2651,7 @@ export default function EditorLayout() {
   const editorPaneViewDerivations = useMemo<EditorPaneViewDerivations>(() => ({
     isResizingPanels,
     focusState: focusMode.state,
+    focusBand: focusMode.band,
     zenMode: zenModeOn,
     zenLeftMargin,
     zenRightMargin,
@@ -2724,6 +2664,7 @@ export default function EditorLayout() {
   }), [
     isResizingPanels,
     focusMode.state,
+    focusMode.band,
     zenModeOn,
     zenLeftMargin,
     zenRightMargin,
@@ -2746,14 +2687,10 @@ export default function EditorLayout() {
     () => ({
       activeSectionPath: currentSectionPath,
       activeParTitleIndex: currentParTitleIndex,
-      mirrorSectionPath,
-      mirrorParTitleIndex,
     }),
     [
       currentSectionPath,
       currentParTitleIndex,
-      mirrorSectionPath,
-      mirrorParTitleIndex,
     ],
   );
 
@@ -2877,7 +2814,7 @@ export default function EditorLayout() {
     // live editor doc (the same JSON the code editor will reserialize
     // from disk; close enough for a line lookup).
     let line: number | undefined;
-    if (!paraId && latestDoc) {
+    if (!paraId && latestDocEffective) {
       try {
         const editor = editorRef.current?.getEditor();
         if (editor) {
@@ -2892,7 +2829,7 @@ export default function EditorLayout() {
           const snippet = editor.state.doc.textBetween(start, end, " ").trim();
           const words = snippet.split(/\s+/).filter((w) => w.length > 3);
           if (words.length >= 2) {
-            const latex = serializeToLatex(latestDoc);
+            const latex = serializeToLatex(latestDocEffective);
             for (let len = Math.min(words.length, 6); len >= 2; len--) {
               const phrase = words.slice(0, len).join(".*?");
               const re = new RegExp(phrase, "s");
@@ -2913,7 +2850,7 @@ export default function EditorLayout() {
     // live so the code-pane bridge can sync edits both directions.
     setPdfView(false);
     setCodeView(true);
-  }, [latestDoc]);
+  }, [latestDocEffective]);
 
   const switchToVisualView = useCallback(() => {
     // In the split-pane layout there's no longer a separate "code
@@ -3094,24 +3031,10 @@ export default function EditorLayout() {
   // detection is fully covered by the per-doc pane. (Removed from the
   // keystroke-sanctity allowlist accordingly — see AGENTS.md.)
 
-  // Track focus on the canonical editor — interactions with the top pane
-  // mark it active so panels route their jumps there.
-  useEffect(() => {
-    if (!editorInstance) return;
-    const dom = editorInstance.view.dom as HTMLElement;
-    const mark = () => setActiveSplitPane("top");
-    dom.addEventListener("focusin", mark);
-    dom.addEventListener("mousedown", mark);
-    return () => {
-      dom.removeEventListener("focusin", mark);
-      dom.removeEventListener("mousedown", mark);
-    };
-  }, [editorInstance]);
-
-  // Reset to the top pane whenever the split closes.
-  useEffect(() => {
-    if (!editorSplit) setActiveSplitPane("top");
-  }, [editorSplit]);
+  // The `activeSplitPane` trackers lived here (a focusin/mousedown pair that
+  // marked the canonical editor as the active pane, and a reset when the split
+  // closed). With one pane there is nothing to disambiguate — retired with the
+  // editor split in task 115.
 
   // Boot-load the per-user theming prefs (panel colors / typography /
   // pref links) and keep this tree subscribed to panel-color changes.
@@ -3648,7 +3571,7 @@ export default function EditorLayout() {
                                 onSelect={setSelectedErrorIdBridge}
                                 dismissedIds={paneState?.dismissedErrorIds ?? EMPTY_ERR_SET}
                                 onDismiss={paneState?.dismissError ?? noop}
-                                onJump={codeJump}
+                                jump={codeErrorJump}
                                 snippets={paneState?.errorSnippets ?? EMPTY_ERR_MAP}
                                 paragraphByErrorId={paneState?.paragraphByErrorId ?? EMPTY_ERR_MAP}
                                 expandedIds={paneState?.expandedErrorIds ?? EMPTY_ERR_SET}

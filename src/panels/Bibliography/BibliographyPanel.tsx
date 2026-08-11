@@ -5,10 +5,12 @@ import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
 import { Button, ItemMenu, PANEL, useListNavKeys } from "@/components/panel-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
+import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
 import { serializeBibForExport } from "@/lib/bib-parser";
 import { mintBibUid } from "@/lib/bib-uid";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 import {
   useLibraryItems,
   useLibraryMasterBib,
@@ -51,18 +53,6 @@ function formatBibEntryForNote(entry: BibEntry): string {
   lines.push("}");
   return lines.join("\n");
 }
-
-/** Shared chrome for the panel's amber "attention" surfaces — a pending/warning
- *  wash with an amber-200 hairline. One SSOT so the three surfaces (conflict
- *  decision, request form, pending-requests card) read as one family and can't
- *  drift apart again (task 280: the request form had picked up a neutral
- *  `--border-light` seam and the three washes had drifted to /50, /40, /30).
- *  Holds the color family + padding only; each caller adds the border *shape*
- *  and layout it needs:
- *    · `border-b`          → panelExtras row (conflict decision / request form)
- *    · `border rounded-md` → standalone card (pending-requests item) */
-const AMBER_ATTENTION_STRIP =
-  "px-3 py-2 border-[var(--amber-200)] bg-[var(--amber-50)]/40";
 
 interface BibliographyPanelProps {
   citations: CitationRef[];
@@ -614,10 +604,8 @@ function BibliographyPanel({
       <div className="px-3 py-1.5 flex items-center justify-end gap-2">
         <PanelThemePicker panelKey="bib" label="Bibliography color" />
       </div>
-      <div className="my-1 border-t border-edge-subtle" />
-      <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-        Display
-      </div>
+      <MenuSeparator />
+      <MenuSectionLabel>Display</MenuSectionLabel>
       <button
         className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
         onClick={() => setFilter("cited")}
@@ -636,7 +624,7 @@ function BibliographyPanel({
           {filter === "all" ? "✓" : ""}
         </span>
       </button>
-      <div className="my-1 border-t border-edge-subtle" />
+      <MenuSeparator />
       <button
         className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
           citedKeys.size > 0

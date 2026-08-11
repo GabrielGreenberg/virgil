@@ -5,7 +5,7 @@
  * (which import the React `FigureBlockNodeView`, and through it `@/lib/storage`)
  * so a React-LIGHT consumer — notably the action registry's `figureRun` /
  * `graphicsRun`, and the node-env / jsdom vitests that import the registry — can
- * pull the fresh-attrs builders + `synthesizeFigureRaw` WITHOUT dragging the
+ * pull the fresh-attrs builders WITHOUT dragging the
  * NodeView + storage graph in (the `@/lib/storage` `require("@/…")` resolver
  * gotcha). `figure-block.ts` / `graphics-block.ts` re-export these under their
  * old names so every existing import path (`@/lib/tiptap/figure-block`, the
@@ -24,7 +24,7 @@ import { generateShortId } from "@/lib/uuid";
 // `\label{}` are NOT included here — those are stored on the sub-node and
 // the `label` attr respectively, and rebuilt by the serializer.
 export const FIGURE_STUB_EXTRAS =
-  "\\centering\n  \\includegraphics[width=0.6\\textwidth]{}\n  ";
+  "  \\centering\n  \\includegraphics[width=0.6\\textwidth]{}";
 
 export interface FreshFigureBlockAttrs {
   extras: string;
@@ -34,6 +34,10 @@ export interface FreshFigureBlockAttrs {
   widthPercent: number;
   sources: unknown[];
   label: string;
+  /** A figure the USER is authoring gets a caption — that is what the empty
+   *  caption row in the chrome is for. (Provenance is only "false" for a
+   *  caption-less env read off disk; see `env-body.ts`.) */
+  hasCaption: boolean;
   numbered: boolean;
   figureNumber: null;
   uuid: string;
@@ -48,37 +52,19 @@ export function freshFigureBlockAttrs(existing: Set<string>): FreshFigureBlockAt
     widthPercent: 60,
     sources: [],
     label: "fig:",
+    hasCaption: true,
     numbered: true,
     figureNumber: null,
     uuid: generateShortId(existing),
   };
 }
 
-// Rebuild a verbatim `\begin{figure}` body from structured attrs + caption
-// text. Used by the serializer (at save time) AND by the popover surface
-// (when opening the source editor — the popover wants something to display
-// /edit even though the canonical content lives in attrs + sub-node).
-export function synthesizeFigureRaw(
-  extras: string,
-  captionTex: string,
-  label: string,
-): string {
-  const parts: string[] = ["\n  "];
-  const extrasBody = (extras || "").replace(/\s+$/, "");
-  if (extrasBody) {
-    // Re-indent so the extras body sits at the same 2-space indent as the
-    // rest of the env body we synthesise.
-    parts.push(extrasBody.replace(/\n/g, "\n  "));
-    parts.push("\n  ");
-  }
-  parts.push(`\\caption{${captionTex}}`);
-  if (label) {
-    parts.push("\n  ");
-    parts.push(`\\label{${label}}`);
-  }
-  parts.push("\n");
-  return parts.join("");
-}
+// NOTE (tasks 318/319): `synthesizeFigureRaw` — this module's second, hand-
+// written copy of the serializer's env-body builder — is RETIRED. It had
+// already drifted (no `[short]` LoF bracket, so every rebuild through it erased
+// task 263's byte), and each new declared fact would have had to be remembered
+// in two places. Rebuilds now go through the ONE builder, `buildFigureEnvBody`
+// in `@/lib/figures/env-body`.
 
 // ── graphicsBlock ──────────────────────────────────────────────────────────
 

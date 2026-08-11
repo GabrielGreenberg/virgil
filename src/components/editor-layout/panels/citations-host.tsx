@@ -27,7 +27,6 @@ export interface CitationsHostProps {
   bibEntries: CitationsHook["bibEntries"];
   citationStyle: CitationsHook["citationStyle"];
   bibPackage: CitationsHook["bibPackage"];
-  bibPath: CitationsHook["bibPath"];
   citationOrder: string[];
   addCitation: CitationsHook["addCitation"];
   updateCitation: CitationsHook["updateCitation"];
@@ -89,7 +88,6 @@ export function CitationsHost(p: CitationsHostProps) {
       bibEntries={p.bibEntries}
       citationStyle={p.citationStyle}
       bibPackage={p.bibPackage}
-      bibPath={p.bibPath}
       selectedId={selectedCitationId}
       citationOrder={p.citationOrder}
       onSelect={setSelectedCitationId}

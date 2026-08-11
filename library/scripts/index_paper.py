@@ -6,7 +6,13 @@ Usage:
 Reads `papers/<citekey>/<citekey>.pdf` or `papers/<citekey>/<citekey>.docx`,
 runs the pipeline, writes:
   papers/<citekey>/main.tex
-  papers/<citekey>/references.bib   (single-entry mirror of master.bib row)
+  papers/<citekey>/references.bib   (this paper's master.bib row, UPSERTED —
+                                     on a first index that yields the familiar
+                                     single-entry mirror; on a re-index of a
+                                     deep-indexed paper the cited works that
+                                     /library/clean-bibliography wrote there
+                                     survive untouched. See
+                                     `write_paper_bib_entry`.)
   papers/<citekey>/virgil/{virgil,notes,footnotes}.json   (initialized empty)
   logs/<citekey>/<ISO>-index.log
   logs/<citekey>/<ISO>-index.summary.md
@@ -39,17 +45,19 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    SOURCE_FORMAT_PRIORITY,
     append_inbox_item,
     bump_catalog_version,
     detect,
-    emit_bib_entry,
     lock_catalog,
     read_catalog,
     read_master_bib,
     update_master_bib_entry,
     upsert_catalog_entry,
     write_catalog,
+    write_paper_bib_entry,
 )
+from _bib_parse import BibSpliceRefused
 from pgmark import detect_print_pages
 from pgmark_validate import validate as pgmark_validate
 from extract import extract_to_json, _ocr_if_needed, _classify_pdf
@@ -59,13 +67,13 @@ from bib_auth import authenticate, assert_title_clean
 from fuse_alternate import fuse_pgmarks_into, FuseResult
 
 
-# Source-format priority. When more than one source file exists for a
-# citekey (e.g., the user dropped a .docx alongside an existing .pdf),
-# the FIRST one in this tuple wins — DOCX carries explicit structure
-# (paragraph styles, headings, tables) that the PDF pipeline has to
-# reverse-engineer with heuristics, so a Word source produces cleaner
-# output and supersedes the PDF.
-FORMAT_PRIORITY = ("tex", "docx", "pdf")
+# Source-format priority. Spelled ONCE, on the stdlib-only leaf
+# (`_tools.SOURCE_FORMAT_PRIORITY`), because the cheap local consumers —
+# `validate_bib_coherence.py`'s cover-page leg, `paper_has_holdings` — cannot
+# import THIS module: it pulls in marker / pymupdf / the whole extraction
+# stack. The two names below are the historical spellings, kept so existing
+# readers don't move.
+FORMAT_PRIORITY = SOURCE_FORMAT_PRIORITY
 SUPPORTED_EXTS = FORMAT_PRIORITY
 
 
@@ -108,7 +116,16 @@ def _slug() -> str:
 
 
 def _resync_references_bib(library: Path, citekey: str) -> bool:
-    """Re-emit papers/<citekey>/references.bib from master.bib."""
+    """Sync papers/<citekey>/references.bib's own row from master.bib.
+
+    Upserts (does NOT re-emit) via `_tools.write_paper_bib_entry` — only the
+    `<citekey>` block is touched, every other entry in the file survives
+    byte-identically. Returns False when the paper folder or the master.bib
+    row is missing.
+
+    This is the entry point both `/library/authenticate-bib` (step 6) and
+    `/library/apply-bib-edit` (step 3) call.
+    """
     paper_dir = library / "papers" / citekey
     if not paper_dir.exists():
         return False
@@ -116,9 +133,7 @@ def _resync_references_bib(library: Path, citekey: str) -> bool:
     entry = master.get(citekey)
     if not entry:
         return False
-    (paper_dir / "references.bib").write_text(
-        emit_bib_entry(citekey, entry["type"], entry["fields"])
-    )
+    write_paper_bib_entry(paper_dir, citekey, entry["type"], entry["fields"])
     return True
 
 
@@ -461,10 +476,19 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
             log(f"  bib auth FAILED: {e}")
             bib_status = {"state": "failed", "note": str(e)}
 
-    # 8. Single-entry references.bib mirror (post-auth fields).
-    (paper_dir / "references.bib").write_text(
-        emit_bib_entry(citekey, bib_entry["type"], fields)
-    )
+    # 8. Stamp this paper's own row into references.bib (post-auth fields).
+    # An UPSERT, not a re-emit: on a first index the file doesn't exist yet
+    # and this creates the familiar single-entry mirror, but a RE-index of an
+    # already-deep-indexed paper must not wipe the cited works
+    # /library/clean-bibliography put there (task 168). A malformed existing
+    # bib makes the splice unsafe — the writer refuses and leaves the file
+    # untouched; log it and finish the index rather than dying at step 8 with
+    # main.tex already on disk.
+    try:
+        write_paper_bib_entry(paper_dir, citekey, bib_entry["type"], fields)
+    except BibSpliceRefused as e:
+        log(f"  references.bib NOT updated: {e}")
+        bib_status["referencesBibSkipped"] = str(e)
 
     # 8b. Work-identity duplicate check (post-auth, pre-catalog-write).
     # This is where the DOI is strongest (authenticate() may have just filled

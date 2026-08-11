@@ -81,15 +81,21 @@ export interface AnchorIntent {
  * if it also (stale-y) carries `unanchored: true`. Only when there is no live
  * marker does intent decide free-vs-orphaned.
  *
- * @param pos    the resolved live document position of the card's marker, or
- *               `null`/`undefined` if no live marker exists.
+ * @param pos    the card's resolved LIVE-MARKER WITNESS — a doc position for the
+ *               position-keyed surfaces, or the live anchor uuid for the
+ *               uuid-keyed ones (`resolveCardAnchor().paragraphId`, which the
+ *               marginalia builder classifies on). Only its presence is read;
+ *               the value itself is never inspected. It admits both spellings
+ *               deliberately: the margin builder had to re-derive its own
+ *               orphan formula precisely because a `number`-only parameter left
+ *               it unable to call this SSOT (task 205 M1).
  * @param intent the card's declared intent (`{ unanchored?: boolean }`), or
  *               `null`/`undefined` if the card has no free-intent concept
  *               (e.g. examples — always-in-text, so a missing marker is an
  *               orphan, never free).
  */
 export function resolveAnchorState(
-  pos: number | null | undefined,
+  pos: number | string | null | undefined,
   intent: AnchorIntent | null | undefined,
 ): AnchorState {
   if (pos != null) return "anchored";

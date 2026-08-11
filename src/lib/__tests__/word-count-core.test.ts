@@ -1,8 +1,9 @@
 /**
  * Task 112 — word-count categorization SSOT.
  *
- * The Word Count panel (`computeWordCounts` via useWordCount) and the Outline
- * panel's per-section counts (`buildPerBlockCounts`/`sumIncludedWords`) gate
+ * The Word Count panel (`computeCategoryCounts` via useWordCount), the
+ * selection counter and the Outline panel's per-section counts
+ * (`buildPerBlockCounts`/`sumIncludedWords`) gate
  * on the SAME include-config, so they must bucket identically — historically
  * the outline kept a hand-copied walker that drifted (inline math landed in
  * "Math" there but in the surrounding context bucket canonically), making a
@@ -16,12 +17,17 @@ import { describe, it, expect } from "vitest";
 import type { JSONContent } from "@tiptap/react";
 import {
   ALL_CATEGORIES,
-  type Category,
+  type IncludeSet,
   buildPerBlockCounts,
-  computeWordCounts,
+  computeCategoryCounts,
   countWords,
+  includedTotals,
   sumIncludedWords,
 } from "@/lib/word-count-core";
+
+const ALL_ON = Object.fromEntries(
+  ALL_CATEGORIES.map((c) => [c, true]),
+) as IncludeSet;
 
 /** Fixture exercising every categorized construct (per the task contract):
  *  paragraph with inline math + display math + footnote + citation +
@@ -78,7 +84,7 @@ const doc: JSONContent = {
 };
 
 describe("word-count-core canonical bucketing", () => {
-  const { categories } = computeWordCounts(doc);
+  const { words: categories } = computeCategoryCounts(doc);
 
   it("buckets inline math into the surrounding context, not Math", () => {
     // paragraph inline math ("E = mc^2" → 3 tokens) counts as mainText;
@@ -100,14 +106,17 @@ describe("word-count-core canonical bucketing", () => {
   it("routes footnote content and comments; ignores citations", () => {
     expect(categories.footnotes).toBe(countWords("footnote words here"));
     expect(categories.comments).toBe(countWords("todo fix this"));
-    expect(computeWordCounts(doc).total).toBe(
+    // Everything-included is the whole document — asked through the ONE
+    // filter door, since there is no precomputed total to compare against
+    // any more (task 122).
+    expect(includedTotals(computeCategoryCounts(doc), ALL_ON).words).toBe(
       ALL_CATEGORIES.reduce((sum, cat) => sum + (categories[cat] ?? 0), 0),
     );
   });
 });
 
 describe("panel ↔ outline parity (the task-112 contract)", () => {
-  const panelCategories = computeWordCounts(doc).categories;
+  const panelCategories = computeCategoryCounts(doc).words;
   const perBlock = buildPerBlockCounts(doc);
 
   it("per-block sums match the panel's categories for EVERY category", () => {
@@ -118,16 +127,15 @@ describe("panel ↔ outline parity (the task-112 contract)", () => {
   });
 
   it("any single category toggled off filters the same words on both surfaces", () => {
-    const allOn = Object.fromEntries(
-      ALL_CATEGORIES.map((c) => [c, true]),
-    ) as Record<Category, boolean>;
     for (const off of ALL_CATEGORIES) {
-      const include = { ...allOn, [off]: false };
-      // Word Count panel's filteredTotal derivation (WordCountPanel.tsx)
-      const panelFiltered = ALL_CATEGORIES.reduce(
-        (sum, cat) => sum + (include[cat] ? (panelCategories[cat] ?? 0) : 0),
-        0,
-      );
+      const include = { ...ALL_ON, [off]: false };
+      // Word Count panel headline — through the shared filter door, which is
+      // what the panel itself now calls (it used to hand-roll this reduce, and
+      // that is exactly why its siblings couldn't share it).
+      const panelFiltered = includedTotals(
+        computeCategoryCounts(doc),
+        include,
+      ).words;
       // Outline per-section derivation over the whole doc
       const outlineFiltered = sumIncludedWords(perBlock, 0, perBlock.length, include);
       expect(outlineFiltered, `with "${off}" off`).toBe(panelFiltered);
@@ -141,9 +149,11 @@ describe("per-category character parity (the task-121 contract)", () => {
   // that drives "words", so the two stats never disagree on scope (before the
   // fix, "chars" always counted every category, incl. comments which the
   // default config excludes).
-  const { characters, characterCategories } = computeWordCounts(doc);
+  const counts = computeCategoryCounts(doc);
+  const characterCategories = counts.characters;
+  const characters = includedTotals(counts, ALL_ON).characters;
 
-  it("per-category characters sum to the whole-doc characters", () => {
+  it("per-category characters sum to the everything-included total", () => {
     const sum = ALL_CATEGORIES.reduce(
       (acc, cat) => acc + (characterCategories[cat] ?? 0),
       0,
@@ -157,23 +167,17 @@ describe("per-category character parity (the task-121 contract)", () => {
     }
   });
 
-  it("an included-set filter over chars matches the panel's filteredChars derivation", () => {
+  it("an included-set filter over chars matches the panel's headline derivation", () => {
     // Mirror of the filteredTotal parity test: toggling each category off must
     // drop the panel's filtered chars by exactly that category's characters —
-    // the same include-set that already drives the filtered words figure.
-    const allOn = Object.fromEntries(
-      ALL_CATEGORIES.map((c) => [c, true]),
-    ) as Record<Category, boolean>;
+    // the same include-set, and now literally the same call, that drives the
+    // filtered words figure.
     for (const off of ALL_CATEGORIES) {
-      const include = { ...allOn, [off]: false };
-      // WordCountPanel.tsx filteredChars derivation
-      const filteredChars = ALL_CATEGORIES.reduce(
-        (sum, cat) => sum + (include[cat] ? (characterCategories[cat] ?? 0) : 0),
-        0,
-      );
-      expect(filteredChars, `with "${off}" off`).toBe(
-        characters - (characterCategories[off] ?? 0),
-      );
+      const include = { ...ALL_ON, [off]: false };
+      expect(
+        includedTotals(counts, include).characters,
+        `with "${off}" off`,
+      ).toBe(characters - (characterCategories[off] ?? 0));
     }
   });
 });

@@ -64,6 +64,7 @@ export const SUB_METHODS = [
   "onBlocksAdded",
   "onBlocksRemoved",
   "onBlockOrderChanged",
+  "onBlockParTitlesChanged",
   "onHeadingsAdded",
   "onHeadingsRemoved",
   "onHeadingsChanged",

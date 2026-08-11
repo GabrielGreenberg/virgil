@@ -42,22 +42,33 @@ export const LinkedAnchor = Mark.create({
       linkKind: { default: "anchor", renderHTML: () => ({}) },
       linkCard: { default: "", renderHTML: () => ({}) },
       // Persistent highlight tint (Adobe-style). When set, CSS paints the
-      // anchored text yellow unconditionally — independent of the
-      // hover/selection-driven highlight states for other card kinds.
-      // Survives kind transitions so a sibling note over a highlight's
-      // range doesn't dim the existing yellow.
+      // anchored text unconditionally — independent of the hover/selection-
+      // driven highlight states for other card kinds.
+      //
+      // TWO value shapes, and the distinction is the point (task 174):
+      //  - an ACCENT SENTINEL (`accent:<token>`, from `accentTintForToken`) —
+      //    "this band is the kind's LIVE theme accent". Emitted as the data
+      //    attr ALONE; the matching globals.css rule sets `--tint-color` from
+      //    `var(--link-anchor-accent-<token>)`, so a panel-color override
+      //    repaints the band with no re-stamp and no doc walk. This is the
+      //    default highlight band — a resolved hex here would freeze theme
+      //    state into the document, which is exactly what the amber literal
+      //    did.
+      //  - a LITERAL HEX — a genuinely per-instance hue (the `#bfdbfe`
+      //    pending-AI-change / pending-AI-request bands; a future per-card
+      //    `highlightColor`). Emitted as an inline `--tint-color`, which beats
+      //    the sentinel stylesheet rule.
       tintColor: {
         default: null,
         parseHTML: (el: HTMLElement) => el.getAttribute("data-tint-color"),
         renderHTML: (attrs: Record<string, unknown>) => {
           const tint = attrs.tintColor;
           if (typeof tint !== "string" || !tint) return {};
-          // Per-instance tint paint: globals.css reads `var(--tint-color)` so
-          // each anchor wears its own hue (amber highlight, light-blue pending
-          // AI change, …) instead of the v1 hardcoded yellow. The value rides
-          // sidecar JSON, so guard the inline-style CSS sink — only a strict
-          // hex colour is interpolated; anything else emits the data attr only
-          // and falls back to the amber default. No untrusted text in `style`.
+          // The value rides sidecar JSON, so guard the inline-style CSS sink —
+          // only a strict hex colour is interpolated. A sentinel (and any
+          // unrecognised value) emits the data attr only: CSS resolves the
+          // sentinel, and anything else falls through to the amber `var()`
+          // fallback. No untrusted text in `style`.
           const safe = /^#[0-9a-fA-F]{3,8}$/.test(tint);
           return safe
             ? { "data-tint-color": tint, style: `--tint-color: ${tint}` }

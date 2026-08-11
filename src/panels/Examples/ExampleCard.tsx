@@ -9,12 +9,17 @@ import {
 } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { ExampleInfo, EditorHandle } from "@/components/Editor";
+// The `<cardKind>:<cardId>` grammar has one builder (task 202) — the panel
+// card carries the same `data-link-card` token its in-editor marker does, and
+// `parseLinkCardKey` consumers have to keep agreeing with both.
+import { linkCardKey } from "@/links/link-dom-contract";
 import {
   CardEmptyText,
   PanelCard,
   compressedBodyStyle,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
+import { registerEditorMount } from "@/lib/editor-census-probe";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -22,6 +27,7 @@ import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { BorrowedMainText } from "@/components/BorrowedMainText";
+import { useCardTier } from "@/cards/presence";
 import { useEditorRefContextOrNull } from "@/components/editor-layout/contexts/editor-ref";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useExampleContentRevision } from "@/lib/tiptap/doc-structure";
@@ -265,6 +271,9 @@ function ExampleCardEditor({
     },
   });
 
+  // Editor-census probe (__editorCensus): one live-instance tick per mount.
+  useEffect(() => registerEditorMount("example-card"), []);
+
   // Keep the embedded editor's editability in lock-step with the main doc's,
   // in case read-only mode toggles after mount (collab pen handoff). The
   // collapsed preview's forced read-only rides through `effectiveEditable`.
@@ -435,8 +444,18 @@ export function ExampleCard({
   const editorRef = editorCtx?.editorRef ?? null;
   const canEdit = !!editorRef;
 
+  // Presence tier for the COLLAPSED body (perf Wave 3; flag off ⇒ 3 ⇒ the
+  // legacy always-live branch). Policy "near-live": the collapsed expex
+  // projection needs the real NodeViews, so it stays a live read-only editor
+  // NEAR the viewport (tier 2) and becomes a static number + first-line far
+  // from it (tier 1) — the shared-IO near-zone store watches this card's own
+  // element, with a 2s demote dwell so edge jitter can't thrash the editor.
+  const cardElRef = useRef<HTMLDivElement>(null);
+  const collapsedTier = useCardTier("near-live", cardElRef);
+
   const card = (
     <PanelCard
+      ref={cardElRef}
       theme={theme}
       selected={isHaloed}
       onClick={(e) => {
@@ -458,7 +477,7 @@ export function ExampleCard({
       isCollapsed={compressed}
       onToggleExpanded={ac.onToggleExpanded}
       onHeaderActivate={ac.onHeaderActivate}
-      data-link-card={`example:${example.exampleId}`}
+      data-link-card={linkCardKey("example", example.exampleId)}
       {...(extraDataAttrs ?? {})}
       kind="example"
       canJump
@@ -484,7 +503,7 @@ export function ExampleCard({
               sanctity concern (the editor re-seeds only on the rev.examples /
               contentRev STRUCTURAL counters, never per keystroke), but it
               informs any future panel/omni virtualization decision. */}
-          {canEdit ? (
+          {canEdit && collapsedTier >= 2 ? (
             <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle }}>
               <ExampleCardEditor
                 exampleId={example.exampleId}
@@ -494,6 +513,27 @@ export function ExampleCard({
                 readOnly
                 clampLines={compressedLines}
               />
+            </div>
+          ) : canEdit ? (
+            /* FAR tier (perf Wave 3): the card is outside the viewport
+               near-zone (or the doc-open ramp hasn't reached full policy),
+               so no editor mounts — a static serif line in the expex look:
+               black native-style (N), first line of the body. Promotes to
+               the live projection when the near-zone store reports the card
+               near (IO-paced; 2s demote dwell the other way). Deliberately
+               NO font-mono — that class is the BARE-mount fallback's
+               signature and the collapsed-projection test's discriminator. */
+            <div
+              data-example-tier="static"
+              style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle, ...compressedBodyStyle(compressedLines) }}
+            >
+              <span className="mr-2">({example.number || "?"})</span>
+              {(() => {
+                const text = example.bodyText || example.items[0]?.text || "";
+                const trimmed = text.replace(/\s+/g, " ").trim();
+                if (trimmed) return trimmed;
+                return <CardEmptyText />;
+              })()}
             </div>
           ) : (
             <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle, ...compressedBodyStyle(compressedLines) }}>
@@ -621,7 +661,7 @@ export function ExampleCard({
             style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
           />
           <div
-            className="px-3 py-2 text-[11px] leading-snug text-ink-body bg-amber-50/40"
+            className="px-3 py-2 text-[11px] leading-snug text-ink-body bg-[var(--amber-50)]/40"
             onClick={(e) => e.stopPropagation()}
           >
             <p className="mb-1">

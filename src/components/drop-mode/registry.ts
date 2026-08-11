@@ -34,6 +34,28 @@ const TRANSIENT_SPECS: Record<string, DropSpec | undefined> = {
 };
 
 /**
+ * Every spec `lookupSpec` can return that is NOT a card kind's folded
+ * `CARD_REGISTRY[kind].dropSpec` — the two text-object branches plus whatever
+ * `TRANSIENT_SPECS` holds, derived from that table rather than restated.
+ *
+ * It exists because two censuses ask "every spec a drag can dispatch" and both
+ * were keeping their OWN copy of this list (`placement-reachability`,
+ * `planned-decision-guardrail`). A copy is only as complete as whoever adds the
+ * next transient spec remembers to be — and the failure is silent in exactly the
+ * way both censuses exist to prevent, so the surface states itself once here.
+ */
+export const MODULE_DROP_SPECS: ReadonlyArray<{
+  name: string;
+  spec: DropSpec;
+}> = [
+  { name: "textObjectDropSpec", spec: textObjectDropSpec },
+  { name: "textRangeMoveDropSpec", spec: textRangeMoveDropSpec },
+  ...Object.entries(TRANSIENT_SPECS).flatMap(([name, spec]) =>
+    spec ? [{ name, spec }] : [],
+  ),
+];
+
+/**
  * Resolve the drop spec for a full cardKey. **Dual-read** (AF phased flip):
  * `parseAnyKey` reads the `float:<domain>:<kind>:<id>` grammar AND the legacy
  * `<prefix>:<id>` / `textobject:<kind>:<id>` shapes.

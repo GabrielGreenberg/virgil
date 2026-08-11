@@ -3,76 +3,20 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import {
-  type WordCounts,
+  type CategoryCounts,
   CATEGORY_LABELS,
-  computeWordCounts,
+  EMPTY_CATEGORY_COUNTS,
+  computeCategoryCounts,
   countWords,
-  extractCaptionText,
 } from "@/lib/word-count-core";
+import { getSelectionCounts } from "@/hooks/useSelectionCounts";
 
-export type { WordCounts };
+export type { CategoryCounts };
 export { CATEGORY_LABELS, countWords };
 
-export interface SelectionCounts {
-  words: number;
-  characters: number;
-}
-
-function getSelectionCounts(editor: Editor): SelectionCounts | null {
-  const { from, to } = editor.state.selection;
-  if (from === to) return null;
-
-  const parts: string[] = [];
-  editor.state.doc.nodesBetween(from, to, (node, pos) => {
-    if (node.isText && node.text) {
-      // Raw LaTeX (e.g. \cite{foo}, unhandled commands) — skip, but pull
-      // any \caption{...} text out so figure/table captions still count.
-      if (node.marks.some((m) => m.type.name === "latexCommand")) {
-        for (const c of extractCaptionText(node.text)) parts.push(c);
-        return false;
-      }
-      const start = Math.max(pos, from);
-      const end = Math.min(pos + node.nodeSize, to);
-      parts.push(node.text.slice(start - pos, end - pos));
-      return false;
-    }
-    switch (node.type.name) {
-      case "citation":
-        return false;
-      case "inlineMath":
-      case "displayMath": {
-        const latex = node.attrs.latex || "";
-        if (latex) parts.push(latex);
-        return false;
-      }
-      case "footnote": {
-        const content = node.attrs.content || "";
-        if (content) parts.push(content);
-        return false;
-      }
-      case "latexComment": {
-        const text = node.textContent;
-        if (text) parts.push(text);
-        return false;
-      }
-      default:
-        return true;
-    }
-  });
-
-  const text = parts.join(" ");
-  return {
-    words: countWords(text),
-    characters: text.replace(/\s/g, "").length,
-  };
-}
-
 export function useWordCount(editor: Editor | null) {
-  const [counts, setCounts] = useState<WordCounts>({
-    total: 0, characters: 0, sentences: 0, readingTime: "0 min",
-    categories: {}, characterCategories: {},
-  });
-  const [selection, setSelection] = useState<SelectionCounts | null>(null);
+  const [counts, setCounts] = useState<CategoryCounts>(EMPTY_CATEGORY_COUNTS);
+  const [selection, setSelection] = useState<CategoryCounts | null>(null);
 
   const contentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const selTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -82,7 +26,7 @@ export function useWordCount(editor: Editor | null) {
   // here — only ever inside the debounced recount, off the keystroke path.
   const recount = useCallback(() => {
     if (!editor) return;
-    setCounts(computeWordCounts(editor.state.doc.toJSON() as JSONContent));
+    setCounts(computeCategoryCounts(editor.state.doc.toJSON() as JSONContent));
   }, [editor]);
 
   const resel = useCallback(() => {
@@ -94,7 +38,7 @@ export function useWordCount(editor: Editor | null) {
     if (!editor) return;
 
     // initial count
-    setCounts(computeWordCounts(editor.state.doc.toJSON() as JSONContent));
+    setCounts(computeCategoryCounts(editor.state.doc.toJSON() as JSONContent));
     setSelection(getSelectionCounts(editor));
 
     const onUpdate = () => {

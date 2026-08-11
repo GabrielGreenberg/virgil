@@ -20,7 +20,7 @@
  * Title editing piggybacks on the same FLOAT_WRITE_META gating.
  */
 
-import { type RefObject, useCallback, useMemo, useState } from "react";
+import { type RefObject, useCallback, useMemo, useRef, useState } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { EditorState } from "@codemirror/state";
@@ -30,6 +30,10 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useEditorChrome } from "@/components/editor-layout/chrome-context";
 import { viewToggleClasses } from "@/components/editor-layout/chrome-config";
 import { TEXT_FLOAT_BODY_PAD_CLASS } from "@/floats/float-policy";
+import {
+  findSourceNodeByUuid,
+  type SourceRange,
+} from "@/lib/float-source-range";
 import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
@@ -85,18 +89,22 @@ export function TexBlockBody({
     let code = "";
     let title: string | null = null;
     if (mainEditor) {
-      mainEditor.state.doc.descendants((node) => {
-        if (node.type.name === "texBlock" && node.attrs?.uuid === uuid) {
-          code = (node.attrs?.code as string) ?? "";
-          title = (node.attrs?.parTitle as string | null) ?? null;
-          return false;
-        }
-        return true;
-      });
+      const src = findSourceNodeByUuid(mainEditor.state.doc, uuid, "texBlock");
+      if (src) {
+        code = (src.node.attrs?.code as string) ?? "";
+        title = (src.node.attrs?.parTitle as string | null) ?? null;
+      }
     }
     return { code, title };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uuid]);
+
+  // This body owns its range ref because it drives the LOW-LEVEL
+  // `useMainTransactionSync` (its source is a string attr, not a TipTap doc, so
+  // the `useFloatMainSync` layer that would otherwise own the ref doesn't
+  // apply). Same contract: `syncFromMain` re-arms it, the hook maps it through
+  // every transaction and gates on it, and the write-back reads it as a hint.
+  const sourceRangeRef = useRef<SourceRange | null>(null);
 
   const [code, setCode] = useState(initial.code);
   const [title, setTitle] = useState<string | null>(initial.title);
@@ -107,23 +115,19 @@ export function TexBlockBody({
     (next: string) => {
       const ed = ref.current?.getEditor();
       if (!ed) return;
-      let pos: number | null = null;
-      let targetNode: PMNode | null = null;
-      ed.state.doc.descendants((n, p) => {
-        if (n.type.name === "texBlock" && n.attrs?.uuid === uuid) {
-          pos = p;
-          targetNode = n;
-          return false;
-        }
-        return true;
-      });
-      if (pos == null || !targetNode) {
+      const src = findSourceNodeByUuid(
+        ed.state.doc,
+        uuid,
+        "texBlock",
+        sourceRangeRef.current,
+      );
+      if (!src) {
         setSourceMissing(true);
         return;
       }
-      const node: PMNode = targetNode;
+      const node: PMNode = src.node;
       if ((node.attrs?.code as string) === next) return;
-      const tr = ed.state.tr.setNodeMarkup(pos, undefined, {
+      const tr = ed.state.tr.setNodeMarkup(src.start, undefined, {
         ...node.attrs,
         code: next,
       });
@@ -147,19 +151,15 @@ export function TexBlockBody({
     (next: string | null) => {
       const ed = ref.current?.getEditor();
       if (!ed) return;
-      let pos: number | null = null;
-      let targetNode: PMNode | null = null;
-      ed.state.doc.descendants((n, p) => {
-        if (n.type.name === "texBlock" && n.attrs?.uuid === uuid) {
-          pos = p;
-          targetNode = n;
-          return false;
-        }
-        return true;
-      });
-      if (pos == null || !targetNode) return;
-      const node: PMNode = targetNode;
-      const tr = ed.state.tr.setNodeMarkup(pos, undefined, {
+      const src = findSourceNodeByUuid(
+        ed.state.doc,
+        uuid,
+        "texBlock",
+        sourceRangeRef.current,
+      );
+      if (!src) return;
+      const node: PMNode = src.node;
+      const tr = ed.state.tr.setNodeMarkup(src.start, undefined, {
         ...node.attrs,
         parTitle: next,
       });
@@ -184,20 +184,21 @@ export function TexBlockBody({
   const syncFromMain = useCallback(() => {
     const ed = ref.current?.getEditor();
     if (!ed) return;
-    let found: PMNode | null = null;
-    ed.state.doc.descendants((n) => {
-      if (n.type.name === "texBlock" && n.attrs?.uuid === uuid) {
-        found = n;
-        return false;
-      }
-      return true;
-    });
-    if (!found) {
+    const src = findSourceNodeByUuid(
+      ed.state.doc,
+      uuid,
+      "texBlock",
+      sourceRangeRef.current,
+    );
+    // A null range re-opens the gate, so a disconnected float keeps looking
+    // for its source and notices an undo that restores it.
+    sourceRangeRef.current = src ? { from: src.start, to: src.end } : null;
+    if (!src) {
       setSourceMissing(true);
       return;
     }
     setSourceMissing(false);
-    const node: PMNode = found;
+    const node: PMNode = src.node;
     setTitle((node.attrs?.parTitle as string | null) ?? null);
     setCode((node.attrs?.code as string) ?? "");
   }, [ref, uuid]);
@@ -206,6 +207,7 @@ export function TexBlockBody({
     mainEditor,
     floatId: `texBlock:${uuid}`,
     onMainDocChanged: syncFromMain,
+    sourceRangeRef,
   });
 
   return (

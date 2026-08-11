@@ -46,6 +46,7 @@ import Toaster from "./Toaster";
 import TabbedLibraryPanel, { type EntryActions } from "./TabbedLibraryPanel";
 import LibrariesNavigator from "./LibrariesNavigator";
 import { queueBibReview, queueDelete, queueImportBib, queuePaperReview } from "@library/lib/bib-edit";
+import { refreshQueueState } from "@library/lib/queue-state-store";
 import { usePaneResizeHandle } from "@/lib/pane-resize";
 import {
   LEFT_DEFAULT,
@@ -559,20 +560,23 @@ export default function LibraryView({
   // a context-aware RowActions based on whether the active library is
   // Central (true delete via queue intent) or custom (local removal).
   // Skill-driven actions follow the cowork pattern: write an intent file
-  // and let the matching skill drain it.
+  // and let the matching skill drain it. Each write then pushes through
+  // `refreshQueueState()` — the queue's one notification channel — so the row
+  // dot and any OPEN reader header for that paper see the request immediately
+  // instead of waiting out a 6 s poll (or, for a kept-alive header, forever).
   const entryActions = useMemo<EntryActions>(
     () => ({
       queueDelete: (citekey: string) => {
-        void queueDelete(handle, citekey);
+        void queueDelete(handle, citekey).then(() => refreshQueueState());
       },
       queueBibReview: (citekey: string) => {
-        void queueBibReview(handle, citekey);
+        void queueBibReview(handle, citekey).then(() => refreshQueueState());
       },
       queuePaperReview: (citekey: string) => {
-        void queuePaperReview(handle, citekey);
+        void queuePaperReview(handle, citekey).then(() => refreshQueueState());
       },
       queueImportBib: (citekey: string) => {
-        void queueImportBib(handle, citekey);
+        void queueImportBib(handle, citekey).then(() => refreshQueueState());
       },
       // Custom-library memberships are tracked in registry.libraries;
       // project-library "memberships" are entries in the open doc's

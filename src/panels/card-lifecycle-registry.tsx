@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Per-CardKind lifecycle SSOT. Sister of [panel-registry.ts](./panel-registry.ts) and
- * [src/links/link-registry.ts](../links/link-registry.ts). Mirrors the
+ * Per-CardKind lifecycle SSOT. Sister of [panel-registry.ts](./panel-registry.ts).
+ * Mirrors the
  * `registerFloatBody` / `floatBodyComponent` slot pattern in
  * [src/text-objects/text-object-registry.ts](../text-objects/text-object-registry.ts).
  *
@@ -122,10 +122,12 @@ export function useCardLifecycleApi(
 /** Dev-only: verify a per-doc lifecycle registry provides EXACTLY the ops the
  *  card registry declares (`CardMeta.lifecycle` — clone / delete / bindAnchor).
  *  A declared-but-unwired op — or a wired-but-undeclared one — is silent
- *  capability drift; this makes it loud. The five all-false kinds are 4
- *  PERMANENT gaps (todo / report / report-request → Mode-A paragraph-anchored;
- *  example → origin:derived mirror, R19) plus `archive` (R18: ratified NO
- *  cascade — survives anchor-paragraph deletion). A3 DOCUMENTS the
+ *  capability drift; this makes it loud. The all-false kinds fall in two
+ *  groups: five explained gaps — 4 PERMANENT (todo / report / report-request →
+ *  Mode-A paragraph-anchored; example → origin:derived mirror, R19) plus
+ *  `archive` (R18: ratified NO cascade — survives anchor-paragraph deletion) —
+ *  and the two `origin:"system"` kinds `bib`/`error`, trivially all-false (no
+ *  user clone/delete/anchor affordance). A3 DOCUMENTS the
  *  cascade-vs-UI-delete criterion (see `CardLifecycleCapability`); it does not
  *  fill them. The E-4 criterion test pins the gaps. Call from the provider site. */
 export function assertLifecycleCoverage(registry: CardLifecycleRegistry): void {

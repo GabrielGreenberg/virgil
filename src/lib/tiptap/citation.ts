@@ -2,6 +2,15 @@ import { Node, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
 import { generateShortId } from "@/lib/uuid";
+// The link DOM contract + the `<cardKind>:<cardId>` grammar, from their one
+// speller (task 202) — a hand-built `citation:${id}` here was a second copy.
+import {
+  DATA_LINK_CARD,
+  DATA_LINK_ID,
+  DATA_LINK_KIND,
+  linkCardKey,
+} from "@/links/link-dom-contract";
+import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
 // CHIP 4a-ii: the PM→React bridge the typed-LaTeX input rules use to register
 // the citation CARD (the atom is still inserted synchronously below). Replaces
 // the `virgil-citation-create` CustomEvent. The FULL `\cite{key}` branch
@@ -86,15 +95,15 @@ export const Citation = Node.create<CitationOptions>({
       "";
     const linkCard =
       (node.attrs.linkCard as string) ||
-      (citationId ? `citation:${citationId}` : "");
+      (citationId ? linkCardKey("citation", citationId) : "");
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": CITATION_ATOM.domType,
         class: CITATION_ATOM.domClass,
-        "data-link-id": citationId,
-        "data-link-kind": "citation",
-        "data-link-card": linkCard,
+        [DATA_LINK_ID]: citationId,
+        [DATA_LINK_KIND]: "citation",
+        [DATA_LINK_CARD]: linkCard,
       }),
       (node.attrs.displayText as string) || (node.attrs.command as string) || "",
     ];
@@ -142,9 +151,11 @@ export const Citation = Node.create<CitationOptions>({
           handleTextInput(view, from, to, text) {
             // CHIP 7b: uniform collab read-only gate. PM already suppresses
             // `handleTextInput` on a non-editable view, but guard explicitly so
-            // the typed-`\cite{}` surface refuses uniformly with the other three
-            // (no synchronous atom insert when the partner holds the pen).
-            if (!view.editable) return false;
+            // the typed-`\cite{}` surface refuses uniformly with the other four
+            // typed-LaTeX surfaces (math ×2, footnote, `% ` comment) via the
+            // shared SSOT — no synchronous atom insert when the partner holds
+            // the pen.
+            if (refuseTypedInsertWhenReadOnly(view)) return false;
             // Only check on characters that could complete a citation pattern
             if (text !== "}" && text !== " " && text !== "\n") return false;
 

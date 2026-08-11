@@ -28,6 +28,16 @@ import type { CardKind, CardMeta } from "./types";
 import type { CardFloatCtx } from "./card-float-ctx";
 import type { Floatable } from "@/floats/types";
 import type { DropSpec, PlacementKind } from "@/components/drop-mode/types";
+// The Stack's card vocabulary (task 259). A runtime import, and safe as one:
+// `stack/card-kinds` has ZERO runtime imports of its own (its only import is a
+// type-only `CardKind` from `./types`, erased at compile time), so it cannot
+// re-form the `panel-registry → predicates → card-registry → …` cycle this
+// module's leaf-ness exists to prevent.
+import {
+  CARD_KIND_BY_STACK_CARD_KIND,
+  STACK_CARD_KINDS,
+  stackCardKindFor,
+} from "@/lib/stack/card-kinds";
 
 /**
  * `toFloatable` registration — mirrors the text-object registry's
@@ -228,19 +238,29 @@ export function assertContentCoverage(): void {
           `confirm. Name the user-content field(s).`,
       );
     }
-    // No declared field may appear in BOTH the counted lists and the
-    // aiPrefilled (don't-count) list — that's a contradiction the walker can't
-    // resolve.
-    const counted = new Set<string>([
-      ...(c.bodyField ? [c.bodyField] : []),
-      ...c.textFields,
-    ]);
-    for (const f of c.aiPrefilledFields) {
-      if (counted.has(f)) {
-        console.error(
-          `[CardContent] "${k}" lists "${f}" as BOTH counted and aiPrefilled ` +
-            `(don't-count) — a field can't be both.`,
-        );
+    // No declared field may appear in more than ONE list — always-counted
+    // (`bodyField`/`textFields`), never-counted (`aiPrefilledFields`), and
+    // human-only (`authorConditionalFields`) are mutually exclusive verdicts
+    // the walker can't reconcile. Checked pairwise across ALL the lists (not
+    // just counted-vs-aiPrefilled) so the author-conditional axis can't be
+    // added on top of an existing verdict and silently win or lose (task 241).
+    const seen = new Map<string, string>();
+    const lists: ReadonlyArray<readonly [string, readonly string[]]> = [
+      ["counted", [...(c.bodyField ? [c.bodyField] : []), ...c.textFields]],
+      ["aiPrefilled", c.aiPrefilledFields],
+      ["authorConditional", c.authorConditionalFields],
+    ];
+    for (const [listName, fields] of lists) {
+      for (const f of fields) {
+        const prior = seen.get(f);
+        if (prior !== undefined) {
+          console.error(
+            `[CardContent] "${k}" lists "${f}" as BOTH ${prior} and ` +
+              `${listName} — a field can carry only one verdict.`,
+          );
+        } else {
+          seen.set(f, listName);
+        }
       }
     }
   }
@@ -298,6 +318,90 @@ export function assertDropFacetCoverage(): void {
   }
 }
 
+/**
+ * Dev-only: pin the declared `stackable` facet to the Stack's real vocabulary
+ * (`STACK_CARD_KINDS`, `src/lib/stack/card-kinds.ts`), the fourth sibling of
+ * `assertMorphCoverage` / `assertContentCoverage` / `assertDropFacetCoverage`
+ * and the one drop-adjacent facet that never grew a guard (task 259).
+ *
+ * "Which card kinds the Stack carries" was hand-restated in six places that all
+ * failed SILENTLY on a mismatch — a card dropped onto the Stack fine and
+ * vanished on pull, with no compile error, no runtime error and no failing test
+ * — and the facet had already drifted: `example` declared `stackable: true`
+ * while its float snapshotted `null`, its placement list was empty and its pull
+ * branch was a documented no-op.
+ *
+ * What this pins, and why each half is here rather than in the contract test:
+ *  - `stackable ⇔ the kind is in the Stack vocabulary`. The declaration and the
+ *    union are the two mirrors furthest apart in the tree, and both are readable
+ *    at boot, so this is the pair that gets an assertion rather than a suite.
+ *  - `stackable ⇒ poppable`. The ONLY capture path is a popped float's
+ *    `snapshotForStack` (`EditorPane`'s `virgil-stack-drop` handler), so a
+ *    stackable non-poppable kind could never reach the Stack at all.
+ *  - the bridge is INJECTIVE and lands on real kinds. `CARD_KIND_BY_STACK_CARD_KIND`
+ *    is total over the vocabulary by type, but two members mapping to one
+ *    `CardKind` would silently collapse the derived inverse map — the "bib" ↔
+ *    "bibliography" rename is exactly the shape that invites it.
+ *
+ * The mechanisms a boot assertion structurally cannot reach — whether a built
+ * `Floatable`'s `snapshotForStack` is real, and whether a kind's `applyCardDrop`
+ * branch actually calls its `StackPullApi` factory — need a built float and a
+ * real drop, so they are pinned with teeth in
+ * `cards/__tests__/stack-coverage.test.ts`. Call once at boot (alongside
+ * `assertMorphCoverage`).
+ *
+ * **No allowlist, deliberately.** `assertContentCoverage`'s `allowedNull` carves
+ * out kinds that legitimately have no content — a true statement about the app.
+ * There is no true statement of the form "this kind is stackable but cannot be
+ * stacked": a kind whose round trip isn't built is declared `stackable: false`
+ * and left out of `STACK_CARD_KINDS` until it is (re-add it WITH its first real
+ * mechanism, the same rule the `src/links/` export census enforces).
+ */
+export function assertStackCoverage(): void {
+  if (process.env.NODE_ENV === "production") return;
+  for (const k of Object.keys(CARD_REGISTRY) as CardKind[]) {
+    const meta = CARD_REGISTRY[k];
+    const carried = stackCardKindFor(k);
+    if (meta.stackable !== (carried !== null)) {
+      console.error(
+        `[CardStack] "${k}" declares stackable=${meta.stackable} but the Stack ` +
+          `vocabulary ${carried !== null ? "DOES" : "does NOT"} carry it ` +
+          `(STACK_CARD_KINDS, src/lib/stack/card-kinds.ts). The declared facet ` +
+          `drifted from the mechanism: wire the kind through the vocabulary + ` +
+          `its snapshot/pull branches, or declare stackable:false.`,
+      );
+    }
+    if (meta.stackable && !meta.poppable) {
+      console.error(
+        `[CardStack] "${k}" is stackable but not poppable — the only capture ` +
+          `path is a popped float's snapshotForStack, so it could never reach ` +
+          `the Stack.`,
+      );
+    }
+  }
+  const seen = new Map<CardKind, string>();
+  for (const s of STACK_CARD_KINDS) {
+    const k = CARD_KIND_BY_STACK_CARD_KIND[s];
+    if (!(k in CARD_REGISTRY)) {
+      console.error(
+        `[CardStack] Stack kind "${s}" maps to card kind "${k}", which is not ` +
+          `in CARD_REGISTRY (a renamed CardKind still typechecks here).`,
+      );
+      continue;
+    }
+    const prior = seen.get(k);
+    if (prior !== undefined) {
+      console.error(
+        `[CardStack] Stack kinds "${prior}" and "${s}" both map to card kind ` +
+          `"${k}" — the derived CardKind→StackCardKind map keeps only one, so ` +
+          `the other's snapshots would be built under the wrong name.`,
+      );
+    } else {
+      seen.set(k, s);
+    }
+  }
+}
+
 /** Dev-only: verify the `bodyClass` declarations are panel-consistent — every
  *  card kind that shares a panel agrees on its class. `DEFAULT_PANEL_TYPOGRAPHY`
  *  derives each panel's row from a single primary kind's `bodyClass`, so a
@@ -341,7 +445,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "note",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     // A note carries a rich body + an optional user title.
-    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -350,6 +454,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // body to seed the note with); a confirm guards the body-dropping case.
     morph: { to: "highlight", lossy: true, drops: ["body", "title"] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -381,6 +486,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // (REP-F6-03) and produced a confirm that lied ("drops the body and title").
     morph: { to: "note", lossy: false, drops: [] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -406,12 +512,13 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // caller); the `\footnote` title (`\thanks` acknowledgement label) is an
     // extra user field. FN-A1-02: a title-only footnote IS content (its marker
     // delete must orphan + confirm), so `title` counts.
-    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "in-text",
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -429,12 +536,19 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // R18 ratified: NO cascade — archive survives anchor-paragraph deletion.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     // An archive snippet carries a rich body + an optional display title.
-    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose
+    // The ONLY excerpt-scoped kind (task 308): an archive snippet's body is a
+    // verbatim slice of the document — whatever the user archived, up to a whole
+    // section (heading + body + sub-sections). It therefore mounts the full
+    // main-document vocabulary, and the Archive action's delete is gated by
+    // `canMountInCardBody` so a future vocabulary gap refuses instead of
+    // destroying. Every other kind holds authored card prose → "card".
+    bodySchema: "excerpt",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -456,12 +570,13 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // `notes` textarea (TodoRow). Both must be visible to the has-content confirm
     // (SSOT §T4 3.1) — a `text:"" notes:"…"` todo is reachable, so gating on
     // `text` alone silently lost a notes-only todo on delete (task 067).
-    content: { bodyField: null, textFields: ["text", "notes"], aiPrefilledFields: [] },
+    content: { bodyField: null, textFields: ["text", "notes"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
     morph: null,
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -484,6 +599,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: null,
     morph: null,
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true, // StackCardKind: "bibliography"
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -503,12 +619,13 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // deleting the card removes the in-text `\cite{}` atom, so a citation with
     // keys must confirm (CI-F7-01 / OMNI-F7-01). The `keys` array counts when
     // non-empty.
-    content: { bodyField: null, textFields: ["keys"], aiPrefilledFields: [] },
+    content: { bodyField: null, textFields: ["keys"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "in-text",
     morph: null,
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -530,7 +647,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "revision",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     // A revision comment carries a rich body + its plain-text mirror.
-    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -550,6 +667,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // non-lossy/silent (declared on `revision-suggestion.morph`).
     morph: { to: "revision-suggestion", lossy: true, drops: ["formatting", "aiRequest"] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -567,7 +685,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     markerType: "cut",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
     // A cutter comment carries a rich body + its plain-text mirror.
-    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -579,6 +697,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // (198). The REVERSE stays silent (`cutter-suggestion.morph`).
     morph: { to: "cutter-suggestion", lossy: true, drops: ["formatting", "aiRequest"] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -594,19 +713,26 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: "cut",
     lifecycle: { clone: true, delete: true, bindAnchor: true },
-    // An AI suggestion arrives with `original_text`/`suggested_text` prefilled —
-    // those are NOT user content. Only the user-typed `user_text`/`explanation`
-    // count toward the delete-confirm.
+    // `original_text` is a read-only capture of the targeted passage on EVERY
+    // surface (the human field grid renders it `readOnly`; an AI card renders no
+    // grid at all) and is recoverable from the document → never counted.
+    // `suggested_text` is AUTHOR-CONDITIONAL (task 241): AI prefill on an AI
+    // card, but on a human card it's the typed replacement the apply path runs
+    // (`replacement = user_text or suggested_text`) — counting it only for a
+    // human record keeps "dismiss an untouched AI suggestion freely" AND stops
+    // the silent hard-delete of a human draft whose only content is that field.
     content: {
       bodyField: null,
       textFields: ["user_text", "explanation"],
-      aiPrefilledFields: ["original_text", "suggested_text"],
+      aiPrefilledFields: ["original_text"],
+      authorConditionalFields: ["suggested_text"],
     },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
     morph: { to: "cutter-comment", lossy: false, drops: [] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -622,17 +748,20 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     anchored: true,
     markerType: "revision",
     lifecycle: { clone: true, delete: true, bindAnchor: true }, // provider re-keyed suggestion→here at the flip
-    // Same as the cutter suggestion: only the user-typed fields count.
+    // Same as the cutter suggestion: `original_text` never counts, and
+    // `suggested_text` counts iff the record is human-authored (task 241).
     content: {
       bodyField: null,
       textFields: ["user_text", "explanation"],
-      aiPrefilledFields: ["original_text", "suggested_text"],
+      aiPrefilledFields: ["original_text"],
+      authorConditionalFields: ["suggested_text"],
     },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
     morph: { to: "revision-comment", lossy: false, drops: [] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: true,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -652,7 +781,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // A report carries a user-authored title + a rich body (+ its plain-text
     // mirror). REP-F7-01: a titled-but-empty-body report IS content — the title
     // must trigger the delete-confirm, so `title` counts.
-    content: { bodyField: "content", textFields: ["title", "text"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["title", "text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -661,6 +790,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // no home on the FROM (report) side, so it doesn't drop here.
     morph: { to: "report-request", lossy: true, drops: ["title", "byline"] },
     bodyClass: "sans", // R11: Report is apparatus → 12px Inter (fixes the variant=footnote serif declared-vs-rendered mismatch)
+    bodySchema: "card",
     stackable: false, // not in StackCardKind
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -679,7 +809,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // permanent: Mode-A paragraph-anchored, no cascade reaches it.
     lifecycle: { clone: false, delete: false, bindAnchor: false },
     // A report request carries a rich body + its plain-text mirror.
-    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [] },
+    content: { bodyField: "content", textFields: ["text"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     droppable: true,
     dropPlacement: "margin",
@@ -689,6 +819,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // carries across.
     morph: { to: "report", lossy: true, drops: ["aiRequest"] },
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: false,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
@@ -711,7 +842,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     // card-level user field is the panel-only display `title`. Declared so the
     // kind is never silently un-classified (coverage assertion), even though its
     // delete rides the exampleBlock TextObject lifecycle, not a panel-trash.
-    content: { bodyField: null, textFields: ["title"], aiPrefilledFields: [] },
+    content: { bodyField: null, textFields: ["title"], aiPrefilledFields: [], authorConditionalFields: [] },
     dropSpec: null,
     // NO drop button: example carries a `dropSpec` (exampleDropSpec) but it is a
     // `between-blocks` block content-MOVE, not a card re-anchor — the drop button
@@ -722,7 +853,15 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: null,
     morph: null,
     bodyClass: "borrowed", // serif, 15px — quotes document prose (fixes example 12→15)
-    stackable: true, // declared in StackCardKind (its float's snapshotForStack returns null today — R2)
+    bodySchema: "card",
+    // NOT stackable, and honestly so since task 259. It declared `true` to
+    // mirror a `StackCardKind` membership that no link of the chain honored: the
+    // float snapshotted null, the placement list was empty, and the pull branch
+    // was a documented placeholder. An example's content is the in-text
+    // `\ex{…}` block, not the sidecar ref, so a real pull has to synthesize an
+    // `exampleBlock` node; when that lands, flip this and add "example" back to
+    // STACK_CARD_KINDS — the compiler then names every other site.
+    stackable: false,
     poppable: true,
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
@@ -750,6 +889,7 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     dropPlacement: null,
     morph: null,
     bodyClass: "sans",
+    bodySchema: "card",
     stackable: false,
     poppable: false, // RATIFIED not poppable (§3.5) — the sole non-poppable kind
     toFloatable: PLACEHOLDER_TO_FLOATABLE, // never registered → stays null

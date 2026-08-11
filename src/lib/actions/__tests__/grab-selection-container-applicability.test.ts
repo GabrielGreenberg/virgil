@@ -18,7 +18,8 @@
 //   1. A selection inside a `titleField` greys Citation + the destructive /
 //      duplicate rows (matching `TITLE_FIELD_ACTIONS`); keeps footnote/note/etc.
 //   2. A selection inside a `codeBlock` greys footnote / citation / suggest-edit
-//      (matching `NON_PROSE_BLOCK_ACTIONS`).
+//      (matching `MARKLESS_BLOCK_ACTIONS` — the bucket task 148 renamed the
+//      prose-container half out of; see container-body-inline-insert.test.ts).
 //   3. A selection inside a `latexComment` greys footnote / citation /
 //      suggest-edit AND highlight (matching `MARKLESS_BLOCK_ACTIONS`).
 //   4. A prose selection leaves the full card vocabulary enabled.

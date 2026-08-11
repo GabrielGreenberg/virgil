@@ -21,7 +21,7 @@
 //   5. a `disabled` option renders inert — no handler, menu stays open.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, cleanup, fireEvent, screen } from "@testing-library/react";
+import { render, cleanup, fireEvent, screen, act } from "@testing-library/react";
 
 // panel-primitives pulls the storage barrel transitively; stub it so the
 // heavy FSA/dev backend graph doesn't load under vitest (documented
@@ -40,6 +40,22 @@ const menu = () => document.body.querySelector('[role="menu"]');
 function pointerClick(el: HTMLElement) {
   fireEvent.mouseDown(el);
   fireEvent.click(el);
+}
+
+/**
+ * Flush the `setTimeout(…, 0)` on which `useMenuDismiss` installs its
+ * capture-phase outside-mousedown listener (task 143: the "+" menu now runs on
+ * the shared `<Menu>` primitive). The defer is load-bearing — it is what keeps
+ * the click that OPENED the menu from immediately closing it — so an outside
+ * mousedown dispatched in the SAME macrotask as the open genuinely does not
+ * dismiss, here or in any of the eight other menus already on the primitive. A
+ * real pointer's next mousedown is many frames later; the contract under test
+ * is "an outside mousedown closes it", not "within the same tick".
+ */
+async function settleDismissListener() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
 }
 
 describe("HeaderAddDropdown — the '+' is a real toggle (task 094)", () => {
@@ -79,7 +95,7 @@ describe("HeaderAddDropdown — the '+' is a real toggle (task 094)", () => {
     expect(menu()).toBeNull();
   });
 
-  it("outside mousedown closes it; the trigger re-opens it", () => {
+  it("outside mousedown closes it; the trigger re-opens it", async () => {
     const { container } = render(
       <PanelHeader
         title="Bibliography"
@@ -88,10 +104,25 @@ describe("HeaderAddDropdown — the '+' is a real toggle (task 094)", () => {
     );
     fireEvent.click(trigger(container));
     expect(menu()).toBeTruthy();
+    await settleDismissListener();
     fireEvent.mouseDown(document.body);
     expect(menu()).toBeNull();
     fireEvent.click(trigger(container));
     expect(menu()).toBeTruthy();
+  });
+
+  // Task 143: what the fold onto the primitive ADDED to this menu.
+  it("Escape closes it (the hand-rolled menu had no keydown handler at all)", () => {
+    const { container } = render(
+      <PanelHeader
+        title="Bibliography"
+        onAddOptions={[{ label: "Request entry", onClick: () => {} }]}
+      />,
+    );
+    fireEvent.click(trigger(container));
+    expect(menu()).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(menu()).toBeNull();
   });
 
   it("picking an option fires its handler (with the trigger rect) and closes", () => {

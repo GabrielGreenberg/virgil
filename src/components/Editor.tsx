@@ -2,6 +2,11 @@
 
 import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
 import { pickProbeEditor } from "@/lib/active-editor-probe";
+import {
+  computeActiveParagraphId,
+  geomHoverEnabled,
+  getGeometry,
+} from "@/lib/editor-geometry";
 import { installKeystrokeLatencyProbe } from "@/lib/keystroke-latency-probe";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
@@ -11,7 +16,6 @@ import {
   jumpToLink,
   jumpToCard,
   deleteLink,
-  resolveAnchorRange,
 } from "@/links/links";
 import type { Link as VirgilLink, CardWithLinks } from "@/links/links";
 import { applyLinkedAnchorsImpl } from "@/links/_shared/apply-linked-anchors";
@@ -33,6 +37,7 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { restoreExcerptAtCaret } from "@/lib/tiptap/restore-excerpt";
 import { chromeAwareScrollMargin } from "@/lib/tiptap/chrome-scroll-margin";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
@@ -47,8 +52,14 @@ import { ActiveTextObjectProvider } from "@/text-objects/active-text-object-cont
 import { SelectionActionsMenu } from "./SelectionActionsMenu";
 import { SlashCommandPopup } from "./SlashCommandPopup";
 import { sectionFoldingPluginKey } from "@/lib/section-folding";
+import {
+  setTransientHighlights,
+  clearTransientHighlights,
+  TRANSIENT_HIGHLIGHT_COLOR,
+} from "@/lib/tiptap/transient-highlight";
 import type { HeadingTypePick } from "./HeadingTypeMenu";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { registerEditorMount } from "@/lib/editor-census-probe";
 
 /**
  * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
@@ -109,13 +120,15 @@ interface EditorProps {
   isLabelTaken?: (candidate: string, excludeLabel: string | null) => boolean;
   /** Ref to a Set of paragraph UUIDs that have marginalia anchored to them */
   anchoredUuidsRef?: React.RefObject<Set<string>>;
-  /**
-   * Currently active linked-anchor id. When set, the mark for that id is
-   * highlighted. Takes priority over `highlightText` but not `highlightRange`.
-   */
-  activeAnchorId?: string | null;
-  /** Color token used for the active anchor highlight. Defaults to yellow. */
-  activeAnchorColor?: string | null;
+  /* NOTE (task 120): `activeAnchorId` / `activeAnchorColor` used to live here
+   * and drove a third branch of `applyHighlight`. They were a migration orphan
+   * — NOTHING ever passed them (the sole `<VirgilEditor>` mount is in
+   * `EditorPane`, with no spread), so the branch was unreachable. The
+   * linked-anchor hover/selection highlight is owned by `useLinkHighlight`
+   * (the `data-link-highlight` CSS coupling on the `.linked-anchor` span) and
+   * `AnchorHighlightDecorator` (the node/atom attrs). Both props and the branch
+   * are gone; a future consumer paints through `setTransientHighlights`, which
+   * takes a per-band color for exactly this shape. */
   /** Predicate reporting whether a given texBlock uuid is currently
    *  popped out. The TexBlock NodeView consults this on every render to
    *  toggle the `.is-popped` class on its wrapper (dim the in-doc pod
@@ -245,7 +258,10 @@ export interface EditorHandle {
   getSelectedText: () => string;
   scrollToHeading: (blockIndex: number) => void;
   archiveSelection: (archiveId: string) => { content: unknown; paragraphId: string | null } | null;
-  restoreArchive: (content: unknown) => void;
+  /** Re-insert an archived excerpt at the caret. Returns whether the content
+   *  actually LANDED — a caller that drops the archive entry afterwards is
+   *  destroying the only copy, so it must not do so on a false. */
+  restoreArchive: (content: unknown) => boolean;
   getFootnotes: () => FootnoteInfo[];
   scrollToFootnote: (footnoteId: string, sourceEl?: HTMLElement | null) => void;
   updateFootnoteContent: (footnoteId: string, newContent: TipJSON) => void;
@@ -410,17 +426,13 @@ function installBusStatsProbe() {
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, texBlockIsPoppedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, texBlockIsPoppedRef, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
   highlightTextRef.current = highlightText;
   const highlightRangeRef = useRef(highlightRange);
   highlightRangeRef.current = highlightRange;
-  const activeAnchorIdRef = useRef(activeAnchorId);
-  activeAnchorIdRef.current = activeAnchorId;
-  const activeAnchorColorRef = useRef(activeAnchorColor);
-  activeAnchorColorRef.current = activeAnchorColor;
 
   const onCitationDropRef = useRef(onCitationDrop);
   onCitationDropRef.current = onCitationDrop;
@@ -432,7 +444,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // the DOM stays `contenteditable="true"` and PM continues to sync
   // native drag-to-select to `view.state.selection`. Read-only is
   // enforced separately by rejecting any transaction that touches the
-  // doc. This is what unblocks the SelectionDragHandle in the Library
+  // doc. This is what unblocks the TextObjectGrabHandle in the Library
   // Reader — `contenteditable="false"` interferes with how some browsers
   // route user-initiated selection events to PM, which made the handle
   // never appear even though the wiring was correct end-to-end.
@@ -786,6 +798,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     if (editor && onEditorReady) onEditorReady(editor);
   }, [editor, onEditorReady]);
 
+  // Editor-census probe (__editorCensus): one live-instance tick per mount.
+  useEffect(() => registerEditorMount("main"), []);
+
   // No `setEditable` sync: PM stays `editable: true` for the entire
   // lifetime of the view so native selection always works. Read-only
   // is enforced by the `readOnlyEnforcer` plugin's `filterTransaction`
@@ -821,6 +836,37 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       prev = next;
     };
     const onMove = (e: MouseEvent) => {
+      // Wave-2 C3: this ran the full-document scan below on EVERY raw
+      // mousemove, uncoalesced — the diagnosis's D1 (8.7 ms + 1,063 rect
+      // reads per move at 2,883 blocks, during drags and plain mouse travel
+      // alike). The service path asks the near-zone cache which block band
+      // contains the Y (zero per-block DOM reads), then rect-checks only
+      // THAT block's own title wrapper — innermost-first, so a nested
+      // block's wrapper can't shadow its container's. Null (engine off /
+      // nothing observed) falls through to the legacy scan; kill-switch
+      // `virgil:geom-hover = "off"`.
+      if (editor && geomHoverEnabled()) {
+        const hits = getGeometry(editor)?.blocksAtY(e.clientY);
+        if (hits) {
+          let found: Element | null = null;
+          for (const { el } of hits) {
+            const wrapper = el.querySelector(
+              ".par-title-wrapper.has-text, .list-title-wrapper.has-text",
+            );
+            // Only THIS block's own wrapper counts — a wrapper belonging to
+            // a nested child block resolves to the child's [data-uuid] and
+            // is (or was) its own hit.
+            if (!wrapper || wrapper.closest("[data-uuid]") !== el) continue;
+            const r = wrapper.getBoundingClientRect();
+            if (e.clientY >= r.top && e.clientY <= r.bottom) {
+              found = wrapper;
+              break;
+            }
+          }
+          setHovered(found);
+          return;
+        }
+      }
       const wrappers = dom.querySelectorAll(
         ".par-title-wrapper.has-text, .list-title-wrapper.has-text",
       );
@@ -867,7 +913,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const range = findTextRange(editor, oldText);
       if (!range) return false;
 
-      editor.chain().selectAll().unsetHighlight().run();
+      // Drop the transient band before splicing — a meta-only dispatch, so
+      // unlike the old select-all-then-unset-the-mark clear it adds no history
+      // entry in front of the real replacement (and can't erase a user mark).
+      clearTransientHighlights(editor.view);
 
       if (newText) {
         editor
@@ -1001,24 +1050,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const paragraphId = resolveAnchor();
       return { content: richContent, paragraphId };
     },
-    restoreArchive(content: unknown): void {
-      if (!editor) return;
-      // Insert at current cursor position
-      if (typeof content === "string") {
-        if (content.startsWith("% ")) {
-          const body = content.slice(2);
-          editor.chain().focus().insertContent({
-            type: "latexComment",
-            content: body ? [{ type: "text", text: body }] : [],
-          }).run();
-        } else {
-          editor.chain().focus().insertContent(content).run();
-        }
-      } else {
-        const doc = content as { type?: string; content?: unknown[] };
-        const nodes = doc?.content ?? [];
-        editor.chain().focus().insertContent(nodes).run();
-      }
+    restoreArchive(content: unknown): boolean {
+      // The return leg of the capture law — see `restoreExcerptAtCaret`. It
+      // reports whether the excerpt LANDED, which is what makes it safe for the
+      // caller to then drop the archive entry holding the only copy.
+      return restoreExcerptAtCaret(editor, content);
     },
     getFootnotes(): FootnoteInfo[] {
       const footnotes: FootnoteInfo[] = [];
@@ -1411,109 +1447,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       stripFootnoteNestedCitation(editor, citationId);
     },
     getActiveParagraphId(): string | null {
+      // Wave-2b C6: the whole contract (hidden-pane bail, __DOC_TOP__
+      // sentinel, ONE-posAtCoords fast path, legacy triple-walk fallback +
+      // kill-switch) lives in editor-geometry/active-block.ts.
       if (!editor) return null;
-      const scrollEl = findEditorScrollFor(editor.view.dom) as HTMLElement | null;
-      if (!scrollEl) return null;
-      const viewTop = scrollEl.scrollTop;
-      const viewBottom = viewTop + scrollEl.clientHeight;
-      const scrollRect = scrollEl.getBoundingClientRect();
-
-      // If scrolled to the very top (title area visible), return sentinel
-      if (viewTop < 10) return "__DOC_TOP__";
-
-      // Helper: get the UUID of a node (paragraph, bulletList, orderedList)
-      const getUuid = (node: any): string | null => node.attrs?.uuid || null;
-      const hasParagraphUuid = (node: any): boolean => {
-        return isAnchorableNode(node.type) && !!node.attrs?.uuid;
-      };
-
-      // Rule 1: Find the paragraph the cursor is in
-      const cursorPos = editor.state.selection.$anchor.pos;
-      let cursorUuid: string | null = null;
-      let cursorNodeTop: number | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (cursorUuid) return false;
-        if (hasParagraphUuid(node)) {
-          const end = pos + node.nodeSize;
-          if (cursorPos >= pos && cursorPos <= end) {
-            cursorUuid = getUuid(node);
-            try {
-              const coords = editor.view.coordsAtPos(pos);
-              cursorNodeTop = coords.top - scrollRect.top + scrollEl.scrollTop;
-            } catch { /* ignore */ }
-          }
-        }
-        return true;
-      });
-
-      // If cursor is in a UUID paragraph and its top is visible, use it
-      if (cursorUuid && cursorNodeTop !== null) {
-        if (cursorNodeTop >= viewTop && cursorNodeTop < viewBottom) {
-          return cursorUuid;
-        }
-      }
-
-      // If cursor wasn't in a UUID paragraph, scan nearest forward/backward
-      if (!cursorUuid) {
-        let bestUuid: string | null = null;
-        let bestDist = Infinity;
-        editor.state.doc.descendants((node, pos) => {
-          if (hasParagraphUuid(node)) {
-            const mid = pos + node.nodeSize / 2;
-            const dist = Math.abs(mid - cursorPos);
-            if (dist < bestDist) {
-              bestDist = dist;
-              bestUuid = getUuid(node);
-            }
-          }
-          return true;
-        });
-        if (bestUuid) {
-          // Check if this nearest paragraph is visible
-          // (we'll fall through to rule 2 visibility check anyway)
-          cursorUuid = bestUuid;
-        }
-      }
-
-      // Rule 2: Cursor's paragraph (or nearest) is off-screen.
-      // Find topmost paragraph whose opening lines are visible.
-      let topmostUuid: string | null = null;
-      let topmostY = Infinity;
-      editor.state.doc.descendants((node, pos) => {
-        if (hasParagraphUuid(node)) {
-          try {
-            const coords = editor.view.coordsAtPos(pos);
-            const nodeTop = coords.top - scrollRect.top + scrollEl.scrollTop;
-            // "Opening lines visible" = the top of the paragraph is in the viewport
-            if (nodeTop >= viewTop && nodeTop < viewBottom && nodeTop < topmostY) {
-              topmostY = nodeTop;
-              topmostUuid = getUuid(node);
-            }
-          } catch { /* ignore */ }
-        }
-        return true;
-      });
-      if (topmostUuid) return topmostUuid;
-
-      // Rule 3: No paragraph has opening lines visible (e.g., middle of a long paragraph).
-      // Find any paragraph that overlaps the viewport.
-      let overlappingUuid: string | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (overlappingUuid) return false;
-        if (hasParagraphUuid(node)) {
-          try {
-            const startCoords = editor.view.coordsAtPos(pos);
-            const endCoords = editor.view.coordsAtPos(pos + node.nodeSize - 1);
-            const nodeTop = startCoords.top - scrollRect.top + scrollEl.scrollTop;
-            const nodeBottom = endCoords.bottom - scrollRect.top + scrollEl.scrollTop;
-            if (nodeBottom > viewTop && nodeTop < viewBottom) {
-              overlappingUuid = getUuid(node);
-            }
-          } catch { /* ignore */ }
-        }
-        return true;
-      });
-      return overlappingUuid ?? cursorUuid;
+      return computeActiveParagraphId(editor);
     },
     scrollToParagraphId(uuid: string): void {
       if (!editor) return;
@@ -1708,29 +1646,39 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
   }), [editor]);
 
+  /**
+   * Paint the ONE live transient highlight band, or clear it.
+   *
+   * Every band here is view-only — a search hit, a diagnostics error range, a
+   * revision's quoted text. None of it is document content, so none of it is a
+   * MARK any more: the band is a ProseMirror decoration replaced by a meta-only
+   * transaction (see `lib/tiptap/transient-highlight.ts`, task 120).
+   * Consequences of the swap, all of them the point:
+   *
+   *  - **Never a history entry.** Clicking a search result used to record a
+   *    mark-add, wiping the redo branch; the clear-on-close recorded an unset
+   *    that the next Cmd+Z UNDID, resurrecting the amber band with the panel
+   *    already closed.
+   *  - **Never `docChanged`.** A hover no longer dirties the document or arms
+   *    the `useDocument` autosaver — no phantom disk write on an unedited doc.
+   *  - **Never touches the user's marks or selection.** The old painter cleared
+   *    by selecting the WHOLE doc and unsetting the highlight mark (which would
+   *    erase a real user highlight too), and had to put the SELECTION on the
+   *    range to apply the mark at all — hence the collapse-to-`prevSelection`
+   *    dance that existed only to hide the grey inactive-selection ghost. A
+   *    decoration needs no selection, so the user's own selection survives.
+   *
+   * Both surviving bands are NAVIGATIONAL — they scroll into view and land the
+   * caret at the range start, because that is the point of a jump. (The third
+   * branch, a linked-anchor hover band keyed off an `activeAnchorId` prop, was
+   * an unreachable orphan and is gone — see the prop note on `EditorProps`.)
+   */
   const applyHighlight = useCallback(() => {
     if (!editor) return;
 
-    // Remember where the user's selection is so we can restore it after the
-    // selectAll-then-unset dance. Without this, when there's nothing new to
-    // highlight (e.g. clearing on click-away), the editor's selection is left
-    // spanning the entire doc — the browser renders this as a grey
-    // "inactive selection" ghost whenever the editor is blurred.
-    const prevSelection = editor.state.selection;
-    editor.chain().selectAll().unsetHighlight().setTextSelection(prevSelection.from).run();
-
-    // Position-based highlight (from search panel) takes priority
-    const range = highlightRangeRef.current;
-    if (range) {
+    const scrollRangeIntoView = (from: number) => {
       try {
-        editor
-          .chain()
-          .setTextSelection(range)
-          .setHighlight({ color: "#fbbf2480" })
-          .setTextSelection(range.from)
-          .run();
-
-        const domAtPos = editor.view.domAtPos(range.from);
+        const domAtPos = editor.view.domAtPos(from);
         if (domAtPos.node instanceof HTMLElement || domAtPos.node.parentElement) {
           const el =
             domAtPos.node instanceof HTMLElement
@@ -1739,59 +1687,46 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           el?.scrollIntoView({ behavior: "instant", block: "center" });
         }
       } catch { /* pos out of range after edit */ }
+    };
+
+    // Position-based highlight (search panel / diagnostics) takes priority.
+    const range = highlightRangeRef.current;
+    if (range) {
+      setTransientHighlights(editor.view, [
+        { from: range.from, to: range.to, color: TRANSIENT_HIGHLIGHT_COLOR },
+      ]);
+      try {
+        editor.commands.setTextSelection(range.from);
+      } catch { /* pos out of range after edit */ }
+      scrollRangeIntoView(range.from);
       return;
     }
 
-    // Linked-anchor highlight — driven by hover/click of margin icon or card.
-    // Does NOT scroll (avoids jumping the viewport every time the user hovers).
-    const anchorId = activeAnchorIdRef.current;
-    if (anchorId) {
-      const anchorRange = resolveAnchorRange(editor, anchorId);
-      if (anchorRange) {
-        try {
-          editor
-            .chain()
-            .setTextSelection(anchorRange)
-            .setHighlight({ color: activeAnchorColorRef.current || "#fbbf2480" })
-            .setTextSelection(anchorRange.from)
-            .run();
-        } catch { /* pos out of range */ }
-        return;
-      }
+    // Text-based highlight (from revisions/suggestions).
+    const textRange = highlightTextRef.current
+      ? findTextRange(editor, highlightTextRef.current)
+      : null;
+    if (!textRange) {
+      clearTransientHighlights(editor.view);
+      return;
     }
 
-    // Text-based highlight (from revisions/suggestions)
-    if (!highlightTextRef.current) return;
-
-    const textRange = findTextRange(editor, highlightTextRef.current);
-    if (!textRange) return;
-
-    editor
-      .chain()
-      .setTextSelection(textRange)
-      .setHighlight({ color: "#fbbf2480" })
-      .setTextSelection(textRange.from)
-      .run();
-
-    const domAtPos = editor.view.domAtPos(textRange.from);
-    if (domAtPos.node instanceof HTMLElement || domAtPos.node.parentElement) {
-      const el =
-        domAtPos.node instanceof HTMLElement
-          ? domAtPos.node
-          : domAtPos.node.parentElement;
-      el?.scrollIntoView({ behavior: "instant", block: "center" });
-    }
+    setTransientHighlights(editor.view, [
+      { from: textRange.from, to: textRange.to, color: TRANSIENT_HIGHLIGHT_COLOR },
+    ]);
+    try {
+      editor.commands.setTextSelection(textRange.from);
+    } catch { /* pos out of range after edit */ }
+    scrollRangeIntoView(textRange.from);
   }, [editor]);
 
   useEffect(() => {
     highlightTextRef.current = highlightText;
     highlightRangeRef.current = highlightRange;
-    activeAnchorIdRef.current = activeAnchorId;
-    activeAnchorColorRef.current = activeAnchorColor;
     applyHighlight();
-  }, [highlightText, highlightRange, activeAnchorId, activeAnchorColor, applyHighlight]);
+  }, [highlightText, highlightRange, applyHighlight]);
 
-  // Keep the stable editor ref in sync for SelectionDragHandle and
+  // Keep the stable editor ref in sync for TextObjectGrabHandle and
   // anything else that needs a non-rerendering handle.
   useEffect(() => {
     editorInstanceRef.current = editor;

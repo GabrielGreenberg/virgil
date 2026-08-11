@@ -75,7 +75,6 @@ const baseProps = {
   bibEntries: [],
   citationStyle: "apa",
   bibPackage: "biblatex",
-  bibPath: "references.bib",
   selectedId: null,
   onSelect: () => {},
   onScrollToMarker: () => {},

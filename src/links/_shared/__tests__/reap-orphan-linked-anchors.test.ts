@@ -287,7 +287,6 @@ describe("useLinkedAnchorReconciler — load-order `ready` gate (DATA-LOSS guard
                   type: "textObject",
                   targetKind: "linkedRange",
                   textObjectIds: ["p1"],
-                  margin: { side: "right" },
                   textRange: { anchorId: "k1", textSnapshot: "kept" },
                 },
                 target: { type: "card", ref: { kind: "note", id: "card-k1" } },

@@ -34,6 +34,13 @@ export interface ConfirmDialogProps {
   tone?: ConfirmTone;
   /** Hide the cancel button — turns the dialog into a single-button info modal. */
   hideCancel?: boolean;
+  /** OPTIONAL third choice, rendered between Cancel and the primary action.
+   *  For a question with TWO real answers plus a way out — "this applied change
+   *  is still live: keep it, revert it, or cancel" (task 238) — where a plain
+   *  yes/no would force the caller to pick an answer on the user's behalf.
+   *  Omit for an ordinary confirm; both halves must be supplied together. */
+  secondaryLabel?: string;
+  onSecondary?: () => void;
   onConfirm: () => void;
   onCancel: () => void;
   /** When provided, the dialog positions near this element instead of centered. */
@@ -48,6 +55,8 @@ export default function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "default",
   hideCancel = false,
+  secondaryLabel,
+  onSecondary,
   onConfirm,
   onCancel,
   anchorRef,
@@ -67,6 +76,11 @@ export default function ConfirmDialog({
         {!hideCancel && (
           <SystemDialogButton onClick={onCancel}>
             {cancelLabel}
+          </SystemDialogButton>
+        )}
+        {secondaryLabel && onSecondary && (
+          <SystemDialogButton onClick={onSecondary}>
+            {secondaryLabel}
           </SystemDialogButton>
         )}
         <SystemDialogButton
@@ -92,13 +106,29 @@ export interface ConfirmOptions {
   hideCancel?: boolean;
 }
 
+/** A three-way question: the primary answer, a second real answer, or cancel. */
+export interface ChoiceOptions extends ConfirmOptions {
+  secondaryLabel: string;
+}
+
+/** Which button the user pressed. `confirm` maps to `true`, everything else to
+ *  `false`, which is why the boolean `confirm()` can stay unchanged. */
+export type ConfirmChoice = "confirm" | "secondary" | "cancel";
+
 interface PendingConfirm extends ConfirmOptions {
-  resolve: (value: boolean) => void;
+  secondaryLabel?: string;
+  resolve: (value: ConfirmChoice) => void;
 }
 
 /**
  * Imperative wrapper. Mount `dialog` once inside your layout; call
  * `confirm(options)` to get a promise for the user's choice.
+ *
+ * `choose(options)` is the same dialog with a THIRD button, resolving the
+ * pressed choice instead of a boolean — for a question whose two real answers
+ * both commit (task 238's keep / revert / cancel). One `pending` slot and one
+ * mounted dialog serve both, so a host that already mounts this hook gains the
+ * three-way form without a second dialog instance.
  */
 export function useConfirmDialog() {
   const [pending, setPending] = useState<PendingConfirm | null>(null);
@@ -106,17 +136,29 @@ export function useConfirmDialog() {
   const confirm = useCallback(
     (opts: ConfirmOptions): Promise<boolean> =>
       new Promise<boolean>((resolve) => {
+        setPending({ ...opts, resolve: (c) => resolve(c === "confirm") });
+      }),
+    [],
+  );
+
+  const choose = useCallback(
+    (opts: ChoiceOptions): Promise<ConfirmChoice> =>
+      new Promise<ConfirmChoice>((resolve) => {
         setPending({ ...opts, resolve });
       }),
     [],
   );
 
   const handleConfirm = useCallback(() => {
-    if (pending) pending.resolve(true);
+    if (pending) pending.resolve("confirm");
+    setPending(null);
+  }, [pending]);
+  const handleSecondary = useCallback(() => {
+    if (pending) pending.resolve("secondary");
     setPending(null);
   }, [pending]);
   const handleCancel = useCallback(() => {
-    if (pending) pending.resolve(false);
+    if (pending) pending.resolve("cancel");
     setPending(null);
   }, [pending]);
 
@@ -129,10 +171,12 @@ export function useConfirmDialog() {
       cancelLabel={pending.cancelLabel}
       tone={pending.tone}
       hideCancel={pending.hideCancel}
+      secondaryLabel={pending.secondaryLabel}
+      onSecondary={pending.secondaryLabel ? handleSecondary : undefined}
       onConfirm={handleConfirm}
       onCancel={handleCancel}
     />
   ) : null;
 
-  return { confirm, dialog };
+  return { confirm, choose, dialog };
 }

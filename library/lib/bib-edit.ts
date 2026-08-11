@@ -15,6 +15,12 @@ import {
 } from "./queue";
 import { deleteFile, readJsonFile, SUBDIRS } from "./library-storage";
 
+// READS live in `queue-state-store.ts`, not here. This module owns the WRITE
+// half (enqueue / cancel); "is X queued?" is answered for every surface from
+// the store's one polled directory scan, because a per-kind read helper called
+// from a component is exactly how the header ended up frozen on a snapshot of
+// the queue taken at mount time (task 132).
+
 /** Enqueue a manual bib edit. The skill `/apply-bib-edit` consumes this. */
 export async function queueBibEdit(
   root: FileSystemDirectoryHandle,
@@ -76,6 +82,44 @@ export async function queuePaperReview(
   return writeQueueEntry(root, entry);
 }
 
+/** Enqueue a standard index request. Shares `queue/<citekey>.json` with
+ *  `authenticate` (the bib review), so whichever was written last owns the
+ *  slot — which is why every writer re-reads the queue afterwards instead of
+ *  assuming its own write is the whole truth. */
+export async function queueIndex(
+  root: FileSystemDirectoryHandle,
+  citekey: string,
+  note?: string,
+): Promise<string> {
+  const trimmed = note?.trim() ?? "";
+  const entry: QueueEntry = {
+    kind: "index",
+    status: "requested",
+    citekey,
+    requestedAt: new Date().toISOString(),
+    attempts: 0,
+    ...(trimmed.length > 0 ? { note: trimmed } : {}),
+  };
+  return writeQueueEntry(root, entry);
+}
+
+/** Cancel a queued index request by deleting its queue file — but only while
+ *  the shared slot still holds a pending `index`. Refuses to touch an
+ *  in-flight entry or an `authenticate` that took the slot (the mirror of
+ *  `cancelBibReview`'s guard). */
+export async function cancelIndex(
+  root: FileSystemDirectoryHandle,
+  citekey: string,
+): Promise<boolean> {
+  const path = `${SUBDIRS.queue}/${citekey}.json`;
+  const cur = await readJsonFile<QueueEntry>(root, path);
+  if (!cur) return false;
+  if (cur.kind !== "index") return false;
+  if (cur.status !== "requested") return false;
+  await deleteFile(root, path);
+  return true;
+}
+
 /** Enqueue a delete request. The handling skill is expected to remove the
  *  paper folder (papers/<citekey>/, which now contains both the source
  *  file and the derived artifacts), the bib block in master.bib, and the
@@ -93,22 +137,6 @@ export async function queueDelete(
     attempts: 0,
   };
   return writeQueueEntry(root, entry);
-}
-
-/** Read a pending paper-review queue entry. Returns null if no request
- *  is queued for this citekey. */
-export async function readPaperReviewState(
-  root: FileSystemDirectoryHandle,
-  citekey: string,
-): Promise<QueueEntry | null> {
-  const cur = await readJsonFile<QueueEntry>(
-    root,
-    `${SUBDIRS.queue}/${citekey}-paperreview.json`,
-  );
-  if (!cur || cur.kind !== "paper-review" || cur.status !== "requested") {
-    return null;
-  }
-  return cur;
 }
 
 /** Cancel a queued paper-review request by deleting its queue file. */
@@ -147,21 +175,6 @@ export async function queueImportBib(
   return writeQueueEntry(root, entry);
 }
 
-/** Read a pending import-bib queue entry. Returns null if none queued. */
-export async function readImportBibState(
-  root: FileSystemDirectoryHandle,
-  citekey: string,
-): Promise<QueueEntry | null> {
-  const cur = await readJsonFile<QueueEntry>(
-    root,
-    `${SUBDIRS.queue}/${citekey}-importbib.json`,
-  );
-  if (!cur || cur.kind !== "import-bib" || cur.status !== "requested") {
-    return null;
-  }
-  return cur;
-}
-
 /** Cancel a queued import-bib request by deleting its queue file. */
 export async function cancelImportBib(
   root: FileSystemDirectoryHandle,
@@ -195,19 +208,6 @@ export async function cancelBibReview(
   return true;
 }
 
-/** Read the current AI-review state for a citekey: true if there's a
- *  pending `authenticate` request waiting to be drained. */
-export async function readBibReviewState(
-  root: FileSystemDirectoryHandle,
-  citekey: string,
-): Promise<boolean> {
-  const cur = await readJsonFile<QueueEntry>(
-    root,
-    `${SUBDIRS.queue}/${citekey}.json`,
-  );
-  return !!cur && cur.kind === "authenticate" && cur.status === "requested";
-}
-
 /** Enqueue a deep-index request. If the paper isn't indexed yet,
  *  set `alsoIndex` to queue a vanilla index first.
  *
@@ -238,32 +238,6 @@ export async function queueDeepIndex(
     ...(note && note.trim().length > 0 ? { note: note.trim() } : {}),
   };
   return writeQueueEntry(root, entry);
-}
-
-/** Read a pending deep-index queue entry. Returns null if none queued.
- *  Dual-reads the legacy `<citekey>-richindex.json` filename for one
- *  release so existing on-disk queue files keep working. */
-export async function readDeepIndexState(
-  root: FileSystemDirectoryHandle,
-  citekey: string,
-): Promise<QueueEntry | null> {
-  const primary = normalizeQueueEntry(
-    await readJsonFile<QueueEntry>(
-      root,
-      `${SUBDIRS.queue}/${citekey}-deepindex.json`,
-    ),
-  );
-  const cur = primary
-    ?? normalizeQueueEntry(
-      await readJsonFile<QueueEntry>(
-        root,
-        `${SUBDIRS.queue}/${citekey}-richindex.json`,
-      ),
-    );
-  if (!cur || cur.kind !== "deepIndex" || cur.status !== "requested") {
-    return null;
-  }
-  return cur;
 }
 
 /** Cancel a queued deep-index request. Also cancels a companion index

@@ -16,6 +16,7 @@ Returns an AuthResult that the orchestrator can write to catalog.json.
 from __future__ import annotations
 
 import html
+import os
 import re
 import subprocess
 import time
@@ -38,6 +39,17 @@ HEADERS = {
     "User-Agent": "virgil-library/0.1 (mailto:noone@example.com)",
 }
 TIMEOUT = 12
+
+# BibTeX entry type → Crossref `filter=type:` value. One table, because the
+# authentication path and the CLI's search mode must narrow Crossref the same
+# way — a `--type` that means something in one mode and nothing in the other is
+# the drift this file's CLI was added to end.
+_CROSSREF_TYPE_FILTER = {
+    "article": "journal-article",
+    "incollection": "book-chapter",
+    "inbook": "book-chapter",
+    "book": "book",
+}
 
 
 # ── Similarity (rapidfuzz preferred, fallback Levenshtein) ──────────────
@@ -1379,12 +1391,7 @@ def _authenticate_core(seed_title: str, seed_authors: list[str],
         crossref_filters["container-title"] = current_fields["booktitle"]
     elif entry_type == "article" and current_fields.get("journal"):
         crossref_filters["container-title"] = current_fields["journal"]
-    type_filter = {
-        "article": "journal-article",
-        "incollection": "book-chapter",
-        "inbook": "book-chapter",
-        "book": "book",
-    }.get(entry_type, "")
+    type_filter = _CROSSREF_TYPE_FILTER.get(entry_type, "")
     if type_filter:
         crossref_filters["type"] = type_filter
 
@@ -2063,12 +2070,327 @@ def authenticate(seed_title: str, seed_authors: list[str], current_fields: dict,
     return result
 
 
-if __name__ == "__main__":
-    import sys, json
-    if len(sys.argv) < 2:
-        print("usage: python bib_auth.py <title> [<author>]")
-        sys.exit(2)
-    title = sys.argv[1]
-    authors = sys.argv[2:]
-    result = authenticate(title, authors, {})
+# ── CLI ─────────────────────────────────────────────────────────────────
+#
+# Two modes, because the two callers want genuinely different answers and
+# the old positional-only front door could express neither (task 158):
+#
+#   SEARCH   `--query "<free text>"` — /editor/find-citation is looking for
+#            a work it does not yet have. It wants CANDIDATES. Running an
+#            authenticator against a description is meaningless: the seed
+#            title never matches, every score is low, and the verdict is
+#            `failed` even when the top hit is exactly right.
+#   AUTH     `--citekey` / `--title` — /library/authenticate-bib and
+#            /editor/answer-bib-review hold a specific entry and want the
+#            AuthResult verdict. `--citekey` reads title/authors/fields/type
+#            straight out of `master.bib`, which is what the doctrine already
+#            demands ("verbatim, with no cleanup or normalization") and what a
+#            hand-marshalled `python3 -c` snippet cannot guarantee — an
+#            apostrophe in a title breaks the shell quoting outright.
+#
+# Auth mode prints `asdict(AuthResult)` at the top level, byte-compatible with
+# the pre-158 positional invocation. Search mode prints a distinct
+# `{"mode": "search", …}` object, so the two are never confused.
+
+
+def _looks_like_library(p: Path) -> bool:
+    """Mirror `editor/scripts/library_path.py::_looks_like_library`."""
+    return (p / "master.bib").exists() and (p / ".virgil" / "catalog.json").exists()
+
+
+def _import_library_path_resolver():
+    """Return the editor silo's `library_path` module, or None.
+
+    That module is the SSOT for "where is the user's library?" (a five-step
+    chain the PWA writes into every managed folder). It lives in the OTHER
+    silo, which lands in a sibling directory under both layouts:
+
+        repo:   library/scripts/bib_auth.py  →  ../../editor/scripts/
+        synced: .virgil/scripts/library/…    →  ../editor/
+
+    Importing it beats re-deriving the chain here: a second copy is a second
+    thing to drift. When it isn't reachable we fall back to cwd/default.
+    """
+    import importlib.util
+
+    here = Path(__file__).resolve().parent
+    for candidate in (here.parent.parent / "editor" / "scripts", here.parent / "editor"):
+        mod_path = candidate / "library_path.py"
+        if not mod_path.exists():
+            continue
+        try:
+            spec = importlib.util.spec_from_file_location("_virgil_library_path", mod_path)
+            if spec is None or spec.loader is None:
+                continue
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+        except Exception:
+            continue
+    return None
+
+
+def _resolve_library(explicit: Optional[str]) -> tuple[Optional[Path], str]:
+    """Resolve the library root. Returns `(path, error_message)`."""
+    if explicit:
+        p = Path(explicit).expanduser().resolve()
+        if _looks_like_library(p):
+            return p, ""
+        return None, (
+            f"--library {p} is not a Virgil library "
+            "(needs master.bib + .virgil/catalog.json)"
+        )
+    cwd = Path.cwd().resolve()
+    if _looks_like_library(cwd):
+        return cwd, ""
+    # Honored here as well as inside the delegate, so the env var works — and
+    # the error message below stays true — even where the editor silo isn't
+    # reachable (a library-only checkout, a partially-synced folder).
+    env = os.environ.get("VIRGIL_LIBRARY_ROOT", "").strip()
+    if env:
+        p = Path(env).expanduser().resolve()
+        if _looks_like_library(p):
+            return p, ""
+        return None, f"VIRGIL_LIBRARY_ROOT={p} is not a Virgil library"
+    mod = _import_library_path_resolver()
+    if mod is not None:
+        try:
+            return mod.resolve_library(None), ""
+        except Exception as e:  # LibraryNotFound carries actionable text
+            return None, str(e)
+    home = (Path.home() / "Virgil-Library").resolve()
+    if _looks_like_library(home):
+        return home, ""
+    return None, (
+        "No library found. Pass --library <abs-path>, run from the library "
+        "root, or set VIRGIL_LIBRARY_ROOT."
+    )
+
+
+def _seed_from_master_bib(library: Path, citekey: str) -> tuple[Optional[dict], str]:
+    """Read `citekey`'s entry out of `master.bib`, verbatim.
+
+    Returns `(entry, error_message)` where `entry` is the SSOT parser's dict
+    (`{"citekey", "type", "fields"}`).
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        from _bib_parse import read_master_bib
+    except ImportError as e:
+        return None, f"cannot import the bib parser: {e}"
+    master = library / "master.bib"
+    if not master.exists():
+        return None, f"no master.bib at {master}"
+    entries = read_master_bib(master)
+    entry = entries.get(citekey)
+    if entry is None:
+        return None, f"{citekey} is not in {master}"
+    return entry, ""
+
+
+def _split_bib_authors(author_field: str) -> list[str]:
+    return [a.strip() for a in (author_field or "").split(" and ") if a.strip()]
+
+
+def _search_candidates(query: str, *, entry_type: str = "", author: str = "",
+                       limit: int = 5) -> list[dict]:
+    """Multi-source candidate search for a free-text query.
+
+    Not an authentication: every engine is asked, the records are scored by
+    title similarity against the query, and the best few are returned for the
+    caller to verify against its own acceptance bar. Books additionally
+    consult OpenLibrary + Google Books, and `--type` narrows Crossref the same
+    way `_authenticate_core` does — so the flag means the same thing in both
+    modes rather than being decorative in one of them.
+    """
+    crossref_filters = {}
+    type_filter = _CROSSREF_TYPE_FILTER.get(entry_type, "")
+    if type_filter:
+        crossref_filters["type"] = type_filter
+    engines: list[tuple[str, Any]] = [
+        ("crossref", lambda q: crossref_search(q, author,
+                                               filters=crossref_filters or None)),
+        ("openalex", openalex_search),
+        ("semanticscholar", semantic_scholar_search),
+        ("arxiv", arxiv_search),
+    ]
+    if entry_type in ("book", "incollection", "inbook"):
+        engines = [
+            ("google-books", lambda q: _google_books_search(q, author)),
+            ("openlibrary", lambda q: _openlibrary_title_search(q, author)),
+        ] + engines
+
+    seen: set[str] = set()
+    out: list[dict] = []
+    for name, fn in engines:
+        try:
+            recs = fn(query)
+        except Exception:
+            recs = []
+        for rec in recs:
+            # `raw` is the untouched upstream payload — many KB per record,
+            # and nothing downstream reads it from the CLI.
+            rec = {k: v for k, v in rec.items() if k != "raw"}
+            key = (rec.get("doi") or "").lower() or _norm_title(rec.get("title", ""))
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            rec["source"] = rec.get("source") or name
+            rec["score"] = round(_ratio(query, rec.get("title", "")), 3)
+            out.append(rec)
+        time.sleep(0.2)
+    out.sort(key=lambda r: r["score"], reverse=True)
+    return out[:limit]
+
+
+def _norm_title(s: str) -> str:
+    return re.sub(r"[^\w\s]", "", re.sub(r"\s+", " ", (s or "").lower())).strip()
+
+
+def _build_arg_parser():
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        prog="bib_auth.py",
+        description=(
+            "Authenticate a bibliography entry against Crossref / OpenAlex / "
+            "Semantic Scholar / arXiv (and OpenLibrary + Google Books for "
+            "books), or search those sources for candidate works."
+        ),
+        epilog=(
+            "examples:\n"
+            "  bib_auth.py --query \"marginalia in medieval manuscripts\"\n"
+            "  bib_auth.py --citekey genette1997 --library ~/Virgil-Library\n"
+            "  bib_auth.py --title \"Paratexts\" --author \"Genette, G.\" --type book\n"
+            "  bib_auth.py \"Paratexts\" \"Genette, G.\"      # legacy positional form\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ap.add_argument("title_pos", nargs="?", metavar="TITLE",
+                    help="Legacy positional title (equivalent to --title).")
+    ap.add_argument("author_pos", nargs="*", metavar="AUTHOR",
+                    help="Legacy positional authors (equivalent to --author).")
+    ap.add_argument("--query", help="SEARCH mode: free-text description of the "
+                                    "work; prints ranked candidates, not a verdict.")
+    ap.add_argument("--title", help="Title seed for authentication.")
+    ap.add_argument("--author", action="append", default=[],
+                    help="Author seed; repeatable, or one \" and \"-joined field.")
+    ap.add_argument("--citekey", help="Read title/authors/fields/type verbatim "
+                                      "from the library's master.bib.")
+    ap.add_argument("--fields-file", help="JSON object of the entry's CURRENT "
+                                          "bib fields (doi, journal, isbn, …). "
+                                          "Implied by --citekey.")
+    ap.add_argument("--type", dest="entry_type", default="",
+                    help="BibTeX entry type (article, book, incollection, …).")
+    ap.add_argument("--library", help="Library root. Defaults to cwd when it is "
+                                      "one, else the editor library-path chain.")
+    ap.add_argument("--limit", type=int, default=5,
+                    help="SEARCH mode: max candidates to print (default 5).")
+    return ap
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    import json
+    import sys
+
+    ap = _build_arg_parser()
+    args = ap.parse_args(argv)
+
+    authors: list[str] = []
+    for a in args.author:
+        authors.extend(_split_bib_authors(a))
+
+    # SEARCH mode — discovery, no verdict.
+    if args.query and not args.citekey and not args.title:
+        cands = _search_candidates(
+            args.query,
+            entry_type=args.entry_type,
+            author=", ".join(authors[:2]),
+            limit=max(1, args.limit),
+        )
+        print(json.dumps({
+            "mode": "search",
+            "query": args.query,
+            "entry_type": args.entry_type,
+            "candidates": cands,
+        }, indent=2))
+        return 0
+
+    # AUTH mode — seed from master.bib and/or the explicit flags.
+    fields: dict[str, str] = {}
+    entry_type = args.entry_type
+    title = args.title or args.title_pos or args.query or ""
+    if args.author_pos:
+        authors.extend(_split_bib_authors(" and ".join(args.author_pos)))
+
+    library: Optional[Path] = None
+    if args.citekey:
+        library, err = _resolve_library(args.library)
+        if library is None:
+            print(err, file=sys.stderr)
+            return 2
+        entry, err = _seed_from_master_bib(library, args.citekey)
+        if entry is None:
+            print(err, file=sys.stderr)
+            return 1
+        fields = dict(entry.get("fields") or {})
+        entry_type = entry_type or entry.get("type", "")
+    elif args.library:
+        # A library was named without a citekey — validate it anyway so a typo
+        # surfaces here rather than as a silently un-recovered authentication.
+        library, err = _resolve_library(args.library)
+        if library is None:
+            print(err, file=sys.stderr)
+            return 2
+
+    # The entry's CURRENT fields are not decoration: the DOI fast-path, the
+    # arXiv-ID fast-path, the ISBN lookup, the SEP short-circuit and the
+    # journal+author+year recovery all read them. Without a door for them, a
+    # caller holding an entry that ISN'T in master.bib — a work cited by the
+    # user's paper, which is /editor/answer-bib-review's whole job — could
+    # only ever get the title-fuzz search while the doc promised the
+    # fast-paths. Merged OVER the bib entry, so an explicit file wins the same
+    # way --title and --type do.
+    if args.fields_file:
+        try:
+            raw = json.loads(
+                Path(args.fields_file).expanduser().read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"--fields-file {args.fields_file}: {e}", file=sys.stderr)
+            return 2
+        if not isinstance(raw, dict):
+            print("--fields-file must contain a JSON object of bib fields",
+                  file=sys.stderr)
+            return 2
+        fields.update({str(k): str(v) for k, v in raw.items()})
+
+    # Whatever the source, an unstated title/author falls back to the fields —
+    # verbatim, which is the whole point of not hand-marshalling them.
+    title = title or fields.get("title", "")
+    if not authors:
+        authors = _split_bib_authors(fields.get("author", ""))
+
+    if not title:
+        ap.print_usage(sys.stderr)
+        print("nothing to look up: pass --query, --title, --citekey, "
+              "--fields-file, or a positional title", file=sys.stderr)
+        return 2
+
+    result = authenticate(
+        title, authors, fields,
+        entry_type=entry_type,
+        # The recovery chain reads papers/<citekey>/ — only meaningful for an
+        # indexed library paper, so it rides on the citekey, not on --library.
+        library=library if args.citekey else None,
+        citekey=args.citekey,
+    )
     print(json.dumps(asdict(result), indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(main())

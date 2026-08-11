@@ -240,15 +240,73 @@ export function dataLinkCardTokenForLegacyMarkKind(kind: string): string | null 
   return legacyDataKindForCardKind(cardKind);
 }
 
+/** Prefix of an ACCENT-SENTINEL tint value (see `accentTintForToken`). */
+export const ACCENT_TINT_PREFIX = "accent:";
+
+/**
+ * Build the accent-sentinel tint for an in-text accent `token` — the value a
+ * `linkedAnchor.tintColor` carries when its band is the kind's LIVE theme
+ * accent rather than a per-instance hue.
+ *
+ * Why a sentinel and not a resolved hex (task 174): `tintColor` is a DOCUMENT
+ * attribute, so a resolved hex freezes theme state into the user's prose. The
+ * highlight band shipped `"#fbbf24"` — byte-identical to
+ * `DEFAULT_PANEL_COLORS.highlight`, i.e. copied out of the theme and then
+ * frozen — so overriding the Highlight panel color repainted the card, the
+ * float and the in-text active ring (all of which read the live
+ * `--link-anchor-accent-highlight` var stamped by `EditorLayout`) while the
+ * band itself, the ENTIRE in-text identity of a highlight, stayed amber. That
+ * is an unguarded escape from the #27 invariant: an in-text anchor's color
+ * derives from the same accent source as its card outline.
+ *
+ * The sentinel is not a color, so `linkedAnchor.renderHTML` emits it as the
+ * `data-tint-color` attr WITHOUT an inline `--tint-color` (no untrusted text in
+ * `style`), and one static globals.css rule per token resolves it:
+ *
+ *   .linked-anchor[data-tint-color="accent:highlight"] {
+ *     --tint-color: var(--link-anchor-accent-highlight, #fbbf24);
+ *   }
+ *
+ * so the band follows a panel-color override LIVE — no re-stamp pass, no doc
+ * walk on a color change, no keystroke-sanctity exposure. A per-instance hue
+ * (the `#bfdbfe` pending-AI bands; a future per-card `highlightColor`) still
+ * rides the attr as a literal hex and wins via the inline var.
+ *
+ * The token comes from `LEGACY_TOKEN_CROSSWALK`, the same table
+ * `IN_TEXT_ANCHOR_ACCENTS` derives the CSS var name from, so the sentinel can
+ * never name a token the accent map doesn't stamp.
+ */
+export function accentTintForToken(token: string): string {
+  return `${ACCENT_TINT_PREFIX}${token}`;
+}
+
+/** The accent token an accent-sentinel tint names, or `null` for a literal hue
+ *  (a per-instance hex) — the inverse of `accentTintForToken`. */
+export function accentTokenFromTint(tint: string | null | undefined): string | null {
+  if (typeof tint !== "string" || !tint.startsWith(ACCENT_TINT_PREFIX)) return null;
+  const token = tint.slice(ACCENT_TINT_PREFIX.length);
+  return token || null;
+}
+
 /**
  * The persistent highlight TINT a `linkedAnchor` of the given kind paints, or
  * `null` for every non-highlight kind. The SINGLE source for the Adobe-style
- * yellow band: the three create sites (the drag-handle Highlight action, the
+ * highlight band: the three create sites (the drag-handle Highlight action, the
  * EditorPane highlight action, the notes-host Highlight) AND the once-per-doc
  * reload re-stamp all derive the tint from HERE, so a highlight's tint is
  * byte-identical on create and on reload — closing the "highlight tint vanishes
  * on reload" class (the serializer drops `data-tint-color`, so reload must
  * reconstruct it from the kind, not from the `.tex`).
+ *
+ * The highlight value is an ACCENT SENTINEL, not a hex — see
+ * `accentTintForToken`. No migration is needed for the pre-174 frozen
+ * `"#fbbf24"`, and for a stronger reason than "the reload heals it": the attr
+ * has **no on-disk carrier at all** — the serializer emits a bare `\vlid{id}`
+ * and the parser rebuilds the mark with `tintColor: null` — so the old value
+ * can only exist in a LIVE session's memory. Every doc open reconstructs the
+ * tint from HERE (`reapply-mode-b-anchors`), and `applyLinkedAnchors` re-stamps
+ * any mark whose live `tintColor` disagrees, so a session that spans the code
+ * change converges on its next load.
  *
  * `kind` is the legacy `linkedAnchor.kind` namespace ("highlight" / "note" /
  * "revision" / …). A future per-card `highlightColor` override is layered by the
@@ -267,7 +325,16 @@ export function defaultTintForLinkedAnchorKind(kind: string): string | null {
   // marks clear on flag-off, applied marks clear on Keep/Revert) mapped to the
   // identical hex so the two look the same (Gabriel, 2026-07-03).
   if (kind === "pending-ai-request") return "#bfdbfe";
-  return kind === "highlight" ? "#fbbf24" : null;
+  // `highlight`: the theme-derived band. The token is read off the crosswalk
+  // (not written as a literal) so the sentinel, the `data-link-card` selector
+  // and the `--link-anchor-accent-<token>` var can never name three different
+  // strings. Non-null by construction — `highlight.legacyDataKind` is
+  // `"highlight"`, pinned by the dev assertion below.
+  if (kind === "highlight") {
+    const token = LEGACY_TOKEN_CROSSWALK.highlight.legacyDataKind;
+    return token ? accentTintForToken(token) : null;
+  }
+  return null;
 }
 
 if (process.env.NODE_ENV !== "production") {
@@ -281,6 +348,16 @@ if (process.env.NODE_ENV !== "production") {
         `unified onto the spine kind so updateLinkedAnchorCard + the render fallback agree; ` +
         `"comment:" is kept only as a legacy CSS alias), ` +
         `got "${LEGACY_TOKEN_CROSSWALK["revision-comment"].legacyDataKind}".`,
+    );
+  }
+  if (LEGACY_TOKEN_CROSSWALK.highlight.legacyDataKind !== "highlight") {
+    console.error(
+      `[legacy-token-crosswalk] highlight.legacyDataKind must be "highlight" — the ` +
+        `tint SSOT builds the band's accent sentinel from it ` +
+        `("${accentTintForToken("highlight")}"), and globals.css resolves that exact ` +
+        `attribute value to var(--link-anchor-accent-highlight). A changed token ` +
+        `silently un-paints every highlight band, got ` +
+        `"${LEGACY_TOKEN_CROSSWALK.highlight.legacyDataKind}".`,
     );
   }
   if (LEGACY_TOKEN_CROSSWALK["cutter-comment"].cssToken !== "cut") {

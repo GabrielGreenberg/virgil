@@ -222,8 +222,32 @@ function _attach() {
 
   // Horizontal WCO insets are viewport-relative, so a plain resize can change
   // them even without a geometrychange.
-  window.addEventListener("resize", _onChange);
-  cleanups.push(() => window.removeEventListener("resize", _onChange));
+  //
+  // This is the ONE geometry follower that deliberately stays LIVE through a
+  // continuous layout gesture (task 317): the WCO title-bar strip is native
+  // window chrome with a real visual obligation every frame, so parking it
+  // would leave the strip's inset stale against the moving system buttons.
+  // What it does NOT get to be is un-coalesced — `_onChange` notifies through
+  // `useSyncExternalStore` at `EditorLayout`, i.e. an APP-ROOT re-render, and
+  // `insets.right` mixes two independently-updated sources
+  // (`getTitlebarAreaRect()` and `window.innerWidth`), so a one-frame lag
+  // between them makes `right` oscillate and defeats the `_equal` bail. RAF
+  // coalescing bounds that to at most one root render per frame. The
+  // `geometrychange` and display-mode paths stay synchronous — they're
+  // discrete, rare, and must land immediately.
+  let resizeRaf = 0;
+  const onResize = () => {
+    if (resizeRaf) return;
+    resizeRaf = requestAnimationFrame(() => {
+      resizeRaf = 0;
+      _onChange();
+    });
+  };
+  window.addEventListener("resize", onResize);
+  cleanups.push(() => {
+    window.removeEventListener("resize", onResize);
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+  });
 
   _teardown = () => {
     cleanups.forEach((c) => c());

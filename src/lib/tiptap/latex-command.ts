@@ -2,6 +2,71 @@ import { Mark, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { COMMAND_MAP } from "./commands";
+import { LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
+
+/**
+ * BYTE-LITERAL raw LaTeX — the verbatim carrier (task 264).
+ *
+ * Its sibling `latexCommand` below means "raw LaTeX the editor doesn't model,"
+ * and its serializer path deliberately smart-quotes so a mark TipTap inherited
+ * onto stray prose still round-trips to valid `.tex`. `latexVerbatim` means
+ * something stricter: "these bytes are literal" — an inline `\verb<delim>…`
+ * run, or a `VERBATIM_ENVS_FULL` environment with no modeled node. Every
+ * serializer returns this text EXACTLY as parsed; running the prose
+ * typographic reverse-map over it corrupts the user's source (it rewrote
+ * `x = "hi"` inside a `lstlisting` to ``x = ``hi''`` on the first save).
+ *
+ * Rationale for a separate mark rather than an attr on `latexCommand`, plus
+ * the carrier contract, live with the name in `latex-lexer.ts`.
+ *
+ * It renders with the same grey-monospace `latex-cmd` class as its sibling —
+ * this is a serialization distinction, not a visual one — plus a
+ * `latex-verbatim` hook for any future styling.
+ */
+export const LatexVerbatimMark = Mark.create({
+  name: LATEX_VERBATIM_MARK,
+
+  // The TYPE-TIME half of the same law. TipTap's INPUT-rule runner refuses to
+  // fire on text adjacent to a mark whose spec is `code` — the same gate that
+  // already protects inline code and code blocks. Without it, SmartQuotes
+  // would turn a `"` typed inside a `\verb|…|` run or a listing body into a
+  // curly `“`, which this mark's byte-literal serializer then writes straight
+  // into the `.tex`: the identical corruption arriving through the keyboard
+  // instead of through save. (Its `latexCommand` sibling is deliberately NOT
+  // `code` — smartening typed quotes there is what keeps an inherited stray
+  // mark round-tripping to valid `.tex`.)
+  //
+  // NOTE the gate is input-rules ONLY: TipTap's paste-rule runner tests the
+  // NODE spec and never inspects marks, so a future `addPasteRules` typographic
+  // transform would NOT be declined here and would need its own guard. Virgil
+  // registers no paste rules today.
+  code: true,
+
+  // NOT inclusive: text typed at the trailing edge must NOT inherit the
+  // carrier. `code: true` above removes the type-time smart-quote net, and
+  // this mark's serializer removes the save-time one, so inherited stray prose
+  // would emit raw `"`/`--` into the `.tex` with nothing to normalize it —
+  // strictly worse than the `latexCommand` inheritance this carrier was split
+  // out of. Interior text keeps the mark either way; only the boundary
+  // changes, and the boundary of a `\verb|…|` run is its closing delimiter, so
+  // extending it was never right.
+  inclusive: false,
+
+  parseHTML() {
+    return [{ tag: "span[data-latex-verbatim]" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-latex-verbatim": "",
+        class: "latex-cmd latex-verbatim",
+      }),
+      0,
+    ];
+  },
+});
 
 /** Grey-monospace styling for unhandled LaTeX commands, plus Enter-to-execute. */
 export const LatexCommandMark = Mark.create({
@@ -57,24 +122,67 @@ export const LatexCommandMark = Mark.create({
       return i - start;
     }
 
+    /** Paint `.latex-cmd` inline decos over the bare-text commands in one
+     *  text node (skips text already carrying the latexCommand mark, which
+     *  renders its own `.latex-cmd` span). Returns how many decos it added. */
+    function decorateTextNode(
+      decos: Decoration[],
+      node: any,
+      pos: number,
+    ): number {
+      if (!node.isText || !node.text) return 0;
+      if (node.marks.some((m: any) => m.type === markType)) return 0;
+      const text = node.text as string;
+      let added = 0;
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] !== "\\") continue;
+        // Skip \\ (double backslash)
+        if (i > 0 && text[i - 1] === "\\") { i++; continue; }
+        const len = matchCommandLength(text, i);
+        if (len > 0) {
+          decos.push(Decoration.inline(pos + i, pos + i + len, { class: "latex-cmd" }));
+          added++;
+          i += len - 1; // advance past the match
+        }
+      }
+      return added;
+    }
+
     function buildDecorations(doc: any): DecorationSet {
       const decos: Decoration[] = [];
       doc.descendants((node: any, pos: number) => {
-        if (!node.isText || !node.text) return;
-        // Skip if the entire node already has the latexCommand mark
-        if (node.marks.some((m: any) => m.type === markType)) return;
-
-        const text = node.text as string;
-        for (let i = 0; i < text.length; i++) {
-          if (text[i] !== "\\") continue;
-          // Skip \\ (double backslash)
-          if (i > 0 && text[i - 1] === "\\") { i++; continue; }
-          const len = matchCommandLength(text, i);
-          if (len > 0) {
-            decos.push(Decoration.inline(pos + i, pos + i + len, { class: "latex-cmd" }));
-            i += len - 1; // advance past the match
+        if (node.type?.name === "paragraph") {
+          // Per-paragraph pass: paint the inline decos AND decide whether the
+          // paragraph is "command-only" — the DOM-semantics twin of the old
+          // `p:has(> .latex-cmd:first-child:last-child)` rhythm selector
+          // (perf Wave 0, plan P5.1): exactly ONE element child, and it is a
+          // `.latex-cmd` span. Bare unmarked text renders as text nodes (not
+          // elements); each inline deco, each latexCommand-marked text run,
+          // each other-marked run, and each inline atom renders one element.
+          let cmdElements = 0;
+          let otherElements = 0;
+          node.forEach((child: any, offset: number) => {
+            if (child.isText) {
+              if (child.marks.some((m: any) => m.type === markType)) {
+                cmdElements++;
+              } else if (child.marks.length > 0) {
+                otherElements++;
+              } else {
+                cmdElements += decorateTextNode(decos, child, pos + 1 + offset);
+              }
+            } else {
+              otherElements++;
+            }
+          });
+          if (cmdElements === 1 && otherElements === 0) {
+            decos.push(
+              Decoration.node(pos, pos + node.nodeSize, { class: "p-cmd-only" }),
+            );
           }
+          return false; // children handled above
         }
+        decorateTextNode(decos, node, pos);
+        return undefined;
       });
       return DecorationSet.create(doc, decos);
     }

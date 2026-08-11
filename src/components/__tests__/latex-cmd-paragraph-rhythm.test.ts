@@ -43,23 +43,35 @@ function blockFor(selector: string): string {
   return css.slice(open + 1, close);
 }
 
-const COMMAND_ONLY_RUN =
-  ".tiptap p:has(> .latex-cmd:first-child:last-child) + p:has(> .latex-cmd:first-child:last-child)";
+// Perf Wave 0 (plan P5.1): the command-only paragraph is now flagged by the
+// latex-command plugin as a `p-cmd-only` NODE DECORATION (same DOM semantics
+// the old `p:has(> .latex-cmd:first-child:last-child)` selector had — exactly
+// one element child and it's the `.latex-cmd` span), so the rhythm rule is
+// class-based and the `:has()` invalidation cost is gone. The #56 teeth are
+// unchanged: no base command-only rule may touch the typed line's own
+// baseline; the run-tightening lives on the sibling rule's margin-top.
+const COMMAND_ONLY_RUN = ".tiptap p.p-cmd-only + p.p-cmd-only";
 
 describe("BUG #56 — lone-`\\` paragraph keeps its own rhythm", () => {
-  it("there is NO base command-only `:has()` rule that overrides line-height / margin-bottom", () => {
-    // The ONLY occurrence of the command-only selector at the start of a rule
-    // must be the adjacent-sibling (run) rule. A base `selector {` (one NOT
-    // immediately followed by ` + p:has(`) is exactly the regression.
-    const baseRulePattern = new RegExp(
-      // `.tiptap p:has(...)` followed by optional whitespace then `{`
-      // i.e. a standalone base rule (no ` + p:has(` sibling combinator).
-      "\\.tiptap p:has\\(> \\.latex-cmd:first-child:last-child\\)\\s*\\{",
-    );
+  it("there is NO base command-only rule that overrides line-height / margin-bottom", () => {
+    // The ONLY occurrence of the command-only class at the start of a rule
+    // must be the adjacent-sibling (run) rule. A standalone base rule
+    // (`.tiptap p.p-cmd-only {` with no sibling combinator) is exactly the
+    // regression — and so is a resurrected `:has()` form.
+    const baseRulePattern = /\.tiptap p\.p-cmd-only\s*\{/;
     expect(
       baseRulePattern.test(css),
-      "a standalone base `.tiptap p:has(> .latex-cmd:first-child:last-child) { … }` rule " +
-        "is back — it paints on the lone-`\\` typed paragraph and shifts its own baseline (#56)",
+      "a standalone base `.tiptap p.p-cmd-only { … }` rule is back — it " +
+        "paints on the lone-`\\` typed paragraph and shifts its own baseline (#56)",
+    ).toBe(false);
+    // Comment-stripped so the historical mentions in the BUG #56 prose don't
+    // false-positive; only a LIVE selector may match.
+    const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const hasRulePattern = /\.latex-cmd:first-child:last-child\)[^{]*\{/;
+    expect(
+      hasRulePattern.test(cssNoComments),
+      "the `:has(> .latex-cmd…)` selector form is back — perf Wave 0 replaced " +
+        "it with the plugin-painted p-cmd-only class (plan P5.1)",
     ).toBe(false);
   });
 
@@ -74,8 +86,8 @@ describe("BUG #56 — lone-`\\` paragraph keeps its own rhythm", () => {
 
   it("no command-only rule anywhere sets line-height (the #56 baseline self-shift)", () => {
     // Belt-and-suspenders: scan every rule whose selector mentions the
-    // command-only token and assert none reintroduce a line-height override.
-    const selectorRe = /\.tiptap p:has\(> \.latex-cmd:first-child:last-child\)[^{]*\{([^}]*)\}/g;
+    // command-only class and assert none reintroduce a line-height override.
+    const selectorRe = /\.tiptap p\.p-cmd-only[^{]*\{([^}]*)\}/g;
     let m: RegExpExecArray | null;
     let count = 0;
     while ((m = selectorRe.exec(css)) !== null) {

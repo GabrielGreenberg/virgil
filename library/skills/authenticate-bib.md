@@ -85,29 +85,88 @@ directory).
 
 1. **Read the citekey's current fields** from `master.bib`.
 
-2. **Run the helper.** Pass `library` and `citekey` so the recovery chain
-   can read the indexed paper at `papers/<citekey>/main.tex`. The Python
-   pipeline lives at `.virgil/scripts/library/`.
+2. **Coherence pre-flight — ADVISORY, never a gate.** Run the cross-field
+   checker *before* the network search, so an internally-incoherent entry is
+   known while you are still choosing the seed. That shape is what PRODUCES
+   the failure this skill is most often called to repair: in the
+   `2026-05-13-bib-auth-mismatch-leong1994towards` memo a `@phdthesis`
+   carrying a `journal` field drew a partial Crossref match against a journal
+   article and came back "authenticated" as one.
 
-   **Pass `title`, `authors_list`, and `fields_dict` exactly as they
-   appear in `master.bib` — verbatim, with no cleanup or normalization.
-   The helper is responsible for fixing bad metadata via the DOI fast-
-   path, arXiv-ID fast-path, recovery chain, etc. Cleaning up before
-   passing in defeats the recovery logic.**
    ```bash
-   python3 -c '
-   import sys, json
-   from pathlib import Path
-   sys.path.insert(0, ".virgil/scripts/library")
-   from bib_auth import authenticate
-   from dataclasses import asdict
-   # Fill in title and authors from master.bib for citekey, verbatim
-   r = authenticate(<title>, <authors_list>, <fields_dict>,
-                    entry_type=<entry_type>,
-                    library=Path("."), citekey=<citekey>)
-   print(json.dumps(asdict(r), indent=2))
-   '
+   python3 .virgil/scripts/library/validate_bib_coherence.py "<citekey>" --json --no-cover-check
    ```
+
+   **Branch on the REPORT, never on `$?` alone.** The script's exit codes are
+   honest (0 clean / 1 findings / 2 unreadable entry), but the two non-zero
+   answers mean opposite things and only the JSON says which:
+
+   - **`{"error": …}`** — the entry is not in `master.bib`. That is a wrong
+     citekey (or an entry nobody has written yet), *not* incoherence. Stop and
+     report it: step 3's `--citekey` reads the same file and fails the same
+     way, so there is nothing further to run.
+   - **`"findings": []`** — nothing to say. Continue, silently.
+   - **`"findings": [...]`** — record them and **continue anyway**. A finding
+     is a hint for the auth pass, not a refusal:
+     - a disallowed `journal` on a `@phdthesis`/`@inproceedings` entry is
+       usually a wrong `@type`, so it is a candidate for step 3's
+       `--type <bibtex-type>` override — the seed the helper cannot infer;
+     - it is also the case where step 5's `proposed_type` deserves a real
+       eyeball rather than a rubber stamp, since a partial match against the
+       *wrong* record is exactly what the incoherent field invites.
+
+   Two flags on that line are deliberate. `--no-cover-check` keeps this to
+   the cross-field leg: cover-page-vs-bib checking already has an owner in
+   `/library/di-preflight` (`detect_metadata_mismatch.py`, with a richer
+   `kind` taxonomy feeding an auto-resolution policy), and a second algorithm
+   for one question is worse than none. `--check-url-doi` stays off because
+   it is a live `urlopen` with a 10 s timeout, and this step must stay cheap
+   and local.
+
+   **This step READS; it does not persist.** Carry the findings forward in
+   your working notes — step 7 re-runs the checker and writes the verdict
+   then. That split is deliberate and it is the whole reason the ordering is
+   safe: steps 3–5 can *repair* the incoherence this step just found (the
+   `--type` override above, or a `proposed_type` of `unpublished` and step
+   5's `--drop-field` retirement table, which removes the offending field
+   outright). A verdict persisted here would describe an entry that no longer
+   exists by the end of the run — and `deep-index.md` reads
+   `indexed.warnings` on resume as its outstanding-work agenda whose stated
+   remedy for a `bib-coherence:` line is another full network
+   re-authentication. Compute early, persist once the answer is final.
+
+   Do **not** set `bib.state = needs-reauth` here. `_tools.py` defines that
+   state as "re-run `/library/authenticate-bib`", which is circular from
+   inside this skill.
+
+3. **Run the helper.** `--citekey` reads title / authors / fields /
+   entry-type straight out of `master.bib` and threads the library root
+   through, so the recovery chain can read the indexed paper at
+   `papers/<citekey>/main.tex`. The Python pipeline lives at
+   `.virgil/scripts/library/`.
+   ```bash
+   python3 .virgil/scripts/library/bib_auth.py --citekey <citekey> --library .
+   ```
+   Prints the `AuthResult` as JSON (`state`, `sources`, `score`,
+   `matched_record`, `field_changes`, `proposed_type`).
+
+   **Don't hand-marshal the seed values.** The entry must reach the helper
+   exactly as it appears in `master.bib` — verbatim, no cleanup, no
+   normalization — because the DOI fast-path, arXiv-ID fast-path and
+   recovery chain are what fix bad metadata; cleaning up first defeats
+   them. `--citekey` guarantees that by construction, where retyping the
+   fields into a `python3 -c` snippet cannot (an apostrophe or a brace
+   accent in a title breaks the shell quoting outright).
+
+   Two overrides exist for the cases the bib alone can't express, both
+   keeping the rest of the entry verbatim: `--title "<corrected>"` re-runs
+   the search with a different seed — for when the bib's title is a
+   triage-time stub the helper's own recovery chain couldn't get past, and
+   you have the real one from the PDF cover page (`/library/index-paper`
+   step 3 spells that case out) — and `--type <bibtex-type>` overrides a
+   wrong `@type`. The Python API (`from bib_auth import authenticate`)
+   remains for scripts that already hold the fields in memory —
+   `index_paper.py` and `merge_paper_references.py` use it.
 
    **What the helper does automatically (no skill-level backstop needed):**
 
@@ -176,7 +235,7 @@ directory).
 
    The `result.note` field describes which step produced the match.
 
-3. **Fill remaining fields via web search.** The Python helper covers
+4. **Fill remaining fields via web search.** The Python helper covers
    the core nine fields but leaves the rest empty. Check which of
    `abstract`, `url`, `booktitle`, `editor`, `series`, `address`,
    `month`, `isbn`/`issn`, `edition` are still empty and fill them with
@@ -236,12 +295,12 @@ directory).
 
    Collect these findings as a separate `tier1_changes` list (same
    shape as the helper's `field_changes`: list of `{field, from, to,
-   source, at}` dicts). They're merged into the catalog row in step 6
+   source, at}` dicts). They're merged into the catalog row in step 7
    — keep them outside `result.field_changes`.
 
-4. **Apply changes** to `master.bib`. **Filter before applying:**
+5. **Apply changes** to `master.bib`. **Filter before applying:**
    - Drop any `field_change` whose target field is inapplicable to
-     the entry type (the table in step 3). For example, when the
+     the entry type (the table in step 4). For example, when the
      helper's only match is arXiv on an `@inproceedings` NeurIPS
      entry, the helper proposes `journal=arXiv` and `publisher=arXiv`
      — both wrong for an inproceedings; drop them.
@@ -335,23 +394,41 @@ directory).
    `--bib-state` updates the `% bib.state = <X>` comment preceding the
    entry to the terminal state (`authenticated` / `unverified` /
    `canonical` / `failed`) in the same locked write — no separate
-   step-9 marker-comment edit is needed.
+   step-10 marker-comment edit is needed.
 
    Record only the changes you actually applied in `bib.fieldChanges`
-   (step 6). If you applied a type change, say so in the reply.
+   (step 7). If you applied a type change, say so in the reply.
 
-5. **Re-emit `references.bib`** from the updated master.bib entry:
+6. **Sync `references.bib`** from the updated master.bib entry. The citekey
+   goes in as **argv**, not interpolated into the program — a `$VAR` inside
+   `python3 -c '…'` single quotes is never expanded by the shell, so that
+   form silently resyncs nothing:
    ```bash
-   python3 -c '
+   python3 - "<citekey>" <<'PY'
    import sys; from pathlib import Path
    sys.path.insert(0, ".virgil/scripts/library")
    from index_paper import _resync_references_bib
-   ok = _resync_references_bib(Path("."), "<citekey>")
-   print("references.bib resynced" if ok else "no paper dir — skipped")
-   '
+   ok = _resync_references_bib(Path("."), sys.argv[1])
+   print("references.bib resynced" if ok
+         else "paper dir or master row missing — skipped")
+   PY
    ```
 
-6. **Update .virgil/catalog.json** — derive top-level fields from master.bib so
+   The helper **upserts** — it replaces only the `<citekey>` block and
+   leaves every other entry in the file byte-identical. That matters
+   because `papers/<citekey>/references.bib` is a single-entry mirror of
+   master.bib only until `/library/deep-index` runs: step 3f replaces it
+   with the paper's **actual cited works**. Never hand-write this file
+   with a whole-file `Write` of one emitted entry — that is exactly the
+   truncation this helper exists to prevent (task 168).
+
+   On a `.bib` malformed enough that the splice can't be made safely (an
+   unbalanced brace in a value), the helper raises `BibSpliceRefused` and
+   leaves the file **untouched** — losing entries is never the fallback.
+   Report the message verbatim and move on to step 7; the bib needs a human
+   repair.
+
+7. **Update .virgil/catalog.json** — derive top-level fields from master.bib so
    they can't drift. Build `bib_status` from the helper's `AuthResult`
    and the prior catalog row's `fieldChanges` (the helper returns only
    *this run's* changes; we want the cumulative list):
@@ -362,9 +439,9 @@ directory).
    sys.path.insert(0, ".virgil/scripts/library")
    from index_paper import _sync_catalog_entry_from_master
 
-   # `r` is the AuthResult dict from step 2 (deserialize the JSON
-   # printed there, or rebuild it in-process). `tier1_changes` is the
-   # extra field-change list you produced in step 3 — same shape as
+   # `r` is the AuthResult dict from step 3 (deserialize the JSON the
+   # helper printed — don't re-run it). `tier1_changes` is the
+   # extra field-change list you produced in step 4 — same shape as
    # the helper's: list of {"field": str, "from": str, "to": str,
    # "source": str, "at": ISO8601 str} dicts. May be [].
    r = <auth_result_dict>
@@ -428,10 +505,65 @@ directory).
    ```
    `_sync_catalog_entry_from_master` *replaces* the catalog row's `bib`
    block wholesale — the merge with `prior_changes` above is what makes
-   `fieldChanges` accumulate across runs.
+   `fieldChanges` accumulate across runs. It writes only `bib` and the
+   top-level fields, never `indexed`, so it cannot disturb the warnings
+   written below.
 
-7. **Append a notification** via the locked CLI shim. (No need to bump
-   `catalog-version.txt` separately — step 6's
+   **Then persist the coherence verdict** — the second half of step 2, landed
+   here because this is the last point in the run where the answer is final.
+   Re-run the same checker against the master.bib you have now (step 5 may
+   have changed the entry type or dropped the offending field), and write
+   whatever it says:
+
+   ```bash
+   python3 .virgil/scripts/library/validate_bib_coherence.py "<citekey>" --json --no-cover-check
+   ```
+
+   ```bash
+   # One line per finding from THAT run, `bib-coherence: ` + the finding text
+   # verbatim. If it reported none, write an empty array — the flag is still
+   # declared, and that is how a finding fixed during this run (or by the user
+   # since the last run) stops being flagged. Append-if-absent could never
+   # clear it, which is why this channel is a per-kind RECOMPUTE.
+   cat > /tmp/<citekey>-coherence.json <<'EOF'
+   {
+     "indexed": {
+       "warnings": [
+         "bib-coherence: @phdthesis should not have `journal` field (value: '...')"
+       ]
+     }
+   }
+   EOF
+   python3 .virgil/scripts/library/update_catalog_entry.py "<citekey>" \
+     --patch-file /tmp/<citekey>-coherence.json \
+     --recompute-warning-kind bib-coherence
+   rm /tmp/<citekey>-coherence.json
+   ```
+
+   Every line must start `bib-coherence: ` — the shim drops and re-appends by
+   exact head, and a fresh line whose head isn't a declared kind is refused
+   outright (it could never be dropped by a later pass, so it would duplicate
+   forever). `bib-coherence` is **this skill's** warning kind: no deep-index
+   step declares it, so nothing else clears it, and a finding survives until
+   the next authentication of this entry. The row is not rendered in the
+   Library UI — its readers are `deep-index.md`'s resume agenda and the next
+   run of this skill — which is why the reply-format line is not optional.
+
+   Exit codes, in a skill that deliberately serves entries with no catalog
+   row:
+
+   - **exit 1** — no catalog row for this citekey (a reference-only entry:
+     cited but not held, so the F#4 gate never minted one). There is nothing
+     to write. Note it in the reply and **continue** — an advisory warning
+     that cannot be filed must not end an authentication run.
+   - **exit 2** — a refusal, and the write did not happen: an unreadable or
+     malformed patch file, or a row whose `indexed.warnings` is not a list.
+     Report the message verbatim and continue; it needs a human repair.
+   - **anything else** — treat as exit 2. The write did not happen; say so
+     rather than guessing which branch it was.
+
+8. **Append a notification** via the locked CLI shim. (No need to bump
+   `catalog-version.txt` separately — step 7's
    `_sync_catalog_entry_from_master` does it for you.)
 
    > **`kind` is the frontend's toast enum, NOT the bib.state enum.**
@@ -470,7 +602,7 @@ directory).
    rm /tmp/<citekey>-auth-notify.json
    ```
 
-8. **Remove from pending-reviews manifest.** Read
+9. **Remove from pending-reviews manifest.** Read
    `.virgil/queue/pending-reviews.json`, remove the entry for this citekey, and
    write back. This keeps the manifest in sync so subsequent skill runs
    don't re-process it.
@@ -485,11 +617,33 @@ directory).
    '
    ```
 
-9. **(No-op.)** The `% bib.state = <X>` marker comment is updated as
-   part of step 4 via `update_master_bib_entry.py --bib-state`. No
+10. **(No-op.)** The `% bib.state = <X>` marker comment is updated as
+   part of step 5 via `update_master_bib_entry.py --bib-state`. No
    separate edit needed.
 
 ## Reply format
+
+**Always lead with the coherence line**, on its own line before the state
+line below. It is advisory, so nothing downstream stops on it — which is
+exactly why it has to be *said*: an unreported advisory finding is
+indistinguishable from no finding, and the catalog row it lands on is not
+rendered anywhere the user looks.
+
+Report BOTH ends when they differ — what step 2 found, and what step 7's
+re-check says after the repairs:
+
+> `Pre-flight: <N> cross-field coherence finding(s) — <first finding>; resolved by the type change (now coherent).`
+
+If step 7's re-check still finds them:
+> `Pre-flight: <N> cross-field coherence finding(s) — <first finding>. Recorded as bib-coherence: on the catalog row.` (add `Catalog row absent (reference-only entry); not recorded.` when the shim exited 1, or the shim's message verbatim on exit 2)
+
+If step 2 found none:
+> `Pre-flight: coherent (@<entry_type>).`
+
+If step 2 could not read the entry (`{"error": …}`), that is the whole reply
+— report the message verbatim and stop; the auth step reads the same file.
+
+Then, for the terminal state:
 
 If `state == "authenticated"`:
 > `Authenticated <citekey> via <sources>. <N> field changes applied.`

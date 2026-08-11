@@ -290,11 +290,42 @@ single example gets a fresh UUID; existing canonical examples are
 left untouched.
 
 For catalog warnings specifically: the `indexed.warnings` array is
-recomputed per pass for eight prefixes (`missing-bib-entry:`,
-`footnote-recovery-needed:`, `examples-not-converted:`,
-`ambiguous-citation:`, `numeric-citation-style:`,
-`pgmark-duplicate:`, `pgmark-gap:`, `pgmark-out-of-order:`). Other
-warning kinds are preserved verbatim. If a missing entry from a prior
+recomputed per pass for nine kinds, and they split by **producer** —
+the same split `deep-index.md` §5 states; the two must agree:
+
+- **Subskill-owned**, persisted by `/library/clean-bibliography` itself
+  at the end of its §3g: `missing-bib-entry:`, `ambiguous-citation:`,
+  `numeric-citation-style:`. They are written at source because that
+  subskill's own next step (`synthesize_canonical_entries.py`) reads
+  `missing-bib-entry:` back out of the catalog seconds later — deferring
+  the write to step 5, which runs after the whole §3 dispatch, made
+  synthesis a guaranteed no-op on every first pass (task 323).
+- **Step-5-owned**, deferred to `deep-index.md` §5 by
+  `/library/recover-footnotes` and `/library/di-examples`:
+  `footnote-recovery-needed:`, `examples-not-converted:`,
+  `pgmark-duplicate:`, `pgmark-gap:`, `pgmark-out-of-order:`. Nothing
+  reads these within the producing pass, so persist-at-source buys them
+  nothing and one late owner stays coherent. The asymmetry is chosen,
+  not drift.
+- **Outside the deep-index pass entirely**, persisted by
+  `/library/authenticate-bib` step 7 — computed by its step-2 pre-flight and
+  re-checked at the write, so a finding that skill's own type repair resolved
+  never lands: `bib-coherence:` (task 322). That
+  skill runs standalone — often from a paper session, never as a deep-index
+  subskill — so no step here may declare its kind, and a line it wrote
+  stands until the next authentication of that entry. Listed so the census
+  is complete: a kind nobody names is a kind the next writer clobbers.
+
+Neither owner re-supplies the whole array. Both pass
+`--recompute-warning-kind <kind>` (repeatable) to
+`update_catalog_entry.py`, which drops exactly the declared kinds'
+lines against the row's live array under the catalog lock. **Declare
+only the kinds you actually recomputed** — a declared kind with zero
+fresh lines correctly clears stale ones, so declaring someone else's
+kind deletes their findings. Every other warning kind is preserved
+verbatim, as is the `<kind>-false-positive:` suppression family, whose
+heads differ from the kinds above and which has its own append-if-absent
+writer (`add_validator_suppression.py`). If a missing entry from a prior
 pass has since been added to `references.bib` (e.g. by a manual edit),
 the rerun drops it from warnings. Same for stale pgmark-continuity
 findings that have been resolved by the §1b repair pass.

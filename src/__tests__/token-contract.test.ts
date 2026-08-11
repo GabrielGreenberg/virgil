@@ -20,11 +20,16 @@ import { describe, expect, it } from "vitest";
  * enforced it. These tests are that enforcement.
  *
  * SCOPE — the LIVE spec surfaces only: `src/STYLE_GUIDE.md` (what AGENTS.md
- * points agents at) plus `docs/agents/*.md`. `docs/virgil-design-system/` is
- * deliberately NOT scanned: it is a frozen 2026 migration record that forks
- * the spec, and whether it should be updated or labelled historical is an
- * open product decision (task 2026-07-18-173). Fold it in here once 173 lands
- * and it is either current or explicitly marked historical.
+ * points agents at) plus `docs/agents/*.md`. `docs/virgil-design-system/` stays
+ * OUT, and since task 2026-07-18-173 that is a settled answer rather than an
+ * open question: the folder was demoted to an explicitly-labelled historical
+ * record, and a historical document is *allowed* to state April-2026's number.
+ * Scanning it would force `token-doc-allow` onto ~40 lines whose only fault is
+ * being history, which is noise, not enforcement. What enforces it instead is
+ * `spec-authority-guardrail.test.ts`: every file there carries the historical
+ * marker, and no doc outside `src/STYLE_GUIDE.md` may claim to be the spec. The
+ * live-value contract below and that marker contract are the two halves — a doc
+ * is either scanned here or marked there, never neither.
  *
  * ESCAPE HATCH — a doc line that must state a non-current value (quoting
  * history, or an illustrative example) carries `token-doc-allow`, the same

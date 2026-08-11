@@ -7,6 +7,7 @@ import { VIEW_PREF_REGISTRY } from "@/lib/view-prefs/registry";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
 import { MenuToggleRow } from "./menu/MenuToggleRow";
+import { MenuSeparator, MenuSectionLabel } from "./menu/MenuChrome";
 import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 // CHIP 5a: the BlockType dropdown's heading items route through the canonical
 // `headingRun` (SET + numbered:true) in the action registry — the SAME `run()`
@@ -84,9 +85,6 @@ interface MenuBarProps {
   onToggleOmniDimResting: () => void;
   cardOutlineChrome: boolean;
   onToggleCardOutline: () => void;
-  editorSplit?: boolean;
-  onToggleEditorSplit?: () => void;
-  activeSplitPane?: "top" | "bottom";
   showMarginalia: boolean;
   onToggleMarginalia: () => void;
   hiddenMarginaliaTypes: Set<MarginaliaType>;
@@ -415,18 +413,16 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
 // the primitive's roving controller; checkbox rows are `menuitemcheckbox` +
 // `aria-checked`, group rows are `menuitem` + `aria-expanded`.
 //
-// ── R5 / Left-Right LIMITATION (reported, NOT a primitive edit) ──
-// Enter (and click) expand/collapse a group via the group row's `run()`. The
-// IDEAL spec also wants Right=expand / Left=collapse, but the window-source
-// keyboard controller (`useMenuKeyboard.consume`) unconditionally calls
-// `reg.move(dir)` for EVERY plain arrow — including Left/Right — and the window
-// listener then `preventDefault()` + `stopPropagation()`s the event in the
-// CAPTURE phase. So Left/Right never reach a row's React `onKeyDown`: they are
-// CONSUMED by the controller (even though nav-core's vertical `list` `listMove`
-// treats them as no-ops). Wiring Left/Right faithfully needs a primitive seam
-// (an `onArrowHorizontal?(dir, activeId): boolean` hook on the window-source
-// controller, checked before `reg.move` for left/right) — see the migration
-// report. Enter-expand/Enter-collapse + click cover the behavior fully today.
+// ── R5 / Left-Right tree navigation (via the primitive's `onArrowHorizontal` seam) ──
+// Enter (and click) expand/collapse a group via the group row's `run()`, AND
+// Right=expand / Left=collapse the active group row (the tree affordance). The
+// window-source keyboard controller (`useMenuKeyboard.consume`) hands Left/Right
+// to the `onArrowHorizontal?(dir, activeId)` seam FIRST — but only for a vertical
+// `list` layout, where nav-core's `listMove` treats them as no-ops anyway — then
+// falls back to `reg.move(dir)`. The `ViewMenu` provider wires that seam (see the
+// `onArrowHorizontal={…}` handler on `<MenuProvider>` below) to map the four group
+// ids to their expand setters; a non-group active row is a no-op. So Right/Left,
+// Enter, and click all drive expand/collapse today.
 
 // The checkbox/toggle row this menu uses is the shared `<MenuToggleRow>`
 // primitive (`menu/MenuToggleRow.tsx`) — extracted from here in task 180 when
@@ -436,8 +432,8 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
 // `onToggle` (`… ; setOpen(false)`), the in-group sub-toggles keep it open.
 
 /** An expandable group header row. `aria-expanded` reflects state; Enter/click
- *  toggle it (the chevron rotates). Left/Right keyboard expand-collapse is the
- *  reported primitive gap (see the block comment above). */
+ *  toggle it (the chevron rotates), and Right=expand / Left=collapse it via the
+ *  primitive's `onArrowHorizontal` seam (see the block comment above). */
 function ViewGroupRow({
   id,
   label,
@@ -499,7 +495,8 @@ function ViewActionRow({ id, label, onRun }: { id: string; label: string; onRun:
  *  every visible row registers via `useMenuItem` so the snapshot grows/shrinks
  *  as groups expand. GAINS Up/Down/Home/End + Enter nav (none today). All
  *  toggles + expand/collapse + the docked flip positioning are preserved. See
- *  the ViewMenu-rows block comment for the Left/Right keyboard limitation.
+ *  the ViewMenu-rows block comment for the Right=expand / Left=collapse tree
+ *  navigation, wired via the primitive's `onArrowHorizontal` seam below.
  *
  *  Exported (named) so the migration test can mount it directly with
  *  controlled props; the default-export `MenuBar` is the only production
@@ -653,7 +650,7 @@ export function ViewMenu({
           containerStyle={{ position: "absolute" }}
         >
         <div ref={dropdownRef}>
-          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Display</div>
+          <MenuSectionLabel>Display</MenuSectionLabel>
           {/* The Display rows are enumerated from VIEW_PREF_REGISTRY (id + label
               + membership). `checked`/`onToggle` stay PROP-controlled — the
               keyboard test mounts ViewMenu with a full prop bag — so these two
@@ -685,7 +682,7 @@ export function ViewMenu({
               />
             ));
           })()}
-          <div className="my-1 border-t border-edge-subtle" />
+          <MenuSeparator />
           <ViewGroupRow id="marginalia-group" label="Marginalia" expanded={marginaliaExpanded} onToggle={() => setMarginaliaExpanded((p) => !p)} />
           {marginaliaExpanded && (
             <>
@@ -753,20 +750,20 @@ export function ViewMenu({
               the same trailing block as Fonts… */}
           {onOpenMarginsMode ? (
             <>
-              <div className="my-1 border-t border-edge-subtle" />
+              <MenuSeparator />
               <ViewActionRow id="margins" label="Margins…" onRun={() => { onOpenMarginsMode(); setOpen(false); }} />
             </>
           ) : null}
           {/* Fonts dialog launcher — sits above the close-all action. */}
           {onOpenFontsDialog ? (
             <>
-              {!onOpenMarginsMode && <div className="my-1 border-t border-edge-subtle" />}
+              {!onOpenMarginsMode && <MenuSeparator />}
               <ViewActionRow id="fonts" label="Fonts…" onRun={() => { onOpenFontsDialog(); setOpen(false); }} />
             </>
           ) : null}
           {onCloseAllPanels && (
             <>
-              <div className="my-1 border-t border-edge-subtle" />
+              <MenuSeparator />
               <ViewActionRow id="close-all" label="Close all panels" onRun={() => { onCloseAllPanels(); setOpen(false); }} />
             </>
           )}
@@ -778,7 +775,10 @@ export function ViewMenu({
 }
 
 /** Shared button row rendered inside the docked MenuBar. Renders the
- *  View menu + collab pill + paragraph nav + editor-split toggle. */
+ *  View menu + collab pill + paragraph nav. (The editor-split toggle was
+ *  RETIRED in task 115 — it flipped a persisted pref no pane read, and the
+ *  click left a phantom mirror indicator on the Outline that survived
+ *  reloads. See `split-editor-panes.tsx` for the parked machinery.) */
 function MenuBarContent({
   editor,
   showParTitles, onToggleParTitles,
@@ -787,7 +787,6 @@ function MenuBarContent({
   showHeadingLabels, onToggleHeadingLabels,
   omniDimResting, onToggleOmniDimResting,
   cardOutlineChrome, onToggleCardOutline,
-  editorSplit, onToggleEditorSplit, activeSplitPane,
   showMarginalia, onToggleMarginalia,
   hiddenMarginaliaTypes, onToggleMarginaliaType,
   showHighlights, onToggleHighlights,
@@ -878,26 +877,6 @@ function MenuBarContent({
             </button>
           )}
         </div>
-      )}
-
-      {/* Split toggle */}
-      {onToggleEditorSplit && (
-        <button
-          onClick={onToggleEditorSplit}
-          className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
-          data-hint="Split editor"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            {editorSplit && activeSplitPane === "top" && (
-              <rect x="4" y="4" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
-            )}
-            {editorSplit && activeSplitPane === "bottom" && (
-              <rect x="4" y="12" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
-            )}
-            <rect x="4" y="4" width="16" height="16" rx="1.5" />
-            <line x1="4" y1="12" x2="20" y2="12" />
-          </svg>
-        </button>
       )}
 
       {kebabAtEnd && viewMenu}

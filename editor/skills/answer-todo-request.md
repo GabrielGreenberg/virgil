@@ -66,10 +66,10 @@ matters" (write a note). Read the todo and dispatch.
      ```bash
      # real todo requestId (bridged flag, kind=todo):
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
-         --accept-task-kind todo --body "<your note>" --title "<subject>" --margin right
+         --accept-task-kind todo --body "<your note>" --title "<subject>"
      # virtual:todos:<cardId> (pre-bridge flag — anchor from the source todo):
      python3 editor/scripts/create_card.py <docPath> virtual:todos:<cardId> \
-         --kind=note --body "<your note>" --title "<subject>" --anchor <uuid> --margin right
+         --kind=note --body "<your note>" --title "<subject>" --anchor <uuid>
      ```
      `create_card.py` picks the subcommand from the Task's `safetyLevel` — none →
      direct create, 1 → silent, 2 → +comment, 3 → **propose** — you don't pick it.

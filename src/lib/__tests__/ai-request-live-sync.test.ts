@@ -48,7 +48,7 @@ describe("ai-requests inbox live-sync (D3)", () => {
     await bridgeCardAiRequestFlag(DOC, "todo", "card-1", true, {
       text: "do the thing",
       paragraphIds: ["p1"],
-    });
+    }, "toggle");
 
     expect(events).toHaveLength(1);
     const published = events[0];
@@ -76,7 +76,7 @@ describe("ai-requests inbox live-sync (D3)", () => {
     const events: AiRequest[][] = [];
     const unsub = subscribeAiRequests(DOC, (reqs) => events.push(reqs));
 
-    await bridgeCardAiRequestFlag(DOC, "todo", "card-1", false, { text: "" });
+    await bridgeCardAiRequestFlag(DOC, "todo", "card-1", false, { text: "" }, "toggle");
 
     expect(events).toHaveLength(1);
     expect(events[0]).toEqual([]); // the linked request was dropped
@@ -89,7 +89,7 @@ describe("ai-requests inbox live-sync (D3)", () => {
     const events: AiRequest[][] = [];
     const unsub = subscribeAiRequests(DOC, (reqs) => events.push(reqs));
 
-    await bridgeCardAiRequestFlag(DOC, "todo", "card-1", true, { text: "x" });
+    await bridgeCardAiRequestFlag(DOC, "todo", "card-1", true, { text: "x" }, "toggle");
 
     expect(events).toHaveLength(0);
     errSpy.mockRestore();
@@ -102,7 +102,7 @@ describe("ai-requests inbox live-sync (D3)", () => {
     const events: AiRequest[][] = [];
     const unsub = subscribeAiRequests(DOC, (reqs) => events.push(reqs));
 
-    await bridgeCardAiRequestFlag(DOC, "todo", "card-1", false, { text: "" });
+    await bridgeCardAiRequestFlag(DOC, "todo", "card-1", false, { text: "" }, "toggle");
 
     expect(events).toHaveLength(0);
     unsub();
@@ -114,7 +114,7 @@ describe("ai-requests inbox live-sync (D3)", () => {
     const unsubMine = subscribeAiRequests(DOC, (reqs) => mine.push(reqs));
     const unsubOther = subscribeAiRequests("some-other-doc", (reqs) => other.push(reqs));
 
-    await bridgeCardAiRequestFlag(DOC, "note", "card-9", true, { text: "hi" });
+    await bridgeCardAiRequestFlag(DOC, "note", "card-9", true, { text: "hi" }, "toggle");
 
     expect(mine).toHaveLength(1);
     expect(other).toHaveLength(0);
@@ -127,7 +127,7 @@ describe("ai-requests inbox live-sync (D3)", () => {
     const unsub = subscribeAiRequests(DOC, (reqs) => events.push(reqs));
     unsub();
 
-    await bridgeCardAiRequestFlag(DOC, "note", "card-2", true, { text: "y" });
+    await bridgeCardAiRequestFlag(DOC, "note", "card-2", true, { text: "y" }, "toggle");
 
     expect(events).toHaveLength(0);
   });

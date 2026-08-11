@@ -47,14 +47,24 @@ const claudeCommandsDir = join(repoRoot, ".claude", "commands", "editor");
 // paper bundle's command markdowns only. Every current and future skill can
 // then write the natural repo-relative form and be paper-correct for free.
 //
-// Idempotent: `.virgil/scripts/editor/` contains no `editor/scripts/`
+// Idempotent: `.virgil/scripts/<silo>/` contains no `<silo>/scripts/`
 // substring, so re-running never double-rewrites. Scoped to the trailing-slash
 // path prefix, so it leaves the no-slash resolver fallback (`... editor/scripts;`
 // in the answer-bib-review / sync-bib-to-library dual-path loops) intact — that
 // literal is a bare candidate token, and those loops already prefer the
 // `.virgil/scripts/editor` candidate first in a paper folder.
-const REPO_SCRIPT_PREFIX = "editor/scripts/";
-const PAPER_SCRIPT_PREFIX = ".virgil/scripts/editor/";
+//
+// BOTH silos, because an editor skill legitimately reaches for a LIBRARY
+// helper: `find-citation` shells out to `library/scripts/bib_auth.py` for the
+// Library-first half of the find-or-surface doctrine, and skill-sync writes
+// every subsystem's scripts into every managed folder
+// (`.virgil/scripts/library/…`). Rewriting only the editor prefix left that
+// one invocation unresolvable in a paper folder — the same drift as a
+// fabricated flag, in the path rather than the arguments (task 158).
+const PAPER_SCRIPT_PREFIXES = [
+  ["editor/scripts/", ".virgil/scripts/editor/"],
+  ["library/scripts/", ".virgil/scripts/library/"],
+];
 
 /** True for the paper bundle's slash-command markdowns (claude-commands/*.md). */
 export function isPaperCommandMarkdown(bundlePath) {
@@ -63,7 +73,11 @@ export function isPaperCommandMarkdown(bundlePath) {
 
 /** Rewrite repo-relative helper-script paths to their synced-paper location. */
 export function rewriteScriptPathsForPaper(text) {
-  return text.split(REPO_SCRIPT_PREFIX).join(PAPER_SCRIPT_PREFIX);
+  let out = text;
+  for (const [repo, paper] of PAPER_SCRIPT_PREFIXES) {
+    out = out.split(repo).join(paper);
+  }
+  return out;
 }
 
 async function listFilesIn(dir, predicate) {

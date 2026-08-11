@@ -17,6 +17,11 @@ import {
   type Registry,
 } from "@library/lib/library-store";
 import {
+  displayedIndexToRaw,
+  projectLeftTabs,
+  resolveReplaceTargetId,
+} from "@library/lib/panel-tab-coords";
+import {
   useStorageKeySync,
   writeStorageIfChanged,
 } from "@/lib/cross-window-storage";
@@ -80,9 +85,17 @@ export type LibraryTabsApi = {
   }) => string;
   openRecent: (id: string, panel: PanelKey) => void;
   /**
-   * Move a tab to a destination position. toIndex is the index in the
-   * destination panel's openIds at the moment of drop. Source panel is
+   * Move a tab to a destination position. `toIndex` is stated in the
+   * **displayed** coordinate space — the index in the tab list the caller
+   * RENDERED (`leftTabs`/`rightTabs` as returned from here), which for the
+   * left panel of the singleton instance includes the synthetic per-doc
+   * project tabs. The hook translates it back to a raw slot itself
+   * (`displayedIndexToRaw`); callers never see the skew. Source panel is
    * inferred (we already know where the libId currently lives).
+   *
+   * Dragging a project tab is a no-op by construction: it isn't in either
+   * panel's raw `openIds`, and its position is derived from the open-doc
+   * order rather than persisted, so there is no slot to move.
    */
   moveTab: (libId: string, toPanel: PanelKey, toIndex: number) => void;
   /**
@@ -427,24 +440,15 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     const projectIds = (openDocs ?? [])
       .map((d) => projectLibraryIdForDoc(d.id))
       .filter((id) => !hiddenProjectIds.has(id));
-    const persisted = leftTabs.openIds.filter(
-      (id) => !isProjectDocId(id),
-    );
-    const centralIdx = persisted.indexOf(CENTRAL_LIBRARY_ID);
-    const openIds =
-      centralIdx === 0
-        ? [CENTRAL_LIBRARY_ID, ...projectIds, ...persisted.slice(1)]
-        : [...projectIds, ...persisted];
-    let activeId = leftTabs.activeId;
-    const pinned = leftPinnedActiveId;
-    if (pinned && openIds.includes(pinned)) {
-      activeId = pinned;
-    } else if (currentDocId) {
-      const projId = projectLibraryIdForDoc(currentDocId);
-      if (openIds.includes(projId)) activeId = projId;
-    }
-    if (!openIds.includes(activeId)) activeId = openIds[0] ?? "";
-    return { openIds, activeId };
+    // The projection lives in `panel-tab-coords` alongside its inverses, so
+    // the translation every mutator below applies can't drift from the shape
+    // rendered here (task 131).
+    return projectLeftTabs({
+      raw: leftTabs,
+      projectIds,
+      currentDocId,
+      pinnedActiveId: leftPinnedActiveId,
+    });
   }, [
     projectsEnabled,
     leftTabs,
@@ -453,6 +457,24 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     leftPinnedActiveId,
     hiddenProjectIds,
   ]);
+
+  // The DISPLAYED projection, mirrored in a ref for the same reason the raw
+  // states are (synchronous drag/drop + open handlers must read it without
+  // waiting for a setState updater). Every mutator below that consumes a
+  // user-expressed coordinate — a drop index, "the tab I'm looking at" —
+  // reads it from here and translates through `panel-tab-coords`.
+  const displayedLeftTabsRef = useRef(displayedLeftTabs);
+  displayedLeftTabsRef.current = displayedLeftTabs;
+
+  /** The tab list the given panel actually RENDERS. The right panel has no
+   *  projection, so displayed === raw there and every translation below is
+   *  the identity — which is why the mutators can route through it
+   *  unconditionally instead of branching on the panel. */
+  const displayedTabsFor = useCallback(
+    (panel: PanelKey): PanelTabsState =>
+      panel === "left" ? displayedLeftTabsRef.current : rightTabsRef.current,
+    [],
+  );
 
   // Pin (or clear pin) for the left panel of the singleton instance.
   // Project ids clear the pin so the default "follow currentDocId" path
@@ -618,13 +640,26 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
       else if (rightTabsRef.current.openIds.includes(libId)) fromPanel = "right";
       if (!fromPanel) return;
 
+      // `toIndex` arrives in DISPLAYED space (the strip measured the list it
+      // rendered). Translate ONCE, here, against the same snapshot the user
+      // was looking at — everything below splices raw. For a panel with no
+      // projection this is the identity (task 131).
+      const dest = displayedTabsFor(toPanel);
+      const destRaw =
+        toPanel === "left" ? leftTabsRef.current : rightTabsRef.current;
+      const rawIndex = displayedIndexToRaw(
+        dest.openIds,
+        destRaw.openIds,
+        toIndex,
+      );
+
       if (fromPanel === toPanel) {
         // Reorder within the same panel.
         const setter = fromPanel === "left" ? setLeftTabs : setRightTabs;
         setter((t) => {
           const fromIdx = t.openIds.indexOf(libId);
           if (fromIdx < 0) return t;
-          const target = Math.min(toIndex, t.openIds.length);
+          const target = Math.min(rawIndex, t.openIds.length);
           const next = [...t.openIds];
           next.splice(fromIdx, 1);
           const adjusted = target > fromIdx ? target - 1 : target;
@@ -651,14 +686,14 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
       const destSetter = toPanel === "left" ? setLeftTabs : setRightTabs;
       destSetter((t) => {
         if (t.openIds.includes(libId)) return { ...t, activeId: libId };
-        const target = Math.min(Math.max(0, toIndex), t.openIds.length);
+        const target = Math.min(Math.max(0, rawIndex), t.openIds.length);
         const next = [...t.openIds];
         next.splice(target, 0, libId);
         return { openIds: next, activeId: libId };
       });
       pinIfLeft(toPanel, libId);
     },
-    [pinIfLeft],
+    [pinIfLeft, displayedTabsFor],
   );
 
   const addEntryToLibrary = useCallback(
@@ -696,6 +731,48 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     [diskLibs],
   );
 
+  /**
+   * The ONE replace-or-append door for opening something new into a panel —
+   * shared by `openPaper` and `openLibrary`, which had two byte-identical
+   * copies of this reducer and so two chances to resolve the target wrongly.
+   *
+   * The replace target is resolved from the panel's **displayed** active id
+   * (the tab the user is looking at), not from raw `activeId`. With a doc
+   * open, the displayed active left tab is a synthetic project tab that holds
+   * no raw slot, so this APPENDS — where reading raw `activeId` used to find
+   * an unpinned Central sitting behind the projection and map it out of
+   * `openIds`, making Central vanish though the user never closed it and it
+   * wasn't even the highlighted tab (task 131).
+   */
+  const openIntoPanel = useCallback(
+    (panel: PanelKey, newId: string) => {
+      const displayedActiveId = displayedTabsFor(panel).activeId;
+      const libs = registryRef.current.libraries;
+      const setter = panel === "left" ? setLeftTabs : setRightTabs;
+      setter((t) => {
+        const replaceTarget = resolveReplaceTargetId({
+          rawIds: t.openIds,
+          displayedActiveId,
+          // An id the registry doesn't know is not replaceable — same
+          // fail-to-append as before.
+          isReplaceable: (id) => {
+            const lib = libs.find((l) => l.id === id);
+            return !!lib && !lib.pinned;
+          },
+        });
+        if (replaceTarget) {
+          const next = t.openIds.map((id) =>
+            id === replaceTarget ? newId : id,
+          );
+          return { openIds: next, activeId: newId };
+        }
+        return { openIds: [...t.openIds, newId], activeId: newId };
+      });
+      pinIfLeft(panel, newId);
+    },
+    [displayedTabsFor, pinIfLeft],
+  );
+
   const openPaper = useCallback(
     (citekey: string, fromPanel: PanelKey) => {
       if (!citekey) return;
@@ -723,25 +800,9 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
       // Replace-or-append in the destination panel. Any unpinned active
       // tab is replaceable now (paper or library) — the same mechanic
       // that drives navigator clicks via openLibrary.
-      const destSetter = destPanel === "left" ? setLeftTabs : setRightTabs;
-      const libsRef = registryRef.current.libraries;
-      destSetter((t) => {
-        const activeIdx = t.openIds.indexOf(t.activeId);
-        const activeLib =
-          activeIdx >= 0
-            ? libsRef.find((l) => l.id === t.openIds[activeIdx])
-            : undefined;
-        const replaceTarget =
-          activeLib && !activeLib.pinned ? activeLib.id : null;
-        if (replaceTarget) {
-          const next = t.openIds.map((id) => (id === replaceTarget ? newId : id));
-          return { openIds: next, activeId: newId };
-        }
-        return { openIds: [...t.openIds, newId], activeId: newId };
-      });
-      pinIfLeft(destPanel, newId);
+      openIntoPanel(destPanel, newId);
     },
-    [pinIfLeft],
+    [pinIfLeft, openIntoPanel],
   );
 
   // Open a non-paper library into `panel` with the same replace-or-append
@@ -770,25 +831,9 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
         return;
       }
 
-      const setter = panel === "left" ? setLeftTabs : setRightTabs;
-      const libsRef = registryRef.current.libraries;
-      setter((t) => {
-        const activeIdx = t.openIds.indexOf(t.activeId);
-        const activeLib =
-          activeIdx >= 0
-            ? libsRef.find((l) => l.id === t.openIds[activeIdx])
-            : undefined;
-        const replaceTarget =
-          activeLib && !activeLib.pinned ? activeLib.id : null;
-        if (replaceTarget) {
-          const next = t.openIds.map((id) => (id === replaceTarget ? libId : id));
-          return { openIds: next, activeId: libId };
-        }
-        return { openIds: [...t.openIds, libId], activeId: libId };
-      });
-      pinIfLeft(panel, libId);
+      openIntoPanel(panel, libId);
     },
-    [projectsEnabled, onActivateDoc, pinIfLeft, unhideProject],
+    [projectsEnabled, onActivateDoc, pinIfLeft, unhideProject, openIntoPanel],
   );
 
   const togglePinLibrary = useCallback(

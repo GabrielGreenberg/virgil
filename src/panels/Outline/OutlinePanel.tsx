@@ -5,9 +5,10 @@ import type { JSONContent } from "@tiptap/react";
 import { useWordCountConfig } from "@/hooks/useWordCountConfig";
 import { buildPerBlockCounts, sumIncludedWords } from "@/lib/word-count-core";
 import type { FocusState } from "@/hooks/useFocusMode";
-import { sectionRange } from "@/hooks/useFocusMode";
+import { sectionRange, INACTIVE_FOCUS_STATE } from "@/hooks/useFocusMode";
+import type { FocusBand } from "@/lib/focus-view";
 import { Panel } from "@/panels/_shared/Panel";
-import { ItemMenu } from "@/components/panel-primitives";
+import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { flattenInlineText } from "@/lib/inline-content";
 import {
@@ -139,16 +140,25 @@ function posToAttr(pos: ResolvedPosition | null): string | null {
  * instead of a thin bar sliding up and down the gutter (#3). It reuses the
  * by-`data-outline-pos` measurement and paints a soft full-width tint BEHIND
  * the row (rows sit at zIndex 5 with transparent backgrounds, so the tint
- * shows through). `variant` distinguishes the canonical pane ("fill", a soft
+ * shows through).
+ *
+ * It used to take a `variant`: "fill" (this soft red wash, the canonical
+ * pane's current-section selector) vs "edge" (a slim green bar tracking the
+ * MIRROR pane of a split editor). The editor split was retired in task 115 —
+ * the toggle flipped a persisted pref no pane read, and with no mirror the
+ * mirror section path resolved to Document-start, so one click painted a
+ * permanent green bar on the Outline's title row that survived reloads. The
+ * mirror was the "edge" branch's ONLY caller, so the variant went with it.
+ *
+ * (Historic text: `variant` distinguished the canonical pane ("fill", a soft
  * red wash — the primary current-section selector) from the mirror pane
- * ("edge", a slim accent bar) so a split view shows both without two clashing
- * washes.
+ * ("edge", a slim accent bar) so a split view showed both without two
+ * clashing washes.)
  */
-function PositionHighlight({ scrollRef, attr, color, variant }: {
+function PositionHighlight({ scrollRef, attr, color }: {
   scrollRef: React.RefObject<HTMLDivElement | null>;
   attr: string | null;
   color: string;
-  variant: "fill" | "edge";
 }) {
   const [pos, setPos] = useState<{ y: number; h: number } | null>(null);
 
@@ -156,7 +166,13 @@ function PositionHighlight({ scrollRef, attr, color, variant }: {
     if (!attr || !scrollRef.current) { setPos(null); return; }
     const el = scrollRef.current.querySelector(`[data-outline-pos="${attr}"]`) as HTMLElement | null;
     if (!el) { setPos(null); return; }
-    setPos({ y: el.offsetTop, h: el.offsetHeight });
+    const y = el.offsetTop;
+    const h = el.offsetHeight;
+    // Equality bail (task 317): the RO/MO pair below fires per frame of a
+    // window or pane resize, and a fresh object literal re-rendered this
+    // overlay every time even when the tracked row had not moved. Its sibling
+    // (the focus band's `measure`) has always bailed; this one didn't.
+    setPos((prev) => (prev && prev.y === y && prev.h === h ? prev : { y, h }));
   }, [attr, scrollRef]);
 
   // Run before paint so the selector lands on the right pixel without a
@@ -183,27 +199,6 @@ function PositionHighlight({ scrollRef, attr, color, variant }: {
   // the row). Behind the rows it was covered — so hovering the current row made
   // the selector vanish. It's a translucent, pointer-events-none wash, so it
   // reads over the hover without eating clicks or hiding the text.
-  if (variant === "edge") {
-    return (
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          width: 3,
-          borderRadius: 1.5,
-          background: color,
-          opacity: 0.75,
-          transform: `translateY(${pos.y}px)`,
-          height: pos.h,
-          transition: "transform 200ms ease-out, height 200ms ease-out, opacity 200ms ease",
-          pointerEvents: "none",
-          zIndex: 6,
-        }}
-      />
-    );
-  }
-
   return (
     <div
       style={{
@@ -335,14 +330,11 @@ interface OutlinePanelProps {
       reader is currently reading, or null if none. Used to move the
       position chevron onto a paragraph row when par titles are enabled. */
   activeParTitleIndex?: number | null;
-  /** True when the editor is in split-pane mode. */
-  editorSplit?: boolean;
-  /** Heading chain for the mirror (second) pane. */
-  mirrorSectionPath?: SectionPathEntry[];
-  /** Active parTitle index for the mirror pane. */
-  mirrorParTitleIndex?: number | null;
-  /** Focus mode state — null when feature not wired. */
-  focusState?: FocusState | null;
+  /** Focus mode band — the UUID-anchored truth from `useFocusMode.band`, null
+   *  when the feature isn't wired. The outline resolves it to index boundaries
+   *  against its OWN `content` snapshot (`resolveFocusStateFromSnapshot`), so
+   *  boundary + heading indices always share one revision (task 307). */
+  focusBand?: FocusBand | null;
   /** Callbacks for focus mode. */
   onFocusActivate?: () => void;
   onFocusDeactivate?: () => void;
@@ -470,6 +462,67 @@ function buildTree(headings: HeadingItem[]): TreeNode[] {
   }
 
   return roots;
+}
+
+/**
+ * Resolve the UUID-anchored focus `band` to an index-based `FocusState`
+ * **against the outline's own `content` snapshot** — the SAME revision that
+ * `extractHeadings` reads, so the boundary indices and the heading indices can
+ * never describe two different doc revisions.
+ *
+ * This is the outline's snapshot twin of `resolveFocusBand(doc, band)`
+ * ([focus-view.ts]): identical semantics — `null` anchors are doc-start /
+ * doc-end sentinels, a NAMED anchor missing from the snapshot degrades to
+ * "no band → show everything" (never a phantom range), and crossed anchors
+ * swap — but it walks `content.content` (top-level array index == the block
+ * index `extractHeadings` records) instead of the live PM doc.
+ *
+ * WHY (task 307, the "mirror drifts from source on structural change" class,
+ * task 126): the outline previously compared snapshot-fresh heading indices
+ * against `useFocusMode.state`, whose index projection re-resolves ONLY on
+ * `rev.blocks` while the outline snapshot refreshes on a 300ms catch-all tick.
+ * Within that window the two clocks describe different revisions, so a
+ * stale `endBlockIndex` + the inclusive boundary leaked the NEXT section into
+ * the focused outline. Resolving the boundary from the outline's OWN snapshot
+ * collapses them onto one revision — the editor plugin already does the live
+ * equivalent against the live doc.
+ *
+ * Pure + O(top-level-count); called from a `useMemo` gated on
+ * `[focusBand, content]`, never on the keystroke path (a plain keystroke
+ * changes neither the band nor the snapshot).
+ */
+export function resolveFocusStateFromSnapshot(
+  band: FocusBand | null | undefined,
+  content: JSONContent | null,
+): FocusState {
+  if (!band || !band.active) return INACTIVE_FOCUS_STATE;
+  const nodes = content?.content;
+  if (!nodes || nodes.length === 0) return INACTIVE_FOCUS_STATE;
+  const lastIdx = nodes.length - 1;
+
+  let startIdx = band.startUuid == null ? 0 : -1;
+  let endIdx = band.endUuid == null ? lastIdx : -1;
+
+  if (startIdx === -1 || endIdx === -1) {
+    for (let i = 0; i < nodes.length; i++) {
+      const uuid = (nodes[i]?.attrs?.uuid as string | null | undefined) ?? null;
+      if (uuid == null) continue;
+      if (startIdx === -1 && uuid === band.startUuid) startIdx = i;
+      if (endIdx === -1 && uuid === band.endUuid) endIdx = i;
+    }
+  }
+
+  // A named anchor wasn't found in this snapshot → it died (or hasn't been
+  // hydrated into this snapshot yet). Degrade to no band rather than honour a
+  // phantom range — exactly as `resolveFocusBand` does on the live doc.
+  if (startIdx === -1 || endIdx === -1) return INACTIVE_FOCUS_STATE;
+  if (startIdx > endIdx) [startIdx, endIdx] = [endIdx, startIdx];
+  return {
+    active: true,
+    locked: band.locked,
+    startBlockIndex: startIdx,
+    endBlockIndex: endIdx,
+  };
 }
 
 /**
@@ -830,7 +883,10 @@ function DragHandle() {
 
 /* ── Editable pod component ────────────────────────────────────────── */
 
-function EditablePod({
+// Memoized with pod-taking STABLE callbacks (no per-pod closures at the render
+// site), so a dragover storm re-renders at most the pods whose isDragging /
+// dropPosition actually flipped — not all N per event.
+const EditablePod = memo(function EditablePod({
   pod,
   isDragging,
   dropPosition,
@@ -847,13 +903,13 @@ function EditablePod({
   isDragging: boolean;
   dropPosition: "above" | "below" | null;
   isCollapsed: boolean;
-  onToggleCollapse?: () => void;
-  onDragStart: (e: React.DragEvent) => void;
+  onToggleCollapse: (podId: string) => void;
+  onDragStart: (pod: OutlinePod, e: React.DragEvent) => void;
   onDragEnd: () => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
-  onDrop: (e: React.DragEvent) => void;
-  onRename: (newText: string) => void;
+  onDragOver: (podId: string, e: React.DragEvent) => void;
+  onDragLeave: (podId: string) => void;
+  onDrop: (podId: string, e: React.DragEvent) => void;
+  onRename: (pod: OutlinePod, newText: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(pod.text);
@@ -869,7 +925,7 @@ function EditablePod({
   const commitRename = () => {
     const trimmed = editText.trim();
     if (trimmed && trimmed !== pod.text) {
-      onRename(trimmed);
+      onRename(pod, trimmed);
     }
     setEditing(false);
   };
@@ -884,16 +940,16 @@ function EditablePod({
   return (
     <div
       className="relative"
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
+      onDragOver={(e) => onDragOver(pod.id, e)}
+      onDragLeave={() => onDragLeave(pod.id)}
+      onDrop={(e) => onDrop(pod.id, e)}
     >
       {dropPosition === "above" && (
         <div className="absolute top-0 left-2 right-2 h-[2px] bg-[var(--accent)] rounded-full z-10 -translate-y-1/2" />
       )}
       <div
         draggable
-        onDragStart={onDragStart}
+        onDragStart={(e) => onDragStart(pod, e)}
         onDragEnd={onDragEnd}
         className={`flex items-center gap-1.5 rounded-md border transition-all cursor-grab active:cursor-grabbing ${
           isDragging
@@ -917,7 +973,7 @@ function EditablePod({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onToggleCollapse?.();
+              onToggleCollapse(pod.id);
             }}
             onMouseDown={(e) => e.stopPropagation()}
             className="p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0"
@@ -978,7 +1034,7 @@ function EditablePod({
       )}
     </div>
   );
-}
+});
 
 /* ── Editable outline (edit mode container) ────────────────────────── */
 
@@ -1051,7 +1107,24 @@ function EditableOutline({
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const midY = rect.top + rect.height / 2;
     const position = e.clientY < midY ? "above" : "below";
-    setDropTarget({ podId, position });
+    // Equality bail: HTML5 dragover fires uncoalesced at raw event rate, and
+    // an unconditional fresh object here re-rendered every pod per event.
+    // Returning the same reference lets React skip the render entirely, so a
+    // hover only costs a rect read until the target actually changes.
+    setDropTarget((prev) =>
+      prev && prev.podId === podId && prev.position === position
+        ? prev
+        : { podId, position },
+    );
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingId(null);
+    setDropTarget(null);
+  }, []);
+
+  const handleDragLeave = useCallback((podId: string) => {
+    setDropTarget((prev) => (prev?.podId === podId ? null : prev));
   }, []);
 
   const handleDrop = useCallback((targetPodId: string, e: React.DragEvent) => {
@@ -1094,8 +1167,8 @@ function EditableOutline({
 
   if (pods.length === 0) {
     return (
-      <div className="p-6 text-center text-[var(--muted)] text-sm">
-        No sections found.
+      <div className={PANEL.empty}>
+        No sections yet. Type \section in the editor to add one.
       </div>
     );
   }
@@ -1111,19 +1184,13 @@ function EditableOutline({
             dropIndicator?.podId === pod.id ? dropIndicator.position : null
           }
           isCollapsed={collapsed.has(pod.id)}
-          onToggleCollapse={
-            pod.type === "heading" && pod.hasCollapsibleChildren
-              ? () => onToggleCollapse(pod.id)
-              : undefined
-          }
-          onDragStart={(e) => handleDragStart(pod, e)}
-          onDragEnd={() => { setDraggingId(null); setDropTarget(null); }}
-          onDragOver={(e) => handleDragOver(pod.id, e)}
-          onDragLeave={() => {
-            setDropTarget((prev) => prev?.podId === pod.id ? null : prev);
-          }}
-          onDrop={(e) => handleDrop(pod.id, e)}
-          onRename={(newText) => handleRename(pod, newText)}
+          onToggleCollapse={onToggleCollapse}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onRename={handleRename}
         />
       ))}
     </div>
@@ -1381,7 +1448,7 @@ function FocusBand({
 
 /* ── Main OutlinePanel ─────────────────────────────────────────────── */
 
-function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, isLabelTaken, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex, focusState, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
+function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, isLabelTaken, activeSectionPath, activeParTitleIndex, focusBand, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
   // View prefs come from the shared external store — survive reload AND the
   // docked↔popped-out remount (OUT-#7). No per-instance useState/localStorage.
   const prefs = useSyncExternalStore(
@@ -1419,6 +1486,18 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
   const { headings, preambleTitles } = useMemo(() => extractHeadings(content), [content]);
   const tree = useMemo(() => buildTree(headings), [headings]);
   const docTitle = useMemo(() => getDocTitle(content), [content]);
+
+  // Focus boundary resolved from the SAME `content` snapshot as `headings`
+  // above, so the cull comparisons below (`heading.index` vs
+  // `focusState.startBlockIndex/endBlockIndex`) never straddle two doc
+  // revisions — the drift that leaked the next section into the focused
+  // outline (task 307). Gated on `[focusBand, content]`, off the keystroke
+  // path. Every downstream consumer (`OutlineNode`, `FocusBand` overlay,
+  // position clamp) reads THIS `focusState`, not a prop.
+  const focusState = useMemo(
+    () => resolveFocusStateFromSnapshot(focusBand, content),
+    [focusBand, content],
+  );
 
   const totalBlocks = useMemo(() => {
     if (!content || !content.content) return 0;
@@ -1485,14 +1564,6 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
     const raw = resolvePosition(activeSectionPath, activeParTitleIndex, headings, collapsed, showTitles, preambleTitles);
     return clampToFocus(raw);
   }, [showPosition, activeSectionPath, activeParTitleIndex, headings, collapsed, showTitles, preambleTitles, clampToFocus]);
-
-  const pos2 = useMemo(() => {
-    if (!showPosition || !editorSplit) return null;
-    const raw = resolvePosition(mirrorSectionPath, mirrorParTitleIndex, headings, collapsed, showTitles, preambleTitles);
-    return clampToFocus(raw);
-  }, [showPosition, editorSplit, mirrorSectionPath, mirrorParTitleIndex, headings, collapsed, showTitles, preambleTitles, clampToFocus]);
-
-  const isSplit = !!editorSplit;
 
   // Collapse/expand-all replace ONLY this doc's fold bucket — they can no
   // longer wipe another paper's persisted folds (task 111 member 1).
@@ -1688,13 +1759,12 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
               />
             )}
             {/* Current-position selector — a soft full-row tint behind the
-                active section (#3), not a sliding bar. Mirror pane (split) gets
-                a slim green edge so both panes stay legible. */}
+                active section (#3), not a sliding bar. There is exactly ONE:
+                the mirror pane's green edge bar retired with the editor split
+                (task 115), where it had been painting Document-start with no
+                mirror to track. */}
             {showPosition && (
-              <>
-                <PositionHighlight scrollRef={scrollRef} attr={posToAttr(pos1)} color="rgba(180, 87, 87, 0.13)" variant="fill" />
-                {isSplit && <PositionHighlight scrollRef={scrollRef} attr={posToAttr(pos2)} color="#5b8a72" variant="edge" />}
-              </>
+              <PositionHighlight scrollRef={scrollRef} attr={posToAttr(pos1)} color="rgba(180, 87, 87, 0.13)" />
             )}
 
             {/* Fixed top row — document start / title. Hidden when locked
@@ -1776,8 +1846,8 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
             )}
 
             {tree.length === 0 ? (
-              <div className="p-6 text-center text-[var(--muted)] text-sm">
-                No sections found. Use the Section dropdown in the toolbar to add headings.
+              <div className={PANEL.empty}>
+                No sections yet. Type \section in the editor to add one.
               </div>
             ) : (
               tree.map((node) => (

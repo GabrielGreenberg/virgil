@@ -19,7 +19,7 @@
  * # Why a module singleton (not React Context)
  *
  * The producer (the React `EditorPane`, which holds `cardCreation` /
- * `cardLifecycle` / the live editor) and the consumers (ProseMirror plugins,
+ * `cardCreation` / the live editor) and the consumers (ProseMirror plugins,
  * which run with an `EditorView` ONLY — no React context) sit on opposite
  * sides of the React-land / PM-plugin-land boundary. A plugin cannot read a
  * React Context, so the handle is parked at module scope. This mirrors the

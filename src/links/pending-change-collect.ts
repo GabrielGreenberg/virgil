@@ -57,20 +57,3 @@ export function collectAppliedPendingIds(
   }
   return out;
 }
-
-/** Resolve the applied-pending card whose `appliedChange.anchorId` matches
- *  `anchorId`, across a card array — the pill's text-mark / caret → card lookup
- *  (the blue mark carries the same anchorId the card's `appliedChange` stamped).
- *  Returns the card id, or null when no applied card owns that range. */
-export function findAppliedPendingByAnchorId(
-  cards: ReadonlyArray<RevisionCard | CutterCard>,
-  anchorId: string,
-): string | null {
-  for (const c of cards) {
-    const ac = c as AppliedPendingCard;
-    if (isAppliedPending(ac) && ac.appliedChange?.anchorId === anchorId) {
-      return c.id;
-    }
-  }
-  return null;
-}

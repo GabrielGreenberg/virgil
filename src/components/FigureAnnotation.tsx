@@ -20,6 +20,12 @@ interface Props {
   editor?: Editor;
   label: string;
   numbered: boolean;
+  /** Can this figure take a number AT ALL? In LaTeX a float is numbered iff it
+   *  carries a `\caption`, and since task 319 Virgil stopped inventing one for
+   *  a caption-less figure — so on those the `#` toggle has nothing to toggle.
+   *  Default true keeps every non-figure caller (and the read-only float, which
+   *  mirrors MAIN's already-resolved number) unchanged. */
+  canNumber?: boolean;
   getFigurePos?: () => number | null;
   onConfirmRename?:
     | ((oldLabel: string, newLabel: string, refCount: number) => Promise<boolean>)
@@ -32,6 +38,7 @@ export default function FigureAnnotation({
   editor,
   label,
   numbered,
+  canNumber = true,
   getFigurePos,
   onConfirmRename,
   onConfirmDelete,
@@ -178,19 +185,29 @@ export default function FigureAnnotation({
       <span className="figure-annotation-type-chip" data-hint="Figure">
         Figure
       </span>
+      {/* A figure with no caption takes no LaTeX number, so the toggle is
+          shown INERT rather than silently doing nothing when clicked — the
+          affordance and the mechanism are one declaration (task 316's rule).
+          `is-unavailable`, not `is-off`: the latter means the user turned
+          numbering off, which they can undo. */}
       <span
-        className={`figure-annotation-numbered-toggle${numbered ? "" : " is-off"}`}
-        role={readOnly ? undefined : "button"}
-        aria-pressed={readOnly ? undefined : numbered}
+        className={`figure-annotation-numbered-toggle${
+          canNumber ? (numbered ? "" : " is-off") : " is-unavailable"
+        }`}
+        role={readOnly || !canNumber ? undefined : "button"}
+        aria-pressed={readOnly || !canNumber ? undefined : numbered}
+        aria-disabled={!readOnly && !canNumber ? true : undefined}
         data-hint={
           readOnly
             ? undefined
-            : numbered
-              ? "Hide figure number"
-              : "Show figure number"
+            : !canNumber
+              ? "No caption — LaTeX gives this figure no number"
+              : numbered
+                ? "Hide figure number"
+                : "Show figure number"
         }
         onClick={
-          readOnly
+          readOnly || !canNumber
             ? undefined
             : (e) => {
                 e.stopPropagation();

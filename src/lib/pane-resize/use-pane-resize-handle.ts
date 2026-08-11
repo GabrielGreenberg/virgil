@@ -32,11 +32,11 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
-  beginPaneDrag,
-  endPaneDrag,
-  isPaneDragging,
-  type PaneDragInfo,
-} from "./pane-drag-bus";
+  beginLayoutGesture,
+  endLayoutGesture,
+  isLayoutGestureActive,
+  type LayoutGestureInfo,
+} from "./layout-gesture-bus";
 import { mountDragShield, unmountDragShield } from "./drag-shield";
 // The start gate and the missed-release failsafe are shared with the bespoke
 // gestures the engine's shape doesn't fit (the Outline FocusBand's snap-to-row
@@ -124,7 +124,7 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
     // gesture whose end edge the context menu then eats.
     if (!isPrimaryDragStart(e)) return;
     // One pane gesture app-wide at a time.
-    if (isPaneDragging()) return;
+    if (isLayoutGestureActive()) return;
     const el = e.currentTarget;
     if (!el) return;
 
@@ -146,7 +146,7 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
     }
     e.preventDefault();
 
-    const info: PaneDragInfo = { id, axis };
+    const info: LayoutGestureInfo = { kind: "pane", id, axis };
     const startCoord = axis === "x" ? e.clientX : e.clientY;
     const startValue = specRef.current.getValue();
 
@@ -227,7 +227,7 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
         el.classList.remove("dragging");
         unmountDragShield();
         finishRef.current = null;
-        endPaneDrag(info);
+        endLayoutGesture(info);
       }
     };
 
@@ -286,7 +286,7 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
     el.classList.add("dragging");
     mountDragShield(axis === "x" ? "col-resize" : "row-resize");
     finishRef.current = finish;
-    beginPaneDrag(info);
+    beginLayoutGesture(info);
   }, []);
 
   return useMemo<PaneResizeHandleProps>(

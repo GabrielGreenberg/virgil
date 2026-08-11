@@ -6,6 +6,11 @@
  *   - COMMIT: `keepSuggestion` (Check — finalize the suggested text) and
  *     `dismissSuggestion` (Cross — DISMISS-PRESERVES: byte-restore the original
  *     + archive the card & its comment; NEVER hard-deletes).
+ *   - LIFECYCLE SETTLE: `settleAppliedChangeForLifecycle` — the same two commit
+ *     directions, minus the archive, for when a lifecycle event (morph/delete)
+ *     is about to end the record that manages the splice (task 238). All three
+ *     commit verbs share ONE core (`commitAppliedChange`), so the settle can't
+ *     drift from Keep/Dismiss the way a hand-copied sequence would.
  *   - NON-COMMITTING PREVIEW: `previewOriginal` / `previewSuggested` flip the
  *     LIVE doc text in place (via the same inverse splices) WITHOUT touching card
  *     status / archived / appliedChange, recording the direction in the transient
@@ -109,17 +114,96 @@ function reapplySuggested<TStatus extends string>(
   });
 }
 
+/** Which way a live applied splice is settled: finalize the suggested text, or
+ *  byte-restore the original. The two COMMIT directions, named — shared by the
+ *  card-surface verbs and by the lifecycle SETTLE obligation. */
+export type SettleResolution = "keep" | "revert";
+
 /**
- * Keep (finalize) the applied pending change for card `id`.
+ * THE COMMIT CORE — settle the live splice for card `id` in one direction, and
+ * retire the card's claim on it (`status` → accepted/rejected, `appliedChange`
+ * cleared). `alsoArchive` is the ONE axis on which the callers differ.
  *
- * Text-first ordering: splice the doc, flush the `.tex` BEFORE flipping card
- * state, so the finalized splice is on disk ahead of the sidecar status change.
- * No-ops when the card has no `appliedChange` (stale double-Keep).
+ * Text-first ordering: splice the doc and flush the `.tex` BEFORE flipping card
+ * state, so the settled text is on disk ahead of the sidecar write. No-ops when
+ * the card has no `appliedChange` (a stale double-commit).
  *
- * RECONCILE: Check always finalizes the SUGGESTED text regardless of the
+ * RECONCILE (keep): Check always finalizes the SUGGESTED text regardless of the
  * transient preview. If the user is currently previewing the ORIGINAL, re-apply
  * the suggested splice (from the canonical `appliedChange`, NOT the transient
  * doc text) BEFORE `keepPendingChange`, so a mid-preview commit is deterministic.
+ *
+ * RECONCILE (revert): `revertPendingChange` is idempotent from either preview
+ * direction — from the suggested view it removes the mark + restores the
+ * original; from an original-preview (mark already gone, text already original)
+ * it no-ops — so Cross deterministically leaves the ORIGINAL.
+ */
+function commitAppliedChange<TStatus extends string>(
+  editor: Editor,
+  id: string,
+  docId: string | null,
+  deps: PendingChangeCardDeps<TStatus>,
+  resolution: SettleResolution,
+  alsoArchive: boolean,
+): void {
+  const ac = deps.getAppliedChange(id);
+  if (!ac) return;
+  if (resolution === "keep") {
+    if (getPreviewDir(id) === "original") reapplySuggested(editor, id, ac, deps);
+    keepPendingChange(editor, {
+      anchorUuid: ac.anchorUuid,
+      mode: ac.mode,
+      anchorId: ac.anchorId,
+      originalText: ac.originalText,
+      replacement: ac.replacement,
+    });
+  } else {
+    revertPendingChange(editor, {
+      anchorUuid: ac.anchorUuid,
+      originalText: ac.originalText,
+      replacement: ac.replacement,
+      mode: ac.mode,
+      anchorId: ac.anchorId,
+    });
+  }
+  resetPreviewDir(id);
+  if (docId) void flushPendingForDoc(docId).catch(() => {});
+  deps.setSuggestionStatus(
+    id,
+    resolution === "keep" ? deps.acceptedStatus : deps.rejectedStatus,
+  );
+  if (alsoArchive) deps.setArchived(id, true);
+  deps.setAppliedChange(id, undefined);
+}
+
+/**
+ * Settle the applied splice for card `id` because a LIFECYCLE EVENT is about to
+ * end the record that manages it (a morph to a shape with no `appliedChange`, a
+ * delete) — the executor's SETTLE obligation, `runCardLifecycleEvent`
+ * (2026-07-27-238).
+ *
+ * Identical to Keep/Dismiss in the document — same splices, same flush, same
+ * descriptor clear — with ONE deliberate difference: it does NOT archive. Keep
+ * and Dismiss archive because the card SURVIVES and must leave the active list;
+ * here the card is about to be converted or deleted, so archiving would either
+ * hand the morph target a wrongly-archived record (a comment the user never
+ * archived, hidden from its panel) or write an envelope onto a record that is
+ * about to vanish.
+ */
+export function settleAppliedChangeForLifecycle<TStatus extends string>(
+  editor: Editor,
+  id: string,
+  docId: string | null,
+  deps: PendingChangeCardDeps<TStatus>,
+  resolution: SettleResolution,
+): void {
+  commitAppliedChange(editor, id, docId, deps, resolution, false);
+}
+
+/**
+ * Keep (finalize) the applied pending change for card `id`, then archive the
+ * card — the Check verb on every applied-card surface. See
+ * {@link commitAppliedChange} for the ordering + mid-preview reconcile.
  */
 export function keepSuggestion<TStatus extends string>(
   editor: Editor,
@@ -127,21 +211,7 @@ export function keepSuggestion<TStatus extends string>(
   docId: string | null,
   deps: PendingChangeCardDeps<TStatus>,
 ): void {
-  const ac = deps.getAppliedChange(id);
-  if (!ac) return;
-  if (getPreviewDir(id) === "original") reapplySuggested(editor, id, ac, deps);
-  keepPendingChange(editor, {
-    anchorUuid: ac.anchorUuid,
-    mode: ac.mode,
-    anchorId: ac.anchorId,
-    originalText: ac.originalText,
-    replacement: ac.replacement,
-  });
-  resetPreviewDir(id);
-  if (docId) void flushPendingForDoc(docId).catch(() => {});
-  deps.setSuggestionStatus(id, deps.acceptedStatus);
-  deps.setArchived(id, true);
-  deps.setAppliedChange(id, undefined);
+  commitAppliedChange(editor, id, docId, deps, "keep", true);
 }
 
 /**
@@ -162,20 +232,7 @@ export function dismissSuggestion<TStatus extends string>(
   docId: string | null,
   deps: PendingChangeCardDeps<TStatus>,
 ): void {
-  const ac = deps.getAppliedChange(id);
-  if (!ac) return;
-  revertPendingChange(editor, {
-    anchorUuid: ac.anchorUuid,
-    originalText: ac.originalText,
-    replacement: ac.replacement,
-    mode: ac.mode,
-    anchorId: ac.anchorId,
-  });
-  resetPreviewDir(id);
-  if (docId) void flushPendingForDoc(docId).catch(() => {});
-  deps.setSuggestionStatus(id, deps.rejectedStatus);
-  deps.setArchived(id, true);
-  deps.setAppliedChange(id, undefined);
+  commitAppliedChange(editor, id, docId, deps, "revert", true);
 }
 
 /**

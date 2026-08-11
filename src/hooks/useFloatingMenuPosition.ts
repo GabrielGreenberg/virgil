@@ -45,6 +45,8 @@ import {
   recordScrollPlacement,
   SCROLL_PORTAL_FLOATING_MENU,
 } from "@/lib/scroll-reposition-probe";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import { LAYOUT_SITE_FLOATING_MENU } from "@/lib/layout-gesture-probe";
 
 export type FloatingMenuSide = "above" | "below" | "left-of" | "right-of";
 export type FloatingMenuAlign = "start" | "center" | "end";
@@ -309,10 +311,16 @@ export function useFloatingMenuPosition(
     if (maxHeight && chosenSide) {
       const avail = availableHeightFor(anchor, chosenSide, vh, gap, margin);
       setClampHeight((prev) => (prev === avail ? prev : avail));
-    } else if (clampHeight !== null) {
-      setClampHeight(null);
+    } else {
+      // Functional, so `clampHeight` stays OUT of the dependency list below.
+      // Reading it here made `reposition` change identity on every clamp change
+      // while also being the thing that changes it — and the mount effect keys
+      // on that identity, so with `maxHeight` on, each scroll/resize frame ran
+      // the RAF-scheduled measure and then a SECOND full re-measure from the
+      // re-fired layout effect. The bail keeps the write idempotent.
+      setClampHeight((prev) => (prev === null ? prev : null));
     }
-  }, [stableAnchor, placements, gap, margin, maxHeight, clampHeight]);
+  }, [stableAnchor, placements, gap, margin, maxHeight]);
 
   // Stash the latest reposition fn so the listeners below can call the
   // current implementation without re-subscribing on every change.
@@ -335,47 +343,60 @@ export function useFloatingMenuPosition(
     elRef.current = el;
   }, []);
 
+  // ONE RAF-coalesced, gesture-parked scheduler for EVERY geometry trigger
+  // (task 317). Two bugs lived in the shape this replaces. (1) `resize` was
+  // registered TWICE — unconditionally and SYNCHRONOUSLY here, and again
+  // inside the `trackAnchor` effect behind a RAF — so a tracking menu
+  // re-solved its placement twice per resize event, once of them off-frame;
+  // six live call sites. (2) Neither registration knew about a continuous
+  // layout gesture, so both re-solved per frame of a window drag. Now: one
+  // scheduler, at most one reposition per frame, and during a pane-divider
+  // drag / OS window resize exactly ONE settle on the end edge. The menu's
+  // anchor is chrome (a toolbar button, a card header), which a gesture
+  // displaces sub-pixel, so parking cannot visibly detach it.
+  const scheduleRef = useRef<() => void>(() => {});
   useLayoutEffect(() => {
-    const el = elRef.current;
-    if (!el) return;
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => repositionRef.current());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  useLayoutEffect(() => {
-    if (typeof window === "undefined") return;
-    const onResize = () => repositionRef.current();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  // Optional scroll/resize re-anchor (design §3.3). Installed ONLY when a
-  // `trackAnchor` thunk is supplied; RAF-coalesced so a burst of scroll
-  // events triggers at most one re-read per frame (keystroke-sanctity: this
-  // is scroll/resize-driven, never on the editor transaction path). The
-  // capture phase catches scrolls in any nested scroll container, not just
-  // the window.
-  const tracking = !!trackAnchor;
-  useEffect(() => {
-    if (!tracking) return;
     if (typeof window === "undefined") return;
     let raf = 0;
-    const onScrollOrResize = () => {
+    const schedule = () => {
       if (raf) return;
       raf = window.requestAnimationFrame(() => {
         raf = 0;
         repositionRef.current();
       });
     };
-    window.addEventListener("scroll", onScrollOrResize, true);
-    window.addEventListener("resize", onScrollOrResize);
+    const park = parkDuringLayoutGesture(schedule, LAYOUT_SITE_FLOATING_MENU);
+    const fire = () => park.fire();
+    scheduleRef.current = fire;
+    window.addEventListener("resize", fire);
+    const el = elRef.current;
+    let ro: ResizeObserver | null = null;
+    if (el && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(fire);
+      ro.observe(el);
+    }
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", onScrollOrResize, true);
-      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("resize", fire);
+      ro?.disconnect();
+      park.dispose();
+      scheduleRef.current = () => {};
     };
+  }, []);
+
+  // Optional scroll re-anchor (design §3.3). Installed ONLY when a
+  // `trackAnchor` thunk is supplied; it rides the shared scheduler above, so a
+  // burst of scroll events triggers at most one re-read per frame
+  // (keystroke-sanctity: this is scroll-driven, never on the editor
+  // transaction path). The capture phase catches scrolls in any nested scroll
+  // container, not just the window.
+  const tracking = !!trackAnchor;
+  useEffect(() => {
+    if (!tracking) return;
+    if (typeof window === "undefined") return;
+    const onScroll = () => scheduleRef.current();
+    window.addEventListener("scroll", onScroll, true);
+    return () => window.removeEventListener("scroll", onScroll, true);
   }, [tracking]);
 
   // Memoized so the returned `style` keeps a stable identity across renders

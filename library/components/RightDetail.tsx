@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { queueBibEdit } from "@library/lib/bib-edit";
+import { refreshQueueState } from "@library/lib/queue-state-store";
 import { isSynthesizedRaw } from "@library/lib/reconstruct-bibtex";
 import {
   resetPaperViewModeOnOpen,
@@ -22,12 +23,12 @@ import PaperRender from "./PaperRender";
 import PdfView from "./PdfView";
 // Drag-time followers of the app-wide pane-resize bus (sanctioned cross-silo
 // bridge, see library/CLAUDE.md "Don't"): PaneFreeze width-locks the reader
-// subtree for the length of a gutter gesture; parkDuringPaneDrag stashes the
+// subtree for the length of a gutter gesture; parkDuringLayoutGesture stashes the
 // two per-frame feedback paths below as defense-in-depth behind that freeze.
 import {
   PaneFreeze,
-  parkDuringPaneDrag,
-  type PaneDragPark,
+  parkDuringLayoutGesture,
+  type LayoutGesturePark,
 } from "@/lib/pane-resize";
 // Shared framed-viewer surface (inset + pod border/radius/shadow), the same
 // component the docs-side compiled-PDF pane renders through — sanctioned
@@ -134,14 +135,22 @@ export default function RightDetail({
     }
     let raf = 0;
     let cancelled = false;
-    // Parked during any pane-resize gesture: mid-drag the whole detail
-    // subtree is width-frozen (the PaneFreeze mount below) so this RO
-    // shouldn't fire at all; the park is defense-in-depth — a mid-gesture
-    // fire (font swap, image load) stashes dirty and the end edge reconciles
-    // ONCE instead of riding a pointer frame into the setTextPodRect →
-    // PaperHeader podAlign cascade.
-    const park = parkDuringPaneDrag(() => schedule());
-    const ro = new ResizeObserver(() => park.fire());
+    // Parked during any continuous layout gesture — a pane-divider drag or an
+    // OS window resize. Mid-drag the whole detail subtree is width-frozen (the
+    // PaneFreeze mount below) so this RO shouldn't fire at all; the park is
+    // defense-in-depth — a mid-gesture fire (font swap, image load) stashes
+    // dirty and the end edge reconciles ONCE instead of riding a pointer frame
+    // into the setTextPodRect → PaperHeader podAlign cascade.
+    //
+    // BOTH triggers go through it. This effect was the signature of the bug
+    // task 317 fixed: the RO parked while the window `resize` listener 38
+    // lines below fed the SAME scheduler raw — and since PaneFreeze does not
+    // (and cannot) freeze an OS window resize, that raw path was the live one
+    // for the whole gesture. A second subscription is exactly the one that
+    // gets forgotten, which is why there is now one bus and one park.
+    const park = parkDuringLayoutGesture(() => schedule());
+    const onGeometry = () => park.fire();
+    const ro = new ResizeObserver(onGeometry);
     const measure = () => {
       if (cancelled) return;
       const frame = readerScrollEl.querySelector<HTMLElement>("[data-pod-frame]");
@@ -178,14 +187,14 @@ export default function RightDetail({
       if (polls++ < 180) requestAnimationFrame(poll);
     };
     requestAnimationFrame(poll);
-    window.addEventListener("resize", schedule);
+    window.addEventListener("resize", onGeometry);
     measure();
     return () => {
       cancelled = true;
       if (raf) cancelAnimationFrame(raf);
       ro.disconnect();
       park.dispose();
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", onGeometry);
     };
   }, [viewMode, readerScrollEl]);
 
@@ -229,11 +238,11 @@ export default function RightDetail({
   // the end edge instead of re-rendering RightDetail per pointer frame. The
   // park's bus subscription is owned by the effect; outside its lifetime the
   // callback applies directly (never drops a viewer event).
-  const pdfParkRef = useRef<PaneDragPark<
+  const pdfParkRef = useRef<LayoutGesturePark<
     [PdfPageState, (page: number) => void]
   > | null>(null);
   useEffect(() => {
-    const park = parkDuringPaneDrag(applyPdfPageState);
+    const park = parkDuringLayoutGesture(applyPdfPageState);
     pdfParkRef.current = park;
     return () => {
       pdfParkRef.current = null;
@@ -382,6 +391,9 @@ export default function RightDetail({
               onClose={() => setEditOpen(false)}
               onSave={async (type, fields) => {
                 await queueBibEdit(handle, entry.citekey!, { type, fields });
+                // A bib edit is a queue write: push it through the queue's one
+                // notification channel so the row dot lights immediately.
+                await refreshQueueState();
                 onBibChanged?.();
               }}
             />
@@ -447,6 +459,7 @@ export default function RightDetail({
             onClose={() => setEditOpen(false)}
             onSave={async (type, fields) => {
               await queueBibEdit(handle, entry.citekey!, { type, fields });
+              await refreshQueueState();
               onBibChanged?.();
             }}
           />

@@ -58,7 +58,7 @@
  * # The React-land vs ProseMirror-plugin-land boundary (the crux)
  *
  * An `ActionSpec.run()` lives in **React-land** — it closes over the
- * `cardCreation` / `cardLifecycle` APIs, panel state, confirm dialogs, etc.
+ * `cardCreation` API, panel state, confirm dialogs, etc.
  * Surfaces 1 & 2 are React components, so they call `run()` directly.
  *
  * Surfaces 3 & 4 are ProseMirror plugins with only an `EditorView`. They
@@ -72,10 +72,10 @@
  *     CustomEvent("virgil-footnote-input"))`, calls
  *     `getEditorActionsHandle()?.runAction("footnote", { surface: "slash" })`.
  *   - The bridge resolves the spec, **supplies the React APIs**
- *     (`cardCreation` / `cardLifecycle`) into the `ActionContext`, and invokes
+ *     (`cardCreation`) into the `ActionContext`, and invokes
  *     `spec.run(ctx)` in React-land.
  *
- * So `ActionContext.cardCreation` / `.cardLifecycle` are populated DIRECTLY by
+ * So `ActionContext.cardCreation` is populated DIRECTLY by
  * the React caller for surfaces 1 & 2, and BY THE BRIDGE for surfaces 3 & 4.
  * The plugin never touches React; the bridge is the one seam.
  *
@@ -126,25 +126,25 @@ import type { AtomCreateKind, OpenAtomCreateOpts } from "./atom-create";
 // value import is free for every consumer of this registry.
 import { smartInsertBlock } from "@/lib/tiptap/smart-insert";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
-// VALUE imports: the figure/graphics fresh-attrs builders + the figure raw
-// synthesizer. `figureRun` / `graphicsRun` seed the new block with the SAME stub
-// attrs the former `insertFigureBlock` / `insertGraphicsBlock` did (so the empty
-// `\includegraphics` shape is byte-identical), and `figureRun` synthesizes the
-// popover's `raw` seed from the new figure's attrs via `synthesizeFigureRaw`.
-// Imported from `figure-attrs.ts` (the React-free leaf, CHIP 6a) — NOT from
-// `figure-block.ts` / `graphics-block.ts`, whose React NodeView + `@/lib/storage`
-// graph must NOT be pulled into this registry (it's imported in node-env /
-// jsdom vitests without the storage mock).
+// VALUE imports: the figure/graphics fresh-attrs builders. `figureRun` /
+// `graphicsRun` seed the new block with the SAME stub attrs the former
+// `insertFigureBlock` / `insertGraphicsBlock` did (so the empty
+// `\includegraphics` shape is byte-identical). Imported from `figure-attrs.ts`
+// (the React-free leaf, CHIP 6a) — NOT from `figure-block.ts` /
+// `graphics-block.ts`, whose React NodeView + `@/lib/storage` graph must NOT be
+// pulled into this registry (it's imported in node-env / jsdom vitests without
+// the storage mock).
 import {
   freshFigureBlockAttrs,
   freshGraphicsBlockAttrs,
-  synthesizeFigureRaw,
 } from "@/lib/tiptap/figure-attrs";
+// The popover's `raw` seed comes from the ONE env-body builder the serializer
+// uses (tasks 318/319) — a pure leaf over `figures/parse-attrs`, no React.
+import { buildFigureEnvBody } from "@/lib/figures/env-body";
 // Type-only (erased at compile time): the React-land APIs an action's
 // `run()` reaches for. Importing the TYPES does NOT instantiate them and
 // does NOT pull React into this module's runtime.
 import type { CardCreationApi } from "@/components/editor-layout/card-actions/card-creation";
-import type { CardLifecycleApi } from "@/panels/card-lifecycle-registry";
 // Type-only (erased): the panel-id + prefs shape the citation soft-route
 // inspects to decide whether to surface OMNI. Importing the TYPE pulls no
 // prefs runtime into this module.
@@ -183,6 +183,8 @@ import {
   TEXT_OBJECT_REGISTRY,
   isTextObjectKind,
   posBlockAllowsAction,
+  blockRangeAllowsAction,
+  INLINE_INSERT_ACTIONS,
   posHostsBlockInsert,
   blockTypeHostsBlockInsert,
 } from "@/text-objects/text-object-registry";
@@ -412,17 +414,32 @@ export interface CursorRef {
  */
 export type ActionRef = DragHandleRef | CursorRef;
 
-/**
- * Where an action's insertion/anchor lands relative to the ref.
- *
- *   - `"cursor"` — at the collapsed caret (the slash/typed default; also the
- *     lightning "insert at cursor" path).
- *   - `"passage-end"` — at the END of the resolved passage. The grab-bar
- *     footnote/citation actions collapse the selection to `range.to` before
- *     inserting the marker; this names that policy declaratively.
- */
-export type ActionPosition = "cursor" | "passage-end";
-
+// ── TWO RETIRED CONTEXT FIELDS (task 227) ──────────────────────────────────
+// Both were fully declared, bridge-threaded and suite-asserted, and both were
+// read by NOTHING — so each documented a capability the registry did not own.
+// A context field is a promise that some `run()` consults it; a field nobody
+// consults is worse than an absent one, because the next agent reaches for the
+// declared path believing it is the enforced one.
+//
+//   • `position` (`ActionPosition = "cursor" | "passage-end"`) claimed to own
+//     insertion PLACEMENT. Placement actually lives where it is applied: the
+//     grab-bar dispatcher collapses the selection to `range.to` for
+//     footnote/citation before inserting the marker ([drag-handle-actions.ts]
+//     `case "footnote"` / `case "citation"`), and slash/typed insert at the
+//     live caret. Nothing ever SET the field either — not one production or
+//     test site passed a value; four suites asserted the forwarding of it.
+//
+//   • `cardLifecycle` (`CardLifecycleApi`) claimed the lifecycle actions
+//     (duplicate / archive / delete) used it to fork/remove sidecar entries.
+//     They do reach a `CardLifecycleApi` — through a different channel:
+//     `cardRun` forwards to `ctx.dispatch` → `useDragHandleActions`, which
+//     closes over its OWN copy from `DragHandleActionsDeps`. The ctx slot was
+//     the "run() closes over it directly" chip that never landed.
+//
+// Re-add either WITH its first real reader, never ahead of one. The honesty
+// census ([__tests__/action-context-honesty.test.ts]) fails any context field
+// nothing consumes — it is what found the second one.
+//
 // ---------------------------------------------------------------------------
 // ActionContext — the bundle passed to applies() / resolveScope() / run()
 // ---------------------------------------------------------------------------
@@ -431,7 +448,7 @@ export type ActionPosition = "cursor" | "passage-end";
  * Everything an action needs to decide applicability, resolve its scope, and
  * run. Built per-invocation by the calling surface (or, for surfaces 3 & 4,
  * by the bridge — which is the ONLY supplier of `cardCreation` /
- * `cardLifecycle` for those surfaces).
+ * `cardCreation` for those surfaces).
  */
 export interface ActionContext {
   /** The live editor (React-land surfaces hold the `Editor`; the bridge has
@@ -479,24 +496,21 @@ export interface ActionContext {
    * `false` (collab on AND partner holds the pen) gates.
    */
   canEdit?: boolean;
-  /** Where the insertion/anchor should land. Defaults are surface-specific
-   *  (slash/typed ⇒ "cursor"; grab footnote/citation ⇒ "passage-end"). */
-  position?: ActionPosition;
   /**
-   * React-land card creation API. **Supplied directly by surfaces 1 & 2**
-   * (they are React components that already hold it) and **by the bridge for
-   * surfaces 3 & 4** (a slash command / input rule cannot reach it). Absent
-   * only on a pure view-only path that needs no card creation. Type-only
+   * React-land card creation API. Surfaces 1 & 2 *could* supply it directly
+   * (they are React components that already hold it) but in practice neither
+   * does — `DragHandleMenu` builds `{ ref, canEdit, view }` and
+   * `ActionsMenuPanel` carries no card APIs — so **the bridge is the sole
+   * supplier today**, for surfaces 3 & 4 (a slash command / input rule cannot
+   * reach React-land). Absent on a pure view-only path that needs no card
+   * creation; `citationRun` / `footnoteRun` bail when it is. Type-only
    * import — this module never instantiates it.
+   *
+   * (The doc here used to assert "Supplied directly by surfaces 1 & 2" for
+   * this field AND for a `cardLifecycle` twin. It was false of both, and the
+   * twin had no reader at all — see the retired-field note under `canEdit`.)
    */
   cardCreation?: CardCreationApi;
-  /**
-   * React-land per-CardKind clone/delete API. Same supply rule as
-   * `cardCreation`: direct for 1 & 2, via the bridge for 3 & 4. Used by the
-   * lifecycle actions (duplicate / archive / delete) to fork/remove sidecar
-   * entries for atoms/anchors in the captured passage.
-   */
-  cardLifecycle?: CardLifecycleApi;
   /**
    * Optional free-form seed payload the bridge threads from the plugin-land
    * caller (e.g. a `\cite`'s pre-allocated `citationId`, or a partial command
@@ -524,7 +538,7 @@ export interface ActionContext {
    *
    * REMOVED by a LATER chip: once each action's dispatch case is relocated
    * INTO its `run()` body, this forwarding slot disappears and `run()`
-   * closes over `cardCreation` / `cardLifecycle` directly. Until then it is
+   * closes over `cardCreation` directly. Until then it is
    * the one seam that lets the registry delegate without copying logic.
    */
   dispatch?: (action: DragHandleAction, ref: DragHandleRef) => void;
@@ -687,7 +701,7 @@ export interface ActionSpec {
    * hide its implementation strategy:
    *
    *   - `"card-creation"` — routes through React-land `cardCreation` /
-   *     `cardLifecycle` (the card actions; citation/footnote).
+   *     `cardCreation` (the card actions; citation/footnote).
    *   - `"prosemirror"`   — a pure PM transaction on `ctx.view` (heading / tex /
    *     example / the block-atom inserts) — no React, no bridge.
    *   - `"tiptap-chain"`  — a pure `editor.chain()…run()` call, with NO bridge
@@ -748,7 +762,7 @@ export interface ActionSpec {
   resolveScope?(ctx: ActionContext): { from: number; to: number };
   /**
    * The single implementation. Lives in React-land (closes over
-   * `ctx.cardCreation` / `ctx.cardLifecycle`). Surfaces 1 & 2 call it
+   * `ctx.cardCreation`). Surfaces 1 & 2 call it
    * directly; surfaces 3 & 4 reach it through the `EditorActionsHandle`
    * bridge, which supplies the React APIs into `ctx` first. May be async
    * (some paths await a confirm dialog).
@@ -768,7 +782,7 @@ export interface ActionSpec {
  *   editorActionsRef.current?.runAction("footnote", { surface: "slash" });
  *
  * The handle's implementation resolves the `ActionSpec`, builds an
- * `ActionContext` — crucially **supplying `cardCreation` / `cardLifecycle`
+ * `ActionContext` — crucially **supplying `cardCreation`
  * from React-land** so the plugin never touches React — and invokes
  * `spec.run(ctx)`.
  *
@@ -793,16 +807,18 @@ export interface EditorActionsHandle {
    *              (defensive — the registry is now the COMPLETE SSOT, so every
    *              `ActionId` resolves to a row).
    * @param seed  The invocation context the plugin can supply. `surface` is
-   *              restricted to the two plugin-land surfaces. `position` and
-   *              `payload` thread the same way they do on `ActionContext`
-   *              (e.g. a `\cite`'s pre-allocated `citationId`). The bridge
-   *              fills in the React APIs + the live editor/view itself.
+   *              restricted to the two plugin-land surfaces. `payload` threads
+   *              the same way it does on `ActionContext` (e.g. a `\cite`'s
+   *              pre-allocated `citationId`). The bridge fills in the React
+   *              APIs + the live editor/view itself. Every member here must
+   *              name an `ActionContext` field a `run()` actually reads — the
+   *              seed can only carry what the context can hold, and the
+   *              context can only declare what something consumes.
    */
   runAction(
     id: ActionId,
     seed: {
       surface: "slash" | "typed";
-      position?: ActionPosition;
       payload?: Record<string, unknown>;
     },
   ): void;
@@ -967,32 +983,55 @@ function cardApplies(
  * unification (task 061).
  *
  *   - A kind-bearing `TextObjectRef` (the grab-bar) reads its curated set
- *     directly via `kindAllowsCardAction` — UNCHANGED.
+ *     directly via `kindAllowsCardAction` — the POLICY layer.
  *   - A GESTURE ref (a bare `cursor` / `selection` from the slash, typed, and
- *     lightning surfaces) has no TextObject kind, so it resolves the caret's
- *     CONTAINING block kind and consults the SAME curated set
- *     (`posBlockAllowsAction`). This is what stops `/cite` · `\cite{}` (and the
- *     footnote twins) from inserting an inline atom into a `titleField` /
- *     non-prose block — matching the grey-out the grab-bar already shows.
+ *     lightning surfaces) has no TextObject kind, so it resolves its position
+ *     and consults the SAME curated set (`blockRangeAllowsAction`). This is what
+ *     stops `/cite` · `\cite{}` (and the footnote twins) from inserting an
+ *     inline atom into a `titleField` / non-prose block — matching the grey-out
+ *     the grab-bar already shows.
+ *   - task 148 — for the `INLINE_INSERT_ACTIONS` family a BLOCK ref asks
+ *     positionally TOO, over the range the dispatcher will resolve
+ *     (`cardResolveScope`, which mirrors `resolveRefRange`). A container's own
+ *     node hosts no inline content while its BODY does, so its kind is simply
+ *     not the thing that can answer: reading it greyed footnote / citation /
+ *     suggest-edit on an example or a list while the lightning bolt enabled all
+ *     three at a caret one position inside. The two layers COMPOSE, policy
+ *     first: `titleField` still refuses Citation (a title has no bibliography)
+ *     though the schema would host it.
  *
  * Defensive: a probe that didn't thread a live `view` (the minimal
  * `{ ref, canEdit }` context the grab/lightning menu-decoration passes) falls
  * back to the historic "allow", so it degrades to prior behavior rather than
  * throwing — the same short-circuit `kindAllowsCardAction` gave gesture refs
- * before this change.
+ * before this change. A block ref whose node is NOT in this doc (a stale handle,
+ * a unit-test probe) likewise falls back to its curated set: the positional
+ * layer can only tighten, never invent an answer it has no position for.
  */
 function cardActionAllowedForCtx(id: CardActionId, ctx: ActionContext): boolean {
   const ref = ctx.ref;
-  if (ref.kind !== "cursor" && ref.kind !== "selection") {
-    return kindAllowsCardAction(ref, id);
-  }
-  const doc = ctx.view?.state?.doc;
+  const raw = ctx.view?.state?.doc;
   // No live view threaded (the minimal `{ ref, canEdit }` menu-decoration ctx),
   // or a non-PM mock doc (unit-test probe) → historic gesture-ref "allow", so we
   // degrade to prior behavior rather than throw on a doc without `resolve`.
-  if (!doc || typeof doc.resolve !== "function") return true;
-  const pos = ref.kind === "cursor" ? ref.pos : ref.from;
-  return posBlockAllowsAction(doc, pos, id as DragHandleAction);
+  const doc = raw && typeof raw.resolve === "function" ? raw : null;
+
+  if (ref.kind !== "cursor" && ref.kind !== "selection") {
+    if (!kindAllowsCardAction(ref, id)) return false;
+    if (!doc || !INLINE_INSERT_ACTIONS.has(id as DragHandleAction)) return true;
+    const scope = cardResolveScope(id, ctx);
+    if (!scope) return true;
+    return blockRangeAllowsAction(
+      doc,
+      scope.from,
+      scope.to,
+      id as DragHandleAction,
+    );
+  }
+  if (!doc) return true;
+  const from = ref.kind === "cursor" ? ref.pos : ref.from;
+  const to = ref.kind === "cursor" ? ref.pos : ref.to;
+  return blockRangeAllowsAction(doc, from, to, id as DragHandleAction);
 }
 
 /**
@@ -2176,7 +2215,15 @@ export function figureRun(ctx: ActionContext): void {
     if (!(dom instanceof HTMLElement)) return;
     openInsertPopover(ctx, {
       kind: "figureBlock",
-      raw: synthesizeFigureRaw(attrs.extras, "", attrs.label),
+      // The ONE env-body builder (tasks 318/319) — the seed the user edits is
+      // byte-for-byte what the serializer would write for these attrs.
+      raw: buildFigureEnvBody({
+        extras: attrs.extras,
+        captionTex: "",
+        hasCaption: attrs.hasCaption,
+        shortCaption: null,
+        label: attrs.label,
+      }),
       pos: found,
       rect: dom.getBoundingClientRect(),
     });

@@ -33,6 +33,12 @@
 //     `{ attributes: true, attributeFilter: ["data-editable"] }`) are
 //     deliberately NOT matched — they fire on attribute flips, not typing.
 //   • Scoped to `src/` — `library/` owns its own perf doctrine.
+//   • This census asks whether an observer is bounded PER FIRE. Whether it
+//     may fire at all during a continuous layout gesture (a pane drag or an
+//     OS window resize) is the fourth law's question, censused by
+//     `window-resize-guardrail.test.ts` (AGENTS.md "Layout-gesture
+//     stability"). Several ROs listed below are also parked there; an RO that
+//     is bounded per fire and fires 120 times a second is still the bug.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -70,15 +76,13 @@ const PERMITTED_RESIZE_OBSERVERS: Record<string, string> = {
   "components/editor-layout/split-with-code.tsx":
     "Observes the split container/child for divider sizing — layout chrome, not per-keystroke content.",
   "components/panel-primitives.tsx":
-    "Observes a panel header's own box — panel chrome, mounted with the panel.",
-  "hooks/useEditorViewportCache.ts":
-    "Observes the editor element + scroll parent; refresh() has a full field-equality bail before the version bump, so unchanged geometry re-renders nothing.",
+    "Observes a panel header's own box — panel chrome, mounted with the panel; the --pc-header-h var write is equality-bailed (task 317). The bail is load-bearing, not decoration: this RO is per CARD in every open panel, so a window/pane resize fired an unconditional setProperty on each one per frame — a re-dirtied layout per card, and the write→resize→RO loop had nothing to terminate it. The earlier justification stopped at 'panel chrome', which was true and said nothing about the write.",
   "hooks/useFloatingMenuPosition.ts":
-    "Observes the floating menu's own element; reposition is RAF-coalesced with a (left,top) equality bail (also on the scroll-reposition allowlist).",
+    "Observes the floating menu's own element; reposition is RAF-coalesced with a (left,top) equality bail (also on the scroll-reposition allowlist), and parked on the layout-gesture bus. The RAF claim was FALSE until task 317 — `resize` was registered twice, once unconditionally and SYNCHRONOUSLY outside the RAF path, so six live call sites re-solved placement twice per event with one of them off-frame. The RO and the resize now share ONE parked scheduler; a justification that describes only the observer is worth nothing if a second registration bypasses it.",
   "hooks/useInTextPositions.ts":
     "Observes editor.view.dom for wrap-induced reflow; the callback only calls the RAF-coalesced schedule() — the measure pass is viewport-gated (NEAR_ZONE) and runs once per frame.",
-  "hooks/useMarginaliaRegistry.ts":
-    "Per-[data-uuid]-block ROs; onResize bails when the editor is hidden and feeds per-uuid invalidation into a RAF-coalesced recompute.",
+  "lib/editor-geometry/service.ts":
+    "Per-[data-uuid]-block ROs PLUS the editor element + its scroll container (C7: the viewport-frame targets absorbed from the deleted useEditorViewportCache — 4 private ROs per pane collapsed onto this ONE observer); onResize bails when the editor is hidden, routes viewport-element entries into the gesture-parked, full-field-equality-bailed frame refresh, and feeds per-uuid invalidation into a RAF-coalesced, gesture-parked recompute.",
   "panels/Outline/OutlinePanel.tsx":
     "Observes the panel's own scroller/container — panel-local, open-only, bounded row measure.",
 };

@@ -33,6 +33,7 @@ import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorHandle } from "@/components/Editor";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
+import { findSourceNodeByUuid } from "@/lib/float-source-range";
 import {
   computeExpexWidths,
   expexWidthStyle,
@@ -48,6 +49,7 @@ import {
   FLOAT_WRITE_META,
   SourceMissingBanner,
   useFloatMainSync,
+  type SourceRange,
 } from "@/lib/float-sync";
 import type { TextObjectFloatBodyProps } from "../types";
 
@@ -60,17 +62,10 @@ interface ExampleBlockSource {
 function findExampleBlockByUuid(
   doc: PMNode,
   uuid: string,
+  hint?: SourceRange | null,
 ): ExampleBlockSource | null {
-  let result: ExampleBlockSource | null = null;
-  doc.descendants((node, pos) => {
-    if (result) return false;
-    if (node.type.name === "exampleBlock" && node.attrs?.uuid === uuid) {
-      result = { start: pos, end: pos + node.nodeSize, node };
-      return false;
-    }
-    return true;
-  });
-  return result;
+  const src = findSourceNodeByUuid(doc, uuid, "exampleBlock", hint);
+  return src ? { start: src.start, end: src.end, node: src.node } : null;
 }
 
 export function ExampleBlockBody({
@@ -201,7 +196,9 @@ export function ExampleBlockBody({
   function writeBackToMain(doc: JSONContent) {
     const ed = ref.current?.getEditor();
     if (!ed) return;
-    const src = findExampleBlockByUuid(ed.state.doc, uuid);
+    // The live source range doubles as this write's position hint (task 140),
+    // so the float→main direction stops walking the doc per float keystroke.
+    const src = findExampleBlockByUuid(ed.state.doc, uuid, sourceRangeRef.current);
     if (!src) return;
     const incoming = doc.content ?? [];
     if (incoming.length === 0) return;
@@ -226,8 +223,8 @@ export function ExampleBlockBody({
   }
 
   const readSource = useCallback(
-    (doc: PMNode) => {
-      const src = findExampleBlockByUuid(doc, uuid);
+    (doc: PMNode, hint: SourceRange | null) => {
+      const src = findExampleBlockByUuid(doc, uuid, hint);
       if (!src) {
         return {
           doc: {
@@ -258,12 +255,13 @@ export function ExampleBlockBody({
           content: [src.node.toJSON() as JSONContent],
         } as JSONContent,
         missing: false,
+        range: { from: src.start, to: src.end },
       };
     },
     [uuid],
   );
 
-  const { sourceMissing } = useFloatMainSync({
+  const { sourceMissing, sourceRangeRef } = useFloatMainSync({
     mainEditor,
     floatEditor,
     floatId,

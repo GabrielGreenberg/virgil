@@ -134,14 +134,19 @@ describe("readPendingDiff from another plugin's apply (P0 plugin order)", () => 
   });
 
   it("sees EMPTY_DIFF (not null) on a docChanged-but-structurally-null tx (attr-only step)", () => {
-    // A `parTitle` AttrStep is docChanged but produces no structural or
-    // content entries — the inspector returns the shared EMPTY_DIFF. The
+    // An IN-PLACE `parTitle` edit ("T" → "TX") is docChanged but produces no
+    // structural or content entries — the tracked datum is the BOOLEAN
+    // `parTitled` (deriveParTitled), which doesn't flip when a non-empty title
+    // stays non-empty — so the inspector returns the shared EMPTY_DIFF. The
     // observer must store IT (not null) so apply-time consumers can tell
     // "observer present, nothing changed" apart from "observer absent"
-    // and skip their full-rebuild fallback.
+    // and skip their full-rebuild fallback. (The null → "T" FLIP is the
+    // structural case — pinned in __tests__/par-titled.test.ts.)
     const editor = makeEditor();
     try {
       editor.view.dispatch(editor.state.tr.setNodeAttribute(0, "parTitle", "T"));
+      seen.length = 0;
+      editor.view.dispatch(editor.state.tr.setNodeAttribute(0, "parTitle", "TX"));
       expect(seen.length).toBeGreaterThanOrEqual(1);
       expect(seen[0]).toBe(EMPTY_DIFF);
     } finally {

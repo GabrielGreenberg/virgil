@@ -5,6 +5,12 @@ import { CITE_NAMES_RE_INLINE, MULTI_CITE_NAMES } from "@/lib/cite-commands";
 import { generateShortId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid";
 import { collectExampleBodyLabelsJSON } from "@/lib/example-refs";
 import {
+  BLOCK_TEX_MARKERS,
+  markerArgStart,
+  markerOpensAt,
+  VIRGIL_MARKERS,
+} from "@/lib/latex-markers";
+import {
   extractFigureAttrs,
   extractGraphicsAttrs,
   matchIncludegraphics,
@@ -19,8 +25,30 @@ import {
   findMatchingGloss,
   isEscaped,
   findUnescaped,
+  matchInlineVerbAt,
+  verbatimMark,
   VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
+
+/**
+ * Commands whose appearance at the head of a line ENDS the paragraph being
+ * read. Hoisted to module scope so it compiles once (it is tested per
+ * paragraph-continuation candidate), and built rather than spelled because
+ * Virgil's own block-position markers belong in it: absorb a `\vexid`/`\vxid`
+ * into the preceding paragraph and the next save re-emits it as literal text,
+ * accumulating one stray marker per round trip. Their names come from the
+ * vocabulary SSOT ([latex-markers.ts](latex-markers.ts)), so a future
+ * block-position marker joins this boundary set by declaring itself.
+ */
+const BLOCK_BOUNDARY_COMMAND_RE = new RegExp(
+  "^\\\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|" +
+    "begin|end|\\[|hrulefill|title|author|date|maketitle|includegraphics|" +
+    "noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|" +
+    "usepackage|bibliographystyle|bibliography|tableofcontents|appendix|" +
+    "clearpage|newpage|par|ex|pex|xe|" +
+    BLOCK_TEX_MARKERS.map((m) => m.command).join("|") +
+    "|begingl|endgl)\\b",
+);
 
 interface ParseContext {
   pos: number;
@@ -311,35 +339,30 @@ export function parseInlineContent(
       // \verb<delim>…<delim> and \verb*<delim>…<delim> — verbatim. The
       // delimiter-paired payload is LITERAL (`--` is two hyphens, `\'e` is raw)
       // and must be excluded from the dash/accent transforms (memo §A). We
-      // consume the whole `\verb|…|` and emit the payload as a code-marked text
-      // node (round-trips through the serializer's code path, which suppresses
-      // typography). Without this the payload fell into the plain buffer and
-      // got glyphified (the D2 verbatim regression).
-      // `\verb` is a control word, so it is terminated by a non-letter — its
-      // delimiter must NOT be a letter (else `\verbatim` would mis-match as
-      // `\verb` + delimiter `a`). The delimiter is any single non-letter char
-      // (LaTeX also forbids `*` and space as the delimiter).
-      const verbMatch = rest.match(/^\\verb(\*?)([^a-zA-Z*\s])/);
-      if (verbMatch) {
-        const delim = verbMatch[2];
-        const payloadStart = i + verbMatch[0].length;
-        const closeIdx = text.indexOf(delim, payloadStart);
-        if (closeIdx !== -1) {
-          flush();
-          // Preserve the exact `\verb<delim>…<delim>` spelling so it round-
-          // trips: a `code` mark would serialize to `\texttt{…}` (wrong — and
-          // would re-run typography on edit), so we keep the literal command
-          // form as a raw latexCommand. The serializer's latexCommand path
-          // returns it as-is, so the source stays byte-faithful AND excluded
-          // from the dash/accent transforms.
-          nodes.push({
-            type: "text",
-            text: text.slice(i, closeIdx + 1),
-            marks: [{ type: "latexCommand" }],
-          });
-          i = closeIdx + 1;
-          continue;
-        }
+      // consume the whole `\verb|…|` and emit it as ONE byte-literal node.
+      // Delimiter boundary rules (a non-letter, non-`*`, non-space char, so
+      // `\verbatim`/`\verbdef` don't mis-lex) live in the lexer's shared
+      // `matchInlineVerbAt`, which the footnote/card inline parser reads too.
+      const verbEnd = matchInlineVerbAt(text, i);
+      if (verbEnd !== -1) {
+        flush();
+        // Preserve the exact `\verb<delim>…<delim>` spelling so it round-trips:
+        // a `code` mark would serialize to `\texttt{…}` (wrong — and would
+        // re-run typography on edit), so we keep the literal command form on
+        // the VERBATIM carrier. Until task 264 this rode the undifferentiated
+        // `latexCommand` mark, whose serializer path smart-quotes — so the
+        // "stays byte-faithful" claim this comment used to make was false for
+        // quotes: `\verb|x="hi"|` came back as ``\verb|x=``hi''|``, and
+        // `\verb"code"` (quote as the DELIMITER) came back as ``\verb``code''``,
+        // which is not even a valid `\verb` invocation. `latexVerbatim` is
+        // returned untouched by every serializer, so the claim is now true.
+        nodes.push({
+          type: "text",
+          text: text.slice(i, verbEnd),
+          marks: [verbatimMark()],
+        });
+        i = verbEnd;
+        continue;
       }
 
       // \textbf{...}
@@ -463,9 +486,8 @@ export function parseInlineContent(
 
       // \vfid{uuid} — no-op marker stashing a stable footnoteId for the
       // next \footnote{...} in the stream. Emitted by the serializer.
-      const vfidMatch = rest.match(/^\\vfid\{/);
-      if (vfidMatch) {
-        const idArg = extractBraced(text, i + "\\vfid".length);
+      if (markerOpensAt(text, i, VIRGIL_MARKERS.footnote)) {
+        const idArg = extractBraced(text, markerArgStart(i, VIRGIL_MARKERS.footnote));
         if (idArg !== null) {
           pendingFootnoteId = idArg.content || null;
           i = idArg.end;
@@ -474,9 +496,8 @@ export function parseInlineContent(
       }
 
       // \vcid{uuid} — same, for citationId.
-      const vcidMatch = rest.match(/^\\vcid\{/);
-      if (vcidMatch) {
-        const idArg = extractBraced(text, i + "\\vcid".length);
+      if (markerOpensAt(text, i, VIRGIL_MARKERS.citation)) {
+        const idArg = extractBraced(text, markerArgStart(i, VIRGIL_MARKERS.citation));
         if (idArg !== null) {
           pendingCitationId = idArg.content || null;
           i = idArg.end;
@@ -489,9 +510,11 @@ export function parseInlineContent(
       // paragraph boundaries; the post-pass `applyLinkedAnchorBoundaries`
       // walks the assembled doc and stamps marks over each open range.
       // Here we emit transient boundary sentinels in the inline stream.
-      const vlidMatch = rest.match(/^\\vlid\{/);
-      if (vlidMatch) {
-        const idArg = extractBraced(text, i + "\\vlid".length);
+      if (markerOpensAt(text, i, VIRGIL_MARKERS.linkedRangeOpen)) {
+        const idArg = extractBraced(
+          text,
+          markerArgStart(i, VIRGIL_MARKERS.linkedRangeOpen),
+        );
         if (idArg !== null) {
           flush();
           nodes.push({
@@ -502,9 +525,11 @@ export function parseInlineContent(
           continue;
         }
       }
-      const vlidendMatch = rest.match(/^\\vlidend\{/);
-      if (vlidendMatch) {
-        const idArg = extractBraced(text, i + "\\vlidend".length);
+      if (markerOpensAt(text, i, VIRGIL_MARKERS.linkedRangeClose)) {
+        const idArg = extractBraced(
+          text,
+          markerArgStart(i, VIRGIL_MARKERS.linkedRangeClose),
+        );
         if (idArg !== null) {
           flush();
           nodes.push({
@@ -1025,7 +1050,7 @@ export function applyLinkedAnchorBoundaries(doc: JSONContent): void {
 
   if (open.length > 0) {
     console.warn(
-      "applyLinkedAnchorBoundaries: unmatched \\vlid opener(s) at EOF; recovery via sidecar reanchoring:",
+      `applyLinkedAnchorBoundaries: unmatched ${VIRGIL_MARKERS.linkedRangeOpen.macro} opener(s) at EOF; recovery via sidecar reanchoring:`,
       open,
     );
   }
@@ -1179,12 +1204,27 @@ function numberExamples(node: JSONContent): void {
  */
 /** Assign sequential 1-based numbers to numbered figureBlocks in document
  *  order. Mirrors the live `sectionNumbers` plugin in `Editor.tsx` so the
- *  prefix is ready on first paint without waiting for a no-op edit. */
+ *  prefix is ready on first paint without waiting for a no-op edit.
+ *
+ *  A figure only takes a number if it will carry a `\caption` — that is LaTeX's
+ *  own rule, and since task 319 stopped inventing an empty caption for a
+ *  caption-less env, honouring it here is what keeps the on-screen `Figure N:`
+ *  (and the `\ref` display text resolved from it, just below) equal to the
+ *  number the compiled PDF will print. Counting a figure LaTeX skips would put
+ *  every LATER figure's number — and every `\ref` to it — off by one.
+ *
+ *  `hasCaption` alone is the whole test HERE, unlike the live twin, which also
+ *  asks whether the caption node has content. This runs only over freshly
+ *  parsed JSON, where the caption child is built from `figAttrs.caption` and
+ *  both come from ONE scan — so `hasCaption === false` implies an empty caption
+ *  child, and the content arm could never change the answer. Writing it anyway
+ *  would be a branch no input can reach, which reads as agreement between the
+ *  two sites while proving nothing. */
 function numberFigures(node: JSONContent): void {
   let counter = 0;
   function walk(n: JSONContent) {
     if (n.type === "figureBlock") {
-      if (n.attrs?.numbered !== false) {
+      if (n.attrs?.numbered !== false && n.attrs?.hasCaption !== false) {
         counter++;
         n.attrs = { ...(n.attrs || {}), figureNumber: counter };
       } else {
@@ -1455,9 +1495,11 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
     // \vexid{uuid} — no-op marker carrying a stable exampleId for the next
     // \ex / \pex we encounter in block context. Emitted by the serializer.
-    const vexidBlockMatch = rest.match(/^\\vexid\{/);
-    if (vexidBlockMatch) {
-      const idArg = extractBraced(ctx.src, ctx.pos + "\\vexid".length);
+    if (markerOpensAt(ctx.src, ctx.pos, VIRGIL_MARKERS.exampleBlock)) {
+      const idArg = extractBraced(
+        ctx.src,
+        markerArgStart(ctx.pos, VIRGIL_MARKERS.exampleBlock),
+      );
       if (idArg !== null) {
         ctx.pendingExampleId = idArg.content || null;
         ctx.pos = idArg.end;
@@ -1473,9 +1515,11 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
     // round-trip. Discard so it doesn't fall through to readParagraph and
     // get absorbed as paragraph text — which would re-serialize on next
     // save and accumulate +1 per cycle.
-    const vxidBlockMatch = rest.match(/^\\vxid\{/);
-    if (vxidBlockMatch) {
-      const idArg = extractBraced(ctx.src, ctx.pos + "\\vxid".length);
+    if (markerOpensAt(ctx.src, ctx.pos, VIRGIL_MARKERS.exampleItem)) {
+      const idArg = extractBraced(
+        ctx.src,
+        markerArgStart(ctx.pos, VIRGIL_MARKERS.exampleItem),
+      );
       if (idArg !== null) {
         ctx.pos = idArg.end;
         continue;
@@ -1645,22 +1689,64 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
           : ctx.src.slice(ctx.pos);
       ctx.pos = envEnd !== -1 ? envEnd + `\\end{${env}}`.length : ctx.src.length;
 
-      // Check for a trailing %!v:xxxx UUID anchor right after \end{env}
-      let envUuid: string | null = null;
-      if (
+      // Check for a trailing %!v:xxxx UUID anchor right after \end{env}.
+      // The whole verbatim FAMILY is listed via the SSOT, not just bare
+      // `verbatim`: every family member now produces a uuid-bearing node
+      // (codeBlock for `verbatim`, the byte-literal carrier paragraph for the
+      // rest), so the serializer emits an anchor after `\end{env}` for all
+      // four. Harvesting for only one of them meant the other three's anchor
+      // was left in the stream and re-read as a STANDALONE empty paragraph:
+      // the block got a fresh uuid on every save (orphaning any card anchored
+      // to it) and the `.tex` grew one stray `%!v:` line per save, unbounded
+      // (task 264).
+      const isUuidAnchoredEnv =
+        isLiteralEnv ||
         env === "itemize" ||
         env === "enumerate" ||
-        env === "verbatim" ||
         env === "quote" ||
         env === "figure" ||
-        env === "figure*"
-      ) {
+        env === "figure*";
+      let envUuid: string | null = null;
+      if (isUuidAnchoredEnv) {
         const afterEnd = ctx.src.slice(ctx.pos);
         const uuidMatch = afterEnd.match(NODE_UUID_ANCHOR);
         if (uuidMatch) {
           envUuid = uuidMatch[1];
           ctx.pos += uuidMatch[0].length;
         }
+      }
+
+      // The verbatim FAMILY is byte-literal, and that must drive NODE
+      // PRODUCTION, not just the end-finding above. Task 243 unified the
+      // first-close-wins leg on `VERBATIM_ENVS_FULL` but left this switch with
+      // a single `case "verbatim"`, so the other three members fell to
+      // `default:` — a plain `latexCommand`-marked paragraph, whose serializer
+      // path runs the prose smart-quote reverse-map. A `lstlisting` body
+      // reading `x = "hi"` therefore came back `x = ``hi''` on the FIRST save:
+      // silent, durable source corruption, idempotent on the corrupted form
+      // (task 264).
+      //
+      // Bare `verbatim` keeps its richer byte-preserving `codeBlock` (below).
+      // The other members have no modeled node yet — Virgil doesn't render
+      // `lstlisting` options or `minted` languages — so they ride the VERBATIM
+      // CARRIER: the whole `\begin{env}…\end{env}` preserved byte-for-byte,
+      // env name and arguments included, and flagged so no serializer ever
+      // runs typography over it. That defers rich rendering without deferring
+      // correctness, and a fifth family member added to the SSOT is now
+      // byte-safe by construction instead of silently corrupting.
+      if (isLiteralEnv && env !== "verbatim") {
+        parent.content.push({
+          type: "paragraph",
+          ...(envUuid ? { attrs: { uuid: envUuid } } : {}),
+          content: [
+            {
+              type: "text",
+              text: `\\begin{${env}}${optArg}${envContent}\\end{${env}}`,
+              marks: [verbatimMark()],
+            },
+          ],
+        });
+        continue;
       }
 
       switch (env) {
@@ -1729,6 +1815,10 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
               widthPercent: figAttrs.widthPercent,
               sources: figAttrs.sources,
               label: figAttrs.label,
+              // Did the source carry a `\caption` command? The child below is
+              // ALWAYS built (see its comment), so it cannot answer this and
+              // the emitter must not be left inferring it (task 319).
+              hasCaption: figAttrs.hasCaption,
               shortCaption: figAttrs.shortCaption,
               numbered: true,
               figureNumber: null,
@@ -2089,9 +2179,7 @@ function readParagraph(ctx: ParseContext): string {
         // `paragraph\n\includegraphics{…}` re-merges, absorbing the picture into
         // the paragraph as literal text and losing the graphicsBlock on reload.
         // (`\b` fires fine here — the word ends before the `[`/`{` argument.)
-        /^\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|begin|end|\[|hrulefill|title|author|date|maketitle|includegraphics|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par|ex|pex|xe|vexid|vxid|begingl|endgl)\b/.test(
-          rest
-        )
+        BLOCK_BOUNDARY_COMMAND_RE.test(rest)
       ) {
         // Don't break if the previous content ends with \\ (a hardBreak
         // continuation from shift+enter). Otherwise multi-line LaTeX joined by
@@ -2237,8 +2325,11 @@ function splitPexBody(
       continue;
     }
     // \vxid{xxxx} — id marker preceding the next \a item. Stash and skip.
-    if (body.startsWith("\\vxid{", pos)) {
-      const idArg = extractBraced(body, pos + "\\vxid".length);
+    if (markerOpensAt(body, pos, VIRGIL_MARKERS.exampleItem)) {
+      const idArg = extractBraced(
+        body,
+        markerArgStart(pos, VIRGIL_MARKERS.exampleItem),
+      );
       if (idArg !== null) {
         pendingItemUuid = idArg.content || null;
         pos = idArg.end;

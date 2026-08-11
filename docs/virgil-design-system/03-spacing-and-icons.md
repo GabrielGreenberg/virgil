@@ -1,3 +1,10 @@
+<!-- historical-record: docs/virgil-design-system -->
+> **Historical — not the spec.** Part of the frozen April-2026 design-system
+> migration record. The live style spec is
+> [`src/STYLE_GUIDE.md`](../../src/STYLE_GUIDE.md); where this file and the code
+> disagree, the code is right and this file is history. Start at
+> [README.md](README.md).
+
 # 03 — Spacing & Icons
 
 ## Spacing grid
@@ -43,6 +50,14 @@ wrong even when you can't say why.
 --card-shadow-ambient:  omni-view floating cards on the canvas
 none:                   docked cards, inline chips, sub-pods
 ```
+<!-- token-doc-allow -->
+
+> ⚠️ **`--pod-shadow-light` was never added to `globals.css`.** It was proposed
+> in the (now removed) `patches/globals.css.patch.md` and the patch never
+> landed, so a rule reading `var(--pod-shadow-light)` with no fallback resolves
+> to nothing. `library/styles/library.css` consumes it *with* a fallback, which
+> is why the omission was invisible for a year. The shipped scale is
+> `--pod-shadow` / `--card-shadow-ambient` / none — two levels, not three.
 
 Shadows in this system are **levels, not directions**. There's no
 shadow-up vs shadow-down; everything sits on a notional sheet of paper.

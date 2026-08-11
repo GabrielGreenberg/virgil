@@ -71,6 +71,7 @@ export const CITATIONS_INERT: CitationsHook = {
   getDisplayText: (command: string) => command,
   getFormattedBib: () => "",
   commandFor: () => null,
+  markAnchored: () => {},
   syncFromEditor: () => {},
   identityCascade: new IdentityCascade(),
 };
@@ -542,8 +543,32 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [bibEntries, bibEntryMap, stateRef],
   );
 
+  /** Reconcile a ref's own anchor intent once its `\cite{}` atom is back in the
+   *  prose (the drop spec's `onAnchored`, task 233). The SAME rule the
+   *  `addCitation` re-anchor branch above applies — clear `unanchored` AND
+   *  `archived`, since `setArchived` sets them jointly — but reachable from the
+   *  drop path, which builds its atom directly and never calls `addCitation`.
+   *  Before this the flag survived until the next mount-only `syncFromEditor`.
+   *  Idempotent + no-write when neither flag is set. */
+  const markAnchored = useCallback(
+    (id: string) => {
+      update((prev) => {
+        const existing = prev.citations.find((c) => c.id === id);
+        if (!existing || !isUnanchored(existing)) return prev;
+        return {
+          ...prev,
+          citations: prev.citations.map((c) =>
+            c.id === id ? { ...c, unanchored: undefined, archived: undefined } : c,
+          ),
+        };
+      });
+    },
+    [update],
+  );
+
   /** The citation card's serialized `\cite{…}` command, read for the drop
-   *  spec's "anchor the unanchored" create branch (`ctx.citations.commandFor`).
+   *  spec's "anchor the unanchored" create branch, reached through the shared
+   *  inline-atom card accessor (`ctx.atomCards.citation`, task 233).
    *  An unanchored card has no `\cite{}` atom in any editor, so the atom
    *  builder reads the command from here — the SAME `CitationRef.command`
    *  field the code-edit / drag-anchor paths already serialize and round-trip
@@ -624,6 +649,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       getDisplayText,
       getFormattedBib,
       commandFor,
+      markAnchored,
       syncFromEditor,
       identityCascade,
     }),
@@ -649,6 +675,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       getDisplayText,
       getFormattedBib,
       commandFor,
+      markAnchored,
       syncFromEditor,
       identityCascade,
     ],

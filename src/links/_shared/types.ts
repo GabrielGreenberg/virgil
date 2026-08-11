@@ -32,6 +32,13 @@
 import type { CardKind } from "@/panels/_shared/types";
 import type { TextObjectKind } from "@/text-objects/types";
 
+/** The link taxonomy, declared ONCE. Each kind's behaviour is decided by the
+ *  code that ships it (the atom node specs, `createLinkedAnchor`, the
+ *  highlight reconciler) — there is deliberately no parallel per-kind table
+ *  restating it. One existed (`LINK_REGISTRY`) and drifted into fiction:
+ *  it declared connector strokes for a component that had been deleted and a
+ *  multiplicity rule nothing enforced (task 202). The DOM attributes each
+ *  kind's marker carries are in `../link-dom-contract.ts`. */
 export type LinkKind = "footnote" | "citation" | "anchor";
 
 export type LinkAnchor =
@@ -55,8 +62,16 @@ export type LinkAnchor =
        *  a Mode B link also lives inside the containing TextObject(s).
        *  Multi-anchor (N > 1) is allowed for Mode A. */
       textObjectIds: string[];
-      /** Every TextObject-anchor link carries a margin entry. */
-      margin: { side: "left" | "right" };
+      // NOTE (task 205): there is deliberately NO `margin: { side }` here any
+      // more. It stored the side a card's margin chrome sits on — frozen at
+      // create time from a hardcoded per-kind switch, and therefore blind to
+      // where the owning panel is docked *now*, which is the only thing that
+      // actually decides the side. Its single consumer (the Mode-A anchor rail)
+      // resolves live through `marginSideForCardKind` (`@/lib/margin-side`), the
+      // same authority the marginalia grid packs markers against. A stored copy
+      // of a live answer is a drift-bomb, and one nothing reads is worse than
+      // none at all ("A registry earns its name by being read", AGENTS.md).
+      // Legacy sidecars still carrying the key are simply ignored.
       /** Mode-A self-healing snapshot. A plain-text capture of the
        *  anchored paragraph at write time, used by the reload reconciler
        *  to re-find the paragraph (UUID-first, snapshot-fallback) when its
@@ -103,10 +118,6 @@ export type ModeBAnchorLink = Link & {
     textRange: NonNullable<Extract<LinkAnchor, { type: "textObject" }>["textRange"]>;
   };
 };
-
-export function isAnchorLink(link: Link): link is Link & { anchor: Extract<LinkAnchor, { type: "textObject" }> } {
-  return link.anchor.type === "textObject";
-}
 
 export function isModeB(link: Link): link is ModeBAnchorLink {
   return link.anchor.type === "textObject" && link.anchor.targetKind === "linkedRange";

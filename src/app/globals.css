@@ -187,9 +187,9 @@
      content column's left edge. Two columns share this margin: the
      fold chevron (leftmost) and the grab-handle baseline (between
      chevron and content). The handle inset (used as the narrow-viewport
-     FLOOR) is read by useEditorViewportCache.ts (cache.marginInset, applied
-     in handle-layout.ts) via getComputedStyle so JS placement and CSS chrome
-     stay in lockstep. See STYLE_GUIDE.md "Margin chrome". */
+     FLOOR) is read by editor-geometry/viewport-frame.ts (frame.marginInset,
+     applied in handle-layout.ts) via getComputedStyle so JS placement and CSS
+     chrome stay in lockstep. See STYLE_GUIDE.md "Margin chrome". */
   --margin-col-chevron: -44px;
   --margin-col-handle-inset: 22px;
   /* Chip-2 chrome geometry: a margin affordance's RIGHT edge sits one
@@ -383,6 +383,7 @@
   --status-ok: #22c55e;           /* green — success / done (≈ green-500) */
   --status-warn: #eab308;         /* yellow — pending / working (≈ yellow-500) */
   --status-warn-strong: #a16207;  /* darker amber stroke companion to --status-warn (IconZap outline; pinned to its prior hex — not a scalar darken of --status-warn, so a color-mix would desync) */
+  --status-info: #7191b0;         /* steel — informational severity; deliberately NOT the alarm ramp (error/warning) */
 
   /* Interaction */
   --ring-drag-target: #fcd34d; /* drop-target highlight ring (≈ amber-300) */
@@ -912,7 +913,12 @@ textarea,
  * bodies, expex bodies). Direct-children of .tiptap already get their
  * gap from the universal inter-block rule above; this preserves rhythm
  * one level down where the universal rule's `> ` scoping doesn't reach.
- * List items explicitly null this via !important on `.tiptap li > p`. */
+ * List items explicitly null this via !important on `.tiptap li > p`.
+ * Wave-4 rhythm audit: KEEP as-is. These are class/tag adjacent-sibling
+ * selectors (no `:has()`, no universal descendant), and the visible-window
+ * trace (docs/perf/style-invalidation-findings.md) measured zero
+ * style/recalc mass on the typing path — sibling invalidation here is
+ * confined to the edited block's neighbors. */
 .tiptap p + p,
 .tiptap .par-title-wrapper + .par-title-wrapper,
 .tiptap .par-title-wrapper + p,
@@ -1061,23 +1067,27 @@ textarea,
 .heading-wrapper-l0 .heading-fold-chevron {
   top: calc(var(--font-headers-h0-size, 2.1rem) * 0.75 - 7px);
 }
-.heading-wrapper h1 ~ .heading-fold-chevron,
-.heading-wrapper:has(h1) .heading-fold-chevron {
+/* Level classes, not :has(hN): the NodeView stamps heading-wrapper-l{N} at
+   construction and a level change recreates the view (update() returns false
+   on level diff — editor-extensions.ts), so the class is always correct.
+   :has() with descendant-change triggers was a per-keystroke style-
+   invalidation amplifier in large docs (perf Wave 0, plan P5.1). */
+.heading-wrapper-l1 .heading-fold-chevron {
   top: calc(var(--font-headers-h1-size, 1.75rem) * 0.75 - 7px);
 }
-.heading-wrapper:has(h2) .heading-fold-chevron {
+.heading-wrapper-l2 .heading-fold-chevron {
   top: calc(var(--font-headers-h2-size, 1.35rem) * 0.75 - 7px);
 }
-.heading-wrapper:has(h3) .heading-fold-chevron {
+.heading-wrapper-l3 .heading-fold-chevron {
   top: calc(var(--font-headers-h3-size, 1.15rem) * 0.75 - 7px);
 }
-.heading-wrapper:has(h4) .heading-fold-chevron {
+.heading-wrapper-l4 .heading-fold-chevron {
   top: calc(1rem * 0.75 - 7px);
 }
-.heading-wrapper:has(h5) .heading-fold-chevron {
+.heading-wrapper-l5 .heading-fold-chevron {
   top: calc(var(--font-headers-h5-size, 1rem) * 0.75 - 7px);
 }
-.heading-wrapper:has(h6) .heading-fold-chevron {
+.heading-wrapper-l6 .heading-fold-chevron {
   top: calc(var(--font-headers-h6-size, 0.95rem) * 0.75 - 7px);
 }
 
@@ -1419,7 +1429,7 @@ textarea,
    the first code line instead of floating above an empty annotation row. */
 .par-title-wrapper.has-add-btn:not(.has-title):not(.is-editing-title) > .par-title-annotation,
 .list-title-wrapper.has-add-btn:not(.has-title):not(.is-editing-title) > .par-title-annotation,
-.tex-block:not(:has(.par-title-text)) > .par-title-annotation {
+.tex-block:not(.has-par-title) > .par-title-annotation {
   position: absolute;
   bottom: 100%;
   left: 0;
@@ -2581,6 +2591,21 @@ textarea,
   text-decoration: line-through;
 }
 
+/* Distinct from `.is-off` on purpose (tasks 318/319): `.is-off` means the USER
+   turned numbering off and can turn it back on, while this means LaTeX gives
+   this float no number to show — it has no `\caption` — so the toggle has
+   nothing to toggle and carries no click handler. Same look-and-mechanism-in-
+   one-declaration rule as task 316's parked cue. */
+.figure-block .figure-annotation-numbered-toggle.is-unavailable {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.figure-block .figure-annotation-numbered-toggle.is-unavailable:hover {
+  background: none;
+  color: inherit;
+}
+
 .figure-block .figure-annotation-sep {
   white-space: pre;
 }
@@ -2930,13 +2955,30 @@ textarea,
  * attribute (Adobe-style: stays visible without hover/selection gating
  * and independent of the `data-show-hl-*` toggles below). Carries through
  * the highlight→note morph: changing the card's kind does not strip the
- * tint from the anchored text. Per-instance hue: the mark stamps an inline
- * `--tint-color` (validated hex) and this rule reads it, so amber highlights
- * and the light-blue pending-AI-change mark coexist; default stays yellow.
+ * tint from the anchored text.
+ *
+ * `--tint-color` arrives one of two ways (see `defaultTintForLinkedAnchorKind`
+ * / `accentTintForToken`):
+ *  - a PER-INSTANCE hue — the mark stamps an inline `--tint-color` (validated
+ *    hex), e.g. the light-blue `#bfdbfe` pending-AI bands;
+ *  - the kind's LIVE THEME ACCENT — the mark stamps only the sentinel attr
+ *    `data-tint-color="accent:<token>"` and the rule right below resolves it
+ *    to the `--link-anchor-accent-<token>` var EditorLayout keeps in sync with
+ *    the panel-color override (#27). One rule per token; the `var(…, <hex>)`
+ *    fallback reproduces the shipped default for the pre-mount window / SSR,
+ *    exactly as the Mode-A/Mode-B colour rules above do.
+ *
+ * Task 174: the highlight band used to persist the RESOLVED `#fbbf24` into the
+ * document, so overriding the Highlight panel colour repainted the card, the
+ * float and the in-text active ring and left the band — a highlight's entire
+ * in-text identity, since `highlight` has `markerType: null` — frozen amber.
  *
  * `!important` wins over the kind-based `data-show-hl-*` rules so a note
- * that was born from a highlight still wears the yellow even when "show
+ * that was born from a highlight still wears the tint even when "show
  * note highlights" is toggled on. */
+.linked-anchor[data-tint-color="accent:highlight"] {
+  --tint-color: var(--link-anchor-accent-highlight, #fbbf24);
+}
 .linked-anchor[data-tint-color] {
   background: color-mix(in oklab, var(--tint-color, #fbbf24) 35%, transparent) !important;
 }
@@ -2967,9 +3009,15 @@ textarea,
  * CARD_THEMES / the user override via the same `--link-anchor-accent-<token>`
  * `:root` vars EditorLayout stamps (#27), so a Mode A rail and a Mode B span
  * for the same card share one accent source. (See the Mode B block above for
- * the var-fallback rationale.) */
+ * the var-fallback rationale.)
+ *
+ * No `highlight` rule, deliberately (task 174): `LEGACY_TOKEN_CROSSWALK
+ * .highlight.cssToken` is `null` by documented intent, and the sole writer
+ * (`useAnchorHighlightReconciler` → `cssTokenForCardKind`) omits the attribute
+ * for a null token — so a `[data-paragraph-kind="highlight"]` rule can never
+ * match. A highlight paints in text through the Mode-B tint band above, not a
+ * paragraph rail. Don't "restore" it; wire the crosswalk's cssToken first. */
 [data-paragraph-kind="note"]      { --link-anchor-color: var(--link-anchor-accent-note, #15803d); }
-[data-paragraph-kind="highlight"] { --link-anchor-color: var(--link-anchor-accent-highlight, #fbbf24); }
 [data-paragraph-kind="cut"]       { --link-anchor-color: var(--link-anchor-accent-cut, #b45757); }
 [data-paragraph-kind="comment"]   { --link-anchor-color: var(--link-anchor-accent-comment, #9333ea); }
 [data-paragraph-kind="archive"]   { --link-anchor-color: var(--link-anchor-accent-archive, #7191b0); }
@@ -3168,9 +3216,10 @@ body.card-outline-chrome [data-card-key]:hover {
  * style otherwise wins over a stylesheet rule). The accent
  * (`--link-anchor-color`) is propagated onto the FloatingPanel root via the
  * card floatable's `accentTint` (FloatWindow → FloatingPanel), since the var
- * the inner card stamps does not inherit UP to the `:has()` host. */
-body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-hovered="true"]),
-body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]:has([data-card-key][data-card-selected="true"]) {
+ * the inner card stamps does not inherit UP to the host.
+ * `data-contains-active-card` replaces the old `:has([data-card-*])` — the
+ * reconciler stamps it upward at write time (perf Wave 0, plan P5.1). */
+body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"][data-contains-active-card="true"] {
   box-shadow:
     var(--card-shadow-ambient),
     0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent)
@@ -3477,10 +3526,49 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
  * drop bar. Keyed on the session attr the controller already stamps, so it
  * also covers the block/float grabs (harmless — those don't start on text).
  * Prevents only NEW selection; the grab plugin clears any in-progress one via
- * getSelection().removeAllRanges() at the threshold-cross. */
-body[data-drop-mode-active="true"],
-body[data-drop-mode-active="true"] * {
+ * getSelection().removeAllRanges() at the threshold-cross.
+ * Body-only, NOT `body[...] *`: user-select inherits, and the universal
+ * descendant form forced a full-tree style recalc (measured 36 ms at 18.5k
+ * DOM nodes) at drag start AND end. No in-repo rule declares a competing
+ * user-select value, and contenteditable computes the inherited `none`
+ * (verified empirically) — so inheritance is behavior-identical here. */
+body[data-drop-mode-active="true"] {
   user-select: none;
+}
+
+/* ── Wave-4 Stage A containment (flag `virgil:perf-contain` → body class,
+ * stamped by applyPerfBodyFlags in perf-feature-flags.ts; DEFAULT OFF until
+ * soak). `contain: layout style` tells Blink a container's internal layout
+ * and style (counters/quotes) cannot leak out, so a mutation inside one card
+ * or panel list never invalidates layout outside it. Scope decisions, each
+ * deliberate:
+ *  - `[data-card="1"]`, `[data-omni-entry-wrapper]`, `.panel-card-list`
+ *    (the PANEL.list stable hook), `[data-floating-panel="true"]` — all
+ *    verified free of descendants that position against an ancestor OUTSIDE
+ *    the container (card menus + hints portal to document.body; the float
+ *    shell's resize hit-zones position against the shell itself).
+ *  - NO `paint` on any of those: card chrome (halo rings, jump chevrons)
+ *    may protrude, and paint clipping is a visible artifact where layout
+ *    containment is an invisible one. `paint` only on the static borrowed
+ *    leaves, which are sealed HTML by construction.
+ *  - NOT the editor pod: fold chevrons and grab handles protrude into the
+ *    margin by design.
+ * Kill-switch: remove the localStorage flag (or never set it) — the rules
+ * below are inert without the body class. */
+body.perf-contain [data-card="1"] {
+  contain: layout style;
+}
+body.perf-contain [data-omni-entry-wrapper] {
+  contain: layout style;
+}
+body.perf-contain .panel-card-list {
+  contain: layout style;
+}
+body.perf-contain [data-floating-panel="true"] {
+  contain: layout style;
+}
+body.perf-contain .static-borrowed-text {
+  contain: layout style paint;
 }
 /* Indicator transitions:
  * - Fade in on first mount (under 100ms — feels responsive, not flashy).
@@ -3572,8 +3660,14 @@ body[data-drop-mode-active="true"] * {
  * The DELIBERATE tightening of a RUN of command lines is intentional, so it
  * stays — but it now lives ENTIRELY on the adjacent-sibling rule below, and
  * tightens the gap-bearing `margin-top` rather than mutating the typed line's
- * own baseline. No base `:has()` override → no self-shift on the keystroke. */
-.tiptap p:has(> .latex-cmd:first-child:last-child) + p:has(> .latex-cmd:first-child:last-child) {
+ * own baseline. No self-shift on the keystroke.
+ *
+ * `p-cmd-only` is a NODE DECORATION painted by the latex-command plugin
+ * (exactly one element child and it's a .latex-cmd — the DOM semantics the
+ * old `p:has(> .latex-cmd:first-child:last-child)` selector had). The
+ * `:has()` + sibling-combinator form was the worst-case Blink invalidation
+ * shape on the typing path (perf Wave 0, plan P5.1). */
+.tiptap p.p-cmd-only + p.p-cmd-only {
   margin-top: 0.15em;
 }
 
@@ -4121,6 +4215,21 @@ body[data-drop-mode-active="true"] * {
    themed comment colors from CSS vars. */
 .tiptap mark[data-color="#93c5fd40"] {
   background-color: var(--comment-bg, rgba(147, 197, 253, 0.25));
+}
+
+/* Transient highlight bands — search result, diagnostics error range, revision
+   text. NOT document marks (task 120): a ProseMirror inline decoration owns the
+   span, and the per-consumer color rides an inline style, so this rule only
+   carries the geometry. Deliberately identical to `.tiptap mark` above so the
+   mark → decoration swap is pixel-neutral. Safe to leave at this specificity
+   ONLY because the decoration declares `nodeName: "span"` and therefore always
+   paints its own wrapper — without that, a band covering a citation pill or
+   footnote marker would land this padding/border on the ATOM's element and
+   outrank `.citation-node` / `.footnote-marker`. */
+.tiptap .virgil-transient-highlight {
+  border-radius: var(--radius-xs);
+  padding: 0 1px;
+  border-bottom: none;
 }
 
 /* Scrollbar styling — auto-hide on idle, reveal on activity/hover.

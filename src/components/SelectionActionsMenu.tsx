@@ -19,7 +19,7 @@
  * / `update` / `focus` / `blur` plus window `scroll` / `resize`.
  *
  * Counterpart triggers:
- *  - {@link SelectionDragHandle} (left side) for the drag-to-lift gesture.
+ *  - {@link TextObjectGrabHandle} (left side) for the drag-to-lift gesture.
  */
 
 import { useEffect, useRef, useState, type RefObject } from "react";
@@ -32,9 +32,10 @@ import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
 import { useHint } from "./Hint";
 import {
-  useEditorViewportCache,
-  type EditorViewportCache,
-} from "@/hooks/useEditorViewportCache";
+  coordsAtPosCached,
+  type EditorViewportFrame,
+} from "@/lib/editor-geometry";
+import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { RESTING_MARGIN_TRIGGER_Z } from "@/floats/float-policy";
 import {
@@ -45,6 +46,10 @@ import {
   computeBoltLeftFromPod,
   MARGINALIA_BOLT_SIZE,
 } from "@/lib/marginalia";
+import {
+  isLayoutGestureActive,
+  onLayoutGestureChange,
+} from "@/lib/pane-resize";
 
 const VIEWPORT_MARGIN = 8;
 // Action-button (collapsed state) dimensions — sized to match one menu row's
@@ -87,7 +92,7 @@ interface Placement {
  * editor metrics. The `cache` object holds podRight, editorRight, scrollTop,
  * scrollBottom — values that only change on resize / layout shift.
  */
-function computePlacement(editor: Editor, cache: EditorViewportCache): Placement {
+function computePlacement(editor: Editor, cache: EditorViewportFrame): Placement {
   const sel = editor.state.selection;
   if (sel instanceof NodeSelection) return INVISIBLE_PLACEMENT;
   // Cursor-only mode is gated on focus so the button doesn't materialize
@@ -103,12 +108,11 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
   const anchor = resolveAnchorableNode(editor.view, head);
   const anchorNodePos = anchor?.nodePos ?? null;
 
-  let headCoords: { left: number; top: number; bottom: number };
-  try {
-    headCoords = editor.view.coordsAtPos(head);
-  } catch {
-    return INVISIBLE_PLACEMENT;
-  }
+  // Through the geometry service's per-frame memo (C7): the pill and any
+  // other same-frame placement pass reading this pos share ONE forced-layout
+  // read. Null = the old catch path.
+  const headCoords = coordsAtPosCached(editor, head);
+  if (!headCoords) return INVISIBLE_PLACEMENT;
 
   const scrollTop = cache.scrollTop;
   const scrollBottom = cache.scrollBottom;
@@ -196,13 +200,21 @@ export function SelectionActionsMenu({
   // adds no per-keystroke work (keystroke sanctity).
   const [suppressed, setSuppressed] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  // The placement scheduler, published for the out-of-band pokes below. It is
+  // a REF, not an effect dep, deliberately: `cacheVersion` in the dep array
+  // tore down and re-registered this entire effect (window capture listeners,
+  // scroll, resize, 4× `editor.on`) on every viewport-cache bump — the
+  // amplifier that turned a window-resize storm into a re-subscription storm
+  // (task 317). Same shape as `TextObjectGrabHandle`'s `scheduleRefRef`.
+  const updateRef = useRef<() => void>(() => {});
 
-  // Shared viewport-metrics cache. editorRight, scrollTop, scrollBottom
-  // are read here per placement compute instead of being re-measured per
-  // RAF. The cache refreshes only on resize / ResizeObserver-detected
-  // layout changes. `version` participates in the effect deps so the
-  // compute re-runs when the cache changes (e.g., sidebar toggle).
-  const { cacheRef, version: cacheVersion } = useEditorViewportCache(
+  // Shared viewport frame (geometry service, C7). editorRight, scrollTop,
+  // scrollBottom are read here per placement compute instead of being
+  // re-measured per RAF. The frame refreshes only on resize /
+  // RO-detected layout changes — ONE engine per pane now, not a private
+  // observer per consumer. `version` participates in the poke effect below
+  // so the compute re-runs when the frame changes (e.g., sidebar toggle).
+  const { frameRef: cacheRef, version: cacheVersion } = useViewportFrame(
     editorRef.current,
   );
 
@@ -229,7 +241,14 @@ export function SelectionActionsMenu({
     let mouseDownInEditor = false;
     let scrollIdleTimer: number | null = null;
     const SCROLL_IDLE_MS = 120;
-    const isSuppressed = () => mouseDownInEditor || scrollIdleTimer !== null;
+    // A continuous layout gesture (pane-divider drag or OS window resize) is a
+    // third suppression source, alongside editor-mousedown and scroll — the
+    // bolt is a text-anchored `position:fixed` portal, so PARKING it would
+    // leave it visibly detached from the prose. It SUPPRESSES instead: hidden
+    // for the gesture, recomputed once on the end edge (task 317).
+    let gestureActive = isLayoutGestureActive();
+    const isSuppressed = () =>
+      mouseDownInEditor || scrollIdleTimer !== null || gestureActive;
     const run = () => {
       const ed = editorRef.current;
       const next = ed && !ed.isDestroyed
@@ -248,6 +267,7 @@ export function SelectionActionsMenu({
         run();
       });
     };
+    updateRef.current = update;
     // Enter suppression: cancel any pending compute and hide the RESTING bolt
     // via its own `suppressed` channel. Crucially it NO LONGER zeroes
     // `placement` — so an open menu (gated on the logical `placement.visible`,
@@ -330,21 +350,34 @@ export function SelectionActionsMenu({
       editorRef.current?.view.dom ?? null,
     );
     scrollParent?.addEventListener("scroll", onScroll, { passive: true });
-    // Resize is a genuinely global event.
+    // Resize is a genuinely global event. It stays a raw listener because a
+    // ONE-SHOT resize (maximize, zoom, DPR change) must still reposition
+    // immediately — during a continuous gesture `update()` hits the
+    // `gestureActive` suppression above and returns before scheduling a RAF.
     window.addEventListener("resize", update);
+    const offGesture = onLayoutGestureChange((active) => {
+      gestureActive = active;
+      if (active) suppress();
+      else settle();
+    });
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
       if (readyRaf) cancelAnimationFrame(readyRaf);
       if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
       unsubscribe();
+      offGesture();
       window.removeEventListener("mousedown", onMouseDown, true);
       window.removeEventListener("mouseup", onMouseUp, true);
       scrollParent?.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", update);
     };
-    // cacheVersion re-runs the effect when the cache changes (e.g.,
-    // sidebar toggle changes editorRight). cacheRef itself is stable.
-  }, [editorRef, cacheRef, cacheVersion]);
+  }, [editorRef, cacheRef]);
+
+  // Recompute at the settled viewport-cache geometry. Out of the effect above
+  // on purpose — see `updateRef`.
+  useEffect(() => {
+    updateRef.current();
+  }, [cacheVersion]);
 
   // Close the menu when the anchored *identity* changes — selection moved,
   // paragraph changed, mode flipped. `left/top` excluded so scroll re-positions
@@ -475,7 +508,15 @@ export function SelectionActionsMenu({
       // selection before the click registers.
       onMouseDown={(e) => e.preventDefault()}
       onClick={openMenu}
-      className="flex items-center justify-center hover-on-light"
+      // Resting bg lives on the CLASS layer (`bg-[var(--pod-editor)]`), NOT
+      // inline: an inline `background` shorthand sets `background-color` and,
+      // as an inline declaration, beats any non-`!important` selector —
+      // including `.hover-on-light:hover` — so the hover tint would be dead.
+      // With the resting bg as a (0,1,0) utility class, `.hover-on-light:hover`
+      // (0,2,0, and unlayered vs. Tailwind's `@layer utilities`) wins and the
+      // one-step tint fires — matching the left-side TextObjectGrabHandle twin
+      // and every other `hover-on-light` control (task 299).
+      className="flex items-center justify-center hover-on-light bg-[var(--pod-editor)]"
       style={{
         position: "fixed",
         left: placement.left,
@@ -483,7 +524,6 @@ export function SelectionActionsMenu({
         width: BUTTON_SIZE,
         height: BUTTON_SIZE,
         zIndex: RESTING_MARGIN_TRIGGER_Z,
-        background: "var(--pod-editor)",
         border: "var(--pod-border)",
         boxShadow: "var(--pod-shadow)",
         borderRadius: "var(--pod-radius)",

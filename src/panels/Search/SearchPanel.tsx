@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  useState,
   useMemo,
   useCallback,
   useRef,
@@ -19,6 +18,8 @@ import {
   useCycle,
 } from "@/components/panel-primitives";
 import type { PanelId } from "@/hooks/useViewPrefs";
+import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
+import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { useCardTheme, useAllPanelColors } from "@/hooks/usePanelTheme";
 import {
   type SearchScope,
@@ -29,6 +30,7 @@ import {
   SCOPE_PANEL,
   SCOPE_ORDER,
   SCOPE_TO_CARD_THEME,
+  scopeDotBackground,
   compileQuery,
   buildUuidPosMap,
 } from "@/lib/search-sources";
@@ -940,6 +942,15 @@ function SearchPanel({
   );
 }
 
+/** The overflow half of the scope chips — the scopes that don't fit the primary
+ *  row, as a checkbox menu.
+ *
+ *  Folded onto `<AnchoredMenu>` + `<MenuToggleRow>` (task 143). It was the most
+ *  denuded of the three hand-rolled dropdowns: `top = rect.bottom + 4, left =
+ *  rect.left` with no flip in EITHER axis, no clamp, no re-anchor, and no menu
+ *  semantics at all — its rows rendered a ✓ with nothing for a screen reader to
+ *  read it from. The per-scope colour dot survives as the row's `leading` slot,
+ *  which is the one thing these rows had that the shared row didn't. */
 function MoreScopesDropdown({
   scopes,
   enabledScopes,
@@ -949,116 +960,78 @@ function MoreScopesDropdown({
   enabledScopes: Set<SearchScope>;
   onToggle: (scope: SearchScope) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-
   const enabledCount = scopes.filter((s) => enabledScopes.has(s)).length;
   // ONE version-subscribed lookup for the whole menu — a per-scope hook inside
   // the `.map` below would be a rules-of-hooks violation.
   const scopeAccent = useScopeAccent();
 
-  useEffect(() => {
-    if (!open) return;
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left });
-    }
-    const handler = (e: MouseEvent) => {
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(e.target as Node) &&
-        btnRef.current &&
-        !btnRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
   const active = enabledCount > 0;
 
   return (
-    <div className="relative">
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((o) => !o);
-        }}
-        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
-          active
-            ? "border-edge-hover bg-white/70 text-ink-body"
-            : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
-        }`}
-        data-hint="More scopes"
-      >
-        <span>More</span>
-        {active && (
-          <span className="text-[9px] leading-none tabular-nums text-ink-subtle">
-            {enabledCount}
-          </span>
-        )}
-        <svg
-          width="8"
-          height="8"
-          viewBox="0 0 10 10"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d={open ? "M2 6 L5 3 L8 6" : "M2 4 L5 7 L8 4"} />
-        </svg>
-      </button>
-      {open && (
-        <div
-          ref={menuRef}
-          className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[140px]"
-          style={{ top: pos.top, left: pos.left }}
-        >
-          {scopes.map((s) => {
-            const enabled = enabledScopes.has(s);
-            const color = scopeAccent(s);
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggle(s);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1 text-[11px] text-left hover-on-light"
-              >
-                <span
-                  aria-hidden
-                  className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{
-                    backgroundColor:
-                      color === "transparent" ? "#78716c" : color,
-                    opacity: enabled ? 1 : 0.4,
-                  }}
-                />
-                <span className={enabled ? "text-ink-body" : "text-ink-muted"}>
-                  {SCOPE_LABEL[s]}
-                </span>
-                {enabled && (
-                  <span className="ml-auto text-[10px] leading-none text-ink-muted">
-                    ✓
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+    <AnchoredMenu
+      ariaLabel="More scopes"
+      align="start"
+      triggerHint="More scopes"
+      // The count badge lives INSIDE the trigger, so before the shell owned the
+      // button the accessible name was computed from its contents ("More 3").
+      // A static `aria-label` would silently swallow that — assistive tech would
+      // hear the same name with zero or five overflow scopes on — so the count
+      // is folded into the name rather than dropped.
+      triggerAriaLabel={
+        enabledCount > 0 ? `More scopes, ${enabledCount} on` : "More scopes"
+      }
+      wrapperClassName="relative"
+      menuClassName="min-w-[140px]"
+      triggerClassName={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+        active
+          ? "border-edge-hover bg-white/70 text-ink-body"
+          : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
+      }`}
+      trigger={(open) => (
+        <>
+          <span>More</span>
+          {active && (
+            <span className="text-[9px] leading-none tabular-nums text-ink-subtle">
+              {enabledCount}
+            </span>
+          )}
+          <svg
+            width="8"
+            height="8"
+            viewBox="0 0 10 10"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d={open ? "M2 6 L5 3 L8 6" : "M2 4 L5 7 L8 4"} />
+          </svg>
+        </>
       )}
-    </div>
+    >
+      {scopes.map((s) => (
+        <MenuToggleRow
+          key={s}
+          id={`scope-${s}`}
+          label={SCOPE_LABEL[s]}
+          checked={enabledScopes.has(s)}
+          keepMenuOpen
+          leading={
+            <span
+              aria-hidden
+              className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+              style={{
+                backgroundColor: scopeDotBackground(scopeAccent(s)),
+                opacity: enabledScopes.has(s) ? 1 : 0.4,
+              }}
+            />
+          }
+          onToggle={() => onToggle(s)}
+        />
+      ))}
+    </AnchoredMenu>
   );
 }
 
@@ -1107,7 +1080,7 @@ function ScopeChip({
         aria-hidden
         className="inline-block w-1.5 h-1.5 rounded-full"
         style={{
-          backgroundColor: color === "transparent" ? "#78716c" : color,
+          backgroundColor: scopeDotBackground(color),
           opacity: enabled ? 1 : 0.4,
         }}
       />

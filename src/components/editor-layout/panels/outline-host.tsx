@@ -2,7 +2,7 @@
 
 import type { JSONContent } from "@tiptap/react";
 import OutlinePanel, { type SectionPathEntry } from "@/panels/Outline";
-import type { FocusState } from "@/hooks/useFocusMode";
+import type { FocusBand } from "@/lib/focus-view";
 
 export interface OutlineHostProps {
   content: JSONContent | null;
@@ -17,10 +17,9 @@ export interface OutlineHostProps {
   isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
   activeSectionPath: SectionPathEntry[];
   activeParTitleIndex: number | null;
-  editorSplit: boolean;
-  mirrorSectionPath: SectionPathEntry[];
-  mirrorParTitleIndex: number | null;
-  focusState: FocusState;
+  /** UUID-anchored focus band; OutlinePanel resolves it to index boundaries
+   *  against its own snapshot (task 307). */
+  focusBand: FocusBand | null;
   onFocusActivate: () => void;
   onFocusDeactivate: () => void;
   onFocusToggleLock: () => void;
@@ -42,10 +41,7 @@ export function OutlineHost(p: OutlineHostProps) {
       isLabelTaken={p.isLabelTaken}
       activeSectionPath={p.activeSectionPath}
       activeParTitleIndex={p.activeParTitleIndex}
-      editorSplit={p.editorSplit}
-      mirrorSectionPath={p.mirrorSectionPath}
-      mirrorParTitleIndex={p.mirrorParTitleIndex}
-      focusState={p.focusState}
+      focusBand={p.focusBand}
       onFocusActivate={p.onFocusActivate}
       onFocusDeactivate={p.onFocusDeactivate}
       onFocusToggleLock={p.onFocusToggleLock}

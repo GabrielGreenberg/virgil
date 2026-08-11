@@ -411,7 +411,8 @@ describe("textObjectDropSpec commit — sibling reorder from an item-boundary in
 // directions end-to-end through the real `applyDrop` + the real expex-shaped
 // schema (the `exampleItemList` wrapper above), the harness that reproduced the
 // split. Pre-fix, each dispatched a container-splitting tr; post-fix, neither
-// dispatches.
+// dispatches — and since task 321 neither is reported as `apply` either, so the
+// gesture cancels instead of closing the float over an untouched document.
 describe("textObjectDropSpec commit — cross-kind sub-object into a foreign gap NO-OPS (task 065)", () => {
   it("listItem into a between-exampleItems gap is REJECTED (no split, no duplicate uuid)", () => {
     const d = doc(
@@ -425,13 +426,20 @@ describe("textObjectDropSpec commit — cross-kind sub-object into a foreign gap
     const insertPos = exItems[1].pos;
     const KEY = "textobject:listItem:a";
 
-    // The drop is genuinely attempted at this position (not skipped as inside
-    // the source range) …
+    // RENEGOTIATED by task 321. These two assertions used to read `apply` —
+    // "the drop is genuinely attempted at this position", true of the gesture
+    // and false of its outcome. That pairing (`classifyDrop` says apply, the
+    // adapter's `no-op` dispatches nothing) IS the defect 321 names: the
+    // controller sets `applied = true` because nothing threw, `postDrop:
+    // "close"` dismisses the popped-out float, and the document is unchanged
+    // with no feedback. The refusal is now resolved in `planDrop`, which both
+    // doors derive from, so the DECISION reports it and the session cancels
+    // with the float intact.
     expect(
       textObjectDropSpec.classifyDrop(betweenBlocks(editor, insertPos), KEY, ctx),
-    ).toEqual({ kind: "apply" });
-    // … yet the adapter no-ops it: nothing is dispatched, so the exampleBlock is
-    // never split and no uuid is duplicated.
+    ).toEqual({ kind: "no-op" });
+    // The apply half is unchanged: the adapter no-ops it, so nothing is
+    // dispatched, the exampleBlock is never split and no uuid is duplicated.
     textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), KEY, ctx);
     expect(dispatched).toHaveLength(0);
 
@@ -456,9 +464,10 @@ describe("textObjectDropSpec commit — cross-kind sub-object into a foreign gap
     const insertPos = items[1].pos;
     const KEY = "textobject:exampleItem:ea";
 
+    // `no-op`, not `apply` — see the note on the sibling case above (task 321).
     expect(
       textObjectDropSpec.classifyDrop(betweenBlocks(editor, insertPos), KEY, ctx),
-    ).toEqual({ kind: "apply" });
+    ).toEqual({ kind: "no-op" });
     textObjectDropSpec.applyDrop(betweenBlocks(editor, insertPos), KEY, ctx);
     expect(dispatched).toHaveLength(0);
 

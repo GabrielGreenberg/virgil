@@ -12,6 +12,7 @@
  */
 
 import type { Editor } from "@tiptap/react";
+import type { JSONContent } from "@tiptap/core";
 import type { ReactNode } from "react";
 import type { TextObjectKind } from "@/text-objects/types";
 import type {
@@ -69,6 +70,33 @@ export type Placement =
     };
 
 export type PlacementKind = Placement["kind"];
+
+/**
+ * A resolved drop: everything is decided, and all that remains is to dispatch.
+ * Produced by a spec's {@link DropSpec.planDrop} and consumed by
+ * `plannedDropSpec` (planned-spec.ts), which derives BOTH doors from it.
+ *
+ * An object rather than a bare thunk so the shape has somewhere to grow (a
+ * confirm refinement, a description for a future "why did nothing happen?"
+ * affordance) without every call site changing.
+ */
+export interface DropPlan {
+  /** Dispatch the resolved transaction(s) / call the resolved factories. Runs
+   *  exactly once, from `applyDrop`, after the decision. */
+  commit: () => void;
+}
+
+/**
+ * The one function a planned spec states: resolve the drop into something
+ * committable, or refuse. **Pure** — it runs twice per gesture (once per door)
+ * and, on the confirm path, before the user has agreed to anything, so every
+ * side effect belongs inside {@link DropPlan.commit}.
+ */
+export type DropPlanner = (
+  placement: Placement,
+  cardKey: string,
+  ctx: DropCtx,
+) => DropPlan | null;
 
 /** Decision returned by `DropSpec.classifyDrop`. */
 export type DropDecision =
@@ -166,8 +194,9 @@ export interface DropCtx {
   }) => Promise<boolean>;
   /** Per-kind hook APIs. Each spec needs its own; absent means the
    *  feature isn't wired in this doc (silently no-op). One sub-bag
-   *  per paragraph-side attachment kind; future inline-atom kinds
-   *  (footnote, citation, ai) will add their own sibling sub-bags. */
+   *  per paragraph-side attachment kind. The INLINE-ATOM kinds do NOT
+   *  each add a sibling field — they share the one registry-keyed
+   *  {@link InlineAtomCardApis} bag below (task 233). */
   notes?: ParagraphAnchorApi;
   /** Highlights are always Mode B; the drop spec uses the same shape
    *  as `notes` but reads/writes the highlight-specific corner of the
@@ -188,29 +217,86 @@ export interface DropCtx {
    *  fresh entity in the destination doc with a new id. Absent means
    *  stack pulls into this doc are no-ops (e.g. paper render mode). */
   stack?: StackPullApi;
-  /** Read accessor for the citation drop spec's "anchor the unanchored"
-   *  create branch. An unanchored citation card has no `\cite{}` marker in
-   *  any editor, so the atom builder must read the card's current LaTeX
-   *  command (e.g. `\cite{smith2020}`) from the panel hook to populate the
-   *  new atom node. Absent (or returning an empty/keyless command) means the
-   *  citation create branch silently declines — matching the other "feature
-   *  not wired ⇒ no-op" sub-bags. */
-  citations?: CitationDropApi;
+  /** The ONE sub-bag every inline-atom card kind's "anchor the unanchored"
+   *  create branch reads — keyed by card kind, not one hand-added field per
+   *  kind (task 233). Absent, or missing this kind's entry, means the feature
+   *  isn't wired in this doc: the create branch falls back to its declared
+   *  no-api behavior (decline, or the empty create shape). */
+  atomCards?: InlineAtomCardApis;
 }
 
 /**
- * Minimal read accessor the citation inline-atom create branch needs. The
- * unanchored card's serializable `\cite{…}` command lives in the citations
- * panel hook, keyed by the card id; the create branch reads it to build the
- * new atom. Read-only — anchoring (clearing the `unanchored` flag) is the
- * panel hook's own concern, driven by the atom landing in the editor.
+ * The atom attrs an unanchored card of each inline-atom kind carries — the
+ * per-kind payload of {@link InlineAtomCardApi}. **This map is the SSOT for
+ * "which kinds own a create branch that needs card-authoritative data."**
+ *
+ * Why it exists (task 233): an unanchored card has NO marker in any editor, so
+ * the "anchor the unanchored" create branch cannot read the atom's attrs off
+ * the document — it must read them from the card. Before this map each kind
+ * bolted its own optional sub-bag onto {@link DropCtx} by hand, and the
+ * footnote's was simply never added: its `createAtom` built a hard-coded EMPTY
+ * body, so re-placing an archived footnote **silently destroyed the user's
+ * footnote text** (the body is the atom's `content` attr and regenerates from
+ * nothing). The citation's `command` was wired and worked. Same branch, same
+ * week, one mirrored and one not.
+ *
+ * Adding a kind here is now the ONE edit that makes the whole chain typecheck-
+ * enforced: `INLINE_ATOM_CARD_BUILDERS` (drop-mode/atom-card-apis.ts) is a
+ * `Record` over this union, so a kind added here and left unwired in
+ * `EditorPane` is a COMPILE ERROR, not a silent empty atom.
+ *
+ * **Scope: the guard is per-KIND, not per-ATTR.** Each payload below is still a
+ * hand-written list, and only covers what the CARD can supply. A known residual:
+ * the `footnote` node also carries `title` and `thanks`, and `FootnoteRef` has
+ * neither — so archiving a `\footnote[title]`/`\thanks{…}` already discards them
+ * at splice time and the rebuild emits a plain `\footnote{}`. Same failure
+ * SHAPE as task 233 (an attr the rebuilt atom can't regenerate), much smaller
+ * loss. Closing it means persisting those fields on the ref first.
  */
-export interface CitationDropApi {
-  /** The card's current full LaTeX command (e.g. `\citep{a,b}`), or null /
-   *  an empty string when the card has no serializable citekey yet (an empty
-   *  draft) — the create branch declines in that case. */
-  commandFor: (id: string) => string | null;
+export interface InlineAtomCardAttrs {
+  /** The footnote body. It IS the atom's `content` attr and lives nowhere else
+   *  — losing it loses the user's text (task 233). NOT the whole node: `title`
+   *  and `thanks` have no home on `FootnoteRef` (see the scope note above). */
+  footnote: { content: JSONContent };
+  /** The serializable `\cite{…}`. Null for an empty/keyless DRAFT, which the
+   *  citation create branch declines on. */
+  citation: { command: string | null };
 }
+
+/** The inline-atom card kinds that own a create branch. Union of the keys of
+ *  {@link InlineAtomCardAttrs} — a subset of `CardKind`, kept structural (not
+ *  imported from the card registry) so `drop-mode/types.ts` stays a leaf. */
+export type InlineAtomCardKind = keyof InlineAtomCardAttrs;
+
+/**
+ * What one inline-atom kind's create branch needs from its owning panel hook.
+ * Two halves, and BOTH are load-bearing — the pre-233 footnote path had
+ * neither:
+ *
+ *  - `atomAttrsFor` — READ the attrs only the card knows (the body, the
+ *    command), so the rebuilt atom is lossless. Returning `null` DECLINES the
+ *    drop (an empty draft citation), matching the upstream disabled button.
+ *  - `onAnchored` — RECONCILE the card's own anchor state once the atom has
+ *    landed: the card is no longer unanchored (nor archived — archiving is
+ *    what spliced the atom out), so the flags that made it a "parked,
+ *    re-placeable" ref must clear. Without it the sidecar keeps declaring
+ *    `unanchored`, and a panel that lists atomless refs from the sidecar alone
+ *    shows the SAME footnote twice: once live in the prose, once as a stale
+ *    parked duplicate.
+ */
+export interface InlineAtomCardApi<TAttrs> {
+  /** The card-authoritative atom attrs, or null to DECLINE the create. */
+  atomAttrsFor: (id: string) => TAttrs | null;
+  /** Called once, after the new atom has been inserted, so the owning hook can
+   *  clear the card's `unanchored` / `archived` intent. Optional — a kind whose
+   *  sidecar carries no such intent omits it. */
+  onAnchored?: (id: string) => void;
+}
+
+/** The registry-keyed bag itself: at most one API per inline-atom kind. */
+export type InlineAtomCardApis = {
+  [K in InlineAtomCardKind]?: InlineAtomCardApi<InlineAtomCardAttrs[K]>;
+};
 
 /**
  * API the stack-pull DropSpec uses to materialize a snapshot into the
@@ -220,6 +306,15 @@ export interface CitationDropApi {
  * Cards that anchor to a paragraph accept an optional `paragraphId`;
  * when null, the card is unanchored. Bib upsert is no-op when the key
  * already exists.
+ *
+ * **Every per-KIND factory is REQUIRED (task 259).** One method per member of
+ * `STACK_CARD_KINDS` is the last link of the stack-carry chain, and an optional
+ * one is the same silent-loss vector as a missing `applyCardDrop` case: the
+ * branch calls `stack.addX?.(…)`, the host that never wired it makes that a
+ * no-op, and the pulled card vanishes with no compile error, no runtime error
+ * and nothing in the console. Optionality is reserved for per-FIELD
+ * enhancements, where absence loses a side-channel rather than the card
+ * (`setAnnotation`, below).
  */
 export interface StackPullApi {
   /** Add a note. Returns the new card with a fresh id. */
@@ -229,9 +324,8 @@ export interface StackPullApi {
   ) => UserNote;
   /** Add a highlight. v1 stack-pull skips re-anchoring a highlight's
    *  text range (the original mark is gone) — drops always create an
-   *  unanchored highlight or a paragraph-anchored placeholder.
-   *  Absent means highlights aren't supported in this doc. */
-  addHighlight?: (paragraphId: string | null) => HighlightCard;
+   *  unanchored highlight or a paragraph-anchored placeholder. */
+  addHighlight: (paragraphId: string | null) => HighlightCard;
   addTodo: (paragraphId: string | null, seed: { text?: string }) => TodoItem;
   addArchive: (
     paragraphId: string | null,
@@ -266,9 +360,13 @@ export interface StackPullApi {
    *  destination doc's per-doc `annotations.json` sidecar, keyed by citekey.
    *  Called after `upsertBibEntry` on a bibliography/citation pull so the
    *  note survives a cross-doc round-trip (annotations don't ride the
-   *  `BibEntry`). No-op / omitted when the pulled snapshot carried no
-   *  annotation, so a same-doc pull writes nothing spurious. */
-  setAnnotation?: (key: string, html: string) => void;
+   *  `BibEntry`). The CALL is conditional — the branches invoke it only when the
+   *  snapshot carried an annotation, so a same-doc pull writes nothing spurious
+   *  — but the METHOD is required like every other member (task 259): optional
+   *  meant a host could silently drop the user's bib note on every cross-doc
+   *  pull, which is the same shape as a missing per-kind factory, one field
+   *  smaller. */
+  setAnnotation: (key: string, html: string) => void;
 }
 
 /**
@@ -276,8 +374,46 @@ export interface StackPullApi {
  * contributes one spec; the registry composes them into a single record.
  */
 export interface DropSpec {
-  /** Listed in priority order; first matching geometry wins. */
+  /**
+   * Listed in priority order; first matching geometry wins (the loop lives in
+   * `hit-test.ts`, its semantics in `placement-policy.ts`).
+   *
+   * For a spec that declares {@link placementsFor} this is the declared
+   * ENVELOPE — the union of what any payload may use — and NOT a priority
+   * order: the per-payload list is what a session actually walks. Every OTHER
+   * spec carries one payload shape, so here the list is the policy.
+   *
+   * `paragraph-side` matches EITHER geometry, so listing it after both
+   * `between-blocks` and `inline-cursor` makes it unreachable. CI
+   * (`placement-reachability.test.ts`) fails any spec that declares a
+   * placement the loop can never return — the task-258 shape.
+   */
   allowedPlacements: ReadonlyArray<PlacementKind>;
+  /**
+   * Payload-aware refinement of {@link allowedPlacements} (task 258): the
+   * ordered list THIS dragged key may use, or `[]` when the payload can't be
+   * resolved and the drag should offer nothing.
+   *
+   * Declared only by a spec whose one key prefix covers several payload
+   * SHAPES, where a spec-wide static order is structurally unable to express
+   * the truth — `stack-pull:<id>` is the only one today: a text slice wants
+   * the inline caret over paragraph text, a card wants the paragraph side over
+   * the very same pixel, and the loser of a single static order is dead code
+   * (the caret painted, the commit refused, nothing happened).
+   *
+   * Resolved ONCE per session by `resolveSessionPlacements`, at
+   * `beginDropSession` — never per pointermove: the resolution is free to read
+   * persisted state (stack-pull parses its localStorage envelope), which a
+   * throttled mousemove could not afford, and freezing the CHOICE at mousedown
+   * keeps the affordance stable for the gesture. The payload can still VANISH
+   * mid-drag (a stack item removed), which is why `classifyDrop` re-reads.
+   *
+   * The SAME per-payload table must back the spec's `classifyDrop` validity
+   * check. The two are one question asked at two times — the affordance and
+   * the commit — and the whole defect class is them being answered by
+   * different tables.
+   */
+  placementsFor?: (cardKey: string) => ReadonlyArray<PlacementKind>;
   /**
    * Whether this kind may drop into card-body editors or only the main
    * editor. Attachment cards (note, todo, etc.) anchor to paragraph
@@ -291,6 +427,13 @@ export interface DropSpec {
    * placement. Returning `no-op` cancels silently; `apply` runs
    * `applyDrop` immediately; `confirm` opens the modal and runs
    * `applyDrop` only on user confirmation.
+   *
+   * **A spec that can REFUSE does not write this by hand** — it states
+   * {@link planDrop} and lets `plannedDropSpec` derive both doors from it
+   * (task 321). A refusal that lives only in `applyDrop` reaches the
+   * controller as `apply`: `finishApply` sets `applied = true` because nothing
+   * threw, `postDrop: "close"` dismisses the popped-out float, and the
+   * document is unchanged with no feedback at all.
    */
   classifyDrop: (
     placement: Placement,
@@ -300,8 +443,47 @@ export interface DropSpec {
   /** Carry out the drop. Called after classifyDrop returns apply (or
    *  after the user confirms a confirm decision). */
   applyDrop: (placement: Placement, cardKey: string, ctx: DropCtx) => void;
+  /**
+   * Present iff this spec was built by `plannedDropSpec` (planned-spec.ts):
+   * the ONE resolution both doors above are generated from — source lookup,
+   * adapter, wrap, container fit, ctx accessors — returning `null` for a drop
+   * that cannot happen.
+   *
+   * Published on the spec so a guard can ask the LIVE OBJECT "is this spec's
+   * decision derived from its execution?" rather than grepping for a spelling.
+   * A spec whose `applyDrop` can refuse and that does NOT carry this is the
+   * task-321 shape; `planned-decision-guardrail.test.ts` is the census.
+   */
+  planDrop?: DropPlanner;
   /** What happens to the float after a successful drop. */
   postDrop: "close" | "keep";
+  /**
+   * True when this spec owns an "anchor the unanchored" CREATE branch — i.e.
+   * it can REBUILD its inline atom for a card that has no marker anywhere. Set
+   * by `inlineAtomMoveSpec` from `!!opts.createAtom`, so it is a property of
+   * the mechanism and can't be forgotten.
+   *
+   * Paired with `requiresCardApi` it states the invariant that actually failed
+   * in task 233: **a spec that rebuilds an atom must declare where the card's
+   * half of that atom comes from.** The pre-233 footnote spec had a create
+   * branch and no accessor, and hard-coded an empty body — so a guard keyed on
+   * "declared but unwired" would have walked straight past it. The guard is
+   * keyed on this instead: `createsAtom ⇒ requiresCardApi`.
+   */
+  createsAtom?: boolean;
+  /**
+   * Declared ctx REQUIREMENT (task 233): this spec's create branch reads
+   * `ctx.atomCards[<this kind>]`. Set by `inlineAtomMoveSpec` from its
+   * `cardApiKind` option — never a second hand-maintained list.
+   *
+   * It exists so the gap that produced task 233 is VISIBLE from the registry:
+   * a spec can be registered-and-reachable while the accessor it needs was
+   * never wired, and the only symptom is a silently degraded atom. The
+   * contract test reads this field off `CARD_REGISTRY[kind].dropSpec` and
+   * asserts the wiring builder covers every kind that declares it; the factory
+   * also warns in dev when a declared accessor is missing at drop time.
+   */
+  requiresCardApi?: InlineAtomCardKind;
 }
 
 /**
@@ -316,6 +498,12 @@ export interface DropSession {
    *  look the spec up in the registry. */
   kind: string;
   spec: DropSpec;
+  /** The ordered placements THIS session may produce — `spec.placementsFor`'s
+   *  answer for this cardKey, else `spec.allowedPlacements`. Resolved once at
+   *  session start (`resolveSessionPlacements`) and handed to every hit-test,
+   *  so a per-payload policy costs one localStorage read per GESTURE rather
+   *  than one per throttled pointermove. */
+  placements: ReadonlyArray<PlacementKind>;
   /** Where the user mousedowned, used by ESC / leave logic. */
   origin: { x: number; y: number };
   /** Current placement under the cursor, or null when not over a valid

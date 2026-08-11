@@ -20,12 +20,16 @@
  * it already resolved for `renderBody()` via `snapshotCard(...)`. EditorPane's
  * `virgil-stack-drop` handler calls it through `CARD_REGISTRY[kind].toFloatable`
  * (the legacy prefix-lookup resolver under `lib/stack/` is retired).
- * Non-stackable poppable kinds (`report` / `report-request` / `ai`) and
- * `example` (no reachable `ExampleRef` sidecar — see its builder) return null.
+ * Non-stackable poppable kinds (`report` / `report-request` / `example`) return
+ * null — and "which kinds those are" is not a judgement call made here: it is
+ * `CARD_REGISTRY[kind].stackable`, pinned to the Stack's real vocabulary by
+ * `assertStackCoverage()` and to THESE closures by
+ * `cards/__tests__/stack-coverage.test.ts`, which builds every kind's float and
+ * checks the snapshot against the declaration (task 259).
  */
 import type { ReactNode } from "react";
 import { NoteCard, HighlightCard } from "@/panels/Notes";
-import { FootnoteCard } from "@/panels/Footnotes";
+import { FootnoteCard, UnanchoredFootnoteCard } from "@/panels/Footnotes";
 import { ArchiveCard } from "@/panels/Archive";
 import { CutterCommentCard, CutterSuggestionCard, CutterSuggestionTrailing } from "@/panels/Cutter";
 import { TodoRow, TodoDoneToggle } from "@/panels/Todo";
@@ -223,7 +227,15 @@ registerCardFloatable("footnote", (id, ctx: CardFloatCtx) => {
   // initial hydration). Once per float render — NOT per main-doc transaction.
   const liveFootnotes = ctx.editorRef.current?.getFootnotes() ?? ctx.footnotes;
   const fn = liveFootnotes.find((f) => f.footnoteId === id);
-  if (!fn) return null;
+  // Task 316 — the ATOMLESS fallback. A footnote's anchored and parked views
+  // come from DIFFERENT sources (the live editor vs the `footnotes.json`
+  // sidecar), so resolving only the first meant an archived / unanchored ref
+  // returned null and its float rendered nothing. That was survivable while the
+  // card had no way to be lifted; threading its `cardKey` arms the header lift,
+  // which would otherwise pop it into a blank window. The citation twin already
+  // had this shape for free (it iterates ONE list and resolves a position per
+  // entry) — this is that fork closed, not a new capability.
+  if (!fn) return unanchoredFootnoteFloatable(id, ctx);
   const isSelected = ctx.selectedFootnoteId === fn.footnoteId;
   return cardFloatable("footnote", id, {
     canJump: true,
@@ -257,6 +269,43 @@ registerCardFloatable("footnote", (id, ctx: CardFloatCtx) => {
     ),
   });
 });
+
+/** The atomless (archived / unanchored) half of the footnote float — a
+ *  `FootnoteRef` read from the sidecar, rendered by the SAME
+ *  `UnanchoredFootnoteCard` the docked panel and omni mount, so the popped card
+ *  keeps its parked cue and its drop button (`canDrop` is the static registry
+ *  facet, unchanged). No live marker ⇒ no jump, mirroring the citation twin's
+ *  `isAnchored` fork. Returns null only when the ref is genuinely gone (deleted
+ *  mid-gesture), which is the same "nothing to render" answer as before. */
+function unanchoredFootnoteFloatable(id: string, ctx: CardFloatCtx): Floatable | null {
+  // `unanchoredFootnotes` is a REQUIRED field, so production can't omit it; the
+  // `??` guards only a cast-built ctx (the suites construct theirs through
+  // `as unknown as CardFloatCtx`, which defeats the check) — and a TypeError
+  // here would blank the whole float host, not just this card.
+  const ref = (ctx.unanchoredFootnotes ?? []).find((r) => r.id === id);
+  if (!ref) return null;
+  const isSelected = ctx.selectedFootnoteId === ref.id;
+  return cardFloatable("footnote", id, {
+    canJump: false,
+    jumpToSource: () => {},
+    // The ref IS the snapshot shape — no synthesized `createdAt` needed, unlike
+    // the anchored branch, which has only a doc-derived `FootnoteInfo` in hand.
+    snapshotForStack: (source) => snapshotCard("footnote", ref, source),
+    renderBody: () => (
+      <UnanchoredFootnoteCard
+        footnote={ref}
+        isSelected={isSelected}
+        onSelect={() => ctx.setSelectedFootnoteId(isSelected ? null : ref.id)}
+        onEdit={(json) => ctx.handleEditFootnote(ref.id, json)}
+        onDelete={() => ctx.handleDeleteUnanchoredFootnote(ref.id)}
+        onEditorFocus={ctx.setOverrideEditor}
+        getCitationDisplayText={ctx.getCitationDisplayText}
+        onCitationCreated={ctx.handleCitationCreated}
+        isPoppedOut
+      />
+    ),
+  });
+}
 
 registerCardFloatable("archive", (id, ctx: CardFloatCtx) => {
   const snippet = ctx.archiveSnippets.find((s) => s.id === id);
@@ -632,10 +681,13 @@ registerCardFloatable("example", (id, ctx: CardFloatCtx) => {
   return cardFloatable("example", id, {
     canJump: true,
     jumpToSource: () => ctx.editorRef.current?.scrollToExample(ex.exampleId),
-    // R2: preserve today's behavior — byte-for-byte with the legacy
-    // resolve-card path, which returned null for example (no reachable
-    // `ExampleRef` sidecar here). Enabling example stacking is a separate
-    // follow-up.
+    // Not stackable (`CARD_REGISTRY.example.stackable === false` since task
+    // 259). An example's content is the in-text `\ex{…}` block; this panel ref
+    // is a sidecar MIRROR of it, so a snapshot of the ref alone could not be
+    // pulled back into any document — which is why the pull branch was a
+    // placeholder and why the kind left the Stack vocabulary rather than being
+    // allowlisted into the guard. Enabling it means synthesizing an
+    // `exampleBlock` node on pull first.
     snapshotForStack: () => null,
     renderBody: () => (
       <ExampleCard

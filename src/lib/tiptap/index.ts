@@ -3,7 +3,7 @@
 // this barrel) to keep call-site imports unchanged.
 
 export { VIRGIL_COMMANDS, VIRGIL_COMMAND_NAMES, COMMAND_MAP, type VirgilCommand } from "./commands";
-export { LatexCommandMark } from "./latex-command";
+export { LatexCommandMark, LatexVerbatimMark } from "./latex-command";
 export { SlashPopupExtension } from "./slash-popup";
 export { InlineMath, DisplayMath } from "./math";
 export { Footnote } from "./footnote";
@@ -39,7 +39,6 @@ export {
   insertFigureBlock,
   collectFigureBlockUuids,
   freshFigureBlockAttrs,
-  synthesizeFigureRaw,
 } from "./figure-block";
 export { FigureCaption } from "./figure-caption";
 export {
@@ -50,8 +49,14 @@ export {
 } from "./graphics-block";
 export {
   buildBorrowedAtomSchema,
+  buildCardBodySchema,
+  canMountInCardBody,
+  starterKitConfigForScope,
   CARD_STARTER_KIT_CONFIG,
+  EXCERPT_STARTER_KIT_CONFIG,
   BORROWED_INLINE_ATOM_NAMES,
   BORROWED_BLOCK_ATOM_NAMES,
   type BorrowedSchemaOptions,
+  type CardBodySchemaScope,
+  type CardBodyMountCheck,
 } from "./borrowed-schema";

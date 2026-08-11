@@ -20,10 +20,12 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import {
   TabIndent,
-  CARD_STARTER_KIT_CONFIG,
-  buildBorrowedAtomSchema,
+  starterKitConfigForScope,
+  buildCardBodySchema,
+  type CardBodySchemaScope,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { registerEditorMount } from "@/lib/editor-census-probe";
 import { generateShortId } from "@/lib/uuid";
 import { MIME_CITATION, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
 import type { PanelBodyKey } from "@/lib/panel-typography";
@@ -45,6 +47,13 @@ interface RichTextFieldProps {
   placeholder?: string;
   /** Visual variant — affects font + color. */
   variant?: "footnote" | "note";
+  /** Which body vocabulary to mount (task 308). Defaults to `"card"` — the
+   *  narrow authored-prose surface (no heading / blockquote / codeBlock /
+   *  horizontalRule / expex / highlight / textColor). `"excerpt"` mounts the
+   *  full main-document vocabulary, for a body holding a verbatim document
+   *  slice. `EditableCard` derives it from the card kind and passes the SAME
+   *  value here and to the compressed `BorrowedMainText`. */
+  schemaScope?: CardBodySchemaScope;
   /** Whether the parent card is currently selected (controls toolbar styling). */
   selected?: boolean;
   /** Greyed-out display for orphaned items. */
@@ -168,6 +177,7 @@ function RichTextFieldImpl({
   onFocusChange,
   placeholder = "",
   variant = "footnote",
+  schemaScope = "card",
   selected = false,
   muted = false,
   onArchiveConsumed,
@@ -283,11 +293,14 @@ function RichTextFieldImpl({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        // Shared card-body StarterKit config (heading/blockquote/codeBlock/
-        // horizontalRule disabled — they make no sense in a footnote / note
-        // body and would balloon the surface). SSOT in borrowed-schema.ts so
-        // RichTextField + BorrowedMainText can't drift on it.
-        ...CARD_STARTER_KIT_CONFIG,
+        // Scope-resolved card-body StarterKit config. At `"card"` scope
+        // heading/blockquote/codeBlock/horizontalRule are disabled — they make
+        // no sense in a footnote / note body and would balloon the surface. At
+        // `"excerpt"` scope they stay ON, because that body holds a verbatim
+        // slice of the document and must be able to represent whatever the user
+        // excised (task 308). SSOT in borrowed-schema.ts so RichTextField +
+        // BorrowedMainText can't drift on it.
+        ...starterKitConfigForScope(schemaScope),
         // StarterKit v3 already ships underline; we just want it on.
       }),
       Placeholder.configure({ placeholder }),
@@ -305,7 +318,13 @@ function RichTextFieldImpl({
       // owning-editor threading in atom-create) has a schema node to insert
       // into and survives the JSON↔LaTeX round-trip. The nested-`footnote`
       // marker stays omitted — footnotes can't nest.
-      ...buildBorrowedAtomSchema({ includeLabelRef: true }),
+      //
+      // At `"excerpt"` scope this ALSO forces the nested `footnote` marker in
+      // (and the rest of the document block vocabulary). That asymmetry was a
+      // live bug: `BorrowedMainText` registered `footnote` and RichTextField did
+      // not, so an archived paragraph carrying a `\footnote` marker rendered
+      // fine collapsed and went BLANK on expand (task 308).
+      ...buildCardBodySchema(schemaScope, { includeLabelRef: true }),
     ],
     content: initialContent,
     editable,
@@ -418,8 +437,14 @@ function RichTextFieldImpl({
     },
   // Re-create the editor when instanceKey changes (footnote/note ID changed
   // out from under us). This is the simplest way to keep state coherent
-  // when the parent recycles a single component for many items.
-  }, [instanceKey]);
+  // when the parent recycles a single component for many items. `schemaScope`
+  // joins it because it selects the SCHEMA, which the extension array reads once
+  // at construction — a scope change without a remount would silently leave the
+  // body on the old vocabulary.
+  }, [instanceKey, schemaScope]);
+
+  // Editor-census probe (__editorCensus): one live-instance tick per mount.
+  useEffect(() => registerEditorMount("rich-text-field"), []);
 
   // External value sync — only when the editor isn't focused (otherwise we'd
   // wipe the caret on every debounced parent update). We also refresh

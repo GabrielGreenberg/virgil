@@ -94,11 +94,11 @@ import { ZenMargin } from "@/components/editor-layout/zen-margin";
 import { EditorScrollbar } from "@/components/editor-layout/editor-scrollbar";
 import { MIN_BAND_PX, type PanelId } from "@/hooks/useViewPrefs";
 import {
-  beginPaneDrag,
-  endPaneDrag,
-  isPaneDragging,
-  __resetPaneDragBusForTest,
-} from "@/lib/pane-resize/pane-drag-bus";
+  beginLayoutGesture,
+  endLayoutGesture,
+  isLayoutGestureActive,
+  __resetLayoutGestureBusForTest,
+} from "@/lib/pane-resize/layout-gesture-bus";
 import {
   isDragShieldMounted,
   unmountDragShield,
@@ -136,7 +136,7 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", (id: number) => {
     rafCallbacks.delete(id);
   });
-  __resetPaneDragBusForTest();
+  __resetLayoutGestureBusForTest();
   unmountDragShield();
   localStorage.clear();
 });
@@ -267,10 +267,10 @@ describe("PanelColumn gutter on the pane-resize engine", () => {
   it("ignores a foreign gesture's bus edges (instance-scoped id filter)", () => {
     const h = renderPanelColumn();
     act(() => {
-      beginPaneDrag({ id: "library-nav", axis: "x" });
+      beginLayoutGesture({ kind: "pane", id: "library-nav", axis: "x" });
     });
     act(() => {
-      endPaneDrag({ id: "library-nav", axis: "x" });
+      endLayoutGesture({ kind: "pane", id: "library-nav", axis: "x" });
     });
     expect(h.onSyncBeforeDrag).not.toHaveBeenCalled();
     expect(h.onResizingChange).not.toHaveBeenCalled();
@@ -443,7 +443,7 @@ describe("SplitWithCode on the pane-resize engine", () => {
     const h = renderSplit();
     down(h.handle, 404);
     move(h.handle, 484);
-    expect(isPaneDragging()).toBe(true);
+    expect(isLayoutGestureActive()).toBe(true);
     expect(isDragShieldMounted()).toBe(true);
 
     h.rerender(
@@ -460,7 +460,7 @@ describe("SplitWithCode on the pane-resize engine", () => {
       document.dispatchEvent(pe("lostpointercapture", {}));
     });
 
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
     expect(h.onRatioChange).toHaveBeenCalledExactlyOnceWith(0.6);
   });
@@ -672,10 +672,10 @@ describe("ZenMargin on the pane-resize engine", () => {
 
     // Foreign gestures (a Library gutter) are filtered out too.
     act(() => {
-      beginPaneDrag({ id: "library-nav", axis: "x" });
+      beginLayoutGesture({ kind: "pane", id: "library-nav", axis: "x" });
     });
     act(() => {
-      endPaneDrag({ id: "library-nav", axis: "x" });
+      endLayoutGesture({ kind: "pane", id: "library-nav", axis: "x" });
     });
     expect(b.onResizingChange).not.toHaveBeenCalled();
   });
@@ -725,12 +725,12 @@ describe("EditorScrollbar drag suppression (bus, not window events)", () => {
       expect(thumb.style.opacity).toBe("1");
 
       act(() => {
-        beginPaneDrag({ id: "library-list", axis: "x" });
+        beginLayoutGesture({ kind: "pane", id: "library-list", axis: "x" });
       });
       expect(thumb.style.opacity).toBe("0");
 
       act(() => {
-        endPaneDrag({ id: "library-list", axis: "x" });
+        endLayoutGesture({ kind: "pane", id: "library-list", axis: "x" });
       });
       expect(thumb.style.opacity).toBe("1");
       utils.unmount();

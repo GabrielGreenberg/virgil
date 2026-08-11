@@ -448,7 +448,6 @@ function backfillUuidSnapshot<T extends CardWithLinks>(
             type: "textObject",
             targetKind: "paragraph",
             textObjectIds: [paragraphId],
-            margin: link.anchor.margin,
             ...(snap ? { paragraphSnapshot: snap } : {}),
           },
         });
@@ -530,7 +529,6 @@ function relocateBySnapshot<T extends CardWithLinks>(
           type: "textObject",
           targetKind: "paragraph",
           textObjectIds: [paragraphId],
-          margin: link.anchor.margin,
           paragraphSnapshot: normalizeParagraphText(snap),
         },
       };

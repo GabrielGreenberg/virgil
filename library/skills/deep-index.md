@@ -29,7 +29,14 @@ banner (§Output format):
 - `DEEP_INDEX_NARROW_RESIDUAL` — only narrow out-of-scope items remain
   (`source-missing` | `figure-reconstruction` | `validator-false-positive`).
 - `DEEP_INDEX_STALLED` — pathological-loop guard fired, OR three-iteration
-  validator abort, OR `metadata-lock: true` block.
+  validator abort, OR `metadata-lock: true` block, OR a Step 0 preflight
+  block (`extraction-empty-body`).
+
+The last reason is not new behavior — the empty-body hard-stop has always
+been here (it lived in §Prerequisites and simply stopped, which made the
+"exactly three exits" claim above false). It is now named, owned by
+[di-preflight.md](di-preflight.md) §Step 0.0, and routed through the
+STALLED banner like every other terminal state.
 
 Anywhere you are tempted to ask the user a question, apply the default
 in [_doctrine.md](_doctrine.md) §0 (Automatic decisions) and proceed.
@@ -100,47 +107,17 @@ The paper must already be indexed (`papers/<citekey>/main.tex` must
 exist). If it doesn't, tell the user to run `/index-pending` first
 and stop.
 
-Also verify the body is populated: a `main.tex` whose body (between
-`\maketitle` and `\end{document}`) has fewer than 100 non-comment
-bytes is an `/index-paper` failure (typically a scanned PDF that
-pymupdf could not text-extract). Hard-stop with the message
-"extraction-empty-body — body has <N> bytes; re-run /index-paper
-with OCR" and do not proceed. There is nothing for /deep-index to
-clean up.
+The body-populated gate is **not** re-implemented here: it is
+[di-preflight.md](di-preflight.md) §Step 0.0, dispatched at §Step 0
+below. That is the one place that both measures the body and
+determines *why* it is empty (`recover_ocr_pipeline.py --check-only`
+distinguishes "the PDF has no text layer" from "extraction failed on
+a PDF that does"), so it can print the recovery command instead of
+guessing at one. When it reports `PREFLIGHT_BLOCKED`, this pass stops
+per §Step 0.
 
 
 **Shared doctrine.** Read [_doctrine.md](_doctrine.md) for the §0 Autonomous-execution contract (long form), the §Scope doctrine (in-scope categories + three narrow out-of-scope-only carveouts), the §Persistence convergence loop (no hard cap, two-fingerprint stop, never deferring in-scope work, full idempotency rules), the anti-pattern table ("no existing tool" ≠ exhaustion, etc.), and the self-check checklist before tagging any outstanding-work item. The doctrine is load-bearing for every subskill listed in §3 below.
-
-## Genre detection (preflight)
-
-After §Preflight (resume detection) but before Step 1, run a fast
-genre classifier:
-
-```bash
-python3 .virgil/scripts/library/detect_genre.py papers/$ARGUMENTS
-```
-
-Emits one of: `book` / `article` / `multi-article-pdf` / `scanned-ocr` /
-`endnote-style`. Several later steps branch on the result:
-
-- `multi-article-pdf` — run `detect_multi_article.py` to identify
-  adjacent-article spans for surgical removal (§3a).
-- `scanned-ocr` — expect drop-cap loss (run `recover_drop_caps.py`),
-  ligature artifacts (run `fix_invisibles.py` aggressively), and
-  inline running headers (extend preprocessor's strip patterns).
-- `endnote-style` — chapter-end-notes recovery is the primary tier-0
-  footnote path (run `reattach_chapter_end_notes.py`); the bibliography
-  may live in a unified Notes section (run `itemize_endnotes.py`,
-  not the standard §3e itemizer).
-- `book` — bibliography may have 100s of entries (use
-  `format_references_section.py` rather than hand-shaping); chapters
-  may need explicit `\section{}` markers added before §3d's auto-pipeline
-  can scope per-chapter.
-- `article` — standard path; the existing tier ladder is well-suited.
-
-If `detect_genre.py` is unavailable or its output is ambiguous,
-proceed as `article` and let downstream steps detect failures and
-adapt.
 
 ## Steps
 
@@ -205,8 +182,64 @@ asks; resume is always the default.
 
 **No prior baseline?** If `.virgil/baselines/$ARGUMENTS-pre-deepindex.tex`
 doesn't exist (paper indexed before baselines were added), copy
-`main.tex` to that path before running step 1's preprocessing. Future
-re-runs can then `--fresh`-restore.
+`main.tex` to that path **before Step 0** — the first step that can modify
+the file, since di-preflight §0.1 strips lending-slip / JSTOR boilerplate
+and §0.4 may rewrite a Caesar-shifted body. A baseline taken after those
+would not be the pre-deep-index state, so `--fresh` could not restore it
+and `repair_pgmarks --resume-baseline` would measure its 50% safeguard
+against an already-modified file. Future re-runs can then
+`--fresh`-restore.
+
+### Step 0 — Preflight gates → `/library/di-preflight`
+
+Run `/library/di-preflight $ARGUMENTS`. This is a **dispatch, exactly
+like the §3 subskills** — the No-shortcut contract in §3 covers it: use
+the `Skill` tool, do not inline-equivalent the work.
+
+It owns every Step-0 gate, and each one is a check nothing else in this
+pipeline performs:
+
+- **0.0** body-populated / OCR-recovery gate (the §Prerequisites hand-off);
+- **0.1** lending-slip + JSTOR cover-page boilerplate strip — without it
+  every later cover-page metadata read lands on an ILLIAD slip or a JSTOR
+  masthead rather than the article's real first page;
+- **0.2** content ↔ metadata mismatch, including the four-condition
+  chapter→book auto-resolution policy (which sets `bib.state =
+  needs-reauth`);
+- **0.3** multi-article span detection (§3a's removal input);
+- **0.4** Caesar/CMap-shift + running-header cleanup, behind its own
+  destructive-script gates;
+- **0.5** genre routing;
+- **0.6** pgmark-coverage reconciliation against the catalog.
+
+**Genre label.** 0.5 is where the classifier runs; its label
+(`article` / `article-vancouver` / `endnote-style` / `multi-article-pdf` /
+`scanned-ocr` / `book`) routes §3. Carry it in memory for the rest of this
+pass and record it in the run log (§8). Each §3 subskill documents its own
+branches for that label — this orchestrator does **not** restate them. It
+used to, in a "Genre detection (preflight)" section of its own, and the two
+copies had already drifted (the local one knew five labels, di-preflight
+six; `article-vancouver` — the one that decides whether
+`rewrite_citations --style=bracket-numeric` runs — existed only in the copy
+nobody dispatched). If `detect_genre.py` is unavailable or ambiguous,
+di-preflight proceeds as `article`; so does this pass.
+
+**Idempotent on a resume.** Every 0.x detection fires only when the
+offending block is actually present, so a re-run on an already-preflighted
+paper is a no-op — with one deliberate exception, the `--dry-run`-first
+metadata-mismatch apply, which di-preflight §0.2 already gates on "the bib
+is already `@book` with a matching title → skip". Nothing here needs a
+"have we preflighted?" flag.
+
+**Skipped when the converged-resume short-circuit above fired** — that
+branch dispatches no subskills at all and re-emits the prior keyword.
+
+**If di-preflight reports `PREFLIGHT_BLOCKED`** (today: only Step 0.0's
+empty body), stop the pass: leave `indexed.state` untouched, append a
+`deep-index-blocked` notification, and emit the §Output-format stalled
+banner with reason `extraction-empty-body`. Do not run §1 — a preprocessing
+pass over an empty body produces a clean-looking log for a document with
+nothing in it.
 
 ### 1. Run deterministic preprocessing
 
@@ -321,12 +354,14 @@ re-itemize References without re-running the rest), and `/library/deep-index`
 dispatches to them here.
 
 **No-shortcut contract.** The umbrella MUST dispatch each subskill via
-the `Skill` tool — do not inline-equivalent the work. The
-greenberg2021semantics retry (g-j batch memo) showed that agents
-which shortcut §3 fail the skill's internal classifier and have to
-be retried. Make every dispatch explicit; the convergence loop
-depends on each subskill writing its own audit trail to the run
-summary.
+the `Skill` tool — do not inline-equivalent the work. This covers §Step 0
+(`/library/di-preflight`) exactly as it covers the five below: the
+orchestrator's subskill set is *all six*, and from the subskill split
+until task 163 it dispatched five while carrying a drifted partial copy
+of the sixth's genre routing inline. The greenberg2021semantics retry (g-j batch memo) showed that
+agents which shortcut §3 fail the skill's internal classifier and have to
+be retried. Make every dispatch explicit; the convergence loop depends on
+each subskill writing its own audit trail to the run summary.
 
 > **Two load-bearing principles inherited from doctrine:**
 > - **Escalation** — when a structural call looks ambiguous, walk
@@ -412,26 +447,61 @@ Other `indexed` fields (`extractor`, `footnoteCount`, etc.) and the
 top-level `updatedAt` are preserved automatically — the patch script
 deep-merges nested objects and only the keys you include get replaced.
 
-**Warnings recompute (eight prefixes).** The `warnings` array is
-append-only across passes EXCEPT for these eight prefixes, which are
-recomputed every pass:
+**Warnings recompute — nine kinds, and step 5 owns FIVE of them.**
+The `warnings` array is append-only across passes EXCEPT for nine
+kinds, which are recomputed by whoever produced them. They split by
+producer:
 
 ```
-missing-bib-entry:         ambiguous-citation:        pgmark-duplicate:
-footnote-recovery-needed:  numeric-citation-style:    pgmark-gap:
-examples-not-converted:                               pgmark-out-of-order:
+step-5-owned                  subskill-owned              outside this pass
+(recompute here)              (already persisted)         (never touched here)
+────────────────────          ──────────────────────      ────────────────────
+footnote-recovery-needed:     missing-bib-entry:          bib-coherence:
+examples-not-converted:       ambiguous-citation:
+pgmark-duplicate:             numeric-citation-style:
+pgmark-gap:
+pgmark-out-of-order:
 ```
 
-Read existing `indexed.warnings`; drop any line starting with one of
-those prefixes; concatenate the fresh lines from §3d
-(`footnote-recovery-needed:`, at most one), §3g (`missing-bib-entry:`,
-`ambiguous-citation:` per unique pair, OR a single
-`numeric-citation-style:` for Vancouver sources), §3.h₂
-(`examples-not-converted:` per skipped region), and §3i's validator
-(`pgmark-duplicate:` / `pgmark-gap:` / `pgmark-out-of-order:` against
-the post-repair file). Other warning kinds are preserved untouched.
+The three on the right belong to `/library/clean-bibliography`, which
+**persists them itself** at the end of §3g — because
+`synthesize_canonical_entries.py`, later in that same subskill, gates
+entirely on reading `missing-bib-entry:` back out of the catalog. Step 5
+runs after the whole §3 dispatch, so owning them here made synthesis a
+guaranteed no-op on every first pass (task 323). **Do not carry them in
+this patch and do not declare them below** — this write no longer sees
+them, and declaring a kind you did not recompute deletes another step's
+findings.
 
-Why the three pgmark-continuity prefixes recompute: §1b's
+The five on the left have no same-run consumer (nothing reads
+`footnote-recovery-needed:` / `examples-not-converted:` /
+`pgmark-*:` within the producing pass), so step 5 remains their
+coherent owner and `/library/recover-footnotes` + `/library/di-examples`
+keep deferring to it. The same split is stated in
+[_doctrine.md](_doctrine.md) §Persistence convergence — they must agree.
+
+`bib-coherence:` is produced by [`/library/authenticate-bib`](authenticate-bib.md)
+(computed in its step 2, persisted in its step 7 once the run's own repairs are
+in), which is not part of this pass and can run standalone (even from a
+paper session). It is listed here only so this census stays complete: **do
+not declare it below.** Deep-index does not recompute it, so declaring it
+would delete that skill's findings, and a line it wrote stands until the
+next authentication of the entry. If one shows up on a resume, the fix is
+`/library/authenticate-bib <citekey>` after correcting the entry type —
+not anything in this pass.
+
+Concatenate the fresh lines from §3d (`footnote-recovery-needed:`, at
+most one), §3.h₂ (`examples-not-converted:` per skipped region), and
+§3i's validator (`pgmark-duplicate:` / `pgmark-gap:` /
+`pgmark-out-of-order:` against the post-repair file). You do **not**
+need to read the existing array and re-supply it: pass
+`--recompute-warning-kind` per kind and the shim drops exactly those
+kinds' lines against the row's live array, under the catalog lock,
+leaving every other kind — and every `<kind>-false-positive:`
+suppression — byte-identical. Declare a kind even when it produced
+nothing this pass; that is how a resolved finding stops being flagged.
+
+Why the three pgmark-continuity kinds recompute: §1b's
 `repair_pgmarks.py` removes spurious anchors; §3i emits fresh
 continuity findings against the repaired file; pre-repair entries are
 stale.
@@ -448,12 +518,17 @@ cat > /tmp/$ARGUMENTS-deepindex-patch.json <<'EOF'
     "state": "deepIndexed",
     "lastIndexedAt": "<ISO>",
     "exampleCount": <N>,
-    "warnings": [<recomputed warnings array>]
+    "warnings": [<fresh lines for the five step-5-owned kinds only>]
   }
 }
 EOF
 python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
-  --patch-file /tmp/$ARGUMENTS-deepindex-patch.json
+  --patch-file /tmp/$ARGUMENTS-deepindex-patch.json \
+  --recompute-warning-kind footnote-recovery-needed \
+  --recompute-warning-kind examples-not-converted \
+  --recompute-warning-kind pgmark-duplicate \
+  --recompute-warning-kind pgmark-gap \
+  --recompute-warning-kind pgmark-out-of-order
 rm /tmp/$ARGUMENTS-deepindex-patch.json
 ```
 
@@ -499,6 +574,7 @@ Write a summary to `.virgil/logs/$ARGUMENTS/<ISO>-deepindex.summary.md`:
 # Deep-index summary: $ARGUMENTS
 
 **Date:** <ISO>
+**Genre:** <label from Step 0.5, e.g. `article-vancouver`> — <one line on what Step 0 stripped/flagged, or "preflight clean">
 **Preprocessing:** <stats from step 1a>
 **Pgmark repair:** <stats from step 1b>
 **References emitted:** <N> entries → references.bib
@@ -654,14 +730,15 @@ DEEP_INDEX_NARROW_RESIDUAL
 ```
 
 **Stalled** (pathological-loop guard fired, OR three-iteration
-validator abort, OR `metadata-lock: true` block):
+validator abort, OR `metadata-lock: true` block, OR Step 0 reported
+`PREFLIGHT_BLOCKED`):
 
 ```
 ⚠ Deep indexing stalled: $ARGUMENTS
 
   Converged at pass <P> with residual:
     - <category>: <count> items
-  Reason: <pathological-loop | validator-abort | metadata-lock>
+  Reason: <pathological-loop | validator-abort | metadata-lock | extraction-empty-body>
 
   Re-invoke /library/deep-index $ARGUMENTS to retry from here.
   See .virgil/logs/$ARGUMENTS/<ISO>-deepindex.summary.md §9 for detail.

@@ -21,6 +21,14 @@
 // bridge only calls `on`/`off`, `commands.setContent`, and `getJSON`.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// The bridge now consults the DocProducts pipeline (perf Wave 1 / S3), whose
+// module imports the storage barrel — mock it per the standing vitest
+// pattern (the barrel's FSA require path doesn't resolve under vitest).
+vi.mock("@/lib/storage", () => ({
+  readTex: vi.fn(() => Promise.resolve("")),
+}));
+
 import { EditorState } from "@codemirror/state";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
 import type { Editor as TipTapEditor, JSONContent } from "@tiptap/react";

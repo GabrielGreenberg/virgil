@@ -10,8 +10,14 @@
  *   4. Walk up to the nearest anchorable block; ensure it has a UUID.
  *   5. Classify the cursor as "inGap" (between blocks) or "inText"
  *      (inside a block's text rect).
- *   6. Walk the spec's `allowedPlacements` in priority order; return
- *      the first one whose geometry matches.
+ *   6. Ask `winningPlacementKind` which of the SESSION's placements wins at
+ *      that geometry, and build it.
+ *
+ * Step 6's rule lives in `placement-policy.ts`, not inline here, so the CI
+ * reachability guard reads the same function the loop does (task 258). The
+ * session's list is the spec's per-payload answer when it has one — the
+ * hit-test never resolves it itself, because that resolution may read
+ * persisted state and this runs on every throttled pointermove.
  */
 
 import type { Editor } from "@tiptap/react";
@@ -32,7 +38,8 @@ import {
 import type { TextObjectKind } from "@/text-objects/types";
 import { parseAnyKey } from "@/floats/float-key";
 import { findEditorAtPoint } from "./target-registry";
-import type { DropSpec, Placement, ViewportRect } from "./types";
+import { winningPlacementKind } from "./placement-policy";
+import type { DropSpec, Placement, PlacementKind, ViewportRect } from "./types";
 
 /**
  * Resolve a cursor point to a `Placement` (or null if nothing valid is
@@ -40,11 +47,18 @@ import type { DropSpec, Placement, ViewportRect } from "./types";
  *
  * `sourceCardKey` is the cardKey of the popped-out item being dropped.
  * Used to reject self-drops (target editor belongs to the source card).
+ *
+ * `placements` is the SESSION's ordered list — `DropSession.placements`,
+ * resolved once at `beginDropSession` from `spec.placementsFor` (per payload)
+ * or `spec.allowedPlacements`. Passed in rather than read off the spec here so
+ * a per-payload policy is resolved once per gesture, not once per move; an
+ * EMPTY list is meaningful and yields no placement anywhere.
  */
 export function hitTest(
   x: number,
   y: number,
   spec: DropSpec,
+  placements: ReadonlyArray<PlacementKind>,
   sourceCardKey: string,
   mainEditor: Editor | null,
 ): Placement | null {
@@ -74,7 +88,7 @@ export function hitTest(
   // over a top-level gap (not inside a compatible container), falls through
   // to the existing resolution below — preserving the top-level pull-out
   // (wrap) behavior byte-for-byte.
-  if (spec.allowedPlacements.includes("between-blocks")) {
+  if (placements.includes("between-blocks")) {
     const peer = resolveSubItemPeerBlock(editor, posResult.pos, sourceCardKey);
     if (peer) return makeBetweenBlocksPlacement(editor, peer, y, true);
     // Feature A1 — a lifted text/picture/equation block (paragraph /
@@ -95,26 +109,33 @@ export function hitTest(
     if (intoExpex) return intoExpex;
   }
 
-  const block = resolveAnchorableBlock(editor, posResult.pos);
+  // Never mint on the move path — a uuid-less block rides a pos-keyed
+  // sentinel until commit (mintPlacementUuid in the controller).
+  const block = resolveAnchorableBlock(editor, posResult.pos, { mint: false });
   if (!block) return null;
 
+  // ONE rect read per move for this block (wave-2b C8): the classification
+  // read below is THREADED into the placement builders, which used to
+  // re-read the same element's rect — 2 forced-layout reads per throttled
+  // mousemove where one suffices. (The builders keep their own read as the
+  // fallback for callers that arrive without one, e.g. the R3 peer path.)
   const blockRect = block.dom.getBoundingClientRect();
   const inText = y >= blockRect.top && y <= blockRect.bottom;
-  const inGap = !inText;
 
-  // Walk priority order; return the first placement that matches.
-  for (const kind of spec.allowedPlacements) {
-    if (kind === "between-blocks" && inGap) {
-      return makeBetweenBlocksPlacement(editor, block, y);
-    }
-    if (kind === "inline-cursor" && inText) {
+  // Which of the session's placements wins at this geometry — the priority
+  // rule itself lives in `placement-policy.ts` (its `winningPlacementKind` IS
+  // this loop), so the CI reachability guard can read the rule rather than a
+  // second copy of it. Here we only BUILD the winner.
+  switch (winningPlacementKind(placements, inText ? "text" : "gap")) {
+    case "between-blocks":
+      return makeBetweenBlocksPlacement(editor, block, y, false, blockRect);
+    case "inline-cursor":
       return makeInlineCursorPlacement(editor, posResult.pos);
-    }
-    if (kind === "paragraph-side") {
-      return makeParagraphSidePlacement(editor, block, x);
-    }
+    case "paragraph-side":
+      return makeParagraphSidePlacement(editor, block, x, blockRect);
+    default:
+      return null;
   }
-  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -159,7 +180,13 @@ interface AnchorableBlockInfo {
 export function resolveAnchorableBlock(
   editor: Editor,
   pos: number,
+  opts?: { mint?: boolean },
 ): AnchorableBlockInfo | null {
+  // Default TRUE preserves the historical contract for any direct caller;
+  // the per-move hitTest passes { mint: false } and the real mint happens
+  // once at commit (mintPlacementUuid) — minting per pointermove was the D4
+  // drag cliff (full doc walk + dispatch + synchronous .tex flush per move).
+  const mint = opts?.mint ?? true;
   const doc = editor.state.doc;
   if (pos < 0 || pos > doc.content.size) return null;
   const $pos = doc.resolve(pos);
@@ -175,8 +202,14 @@ export function resolveAnchorableBlock(
     const resolved = resolveAnchorableNode(editor.view, pos);
     if (resolved) {
       // Mint (if missing) through the SSOT — honors DEFERRING_PARENTS, tags the
-      // tx with the anchor-mint flush signal, dedups UUIDs doc-wide.
-      const uuid = ensureAnchorUuid(editor.view, pos);
+      // tx with the anchor-mint flush signal, dedups UUIDs doc-wide. In
+      // mint:false mode a uuid-less block gets a pos-keyed sentinel instead;
+      // stable for indicator identity while hovering (no doc changes mid-drag
+      // once per-move mints are gone).
+      const uuid = mint
+        ? ensureAnchorUuid(editor.view, pos)
+        : ((resolved.node.attrs?.uuid as string | undefined) ??
+          unmintedParagraphId(resolved.nodePos));
       if (uuid) {
         // Re-read nodePos AFTER the mint: `setNodeMarkup` keeps positions
         // stable (same node, same size), so `resolved.nodePos` is still valid.
@@ -218,7 +251,9 @@ export function resolveAnchorableBlock(
   }
   if (!bestNode) return null;
   let uuid: string | undefined = bestNode.attrs?.uuid as string | undefined;
-  if (!uuid) {
+  if (!uuid && !mint) {
+    uuid = unmintedParagraphId(bestPos);
+  } else if (!uuid) {
     const existing = new Set<string>();
     doc.descendants((n) => {
       if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
@@ -237,6 +272,47 @@ export function resolveAnchorableBlock(
   const domAt = editor.view.nodeDOM(bestPos);
   if (!(domAt instanceof HTMLElement)) return null;
   return { blockPos: bestPos, depth: 0, uuid, dom: domAt };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Deferred minting (mint-at-commit)
+// ─────────────────────────────────────────────────────────────────────
+//
+// The per-move hit-test never mints: a uuid-less block's placement carries a
+// pos-keyed sentinel id, and the ONE mint happens at commit via
+// `mintPlacementUuid` — through the same `ensureAnchorUuid` SSOT (honors
+// DEFERRING_PARENTS, anchor-mint flush signal, doc-wide dedup).
+
+const UNMINTED_PREFIX = "unminted@";
+
+function unmintedParagraphId(blockPos: number): string {
+  return `${UNMINTED_PREFIX}${blockPos}`;
+}
+
+export function isUnmintedParagraphId(id: string): boolean {
+  return id.startsWith(UNMINTED_PREFIX);
+}
+
+/**
+ * Resolve a sentinel paragraphId to a real minted uuid at commit time.
+ * Returns null when the block vanished out from under the gesture (the
+ * caller should treat the drop as a no-op).
+ */
+export function mintPlacementUuid(editor: Editor, id: string): string | null {
+  if (!isUnmintedParagraphId(id)) return id;
+  const blockPos = Number(id.slice(UNMINTED_PREFIX.length));
+  if (!Number.isFinite(blockPos)) return null;
+  const doc = editor.state.doc;
+  if (blockPos < 0 || blockPos >= doc.content.size) return null;
+  const node = doc.nodeAt(blockPos);
+  if (!node || !isAnchorableNode(node.type)) return null;
+  // `ensureAnchorUuid` walks up from a pos INSIDE the node; blockPos + 1 is
+  // inside for any non-leaf block. Leaf atoms (nodeSize 1) anchor at their own
+  // position.
+  return ensureAnchorUuid(
+    editor.view,
+    node.nodeSize > 1 ? blockPos + 1 : blockPos,
+  );
 }
 
 /**
@@ -637,8 +713,12 @@ export function makeBetweenBlocksPlacement(
   block: AnchorableBlockInfo,
   cursorY: number,
   snapToMidpoint = false,
+  // The caller's already-read rect for `block.dom` (C8 — hitTest threads its
+  // classification read). Optional: paths that arrive without one (R3 peer
+  // resolution) pay the single read here instead.
+  preReadRect?: DOMRect,
 ): Placement {
-  const blockRect = block.dom.getBoundingClientRect();
+  const blockRect = preReadRect ?? block.dom.getBoundingClientRect();
   // Cursor above the threshold → insert before; below → insert after. For
   // sub-item peer drops (R3) the threshold is the block's vertical MIDPOINT
   // (Notion-style), so the line snaps to the nearest item boundary as the
@@ -706,8 +786,10 @@ function makeParagraphSidePlacement(
   editor: Editor,
   block: AnchorableBlockInfo,
   cursorX: number,
+  // See makeBetweenBlocksPlacement — hitTest's classification read, threaded.
+  preReadRect?: DOMRect,
 ): Placement {
-  const blockRect = block.dom.getBoundingClientRect();
+  const blockRect = preReadRect ?? block.dom.getBoundingClientRect();
   const side: "left" | "right" =
     cursorX < blockRect.left + blockRect.width / 2 ? "left" : "right";
   // Bar position: 8px outside the block on the chosen side.

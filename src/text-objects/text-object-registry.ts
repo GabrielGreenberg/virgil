@@ -4,9 +4,20 @@
  * Adding a new kind = one entry here + one schema-group annotation (or
  * mark spec, for range kinds). The rest of the system reads off this
  * registry: grab-handle layout, popout dispatch, drop adapters, drag-
- * menu actions, source-marker round-trip, marginalia placement.
+ * menu actions, marginalia placement.
  *
- * SSOT siblings: `src/panels/panel-registry.ts`, `src/links/link-registry.ts`.
+ * NOT here, deliberately: the `\v*` id-marker command vocabulary that carries
+ * a kind's id through the LaTeX round trip. This registry is editor-coupled
+ * (TipTap `Editor`, the doc-structure bus, the drop adapters), so the parser
+ * and serializer can never import it — which is why the `sourceMarker` facet
+ * that used to sit here was read by nobody — from task 064 (2026-07-06) until
+ * its deletion — while the round trip kept its own hardcoded copies (task 255). The markers live in
+ * `src/lib/latex-markers.ts`, keyed by the entity they identify.
+ *
+ * SSOT sibling: `src/panels/panel-registry.ts`. (The link layer has no per-kind
+ * registry — its taxonomy is the `LinkKind` union and its DOM contract is
+ * `src/links/link-dom-contract.ts`; the table that used to sit beside these two
+ * declared behaviour nothing read and was removed in task 202.)
  *
  * See TEXT-OBJECT-REFACTOR.md §3.
  */
@@ -14,6 +25,7 @@
 import type { Node as PMNode, NodeType } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/core";
 import { headingTypeName } from "@/lib/heading-types";
+import { getBus } from "@/lib/tiptap/doc-structure";
 import {
   getSectionRangeByUuid,
   getHeadingLineRangeByUuid,
@@ -58,9 +70,13 @@ export { POPOUT_MAX_VH, capPopoutHeight } from "@/floats/float-policy";
 // disabled entries fall out for free.
 //
 // Three classes:
-//   • PROSE_ACTIONS — full vocabulary; for text-bearing kinds.
-//   • NON_PROSE_BLOCK_ACTIONS — drops F/C/E (no place to embed inline
-//     insertions in non-prose blocks / structural containers).
+//   • PROSE_ACTIONS — full vocabulary; for kinds that HOLD PROSE. Not only the
+//     text-bearing kinds whose OWN node is the textblock (paragraph / heading /
+//     titleField): also the structural CONTAINERS whose body a caret can reach
+//     (blockquote, the two lists, expex examples, a figure's caption). See
+//     `INLINE_INSERT_ACTIONS` below for why the distinction had to be made.
+//   • ATOM_BLOCK_ACTIONS — drops F/C/E for a kind with nowhere an inline
+//     insert can land ANYWHERE in its subtree (a true block atom).
 //   • TITLE_FIELD_ACTIONS — drops C/D/A/⌫ (title is a singleton with no
 //     bibliography; the destructive cells corrupt the doc).
 //   • LINKED_RANGE_ACTIONS — drops D (cloning a mark-backed range with
@@ -82,10 +98,43 @@ const PROSE_ACTIONS: ReadonlyArray<DragHandleAction> = [
   "delete",
 ];
 
-const NON_PROSE_BLOCK_ACTIONS: ReadonlyArray<DragHandleAction> =
-  PROSE_ACTIONS.filter(
-    (a) => a !== "footnote" && a !== "citation" && a !== "suggest-edit",
-  );
+/**
+ * The three card actions that do NOT act on the block — they act at an inline
+ * POSITION inside it. Footnote and Citation insert an inline ATOM; Suggest-edit
+ * wraps the passage in a `linkedAnchor` MARK. So their applicability is a
+ * property of the TEXTBLOCK the insert lands in, which for a CONTAINER kind is
+ * a DESCENDANT and not the ref's own node (task 148).
+ *
+ * This is the family `blockRangeAllowsAction` answers positionally, and the
+ * family `ATOM_BLOCK_ACTIONS` drops. `highlight` is deliberately NOT a member
+ * even though it is mark-backed: the true atom blocks KEEP it as a pinned
+ * clean no-op (no text ⇒ it early-breaks), so it stays a per-KIND policy answer
+ * — see the `MARKLESS_BLOCK_ACTIONS` note below.
+ *
+ * The dispatcher's defence-in-depth set (`CONTAINER_SENSITIVE_ACTIONS` in
+ * `drag-handle-actions.ts`) is derived from this + `highlight`.
+ */
+export const INLINE_INSERT_ACTIONS: ReadonlySet<DragHandleAction> = new Set([
+  "footnote",
+  "citation",
+  "suggest-edit",
+]);
+
+/**
+ * A true block ATOM: nowhere in its subtree can an inline insert land, so the
+ * three `INLINE_INSERT_ACTIONS` grey out. The premise is schema-checkable, and
+ * CI checks it — `container-body-inline-insert.test.ts` sweeps every kind and
+ * fails any whose curated set drops one of the three while the real editor
+ * schema says a descendant textblock would happily host it. That leg exists
+ * because this bucket was a HAND assignment stating a falsehood for four kinds:
+ * `bulletList` / `orderedList` / `exampleBlock` / `figureBlock` were filed here
+ * as "structural containers" though each holds prose a caret can reach, so the
+ * grab bar greyed what the lightning bolt (which resolves the caret's inner
+ * paragraph) enabled at the very same spot.
+ */
+const ATOM_BLOCK_ACTIONS: ReadonlyArray<DragHandleAction> = PROSE_ACTIONS.filter(
+  (a) => !INLINE_INSERT_ACTIONS.has(a),
+);
 
 // A non-prose block whose node is `marks: ""` (`latexComment` — task 066 — and
 // `codeBlock` — task 146) additionally drops `highlight`: Highlight wraps the
@@ -103,7 +152,7 @@ const NON_PROSE_BLOCK_ACTIONS: ReadonlyArray<DragHandleAction> =
 // next kind can't silently regress to a dead Highlight. Not built here — two
 // kinds don't yet justify the indirection.
 const MARKLESS_BLOCK_ACTIONS: ReadonlyArray<DragHandleAction> =
-  NON_PROSE_BLOCK_ACTIONS.filter((a) => a !== "highlight");
+  ATOM_BLOCK_ACTIONS.filter((a) => a !== "highlight");
 
 const TITLE_FIELD_ACTIONS: ReadonlyArray<DragHandleAction> = [
   "highlight",
@@ -218,6 +267,26 @@ function descriptorForContainer(
   };
 }
 
+/** Build a descriptor for an "atom block" kind (displayMath, texBlock,
+ *  graphicsBlock, figureBlock). Atom blocks ALWAYS warn — there's no
+ *  meaningful empty state to preview, so unlike `descriptorForSimpleBlock`
+ *  this never returns null and needs no `doc`/`ctx` walk. The confirm
+ *  button names the kind (`${label} ${kindLabel}`), matching the file-wide
+ *  convention (paragraph/list/example/heading/passage all do the same) so
+ *  the dialog title and its button agree. */
+function descriptorForAtomBlock(
+  kindLabel: string,
+  action: "archive" | "delete",
+  opts: { message?: string } = {},
+): ConfirmDescriptor {
+  const { verb, label } = actionVerb(action);
+  return {
+    title: `${verb} this ${kindLabel}?`,
+    message: opts.message ?? `${verb} this ${kindLabel}.`,
+    confirmLabel: `${label} ${kindLabel}`,
+  };
+}
+
 /** Heading × Delete/Archive: wide-scope section summary. Mirrors the
  *  pre-existing `confirmHeadingLifecycle` for these two actions; the
  *  Duplicate gate still uses that helper directly since this slot only
@@ -313,6 +382,19 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // disappeared concurrently — caller falls back to the static
     // `meta.label`.
     computeLabel: (editor, ref) => {
+      // Bus-first (wave 2): the structure snapshot answers uuid → pos in
+      // O(1), then one nodeAt reads the level — no doc walk. The walk
+      // survives only for busless editors (minimal harnesses); it would be
+      // O(doc) per gesture, which is affordable but pointless when the
+      // index already knows.
+      const entry = getBus(editor)?.structure.blocks.get(ref.id);
+      if (entry) {
+        const n = editor.state.doc.nodeAt(entry.pos);
+        if (n?.type.name === "heading" && n.attrs?.uuid === ref.id) {
+          const level = n.attrs?.level;
+          return typeof level === "number" ? headingTypeName(level) : null;
+        }
+      }
       let node: PMNode | null = null;
       editor.state.doc.descendants((n) => {
         if (node) return false;
@@ -433,7 +515,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
-    actions: NON_PROSE_BLOCK_ACTIONS,
+    actions: PROSE_ACTIONS,
     removeOnEmptyChildren: true,
     // L3b of the Lifted-Overlay refactor: bulletList drags through the
     // same two-mode gesture as paragraph/heading (ghost in pod, popout
@@ -458,7 +540,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
     initialFloatSize: { width: 480, height: 360 },
-    actions: NON_PROSE_BLOCK_ACTIONS,
+    actions: PROSE_ACTIONS,
     removeOnEmptyChildren: true,
     // L3c of the Lifted-Overlay refactor: orderedList drags through the
     // same two-mode gesture as bulletList — its twin (same list-body
@@ -524,7 +606,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isMeaningfulBlockAtom: true,
     isRange: false,    chromeAnchor: "block-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: NON_PROSE_BLOCK_ACTIONS,
+    actions: ATOM_BLOCK_ACTIONS,
     // Feature A1: a lifted equation (displayMath) can land inside an expex
     // example — directly into an exampleItem (over an item) or wrapped in a
     // fresh exampleItem (between items). Everywhere else → drop-direct (its
@@ -538,14 +620,8 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // Atom blocks: always warn (can't preview a meaningful "empty"
     // state for math/figure/etc.). The hasAnchorsOrAtoms guard is
     // irrelevant — the block itself is what's at stake.
-    confirmDestructive: (_doc, _uuid, action) => {
-      const { verb, label } = actionVerb(action);
-      return {
-        title: `${verb} this math block?`,
-        message: `${verb} this math block.`,
-        confirmLabel: `${label} block`,
-      };
-    },
+    confirmDestructive: (_doc, _uuid, action) =>
+      descriptorForAtomBlock("math block", action),
   },
   titleField: {
     label: "Title field",
@@ -615,21 +691,17 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // ("TeX block") — matching the real popout at handoff. Spawns at the
     // source pod size; like every textobject float it skips FloatCard's
     // auto-fit grow burst (FloatingCards gates that on a non-textobject key).
-    actions: NON_PROSE_BLOCK_ACTIONS,
+    actions: ATOM_BLOCK_ACTIONS,
     // texBlock uses `%!vtex:begin <uuid>` / `%!vtex:end <uuid>` comment
-    // sentinels for round-trip, not a \v*id command. Left empty here
-    // because the registry's sourceMarker field is the simpler
-    // command-form; the sentinel pair is handled directly by the
-    // parser/serializer for texBlock.
+    // sentinels for round-trip, not a \v*id command — so it appears in
+    // neither marker table: the command-form vocabulary is
+    // `src/lib/latex-markers.ts`, and the sentinel pair is handled directly
+    // by the parser/serializer for texBlock.
     dropAdapter: topLevelDropAdapter,
-    confirmDestructive: (_doc, _uuid, action) => {
-      const { verb, label } = actionVerb(action);
-      return {
-        title: `${verb} this TeX block?`,
-        message: `${verb} this raw LaTeX block.`,
-        confirmLabel: `${label} block`,
-      };
-    },
+    confirmDestructive: (_doc, _uuid, action) =>
+      descriptorForAtomBlock("TeX block", action, {
+        message: `${actionVerb(action).verb} this raw LaTeX block.`,
+      }),
   },
   figureBlock: {
     label: "Figure",
@@ -650,16 +722,19 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // the L3e.2 React-NodeView margin reset (`.lifted-text-overlay__body >
     // .react-renderer > *`) already zeros `.node-figureBlock`'s retained top
     // margin. No `computeLabel`/`liftSourceRect` — static `label: "Figure"`.
-    actions: NON_PROSE_BLOCK_ACTIONS,
+    // NOTE (task 148): figureBlock is a prose-bodied CONTAINER like the lists
+    // and examples, and it stays on the reduced set anyway — its only body is
+    // `figureCaption`, which `NO_INLINE_LANDING_INSIDE` refuses (writing into
+    // an empty caption flips `hasCaption` and renumbers every later figure —
+    // task 319). So the schema premise the CI census checks is satisfied here
+    // by the landing rule rather than by the content expression, and the two
+    // stay in step because both read that one set.
+    actions: ATOM_BLOCK_ACTIONS,
     dropAdapter: topLevelDropAdapter,
-    confirmDestructive: (_doc, _uuid, action) => {
-      const { verb, label } = actionVerb(action);
-      return {
-        title: `${verb} this figure?`,
-        message: `${verb} this figure and its caption.`,
-        confirmLabel: `${label} figure`,
-      };
-    },
+    confirmDestructive: (_doc, _uuid, action) =>
+      descriptorForAtomBlock("figure", action, {
+        message: `${actionVerb(action).verb} this figure and its caption.`,
+      }),
   },
   graphicsBlock: {
     label: "Graphic",
@@ -672,21 +747,15 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // a read-only image (≈ displayMath "view & move"). Same NO-`renderGhost`
     // reasoning as figureBlock (warm `<img src>` clone + class-scoped CSS +
     // L3e.2 `.node-graphicsBlock` margin reset). Static `label: "Graphic"`.
-    actions: NON_PROSE_BLOCK_ACTIONS,
+    actions: ATOM_BLOCK_ACTIONS,
     // Feature A0/A1: a lifted picture can land inside an expex example —
     // directly into an exampleItem's content (over an item) or wrapped in a
     // fresh exampleItem (between items). Everywhere else → drop-direct (today's
     // top-level placement, unchanged). figureBlock stays on topLevelDropAdapter.
     // Shares the unified blockIntoExpex adapter with paragraph + displayMath.
     dropAdapter: blockIntoExpexDropAdapter,
-    confirmDestructive: (_doc, _uuid, action) => {
-      const { verb, label } = actionVerb(action);
-      return {
-        title: `${verb} this graphic?`,
-        message: `${verb} this graphic.`,
-        confirmLabel: `${label} graphic`,
-      };
-    },
+    confirmDestructive: (_doc, _uuid, action) =>
+      descriptorForAtomBlock("graphic", action),
   },
   exampleBlock: {
     label: "Example",
@@ -695,7 +764,7 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     isMeaningfulBlockAtom: false,
     isRange: false,    chromeAnchor: "text-top",
     floatBodyComponent: PLACEHOLDER_FLOAT_BODY,
-    actions: NON_PROSE_BLOCK_ACTIONS,
+    actions: PROSE_ACTIONS,
     removeOnEmptyChildren: true,
     // L3d of the Lifted-Overlay refactor: exampleBlock drags through the
     // same two-mode gesture as paragraph/heading/lists — the first
@@ -711,7 +780,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // popout at handoff. Spawns at authoritative source height; like every
     // textobject float it skips FloatCard's auto-fit grow burst (FloatingCards
     // gates that on a non-textobject key).
-    sourceMarker: { command: "vexid", idLength: 4 },
     dropAdapter: topLevelDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForContainer(
@@ -819,7 +887,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
     // default clone lays out faithfully, exactly like exampleBlock (which also
     // carries no ghost). (Wrapping in `.expex-block` without an `.expex-number`
     // sibling would squash the item into the 1.5em number column.)
-    sourceMarker: { command: "vxid", idLength: 4 },
     dropAdapter: exampleItemDropAdapter,
     confirmDestructive: (doc, _uuid, action, ctx) =>
       descriptorForSimpleBlock("example item", doc, action, ctx, {
@@ -981,11 +1048,6 @@ export const TEXT_OBJECT_REGISTRY: Record<TextObjectKind, TextObjectMeta> = {
         height: Math.max(0, unionBottom - first.top),
       };
     },
-    // Paired markers \vlid{id}…\vlidend{id} — added in Phase E
-    // alongside the multi-paragraph round-trip plumbing. The simple
-    // command form below names the opener; the closer is derived
-    // (`<command>end`).
-    sourceMarker: { command: "vlid", idLength: 4 },
     dropAdapter: topLevelDropAdapter,
     // Always warn — deleting a linkedRange also removes the underlying
     // text and any cards anchored on it (cross-abstraction destructive).
@@ -1113,18 +1175,269 @@ export function blockKindAllowsAction(
 }
 
 /**
- * Resolve the textblock containing `pos` and test its curated set — the
- * position-based entry point for `blockKindAllowsAction`, used by the slash /
- * typed / lightning surfaces whose ref is a bare caret. `pos` is clamped into
- * the doc so a stale or borderline caret can't throw.
+ * Block subtrees an inline insert resolved from a CONTAINER must never descend
+ * into. Every rule below (the gate's reachable-textblock set, the schema
+ * predicate, and the landing resolver) reads this ONE set, so "where may it
+ * land" and "may it land at all" can never answer differently.
+ *
+ * These are not schema facts — the schema hosts an atom in both of them
+ * happily, which is exactly why they have to be named:
+ *
+ *   • `exampleGloss` — a `glossCell` is a COLUMN of an interlinear gloss, and
+ *     `\gla`/`\glb`/`\glc` are measured against each other by column. An atom
+ *     dropped into the last cell of the last tier changes what that column is
+ *     without changing any other tier — the same silent alignment destruction
+ *     `dropEmptiedSourceBlock` refuses (see AGENTS.md, "The identity half").
+ *     `proseGlossRow` (the `\glft` free translation) is skipped with it: it is
+ *     the gloss's own apparatus, not the example's sentence.
+ *   • `figureCaption` — writing into an EMPTY caption flips the `hasCaption`
+ *     provenance attr, and both figure numberers gate on that predicate
+ *     (task 319), so a footnote aimed at a figure would silently renumber every
+ *     later figure and every `\ref` to them. A non-empty caption is safe on
+ *     that axis, but the schema-level predicate has no instance to ask — and
+ *     the conservative answer is also the one the task's own scope wants:
+ *     `figureBlock` is not in `DEFERRING_PARENTS` and was not part of the
+ *     reported class. Stated residual: the lightning / slash surfaces still
+ *     permit a footnote at a caret ALREADY INSIDE a caption (the caret seeds
+ *     its own textblock, below) — the one divergence in this class 148 leaves
+ *     standing, deliberately, because closing it means TIGHTENING a surface the
+ *     resolved decision said to leave permissive.
+ */
+const NO_INLINE_LANDING_INSIDE: ReadonlySet<string> = new Set([
+  "exampleGloss",
+  "figureCaption",
+]);
+
+/**
+ * Every textblock TYPE NAME an inline insert over `[from, to]` can reach, in
+ * document order, deduplicated. Empty when the range holds no textblock at all
+ * (a true block atom's node range, an empty container).
+ *
+ * The two seeds matter: a caret — and any range whose ends sit inside ONE
+ * textblock — has nothing strictly BETWEEN its positions, so `nodesBetween`
+ * alone reports nothing for the commonest case there is. A CONTAINER-level
+ * position (both ends of a block ref's content range resolve to the container
+ * itself, not to a textblock) contributes no seed and is answered entirely by
+ * the walk over its body.
+ *
+ * The WALK honours `NO_INLINE_LANDING_INSIDE`; the SEEDS deliberately do not.
+ * A caret the user placed inside a gloss cell or a figure caption is answered
+ * by that textblock's own kind — the pre-148 behaviour, which the resolved
+ * decision says to leave permissive — while a container-level range never
+ * proposes one as a landing site.
+ */
+function inlineInsertTargets(doc: PMNode, from: number, to: number): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const push = (node: PMNode) => {
+    if (!node.isTextblock || seen.has(node.type.name)) return;
+    seen.add(node.type.name);
+    names.push(node.type.name);
+  };
+  push(doc.resolve(from).parent);
+  push(doc.resolve(to).parent);
+  if (to > from) {
+    doc.nodesBetween(from, to, (node) => {
+      if (NO_INLINE_LANDING_INSIDE.has(node.type.name)) return false;
+      push(node);
+      return true;
+    });
+  }
+  return names;
+}
+
+/**
+ * The cross-surface applicability SSOT, asked at the place the action ACTS.
+ *
+ * Every surface funnels here: the grab bar with a block ref's resolved range,
+ * the slash / typed / lightning surfaces with a caret (`from === to`), the
+ * selection menu with its live span, and the dispatcher's defence-in-depth
+ * re-check with the very range it is about to splice into.
+ *
+ * Two rules, because the vocabulary holds two kinds of action:
+ *
+ *   • Everything that acts ON the block (note / todo / report / cutter /
+ *     duplicate / archive / delete / highlight) is a property of the block the
+ *     ref names, so it is answered from the range START's curated set —
+ *     byte-identical to the pre-148 `posBlockAllowsAction`.
+ *   • The `INLINE_INSERT_ACTIONS` family acts at an inline POSITION, so it is
+ *     answered by the TEXTBLOCKS the range can reach, EVERY one of which must
+ *     permit it — and a range that reaches none refuses. This is what closes
+ *     task 148: a container's own node hosts no inline content, so asking its
+ *     kind gave the grab bar a different answer from the one the lightning bolt
+ *     got at a caret in the very same example, and the answer the dispatch then
+ *     acted on was neither. Requiring EVERY reachable textblock (rather than
+ *     just the first) is the fail-closed direction, and it retires two silent
+ *     doors of its own: a selection running from prose into a `titleField` can
+ *     no longer land the `\title{\cite{}}` task 061 exists to prevent, and a
+ *     quote / list item whose body is a `codeBlock` can no longer take a
+ *     footnote atom into a `text*` node that ProseMirror would split to fit it.
+ *
+ * `from`/`to` are clamped and ordered, so a stale or borderline ref can't throw.
+ */
+export function blockRangeAllowsAction(
+  doc: PMNode,
+  from: number,
+  to: number,
+  action: DragHandleAction,
+): boolean {
+  const size = doc.content.size;
+  const lo = Math.max(0, Math.min(Math.min(from, to), size));
+  const hi = Math.max(0, Math.min(Math.max(from, to), size));
+  if (!INLINE_INSERT_ACTIONS.has(action)) {
+    return blockKindAllowsAction(doc.resolve(lo).parent.type.name, action);
+  }
+  const targets = inlineInsertTargets(doc, lo, hi);
+  if (targets.length === 0) return false;
+  return targets.every((name) => blockKindAllowsAction(name, action));
+}
+
+/**
+ * The position an inline insert aimed at `pos` ACTUALLY acts on — the sibling
+ * of {@link blockRangeAllowsAction} on the dispatch side, so the gate and the
+ * splice are answering about the same place.
+ *
+ * A block ref resolves to its node's CONTENT range, and the two inline-atom
+ * branches collapse to that range's END to put the marker "at the end of the
+ * passage". For a textblock kind that end IS a text position; for a CONTAINER
+ * it is a position between block children, and nothing downstream repairs it:
+ * TipTap's `setTextSelection` clamps to doc bounds only, ProseMirror's
+ * `TextSelection` constructor merely `console.warn`s (once per page load), and
+ * `insertContent` then asks the FITTER to make room — which does not split the
+ * container but FABRICATES a trailing block to hold the atom. A grab-bar
+ * footnote on a block quote appends a phantom empty paragraph inside the quote
+ * containing only the marker; on a list, a phantom extra bullet; on a figure,
+ * whose `figureCaption?` slot is already full, the marker ESCAPES into a new
+ * top-level paragraph after the figure. Schema-valid every time, and anchored
+ * to no word — which is why nothing ever failed.
+ *
+ * The answer is the end of the last text the container holds BEFORE this
+ * position — what the branch's own comment says it wants. The search is
+ * deliberately BACKWARD (forward escapes into the next sibling block) and it
+ * honours `NO_INLINE_LANDING_INSIDE`, which is why it is a hand walk rather
+ * than ProseMirror's `Selection.near`: `near(-1)` descends into whatever sits
+ * last, and for the two shapes named in that set — an example ending in a
+ * gloss, a figure whose only child is its caption — "whatever sits last" is
+ * precisely where the atom must not go. A container with no safe landing
+ * returns the position unchanged, inventing no new refusal here; refusing is
+ * the gate's job, and the gate reads the same set.
+ *
+ * task 148 — the mis-landing predates it and already shipped on `blockquote` /
+ * `listItem` / `exampleItem` (PROSE_ACTIONS containers all), so it is fixed for
+ * them too rather than only for the kinds this task un-gates.
+ */
+export function inlineInsertPos(doc: PMNode, pos: number): number {
+  const clamped = Math.max(0, Math.min(pos, doc.content.size));
+  const $pos = doc.resolve(clamped);
+  if ($pos.parent.isTextblock) return clamped;
+  const landed = lastLandableTextEnd(
+    $pos.parent,
+    $pos.start(),
+    $pos.index($pos.depth),
+  );
+  return landed !== null && doc.resolve(landed).parent.isTextblock
+    ? landed
+    : clamped;
+}
+
+/**
+ * The end of the last text inside `node`'s first `limit` children, skipping the
+ * subtrees `NO_INLINE_LANDING_INSIDE` names. `base` is the document position of
+ * `node`'s first child. Returns null when nothing landable is in range.
+ */
+function lastLandableTextEnd(
+  node: PMNode,
+  base: number,
+  limit: number,
+): number | null {
+  let offset = 0;
+  for (let i = 0; i < limit; i++) offset += node.child(i).nodeSize;
+  for (let i = limit - 1; i >= 0; i--) {
+    const child = node.child(i);
+    offset -= child.nodeSize;
+    if (NO_INLINE_LANDING_INSIDE.has(child.type.name)) continue;
+    const childPos = base + offset;
+    if (child.isTextblock) return childPos + 1 + child.content.size;
+    if (child.isAtom || child.childCount === 0) continue;
+    const inner = lastLandableTextEnd(child, childPos + 1, child.childCount);
+    if (inner !== null) return inner;
+  }
+  return null;
+}
+
+/**
+ * The caret form of {@link blockRangeAllowsAction} — a zero-width range. Used
+ * by the slash / typed / lightning surfaces, whose ref is a bare caret.
  */
 export function posBlockAllowsAction(
   doc: PMNode,
   pos: number,
   action: DragHandleAction,
 ): boolean {
-  const clamped = Math.max(0, Math.min(pos, doc.content.size));
-  return blockKindAllowsAction(doc.resolve(clamped).parent.type.name, action);
+  return blockRangeAllowsAction(doc, pos, pos, action);
+}
+
+/**
+ * Can an inline insert of `action` land ANYWHERE in a node of type `root` —
+ * read from the SCHEMA, by walking every node type the content expressions can
+ * reach from `root` and asking each textblock whether it admits the payload?
+ *
+ * This is the premise the curated `actions` sets state per kind and cannot
+ * check for themselves (the registry is editor-coupled and has no schema — see
+ * the header). CI asks it of every kind: a set may drop one of the three only
+ * where this returns false, or where the kind + action pair is a stated POLICY
+ * exclusion. Hand-bucketing four prose-bodied containers as "structural
+ * containers with no place to embed inline insertions" is precisely how task
+ * 148 shipped, and this is the check that would have caught it.
+ *
+ * Payload per action, all schema-read: `footnote`/`citation` need a textblock
+ * whose content expression admits that inline NODE (so `inline*` yes, the
+ * verbatim `text*` no); `suggest-edit` needs one that admits the `linkedAnchor`
+ * MARK (so a `marks: ""` node no).
+ */
+export function typeHostsInlineInsert(
+  root: NodeType,
+  action: DragHandleAction,
+): boolean {
+  if (!INLINE_INSERT_ACTIONS.has(action)) return true;
+  const schema = root.schema;
+  const atom = action === "suggest-edit" ? null : schema.nodes[action];
+  const mark = action === "suggest-edit" ? schema.marks.linkedAnchor : null;
+  if (action === "suggest-edit" ? !mark : !atom) return false;
+  const seenTypes = new Set<string>();
+  const stack: NodeType[] = [root];
+  while (stack.length > 0) {
+    const type = stack.pop()!;
+    if (seenTypes.has(type.name)) continue;
+    seenTypes.add(type.name);
+    // The landing resolver will not descend here, so neither may the premise —
+    // otherwise a kind whose ONLY inline-hosting descendant is off limits (a
+    // `figureBlock`, whose sole child is its caption) would read as hostable
+    // while every real insert refused.
+    if (type !== root && NO_INLINE_LANDING_INSIDE.has(type.name)) continue;
+    if (type.isTextblock) {
+      const admits = atom
+        ? type.contentMatch.matchType(atom) != null
+        : type.inlineContent && !!mark && type.allowsMarkType(mark);
+      if (admits) return true;
+    }
+    // Every node type this type's content expression can reach, via the
+    // ContentMatch automaton's edges (the schema-level answer — no live node
+    // needed, so an empty container answers the same as a populated one).
+    const seenMatches = new Set<unknown>();
+    const matches = [type.contentMatch];
+    while (matches.length > 0) {
+      const match = matches.pop()!;
+      if (seenMatches.has(match)) continue;
+      seenMatches.add(match);
+      for (let i = 0; i < match.edgeCount; i++) {
+        const edge = match.edge(i);
+        stack.push(edge.type);
+        matches.push(edge.next);
+      }
+    }
+  }
+  return false;
 }
 
 /**

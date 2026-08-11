@@ -28,11 +28,17 @@ import {
 } from "@tiptap/pm/transform";
 import { isAnchorableNode } from "@/lib/marginalia";
 import {
+  captionNodeHasContent,
+  figureEmitsCaption,
+  figureNodeEmitsCaption,
+} from "@/lib/figures/env-body";
+import {
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,
   type DocStructure,
   deriveExampleIdentity,
+  deriveParTitled,
   EMPTY_DIFF,
   type ExampleEntry,
   type FigureEntry,
@@ -82,7 +88,7 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle): void {
     const uuid = (attrs.uuid as string | null | undefined) ?? null;
 
     if (uuid && isAnchorableNode(n.type)) {
-      out.blocks.set(uuid, { uuid, pos, typeName });
+      out.blocks.set(uuid, { uuid, pos, typeName, parTitled: deriveParTitled(attrs) });
     }
 
     if (typeName === "heading" && uuid) {
@@ -111,6 +117,7 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle): void {
         label: (attrs.label as string | undefined) ?? "",
         numbered: attrs.numbered !== false,
         number: (attrs.figureNumber as number | null | undefined) ?? null,
+        emitsCaption: figureNodeEmitsCaption(n),
       });
       if (typeof attrs.label === "string" && attrs.label) {
         out.labels.set(attrs.label, {
@@ -248,7 +255,12 @@ function headingStructurallyChanged(a: HeadingEntry, b: HeadingEntry): boolean {
 }
 
 function figureStructurallyChanged(a: FigureEntry, b: FigureEntry): boolean {
-  return a.label !== b.label || a.numbered !== b.numbered;
+  return (
+    a.label !== b.label ||
+    a.numbered !== b.numbered ||
+    // A NUMBERING input since tasks 318/319 — see `FigureEntry.emitsCaption`.
+    a.emitsCaption !== b.emitsCaption
+  );
 }
 
 /**
@@ -369,6 +381,7 @@ export function inspectSteps(
   let footnoteOrderChanged = false;
   let citationOrderChanged = false;
   let blockOrderChanged = false;
+  let blockParTitleChanged = false;
 
   // Lazily-built set of every uuid live in `newDoc`. The ONE block-survivor
   // guard — consulted by BOTH the uuid-AttrStep branch AND the reachable
@@ -579,11 +592,54 @@ export function inspectSteps(
           // `data-uuid`. A genuine rename/death (uuid → null, or a true identity
           // change) leaves `oldUuid` nowhere in the doc → removal still fires.
           if (oldUuid && !uuidSurvivesRemoval(oldUuid)) {
-            removed.blocks.set(oldUuid, { uuid: oldUuid, pos: step.pos, typeName });
+            removed.blocks.set(oldUuid, {
+              uuid: oldUuid,
+              pos: step.pos,
+              typeName,
+              parTitled: deriveParTitled(oldAttrs),
+            });
           }
           if (newUuid) {
-            added.blocks.set(newUuid, { uuid: newUuid, pos: step.pos, typeName });
+            added.blocks.set(newUuid, {
+              uuid: newUuid,
+              pos: step.pos,
+              typeName,
+              parTitled: deriveParTitled(newAttrs),
+            });
           }
+        }
+      }
+
+      // `parTitle` transitions: the tracked datum is the BOOLEAN "renders a
+      // par-title" (`deriveParTitled`), so only a FLIP (null/"" ↔ non-empty)
+      // is structural. Typing inside an existing title changes the string but
+      // not the flag — both sides derive equal, nothing is synthesized, and
+      // the transaction stays structurally null (keystroke sanctity for
+      // title editing). A flip synthesizes same-uuid removed+added entries;
+      // the block reconciler below collapses them into `changedBlocks` +
+      // `blockParTitleChanged` (never `blockOrderChanged` — nothing moved).
+      // The other write path for this attr — `setNodeMarkup`, a
+      // ReplaceAroundStep on a non-leaf — needs no branch here: its range
+      // walk re-collects the block on both sides with `parTitled` derived
+      // fresh, and the same reconciler answers identically.
+      if (attr === "parTitle" && isAnchorableNode(newNode.type) && newUuid) {
+        const oldTitled = deriveParTitled(oldAttrs);
+        const newTitled = deriveParTitled(newAttrs);
+        if (oldTitled !== newTitled) {
+          if (oldUuid) {
+            removed.blocks.set(oldUuid, {
+              uuid: oldUuid,
+              pos: step.pos,
+              typeName,
+              parTitled: oldTitled,
+            });
+          }
+          added.blocks.set(newUuid, {
+            uuid: newUuid,
+            pos: step.pos,
+            typeName,
+            parTitled: newTitled,
+          });
         }
       }
 
@@ -615,7 +671,15 @@ export function inspectSteps(
       }
 
       if (typeName === "figureBlock" && newUuid) {
-        if (attr === "label" || attr === "numbered") {
+        // `hasCaption` joins the set because it decides NUMBERING (tasks
+        // 318/319); an AttrStep that flips it must reach the numberer exactly
+        // as a `numbered` flip does. The caption CONTENT is unchanged by an
+        // AttrStep, so both sides read it off the same live node.
+        if (attr === "label" || attr === "numbered" || attr === "hasCaption") {
+          const captionChild = newNode.firstChild;
+          const captionHasContent = captionNodeHasContent(
+            captionChild?.type.name === "figureCaption" ? captionChild : null,
+          );
           if (oldUuid) {
             removed.figures.set(oldUuid, {
               uuid: oldUuid,
@@ -623,6 +687,10 @@ export function inspectSteps(
               label: (oldAttrs.label as string | undefined) ?? "",
               numbered: oldAttrs.numbered !== false,
               number: (oldAttrs.figureNumber as number | null | undefined) ?? null,
+              emitsCaption: figureEmitsCaption(
+                oldAttrs.hasCaption !== false,
+                captionHasContent,
+              ),
             });
           }
           added.figures.set(newUuid, {
@@ -631,6 +699,10 @@ export function inspectSteps(
             label: (newAttrs.label as string | undefined) ?? "",
             numbered: newAttrs.numbered !== false,
             number: (newAttrs.figureNumber as number | null | undefined) ?? null,
+            emitsCaption: figureEmitsCaption(
+              newAttrs.hasCaption !== false,
+              captionHasContent,
+            ),
           });
         }
       }
@@ -690,10 +762,18 @@ export function inspectSteps(
       // removedBlocks — but its mapped position is stale (the old pos was
       // deleted), so emit it as `changedBlocks` carrying the NEW pos (so the
       // structure index folds it in) and flag the reorder for position-keyed
-      // consumers. Same pos = a no-op/round-trip, so neither.
+      // consumers. Same pos + same parTitled = a no-op/round-trip, so
+      // neither. A same-pos `parTitled` FLIP (title added/removed in place)
+      // rides `changedBlocks` too — the index must fold the new flag — but
+      // wakes `blockParTitleChanged` instead of `blockOrderChanged`, since
+      // nothing moved and position-keyed consumers must stay asleep.
       if (wasRemoved.pos !== entry.pos) {
         changedBlocks.push(entry);
         blockOrderChanged = true;
+        if (wasRemoved.parTitled !== entry.parTitled) blockParTitleChanged = true;
+      } else if (wasRemoved.parTitled !== entry.parTitled) {
+        changedBlocks.push(entry);
+        blockParTitleChanged = true;
       }
       continue;
     }
@@ -886,6 +966,7 @@ export function inspectSteps(
     removedBlocks,
     changedBlocks,
     blockOrderChanged,
+    blockParTitleChanged,
     addedHeadings,
     removedHeadings,
     changedHeadings,

@@ -10,10 +10,20 @@ import type {
 } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { useWordCount } from "@/hooks/useWordCount";
+import { useWordCountConfig } from "@/hooks/useWordCountConfig";
+import {
+  EMPTY_CATEGORY_COUNTS,
+  includedTotals,
+} from "@/lib/word-count-core";
+import {
+  docProductsEnabled,
+  useWordCountsProduct,
+} from "@/lib/doc-products/use-doc-products";
 import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
+import { cardTypeLabel } from "@/panels/panel-registry";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { CutterCommentCard } from "./CutterCommentCard";
 import { CutterSuggestionCard } from "./CutterSuggestionCard";
@@ -78,7 +88,27 @@ export default function CutterPanel({
   editor?: Editor | null;
   recentlyAddedId?: string | null;
 }) {
-  const { counts } = useWordCount(editor ?? null);
+  // Flag-on (perf Wave 1) the pipeline's shared product replaces what used
+  // to be a SECOND full useWordCount instance on the same editor (a
+  // duplicate 47ms whole-doc walk per typing pause at 2,883 blocks).
+  const { counts: legacyCounts } = useWordCount(
+    docProductsEnabled ? null : (editor ?? null),
+  );
+  const productCounts = useWordCountsProduct(
+    docProductsEnabled ? (editor ?? null) : null,
+  );
+  const counts = docProductsEnabled
+    ? (productCounts ?? EMPTY_CATEGORY_COUNTS)
+    : legacyCounts;
+
+  // The cut goal counts what the Word Count panel counts — same tallies, same
+  // include-set, one filter door (task 122). It used to read the precomputed
+  // unfiltered `counts.total`, so with the default config (comments OFF) a
+  // document the panel called 10 words drove a goal measured against 15, and
+  // the baseline `initialWords` this strip captures on first set was frozen
+  // on that other ruler for the goal's whole life.
+  const { config: wordCountConfig } = useWordCountConfig();
+  const currentWords = includedTotals(counts, wordCountConfig.include).words;
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = cards.map((c) =>
@@ -92,8 +122,8 @@ export default function CutterPanel({
 
   const onAddOptions = useMemo(
     () => [
-      { label: "Request", onClick: (rect?: DOMRect) => onAddComment(rect) },
-      { label: "Suggestion", onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
+      { label: cardTypeLabel("cutter-comment"), onClick: (rect?: DOMRect) => onAddComment(rect) },
+      { label: cardTypeLabel("cutter-suggestion"), onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
     ],
     [onAddComment, onAddSuggestion],
   );
@@ -113,7 +143,7 @@ export default function CutterPanel({
       panelExtras={
         <CutterGoalStrip
           goal={goal}
-          currentWords={counts.total}
+          currentWords={currentWords}
           onSetGoal={onSetGoal}
           onClearGoal={onClearGoal}
         />

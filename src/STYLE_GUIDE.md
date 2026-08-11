@@ -1,8 +1,14 @@
 # Virgil Style Guide
 
-> Drop-in replacement for `src/STYLE_GUIDE.md`. This file is the
-> in-repo summary of the design system. The full reference lives in
-> `docs/virgil-design-system/`.
+> **This file is the style spec — the only one.** `AGENTS.md` routes every
+> agent here, and where this guide and the code disagree, the reconciliation
+> happens *in this file*, never in a second document.
+>
+> `docs/virgil-design-system/` is the frozen **April-2026 migration record**
+> that produced much of what is written here. It is history, not spec: its
+> numbers were true then and several are wrong now. Every file in it carries a
+> banner saying so, and CI keeps it that way
+> ([spec-authority-guardrail.test.ts](__tests__/spec-authority-guardrail.test.ts)).
 
 ## Visual identity
 
@@ -45,6 +51,34 @@ violation. For an alpha variant of a token, reach for
 is premultiplied, so it is exactly the live token at that alpha, and it keeps
 tracking the token when the value changes. Never re-spell a channel triple.
 (There is no CI guard for this yet — `check:radius` covers radii only.)
+
+### Which tokens have a Tailwind utility
+
+A token minted in `:root` does **not** get a Tailwind utility for free. Only
+tokens re-declared in the `@theme inline` blocks of `globals.css` emit classes
+— today the `--ink-*`/`--edge-*`/`--surface-*` scales, `--accent`,
+`--accent-light`, `--btn-primary`, `--menu-roving-bg`, `--overlay-scrim`,
+`--danger`/`--danger-soft`, `--ring-drag-target`, `--background`/`--foreground`,
+the four font families and the radius scale. Read the block; don't trust that
+list.
+
+Both ways of ignoring the boundary fail **silently**:
+
+- `bg-pod-panel`, `text-par-title-color` — no `--color-*` entry, so Tailwind
+  emits **no class at all**. No error, no style, nothing to grep for.
+- `bg-amber-50`, `text-amber-600` — a real Tailwind *default* utility, so you
+  get a color: the wrong one. `--amber-50` is the repo's warm `#fef9e7`;
+  Tailwind v4's `amber-50` is a cooler `#fffbeb`. This spelling satisfies both
+  rules above (it *is* a utility, and it is *not* a hex literal) while
+  bypassing the token — which is why it has drifted twice and earned two
+  bespoke guards (`examples-amber-token.test.ts`,
+  `bibliography-amber-strip-convergence.test.ts`).
+
+For a token with no utility, consume it as `var(--token)` — usually the
+Tailwind arbitrary value `bg-[var(--pod-editor)]` / `text-[var(--muted)]`,
+which is the prevailing form (~190 sites), or an inline `style`. Add it to
+`@theme inline` only if it earns a first-class utility; the raw Tailwind
+palette spelling is never the answer.
 
 The token scales:
 
@@ -179,6 +213,21 @@ Editor scale: H1 1.75rem/700, H2 1.35rem/600, H3 1.15rem/600, body
 tracking-wider (`PanelHeader`), card title `--par-title-size`
 (0.78rem ≈ 12.5px)/500, badge 10px/600.
 
+**Type is viewport-invariant. Geometry adapts to width; type never does.**
+There is not one width-based media query, `@container` rule, responsive text
+utility (`md:text-*`) or `vw`-sized font in `src/` or `library/` — the only
+`@media` blocks are `prefers-reduced-motion`, `display-mode:
+window-controls-overlay` and `print`. This is easy to break by analogy,
+because the app *does* respond to width everywhere else (the page column is
+clamped between `--page-min` and `--page-max`, zen margins collapse,
+`--margin-col-handle-inset` exists for narrow viewports). The reason is
+**ownership, not aesthetics**: every editor size is a user preference
+(`--editor-font-size`, `--font-headers-h1/-h2/-h3-size`, wired in
+`src/lib/preferences-tree.ts`), so a breakpoint or a `clamp(…vw…)` silently
+overrides a value the user set by hand and cannot get back. If type must
+respond to something, respond to the user's own token via `calc()` — as the
+fold-chevron offsets already do — never to the viewport.
+
 ### In-card type scale — meta vs content (UI-consistency sweep)
 
 Inside a card body there are exactly **two tiers** (ratified 2026-06-12);
@@ -270,13 +319,38 @@ the AI-marker label. No letter-spacing on body text.
 
 ## Spacing & icons
 
-4-pixel grid. `--pod-gap: 10px` is the canonical pod-to-pod gap; don't
-override.
+4-pixel grid — and it is a prohibition, not a preference. Spacing comes from
+Tailwind's scale (half-steps included: `0.5`=2, `1.5`=6, `2.5`=10); don't
+hand-author `p-[5px]` or `gap-[7px]`. The **one** exception is aligning to a
+non-grid asset — an icon's optical center, a fixed glyph width — and a site
+that takes it says what it aligns to, the way the Virgil-bar seam cluster's
+`mb-[3px]` does. (No CI guard here, unlike the radius scale; the ratio today
+is ~870 scale-based utilities to ~24 arbitrary ones, nearly all of them the
+sanctioned exception.) `--pod-gap: 10px` is the canonical pod-to-pod gap;
+don't override.
 
 Three icon-button sizes: `iconbtn-sm` (20×20), `iconbtn-md` (24×24,
 default), `iconbtn-lg` (32×32). The visual SVG inside is smaller than
 the button (14, 16, 20 respectively); the whitespace is the click
 target.
+
+**What `iconbtn-*` deliberately does NOT model.** These are icon-only
+buttons in shape but not in spec terms; each has state or context the
+three utilities can't express, so a hand-rolled implementation here is
+*correct*, not drift. Don't "sweep" them — and don't re-report them as
+a finding:
+
+- Topbar / sidebar-strip / tab-close buttons with accent-text hover or
+  stateful `aria-pressed`-style active styling (`bg-[var(--accent-light)]`
+  + inset shadow). Their own utility is `.topbarbtn` (see **Interaction**).
+- `PanelHeader` Add (blue) and AI-request (sky) buttons — the colored
+  accent hover is an intentional category cue.
+- Formatting toolbars (`BibEntryCard`, `RichTextField`, `MenuBar`, the
+  floating toolbar shell) — own active-state styling plus a dark-context
+  inverted variant `iconbtn-*` can't express.
+- Outline chevrons (10×10 / 12×12 SVGs) — sub-spec sizes by design.
+- `ItemMenu`'s panel-header trigger (`align="left"`) — bare button by
+  design, no rounded lozenge.
 
 Icons are stroke-only, stroke-width 2, round caps and joins, single
 color (`currentColor`). Three exceptions are filled by design: the AI
@@ -298,12 +372,35 @@ Five states. One implementation each.
 
 - **Hover.** Two utility classes: `hover-on-light` (resting bg is
   white-ish) and `hover-on-dark` (resting bg is a darker pod). Both
-  transition background-color 120ms.
+  transition background-color 120ms — so **don't add Tailwind's
+  `transition-colors` alongside them.** The utilities are unlayered and
+  Tailwind's is in `@layer utilities`, so the utility class always loses;
+  pairing them looks like it does something and does nothing. Same for
+  `iconbtn-*` and `.topbarbtn`, which own their own transition.
+  Hover **never changes elevation** — no `hover:shadow-*`, no lift. Shadow
+  here is a property of the surface tier (pods/cards carry their ambient
+  shadow, floats carry `--shadow-float`), not a response to the cursor;
+  there is not one hover-elevation rule in either silo. Border-color hover
+  *is* sanctioned and prescribed — it is the card rule (`edge-hover` →
+  `edge-strong`) and the omni-bin pill's. The exception is icon buttons
+  (`iconbtn-*`, `.topbarbtn`): background and text color only, never a
+  border.
 - **Selection.** Always themed. There is no default selection color.
   Each card kind reads its theme's `borderSelected` and
   `headerSelected`.
 - **Focus.** `focus-visible:ring-2 ring-edge-strong` (offset 1).
-  Inputs use a thicker border instead of a ring.
+  Inputs use a thicker border instead of a ring. Never leave the UA default
+  ring, and never strip it bare: `outline: none` is legal only where the same
+  rule supplies the replacement — the model is `.iconbtn-*` / `.topbarbtn`
+  (`outline: none` + `box-shadow: 0 0 0 2px var(--edge-strong)`). Two
+  standing exceptions, both deliberate: a **contenteditable** surface (the
+  `.tiptap` body, the float bodies, `RichTextField`, `BorrowedMainText`)
+  strips with no replacement because the caret is the indicator, and a
+  **card wrapper** strips because themed selection is. Everything else that
+  takes keyboard focus supplies a ring or a thickened border. (Honest state:
+  of ~55 `outline-none` sites ~24 supply nothing; most are those two
+  exceptions, but the `BibEntryCard` request-note inputs and
+  `ManageStylesModal`'s already-`edge-strong` field are real gaps.)
 - **Active.** `translate-y-[0.5px]` on press.
 - **Disabled.** `opacity-40 pointer-events-none`.
 
@@ -335,6 +432,48 @@ A theme has five tokens: `accent`, `borderSelected`, `headerDefault`,
 (`badgeBg`, `titleColor`, etc.) derive from `accent` via
 `themeFromAccent()` in `src/lib/panel-theme.ts`.
 
+**Every value `themeFromAccent()` emits is a solid `#rrggbb`** — never
+`rgba()`, never a `color-mix(…, transparent)`. Header tints are pre-mixed
+over white (`blendOverWhite`) rather than composited at paint time, and this
+is the one place the Tokens section's `color-mix` advice does *not* apply. A
+theme token is a **surface fill read by more than one parent**:
+`theme.headerDefault` paints the docked card header over `bg-surface` (white)
+and is handed straight through as the float `headerTint` over `--pod-panel`,
+so a translucent value would render the same card two different colors
+depending on whether it is popped out. Alpha still belongs at the
+*consumption* site, over the card's own opaque surface — the hover/select
+ring's `color-mix(in oklab, var(--link-anchor-color) 50%, transparent)` is
+correct. `panel-theme-key-freeze.test.ts` pins the hex format, but only for
+the fields in its frozen `REQUIRED_PALETTE_FIELDS` list: a NEW palette field
+must be added there in the same commit or it ships unchecked.
+
+**A derived value states the contrast it needs; it never approximates it with
+a lightness coordinate.** HSL lightness is hue-blind — `l = 0.40` says nothing
+about how bright a color *reads*, and the error is largest exactly where the
+palette offers its most saturated hues. So the derivation measures WCAG
+relative luminance against the surface a value actually lands on
+(`src/lib/color-math.ts`: `contrastRatio`, `inkOn`, `atContrastAgainst`), and
+moves only lightness to reach it, carrying hue and saturation through:
+
+- **Text ink** (`badgeColor` = `titleColor` = the marginalia glyph — one
+  `accentInk` per accent, not three per-surface inks) clears **4.5:1** against
+  the *darkest* surface it can land on. 10px badges and ~12.5px/500 titles are
+  normal-size text; no large-text exemption applies.
+- **Non-text affordances** (`borderSelected`) target **3:1** against
+  `--surface`. A *target*, not a floor: the point is that a selected Note and a
+  selected Report read as equally selected. An absolute coordinate cannot do
+  that — `atLightness(accent, 0.62)` lightened dark accents and darkened light
+  ones, so the same cue ranged from 1.36:1 to 5.62:1 depending only on hue.
+
+The ink is the accent, darkened only as far as legibility requires — a
+genuinely dark accent is its own ink. **No per-kind exceptions**: a hand-tuned
+escape is only ever right for the shipped hex, and the palette is the one thing
+a user retints. Both tables (`DEFAULT_PANEL_COLORS` and the `PRESET_COLORS` the
+picker offers) are pinned by `panel-theme-contrast.test.ts`, which measures with
+its own WCAG implementation rather than the one it guards — so a preset can no
+longer be added by eye. Palettes are memoized by accent and frozen: a palette is
+a value, not a scratch object.
+
 Eleven themes, four families:
 
 - **Anchored-to-text (warm):** `footnote` (rust), `citation` (amber),
@@ -352,6 +491,20 @@ A card renders via `<PanelCard theme={…} selected={…}>`. The frame
 (border, header strip, separator, body, popout, trash) is identical
 across themes; only the colors differ. **Every card has a theme.** A
 card without a theme is a bug.
+
+**No theme is neutral.** A list whose rows POINT AT other kinds — search
+results being the live case — resolves the theme **per row from the row's
+source kind**, never by picking one existing theme as a stand-in. The 2026
+migration tried `comment` as a pseudo-neutral and hit the dead end: none of
+footnote/note/archive/todo/bib/citation/aiRequest/cut/example reads as
+neutral, and a borrowed theme silently asserts a kind the row isn't. The
+worked example is `SCOPE_TO_CARD_THEME` (`src/lib/search-sources.ts`), the
+SSOT that `SearchPanel` feeds to `useCardTheme` per result and from which
+the rest-state accent is derived rather than differentiated in parallel; two
+guards pin it (`scope-color-theme.test.ts`,
+`card-theme-override-guardrail.test.ts`). This is about *pointing*, not
+provenance: `ArchiveCard`'s one `useCardTheme("archive")` over cards that
+came from many panels is correct, because `archive` is the row's own kind.
 
 **No bespoke card headers.** Pass `kind` (+ `kindLabelOverride` when the
 registry label differs from the card's overline, e.g. `bib` →
@@ -373,6 +526,42 @@ derivation). A literal that happens to match the accent today will
 silently drift when the palette doesn't. Deliberate non-theme
 constants (e.g. the `info` severity steel in `ErrorCard`) get a
 comment saying why they're exempt.
+
+**A per-kind color table is the theme, or it is a second theme.** This binds any
+surface that colors BY KIND, not just cards — chips, dots, pills, connectors.
+State the kind's `PanelThemeKey` (read off `CARD_REGISTRY[kind].themeKey`, so a
+re-theme in the registry propagates) and derive the paint where it is painted
+(`useCardTheme` / `usePanelCardPalette`). Whether a user override may reach the
+surface is then not a decision the surface makes — `SYSTEM_THEME_KEYS` answers it
+per key, the same answer every other surface of that kind gets. The AI-request
+inbox was the counter-example (task 178): a private `chipBg`/`chipFg` table that
+agreed with no panel theme and painted the **Todo** chip the **Note** accent
+exactly, so the inbox contradicted the margin. A request kind with no card of its
+own (`bib-*`, `revision-*`) names the family it belongs to; its sub-kind is
+carried by the LABEL, which distinguishes better than an unrelated hue. And where
+a display kind is coarser than the data (one "Suggestion" chip over the cutter
+and revision families), the surface resolves the exact kind per row rather than
+picking one family's accent for both — the same "no theme is neutral" rule as
+search results, one size down. CI: `card-theme-override-guardrail.test.ts`
+(second law) fails any `Record<…Kind, …>` carrying a color literal.
+
+**A kind's color never gets PERSISTED into the document.** Every in-text
+surface of a card kind — the active ring, the Mode-A paragraph rail, the
+persistent highlight band — resolves from the `--link-anchor-accent-<token>`
+`:root` vars `EditorLayout` stamps from the live theme (`IN_TEXT_ANCHOR_ACCENTS`,
+the #27 invariant: an anchor's color derives from the SAME accent source as its
+card outline). Where a paint channel rides a **document attribute** rather than
+a selector — today the `linkedAnchor` mark's `tintColor` — the attribute carries
+an **accent sentinel** (`accent:<token>`, from `accentTintForToken`) that one
+static CSS rule resolves to that var, never a resolved hex. A hex there freezes
+theme state into the user's prose: the highlight band shipped `"#fbbf24"`, copied
+out of `DEFAULT_PANEL_COLORS.highlight` and frozen, so overriding the Highlight
+panel color repainted the card, the float and the ring and left the band — a
+highlight's entire in-text identity — amber forever, on existing *and* new
+highlights, with no state that could fix it (task 174). Reserve a literal for a
+genuinely per-instance hue (the light-blue pending-AI bands), where there is no
+theme to follow. The sentinel also costs nothing at runtime: the override
+repaints live, with no re-stamp pass and no doc walk on a color change.
 
 Selection: border flips to `theme.borderSelected`, header tint flips
 from `headerDefault` to `headerSelected`, separator flips to
@@ -458,18 +647,34 @@ A card whose atom was deliberately spliced out and **not** re-inserted —
 an unanchored **citation** or **footnote** ref (archive → unarchive
 round-trip; `CitationRef.unanchored` / `FootnoteRef.unanchored`) — sits
 in its panel wearing a **neutral "drag to anchor" cue**: a **dashed
-border + reduced opacity** (`UNANCHORED_CARD_CLASS = "border-dashed
-opacity-80"`, `panel-primitives.tsx`) plus a hover `title` from
-`unanchoredCardTitle(noun)` ("Unanchored <noun> — drag into the editor to
-anchor it"). This is **not** an error affordance — it is deliberately
-distinct from the `orphaned` ERROR state, whose card keeps its faded
-`BadgeOrphaned` "no anchor" dot. The omni layer already draws the same
-line (an unanchored footnote resolves to the neutral `free` state, not
-`orphaned` — `Footnotes/omni.tsx`); the parked cue is that intent made
-visible on the docked card. **Both twins consume the one const + helper**
-so the citation and footnote unanchored states can't drift apart — add
-any future "parked, re-placeable" card kind to the same SSOT rather than
-re-spelling the classes.
+border + reduced opacity**, plus a hover `title` ("Unanchored <noun> —
+drag into the editor to anchor it"). This is **not** an error affordance
+— it is deliberately distinct from the `orphaned` ERROR state, whose card
+keeps its faded `BadgeOrphaned` "no anchor" dot. The omni layer already
+draws the same line (an unanchored footnote resolves to the neutral
+`free` state, not `orphaned` — `Footnotes/omni.tsx`); the parked cue is
+that intent made visible on the docked card.
+
+**The cue is ONE prop, and it carries the mechanism** (task 316):
+`unanchored={{ kind, cardKey, canAnchor }}` on `EditableCard` /
+`PanelCard`. `UNANCHORED_CARD_CLASS` is module-private and
+`unanchoredCardTitle` is the copy SSOT — a card cannot paint the parked
+look without declaring the `cardKey` that renders its re-anchor drop
+button and arms its header lift. That coupling is the whole point: the
+cue used to be a class + a title spread onto separate props while the key
+was a third, unrelated one, and `UnanchoredFootnoteCard` threaded the
+first two and not the third — so it wore the full "drag into the editor
+to anchor it" chrome, in the docked panel AND in omni, with no way to do
+it. **A promise and its mechanism are one declaration**; a new
+"parked, re-placeable" kind inherits both by using the prop. (`kind` is
+`InlineAtomCardKind` — the kinds whose atom a drop can rebuild — so
+"may wear the cue" and "can be put back" are the same fact.)
+
+`canAnchor` is required and splits the two questions the cue answers: the
+**look** is on for any parked card (a card that cannot anchor is the most
+parked of all), while the **promise** is withheld unless the gesture
+would actually succeed. A footnote always can (its body is the atom's only
+attr); a citation cannot while it is keyless or still a draft record.
 
 ## Panels
 
@@ -493,8 +698,39 @@ backdrops, glows, gradients, a border, or a header divider.
 Body is a scrollable list with `space-y-2` between cards. No `border-b`
 between cards.
 
-Every panel has a designed empty state — icon, title sentence,
-description, optional example card. "No items yet" is not enough.
+**Empty states are COPY, not chrome.** Every panel's empty body paints from
+the one shared class — `PANEL.empty`
+(`p-6 text-center text-sm text-[var(--muted)]`, `panel-primitives.tsx`) —
+usually through the `emptyState` slot of `CardListPanel`, and directly where
+a panel renders its own body (Outline, Search). No panel hand-rolls that
+class string, and none adds an icon, a title/description tier, or an example
+card: there is no `EmptyState` component, by design, because what carries
+the weight here is the sentence. The contract is that a panel which is
+genuinely empty **names what's missing and teaches the way in** — *"No
+examples. Click the (1) glyph in the formatting toolbar to insert one."* A
+bare *"No items yet"* fails it: it names the absence and teaches nothing. A
+*filter* or *search* miss is exempt from the teaching half (*"No matches
+found."*) — nothing is missing, and the way forward is the query the user
+already has.
+
+Every clause above is pinned by
+[src/__tests__/panel-empty-state-contract.test.ts](__tests__/panel-empty-state-contract.test.ts):
+the class string, the no-second-speller census (both silos), the routing, the
+copy contract at all 16 empty states with each exemption named and its reason
+stated, and the *absence* of the richer composition. Non-panel surfaces that
+carry their own tone — the omni rail's filter line, the font and bib picker
+menus, the AI window — are the census's named exceptions, not panel bodies.
+Build the richer empty state and that last leg fails, which is the intended
+failure: update this paragraph in the same commit.
+
+A **richer** empty state — icon, typographic tiering, an example card — is
+not shipped and is not specified here; it sits under §"What this guide does
+not cover" as an open product question. (This paragraph once asserted that
+richer design as shipped fact. It was a design brief, written in the TODO
+voice in the historical migration record
+(`docs/virgil-design-system/06-panels-and-headers.md`), that turned
+declarative when it was condensed into this guide — which is why the
+contract above is now testable rather than merely written down. Task 184.)
 
 The panel strip (vertical column of toggles) uses 32×32 icon buttons.
 Active toggle: `bg-pod-dark/80 text-ink-strong` — the lit strip icon is
@@ -528,11 +764,16 @@ decision needs the live value (sole case today: `SplitWithCode`'s
 `liveRatio`, driving the compressed-gutter flip + clip fade), LOCAL state
 set from the engine's `apply()` (≤1 per frame) is permitted — children must
 bail on element identity and persistence stays commit-once. Heavyweight pane
-content (iframes, full editors) wraps in `PaneFreeze`; drag-time observers
-park via `parkDuringPaneDrag` (both keyed on the edge-only `PaneDragBus`).
-A bespoke window-listener divider fails CI — the guardrail keys on the
-resize cursor chrome AND the shared `.drag-gap`/`.band-grip` classes above
-(`pane-drag-guardrail.test.ts`); doctrine in AGENTS.md "Pane-drag stability".
+content (iframes, full editors) wraps in `PaneFreeze`; gesture-time observers
+park via `parkDuringLayoutGesture`, and text-anchored overlays suppress via
+`useLayoutGestureActive` (all keyed on the edge-only `LayoutGestureBus`,
+which carries the OS window resize as well as pane drags — a follower wired
+once covers both). A bespoke window-listener divider fails CI — the guardrail
+keys on the resize cursor chrome AND the shared `.drag-gap`/`.band-grip`
+classes above (`pane-drag-guardrail.test.ts`), and a new `resize` listener
+that neither parks nor suppresses fails the census in
+`window-resize-guardrail.test.ts`; doctrine in AGENTS.md "Pane-drag
+stability" + "Layout-gesture stability".
 
 ## Code view
 
@@ -575,6 +816,20 @@ Sizes: `sm` 24px / 12px font, `md` 32px / 13px (default), `lg` 40px /
 
 Modal footers: rightmost is primary, then ghost cancel to its left,
 destructive (if any) far left. Tab right + enter must not delete.
+
+**Don't hand-roll a button** — don't mix Tailwind utilities to imitate a
+variant. Reach for `<Button variant size>`; if you need a new look, extend the
+primitive (that is how `warm` replaced the scattered `bg-blue-100` /
+`bg-emerald-600` patterns). Omitting `variant` is fine: it means `secondary`.
+Same rule for icon buttons — put `.iconbtn-{xs,sm,md,lg}` on the `<button>`
+rather than authoring padding, hover and active classes by hand. Enforcement
+here is by convention only (no CI guard), so older surfaces still carry
+hand-rolled offenders; don't copy them.
+
+**Out of scope for the five variants:** toggle buttons with stateful
+active styling (sidebar strips, top-bar mode toggles). They don't fit
+`<Button>` and stay hand-rolled — a future `toggle` variant could
+subsume them, but until one exists this is not drift.
 
 ## Inputs
 
@@ -683,8 +938,32 @@ taupe `--control-selected`, NOT the saturated `--accent` brown) so it reads
 as a darker shade of the paper. Destructive confirms use `variant="danger"`.
 
 `<ConfirmDialog>` is a `sm` modal pre-wired for delete-with-content
-and discard-unsaved. Anchors near the source element, not screen
-center.
+and discard-unsaved.
+
+**Placement follows the SCOPE of what the dialog acts on, not the component.**
+A confirm whose consequence is app- or document-wide centers and takes the
+scrim; a confirm acting on ONE object the user can see — a card, a block, a
+request row — passes `anchorRef` so it opens against the thing it is about to
+change. Centering a surgical confirm asks the user to approve a destruction
+with nothing on screen binding the question to its target. `anchorRef` keeps
+`variant="modal"` (scrim stays; `system-dialog.tsx` places it on the anchor
+and clamps to the viewport) — it is not the scrimless `variant="anchored"`
+popover, and the imperative `useConfirmDialog()` correctly centers because it
+has no source element. The codebase is not uniform yet: the card-delete family
+(`TodoRow`, the `panel-primitives` card delete) anchors, while
+`TexBlockNodeView`, `AIWindow` and the `EditorPane` archive confirms still
+center and should adopt `anchorRef` when next touched.
+
+**Two answers plus a way out.** `ConfirmDialog` takes an optional
+`secondaryLabel`/`onSecondary` pair rendering a third button between Cancel and
+the primary action, and `useConfirmDialog()` exposes `choose()` alongside
+`confirm()` — same pending slot, same mounted dialog, resolving
+`"confirm" | "secondary" | "cancel"` instead of a boolean. Reach for it when the
+question has **two real answers** and the alternative would be picking one on the
+user's behalf ("this applied change is still live in your document: keep it,
+revert it, or cancel" — task 238). Do NOT use it to stack unrelated actions: the
+two answers must be the two ways of resolving the SAME question, and Cancel must
+stay the safe outcome, since Esc and the backdrop both resolve to it.
 
 ### Positioning variants — one shell, principled variety
 
@@ -774,7 +1053,56 @@ accent ✓ right, `role="menuitemcheckbox"` + `aria-checked`, registered via
 the caller's business (MenuBar's Display rows close from inside their own
 `onToggle`); pass `keepMenuOpen` inside `ItemMenu`, whose children wrapper
 otherwise closes the menu on any bubbled click — a run of independent toggles
-should not dismiss the menu after each one.
+should not dismiss the menu after each one. A row that needs a decorative glyph
+before its label (Search's per-scope colour dot) passes `leading`; state stays
+on `aria-checked`, so the extra node is `aria-hidden` decoration.
+
+**A trigger button that opens a menu is `<AnchoredMenu>`** (`src/components/menu/`),
+not a `useState` + `getBoundingClientRect` of your own. `MenuProvider` owns the
+OPEN menu; `AnchoredMenu` owns the button that opens one — open state, the anchor
+rect, the `trackAnchor` re-read, the `excludeRefs` entry that makes the trigger a
+real toggle, `aria-haspopup`/`aria-expanded`, the surface chrome, and the
+`maxHeight` clamp (on by default). Callers supply the button's CONTENT as a
+function of `open` and the rows as children (or a `({ close, anchorRect })`
+render prop); `closeOnInsideClick` is the opt-in for opaque children that can't
+call `close` themselves (`ItemMenu`). Non-interactive chrome is `<MenuSeparator>`
+/ `<MenuSectionLabel>` — the divider and the small uppercase caption, previously
+copied as class literals into ten and seven places respectively.
+
+Why the shell exists, given the primitive already did (task 143): `ItemMenu` had
+folded onto `MenuProvider` and hard-codes a kebab trigger, so a "+" button, a
+horizontal kebab and a "More ⌄" chip each re-derived the plumbing above — and
+each dropped a *different* guard. The omni filter menu's trigger is pinned to the
+BOTTOM of its strip and set `top = rect.bottom + 4` with no flip and no clamp, so
+on a short viewport its "Display" rows rendered below the fold, unreachable;
+the "+" menu flipped off a hard-coded `POPUP_H = 28 · n + 8` estimate; Search's
+scope menu had no flip in either axis and no menu semantics at all. None
+repositioned on resize; none closed on Escape. CI now greps for the shape:
+[anchored-menu-guardrail.test.ts](components/menu/__tests__/anchored-menu-guardrail.test.ts)
+censuses every DECLARATION (not file — `HeaderAddDropdown` and the migrated
+`ItemMenu` were siblings in one file) that positions a shadowed `fixed`/`absolute`
+surface, in both silos and in both the className and inline-style forms.
+
+**A menu is anchored by a rect OR by CSS** (task 181), and for a release the
+census only knew the first. A dropdown written `absolute right-0 top-full mt-1 …
+shadow-lg` reads no rect at all — the browser anchors it to the `relative`
+wrapper by layout — so six of them sat in `src/` while CI reported green,
+including `PanelThemePicker` at `z-[9999]` (the literal value of
+`DROP_INDICATOR_Z`, the exact collision `ItemMenu`'s migration comment says it
+was moved off) and `CardKindDropdown`, which lived in the very file whose
+`ItemMenu` had already migrated. Declaration scoping caught the
+file-vouches-for-itself failure; the narrow anchor signal let the site through
+anyway. Both halves of a guard have to hold.
+
+So the reach of the census is: **any absolutely-positioned shadowed surface
+offset from its anchor's edge** — the `*-full` family, an `absolute` + `mt-`/`mb-`
+gap, or the inline `top: "100%"` form. Deliberately *not* "any conditionally
+rendered positioned surface", which would sweep in every dialog and drag ghost
+and turn the allowlist into a filing cabinet. The panel silo is drained; the
+listed entries are one float shell, two Library-silo holdouts, and three named
+CSS-anchored follow-ups (the Fonts-dialog combobox, the library pod's add menu,
+and the Help menu's hover sub-menu) — each with a stated reason it is a
+different job from swapping the shell.
 
 ### Z-index ladder
 
@@ -799,6 +1127,25 @@ number. Full ladder, low → high:
 (CSS can't import TS), which mirrors the value; the test guards the mirror.
 
 ## Drag
+
+**Never call `e.dataTransfer.setDragImage` yourself.** An HTML5 drag hands its
+visual to the OS, which then tracks the cursor anywhere — including up into the
+browser/OS title bar, where the image vanishes, the cursor flips to "no-drop",
+or the drag reads as a window tear-off. None of that is controllable from the
+page. So a drag source that wants a preview goes through
+`attachClampedDragGhost` (`src/lib/drag-ghost.ts`): it suppresses the native
+preview with a 1×1 transparent image, portals a `position:fixed` ghost onto
+`document.body`, repositions RAF-coalesced on document `dragover`, and clamps
+to the viewport so the ghost can ride over the Virgil bar but never into
+OS-controlled space. `buildTextDragGhost` is the token-backed builder for the
+label pill, so no surface re-authors that chrome. CI (`drag-ghost.test.ts`)
+greps both silos and fails on any raw `.setDragImage(` outside the SSOT.
+
+Stated honestly, the enforced invariant is "*if* you set a drag image it goes
+through the SSOT" — not "every drag has a custom ghost." The library
+column-header reorder (`LeftList.tsx`) is a real HTML5 drag source that keeps
+the native preview; it drags a small button and carries no identity, so it is a
+judgment call the guard is structurally blind to, not an enforced exemption.
 
 Three categories.
 
@@ -868,8 +1215,9 @@ consumer reads the same source:
 - `--margin-col-handle-inset` (default `22px`) — the narrow-viewport
   **floor** for handle placement (`editorColumnLeft − this`), below which a
   deeply-indented block's handle won't be pushed off-screen-left. Read by JS
-  via `getComputedStyle` in [src/hooks/useEditorViewportCache.ts](src/hooks/useEditorViewportCache.ts)
-  (`cache.marginInset`) and applied in [src/text-objects/handle-layout.ts](src/text-objects/handle-layout.ts).
+  via `getComputedStyle` in
+  [src/lib/editor-geometry/viewport-frame.ts](src/lib/editor-geometry/viewport-frame.ts)
+  (`frame.marginInset`) and applied in [src/text-objects/handle-layout.ts](src/text-objects/handle-layout.ts).
 - `--margin-handle-gap` (default `0.625em`) — the **one uniform GAP** every
   margin affordance leaves between its RIGHT edge and its block's marker.
   em-based so it scales with the labeled text; resolved PER BLOCK in
@@ -1095,6 +1443,18 @@ matching panel theme accent via `markerPaletteFromAccent()`.
 Click → opens panel + selects card + scrolls. Cmd-click → opens
 without scrolling. Hover → highlights linked text range.
 
+**Cramped margins hide the side (task 214).** The columns are pod-anchored at
+fixed lane offsets while the prose edge moves with the margin, so a margin too
+narrow to host the lane would paint badges over the text. Every margin-lane
+element asks the same predicate — `laneSlotClearsProse(inset, available)` in
+`src/lib/marginalia.ts`, given the MEASURED pod-edge → text-edge distance — and
+degrades in its own way: the selection bolt TUCKS against the scrollbar (task
+045), the marker grid HIDES that side outright (cells, "+K" pill and orphan
+dock together — a two-column grid has no sub-lane to tuck into). Thresholds are
+derived from where each element actually paints: bolt ≥ 104px, right grid
+≥ 70px, left grid ≥ 52px. Reachable in the compressed code-split (48px comfort
+gutter), zen, and any hand-dragged margin below the floor.
+
 **Orphan dock ("unanchored — click to re-pin").** A card whose anchor can
 no longer be resolved to any live paragraph (its stored UUID, its
 `linkedAnchor` mark, and its text snapshot are all dead — the resolver SSOT
@@ -1205,6 +1565,27 @@ tracks any width purely by layout. Rules that generalize:
   layout still owning the size.
 - **Inactive tabs are flat** (BackgroundTab / InlineTabLabel) — no
   silhouette, by design.
+- **A page-edge row has ONE painter, and the layer that overlaps it is
+  not it.** A strip that pulls itself over a body's 1px top border (the
+  negative-margin seam above) does so only so its ACTIVE-TAB CHILD can
+  cover that row under the tab's own footprint — which makes the strip a
+  clip/positioning box, never a paint box. CSS backgrounds fill the
+  **padding** box, so an opaque field on such a layer erases the border
+  across its whole width: under every inactive tab, in the inter-tab
+  gaps, along the tail, and through the swoop-foot valleys that
+  `bridgeSpan: "body"` deliberately leaves open *because* the border is
+  meant to show there. Paint the field ONCE, on the container that owns
+  it, and let descendants paint over it; if a layer in the seam genuinely
+  needs its own field, clip it above the row (`background-clip`, a
+  gradient stopping 1px short) rather than covering it. Do **not** answer
+  a missing baseline with a second painter (a strip-wide
+  `inset 0 -1px 0` shadow): two painters on one device row coincide only
+  at integer layout positions, which is the sub-pixel double-line class.
+  Guarded in `library/components/panel-tabs/__tests__/` — both a
+  block-scoped source census over seam-overlapping style blocks and a
+  RENDERED assertion, because the older contract pinned the border
+  *string* and stayed green for a year in which that border painted no
+  pixels (task 2026-08-09-324).
 
 ## Library tab — double-tab pattern
 
@@ -1231,8 +1612,14 @@ accept/reject flow.
 
 ## What this guide does not cover
 
-Empty-state designs, first-run onboarding, AI-pass review modes, the
-6-dot vs 3-line drag-handle decision, the marginalia overflow design.
-These are real design questions but they are **product decisions**, not
-systematization. Track them separately. See
-`docs/virgil-design-system/10-audit.md` for the deferred list.
+Empty-state **designs** — icon, typographic tiering, an example card —
+first-run onboarding, AI-pass review modes, the 6-dot vs 3-line
+drag-handle decision, the marginalia overflow design. These are real
+design questions but they are **product decisions**, not
+systematization. Track them separately — as tasks, not as a second doc.
+(What *is* systematized about empty states — the one `PANEL.empty` class
+and the copy contract on it — is under §Panels above; only the richer
+composition stays out here.)
+(The three the 2026 migration deferred — the active-tab swoop, the
+6-dot/3-line handles, and marginalia overflow — are recorded in the
+historical `docs/virgil-design-system/10-audit.md` §9/§11/§12.)

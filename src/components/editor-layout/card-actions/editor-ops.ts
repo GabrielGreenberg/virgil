@@ -1,22 +1,23 @@
 import { useCallback, useRef, type RefObject } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
-import type { EditorView } from "prosemirror-view";
 import type { EditorHandle } from "../../Editor";
-import { findEditorScrollFor, scrollHeadingToActiveLine } from "../layout-scroll";
 import {
   renameHeadingByUuid,
   renameParTitleByUuid,
   updateHeadingLabelByUuid,
 } from "@/lib/tiptap/structural-edit";
+import { docProductsEnabled } from "@/lib/doc-products/use-doc-products";
 
 /**
- * Editor-scope action handlers: update debouncing, scroll routing across
- * the main/mirror panes, and structural edits on top-level blocks
- * (reorder, rename heading, rename parTitle, update label).
+ * Editor-scope action handlers: update debouncing, heading-scroll routing,
+ * and structural edits on top-level blocks (reorder, rename heading, rename
+ * parTitle, update label).
  *
- * `handleScrollToHeading` routes to the mirror view when the split is
- * open and the bottom pane is focused; otherwise delegates to the main
- * editor's scrollToHeading.
+ * `handleScrollToHeading` delegates to the main editor's `scrollToHeading`.
+ * It used to fork to a MIRROR ProseMirror view when the editor split was open
+ * and the bottom pane held focus; the split was retired in task 115 (its
+ * render site had been dropped in a refactor, so that branch had been
+ * unreachable — `mirrorViewRef.current` was null for every caller).
  *
  * `handleUpdate` debounces `setLatestDoc(doc)` so outline / word-count
  * subscribers don't re-derive on every keystroke. The autosave is
@@ -26,9 +27,6 @@ import {
  */
 export function useEditorOps(deps: {
   editorRef: RefObject<EditorHandle | null>;
-  mirrorViewRef: RefObject<EditorView | null>;
-  editorSplit: boolean;
-  activeSplitPane: "top" | "bottom";
   setLatestDoc: (doc: JSONContent | null) => void;
   /** Central duplicate-label predicate (the SAME one the live label warning
    *  reads). The label commit gates on it so the warning and the commit can
@@ -37,9 +35,6 @@ export function useEditorOps(deps: {
 }) {
   const {
     editorRef,
-    mirrorViewRef,
-    editorSplit,
-    activeSplitPane,
     setLatestDoc,
     isLabelTaken,
   } = deps;
@@ -48,6 +43,11 @@ export function useEditorOps(deps: {
 
   const handleUpdate = useCallback(
     (editor: Editor) => {
+      // Flag-on (perf Wave 1): the DocProducts pipeline owns the shared doc
+      // snapshot; EditorLayout reads it via useDocJson and this legacy
+      // getJSON feed stays dead. (This was the one un-guardrailed O(doc)
+      // subscriber — it rides the TipTap onUpdate OPTION, not editor.on.)
+      if (docProductsEnabled) return;
       if (latestDocTimerRef.current) clearTimeout(latestDocTimerRef.current);
       // Defer `editor.getJSON()` to inside the 300 ms timeout — the
       // serialization cost is O(doc-size) and pre-fix ran on every
@@ -62,39 +62,9 @@ export function useEditorOps(deps: {
 
   const handleScrollToHeading = useCallback(
     (blockIndex: number) => {
-      const mirrorView = mirrorViewRef.current;
-      if (editorSplit && activeSplitPane === "bottom" && mirrorView) {
-        const editor = editorRef.current?.getEditor();
-        if (!editor) return;
-        if (blockIndex === -1) {
-          editor.commands.setTextSelection(1);
-          const scrollEl = findEditorScrollFor(mirrorView.dom);
-          if (scrollEl) scrollEl.scrollTop = 0;
-          return;
-        }
-        let pos = 0;
-        let idx = 0;
-        editor.state.doc.forEach((_node, offset) => {
-          if (idx === blockIndex) pos = offset + 1;
-          idx++;
-        });
-        if (pos > 0) {
-          editor.commands.setTextSelection(pos);
-          try {
-            const domAtPos = mirrorView.domAtPos(pos);
-            const el = domAtPos.node instanceof HTMLElement
-              ? domAtPos.node
-              : domAtPos.node.parentElement;
-            // Land on the shared section-active line so the mirror's position
-            // detector reports the clicked section as current (OUT-#6).
-            if (el) scrollHeadingToActiveLine(mirrorView.dom, el);
-          } catch { /* noop */ }
-        }
-        return;
-      }
       editorRef.current?.scrollToHeading(blockIndex);
     },
-    [editorRef, mirrorViewRef, editorSplit, activeSplitPane],
+    [editorRef],
   );
 
   const handleReorderBlocks = useCallback(

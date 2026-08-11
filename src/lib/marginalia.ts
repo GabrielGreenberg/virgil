@@ -11,8 +11,10 @@
  *
  * 1. Add the token to `MarkerType` (`src/cards/types.ts`), declare it on the
  *    owning card kind(s) in `CARD_REGISTRY` (`markerType` field), and add a
- *    presentation row to MARKER_META below (label / defaultSide / icon —
- *    panel + accent derive from the registry via `src/cards/marker-meta.ts`).
+ *    presentation row to MARKER_META below (label / icon only — panel +
+ *    accent derive from the registry via `src/cards/marker-meta.ts`; the
+ *    margin SIDE is not a row, it is resolved from the owning panel's dock by
+ *    `src/lib/margin-side.ts`).
  * 2. Register a `dropSpec` for each owning card kind (the
  *    `textObjectSideReanchorSpec` factory wired to a `ParagraphAnchorApi`
  *    sub-bag on the `DropCtx`) so the margin pin can re-anchor it through the
@@ -28,7 +30,6 @@
  * the drop-mode controller; `ANCHOR_DRAG_TYPES` is the residual suppress-set.
  */
 
-import type { PanelId } from "@/hooks/useViewPrefs";
 import type { NodeType } from "@tiptap/pm/model";
 import type { Editor } from "@tiptap/react";
 import type { EntityKind } from "@/links/_shared/entity-hover";
@@ -213,7 +214,10 @@ export interface MarginaliaMarker {
    *  exampleItem, atom blocks, etc.) — the field is kind-agnostic.
    *  Renamed from `paragraphId` in Phase D7. */
   textObjectId: string;
-  /** Optional: side override. If omitted, uses MARKER_META[type].defaultSide */
+  /** Optional: per-marker side override. Omitted by every production builder
+   *  (the margin follows the panel dock); it is the first rung of
+   *  `marginSideForMarkerType`'s override > dock > registry-default ladder and
+   *  is exercised by the grid suites, which need a dock-independent side. */
   side?: "left" | "right";
   /** Click handler — typically opens the panel and selects the item.
    *  `clickY` is the viewport Y of the clicked margin marker, used by
@@ -250,10 +254,19 @@ export interface MarginaliaMarker {
 export interface MarkerMeta {
   /** Display label */
   label: string;
-  /** Panel id this marker belongs to (used to look up which side is currently docked) */
-  panelId: PanelId;
-  /** Fallback side if the panel is closed */
-  defaultSide: "left" | "right";
+  // NOTE (task 205): no `panelId` column either. Its ONE production reader was
+  // the grid's `panelSides[meta.panelId]` dock lookup, and that moved into
+  // `marginSideForMarkerType`, which derives the panel itself from
+  // `CARD_REGISTRY` via `panelForMarkerType`. Leaving it would reproduce, one
+  // field over, exactly the written-but-unread column this task deleted
+  // `defaultSide` for. Ask `panelForMarkerType(type)` when you need the panel.
+  // NOTE (task 205): no `defaultSide` column here any more. It was the THIRD
+  // hand-maintained copy of "which side does this panel live on?", alongside
+  // `PANEL_REGISTRY.defaultStripSide` and `links.ts`'s `inferMarginSide`
+  // switch; the three agreed only by coincidence. The side a marker sits on —
+  // override > live dock > registry default — is resolved by
+  // `marginSideForMarkerType` (`@/lib/margin-side`), which the anchor rail
+  // calls too, so the marker and the rail cannot land on opposite edges.
   /** Color token for the marker icon */
   color: string;
   /** Icon background (constant across all interaction states) */
@@ -337,10 +350,7 @@ import {
   IconErrors,
 } from "@/components/editor-layout/panel-icons";
 import { DEFAULT_PANEL_COLORS, markerPaletteFromAccent } from "@/lib/panel-theme";
-import {
-  panelForMarkerType,
-  panelThemeKeyForMarkerType,
-} from "@/cards/marker-meta";
+import { panelThemeKeyForMarkerType } from "@/cards/marker-meta";
 
 const MARGIN_ICON_SIZE = 16;
 
@@ -353,33 +363,35 @@ const ReportIcon = React.createElement(IconReports, { size: MARGIN_ICON_SIZE });
 const ErrorIcon = React.createElement(IconErrors, { size: MARGIN_ICON_SIZE });
 
 /** Build a MARKER_META row. The owning panel and the accent color derive from
- *  `CARD_REGISTRY` via `src/cards/marker-meta.ts` (R17) — only the
- *  marginalia-local presentation fields (label / defaultSide / icon) are
- *  declared per-row here. All markers share the same
+ *  `CARD_REGISTRY` via `src/cards/marker-meta.ts` (R17); the default SIDE is
+ *  no longer a row at all (task 205 — see the `MarkerMeta` note above: it
+ *  lives once on `PANEL_REGISTRY.defaultStripSide` and is read through
+ *  `marginSideForMarkerType`). Only the marginalia-local presentation fields
+ *  (label / icon) are declared per-row here. All markers share the same
  *  `markerPaletteFromAccent` math so a user color override on a panel
  *  re-tints its margin icon automatically. */
 function meta(
   type: MarkerType,
-  base: { label: string; defaultSide: "left" | "right"; icon: React.ReactNode },
+  base: { label: string; icon: React.ReactNode },
 ): MarkerMeta {
   const palette = markerPaletteFromAccent(
     DEFAULT_PANEL_COLORS[panelThemeKeyForMarkerType(type)],
   );
-  return { ...base, panelId: panelForMarkerType(type), ...palette };
+  return { ...base, ...palette };
 }
 
 export const MARKER_META: Record<MarkerType, MarkerMeta> = {
-  note:     meta("note",     { label: "Note",      defaultSide: "right", icon: NoteIcon }),
-  archive:  meta("archive",  { label: "Archived",  defaultSide: "right", icon: ArchiveIcon }),
-  revision: meta("revision", { label: "Revision",  defaultSide: "right", icon: RevisionIcon }),
-  cut:      meta("cut",      { label: "Cut",       defaultSide: "right", icon: CutIcon }),
-  todo:     meta("todo",     { label: "Todo",      defaultSide: "right", icon: TodoIcon }),
-  report:   meta("report",   { label: "Report",    defaultSide: "left",  icon: ReportIcon }),
+  note:     meta("note",     { label: "Note",      icon: NoteIcon }),
+  archive:  meta("archive",  { label: "Archived",  icon: ArchiveIcon }),
+  revision: meta("revision", { label: "Revision",  icon: RevisionIcon }),
+  cut:      meta("cut",      { label: "Cut",       icon: CutIcon }),
+  todo:     meta("todo",     { label: "Todo",      icon: TodoIcon }),
+  report:   meta("report",   { label: "Report",    icon: ReportIcon }),
   // error derives from the registry "error" theme key — byte-identical to the
   // old hand-pointed footnote rust accent (DEFAULT_PANEL_COLORS.error ===
   // DEFAULT_PANEL_COLORS.footnote, pinned in marker-meta-derivation.test.ts);
   // same color family as footnotes, distinguished by the icon glyph.
-  error:    meta("error",    { label: "Error",     defaultSide: "right", icon: ErrorIcon }),
+  error:    meta("error",    { label: "Error",     icon: ErrorIcon }),
 };
 
 /** Number of icon columns per row in the margin grid */
@@ -553,6 +565,115 @@ export const MARGINALIA_MARGIN_WIDTH = MARGINALIA_MARGIN_WIDTH_LEFT;
 export const MARGINALIA_MIN_MARGIN_RIGHT = MARGINALIA_MARGIN_WIDTH_RIGHT;
 export const MARGINALIA_MIN_MARGIN_LEFT = MARGINALIA_MARGIN_WIDTH_LEFT;
 
+// ── Lane regime: does a pod-anchored lane element still clear the prose? ─────
+//
+// Every element in the lane is POD-anchored — its x is a fixed offset from the
+// pod edge — while the prose text edge moves with the margin. So they all face
+// the SAME question: at this margin, does my slot still land in the margin, or
+// back over the text? Before task 214 each consumer answered it separately, or
+// not at all:
+//
+//   - the margin FLOOR asked it as a flag (`laneReserved` → `Math.max`);
+//   - the BOLT asked it inline (`inboard >= editorRight + INNER_PAD`);
+//   - the MARKER GRID never asked. It packed at the fixed 104-lane offsets
+//     whatever the margin was, so a compressed code-split (48px comfort gutter,
+//     lane NOT reserved) put col0's opaque badge 14px INBOARD of the text edge,
+//     painting over the last words of every marked line — reachable with no
+//     user action beyond opening the Code pane.
+//
+// ONE predicate now answers it for all of them, parameterized by the only thing
+// that differs between elements: `inset`, how far the element's INNERMOST edge
+// (the edge nearest the prose) sits from the pod edge on its side. Both sides
+// reduce to the same arithmetic because both containers are pod-anchored:
+//   right: element edge = podRight − inset, text edge = podRight − available
+//   left:  element edge = podLeft  + inset, text edge = podLeft  + available
+// so clearance ⟺ `available − inset ≥ INNER_PAD` either way.
+//
+// `available` is the MEASURED pod-edge→text-edge distance on that side
+// (`podRight − editorRight`, `contentLeft − podLeft` from the geometry
+// service's viewport frame) — not the `--editor-pl/pr` pref, so a pod clipped
+// by the code split (where podRight is the VISIBLE edge) is answered honestly.
+
+/**
+ * Does a pod-anchored lane element whose innermost edge sits `inset` px from
+ * the pod edge still clear the prose by `MARGINALIA_INNER_PAD`, given the
+ * `available` margin on that side? THE lane-regime predicate — the bolt's
+ * inboard/cramped fork and the marker grid's show/hide fork are the same
+ * question asked about two different slots.
+ */
+export function laneSlotClearsProse(inset: number, available: number): boolean {
+  return available - inset >= MARGINALIA_INNER_PAD;
+}
+
+/**
+ * Effective marker COLUMNS on a side. The left grid uses a single column: its
+ * inner-left slot is reserved across all paragraphs and headings for the
+ * paragraph popout button, so a marker never lands there. Lives here (not in
+ * the grid module) because the grid's placement AND the lane-fit inset below
+ * both depend on it — two readers, one statement.
+ */
+export function marginaliaEffectiveCols(side: "left" | "right"): number {
+  return side === "left" ? 1 : MARGINALIA_COLS;
+}
+
+/**
+ * Container-relative x of the marker grid's col0 on the LEFT side. The left
+ * lane packs [OUTER_PAD][col0][gap][reserved popout slot][INNER_PAD][text], so
+ * col0 starts one outer pad in (= 22). Named to mirror
+ * `MARGINALIA_GRID_X_RIGHT` so `cellAt` reads a GRID_X_<side> constant on both
+ * sides instead of restating one side's arithmetic inline.
+ */
+export const MARGINALIA_GRID_X_LEFT =
+  MARGINALIA_MARGIN_WIDTH_LEFT - MARGINALIA_INNER_PAD - ICONS_BLOCK_WIDTH;
+
+/** Container-relative x of the marker grid's col0 on `side`. */
+export function marginaliaGridX(side: "left" | "right"): number {
+  return side === "left" ? MARGINALIA_GRID_X_LEFT : MARGINALIA_GRID_X_RIGHT;
+}
+
+/**
+ * How far the marker grid's INNERMOST painted edge sits from the pod edge on
+ * `side` — the grid's `inset` for {@link laneSlotClearsProse}. Derived from the
+ * same col0 offset + effective-column count `cellAt` packs against, so it
+ * cannot drift from where the badges actually land:
+ *
+ *   right — cells run outward from col0, so the innermost edge is col0's LEFT
+ *           edge: `WIDTH_RIGHT − GRID_X_RIGHT` = 62 (grid needs ≥ 70px margin).
+ *   left  — cells run inward from col0, so the innermost edge is the icon
+ *           block's RIGHT edge: `GRID_X_LEFT + blockWidth` = 44 (≥ 52px).
+ *
+ * The two thresholds differ, and that is the point: the bolt sits INBOARD of
+ * the markers, so it tucks at margins where the markers still fit honestly.
+ */
+export function marginGridInset(side: "left" | "right"): number {
+  const cols = marginaliaEffectiveCols(side);
+  const blockWidth =
+    cols * MARGINALIA_ICON_SIZE + (cols - 1) * MARGINALIA_COL_GAP;
+  return side === "left"
+    ? marginaliaGridX("left") + blockWidth
+    : MARGINALIA_MARGIN_WIDTH_RIGHT - marginaliaGridX("right");
+}
+
+/**
+ * Does the marker grid fit on `side` at this `available` margin? The ONE
+ * producer of the show/hide answer the grid consumes (`computeMarkerPositions`
+ * takes the resolved booleans, so no call site re-derives this).
+ *
+ * `available === null` means geometry is not measured yet (the pre-refresh
+ * EMPTY viewport frame, a hidden pane, a detached editor). That FAILS OPEN —
+ * markers render exactly as they did before this predicate existed — because
+ * a zeroed frame is indistinguishable from a zero-width margin, and hiding
+ * every marker on an unmeasured editor would be a far worse failure than the
+ * overlap this guards.
+ */
+export function markerGridFits(
+  side: "left" | "right",
+  available: number | null,
+): boolean {
+  if (available === null || !Number.isFinite(available)) return true;
+  return laneSlotClearsProse(marginGridInset(side), available);
+}
+
 /** The COMFORTABLE per-side horizontal gutter the editor caps margins at when
  *  the Code pane is open and compressing the editor. A building block of
  *  SplitWithCode's EDITOR_PANE_COMPRESSED_MIN_PX (≈300px prose + one of these
@@ -644,7 +765,17 @@ export function computeBoltLeftFromPod({
 }): number {
   const inboard =
     podRight - MARGINALIA_MARGIN_WIDTH_RIGHT + MARGINALIA_BOLT_X_RIGHT;
-  if (inboard >= editorRight + MARGINALIA_INNER_PAD) return inboard;
+  // The inboard slot is taken only while it clears the prose — asked through
+  // the shared lane-regime predicate (task 214), with the bolt's own inset:
+  // its innermost edge is `WIDTH_RIGHT − BOLT_X_RIGHT` = 96 from the pod edge,
+  // so this reduces to `available ≥ 104` exactly as the inline comparison it
+  // replaces did. The marker grid asks the SAME question with ITS inset, so
+  // "which lane elements survive this margin?" has one answer, not three.
+  if (laneSlotClearsProse(
+      MARGINALIA_MARGIN_WIDTH_RIGHT - MARGINALIA_BOLT_X_RIGHT,
+      podRight - editorRight,
+    ))
+    return inboard;
   // Cramped code-view gutter — tuck the bolt against the scrollbar, but FLOOR it
   // at the prose edge so it never overshoots back over the text. The gutter tuck
   // (`podRight − SCROLLBAR_GUTTER − BOLT_SCROLLBAR_GAP − BOLT`) is a fixed

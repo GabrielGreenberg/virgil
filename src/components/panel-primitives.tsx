@@ -28,18 +28,24 @@ import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
 import { cardHasContent } from "@/cards/has-content";
-import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable } from "@/cards/predicates";
+import { isPoppable, hasCollabClaims, collabClaimScope, isDroppable, isArchivable, isExcerptCardKind, bodySchemaForCardKind } from "@/cards/predicates";
+import type { CardBodySchemaScope } from "@/lib/tiptap-extensions";
 import { useCardArchiveActions } from "@/panels/_shared/card-archive-actions";
+import { useCardRestoreActions } from "@/panels/_shared/card-restore-actions";
 import { DropChevrons } from "./icons/DropChevrons";
 import { JumpChevron } from "./icons/JumpChevron";
 import { beginCardDropGesture } from "./drop-mode/card-drop-gesture";
+import type { InlineAtomCardKind } from "./drop-mode/types";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import RichTextField from "./RichTextField";
 import { BorrowedMainText } from "./BorrowedMainText";
+import { StaticBorrowedText } from "./StaticBorrowedText";
+import { useCardTier } from "@/cards/presence";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";
-import { MenuProvider } from "./menu/MenuProvider";
-import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
+import { AnchoredMenu } from "./menu/AnchoredMenu";
+import { MenuActionRow } from "./menu/MenuActionRow";
+import { useMenuItem } from "./menu/useMenuItem";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -519,13 +525,71 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
  *  panel with a NEUTRAL "drag into the editor to anchor it" cue: a dashed border
  *  + reduced opacity. This is deliberately DISTINCT from BOTH the anchored rest
  *  state (solid border, full opacity) AND the `orphaned` ERROR state (which
- *  keeps its faded {@link BadgeOrphaned} "no anchor" dot). Both the Citation and
- *  Footnote unanchored cards consume these so the two twins can't drift apart. */
-export const UNANCHORED_CARD_CLASS = "border-dashed opacity-80";
+ *  keeps its faded {@link BadgeOrphaned} "no anchor" dot).
+ *
+ *  **Module-private on purpose (task 316).** It is reached ONLY through the
+ *  {@link UnanchoredCardCue} prop, which also carries the `cardKey` — see that
+ *  type for why the look and the mechanism must be one declaration. */
+const UNANCHORED_CARD_CLASS = "border-dashed opacity-80";
 
-/** Tooltip for an unanchored/parked card — pairs with {@link UNANCHORED_CARD_CLASS}. */
-export function unanchoredCardTitle(noun: "citation" | "footnote"): string {
+/** Tooltip copy for an unanchored/parked card — the string SSOT, paired with
+ *  the private cue class by {@link PanelCard}. Exported for the contract suites
+ *  that assert the rendered tooltip; a title alone paints no cue, so exporting
+ *  it cannot reopen the drift door the class closes. */
+export function unanchoredCardTitle(noun: ParkedCardKind): string {
   return `Unanchored ${noun} — drag into the editor to anchor it`;
+}
+
+/** The card kinds that can be PARKED and later re-anchored — derived from
+ *  {@link InlineAtomCardKind}, the kinds whose inline atom a drop can REBUILD
+ *  (`src/components/drop-mode/atom-card-apis.ts`). That derivation is the
+ *  point: "may wear the parked cue" and "can be put back" are the same fact,
+ *  so a future inline-atom kind inherits both at once instead of being added
+ *  to a hand-kept noun list. */
+export type ParkedCardKind = InlineAtomCardKind;
+
+/**
+ * The parked ("unanchored") rest state, declared as ONE fact.
+ *
+ * Task 316 — why this is a prop and not two loose values. The cue used to be a
+ * class constant plus a title helper that each card spread onto separate props
+ * by hand, while the thing that makes the cue ACTIONABLE — the `cardKey` that
+ * renders {@link CardDropButton} and arms the header lift — was a third,
+ * unrelated prop. `CitationCard` threaded all three; `UnanchoredFootnoteCard`
+ * threaded the first two. So the footnote card wore the full "drag into the
+ * editor to anchor it" chrome, in the docked panel AND in omni, with no drop
+ * affordance anywhere — a promise with no mechanism, and nothing could catch
+ * it: the cue's own doc claimed the shared constants kept the twins in
+ * lockstep, and they did, on everything except the prop that mattered.
+ *
+ * Now the look and the mechanism are the same declaration: paint the cue and
+ * you have necessarily threaded the key. A card that omits the key does not
+ * compile, which is the one guard that catches the ORIGINAL shape (a test of
+ * the cue constants never could — the constants were never the part that
+ * misbehaved).
+ */
+export interface UnanchoredCardCue {
+  /** The parked kind — supplies the tooltip noun. */
+  kind: ParkedCardKind;
+  /** The canonical `float:card:<kind>:<id>` key (always `cardPopKey`, never a
+   *  hand-built literal). Threaded into {@link PanelCard}'s `cardKey`, so
+   *  declaring the cue IS wiring the re-anchor gesture. (A card that also
+   *  passes `cardKey` outright — the citation twin does, since an ANCHORED
+   *  citation needs one too — passes the same `cardPopKey` value; the explicit
+   *  prop wins.) */
+  cardKey: string;
+  /** Whether the card can produce its atom RIGHT NOW. Required, not defaulted:
+   *  the two twins answer it from different facts (a footnote always can — its
+   *  body is the only attr and an empty body is a legal footnote; a citation
+   *  cannot while it is a keyless draft, nor while it is a not-yet-created
+   *  draft record whose id `commandFor` can't resolve), and a default would be
+   *  a decision nobody made.
+   *
+   *  False keeps the parked LOOK (the card really is parked — that is the state
+   *  the cue exists to distinguish) and withholds only the "drag into the
+   *  editor to anchor it" PROMISE. Withholding both would erase the one state
+   *  cue the most-broken card in the panel has. */
+  canAnchor: boolean;
 }
 
 /** Small uppercase overline naming the card type ("Citation", "Footnote", …).
@@ -613,6 +677,19 @@ export function CardKindHeader({
   );
 }
 
+/**
+ * The card-type morph dropdown ("Change card type"). Folded onto `AnchoredMenu`
+ * in task 181, retiring an `absolute top-full … z-50` surface with a bespoke
+ * `document.addEventListener("mousedown")` closer, no Escape, no flip/clamp and
+ * no keyboard nav.
+ *
+ * The z-tier was the user-visible half: `z-50` paints BELOW the float layer
+ * (1200–1204), so a popped-out card overlapping this one occluded the open menu
+ * — and being `absolute` rather than portaled, it was also clipped by the panel
+ * list's own scroll container whenever the card sat near the bottom. Both are
+ * properties of the surface, so both are answered by moving the surface, not by
+ * raising a number.
+ */
 function CardKindDropdown({
   kind,
   labelOverride,
@@ -624,61 +701,83 @@ function CardKindDropdown({
   options: CardKind[];
   onChange: (k: CardKind) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (
-        menuRef.current?.contains(e.target as Node) ||
-        buttonRef.current?.contains(e.target as Node)
-      ) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
   return (
-    <span className="relative inline-flex items-center">
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        onMouseDown={(e) => e.stopPropagation()}
-        draggable={false}
-        onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        className="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium hover:text-ink-body transition-colors cursor-pointer bg-transparent p-0"
-        data-hint="Change card type" aria-label="Change card type"
-      >
-        {labelOverride ?? cardTypeLabel(kind)}
-        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-      {open && (
-        <div
-          ref={menuRef}
-          className="absolute top-full left-0 mt-1 z-50 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 min-w-[120px]"
-        >
-          {options.map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-                if (opt !== kind) onChange(opt);
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              className={`w-full text-left text-[11px] uppercase tracking-wider px-3 py-1 hover:bg-surface-muted-strong transition-colors ${opt === kind ? "text-ink-body font-medium" : "text-[var(--muted)]"}`}
-            >
-              {cardTypeLabel(opt)}
-            </button>
-          ))}
-        </div>
+    <AnchoredMenu
+      ariaLabel="Change card type"
+      align="start"
+      triggerHint="Change card type"
+      triggerAriaLabel="Change card type"
+      triggerClassName="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium hover:text-ink-body transition-colors cursor-pointer bg-transparent p-0"
+      wrapperClassName="relative inline-flex items-center"
+      menuClassName="min-w-[120px]"
+      trigger={() => (
+        <>
+          {labelOverride ?? cardTypeLabel(kind)}
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </>
       )}
-    </span>
+    >
+      {({ close }) =>
+        options.map((opt) => (
+          <CardKindOption
+            key={opt}
+            opt={opt}
+            current={kind}
+            onPick={() => {
+              close();
+              if (opt !== kind) onChange(opt);
+            }}
+          />
+        ))
+      }
+    </AnchoredMenu>
+  );
+}
+
+/** One row of the card-type menu. Registered via `useMenuItem` so arrow nav +
+ *  the roving highlight reach it (the hand-rolled version had neither), and
+ *  `aria-checked` states which type the card currently IS — a fact the old
+ *  bolded-text-only row conveyed to sighted users alone.
+ *
+ *  `menuitemradio`, not `menuitemcheckbox`: a card has exactly one kind and
+ *  picking one un-picks the other, which is the radio semantic. (Its sibling
+ *  `MenuToggleRow` is a checkbox correctly — `*` and `Aa` on a citation are
+ *  genuinely independent.) */
+function CardKindOption({
+  opt,
+  current,
+  onPick,
+}: {
+  opt: CardKind;
+  current: CardKind;
+  onPick: () => void;
+}) {
+  const isCurrent = opt === current;
+  const { active, getItemProps } = useMenuItem({
+    id: `kind-${opt}`,
+    role: "menuitemradio",
+    run: onPick,
+  });
+  return (
+    <button
+      {...getItemProps()}
+      // No per-row click fence: `MenuProvider` stops the click at the menu
+      // CONTAINER (task 181), which is what keeps this row from reaching the
+      // unified card header — a `role="button"` whose `onClick` runs
+      // `headerActivate()`, so an unfenced pick would morph the card AND
+      // collapse/select it in one gesture, including on the pick-the-kind-it-
+      // already-is no-op path. A fence here would leave the surface's own `py-1`
+      // padding band unfenced, which is why it belongs one level up.
+      type="button"
+      aria-checked={isCurrent}
+      className={`w-full text-left text-[11px] uppercase tracking-wider px-3 py-1 transition-colors ${
+        isCurrent ? "text-ink-body font-medium" : "text-[var(--muted)]"
+      } ${active ? "bg-surface-muted-strong" : "hover:bg-surface-muted-strong"}`}
+    >
+      {cardTypeLabel(opt)}
+    </button>
   );
 }
 
@@ -1109,9 +1208,13 @@ export interface EditableCardProps {
    *  {@link UNANCHORED_CARD_CLASS} dashed/opacity parked cue). Additive: default
    *  `undefined` leaves every existing card's chrome unchanged. */
   extraCardClass?: string;
-  /** Native `title` (hover tooltip) forwarded to the card root — used for the
-   *  unanchored/parked cue's "drag to anchor" hint ({@link unanchoredCardTitle}). */
+  /** Native `title` (hover tooltip) forwarded to the card root. The parked
+   *  cue's own hint comes from {@link unanchored}, not from here. */
   title?: string;
+  /** The deliberately-parked rest state — forwarded verbatim to `PanelCard`.
+   *  See {@link UnanchoredCardCue}: it carries the `cardKey`, so a card that
+   *  wears the cue has necessarily wired the re-anchor gesture. */
+  unanchored?: UnanchoredCardCue;
 }
 
 /**
@@ -1133,7 +1236,7 @@ export function EditableCard({
   onTogglePopout, isPoppedOut, cardKey,
   compressed, compressedSummary, compressedContent, onToggleExpanded, onHeaderActivate,
   kind, kindLabelOverride, kindOptions, onKindChange,
-  canJump, onJump, chromeless, forceReadOnly, extraCardClass, title,
+  canJump, onJump, chromeless, forceReadOnly, extraCardClass, title, unanchored,
 }: EditableCardProps) {
   // Chrome-driven read-only mode: when the host has set
   // `editableCardKinds` and this card's kind isn't on the list, the
@@ -1154,10 +1257,24 @@ export function EditableCard({
     !!cardKind &&
     CARD_REGISTRY[cardKind].bodyClass === "borrowed" &&
     compressedContent != null;
+  // Task 308 — the ONE place a card's body vocabulary is resolved. Derived from
+  // the registry `bodySchema` facet and handed to BOTH body surfaces below
+  // (RichTextField when expanded, BorrowedMainText when compressed), so a kind's
+  // two views can never mount different schemas. Falls back to the narrow
+  // authored-prose scope when the caller passes no kind — the historical
+  // behavior for every non-card consumer of this primitive.
+  const schemaScope: CardBodySchemaScope = kind
+    ? bodySchemaForCardKind(kind)
+    : "card";
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  // Presence tier for the COLLAPSED borrowed body (perf Wave 3; flag off ⇒ 3
+  // ⇒ legacy live branch). Policy "static": collapsed footnote/archive prose
+  // is tier-1 static HTML regardless of nearness. Unconditional hook call;
+  // consulted only inside the compressed borrowed switch.
+  const borrowedTier = useCardTier("static", cardRef);
   // Set during a mouse press on the card so onFocusCapture can tell
   // pointer-driven focus (which the upcoming click will toggle) from
   // keyboard / programmatic focus (which should auto-select). Without
@@ -1182,6 +1299,19 @@ export function EditableCard({
   const archivable = isArchivable(kind) && cardArchive.enabled;
   const cardArchived = archivable && cardArchive.isArchived(id);
   const doArchive = archivable ? () => cardArchive.archive(kind, id) : undefined;
+
+  // Restore-to-document — the un-archive verb, self-wired from its own actions
+  // context on the SAME terms as the archive affordance above (task 106). Shows
+  // iff the kind's body is a document EXCERPT (registry-derived, so a future
+  // excerpt kind inherits it) AND a real provider is mounted. Threading this as
+  // a prop is precisely what left the feature dead for a year: declared on the
+  // panel, drilled through three layers, never destructured.
+  const cardRestore = useCardRestoreActions();
+  // Not on an already-SET-ASIDE card: a successful restore is what put it in
+  // that state, so the control there could only refuse. (The user un-sets-aside
+  // first if they want to hand the excerpt back a second time.)
+  const restorable = isExcerptCardKind(kind) && cardRestore.enabled && !cardArchived;
+  const doRestore = restorable ? () => cardRestore.restore(kind, id) : undefined;
 
   /** Check whether the card has any visible USER content. Routes through the
    *  kind-aware `cardHasContent` (the SAME predicate `deleteMarginItem` uses),
@@ -1261,6 +1391,11 @@ export function EditableCard({
           draggable={false}
           onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         >
+          {/* No `MenuRestore` twin here, deliberately: the only excerpt kind
+              (`archive`) renders with `inlineDelete`, which suppresses this
+              menu entirely — a menu item it can never reach would be exactly
+              the dead affordance task 106 exists to kill. Add one WITH a
+              surface that renders it, if a future excerpt kind needs it. */}
           {menuContent ?? ((onDelete || doArchive) ? (
             <ItemMenu>
               {doArchive && (
@@ -1297,9 +1432,11 @@ export function EditableCard({
       onHeaderActivate={onHeaderActivate}
       onTrashClick={inlineDelete && onDelete ? tryDelete : undefined}
       onArchiveClick={inlineDelete ? doArchive : undefined}
+      onRestoreClick={inlineDelete ? doRestore : undefined}
       isArchived={cardArchived}
       extraCardClass={extraCardClass ? `${cursorClass} ${extraCardClass}` : cursorClass}
       title={title}
+      unanchored={unanchored}
       draggable={cardDraggable}
       onDragStart={onDragStart}
       tabIndex={selected ? 0 : -1}
@@ -1385,12 +1522,32 @@ export function EditableCard({
               // text (same projection makeCompressedSummary uses) and show the
               // sentinel, matching the summary branch.
               richJsonToPlainText(compressedContent).trim() ? (
-                <BorrowedMainText
-                  value={compressedContent}
-                  instanceKey={`compressed:${cardKind}:${id}`}
-                  variant="footnote"
-                  bodyStyle={compressedBody}
-                />
+                // Presence tiers (perf Wave 3, flag virgil:card-tiers). The
+                // collapsed borrowed body's policy is "static": T1 renders the
+                // SAME pipeline as static HTML (StaticBorrowedText) instead of
+                // mounting a read-only editor per collapsed card; T0 (the
+                // doc-open ramp's first commit) shows the plain-text summary.
+                // Flag off ⇒ borrowedTier === 3 ⇒ the legacy live branch,
+                // byte-identical. Everything OUTSIDE this switch — the clamp
+                // div, the C24 empty guard, the title row — is tier-invariant.
+                borrowedTier >= 2 ? (
+                  <BorrowedMainText
+                    value={compressedContent}
+                    instanceKey={`compressed:${cardKind}:${id}`}
+                    variant="footnote"
+                    schemaScope={schemaScope}
+                    bodyStyle={compressedBody}
+                  />
+                ) : borrowedTier === 1 ? (
+                  <StaticBorrowedText
+                    value={compressedContent}
+                    variant="footnote"
+                    schemaScope={schemaScope}
+                    bodyStyle={compressedBody}
+                  />
+                ) : (
+                  makeCompressedSummary(compressedContent, compressedLines)
+                )
               ) : (
                 <CardEmptyText />
               )
@@ -1430,6 +1587,7 @@ export function EditableCard({
           value={value}
           placeholder={placeholder}
           variant={variant}
+          schemaScope={schemaScope}
           selected={selected}
           muted={muted}
           onChange={onChange}
@@ -1501,8 +1659,11 @@ export function AiRequestCheckbox({
 
 /** Reusable class-string tokens. */
 export const PANEL = {
-  /** Scrollable list container wrapping all cards. */
-  list: "flex-1 overflow-y-auto px-2 py-2 space-y-2",
+  /** Scrollable list container wrapping all cards. The leading
+   *  `panel-card-list` token is a STABLE hook (not a Tailwind utility) —
+   *  Wave-4 Stage A keys `body.perf-contain .panel-card-list` containment
+   *  on it, so every consumer of this constant inherits the rule. */
+  list: "panel-card-list flex-1 overflow-y-auto px-2 py-2 space-y-2",
   /** Standard card-body padding (UI-consistency sweep, ratified
    *  2026-06-12). One token for EditableCard's expanded body and the
    *  bespoke bodies (citation rows, todo, highlight, AI request).
@@ -1527,8 +1688,9 @@ export const PANEL = {
 } as const;
 
 /* ── Button primitive ──────────────────────────────────────────────
-   Five variants, three sizes, codified per docs/virgil-design-system/
-   07-buttons-and-inputs.md. Don't hand-roll filled buttons; pick a
+   Five variants, three sizes, codified in src/STYLE_GUIDE.md ("Buttons"),
+   which also names the surfaces that stay hand-rolled BY DESIGN (stateful
+   toggles). Don't hand-roll filled buttons; pick a
    variant. There is no "blue button" in Virgil — `warm` replaces the
    bg-blue-100 / bg-emerald-600 patterns that used to scatter across
    modal footers and suggestion flows. */
@@ -1943,6 +2105,39 @@ export function CardArchiveButton({
 }
 
 /**
+ * Restore-to-document affordance — the un-archive verb, and the third member of
+ * the bottom-right overlay cluster (restore · archive · trash, each 22px apart,
+ * hover-revealed). Renders only on an EXCERPT-bodied card (`isExcerptCardKind`),
+ * whose body holds a verbatim slice of the document rather than authored prose:
+ * pressing it hands that slice back to the prose at the caret and retires the
+ * card.
+ *
+ * Deliberately NOT the box-and-arrow glyph `CardArchiveButton` shows in its
+ * unarchived state — the two would sit 22px apart meaning different things. A
+ * return arrow reads as "put it back where it came from", which is the verb.
+ * Neutral tone: nothing is destroyed (the content moves), so this is not a
+ * danger action. Requires the outer card wrapper to be `position: relative`. */
+export function CardRestoreButton({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      className="iconbtn-sm absolute bottom-1.5 right-[3.125rem] opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
+      aria-label="Restore to document"
+      data-hint="Restore to document"
+      data-hint-pos="above"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="9 14 4 9 9 4" />
+        <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
+      </svg>
+    </button>
+  );
+}
+
+/**
  * Universal card wrapper. One source of truth for:
  *   - outer card div (`group relative`, themed border + selection state)
  *   - popped-out state (removes rounding/border, fills floating window)
@@ -1965,6 +2160,10 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  first (atom-bearing kinds). Gated identically to `onTrashClick`
    *  (hover-revealed, suppressed while collapsed). */
   onArchiveClick?: () => void;
+  /** When provided, renders a bottom-right RESTORE-to-document button left of
+   *  the archive button — the un-archive verb for excerpt-bodied cards. Gated
+   *  identically to `onTrashClick`. */
+  onRestoreClick?: () => void;
   /** Whether this card is currently archived — flips the archive button to its
    *  "Unarchive" affordance. */
   isArchived?: boolean;
@@ -1977,6 +2176,13 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  with `onTogglePopout`, mousedown on the card's header element
    *  becomes a drag-to-popout gesture. */
   cardKey?: string;
+  /** The deliberately-parked rest state ({@link UnanchoredCardCue}): paints the
+   *  dashed/reduced-opacity cue, supplies the "drag into the editor to anchor
+   *  it" tooltip, AND supplies `cardKey` when the caller passes none — one
+   *  declaration for the look and the mechanism (task 316). Composes with
+   *  `extraCardClass` rather than replacing it: a parked card that is also a
+   *  drop target is two true states, not a choice between them. */
+  unanchored?: UnanchoredCardCue;
   /** When true, the card is in its collapsed/minimized (compressed) form. Docked,
    *  this equals `!expanded`. It no longer gates the lift-off drag — lift works
    *  in both states now (`onWrapperMouseDown`) — it only suppresses the
@@ -2067,12 +2273,15 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     onTogglePopout,
     onTrashClick,
     onArchiveClick,
+    onRestoreClick,
     isArchived,
     extraCardClass,
     className,
     style,
     onClick,
-    cardKey,
+    cardKey: cardKeyProp,
+    unanchored,
+    title: titleProp,
     isCollapsed,
     onToggleExpanded,
     onHeaderActivate,
@@ -2093,6 +2302,27 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   },
   ref,
 ) {
+  // ── The parked cue, resolved once (task 316) ──────────────────────
+  // The cue owns all three of its halves so no card can render two of them:
+  //  - the KEY it carries is the card key when the caller passes none, which
+  //    is what makes the drop button + header lift reachable;
+  //  - the CLASS is appended to `extraCardClass` (never replaces it — a
+  //    drop-target ring and a parked border are different axes and may both
+  //    be true);
+  //  - the TITLE is withheld unless the cue says the card can anchor NOW, so it
+  //    never promises a gesture that would decline. `canAnchor` is the CARD's
+  //    answer rather than a read of `dropDisabled` here: that prop's contract
+  //    is "consulted only for a droppable kind, ignored otherwise", and a cue
+  //    silently suppressed by an unset `dropDisabled` on some future kind would
+  //    be a second question asked of one flag.
+  const cardKey = cardKeyProp ?? unanchored?.cardKey;
+  const cardClass = unanchored
+    ? `${extraCardClass ? `${extraCardClass} ` : ""}${UNANCHORED_CARD_CLASS}`
+    : extraCardClass;
+  const title =
+    titleProp ??
+    (unanchored?.canAnchor ? unanchoredCardTitle(unanchored.kind) : undefined);
+
   /** Unified header rendering: when `kind` is provided, PanelCard owns the
    *  header. Single source of truth for header layout, height, slots, and
    *  popped-out chrome. Cards pass kind + slots and supply only the body
@@ -2119,8 +2349,18 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     if (!el) return;
     const header = el.firstElementChild as HTMLElement | null;
     if (!header) return;
+    // Equality-bailed (task 317). The RO fires once per card per frame of a
+    // window/pane resize — every card in every open panel — and an
+    // unconditional `setProperty` re-dirties layout on each one even when the
+    // header height did not move (the editor-observer law's read-before-write
+    // rule; the bail is also what terminates the var-write → resize → RO
+    // feedback loop).
+    let lastH = NaN;
     const update = () => {
-      el.style.setProperty("--pc-header-h", `${header.getBoundingClientRect().height}px`);
+      const h = header.getBoundingClientRect().height;
+      if (h === lastH) return;
+      lastH = h;
+      el.style.setProperty("--pc-header-h", `${h}px`);
     };
     update();
     const ro = new ResizeObserver(update);
@@ -2293,7 +2533,8 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // card via `[data-omni-entry]:not([data-selected])` without depending on
       // class internals. Present-only when selected (CSS matches on presence).
       data-selected={selected ? "" : undefined}
-      className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`}
+      title={title}
+      className={`group relative ${themedCard(theme, selected, cardClass)}${isPoppedOut ? (chromeless ? " flex-1 min-h-0 flex flex-col" : " h-full flex flex-col") : ""}${className ? ` ${className}` : ""}`}
       style={{
         ...themedCardStyle(theme, selected, { isPoppedOut }),
         // Kind color for the card hover/selected outline rules (the
@@ -2437,6 +2678,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
           )}
         </>
       )}
+      {onRestoreClick && !isCollapsed && (
+        <CardRestoreButton onClick={onRestoreClick} />
+      )}
       {onArchiveClick && !isCollapsed && (
         <CardArchiveButton onClick={onArchiveClick} isArchived={isArchived} />
       )}
@@ -2515,8 +2759,17 @@ export function PanelHeader({
 
 /** "+" button that, when clicked, drops a small dropdown menu of choices
  *  (instead of firing a single onAdd). Used by panels that host more than
- *  one card kind. Mirrors the flip-on-overflow / click-outside-to-close
- *  pattern from `DocStyleDropdown`. */
+ *  one card kind.
+ *
+ *  Folded onto `<AnchoredMenu>` (task 143). What it hand-rolled before: a
+ *  `document` mousedown closer, and a flip computed off a HARD-CODED size
+ *  estimate (`POPUP_H = 28 · options.length + 8`, `POPUP_W = 160`) that no row
+ *  height was ever checked against — with no clamp behind it, so an estimate
+ *  that ran short simply pushed rows off the viewport. The shell measures the
+ *  rendered menu instead, clamps + scrolls what still doesn't fit, re-anchors
+ *  on resize, and adds the Escape the old menu never had. The option contract
+ *  (label / disabled / the trigger rect handed to `onClick` so the Bibliography
+ *  picker can anchor to "+") is unchanged. */
 function HeaderAddDropdown({
   options,
 }: {
@@ -2526,65 +2779,15 @@ function HeaderAddDropdown({
     disabled?: boolean;
   }[];
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const triggerRectRef = useRef<DOMRect | null>(null);
-  const [pos, setPos] = useState<{
-    top?: number;
-    bottom?: number;
-    left?: number;
-    right?: number;
-  }>({});
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-
-  const handleToggle = () => {
-    if (!open && btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      triggerRectRef.current = r;
-      const POPUP_H = 28 * options.length + 8;
-      const POPUP_W = 160;
-      const GAP = 4;
-      const flipUp =
-        r.bottom + GAP + POPUP_H > window.innerHeight && r.top > POPUP_H + GAP;
-      const flipLeft =
-        r.left + POPUP_W > window.innerWidth - 4 &&
-        window.innerWidth - r.right > POPUP_W;
-      const vertical = flipUp
-        ? { bottom: window.innerHeight - r.top + GAP }
-        : { top: r.bottom + GAP };
-      const horizontal = flipLeft
-        ? { right: window.innerWidth - r.right }
-        : { left: r.left };
-      setPos({ ...vertical, ...horizontal });
-    }
-    setOpen(!open);
-  };
-
-  const pick = (onClick: (anchorRect?: DOMRect) => void) => {
-    const rect = triggerRectRef.current ?? undefined;
-    setOpen(false);
-    onClick(rect ?? undefined);
-  };
-
   return (
-    <div ref={ref} className="relative inline-flex items-center">
-      <button
-        ref={btnRef}
-        onClick={handleToggle}
-        className="iconbtn-sm"
-        data-hint="Add"
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
+    <AnchoredMenu
+      ariaLabel="Add"
+      align="start"
+      triggerHint="Add"
+      triggerClassName="iconbtn-sm"
+      wrapperClassName="relative inline-flex items-center"
+      menuClassName="min-w-[140px]"
+      trigger={() => (
         <svg
           width="14"
           height="14"
@@ -2596,39 +2799,28 @@ function HeaderAddDropdown({
         >
           <path d="M12 5v14M5 12h14" />
         </svg>
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="fixed bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-[60] min-w-[140px]"
-          style={{
-            top: pos.top,
-            bottom: pos.bottom,
-            left: pos.left,
-            right: pos.right,
-          }}
-        >
-          {options.map((o) => (
-            <button
-              key={o.label}
-              role="menuitem"
-              disabled={o.disabled}
-              onClick={() => {
-                if (o.disabled) return;
-                pick(o.onClick);
-              }}
-              className={
-                o.disabled
-                  ? "w-full text-left px-3 py-1 text-sm text-ink-faint cursor-not-allowed"
-                  : "w-full text-left px-3 py-1 text-sm text-[var(--foreground)] hover-on-light"
-              }
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
       )}
-    </div>
+    >
+      {({ close, anchorRect }) =>
+        options.map((o, i) => (
+          <MenuActionRow
+            key={o.label}
+            // The id becomes a real DOM `id` (and, wherever a menu wires
+            // `getActiveDescendantHost`, an `aria-activedescendant` reference),
+            // and HTML forbids whitespace in one — every add-menu label has a
+            // space in it ("Search library…"). Slugged, with the index kept so
+            // two labels that slug alike can't collide in the registry.
+            id={`${i}-${o.label.replace(/[^a-zA-Z0-9_-]+/g, "-")}`}
+            label={o.label}
+            disabled={o.disabled}
+            onSelect={() => {
+              close();
+              o.onClick(anchorRect ?? undefined);
+            }}
+          />
+        ))
+      }
+    </AnchoredMenu>
   );
 }
 
@@ -2753,22 +2945,6 @@ export function BandDivider({
 
 /* ── Three-dot item menu ─────────────────────────────────────────── */
 
-// Anchor the dropdown below its trigger, flipping above near the viewport
-// bottom. `align="left"` (panel-header menus, near the panel's left edge)
-// drops rightward (align:start); `align="right"` (card menus, near a card's
-// right edge) drops leftward (align:end). Matches the sibling topbar kebabs
-// (ExternalChangeBadge / CollabStatusPill) — one placement vocabulary.
-const ITEM_MENU_PLACEMENTS: Record<"left" | "right", FloatingMenuPlacement[]> = {
-  left: [
-    { side: "below", align: "start" },
-    { side: "above", align: "start" },
-  ],
-  right: [
-    { side: "below", align: "end" },
-    { side: "above", align: "end" },
-  ],
-};
-
 export function ItemMenu({
   children,
   align = "right",
@@ -2783,12 +2959,6 @@ export function ItemMenu({
    *  menu's contents are narrower than that (Outline's is "View options"). */
   hint?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  // Unique per instance so two momentarily-coexisting menus don't collide in
-  // the cross-backend registry table (`publishRegistry`).
-  const menuId = useId();
   // Auto-injected text-size widget for any panel-header menu inside a Panel.
   // Card-level menus (align="right") are skipped. The widget is appended
   // INTO the first child of the menu (the standard color-swatch + view-toggle
@@ -2821,76 +2991,56 @@ export function ItemMenu({
     );
   }, [children, injectTextSize, bodyKey]);
 
-  const close = useCallback(() => {
-    setOpen(false);
-    setAnchorRect(null);
-  }, []);
-  const toggle = useCallback(() => {
-    setOpen((o) => {
-      const next = !o;
-      setAnchorRect(next ? (btnRef.current?.getBoundingClientRect() ?? null) : null);
-      return next;
-    });
-  }, []);
-  const trackAnchor = useCallback(
-    () => btnRef.current?.getBoundingClientRect() ?? null,
-    [],
-  );
-
   // Panel-header menus sit at the far left and use a bare button (no
   // rounded lozenge / hover background) for a lighter-weight look.
   // Card-level menus keep the button-style treatment.
   const isPanelHeader = align === "left";
   return (
-    <div className={`relative shrink-0${isPanelHeader ? " -ml-3" : ""}`}>
-      <button
-        ref={btnRef}
-        onClick={(e) => { e.stopPropagation(); toggle(); }}
-        className={isPanelHeader ? "iconbtn-sm" : "iconbtn-md"}
-        data-hint={hint}
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
+    // Folded onto the canonical `<Menu>` primitive in task 180 (retiring a
+    // hand-rolled `fixed z-[9999]` portal + bespoke mousedown listener that was
+    // trapped below floats in a stacking context and collided with
+    // DROP_INDICATOR_Z), and onto `<AnchoredMenu>` in task 143 — which is the
+    // same fold one level further out: the open-state / anchor-rect /
+    // trackAnchor / excludeRefs / trigger-ARIA plumbing this component used to
+    // own is the very plumbing the three remaining hand-rolled dropdowns each
+    // re-derived (and each dropped a different guard from). `closeOnInsideClick`
+    // preserves this menu's "any click inside dismisses" semantics + the
+    // stopPropagation fence against the card header, which its opaque, arbitrary
+    // button children can't express themselves. Chrome kept byte-identical
+    // apart from the added `maxHeight` clamp.
+    <AnchoredMenu
+      ariaLabel="Options"
+      align={align === "left" ? "start" : "end"}
+      gap={4}
+      triggerHint={hint}
+      triggerClassName={isPanelHeader ? "iconbtn-sm" : "iconbtn-md"}
+      wrapperClassName={`relative shrink-0${isPanelHeader ? " -ml-3" : ""}`}
+      menuClassName="min-w-[100px]"
+      closeOnInsideClick
+      // The clamp is ON — the shell's default — as of task 181, and the reason
+      // it was ever off is worth keeping: the clamp implies `overflow-y: auto`,
+      // a scroll container clips its absolutely-positioned descendants (and
+      // `overflow-x` computes to `auto` alongside it, so on both axes), and
+      // every panel-header kebab opens with a `<PanelThemePicker>` row whose
+      // swatch grid used to be exactly such a popup — an `absolute top-full`
+      // surface 168px wide inside a `min-w-[100px]` menu. Clamping then would
+      // have cut the picker off. The picker now PORTALS (its own `AnchoredMenu`,
+      // a body child at the chrome z-tier), so there is nothing left inside this
+      // menu for a scroll container to clip, and the kebab gets what every other
+      // menu already had: a long menu near the bottom of the window flips up and
+      // scrolls instead of rendering rows nobody can reach. Re-introducing a
+      // non-portaled absolute popup as a kebab row would silently re-break this
+      // — put it on the primitive instead.
+      trigger={() => (
         <svg width={isPanelHeader ? 14 : 16} height={isPanelHeader ? 14 : 16} viewBox="0 0 24 24" fill="currentColor" stroke="none">
           <circle cx="12" cy="5" r="2" />
           <circle cx="12" cy="12" r="2" />
           <circle cx="12" cy="19" r="2" />
         </svg>
-      </button>
-      {open && anchorRect && (
-        // Folded onto the canonical `<Menu>` primitive (MenuProvider): one
-        // dismiss controller (mousedown-outside + Escape), one keyboard/roving
-        // controller, and body-portaled at OPEN_CHROME_MENU_Z — retiring this
-        // menu's old hand-rolled `fixed z-[9999]` portal + bespoke mousedown
-        // listener, which was trapped below floats in a stacking context and
-        // collided with DROP_INDICATOR_Z. Chrome kept byte-identical.
-        <MenuProvider
-          id={`item-menu-${menuId}`}
-          layout="list"
-          role="menu"
-          portal
-          anchorRect={anchorRect}
-          placements={ITEM_MENU_PLACEMENTS[align]}
-          gap={4}
-          trackAnchor={trackAnchor}
-          // The kebab trigger lives outside the portaled menu, so exempt it from
-          // click-outside (else the toggle click self-closes the menu).
-          excludeRefs={[btnRef.current]}
-          onClose={close}
-          ariaLabel="Options"
-          containerClassName="bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 min-w-[100px]"
-        >
-          {/* Close-on-any-click + the stopPropagation fence: menu items fire on
-              onMouseDown/onClick, and this wrapper's onClick closes the menu and
-              keeps the click from bubbling (React tree, through the portal) to
-              the card header's toggle+select or the root's body contract —
-              preserving the old DOM-nested dropdown's exact semantics. */}
-          <div onClick={(e) => { e.stopPropagation(); close(); }}>
-            {enhancedChildren}
-          </div>
-        </MenuProvider>
       )}
-    </div>
+    >
+      {enhancedChildren}
+    </AnchoredMenu>
   );
 }
 

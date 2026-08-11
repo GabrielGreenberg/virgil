@@ -11,6 +11,11 @@ import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { onFontReady } from "@/lib/text-metrics";
 import {
+  isLayoutGestureActive,
+  parkDuringLayoutGesture,
+} from "@/lib/pane-resize";
+import { LAYOUT_SITE_IN_TEXT_POSITIONS } from "@/lib/layout-gesture-probe";
+import {
   recordKeystrokeWork,
   KEYSTROKE_WORK_INTEXT_RO,
 } from "@/lib/keystroke-latency-probe";
@@ -210,6 +215,54 @@ export function isDegenerateMeasure(
   return maxPos > minPos;
 }
 
+/** A (doc pos → pod-relative top) reference point for the out-of-zone
+ *  approximation. Knots are this pass's EXACT reads (in-band items) plus two
+ *  exact endpoints: (0, editor-top-in-pod) and (docSize, editor-top +
+ *  scrollHeight). Sorted by pos, tops monotone non-decreasing. */
+export interface TopKnot {
+  pos: number;
+  top: number;
+}
+
+/**
+ * Approximate the pod-relative top for an OUT-OF-ZONE item by linear
+ * interpolation between the surrounding knots (wave-2b C5). Pure arithmetic —
+ * this is what replaces the per-item `coordsAtPos` forced-layout read for
+ * items far outside the scroll band, where block-height variance between
+ * knots is invisible anyway. Both endpoints are exact (O(1) reads), so the
+ * approximation is anchored at the document's real extent; the common
+ * single-edit case shifts everything below the edit uniformly, which linear
+ * interpolation between an exact in-band knot and the exact doc-end knot
+ * reproduces closely. Items the user can SEE are never approximated — the
+ * in-band set gets exact reads, and the scroll-idle refinement re-runs the
+ * pass when approximated items exist so a jump-to-far-card settles exact.
+ *
+ * `knots` must be sorted by pos with ≥1 entry; out-of-range positions clamp
+ * to the outermost knots.
+ */
+export function approxTopForPos(
+  pos: number,
+  knots: ReadonlyArray<TopKnot>,
+): number {
+  if (knots.length === 0) return 0;
+  if (pos <= knots[0].pos) return knots[0].top;
+  const last = knots[knots.length - 1];
+  if (pos >= last.pos) return last.top;
+  // Binary search for the upper surrounding knot.
+  let lo = 0;
+  let hi = knots.length - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (knots[mid].pos <= pos) lo = mid;
+    else hi = mid;
+  }
+  const a = knots[lo];
+  const b = knots[hi];
+  if (b.pos === a.pos) return a.top;
+  const t = (pos - a.pos) / (b.pos - a.pos);
+  return a.top + t * (b.top - a.top);
+}
+
 const DEFAULT_ENTRY = (id: string) => `[data-link-card$=":${id}"]`;
 
 /** Optional pin: force one card's `top` to a fixed pod-relative Y. Cards
@@ -300,8 +353,10 @@ export function resolveCascade(
  *
  * Architecture: measurement and resolution are split.
  *
- *   1. **Measurement** (DOM-touching, slow): `coordsAtPos` per item and
- *      `getBoundingClientRect` per card. Writes a ref and bumps a
+ *   1. **Measurement** (DOM-touching, slow): `coordsAtPos` per IN-BAND item
+ *      and `getBoundingClientRect` per in-band card; out-of-band items are
+ *      interpolated (`approxTopForPos`, zero DOM reads — wave-2b C5) and
+ *      refined to exact on scroll idle. Writes a ref and bumps a
  *      version counter. Runs on editor content change, card-size change
  *      (ResizeObserver), window resize, or items-list change.
  *
@@ -389,6 +444,12 @@ export function useInTextPositions(
   // consumed via `retainedEntryHeight`. Cleared only on genuine disable/empty
   // (alongside `naturalRef`); pruned to the live item set each measure.
   const realHeightRef = useRef<Map<string, number>>(new Map());
+  // Ids whose committed naturalTop is an APPROXIMATION (out-of-zone item,
+  // wave-2b C5) rather than an exact coordsAtPos read. Rebuilt per measure
+  // pass; consumed by the scroll-idle refinement, which re-runs the pass
+  // only while this is non-empty (a deck with everything exact costs a
+  // scroll exactly one Set-size check).
+  const approxIdsRef = useRef<Set<string>>(new Set());
   const [measureVersion, setMeasureVersion] = useState(0);
   const computeRafRef = useRef(0);
   // Settle loop bookkeeping — armed once per mount/enable, self-terminating.
@@ -487,14 +548,42 @@ export function useInTextPositions(
       viewBottom = sr.bottom + NEAR_ZONE_PX;
     }
 
+    // ── Wave-2b C5: exact reads for the scroll band, arithmetic for the rest.
+    // `coordsAtPos` is a forced-layout read, and pre-C5 it ran for EVERY item
+    // every pass (only the card-rect read was culled) — O(items) layout reads
+    // per RO fire on a doc whose card deck is mostly off-screen. Items are
+    // CLASSIFIED against the band first, using their retained pod-relative
+    // top (scroll-invariant, so exactly as current as the old in-band gate,
+    // which was likewise only re-evaluated when a measure trigger fired):
+    // in-band (or never measured) → exact read; out-of-band → deferred to an
+    // `approxTopForPos` interpolation over this pass's exact knots. The
+    // scroll-idle refinement re-runs the pass when approximated items exist,
+    // so an item scrolled into view settles to exact.
     const next = new Map<string, NaturalEntry>();
     const raws: RawMeasure[] = [];
+    const nextApprox = new Set<string>();
+    type Resolved = { id: string; pos: number };
+    const exactItems: Resolved[] = [];
+    const deferredItems: Resolved[] = [];
     for (const item of items) {
       // Prefer the live snapshot pos (re-mapped every transaction) so cards
       // track their anchor as plain typing shifts content; fall back to the
       // captured pos for kinds the resolver doesn't cover.
       const livePos = resolvePos?.(item.id);
       const pos = Math.min(livePos ?? item.pos, editor.state.doc.content.size);
+      const prev = naturalRef.current.get(item.id);
+      if (prev) {
+        const prevViewportTop = podRect.top + prev.naturalTop;
+        if (prevViewportTop < viewTop || prevViewportTop > viewBottom) {
+          deferredItems.push({ id: item.id, pos });
+          continue;
+        }
+      }
+      exactItems.push({ id: item.id, pos });
+    }
+
+    const knots: TopKnot[] = [];
+    for (const { id, pos } of exactItems) {
       let preClampTop: number;
       let coordsTop: number;
       try {
@@ -513,28 +602,62 @@ export function useInTextPositions(
       let measuredHeight: number | undefined;
       if (inViewport) {
         const selector =
-          typeof entry === "string" ? `[${entry}="${item.id}"]` : entry(item.id);
+          typeof entry === "string" ? `[${entry}="${id}"]` : entry(id);
         const el = panelEl.querySelector(selector) as HTMLElement | null;
         if (el) measuredHeight = el.getBoundingClientRect().height;
       }
       if (measuredHeight !== undefined)
-        realHeightRef.current.set(item.id, measuredHeight);
+        realHeightRef.current.set(id, measuredHeight);
       const height = retainedEntryHeight(
         measuredHeight,
-        realHeightRef.current.get(item.id),
+        realHeightRef.current.get(id),
       );
 
       raws.push({ preClampTop, height, pos });
+      knots.push({ pos, top: preClampTop });
       // The committed natural retains the historical ≥0 clamp (negative
       // values legitimately appear when an unanchored block sits just above
       // the pod). The degeneracy guard below — which reads the *pre-clamp*
       // values in `raws` — is what protects against baking a top-stack from
       // an un-laid-out editor.
-      next.set(item.id, {
+      next.set(id, {
         naturalTop: preClampTop < 0 ? 0 : preClampTop,
         height,
       });
     }
+
+    // Approximate the deferred (out-of-band) items — zero DOM reads. The two
+    // endpoint knots are EXACT O(1) reads: the editor's top edge in pod
+    // coordinates, and that edge plus the content height already read above.
+    if (deferredItems.length > 0) {
+      const editorTopInPod =
+        editorDom.getBoundingClientRect().top - podRect.top;
+      knots.push({ pos: 0, top: editorTopInPod });
+      knots.push({
+        pos: editor.state.doc.content.size,
+        top: editorTopInPod + nextContentHeight,
+      });
+      knots.sort((a, b) => a.pos - b.pos);
+      // Monotone tops: interpolation must never invert document order (a
+      // footnote atom's line box can read above its neighbor's).
+      for (let i = 1; i < knots.length; i++) {
+        if (knots[i].top < knots[i - 1].top) knots[i].top = knots[i - 1].top;
+      }
+      for (const { id, pos } of deferredItems) {
+        const approx = approxTopForPos(pos, knots);
+        nextApprox.add(id);
+        next.set(id, {
+          naturalTop: approx < 0 ? 0 : approx,
+          // Out-of-band by construction — the retained real height (or the
+          // placeholder for a never-measured card), exactly as before.
+          height: retainedEntryHeight(
+            undefined,
+            realHeightRef.current.get(id),
+          ),
+        });
+      }
+    }
+    approxIdsRef.current = nextApprox;
 
     // Self-validation (Part B): if this measure is degenerate — many
     // distinct anchors reporting strongly above the pod, the signature of
@@ -583,11 +706,26 @@ export function useInTextPositions(
   // useLayoutEffect so the first measure runs synchronously after commit;
   // setMeasureVersion schedules a re-render that picks up the new natural
   // data via the useMemo below.
+  // The wiring below must NOT re-arm when `measure` gets a new identity (it
+  // closes over `items`/`resolvePos`, so every card add/remove/reorder mints
+  // one). Pre-wave-2 the wiring effect had `measure` in its deps, so an items
+  // rebuild tore down and re-armed EVERYTHING — including the ~30-frame
+  // settle loop, whose per-frame re-measures are O(cards) `coordsAtPos`: the
+  // diagnosis's S4 "settle loop re-arms on items identity churn" storm. The
+  // long-lived closures read the latest measure through this ref instead;
+  // the small companion effect after the wiring keeps the one-shot
+  // "items changed → re-measure once" behavior.
+  const measureRef = useRef(measure);
   useLayoutEffect(() => {
-    // Keyed on `enabledProp` (NOT visibility): a hidden↔visible flip no longer
-    // tears down / re-arms this wiring, and the cache is RETAINED across a hide
-    // (cleared only on a genuine disable). Re-show is handled by the dedicated
-    // visibility effect below.
+    measureRef.current = measure;
+  }, [measure]);
+
+  useLayoutEffect(() => {
+    // Keyed on `enabledProp` (NOT visibility, NOT `measure`): a
+    // hidden↔visible flip or an items rebuild no longer tears down / re-arms
+    // this wiring, and the cache is RETAINED across a hide (cleared only on
+    // a genuine disable). Re-show is handled by the dedicated visibility
+    // effect below; items changes by the companion one-shot effect.
     if (!enabledProp) {
       if (naturalRef.current.size > 0) {
         naturalRef.current = new Map();
@@ -597,12 +735,6 @@ export function useInTextPositions(
       return;
     }
 
-    // Cold mount / items-change / re-enable: measure once. Gated by canMeasureNow
-    // so it's swallowed while hidden AND during a re-show suppression window (a
-    // switch's upstream re-renders can spuriously re-run this effect — the cached
-    // deck is already correct, so don't re-measure on the flip).
-    if (canMeasureNow()) measure();
-
     if (!editor) return;
 
     const schedule = () => {
@@ -610,7 +742,7 @@ export function useInTextPositions(
       // during the clean-re-show suppression window (swallow the reflow storm).
       if (!canMeasureNow()) return;
       cancelAnimationFrame(computeRafRef.current);
-      computeRafRef.current = requestAnimationFrame(measure);
+      computeRafRef.current = requestAnimationFrame(() => measureRef.current());
     };
 
     // Part A — settle-aware re-measure. The initial `measure()` above races
@@ -635,7 +767,7 @@ export function useInTextPositions(
     let lastSettleHeight = editorDomForSettle?.scrollHeight ?? -1;
     const settleStep = () => {
       if (!canMeasureNow()) return;
-      measure();
+      measureRef.current();
       const h = editorDomForSettle?.scrollHeight ?? -1;
       if (h === lastSettleHeight) {
         settleStable += 1;
@@ -711,7 +843,16 @@ export function useInTextPositions(
         })()
       : null;
 
-    window.addEventListener("resize", schedule);
+    // The in-text deck re-measures every tracked marker position — parked for
+    // the duration of a continuous layout gesture and settled once at the end
+    // (task 317). Both geometry triggers go through it; the structural-bus and
+    // font-ready paths stay live (they aren't gesture-driven).
+    const geometryPark = parkDuringLayoutGesture(
+      schedule,
+      LAYOUT_SITE_IN_TEXT_POSITIONS,
+    );
+    const onWindowResize = () => geometryPark.fire();
+    window.addEventListener("resize", onWindowResize);
 
     let editorObs: ResizeObserver | null = null;
     try {
@@ -719,7 +860,7 @@ export function useInTextPositions(
       if (editorDom && typeof ResizeObserver !== "undefined") {
         editorObs = new ResizeObserver(() => {
           recordKeystrokeWork(KEYSTROKE_WORK_INTEXT_RO);
-          schedule();
+          geometryPark.fire();
         });
         editorObs.observe(editorDom);
       }
@@ -727,16 +868,50 @@ export function useInTextPositions(
       // ignore
     }
 
+    // Scroll-idle refinement (wave-2b C5): approximated (out-of-band) tops are
+    // good enough while off-screen, but a jump-to-far-card must SETTLE to
+    // exact once the scroll lands — and nothing else re-measures on scroll
+    // (pod-relative tops are scroll-invariant, so the hook deliberately has no
+    // per-frame scroll path). Debounced to scroll IDLE, and a no-op unless
+    // approximated items exist — a fully-exact deck pays one Set-size check
+    // per idle edge, never a measure. Skipped while a layout gesture is live
+    // (drag auto-scroll); the gesture's own end-edge settle re-measures.
+    const scrollEl = findEditorScrollFor(editor.view?.dom as HTMLElement | undefined);
+    let scrollIdleTimer: number | null = null;
+    const SCROLL_REFINE_IDLE_MS = 150;
+    const onScrollForRefine = () => {
+      if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
+      scrollIdleTimer = window.setTimeout(() => {
+        scrollIdleTimer = null;
+        if (approxIdsRef.current.size === 0) return;
+        if (isLayoutGestureActive()) return;
+        schedule();
+      }, SCROLL_REFINE_IDLE_MS);
+    };
+    scrollEl?.addEventListener("scroll", onScrollForRefine, { passive: true });
+
     return () => {
       cancelAnimationFrame(computeRafRef.current);
       cancelAnimationFrame(settleRafRef.current);
       fontReadyActiveRef.current = false;
       disposeFontReady();
       unsubBlocks?.();
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", onWindowResize);
+      geometryPark.dispose();
       editorObs?.disconnect();
+      if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
+      scrollEl?.removeEventListener("scroll", onScrollForRefine);
     };
-  }, [editor, measure, enabledProp, canMeasureNow]);
+  }, [editor, enabledProp, canMeasureNow]);
+
+  // Companion one-shot: an items/resolvePos rebuild (fresh `measure`
+  // identity) re-measures ONCE — the behavior the wiring effect's re-run
+  // used to provide, without the teardown/re-arm (settle loop, observers,
+  // park) that came with it.
+  useLayoutEffect(() => {
+    if (!enabledProp) return;
+    if (canMeasureNow()) measure();
+  }, [measure, enabledProp, canMeasureNow]);
 
   // Keep-alive re-show effect — the heart of the instant-switch fix. Fires ONLY
   // on a genuine hidden→visible transition (a tab switch back to this doc), never

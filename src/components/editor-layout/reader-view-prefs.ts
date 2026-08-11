@@ -69,6 +69,15 @@ import {
   type EditorPaneViewDerivations,
 } from "./build-editor-pane-view-prefs";
 import { SECTION_ACTIVE_LINE_FRACTION } from "./layout-scroll";
+import {
+  computeSectionPathAt,
+  geomBreadcrumbEnabled,
+} from "@/lib/editor-geometry/section-path";
+import {
+  isLayoutGestureActive,
+  parkDuringLayoutGesture,
+} from "@/lib/pane-resize";
+import { LAYOUT_SITE_READER_SECTION_PATH } from "@/lib/layout-gesture-probe";
 import type { SectionPathEntry } from "@/panels/Outline";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import {
@@ -180,6 +189,11 @@ export function useParaNavHistory(
 
     const checkParagraph = () => {
       if (navigatingRef.current) return;
+      // Wave-2b C6: bare 2s wall-clock poll — gate on page visibility and
+      // layout gestures (same discipline as EditorLayout's recorder; the
+      // hidden-PANE bail lives inside getActiveParagraphId).
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (isLayoutGestureActive()) return;
       const paraId = editorHandleRef.current?.getActiveParagraphId() ?? null;
       if (!paraId || paraId === currentParaRef.current) return;
       currentParaRef.current = paraId;
@@ -313,10 +327,6 @@ function useReaderMenuBarBundle(
       availableDividerLevels,
       activeDividerLevels,
       dividerWidth: vp.prefs.dividerWidth,
-      editorSplit: vp.prefs.editorSplit,
-      // Reader is single-pane; the split toggle has no real second pane (it's
-      // wired below for type-completeness). Hardcode the active pane.
-      activeSplitPane: "top",
 
       // ── Toggle setters (all off the same ephemeral `vp`) ────────
       onToggleParTitles: vp.toggleParTitles,
@@ -331,9 +341,6 @@ function useReaderMenuBarBundle(
       toggleDividerLevel: vp.toggleDividerLevel,
       setDividerWidth: vp.setDividerWidth,
       setShowHighlights: vp.setShowHighlights,
-      // Single-pane Reader: the split toggle rides the real ephemeral setter
-      // for type-completeness (session-only; no real second pane is rendered).
-      toggleEditorSplit: () => vp.setEditorSplit((s) => !s),
       closeAllPanels: vp.closeAllPanels,
 
       // ── Paragraph back/forward nav (functional port) ────────────
@@ -357,8 +364,8 @@ function useReaderMenuBarBundle(
  * Reader breadcrumb / Outline-active-line section path (F#16 deferred half).
  *
  * A FUNCTIONAL port of EditorLayout's section-path recompute
- * (`EditorLayout.tsx:2000-2117`), trimmed for the Reader: single-pane (no
- * mirror), no focus mode (no out-of-band skip). It derives the
+ * (`EditorLayout.tsx:2000-2117`), trimmed for the Reader: no focus mode (no
+ * out-of-band skip). It derives the
  * `activeSectionPath` — the section breadcrumb you are scrolled INTO — plus the
  * active parTitle index, exactly as the main app does (same
  * `SECTION_ACTIVE_LINE_FRACTION = 0.25` reference line + the same bottom-clamp
@@ -401,6 +408,30 @@ function useReaderSectionPath(
       // every coordsAtPos/rect collapses to 0 — bail and keep the last-good
       // path (scroll can't change while hidden). Mirrors EditorLayout :2011.
       if (scrollEl.offsetHeight === 0) return;
+      // Wave-2 C2 fast path — ONE posAtCoords + binary search over the
+      // structure snapshot; the Reader has no focus band, so no skip. Null
+      // falls through to the legacy walk below.
+      if (geomBreadcrumbEnabled()) {
+        const fast = computeSectionPathAt(editor, view, scrollEl, null);
+        if (fast) {
+          setActiveSectionPath((prev) => {
+            const next = fast.path;
+            return prev.length === next.length &&
+              prev.every(
+                (v, i) =>
+                  v.text === next[i].text &&
+                  v.index === next[i].index &&
+                  v.sectionNumber === next[i].sectionNumber,
+              )
+              ? prev
+              : next;
+          });
+          setActiveParTitleIndex((prev) =>
+            prev === fast.parTitleIndex ? prev : fast.parTitleIndex,
+          );
+          return;
+        }
+      }
       const doc = editor.state.doc;
       const scrollRect = scrollEl.getBoundingClientRect();
 
@@ -496,9 +527,17 @@ function useReaderSectionPath(
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(compute);
     };
+    // Resize path parked, scroll path live — the second copy of the breadcrumb
+    // walk (main pane, Reader; the mirror pane's copy retired with the editor
+    // split in task 115), each O(headings) `coordsAtPos` (task 317).
+    const resizePark = parkDuringLayoutGesture(
+      schedule,
+      LAYOUT_SITE_READER_SECTION_PATH,
+    );
+    const onWindowResize = () => resizePark.fire();
     compute();
     scrollEl.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
+    window.addEventListener("resize", onWindowResize);
 
     // Fresh-open breadcrumb fix: the synchronous mount-time compute() above
     // runs BEFORE the doc has laid out, so coordsAtPos reads stale/zero tops
@@ -525,17 +564,15 @@ function useReaderSectionPath(
       cancelAnimationFrame(raf2);
       clearTimeout(settleTimer);
       scrollEl.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", onWindowResize);
+      resizePark.dispose();
     };
   }, [editor, scrollEl]);
 
-  // Reader is single-pane — no mirror view, so the mirror fields stay empty.
   return useMemo<EditorPaneSectionPaths>(
     () => ({
       activeSectionPath,
       activeParTitleIndex,
-      mirrorSectionPath: [],
-      mirrorParTitleIndex: null,
     }),
     [activeSectionPath, activeParTitleIndex],
   );
@@ -629,6 +666,7 @@ export function useReaderView(
       // separately — see `useReaderSectionPath` below — Phase 5a.)
       isResizingPanels: false,
       focusState: null,
+      focusBand: null,
       zenMode: false,
       zenLeftMargin: 0,
       zenRightMargin: 0,

@@ -17,6 +17,7 @@ import type {
   TodoItem,
   BibEntry,
   CitationRef,
+  FootnoteRef,
   AiRequest,
 } from "@/lib/types";
 
@@ -35,6 +36,13 @@ export interface PoppedCardDeps {
   notes: UserNote[];
   highlights: HighlightCardData[];
   footnotes: FootnoteInfo[];
+  /** Task 316: the ATOMLESS footnote refs (`selectAtomlessFootnoteRefs`) — the
+   *  sidecar half of the footnote collection. `footnotes` above is derived from
+   *  the live editor and therefore cannot see a parked ref, so a footnote float
+   *  resolves here when no `\footnote` atom carries the id. Required, not
+   *  optional: a bag that can omit it would silently reinstate the blank-float
+   *  case for every host that forgets. */
+  unanchoredFootnotes: FootnoteRef[];
   archiveSnippets: ArchivedSnippet[];
   cutterCards: CutterCard[];
   todoItems: TodoItem[];
@@ -92,6 +100,9 @@ export interface PoppedCardDeps {
   handleEditFootnote: (id: string, content: JSONContent) => void;
   handleDeleteFootnote: (id: string) => void;
   handleEditFootnoteTitle: (id: string, title: string) => void;
+  /** Permanent delete of an ATOMLESS ref: the anchored `handleDeleteFootnote`
+   *  no-ops on the missing atom and would leave the sidecar ref behind. */
+  handleDeleteUnanchoredFootnote: (id: string) => void;
   /** BUG #55: per-footnote AI-request flags (footnoteId → bool, from the
    *  footnotes.json sidecar) + the toggle callback. The float/omni footnote
    *  cards read these to render the unified AI-request checkbox. */

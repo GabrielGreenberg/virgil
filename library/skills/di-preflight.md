@@ -51,6 +51,70 @@ should follow.
 
 `$ARGUMENTS` is the citekey to preflight.
 
+## Verdict (emit exactly one, on its own line)
+
+The orchestrator reads this, so it is greppable and terminal:
+
+- `PREFLIGHT_OK` — the gates ran; the pass may continue. Print the
+  Step 0.5 genre label on the line above it as `genre: <label>`.
+- `PREFLIGHT_BLOCKED` — a gate below says there is nothing here to
+  deep-index. Print the reason and the exact recovery command above the
+  keyword. Today Step 0.0 is the only producer.
+
+A non-`none` metadata mismatch, an unrecognized genre, a Caesar step
+skipped for want of its conditions — none of those block. They are flags,
+and every one of them is `PREFLIGHT_OK` with a catalog warning.
+
+## Step 0.0 — Body-populated / OCR-recovery gate
+
+Runs first, because every gate after it reads `main.tex`.
+
+Count the non-comment bytes of `main.tex`'s body (between `\maketitle`
+and `\end{document}`). **100 or more → this gate is done; go to 0.1.**
+
+Fewer than 100 is an `/index-paper` failure, not something a deep pass
+can clean up. **Determine why before reporting it** — "scanned PDF" is a
+guess, and the causes take different repairs:
+
+```bash
+python3 .virgil/scripts/library/recover_ocr_pipeline.py $ARGUMENTS --check-only
+```
+
+`--check-only` is read-only: it samples the first three pages for text
+density and prints either "PDF already has text layer; no OCR needed." or
+"PDF needs OCR." Nothing is installed, converted, or overwritten.
+
+- **Needs OCR** — the source has no text layer. Block with:
+  `extraction-empty-body — body has <N> bytes; PDF has no text layer.
+  Recover with: python3 .virgil/scripts/library/recover_ocr_pipeline.py
+  $ARGUMENTS && /library/index-paper $ARGUMENTS`
+- **Has a text layer** — extraction failed on a PDF that *does* carry
+  text, so OCR is the wrong repair. Block with:
+  `extraction-empty-body — body has <N> bytes; source has a text layer,
+  so this is an extraction failure. Re-run /library/index-paper
+  $ARGUMENTS.`
+- **`error: PDF not found`** — the paper's source is a DOCX (or the PDF
+  is missing), so the OCR question doesn't arise at all. Same block as
+  the text-layer case: it is an extraction failure, and the exit code is
+  the script telling you which question it *can't* answer, not a failure
+  of this gate.
+
+Then emit `PREFLIGHT_BLOCKED` and stop. Do not run 0.1–0.6 — they all
+operate on a body that isn't there.
+
+**Never pass `--force-install`.** `ocrmypdf` + `tesseract` are *required*
+deps installed eagerly by `/library/setup` (library/AGENTS.md §"Required
+deps"), so a missing binary is a setup problem to surface, not a ~200 MB
+install to trigger from inside a pass. Left alone, the recovery script
+refuses with the manual install line — which is the behavior we want.
+
+**Recovery is the operator's step, not this pass's.** Even the non-
+`--check-only` invocation only re-OCRs the PDF and archives the original;
+re-extraction is `/library/index-paper`, and deep-index's §"What this
+command does NOT do" states plainly that rebuilding `main.tex` from the
+PDF is an `/index-paper` job surfaced at preflight. So this gate
+*determines and routes*; it does not repair.
+
 ## Step 0.1 — Lending-slip / JSTOR boilerplate strip (one-time)
 
 ```bash
@@ -101,10 +165,28 @@ updates the catalog, sets `bib.state = needs-reauth`, updates the
 in-file `\title{...}`.
 
 For other non-`none` kinds (`title-only-missing`,
-`author-only-missing`, `both-missing`), append an outstanding-work
-item to the catalog entry's `warnings` array via
-`update_catalog_entry.py` with a patch like
-`{"warnings": ["metadata-mismatch: <kind>"]}`. The doctrine §"Self-check"
+`author-only-missing`, `both-missing`), record an outstanding-work item
+on the catalog entry via `update_catalog_entry.py`. The array lives at
+`indexed.warnings` — **not** at the entry top level; every reader
+(`suppression_categories_from_catalog`, `pgmark_validate.py`,
+`synthesize_canonical_entries.py`, the frontend row) looks only there, so
+a top-level `warnings` key is invisible to all of them. And a bare
+`"warnings": [...]` patch REPLACES the row's array, deleting every other
+kind on it, so declare the kind you recomputed and let the shim merge:
+
+```bash
+cat > /tmp/$ARGUMENTS-mismatch-warning.json <<'EOF'
+{ "indexed": { "warnings": ["metadata-mismatch: <kind>"] } }
+EOF
+python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
+  --patch-file /tmp/$ARGUMENTS-mismatch-warning.json \
+  --recompute-warning-kind metadata-mismatch
+rm /tmp/$ARGUMENTS-mismatch-warning.json
+```
+
+`metadata-mismatch` is recomputed per preflight pass: pass an empty
+array (with the kind still declared) when this pass finds no mismatch,
+so a resolved one stops being flagged. The doctrine §"Self-check"
 favors *applying* the auto-resolution policy when the file content
 clearly matches the citekey's named work (e.g., a dissertation whose
 `\title{...}` is blank but whose body matches the bib title); reach
@@ -288,9 +370,21 @@ writes the in-file count back (under `lock_catalog`) and prints a
 `pgmark-coverage:` line. This runs before the main subskill chain
 so downstream audits see a current count.
 
-## What runs next
+## Step 0.7 — Report
 
-`/library/deep-index` (orchestrator) invokes in order:
+Print a one-line summary of what 0.0–0.6 did (stripped / flagged /
+skipped), then the two lines the caller reads:
+
+```
+genre: <label from Step 0.5>
+PREFLIGHT_OK
+```
+
+## Where this sits in the pipeline
+
+`/library/deep-index` dispatches **this skill** as its Step 0 — after the
+resume/fresh preflight, before Step 1's deterministic preprocessing — and
+then continues, in order:
 
 1. `/library/di-clean-prose` — title, headers, heading hierarchy,
    drop caps, pgmark alignment.
@@ -301,3 +395,8 @@ so downstream audits see a current count.
    formal-semantics math.
 5. `/library/di-validate` — pgmark validator + audit punch-list +
    outstanding-work classification.
+
+Invoked standalone, this skill is self-contained: run it before a
+deep-index pass on a source you suspect of cover-page boilerplate or a
+metadata mismatch, and the orchestrator's own Step 0 will then be a
+no-op (every 0.x detection fires only when its target is present).

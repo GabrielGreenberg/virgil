@@ -28,37 +28,46 @@ import {
   parseTextObjectPopoutKey,
   TEXT_OBJECT_REGISTRY,
 } from "@/text-objects/text-object-registry";
-import { buildWrap, isCompatibleParent } from "@/text-objects/drop-adapters";
+import { isCompatibleParent, tryBuildWrap } from "@/text-objects/drop-adapters";
 import type {
   DropTarget,
   MoveSource,
   TextObjectKind,
   TextObjectSourceContext,
 } from "@/text-objects/types";
-import { canDropDirectAt, classifyParentAt } from "./drop-context";
-import type { DropSpec, Placement } from "../types";
+import {
+  canDropDirectAt,
+  classifyParentAt,
+  fitNodesAtInsert,
+} from "./drop-context";
+import { plannedDropSpec } from "../planned-spec";
+import type { DropPlan, DropSpec, Placement } from "../types";
 
-export const textObjectDropSpec: DropSpec = {
+export const textObjectDropSpec: DropSpec = plannedDropSpec({
   allowedPlacements: ["between-blocks"],
   targetScope: "any-editor",
-  classifyDrop(placement, cardKey) {
-    if (placement.kind !== "between-blocks") return { kind: "no-op" };
+  postDrop: "close",
+  /**
+   * ONE resolution, two doors (task 321). Every refusal below — an
+   * unresolvable source, a self-drop, the adapter's task-065 `no-op`, a wrapper
+   * that cannot hold the node, the container fit's `reject` — used to live only
+   * in `applyDrop`, so `classifyDrop` said `apply`, `finishApply` saw no throw,
+   * `postDrop: "close"` dismissed the float, and the document was untouched.
+   * Resolving them here makes them a `no-op` decision: the session cancels and
+   * the popout survives.
+   */
+  planDrop(placement, cardKey): DropPlan | null {
+    if (placement.kind !== "between-blocks") return null;
     const src = locate(placement, cardKey);
-    if (!src) return { kind: "no-op" };
+    if (!src) return null;
     // No-op if the drop position is inside the source's own range.
     if (
       placement.editor === src.editor &&
       placement.insertPos >= src.move.from &&
       placement.insertPos <= src.move.to
     ) {
-      return { kind: "no-op" };
+      return null;
     }
-    return { kind: "apply" };
-  },
-  applyDrop(placement, cardKey) {
-    if (placement.kind !== "between-blocks") return;
-    const src = locate(placement, cardKey);
-    if (!src) return;
     const targetEditor = placement.editor;
     const targetParentKind = classifyParentAt(targetEditor, placement.insertPos);
     // Feature A2 — schema-driven wrap-vs-direct. Compute whether the source node
@@ -101,7 +110,7 @@ export const textObjectDropSpec: DropSpec = {
     );
     // A wrap adapter returns `no-op` when the wrap it would fabricate is invalid
     // at the true immediate parent (task 065) — reject the drop, insert nothing.
-    if (action.kind === "no-op") return;
+    if (action.kind === "no-op") return null;
 
     // Build the node(s) to insert. For drop-direct: the original
     // collected nodes. For wrap: wrap each top-level source node in a
@@ -110,26 +119,85 @@ export const textObjectDropSpec: DropSpec = {
     // (today only headings collect multiple, and they never wrap).
     let toInsert: ReadonlyArray<PMNode> = src.move.nodes;
     if (action.kind === "wrap") {
-      toInsert = toInsert.map((n) =>
-        buildWrap(targetEditor.state.schema, n, action.parentKind),
-      );
+      // `tryBuildWrap`, not `buildWrap`: the wrap is built with `createChecked`,
+      // so a wrapper that cannot HOLD this node is a null rather than a
+      // silently-invalid node. The adapter approved the wrap's placement, not
+      // its content, so refuse rather than fabricate (task 257).
+      const wrapped: PMNode[] = [];
+      for (const n of toInsert) {
+        const w = tryBuildWrap(targetEditor.state.schema, n, action.parentKind);
+        if (!w) return null;
+        wrapped.push(w);
+      }
+      toInsert = wrapped;
     }
 
-    const sameEditor = targetEditor === src.editor;
-    if (sameEditor) {
-      const sectionSize = src.move.to - src.move.from;
-      const adjustedInsert =
-        placement.insertPos > src.move.to
-          ? placement.insertPos - sectionSize
-          : placement.insertPos;
+    // The adapter above expresses what this KIND prefers; the container-fit
+    // SSOT below is the authority on what this CONTAINER can actually hold
+    // (task 257). The two are not the same question, and the gap between them
+    // was a live corruption: the registry adapters know expex and the
+    // sub-object containers but nothing about lists, so a paragraph block-move
+    // released in a list-item gap drop-directed a bare paragraph into
+    // `bulletList` (content `listItem+`) and ProseMirror's fitter split the
+    // list in two — both halves keeping the SAME uuid — exactly the mirror of
+    // the expex tear the text-range move was producing from its own list-only
+    // literal. Routing both through `fitNodesAtInsert` retires the pair and
+    // every future container kind with them.
+    //
+    // A no-op net: where the adapter's answer is already valid here (every case
+    // its `canPlaceHere` gate approves), the fit reports `direct` and the nodes
+    // pass through byte-for-byte. Where nothing fits, this returns BEFORE the
+    // transaction is built, so the source is never deleted.
+    const fit = fitNodesAtInsert(targetEditor, placement.insertPos, toInsert, {
+      prefer: src.sourceContext.parentKind,
+    });
+    if (fit.kind === "reject") return null;
+    toInsert = fit.nodes;
+
+    // Everything above RESOLVES (and can still refuse); everything below BUILDS
+    // the transaction the drop would dispatch, and `commit` only dispatches it.
+    // The build stays inside the plan for two reasons: a splice that can throw
+    // is then a refusal rather than a half-applied gesture, and the container
+    // fit above stays in the same declaration as the splices it governs, which
+    // is exactly what `container-fit-guardrail` checks. `applyDrop` re-plans
+    // immediately before committing (planned-spec.ts), so these transactions are
+    // always built against the live state they are dispatched into.
+    if (targetEditor === src.editor) {
       const tr = targetEditor.state.tr.delete(src.move.from, src.move.to);
-      let cursor = adjustedInsert;
+      // ASK the transaction where the insert position went; never predict it —
+      // the same rule the container fit follows about the fitter (task 257) and
+      // the identity net about multi-step transactions (task 320), one door
+      // over. This was `insertPos - (to - from)`, which assumes `tr.delete`
+      // removes exactly the source's declared node size. It does NOT when the
+      // source is the SOLE child of a container whose content expression
+      // forbids emptiness (`exampleItemList` is `exampleItem+`, and expex's own
+      // Tab keymap creates exactly that one-item shape): ProseMirror keeps a
+      // minimal valid residue and removes only part of the range — measured
+      // drift 4 for a sole `exampleItem`. The insert then landed FOUR positions
+      // early, inside the preceding peer item's paragraph, which the fitter can
+      // only accommodate by closing that item — tearing one node into two that
+      // BOTH keep its uuid, with its text severed across the halves, on a
+      // document that still `check()`s clean.
+      //
+      // Every guard upstream is blind to this by construction: `canDropDirect`
+      // and `fitNodesAtInsert` (including its trial-insert probe) both resolve
+      // against the PRE-delete doc, where the position is correct and the fit
+      // honestly reports `direct`. Nothing re-validated after the delete. The
+      // mapping does, for free, and it is also correct for the untouched
+      // direction (a position BEFORE the cut maps to itself).
+      const insertAt = tr.mapping.map(placement.insertPos);
+      let cursor = insertAt;
       for (const n of toInsert) {
+        // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
+        // container fit sanctions an insert the fitter PADS, which adds more
+        // than the node itself — advancing by the node's size alone would put
+        // the next block inside or before this one (task 257 review).
+        const before = tr.doc.content.size;
         tr.insert(cursor, n);
-        cursor += n.nodeSize;
+        cursor += tr.doc.content.size - before;
       }
       // Select the inserted block(s).
-      const selStart = adjustedInsert + 1;
+      const selStart = insertAt + 1;
       const selEnd = cursor - 1;
       if (selEnd > selStart) {
         tr.setSelection(
@@ -139,25 +207,45 @@ export const textObjectDropSpec: DropSpec = {
           ),
         );
       }
-      targetEditor.view.dispatch(tr);
-      targetEditor.view.focus();
-      return;
+      return {
+        commit: () => {
+          targetEditor.view.dispatch(tr);
+          targetEditor.view.focus();
+        },
+      };
     }
 
     // Cross-editor: insert first, then delete from source.
     const insertTr = targetEditor.state.tr;
     let cursor = placement.insertPos;
     for (const n of toInsert) {
+      // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
+      // container fit sanctions an insert the fitter PADS, which adds more
+      // than the node itself — advancing by the node's size alone would put
+      // the next block inside or before this one (task 257 review).
+      const before = insertTr.doc.content.size;
       insertTr.insert(cursor, n);
-      cursor += n.nodeSize;
+      cursor += insertTr.doc.content.size - before;
     }
-    targetEditor.view.dispatch(insertTr);
-    targetEditor.view.focus();
-    const deleteTr = src.editor.state.tr.delete(src.move.from, src.move.to);
-    src.editor.view.dispatch(deleteTr);
+    const sourceEditor = src.editor;
+    const { from, to } = src.move;
+    return {
+      commit: () => {
+        targetEditor.view.dispatch(insertTr);
+        targetEditor.view.focus();
+        // The source delete is built HERE, not in the plan: it is dispatched
+        // AFTER a transaction landed in another editor, and ProseMirror throws
+        // `Applying a mismatched transaction` on a tr whose base doc is no
+        // longer the live one. The insert can't move the source doc today (the
+        // only non-main target is a card body), but building it in the plan
+        // would stake that on it — and this is the pre-321 order restored, at
+        // zero cost. The insert above is the one that must be pre-built: it is
+        // the splice the container fit governs.
+        sourceEditor.view.dispatch(sourceEditor.state.tr.delete(from, to));
+      },
+    };
   },
-  postDrop: "close",
-};
+});
 
 // ---------------------------------------------------------------------------
 // Source resolution

@@ -10,6 +10,14 @@ import { readDocStructure, readPendingDiff } from "@/lib/tiptap/doc-structure";
 // from ATOM_REGISTRY (that would silently kill InlineAtomGrab for this kind).
 // Pinned by atom-selectable-parity.test.ts.
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+// The link DOM contract + the `<cardKind>:<cardId>` grammar, from their one
+// speller (task 202) — a hand-built `footnote:${id}` here was a second copy.
+import {
+  DATA_LINK_CARD,
+  DATA_LINK_ID,
+  DATA_LINK_KIND,
+  linkCardKey,
+} from "@/links/link-dom-contract";
 
 const FOOTNOTE_ATOM = ATOM_REGISTRY.footnote;
 // FN-A1-02: orphan-worthiness reads the SAME registry-driven content model as
@@ -20,6 +28,7 @@ import { isInlineAtomLifecycleOn } from "@/lib/identity/inline-atom-lifecycle-fl
 // registry's footnote row references, so the typed surface and the registry can
 // never recognize a different footnote vocabulary.
 import { FOOTNOTE_RE_FULL } from "@/lib/footnote-commands";
+import { refuseTypedInsertWhenReadOnly } from "@/lib/tiptap/typed-latex-read-only-gate";
 // CHIP 4b: the PM→React bridge the typed-LaTeX `\footnote{}` input rule uses to
 // register the footnote CARD (the atom is still inserted synchronously below).
 // Replaces the DEAD `virgil-footnote-created` CustomEvent (zero listeners) —
@@ -108,15 +117,15 @@ export const Footnote = Node.create<FootnoteOptions>({
       "";
     const linkCard =
       (node.attrs.linkCard as string) ||
-      (footnoteId ? `footnote:${footnoteId}` : "");
+      (footnoteId ? linkCardKey("footnote", footnoteId) : "");
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": FOOTNOTE_ATOM.domType,
         class: FOOTNOTE_ATOM.domClass,
-        "data-link-id": footnoteId,
-        "data-link-kind": "footnote",
-        "data-link-card": linkCard,
+        [DATA_LINK_ID]: footnoteId,
+        [DATA_LINK_KIND]: "footnote",
+        [DATA_LINK_CARD]: linkCard,
         ...(node.attrs.thanks ? { "data-thanks": "true" } : {}),
       }),
       node.attrs.thanks ? "A" : String(node.attrs.number || "1"),
@@ -134,9 +143,10 @@ export const Footnote = Node.create<FootnoteOptions>({
           handleTextInput(view, from, _to, text) {
             // CHIP 7b: uniform collab read-only gate (same rationale as
             // citation.ts). PM suppresses input on a non-editable view; guard
-            // explicitly so typed-`\footnote{}` refuses uniformly when the
-            // partner holds the pen.
-            if (!view.editable) return false;
+            // explicitly so typed-`\footnote{}` refuses uniformly with the other
+            // typed-LaTeX surfaces via the shared SSOT when the partner holds
+            // the pen.
+            if (refuseTypedInsertWhenReadOnly(view)) return false;
             if (text !== "}") return false;
             const { state } = view;
             const $from = state.doc.resolve(from);
@@ -165,14 +175,8 @@ export const Footnote = Node.create<FootnoteOptions>({
             });
             const footnoteId = idGenerator(existing);
             const start = from + 1 - match[0].length;
-            const tr = state.tr.replaceWith(
-              start,
-              from + 1,
-              nodeType.create({ content, footnoteId, number: 0 })
-            );
-            // Insert the typed "}" into the document first so replaceWith range is valid
-            // Actually we already accounted for it — replaceWith from start to from+1 covers the "}" we're inserting
-            // But we need to handle this: from is pre-insert, so we replace start..from and consume the text
+            // `from` is the PRE-insert caret (the typed "}" is not yet in the
+            // doc), so replace `start..from` and let the atom consume the "}".
             const trFixed = state.tr.replaceWith(
               start,
               from,

@@ -1,16 +1,26 @@
 /**
  * Word-count core — the SINGLE canonical categorization walker shared by the
- * Word Count panel (`useWordCount`) and the Outline panel's per-section
- * counts (`buildPerBlockCounts`). Both surfaces gate on the same
+ * Word Count panel (`useWordCount`), the SELECTION counter
+ * (`useSelectionCounts`) and the Outline panel's per-section counts
+ * (`buildPerBlockCounts`). Every surface gates on the same
  * `useWordCountConfig` include-set, so they MUST bucket identically or a
  * category toggle silently filters different word sets on each surface
  * (task 112: the outline hand-copy bucketed inline math into "Math" while
  * the canonical walker kept it in the surrounding context bucket).
  *
+ * …and it also owns the FILTER, because a walker everyone shares is only half
+ * an SSOT while "how many words is that" is answered per consumer. Task 122:
+ * the config-filtered total lived as an inline reduce inside `WordCountPanel`,
+ * so the Cutter goal strip and the selection counter — which had no reduce of
+ * their own — read the precomputed unfiltered `total` instead and "words"
+ * meant two different things one panel apart. Both halves are here now:
+ * `collectCategoryParts` decides WHICH bucket, `includedTotals` decides which
+ * buckets COUNT.
+ *
  * Canonical bucketing rules:
  *   - inline math counts toward the SURROUNDING CONTEXT bucket (mainText in
  *     a paragraph, headings in a heading) — "Math" = displayMath only;
- *   - text marked `latexCommand` is raw LaTeX, not prose — only its
+ *   - text marked `latexCommand` / `latexVerbatim` is raw LaTeX, not prose — only its
  *     `\caption{...}` payloads count (as captions);
  *   - citations are reference markers, never prose;
  *   - footnote content → footnotes, latexComment text → comments.
@@ -21,6 +31,7 @@
  */
 
 import type { JSONContent } from "@tiptap/react";
+import { LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
 
 export type Category =
   | "mainText"
@@ -48,31 +59,48 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   comments: "Comments",
 };
 
-export interface WordCounts {
-  total: number;
-  characters: number;
-  sentences: number;
-  readingTime: string;
-  /** Per-category word counts (the include-config filters these for the headline). */
-  categories: Record<string, number>;
-  /**
-   * Per-category NON-WHITESPACE character counts, exactly parallel to
-   * `categories`. The panel's headline "chars" filters this by the same
-   * include-set that drives "words", so the two stats never disagree on scope
-   * (task 121). `characterCategories` sums to `characters` over ALL_CATEGORIES.
-   */
-  characterCategories: Record<string, number>;
+/** The user's per-category include-set (`useWordCountConfig`). */
+export type IncludeSet = Record<Category, boolean>;
+
+/**
+ * Per-category tallies — THE shape every word-count surface carries, for the
+ * whole document AND for a selection (they are the same kind of thing, so
+ * they are the same type: one producer per scope, one filter for both).
+ *
+ * There is deliberately NO precomputed `total`/`characters` here. "How many
+ * words" is a live function of the include-config, so it is resolved at READ
+ * time through `includedTotals` and never frozen onto the record — a stored
+ * copy of an app-state-dependent value cannot be wrong when written and cannot
+ * be right afterwards, and the one that existed (`WordCounts.total`) is
+ * exactly what the Cutter goal and the selection counter read instead of
+ * asking the filter (task 122). Making it unrepresentable is the guard: a
+ * consumer can no longer reach an unfiltered total by accident, only by
+ * summing `ALL_CATEGORIES` itself — which the census in
+ * `word-count-filter-ssot.test.ts` forbids outside this module.
+ */
+export interface CategoryCounts {
+  /** Per-category word counts. */
+  words: Record<Category, number>;
+  /** Per-category NON-WHITESPACE character counts, exactly parallel to `words`
+   *  — so the headline "chars" filters through the same include-set that
+   *  drives "words" and the two stats never disagree on scope (task 121). */
+  characters: Record<Category, number>;
 }
+
+const zeroByCategory = (): Record<Category, number> =>
+  Object.fromEntries(ALL_CATEGORIES.map((c) => [c, 0])) as Record<Category, number>;
+
+/** Shared empty tally — the doc-open / flag-off / no-editor placeholder every
+ *  surface used to hand-write as its own literal (three copies, one per host). */
+export const EMPTY_CATEGORY_COUNTS: CategoryCounts = Object.freeze({
+  words: Object.freeze(zeroByCategory()),
+  characters: Object.freeze(zeroByCategory()),
+});
 
 export function countWords(text: string): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;
   return trimmed.split(/\s+/).length;
-}
-
-export function countSentences(text: string): number {
-  const matches = text.match(/[.!?]+[\s"'”’)}\]]*(?=[A-ZÀ-ɏ]|\s*$)/g);
-  return matches ? matches.length : text.trim() ? 1 : 0;
 }
 
 /**
@@ -146,9 +174,15 @@ export function collectCategoryParts(node: JSONContent): Record<Category, string
 
   const collectInline = (n: JSONContent, bucket: string[]) => {
     if (n.type === "text" && n.text) {
-      // Text marked as latexCommand is raw LaTeX — not prose.
+      // Text marked as latexCommand — or as the byte-literal `latexVerbatim`
+      // carrier — is raw LaTeX, not prose.
       // Extract any \caption{...} text into captions, skip the rest.
-      if (n.marks?.some((m) => m.type === "latexCommand")) {
+      if (
+        n.marks?.some(
+          (m) =>
+            m.type === "latexCommand" || m.type === LATEX_VERBATIM_MARK,
+        )
+      ) {
         for (const c of extractCaptionText(n.text)) cats.captions.push(c);
         return;
       }
@@ -211,7 +245,11 @@ export function collectCategoryParts(node: JSONContent): Record<Category, string
   return cats;
 }
 
-/** Per-category word counts for one block (or any subtree). */
+/** Per-category WORD counts for one block (or any subtree). Deliberately not
+ *  `computeCategoryCounts(node).words`: the per-block path runs once per block
+ *  of the document, and the character pass costs a whole-text copy per
+ *  category that the Outline never reads. Same walker either way — this is a
+ *  cheaper projection of it, not a second rule. */
 export function countCategories(node: JSONContent): Record<Category, number> {
   const parts = collectCategoryParts(node);
   const out = {} as Record<Category, number>;
@@ -230,48 +268,78 @@ export function buildPerBlockCounts(doc: JSONContent | null): Record<Category, n
   return doc.content.map((node) => countCategories(node));
 }
 
-export function sumIncludedWords(
-  perBlock: Record<Category, number>[],
-  fromIdx: number,
-  toIdx: number, // exclusive
-  include: Record<Category, boolean>,
+/**
+ * THE summation rule: add up one tally record over the INCLUDED categories.
+ *
+ * Module-private on purpose — publish whole operations, never the pieces. An
+ * exported `sumIncluded` is an invitation for the next consumer to re-derive
+ * "the total" from `counts.words` on its own, which is the fork this module
+ * exists to close.
+ */
+function sumIncluded(
+  per: Record<Category, number> | undefined,
+  include: IncludeSet,
 ): number {
+  if (!per) return 0;
   let total = 0;
-  for (let i = fromIdx; i < toIdx; i++) {
-    const counts = perBlock[i];
-    if (!counts) continue;
-    for (const cat of ALL_CATEGORIES) {
-      if (include[cat]) total += counts[cat];
-    }
+  for (const cat of ALL_CATEGORIES) {
+    if (include[cat]) total += per[cat] ?? 0;
   }
   return total;
 }
 
-/** Full-document counts for the Word Count panel (doc = `editor.state.doc.toJSON()`). */
-export function computeWordCounts(doc: JSONContent): WordCounts {
+/**
+ * THE filter door — the only way to turn per-category tallies into the two
+ * headline numbers. Words and characters come back TOGETHER, from one
+ * include-set read, so a surface cannot filter one and not the other.
+ *
+ * `null` counts (no selection yet, no editor) resolve to zeros so callers
+ * render `0` without a second branch.
+ */
+export function includedTotals(
+  counts: CategoryCounts | null | undefined,
+  include: IncludeSet,
+): { words: number; characters: number } {
+  return {
+    words: sumIncluded(counts?.words, include),
+    characters: sumIncluded(counts?.characters, include),
+  };
+}
+
+export function sumIncludedWords(
+  perBlock: Record<Category, number>[],
+  fromIdx: number,
+  toIdx: number, // exclusive
+  include: IncludeSet,
+): number {
+  let total = 0;
+  for (let i = fromIdx; i < toIdx; i++) {
+    total += sumIncluded(perBlock[i], include);
+  }
+  return total;
+}
+
+/**
+ * Per-category counts for a whole doc — or for any subtree, which is how the
+ * SELECTION counter derives from this same walker (`useSelectionCounts` cuts
+ * the selection out with `doc.slice(from, to, true)` and hands the block
+ * fragment straight here, rather than keeping the parallel flat-text walker it
+ * used to have).
+ *
+ * Join separators are whitespace, so they're stripped and don't affect the
+ * per-category character count.
+ */
+export function computeCategoryCounts(doc: JSONContent): CategoryCounts {
   const cats = collectCategoryParts(doc);
 
-  const allText: string[] = [];
-  const categories: Record<string, number> = {};
-  const characterCategories: Record<string, number> = {};
+  const words = {} as Record<Category, number>;
+  const characters = {} as Record<Category, number>;
 
   for (const cat of ALL_CATEGORIES) {
     const joined = cats[cat].join(" ");
-    categories[cat] = countWords(joined);
-    // Non-whitespace chars for this category, mirroring the whole-doc rule
-    // below. Join separators are whitespace, so they're stripped and don't
-    // affect the per-category count — the sum over categories equals the
-    // whole-doc `characters` exactly (pinned in word-count-core.test.ts).
-    characterCategories[cat] = joined.replace(/\s/g, "").length;
-    if (joined.trim()) allText.push(joined);
+    words[cat] = countWords(joined);
+    characters[cat] = joined.replace(/\s/g, "").length;
   }
 
-  const fullText = allText.join(" ");
-  const total = countWords(fullText);
-  const characters = fullText.replace(/\s/g, "").length;
-  const sentences = countSentences(fullText);
-  const minutes = Math.max(1, Math.round(total / 225));
-  const readingTime = minutes === 1 ? "1 min" : `${minutes} min`;
-
-  return { total, characters, sentences, readingTime, categories, characterCategories };
+  return { words, characters };
 }

@@ -17,11 +17,13 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { JSONContent } from "@tiptap/react";
 import { inlineAtoms } from "@/lib/inline-content";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import {
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,
   deriveExampleIdentity,
+  deriveParTitled,
   type DocStructure,
   EMPTY_STRUCTURE,
   type ExampleEntry,
@@ -80,7 +82,12 @@ export function buildInitial(doc: PMNode): DocStructure {
     // Anchorable block — every entity-bearing node has a UUID, including
     // headings / figureBlock / exampleBlock / paragraph / etc.
     if (uuid && isAnchorableNode(node.type)) {
-      blocks.set(uuid, { uuid, pos, typeName });
+      blocks.set(uuid, {
+        uuid,
+        pos,
+        typeName,
+        parTitled: deriveParTitled(node.attrs as Record<string, unknown>),
+      });
     }
 
     if (typeName === "heading" && uuid) {
@@ -119,6 +126,7 @@ export function buildInitial(doc: PMNode): DocStructure {
         label: attrs.label ?? "",
         numbered: attrs.numbered !== false,
         number: attrs.figureNumber ?? null,
+        emitsCaption: figureNodeEmitsCaption(node),
       });
       if (attrs.label) {
         labels.set(attrs.label, {

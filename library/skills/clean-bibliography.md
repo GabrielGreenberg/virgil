@@ -59,8 +59,9 @@ Operates on `papers/$ARGUMENTS/main.tex` and
 - **Step 3e** — itemize the References section, emit one `\item` per
   entry with `\textbf{<author portion>}`, and build the citekey table.
 - **Step 3f** — emit `papers/$ARGUMENTS/references.bib` from the
-  itemized entries, overwriting the single-entry seed
-  `index_paper.py` previously stamped there.
+  itemized entries, overwriting whatever is there (on a first pass, the
+  seed row `index_paper.py` stamped; on a re-run, the previous emission
+  plus that row).
 - **Step 3g** — rewrite inline citations in the body text to natbib
   `\cite{…}` family commands.
 
@@ -73,20 +74,29 @@ as `$VIRGIL_LIBRARY_ROOT`). That is the folder where `.virgil/scripts/`,
 live anywhere — never hardcode the default. If a step needs to re-enter
 it, use `cd "$VIRGIL_LIBRARY_ROOT" && …`.
 
-**Who persists the warnings.** Several steps below compute
-`entry.indexed.warnings` lines (`missing-bib-entry:`,
-`ambiguous-citation:`, `numeric-citation-style:`) and hand them to
-`deep-index.md` step 5 ("### 5. Update catalog"). **This skill performs no
-catalog write of its own** — step 5 lives in `deep-index.md`, not here. So:
+**Who persists the warnings — this skill does, at source.** Several steps
+below compute `entry.indexed.warnings` lines (`missing-bib-entry:`,
+`ambiguous-citation:`, `numeric-citation-style:`). **This skill owns those
+three kinds and persists them itself**, in §Persist the computed warnings
+below — which runs after §3g and BEFORE §Bibliography synthesis. That
+ordering is load-bearing, not tidiness: `synthesize_canonical_entries.py`
+gates entirely on `missing-bib-entry:` lines it reads back out of
+`.virgil/catalog.json`, so while the write was deferred to `deep-index.md`
+step 5 (which runs after the whole §3 dispatch) synthesis consumed the
+*previous* pass's warnings and was a guaranteed no-op on every first pass.
 
-- Running **as a `/library/deep-index` subskill** (the normal case): compute
-  the lines and hand them up; step 5 does the drop-and-recompute write.
+The write is safe to do here because `update_catalog_entry.py` now takes
+`--recompute-warning-kind` — a per-kind merge against the row's live array,
+so persisting your three kinds cannot clobber the five that belong to other
+steps. Never Read/Write `.virgil/catalog.json` directly; the CLI shim holds
+`lock_catalog`.
+
+- Running **as a `/library/deep-index` subskill** (the normal case): persist
+  them here. Step 5 no longer touches these three kinds — it declares only
+  its own five — so there is no double-write and no clobber either way.
 - Running **standalone** (`/library/clean-bibliography <citekey>` invoked
-  directly): there is no step 5. Do **not** hand-write `.virgil/catalog.json`.
-  Instead, **report every computed warning line verbatim in your reply**, and
-  say plainly that they were computed but **not persisted to the catalog** —
-  re-run under `/library/deep-index` (or run its step 5) to make them durable.
-  Surfacing beats silently dropping them on the floor.
+  directly): identical — the persist step is part of this skill, so a
+  standalone run is durable too. Report the lines in your reply as well.
 
 ## Step 3e — Itemize the References section
 
@@ -298,10 +308,19 @@ authors; downstream rendering relies on BibTeX-canonical separators.
 
 ## Step 3f — Emit / populate `references.bib`
 
-Write `papers/$ARGUMENTS/references.bib`, **overwriting** whatever
-`index_paper.py` previously stamped there (the original is a single-entry
-mirror of `master.bib`; we're replacing it with the paper's actual cited
-works).
+Write `papers/$ARGUMENTS/references.bib`, **overwriting** whatever is
+there — we're replacing it with the paper's actual cited works. This is
+the one skill allowed to rewrite the whole file; everywhere else the
+paper's own row is *upserted* through `_tools.write_paper_bib_entry` so
+these cited works survive (task 168 — see library/AGENTS.md
+"`references.bib` is upsert-only").
+
+On a first pass what's there is the single-entry seed `index_paper.py`
+stamped. On a **re-run over an already-deep-indexed paper** it is the
+previous emission — plus, if `/library/authenticate-bib`,
+`/library/apply-bib-edit`, or a re-index has run since, the paper's own
+row upserted back in. Don't treat a >1-entry file as evidence 3f already
+ran correctly; the idempotency clause below is the test.
 
 > **Idempotency.** On a re-run where the in-document bibliography is
 > unchanged (per §3e's idempotency clause, the itemize was left alone)
@@ -423,9 +442,9 @@ author-year vocabulary below. Instead, leave the inline numeric
 mentions as prose verbatim, and append exactly one warning of the
 form `numeric-citation-style: source uses Vancouver-style numeric
 citations; inline rewrite skipped` to `entry.indexed.warnings`
-(this is a fifth recomputed-prefix kind alongside the four in §5;
-`deep-index.md` step 5 — "### 5. Update catalog" — must drop any prior
-`numeric-citation-style:` line and re-emit it). Do NOT emit
+(a recomputed-kind this skill OWNS — persist it via §Persist the
+computed warnings below, declaring `--recompute-warning-kind
+numeric-citation-style` and no other kind). Do NOT emit
 `missing-bib-entry:` warnings either —
 the lookup spec keys on author surnames, which numeric prose
 doesn't carry. The references.bib still gets emitted normally per
@@ -579,21 +598,22 @@ Constraints:
   - one line under "Unresolved inline citations" in the deep-index
     summary log; and
   - one entry of the form `"missing-bib-entry: <Author> <Year>"` (one
-    per unique author/year pair) for `deep-index.md` step 5 ("### 5.
-    Update catalog") to merge into `entry.indexed.warnings` in
-    `.virgil/catalog.json`. This makes the gap durable rather than buried.
+    per unique author/year pair), persisted into `entry.indexed.warnings`
+    in `.virgil/catalog.json` by §Persist the computed warnings below.
+    This makes the gap durable rather than buried — and it is what the
+    synthesis step reads, so the write has to land before it runs.
 - **Ambiguous unsuffixed citation** — if prose has `(Author Year)`
   with no letter suffix but `references.bib` has multiple matching
   entries (`author<year>a`, `author<year>b`, `author<year>c`),
   leave the prose unchanged AND emit
   `"ambiguous-citation: <Author> <Year> (matches: <key1>, <key2>, …)"`
-  to `entry.indexed.warnings` (recomputed-prefix on re-runs, same
+  to `entry.indexed.warnings` (recomputed-kind on re-runs, same
   shape as `missing-bib-entry:`). Do not try to resolve via
   context heuristics — the user can choose the right suffix
-  manually after triage. (Treat this as a fourth recomputed-prefix
-  alongside `missing-bib-entry:`, `footnote-recovery-needed:`, and
-  `examples-not-converted:` in `deep-index.md` step 5's
-  drop-and-recompute list.)
+  manually after triage. (This is the second of the three kinds THIS
+  skill owns and persists in §Persist the computed warnings below;
+  `footnote-recovery-needed:` and `examples-not-converted:` belong to
+  their own subskills and stay on `deep-index.md` step 5.)
 - For **multi-author textual citations that include given names**
   ("Barbara Grosz and Candace Sidner (1986)"), leave the prose alone.
   `\citet{}` would render only surnames and silently drop the inner
@@ -666,6 +686,99 @@ When the script prints `Unresolved (N unique): …`, classify each:
 - **Genuinely missing bib entry**: a real cited work absent from
   the bibliography. Eligible for synthesis (see below).
 
+## Persist the computed warnings (run this before synthesis)
+
+Persist the `entry.indexed.warnings` lines §3g just computed. **Do this
+now** — the next section reads them back out of the catalog, so a deferred
+write makes it a no-op.
+
+**Do not Read/Write `.virgil/catalog.json` directly** (shared file,
+concurrent sessions, advisory locks). Use the CLI shim, and declare the
+kinds this run recomputed with `--recompute-warning-kind`: each declared
+kind's existing lines are dropped from the row and yours appended, while
+every other kind — and every `<kind>-false-positive:` suppression, whose
+head differs — survives byte-identically.
+
+**Author-year sources** (the normal path) — declare **all three** kinds §3g
+owns. The array is ONE list holding the fresh lines for ALL declared kinds; a
+declared kind that produced nothing this pass simply contributes no lines, and
+that is how a finding resolved since the last pass stops being flagged.
+**Keep every flag even when a kind produced nothing** — dropping a flag is what
+leaves its stale lines on the row. If §3g found nothing at all, run this with an
+empty array and all three flags still declared.
+
+`numeric-citation-style` is declared here with (normally) no line behind it,
+and that is deliberate: reaching this branch means §3g's style detection ran
+and concluded the source is NOT Vancouver, which is a real recompute of that
+question. Omitting it strands a `numeric-citation-style:` line written by an
+earlier pass that mis-detected the source — permanently, since nothing else
+clears it — and `deep-index.md` reads `indexed.warnings` on resume as the
+outstanding-work agenda, so the paper would report "inline rewrite skipped"
+forever on a pass where the rewrite ran.
+
+```bash
+cat > /tmp/$ARGUMENTS-cleanbib-warnings.json <<'EOF'
+{
+  "indexed": {
+    "warnings": [
+      "missing-bib-entry: <Author> <Year>",
+      "ambiguous-citation: <Author> <Year> (matches: <key1>, <key2>)"
+    ]
+  }
+}
+EOF
+python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
+  --patch-file /tmp/$ARGUMENTS-cleanbib-warnings.json \
+  --recompute-warning-kind missing-bib-entry \
+  --recompute-warning-kind ambiguous-citation \
+  --recompute-warning-kind numeric-citation-style
+rm /tmp/$ARGUMENTS-cleanbib-warnings.json
+```
+
+**Numeric / Vancouver sources** (§3g's early exit) — declare
+`numeric-citation-style` and **nothing else**. Such a run emits no
+`missing-bib-entry:` lines by design, so declaring that kind would delete a
+prior author-year pass's findings rather than recompute them:
+
+```bash
+cat > /tmp/$ARGUMENTS-cleanbib-warnings.json <<'EOF'
+{
+  "indexed": {
+    "warnings": [
+      "numeric-citation-style: source uses Vancouver-style numeric citations; inline rewrite skipped"
+    ]
+  }
+}
+EOF
+python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
+  --patch-file /tmp/$ARGUMENTS-cleanbib-warnings.json \
+  --recompute-warning-kind numeric-citation-style
+rm /tmp/$ARGUMENTS-cleanbib-warnings.json
+```
+
+Declare only what you recomputed — and every line you supply must be of a kind
+you declared. The shim REFUSES (exit 2, nothing written) on three shapes: a
+kind named with no `indexed.warnings` array in the patch (an implied empty
+there would let a patch meant for one field wipe a whole kind); a line whose
+head is not among the declared kinds (it could never be dropped by a later
+pass, so it would duplicate on every run — the typo'd-flag shape); and a row
+whose stored `warnings` is not a list.
+
+**Why the two branches are asymmetric.** The author-year branch declares all
+three because reaching it means §3g answered all three questions (no gaps, no
+ambiguities, not Vancouver). The numeric branch declares only its own because
+it genuinely did NOT compute the other two — the missing-bib lookup keys on
+author surnames, which numeric prose does not carry (see §3g), so declaring
+them would delete a prior author-year pass's real findings on the strength of a
+pass that never looked. The asymmetry is one-sided by construction, not an
+oversight.
+
+Known and accepted: synthesis (next section) appends entries to
+`references.bib` that resolve some of the `missing-bib-entry:` lines you just
+wrote, and does not clear them. They go stale until the next pass's §3g
+recompute drops them, which is exactly the convergence the recompute
+semantics exist for.
+
 ## Bibliography synthesis (sources gap)
 
 When the source PDF's bibliography is truncated and many
@@ -694,22 +807,26 @@ catch-all sweep from `/library/index-pending`.)
 python3 .virgil/scripts/library/invalidate_bib_imports.py $ARGUMENTS
 ```
 
-## Coherence check (unwired helper — run it manually)
+## Coherence check (the cover-page leg — the cross-field leg has a caller)
 
-Cross-field coherence + PDF cover-page check. **No skill currently invokes
-this**: `authenticate-bib.md` does not call it, and this invocation is the
-only reference to `validate_bib_coherence.py` anywhere in the skill tree. It
-is a working script, not a wired pipeline step — the earlier heading claimed
-it was "called from /library/authenticate-bib", which was never true.
+`validate_bib_coherence.py` has two legs, and only one of them is yours to
+run by hand.
 
-Run it by hand when a paper's bib fields look internally inconsistent (e.g.
-an `@article` with a publisher but no journal), or when a PDF's cover page
-disagrees with the entry:
+Its **cross-field** leg (entry type vs. field set) is a dispatched pipeline
+step: [`/library/authenticate-bib`](authenticate-bib.md) step 2 runs it as an
+advisory pre-flight before the network search — `--json --no-cover-check` — and
+its step 7 re-checks and records anything still standing as a `bib-coherence:`
+line on the catalog row (task 322). Don't duplicate that here; re-authenticate the entry instead.
+
+Its **cover-page** leg is not run there, deliberately: cover-page-vs-bib
+checking belongs to `/library/di-preflight`'s `detect_metadata_mismatch.py`,
+which has a richer `kind` taxonomy and an auto-resolution policy. Run this
+script by hand for its simpler view of a specific PDF — when a paper's cover
+page and its bib entry look like different works:
 
 ```bash
 python3 .virgil/scripts/library/validate_bib_coherence.py $ARGUMENTS
 ```
 
-It only reports; it writes nothing. Whether it should become a real
-pre-authentication gate inside `/library/authenticate-bib` is an open
-question, not settled here.
+It only reports; it writes nothing. A paper with no source on disk, or one
+whose source is a `.docx`/`.tex`, skips the cover leg rather than failing it.

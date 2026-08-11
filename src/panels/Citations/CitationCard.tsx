@@ -22,10 +22,12 @@ import {
   CardMetaLabel,
   cardTitleStyle,
   usePanelCardTryDelete,
-  UNANCHORED_CARD_CLASS,
-  unanchoredCardTitle,
 } from "@/components/panel-primitives";
 import { FONT_STACKS } from "@/lib/panel-typography";
+// The `<cardKind>:<cardId>` grammar has one builder (task 202) — the panel
+// card carries the same `data-link-card` token its in-editor marker does, and
+// `parseLinkCardKey` consumers have to keep agreeing with both.
+import { linkCardKey } from "@/links/link-dom-contract";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -38,6 +40,8 @@ import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { useLibraryEntryLookup } from "@/hooks/useLibrary";
 import { OpenEntryLink } from "@/components/library/open-library-entry";
 import { CitekeyPicker } from "./CitekeyPicker";
+import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
+import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -639,26 +643,17 @@ export function CitationCard({
   );
 
   /* ── Overflow popover (* and Aa) ─────────────────────────────────── */
-
-  const [overflowOpen, setOverflowOpen] = useState(false);
-  const overflowAnchorRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!overflowOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (!overflowAnchorRef.current) return;
-      const target = e.target as Node;
-      if (overflowAnchorRef.current.contains(target)) return;
-      // The popover is a sibling inside the same card — allow clicks
-      // inside the card; otherwise close.
-      const card = overflowAnchorRef.current.closest(
-        `[data-link-card="citation:${cit.id}"]`,
-      );
-      if (card && card.contains(target)) return;
-      setOverflowOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [overflowOpen, cit.id]);
+  // Folded onto `<AnchoredMenu>` in task 181 — it had been an `absolute
+  // right-0 top-full … z-50` surface with its own `document` mousedown closer,
+  // no Escape, no flip and no clamp, in a card body that scrolls inside a panel
+  // list. The open state, the anchor rect, the dismissal and the checkbox rows
+  // all belong to the primitive now; what is left here is the two booleans.
+  //
+  // One dismissal semantic DID change, deliberately: the hand-rolled closer
+  // exempted the whole CARD ("allow clicks inside the card; otherwise close"),
+  // so clicking the Type <select> or the Code field left this popover hanging
+  // open beside them. The primitive closes on any click outside the MENU, which
+  // is both the house contract and the better behaviour.
 
   /* ── Header (matches the compressed view in both states) ─────────── */
 
@@ -739,11 +734,11 @@ export function CitationCard({
 
   /* ── Visual state classes ────────────────────────────────────────── */
 
-  const stateClass = isDropTarget
-    ? "ring-2 ring-drag-target ring-offset-0"
-    : !isAnchored
-      ? UNANCHORED_CARD_CLASS
-      : "";
+  // Task 316: the parked cue moved onto the `unanchored` prop (which carries
+  // `cardKey`), so this slot keeps only the drop-target ring. The two used to
+  // be exclusive arms of one ternary; they are different axes (a parked card
+  // can also be hovered as a drop target), so they now compose.
+  const stateClass = isDropTarget ? "ring-2 ring-drag-target ring-offset-0" : "";
 
   const onToggleFromCtx =
     onTogglePopout ??
@@ -779,7 +774,7 @@ export function CitationCard({
 
   const card = (
     <PanelCard
-      data-link-card={`citation:${cit.id}`}
+      data-link-card={linkCardKey("citation", cit.id)}
       data-pristine-card-id={cit.id}
       data-card-key={cardKey}
       {...(extraDataAttrs || {})}
@@ -835,8 +830,18 @@ export function CitationCard({
           ) as HTMLElement | null,
         )
       }
-      title={
-        !isAnchored && !isDraft ? unanchoredCardTitle("citation") : undefined
+      // Task 316: one declaration for the parked look, its tooltip and the key
+      // that makes the gesture reachable. `canAnchor` UNIFIES the two questions
+      // that used to be asked separately — the tooltip was gated on `!isDraft`
+      // and the button on `dropDisabled`, so a keyless UNANCHORED citation
+      // (reachable without a draft: `persist()` with no valid rows writes an
+      // empty command back to a real citation) promised a drag its own button
+      // refused. Both facts now feed one answer, and the parked LOOK survives
+      // either way, since a card that cannot anchor is the most parked of all.
+      unanchored={
+        !isAnchored
+          ? { kind: "citation", cardKey, canAnchor: !isDraft && !dropDisabled }
+          : undefined
       }
     >
       {compressed ? (
@@ -944,14 +949,14 @@ export function CitationCard({
                   </option>
                 ))}
               </select>
-              <div className="relative">
-                <button
-                  ref={overflowAnchorRef}
-                  type="button"
-                  onClick={() => setOverflowOpen((v) => !v)}
-                  className="iconbtn-sm text-ink-body"
-                  data-hint="More options" aria-label="More options"
-                >
+              <AnchoredMenu
+                ariaLabel="More options"
+                align="end"
+                triggerHint="More options"
+                triggerAriaLabel="More options"
+                triggerClassName="iconbtn-sm text-ink-body"
+                menuClassName="w-44"
+                trigger={() => (
                   <svg
                     width="12"
                     height="12"
@@ -962,40 +967,35 @@ export function CitationCard({
                     <circle cx="12" cy="12" r="1.6" />
                     <circle cx="19" cy="12" r="1.6" />
                   </svg>
-                </button>
-                {overflowOpen && (
-                  <div className="absolute right-0 top-full mt-1 z-50 bg-surface border border-edge-subtle rounded-md shadow-md p-2 space-y-1 w-44">
-                    <label className="flex items-center gap-2 text-xs text-ink-body cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={starred}
-                        onChange={(e) => {
-                          setStarred(e.target.checked);
-                          persist({ starred: e.target.checked });
-                        }}
-                        className="rounded border-edge-hover"
-                      />
-                      <span>
-                        <span className="font-mono">*</span> Full author list
-                      </span>
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-ink-body cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={capitalized}
-                        onChange={(e) => {
-                          setCapitalized(e.target.checked);
-                          persist({ capitalized: e.target.checked });
-                        }}
-                        className="rounded border-edge-hover"
-                      />
-                      <span>
-                        <span className="font-mono">Aa</span> Sentence start
-                      </span>
-                    </label>
-                  </div>
                 )}
-              </div>
+              >
+                {/* No `closeOnInsideClick`: these are toggles the user flips in
+                    runs, and the shell's default is "the caller decides", so the
+                    menu survives repeated activation exactly as the two bare
+                    <label>s did. */}
+                <MenuToggleRow
+                  id="starred"
+                  label="Full author list"
+                  leading={<span className="font-mono" aria-hidden="true">*</span>}
+                  checked={starred}
+                  onToggle={() => {
+                    const next = !starred;
+                    setStarred(next);
+                    persist({ starred: next });
+                  }}
+                />
+                <MenuToggleRow
+                  id="capitalized"
+                  label="Sentence start"
+                  leading={<span className="font-mono" aria-hidden="true">Aa</span>}
+                  checked={capitalized}
+                  onToggle={() => {
+                    const next = !capitalized;
+                    setCapitalized(next);
+                    persist({ capitalized: next });
+                  }}
+                />
+              </AnchoredMenu>
             </div>
 
             <div className="flex items-center gap-1.5 min-w-0">

@@ -22,8 +22,8 @@ import { setDropCtx } from "./controller";
 import { DropModeIndicator } from "./Indicator";
 import { InlineAtomGhost } from "./InlineAtomGhost";
 import type {
-  CitationDropApi,
   DropCtx,
+  InlineAtomCardApis,
   ParagraphAnchorApi,
   StackPullApi,
 } from "./types";
@@ -42,7 +42,10 @@ export interface DropModeProviderProps {
   revisions?: ParagraphAnchorApi;
   reports?: ParagraphAnchorApi;
   stack?: StackPullApi;
-  citations?: CitationDropApi;
+  /** ONE prop for every inline-atom kind's create-branch accessor, built by
+   *  `buildInlineAtomCardApis` (task 233) — not a per-kind prop each new kind
+   *  has to remember to add in four places. */
+  atomCards?: InlineAtomCardApis;
 }
 
 export function DropModeProvider({
@@ -57,7 +60,7 @@ export function DropModeProvider({
   revisions,
   reports,
   stack,
-  citations,
+  atomCards,
 }: DropModeProviderProps) {
   const { confirm, dialog } = useConfirmDialog();
 
@@ -89,7 +92,7 @@ export function DropModeProvider({
     revisions,
     reports,
     stack,
-    citations,
+    atomCards,
   };
   const ctxRef = useRef(snapshot);
   ctxRef.current = snapshot;
@@ -139,8 +142,8 @@ export function DropModeProvider({
       get stack() {
         return ctxRef.current.stack;
       },
-      get citations() {
-        return ctxRef.current.citations;
+      get atomCards() {
+        return ctxRef.current.atomCards;
       },
     };
     setDropCtx(liveCtx);

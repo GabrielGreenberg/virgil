@@ -58,6 +58,10 @@ const MANIFEST: FieldSpec[] = [
   // blockOrderChanged is co-set.
   { name: "changedBlocks", kind: "array", structural: true, busEmit: false },
   { name: "blockOrderChanged", kind: "boolean", structural: true, busEmit: true },
+  // blockParTitleChanged: the co-set wake flag for an in-place parTitled FLIP
+  // riding changedBlocks (same pattern as blockOrderChanged for moves). Typing
+  // inside an existing title flips nothing, so this never fires per-keystroke.
+  { name: "blockParTitleChanged", kind: "boolean", structural: true, busEmit: true },
   { name: "addedHeadings", kind: "array", structural: true, busEmit: true },
   { name: "removedHeadings", kind: "array", structural: true, busEmit: true },
   { name: "changedHeadings", kind: "array", structural: true, busEmit: true },

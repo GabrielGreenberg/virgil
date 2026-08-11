@@ -6,12 +6,36 @@ import EditorMirror from "../EditorMirror";
 import { SectionLozenge } from "./section-lozenge";
 
 /**
- * Two-pane editor split: canonical TipTap view on the left, EditorMirror
- * on the right (sharing the same ProseMirror state). Vertical drag
- * divider sets the ratio — live geometry is an imperative flex write on
- * both panes per frame (RAF-coalesced by the pane-resize engine);
- * `onRatioChange` commits ONCE on release. Each pane has its own X close
- * button that collapses the split.
+ * PARKED — deliberately unmounted since task 115. Nothing in `src/` renders
+ * this, and that is now the intended state, not an accident.
+ *
+ * History: the split's render site was dropped in a refactor, and for months
+ * afterwards the MenuBar still showed a "Split editor" toggle that flipped a
+ * PERSISTED pref no pane read. Everything downstream believed that pref: the
+ * Outline gated its green "mirror pane position" edge bar on it, and with no
+ * mirror the mirror section path resolved to Document-start, so a single
+ * click painted a permanent phantom bar on the Outline's title row that
+ * survived reloads. Task 115 retired the whole live surface — the toggle, the
+ * `editorSplit`/`editorSplitRatio` prefs (scrubbed from saved blobs by
+ * `RETIRED_PREF_KEYS` in `useViewPrefs`), the Outline indicator, EditorLayout's
+ * mirror section-path recompute + `activeSplitPane` state, and `editor-ops`'
+ * mirror scroll routing.
+ *
+ * These two components (this file + `EditorMirror`) are kept because they are
+ * self-contained and complete, so a future rebuild starts from working parts.
+ * Re-mounting one is therefore a DECISION, not a wiring detail: the surface it
+ * needs no longer exists, so restoring it means re-deciding the toggle, the
+ * pref and the Outline indicator together. `editor-split-retirement.test.ts`
+ * fails if this file gains a production importer without that list being
+ * revisited. (It is not untested rot: `pane-resize-adoption.test.tsx` mounts
+ * it and drives a real divider gesture, so the parts stay honest.)
+ *
+ * What it does when mounted: two-pane editor split — canonical TipTap view on
+ * top, EditorMirror below (sharing the same ProseMirror state). Vertical drag
+ * divider sets the ratio — live geometry is an imperative flex write on both
+ * panes per frame (RAF-coalesced by the pane-resize engine); `onRatioChange`
+ * commits ONCE on release. Each pane has its own X close button that collapses
+ * the split.
  */
 export function SplitEditorPanes({
   editorInstance,

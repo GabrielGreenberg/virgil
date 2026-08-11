@@ -17,7 +17,7 @@
 
 import { useEffect } from "react";
 import type { Editor } from "@tiptap/react";
-import { DATA_LINK_ID } from "../link-registry";
+import { DATA_LINK_ID } from "../link-dom-contract";
 
 const DATA_HIGHLIGHT = "data-link-highlight";
 

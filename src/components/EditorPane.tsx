@@ -55,6 +55,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type RefObject,
 } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
@@ -132,13 +133,24 @@ import { useAiRequestCardMigration } from "@/hooks/useAiRequestCardMigration";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { useDocument } from "@/hooks/useDocument";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
+import {
+  getPrintIntent,
+  subscribePrintIntent,
+  printGateEnabled,
+} from "@/lib/print-intent";
 import { readPdf } from "@/lib/storage";
 import { useEditorUIState } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
 import { useLatexSource } from "@/hooks/useLatexSource";
+import {
+  useDocProductsHost,
+  docProductsEnabled,
+} from "@/lib/doc-products/use-doc-products";
+import { useSelectionCounts } from "@/hooks/useSelectionCounts";
 import { useDiagnostics, DiagnosticsProvider, useDiagnosticsContext } from "@/hooks/useDiagnostics";
 import { asBibFamily } from "@/lib/bib-family";
 import { useWordCount } from "@/hooks/useWordCount";
+import { EMPTY_CATEGORY_COUNTS } from "@/lib/word-count-core";
 import { useTodos } from "@/hooks/useTodos";
 import { useArchive } from "@/hooks/useArchive";
 import { useCutter } from "@/hooks/useCutter";
@@ -148,6 +160,7 @@ import { useSuggestions } from "@/hooks/useSuggestions";
 import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
 import { useFootnotes } from "@/hooks/useFootnotes";
+import { selectAtomlessFootnoteRefs } from "@/panels/Footnotes/atomless-refs";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import { useAutoApplyPendingChanges } from "@/hooks/useAutoApplyPendingChanges";
 import { usePristineCardManager } from "@/hooks/usePristineCardManager";
@@ -162,19 +175,25 @@ import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { LiftHost } from "@/text-objects/LiftHost";
 import { CARD_REGISTRY } from "@/cards/card-registry";
+import { CardPresenceProvider } from "@/cards/presence";
 import { cardHasContent } from "@/cards/has-content";
 import { runCardLifecycleEvent } from "@/cards/lifecycle/run-event";
 import { makeUnbridgingDelete } from "@/cards/lifecycle/unbridging-delete";
 import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footnote-delete";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
-import { isCardKind, panelForCardKind, isArchivable, archiveRemovesAtom } from "@/cards/predicates";
+import { isCardKind, panelForCardKind, isArchivable, archiveRemovesAtom, excerptCardKinds } from "@/cards/predicates";
 import {
   CardArchiveActionsProvider,
   type CardArchiveActionsApi,
 } from "@/panels/_shared/card-archive-actions";
+import {
+  CardRestoreActionsProvider,
+  type CardRestoreActionsApi,
+} from "@/panels/_shared/card-restore-actions";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
+import { buildInlineAtomCardApis } from "./drop-mode/atom-card-apis";
 import type { StackPullApi } from "./drop-mode/types";
 import { StackIcon } from "./stack/StackIcon";
 import { StackStrip } from "./stack/StackStrip";
@@ -279,6 +298,11 @@ import {
   buildResolveIndex,
   resolveCardAnchor,
 } from "@/links/resolve-card-anchor";
+import type { PanelSideMap } from "@/lib/margin-side";
+import {
+  resolveAnchorState,
+  type AnchorIntent,
+} from "@/links/anchor-state";
 import { reapplyModeBAnchors } from "@/links/_shared/reapply-mode-b-anchors";
 import {
   reapplyPendingMarks,
@@ -297,9 +321,11 @@ import {
   previewOriginal as previewOriginalSuggestion,
   previewSuggested as previewSuggestedSuggestion,
   insertSuggestionBelow,
+  settleAppliedChangeForLifecycle,
   type PendingChangeCardDeps,
   type InsertBelowCardDeps,
 } from "@/links/pending-change-actions";
+import type { AppliedSpliceOps } from "@/cards/lifecycle/applied-splice";
 import {
   isAppliedPending,
   collectAppliedPendingIds,
@@ -318,7 +344,8 @@ import type {
 } from "@/hooks/useViewPrefs";
 import { bandSlotKey, dockedSideOf } from "@/hooks/useViewPrefs";
 import { useMarginEdit, MARGIN_AXIS } from "@/hooks/useMarginEdit";
-import { INACTIVE_FOCUS_STATE, type FocusState } from "@/hooks/useFocusMode";
+import { type FocusState } from "@/hooks/useFocusMode";
+import type { FocusBand } from "@/lib/focus-view";
 import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
 import type { PanelKind, CardKind } from "@/panels/_shared/types";
@@ -340,6 +367,12 @@ import {
 // render, which would otherwise re-fire `onPaneStateChange` even when
 // nothing meaningful changed.
 const noop = () => {};
+
+// Stable empty placement list for the (theoretical) host that supplies neither
+// a `placements` prop nor `viewPrefs.prefs.placements`. A module constant so
+// the fallback branch keeps ONE identity across renders — see
+// `effectivePlacements` below for why that is load-bearing.
+const NO_PLACEMENTS: PanelPlacement[] = [];
 
 // Default popped-out card dimensions — the subsystem-wide
 // `FLOAT_DEFAULT_SIZE` (float-policy), so spawn positions stay
@@ -377,14 +410,17 @@ export interface EditorPaneViewPrefs {
   // ── Read state ──────────────────────────────────────────────────
   prefs: ViewPrefs;
   isResizingPanels: boolean;
-  /** From useFocusMode. Drives focus-aware dimming/hiding. */
+  /** From useFocusMode. The index projection — consumed by the OmniHost
+   *  fold/focus filter (resolved live against the doc). */
   focusState: FocusState | null;
+  /** From useFocusMode. The UUID-anchored band — consumed by the OutlineHost,
+   *  which resolves it to index boundaries against its own snapshot so the cull
+   *  never straddles two doc revisions (task 307). */
+  focusBand: FocusBand | null;
 
   // ── Section path (OutlineHost) ──────────────────────────────────
   activeSectionPath: SectionPathEntry[];
   activeParTitleIndex: number | null;
-  mirrorSectionPath: SectionPathEntry[];
-  mirrorParTitleIndex: number | null;
 
   // ── Setters / mutators ──────────────────────────────────────────
   setIsResizingPanels: (r: boolean) => void;
@@ -568,8 +604,6 @@ export interface EditorPaneMenuBarBundle {
   availableDividerLevels: Set<import("./MenuBar").DividerLevel>;
   activeDividerLevels: Set<import("./MenuBar").DividerLevel>;
   dividerWidth: import("./MenuBar").DividerWidth;
-  editorSplit: boolean;
-  activeSplitPane: "top" | "bottom";
 
   // ── Toggle setters ─────────────────────────────────────────────
   onToggleParTitles: () => void;
@@ -584,7 +618,6 @@ export interface EditorPaneMenuBarBundle {
   toggleDividerLevel: (level: import("./MenuBar").DividerLevel) => void;
   setDividerWidth: (w: import("./MenuBar").DividerWidth) => void;
   setShowHighlights: (v: boolean) => void;
-  toggleEditorSplit: () => void;
   closeAllPanels: () => void;
 
   // ── Para nav (back/forward through paragraph history) ──────────
@@ -933,7 +966,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // structural counter) actually changes.
   const [outlineDocTick, setOutlineDocTick] = useState(0);
   useEffect(() => {
-    if (!editor) return;
+    // Flag-on the DocProducts pipeline's Tier A owns the debounced doc
+    // snapshot — this legacy tick subscriber stays unmounted.
+    if (!editor || docProductsEnabled) return;
     let t: ReturnType<typeof setTimeout> | null = null;
     const bump = () => {
       if (t) clearTimeout(t);
@@ -969,8 +1004,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // signals (editor never reassigns in place, so it alone would never refresh).
   // This accepted "unnecessary dependencies" warning matches the `rev.*`-gated
   // sibling memos in this file (citationOrder / footnoteInfos / examples).
+  // Flag-on: the DocProducts pipeline's shared docJson replaces this memo
+  // (`outlineContentEffective` below, computed after the host mounts) and
+  // the legacy getJSON here stays fully disabled.
   const outlineContent = useMemo<JSONContent | null>(
-    () => (editor && !isTier1CDisabled() ? (editor.getJSON() as JSONContent) : null),
+    () =>
+      editor && !docProductsEnabled && !isTier1CDisabled()
+        ? (editor.getJSON() as JSONContent)
+        : null,
     [editor, rev.headings, rev.blocks, rev.labels, outlineDocTick],
   );
 
@@ -1237,9 +1278,160 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const cutterHookRaw = useCutter(docId, cutPristine);
   const reportsHookRaw = useReports(docId, reportPristine);
   const revisionsHookRaw = useRevisions(docId, revisionPristine);
-  // Lossy-morph confirm (note→highlight, report↔report-request). Distinct
-  // dialog instance so it coexists with the other confirm dialogs.
-  const { confirm: confirmMorph, dialog: confirmMorphDialog } = useConfirmDialog();
+  // Per-family deps bag for the shared `pending-change-actions` sequence. Built
+  // fresh at ACTION time (a click) so it reads the live cards; its `useCallback`
+  // identity is keystroke-stable (deps: the keystroke-stable hook object), which
+  // is what keeps the controller/index/bulk memos below stable across typing.
+  // Bound to the RAW hooks (the wrapped `revisionsHook`/`cutterHook` memos below
+  // only swap `convertCard`/`deleteCard`; the card arrays + setters these read
+  // are the same objects), so the SAME bag serves both the card-surface verbs
+  // further down AND the lifecycle SETTLE obligation declared just below — one
+  // definition, no second copy to drift (task 238).
+  const revisionPendingDeps = useCallback(
+    (): PendingChangeCardDeps<RevisionSuggestionCard["status"]> => ({
+      getAppliedChange: (cid) =>
+        revisionsHookRaw.cards.find(
+          (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
+        )?.appliedChange,
+      setSuggestionStatus: revisionsHookRaw.setSuggestionStatus,
+      setArchived: revisionsHookRaw.setArchived,
+      setAppliedChange: revisionsHookRaw.setAppliedChange,
+      family: "revision-suggestion",
+      acceptedStatus: "accepted",
+      rejectedStatus: "rejected",
+    }),
+    [revisionsHookRaw],
+  );
+  const cutterPendingDeps = useCallback(
+    (): PendingChangeCardDeps<CutterSuggestionCard["status"]> => ({
+      getAppliedChange: (cid) =>
+        cutterHookRaw.cards.find(
+          (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
+        )?.appliedChange,
+      setSuggestionStatus: cutterHookRaw.setSuggestionStatus,
+      setArchived: cutterHookRaw.setArchived,
+      setAppliedChange: cutterHookRaw.setAppliedChange,
+      family: "cutter-suggestion",
+      acceptedStatus: "accepted",
+      rejectedStatus: "rejected",
+    }),
+    [cutterHookRaw],
+  );
+  // Lossy-morph confirm (note→highlight, report↔report-request) AND the
+  // lifecycle SETTLE prompt (task 238) — one dialog instance serves both, since
+  // a lifecycle event raises them strictly in sequence. Distinct instance so it
+  // coexists with the other confirm dialogs.
+  const {
+    confirm: confirmMorph,
+    choose: chooseLifecycle,
+    dialog: confirmMorphDialog,
+  } = useConfirmDialog();
+
+  // ── The SETTLE obligation's host wiring (task 238) ──────────────────────
+  // A `status:"applied"` suggestion owns a LIVE range in the document (the blue
+  // `pending-ai-change` mark described by `appliedChange`). A morph to a comment
+  // — or a delete — ends the record that manages it, so the executor must settle
+  // that splice first or the range is orphaned: Keep/Revert can no longer
+  // resolve it (`isAppliedPending` requires kind+status+descriptor) and on
+  // reload the reaper strips the mark, leaving unreviewed AI text in the `.tex`
+  // with nothing to revert it.
+  //
+  // ONE bag, kind-agnostic, threaded to EVERY lifecycle door (the morph
+  // chokepoint below + all five `makeUnbridgingDelete` wrappers). The executor
+  // gates it on `ownsAppliedSplice`, so there is no per-kind wiring to forget
+  // when a kind later joins the pending-change family; the wiring guardrail
+  // (`applied-splice-wiring-guardrail.test.ts`) pins that every door passes it.
+  //
+  // KEYSTROKE SANCTITY: a `useMemo` over the keystroke-stable card arrays; it
+  // subscribes to nothing and runs only on an explicit lifecycle click.
+  const appliedSpliceOps = useMemo<AppliedSpliceOps>(
+    () => ({
+      get: (kind, id) => {
+        // Flag-OFF no card can ever reach `status:"applied"`, so this is the
+        // byte-identical no-op path (no prompt, no settle).
+        if (!isPendingChangesOn()) return null;
+        const card =
+          kind === "revision-suggestion"
+            ? revisionsHookRaw.cards.find(
+                (c): c is RevisionSuggestionCard =>
+                  c.id === id && c.kind === "suggestion",
+              )
+            : cutterHookRaw.cards.find(
+                (c): c is CutterSuggestionCard =>
+                  c.id === id && c.kind === "suggestion",
+              );
+        // The SAME membership predicate the pill + omni bulk use — never a
+        // second spelling of "is this card applied-pending".
+        if (!card || !isAppliedPending(card) || !card.appliedChange) return null;
+        return {
+          anchorId: card.appliedChange.anchorId,
+          mode: card.appliedChange.mode,
+        };
+      },
+      ask: async (prompt) => {
+        const choice = await chooseLifecycle({
+          title: prompt.title,
+          message: prompt.message,
+          confirmLabel: prompt.keepLabel,
+          secondaryLabel: prompt.revertLabel,
+          cancelLabel: prompt.cancelLabel,
+          tone: "default",
+        });
+        if (choice === "confirm") return "keep";
+        if (choice === "secondary") return "revert";
+        return null;
+      },
+      settle: (kind, id, resolution) => {
+        const ed = editorInstanceRef.current;
+        // REFUSE rather than orphan: with no editor there is no way to splice
+        // the document, so returning false aborts the whole lifecycle event and
+        // leaves the applied card exactly as it was — recoverable — instead of
+        // ending its record over a range nothing can then manage.
+        if (!ed) return false;
+        settleAppliedChangeForLifecycle(
+          ed,
+          id,
+          docId,
+          kind === "revision-suggestion"
+            ? revisionPendingDeps()
+            : cutterPendingDeps(),
+          resolution,
+        );
+        return true;
+      },
+    }),
+    [
+      revisionsHookRaw.cards,
+      cutterHookRaw.cards,
+      chooseLifecycle,
+      docId,
+      revisionPendingDeps,
+      cutterPendingDeps,
+    ],
+  );
+  // The ONE `ai-requests.json` forwarder for the LIFECYCLE legs — delete AND
+  // morph, the two terminal transitions `runCardLifecycleEvent` executes. It is
+  // deliberately mode-DUMB: the executor derives the mode from the event
+  // (`unbridgeModeFor`, task 313) and this passes it through untouched.
+  //
+  // It used to be two callbacks that each picked a mode, and they forked. The
+  // delete leg (task 219) passed `"terminate"` with a paragraph of comment
+  // explaining why a gone card must close even an answered-L3 row
+  // (`in-progress`+`resultId`) that a reversible `value=false` toggle protects
+  // (task 043); the morph leg passed NO mode at all and inherited the bridge's
+  // `"toggle"` default — so a comment→suggestion flip after an L3 responder had
+  // drafted its proposal left the row live forever, on a routing-less kind with
+  // no next toggle to clear it. Same obligation, same terminality, opposite
+  // behaviour, because the decision lived at the call site. Now there is one
+  // decision, upstream, and this is a forwarder — `value=false` is likewise
+  // irrelevant under terminate (the bridge ignores it there) and kept only so
+  // the signature still reads as the drop it is.
+  const unbridgeAiRequestRow = useCallback(
+    (kind: CardKind, id: string, mode: AiRequestSyncMode) =>
+      // ctx fields are read only on the ADD path, so a placeholder is fine.
+      bridgeCardAiRequestFlag(docId, kind, id, false, { text: "" }, mode),
+    [docId],
+  );
   // ── The A9 morph chokepoint (generalized) ──────────────────────────────
   // EVERY kind-chevron morph — note↔highlight, revision/cutter comment↔
   // suggestion, report↔report-request — fires through `convertCardWithRemap`.
@@ -1299,12 +1491,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         { type: "morph", fromKind: fromCardKind, id },
         {
           confirm: confirmMorph,
-          unbridgeAiRequest: (kind, cardId) =>
-            bridgeCardAiRequestFlag(docId, kind, cardId, false, {
-              // value=false drops the existing entry by {panel, cardId}; the
-              // ctx fields are only read on the add path, so a placeholder is fine.
-              text: "",
-            }),
+          // The SAME forwarder the delete leg uses — the executor decides the
+          // mode (313), so the two terminal transitions can't diverge again.
+          unbridgeAiRequest: unbridgeAiRequestRow,
+          // SETTLE — an applied suggestion's live blue range is resolved (kept
+          // or reverted) before the kind flips, so it can't outlive the record
+          // that manages it (task 238). Inert for every other kind.
+          appliedSplice: appliedSpliceOps,
           mutate: () => {
             // Dispatch to the owning panel hook with its expected data toKind.
             switch (fromCardKind) {
@@ -1351,22 +1544,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       }
       viewPrefs?.remapCardPopKey(cardPopKey(fromCardKind, id), cardPopKey(toCardKind, id));
     },
-    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, docId],
-  );
-  // The SINGLE ai-requests.json writer for the DELETE leg (task 219). A delete
-  // is a TERMINAL transition like archive (task 093): the card is gone, so the
-  // linked open row must close regardless of current openness — including an
-  // answered-L3 proposal (`in-progress`+`resultId`) that a reversible
-  // `value=false` toggle deliberately preserves (task 043). We therefore run the
-  // bridge in `"terminate"` mode (the `value` arg is irrelevant there), NOT the
-  // `value=false` drop the report leg historically used — applied uniformly to
-  // every flag-bearing kind so delete can't strand a row archive would have
-  // closed. There is no card flag to lower afterward (the card is being deleted),
-  // so — unlike `clearAiRequestForKind` (archive) — this only closes the row.
-  const unbridgeOnDelete = useCallback(
-    (kind: CardKind, id: string) =>
-      bridgeCardAiRequestFlag(docId, kind, id, false, { text: "" }, "terminate"),
-    [docId],
+    [revisionsHookRaw, cutterHookRaw, reportsHookRaw, notesHookRaw, viewPrefs, confirmMorph, appliedSpliceOps, unbridgeAiRequestRow],
   );
   // Per-pair adapters that take each card's legacy `(id, dataToKind)` signature,
   // resolve the FROM spine kind, and delegate to the generalized chokepoint —
@@ -1427,9 +1605,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           return c.kind === "suggestion" ? "revision-suggestion" : "revision-comment";
         },
         rawDelete: revisionsHookRaw.deleteCard,
-        unbridge: unbridgeOnDelete,
+        unbridge: unbridgeAiRequestRow,
+        appliedSplice: appliedSpliceOps,
       }),
-    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeOnDelete],
+    [revisionsHookRaw.cards, revisionsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const deleteCutterCard = useMemo(
     () =>
@@ -1440,9 +1619,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           return c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
         },
         rawDelete: cutterHookRaw.deleteCard,
-        unbridge: unbridgeOnDelete,
+        unbridge: unbridgeAiRequestRow,
+        appliedSplice: appliedSpliceOps,
       }),
-    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeOnDelete],
+    [cutterHookRaw.cards, cutterHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const revisionsHook = useMemo(
     () => ({ ...revisionsHookRaw, convertCard: convertRevisionCard, deleteCard: deleteRevisionCard }),
@@ -1485,7 +1665,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `makeUnbridgingDelete` composition every other flag-bearing kind now uses
   // (task 219), so the delete leg is declared once, not re-inlined per kind. A
   // plain `report` (no routing) resolves to `"report"` and the executor no-ops
-  // the unbridge. Terminate semantics come from the shared `unbridgeOnDelete`.
+  // the unbridge. Terminate semantics come from the EXECUTOR (`unbridgeModeFor`,
+  // task 313); `unbridgeAiRequestRow` only forwards them to the bridge.
   const deleteReportCard = useMemo(
     () =>
       makeUnbridgingDelete({
@@ -1494,9 +1675,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           return c?.kind === "report-request" ? "report-request" : "report";
         },
         rawDelete: reportsHookRaw.deleteCard,
-        unbridge: unbridgeOnDelete,
+        unbridge: unbridgeAiRequestRow,
+        appliedSplice: appliedSpliceOps,
       }),
-    [reportsHookRaw.cards, reportsHookRaw.deleteCard, unbridgeOnDelete],
+    [reportsHookRaw.cards, reportsHookRaw.deleteCard, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const reportsHook = useMemo(
     () => ({
@@ -1517,9 +1699,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           return c ? (c.kind as CardKind) : null;
         },
         rawDelete: notesHookRaw.deleteNote,
-        unbridge: unbridgeOnDelete,
+        unbridge: unbridgeAiRequestRow,
+        appliedSplice: appliedSpliceOps,
       }),
-    [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeOnDelete],
+    [notesHookRaw.cards, notesHookRaw.deleteNote, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const notesHook = useMemo(
     () => ({ ...notesHookRaw, convertCard: convertNotesCard, deleteNote: deleteNoteCard }),
@@ -1535,9 +1718,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         resolveKind: (id) =>
           todosHookRaw.items.some((t) => t.id === id) ? "todo" : null,
         rawDelete: todosHookRaw.deleteItem,
-        unbridge: unbridgeOnDelete,
+        unbridge: unbridgeAiRequestRow,
+        appliedSplice: appliedSpliceOps,
       }),
-    [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeOnDelete],
+    [todosHookRaw.items, todosHookRaw.deleteItem, unbridgeAiRequestRow, appliedSpliceOps],
   );
   const todosHook = useMemo(
     () => ({ ...todosHookRaw, deleteItem: deleteTodoItem }),
@@ -1590,8 +1774,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // mechanism varies — editor-handle splice vs sidecar ref delete — see the
   // helper's header). Each caller supplies only its own `remove`. (task 252)
   const deleteFootnoteUnbridged = useMemo(
-    () => makeUnbridgingFootnoteDelete({ unbridge: unbridgeOnDelete }),
-    [unbridgeOnDelete],
+    () => makeUnbridgingFootnoteDelete({ unbridge: unbridgeAiRequestRow }),
+    [unbridgeAiRequestRow],
   );
   // Permanently trashing an UNANCHORED footnote ref (the atom is already gone —
   // e.g. an in-editor marker deletion left a flagged orphan ref that KEPT its
@@ -1669,6 +1853,16 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const isVisible = useIsVisible();
   const isVisibleRef = useRef(isVisible);
   isVisibleRef.current = isVisible;
+
+  // Print-intent gate (perf Wave 0): the appendix tree mounts only during an
+  // active print, and never in a hidden keep-alive pane. Kill-switch
+  // localStorage["virgil:print-gate"]="off" restores the always-mounted
+  // legacy behavior.
+  const printIntent = useSyncExternalStore(
+    subscribePrintIntent,
+    getPrintIntent,
+    getPrintIntent,
+  );
 
   // ── Per-doc editor UI state (last-edited paragraph + section folds) ──
   // Captures cursor paragraph (debounced) and fold state (immediate) to
@@ -1952,15 +2146,44 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `sourceText` serializes the LIVE TipTap doc (independent of the code view),
   // so lint / snippets / jump-anchors populate even when the code pane is never
   // opened — the fix for "diagnostics empty until code view is opened once".
-  const { sourceText, setSourceText } = useLatexSource({
+  // DocProducts pipeline (perf Wave 1, flag `virgil:doc-products`). When ON,
+  // it owns the single debounced doc→products computation (docJson /
+  // sourceText / word counts) and the legacy per-consumer hooks below are
+  // disabled by passing them a null editor. Both hook sets stay statically
+  // mounted (React hook rules); the flag only steers which one does work.
+  const docProductsHost = useDocProductsHost({
     editor,
     docId,
     codeViewActive: codeView,
-    // Thread the authoritative bib family so `sourceText`'s preamble matches the
-    // compiler's / code-pane's bibFamily-aware serialization (line-number parity
-    // when the family injects a \usepackage). A getter, read at serialize time.
     getBibFamily: () => asBibFamily(citationsHook.bibPackage),
+    isVisible,
+    enabled: docProductsEnabled,
   });
+  const { sourceText: legacySourceText, setSourceText: legacySetSourceText } =
+    useLatexSource({
+      editor: docProductsEnabled ? null : editor,
+      docId,
+      codeViewActive: codeView,
+      // Thread the authoritative bib family so `sourceText`'s preamble matches the
+      // compiler's / code-pane's bibFamily-aware serialization (line-number parity
+      // when the family injects a \usepackage). A getter, read at serialize time.
+      getBibFamily: () => asBibFamily(citationsHook.bibPackage),
+    });
+  const sourceText = docProductsEnabled
+    ? docProductsHost.snapshot.sourceText
+    : legacySourceText;
+  const setSourceText = useMemo(() => {
+    if (!docProductsEnabled) return legacySetSourceText;
+    return (text: string) => {
+      docProductsHost.setExternalSourceFeed?.(text);
+    };
+    // setExternalSourceFeed is a stable passthrough to the ref'd pipeline.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legacySetSourceText, docProductsHost.setExternalSourceFeed === null]);
+  // Outline snapshot: pipeline docJson when flag-on, legacy memo otherwise.
+  const outlineContentEffective = docProductsEnabled
+    ? docProductsHost.snapshot.docJson
+    : outlineContent;
   const knownBibKeys = useMemo(
     () => citationsHook.bibEntries.map((e) => e.key),
     [citationsHook.bibEntries],
@@ -2032,8 +2255,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   }, [pdfView, docId]);
 
   // Word counts — surfaces in the WordCount panel below. Cheap to
-  // compute even when the panel isn't open.
-  const wordCountHook = useWordCount(editor);
+  // compute even when the panel isn't open. Flag-on: content counts come
+  // from the pipeline's shared docJson (Tier B), selection counts from the
+  // extracted selection hook; the legacy hook is disabled via null editor.
+  const legacyWordCountHook = useWordCount(docProductsEnabled ? null : editor);
+  const selectionCounts = useSelectionCounts(docProductsEnabled ? editor : null);
+  const wordCountHook = useMemo<ReturnType<typeof useWordCount>>(() => {
+    if (!docProductsEnabled) return legacyWordCountHook;
+    return {
+      counts: docProductsHost.snapshot.wordCounts ?? EMPTY_CATEGORY_COUNTS,
+      selection: selectionCounts,
+    };
+  }, [legacyWordCountHook, docProductsHost.snapshot.wordCounts, selectionCounts]);
 
   // Citation creation handlers — `handleCitationCreated` lands as
   // `onCitationCreated` in the `CitationDisplayContext` so panel
@@ -2182,7 +2415,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Per-doc PoppedCardsContext value. Built from the `viewPrefs` prop so
   // both the main app (persisted `useViewPrefs`) and the Library Reader
   // (`useReaderViewPrefs`, the same engine in ephemeral mode) supply the
-  // same shape. Consumers (panel cards, SelectionDragHandle,
+  // same shape. Consumers (panel cards, TextObjectGrabHandle,
   // paragraph/heading/example floats) read this via `usePoppedCards()` and
   // tolerate a `null` value if no `viewPrefs` is supplied.
   const poppedCardsValue = useMemo<PoppedCardsValue | null>(() => {
@@ -2304,14 +2537,31 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     }),
     [reportsHook.cards, reportsHook.addCardParagraphId, reportsHook.removeCardParagraphId],
   );
-  // Read accessor for the citation drop spec's "anchor the unanchored" create
-  // branch (the F downstream gap, now wired). `commandFor` returns the card's
-  // serialized `\cite{…}` (or null for an empty/keyless draft); the spec reads
-  // it to build the fresh inline atom. `commandFor` is already a stable
-  // callback (it reads `stateRef`), so this memo never churns.
-  const dropCitationsApi = useMemo(
-    () => ({ commandFor: citationsHook.commandFor }),
-    [citationsHook.commandFor],
+  // The ONE wiring site for every inline-atom kind's "anchor the unanchored"
+  // create-branch accessor (task 233). Per kind it supplies (a) the atom attrs
+  // only the CARD knows — a footnote's body, a citation's `\cite{…}` — because
+  // an unanchored card has no marker to read them off, and (b) the anchor
+  // reconcile that clears the ref's `unanchored`/`archived` intent once the
+  // atom lands. Previously this was one hand-added `DropCtx` field per kind:
+  // citation got its five edits, footnote got none, and its create branch
+  // silently planted an EMPTY body — destroying the user's footnote text.
+  // `buildInlineAtomCardApis` is a `Record` over the kind union, so the next
+  // kind can't be half-wired. Every source here is a stable `stateRef`-reading
+  // callback, so this memo never churns.
+  const dropAtomCardApis = useMemo(
+    () =>
+      buildInlineAtomCardApis({
+        footnoteContentFor: footnotesHook.contentFor,
+        markFootnoteAnchored: footnotesHook.markAnchored,
+        citationCommandFor: citationsHook.commandFor,
+        markCitationAnchored: citationsHook.markAnchored,
+      }),
+    [
+      footnotesHook.contentFor,
+      footnotesHook.markAnchored,
+      citationsHook.commandFor,
+      citationsHook.markAnchored,
+    ],
   );
 
   // The margin-pin re-anchor gesture no longer dispatches a
@@ -2456,8 +2706,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         blankLeft: false,
         blankRight: false,
         panelWidths: {},
-        editorSplit: false,
-        editorSplitRatio: 0.5,
         poppedOutPanels: [],
         poppedOutOrigins: {},
         floatPositions: {},
@@ -2475,8 +2723,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // `viewPrefs.prefs.placements` from `useReaderViewPrefs()`. The
   // empty-array fallback covers the (theoretical) case where neither
   // is supplied — strips render empty rather than crashing.
+  // The `[]` fallback is a module CONSTANT, not a literal: this value seeds
+  // `marginaliaPanelSides`, which is a `useMemo` dep AND (since task 205) a dep
+  // of the anchor-highlight reconcile effect. A fresh `[]` per render would
+  // give both a new identity every render and run their bodies — the marker
+  // grid pass and the reconciler's per-link resolve + document sweep — on every
+  // render of the pane rather than on a real dock change.
   const effectivePlacements: PanelPlacement[] =
-    placements ?? viewPrefs?.prefs.placements ?? [];
+    placements ?? viewPrefs?.prefs.placements ?? NO_PLACEMENTS;
 
   // Error state (selection / dismissals / expansion / snippets /
   // paragraph mapping / jump) is OWNED locally by `useDiagnostics` (P5 item 4)
@@ -2690,16 +2944,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     return m;
   }, [footnotesHook.footnoteRefs]);
 
-  // Bug sweep #3: the ATOMLESS footnote refs (archived or unanchored) the
-  // Footnotes panel lists alongside live anchored footnotes + orphans. Anchored
-  // footnotes come from the live editor (footnoteInfos); an archived/unanchored
-  // ref has no `\footnote` atom, so it lives only in the footnotes.json sidecar.
-  // Pure derivation off footnoteRefs — recomputes only when the sidecar changes
-  // (archive toggle / add / delete), never on a plain keystroke.
-  const unanchoredFootnoteRefs = useMemo(
-    () => footnotesHook.footnoteRefs.filter((f) => f.archived || f.unanchored),
-    [footnotesHook.footnoteRefs],
-  );
 
   // ── Phase 1c — gutter-driven Keep / Revert for an applied pending change ──
   // The persistent margin-gutter Keep/Revert affordance (attached below to the
@@ -2710,41 +2954,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // applied handler is ever
   // emitted, so these are unreachable — byte-identical OFF). `editor` is the
   // reactive instance the rest of EditorPane threads.
-  // Per-family deps bag for the shared `pending-change-actions` sequence. Built
-  // fresh at ACTION time (a click) so it reads the live cards; its `useCallback`
-  // identity is keystroke-stable (deps: the keystroke-stable hook object), which
-  // is what keeps the controller/index/bulk memos below stable across typing.
-  const revisionPendingDeps = useCallback(
-    (): PendingChangeCardDeps<RevisionSuggestionCard["status"]> => ({
-      getAppliedChange: (cid) =>
-        revisionsHook.cards.find(
-          (c): c is RevisionSuggestionCard => c.id === cid && c.kind === "suggestion",
-        )?.appliedChange,
-      setSuggestionStatus: revisionsHook.setSuggestionStatus,
-      setArchived: revisionsHook.setArchived,
-      setAppliedChange: revisionsHook.setAppliedChange,
-      family: "revision-suggestion",
-      acceptedStatus: "accepted",
-      rejectedStatus: "rejected",
-    }),
-    [revisionsHook],
-  );
-  const cutterPendingDeps = useCallback(
-    (): PendingChangeCardDeps<CutterSuggestionCard["status"]> => ({
-      getAppliedChange: (cid) =>
-        cutterHook.cards.find(
-          (c): c is CutterSuggestionCard => c.id === cid && c.kind === "suggestion",
-        )?.appliedChange,
-      setSuggestionStatus: cutterHook.setSuggestionStatus,
-      setArchived: cutterHook.setArchived,
-      setAppliedChange: cutterHook.setAppliedChange,
-      family: "cutter-suggestion",
-      acceptedStatus: "accepted",
-      rejectedStatus: "rejected",
-    }),
-    [cutterHook],
-  );
-
   // Per-card COMMIT closures (Check = keep, Cross = dismiss-preserves), threaded
   // to the gutter marker / pill / omni bulk index. The flag + editor-mounted
   // guard lives here (flag-OFF: no applied card ever exists, so these are
@@ -3112,7 +3321,30 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         return pids.map((pid) => ({ pid, unanchored: false }));
       }
       const res = resolveCardAnchor(c, editor, resolveIndex);
-      if (res.source === "orphan") {
+      // Classify through the `resolveAnchorState` SSOT rather than re-reading
+      // the resolver's rung-4 `source === "orphan"` residue (task 205 M1). The
+      // margin's question is BINARY — "does this card have a live marker?" —
+      // so it asks for `!== "anchored"` ON TOP of the SSOT rather than running
+      // a second formula beside it, and the margin can no longer disagree with
+      // the omni/panel badges about what "anchored" means.
+      //
+      // The three-way split is deliberately COLLAPSED here, and that is a
+      // margin-specific judgment rather than an oversight: `free` and
+      // `orphaned` differ in blame, not in affordance, and both land in the
+      // re-pin dock. A `free`-flagged card that reaches the dock branch is one
+      // carrying stored anchors that no longer resolve — surfacing it is the
+      // only way back for it, and hiding it would be the RC2 "card vanishes"
+      // bug wearing a badge. (Five of the six callers below skip
+      // `pids.length === 0` outright; the revisions loop guards on the
+      // DISJUNCTION `!revAnchor && pids.length === 0`, so a revision with a
+      // live text anchor and no stored pids does arrive here with an empty
+      // array — and returns `[]` from the branch below, exactly as it did
+      // before.)
+      // Equivalent to the pre-205 formula for every card today (`paragraphId`
+      // is null exactly when `source === "orphan"`); the SSOT is what keeps it
+      // equivalent tomorrow.
+      const state = resolveAnchorState(res.paragraphId, c as AnchorIntent);
+      if (state !== "anchored") {
         // uuid + mark + snapshot all dead → surface, don't vanish. Key on the
         // first stored pid (stable id for the marker + the re-pin gesture).
         return pids.length > 0
@@ -3372,9 +3604,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Derived from `effectivePlacements` so the prop-supplied placements
   // (main app, post-7.8) and the Reader's synthetic right-only fallback
   // both flow through the same path.
-  const marginaliaPanelSides = useMemo<Partial<Record<PanelId, "left" | "right" | null>>>(
+  const marginaliaPanelSides = useMemo<PanelSideMap>(
     () => {
-      const result: Partial<Record<PanelId, "left" | "right" | null>> = {};
+      const result: Record<string, "left" | "right" | null> = {};
       for (const p of effectivePlacements) result[p.id] = p.side;
       return result;
     },
@@ -3697,7 +3929,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // Ref-stashing (mirrors how EditorPane stashes live values for stable
   // callbacks elsewhere): the published handle reads `bridgeDepsRef.current`
   // — refreshed EVERY render below — so it always sees the CURRENT
-  // editor/cardCreation/cardLifecycle/dispatch WITHOUT re-publishing on each
+  // editor/cardCreation/dispatch WITHOUT re-publishing on each
   // render. The handle object identity is stable (built once in the effect,
   // gated on the reactive `editor` mount), so the publish effect runs only on
   // mount/unmount, not per render.
@@ -3719,7 +3951,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const bridgeClearBlankIfSet = viewPrefs?.clearBlankIfSet ?? stubSetActive;
   const bridgeDepsRef = useRef<{
     cardCreation: typeof cardCreation;
-    cardLifecycle: typeof cardLifecycle;
     dispatch: typeof dragHandleActions.dispatch;
     routingPrefs: typeof bridgeRoutingPrefs;
     setActiveLeft: (id: PanelId) => void;
@@ -3730,7 +3961,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     setSelectedExampleId: typeof setSelectedExampleId;
   }>({
     cardCreation,
-    cardLifecycle,
     dispatch: dragHandleActions.dispatch,
     routingPrefs: bridgeRoutingPrefs,
     setActiveLeft: bridgeSetActiveLeft,
@@ -3742,7 +3972,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   });
   bridgeDepsRef.current = {
     cardCreation,
-    cardLifecycle,
     dispatch: dragHandleActions.dispatch,
     routingPrefs: bridgeRoutingPrefs,
     setActiveLeft: bridgeSetActiveLeft,
@@ -3803,13 +4032,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           view: ed.view,
           ref,
           surface: seed.surface,
-          position: seed.position,
           // CHIP 7b: thread the collab gate into the ctx too (the early-return
           // above already short-circuits, so this is `true` whenever we reach
           // here — but it keeps the `run()` guards' invariant honest).
           canEdit: ed.isEditable,
           cardCreation: deps.cardCreation,
-          cardLifecycle: deps.cardLifecycle,
           dispatch: deps.dispatch,
           payload: seed.payload,
           // The SHARED inline-atom create-popover seam (citation + `\ref`). Both
@@ -3886,7 +4113,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     registerEditorActionsHandle(editor, handle);
     return () => unregisterEditorActionsHandle(editor);
     // Intentionally depends ONLY on `editor` — the live cardCreation /
-    // cardLifecycle / dispatch are read through `bridgeDepsRef` (not closed
+    // dispatch are read through `bridgeDepsRef` (not closed
     // over), and the editor itself is re-read via `innerRef` at call time, so
     // the handle stays stable across renders and re-publishes solely on a
     // mount / editor-swap / unmount. (No exhaustive-deps suppression needed —
@@ -4104,9 +4331,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // is compressed, the 48px comfort cap WINS — the lane is NOT reserved, so the
   // marker floor never fights the user's deliberate compression-for-code. This
   // mirrors the `!zenMode` term exactly: an intentionally-narrow reading mode
-  // where markers gracefully degrade (non-reserved, same as zen / the Library
-  // reader) rather than eating ~150px+ of prose width. The normal (non-code-
-  // split) editor keeps the floor untouched.
+  // where markers degrade (non-reserved, same as zen / the Library reader)
+  // rather than eating ~150px+ of prose width. The normal (non-code-split)
+  // editor keeps the floor untouched.
+  //
+  // What "degrade" MEANS is decided in `<Marginalia>`, not here (task 214).
+  // This flag governs the FLOOR only; un-reserving it used to leave the grid
+  // still packing at the wide-lane offsets, painting badges over the last words
+  // of every marked line. The grid now asks the lane-regime predicate
+  // (`markerGridFits`) against the MEASURED margin and hides the side it can't
+  // host — so the degradation this comment claims is real, and it holds for
+  // every narrowing path (zen, the reader, a hand-dragged margin), not just
+  // this one flag.
   const marginaliaLaneReserved =
     !!menuBar &&
     menuBar.showMarginalia !== false &&
@@ -4271,24 +4507,48 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       return 0;
     });
   }, [archiveHook.snippets, rev.blocks, editor]);
-  // ArchiveHost callbacks — Reader chrome hides this panel, so insert
-  // / restore / delete / capture all go through the hook directly with
-  // no shell-side coordination. The full "archive selection from
-  // editor" flow (which spawns a floating card) lands when the
-  // toolbar/popout system moves into EditorPane.
-  const handleArchiveInsert = useCallback((id: string) => {
-    const found = archiveHook.snippets.find((s) => s.id === id);
-    if (found && innerRef.current) {
-      innerRef.current.restoreArchive(found.content);
-      archiveHook.deleteSnippet(id);
-      setSelectedArchiveId(null);
-    }
-  }, [archiveHook]);
+  // ArchiveHost callbacks — Reader chrome hides this panel, so restore /
+  // delete / capture all go through the hook directly with no shell-side
+  // coordination. The full "archive selection from editor" flow (which spawns a
+  // floating card) lands when the toolbar/popout system moves into EditorPane.
+  //
+  // ONE verb. There used to be two — `handleArchiveInsert` (find →
+  // restoreArchive → deleteSnippet) and `handleArchiveRestore` (restoreSnippet →
+  // restoreArchive) — doing the same thing in opposite orders, and both were
+  // unreachable: the `onInsert`/`onRestore` props they fed were drilled to
+  // `ArchivePanel` and never destructured, so there was no way to un-archive
+  // text at all. Un-archiving is a MOVE, and a move has one direction: the
+  // content lands in the document, then the card that was holding it retires.
+  // `restoreSnippet` takes the landing function so that order cannot be
+  // inverted by a caller (see its note in useArchive).
   const handleArchiveRestore = useCallback((id: string) => {
-    const snippet = archiveHook.restoreSnippet(id);
-    if (snippet) innerRef.current?.restoreArchive(snippet.content);
+    const restored = archiveHook.restoreSnippet(
+      id,
+      (content) => innerRef.current?.restoreArchive(content) ?? false,
+    );
+    if (!restored) {
+      // Nothing left the Archive — say so, and say what to do. The card body is
+      // the ONLY copy of this prose (it was deleted from the document when
+      // archived), so a silent no-op reads as "the button is broken" and a
+      // silent success would be data loss. The overwhelmingly common refusal is
+      // the caret sitting somewhere a block insert would tear (inside an
+      // example, a list, a heading, a gloss row) — hence the instruction rather
+      // than an apology.
+      dragHandleNotify({
+        message:
+          "Couldn't put this back. Click in an ordinary paragraph where the " +
+          "text should go, then try again — it can't be dropped inside a " +
+          "heading, list, or example. Nothing was removed from the Archive.",
+      });
+      return;
+    }
     setSelectedArchiveId(null);
-  }, [archiveHook]);
+    // Depends on the CALLBACK, not the whole hook object: `archiveHook`'s
+    // identity changes on every snippet edit, and this feeds a context value
+    // that every card consumes — the same stability argument
+    // `card-archive-actions` makes in its module doc. `restoreSnippet` is
+    // stable per doc (it reads the live snippets off `stateRef`).
+  }, [archiveHook.restoreSnippet, dragHandleNotify]);
   const handleArchiveDelete = useCallback((id: string) => {
     archiveHook.deleteSnippet(id);
     setSelectedArchiveId(null);
@@ -4388,6 +4648,33 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const footnoteInfos = useMemo(
     () => innerRef.current?.getFootnotes() ?? [],
     [editor, rev.footnotes],
+  );
+
+  // Bug sweep #3: the ATOMLESS footnote refs (archived or unanchored) the
+  // Footnotes panel lists alongside live anchored footnotes + orphans. Anchored
+  // footnotes come from the live editor (footnoteInfos); an archived/unanchored
+  // ref has no `\footnote` atom, so it lives only in the footnotes.json sidecar.
+  //
+  // ATOMLESS is the operative word, and the sidecar flags alone don't establish
+  // it (task 233). `resolveAnchorState`'s law — **a live marker wins
+  // unconditionally over declared intent** — applies here too: a ref whose atom
+  // IS in the doc is anchored, whatever the sidecar still says. Filtering on the
+  // flags alone listed such a ref a SECOND time, as a stale parked duplicate of
+  // the footnote already rendering live from `footnoteInfos`. That happens
+  // whenever the flag outlives the atom's return: re-placing an unanchored card
+  // via the drop button, undoing an archive (Cmd+Z restores the spliced-out
+  // atom, nothing rewrites the sidecar), or a `\footnote` re-typed in the code
+  // view. The drop path also clears the flag at the source (`markAnchored`);
+  // this is the derivation that can't be bypassed. It suppresses the duplicate
+  // RENDER — it does not rewrite the sidecar, so a stale flag still reaches
+  // `archivedIds` above (see the selector's own doc for that residual).
+  //
+  // Both inputs are structurally gated (`footnoteRefs` = sidecar collection,
+  // `footnoteInfos` = `rev.footnotes` counter), so this stays off the keystroke
+  // path.
+  const unanchoredFootnoteRefs = useMemo(
+    () => selectAtomlessFootnoteRefs(footnotesHook.footnoteRefs, footnoteInfos),
+    [footnotesHook.footnoteRefs, footnoteInfos],
   );
 
   // Live ExampleInfo list — same trigger cadence as footnoteInfos.
@@ -4597,6 +4884,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       notes: notesHook.notes,
       highlights: notesHook.highlights,
       footnotes: footnoteInfos,
+      unanchoredFootnotes: unanchoredFootnoteRefs,
       archiveSnippets: archiveHook.snippets,
       cutterCards: cutterHook.cards,
       todoItems: todosHook.items,
@@ -4654,6 +4942,14 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       handleEditFootnote,
       handleDeleteFootnote,
       handleEditFootnoteTitle,
+      // The atomless card's DELETE half must be the unanchored one (see its own
+      // comment above). Its EDIT half is plain `handleEditFootnote`, above —
+      // the answer both other surfaces already give (`footnotes-host.tsx`
+      // `onEditUnanchored={p.onEdit}`, `omni-host.tsx`
+      // `onEditUnanchored: p.handleEditFootnote`), because that handler's
+      // `EditorHandle.updateFootnoteContent` leg finds no node and no-ops,
+      // leaving exactly the sidecar mirror a parked ref needs.
+      handleDeleteUnanchoredFootnote,
       footnoteAiRequests,
       setFootnoteAiRequest: footnotesHook.setFootnoteAiRequest,
 
@@ -4726,7 +5022,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       selectedCitationId, selectedCommentId,
       selectedExampleId,
       handleCitationCreated, handleEditFootnote, handleDeleteFootnote,
-      handleDeleteCitation,
+      handleDeleteCitation, unanchoredFootnoteRefs, handleDeleteUnanchoredFootnote,
       handleEditFootnoteTitle, handleArchiveDelete,
       convertCutterCard, convertReportCard, convertNotesCard,
     ],
@@ -4771,7 +5067,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         // (footnote) do a one-shot doc read here on the drop gesture, but
         // `snapshotForStack` itself is a pure closure over the resolved record
         // — never keystroke-proportional. Returns null for non-stackable kinds
-        // (report / ai / example).
+        // (report / report-request / example — `CARD_REGISTRY[kind].stackable`,
+        // pinned to the Stack vocabulary by `assertStackCoverage`).
         const f = CARD_REGISTRY[parsed.kind].toFloatable(id, popoutsDeps);
         item = f?.snapshotForStack(source) ?? null;
       }
@@ -4933,6 +5230,10 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   useAnchorHighlightReconciler({
     editor,
     store: cardStoreInst,
+    // The SAME live dock map `<Marginalia>` packs its grid against — so the
+    // Mode-A anchor rail lands on the edge the card's marker is actually on,
+    // not on a side frozen into the sidecar at create time (task 205).
+    panelSides: marginaliaPanelSides,
     // The inline-atom structural counter (footnotes + citations) so the
     // dangling-ref prune re-runs when an inline atom is added/removed — the
     // inline kinds never change `collections` (they aren't in it). T2 §3b.2.
@@ -5267,6 +5568,42 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     [archiveCard],
   );
 
+  /** Restore-to-document (task 106) — the affordance every EXCERPT-bodied card
+   *  carries. Membership is registry-derived (`isExcerptCardKind`), so the
+   *  handler map is keyed by kind and pinned to that set by the dev assertion
+   *  below: a future kind that declares `bodySchema: "excerpt"` and lands here
+   *  unwired is LOUD, rather than showing a button that does nothing. (The
+   *  inline-atom `atomCards` bag gets this as a compile error because its
+   *  membership is a type union; `bodySchema` is a runtime facet, so the same
+   *  obligation is asserted at boot instead.) */
+  const cardRestoreActions = useMemo<CardRestoreActionsApi>(() => {
+    const byKind: Partial<Record<CardKind, (id: string) => void>> = {
+      archive: handleArchiveRestore,
+    };
+    if (process.env.NODE_ENV !== "production") {
+      for (const k of excerptCardKinds()) {
+        if (!byKind[k]) {
+          console.error(
+            `[CardRestoreActions] "${k}" declares bodySchema:"excerpt" (its body ` +
+              `holds the only copy of a document slice) but no restore-to-document ` +
+              `handler is wired — the card would show a dead affordance.`,
+          );
+        }
+      }
+    }
+    return {
+      // Only where the host can actually take the content back. A restricted
+      // chrome (the Library Reader, `editableCardKinds: ["note"]`) mounts this
+      // same EditorPane and can surface an archive card through the omni
+      // cascade — with `enabled: true` it would render a control whose every
+      // press fails, since the read-only editor swallows the insert. Hiding it
+      // is the honest answer; the refusal dialog is for a caret in the wrong
+      // place, not for a host that was never going to accept anything.
+      enabled: !chrome.editableCardKinds,
+      restore: (kind, id) => byKind[kind]?.(id),
+    };
+  }, [handleArchiveRestore, chrome.editableCardKinds]);
+
   return (
     // This pane's per-doc store provider. Dominates the editor text, marginalia,
     // panels, and every floating/popout portal (React context flows through
@@ -5274,6 +5611,13 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     // other — share one interaction store. Mounted INSIDE EditorPane so it covers
     // both the main-app mount and the Library Reader mount.
     <CardStoreProvider store={cardStoreInst}>
+    {/* Presence tiers (perf Wave 3, flag virgil:card-tiers default OFF):
+        one provider per pane, above every card surface — the float map and
+        both docked rails are siblings whose portals keep React-tree
+        position, so this single wrap covers all three surfaces in both app
+        mounts. `ready` (editor + doc content) starts the T0→T1→full ramp;
+        the keep-alive visibility context caps hidden panes at T1. */}
+    <CardPresenceProvider ready={ready}>
     <DiagnosticsProvider value={diagnostics}>
     <PendingChangeControllerProvider value={pendingController}>
     <EditorChromeProvider value={{ ...chrome, menuBar }}>
@@ -5306,6 +5650,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         <CollabProvider value={collab}>
         <CardArchiveViewProvider value={cardArchiveViewApi}>
         <CardArchiveActionsProvider value={cardArchiveActions}>
+        <CardRestoreActionsProvider value={cardRestoreActions}>
         {archiveConfirm && (
           <ConfirmDialog
             open
@@ -5387,7 +5732,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
               cutterCards={dropCutterApi}
               revisions={dropRevisionsApi}
               reports={dropReportsApi}
-              citations={dropCitationsApi}
+              atomCards={dropAtomCardApis}
               stack={dropStackApi}
             />
           )}
@@ -5502,7 +5847,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     side={panelSide}
                     panelKind={pid as PanelKind}
                     editor={editor}
-                    content={outlineContent}
+                    content={outlineContentEffective}
                     examples={examples}
                     docId={docId}
                     citationsHook={citationsHook}
@@ -5538,8 +5883,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     revisionsHook={revisionsHook}
                     sortedArchiveSnippets={sortedArchiveSnippets}
                     anchoredArchiveIds={anchoredArchiveIds}
-                    onArchiveInsert={handleArchiveInsert}
-                    onArchiveRestore={handleArchiveRestore}
                     onArchiveDelete={handleArchiveDelete}
                     onAddFootnote={handleAddFootnote}
                     onEditFootnote={handleEditFootnote}
@@ -5566,7 +5909,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       side={panelSide}
                       panelKind={pid as PanelKind}
                       editor={editor}
-                      content={outlineContent}
+                      content={outlineContentEffective}
                       examples={examples}
                       docId={docId}
                       citationsHook={citationsHook}
@@ -5602,8 +5945,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       revisionsHook={revisionsHook}
                       sortedArchiveSnippets={sortedArchiveSnippets}
                       anchoredArchiveIds={anchoredArchiveIds}
-                      onArchiveInsert={handleArchiveInsert}
-                      onArchiveRestore={handleArchiveRestore}
                       onArchiveDelete={handleArchiveDelete}
                         onAddFootnote={handleAddFootnote}
                       onEditFootnote={handleEditFootnote}
@@ -5735,8 +6076,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 revisionsHook={revisionsHook}
                 sortedArchiveSnippets={sortedArchiveSnippets}
                 anchoredArchiveIds={anchoredArchiveIds}
-                onArchiveInsert={handleArchiveInsert}
-                onArchiveRestore={handleArchiveRestore}
                 onArchiveDelete={handleArchiveDelete}
                 onAddFootnote={handleAddFootnote}
                 onEditFootnote={handleEditFootnote}
@@ -6121,9 +6460,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                       onToggleOmniDimResting={menuBar.onToggleOmniDimResting}
                       cardOutlineChrome={menuBar.cardOutlineChrome}
                       onToggleCardOutline={menuBar.onToggleCardOutline}
-                      editorSplit={menuBar.editorSplit}
-                      onToggleEditorSplit={menuBar.toggleEditorSplit}
-                      activeSplitPane={menuBar.editorSplit ? menuBar.activeSplitPane : undefined}
                       showMarginalia={menuBar.showMarginalia}
                       onToggleMarginalia={menuBar.toggleMarginalia}
                       hiddenMarginaliaTypes={menuBar.hiddenMarginaliaTypes}
@@ -6565,10 +6901,18 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                  *  panel renders via `<PaneRailBody>` so the print
                  *  output reuses the same panel components (and their
                  *  data hooks) as the live rail. Reader doesn't pass
-                 *  `viewPrefs` so this stays dormant. */}
-                {viewPrefs && (overrideEditor ?? editor) && (
+                 *  `viewPrefs` so this stays dormant.
+                 *  Perf Wave 0: mounts ONLY during an active print (the
+                 *  print-intent handshake) and never in a hidden
+                 *  keep-alive pane — the always-mounted appendix was one
+                 *  live editor per collapsed footnote card, duplicated. */}
+                {(printGateEnabled
+                  ? printIntent.active && isVisible
+                  : true) &&
+                viewPrefs &&
+                (overrideEditor ?? editor) && (
                   <PrintAppendices
-                    options={viewPrefs.prefs.printOptions}
+                    options={printIntent.options ?? viewPrefs.prefs.printOptions}
                     renderPanel={(kind: PrintPanelKey) => (
                       <PaneRailBody
                         side="left"
@@ -6610,8 +6954,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         revisionsHook={revisionsHook}
                         sortedArchiveSnippets={sortedArchiveSnippets}
                         anchoredArchiveIds={anchoredArchiveIds}
-                        onArchiveInsert={handleArchiveInsert}
-                        onArchiveRestore={handleArchiveRestore}
                         onArchiveDelete={handleArchiveDelete}
                             onAddFootnote={handleAddFootnote}
                         onEditFootnote={handleEditFootnote}
@@ -6824,8 +7166,6 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 revisionsHook={revisionsHook}
                 sortedArchiveSnippets={sortedArchiveSnippets}
                 anchoredArchiveIds={anchoredArchiveIds}
-                onArchiveInsert={handleArchiveInsert}
-                onArchiveRestore={handleArchiveRestore}
                 onArchiveDelete={handleArchiveDelete}
                 onAddFootnote={handleAddFootnote}
                 onEditFootnote={handleEditFootnote}
@@ -6907,6 +7247,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
           {confirmMorphDialog}
         </LiftHost>
         </PoppedCardsContext.Provider>
+        </CardRestoreActionsProvider>
         </CardArchiveActionsProvider>
         </CardArchiveViewProvider>
         </CollabProvider>
@@ -6921,6 +7262,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     </EditorChromeProvider>
     </PendingChangeControllerProvider>
     </DiagnosticsProvider>
+    </CardPresenceProvider>
     </CardStoreProvider>
   );
 }));
@@ -6985,8 +7327,6 @@ interface PaneRailProps {
   revisionsHook: ReturnType<typeof useRevisions>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   anchoredArchiveIds: Set<string>;
-  onArchiveInsert: (id: string) => void;
-  onArchiveRestore: (id: string) => void;
   onArchiveDelete: (id: string) => void;
   onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
@@ -7172,8 +7512,6 @@ function PaneRail({
   revisionsHook,
   sortedArchiveSnippets,
   anchoredArchiveIds,
-  onArchiveInsert,
-  onArchiveRestore,
   onArchiveDelete,
   onAddFootnote,
   onEditFootnote,
@@ -7299,7 +7637,7 @@ function PaneRail({
           errorSnippets={diagnostics.errorSnippets}
           dismissedErrorIds={diagnostics.dismissedErrorIds}
           dismissError={diagnostics.dismissError}
-          jumpToError={diagnostics.jumpToErrorVisual}
+          errorJump={diagnostics.errorJump}
           selectedErrorId={diagnostics.selectedErrorId}
           setSelectedErrorId={diagnostics.setSelectedErrorId}
           expandedErrorIds={diagnostics.expandedErrorIds}
@@ -7440,8 +7778,6 @@ interface PaneRailBodyProps {
   revisionsHook: ReturnType<typeof useRevisions>;
   sortedArchiveSnippets: ReturnType<typeof useArchive>["snippets"];
   anchoredArchiveIds: Set<string>;
-  onArchiveInsert: (id: string) => void;
-  onArchiveRestore: (id: string) => void;
   onArchiveDelete: (id: string) => void;
   onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
@@ -7518,8 +7854,6 @@ function PaneRailBody({
   revisionsHook,
   sortedArchiveSnippets,
   anchoredArchiveIds,
-  onArchiveInsert,
-  onArchiveRestore,
   onArchiveDelete,
   onAddFootnote,
   onEditFootnote,
@@ -7567,10 +7901,7 @@ function PaneRailBody({
         isLabelTaken={viewPrefs.isLabelTaken}
         activeSectionPath={viewPrefs.activeSectionPath}
         activeParTitleIndex={viewPrefs.activeParTitleIndex}
-        editorSplit={viewPrefs.prefs.editorSplit}
-        mirrorSectionPath={viewPrefs.mirrorSectionPath}
-        mirrorParTitleIndex={viewPrefs.mirrorParTitleIndex}
-        focusState={viewPrefs.focusState ?? INACTIVE_FOCUS_STATE}
+        focusBand={viewPrefs.focusBand}
         onFocusActivate={viewPrefs.onFocusActivate}
         onFocusDeactivate={viewPrefs.onFocusDeactivate}
         onFocusToggleLock={viewPrefs.onFocusToggleLock}
@@ -7620,7 +7951,6 @@ function PaneRailBody({
         bibEntries={citationsHook.bibEntries}
         citationStyle={citationsHook.citationStyle}
         bibPackage={citationsHook.bibPackage}
-        bibPath={citationsHook.bibPath}
         citationOrder={citationOrder}
         addCitation={citationsHook.addCitation}
         updateCitation={citationsHook.updateCitation}
@@ -7682,13 +8012,9 @@ function PaneRailBody({
   if (panelKind === "archive") {
     return (
       <ArchiveHost
-        side={side}
         sortedArchiveSnippets={sortedArchiveSnippets}
-        archiveSnippets={archiveHook.snippets}
         updateArchiveSnippet={archiveHook.updateSnippet}
         updateArchiveSnippetTitle={archiveHook.updateSnippetTitle}
-        onInsert={onArchiveInsert}
-        onRestore={onArchiveRestore}
         onDelete={onArchiveDelete}
         anchoredIds={anchoredArchiveIds}
       />
@@ -7759,7 +8085,7 @@ function PaneRailBody({
         onSelect={diagnostics.setSelectedErrorId}
         dismissedIds={diagnostics.dismissedErrorIds}
         onDismiss={diagnostics.dismissError}
-        onJump={diagnostics.jumpToErrorVisual}
+        jump={diagnostics.errorJump}
         snippets={diagnostics.errorSnippets}
         paragraphByErrorId={diagnostics.paragraphByErrorId}
         expandedIds={diagnostics.expandedErrorIds}

@@ -1,6 +1,12 @@
-import { JSONContent } from "@tiptap/react";
+import type { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { generateShortId } from "@/lib/uuid";
+import {
+  emitMarker,
+  INLINE_TEX_MARKERS,
+  VIRGIL_MARKERS,
+} from "@/lib/latex-markers";
+import { buildFigureEnvBody } from "@/lib/figures/env-body";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
 import {
@@ -8,7 +14,12 @@ import {
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
 import { typographyToLatex, smartenStraightQuotes } from "@/lib/latex-typography";
-import { extractBraced, isEscaped, VERBATIM_ENVS_FULL } from "@/lib/latex-lexer";
+import {
+  extractBraced,
+  hasVerbatimMark,
+  isEscaped,
+  VERBATIM_ENVS_FULL,
+} from "@/lib/latex-lexer";
 import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
 import { classifyCiteFamily } from "@/lib/bib-family";
 import {
@@ -83,6 +94,13 @@ const UUID_BEARING_NODE_TYPES = new Set([
   "graphicsBlock",
   "exampleBlock",
   "exampleItem",
+  // The \maketitle stand-in declares the uuid attr and both serializer
+  // (`%!v:` anchor emission) and parser already round-trip it — but its
+  // absence HERE meant assignUuids never minted for it, so it reached the
+  // editor uuid-less and the drop-mode hit-test minted mid-drag (full doc
+  // walk + synchronous .tex flush per pointermove — the D4 drag cliff,
+  // MEMO_PERF_DEEP_RESEARCH_2026_08_08.md §5).
+  "maketitleMarker",
 ]);
 
 const DEFAULT_POSTAMBLE = `
@@ -94,6 +112,15 @@ function serializeMarks(
   marks?: { type: string; attrs?: Record<string, unknown> }[]
 ): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
+
+  // latexVerbatim mark: BYTE-LITERAL LaTeX (an inline `\verb<delim>…<delim>`
+  // run, or a `VERBATIM_ENVS_FULL` env with no modeled node). Emit it exactly
+  // as parsed — no escaping, and above all no `smartenStraightQuotes`: inside
+  // verbatim a `"` IS a straight ASCII quote, and rewriting it to ``/'' both
+  // corrupts the user's source bytes and renders as literal backticks in the
+  // compiled PDF. Checked BEFORE the `latexCommand` branch so the stricter
+  // carrier wins if a node ever ends up carrying both (task 264).
+  if (hasVerbatimMark(marks)) return text;
 
   // latexCommand mark: text is already raw LaTeX — return as-is, except
   // that uncompilable ASCII / smart quotes get smart-LaTeX-ified so they
@@ -226,7 +253,7 @@ function serializeTitleField(node: JSONContent): string {
   return `\\${field}{${rawPrefix}${inner}}${anchor}\n`;
 }
 
-function collectPreambleTitleFields(doc: JSONContent): JSONContent[] {
+export function collectPreambleTitleFields(doc: JSONContent): JSONContent[] {
   // Walk the whole doc tree and collect every titleField. Title/author/
   // date are ALWAYS preamble residents — that's their LaTeX semantics —
   // so we don't gate on a per-node flag. Dedup by `field` (first
@@ -379,26 +406,22 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         : "";
       const anchor = uuid ? ` %!v:${uuid}` : "";
       const envName = starred ? "figure*" : "figure";
-      const bodyParts: string[] = [];
-      if (extras) {
-        bodyParts.push("\n");
-        bodyParts.push(extras);
-      }
-      if (captionChild) {
-        // Re-emit the optional `[short]` list-of-figures argument opaquely when
-        // present (task 263); a bracket-free caption stays byte-identical.
-        const shortCaption = node.attrs?.shortCaption as string | null;
-        const shortArg =
-          typeof shortCaption === "string" ? `[${shortCaption}]` : "";
-        bodyParts.push("\n  ");
-        bodyParts.push(`\\caption${shortArg}{${captionTex}}`);
-      }
-      if (label) {
-        bodyParts.push("\n  ");
-        bodyParts.push(`\\label{${label}}`);
-      }
-      bodyParts.push("\n");
-      return `\\begin{${envName}}${placement}${bodyParts.join("")}\\end{${envName}}${anchor}\n\n`;
+      // Tasks 318 + 319: the env body is built by the ONE builder shared with
+      // the popover surface, off DECLARED facts — `hasCaption` (did the source
+      // carry a `\caption` command at all; the always-present caption child
+      // cannot answer that, and emitting on its presence gave every
+      // caption-less figure a number-consuming `\caption{}`) and the caption's
+      // own scanned bytes (which is what tells a `\label` DECLARATION inside
+      // the caption from one merely quoted in `\verb`, the distinction the
+      // reverted substring test of task 245 could not make).
+      const body = buildFigureEnvBody({
+        extras,
+        captionTex,
+        hasCaption: node.attrs?.hasCaption !== false,
+        shortCaption: (node.attrs?.shortCaption as string | null) ?? null,
+        label,
+      });
+      return `\\begin{${envName}}${placement}${body}\\end{${envName}}${anchor}\n\n`;
     }
 
     case "graphicsBlock": {
@@ -491,7 +514,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 
     case "footnote": {
       const fid = node.attrs?.footnoteId as string | undefined;
-      const idMarker = fid ? `\\vfid{${fid}}` : "";
+      const idMarker = fid ? emitMarker(VIRGIL_MARKERS.footnote, fid) : "";
       const cmd = node.attrs?.thanks ? "thanks" : "footnote";
       return `${idMarker}\\${cmd}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
     }
@@ -508,7 +531,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 
     case "citation": {
       const cid = node.attrs?.citationId as string | undefined;
-      const idMarker = cid ? `\\vcid{${cid}}` : "";
+      const idMarker = cid ? emitMarker(VIRGIL_MARKERS.citation, cid) : "";
       const command = (node.attrs?.command as string) || "";
       // Declare the bib family this cite command pins, adjacent to its emit.
       needBibFamily(classifyCiteFamily(command));
@@ -592,7 +615,7 @@ function serializeExampleBlock(node: JSONContent): string {
   need("expex");
   const kind = node.attrs?.kind === "multi" ? "pex" : "ex";
   const uuid = node.attrs?.uuid as string | null;
-  const idMarker = uuid ? `\\vexid{${uuid}}` : "";
+  const idMarker = uuid ? emitMarker(VIRGIL_MARKERS.exampleBlock, uuid) : "";
   const tag = (node.attrs?.tag as string) || "";
   const tagStr = tag ? `<${tag}>` : "";
   const override = (node.attrs?.exnoOverride as string | null) || null;
@@ -678,7 +701,7 @@ function serializeExampleItem(node: JSONContent): string {
   // An `\a` item is an expex construct.
   need("expex");
   const uuid = node.attrs?.uuid as string | null;
-  const idMarker = uuid ? `\\vxid{${uuid}}` : "";
+  const idMarker = uuid ? emitMarker(VIRGIL_MARKERS.exampleItem, uuid) : "";
   const tag = (node.attrs?.tag as string) || "";
   const tagStr = tag ? `<${tag}>` : "";
   // Item-level `\a[exno=N]` override — mirror the block leg
@@ -803,19 +826,19 @@ function serializeExampleGloss(node: JSONContent): string {
  * (`\vcid`) and footnote ids (`\vfid`) (the atom emit sites at :360/:376 and
  * :665/:671). These are NOT real LaTeX — they are private sentinels the parser
  * (`parseInlineContent` / `applyLinkedAnchorBoundaries`) reads back to
- * re-materialize anchors + atoms. Single-sourced here (alongside the emit
- * sites) so any consumer that must treat serialized text as trusted-marker-free
- * — notably the pending-change applicator's splice guard
- * (`containsInternalMarker`) — never drifts from the set the serializer
- * actually produces. Longest-first so the regex alternation matches `\vlidend`
- * before its `\vlid` prefix.
+ * re-materialize anchors + atoms.
+ *
+ * DERIVED, not listed: the set is every marker in the vocabulary SSOT
+ * ([latex-markers.ts](latex-markers.ts)) whose `file` is the `.tex` and whose
+ * `position` is `inline` — the two facets that decide the question, so a
+ * future inline marker joins this guard by declaring itself rather than by
+ * someone remembering this file. (`\vexid`/`\vxid` are block-position and
+ * `\vbid` lives in the `.bib`, so none of them is emitted into the inline
+ * stream this guard protects.) Longest-first so the regex alternation matches
+ * `\vlidend` before its `\vlid` prefix.
  */
-export const INTERNAL_MARKER_COMMANDS = [
-  "vlidend",
-  "vlid",
-  "vcid",
-  "vfid",
-] as const;
+export const INTERNAL_MARKER_COMMANDS: readonly string[] =
+  INLINE_TEX_MARKERS.map((m) => m.command);
 
 const INTERNAL_MARKER_REGEX = new RegExp(
   `\\\\(?:${INTERNAL_MARKER_COMMANDS.join("|")})\\b`,
@@ -860,13 +883,13 @@ function serializeInlineSequence(nodes: JSONContent[]): string {
       }
       for (const id of [...open]) {
         if (!currentIds.has(id)) {
-          out += `\\vlidend{${id}}`;
+          out += emitMarker(VIRGIL_MARKERS.linkedRangeClose, id);
           open.delete(id);
         }
       }
       for (const id of currentIds) {
         if (!open.has(id)) {
-          out += `\\vlid{${id}}`;
+          out += emitMarker(VIRGIL_MARKERS.linkedRangeOpen, id);
           open.add(id);
         }
       }
@@ -876,7 +899,7 @@ function serializeInlineSequence(nodes: JSONContent[]): string {
     }
   }
   for (const id of open) {
-    out += `\\vlidend{${id}}`;
+    out += emitMarker(VIRGIL_MARKERS.linkedRangeClose, id);
   }
   return out;
 }
@@ -890,13 +913,13 @@ function serializeInline(node: JSONContent): string {
   }
   if (node.type === "footnote") {
     const fid = node.attrs?.footnoteId as string | undefined;
-    const idMarker = fid ? `\\vfid{${fid}}` : "";
+    const idMarker = fid ? emitMarker(VIRGIL_MARKERS.footnote, fid) : "";
     const cmd = node.attrs?.thanks ? "thanks" : "footnote";
     return `${idMarker}\\${cmd}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
   }
   if (node.type === "citation") {
     const cid = node.attrs?.citationId as string | undefined;
-    const idMarker = cid ? `\\vcid{${cid}}` : "";
+    const idMarker = cid ? emitMarker(VIRGIL_MARKERS.citation, cid) : "";
     const command = (node.attrs?.command as string) || "";
     needBibFamily(classifyCiteFamily(command));
     return `${idMarker}${command}`;
@@ -924,12 +947,24 @@ function serializeInline(node: JSONContent): string {
  * bodies keep their interior blank runs too (task 243). A capture-group
  * backreference (`\1`) pairs each `\begin{env}` with its own `\end{env}`, and
  * the alternation is longest-first so `verbatim*` is tried before `verbatim`.
+ *
+ * The `(?:[…]|{…})*` run after the env name is load-bearing (task 264): two of
+ * the four family members are normally written WITH an argument —
+ * `\begin{lstlisting}[language=Python]`, and `\begin{minted}{python}` whose
+ * language argument is MANDATORY, so no real `minted` block has a newline
+ * immediately after `\begin{minted}`. Requiring that newline meant those
+ * blocks never stashed and the `\n{3,}` collapse below ran straight over their
+ * bodies: a PEP8 listing lost one of its two blank lines between top-level
+ * defs on the FIRST save, silently and idempotently. Task 243 unified the
+ * VOCABULARY here but the pattern still only fit the no-argument spelling.
  */
 const VERBATIM_BLOCK_RE = new RegExp(
   `\\\\begin\\{(${[...VERBATIM_ENVS_FULL]
     .sort((a, b) => b.length - a.length)
     .map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join("|")})\\}\\n[\\s\\S]*?\\n\\\\end\\{\\1\\}`,
+    .join(
+      "|",
+    )})\\}(?:\\[[^\\]\\n]*\\]|\\{[^}\\n]*\\})*\\n[\\s\\S]*?\\n\\\\end\\{\\1\\}`,
   "g",
 );
 function collapseBlankRuns(s: string): string {
@@ -947,6 +982,118 @@ function collapseBlankRuns(s: string): string {
     const block = blocks[Number(i)];
     return block === undefined ? whole : block;
   });
+}
+
+/** One top-level block's serialized LaTeX + the requirements its emit-sites
+ *  declared — the per-block unit `serializeToLatex` assembles from, and the
+ *  cacheable entry for the Wave-1 incremental pipeline (cache key = PM node
+ *  identity; a block's output depends on nothing outside its own subtree). */
+export interface TopLevelBlockLatex {
+  latex: string;
+  requirementIds: readonly string[];
+  bibFamily: BibFamily | null;
+}
+
+/**
+ * Serialize ONE top-level block with its own requirement collector.
+ * Top level ⇒ `suppressChildUuids = false`, `listDepth = 0` (always true for
+ * doc children), so the emitted bytes are exactly the block's slice of a
+ * whole-doc `serializeNode(doc)` walk.
+ */
+export function serializeTopLevelBlock(node: JSONContent): TopLevelBlockLatex {
+  const collector = createRequirementCollector();
+  const prevCollector = activeCollector;
+  activeCollector = collector;
+  let latex: string;
+  try {
+    latex = serializeNode(node);
+  } finally {
+    activeCollector = prevCollector;
+  }
+  return {
+    latex,
+    requirementIds: [...collector.ids],
+    bibFamily: collector.bibFamily,
+  };
+}
+
+/**
+ * Fold per-block declared bib families exactly the way one whole-walk
+ * collector would have: first concrete family wins; a DIFFERENT later family
+ * is a conflict that resolves to natbib (the absorbing baseline —
+ * latex-requirement-collector.ts `needBibFamily`). Per-block folding composes
+ * with this cross-block fold because "natbib" is absorbing whether it arrived
+ * as a declaration or as a conflict resolution.
+ */
+function foldBibFamilies(parts: readonly TopLevelBlockLatex[]): BibFamily | null {
+  let fam: BibFamily | null = null;
+  for (const p of parts) {
+    if (!p.bibFamily) continue;
+    if (fam === null) fam = p.bibFamily;
+    else if (fam !== p.bibFamily) fam = "natbib";
+  }
+  return fam;
+}
+
+export interface AssembleLatexOptions {
+  preamble?: string;
+  postamble?: string;
+  bibFamily?: BibFamily | null;
+  onRequirementConflict?: (conflict: BibFamilyConflict) => void;
+}
+
+/**
+ * Assemble a full `.tex` from per-block pieces — byte-identical to what the
+ * historical whole-doc `serializeToLatex` walk produced from the same doc
+ * (the doc case was always `map + join` over top-level children; the tails
+ * below are the joined-string passes that genuinely span block boundaries).
+ */
+export function assembleLatex(
+  parts: readonly TopLevelBlockLatex[],
+  preambleTitleFields: JSONContent[],
+  options?: AssembleLatexOptions,
+): string {
+  const body = collapseBlankRuns(parts.map((p) => p.latex).join("")).trim();
+
+  // Requirements pass runs on EVERY serialize — including the no-options
+  // DEFAULT_PREAMBLE fallback — so a body that emits expex / graphicx /
+  // tikz / cite commands always has the matching \usepackage (and every
+  // `\v*id` shim) by the time the .tex hits disk. `||` (not `??`): an
+  // empty-string preamble falls back to the default, as before.
+  //
+  // The DECLARED set (per-block requirementIds, from emit-sites) is UNIONed
+  // with the FALLBACK detector (detectBodyRequirements, for hand-typed raw
+  // LaTeX). The two never subtract, so the result is a superset-improvement
+  // over the old detector-only set — byte-stable for existing docs (the
+  // emit-sites declare exactly what the regexes were catching, plus
+  // previously-missed cases).
+  const required = detectBodyRequirements(body);
+  for (const p of parts) for (const id of p.requirementIds) required.add(id);
+
+  // Bib family: prefer the authoritative per-doc choice; else the family the
+  // cite emit-sites declared. The declared/authoritative family is reconciled
+  // against the preamble by ensurePreambleRequirements (inject the RIGHT
+  // family; warn — never delete — on a hard conflict).
+  const declaredFamily: BibFamily | null =
+    options?.bibFamily ?? foldBibFamilies(parts);
+
+  const rawPreamble = ensurePreambleRequirements(
+    options?.preamble || DEFAULT_PREAMBLE,
+    required,
+    {
+      declaredBibFamily: declaredFamily,
+      onBibFamilyConflict: options?.onRequirementConflict,
+    },
+  );
+  // Re-inject preamble-sourced \title/\author/\date right before
+  // \begin{document}. They live in the doc tree (so the editor can show
+  // them), but the user intends them to live in the preamble.
+  const preamble = injectTitleFieldsIntoPreamble(
+    rawPreamble,
+    preambleTitleFields,
+  );
+  const postamble = options?.postamble ?? DEFAULT_POSTAMBLE;
+  return preamble + body + postamble;
 }
 
 export function serializeToLatex(
@@ -971,54 +1118,12 @@ export function serializeToLatex(
     onRequirementConflict?: (conflict: BibFamilyConflict) => void;
   },
 ): string {
-  // Seed a per-serialize collector and set it as the active side channel for
-  // the walk. Cleared in `finally` so body-only projections never see it.
-  const collector = createRequirementCollector();
-  const prevCollector = activeCollector;
-  activeCollector = collector;
-  let body: string;
-  try {
-    body = collapseBlankRuns(serializeNode(doc)).trim();
-  } finally {
-    activeCollector = prevCollector;
-  }
-
-  // Requirements pass runs on EVERY serialize — including the no-options
-  // DEFAULT_PREAMBLE fallback — so a body that emits expex / graphicx /
-  // tikz / cite commands always has the matching \usepackage (and every
-  // `\v*id` shim) by the time the .tex hits disk. `||` (not `??`): an
-  // empty-string preamble falls back to the default, as before.
-  //
-  // The DECLARED set (collector.ids, from emit-sites) is UNIONed with the
-  // FALLBACK detector (detectBodyRequirements, for hand-typed raw LaTeX). The
-  // two never subtract, so the result is a superset-improvement over the old
-  // detector-only set — byte-stable for existing docs (the emit-sites declare
-  // exactly what the regexes were catching, plus previously-missed cases).
-  const required = detectBodyRequirements(body);
-  for (const id of collector.ids) required.add(id);
-
-  // Bib family: prefer the authoritative per-doc choice; else the family the
-  // cite emit-sites declared. The declared/authoritative family is reconciled
-  // against the preamble by ensurePreambleRequirements (inject the RIGHT
-  // family; warn — never delete — on a hard conflict).
-  const declaredFamily: BibFamily | null =
-    options?.bibFamily ?? collector.bibFamily;
-
-  const rawPreamble = ensurePreambleRequirements(
-    options?.preamble || DEFAULT_PREAMBLE,
-    required,
-    {
-      declaredBibFamily: declaredFamily,
-      onBibFamilyConflict: options?.onRequirementConflict,
-    },
-  );
-  // Re-inject preamble-sourced \title/\author/\date right before
-  // \begin{document}. They live in the doc tree (so the editor can show
-  // them), but the user intends them to live in the preamble.
-  const preambleFields = collectPreambleTitleFields(doc);
-  const preamble = injectTitleFieldsIntoPreamble(rawPreamble, preambleFields);
-  const postamble = options?.postamble ?? DEFAULT_POSTAMBLE;
-  return preamble + body + postamble;
+  // ONE code path (perf Wave 0, plan P2-S1): the whole-doc serialize is the
+  // per-block serialize + assembly. The Wave-1 incremental pipeline memoizes
+  // `serializeTopLevelBlock` per PM node; this function stays the cold path
+  // and the byte-identity oracle.
+  const parts = (doc.content ?? []).map((n) => serializeTopLevelBlock(n));
+  return assembleLatex(parts, collectPreambleTitleFields(doc), options);
 }
 
 export function serializeBodyOnly(doc: JSONContent): string {
@@ -1211,14 +1316,17 @@ export function assignUuids(doc: JSONContent): void {
     ) {
       ensureUuid(node);
     }
-    // Atom-like block nodes always get a UUID
+    // Atom-like block nodes always get a UUID. maketitleMarker included
+    // (D4 drag-cliff fix): uuid-less, it forced the drop hit-test to mint
+    // mid-drag; minting here at load kills that path.
     if (
       (node.type === "displayMath" ||
         node.type === "latexComment" ||
         node.type === "codeBlock" ||
         node.type === "exampleBlock" ||
         node.type === "figureBlock" ||
-        node.type === "graphicsBlock") &&
+        node.type === "graphicsBlock" ||
+        node.type === "maketitleMarker") &&
       !node.attrs?.uuid
     ) {
       ensureUuid(node);
@@ -1282,6 +1390,130 @@ export function assignUuids(doc: JSONContent): void {
 
   dedupInlineId("citation", "citationId");
   dedupInlineId("footnote", "footnoteId");
+}
+
+/**
+ * Read-only twin of `assignUuids`: true iff a run would MUTATE the doc.
+ *
+ * (Perf Wave 1 / S3.) With `BlockUuidBackfill` live in the editor, every
+ * anchorable block already carries a unique uuid by the end of the inserting
+ * transaction — so at save time this is almost always false, and the save
+ * path can (a) skip the four mutation walks and (b) safely receive the
+ * DocProducts pipeline's SHARED docJson, whose cached per-block entries must
+ * never be mutated. When it returns true, the caller deep-copies and runs
+ * the real `assignUuids` on the copy. Drift between the two is pinned by
+ * `latex-serializer-needs-uuid-work.test.ts` (predicate ⇔ mutation).
+ */
+export function needsUuidWork(doc: JSONContent): boolean {
+  const CONTAINER_TYPES = new Set(["bulletList", "orderedList", "blockquote"]);
+  let work = false;
+
+  // Pass 1 mirror: duplicate uuids among bearing nodes.
+  const seen = new Set<string>();
+  function dedup(node: JSONContent) {
+    if (work) return;
+    if (UUID_BEARING_NODE_TYPES.has(node.type!) && node.attrs?.uuid) {
+      const uuid = node.attrs.uuid as string;
+      if (seen.has(uuid)) {
+        work = true;
+        return;
+      }
+      seen.add(uuid);
+    }
+    node.content?.forEach(dedup);
+  }
+  dedup(doc);
+  if (work) return true;
+
+  // Pass 2 mirror: any node the assign ladder would touch.
+  function assign(node: JSONContent, insideContainer = false) {
+    if (work) return;
+    if (insideContainer && node.type === "paragraph" && node.attrs?.uuid) {
+      work = true; // assignUuids would CLEAR uuid/parTitle here
+      return;
+    }
+    if (CONTAINER_TYPES.has(node.type!)) {
+      if (!node.attrs?.uuid) {
+        work = true;
+        return;
+      }
+      node.content?.forEach((child) => assign(child, true));
+      return;
+    }
+    if (node.type === "listItem") {
+      if (!node.attrs?.uuid) {
+        work = true;
+        return;
+      }
+      node.content?.forEach((child) => assign(child, true));
+      return;
+    }
+    if (
+      (node.type === "heading" || node.type === "titleField") &&
+      !node.attrs?.uuid
+    ) {
+      work = true;
+      return;
+    }
+    if (
+      node.type === "paragraph" &&
+      !insideContainer &&
+      node.content &&
+      node.content.length > 0 &&
+      !node.attrs?.uuid
+    ) {
+      work = true;
+      return;
+    }
+    if (
+      (node.type === "displayMath" ||
+        node.type === "latexComment" ||
+        node.type === "codeBlock" ||
+        node.type === "exampleBlock" ||
+        node.type === "figureBlock" ||
+        node.type === "graphicsBlock" ||
+        node.type === "maketitleMarker") &&
+      !node.attrs?.uuid
+    ) {
+      work = true;
+      return;
+    }
+    node.content?.forEach((child) => assign(child, insideContainer));
+  }
+  assign(doc);
+  if (work) return true;
+
+  // Pass 3 mirror: inline-id dedup/fill (citation:citationId,
+  // footnote:footnoteId) — duplicate OR missing/empty id means the fill
+  // walk would write.
+  function inlineIdWork(typeName: string, attrName: string): boolean {
+    const localSeen = new Set<string>();
+    let found = false;
+    const walkChildren = (node: JSONContent, fn: (n: JSONContent) => void) => {
+      node.content?.forEach(fn);
+      const attrContent = node.attrs?.content;
+      if (Array.isArray(attrContent)) {
+        for (const child of attrContent as JSONContent[]) fn(child);
+      } else if (attrContent && typeof attrContent === "object") {
+        fn(attrContent as JSONContent);
+      }
+    };
+    const walk = (node: JSONContent) => {
+      if (found) return;
+      if (node.type === typeName) {
+        const id = node.attrs?.[attrName] as string | undefined;
+        if (!id || localSeen.has(id)) {
+          found = true;
+          return;
+        }
+        localSeen.add(id);
+      }
+      walkChildren(node, walk);
+    };
+    walk(doc);
+    return found;
+  }
+  return inlineIdWork("citation", "citationId") || inlineIdWork("footnote", "footnoteId");
 }
 
 /** Recursively extract plain text from a JSONContent subtree. */

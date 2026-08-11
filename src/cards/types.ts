@@ -62,7 +62,7 @@ export type ThemeKey = PanelThemeKey;
  * (It used to live in `lib/marginalia.ts`, which made this type layer import
  * from a UI lib module — an inverted edge.) Marker metadata that derives from
  * the registry (owning panel, theme key) lives in `src/cards/marker-meta.ts`;
- * the marginalia-local presentation fields (label / defaultSide / icon) stay
+ * the marginalia-local presentation fields (label / icon) stay
  * in `MARKER_META` (`lib/marginalia.ts`).
  */
 export type MarkerType =
@@ -119,10 +119,12 @@ export type MorphDropField = "title" | "byline" | "aiRequest" | "body" | "keys" 
  *  named field must exist on the kind's record type (pinned by
  *  `assertContentCoverage`).
  *
- *  All three field lists are matched against the card record by name. A field
+ *  All four field lists are matched against the card record by name. A field
  *  holding a Tiptap JSONContent doc (`bodyField`) is walked for visible text;
- *  the `textFields` / `extraUserFields` are matched as plain-string-or-array
- *  (non-empty array of keys, or trimmed-non-empty string). */
+ *  the `textFields` / `authorConditionalFields` are matched as
+ *  plain-string-or-array (non-empty array of keys, or trimmed-non-empty
+ *  string). No field may appear in more than one list — that's a contradiction
+ *  the walker can't resolve, and `assertContentCoverage` rejects it. */
 export interface CardContentModel {
   /** Rich-body JSONContent field name on the record (e.g. `"content"`), or
    *  `null` for kinds whose body lives elsewhere (footnote body rides
@@ -132,11 +134,31 @@ export interface CardContentModel {
    *  todo/report-request/report; `"title"` on report/footnote/note). A trimmed
    *  non-empty string, or a non-empty array (e.g. citation `keys`). */
   textFields: readonly string[];
-  /** AI-prefilled fields that DON'T count as user content (the suggestion
-   *  family's `original_text` / `suggested_text` arrive filled by the AI). Named
-   *  here for documentation + the coverage assertion; the walker never reads
-   *  them — it only consults `bodyField` + `textFields`. */
+  /** AI-prefilled fields that DON'T count as user content — the suggestion
+   *  family's `original_text`, which is a read-only capture of the targeted
+   *  passage on EVERY surface (AI or human authorship) and is recoverable from
+   *  the document itself. Named here for documentation + the coverage
+   *  assertion; the walker never reads them.
+   *
+   *  This list is for fields NO author can type into. A field whose
+   *  user-content-ness depends on WHO authored the record belongs in
+   *  {@link authorConditionalFields} — see the note there (task 241). */
   aiPrefilledFields: readonly string[];
+  /** Fields that count as user content ONLY on a **human-authored** record —
+   *  i.e. when `card.author !== "ai"` (an absent `author` reads as human,
+   *  matching the sidecar migrations' own default, and failing SAFE toward
+   *  confirming).
+   *
+   *  Why the model needs this axis (task 241): a static per-kind descriptor
+   *  can't express a field whose user-content-ness depends on the record. The
+   *  suggestion family's `suggested_text` is AI *prefill* on an AI card (which
+   *  never renders the editable field grid — see `PendingAiRecordBody`) but the
+   *  human author's typed, apply-load-bearing replacement on a human card
+   *  (`replacement = user_text or suggested_text`, `apply_response.py`). Listed
+   *  as `aiPrefilledFields` it read as EMPTY for a human draft whose only
+   *  content was a typed replacement — hard-deleted with no confirm, and
+   *  asymmetric with the apply path that treats it as real content. */
+  authorConditionalFields: readonly string[];
 }
 
 /** Per-`CardKind` SSOT. Mirrors `TextObjectMeta`. */
@@ -203,7 +225,8 @@ export interface CardMeta {
    *  actually has.
    *
    *  The walker (`cardHasContent`) treats the card as "has content" iff ANY
-   *  declared body/text/extra field is non-empty (visible text). `null` for the
+   *  declared body/text field is non-empty (visible text) — plus, on a
+   *  non-AI-authored record, any `authorConditionalFields` entry. `null` for the
    *  system kinds with no user content (`bib`/`error`) and for `highlight`
    *  (a color + range, no user-typed body) — a `null` descriptor ALWAYS reports
    *  "no content" (delete without confirm), which is the correct behavior for
@@ -256,11 +279,14 @@ export interface CardMeta {
    *  out-of-tree readers) and PINNED to `drops.length > 0` by
    *  `assertMorphCoverage`, so the two can never diverge. */
   morph: { to: CardKind; lossy: boolean; drops: readonly MorphDropField[] } | null;
-  /** Whether this kind can serialize onto the Stack (was the hand-kept
-   *  `StackCardKind` union). `bib` is stackable despite being `system`, so this
-   *  cannot be derived from `origin`. `example` is declared stackable to mirror
-   *  `StackCardKind` even though its float's `snapshotForStack` returns null for
-   *  it today (no reachable `ExampleRef` sidecar — R2). */
+  /** Whether this kind can serialize onto the Stack. `bib` is stackable despite
+   *  being `system`, so this cannot be derived from `origin` — and the Stack
+   *  spells that kind `"bibliography"`, so it cannot be derived from the name
+   *  either. PINNED to the Stack's real vocabulary (`STACK_CARD_KINDS`,
+   *  `src/lib/stack/card-kinds.ts`) by `assertStackCoverage()` at boot, with the
+   *  mechanisms only a built float / a real drop can answer for pinned in
+   *  `cards/__tests__/stack-coverage.test.ts` (task 259). A kind whose round
+   *  trip isn't built declares `false` — there is no "stackable in principle". */
   stackable: boolean;
   /** Whether this kind can pop out into a `Floatable` window. The single
    *  DECLARATIVE source of truth for poppability: `registerCardFloatable`
@@ -280,6 +306,25 @@ export interface CardMeta {
    *  declared class to the typography row so the two never drift. The mutable
    *  per-field override registry (the user's text-size stepper) is unchanged. */
   bodyClass: "borrowed" | "sans";
+  /** Which SCHEMA this kind's body mounts (task 308) — orthogonal to
+   *  {@link bodyClass}, which is typography only. `"card"` is the narrow
+   *  authored-prose surface (`CARD_STARTER_KIT_CONFIG`: no heading / blockquote
+   *  / codeBlock / horizontalRule, no expex, no highlight / textColor marks).
+   *  `"excerpt"` is the full main-document vocabulary, for a kind whose body
+   *  holds a verbatim SLICE OF THE DOCUMENT rather than prose the user typed
+   *  into the card.
+   *
+   *  Declared per kind rather than inferred from `bodyClass`: "renders in the
+   *  main-text serif face" and "can contain arbitrary document structure" are
+   *  different questions, and three of the four `bodyClass: "borrowed"` kinds
+   *  (footnote / example) hold authored or kind-specific content, not an
+   *  arbitrary excerpt. Resolved ONCE in `EditableCard` and threaded to both
+   *  body surfaces, so a kind can never render through two schemas.
+   *
+   *  A kind that declares `"excerpt"` is also asserting the other half of the
+   *  contract: any DESTRUCTIVE capture writing into it is gated by
+   *  `canMountInCardBody` (never delete what the destination cannot hold). */
+  bodySchema: import("@/lib/tiptap/borrowed-schema").CardBodySchemaScope;
   /** AF integration point. Returns the shared `Floatable` presence, or `null`
    *  when this kind is not poppable (`error`). MUST be a pure per-id resolver —
    *  resolve one entity by id from `ctx`; NO full-doc descent (keystroke

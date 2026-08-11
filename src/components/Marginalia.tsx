@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import {
@@ -12,16 +19,19 @@ import {
   MARGINALIA_MARGIN_WIDTH_LEFT,
   MARGINALIA_MARGIN_WIDTH_RIGHT,
   MARGINALIA_ICON_SIZE,
+  markerGridFits,
   resolveMarginaliaHost,
   type GridCell,
   type MarginaliaMarker,
   type MarkerOverflowGroup,
   type PositionedMarker,
 } from "@/lib/marginalia";
+import { getOrCreateGeometry } from "@/lib/editor-geometry";
+import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 import { buildFloatKey } from "@/floats/float-key";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
-import type { PanelId } from "@/hooks/useViewPrefs";
+import type { PanelSideMap } from "@/lib/margin-side";
 import {
   deriveMarkerPalette,
   getPanelColor,
@@ -43,8 +53,10 @@ import {
 interface MarginaliaProps {
   editor: Editor | null;
   markers: MarginaliaMarker[];
-  /** Which side each panel is currently docked on (or null if collapsed) */
-  panelSides: Partial<Record<PanelId, "left" | "right" | null>>;
+  /** Which side each panel is currently docked on (or null if collapsed). The
+   *  shape has ONE name — `PanelSideMap` from the margin-side SSOT — so the
+   *  grid, the rail and this component cannot describe it three ways. */
+  panelSides: PanelSideMap;
 }
 
 /**
@@ -85,6 +97,90 @@ function useMarginaliaHost(editor: Editor | null): HTMLElement | null {
   return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }
 
+// ── Lane regime (task 214) ──────────────────────────────────────────────────
+//
+// The marker columns are POD-anchored at fixed lane offsets while the prose
+// text edge moves with the margin, so below a certain margin the badges land
+// back OVER the text — reachable with no user action beyond opening the Code
+// pane, which caps the margin at the 48px comfort gutter and stops reserving
+// the lane. The show/hide answer comes from the ONE lane-regime predicate
+// (`markerGridFits`), the same one the selection bolt asks for its own
+// inboard/tuck fork with its own inset.
+//
+// It is fed the MEASURED pod-edge → text-edge distance, not the `--editor-pl`
+// / `--editor-pr` pref: the pod is `.editor-pane-pod`, which is BOTH the
+// marker container's positioning context (it carries `data-marginalia-host`)
+// and what the geometry service measures as `podLeft`/`podRight`, so the
+// subtraction is exactly the room the lane has — including in a code split,
+// where the pod sits inside the clip and the pref would overstate it. (One
+// honest limit: past the pod's min-content width the layout rect extends
+// beyond the clip, so deep-clip markers that are already scrolled out of the
+// visible strip fail open. They were clipped before this change too.)
+//
+// Keystroke sanctity: no new observer, no editor subscription — this rides the
+// geometry service's existing per-editor viewport channel (one RO, equality-
+// bailed, gesture-parked; already retained by `useMarginaliaRegistry` above,
+// and retained again here so the hook stands on its own). The snapshot is a
+// PRIMITIVE bit code, so `useSyncExternalStore` bails the re-render on every
+// refresh that leaves the regime unchanged — which is every refresh a
+// keystroke can cause, since a height change moves the frame's vertical
+// fields and the regime reads only horizontal ones.
+
+const LANE_FIT_LEFT = 1;
+const LANE_FIT_RIGHT = 2;
+const LANE_FITS_BOTH = LANE_FIT_LEFT | LANE_FIT_RIGHT;
+
+function laneFitCode(frame: EditorViewportFrame | null): number {
+  // Unmeasured — the pre-first-refresh EMPTY frame, a keep-alive pane that
+  // mounted while `display:none` (zero offsetHeight, so the service never
+  // commits), a detached view. FAIL OPEN: every field of that frame is 0, so
+  // reading the arithmetic instead of this sentinel would cull every marker on
+  // the first commit of every pane and on every warm tab switch — a far worse
+  // failure than the overlap this guards.
+  if (!frame || !frame.editorEl) return LANE_FITS_BOTH;
+  return (
+    (markerGridFits("left", frame.contentLeft - frame.podLeft)
+      ? LANE_FIT_LEFT
+      : 0) |
+    (markerGridFits("right", frame.podRight - frame.editorRight)
+      ? LANE_FIT_RIGHT
+      : 0)
+  );
+}
+
+/** Which sides' margins can host the marker grid right now. */
+function useLaneFits(editor: Editor | null): { left: boolean; right: boolean } {
+  // Retain the engine for this consumer's lifetime (refcounted — the registry
+  // adapter above holds one too; this hook does not depend on that).
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    return getOrCreateGeometry(editor).retain();
+  }, [editor]);
+
+  const subscribe = useCallback(
+    (cb: () => void) => {
+      if (!editor || editor.isDestroyed) return () => {};
+      return getOrCreateGeometry(editor).subscribeViewport(cb);
+    },
+    [editor],
+  );
+
+  const getSnapshot = useCallback(() => {
+    if (!editor || editor.isDestroyed) return LANE_FITS_BOTH;
+    return laneFitCode(getOrCreateGeometry(editor).getViewportFrame());
+  }, [editor]);
+
+  const code = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    () => LANE_FITS_BOTH,
+  );
+  return {
+    left: (code & LANE_FIT_LEFT) !== 0,
+    right: (code & LANE_FIT_RIGHT) !== 0,
+  };
+}
+
 /**
  * Marginalia margin — renders icon markers in a line-aligned grid on each
  * side of the editor column. Each UUID-bearing text element generates an
@@ -108,11 +204,18 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   // Orphan markers (card resolved to `source:'orphan'`, CHIP-B) have no live
   // paragraph to line-align against — they come back in `orphans` and render
   // in the fixed re-pin dock instead of being silently culled.
+  // Lane regime (task 214) — see `useLaneFits` below.
+  const { left: fitsLeft, right: fitsRight } = useLaneFits(editor);
+
   const { positioned, overflowGroups, orphans } = useMemo(
-    () => computeMarkerPositions(registry.getMetrics, markers, panelSides),
+    () =>
+      computeMarkerPositions(registry.getMetrics, markers, panelSides, {
+        left: fitsLeft,
+        right: fitsRight,
+      }),
     // registryVersion is the re-render trigger; getMetrics itself is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [registry, markers, panelSides, registryVersion],
+    [registry, markers, panelSides, registryVersion, fitsLeft, fitsRight],
   );
 
   // The margin-pin re-anchor gesture is no longer native HTML5 DnD: grabbing

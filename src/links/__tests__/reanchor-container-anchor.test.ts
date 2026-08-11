@@ -265,7 +265,6 @@ function modeARequestCard(
       // Any non-"linkedRange" TextObjectKind → Mode-A (getTextAnchor === null).
       targetKind: "listItem" as TextObjectKind,
       textObjectIds: [containerUuid],
-      margin: { side: "right" },
     },
     target: { type: "card", ref: { kind: "note", id }, },
     createdAt: "",

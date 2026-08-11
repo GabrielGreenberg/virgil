@@ -454,7 +454,12 @@ def suppression_categories_from_catalog(
     """
     out: set[str] = set()
     for e in catalog.get("entries", []):
-        if e.get("citekey") != citekey:
+        # NFC-insensitive, like every other row lookup in this module: the
+        # WRITE side normalizes (`add_validator_suppression` calls
+        # `normalize_citekey`), so a raw `!=` here returns nothing at all on
+        # an NFD-spelled row (Tichý / Čerić / López) and the suppression the
+        # operator just added reads as absent.
+        if not citekey_matches(e.get("citekey", ""), citekey):
             continue
         indexed = e.get("indexed") or {}
         for w in indexed.get("warnings", []) or []:
@@ -725,7 +730,72 @@ def _deep_merge(dst: dict, src: dict) -> None:
             dst[k] = v
 
 
-def update_catalog_entry(library: Path, citekey: str, patch: dict) -> None:
+def merge_indexed_warnings(
+    existing: list, owned_kinds, fresh: list,
+) -> list:
+    """Per-KIND recompute-replace over an `indexed.warnings` array.
+
+    For each declared kind K, drop every existing line whose HEAD
+    (`line.split(":", 1)[0]`) EQUALS K, then append `fresh` in order.
+    Every other line survives byte-identically and in its original
+    order — including lines of kinds this pass did not recompute, and
+    including non-string junk (preserved rather than silently dropped).
+
+    Why this exists
+    ---------------
+    The catalog patch channel replaces arrays (`_deep_merge`: "arrays
+    and scalars replace"), so a subskill that wanted to persist its own
+    freshly-computed warnings had exactly two options — clobber every
+    other kind on the row, or defer the write to one late owner. The
+    library chose deferral, which is why `/library/clean-bibliography`'s
+    `missing-bib-entry:` lines were persisted by `deep-index.md` step 5
+    AFTER the Bibliography-synthesis step that reads them (task 323).
+
+    Why EXACT head-equality, not `startswith`
+    -----------------------------------------
+    `<kind>-false-positive:` is a real, operator-authored suppression
+    family with its OWN append-if-absent writer
+    (`add_validator_suppression.py`), and readers rely on the two
+    families staying distinguishable (`pgmark_validate.py`'s baseline,
+    `suppression_categories_from_catalog`). `missing-bib-entry-
+    false-positive:` is representable, so a `startswith("missing-bib-
+    entry")` drop would eat a verified suppression. Two semantics for
+    two families — recompute-replace here, append-if-absent there; do
+    not unify them.
+
+    Why REPLACE, not union-by-line
+    ------------------------------
+    These prefixes are defined as recomputed-per-pass (`_doctrine.md`
+    §Persistence convergence): "if a missing entry from a prior pass has
+    since been added to references.bib, the rerun drops it from
+    warnings." Union is monotone — it can never drop — so resolved gaps
+    would stay flagged forever.
+
+    Authority scoping (the rule that keeps the fix from becoming the
+    bug): a caller declares ONLY the kinds it actually recomputed this
+    pass. Declaring a kind with zero fresh lines correctly CLEARS stale
+    ones; declaring a kind you did not recompute silently deletes
+    another pass's findings.
+    """
+    owned = {
+        k.strip() for k in (owned_kinds or [])
+        if isinstance(k, str) and k.strip()
+    }
+    out = [
+        w for w in (existing or [])
+        if not (isinstance(w, str) and w.split(":", 1)[0] in owned)
+    ]
+    out.extend(fresh or [])
+    return out
+
+
+def update_catalog_entry(
+    library: Path,
+    citekey: str,
+    patch: dict,
+    *,
+    recompute_warning_kinds=None,
+) -> None:
     """Apply `patch` to the catalog entry for `citekey`. Self-locks.
 
     Deep-merge semantics: nested objects merge, arrays/scalars replace.
@@ -736,7 +806,72 @@ def update_catalog_entry(library: Path, citekey: str, patch: dict) -> None:
     Raises `KeyError` if the entry is not present — callers update
     rows that already exist. Use `upsert_catalog_entry` to add new
     rows.
+
+    `recompute_warning_kinds` (opt-in, keyword-only)
+    ------------------------------------------------
+    When supplied, `patch["indexed"]["warnings"]` is read as the FRESH
+    lines for those kinds and merged against the row's CURRENT array via
+    `merge_indexed_warnings` — inside this lock, so the read-modify-write
+    is atomic — before `_deep_merge` runs. Called WITHOUT it, behavior is
+    byte-identical to before: the patch's array replaces the row's.
+
+    `_deep_merge` itself is deliberately UNMODIFIED. It is shared with
+    `upsert_catalog_entry` (index_paper, merge_paper_references), where
+    list-replace governs `authors`/`tags`/`importedKeys`/`pdf`/`bib` and
+    is pinned by `test_parser_hardening.py`. The merge is opt-in AT THE
+    CALL because only the caller knows which kinds it recomputed.
+
+    `None` selects the legacy whole-array replace; a LIST — even an empty
+    one — selects merge mode. The two are deliberately distinguishable:
+    a caller that computes its kind list and gets `[]` means "I dropped
+    nothing", and silently handing that back the CLOBBER path is the one
+    surprise this whole change exists to remove.
+
+    Three shapes REFUSE with `ValueError`, all before anything is
+    written, because each is a way for a well-formed call to corrupt the
+    row silently:
+
+    * declaring kinds with no `indexed.warnings` array in the patch — an
+      implied empty would let a patch that meant to set only
+      `indexed.state` wipe every line of the declared kinds;
+    * a FRESH line whose head is not among the declared kinds — that
+      line can never be dropped by a later pass, so it duplicates on
+      every run (the typo'd-kind shape: declare `missing-bib-entrie`,
+      supply `missing-bib-entry:` lines, and the merge degrades to
+      append-only while the shim reports success); and
+    * a row whose stored `indexed.warnings` is not a list — iterating a
+      string yields one entry per CHARACTER and would rewrite the row
+      from them. A malformed row is for a human to repair, not for this
+      to guess at.
     """
+    if recompute_warning_kinds is not None:
+        indexed_patch = patch.get("indexed")
+        fresh = indexed_patch.get("warnings") if isinstance(indexed_patch, dict) else None
+        if not isinstance(fresh, list):
+            raise ValueError(
+                "recompute_warning_kinds requires patch['indexed']['warnings'] "
+                "to be a list of the fresh lines for those kinds (use [] to "
+                "clear them); got "
+                f"{type(fresh).__name__}"
+            )
+        declared = {
+            k.strip() for k in recompute_warning_kinds
+            if isinstance(k, str) and k.strip()
+        }
+        undeclared = sorted({
+            w.split(":", 1)[0] for w in fresh
+            if isinstance(w, str) and w.split(":", 1)[0] not in declared
+        } | {
+            "<non-string>" for w in fresh if not isinstance(w, str)
+        })
+        if undeclared:
+            raise ValueError(
+                "every fresh warning line's head must be a declared kind — "
+                f"undeclared: {', '.join(undeclared)}; declared: "
+                f"{', '.join(sorted(declared)) or '(none)'}. An undeclared "
+                "line is never dropped by a later pass, so it duplicates on "
+                "every run."
+            )
     with lock_catalog(library):
         catalog = read_catalog(library)
         target = None
@@ -746,6 +881,24 @@ def update_catalog_entry(library: Path, citekey: str, patch: dict) -> None:
                 break
         if target is None:
             raise KeyError(f"catalog.json: no entry for citekey {citekey!r}")
+        if recompute_warning_kinds is not None:
+            current = (target.get("indexed") or {}).get("warnings")
+            if current is None:
+                current = []
+            if not isinstance(current, list):
+                raise ValueError(
+                    f"catalog.json: indexed.warnings for {citekey!r} is a "
+                    f"{type(current).__name__}, not a list — refusing to merge "
+                    "into a malformed row"
+                )
+            merged = merge_indexed_warnings(
+                current, recompute_warning_kinds, patch["indexed"]["warnings"],
+            )
+            # Copy rather than mutate — the caller's patch is theirs.
+            patch = {
+                **patch,
+                "indexed": {**patch["indexed"], "warnings": merged},
+            }
         _deep_merge(target, patch)
         target["updatedAt"] = _now()
         write_catalog(library, catalog)
@@ -814,6 +967,49 @@ def upsert_catalog_entry(
     }
     catalog.setdefault("entries", []).append(e)
     return e
+
+
+# ── per-paper references.bib writer ───────────────────────────────────
+#
+# THE single writer for a paper's own row in papers/<citekey>/references.bib.
+# Every caller goes through it (index_paper's index-time stamp and its
+# `_resync_references_bib`, triage_apply's bib-only folder creation) so the
+# upsert contract can't be re-opened by one of them.
+#
+# Why an upsert and not a re-emit: `references.bib` is a single-entry mirror
+# of the master.bib row only UNTIL /library/deep-index runs. Its step 3f
+# (/library/clean-bibliography) replaces the file with the paper's **actual
+# cited works** — see clean-bibliography.md ("we're replacing it with the
+# paper's actual cited works") and deep-index.md ("Each paper's
+# references.bib is self-contained"). Three writers used to `write_text` a
+# single emitted entry over the whole file, so authenticating, applying a
+# manual bib edit to, or re-indexing a deep-indexed paper silently collapsed
+# a dozens-entry bibliography to one. The loss then propagated: the next
+# /library/merge-bibs found one entry where there had been many and reported
+# a clean run (task 168).
+#
+# No lock: unlike master.bib / catalog.json / inbox.json this file is
+# per-paper, and library skills are parallel-safe only ACROSS citekeys.
+
+
+def write_paper_bib_entry(
+    paper_dir: Path,
+    citekey: str,
+    entry_type: str,
+    fields: dict[str, str],
+) -> None:
+    """Upsert ONE entry into `paper_dir/references.bib`.
+
+    Creates the file (and folder) when absent — that's the first-index path,
+    and it yields the familiar single-entry mirror. When the file already
+    holds other entries they survive byte-identically.
+    """
+    from _bib_parse import upsert_entry_text  # lazy: sibling, avoids a cycle
+
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    refs = paper_dir / "references.bib"
+    existing = refs.read_text() if refs.exists() else ""
+    refs.write_text(upsert_entry_text(existing, citekey, entry_type, fields))
 
 
 # ── bib-import flag (per-paper references.bib → master.bib) ───────────
@@ -1223,26 +1419,58 @@ def update_master_bib_entry(
 # single decision point shared by every writer (merge_paper_references,
 # triage_apply).
 
-# Source-file extensions that count as a holding (a real document on disk).
-_HOLDINGS_EXTS = (".pdf", ".docx", ".tex")
+# Source-format priority — THE spelling of "what counts as a source document
+# for a paper, and which one wins". When more than one source file exists for a
+# citekey (the user dropped a .docx alongside an existing .pdf), the FIRST in
+# this tuple wins: DOCX carries explicit structure (paragraph styles, headings,
+# tables) that the PDF pipeline has to reverse-engineer with heuristics, and a
+# `.tex` source needs no extraction at all.
+#
+# It lives HERE, on the stdlib-only leaf, rather than in `index_paper.py` where
+# it was born, because the layers that need it cannot import that module: it
+# pulls in marker / pymupdf / the whole extraction stack, so a cheap local
+# pre-flight (`validate_bib_coherence.py`) that imported it would drag the
+# indexer's dependency tree into a step that must be fast and offline — and
+# would fail outright on a machine where the extractors aren't installed. A
+# vocabulary the layer that needs it cannot import gets re-copied, every time;
+# `_HOLDINGS_EXTS` (dotted, differently ordered) was already the second copy.
+SOURCE_FORMAT_PRIORITY = ("tex", "docx", "pdf")
+
+
+def resolve_paper_source(library: Path, citekey: str) -> "tuple[Path, str] | None":
+    """Return `(path, ext)` for `citekey`'s highest-priority source, or None.
+
+    Scans `papers/<citekey>/<citekey>.<ext>` in `SOURCE_FORMAT_PRIORITY`
+    order; first hit wins. Lower-priority sources for the same citekey stay
+    on disk as archives.
+
+    Citekeys with diacritics are looked up under both NFC and NFD forms
+    (the 1976-Tichý memo class), and the path returned is the one that
+    actually exists on disk.
+    """
+    import unicodedata
+    paper_dir = library / "papers"
+    for ext in SOURCE_FORMAT_PRIORITY:
+        for form in ("NFC", "NFD"):
+            ck = unicodedata.normalize(form, citekey)
+            p = paper_dir / ck / f"{ck}.{ext}"
+            if p.exists():
+                return p, ext
+    return None
 
 
 def paper_has_holdings(library: Path, citekey: str) -> bool:
     """True iff `papers/<citekey>/` holds an actual source document.
 
-    A holding is a `<citekey>.{pdf,docx,tex}` source file. This is the F#4
+    A holding is a `<citekey>.{tex,docx,pdf}` source file. This is the F#4
     gate: only holdings get a catalog row. A reference-only entry (cited but
     not held) has a master.bib entry + `% bib.state` comment but no source
     file, so this returns False and the writer skips the catalog row.
+
+    Derived from `resolve_paper_source` so the extension set is stated once —
+    the answer is a boolean, so the priority ORDER cannot change it.
     """
-    import unicodedata
-    paper_dir = library / "papers"
-    for form in ("NFC", "NFD"):
-        ck = unicodedata.normalize(form, citekey)
-        for ext in _HOLDINGS_EXTS:
-            if (paper_dir / ck / f"{ck}{ext}").exists():
-                return True
-    return False
+    return resolve_paper_source(library, citekey) is not None
 
 
 def ensure_bib_state_comment(

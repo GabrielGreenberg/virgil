@@ -22,9 +22,10 @@ import type { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 // Type-only import (erased at compile time) — keeps the React-free
 // runtime invariant above intact while letting `liftSourceRect` take the
-// real cache type. `useEditorViewportCache` imports nothing from this
-// module, so there's no cycle.
-import type { EditorViewportCache } from "@/hooks/useEditorViewportCache";
+// real viewport-frame type (the geometry service's, C7 — successor of the
+// retired useEditorViewportCache). `viewport-frame.ts` imports nothing
+// from this module, so there's no cycle.
+import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 
 // ---------------------------------------------------------------------------
 // Kinds
@@ -378,24 +379,18 @@ export interface TextObjectMeta {
     anchorDom: HTMLElement | null,
     editor: Editor,
     ref: TextObjectRef,
-    cache: EditorViewportCache,
+    cache: EditorViewportFrame,
   ) => { left: number; top: number; width: number; height: number } | null;
 
   /** DragHandleMenu actions this kind exposes. Subset of the global
    *  `DragHandleAction` union, selected per kind. */
   actions: ReadonlyArray<DragHandleAction>;
 
-  /** LaTeX source marker (if any) carrying the id across save/reload.
-   *  paragraph/heading/etc. use `%!v:` (not a command). Footnote uses
-   *  `\vfid`; citation `\vcid`; exampleBlock `\vexid`; exampleItem
-   *  `\vxid` (added in Phase A1); linkedRange `\vlid`/`\vlidend`
-   *  (Phase E). */
-  sourceMarker?: {
-    command: string;
-    /** Currently 4 (short-id format). Reserved field for future
-     *  expansion (e.g. if a kind ever needed a different id length). */
-    idLength: 4;
-  };
+  // NO `sourceMarker` — see the registry header. Which `\v*` command carries
+  // a kind's id through the LaTeX round trip is declared in
+  // `src/lib/latex-markers.ts`, the one place the parser, the serializer and
+  // the preamble-requirements module can all read. The facet that used to sit
+  // here was a fourth copy that none of them could reach (task 255).
 
   /** Drop adapter — given a target context plus the source's context
    *  (which kind it came from, including which parent for sub-objects),

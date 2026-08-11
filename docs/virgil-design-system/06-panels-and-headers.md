@@ -1,3 +1,10 @@
+<!-- historical-record: docs/virgil-design-system -->
+> **Historical — not the spec.** Part of the frozen April-2026 design-system
+> migration record. The live style spec is
+> [`src/STYLE_GUIDE.md`](../../src/STYLE_GUIDE.md); where this file and the code
+> disagree, the code is right and this file is history. Start at
+> [README.md](README.md).
+
 # 06 — Panels & Headers
 
 A *panel* is a sidebar surface that hosts a list of cards (footnotes,
@@ -67,8 +74,14 @@ bg is darker than the page).
 background: var(--pod-panel);
 border: var(--pod-border);
 border-radius: var(--pod-radius);
-box-shadow: var(--pod-shadow-light);
+box-shadow: var(--pod-shadow-light);   /* never existed — see below */
 ```
+
+> ⚠️ **Don't copy that last line.** `--pod-shadow-light` was proposed in the
+> (now removed) `patches/globals.css.patch.md` and never landed, so
+> `var(--pod-shadow-light)` with no fallback resolves to **nothing** — a
+> silent no-op shadow. The shipped scale is `--pod-shadow` /
+> `--card-shadow-ambient` / none. See `03-spacing-and-icons.md`.
 
 Don't add a backdrop blur, glow, or gradient.
 

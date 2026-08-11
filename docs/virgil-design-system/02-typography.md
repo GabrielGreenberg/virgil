@@ -1,3 +1,10 @@
+<!-- historical-record: docs/virgil-design-system -->
+> **Historical — not the spec.** Part of the frozen April-2026 design-system
+> migration record. The live style spec is
+> [`src/STYLE_GUIDE.md`](../../src/STYLE_GUIDE.md); where this file and the code
+> disagree, the code is right and this file is history. Start at
+> [README.md](README.md).
+
 # 02 — Typography
 
 ## Families

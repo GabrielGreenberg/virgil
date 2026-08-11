@@ -2,6 +2,10 @@
 
 import { useMemo, useEffect, useCallback, memo, useRef } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
+// A selector may spell the ATTRIBUTE name inline, but not the token: the
+// `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
+// is a second speller that silently stops matching if it ever changes (202).
+import { linkCardKey } from "@/links/link-dom-contract";
 import {
   ItemMenu,
   PANEL,
@@ -9,6 +13,7 @@ import {
   useListNavKeys,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
+import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { useArchiveVisibleItems } from "@/panels/_shared/card-archive-view";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
@@ -22,7 +27,6 @@ interface CitationsPanelProps {
   bibEntries: BibEntry[];
   citationStyle: string;
   bibPackage: string;
-  bibPath: string;
   selectedId: string | null;
   citationOrder: string[];
   onSelect: (id: string | null) => void;
@@ -192,7 +196,7 @@ function CitationsPanel({
       jumpToCitation(cit.id);
       requestAnimationFrame(() => {
         const card = panelScrollRef.current?.querySelector(
-          `[data-link-card="citation:${cit.id}"]`,
+          `[data-link-card="${linkCardKey("citation", cit.id)}"]`,
         );
         card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });
@@ -307,10 +311,8 @@ function CitationsPanel({
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="citation" label="Citation color" />
           </div>
-          <div className="my-1 border-t border-edge-subtle" />
-          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-            Package
-          </div>
+          <MenuSeparator />
+          <MenuSectionLabel>Package</MenuSectionLabel>
           {BIB_PACKAGES.map((p) => (
             <button
               key={p.value}
@@ -323,10 +325,8 @@ function CitationsPanel({
               </span>
             </button>
           ))}
-          <div className="my-1 border-t border-edge-subtle" />
-          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-            Style
-          </div>
+          <MenuSeparator />
+          <MenuSectionLabel>Style</MenuSectionLabel>
           {STYLES.map((s) => (
             <button
               key={s.value}

@@ -24,17 +24,17 @@ import { renderHook, act, cleanup } from "@testing-library/react";
 
 import { usePgmarkPages } from "@library/hooks/usePgmarkPages";
 import {
-  beginPaneDrag,
-  endPaneDrag,
-  __resetPaneDragBusForTest,
-  type PaneDragInfo,
-} from "@/lib/pane-resize/pane-drag-bus";
+  beginLayoutGesture,
+  endLayoutGesture,
+  __resetLayoutGestureBusForTest,
+  type LayoutGestureInfo,
+} from "@/lib/pane-resize/layout-gesture-bus";
 
-const DRAG: PaneDragInfo = { id: "gutter-under-test", axis: "x" };
+const DRAG: LayoutGestureInfo = { kind: "pane", id: "gutter-under-test", axis: "x" };
 
 afterEach(() => {
   cleanup();
-  __resetPaneDragBusForTest();
+  __resetLayoutGestureBusForTest();
 });
 
 // rAF runs synchronously so RAF-coalesced setState lands within act().
@@ -232,7 +232,7 @@ describe("usePgmarkPages", () => {
   it("parks the ResizeObserver re-scan during a pane drag and settles exactly once on the end edge", () => {
     // Controllable RO so the test can fire layout notifications by hand
     // (collectPages does O(chips) forced-layout reads — it must never ride a
-    // pointer frame; deleting the parkDuringPaneDrag wiring re-scans per fire
+    // pointer frame; deleting the parkDuringLayoutGesture wiring re-scans per fire
     // and fails the counts below).
     const roCallbacks: ResizeObserverCallback[] = [];
     const RealRO = globalThis.ResizeObserver;
@@ -262,7 +262,7 @@ describe("usePgmarkPages", () => {
         );
 
       act(() => {
-        beginPaneDrag(DRAG);
+        beginLayoutGesture(DRAG);
         // A drag-frame storm of RO fires — all parked, zero re-scans.
         fireRO();
         fireRO();
@@ -271,15 +271,15 @@ describe("usePgmarkPages", () => {
       expect(scans.mock.calls.length).toBe(baseline);
 
       act(() => {
-        endPaneDrag(DRAG);
+        endLayoutGesture(DRAG);
       });
       // Exactly ONE settle re-scan on the end edge (latest-wins).
       expect(scans.mock.calls.length).toBe(baseline + 1);
 
       // A gesture with no parked fire settles nothing.
       act(() => {
-        beginPaneDrag(DRAG);
-        endPaneDrag(DRAG);
+        beginLayoutGesture(DRAG);
+        endLayoutGesture(DRAG);
       });
       expect(scans.mock.calls.length).toBe(baseline + 1);
     } finally {

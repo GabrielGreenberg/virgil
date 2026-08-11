@@ -91,6 +91,11 @@ function rightColumnRanges(): Array<[number, number]> {
     (uuid) => (uuid === "p1" ? ONE_LINE : null),
     markers,
     {},
+    // The band-disjointness geometry this file pins is the LANE-RESERVED
+    // layout, so both sides host the grid. The cramped regime (margin too
+    // narrow for the lane) is task 214's own suite,
+    // `marginalia-lane-regime.test.ts`.
+    { left: true, right: true },
   );
   return positioned
     .map((p): [number, number] => [p.cell.x, p.cell.x + MARGINALIA_ICON_SIZE])

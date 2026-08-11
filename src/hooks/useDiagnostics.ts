@@ -27,6 +27,7 @@ import { useLatexLint } from "@/hooks/useLatexLint";
 import { mergeLatexErrors, type LatexError } from "@/lib/latex-errors";
 import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
 import { pruneExpanded } from "@/panels/Errors/expansion";
+import type { ErrorJump } from "@/panels/Errors";
 import { pruneDismissed } from "@/lib/diagnostics-store";
 
 // Shared frozen empties so the derived maps + the merged-error array keep a
@@ -82,6 +83,10 @@ export interface UseDiagnostics {
   /** Visual-editor jump: select + highlight + scroll (with a warm-mount retry so
    *  it also serves the pdf→visual escape when the shell flips out of PDF view). */
   jumpToErrorVisual: (err: LatexError) => void;
+  /** The same jump as an `ErrorJump` capability — handler + `"anchor"` mode
+   *  bound together (task 125). What every VISUAL errors mount forwards; the
+   *  bare function above stays for callers that aren't a mount. */
+  errorJump: ErrorJump;
 }
 
 export function useDiagnostics({
@@ -275,6 +280,17 @@ export function useDiagnostics({
     [computeErrorHighlightRange, paragraphByErrorId, editorHandleRef],
   );
 
+  // The visual jump's capability (task 125): the handler PLUS the semantics it
+  // implements, bound here at the handler's own definition rather than restated
+  // by each visual mount. `jumpToErrorVisual` reaches an error through its
+  // resolved PARAGRAPH and early-returns without one, so its mode is
+  // `"anchor"` — and every mount that forwards this value gets that answer for
+  // free, with no mode of its own to state wrongly.
+  const errorJump = useMemo<ErrorJump>(
+    () => ({ mode: "anchor", jump: jumpToErrorVisual }),
+    [jumpToErrorVisual],
+  );
+
   // Stable identity across no-op renders (hook-return-stability guard): EditorPane
   // is `React.memo`'d and keep-alive, so a bare-literal return would re-identify
   // every render and inflate warm paper-switch cost. A fresh object only when a
@@ -294,6 +310,7 @@ export function useDiagnostics({
       computeErrorHighlightRange,
       errorHighlightRange,
       jumpToErrorVisual,
+      errorJump,
     }),
     [
       allLatexErrors,
@@ -309,6 +326,7 @@ export function useDiagnostics({
       computeErrorHighlightRange,
       errorHighlightRange,
       jumpToErrorVisual,
+      errorJump,
     ],
   );
 }

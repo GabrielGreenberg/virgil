@@ -23,6 +23,10 @@ import {
   recordScrollPlacement,
   SCROLL_PORTAL_SLASH_POPUP,
 } from "@/lib/scroll-reposition-probe";
+import {
+  isLayoutGestureActive,
+  useLayoutGestureActive,
+} from "@/lib/pane-resize";
 
 const POPUP_WIDTH = 180;
 const VIEWPORT_MARGIN = 8;
@@ -45,6 +49,10 @@ export function SlashCommandPopup({
   const [coords, setCoords] = useState<Coords | null>(null);
 
   const rafRef = useRef<number>(0);
+  // Hidden for the duration of a pane-divider drag / OS window resize. The
+  // placement effect below re-runs on the end edge (the flag is a dep), which
+  // is the settle.
+  const gestureActive = useLayoutGestureActive();
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -58,7 +66,17 @@ export function SlashCommandPopup({
         const c = view.coordsAtPos(state.slashPos);
         // Scroll-anchor stability probe (task 042): one record per coalesced frame.
         recordScrollPlacement(SCROLL_PORTAL_SLASH_POPUP, c.top);
-        setCoords({ left: c.left, top: c.top, bottom: c.bottom });
+        // Equality bail (task 317): `coordsAtPos` returns fresh numbers in a
+        // fresh object, so an unconditional set re-rendered the popup on every
+        // coalesced frame even when the caret hadn't moved a pixel.
+        setCoords((prev) =>
+          prev &&
+          prev.left === c.left &&
+          prev.top === c.top &&
+          prev.bottom === c.bottom
+            ? prev
+            : { left: c.left, top: c.top, bottom: c.bottom },
+        );
       } catch {
         setCoords(null);
       }
@@ -67,6 +85,10 @@ export function SlashCommandPopup({
     // frame is actually useful. Previously every scroll tick called
     // `coordsAtPos` + `setCoords` synchronously.
     const scheduleUpdate = () => {
+      // SUPPRESSED during a continuous layout gesture (task 317): the popup is
+      // a caret-anchored fixed portal, so it hides for the gesture (the render
+      // gate below) rather than parking half-detached from its slash.
+      if (isLayoutGestureActive()) return;
       if (rafRef.current) return;
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = 0;
@@ -92,9 +114,9 @@ export function SlashCommandPopup({
         rafRef.current = 0;
       }
     };
-  }, [state.open, state.open ? state.slashPos : -1, editorRef]);
+  }, [state.open, state.open ? state.slashPos : -1, editorRef, gestureActive]);
 
-  if (!state.open || !coords) return null;
+  if (!state.open || !coords || gestureActive) return null;
 
   const popupHeight = state.filtered.length * ROW_HEIGHT + POPUP_PAD_Y * 2;
   const vw = typeof window !== "undefined" ? window.innerWidth : 1024;

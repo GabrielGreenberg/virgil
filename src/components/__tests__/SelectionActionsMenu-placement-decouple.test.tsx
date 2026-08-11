@@ -37,8 +37,8 @@ const h = vi.hoisted(() => {
       bottom: number;
     },
     cache,
-    // STABLE cacheRef identity — the real useEditorViewportCache returns a
-    // stable ref, and SelectionActionsMenu's placement effect lists `cacheRef`
+    // STABLE frameRef identity — the real useViewportFrame returns a stable
+    // ref, and SelectionActionsMenu's placement effect lists `cacheRef`
     // in its deps. A fresh ref each render would churn that effect (clearing the
     // scroll-idle timer mid-gesture), which the component never does in prod.
     cacheRef: { current: cache as unknown },
@@ -47,8 +47,20 @@ const h = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/hooks/useEditorViewportCache", () => ({
-  useEditorViewportCache: () => ({ cacheRef: h.cacheRef, version: 0 }),
+vi.mock("@/lib/editor-geometry/use-viewport-frame", () => ({
+  useViewportFrame: () => ({ frameRef: h.cacheRef, version: 0 }),
+}));
+// The barrel is mocked so the test stays hermetic against the geometry
+// service's import graph; `coordsAtPosCached` passes through to the mocked
+// editor's `coordsAtPos` (exactly the real helper's service-less fallback).
+vi.mock("@/lib/editor-geometry", () => ({
+  coordsAtPosCached: (editor: Editor, pos: number) => {
+    try {
+      return editor.view.coordsAtPos(pos);
+    } catch {
+      return null;
+    }
+  },
 }));
 vi.mock("../ActionsMenuPanel", () => ({
   ActionsMenuPanel: ({
@@ -205,6 +217,33 @@ describe("SelectionActionsMenu — placement.visible decoupling (task 154)", () 
       baseElement.querySelector('[data-testid="actions-menu-panel"]'),
       "a genuine off-screen drop still closes the menu",
     ).toBeNull();
+  });
+
+  // Task 299 — the resting ⚡ bolt's hover-on-light affordance must be LIVE.
+  // An inline `background` shorthand sets `background-color` and (as an inline
+  // decl) shadows `.hover-on-light:hover`, so the resting bg MUST live on the
+  // class layer for the hover tint to fire. We pin the source-shape contract
+  // (jsdom applies no stylesheet, so :hover computed styles aren't meaningful):
+  // the affordance class is present AND no inline background shadows it.
+  it("keeps the resting bolt's hover affordance live (no inline bg shadow)", () => {
+    const ref = createRef<Editor | null>();
+    ref.current = makeEditor();
+    const { baseElement } = render(<SelectionActionsMenu editorRef={ref} />);
+    const bolt = baseElement.querySelector(
+      'button[aria-label="Open actions menu"]',
+    ) as HTMLButtonElement | null;
+    expect(bolt).toBeTruthy();
+    // The hover affordance signal is present…
+    expect(bolt!.className).toContain("hover-on-light");
+    // …the resting bg lives on the class layer (so the class `:hover` can win)…
+    expect(bolt!.className).toContain("bg-[var(--pod-editor)]");
+    // …and NO inline background shadows the class-layer :hover tint.
+    expect(bolt!.style.background).toBe("");
+    expect(bolt!.style.backgroundColor).toBe("");
+    // The pod chrome the bolt is meant to keep stays inline & unchanged.
+    expect(bolt!.style.border).toBe("var(--pod-border)");
+    expect(bolt!.style.boxShadow).toBe("var(--pod-shadow)");
+    expect(bolt!.style.borderRadius).toBe("var(--pod-radius)");
   });
 
   it("Cmd+/ with an off-screen caret calls scrollIntoView and opens on-screen", () => {

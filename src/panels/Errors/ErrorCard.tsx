@@ -9,6 +9,7 @@ import {
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import type { LatexError, LatexErrorSeverity } from "@/lib/latex-errors";
+import { canJumpToError, type ErrorJumpMode } from "./error-jump";
 
 const theme = CARD_THEMES.error;
 
@@ -20,9 +21,11 @@ const SEVERITY_COLOR: Record<LatexErrorSeverity, string> = {
   warning: theme.accent,
   // `info` is a deliberate severity CONSTANT (steel), not a theme token: it
   // signals "informational, not the panel's alarm color" and must stay
-  // distinct from the warning/error ramp. Do NOT couple it to another
-  // panel's accent (e.g. archive) just because the hex coincides.
-  info: "#7191b0",
+  // distinct from the warning/error ramp. Tokenized as --status-info (its own
+  // dedicated member of the status-dot family) — NOT aliased to another
+  // panel's accent (e.g. archive/--latex-comment-color) just because the hex
+  // coincides.
+  info: "var(--status-info)",
 };
 
 /** Short, stable title derived from rule id / message. Prefers a known rule
@@ -95,6 +98,13 @@ export interface ErrorCardProps {
    *  into the header-click contract (select + toggle, no jump). */
   onToggleExpanded: () => void;
   hasAnchor: boolean;
+  /** The MOUNT's jump semantics (task 125) — `"anchor"` for the visual mounts
+   *  (docked panel + omni mirror), `"line"` for the code-view sidebar. Required:
+   *  the two mounts want opposite answers for the same error, so there is no
+   *  safe default to fall back on, and a card that guesses is the bug this prop
+   *  exists to retire. Comes from the `ErrorJump` capability its host forwards,
+   *  so it always matches the handler in `onJump`. */
+  jumpMode: ErrorJumpMode;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl: HTMLElement | null) => void;
   onDismiss: (id: string) => void;
@@ -111,6 +121,7 @@ export function ErrorCard({
   onExpand,
   onToggleExpanded,
   hasAnchor,
+  jumpMode,
   onSelect,
   onJump,
   onDismiss,
@@ -121,6 +132,20 @@ export function ErrorCard({
   const compressed = !expanded;
   const compressedLines = useCompressedLines();
   const handleDeleteKey = useCardDeleteKey(selected, () => onDismiss(err.id));
+
+  // ONE jumpability answer per card, from the mount's declared semantics
+  // (task 125) — used by BOTH the action (the body click below) and the
+  // affordance (`PanelCard.canJump`), so the two cannot diverge. Note the
+  // affordance is currently inert for this kind: `PanelCard` renders the jump
+  // chevron only when popped out, and `error` is ratified NOT poppable (see
+  // the note at the end of this component). The load-bearing gate is the
+  // action; the affordance is kept correct so a future poppable errors card
+  // inherits it rather than re-deriving the formula.
+  const canJump = !!onJump && canJumpToError(err, jumpMode, hasAnchor);
+  const jumpFromCard = (target: EventTarget & HTMLElement) => {
+    if (!canJump) return;
+    onJump?.(target.closest("[data-card]") as HTMLElement | null);
+  };
 
   const card = (
     <PanelCard
@@ -144,15 +169,18 @@ export function ErrorCard({
         e.stopPropagation();
         onSelect(err.id);
         onExpand();
-        onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+        // Select + expand ALWAYS; jump only where this mount can actually
+        // reach the error. Selection is what paints the editor's error
+        // highlight, so a refused jump costs the user nothing.
+        jumpFromCard(e.currentTarget as EventTarget & HTMLElement);
       }}
       onKeyDown={handleDeleteKey}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
       kind="error"
       footnoteBadge={<ErrorBadge severity={err.severity} />}
-      canJump={!!onJump && (hasAnchor || err.line > 0)}
-      onJump={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
+      canJump={canJump}
+      onJump={(e) => jumpFromCard(e.currentTarget as EventTarget & HTMLElement)}
     >
       {compressed ? (
         <div className="px-3 pt-1.5 pb-1.5 text-xs text-ink-subtle">
@@ -182,7 +210,7 @@ export function ErrorCard({
           {title}
         </div>
         {snippet && (
-          <div className="text-xs italic text-[var(--muted)] border-l-2 border-edge-subtle pl-2 py-0.5 mb-1.5 font-mono truncate">
+          <div className="text-xs italic text-ink-muted border-l-2 border-edge-subtle pl-2 py-0.5 mb-1.5 font-mono truncate">
             {snippet}
           </div>
         )}

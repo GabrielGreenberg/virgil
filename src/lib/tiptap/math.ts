@@ -7,6 +7,7 @@ import {
   posHostsBlockInsert,
   posHostsInlineAtom,
 } from "@/text-objects/text-object-registry";
+import { refuseTypedInsertWhenReadOnly } from "./typed-latex-read-only-gate";
 // Task 232: the INLINE atom's structural DOM facets (`data-type` / `class`) come
 // from the atom SSOT rather than hardcoded literals, so a NodeView rename can't
 // drift from ATOM_REGISTRY. displayMath is deliberately NOT an atom (a block, not
@@ -15,7 +16,10 @@ import { ATOM_REGISTRY } from "./atom-registry";
 
 const INLINE_MATH_ATOM = ATOM_REGISTRY["inline-math"];
 
-function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
+// Exported for the static T1 card tier (StaticBorrowedText's one-shot KaTeX
+// pass over `[data-type="inline-math"|"display-math"]` spans) — the SAME
+// paint the live NodeView runs, placeholder/error sentinels included.
+export function renderMath(target: HTMLElement, latex: string, displayMode: boolean) {
   target.innerHTML = "";
   if (!latex) {
     const ph = document.createElement("span");
@@ -205,6 +209,9 @@ export const InlineMath = Node.create<MathOptions>({
         key: new PluginKey("inlineMathInput"),
         props: {
           handleTextInput(view, from, _to, text) {
+            // CHIP 7b: uniform collab read-only gate (SSOT shared with the other
+            // typed-LaTeX surfaces — cite/footnote/display-math/comment).
+            if (refuseTypedInsertWhenReadOnly(view)) return false;
             if (text !== "$") return false;
             const { state } = view;
             // Container gate (task 150): an inline-math atom is valid in a
@@ -295,6 +302,9 @@ export const DisplayMath = Node.create<MathOptions>({
         key: new PluginKey("displayMathInput"),
         props: {
           handleTextInput(view, from, _to, text) {
+            // CHIP 7b: uniform collab read-only gate (SSOT shared with the other
+            // typed-LaTeX surfaces — cite/footnote/inline-math/comment).
+            if (refuseTypedInsertWhenReadOnly(view)) return false;
             if (text !== "$") return false;
             const { state } = view;
             // Container gate (task 150 / 147): a `displayMath` BLOCK atom splits

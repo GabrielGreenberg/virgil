@@ -76,7 +76,7 @@ function build() {
     anchoredIds: new Set([ANCHORED_ERR.id]),
     dismissedIds: new Set(),
     onDismiss: () => {},
-    onJump: () => {},
+    jump: { mode: "anchor" as const, jump: () => {} },
     // Resolve the paragraph uuid to a live pos; the free error has none.
     findParagraphPos: (uuid) => (uuid === PARA_UUID ? 739 : null),
     expandedIds: new Set(),

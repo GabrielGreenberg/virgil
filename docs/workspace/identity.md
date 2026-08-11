@@ -1,4 +1,4 @@
-<!-- last-verified: e940e322 2026-08-02 -->
+<!-- last-verified: d93075c6 2026-08-11 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/uuid.ts, src/lib/latex-serializer.ts, src/lib/latex-parser.ts, src/text-objects/text-object-registry.ts, src/lib/latex-paragraph-map.ts, src/lib/document-styles.ts, src/lib/bib-uid.ts, src/lib/bib-parser.ts, src/lib/identity/ -->
 
@@ -49,9 +49,12 @@ marker** except as a side effect of the content it wraps.
 | `\vlid{<4hex>}…\vlidend{<4hex>}` | a **linkedRange** (the `linkedAnchor` mark's span) | paired inline no-op macros | opened where the mark starts, closed where it ends; ranges open at a block boundary are closed and reopened. Reassembled on parse by `applyLinkedAnchorBoundaries`. |
 | `%!vtex:begin <id>` … `%!vtex:end <id>` | a **texBlock** (raw-LaTeX passthrough) | block comment sentinels | bracket a verbatim body slurped without recursive parse; a literal `%!vtex:end` inside the body is escaped to `%!v tex:end`. |
 
-SSOTs: which TextObject kind carries which marker → the `sourceMarker` field on
-`TEXT_OBJECT_REGISTRY` (`src/text-objects/text-object-registry.ts`); the `%!v:`
-regexes → `src/lib/uuid.ts`; emit → `serializeToLatex`/`serializeNode`
+SSOTs: the `\v*` command vocabulary — every marker's spelling AND which entity
+it identifies → `src/lib/latex-markers.ts` (`VIRGIL_MARKERS`, keyed by carrier;
+emitters, parsers and the preamble-shim list all read it, and a CI census
+forbids a hand-spelled copy — task 255; the facet that used to sit on
+`TEXT_OBJECT_REGISTRY` is gone, since the round-trip layer could never import
+that editor-coupled registry); the `%!v:` regexes → `src/lib/uuid.ts`; emit → `serializeToLatex`/`serializeNode`
 (`src/lib/latex-serializer.ts`); parse → `parseBody`/`parseInlineContent`
 (`src/lib/latex-parser.ts`).
 
@@ -123,9 +126,10 @@ matches are skipped — so a skill should not rely on recovery for duplicated te
 ## The injected macros
 
 The `\v*` markers are no-op macros, so a `.tex` still compiles outside Virgil.
-`CLASSIC_PREAMBLE` (`src/lib/document-styles.ts`) seeds `\providecommand` no-ops
-for `\vfid` / `\vcid` / `\vexid` (+ `\usepackage{xcolor}`); `ensurePreambleRequirements`
-(`src/lib/latex-requirements.ts`, formerly `ensureVirgilCommands`) tops up **all seven**
+`CLASSIC_PREAMBLE` (`src/lib/document-styles.ts`, now `buildPreamble("\documentclass{article}")`)
+seeds `\providecommand` no-ops for **all seven** `\v*` shims (via `buildPreamble`'s `SHIM_BLOCK`)
+plus the `VIRGIL_BASELINE_PACKAGES` (`inputenc`/`graphicx`/`xcolor`/`amsmath`/`amssymb`/`natbib`/`expex`); `ensurePreambleRequirements`
+(`src/lib/latex-requirements.ts`, formerly `ensureVirgilCommands`) tops up the same **all seven**
 (`SHIM_COMMAND_NAMES`: `\vfid` `\vcid` `\vbid` `\vexid` `\vxid` `\vlid` `\vlidend`) on
 every save, even against a user-authored
 preamble — `\vbid` is declared in the `.tex` preamble (so a `.bib` `\input` or a

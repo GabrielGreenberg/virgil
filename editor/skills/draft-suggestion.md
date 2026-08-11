@@ -73,8 +73,7 @@ this skill.
         "anchor": {
            "type": "textObject",
            "targetKind": "paragraph",
-           "textObjectIds": ["<the anchored paragraph uuid>"],
-           "margin": { "side": "right" }
+           "textObjectIds": ["<the anchored paragraph uuid>"]
         },
         "target": { "type": "card", "ref": { "kind": "suggestion", "id": "<new-uuid>" } },
         "createdAt": "<ISO now>"
@@ -87,9 +86,10 @@ this skill.
    `src/links/_shared/types.ts`, [anchoring.md](../../docs/workspace/anchoring.md))
    — *not* the retired `type: "anchor"`/`paragraphIds` form. Set
    `textObjectIds` to the request's anchored paragraph uuid
-   (`paragraphIds[0]`), `target.ref.id` to this card's own id (self-target,
-   how the editor matches the card to its anchor), and `margin.side` to
-   `right`.
+   (`paragraphIds[0]`) and `target.ref.id` to this card's own id (self-target,
+   how the editor matches the card to its anchor). The anchor carries NO
+   `margin` — the side a card's chrome sits on follows its panel's dock and is
+   resolved live by the app (`src/lib/margin-side.ts`).
 
    `aiOriginRequestId` is **load-bearing**: `/editor/accept-suggestion` reads
    it to complete the originating Task when the user accepts. Emit it for a

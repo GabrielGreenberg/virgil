@@ -26,16 +26,23 @@
  */
 
 import { generateShortId } from "@/lib/uuid";
+import { emitMarker, VIRGIL_MARKERS } from "@/lib/latex-markers";
+
+const VBID = VIRGIL_MARKERS.bibEntry;
+
+/** The marker's brace-argument pattern, built from the SSOT spelling so the
+ *  `.bib` reader can never drift from the `.bib` writer below. */
+const VBID_SOURCE = `\\\\${VBID.command}\\{([^}]+)\\}`;
 
 /**
  * Matches a `\vbid{xxxx}` marker. Capture group 1 = the uid. The uid is a
  * 4-char hex short-id (same alphabet as `\vcid`/`\vfid`), but we accept any
  * non-`}` run so a hand-authored or future-format uid round-trips intact.
  */
-export const VBID_RE = /\\vbid\{([^}]+)\}/;
+export const VBID_RE = new RegExp(VBID_SOURCE);
 
 /** Global form for scanning a whole `.bib` file for every marker. */
-const VBID_RE_GLOBAL = /\\vbid\{([^}]+)\}/g;
+const VBID_RE_GLOBAL = new RegExp(VBID_SOURCE, "g");
 
 /**
  * Matches the start of a BibTeX entry: `@type{citekey,`. Capture group 1 =
@@ -51,7 +58,7 @@ export function mintBibUid(existing?: Set<string>): string {
 
 /** Serialize a uid as its no-op `\vbid{...}` marker line (no trailing newline). */
 export function serializeVbidMarker(uid: string): string {
-  return `\\vbid{${uid}}`;
+  return emitMarker(VBID, uid);
 }
 
 /**

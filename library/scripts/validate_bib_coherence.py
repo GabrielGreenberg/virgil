@@ -16,17 +16,47 @@ Checks (in order):
    - `@inproceedings` should not have `journal` (it has `booktitle`).
    - `@book` should not have `journal`/`volume`/`number`.
 
-2. **PDF cover-page check** — the bib's `title` must appear in the
-   first 4 pages of the PDF (case-insensitive substring match, or
-   ≥ 3 of 4 significant words). Absence flags
-   `content-mismatch-needs-review`.
+2. **PDF cover-page check** (opt-out via `--no-cover-check`) — the
+   bib's `title` must appear in the first 4 pages of the PDF
+   (case-insensitive substring match, or ≥ 3 of 4 significant words).
+   Absence flags `content-mismatch-needs-review`. **A paper with no
+   source on disk, or whose source is a `.docx`/`.tex`, is SKIPPED,
+   not flagged** — the pipeline treats every format in
+   `SOURCE_FORMAT_PRIORITY` as first-class and serves bib-only entries
+   with no paper folder at all, and `pdftotext` can only read a PDF.
+   Reporting "PDF not found" as a *finding* made this script fail on
+   the majority of legitimate entries (task 322).
 
-3. **URL/DOI cross-reference** — if both `url` and `doi` are set,
-   the URL's `dc.identifier.doi` meta tag (when resolvable) must
-   match the bib's `doi`. Disagreement flags `url-doi-mismatch`.
+3. **URL/DOI cross-reference** (opt-in via `--check-url-doi`) — if
+   both `url` and `doi` are set, the URL's `dc.identifier.doi` meta tag
+   (when resolvable) must match the bib's `doi`. Disagreement flags
+   `url-doi-mismatch`. Off by default: it is a live network fetch.
 
-Outputs a JSON report. Exit code 0 if no issues; 1 if any issue.
-Used by `/library/authenticate-bib` as a pre-flight gate.
+Outputs a JSON report. Exit codes, the same in `--json` and text mode:
+**0** no issues, **1** findings, **2** the entry could not be read at
+all (not in master.bib). Those last two are genuinely different answers
+— a typo'd citekey is not an incoherent entry — and collapsing them is
+why a caller must branch on the report, not on `$?`.
+
+Who calls it
+------------
+`/library/authenticate-bib` step 2 runs it as an **ADVISORY** pre-flight,
+`--json --no-cover-check`: a cross-field finding informs the `--type`
+seed and the `proposed_type` eyeball for the auth step that follows, and
+the run continues regardless. It is deliberately not a gate — see the
+skip rule in check 2 for why a `|| exit` there would refuse exactly the
+entries the skill exists to serve.
+
+The cover-page leg stays OFF in that skill, by design: cover-page-vs-bib
+checking already has an owner in `/library/di-preflight`
+(`detect_metadata_mismatch.py`, with a richer `kind` taxonomy feeding an
+auto-resolution policy). Enabling it here too would be a second
+algorithm for one question. Run it by hand (no `--no-cover-check`) when
+you want this script's simpler view of a specific PDF.
+
+The library root comes from `VIRGIL_LIBRARY_ROOT`, else the cwd when it
+looks like a library, else `~/Virgil-Library` — there is no `--library`
+flag, so callers `cd` into the root first.
 
 Usage:
     python3 validate_bib_coherence.py <citekey>
@@ -44,6 +74,13 @@ import sys
 import unicodedata
 import urllib.request
 from pathlib import Path
+
+# Sibling scripts (`_bib_parse`, `_tools`) — this module is run as a script
+# from anywhere, so its own directory is not necessarily on the path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _bib_parse import read_master_bib  # noqa: E402
+from _tools import SOURCE_FORMAT_PRIORITY, resolve_paper_source  # noqa: E402
 
 
 # Allowed fields per entry type. Fields outside this set produce a
@@ -76,22 +113,30 @@ def _resolve_library_root() -> Path:
 def _read_master_bib_entry(
     bib_path: Path, citekey: str,
 ) -> tuple[str, dict[str, str]] | None:
+    """Read `citekey`'s `(entry_type, fields)` out of a `.bib` file.
+
+    Goes through the SSOT parser (`_bib_parse.read_master_bib`), exactly as
+    `bib_auth.py` does. The ad-hoc regex this replaced only recognised
+    `field = {braced}` values, so a `journal = "Journal of Nowhere"` on a
+    `@phdthesis` — the script's own headline case, and the literal shape of
+    the `leong1994towards` memo it was written for — parsed as no field at
+    all and the entry was reported COHERENT. A check that silently passes is
+    worse than no check, and it is the one failure mode wiring this into a
+    pipeline would have made load-bearing (task 322).
+
+    Diacritic citekeys are matched under both NFC and NFD, since the write
+    side normalizes to NFC and older rows are NFD (the 1976-Tichý class).
+    """
     if not bib_path.exists():
         return None
-    bib = bib_path.read_text(encoding="utf-8")
-    pat = re.compile(
-        rf"@(\w+)\{{{re.escape(citekey)},([\s\S]*?)\n\}}",
-        re.M,
-    )
-    m = pat.search(bib)
-    if not m:
+    entries = read_master_bib(bib_path)
+    entry = entries.get(citekey)
+    if entry is None:
+        by_nfc = {unicodedata.normalize("NFC", k): v for k, v in entries.items()}
+        entry = by_nfc.get(unicodedata.normalize("NFC", citekey))
+    if entry is None:
         return None
-    entry_type = m.group(1).lower()
-    body = m.group(2)
-    fields: dict[str, str] = {}
-    for fm in re.finditer(r"(\w+)\s*=\s*\{((?:[^{}]|\{[^{}]*\})*)\}", body):
-        fields[fm.group(1).lower()] = fm.group(2).strip()
-    return entry_type, fields
+    return entry["type"].lower(), dict(entry["fields"])
 
 
 def check_cross_field_coherence(
@@ -117,9 +162,17 @@ def _normalize(s: str) -> str:
 
 def check_pdf_cover_page(pdf: Path, title: str) -> tuple[bool, str]:
     """Return (passes, reason). Passes iff `title` substring or
-    ≥ 3-of-4 significant words appear in the first 4 PDF pages."""
+    ≥ 3-of-4 significant words appear in the first 4 PDF pages.
+
+    "Passes" also covers every reason the comparison could not be MADE
+    (no file, no `pdftotext`, an extraction that failed) — an unmade
+    comparison is not evidence of a mismatch. `validate()` resolves the
+    source and skips this leg outright when there is no PDF to read; the
+    guard here is the same policy stated once more at the boundary, for a
+    direct caller.
+    """
     if not pdf.exists():
-        return False, "PDF not found"
+        return True, "no PDF at that path; cover-page check skipped"
     if not shutil.which("pdftotext"):
         return True, "pdftotext unavailable; skipping cover-page check"
     try:
@@ -194,11 +247,27 @@ def validate(
     cover_pass = True
     cover_detail = ""
     if check_cover:
-        pdf = library / "papers" / citekey / f"{citekey}.pdf"
+        # Resolve over the shared source-format priority rather than assuming
+        # `<citekey>.pdf`: `.tex` and `.docx` are first-class sources, and an
+        # entry can legitimately have no paper folder at all (a bib-only or
+        # reference-only row). Nothing to read is a SKIP — see the module
+        # docstring, check 2.
+        src = resolve_paper_source(library, citekey)
         title = fields.get("title", "")
-        cover_pass, cover_detail = check_pdf_cover_page(pdf, title)
-        if not cover_pass:
-            findings.append(f"content-mismatch-needs-review: {cover_detail}")
+        if src is None:
+            exts = ",".join(SOURCE_FORMAT_PRIORITY)
+            cover_detail = (
+                f"no source at papers/{citekey}/{citekey}.{{{exts}}}; "
+                f"cover-page check skipped"
+            )
+        elif src[1] != "pdf":
+            cover_detail = (
+                f"source is .{src[1]}; cover-page check applies to PDF sources only"
+            )
+        else:
+            cover_pass, cover_detail = check_pdf_cover_page(src[0], title)
+            if not cover_pass:
+                findings.append(f"content-mismatch-needs-review: {cover_detail}")
 
     url_pass = True
     url_detail = ""
@@ -235,6 +304,13 @@ def main() -> int:
     )
     if args.json:
         print(json.dumps(result, indent=2))
+        # 2, not 1, for a read failure — the same code text mode uses. Under
+        # `--json` both "entry not in master.bib" and "entry is incoherent"
+        # used to exit 1, so an exit-code gate reported a typo'd citekey as
+        # incoherence. Callers should still branch on the report (`error` /
+        # `findings`); this just stops the codes from lying.
+        if "error" in result:
+            return 2
         return 0 if result.get("ok") else 1
     if "error" in result:
         print(f"error: {result['error']}", file=sys.stderr)

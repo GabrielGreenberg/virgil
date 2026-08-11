@@ -72,11 +72,11 @@ the user can accept (which queues the textual replacement).
    ```
    For the link anchor: **copy the source comment's first-link
    `anchor` object verbatim**. It is already in the canonical on-disk
-   `LinkAnchor` shape — `type: "textObject"` + `textObjectIds` +
-   `margin` (plus `textRange` when the comment is Mode B; SSOT
+   `LinkAnchor` shape — `type: "textObject"` + `textObjectIds`
+   (plus `textRange` when the comment is Mode B; SSOT
    `src/links/_shared/types.ts`,
    [anchoring.md](../../docs/workspace/anchoring.md)). Copying carries the
-   mode, the paragraph id(s), and the margin in one move; do **not**
+   mode and the paragraph id(s) in one move; do **not**
    hand-rebuild it into the retired `type: "anchor"`/`paragraphIds` form.
    Then generate a fresh link `id`, set `target.ref.kind` to
    `"suggestion"`, and set `target.ref.id` to the new card's own id

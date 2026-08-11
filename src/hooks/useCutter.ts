@@ -55,7 +55,10 @@ function migrateComment(raw: unknown): CutterCommentCard | null {
   const r = (raw ?? {}) as Partial<CutterCommentCard>;
   if (!r.id || !r.createdAt) return null;
   const content = normalizeRichContent(r.content);
-  const text = typeof r.text === "string" ? r.text : richJsonToPlainText(content) || "";
+  const text =
+    typeof r.text === "string" && r.text.length > 0
+      ? r.text
+      : richJsonToPlainText(content) || "";
   const links = migrateCardLinks("cutter-comment", raw);
   const ta = links.find((l) => l.anchor.type === "textObject" && l.anchor.targetKind === "linkedRange" && l.anchor.textRange);
   return {
@@ -247,7 +250,7 @@ export function useCutter(
       if (content) bridgeComment(card, true);
       return card;
     },
-    [update, pristine, state.cards.length, bridgeComment],
+    [update, pristine, bridgeComment],
   );
 
   const addSuggestion = useCallback(

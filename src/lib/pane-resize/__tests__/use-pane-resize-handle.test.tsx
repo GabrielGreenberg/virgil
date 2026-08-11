@@ -52,11 +52,11 @@ import {
   type PaneResizeHandleProps,
 } from "../use-pane-resize-handle";
 import {
-  isPaneDragging,
-  onPaneDragChange,
-  __resetPaneDragBusForTest,
-  type PaneDragInfo,
-} from "../pane-drag-bus";
+  isLayoutGestureActive,
+  onLayoutGestureChange,
+  __resetLayoutGestureBusForTest,
+  type LayoutGestureInfo,
+} from "../layout-gesture-bus";
 import { isDragShieldMounted, unmountDragShield } from "../drag-shield";
 
 // ── jsdom shims ─────────────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", (id: number) => {
     rafCallbacks.delete(id);
   });
-  __resetPaneDragBusForTest();
+  __resetLayoutGestureBusForTest();
   unmountDragShield();
   setPointerCapture.mockClear();
   releasePointerCapture.mockClear();
@@ -214,7 +214,7 @@ describe("usePaneResizeHandle — pointer ownership", () => {
 
   it("refuses the gesture when setPointerCapture throws — no listeners, no shield, no bus edge (a capture-less shield would block its own end events)", () => {
     const edges = vi.fn();
-    onPaneDragChange(edges);
+    onLayoutGestureChange(edges);
     const h = makeHarness();
     const elSpy = vi.spyOn(h.el, "addEventListener");
     setPointerCapture.mockImplementationOnce(() => {
@@ -223,7 +223,7 @@ describe("usePaneResizeHandle — pointer ownership", () => {
 
     pointerDown(h.props(), h.el);
 
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
     expect(h.el.classList.contains("dragging")).toBe(false);
     expect(elSpy).not.toHaveBeenCalled();
@@ -232,7 +232,7 @@ describe("usePaneResizeHandle — pointer ownership", () => {
 
     // A later pointerdown (capture healthy again) starts normally.
     pointerDown(h.props(), h.el);
-    expect(isPaneDragging()).toBe(true);
+    expect(isLayoutGestureActive()).toBe(true);
     up(h.el);
     expect(h.committed()).toEqual([200]);
     elSpy.mockRestore();
@@ -247,11 +247,11 @@ describe("usePaneResizeHandle — pointer ownership", () => {
     expect(h.applied()).toEqual([]);
 
     up(h.el, { pointerId: 2 });
-    expect(isPaneDragging()).toBe(true);
+    expect(isLayoutGestureActive()).toBe(true);
     expect(h.committed()).toEqual([]);
 
     up(h.el, { pointerId: 1 });
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(h.committed()).toEqual([200]);
   });
 });
@@ -264,7 +264,7 @@ describe("usePaneResizeHandle — start gates", () => {
   ])("refuses to start on %s", (_name, init) => {
     const h = makeHarness();
     pointerDown(h.props(), h.el, init);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
     expect(h.el.classList.contains("dragging")).toBe(false);
     expect(setPointerCapture).not.toHaveBeenCalled();
@@ -273,13 +273,13 @@ describe("usePaneResizeHandle — start gates", () => {
   it("refuses to start when disabled", () => {
     const h = makeHarness({ disabled: true });
     pointerDown(h.props(), h.el);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(setPointerCapture).not.toHaveBeenCalled();
   });
 
   it("refuses a second gesture while one is already in flight", () => {
     const edges = vi.fn();
-    onPaneDragChange(edges);
+    onLayoutGestureChange(edges);
     const h = makeHarness();
     const el2 = document.createElement("div");
     document.body.appendChild(el2);
@@ -397,7 +397,7 @@ describe("usePaneResizeHandle — commit exactly once, every end variant", () =>
     h.el.dispatchEvent(pe("pointercancel"));
 
     expect(h.committed()).toEqual([250]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
     expect(h.el.classList.contains("dragging")).toBe(false);
   });
@@ -411,7 +411,7 @@ describe("usePaneResizeHandle — commit exactly once, every end variant", () =>
     h.el.dispatchEvent(pe("lostpointercapture"));
 
     expect(h.committed()).toEqual([250]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
   });
 
   it("stacked end variants (pointerup then lostpointercapture) commit only once", () => {
@@ -442,7 +442,7 @@ describe("usePaneResizeHandle — commit exactly once, every end variant", () =>
 
     expect(h.applied()).toEqual([250]);
     expect(h.committed()).toEqual([250]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
 
     // Gesture is over; further events are inert.
@@ -470,7 +470,7 @@ describe("usePaneResizeHandle — commit exactly once, every end variant", () =>
 
     expect(h.applied()).toEqual([250]);
     expect(h.committed()).toEqual([250]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
   });
 });
@@ -487,7 +487,7 @@ describe("usePaneResizeHandle — Escape cancel", () => {
 
     expect(h.applied()).toEqual([250, 200]); // restore
     expect(h.committed()).toEqual([]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
     expect(h.el.classList.contains("dragging")).toBe(false);
   });
@@ -502,14 +502,14 @@ describe("usePaneResizeHandle — Escape cancel", () => {
 
     expect(h.applied()).toEqual([]); // no stray apply, no redundant restore
     expect(h.committed()).toEqual([]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
   });
 
   it("Escape with no drag in flight is inert", () => {
     const h = makeHarness();
     escape();
     expect(h.log).toEqual([]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
   });
 
   it("prefers spec.restore() over apply(startValue) — cancel re-syncs from the source of truth, not the rendered snapshot", () => {
@@ -530,7 +530,7 @@ describe("usePaneResizeHandle — Escape cancel", () => {
     expect(restore).toHaveBeenCalledTimes(1);
     expect(h.applied()).toEqual([250]); // no apply(startValue) fallback
     expect(h.committed()).toEqual([]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
   });
 
@@ -564,7 +564,7 @@ describe("usePaneResizeHandle — Escape cancel", () => {
     flushRaf();
     h.unmount();
     expect(restore).not.toHaveBeenCalled();
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
   });
 });
 
@@ -597,14 +597,14 @@ describe("usePaneResizeHandle — getValue snapshot contract", () => {
     flushRaf();
     move(h.el, 400, { buttons: 0 });
     expect(getValue).toHaveBeenCalledTimes(3);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
   });
 });
 
 describe("usePaneResizeHandle — bus + chrome edges", () => {
-  it("publishes exactly one begin and one end edge per gesture, with id + axis", () => {
-    const calls: Array<[boolean, PaneDragInfo]> = [];
-    onPaneDragChange((active, info) => calls.push([active, info]));
+  it("publishes exactly one begin and one end edge per gesture, with kind + id + axis", () => {
+    const calls: Array<[boolean, LayoutGestureInfo]> = [];
+    onLayoutGestureChange((active, info) => calls.push([active, info]));
     const h = makeHarness();
 
     pointerDown(h.props(), h.el);
@@ -615,8 +615,8 @@ describe("usePaneResizeHandle — bus + chrome edges", () => {
     up(h.el);
 
     expect(calls).toEqual([
-      [true, { id: "gutter-under-test", axis: "x" }],
-      [false, { id: "gutter-under-test", axis: "x" }],
+      [true, { kind: "pane", id: "gutter-under-test", axis: "x" }],
+      [false, { kind: "pane", id: "gutter-under-test", axis: "x" }],
     ]);
   });
 
@@ -632,7 +632,7 @@ describe("usePaneResizeHandle — bus + chrome edges", () => {
     // geometry — with no other engine test failing. Pin the full sequence in
     // ONE log so relative order is the assertion.
     const h = makeHarness();
-    onPaneDragChange((active) =>
+    onLayoutGestureChange((active) =>
       h.log.push({ op: active ? "bus-begin" : "bus-end", px: -1 }),
     );
 
@@ -692,7 +692,7 @@ describe("usePaneResizeHandle — bus + chrome edges", () => {
 
     h.unmount();
 
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
     expect(h.el.classList.contains("dragging")).toBe(false);
     expect(h.committed()).toEqual([]);
@@ -724,7 +724,7 @@ describe("usePaneResizeHandle — captured-element removal failsafes", () => {
     document.dispatchEvent(pe("lostpointercapture"));
 
     expect(h.committed()).toEqual([250]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
     expect(document.body.style.userSelect).toBe("");
   });
@@ -739,7 +739,7 @@ describe("usePaneResizeHandle — captured-element removal failsafes", () => {
     window.dispatchEvent(pe("pointerup", { buttons: 0 }));
 
     expect(h.committed()).toEqual([250]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
     expect(isDragShieldMounted()).toBe(false);
   });
 
@@ -748,7 +748,7 @@ describe("usePaneResizeHandle — captured-element removal failsafes", () => {
     pointerDown(h.props(), h.el);
     document.dispatchEvent(pe("lostpointercapture", { pointerId: 9 }));
     window.dispatchEvent(pe("pointerup", { buttons: 0, pointerId: 9 }));
-    expect(isPaneDragging()).toBe(true); // foreign pointer never ends it
+    expect(isLayoutGestureActive()).toBe(true); // foreign pointer never ends it
 
     up(h.el);
     expect(h.committed()).toEqual([200]);
@@ -758,7 +758,7 @@ describe("usePaneResizeHandle — captured-element removal failsafes", () => {
     document.dispatchEvent(pe("lostpointercapture"));
     window.dispatchEvent(pe("pointerup", { buttons: 0 }));
     expect(h.committed()).toEqual([200]);
-    expect(isPaneDragging()).toBe(false);
+    expect(isLayoutGestureActive()).toBe(false);
   });
 });
 

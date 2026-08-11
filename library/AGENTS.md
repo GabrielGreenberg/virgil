@@ -25,10 +25,11 @@ library/
 ├── hooks/               React hooks (state machines + polling)
 │   ├── useLibraryHandle.ts, useLibraryTabs.ts
 │   ├── useCatalog.ts, useMasterBib.ts, useUnsortedPdfs.ts
-│   ├── useDropPdf.ts, useBibReviewState.ts
+│   ├── useDropPdf.ts
 │   ├── useNotificationStream.ts, useRowDotState.ts
 ├── lib/                 Pure logic + FSA boundary
 │   ├── catalog.ts, catalog-store.ts (module-level singleton for Bibliography façade)
+│   ├── queue-state-store.ts (the queue's poll channel), paper-ai-requests.ts
 │   ├── library-store.ts, library-folder.ts, library-storage.ts
 │   ├── queue.ts, bib-edit.ts, skill-sync.ts
 │   ├── bib-parser.ts, latex-parser.ts, latex-serializer.ts
@@ -45,10 +46,69 @@ Imports use `@library/*` (alias to `./library/*` in `tsconfig.json` and `vitest.
 
 ## Cowork pattern
 
-Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writes intent files; Claude (running in a separate session, ideally `/loop /library/index-pending`) drains them and writes back. The frontend never invokes Claude directly. Two channels:
+Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writes intent files; Claude (running in a separate session, ideally `/loop /library/index-pending`) drains them and writes back. The frontend never invokes Claude directly. Three channels:
 
 1. `catalog-version.txt` — bumped on every skill run; the frontend polls this 1-byte file every 6s (see `library/lib/catalog.ts` and `library/lib/catalog-store.ts`).
 2. `notifications/inbox.json` — append-only ring buffer for toasts.
+3. `queue/*.json` — the INTENT files themselves, polled by
+   [library/lib/queue-state-store.ts](lib/queue-state-store.ts) (below).
+
+### A file written by both sides needs a poll channel — and exactly one
+
+> **Every `.virgil/` file a skill can mutate out of band has ONE shared,
+> refcounted poll in the frontend, and every LOCAL writer of that file pushes
+> through the same channel. A surface never reads such a file on its own
+> cadence — least of all "once, on mount".**
+
+The catalog and the inbox had channels; the queue files did not, and each
+consumer improvised (task 132). `useRowDotState` polled the queue directory
+every 6 s for the list's red dot. `PaperHeader` read five targeted queue files
+ONCE per `(handle, citekey)` mount — and the Reader is **kept alive**
+(`ReaderLRU` wraps it in a `KeepAliveSlot`: `display:none`, not a remount), so
+that effect never re-ran. A background `/loop /library/index-pending` session
+would drain the queue and delete the file, the 6 s catalog poll would
+re-RENDER the header, and the AI-request checkboxes + the `PaperAiRequestsMenu`
+count badge went on claiming "queued" for the whole life of the tab. A
+re-render does not re-run a same-deps effect. A third cadence (focus-regain,
+one kind, in a `useBibReviewState` hook with zero consumers) has been deleted.
+
+The gap ran the other way too: `LibraryView`'s row actions wrote a queue file
+and notified nobody, so a request filed from the list never reached that
+paper's open reader header, and the dot lagged a poll behind the click.
+
+Three rules the store earns:
+
+- **One scan, many consumers.** `useQueueState(handle)` refcounts a single
+  directory scan (`catalog-store`'s tactic), so inside the Library tab the
+  header derives its five checkboxes from the scan the row dots were already
+  paying for — **zero** added disk reads, however many readers are kept alive —
+  and both surfaces answer from the same bytes, so they cannot disagree. (In a
+  standalone outer paper tab there is no list, so the scan is that surface's
+  own: one polled directory listing in place of five one-shot file reads.)
+- **The kind comes from the ENTRY, not the filename.** `index` and
+  `authenticate` share `queue/<citekey>.json`, so only the entry's own `kind`
+  separates them; reading by filename also meant a second table to keep in
+  sync with `queueFilename` (the legacy `-richindex.json` spelling normalizes
+  through `normalizeQueueEntry` for free). The five kinds are declared once in
+  [library/lib/paper-ai-requests.ts](lib/paper-ai-requests.ts) as a `Record`
+  over the union — queue kind + enqueue/cancel + precondition together, so a
+  half-wired kind is a compile error rather than a checkbox that reads one
+  file and writes another.
+- **A local write is a notification.** `refreshQueueState()` re-reads
+  immediately and is awaited by every writer (the header's toggle, the row
+  actions, the bib-edit modal) — never "trust our own write", since a
+  deep-index request plants a companion `index` entry and a bib review can
+  take the slot an index was holding.
+
+Emits are equality-gated: an idle tick over an unchanged queue returns the
+SAME snapshot object, so nothing re-renders (the `catalog-store` R6 rule), and
+newest-scan-wins ordering keeps a scan that started before a write from
+overwriting one that observed it. Contracts:
+[queue-state-store.test.tsx](lib/__tests__/queue-state-store.test.tsx),
+[paper-ai-requests.test.ts](lib/__tests__/paper-ai-requests.test.ts), and
+[PaperHeader.queue-resync.test.tsx](components/__tests__/PaperHeader.queue-resync.test.tsx)
+— which asserts the header WITHOUT unmounting it, the only shape that can
+catch this class.
 
 ## How the Library tab plugs into Virgil
 
@@ -133,15 +193,25 @@ Library tree. The rules:
   choice. (The ONE sanctioned exception is editor-side and named in root
   AGENTS.md "Pane-drag stability" — `SplitWithCode`'s render-derived
   `liveRatio`; the library silo has none and should stay that way.)
-- **Edge-only bus.** Drag-time coordination rides the app-wide `PaneDragBus`
-  (`isPaneDragging`/`onPaneDragChange` from `@/lib/pane-resize`): listeners
-  fire once on the begin edge and once on the end edge, NEVER per frame. The
-  per-frame geometry stream stays inside the engine.
+- **Edge-only bus.** Gesture-time coordination rides the app-wide
+  `LayoutGestureBus` (`isLayoutGestureActive`/`onLayoutGestureChange` from
+  `@/lib/pane-resize`): listeners fire once on the begin edge and once on the
+  end edge, NEVER per frame. The per-frame geometry stream stays inside the
+  engine. Since task 317 the bus carries TWO gesture families — a pane-divider
+  drag and an **OS window resize** (`kind: "pane" | "window"`) — so a follower
+  wired once is covered for both. Root AGENTS.md "Layout-gesture stability".
 - **Park-and-settle.** Any geometry observer that could fire mid-gesture
-  routes its trigger through `parkDuringPaneDrag` (stash latest, replay ONCE
-  on the end edge) instead of hand-rolling an `isPaneDragging()` check —
-  current parks: `usePgmarkPages`' RO, `RightDetail`'s textPodRect RO and
-  pdf-viewer page-state feedback, `PanelTabStrip`'s flush-right measure.
+  routes its trigger through `parkDuringLayoutGesture` (stash latest, replay
+  ONCE on the end edge) instead of hand-rolling an `isLayoutGestureActive()`
+  check — current parks: `usePgmarkPages`' RO, `RightDetail`'s textPodRect RO
+  **and its window `resize` listener**, `RightDetail`'s pdf-viewer page-state
+  feedback, `PanelTabStrip`'s flush-right measure. That "and" is the whole
+  lesson of task 317: `RightDetail` parked the RO and fed the SAME scheduler
+  raw from a window listener 38 lines below, and since `PaneFreeze` cannot
+  freeze an OS window resize, the unparked path was the live one for the whole
+  gesture. **Every trigger into a scheduler parks, or none of them does.**
+  A new `resize` listener in this silo that neither parks nor suppresses fails
+  the census in `src/lib/__tests__/window-resize-guardrail.test.ts`.
 - **Reader freeze.** `RightDetail` wraps both branch roots (pdf iframe /
   text reader) in `PaneFreeze`, so the heavyweight content is width-locked
   for the gesture and sees exactly ONE resize on release (pdf.js re-scale,
@@ -164,7 +234,7 @@ as the keystroke/scroll lists):
 - [PanelTabStrip.tsx](components/panel-tabs/PanelTabStrip.tsx) flush-right
   tuck measure — the ONE surviving chrome RO (a cross-subtree relationship CSS
   can't express); RAF-coalesced, equality-bailed, parked via
-  `parkDuringPaneDrag`.
+  `parkDuringLayoutGesture`.
 - [LeftList.tsx](components/LeftList.tsx) rows-viewport measure —
   virtualization window height; equality-bailed setState.
 - [RightDetail.tsx](components/RightDetail.tsx) textPodRect — header↔pod
@@ -178,7 +248,66 @@ as the keystroke/scroll lists):
 **Verify live** (dev preview, force-dev-storage): drag each library gutter —
 the outline tracks the edge with no lag/snap; release over the PDF viewer —
 no hang, no ghost-resume; typing leaves `__virgilBusStats().emitCount` flat;
-a full drag fires exactly two `PaneDragBus` edges and one store commit.
+a full drag fires exactly two `LayoutGestureBus` edges and one store commit.
+Then drag the OS **window** edge with the Library tab open and read
+`window.__layoutGestureStats()`: every parked site must report `settles === 0`
+during the drag and exactly 1 after release.
+
+## Projection coordinate spaces — a projection that renders is a projection that mutates
+
+> **Where a hook exposes a DISPLAYED projection of persisted state, every
+> input expressed in that projection's coordinates is translated back at the
+> hook boundary — by the same module that built the projection. No mutator
+> reads a raw index or a raw `activeId` while a projection exists.**
+
+`useLibraryTabs` is the app's one live instance of this shape. It keeps two
+notions of "the tab list" and "the active tab": the **raw** persisted
+`PanelTabsState` (what every mutation splices) and the **displayed**
+projection the strip actually renders — synthetic per-doc project tabs
+spliced in after Central, `activeId` overridden to the current doc's project
+tab. Everything the *user* expresses is stated in displayed coordinates,
+because the displayed list is the only one they can see.
+
+Feeding such a value to a raw-space mutator is one bug class with as many
+symptoms as there are consumers (task 131). Two were live, each looking
+complete on its own terms: `PanelTabStrip.computeInsertionIndex` measured the
+rendered strip and `moveTab` spliced that index into raw `openIds`, so with N
+project tabs a reorder landed N slots off — and a mid-list drop *silently did
+nothing*, which reads as an unresponsive UI rather than a wrong one; and
+`openLibrary`/`openPaper` resolved their replace target from raw `activeId`,
+which with a doc open still pointed at an unpinned **Central** sitting behind
+the projection, so opening a library mapped Central out of `openIds` and it
+vanished though the user never closed it and it wasn't even highlighted.
+
+The SSOT is [library/lib/panel-tab-coords.ts](lib/panel-tab-coords.ts): the
+projection (`projectLeftTabs`) and both inverses
+(`displayedIndexToRaw`, `resolveReplaceTargetId`) in one pure module, so they
+cannot drift. Three rules it earned:
+
+- **Translate at the boundary, once, unconditionally.** `moveTab` converts the
+  incoming index against the same snapshot the user was looking at, before any
+  reducer runs. A panel with no projection has displayed === raw, so the
+  translation is the identity — which is why every mutator routes through it
+  rather than branching on the panel. A branch is a place to forget.
+- **Count membership; don't subtract a count.** The raw index is *how many raw
+  ids precede that displayed point* — total by construction, needing no
+  assumption about where the projection put its synthetic ids. It also gives
+  the right answer where the mapping is genuinely many-to-one: a raw tab can
+  never render between Central and the project tabs, so those adjacent
+  displayed insertion points collapse to one raw slot.
+- **A synthetic tab has no slot to give up.** When the displayed active id
+  isn't in raw `openIds`, the open APPENDS. Falling back to "replace whatever
+  raw `activeId` still points at" is exactly the Central-vanishing bug.
+
+Contracts: [panel-tab-coords.test.ts](lib/__tests__/panel-tab-coords.test.ts)
+(pure) and
+[useLibraryTabs.coords.test.tsx](hooks/__tests__/useLibraryTabs.coords.test.tsx)
+(the mutators actually route through it — both members fail on the
+implementation they were written against). Residual, stated honestly: the
+strip's drop caret is still drawn at the raw displayed index, so a drop
+aimed between Central and the first project tab shows the caret there and the
+tab settles just after the project tabs — the nearest representable slot.
+Cosmetic, and it would take the strip knowing the projection to fix.
 
 ## Storage
 
@@ -263,6 +392,66 @@ remember and no deadlock surface. The atomic write pattern (temp-file
 + fsync + `os.replace`) ensures lock-free readers always see either
 the old or the new contents, never a partially-written file.
 
+## `references.bib` is upsert-only
+
+> **A paper's own row in `papers/<citekey>/references.bib` is written by
+> exactly one function — `_tools.write_paper_bib_entry` — and it UPSERTS.
+> Never `write_text` a freshly emitted entry over that file, from Python or
+> from a skill.**
+
+(Other writers of the file exist and are fine: they either append
+(`populate_references_bib_from_itemize`, `synthesize_canonical_entries`) or
+rewrite in place (`fuzzy_citekey_disambiguate`, `repair_etal_citekeys`), so
+they derive their output from the existing text. The one sanctioned WHOLE-file
+rewrite is `/library/clean-bibliography` step 3f, which is what puts the cited
+works there in the first place.)
+
+`references.bib` is a single-entry mirror of the master.bib row only until
+`/library/deep-index` runs. Its step 3f (`/library/clean-bibliography`)
+replaces the file with the paper's **actual cited works** — dozens of entries,
+of which the paper's own row is just one — and from then on the file is
+self-contained (`deep-index.md`: "Each paper's `references.bib` is
+self-contained"). A writer that re-emits the whole file from that single row
+therefore destroys a deep-indexed paper's whole bibliography, and the loss is
+silent both ways: nothing errors, and the next `/library/merge-bibs` finds one
+entry where there had been many and reports a clean run.
+
+That was live in **four** places at once (task 168): three in Python —
+`index_paper`'s index-time stamp, its `_resync_references_bib` (which
+`/library/authenticate-bib` step 6 calls unconditionally), and
+`triage_apply`'s bib-only folder creation — plus one in **skill prose**, where
+`apply-bib-edit.md` step 3 simply told the agent to "re-emit" the file by
+hand. That fourth one is the reason the fix isn't a guard per Python caller: a
+skill's prose alone can reopen the hole, so the doctrine has to be stated as
+well as coded, and every skill step now points at the helper.
+
+The code half is structural: `write_paper_bib_entry` splices via the SSOT
+parser's pure `_bib_parse.upsert_entry_text`, so **every other entry survives
+byte-identically** and the merge semantics are a strict superset of the old
+behavior for a single-entry (or absent) file. Fresh indexing is unchanged.
+
+**When the splice can't be proved safe, it refuses** (`BibSpliceRefused`) and
+leaves the file byte-for-byte untouched — never a best-guess write. The parser
+is quote-unaware, so on a malformed `.bib` a single entry's computed span can
+run straight *through* a real neighbour (a `{` surplus in one value pairing
+with a `}` surplus in a later one), and splicing that span would delete it —
+re-creating the very bug, from the fix. The three refusals: the target's
+braces didn't balance; its span covers another line-anchored `@type{key,`; or
+the block about to be written is itself unbalanced. Callers surface the
+message (index-time it's logged and indexing continues) and a human repairs
+the bib.
+
+Unlike `master.bib`, this file takes no lock — it's per-paper, and library
+skills are parallel-safe only across citekeys.
+
+CI: [library/scripts/tests/test_references_bib_upsert.py](scripts/tests/test_references_bib_upsert.py)
+pins the byte-identical-survival contract, the refusals, and a grep of
+`library/scripts/` for the re-emit form. Nothing in CI runs Python directly, so
+[library/lib/\_\_tests\_\_/references-bib-upsert-python.test.ts](lib/__tests__/references-bib-upsert-python.test.ts)
+shells out to it — that's what puts it under the same `npx vitest run` that
+gates everything else. (The suite carries its own no-pytest runner for this
+reason; the other `library/scripts/tests/*` suites remain manual.)
+
 ## Memo discipline
 
 Skills that write markdown memos as part of their work follow a fixed convention.
@@ -309,10 +498,12 @@ session opened in this repo:
 - `/library/ai-requests` — drain user-authored AI review requests
 - `/library/iterate-skill <skill-name> <citekey...>` — closed-loop iteration
 
-**Deep-index subskills** (Phase 1 stubs; content migration from the
-monolithic `deep-index.md` will land iteratively):
+**Deep-index subskills.** `/library/deep-index` dispatches all six, in
+this order — the preflight at its Step 0, the rest at its Step 3. Each is
+also callable standalone (`/library/clean-bibliography <citekey>` to
+re-itemize References without re-running the pass):
 
-- `/library/di-preflight <citekey>` — Step 0 / Step 0.5: metadata mismatch, lending-slip, JSTOR boilerplate, multi-article, OCR recovery dispatch, genre routing.
+- `/library/di-preflight <citekey>` — Step 0.0 – 0.6: empty-body / OCR-recovery gate, lending-slip, JSTOR boilerplate, metadata mismatch, multi-article, Caesar/running-header, genre routing, pgmark coverage.
 - `/library/di-clean-prose <citekey>` — Step 3a / 3b / 3c: title, headers, heading hierarchy, drop caps, pgmark alignment.
 - `/library/recover-footnotes <citekey>` — Step 3d full tier ladder.
 - `/library/clean-bibliography <citekey>` — Step 3e / 3f / 3g: References itemization, references.bib emission, citation rewriting.
@@ -325,6 +516,134 @@ monolithic `deep-index.md` will land iteratively):
 - `library/skills/_find-or-surface.md` — the **cross-silo** "find-or-surface, never fabricate, Library-first" doctrine for every citation/bib skill (`authenticate-bib`, `find-citation`, `answer-bib-review`, `draft-footnote`, …). Authored once here; a byte-identical copy lives at `editor/skills/_find-or-surface.md` so the editor bundle ships it too (the two silos land in separate on-disk folders). The copies are kept identical by `library/lib/__tests__/find-or-surface-doctrine.test.ts` — edit **both**.
 
 Edit the source under `library/skills/`; rerun `npm run build:library-bundle` (or `npm run dev` / `npm run build`, which auto-run via `predev` / `prebuild` hooks) to regenerate `.claude/commands/library/` and `public/skill-bundle/`.
+
+### A declared subskill is a dispatched subskill
+
+> **A skill whose frontmatter says "Subskill of /X" must appear in X's
+> dispatch sequence as `Run \`/<silo>/<name>\``. Membership is DERIVED from
+> that self-declaration, not from a list someone maintains — and a
+> cross-reference is not a dispatch.**
+
+`/library/deep-index` declared six subskills and dispatched five (task
+2026-07-18-163). The missing one was `di-preflight`, so on every deep-index
+pass the JSTOR cover-page strip, the interlibrary lending-slip strip, the
+content↔metadata mismatch policy (and its `bib.state = needs-reauth` flip)
+and the pgmark-coverage reconciliation simply never ran — unless an
+operator happened to invoke it by hand, which nothing told them to do and
+no queue kind scheduled. `di-clean-prose.md` opened by saying it "operates
+on `main.tex` after `/library/di-preflight`", and was wrong every time.
+
+Nothing could have caught it. The subskill existed, was reachable as a
+slash command, was documented in this file, was exercised by nine
+`test-corpus.json` rows, and had four Python helpers written for it. Every
+one of those facts is about the *subskill*; none is about the *caller* —
+the same lesson `createsAtom ⇒ requiresCardApi` earned in `src/` (root
+AGENTS.md, task 233): **"registered and reachable" proves nothing about
+whether anything invokes it.**
+
+Three rules it earned:
+
+- **A partial inline copy is worse than no copy.** deep-index carried its
+  own "Genre detection (preflight)" section — the one Step-0 job it *did*
+  do — and the two had drifted: the local copy knew five genre labels,
+  di-preflight six, and the missing `article-vancouver` is precisely the
+  label that decides whether `rewrite_citations --style=bracket-numeric`
+  runs. A duplicate that looks like coverage is what kept the gap
+  invisible. The orchestrator now states the *dispatch* and each subskill
+  documents its own branches.
+- **The dispatch form is the contract, not the mention.** di-preflight was
+  named by four sibling skills and dispatched by none, so the guard
+  requires the imperative `Run \`/library/<name>\`` the orchestrator
+  actually uses. Matching a bare mention would have reported green.
+- **Name the fourth exit.** deep-index's §0 promised "exactly three"
+  permitted exits while §Prerequisites hard-stopped a fourth way
+  (`extraction-empty-body`) that no banner covered. That gate now belongs
+  to di-preflight §0.0 — which *determines* the cause
+  (`recover_ocr_pipeline.py --check-only`: no text layer vs. a failed
+  extraction over one) instead of guessing "scanned PDF", and routes back
+  as `PREFLIGHT_BLOCKED` → the STALLED banner. It never repairs: OCR +
+  re-extraction is `/library/index-paper`'s job, exactly as deep-index's
+  own §"What this command does NOT do" says, and `--force-install` is
+  never passed (ocrmypdf is a `/library/setup` dep, not a 200 MB surprise
+  mid-pass).
+
+CI:
+[library/lib/\_\_tests\_\_/subskill-dispatch-guardrail.test.ts](lib/__tests__/subskill-dispatch-guardrail.test.ts)
+walks both silos: every declared subskill must be dispatched by the
+umbrella it names, that umbrella must exist, and every `/library/…` /
+`/editor/…` slash command any skill points an agent at must resolve to a
+real skill file (the rename half of the same class —
+`/editor/answer-revision-comment` outlived its file once already). Its
+allowlist is EMPTY and belongs that way: wire the dispatch or drop the
+claim. The editor silo has no declarations today, so its hit set is empty
+by fact rather than by exemption; a `/editor/review` subskill that starts
+declaring itself is covered the day it does.
+
+Two things the guard is deliberately honest about. It reads a *self*-
+declaration, so a subskill that never claims membership is invisible to it
+— which is why the claim belongs in frontmatter, the routing copy an agent
+reads first. And its own first draft matched `Subskill of` with a literal
+space, which a wrapped YAML description does not contain: it read the
+corpus as five subskills and reported green on the very file it exists to
+catch. The sentinel leg pins all six by name for that reason.
+
+### A documented invocation is an executed invocation
+
+> **Every `--flag` a skill prints in a `python3 …/<script>.py` line must exist
+> in that script. A skill is a prompt: an agent runs the line verbatim, and
+> argv does not complain.**
+
+`bib_auth.py` had no argparse at all — one positional entry,
+`<title> [<author>…]` — while `/editor/find-citation` invoked it with
+`--query --type` and `/editor/answer-bib-review` with
+`--citekey --title --author --type` (task 158). Each flag landed as a
+positional (`title="--query"`, everything after it an "author"), so the helper
+came back with a *plausible wrong answer* instead of an error, and the skills'
+only fallback trigger was `ModuleNotFoundError`. Nothing could have caught it:
+types don't cross the markdown↔Python boundary and neither bundle build reads
+the invocations it ships.
+
+CI:
+[library/lib/\_\_tests\_\_/skill-script-cli-guardrail.test.ts](lib/__tests__/skill-script-cli-guardrail.test.ts)
+scans both silos' skill markdown and fails any flag absent from the invoked
+script's source, or any script that doesn't exist. Both allowlists are EMPTY
+and belong that way — an entry is a skill telling an agent to run something
+that can't work, so build the flag or fix the doc. Three rules it earned:
+
+- **Literal presence, not `add_argument`.** Roughly a third of this pipeline
+  hand-rolls its argv walk (`repair_pgmarks.py`, `audit_deepindex.py`,
+  `format_references_section.py`) and those flags are real; demanding argparse
+  would flag four healthy call sites and teach the next person to silence the
+  guard. Honest residual: the loose rule can be immunised by the script's own
+  help text (`bib_auth.py`'s epilog prints its flags), which is why that
+  script additionally has a suite driving the real parser.
+- **An interpreter token is not what makes it an invocation.** The first
+  version anchored on `python3`, and an adversarial pass immediately found the
+  hole it left: `_find-or-surface.md` — the cross-silo SSOT for *how to call
+  `bib_auth.py`* — writes its forms bare, so the guard read nothing there
+  while the file asserted right below them that CI checked those flags. Same
+  for `create-card.md`'s eleven per-kind examples and `setup.md`'s
+  `"$PY" …/setup.py --force`. The bare form is scoped harder (the basename
+  must resolve to a known script, and a `--flag` must follow) and added 25
+  invocations, including `--limit`, which no other call site reached.
+- **A commented line is documentation, not an invocation** — which is how
+  `di-clean-prose.md`'s explicit "script doesn't exist yet" placeholder stays
+  legal without an allowlist entry.
+
+The sentinel test pins bib_auth's whole flag set by name, so removing the last
+call site that documents a flag goes red rather than quietly un-covering it.
+
+`bib_auth.py`'s own CLI now states the fork its two callers always had:
+`--query` is DISCOVERY (ranked candidates from every source — running an
+authenticator against a free-text description is meaningless, since the seed
+title can't match and the verdict is `failed` even on a perfect hit), and
+`--citekey`/`--title` is VERIFICATION (the `AuthResult`). `--citekey` reads the
+entry out of `master.bib` verbatim and threads the library root through for
+the recovery chain, which retired `authenticate-bib.md`'s hand-marshalled
+`python3 -c` snippet — a shape that couldn't survive an apostrophe in a title.
+Contract: [library/scripts/tests/test_bib_auth_cli.py](scripts/tests/test_bib_auth_cli.py),
+run under `npx vitest` via
+[bib-auth-cli-python.test.ts](lib/__tests__/bib-auth-cli-python.test.ts).
 
 ## One-off-script promotion rule
 
@@ -418,4 +737,4 @@ The Reader can be driven live in the dev preview even though the FSA picker does
 
 - Don't add a backend. The cowork pattern is load-bearing.
 - Don't write to `master.bib` or `catalog.json` from the frontend — those are skill outputs.
-- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, `@/components/editor-layout/chrome-*` (sanctioned cross-silo bridges for Reader inheritance), `@/lib/bib-searcher` (the shared fuzzy bib searcher — Library catalog search unifies onto it via `library/lib/catalog-search.ts` rather than duplicating the matcher; it's a leaf-pure `fuse.js`-only module), `@/lib/pane-resize` (the ONE app-wide divider gesture engine + pane-drag bus — every Library resizer runs on it, and the strip's flush-right tuck observer parks on its `isPaneDragging`/`onPaneDragChange` edges; it replaced `library/lib/gutter-drag.ts`. The reader drag-freeze is part of the same sanctioned bridge: `PaneFreeze` wraps both of `RightDetail`'s pdf/text branch roots so a gutter gesture resizes the reader content exactly once, and the `parkDuringPaneDrag` parks in `library/hooks/usePgmarkPages.ts` + `RightDetail` stash their geometry/viewer feedback behind the same bus edges. These are generic shared-layer utilities keyed on the bus — NOT Reader-specific render forks; see the shared-layer note in READER_INHERITANCE.md), and `@/components/chrome/FolderTabChrome` + `@/components/chrome/folder-tab-geometry` (the ONE folder-tab chrome + geometry SSOT shared by the outer Virgil-bar tabs and the inner library tabs — a layout-driven three-piece silhouette with zero ResizeObservers; it replaced the forked `library/components/panel-tabs/folder-path.ts` / `src/components/editor-layout/folder-path.ts` measured path builders). Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.
+- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, `@/components/editor-layout/chrome-*` (sanctioned cross-silo bridges for Reader inheritance), `@/lib/bib-searcher` (the shared fuzzy bib searcher — Library catalog search unifies onto it via `library/lib/catalog-search.ts` rather than duplicating the matcher; it's a leaf-pure `fuse.js`-only module), `@/lib/pane-resize` (the ONE app-wide divider gesture engine + layout-gesture bus — every Library resizer runs on it, and the strip's flush-right tuck observer parks on its `isLayoutGestureActive`/`onLayoutGestureChange` edges; it replaced `library/lib/gutter-drag.ts`. The reader drag-freeze is part of the same sanctioned bridge: `PaneFreeze` wraps both of `RightDetail`'s pdf/text branch roots so a gutter gesture resizes the reader content exactly once, and the `parkDuringLayoutGesture` parks in `library/hooks/usePgmarkPages.ts` + `RightDetail` stash their geometry/viewer feedback behind the same bus edges — which since task 317 also fire for an OS window resize, a gesture `PaneFreeze` structurally cannot freeze. These are generic shared-layer utilities keyed on the bus — NOT Reader-specific render forks; see the shared-layer note in READER_INHERITANCE.md), and `@/components/chrome/FolderTabChrome` + `@/components/chrome/folder-tab-geometry` (the ONE folder-tab chrome + geometry SSOT shared by the outer Virgil-bar tabs and the inner library tabs — a layout-driven three-piece silhouette with zero ResizeObservers; it replaced the forked `library/components/panel-tabs/folder-path.ts` / `src/components/editor-layout/folder-path.ts` measured path builders). Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.

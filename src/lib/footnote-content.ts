@@ -10,12 +10,26 @@
 import type { JSONContent } from "@tiptap/react";
 import { generateShortId } from "@/lib/uuid";
 import {
+  emitMarker,
+  markerArgStart,
+  markerOpensAt,
+  VIRGIL_MARKERS,
+} from "@/lib/latex-markers";
+import {
   matchAccent,
   matchSpecialLetter,
   dashesToGlyphs,
   typographyToLatex,
+  smartenStraightQuotes,
 } from "@/lib/latex-typography";
-import { findMatchingBrace, isEscaped, findUnescaped } from "@/lib/latex-lexer";
+import {
+  findMatchingBrace,
+  hasVerbatimMark,
+  isEscaped,
+  findUnescaped,
+  matchInlineVerbAt,
+  verbatimMark,
+} from "@/lib/latex-lexer";
 
 const HTML_TAG_RE = /<[^>]+>/;
 
@@ -280,14 +294,16 @@ export function htmlToJson(html: string): JSONContent {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function escapeLatex(text: string, opts?: { typography?: boolean }): string {
-  const escaped = text
-    .replace(/(?<!\\)([&%#_])/g, "\\$1")
-    .replace(/~/g, "\\textasciitilde{}")
-    .replace(/\^/g, "\\textasciicircum{}")
-    .replace(/“/g, "``")
-    .replace(/”/g, "''")
-    .replace(/(^|[\s([{—–])"/g, "$1``")
-    .replace(/"/g, "''");
+  // Quote smartening goes through the shared `smartenStraightQuotes` SSOT, not
+  // a local copy: this file's copy had drifted from the main serializer's (it
+  // was missing `/` from the opener character class, so `and/"or"` produced a
+  // wrong-way closing pair inside a footnote but not in body prose).
+  const escaped = smartenStraightQuotes(
+    text
+      .replace(/(?<!\\)([&%#_])/g, "\\$1")
+      .replace(/~/g, "\\textasciitilde{}")
+      .replace(/\^/g, "\\textasciicircum{}"),
+  );
   // Typographic reverse-map runs AFTER char-escaping so its `\^{e}`/`\~{n}`
   // output isn't re-escaped. Suppressed for code spans by the caller.
   return opts?.typography === false ? escaped : typographyToLatex(escaped);
@@ -295,12 +311,13 @@ function escapeLatex(text: string, opts?: { typography?: boolean }): string {
 
 function serializeMarks(text: string, marks?: { type: string }[]): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
+  // BYTE-LITERAL verbatim (a `\verb<delim>…<delim>` run) — emit exactly as
+  // parsed. The twin of the main serializer's branch; before task 264 this
+  // fork had no `\verb` handling at all, so a footnote's `\verb"code"` came
+  // back ``\verb``code''`` (task 264).
+  if (hasVerbatimMark(marks)) return text;
   if (marks.some((m) => m.type === "latexCommand")) {
-    return text
-      .replace(/“/g, "``")
-      .replace(/”/g, "''")
-      .replace(/(^|[\s([{—–])"/g, "$1``")
-      .replace(/"/g, "''");
+    return smartenStraightQuotes(text);
   }
   // Code spans are verbatim — suppress typography (memo §A exclusion).
   const inCode = marks.some((m) => m.type === "code");
@@ -329,7 +346,7 @@ function serializeInlineNode(node: JSONContent): string {
   if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
   if (node.type === "citation") {
     const cid = node.attrs?.citationId as string | undefined;
-    const idMarker = cid ? `\\vcid{${cid}}` : "";
+    const idMarker = cid ? emitMarker(VIRGIL_MARKERS.citation, cid) : "";
     return `${idMarker}${(node.attrs?.command as string) || ""}`;
   }
   // labelRef (\ref / \getref / \getfullref) — a footnote body can now hold a
@@ -481,6 +498,28 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
     if (text[i] === "\\") {
       const rest = text.slice(i);
 
+      // \verb<delim>…<delim> — BYTE-LITERAL, the twin of the main parser's
+      // inline-verb branch and the reason it must be FIRST here: `\verb` used
+      // to fall all the way through to the unknown-\command fallback, which
+      // consumes only the token `\verb` and leaves the payload in the plain
+      // text buffer — where it got char-escaped, dash-glyphified and
+      // smart-quoted. A footnote reading `\verb|x = "hi"|` serialized back as
+      // ``\verb|x = ``hi''|``. Placed above the mark/accent branches so
+      // nothing inside the delimiter pair can be claimed by them, and read
+      // through the lexer's shared matcher so the two inline parsers agree on
+      // what a verb run is (task 264).
+      const verbEnd = matchInlineVerbAt(text, i);
+      if (verbEnd !== -1) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: text.slice(i, verbEnd),
+          marks: [verbatimMark()],
+        });
+        i = verbEnd;
+        continue;
+      }
+
       // Mark commands: \textbf{...}, \textit{...}, \emph{...}, \underline{...}, \texttt{...}
       const markMatch = rest.match(/^\\(textbf|textit|emph|underline|texttt)\{/);
       if (markMatch) {
@@ -509,9 +548,8 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
 
       // \vcid{uuid} — no-op marker stashing a stable citationId for the
       // next citation command. See parseInlineContent in latex-parser.ts.
-      const vcidMatch = rest.match(/^\\vcid\{/);
-      if (vcidMatch) {
-        const open = i + "\\vcid".length;
+      if (markerOpensAt(text, i, VIRGIL_MARKERS.citation)) {
+        const open = markerArgStart(i, VIRGIL_MARKERS.citation);
         const closed = findClose(text, open);
         if (closed !== -1) {
           pendingCitationId = text.slice(open + 1, closed) || null;

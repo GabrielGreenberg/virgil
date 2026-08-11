@@ -21,6 +21,7 @@ import SystemDialog, {
   SystemDialogFooter,
   SystemDialogHeader,
 } from "./system-dialog";
+import { SHIM_COMMAND_NAMES } from "@/lib/latex-requirements";
 
 const editorTheme = EditorView.theme({
   "&": {
@@ -202,7 +203,9 @@ export default function StyleEditorModal({
         </div>
         <div className="flex items-center justify-between mt-2 text-[11px]">
           <span className="text-ink-subtle">
-            Virgil markers (\vfid, \vcid, \vexid) are added automatically.
+            Virgil markers (
+            {SHIM_COMMAND_NAMES.map((n) => `\\${n}`).join(", ")}) are added
+            automatically.
           </span>
           {validation.ok ? (
             <span className="text-[var(--success,#15803d)]">✓ Valid</span>

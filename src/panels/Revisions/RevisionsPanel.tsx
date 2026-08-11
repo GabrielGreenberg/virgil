@@ -13,6 +13,7 @@ import { getLinkedTextObjectIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CardViewModeMenuItems } from "@/panels/_shared/CardViewModeMenu";
+import { cardTypeLabel } from "@/panels/panel-registry";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { RevisionRequestCard } from "./RevisionRequestCard";
 import { RevisionSuggestionCard } from "./RevisionSuggestionCard";
@@ -97,8 +98,8 @@ export default function RevisionsPanel({
 
   const onAddOptions = useMemo(
     () => [
-      { label: "Request", onClick: (rect?: DOMRect) => onAddRequest(rect) },
-      { label: "Revision", onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
+      { label: cardTypeLabel("revision-comment"), onClick: (rect?: DOMRect) => onAddRequest(rect) },
+      { label: cardTypeLabel("revision-suggestion"), onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
     ],
     [onAddRequest, onAddSuggestion],
   );
