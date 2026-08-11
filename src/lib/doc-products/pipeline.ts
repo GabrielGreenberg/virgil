@@ -41,7 +41,7 @@ import {
   collectPreambleTitleFields,
   type AssembleLatexOptions,
 } from "@/lib/latex-serializer";
-import { computeWordCounts, type WordCounts } from "@/lib/word-count-core";
+import { computeCategoryCounts, type CategoryCounts } from "@/lib/word-count-core";
 import { readTex } from "@/lib/storage";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
 import type { BibFamily } from "@/lib/bib-family";
@@ -63,8 +63,10 @@ export interface ProductsSnapshot {
    *  text while the code view feeds, or null before the preamble resolves
    *  (line-number-parity gate — same contract as useLatexSource). */
   sourceText: string | null;
-  /** Whole-doc word counts (word-count-core). Null until the first Tier B. */
-  wordCounts: WordCounts | null;
+  /** Whole-doc per-category tallies (word-count-core). Null until the first
+   *  Tier B. Headline numbers are derived through `includedTotals`, never
+   *  stored here — see the CategoryCounts doc comment. */
+  wordCounts: CategoryCounts | null;
 }
 
 export interface DocProductsConfig {
@@ -206,7 +208,7 @@ export function createDocProducts(
     const docJson = refreshDocJson();
     if (docJson !== snapshot.docJson) next.docJson = docJson;
     if (docJson) {
-      const wordCounts = computeWordCounts(docJson);
+      const wordCounts = computeCategoryCounts(docJson);
       next.wordCounts = wordCounts;
     }
     if (Object.keys(next).length > 0) publish(next);

@@ -76,7 +76,7 @@ describe("doc-products pipeline", () => {
     expect(snap.docJson?.content?.length).toBe(2);
     expect(snap.sourceText).toContain("alpha");
     expect(snap.sourceText).toContain("\\documentclass{article}");
-    expect(snap.wordCounts?.total).toBeGreaterThan(0);
+    expect(snap.wordCounts?.words.mainText).toBeGreaterThan(0);
   });
 
   it("one edit re-serializes ONE block and preserves unchanged block identity", async () => {

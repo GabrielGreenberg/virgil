@@ -150,6 +150,7 @@ import { useSelectionCounts } from "@/hooks/useSelectionCounts";
 import { useDiagnostics, DiagnosticsProvider, useDiagnosticsContext } from "@/hooks/useDiagnostics";
 import { asBibFamily } from "@/lib/bib-family";
 import { useWordCount } from "@/hooks/useWordCount";
+import { EMPTY_CATEGORY_COUNTS } from "@/lib/word-count-core";
 import { useTodos } from "@/hooks/useTodos";
 import { useArchive } from "@/hooks/useArchive";
 import { useCutter } from "@/hooks/useCutter";
@@ -2262,10 +2263,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const wordCountHook = useMemo<ReturnType<typeof useWordCount>>(() => {
     if (!docProductsEnabled) return legacyWordCountHook;
     return {
-      counts: docProductsHost.snapshot.wordCounts ?? {
-        total: 0, characters: 0, sentences: 0, readingTime: "0 min",
-        categories: {}, characterCategories: {},
-      },
+      counts: docProductsHost.snapshot.wordCounts ?? EMPTY_CATEGORY_COUNTS,
       selection: selectionCounts,
     };
   }, [legacyWordCountHook, docProductsHost.snapshot.wordCounts, selectionCounts]);

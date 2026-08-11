@@ -3,25 +3,20 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import {
-  type WordCounts,
+  type CategoryCounts,
   CATEGORY_LABELS,
-  computeWordCounts,
+  EMPTY_CATEGORY_COUNTS,
+  computeCategoryCounts,
   countWords,
 } from "@/lib/word-count-core";
-import {
-  getSelectionCounts,
-  type SelectionCounts,
-} from "@/hooks/useSelectionCounts";
+import { getSelectionCounts } from "@/hooks/useSelectionCounts";
 
-export type { WordCounts, SelectionCounts };
+export type { CategoryCounts };
 export { CATEGORY_LABELS, countWords };
 
 export function useWordCount(editor: Editor | null) {
-  const [counts, setCounts] = useState<WordCounts>({
-    total: 0, characters: 0, sentences: 0, readingTime: "0 min",
-    categories: {}, characterCategories: {},
-  });
-  const [selection, setSelection] = useState<SelectionCounts | null>(null);
+  const [counts, setCounts] = useState<CategoryCounts>(EMPTY_CATEGORY_COUNTS);
+  const [selection, setSelection] = useState<CategoryCounts | null>(null);
 
   const contentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const selTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -31,7 +26,7 @@ export function useWordCount(editor: Editor | null) {
   // here — only ever inside the debounced recount, off the keystroke path.
   const recount = useCallback(() => {
     if (!editor) return;
-    setCounts(computeWordCounts(editor.state.doc.toJSON() as JSONContent));
+    setCounts(computeCategoryCounts(editor.state.doc.toJSON() as JSONContent));
   }, [editor]);
 
   const resel = useCallback(() => {
@@ -43,7 +38,7 @@ export function useWordCount(editor: Editor | null) {
     if (!editor) return;
 
     // initial count
-    setCounts(computeWordCounts(editor.state.doc.toJSON() as JSONContent));
+    setCounts(computeCategoryCounts(editor.state.doc.toJSON() as JSONContent));
     setSelection(getSelectionCounts(editor));
 
     const onUpdate = () => {
