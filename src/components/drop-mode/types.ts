@@ -71,6 +71,33 @@ export type Placement =
 
 export type PlacementKind = Placement["kind"];
 
+/**
+ * A resolved drop: everything is decided, and all that remains is to dispatch.
+ * Produced by a spec's {@link DropSpec.planDrop} and consumed by
+ * `plannedDropSpec` (planned-spec.ts), which derives BOTH doors from it.
+ *
+ * An object rather than a bare thunk so the shape has somewhere to grow (a
+ * confirm refinement, a description for a future "why did nothing happen?"
+ * affordance) without every call site changing.
+ */
+export interface DropPlan {
+  /** Dispatch the resolved transaction(s) / call the resolved factories. Runs
+   *  exactly once, from `applyDrop`, after the decision. */
+  commit: () => void;
+}
+
+/**
+ * The one function a planned spec states: resolve the drop into something
+ * committable, or refuse. **Pure** — it runs twice per gesture (once per door)
+ * and, on the confirm path, before the user has agreed to anything, so every
+ * side effect belongs inside {@link DropPlan.commit}.
+ */
+export type DropPlanner = (
+  placement: Placement,
+  cardKey: string,
+  ctx: DropCtx,
+) => DropPlan | null;
+
 /** Decision returned by `DropSpec.classifyDrop`. */
 export type DropDecision =
   | { kind: "no-op" }
@@ -400,6 +427,13 @@ export interface DropSpec {
    * placement. Returning `no-op` cancels silently; `apply` runs
    * `applyDrop` immediately; `confirm` opens the modal and runs
    * `applyDrop` only on user confirmation.
+   *
+   * **A spec that can REFUSE does not write this by hand** — it states
+   * {@link planDrop} and lets `plannedDropSpec` derive both doors from it
+   * (task 321). A refusal that lives only in `applyDrop` reaches the
+   * controller as `apply`: `finishApply` sets `applied = true` because nothing
+   * threw, `postDrop: "close"` dismisses the popped-out float, and the
+   * document is unchanged with no feedback at all.
    */
   classifyDrop: (
     placement: Placement,
@@ -409,6 +443,18 @@ export interface DropSpec {
   /** Carry out the drop. Called after classifyDrop returns apply (or
    *  after the user confirms a confirm decision). */
   applyDrop: (placement: Placement, cardKey: string, ctx: DropCtx) => void;
+  /**
+   * Present iff this spec was built by `plannedDropSpec` (planned-spec.ts):
+   * the ONE resolution both doors above are generated from — source lookup,
+   * adapter, wrap, container fit, ctx accessors — returning `null` for a drop
+   * that cannot happen.
+   *
+   * Published on the spec so a guard can ask the LIVE OBJECT "is this spec's
+   * decision derived from its execution?" rather than grepping for a spelling.
+   * A spec whose `applyDrop` can refuse and that does NOT carry this is the
+   * task-321 shape; `planned-decision-guardrail.test.ts` is the census.
+   */
+  planDrop?: DropPlanner;
   /** What happens to the float after a successful drop. */
   postDrop: "close" | "keep";
   /**

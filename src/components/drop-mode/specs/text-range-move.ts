@@ -69,7 +69,8 @@ import {
   remintCollidingIdentity,
 } from "@/lib/tiptap/node-identity";
 import { fitNodesAtInsert } from "./drop-context";
-import type { DropCtx, DropSpec, Placement } from "../types";
+import { plannedDropSpec } from "../planned-spec";
+import type { DropPlan, DropSpec, Placement } from "../types";
 
 interface RangeSource {
   editor: Editor;
@@ -87,43 +88,44 @@ function locateRange(cardKey: string, mainEditor: Editor | null): RangeSource | 
   return { editor: mainEditor, from: range.from, to: range.to };
 }
 
-export const textRangeMoveDropSpec: DropSpec = {
+export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
   allowedPlacements: ["inline-cursor", "between-blocks"],
   targetScope: "any-editor",
-  classifyDrop(placement, cardKey, ctx) {
+  postDrop: "close",
+  /**
+   * ONE resolution, two doors (task 321). The placement guard and the self-drop
+   * test used to live in `classifyDrop` while the payload refusals — an empty
+   * slice, a range that converts to no blocks, a container fit that rejects —
+   * lived only in `applyDrop`. So a range released in a gap that can hold none
+   * of it classified as `apply`, the float closed, and the text stayed put.
+   */
+  planDrop(placement, cardKey, ctx): DropPlan | null {
     if (placement.kind !== "inline-cursor" && placement.kind !== "between-blocks") {
-      return { kind: "no-op" };
+      return null;
     }
     const src = locateRange(cardKey, ctx.mainEditor);
-    if (!src) return { kind: "no-op" };
+    if (!src) return null;
     // Self-drop: releasing inside the source range leaves the text where it
     // was (no move). Both placements carry a doc position — the inline caret
     // (`pos`) or the block gap (`insertPos`).
     const dropPos =
       placement.kind === "inline-cursor" ? placement.pos : placement.insertPos;
     if (placement.editor === src.editor && dropPos >= src.from && dropPos <= src.to) {
-      return { kind: "no-op" };
+      return null;
     }
-    return { kind: "apply" };
-  },
-  applyDrop(placement, cardKey, ctx) {
     // Between-paragraphs (block-gap) drop — the run becomes block content,
     // fit to the gap's context. Kept in a sibling function so the L3f-2
     // inline-cursor move below stays byte-for-byte unchanged.
     if (placement.kind === "between-blocks") {
-      applyRangeBetweenBlocks(placement, cardKey, ctx);
-      return;
+      return planRangeBetweenBlocks(placement, src);
     }
-    if (placement.kind !== "inline-cursor") return;
-    const src = locateRange(cardKey, ctx.mainEditor);
-    if (!src) return;
     const { editor: targetEditor, pos: insertPos } = placement;
     const { editor: sourceEditor, from, to } = src;
 
     // The payload: the marked slice with every linkedAnchor mark stripped, so
     // the relocated text sheds the transient (or any) anchor identity.
     const slice = stripLinkedAnchorMarks(sourceEditor.state.doc.slice(from, to));
-    if (slice.size === 0) return;
+    if (slice.size === 0) return null;
 
     // The INLINE-CURSOR move is deliberately left exactly as L3f-2 shipped it —
     // no shell removal, no re-mint — and the reason is the same law, not an
@@ -152,22 +154,28 @@ export const textRangeMoveDropSpec: DropSpec = {
       // no container is being entered. The between-blocks branch below fits.
       tr.replace(adjustedInsert, adjustedInsert, slice);
       selectInserted(tr, adjustedInsert, slice.size);
-      targetEditor.view.dispatch(tr);
-      targetEditor.view.focus();
-      return;
+      return {
+        commit: () => {
+          targetEditor.view.dispatch(tr);
+          targetEditor.view.focus();
+        },
+      };
     }
 
     // Cross-editor: insert into the target first, then delete from the source.
     // container-fit-exempt: the same inline-cursor move, cross-editor.
     const insertTr = targetEditor.state.tr.replace(insertPos, insertPos, slice);
     selectInserted(insertTr, insertPos, slice.size);
-    targetEditor.view.dispatch(insertTr);
-    targetEditor.view.focus();
     const deleteTr = sourceEditor.state.tr.delete(from, to);
-    sourceEditor.view.dispatch(deleteTr);
+    return {
+      commit: () => {
+        targetEditor.view.dispatch(insertTr);
+        targetEditor.view.focus();
+        sourceEditor.view.dispatch(deleteTr);
+      },
+    };
   },
-  postDrop: "close",
-};
+});
 
 /** Select the inserted run so the user sees where the text landed. Guarded —
  *  a near-boundary position that can't host a text selection is skipped. */
@@ -198,24 +206,25 @@ function selectInserted(
  * inline run → one paragraph, a multi-block range → its blocks), not a whole
  * node, with the `linkedAnchor` mark stripped so the run sheds the transient
  * handle (consistent with the inline move + paste).
+ *
+ * Returns a PLAN, not a dispatch (task 321): every branch that can refuse
+ * returns `null`, and `planDrop` hands that straight to `classifyDrop` as a
+ * `no-op` so the session cancels instead of closing the float over an untouched
+ * document. The transactions are built here and dispatched by `commit`.
  */
-function applyRangeBetweenBlocks(
-  placement: Placement,
-  cardKey: string,
-  ctx: DropCtx,
-): void {
-  if (placement.kind !== "between-blocks") return;
-  const src = locateRange(cardKey, ctx.mainEditor);
-  if (!src) return;
+function planRangeBetweenBlocks(
+  placement: Extract<Placement, { kind: "between-blocks" }>,
+  src: RangeSource,
+): DropPlan | null {
   const { editor: sourceEditor, from, to } = src;
   const targetEditor = placement.editor;
   const insertPos = placement.insertPos;
 
   const slice = stripLinkedAnchorMarks(sourceEditor.state.doc.slice(from, to));
-  if (slice.size === 0) return;
+  if (slice.size === 0) return null;
   const schema = sourceEditor.state.schema;
   const blocks = rangeSliceToBlocks(slice, schema);
-  if (blocks.length === 0) return;
+  if (blocks.length === 0) return null;
 
   // Fit the drop context through the ONE container-fit SSOT (`fitNodesAtInsert`
   // → `fitNodeInContainer`), the same gate the whole-node moves pass through: a
@@ -233,7 +242,7 @@ function applyRangeBetweenBlocks(
   // an unrepresentable insert would destroy or relocate the user's text. A
   // refusal leaves the selection exactly where it was.
   const fit = fitNodesAtInsert(targetEditor, insertPos, blocks);
-  if (fit.kind === "reject") return;
+  if (fit.kind === "reject") return null;
   const nodes = fit.nodes;
 
   if (targetEditor === sourceEditor) {
@@ -268,9 +277,12 @@ function applyRangeBetweenBlocks(
       cursor += tr.doc.content.size - before;
     }
     selectBlocks(tr, start, cursor);
-    targetEditor.view.dispatch(tr);
-    targetEditor.view.focus();
-    return;
+    return {
+      commit: () => {
+        targetEditor.view.dispatch(tr);
+        targetEditor.view.focus();
+      },
+    };
   }
 
   // Cross-editor: insert into the target first, then delete from the source.
@@ -294,14 +306,18 @@ function applyRangeBetweenBlocks(
     cursor += insertTr.doc.content.size - before;
   }
   selectBlocks(insertTr, insertPos, cursor);
-  targetEditor.view.dispatch(insertTr);
-  targetEditor.view.focus();
   // The source sheds its emptied shell too — but the freed uuid is NOT
   // transferred: the payload landed in a different document, where a main-doc
   // block id means nothing. Identity uniqueness is a per-document invariant.
   const deleteTr = sourceEditor.state.tr.delete(from, to);
   dropEmptiedSourceBlock(deleteTr, from);
-  sourceEditor.view.dispatch(deleteTr);
+  return {
+    commit: () => {
+      targetEditor.view.dispatch(insertTr);
+      targetEditor.view.focus();
+      sourceEditor.view.dispatch(deleteTr);
+    },
+  };
 }
 
 /**

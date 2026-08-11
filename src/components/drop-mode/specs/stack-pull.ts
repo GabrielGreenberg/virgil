@@ -29,12 +29,13 @@ import { Node as PMNode, Slice } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
 import type { JSONContent } from "@tiptap/react";
 import type {
-  DropDecision,
+  DropPlan,
   DropSpec,
   Placement,
   PlacementKind,
 } from "../types";
 import { fitNodesAtInsert } from "./drop-context";
+import { plannedDropSpec } from "../planned-spec";
 import { readStackItem } from "@/hooks/useStack";
 import type {
   StackCardKind,
@@ -227,56 +228,51 @@ export function stackPullPlacementsFor(
   return placementsForPayload(item.payload);
 }
 
-export const stackPullDropSpec: DropSpec = {
+export const stackPullDropSpec: DropSpec = plannedDropSpec({
   allowedPlacements: ALLOWED_PLACEMENTS,
   placementsFor: stackPullPlacementsFor,
   targetScope: "main-only",
-  classifyDrop(placement, cardKey, ctx): DropDecision {
+  postDrop: "keep",
+  /**
+   * ONE resolution, two doors (task 321). This spec's `postDrop` is `"keep"`,
+   * so a refused pull never lost a float — but the drift was the same one: a
+   * rehydrate that threw, a slice that converted to no blocks, a container fit
+   * that rejected, an unwired `ctx.stack` (Reader mode) each returned quietly
+   * from `applyDrop` while `classifyDrop` had already said `apply`. Every one is
+   * resolved here, so a pull that cannot land is a `no-op` decision.
+   */
+  planDrop(placement, cardKey, ctx): DropPlan | null {
     const item = lookup(cardKey);
-    if (!item) return { kind: "no-op" };
+    if (!item) return null;
     const main = ctx.mainEditor;
-    if (!main) return { kind: "no-op" };
-    if (placement.editor !== main) return { kind: "no-op" };
-    if (!isPlacementValidFor(item.payload, placement)) return { kind: "no-op" };
-    // Cards that need a paragraph anchor but were dropped between blocks
-    // succeed as unanchored — never a hard no-op.
-    return { kind: "apply" };
-  },
-  applyDrop(placement, cardKey, ctx) {
-    const item = lookup(cardKey);
-    if (!item) return;
-    const main = ctx.mainEditor;
-    if (!main || placement.editor !== main) return;
+    if (!main) return null;
+    if (placement.editor !== main) return null;
+    if (!isPlacementValidFor(item.payload, placement)) return null;
     const p = item.payload;
 
     // Exhaustive over `StackPayload` (task 259), for the same reason the card
     // switch below is: an if-chain with no final arm makes a new payload kind a
     // drop that paints its bar, runs its commit and inserts nothing. The unknown
-    // arm returns quietly rather than throwing — the payload comes from a
+    // arm refuses quietly rather than throwing — the payload comes from a
     // persisted envelope `readEnvelope` validates only shallowly, and the
     // hit-test has already refused it a placement (`placementsForPayload`).
     switch (p.kind) {
       case "text":
-        insertText(main, placement, p);
-        return;
+        return planInsertText(main, placement, p);
       case "paragraph":
-        insertParagraph(main, placement, p);
-        return;
+        return planInsertParagraph(main, placement, p);
       case "heading":
-        insertHeading(main, placement, p);
-        return;
+        return planInsertHeading(main, placement, p);
       case "card":
-        applyCardDrop(item, placement, ctx);
-        return;
+        return planCardDrop(item, placement, ctx);
       default: {
         const unhandled: never = p;
         void unhandled;
-        return;
+        return null;
       }
     }
   },
-  postDrop: "keep",
-};
+});
 
 function lookup(cardKey: string): StackItem | null {
   const sep = cardKey.indexOf(":");
@@ -300,13 +296,13 @@ function isPlacementValidFor(
 }
 
 // ── Text payload ──────────────────────────────────────────────────────
-function insertText(
+function planInsertText(
   editor: import("@tiptap/react").Editor,
   placement: Placement,
   payload: Extract<StackPayload, { kind: "text" }>,
-) {
+): DropPlan | null {
   if (placement.kind !== "inline-cursor" && placement.kind !== "between-blocks") {
-    return;
+    return null;
   }
   // Remint any Card-bearing inline atoms in the slice content so a pulled
   // footnote/citation can't share the source atom's id (the text path is the
@@ -328,8 +324,15 @@ function insertText(
     );
   } catch (err) {
     console.error("[stack-pull] failed to rehydrate text slice:", err);
-    return;
+    return null;
   }
+  // An EMPTY slice is a refusal, not an insert (task 321). Its two siblings in
+  // `text-range-move.ts` already guarded this and this branch did not, so the
+  // two doors failed in different WRONG directions: in a gap
+  // `rangeSliceToBlocks` falls back to a fresh empty paragraph, so the pull
+  // landed a blank block and reported success; at a caret `tr.replace` with an
+  // empty slice dispatched a transaction that changed nothing.
+  if (slice.size === 0) return null;
   if (placement.kind === "between-blocks") {
     // In a block gap the slice lands as BLOCK content — the same payload shape,
     // and the same container question, as the text-range move's between-blocks
@@ -342,9 +345,9 @@ function insertText(
     // sub-numbering restarting — with the pulled text demoted to body prose
     // between the halves.
     const blocks = rangeSliceToBlocks(slice, editor.state.schema);
-    if (blocks.length === 0) return;
+    if (blocks.length === 0) return null;
     const fit = fitNodesAtInsert(editor, placement.insertPos, blocks);
-    if (fit.kind === "reject") return;
+    if (fit.kind === "reject") return null;
     const blockTr = editor.state.tr;
     let cursor = placement.insertPos;
     for (const n of fit.nodes) {
@@ -357,9 +360,12 @@ function insertText(
       cursor += blockTr.doc.content.size - before;
     }
     selectInserted(blockTr, placement.insertPos, cursor - placement.insertPos);
-    editor.view.dispatch(blockTr);
-    editor.view.focus();
-    return;
+    return {
+      commit: () => {
+        editor.view.dispatch(blockTr);
+        editor.view.focus();
+      },
+    };
   }
   const target = placement.pos;
   // container-fit-exempt: the INLINE-CURSOR branch — an open slice merging with
@@ -376,17 +382,21 @@ function insertText(
   } catch {
     /* ignore selection failure — content is in regardless */
   }
-  editor.view.dispatch(tr);
-  editor.view.focus();
+  return {
+    commit: () => {
+      editor.view.dispatch(tr);
+      editor.view.focus();
+    },
+  };
 }
 
 // ── Paragraph payload ─────────────────────────────────────────────────
-function insertParagraph(
+function planInsertParagraph(
   editor: import("@tiptap/react").Editor,
   placement: Placement,
   payload: Extract<StackPayload, { kind: "paragraph" }>,
-) {
-  if (placement.kind !== "between-blocks") return;
+): DropPlan | null {
+  if (placement.kind !== "between-blocks") return null;
   const seen = collectAtomIds(editor.state.doc);
   const json = withFreshAtomIds(withFreshUuid(payload.node), seen);
   let node: PMNode | null = null;
@@ -396,30 +406,34 @@ function insertParagraph(
     );
   } catch (err) {
     console.error("[stack-pull] failed to rehydrate paragraph:", err);
-    return;
+    return null;
   }
-  if (!node) return;
+  if (!node) return null;
   // Container fit (task 257) — a pull is an INSERT with no source delete, but a
   // bare paragraph spliced into an `exampleItemList` / `bulletList` corrupts the
   // container it lands in exactly as a move does (the fitter splits it, both
   // halves keeping one uuid). Fit or refuse; refusing costs nothing, since the
   // stack item is a copy that stays in the stack.
   const fit = fitNodesAtInsert(editor, placement.insertPos, [node]);
-  if (fit.kind === "reject") return;
+  if (fit.kind === "reject") return null;
   const fitted = fit.nodes[0];
   const tr = editor.state.tr.insert(placement.insertPos, fitted);
   selectInserted(tr, placement.insertPos, fitted.nodeSize);
-  editor.view.dispatch(tr);
-  editor.view.focus();
+  return {
+    commit: () => {
+      editor.view.dispatch(tr);
+      editor.view.focus();
+    },
+  };
 }
 
 // ── Heading payload ───────────────────────────────────────────────────
-function insertHeading(
+function planInsertHeading(
   editor: import("@tiptap/react").Editor,
   placement: Placement,
   payload: Extract<StackPayload, { kind: "heading" }>,
-) {
-  if (placement.kind !== "between-blocks") return;
+): DropPlan | null {
+  if (placement.kind !== "between-blocks") return null;
   const seen = collectAtomIds(editor.state.doc);
   const nodes: PMNode[] = [];
   for (const j of payload.nodes) {
@@ -431,21 +445,32 @@ function insertHeading(
       );
       if (n) nodes.push(n);
     } catch (err) {
+      // ATOMIC over the run (task 321): this loop used to swallow a per-node
+      // failure and carry on, so a heading whose body could not be rehydrated
+      // landed as a PARTIAL section — the one non-atomic door in a file whose
+      // every other refusal (and the container fit itself) is all-or-nothing.
+      // A pull is a copy, so refusing costs the user nothing: the item stays on
+      // the Stack.
       console.error("[stack-pull] heading node rehydrate failed:", err);
+      return null;
     }
   }
-  if (nodes.length === 0) return;
+  if (nodes.length === 0) return null;
   // Same container fit as the paragraph payload — atomic over the whole
   // heading+body run (one unfittable node refuses the pull rather than landing
   // a partial section).
   const fit = fitNodesAtInsert(editor, placement.insertPos, nodes);
-  if (fit.kind === "reject") return;
+  if (fit.kind === "reject") return null;
   const fitted = fit.nodes;
   const tr = editor.state.tr.insert(placement.insertPos, fitted as PMNode[]);
   const totalSize = fitted.reduce((s, n) => s + n.nodeSize, 0);
   selectInserted(tr, placement.insertPos, totalSize);
-  editor.view.dispatch(tr);
-  editor.view.focus();
+  return {
+    commit: () => {
+      editor.view.dispatch(tr);
+      editor.view.focus();
+    },
+  };
 }
 
 function selectInserted(
@@ -530,15 +555,26 @@ function withFreshAtomIds(json: JSONContent, seen: Set<string>): JSONContent {
 }
 
 // ── Card payload ──────────────────────────────────────────────────────
-function applyCardDrop(
+/**
+ * Resolve a card pull: which factory would run, with which anchor. Returns
+ * `null` — a `no-op` decision — when this doc has no `ctx.stack` sub-bag
+ * (Reader / paper-render mode) or the snapshot carries a card kind this build
+ * doesn't know. Both used to be bare `return`s inside the apply path, so a pull
+ * into a doc that cannot host cards reported success for EVERY kind (task 321).
+ *
+ * The bib upserts and the factory call are side effects, so they live in
+ * `commit` — a plan runs at classify time too, and on the confirm path before
+ * the user has agreed to anything.
+ */
+function planCardDrop(
   item: StackItem,
   placement: Placement,
   ctx: import("../types").DropCtx,
-) {
+): DropPlan | null {
   const stack = ctx.stack;
-  if (!stack) return;
+  if (!stack) return null;
   const p = item.payload;
-  if (p.kind !== "card") return;
+  if (p.kind !== "card") return null;
   const card = p.card;
   // The anchor the pull lands on. `paragraph-side` was unreachable until task
   // 258 (the hit-test's static order handed every in-text cursor to
@@ -549,92 +585,98 @@ function applyCardDrop(
   const paragraphId =
     placement.kind === "paragraph-side" ? placement.paragraphId : null;
 
-  // Citation — upsert bib sidecars first so the destination doc can
-  // resolve cite keys, then re-attach their user-authored annotations
-  // (which live in a per-doc sidecar, not on the BibEntry, so they'd be
-  // dropped by a cross-doc pull otherwise).
-  if (card.cardKind === "citation") {
-    const entries = "bibEntries" in card ? card.bibEntries : undefined;
-    if (entries) {
-      for (const e of entries) stack.upsertBibEntry(e);
-    }
-    const anns = "bibAnnotations" in card ? card.bibAnnotations : undefined;
-    if (anns) {
-      for (const [key, html] of Object.entries(anns)) {
-        if (html) stack.setAnnotation(key, html);
+  // Which factory this kind's pull runs, resolved WITHOUT running it. A kind
+  // this build doesn't know returns null and the whole pull becomes a `no-op`
+  // decision, instead of a gesture that reports success and creates nothing.
+  const create = ((): (() => void) | null => {
+    switch (card.cardKind) {
+      case "note":
+        return () =>
+          void stack.addNote(paragraphId, {
+            title: card.data.title,
+            content: card.data.content,
+          });
+      case "highlight":
+        // Highlights ride a text-range mark in the source doc — we have no mark
+        // to attach here, so v1 creates a paragraph-anchored (or unanchored)
+        // placeholder. `addHighlight` is REQUIRED on `StackPullApi` since task
+        // 259: it was optional, and an optional per-KIND factory is the same
+        // silent-loss vector as a missing switch case — a host that omitted it
+        // made every highlight pull do nothing, with no error anywhere.
+        return () => void stack.addHighlight(paragraphId);
+      case "footnote":
+        return () => void stack.addFootnote(card.data);
+      case "citation":
+        return () => void stack.addCitation(card.data);
+      case "bibliography":
+        return () => {
+          stack.upsertBibEntry(card.data);
+          // Re-attach the user-authored annotation carried by the snapshot so a
+          // cross-doc pull doesn't silently lose it. Only fires when the
+          // snapshot carried one, so a same-doc pull writes nothing spurious.
+          if ("annotation" in card && card.annotation) {
+            stack.setAnnotation(card.data.key, card.annotation);
+          }
+        };
+      case "todo":
+        return () => void stack.addTodo(paragraphId, { text: card.data.text });
+      case "archive":
+        return () =>
+          void stack.addArchive(paragraphId, {
+            title: card.data.title,
+            content: card.data.content,
+          });
+      case "revision-comment":
+        return () => void stack.addRevisionComment(paragraphId, card.data);
+      case "revision-suggestion":
+        return () => void stack.addRevisionSuggestion(paragraphId, card.data);
+      case "cutter-comment":
+        return () => void stack.addCutterComment(paragraphId, card.data);
+      case "cutter-suggestion":
+        return () => void stack.addCutterSuggestion(paragraphId, card.data);
+      default: {
+        // **The silent-loss backstop (task 259).** Every case above ends in a
+        // `ctx.stack` call, so a kind with no case here dropped onto the Stack
+        // fine and VANISHED on pull: no compile error (the switch was
+        // non-exhaustive and the function returns void), no runtime error, no
+        // failing test. A member added to `STACK_CARD_KINDS` without a branch is
+        // now a compile error at this line.
+        //
+        // The runtime refusal still matters: `readEnvelope` validates the
+        // envelope and then casts, so a persisted item written by another build
+        // — or carrying a kind since retired — arrives typed as something it is
+        // not. It is refused rather than crashing the drop session, matching
+        // `placementsForPayload`'s unknown-shape door (the hit-test already
+        // offered it no placement, so this is unreachable through the UI). Since
+        // task 321 that refusal also reaches `classifyDrop`, so the gesture
+        // cancels rather than reporting a pull that never happened.
+        const unhandled: never = card;
+        void unhandled;
+        return null;
       }
     }
-  }
+  })();
+  if (!create) return null;
 
-  switch (card.cardKind) {
-    case "note":
-      stack.addNote(paragraphId, {
-        title: card.data.title,
-        content: card.data.content,
-      });
-      return;
-    case "highlight":
-      // Highlights ride a text-range mark in the source doc — we have no mark to
-      // attach here, so v1 creates a paragraph-anchored (or unanchored)
-      // placeholder. `addHighlight` is REQUIRED on `StackPullApi` since task
-      // 259: it was optional, and an optional per-KIND factory is the same
-      // silent-loss vector as a missing switch case — a host that omitted it
-      // made every highlight pull do nothing, with no error anywhere.
-      stack.addHighlight(paragraphId);
-      return;
-    case "footnote":
-      stack.addFootnote(card.data);
-      return;
-    case "citation":
-      stack.addCitation(card.data);
-      return;
-    case "bibliography":
-      stack.upsertBibEntry(card.data);
-      // Re-attach the user-authored annotation carried by the snapshot so a
-      // cross-doc pull doesn't silently lose it. Only fires when the snapshot
-      // carried one, so a same-doc pull writes nothing spurious.
-      if ("annotation" in card && card.annotation) {
-        stack.setAnnotation(card.data.key, card.annotation);
+  return {
+    commit: () => {
+      // Citation — upsert bib sidecars first so the destination doc can
+      // resolve cite keys, then re-attach their user-authored annotations
+      // (which live in a per-doc sidecar, not on the BibEntry, so they'd be
+      // dropped by a cross-doc pull otherwise).
+      if (card.cardKind === "citation") {
+        const entries = "bibEntries" in card ? card.bibEntries : undefined;
+        if (entries) {
+          for (const e of entries) stack.upsertBibEntry(e);
+        }
+        const anns = "bibAnnotations" in card ? card.bibAnnotations : undefined;
+        if (anns) {
+          for (const [key, html] of Object.entries(anns)) {
+            if (html) stack.setAnnotation(key, html);
+          }
+        }
       }
-      return;
-    case "todo":
-      stack.addTodo(paragraphId, { text: card.data.text });
-      return;
-    case "archive":
-      stack.addArchive(paragraphId, {
-        title: card.data.title,
-        content: card.data.content,
-      });
-      return;
-    case "revision-comment":
-      stack.addRevisionComment(paragraphId, card.data);
-      return;
-    case "revision-suggestion":
-      stack.addRevisionSuggestion(paragraphId, card.data);
-      return;
-    case "cutter-comment":
-      stack.addCutterComment(paragraphId, card.data);
-      return;
-    case "cutter-suggestion":
-      stack.addCutterSuggestion(paragraphId, card.data);
-      return;
-    default: {
-      // **The silent-loss backstop (task 259).** Every case above ends in a
-      // `ctx.stack` call, so a kind with no case here dropped onto the Stack
-      // fine and VANISHED on pull: no compile error (the switch was
-      // non-exhaustive and the function returns void), no runtime error, no
-      // failing test. A member added to `STACK_CARD_KINDS` without a branch is
-      // now a compile error at this line.
-      //
-      // The runtime `return` still matters: `readEnvelope` validates the
-      // envelope and then casts, so a persisted item written by another build —
-      // or carrying a kind since retired — arrives typed as something it is not.
-      // It is refused rather than crashing the drop session, matching
-      // `placementsForPayload`'s unknown-shape door (the hit-test already
-      // offered it no placement, so this is unreachable through the UI).
-      const unhandled: never = card;
-      void unhandled;
-      return;
-    }
-  }
+      create();
+    },
+  };
 }

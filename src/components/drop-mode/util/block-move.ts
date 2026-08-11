@@ -15,8 +15,9 @@
 
 import { Node as PMNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
-import type { DropSpec, Placement } from "../types";
+import type { DropPlan, DropSpec, Placement } from "../types";
 import { fitNodesAtInsert } from "../specs/drop-context";
+import { plannedDropSpec } from "../planned-spec";
 import { parseAnyKey } from "@/floats/float-key";
 
 export interface BlockMoveOptions {
@@ -25,26 +26,28 @@ export interface BlockMoveOptions {
 }
 
 export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
-  return {
+  return plannedDropSpec({
     allowedPlacements: ["between-blocks"],
     targetScope: "any-editor",
-    classifyDrop(placement, cardKey) {
-      if (placement.kind !== "between-blocks") return { kind: "no-op" };
+    postDrop: "close",
+    /**
+     * ONE resolution, two doors (task 321). The container fit's `reject` — an
+     * exampleBlock card released in another example's item gap — used to be a
+     * bare `return` from `applyDrop` that `classifyDrop` never saw, so the
+     * gesture reported `apply`, `postDrop: "close"` dismissed the popped-out
+     * float, and the block never moved.
+     */
+    planDrop(placement, cardKey): DropPlan | null {
+      if (placement.kind !== "between-blocks") return null;
       const src = locateSource(opts, placement, cardKey);
-      if (!src) return { kind: "no-op" };
+      if (!src) return null;
       if (
         placement.editor === src.editor &&
         placement.insertPos >= src.from &&
         placement.insertPos <= src.to
       ) {
-        return { kind: "no-op" };
+        return null;
       }
-      return { kind: "apply" };
-    },
-    applyDrop(placement, cardKey) {
-      if (placement.kind !== "between-blocks") return;
-      const src = locateSource(opts, placement, cardKey);
-      if (!src) return;
       const { editor: targetEditor, insertPos } = placement;
       const { editor: sourceEditor, node: sourceNode, from, to } = src;
       // The shared container-fit gate (task 257) — this factory asked NOTHING
@@ -54,26 +57,32 @@ export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
       // two move specs were hitting from their own half-answers. It fits or it
       // refuses; a refusal returns before the delete, leaving the doc untouched.
       const fit = fitNodesAtInsert(targetEditor, insertPos, [sourceNode]);
-      if (fit.kind === "reject") return;
+      if (fit.kind === "reject") return null;
       const node = fit.nodes[0];
       if (targetEditor === sourceEditor) {
         const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
         const tr = targetEditor.state.tr.delete(from, to);
         tr.insert(adjustedInsert, node);
         selectInsertedBlock(tr, adjustedInsert, node.nodeSize);
-        targetEditor.view.dispatch(tr);
-        targetEditor.view.focus();
-        return;
+        return {
+          commit: () => {
+            targetEditor.view.dispatch(tr);
+            targetEditor.view.focus();
+          },
+        };
       }
       const insertTr = targetEditor.state.tr.insert(insertPos, node);
       selectInsertedBlock(insertTr, insertPos, node.nodeSize);
-      targetEditor.view.dispatch(insertTr);
-      targetEditor.view.focus();
       const deleteTr = sourceEditor.state.tr.delete(from, to);
-      sourceEditor.view.dispatch(deleteTr);
+      return {
+        commit: () => {
+          targetEditor.view.dispatch(insertTr);
+          targetEditor.view.focus();
+          sourceEditor.view.dispatch(deleteTr);
+        },
+      };
     },
-    postDrop: "close",
-  };
+  });
 }
 
 interface SourceInfo {
