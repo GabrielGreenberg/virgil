@@ -136,6 +136,22 @@ The token scales:
   ref-command button, `.citation-highlight-bib` — consumes THIS set. Before it,
   the four values were re-spelled as raw hexes at all seven rule sites, which is
   how the amber family drifted into five hexes.
+- **Inline-atom rest chrome** — the REST half of the set above, and the half
+  that drifts, because the lit state is shared and the rest state is per kind.
+  Every inline Atom (`ATOM_REGISTRY`: footnote marker, citation pill, label-ref
+  chip, inline math) paints its rest look from **preference-backed** tokens:
+  `--footnote-color`/`-bg`, `--citation-color`/`-bg`/`-border-color`,
+  `--label-ref-color`/`-bg`/`-border-color`. A kind that carries a visible pill
+  gets the user the same control its siblings have — the `\ref` chip spent a
+  year as the one atom nobody could recolor, its three literals a copy-paste of
+  citation's defaults with the tokens dropped (task 194). **A TINTED chip's
+  fill DERIVES from its ink** (`deriveLight`, as footnote / note / latex-comment
+  do), so a recolor moves the whole chip; only a chip resting on hard white
+  (`--citation-bg`) may freeze its fill, because white is neutral under any ink.
+  Guard: [src/__tests__/atom-chrome-tokens.test.ts](__tests__/atom-chrome-tokens.test.ts)
+  censuses each registry kind's rest rule for raw literals AND checks every
+  token it reads resolves to a live preference — so a new atom kind inherits
+  both halves the moment its registry row lands.
 - **Drag glow** (`--drag-glow-outline` / `--drag-glow-line` / `--drag-glow-knob`
   / `--drag-ring-faint`, plus `--drag-outline-border`): the halo/ring layers
   around a drag affordance, each `color-mix`-DERIVED from `--drag-highlight`.

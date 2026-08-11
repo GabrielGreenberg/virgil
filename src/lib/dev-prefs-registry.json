@@ -89,6 +89,8 @@
     "--latex-comment-color":       { "source": "editor.latexCommentColor" },
     "--citation-color":            { "source": "editor.citationColor" },
     "--citation-border-color":     { "source": "editor.citationBorderColor" },
+    "--label-ref-color":           { "source": "editor.labelRefColor" },
+    "--label-ref-border-color":    { "source": "editor.labelRefBorderColor" },
     "--note-color":                { "source": "editor.noteColor" },
     "--note-marker-border":        { "source": "editor.noteMarkerBorder" },
     "--mark-bg":                   { "source": "editor.markBackground" },

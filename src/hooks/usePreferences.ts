@@ -36,6 +36,11 @@ export interface EditorPreferences {
   latexCommentColor: string;
   citationColor: string;
   citationBorderColor: string;
+  // Cross-reference (\ref) chips — the citation pill's structural twin. Grey
+  // by default; the fill is DERIVED from labelRefColor (DERIVED_CSS), so a
+  // recolor moves ink and wash together instead of half the chip.
+  labelRefColor: string;
+  labelRefBorderColor: string;
   footnoteColor: string;
   noteColor: string;
   noteMarkerBorder: string;

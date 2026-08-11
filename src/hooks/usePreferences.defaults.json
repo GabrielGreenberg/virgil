@@ -18,6 +18,8 @@
   "latexCommentColor": "#7191b0",
   "citationColor": "#6b6245",
   "citationBorderColor": "#e0d5a8",
+  "labelRefColor": "#555555",
+  "labelRefBorderColor": "#d5d3ce",
   "footnoteColor": "#b45757",
   "noteColor": "#15803d",
   "noteMarkerBorder": "#86efac",

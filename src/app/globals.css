@@ -277,6 +277,20 @@
      --citation-border-color / --citation-color. Consumed only via
      buildTextDragGhost's `bg` override. */
   --citation-ghost-bg: #fdf8e1;
+  /* Cross-reference (\ref) chip — the citation pill's structural twin, and
+     since task 194 equally themeable (`labelRefColor` / `labelRefBorderColor`,
+     src/lib/preferences-tree.ts). Grey by DEFAULT: the neutral structural-marker
+     look is preserved for anyone who never changes it.
+     --label-ref-bg is OVERWRITTEN at runtime on :root by DERIVED_CSS, which
+     re-derives it from the user's ref ink; this literal is the pre-hydration /
+     SSR / print value and is exactly what the derivation yields at the shipped
+     default, so nothing flips when the prefs hook mounts. A DERIVED token has
+     no `bucket.key` source, so promote-defaults CANNOT regenerate this seed —
+     if a promoted labelRefColor moves, update it by hand;
+     src/__tests__/atom-chrome-tokens.test.ts fails with the value to write. */
+  --label-ref-color: #555555;
+  --label-ref-bg: #f0f0f0;
+  --label-ref-border-color: #d5d3ce;
   --footnote-color: var(--footnote-500);
   --footnote-bg: var(--footnote-50);
   /* Marker hover wash — one scale step up from the rest state. Both are
@@ -447,6 +461,8 @@
   --latex-comment-color: #7191b0;
   --citation-color: #6b6245;
   --citation-border-color: #e0d5a8;
+  --label-ref-color: #555555;
+  --label-ref-border-color: #d5d3ce;
   --note-color: #15803d;
   --note-marker-border: #86efac;
   --mark-bg: #fbbf24;
@@ -3716,13 +3732,13 @@ body.perf-contain .static-borrowed-text {
 
 .label-ref-node {
   display: inline;
-  background: #f0f0ee;
+  background: var(--label-ref-bg, #f0f0f0);
   border-radius: var(--radius-xs);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
-  border: 1px solid #d5d3ce;
+  border: 1px solid var(--label-ref-border-color, #d5d3ce);
   padding: 0px 4px;
-  color: #555;
+  color: var(--label-ref-color, #555555);
 }
 
 .label-ref-node:hover {
@@ -3884,8 +3900,12 @@ body.perf-contain .static-borrowed-text {
   background: var(--accent-light, #f5f0ea);
 }
 
+/* The row whose label the clicked chip already points at — it wears the CHIP's
+ * own fill, which is why it takes the chip token rather than a generic muted
+ * surface. Same value as before task 194 (which retired the duplicate literal),
+ * and it now follows a ref recolor along with the chip it echoes. */
 .label-ref-popover-option.current {
-  background: #f0f0ee;
+  background: var(--label-ref-bg, #f0f0f0);
 }
 
 /* Keyboard-highlighted row (backlog #4 arrow nav). Wins over .current and

@@ -155,6 +155,13 @@ export const PREFERENCES_TREE: PrefNode[] = [
         ],
       },
       {
+        label: "Cross-references",
+        children: [
+          { type: "color", key: "labelRefColor", label: "Text color", description: "Inline \\ref cross-reference chips (the chip's fill follows this color)" },
+          { type: "color", key: "labelRefBorderColor", label: "Border color", description: "Border around cross-reference chips" },
+        ],
+      },
+      {
         label: "Footnotes",
         children: [
           { type: "color", key: "footnoteColor", label: "Marker color", description: "Superscript footnote numbers" },
@@ -294,6 +301,8 @@ export const PREF_TO_CSS: CssMapping[] = [
   { key: "latexCommentColor", cssVar: "--latex-comment-color", isColor: true },
   { key: "citationColor", cssVar: "--citation-color", isColor: true },
   { key: "citationBorderColor", cssVar: "--citation-border-color", isColor: true },
+  { key: "labelRefColor", cssVar: "--label-ref-color", isColor: true },
+  { key: "labelRefBorderColor", cssVar: "--label-ref-border-color", isColor: true },
   { key: "footnoteColor", cssVar: "--footnote-color", isColor: true },
   { key: "noteColor", cssVar: "--note-color", isColor: true },
   { key: "noteMarkerBorder", cssVar: "--note-marker-border", isColor: true },
@@ -379,6 +388,21 @@ export const DERIVED_CSS: DerivedCssMapping[] = [
   { cssVar: "--latex-comment-bg-hover", compute: (p) => deriveLight(p.latexCommentColor, 0.16) },
   { cssVar: "--latex-comment-bg-active", compute: (p) => deriveLight(p.latexCommentColor, 0.22) },
   { cssVar: "--citation-bg", compute: () => "#ffffff" },
+  // Cross-reference chip fill. DERIVED from the user's `\ref` ink rather than
+  // frozen like its citation twin's `--citation-bg`, because the two chips have
+  // different rest looks: citation rests on hard WHITE (neutral under any
+  // border/ink), while the ref chip rests on a TINTED wash. A frozen wash would
+  // leave a recolored chip half-changed — the exact half-tokenized shape task
+  // 194 exists to close — so the wash rides the same ray as the ink, the
+  // footnote / latex-comment / note precedent above and below.
+  //
+  // DELIBERATE SAME-RAY NEAR-MATCH, not a byte-preserving swap: the retired
+  // literal was `#f0f0ee` (a hair warm); at the default `#555555` this derives
+  // `#f0f0f0`, reproducing R and G EXACTLY and landing blue 2/255 higher — i.e.
+  // a true neutral instead of a warm-biased one. Same trade the two comments
+  // around it accepted, and the seed in globals.css is the DERIVED value, so
+  // there is no flip at hydration.
+  { cssVar: "--label-ref-bg", compute: (p) => deriveLight(p.labelRefColor, 0.088) },
   { cssVar: "--footnote-bg", compute: (p) => deriveLight(p.footnoteColor, 0.08) },
   // Hover wash for the in-text footnote marker — the same derivation as its
   // rest-state twin above, one step stronger, so hover follows the user's
