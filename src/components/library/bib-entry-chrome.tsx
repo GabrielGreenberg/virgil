@@ -31,6 +31,7 @@ import {
   type ProvenanceChip,
 } from "./provenance-chips";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
+import { FONT_SERIF } from "@/lib/font-stacks";
 import {
   ENTRY_DT_TYPE,
   ENTRIES_DT_TYPE,
@@ -172,7 +173,7 @@ export function BibEntryChrome({
             <div
               className="library-bib-formatted leading-relaxed"
               style={{
-                fontFamily: "var(--serif)",
+                fontFamily: FONT_SERIF,
                 color: "var(--foreground)",
                 wordBreak: "break-word",
               }}
@@ -202,7 +203,7 @@ export function BibEntryChrome({
         <div
           className="library-bib-formatted pl-[18px] text-[13px] leading-relaxed"
           style={{
-            fontFamily: "var(--serif)",
+            fontFamily: FONT_SERIF,
             color: "var(--foreground)",
             wordBreak: "break-word",
           }}

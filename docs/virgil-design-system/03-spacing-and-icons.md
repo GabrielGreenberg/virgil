@@ -46,18 +46,20 @@ wrong even when you can't say why.
 
 ```
 --pod-shadow:           main editor pod, modals, popovers (3+ levels of context)
---pod-shadow-light:     side panels, secondary pods (2 levels)
 --card-shadow-ambient:  omni-view floating cards on the canvas
 none:                   docked cards, inline chips, sub-pods
 ```
 <!-- token-doc-allow -->
 
-> ⚠️ **`--pod-shadow-light` was never added to `globals.css`.** It was proposed
-> in the (now removed) `patches/globals.css.patch.md` and the patch never
-> landed, so a rule reading `var(--pod-shadow-light)` with no fallback resolves
-> to nothing. `library/styles/library.css` consumes it *with* a fallback, which
-> is why the omission was invisible for a year. The shipped scale is
-> `--pod-shadow` / `--card-shadow-ambient` / none — two levels, not three.
+> ⚠️ **This table used to list a third tier, `--pod-shadow-light` ("side
+> panels, secondary pods"), which was never added to `globals.css`.** It was
+> proposed in the (now removed) `patches/globals.css.patch.md` and the patch
+> never landed, so a rule reading `var(--pod-shadow-light)` with no fallback
+> resolved to nothing. `library/styles/library.css` consumed it *with* a
+> fallback, which is why the omission was invisible for a year — the fallback
+> was the real value and the var was decoration. Task 170 retired that read
+> and added a CI census (`src/__tests__/phantom-css-var.test.ts`) over every
+> `var()` in the app. The shipped scale is two levels, not three.
 
 Shadows in this system are **levels, not directions**. There's no
 shadow-up vs shadow-down; everything sits on a notional sheet of paper.

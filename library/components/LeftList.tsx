@@ -46,6 +46,7 @@ import { type PanelKey } from "@library/hooks/useLibraryTabs";
 import { useLayoutPrefs, useListView } from "@library/lib/view-session-store";
 import { searchCatalogFuzzy } from "@library/lib/catalog-search";
 import { ROW_HEIGHT, computeListWindow } from "@library/lib/list-window";
+import { FONT_MONO } from "@/lib/font-stacks";
 
 // The header grid and every row consume ONE inherited template var
 // (COL_TEMPLATE_VAR / COL_TEMPLATE_REF from list-columns.ts), defined on the
@@ -739,7 +740,7 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
         borderRadius: "var(--radius-sm)",
         padding: "6px 8px",
         textAlign: align,
-        fontFamily: "var(--mono)",
+        fontFamily: FONT_MONO,
         fontSize: 10,
         letterSpacing: "0.06em",
         textTransform: "uppercase",
@@ -758,7 +759,7 @@ function SortHeader({ col, label, align = "left", activeSort, onSort, onReorder 
       }}
     >
       {label}
-      <span style={{ fontFamily: "var(--mono)" }}>{arrow}</span>
+      <span style={{ fontFamily: FONT_MONO }}>{arrow}</span>
     </button>
   );
 }
@@ -915,7 +916,7 @@ function FacetSubBar({
               // here and to the active regular header in SortHeader.
               background: active ? "var(--control-selected-tint)" : "transparent",
               cursor: "pointer",
-              fontFamily: "var(--mono)",
+              fontFamily: FONT_MONO,
               fontSize: 10,
               lineHeight: "12px",
               letterSpacing: "0.06em",

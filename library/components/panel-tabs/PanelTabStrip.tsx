@@ -23,6 +23,7 @@ import {
   STRIP_TOP_HEADROOM,
 } from "@/components/chrome/folder-tab-geometry";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import { FONT_MONO } from "@/lib/font-stacks";
 
 // F#15 inactive-tab floor: inactive tabs absorb the squeeze first and
 // ellipsize their names down to this width before the active tab compresses.
@@ -1255,7 +1256,7 @@ function AddTabMenu({
               padding: "2px 12px 4px",
               textTransform: "uppercase",
               letterSpacing: "0.06em",
-              fontFamily: "var(--mono)",
+              fontFamily: FONT_MONO,
             }}
           >
             Recent

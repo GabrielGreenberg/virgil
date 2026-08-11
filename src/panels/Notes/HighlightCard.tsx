@@ -22,6 +22,7 @@ import { cardPopKey } from "@/panels/panel-registry";
 import { cardKindsForPanel } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { FONT_SERIF } from "@/lib/font-stacks";
 
 export function HighlightCard({
   card,
@@ -74,8 +75,7 @@ export function HighlightCard({
   // No yellow pill inside the card — the in-doc tint is the actual
   // highlight; the H badge tells the user this card is a highlight.
   const snippetFontStyle = {
-    fontFamily:
-      'var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif',
+    fontFamily: FONT_SERIF,
     color: "var(--editor-text-color)",
   } as const;
   const trimmedAnchor = anchorText.replace(/\s+/g, " ").trim();

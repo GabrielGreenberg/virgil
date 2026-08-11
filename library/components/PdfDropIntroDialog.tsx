@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { FONT_SERIF } from "@/lib/font-stacks";
 
 interface Props {
   /** Names of the files that were just imported (for the confirmation copy). */
@@ -90,7 +91,7 @@ export default function PdfDropIntroDialog({ fileNames, onClose }: Props) {
             fontSize: 15,
             fontWeight: 600,
             color: "var(--foreground)",
-            fontFamily: "var(--serif)",
+            fontFamily: FONT_SERIF,
           }}
         >
           Added to your library

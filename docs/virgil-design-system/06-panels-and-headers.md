@@ -74,14 +74,19 @@ bg is darker than the page).
 background: var(--pod-panel);
 border: var(--pod-border);
 border-radius: var(--pod-radius);
-box-shadow: var(--pod-shadow-light);   /* never existed — see below */
+box-shadow: var(--pod-shadow);
 ```
 
-> ⚠️ **Don't copy that last line.** `--pod-shadow-light` was proposed in the
-> (now removed) `patches/globals.css.patch.md` and never landed, so
-> `var(--pod-shadow-light)` with no fallback resolves to **nothing** — a
-> silent no-op shadow. The shipped scale is `--pod-shadow` /
-> `--card-shadow-ambient` / none. See `03-spacing-and-icons.md`.
+> ⚠️ **April 2026 wrote `var(--pod-shadow-light)` on that last line, and it
+> never worked.** The token was proposed in the (now removed)
+> `patches/globals.css.patch.md` and never landed, so the read resolved to
+> **nothing** — CSS's guaranteed-invalid value, which drops the whole
+> declaration and paints a flat panel, silently. The shipped scale is
+> `--pod-shadow` / `--card-shadow-ambient` / none (see
+> `03-spacing-and-icons.md`), and the line above now names a real token.
+> Since task 170 a CI census (`src/__tests__/phantom-css-var.test.ts`) fails
+> any `var()` in the app that reads a token nothing defines, so this class
+> cannot recur in code — but a *doc* is still just prose an agent copies.
 
 Don't add a backdrop blur, glow, or gradient.
 

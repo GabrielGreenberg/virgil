@@ -27,6 +27,7 @@ import NavPod from "@library/components/NavPod";
 import RowMenu from "@library/components/RowMenu";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle, type FsaDocMeta } from "@/lib/doc-index";
+import { FONT_MONO } from "@/lib/font-stacks";
 
 interface Props {
   /** Every known Virgil doc — used to resolve `myPaperIds` to display
@@ -243,7 +244,7 @@ export default function MyPapersPod({
                     padding: "2px 12px 4px",
                     textTransform: "uppercase",
                     letterSpacing: "0.06em",
-                    fontFamily: "var(--mono, ui-monospace, monospace)",
+                    fontFamily: FONT_MONO,
                   }}
                 >
                   Recent

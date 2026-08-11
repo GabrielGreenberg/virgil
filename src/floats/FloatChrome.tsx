@@ -5,6 +5,7 @@ import { PopoutButton } from "@/components/panel-primitives";
 import { DropChevrons } from "@/components/icons/DropChevrons";
 import { JumpChevron } from "@/components/icons/JumpChevron";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
+import { FONT_SANS } from "@/lib/font-stacks";
 
 /**
  * `FloatChrome` — the ONE header skeleton for every popped-out window, shared
@@ -25,11 +26,12 @@ import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
  * (`canRedock=false`); panels keep their own chrome.
  */
 
-/** The UI-chrome sans stack, mirrored verbatim from `body` so the label
- *  resolves identically wherever it mounts — honoring the user's
- *  `--font-sans-override` (the L3d.1 explicit-font fix, so no label can drift). */
-const FLOAT_HEADER_FONT_FAMILY =
-  'var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif';
+/** The UI-chrome sans stack, so the label resolves identically wherever it
+ *  mounts — honoring the user's `--font-sans-override` (the L3d.1
+ *  explicit-font fix, so no label can drift). Taken from the font-stack SSOT
+ *  rather than re-spelled: this was one of three hand-written copies of the
+ *  same chain (task 170). */
+const FLOAT_HEADER_FONT_FAMILY = FONT_SANS;
 
 /** Decorative 6-dot grip (mirrors `CardDragHandle`). The whole header strip is
  *  the drag surface (FloatingPanel `onHeaderMouseDown`); this just signals it. */

@@ -401,7 +401,7 @@
 
 .lib-dashboard-title {
   margin: 0;
-  font-family: var(--font-serif, var(--serif, Georgia, serif));
+  font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
   font-size: 18px;
   font-weight: 600;
   color: var(--ink-strong, var(--foreground));
@@ -412,7 +412,7 @@
   margin: 4px 0 0;
   font-size: 12px;
   color: var(--ink-muted, var(--muted));
-  font-family: var(--mono);
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
 }
 
 .lib-dashboard-searchrow {
@@ -473,7 +473,7 @@
 
 .lib-dashboard-section-title {
   margin: 0 0 8px;
-  font-family: var(--mono);
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.08em;
@@ -491,7 +491,13 @@
   background: var(--surface);
   border: 1px solid var(--pod-border, var(--border-light));
   border-radius: var(--pod-radius, 8px);
-  box-shadow: var(--pod-shadow-light, 0 1px 5px rgba(0, 0, 0, 0.09));
+  /* `--pod-shadow-light` was proposed in a design-system patch that never
+     landed, so this read resolved to its fallback for a year — the literal
+     below IS the shipped value, and the var was decoration (task 170).
+     Deliberately NOT re-pointed at `--pod-shadow`: which elevation tier this
+     card belongs to is a visual decision that rides with the menu-chrome pass
+     (task 295), not a phantom-token cleanup. */
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.09);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
@@ -507,7 +513,7 @@
 }
 
 .lib-dashboard-card-label {
-  font-family: var(--mono);
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.06em;
@@ -601,7 +607,7 @@
   margin-top: 8px;
   font-size: 11px;
   color: var(--ink-muted, var(--muted));
-  font-family: var(--mono);
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
 }
 
 .lib-dashboard-browseall {
@@ -646,7 +652,7 @@
   background: var(--surface);
   color: var(--ink-body, var(--foreground));
   font-size: 11px;
-  font-family: var(--mono);
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
   cursor: pointer;
   transition: background 120ms, color 120ms;
 }

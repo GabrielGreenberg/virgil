@@ -7,6 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import { createPortal } from "react-dom";
+import { FONT_MONO, FONT_SANS } from "@/lib/font-stacks";
 
 export interface AiRequestItem<K extends string = string> {
   kind: K;
@@ -220,7 +221,7 @@ function triggerStyle(disabled: boolean, anyQueued: boolean): CSSProperties {
     gap: 6,
     padding: "3px 8px",
     fontSize: 12,
-    fontFamily: "var(--sans, inherit)",
+    fontFamily: FONT_SANS,
     color: disabled ? "var(--muted)" : "var(--foreground)",
     background: anyQueued ? "var(--accent-light)" : "transparent",
     border: "1px solid var(--border-light)",
@@ -239,7 +240,7 @@ const countBadgeStyle: CSSProperties = {
   height: 16,
   padding: "0 4px",
   fontSize: 10,
-  fontFamily: "var(--mono)",
+  fontFamily: FONT_MONO,
   lineHeight: 1,
   color: "white",
   background: "var(--accent)",

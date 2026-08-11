@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NotificationItem } from "@library/lib/queue";
 import { notificationSeverity, notificationTtlMs } from "@library/lib/queue";
+import { FONT_MONO } from "@/lib/font-stacks";
 
 interface ToastEntry extends NotificationItem {
   uid: string;
@@ -135,7 +136,7 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
       >
         <div
           style={{
-            fontFamily: "var(--mono)",
+            fontFamily: FONT_MONO,
             fontSize: 11,
             color: accent,
             flex: 1,

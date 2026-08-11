@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { BibEntry } from "@library/lib/types";
+import { FONT_MONO, FONT_SANS } from "@/lib/font-stacks";
 import {
   ANNOTATION_FIELDS,
   BIB_ENTRY_TYPES,
@@ -253,7 +254,7 @@ function Header({
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>Edit bib entry</div>
-        <code style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)" }}>
+        <code style={{ fontFamily: FONT_MONO, fontSize: 11, color: "var(--muted)" }}>
           {citekey}
         </code>
       </div>
@@ -341,7 +342,7 @@ function Footer({
       }}
     >
       <div style={{ fontSize: 12, color: "var(--muted)" }}>
-        Saved edits queue for the <code style={{ fontFamily: "var(--mono)" }}>/apply-bib-edit</code> skill.
+        Saved edits queue for the <code style={{ fontFamily: FONT_MONO }}>/apply-bib-edit</code> skill.
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {saveError && (
@@ -482,7 +483,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
     >
       <legend
         style={{
-          fontFamily: "var(--mono)",
+          fontFamily: FONT_MONO,
           fontSize: 10,
           letterSpacing: "0.06em",
           textTransform: "uppercase",
@@ -517,7 +518,7 @@ function FieldInputs({
               value={fields[k] ?? ""}
               onChange={(e) => updateField(k, e.target.value)}
               rows={k === "abstract" ? 4 : 2}
-              style={{ ...inputStyle, fontFamily: "var(--sans, inherit)", resize: "vertical" }}
+              style={{ ...inputStyle, fontFamily: FONT_SANS, resize: "vertical" }}
             />
           ) : (
             <input
@@ -545,7 +546,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
         fontSize: 13,
       }}
     >
-      <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--muted)", paddingTop: 6 }}>
+      <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: "var(--muted)", paddingTop: 6 }}>
         {label}
       </span>
       <span>{children}</span>
@@ -593,7 +594,7 @@ function ExtraRows({
             placeholder="field"
             value={r.key}
             onChange={(e) => updateRow(r.id, { key: e.target.value })}
-            style={{ ...inputStyle, fontFamily: "var(--mono)" }}
+            style={{ ...inputStyle, fontFamily: FONT_MONO }}
           />
           <input
             type="text"
@@ -666,7 +667,7 @@ function RawView({
         rows={18}
         style={{
           ...inputStyle,
-          fontFamily: "var(--mono)",
+          fontFamily: FONT_MONO,
           fontSize: 12,
           lineHeight: 1.5,
           resize: "vertical",
@@ -691,7 +692,7 @@ const inputStyle: React.CSSProperties = {
   background: "var(--background)",
   fontSize: 13,
   outline: "none",
-  fontFamily: "var(--sans, inherit)",
+  fontFamily: FONT_SANS,
   color: "var(--foreground)",
   boxSizing: "border-box",
 };

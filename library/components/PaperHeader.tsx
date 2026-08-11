@@ -26,6 +26,7 @@ import { ExternalLinkIcon } from "@/components/icons/ExternalLinkIcon";
 import { mapTier } from "@/hooks/useLibrary";
 import { type PgmarkPages } from "@library/hooks/usePgmarkPages";
 import PagePicker from "./PagePicker";
+import { FONT_MONO, FONT_SANS } from "@/lib/font-stacks";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -416,7 +417,7 @@ export default function PaperHeader({
             >
               <code
                 style={{
-                  fontFamily: "var(--mono)",
+                  fontFamily: FONT_MONO,
                   fontSize: 10,
                   color: "var(--muted)",
                   whiteSpace: "nowrap",
@@ -458,7 +459,7 @@ export default function PaperHeader({
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
-                    fontFamily: "var(--mono)",
+                    fontFamily: FONT_MONO,
                     fontSize: 10,
                     cursor: "pointer",
                     padding: "0 4px",
@@ -475,7 +476,7 @@ export default function PaperHeader({
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
-                    fontFamily: "var(--mono)",
+                    fontFamily: FONT_MONO,
                     fontSize: 10,
                     cursor: "pointer",
                     padding: "0 4px",
@@ -492,7 +493,7 @@ export default function PaperHeader({
                     background: "transparent",
                     border: "none",
                     color: "var(--muted)",
-                    fontFamily: "var(--mono)",
+                    fontFamily: FONT_MONO,
                     fontSize: 10,
                     cursor: "not-allowed",
                     padding: "0 4px",
@@ -559,7 +560,7 @@ export default function PaperHeader({
                   background: "transparent",
                   border: "none",
                   color: "var(--muted)",
-                  fontFamily: "var(--sans, inherit)",
+                  fontFamily: FONT_SANS,
                   fontSize: 11,
                   cursor: "pointer",
                   padding: "2px 0",
@@ -571,7 +572,7 @@ export default function PaperHeader({
             )}
             <span
               style={{
-                fontFamily: "var(--mono)",
+                fontFamily: FONT_MONO,
                 fontSize: 11,
                 color: "var(--muted)",
                 whiteSpace: "nowrap",
@@ -589,7 +590,7 @@ export default function PaperHeader({
         {flash && (
           <div
             style={{
-              fontFamily: "var(--mono)",
+              fontFamily: FONT_MONO,
               fontSize: 11,
               color: "var(--accent, var(--muted))",
               textAlign: "right",
@@ -627,7 +628,7 @@ export default function PaperHeader({
             <label
               htmlFor="paper-ai-instructions"
               style={{
-                fontFamily: "var(--mono)",
+                fontFamily: FONT_MONO,
                 fontSize: 10,
                 color: "var(--muted)",
                 letterSpacing: 0.3,
@@ -645,7 +646,7 @@ export default function PaperHeader({
                 resize: "vertical",
                 minHeight: 38,
                 padding: "6px 8px",
-                fontFamily: "var(--mono)",
+                fontFamily: FONT_MONO,
                 fontSize: 12,
                 lineHeight: 1.4,
                 color: "var(--foreground)",
@@ -737,7 +738,7 @@ function ToggleButton({
         border: "none",
         padding: "4px 10px",
         fontSize: 11,
-        fontFamily: "var(--sans, inherit)",
+        fontFamily: FONT_SANS,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.55 : 1,
       }}
