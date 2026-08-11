@@ -1,4 +1,4 @@
-<!-- last-verified: d93075c6 2026-08-11 -->
+<!-- last-verified: ef13712e 2026-08-11 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: editor/skills/reflect.md, editor/AGENTS.md, library/scripts/skill-bundle-template/CLAUDE.md -->
 

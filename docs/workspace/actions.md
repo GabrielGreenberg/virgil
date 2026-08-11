@@ -1,4 +1,4 @@
-<!-- last-verified: d93075c6 2026-08-11 -->
+<!-- last-verified: ef13712e 2026-08-11 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -125,6 +125,22 @@ The five action sets are `PROSE_ACTIONS` / `NON_PROSE_BLOCK_ACTIONS` /
 `MARKLESS_BLOCK_ACTIONS` (drops Highlight — a `marks: ""` node like `latexComment`
 and `codeBlock` rejects the `linkedAnchor` mark; task 066 / task 146) / `TITLE_FIELD_ACTIONS` /
 `LINKED_RANGE_ACTIONS`.
+
+**But a CONTAINER's kind cannot answer an INLINE-INSERT question** (task 148).
+`NON_PROSE_BLOCK_ACTIONS` drops footnote / citation / suggest-edit on the premise
+that there is nowhere inline to put them — true for the block atoms and the
+verbatim kinds, false for the four containers filed beside them (`bulletList`,
+`orderedList`, `exampleBlock`, `figureBlock`), each of which holds prose a caret
+can sit in. So the one door every surface enters is now
+`blockRangeAllowsAction(doc, from, to, action)`: actions that act ON a block
+still read the range start's curated set, while the `INLINE_INSERT_ACTIONS`
+family is answered by the textblocks the range can REACH — every one of which
+must permit it, which fails closed across a mixed selection. `inlineInsertPos`
+then decides WHERE the atom lands, because un-gating without it appended a
+phantom trailing block (a marker in a new bullet, a new paragraph, a torn
+figure). `NO_INLINE_LANDING_INSIDE` (`exampleGloss`, `figureCaption`) is the one
+set all three read — editorial facts the schema cannot express. Full write-up:
+`AGENTS.md` → "The premise half".
 
 ### The formatting vocabulary: the 4×4 grid
 
