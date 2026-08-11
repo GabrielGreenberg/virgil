@@ -6699,7 +6699,17 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                             className="pointer-events-auto"
                             style={hitStyle}
                             onMouseDown={(e) => beginMarginDrag(e, side)}
-                            data-hint={`Drag to set ${side} margin`} aria-label={`Drag to set ${side} margin`}
+                            // `aria-hidden`, not `aria-label` (task 189, second
+                            // pass): this is a bare-div drag hit-zone whose
+                            // implicit role is `generic`, which ARIA forbids
+                            // naming — so the label announced nothing while
+                            // reading as an a11y contract, and the guide is
+                            // pointer-only (useMarginEdit has no tabIndex and
+                            // no key handler but Escape-cancel). Same shape as
+                            // FloatingPanel's five edges. `data-hint` is the
+                            // real tooltip channel and is untouched.
+                            data-hint={`Drag to set ${side} margin`}
+                            aria-hidden
                           >
                             <div style={lineStyle} />
                           </div>
