@@ -43,7 +43,7 @@ import {
   beforeEach,
   afterEach,
 } from "vitest";
-import { renderHook, cleanup } from "@testing-library/react";
+import { renderHook, render, cleanup } from "@testing-library/react";
 import type * as React from "react";
 
 import {
@@ -774,5 +774,48 @@ describe("usePaneResizeHandle — handle props", () => {
     // spreading onto the handle never churns attributes per render.
     h.rerender({ ...h.spec, getValue: () => 999 });
     expect(Object.is(h.props(), first)).toBe(true);
+  });
+
+  // Task 189 — the engine owns the divider's SEMANTIC surface, not just its
+  // gesture. A gutter is pointer-only (no tabIndex, no arrow keys anywhere in
+  // the engine), so it states that once here instead of leaving four of ten
+  // consumers to hand-roll `role="separator"` + `aria-label="Resize …"` — a
+  // named, valueless, non-operable splitter promising an interaction the app
+  // does not implement. Posture recorded in STYLE_GUIDE "Resize gutters".
+  it("hides the handle from the a11y tree on BOTH axes — a pointer-only affordance announces nothing", () => {
+    for (const axis of ["x", "y"] as const) {
+      const h = makeHarness({ axis });
+      expect(h.props()["aria-hidden"]).toBe(true);
+      expect(h.props()["data-pane-resize-axis"]).toBe(axis);
+    }
+  });
+
+  it("emits no role, tabIndex or key handler — nothing that would read as operable", () => {
+    const keys = Object.keys(makeHarness().props());
+    expect(keys).not.toContain("role");
+    expect(keys).not.toContain("tabIndex");
+    expect(keys.filter((k) => /^on(Key|Focus|Blur)/.test(k))).toEqual([]);
+  });
+
+  it("reaches the DOM as aria-hidden when spread the documented way", () => {
+    // The props object is one thing; what React renders is another — and what
+    // an AT sees is the rendered attribute. Spread exactly as the engine's
+    // docblock prescribes, then read the DOM.
+    function Gutter() {
+      const handle = usePaneResizeHandle({
+        id: "dom-check",
+        axis: "y",
+        getValue: () => 0,
+        apply: () => {},
+        commit: () => {},
+      });
+      return <div data-testid="gutter" className="drag-gap drag-gap-h band-grip" {...handle} />;
+    }
+    const { getByTestId } = render(<Gutter />);
+    const el = getByTestId("gutter");
+    expect(el.getAttribute("aria-hidden")).toBe("true");
+    expect(el.getAttribute("role")).toBeNull();
+    expect(el.getAttribute("aria-label")).toBeNull();
+    expect(el.tabIndex).toBe(-1); // not focusable
   });
 });

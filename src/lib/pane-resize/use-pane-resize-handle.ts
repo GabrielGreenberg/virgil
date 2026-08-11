@@ -78,6 +78,21 @@ export interface PaneResizeSpec {
 export interface PaneResizeHandleProps {
   onPointerDown: (e: React.PointerEvent<HTMLElement>) => void;
   style: React.CSSProperties;
+  /** The divider's SEMANTIC surface — owned HERE, not improvised per consumer
+   *  (task 189). A gutter is a pointer-only affordance today: the engine emits
+   *  no `tabIndex` and no arrow-key handler, so nothing about it is reachable
+   *  without a mouse. `aria-hidden` states that once, for all ten consumers,
+   *  instead of four of them hand-rolling `role="separator"` + `aria-label`
+   *  ("Resize My Papers pod") — a NAMED, valueless, non-operable splitter that
+   *  promises an AT user an interaction the app cannot honor. Not a stub for
+   *  the real pattern: making these operable means focusability + arrow-key
+   *  resize + `aria-valuenow/min/max` wired from each consumer's clamp, a
+   *  product decision recorded as deferred in STYLE_GUIDE "Resize gutters".
+   *  Safe on every consumer because a handle's subtree is decorative — the
+   *  widened hit-target children are bare divs, and no gutter contains a
+   *  focusable node (SplitWithCode's sync-arrow buttons are SIBLINGS of the
+   *  handle, deliberately outside it so a click there never starts a drag). */
+  "aria-hidden": true;
   "data-pane-resize-id": string;
   "data-pane-resize-axis": "x" | "y";
 }
@@ -100,6 +115,15 @@ type EndMode =
  * Gesture engine hook. Spread the returned props onto the handle element
  * (`<div {...handleProps} className="drag-gap drag-gap-v band-grip" />`); the
  * engine toggles a `.dragging` class on it for the grip chrome.
+ *
+ * The engine owns the gesture, the `.dragging` chrome HOOK, and (since task
+ * 189) the handle's a11y semantics — see `PaneResizeHandleProps["aria-hidden"]`.
+ * It does NOT own the divider's LOOK: put `drag-gap drag-gap-{h,v} band-grip`
+ * on the element yourself (STYLE_GUIDE "Resize gutters"). A consumer that
+ * genuinely isn't a pane gutter and wears different chrome must say so on
+ * `PERMITTED_UNCHROMED_RESIZERS` in `pane-drag-guardrail.test.ts` — and still
+ * take its colors from the gutter family (`--edge-hover`/`--drag-highlight`),
+ * so a divider can never paint a one-off accent.
  */
 export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps {
   // Latest spec by ref so the pointerdown closure never goes stale while the
@@ -293,6 +317,7 @@ export function usePaneResizeHandle(spec: PaneResizeSpec): PaneResizeHandleProps
     () => ({
       onPointerDown,
       style: HANDLE_STYLE,
+      "aria-hidden": true as const,
       "data-pane-resize-id": spec.id,
       "data-pane-resize-axis": spec.axis,
     }),

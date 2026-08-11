@@ -104,6 +104,36 @@ const PERMITTED_LIBRARY_RESIZE_OBSERVERS: Record<string, string> = {
     "\\pgmark chip re-scan — RAF-coalesced, parked via parkDuringLayoutGesture, and the `pages` array is identity-gated (label+docY) so consumer memos (PaperRender → EditorPane) hold.",
 };
 
+// ── The unchromed-resizer allowlist (task 189) ───────────────────────────────
+// The POSITIVE half of the class leg above: that leg helps DETECT a bespoke
+// gesture, and is structurally blind to the opposite defect — a correct engine
+// gesture wearing a hand-rolled LOOK. `usePaneResizeHandle` returns
+// `{ onPointerDown, style, aria-hidden, data-pane-resize-* }` and nothing
+// visual, so every consumer must put `drag-gap drag-gap-{h,v} band-grip` on the
+// element itself (STYLE_GUIDE "Resize gutters", and the engine's own docblock).
+// A consumer that genuinely is NOT a pane gutter may wear different chrome —
+// but it says so HERE, with why, and it still takes the divider family's tokens
+// (`--edge-hover` / `--drag-highlight`), never a one-off accent.
+const PERMITTED_UNCHROMED_RESIZERS: Record<string, string> = {
+  "library/components/LeftList.tsx":
+    "List-COLUMN boundary in the header row's own grid track, not a pane divider: the shared pill is 28px growing to 44px on drag and the header row is content-height (~24-28px), so `band-grip` would overflow and clip. Wears `.list-col-resizer` (library.css) — a full-track bar on the gutter family's OWN tokens (transparent → --edge-hover on :hover → --drag-highlight on the engine's .dragging class), CSS-driven, no JS hover. Adopting `band-grip` here would first require making the shared pill length-aware (clamp its long axis to the strip's extent), which is a change to chrome shared by the other nine sites and its own task.",
+};
+
+// ── The announced-separator allowlist (task 189) ─────────────────────────────
+// Empty, and that is the statement: Virgil does not yet commit to keyboard /
+// screen-reader operation of its dividers (STYLE_GUIDE "Resize gutters" —
+// "Accessibility posture"), so no divider may ANNOUNCE itself as one. Four
+// library gutters used to carry `role="separator"` + `aria-orientation` +
+// `aria-label="Resize …"` — a NAMED, valueless, non-operable splitter: an AT
+// user was told a resizer existed in 4 of 10 places, told nothing in the other
+// 6, and could operate none of the 15 (10 engine + 5 FloatingPanel edges). The
+// half-pattern is worse than silence, so the engine emits `aria-hidden` and the
+// hand-rolled roles are gone. An entry here must be a genuinely STATIC,
+// non-interactive divider (the structural ARIA role) — never a resize handle;
+// a resize handle earns a role by becoming focusable and arrow-operable with
+// `aria-valuenow/min/max` wired from its clamp, which is the deferred half.
+const PERMITTED_ANNOUNCED_SEPARATORS: Record<string, string> = {};
+
 /** Strip comments so doctrine prose (this repo documents the banned call
  *  forms heavily) can't read as a live gesture. Conservative — only removes
  *  text, never manufactures a match. */
@@ -133,6 +163,42 @@ export function stripComments(source: string): string {
  * would let those idioms pass CI silently (task 187 — the same guard-narrower-
  * than-its-doctrine shape as task 169's `check-radius-tokens.mjs`).
  */
+/** A file that spreads a real engine handle onto an element it renders. */
+export function detectEngineConsumer(source: string): boolean {
+  return /\busePaneResizeHandle\s*\(/.test(stripComments(source));
+}
+
+/** The shared divider chrome, as the class the CSS actually keys on. */
+export function detectSharedGripChrome(source: string): boolean {
+  return /\bband-grip\b/.test(stripComments(source));
+}
+
+/**
+ * A divider that ANNOUNCES itself — `role="separator"` in any JSX spelling
+ * (bare string, braced string). The needle is the ROLE, not `aria-label`,
+ * because a label is legitimate on the many real controls these same files
+ * render; the role is what turns a decorative strip into a promised widget.
+ */
+export function detectAnnouncedSeparator(source: string): boolean {
+  return /\brole\s*=\s*\{?\s*["']separator["']/.test(stripComments(source));
+}
+
+/**
+ * The bespoke twin of the same defect: a `data-resize-edge` hit-zone (the
+ * FloatingPanel family — 5 divs with mousedown handlers and no engine) carrying
+ * an `aria-label`. A bare `<div>`'s implicit role is `generic`, which ARIA
+ * prohibits from being named, so such a label is INERT — an attribute that
+ * reads as an a11y contract while announcing nothing. Returns the offending
+ * tags. Scope is honest: `data-resize-edge` is this repo's own marker for a
+ * bespoke resize hit-zone, so a future one that invents a different marker is
+ * outside this needle (it would still be caught by the role census above if it
+ * announced a role).
+ */
+export function findLabeledResizeEdges(source: string): string[] {
+  const tags = stripComments(source).match(/<[A-Za-z][^>]*data-resize-edge[^>]*>/g) ?? [];
+  return tags.filter((t) => /\baria-label\s*=/.test(t));
+}
+
 export function detectWindowDragGesture(source: string): boolean {
   const src = stripComments(source);
   const windowLevelMove =
@@ -408,5 +474,146 @@ describe("pane-drag guardrail — library ResizeObserver census", () => {
         `${rel} no longer constructs a ResizeObserver — drop its census entry`,
       ).toBe(true);
     }
+  });
+});
+
+// ── Task 189: the engine owns the gesture, the .dragging hook and the a11y
+// semantics; the CONSUMER owns the look. Both halves of that split need a
+// census, because the pre-existing legs above are structurally blind to them:
+// they detect a bespoke GESTURE, and a hand-rolled LOOK (or a hand-rolled
+// ROLE) on a perfectly correct gesture matches none of their needles. That is
+// exactly how one of ten consumers drifted onto `--accent` with JS hover and an
+// inert `.dragging` class, and how four of ten grew a half-implemented ARIA
+// splitter, with CI green throughout.
+describe("pane-drag guardrail — engine-consumer chrome census (task 189)", () => {
+  const files = walkBothSilos();
+  const consumers = files.filter((f) => detectEngineConsumer(f.source));
+
+  it("finds every engine consumer in both silos (the census can see)", () => {
+    // Anchored on a count rather than a list so ordinary refactors don't churn
+    // it, but low enough that a walk which stopped working can't pass.
+    expect(consumers.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("every engine consumer wears the shared band-grip chrome, or is an explicitly justified exception", () => {
+    // EXTRA file here = a divider that spreads the engine's props and paints
+    // its own look. Put `drag-gap drag-gap-{h,v} band-grip` on the element
+    // (STYLE_GUIDE "Resize gutters"); allowlist ONLY a control that genuinely
+    // is not a pane gutter, and even then keep it on --edge-hover /
+    // --drag-highlight and let the engine's `.dragging` class drive the active
+    // state, so hover and drag stay distinguishable.
+    const unchromed = consumers
+      .filter((f) => !detectSharedGripChrome(f.source))
+      .map((f) => f.rel)
+      .sort();
+    expect(unchromed).toEqual(Object.keys(PERMITTED_UNCHROMED_RESIZERS).sort());
+  });
+
+  it("keeps the unchromed allowlist free of stale entries (still a consumer, still unchromed)", () => {
+    const byRel = new Map(files.map((f) => [f.rel, f.source]));
+    for (const rel of Object.keys(PERMITTED_UNCHROMED_RESIZERS)) {
+      const source = byRel.get(rel);
+      expect(source, `${rel} missing from the walk`).toBeDefined();
+      expect(
+        detectEngineConsumer(source as string),
+        `${rel} no longer consumes the engine — drop its allowlist entry`,
+      ).toBe(true);
+      expect(
+        detectSharedGripChrome(source as string),
+        `${rel} now wears band-grip — drop its allowlist entry`,
+      ).toBe(false);
+    }
+  });
+
+  it("the one allowlisted exception still takes the divider family's tokens, not a one-off accent", () => {
+    // The allowlist buys a different SHAPE, never a different palette. Read
+    // from the stylesheet that paints it, since the chrome moved out of the
+    // component when it stopped being hand-rolled in JS.
+    const css = readFileSync(
+      path.resolve(LIBRARY, "styles/library.css"),
+      "utf8",
+    );
+    const rule = css.slice(css.indexOf(".list-col-resizer"));
+    expect(rule).toContain("var(--edge-hover)");
+    expect(rule).toContain("var(--drag-highlight)");
+    // The pre-189 look: `--accent` (#7c5e3c) driven from React mouseenter,
+    // with the engine's `.dragging` class unused so hover === active drag.
+    expect(/\.list-col-resizer[^}]*var\(--accent\)/.test(rule)).toBe(false);
+    expect(rule).toContain(".list-col-resizer.dragging");
+    const leftList = readFileSync(
+      path.resolve(LIBRARY, "components/LeftList.tsx"),
+      "utf8",
+    );
+    expect(stripComments(leftList)).not.toMatch(/onMouseEnter|onMouseLeave/);
+  });
+
+  it("would flag a new consumer that hand-rolls its look (fixture)", () => {
+    const handRolled = `
+      export function DriftingGutter() {
+        const handle = usePaneResizeHandle({ id: "x", axis: "x" });
+        return h("div", { ...handle, style: { background: "var(--accent)" } });
+      }
+    `;
+    expect(detectEngineConsumer(handRolled)).toBe(true);
+    expect(detectSharedGripChrome(handRolled)).toBe(false);
+  });
+});
+
+describe("pane-drag guardrail — divider a11y-announcement census (task 189)", () => {
+  const files = walkBothSilos();
+
+  it("no divider announces itself as an operable separator while none is operable", () => {
+    // Virgil's recorded posture (STYLE_GUIDE "Resize gutters" →
+    // "Accessibility posture"): dividers are pointer-only, so they say NOTHING
+    // rather than claiming a splitter role they cannot honor. The engine emits
+    // `aria-hidden` for all ten gutters — a consumer that adds a role back
+    // overrides it and reinstates the half-pattern.
+    const announced = files
+      .filter((f) => detectAnnouncedSeparator(f.source))
+      .map((f) => f.rel)
+      .sort();
+    expect(announced).toEqual(Object.keys(PERMITTED_ANNOUNCED_SEPARATORS).sort());
+  });
+
+  it("no bespoke resize hit-zone carries an inert aria-label (a bare div is role=generic, which ARIA forbids naming)", () => {
+    for (const f of files) {
+      expect(
+        findLabeledResizeEdges(f.source),
+        `${f.rel} labels a data-resize-edge hit-zone — the label is inert; use aria-hidden and keep the identity on data-resize-edge`,
+      ).toEqual([]);
+    }
+  });
+
+  it("the FloatingPanel edges are hidden rather than merely unlabeled (the census can see)", () => {
+    // Anchors the leg above on the real file, so it can't pass because the
+    // edges were deleted or renamed out from under it.
+    const source = readFileSync(
+      path.resolve(SRC, "components/FloatingPanel.tsx"),
+      "utf8",
+    );
+    const tags =
+      stripComments(source).match(/<[A-Za-z][^>]*data-resize-edge[^>]*>/g) ?? [];
+    expect(tags).toHaveLength(5);
+    for (const t of tags) expect(t).toMatch(/\baria-hidden\b/);
+  });
+
+  it("would flag a hand-rolled announced separator and an inert edge label (fixtures)", () => {
+    expect(
+      detectAnnouncedSeparator(`h("div", { role: "separator" })`),
+    ).toBe(false); // object form is not the JSX attribute this guards
+    expect(detectAnnouncedSeparator(`<div role="separator" {...handle} />`)).toBe(
+      true,
+    );
+    expect(detectAnnouncedSeparator(`<div role={"separator"} {...handle} />`)).toBe(
+      true,
+    );
+    expect(
+      findLabeledResizeEdges(
+        `<div data-resize-edge="left" aria-label="Resize left edge" />`,
+      ),
+    ).toHaveLength(1);
+    expect(
+      findLabeledResizeEdges(`<div data-resize-edge="left" aria-hidden />`),
+    ).toHaveLength(0);
   });
 });

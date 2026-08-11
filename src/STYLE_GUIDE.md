@@ -785,6 +785,46 @@ The stacked-panel bands additionally carry `.band-grip-occlude` for an
 opaque `--background` backing (they occlude omni cards showing through);
 **no other gutter opts in** — every other resizer stays transparent at rest.
 
+**The engine returns no chrome, so CI checks the other half.** Every
+`usePaneResizeHandle` consumer must render `band-grip`, or sit on
+`PERMITTED_UNCHROMED_RESIZERS` (`pane-drag-guardrail.test.ts`) with a stated
+reason — and an exception buys a different *shape*, never a different
+palette: it still rests transparent, hovers to `--edge-hover`, and paints
+`--drag-highlight` under the engine's `.dragging` class. Today there is
+exactly one: the Library list's **column boundary** (`.list-col-resizer`,
+`library.css`), which lives in a content-height header row where the 28→44px
+pill would overflow and clip. Adopting the pill there needs the shared grip
+to become **length-aware** first (clamp the pill's long axis to its strip's
+extent) — a change to chrome shared by nine other sites, and its own task.
+Before task 189 that one resizer painted `--accent` from React
+`onMouseEnter`/`onMouseLeave`, which also left `.dragging` unused, so hover
+and active drag looked identical.
+
+### Accessibility posture (recorded, not deferred by accident)
+
+**Virgil does not yet commit to keyboard or screen-reader operation of its
+layout chrome.** That is a posture, like the absence of dark mode — write new
+UI against it rather than re-litigating it per component, and don't
+half-implement it: **a control that announces itself and then cannot be
+operated is worse than one that stays quiet.**
+
+For resizers that means: the engine emits `aria-hidden` on every handle, and
+no divider carries `role="separator"` / `aria-orientation` / `aria-label`.
+Until task 189 four of the ten gutters did — a *named, valueless,
+non-operable* splitter ("Resize My Papers pod"), while the other six said
+nothing and none of the fifteen resizers in the app (10 engine + 5
+`FloatingPanel` edges) was focusable or arrow-operable. The five float edges
+had the same defect one step further gone: `aria-label` on a bare `<div>`,
+whose implicit role is `generic` — which ARIA forbids naming, so the labels
+were inert. Both are CI-pinned (`pane-drag-guardrail.test.ts`, empty
+allowlist).
+
+What it would take to change the posture, whenever it is worth doing: make
+handles focusable, add arrow-key resize through the same `clamp`/`commit`
+spec, and wire `aria-valuenow/min/max` from each consumer's clamp — then the
+`separator` role becomes true. That is a real design cost (10+ new tab stops
+in a dense writing UI), which is why it is a decision and not a bug.
+
 Don't hand-roll the *gesture* either: the engine's spec is per-frame
 imperative CSS-var `apply()` (RAF-coalesced, equality-bailed) + `commit()`
 exactly once on release — never per-frame React state, store notifies, or

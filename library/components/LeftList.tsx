@@ -1019,36 +1019,30 @@ function Resizer({
     },
   });
 
+  // Chrome: `.list-col-resizer` (library.css), NOT the shared `band-grip`
+  // pill — this is a list-COLUMN boundary in a content-height header row
+  // (~24-28px), not a pane gutter, and the shared pill is a 28px lozenge
+  // growing to 44px on drag, which would overflow and clip here. It is the
+  // one entry on `PERMITTED_UNCHROMED_RESIZERS` (pane-drag-guardrail), and it
+  // still takes the gutter family's TOKENS: rest transparent → `--edge-hover`
+  // on hover → `--drag-highlight` while dragging. Before task 189 it painted
+  // `--accent` from React `onMouseEnter`/`onMouseLeave` handlers, which put a
+  // one-off brown on the divider family AND left the engine's `.dragging`
+  // class inert, so hover and active drag rendered identically.
+  // No role/aria-label: pointer-only, `aria-hidden` from the engine props.
   return (
     <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize column"
+      className="list-col-resizer"
       {...handle}
       onPointerDown={(e) => {
         // Keep the press out of the header cells' drag-reorder machinery.
         e.stopPropagation();
         handle.onPointerDown(e);
       }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLDivElement).style.background = "var(--accent)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLDivElement).style.background = "transparent";
-      }}
-      style={{
-        ...handle.style,
-        width: RESIZER_WIDTH,
-        cursor: "col-resize",
-        background: "transparent",
-        transition: "background 120ms",
-        // Stretch the visible-on-hover bar down through every row by
-        // letting the wrapping list scroll independently. This div sits
-        // in the header's grid track; the row Spacers occupy the same
-        // track in each row but render no background, so the column
-        // boundary is effectively invisible until the user hovers the
-        // header bar.
-      }}
+      // Width stays inline: it is the same RESIZER_WIDTH constant the grid
+      // template emits its boundary tracks from (list-columns.ts), so the
+      // painted bar and its track can't drift.
+      style={{ ...handle.style, width: RESIZER_WIDTH }}
     />
   );
 }
