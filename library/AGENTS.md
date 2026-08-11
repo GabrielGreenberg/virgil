@@ -418,7 +418,7 @@ entry where there had been many and reports a clean run.
 
 That was live in **four** places at once (task 168): three in Python —
 `index_paper`'s index-time stamp, its `_resync_references_bib` (which
-`/library/authenticate-bib` step 5 calls unconditionally), and
+`/library/authenticate-bib` step 6 calls unconditionally), and
 `triage_apply`'s bib-only folder creation — plus one in **skill prose**, where
 `apply-bib-edit.md` step 3 simply told the agent to "re-emit" the file by
 hand. That fourth one is the reason the fix isn't a guard per Python caller: a

@@ -447,16 +447,18 @@ Other `indexed` fields (`extractor`, `footnoteCount`, etc.) and the
 top-level `updatedAt` are preserved automatically — the patch script
 deep-merges nested objects and only the keys you include get replaced.
 
-**Warnings recompute — eight kinds, and step 5 owns FIVE of them.**
-The `warnings` array is append-only across passes EXCEPT for eight
-kinds, which are recomputed every pass. They split by producer:
+**Warnings recompute — nine kinds, and step 5 owns FIVE of them.**
+The `warnings` array is append-only across passes EXCEPT for nine
+kinds, which are recomputed by whoever produced them. They split by
+producer:
 
 ```
-step-5-owned (recompute here)          subskill-owned (already persisted)
-─────────────────────────────          ──────────────────────────────────
-footnote-recovery-needed:              missing-bib-entry:
-examples-not-converted:                ambiguous-citation:
-pgmark-duplicate:                      numeric-citation-style:
+step-5-owned                  subskill-owned              outside this pass
+(recompute here)              (already persisted)         (never touched here)
+────────────────────          ──────────────────────      ────────────────────
+footnote-recovery-needed:     missing-bib-entry:          bib-coherence:
+examples-not-converted:       ambiguous-citation:
+pgmark-duplicate:             numeric-citation-style:
 pgmark-gap:
 pgmark-out-of-order:
 ```
@@ -477,6 +479,15 @@ The five on the left have no same-run consumer (nothing reads
 coherent owner and `/library/recover-footnotes` + `/library/di-examples`
 keep deferring to it. The same split is stated in
 [_doctrine.md](_doctrine.md) §Persistence convergence — they must agree.
+
+`bib-coherence:` is produced by [`/library/authenticate-bib`](authenticate-bib.md)
+step 2, which is not part of this pass and can run standalone (even from a
+paper session). It is listed here only so this census stays complete: **do
+not declare it below.** Deep-index does not recompute it, so declaring it
+would delete that skill's findings, and a line it wrote stands until the
+next authentication of the entry. If one shows up on a resume, the fix is
+`/library/authenticate-bib <citekey>` after correcting the entry type —
+not anything in this pass.
 
 Concatenate the fresh lines from §3d (`footnote-recovery-needed:`, at
 most one), §3.h₂ (`examples-not-converted:` per skipped region), and

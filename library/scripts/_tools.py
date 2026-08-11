@@ -1419,26 +1419,58 @@ def update_master_bib_entry(
 # single decision point shared by every writer (merge_paper_references,
 # triage_apply).
 
-# Source-file extensions that count as a holding (a real document on disk).
-_HOLDINGS_EXTS = (".pdf", ".docx", ".tex")
+# Source-format priority — THE spelling of "what counts as a source document
+# for a paper, and which one wins". When more than one source file exists for a
+# citekey (the user dropped a .docx alongside an existing .pdf), the FIRST in
+# this tuple wins: DOCX carries explicit structure (paragraph styles, headings,
+# tables) that the PDF pipeline has to reverse-engineer with heuristics, and a
+# `.tex` source needs no extraction at all.
+#
+# It lives HERE, on the stdlib-only leaf, rather than in `index_paper.py` where
+# it was born, because the layers that need it cannot import that module: it
+# pulls in marker / pymupdf / the whole extraction stack, so a cheap local
+# pre-flight (`validate_bib_coherence.py`) that imported it would drag the
+# indexer's dependency tree into a step that must be fast and offline — and
+# would fail outright on a machine where the extractors aren't installed. A
+# vocabulary the layer that needs it cannot import gets re-copied, every time;
+# `_HOLDINGS_EXTS` (dotted, differently ordered) was already the second copy.
+SOURCE_FORMAT_PRIORITY = ("tex", "docx", "pdf")
+
+
+def resolve_paper_source(library: Path, citekey: str) -> "tuple[Path, str] | None":
+    """Return `(path, ext)` for `citekey`'s highest-priority source, or None.
+
+    Scans `papers/<citekey>/<citekey>.<ext>` in `SOURCE_FORMAT_PRIORITY`
+    order; first hit wins. Lower-priority sources for the same citekey stay
+    on disk as archives.
+
+    Citekeys with diacritics are looked up under both NFC and NFD forms
+    (the 1976-Tichý memo class), and the path returned is the one that
+    actually exists on disk.
+    """
+    import unicodedata
+    paper_dir = library / "papers"
+    for ext in SOURCE_FORMAT_PRIORITY:
+        for form in ("NFC", "NFD"):
+            ck = unicodedata.normalize(form, citekey)
+            p = paper_dir / ck / f"{ck}.{ext}"
+            if p.exists():
+                return p, ext
+    return None
 
 
 def paper_has_holdings(library: Path, citekey: str) -> bool:
     """True iff `papers/<citekey>/` holds an actual source document.
 
-    A holding is a `<citekey>.{pdf,docx,tex}` source file. This is the F#4
+    A holding is a `<citekey>.{tex,docx,pdf}` source file. This is the F#4
     gate: only holdings get a catalog row. A reference-only entry (cited but
     not held) has a master.bib entry + `% bib.state` comment but no source
     file, so this returns False and the writer skips the catalog row.
+
+    Derived from `resolve_paper_source` so the extension set is stated once —
+    the answer is a boolean, so the priority ORDER cannot change it.
     """
-    import unicodedata
-    paper_dir = library / "papers"
-    for form in ("NFC", "NFD"):
-        ck = unicodedata.normalize(form, citekey)
-        for ext in _HOLDINGS_EXTS:
-            if (paper_dir / ck / f"{ck}{ext}").exists():
-                return True
-    return False
+    return resolve_paper_source(library, citekey) is not None
 
 
 def ensure_bib_state_comment(

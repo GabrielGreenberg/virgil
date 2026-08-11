@@ -290,7 +290,7 @@ single example gets a fresh UUID; existing canonical examples are
 left untouched.
 
 For catalog warnings specifically: the `indexed.warnings` array is
-recomputed per pass for eight kinds, and they split by **producer** —
+recomputed per pass for nine kinds, and they split by **producer** —
 the same split `deep-index.md` §5 states; the two must agree:
 
 - **Subskill-owned**, persisted by `/library/clean-bibliography` itself
@@ -307,6 +307,12 @@ the same split `deep-index.md` §5 states; the two must agree:
   reads these within the producing pass, so persist-at-source buys them
   nothing and one late owner stays coherent. The asymmetry is chosen,
   not drift.
+- **Outside the deep-index pass entirely**, persisted by
+  `/library/authenticate-bib` step 2: `bib-coherence:` (task 322). That
+  skill runs standalone — often from a paper session, never as a deep-index
+  subskill — so no step here may declare its kind, and a line it wrote
+  stands until the next authentication of that entry. Listed so the census
+  is complete: a kind nobody names is a kind the next writer clobbers.
 
 Neither owner re-supplies the whole array. Both pass
 `--recompute-warning-kind <kind>` (repeatable) to

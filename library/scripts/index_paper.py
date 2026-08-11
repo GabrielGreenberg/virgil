@@ -45,6 +45,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _tools import (
+    SOURCE_FORMAT_PRIORITY,
     append_inbox_item,
     bump_catalog_version,
     detect,
@@ -66,13 +67,13 @@ from bib_auth import authenticate, assert_title_clean
 from fuse_alternate import fuse_pgmarks_into, FuseResult
 
 
-# Source-format priority. When more than one source file exists for a
-# citekey (e.g., the user dropped a .docx alongside an existing .pdf),
-# the FIRST one in this tuple wins — DOCX carries explicit structure
-# (paragraph styles, headings, tables) that the PDF pipeline has to
-# reverse-engineer with heuristics, so a Word source produces cleaner
-# output and supersedes the PDF.
-FORMAT_PRIORITY = ("tex", "docx", "pdf")
+# Source-format priority. Spelled ONCE, on the stdlib-only leaf
+# (`_tools.SOURCE_FORMAT_PRIORITY`), because the cheap local consumers —
+# `validate_bib_coherence.py`'s cover-page leg, `paper_has_holdings` — cannot
+# import THIS module: it pulls in marker / pymupdf / the whole extraction
+# stack. The two names below are the historical spellings, kept so existing
+# readers don't move.
+FORMAT_PRIORITY = SOURCE_FORMAT_PRIORITY
 SUPPORTED_EXTS = FORMAT_PRIORITY
 
 
@@ -122,7 +123,7 @@ def _resync_references_bib(library: Path, citekey: str) -> bool:
     byte-identically. Returns False when the paper folder or the master.bib
     row is missing.
 
-    This is the entry point both `/library/authenticate-bib` (step 5) and
+    This is the entry point both `/library/authenticate-bib` (step 6) and
     `/library/apply-bib-edit` (step 3) call.
     """
     paper_dir = library / "papers" / citekey

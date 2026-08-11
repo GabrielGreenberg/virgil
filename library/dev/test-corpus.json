@@ -90,14 +90,15 @@
       "citekey": "leong1994towards",
       "genre": "dissertation",
       "subskills_exercised": [
-        "di-preflight", "clean-bibliography", "recover-footnotes"
+        "di-preflight", "clean-bibliography", "recover-footnotes",
+        "authenticate-bib"
       ],
       "memos": [
         "2026-05-13-deepindex-streamlining-leong1994towards.md",
         "2026-05-13-bib-auth-mismatch-leong1994towards.md"
       ],
       "regression_guards": [
-        "validate_bib_coherence must pass (@phdthesis with no journal/publisher)",
+        "validate_bib_coherence must pass (@phdthesis with no journal/publisher) — run as the advisory cross-field pre-flight at /library/authenticate-bib step 2",
         "rewrite_citations --style=bracket-numeric resolves the 230 numeric brackets",
         "split_leaked_footnotes pre-pass handles OCR no-separator 38% of FNs"
       ]

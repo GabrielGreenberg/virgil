@@ -129,7 +129,7 @@ All paths below are relative to the library root.
    preserved when you omit the flag.
 
 3. **Sync `papers/<citekey>/references.bib`** through the shared helper —
-   the same one `/library/authenticate-bib` step 5 calls. Note this is the
+   the same one `/library/authenticate-bib` step 6 calls. Note this is the
    one command in this skill that does **not** interpolate `"$CITEKEY"`
    into the program text: a `$VAR` inside a heredoc/`-c` program is not
    expanded, so the key is passed as **argv** instead.

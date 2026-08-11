@@ -6,7 +6,7 @@ overwrites it with the paper's **actual cited works**. FOUR paths re-emitted
 the whole file from that one row —
 
   * `index_paper._resync_references_bib` (called unconditionally by
-    `/library/authenticate-bib` step 5),
+    `/library/authenticate-bib` step 6),
   * `index_paper`'s index-time stamp (step 8),
   * `triage_apply._write_references_bib` (the .bib-drop folder creation), and
   * `apply-bib-edit.md` step 3, which was skill PROSE telling the agent to
