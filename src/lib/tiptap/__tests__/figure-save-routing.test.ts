@@ -44,68 +44,34 @@ import StarterKit from "@tiptap/starter-kit";
 import { FigureBlock } from "@/lib/tiptap/figure-block";
 import { GraphicsBlock } from "@/lib/tiptap/graphics-block";
 import { FigureCaption } from "@/lib/tiptap/figure-caption";
-import { extractFigureAttrs, extractGraphicsAttrs } from "@/lib/figures/parse-attrs";
-import { parseInlineContent } from "@/lib/latex-parser";
+import {
+  applyFigureEnvBodyEdit,
+  applyFigureExtrasEdit,
+  applyGraphicsCommandEdit,
+} from "@/lib/figures/apply-env-body";
+import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
+import { inspectSteps } from "@/lib/tiptap/doc-structure/step-inspector";
+import type { Transaction } from "@tiptap/pm/state";
 
-// The exact body of EditorLayout.handleFigureSave, extracted so the test pins
-// the real save contract: resolve the node at `pos` IN THE OWNING editor, then
-// (figureBlock) re-extract structured attrs + re-tokenize the figureCaption
-// child, or (graphicsBlock) re-extract the command attrs. Targeting the wrong
-// editor is exactly the EX-F4-02 corruption this guards against.
+// The REAL save contract, not a transcription of it (tasks 318/319).
+//
+// This helper used to be a hand-copied body of `EditorLayout.handleFigureSave`,
+// under a comment claiming it pinned "the exact save contract" — and it had
+// already fallen behind the thing it pinned: task 263 added `shortCaption` to
+// the production writeback and not to this copy, so the suite went green over
+// a version of the contract that predates the byte it protects. A test that
+// re-implements what it tests can only pin what someone remembered to copy.
+//
+// The production sites now share ONE writeback, and this drives it. What the
+// helper still owns is the DISPATCH — which door a `pos` goes through — since
+// that is what `handleFigureSave` decides, and targeting the wrong editor is
+// the EX-F4-02 corruption these locks exist for.
 function saveFigure(editor: Editor, pos: number, newText: string): boolean {
   if (!editor || editor.isDestroyed) return false;
-  if (pos < 0 || pos >= editor.state.doc.content.size) return false;
-  const node = editor.state.doc.nodeAt(pos);
-  if (!node) return false;
-  if (node.type.name === "figureBlock") {
-    const attrs = extractFigureAttrs(newText);
-    const captionInline = parseInlineContent(attrs.caption);
-    let captionNode;
-    try {
-      captionNode = editor.state.schema.nodeFromJSON({
-        type: "figureCaption",
-        content: captionInline,
-      });
-    } catch {
-      captionNode = editor.state.schema.nodeFromJSON({
-        type: "figureCaption",
-        content: attrs.caption ? [{ type: "text", text: attrs.caption }] : [],
-      });
-    }
-    const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
-      ...node.attrs,
-      extras: attrs.extras,
-      source: attrs.source,
-      widthPercent: attrs.widthPercent,
-      sources: attrs.sources,
-      label: attrs.label,
-    });
-    const refreshed = tr.doc.nodeAt(pos);
-    if (refreshed) {
-      const inside = pos + 1;
-      if (refreshed.firstChild?.type.name === "figureCaption") {
-        const captionEnd = inside + refreshed.firstChild.nodeSize;
-        tr.replaceWith(inside, captionEnd, captionNode);
-      } else {
-        tr.insert(inside, captionNode);
-      }
-    }
-    editor.view.dispatch(tr);
-    return true;
-  }
-  if (node.type.name === "graphicsBlock") {
-    const attrs = extractGraphicsAttrs(newText.trim());
-    editor.view.dispatch(
-      editor.state.tr.setNodeMarkup(pos, undefined, {
-        ...node.attrs,
-        command: attrs ? attrs.command : newText.trim(),
-        source: attrs ? attrs.source : "",
-        widthPercent: attrs ? attrs.widthPercent : null,
-      }),
-    );
-    return true;
-  }
-  return false;
+  return (
+    applyFigureEnvBodyEdit(editor, pos, newText) ||
+    applyGraphicsCommandEdit(editor, pos, newText)
+  );
 }
 
 // `figureFloat` is the figure node's only mode flag (there is no `surface`
@@ -140,6 +106,10 @@ function mountFigure(
             label: "fig:orig",
             numbered: true,
             figureNumber: "1",
+            // A uuid, because the structural observer keys figure entries on
+            // one — an entry-less figure reports no change of any kind, which
+            // would make the two diff legs below vacuously "pass".
+            uuid: "figuuid1",
           },
           content: [
             { type: "figureCaption", content: [{ type: "text", text: args.caption }] },
@@ -304,6 +274,236 @@ describe("figure save routes to the owning editor (EX-F4-02 figure twin)", () =>
     } finally {
       main.editor.destroy();
       main.element.remove();
+    }
+  });
+});
+
+// ── tasks 318 + 319 ─────────────────────────────────────────────────────────
+// The writeback's own contract, against a REAL editor: what the popover save
+// re-threads, and what the visual chrome is allowed to touch. These are the
+// legs the hand-copied helper above could not have had — it never carried the
+// fields whose loss they pin.
+describe("figure writeback re-threads every declared fact", () => {
+  it("threads hasCaption + shortCaption back off the edited body", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "Before" },
+      "main",
+    );
+    try {
+      const pos = posOf(editor, "figureBlock");
+      expect(
+        saveFigure(
+          editor,
+          pos,
+          "\\includegraphics{a.png}\n\\caption[Short]{Long}\n\\label{fig:a}",
+        ),
+      ).toBe(true);
+      expect(attrsAt(editor, pos).shortCaption).toBe("Short");
+      expect(attrsAt(editor, pos).hasCaption).toBe(true);
+      expect(captionTextAt(editor, pos)).toBe("Long");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  // Removing the `\caption` line in the popover is a real edit: the figure
+  // becomes caption-less (and therefore unnumbered) rather than silently
+  // regaining an empty caption on the next save.
+  it("lets the popover REMOVE a caption", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "Before" },
+      "main",
+    );
+    try {
+      const pos = posOf(editor, "figureBlock");
+      // The `\label` is KEPT deliberately: a body that also dropped it would
+      // fire `changedFigures` off the label alone, and the leg would pass with
+      // the caption fact absent from the comparison entirely.
+      expect(
+        saveFigure(editor, pos, "\\includegraphics{a.png}\n\\label{fig:orig}"),
+      ).toBe(true);
+      expect(attrsAt(editor, pos).hasCaption).toBe(false);
+      expect(captionTextAt(editor, pos)).toBe("");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  // The width stepper / file picker own `extras` and nothing else. They used to
+  // rebuild the WHOLE env from a plain-text projection of the caption, so every
+  // click dropped the `[short]` bracket, flattened any citation or mark in the
+  // caption, and re-indented the body two spaces further right.
+  it("chrome width/path edits leave caption, label and provenance untouched", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "Keep me" },
+      "main",
+    );
+    try {
+      const pos = posOf(editor, "figureBlock");
+      // Seed the fields a whole-env round-trip would lose.
+      editor.view.dispatch(
+        editor.state.tr.setNodeMarkup(pos, undefined, {
+          ...editor.state.doc.nodeAt(pos)!.attrs,
+          shortCaption: "Short",
+          hasCaption: true,
+        }),
+      );
+      const before = attrsAt(editor, pos);
+      expect(
+        applyFigureExtrasEdit(
+          editor,
+          pos,
+          "\\centering\n\\includegraphics[width=0.9\\textwidth]{a.png}",
+        ),
+      ).toBe(true);
+      const after = attrsAt(editor, pos);
+      expect(after.widthPercent).toBe(90);
+      expect(after.extras).toBe(
+        "\\centering\n\\includegraphics[width=0.9\\textwidth]{a.png}",
+      );
+      expect(after.shortCaption).toBe("Short");
+      expect(after.hasCaption).toBe(true);
+      expect(after.label).toBe(before.label);
+      expect(captionTextAt(editor, pos)).toBe("Keep me");
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  // The numbering half. "Does this figure carry a caption" is a NUMBERING
+  // input, so the structural diff has to carry it — otherwise a popover
+  // caption removal left every LATER figure's on-screen number, and every
+  // `\ref` resolved from it, one too high until an unrelated structural edit
+  // came along. `emitsCaption` on `FigureEntry` is what wakes the numberer.
+  //
+  // Driven through the REAL writeback rather than a hand-built attr flip: the
+  // removal is TWO changes in one transaction (the `hasCaption` attr AND the
+  // caption child emptying), and either alone leaves the answer unchanged —
+  // which is exactly what makes a hand-written approximation of this leg pass
+  // while proving nothing.
+  it("a popover caption removal is a STRUCTURAL change the numberer can see", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "Before" },
+      "main",
+    );
+    // Tap the view so the leg inspects the transaction PRODUCTION dispatched.
+    const seen: Transaction[] = [];
+    const realDispatch = editor.view.dispatch.bind(editor.view);
+    editor.view.dispatch = (tr: Transaction) => {
+      seen.push(tr);
+      realDispatch(tr);
+    };
+    try {
+      const pos = posOf(editor, "figureBlock");
+      const before = editor.state.doc;
+      expect(figureNodeEmitsCaption(editor.state.doc.nodeAt(pos)!)).toBe(true);
+      // The `\label` is KEPT deliberately: a body that also dropped it would
+      // fire `changedFigures` off the label alone, and the leg would pass with
+      // the caption fact absent from the comparison entirely.
+      expect(
+        saveFigure(editor, pos, "\\includegraphics{a.png}\n\\label{fig:orig}"),
+      ).toBe(true);
+      expect(figureNodeEmitsCaption(editor.state.doc.nodeAt(pos)!)).toBe(false);
+      expect(seen).toHaveLength(1);
+      const diff = inspectSteps(seen[0], before, seen[0].doc);
+      expect(diff.changedFigures.map((f) => f.emitsCaption)).toEqual([false]);
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  // …while typing inside an ALREADY non-empty caption must stay structurally
+  // null: the fact is a BOOLEAN, so both sides derive equal and the numberer
+  // is not woken on a keystroke (keystroke sanctity).
+  it("typing inside a non-empty caption is NOT a structural figure change", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "Before" },
+      "main",
+    );
+    try {
+      const pos = posOf(editor, "figureBlock");
+      const tr = editor.state.tr.insertText("!", pos + 2);
+      const diff = inspectSteps(tr, editor.state.doc, tr.doc);
+      expect(diff.changedFigures.length).toBe(0);
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  // An inline ATOM has no `textContent` — a naive text projection reports ""
+  // for a caption holding only a `\cite`, so the emitter would write the
+  // caption while the numberer skipped the figure.
+  it("counts a caption that holds only an inline atom as a caption", () => {
+    const { editor, element } = mountFigure(
+      { source: "a.png", caption: "x" },
+      "main",
+    );
+    try {
+      const pos = posOf(editor, "figureBlock");
+      const fig = editor.state.doc.nodeAt(pos)!;
+      // A leaf inline node with no text — the shape every citation / inline
+      // math atom has. `textContent` is "" for it; the projection must not be.
+      expect(figureNodeEmitsCaption(fig)).toBe(true);
+      expect(
+        figureNodeEmitsCaption({
+          attrs: { hasCaption: false },
+          firstChild: {
+            type: { name: "figureCaption" },
+            childCount: 1,
+            child: () => ({ isText: false }),
+          },
+        }),
+      ).toBe(true);
+      expect(
+        figureNodeEmitsCaption({
+          attrs: { hasCaption: false },
+          firstChild: {
+            type: { name: "figureCaption" },
+            childCount: 1,
+            child: () => ({ isText: true, text: "   " }),
+          },
+        }),
+      ).toBe(false);
+    } finally {
+      editor.destroy();
+      element.remove();
+    }
+  });
+
+  it("refuses a pos that holds the other node kind", () => {
+    const fig = mountFigure({ source: "a.png", caption: "C" }, "main");
+    const gfx = mountGraphics("b.png", "main");
+    try {
+      expect(
+        applyGraphicsCommandEdit(
+          fig.editor,
+          posOf(fig.editor, "figureBlock"),
+          "\\includegraphics{z.png}",
+        ),
+      ).toBe(false);
+      expect(
+        applyFigureEnvBodyEdit(
+          gfx.editor,
+          posOf(gfx.editor, "graphicsBlock"),
+          "\\includegraphics{z.png}\n\\caption{C}",
+        ),
+      ).toBe(false);
+      expect(attrsAt(fig.editor, posOf(fig.editor, "figureBlock")).source).toBe(
+        "a.png",
+      );
+      expect(attrsAt(gfx.editor, posOf(gfx.editor, "graphicsBlock")).source).toBe(
+        "b.png",
+      );
+    } finally {
+      fig.editor.destroy();
+      fig.element.remove();
+      gfx.editor.destroy();
+      gfx.element.remove();
     }
   });
 });

@@ -39,7 +39,6 @@ export {
   insertFigureBlock,
   collectFigureBlockUuids,
   freshFigureBlockAttrs,
-  synthesizeFigureRaw,
 } from "./figure-block";
 export { FigureCaption } from "./figure-caption";
 export {

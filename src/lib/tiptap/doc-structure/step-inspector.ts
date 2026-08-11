@@ -28,6 +28,11 @@ import {
 } from "@tiptap/pm/transform";
 import { isAnchorableNode } from "@/lib/marginalia";
 import {
+  captionNodeHasContent,
+  figureEmitsCaption,
+  figureNodeEmitsCaption,
+} from "@/lib/figures/env-body";
+import {
   type AnchorEntry,
   type BlockEntry,
   type CitationEntry,
@@ -112,6 +117,7 @@ function inspectNodeAt(n: PMNode, pos: number, out: EntityBundle): void {
         label: (attrs.label as string | undefined) ?? "",
         numbered: attrs.numbered !== false,
         number: (attrs.figureNumber as number | null | undefined) ?? null,
+        emitsCaption: figureNodeEmitsCaption(n),
       });
       if (typeof attrs.label === "string" && attrs.label) {
         out.labels.set(attrs.label, {
@@ -249,7 +255,12 @@ function headingStructurallyChanged(a: HeadingEntry, b: HeadingEntry): boolean {
 }
 
 function figureStructurallyChanged(a: FigureEntry, b: FigureEntry): boolean {
-  return a.label !== b.label || a.numbered !== b.numbered;
+  return (
+    a.label !== b.label ||
+    a.numbered !== b.numbered ||
+    // A NUMBERING input since tasks 318/319 — see `FigureEntry.emitsCaption`.
+    a.emitsCaption !== b.emitsCaption
+  );
 }
 
 /**
@@ -660,7 +671,15 @@ export function inspectSteps(
       }
 
       if (typeName === "figureBlock" && newUuid) {
-        if (attr === "label" || attr === "numbered") {
+        // `hasCaption` joins the set because it decides NUMBERING (tasks
+        // 318/319); an AttrStep that flips it must reach the numberer exactly
+        // as a `numbered` flip does. The caption CONTENT is unchanged by an
+        // AttrStep, so both sides read it off the same live node.
+        if (attr === "label" || attr === "numbered" || attr === "hasCaption") {
+          const captionChild = newNode.firstChild;
+          const captionHasContent = captionNodeHasContent(
+            captionChild?.type.name === "figureCaption" ? captionChild : null,
+          );
           if (oldUuid) {
             removed.figures.set(oldUuid, {
               uuid: oldUuid,
@@ -668,6 +687,10 @@ export function inspectSteps(
               label: (oldAttrs.label as string | undefined) ?? "",
               numbered: oldAttrs.numbered !== false,
               number: (oldAttrs.figureNumber as number | null | undefined) ?? null,
+              emitsCaption: figureEmitsCaption(
+                oldAttrs.hasCaption !== false,
+                captionHasContent,
+              ),
             });
           }
           added.figures.set(newUuid, {
@@ -676,6 +699,10 @@ export function inspectSteps(
             label: (newAttrs.label as string | undefined) ?? "",
             numbered: newAttrs.numbered !== false,
             number: (newAttrs.figureNumber as number | null | undefined) ?? null,
+            emitsCaption: figureEmitsCaption(
+              newAttrs.hasCaption !== false,
+              captionHasContent,
+            ),
           });
         }
       }

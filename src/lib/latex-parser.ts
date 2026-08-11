@@ -1204,12 +1204,27 @@ function numberExamples(node: JSONContent): void {
  */
 /** Assign sequential 1-based numbers to numbered figureBlocks in document
  *  order. Mirrors the live `sectionNumbers` plugin in `Editor.tsx` so the
- *  prefix is ready on first paint without waiting for a no-op edit. */
+ *  prefix is ready on first paint without waiting for a no-op edit.
+ *
+ *  A figure only takes a number if it will carry a `\caption` — that is LaTeX's
+ *  own rule, and since task 319 stopped inventing an empty caption for a
+ *  caption-less env, honouring it here is what keeps the on-screen `Figure N:`
+ *  (and the `\ref` display text resolved from it, just below) equal to the
+ *  number the compiled PDF will print. Counting a figure LaTeX skips would put
+ *  every LATER figure's number — and every `\ref` to it — off by one.
+ *
+ *  `hasCaption` alone is the whole test HERE, unlike the live twin, which also
+ *  asks whether the caption node has content. This runs only over freshly
+ *  parsed JSON, where the caption child is built from `figAttrs.caption` and
+ *  both come from ONE scan — so `hasCaption === false` implies an empty caption
+ *  child, and the content arm could never change the answer. Writing it anyway
+ *  would be a branch no input can reach, which reads as agreement between the
+ *  two sites while proving nothing. */
 function numberFigures(node: JSONContent): void {
   let counter = 0;
   function walk(n: JSONContent) {
     if (n.type === "figureBlock") {
-      if (n.attrs?.numbered !== false) {
+      if (n.attrs?.numbered !== false && n.attrs?.hasCaption !== false) {
         counter++;
         n.attrs = { ...(n.attrs || {}), figureNumber: counter };
       } else {
@@ -1800,6 +1815,10 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
               widthPercent: figAttrs.widthPercent,
               sources: figAttrs.sources,
               label: figAttrs.label,
+              // Did the source carry a `\caption` command? The child below is
+              // ALWAYS built (see its comment), so it cannot answer this and
+              // the emitter must not be left inferring it (task 319).
+              hasCaption: figAttrs.hasCaption,
               shortCaption: figAttrs.shortCaption,
               numbered: true,
               figureNumber: null,

@@ -25,6 +25,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import { collectExampleBodyLabelsPM } from "@/lib/example-refs";
+import { figureNodeEmitsCaption } from "@/lib/figures/env-body";
 import { UUID_ATTR_SPEC, makeUuidAttr, stampTextObjectAttrs } from "@/lib/tiptap/uuid-attr";
 import { AnchorHighlightDecorator } from "@/lib/tiptap/anchor-highlight-deco";
 import { TransientHighlightDecorator } from "@/lib/tiptap/transient-highlight";
@@ -1566,12 +1567,47 @@ export function createHeadingWithLabel(
             // Walk figureBlocks in document order. Numbered figures get
             // sequential 1-based numbers; unnumbered figures get
             // `figureNumber: null` and are skipped by the counter.
+            //
+            // "Numbered" asks the SAME question the emitter asks (task 319):
+            // a float takes a number iff it carries a `\caption`, so a
+            // caption-less figure — which since 319 no longer gains a phantom
+            // `\caption{}` on save — is skipped here exactly as LaTeX skips it.
+            // Counting one the PDF won't would put every later figure's number,
+            // and the `\ref` display text resolved from it below, off by one.
+            // The caption test is `captionNodeHasContent` — an atom-aware
+            // walk of the caption's immediate children, NOT `textContent`,
+            // which reports "" for a `\cite` or `$x$` atom and would leave a
+            // citation-only caption emitted by the serializer and uncounted
+            // here. O(caption children), on a walk that already visits this
+            // node and strictly downstream of the structural gate above, so it
+            // adds nothing to a plain keystroke.
+            //
+            // The gate can SEE this answer change because `FigureEntry` carries
+            // it (`emitsCaption`) and `figureStructurallyChanged` compares it —
+            // as a boolean, so typing inside an already non-empty caption
+            // derives equal and stays structurally null, while the empty↔
+            // non-empty transition (the one that changes the number) wakes this
+            // numberer exactly once. Without that, a popover caption removal
+            // left EVERY later figure's on-screen number and every `\ref`
+            // resolved from it one too high until some unrelated structural
+            // edit happened by.
+            //
+            // Residual, stated: a figure captioned by a command this model does
+            // not know — `\captionof{figure}{…}` inside a `minipage`, or a user
+            // macro — rides in `extras`, so `hasCaption` is false and Virgil
+            // does not number it while LaTeX does. Deliberately not chased with
+            // a regex over `extras`: the commonest shape there is a `\caption`
+            // belonging to a nested `subfigure`, which LaTeX does NOT count as
+            // the figure's own, so the heuristic would be wrong in the other
+            // direction for a far more common document. Pre-319 this figure was
+            // numbered AND handed a phantom `\caption{}`, i.e. captioned twice.
             const figureUpdates: { pos: number; figureNumber: number | null }[] = [];
             const figureMap = new Map<string, string>();
             let figureCounter = 0;
             newState.doc.descendants((nd, pos) => {
               if (nd.type.name !== "figureBlock") return true;
-              const isNumbered = nd.attrs.numbered !== false;
+              const isNumbered =
+                nd.attrs.numbered !== false && figureNodeEmitsCaption(nd);
               let next: number | null = null;
               if (isNumbered) {
                 figureCounter += 1;

@@ -2591,6 +2591,21 @@ textarea,
   text-decoration: line-through;
 }
 
+/* Distinct from `.is-off` on purpose (tasks 318/319): `.is-off` means the USER
+   turned numbering off and can turn it back on, while this means LaTeX gives
+   this float no number to show — it has no `\caption` — so the toggle has
+   nothing to toggle and carries no click handler. Same look-and-mechanism-in-
+   one-declaration rule as task 316's parked cue. */
+.figure-block .figure-annotation-numbered-toggle.is-unavailable {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.figure-block .figure-annotation-numbered-toggle.is-unavailable:hover {
+  background: none;
+  color: inherit;
+}
+
 .figure-block .figure-annotation-sep {
   white-space: pre;
 }

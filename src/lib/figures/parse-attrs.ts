@@ -22,6 +22,13 @@ export interface FigureAttrs {
   sources: FigureSource[];
   /** `\caption{...}` body verbatim (LaTeX text, not parsed). Empty string if none. */
   caption: string;
+  /** Whether the env carried a `\caption` COMMAND at all — the fact `caption`
+   *  alone cannot express, since `\caption{}` and no caption both read as "".
+   *  In LaTeX they are not the same document: a caption-less figure is
+   *  unnumbered and absent from the List of Figures, while `\caption{}`
+   *  consumes a figure number and adds a blank LoF row. The emitter reads this
+   *  rather than guessing from the caption child's presence (task 319). */
+  hasCaption: boolean;
   /** Optional `\caption[<short>]` list-of-figures argument, raw/opaque. Null if
    *  the caption had no `[short]` bracket (task 263). */
   shortCaption: string | null;
@@ -407,6 +414,35 @@ export function extractCaption(envContent: string): {
   return { body: hit ? hit.body : "", short: hit ? hit.short : null };
 }
 
+/** Does this caption body DECLARE `\label{<label>}`?
+ *
+ *  The emit side has to know whether the caption's own bytes already carry the
+ *  figure's `\label` — otherwise it writes a second copy at figure level and
+ *  the user's `.tex` gains a duplicate declaration on the first save (task
+ *  318). The question looks like a substring test and is not: a caption that
+ *  merely QUOTES a label (`\caption{Write \verb|\label{fig:x}| here}`, or one
+ *  inside a `%` comment) declares nothing, so `captionTex.includes(...)` would
+ *  suppress the figure's REAL declaration and delete it from the document.
+ *  That attempt was made and reverted in task 245.
+ *
+ *  So this asks the SAME lexical scanner the extraction side asks — verbatim
+ *  and comments skipped, caption-owning sub-environments opaque — which is the
+ *  only thing that can tell a declaration from a quotation of one.
+ *
+ *  It is deliberately DERIVED at read time rather than frozen into an attr at
+ *  parse time: the caption child is live, user-editable text, so "the caption
+ *  carries this label" is a function of its current bytes. A stored copy could
+ *  not be wrong when written and could not stay right afterwards — renaming
+ *  the label, or deleting the `\label` out of the caption, would strand it.
+ *
+ *  Fails CLOSED: any shape the scan doesn't recognize reads as "not declared
+ *  here", so the figure-level `\label` is still emitted. A spurious duplicate
+ *  is a warning; a suppressed declaration is data loss. */
+export function captionDeclaresLabel(captionTex: string, label: string): boolean {
+  if (!label || !captionTex) return false;
+  return scanFigure(captionTex).labels.some((l) => l.body === label);
+}
+
 /** Extract the figure's own `\label{...}` body — the first one at figure depth
  *  (a `\label` inside the caption counts: it names the figure). Returns "" if
  *  none. A `\label` inside a nested `subfigure` belongs to that subfigure and
@@ -456,6 +492,7 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
     widthPercent: first?.widthPercent ?? null,
     sources,
     caption: scan.caption?.body ?? "",
+    hasCaption: scan.caption !== null,
     shortCaption: scan.caption?.short ?? null,
     label: scan.labels[0]?.body ?? "",
     extras: stripFigureOwnCommands(envContent, scan),

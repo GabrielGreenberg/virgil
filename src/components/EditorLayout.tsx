@@ -201,8 +201,10 @@ import { ATOM_REGISTRY, CARD_ATOM_DOM_SELECTOR } from "@/lib/tiptap/atom-registr
 import { serializeCiteCommand } from "@/lib/bib-parser";
 import { generateShortId } from "@/lib/uuid";
 import NodeEditPopover from "./NodeEditPopover";
-import { extractFigureAttrs, extractGraphicsAttrs } from "@/lib/figures/parse-attrs";
-import { parseInlineContent as parseInlineLatexForCaption } from "@/lib/latex-parser";
+import {
+  applyFigureEnvBodyEdit,
+  applyGraphicsCommandEdit,
+} from "@/lib/figures/apply-env-body";
 import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
 import { useFocusMode } from "@/hooks/useFocusMode";
@@ -2664,83 +2666,20 @@ export default function EditorLayout() {
   // mis-target / corrupt the wrong node — the very corruption the dropped
   // `figureFloat` click-suppression prevented (by making float figures inert).
   const handleFigureSave = useCallback((editor: Editor, pos: number, newText: string) => {
-    if (!editor || editor.isDestroyed) return;
-    // The popover outlives the click, so by save time the owning editor may
-    // have re-seeded (the figure float re-syncs from MAIN) and shifted `pos`
-    // past the doc end — `nodeAt` THROWS on an out-of-range pos. Guard the
-    // bounds so a stale pos is a safe no-op, never a crash. Mirrors
-    // handleMathSave.
-    if (pos < 0 || pos >= editor.state.doc.content.size) return;
-    const node = editor.state.doc.nodeAt(pos);
-    if (!node) return;
-    if (node.type.name === "figureBlock") {
-      const attrs = extractFigureAttrs(newText);
-      // Rebuild the figureCaption child node from the new caption text.
-      // The popover is one of two surfaces that can edit captions; re-
-      // tokenize the body so inline marks/citations end up as structured
-      // nodes (\cite{}, $math$, \textbf{}, etc.).
-      const captionInline = parseInlineLatexForCaption(attrs.caption);
-      let captionNode;
-      try {
-        captionNode = editor.state.schema.nodeFromJSON({
-          type: "figureCaption",
-          content: captionInline,
-        });
-      } catch {
-        // Fall back to plain text so the user's caption isn't lost on a
-        // malformed inline parse.
-        captionNode = editor.state.schema.nodeFromJSON({
-          type: "figureCaption",
-          content: attrs.caption ? [{ type: "text", text: attrs.caption }] : [],
-        });
-      }
-      const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
-        ...node.attrs,
-        extras: attrs.extras,
-        source: attrs.source,
-        widthPercent: attrs.widthPercent,
-        sources: attrs.sources,
-        label: attrs.label,
-        // Re-thread the optional `\caption[<short>]` LoF arg from the edited
-        // source so adding/changing/removing the bracket in the popover isn't
-        // silently ignored (task 263 — the parse-then-drop class, on the
-        // popover edit path).
-        shortCaption: attrs.shortCaption,
-      });
-      const refreshed = tr.doc.nodeAt(pos);
-      if (refreshed) {
-        const inside = pos + 1;
-        if (refreshed.firstChild?.type.name === "figureCaption") {
-          const captionEnd = inside + refreshed.firstChild.nodeSize;
-          tr.replaceWith(inside, captionEnd, captionNode);
-        } else {
-          tr.insert(inside, captionNode);
-        }
-      }
-      editor.view.dispatch(tr);
-    } else if (node.type.name === "graphicsBlock") {
-      const attrs = extractGraphicsAttrs(newText.trim());
-      if (attrs) {
-        editor.view.dispatch(
-          editor.state.tr.setNodeMarkup(pos, undefined, {
-            ...node.attrs,
-            command: attrs.command,
-            source: attrs.source,
-            widthPercent: attrs.widthPercent,
-          }),
-        );
-      } else {
-        // Couldn't parse — keep verbatim text on `command` so the user
-        // can fix the typo without losing their edit.
-        editor.view.dispatch(
-          editor.state.tr.setNodeMarkup(pos, undefined, {
-            ...node.attrs,
-            command: newText.trim(),
-            source: "",
-            widthPercent: null,
-          }),
-        );
-      }
+    // Tasks 318/319: this is the SOLE env-body save path for both kinds (the
+    // figure NodeView's chrome mutators patch `extras` / `command` directly and
+    // never rebuild a whole env). The attr re-thread lives in the shared
+    // writeback module, which this and the NodeView's own copy used to
+    // re-implement side by side — and had already drifted, `shortCaption`
+    // reaching only one of them.
+    //
+    // Both doors carry the bounds + kind guard internally: the popover outlives
+    // the click, so by save time the owning editor may have re-seeded (the
+    // figure float re-syncs from MAIN) and shifted `pos` past the doc end,
+    // where `nodeAt` THROWS. A stale pos is a safe no-op. (Mirrors
+    // handleMathSave.)
+    if (!applyFigureEnvBodyEdit(editor, pos, newText)) {
+      applyGraphicsCommandEdit(editor, pos, newText);
     }
   }, []);
 

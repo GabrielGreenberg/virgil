@@ -9,11 +9,7 @@ import { UUID_ATTR_SPEC } from "./uuid-attr";
 // `@/lib/storage` graph. Re-exported here under their original names so every
 // existing import path (`@/lib/tiptap/figure-block`, the barrel,
 // `FigureBlockNodeView`) keeps working unchanged.
-export {
-  FIGURE_STUB_EXTRAS,
-  freshFigureBlockAttrs,
-  synthesizeFigureRaw,
-} from "./figure-attrs";
+export { FIGURE_STUB_EXTRAS, freshFigureBlockAttrs } from "./figure-attrs";
 export type { FreshFigureBlockAttrs } from "./figure-attrs";
 // CHIP 6a: figure insertion is now ONE implementation — `figureRun` in the
 // action registry (INSERT via the shared `smartInsertBlock`, DA-2, then open the
@@ -108,6 +104,13 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
       widthPercent: { default: null, renderHTML: () => ({}) },
       sources: { default: [], renderHTML: () => ({}) },
       label: { default: "" },
+      // Did the SOURCE env carry a `\caption` command (task 319)? Provenance
+      // the always-present `figureCaption` child cannot express, and the fact
+      // the emitter + both numberers read — see `@/lib/figures/env-body`.
+      // Defaults TRUE: a figureBlock arriving without provenance (a paste, a
+      // pre-319 sidecar, a card body) keeps the historical behaviour of
+      // carrying a caption, so the unknown case can never DROP one.
+      hasCaption: { default: true, renderHTML: () => ({}) },
       // Opaque raw `\caption[<short>]` list-of-figures argument, preserved for a
       // byte-exact round-trip (task 263); null when the caption had no bracket.
       shortCaption: { default: null, renderHTML: () => ({}) },
