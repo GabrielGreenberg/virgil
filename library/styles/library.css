@@ -492,8 +492,9 @@
   border: 1px solid var(--pod-border, var(--border-light));
   border-radius: var(--pod-radius, 8px);
   /* `--pod-shadow-light` was proposed in a design-system patch that never
-     landed, so this read resolved to its fallback for a year — the literal
-     below IS the shipped value, and the var was decoration (task 170).
+     landed, so this read resolved to its fallback from the day it was
+     written — the literal below IS the shipped value, and the var was
+     decoration (task 170).
      Deliberately NOT re-pointed at `--pod-shadow`: which elevation tier this
      card belongs to is a visual decision that rides with the menu-chrome pass
      (task 295), not a phantom-token cleanup. */

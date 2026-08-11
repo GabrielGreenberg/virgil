@@ -9,15 +9,16 @@
  * That is not hypothetical — it is what this module was extracted to end
  * (task 2026-07-18-170):
  *
- *  - `--mono` and `--serif` were spelled 48 times across `library/` and two
- *    `src/` files and **defined nowhere**. `var(--mono)` with no fallback is
- *    the guaranteed-invalid value, so `font-family` became "invalid at
- *    computed-value time" and every one of those surfaces silently inherited
- *    the surrounding sans. A monospace page-picker, monospace tab labels,
- *    serif dialog headings — none of them ever rendered.
+ *  - `--mono` and `--serif` were spelled 48 times — 44 in `library/`, 4 across
+ *    three `src/` files — and **defined nowhere**. `var(--mono)` with no
+ *    fallback is the guaranteed-invalid value, so `font-family` became
+ *    "invalid at computed-value time" and every one of those surfaces silently
+ *    inherited the surrounding sans. A monospace page-picker, monospace tab
+ *    labels, serif dialog headings — none of them ever rendered.
  *  - The sans chain had three hand-spelled copies (`FloatChrome`,
  *    `FloatHeaderContent`, and `body` in `globals.css`), two of them carrying
- *    doc comments explaining that they must not drift from the third.
+ *    doc comments explaining that they must not drift from the third. The
+ *    serif chain had two (`HighlightCard` and the editor-body rule).
  *
  * So: consume these constants from `.tsx`, and the identical chain from
  * `globals.css` / `library.css` in a stylesheet. Never re-spell a chain, and

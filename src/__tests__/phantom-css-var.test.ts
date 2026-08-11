@@ -218,16 +218,19 @@ const PERMITTED_DECORATIVE_PHANTOMS: Readonly<Record<string, string>> = {
   "--input-bg": "math/figure chrome; fallback #ffffff equals --surface today",
   "--doc-title-leadin": "title lead-in height; fallback 40px is the shipped value",
 
-  // The heading-typography preference registry (`preferences-tree.ts`) covers
-  // h1–h4. The stylesheet reads h0 / h5 / h6 prefs nothing ever writes, so
-  // those levels silently ignore the user's heading font settings. Wiring the
-  // missing rows adds preference UI — a product call, filed separately.
-  "--font-headers-h0-size": "heading pref registry covers h1–h4 only; h0 unwired",
-  "--font-headers-h0-weight": "heading pref registry covers h1–h4 only; h0 unwired",
-  "--font-headers-h5-size": "heading pref registry covers h1–h4 only; h5 unwired",
-  "--font-headers-h5-weight": "heading pref registry covers h1–h4 only; h5 unwired",
-  "--font-headers-h6-size": "heading pref registry covers h1–h4 only; h6 unwired",
-  "--font-headers-h6-weight": "heading pref registry covers h1–h4 only; h6 unwired",
+  // The heading-typography preference registry (`preferences-tree.ts`:345-350)
+  // has exactly six rows: h1 / h2 / h3 × size + weight. The stylesheet reads
+  // h0 / h5 / h6 prefs nothing ever writes, so those levels silently ignore
+  // the user's heading font settings. (h4 has no pref row AND no stylesheet
+  // read — the level is simply absent from the typography system, which is
+  // why it is not a phantom here.) Wiring the missing rows adds preference
+  // UI — a product call.
+  "--font-headers-h0-size": "heading pref registry covers h1–h3 only; h0 unwired",
+  "--font-headers-h0-weight": "heading pref registry covers h1–h3 only; h0 unwired",
+  "--font-headers-h5-size": "heading pref registry covers h1–h3 only; h5 unwired",
+  "--font-headers-h5-weight": "heading pref registry covers h1–h3 only; h5 unwired",
+  "--font-headers-h6-size": "heading pref registry covers h1–h3 only; h6 unwired",
+  "--font-headers-h6-weight": "heading pref registry covers h1–h3 only; h6 unwired",
 
   // Library-silo status vocabulary, same shape as --mono/--serif but honest
   // about it. Which live token each should take is a color decision.
@@ -251,6 +254,12 @@ describe("decorative phantoms are a pinned census", () => {
   });
 
   it("every recorded phantom states a reason", () => {
+    // A length floor pins the SHAPE of the obligation, never its honesty —
+    // an inaccurate reason passes here exactly as a true one does. (This
+    // guard's own first draft said the heading registry "covers h1–h4" when
+    // it covers h1–h3 and h4 does not exist anywhere in the typography
+    // system; an adversarial reader caught it, not this assertion.) Read the
+    // reason against the code before trusting it.
     for (const [token, why] of Object.entries(PERMITTED_DECORATIVE_PHANTOMS)) {
       expect(why.length, `${token} needs a stated reason, not an empty string`).toBeGreaterThan(20);
     }

@@ -79,7 +79,7 @@ of the three while being the quietest in practice: **a `var(--token)` naming a
 token nothing defines.** With no fallback that is CSS's guaranteed-invalid
 value — the whole declaration is dropped, and for an inherited property the
 element just keeps whatever it inherited. `--mono` and `--serif` were spelled
-48 times across `library/` and two `src/` files and defined *nowhere*, so every
+48 times (44 in `library/`, 4 across three `src/` files) and defined *nowhere*, so every
 monospace page-picker, tab label and citekey, and every serif dialog heading,
 rendered in the surrounding sans for a year. With a fallback it is *decoration*:
 the fallback is the real value, and a retone never reaches it — which is how a
