@@ -739,24 +739,33 @@ function FloatingPanelInner({
         <>
           {/* Edge hit-zones — thin (6px) and fully transparent (no styling).
               L/R span full height, B spans full width. Top is intentionally
-              omitted: the header strip owns it for move/undock. */}
+              omitted: the header strip owns it for move/undock.
+
+              `aria-hidden`, and the edge's identity lives on `data-resize-edge`
+              (task 189). These carried `aria-label="Resize left edge"` etc. on
+              bare divs, whose implicit role is `generic` — which ARIA
+              PROHIBITS from being named, so no AT ever announced them: five
+              inert attributes reading as an a11y contract that did not exist.
+              Like the engine's gutters they are pointer-only (no tabIndex, no
+              key handler), so the honest statement is "decorative", not a name
+              promising an interaction. See STYLE_GUIDE "Resize gutters". */}
           <div
             data-resize-edge="left"
             onMouseDown={beginResize({ left: true })}
             className="absolute top-0 left-0 h-full w-1.5 cursor-ew-resize"
-            aria-label="Resize left edge"
+            aria-hidden
           />
           <div
             data-resize-edge="right"
             onMouseDown={beginResize({ right: true })}
             className="absolute top-0 right-0 h-full w-1.5 cursor-ew-resize"
-            aria-label="Resize right edge"
+            aria-hidden
           />
           <div
             data-resize-edge="bottom"
             onMouseDown={beginResize({ bottom: true })}
             className="absolute bottom-0 left-0 w-full h-1.5 cursor-ns-resize"
-            aria-label="Resize bottom edge"
+            aria-hidden
           />
           {/* Invisible 2-axis corner zones (RATIFIED: keep corner ergonomics,
               zero visible styling). Rendered after the edges so they win the
@@ -765,13 +774,13 @@ function FloatingPanelInner({
             data-resize-edge="bottom-left"
             onMouseDown={beginResize({ bottom: true, left: true })}
             className="absolute bottom-0 left-0 w-3 h-3 cursor-nesw-resize"
-            aria-label="Resize bottom-left corner"
+            aria-hidden
           />
           <div
             data-resize-edge="bottom-right"
             onMouseDown={beginResize({ bottom: true, right: true })}
             className="absolute bottom-0 right-0 w-3 h-3 cursor-nwse-resize"
-            aria-label="Resize bottom-right corner"
+            aria-hidden
           />
         </>
       )}

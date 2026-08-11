@@ -670,3 +670,32 @@
 .lib-viewswitch-btn[aria-pressed="false"]:hover {
   background: var(--surface-muted, var(--library-bg));
 }
+
+/* ── Library list COLUMN boundary (`.list-col-resizer`) ────────────────
+   The one engine-driven resizer in the app that deliberately does NOT wear
+   the shared `band-grip` grip pill (task 189; recorded on
+   `PERMITTED_UNCHROMED_RESIZERS` in pane-drag-guardrail.test.ts). It is a
+   list-column boundary living in the header row's own grid track — a
+   content-height row (~24-28px) — while the shared pill is a 28px lozenge
+   that grows to 40/44px on hover/drag, so adopting it here would overflow
+   and clip. The row Spacers occupy the same track in every row and paint no
+   background, so the boundary reads as invisible until the header is hovered.
+
+   What it does NOT get to fork is the divider family's COLORS: rest
+   transparent → `--edge-hover` on hover → `--drag-highlight` while the engine
+   holds `.dragging`. Pre-189 this was `--accent` (#7c5e3c) painted from React
+   mouseenter/mouseleave handlers, which also left `.dragging` inert — hover
+   and active drag were indistinguishable. Hover is the quiet stone edge
+   rather than the blue because this bar spans a whole column boundary, not a
+   short centered pill; the blue is reserved for the live gesture. */
+.list-col-resizer {
+  cursor: col-resize;
+  background: transparent;
+  transition: background 120ms ease;
+}
+.list-col-resizer:hover {
+  background: var(--edge-hover);
+}
+.list-col-resizer.dragging {
+  background: var(--drag-highlight);
+}

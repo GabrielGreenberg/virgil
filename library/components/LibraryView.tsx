@@ -974,10 +974,10 @@ export default function LibraryView({
                 </div>
                 {belowNavigator && (
                   <>
+                    {/* No role/aria-label: a gutter is pointer-only, and the
+                        engine's props carry `aria-hidden` (task 189 — see
+                        PaneResizeHandleProps + STYLE_GUIDE "Resize gutters"). */}
                     <div
-                      role="separator"
-                      aria-orientation="horizontal"
-                      aria-label="Resize My Papers pod"
                       className="drag-gap drag-gap-h band-grip"
                       {...papersResizeHandle}
                       style={{
@@ -1001,9 +1001,6 @@ export default function LibraryView({
                 )}
               </div>
               <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize Libraries navigator"
                 className="drag-gap drag-gap-v band-grip"
                 {...navResizeHandle}
               />
@@ -1022,9 +1019,6 @@ export default function LibraryView({
             {renderPanel("left")}
           </div>
           <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize library file panel"
             className="drag-gap drag-gap-v band-grip"
             {...listResizeHandle}
           />
