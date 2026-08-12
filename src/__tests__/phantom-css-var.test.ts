@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import { commentsStripped, cssCommentsStripped } from "@/lib/__tests__/_source-scan";
 
 /**
  * PHANTOM CSS VARIABLES — a `var(--token)` is a CLAIM that the token exists
@@ -102,23 +102,9 @@ function walkSource(rel: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Blank `/* … *​/` comments so a token NAMED in prose is not a definition. */
-function stripCssComments(css: string): string {
-  let out = "";
-  let i = 0;
-  while (i < css.length) {
-    if (css[i] === "/" && css[i + 1] === "*") {
-      i += 2;
-      while (i < css.length && !(css[i] === "*" && css[i + 1] === "/")) i++;
-      i += 2;
-      out += "  ";
-      continue;
-    }
-    out += css[i];
-    i++;
-  }
-  return out;
-}
+/** Blank `/* … *​/` comments so a token NAMED in prose is not a definition.
+ *  One copy for every census — see `_source-scan.ts`. */
+const stripCssComments = cssCommentsStripped;
 
 const SOURCE_FILES = [...walkSource("src"), ...walkSource("library")];
 /** Comments stripped, STRING LITERALS KEPT — every `var()` in `.tsx` lives

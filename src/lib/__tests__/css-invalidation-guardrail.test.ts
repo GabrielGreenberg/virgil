@@ -17,15 +17,22 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { cssCommentsStripped } from "./_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GLOBALS = path.resolve(HERE, "../../app/globals.css");
 
 /** Strip CSS comments — globals.css documents its RETIRED `:has()` selectors
- *  in prose (8 mentions today), and doctrine must never read as a selector. */
-function stripCssComments(css: string): string {
-  return css.replace(/\/\*[\s\S]*?\*\//g, "");
-}
+ *  in prose (8 mentions today), and doctrine must never read as a selector.
+ *
+ *  ONE copy of the scanner for every census (task 227's rule, task 326's
+ *  fold): the private regex this replaced BLANKED nothing and DELETED the
+ *  comment, so `:has/* c *​/(` would have been joined into a live-looking
+ *  `:has(` — and an UNTERMINATED comment at EOF survived it intact. The
+ *  shared scanner is length-preserving and newline-preserving; every use
+ *  below is a substring test or a `split("}")`, neither of which can tell
+ *  the difference on well-formed input. */
+const stripCssComments = cssCommentsStripped;
 
 describe("css-invalidation guardrail — globals.css", () => {
   const raw = readFileSync(GLOBALS, "utf8");

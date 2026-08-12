@@ -103,3 +103,41 @@ export const codeOnly = (src: string) => strip(src, false);
 /** Comments blanked, literals intact — for a needle whose match lives inside
  *  the quotes. */
 export const commentsStripped = (src: string) => strip(src, true);
+
+/**
+ * The CSS twin: blank `/* … *​/` comments so a token merely NAMED in prose is
+ * neither a definition nor a read. CSS has no line comment and no string
+ * escape worth modelling here, so it is a much smaller scanner than `strip` —
+ * but it is the same rule, and this is the THIRD census to need it
+ * (`phantom-css-var`, `atom-chrome-tokens`, and task 326's reverse census),
+ * which by the rule the TS twin's header states earns one copy rather than one
+ * per caller.
+ *
+ * NEWLINES ARE PRESERVED (blanked to spaces, `\n` kept), unlike the two
+ * hand-rolled copies this replaces, which collapsed each comment to two
+ * characters. Nothing consumed line numbers through those — `atom-chrome`
+ * slices by index and `phantom-css-var` reported CSS hits at a line number
+ * that had silently drifted by every multi-line comment above them. Callers
+ * that count declarations or match braces are unaffected either way; a caller
+ * that reports `file:line` is now honest.
+ */
+export function cssCommentsStripped(css: string): string {
+  let out = "";
+  let i = 0;
+  while (i < css.length) {
+    if (css[i] === "/" && css[i + 1] === "*") {
+      i += 2;
+      out += "  ";
+      while (i < css.length && !(css[i] === "*" && css[i + 1] === "/")) {
+        out += css[i] === "\n" ? "\n" : " ";
+        i++;
+      }
+      if (i < css.length) out += "  ";
+      i += 2;
+      continue;
+    }
+    out += css[i];
+    i++;
+  }
+  return out;
+}

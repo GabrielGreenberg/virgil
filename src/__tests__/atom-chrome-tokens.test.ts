@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ATOM_REGISTRY, type AtomMeta } from "@/lib/tiptap/atom-registry";
 import { DERIVED_CSS, PREF_TO_CSS } from "@/lib/preferences-tree";
+import { cssCommentsStripped } from "@/lib/__tests__/_source-scan";
 import { DEFAULT_PREFS, deriveLight } from "@/hooks/usePreferences";
 
 /**
@@ -46,23 +47,9 @@ const read = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");
 /** Every stylesheet the app ships. `globals.css` `@import`s the library one. */
 const STYLESHEETS = ["src/app/globals.css", "library/styles/library.css"] as const;
 
-/** Blank `/* … *​/` comments so a literal NAMED in prose is not a declaration. */
-function stripCssComments(css: string): string {
-  let out = "";
-  let i = 0;
-  while (i < css.length) {
-    if (css[i] === "/" && css[i + 1] === "*") {
-      i += 2;
-      while (i < css.length && !(css[i] === "*" && css[i + 1] === "/")) i++;
-      i += 2;
-      out += "  ";
-      continue;
-    }
-    out += css[i];
-    i++;
-  }
-  return out;
-}
+/** Blank `/* … *​/` comments so a literal NAMED in prose is not a declaration.
+ *  One copy for every census — see `_source-scan.ts`. */
+const stripCssComments = cssCommentsStripped;
 
 interface Rule {
   file: string;
