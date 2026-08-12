@@ -26,8 +26,11 @@ export interface EditorPreferences {
   // Editor > Code & Math
   codeBackground: string;
   codeBlockBackground: string;
+  /** Ink for rendered math (KaTeX glyphs) — read by `--math-color`. Its former
+   *  sibling `mathPrefixColor` was retired in task 326: it promised to color
+   *  "$ delimiters and prefixes", and `renderMath` runs KaTeX with
+   *  `output: "html"`, so no delimiter element exists to paint. */
   mathColor: string;
-  mathPrefixColor: string;
 
   // Editor > Inline Elements
   accentColor: string;

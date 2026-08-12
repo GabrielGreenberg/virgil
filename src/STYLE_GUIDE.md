@@ -152,6 +152,26 @@ The token scales:
   censuses each registry kind's rest rule for raw literals AND checks every
   token it reads resolves to a live preference — so a new atom kind inherits
   both halves the moment its registry row lands.
+- **Rendered math ink** (`--math-color`, pref `mathColor`, shipped `#6b4fa0`):
+  the one atom whose chrome is not a pill — KaTeX glyphs, painted by a `color`
+  on `.inline-math` / `.display-math` / `.math-popover-preview`. KaTeX's own
+  stylesheet declares `color` on nothing and draws its non-glyph marks from
+  `currentColor` two ways — `border-color` on `.katex *` (the fraction bar is a
+  border-bottom) and `fill/stroke` on `.katex svg` (the sqrt radical is an SVG
+  path) — so the wrapper's color is the whole mechanism. It prints in the
+  user's ink: the print block flattens only the two CHIP atoms
+  (`.citation-node`, `.label-ref-node`) to `color: inherit`, while the non-chip
+  colored atoms (footnote marker, LaTeX comment) already print in theirs.
+  **A preference is a promise that some
+  pixel reads it**: this pref shipped fully plumbed — field, default, dialog
+  row, `PREF_TO_CSS`, first-paint seed — and with no reader for its whole life,
+  so the picker was an inert control (task 326). Its sibling `mathPrefixColor`
+  ("$ delimiters and prefixes") was RETIRED rather than wired, because
+  `renderMath` runs KaTeX with `output: "html"` and no delimiter survives into
+  the DOM — there was nothing it could ever have painted. Guard:
+  [src/__tests__/inert-preference-controls.test.ts](__tests__/inert-preference-controls.test.ts)
+  runs the direction `phantom-css-var` cannot — every preference token has a
+  reader, and every labelled dialog row moves a pixel.
 - **Drag glow** (`--drag-glow-outline` / `--drag-glow-line` / `--drag-glow-knob`
   / `--drag-ring-faint`, plus `--drag-outline-border`): the halo/ring layers
   around a drag affordance, each `color-mix`-DERIVED from `--drag-highlight`.
@@ -1337,7 +1357,9 @@ Eight kinds, each with its own token group:
 
 - Footnote marker (superscript red), citation (warm-yellow brackets),
   LaTeX comment (steel-blue %), comment Mode B (sky underline), inline
-  math (mono purple), AI request marker (sky star), suggestion mark
+  math (purple KaTeX glyphs — `--math-color`, live since task 326; this
+  line described the intended look for a year while the rendered math
+  inherited the body ink), AI request marker (sky star), suggestion mark
   (amber highlight), linked anchor (invisible until hover).
 
 Selection-from-card on inline atoms: 2px ring in

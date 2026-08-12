@@ -220,8 +220,18 @@
   --blockquote-text: #6b6560;
   --code-bg: #f0eeeb;
   --code-block-bg: #f5f3f0;
+  /* Rendered-math ink. KaTeX's own stylesheet sets `color` on NOTHING, and
+     draws its two non-glyph marks from `currentColor` by two different
+     mechanisms — `border-color: currentColor` on `.katex *` (the fraction bar
+     is a `.frac-line` border-bottom) and `fill/stroke: currentColor` on
+     `.katex svg` (the sqrt radical is an SVG path, not a border). Both resolve
+     from `color`, which is why one `color` on the math wrapper reaches every
+     glyph AND every rule.
+     Read by `.inline-math` / `.display-math` / `.math-popover-preview` below.
+     Its retired sibling `--math-prefix-color` ("$ delimiters and prefixes")
+     had no element to paint: `renderMath` runs KaTeX with `output: "html"`,
+     so no delimiter survives into the DOM (task 326). */
   --math-color: #6b4fa0;
-  --math-prefix-color: #a090c0;
 
   /* ── Warm amber scale ─────────────────────────────────────────────
      Citation, bibliography, and quote backgrounds consolidate here.
@@ -456,7 +466,6 @@
   --code-bg: #f0eeeb;
   --code-block-bg: #f5f3f0;
   --math-color: #6b4fa0;
-  --math-prefix-color: #a090c0;
   --comment-color: #93c5fd;
   --latex-comment-color: #7191b0;
   --citation-color: #6b6245;
@@ -2260,7 +2269,35 @@ textarea,
   margin-top: 1.5em;
 }
 
-/* Math nodes — rendered via KaTeX; click opens MathPopover for editing. */
+/* Math nodes — rendered via KaTeX; click opens MathPopover for editing.
+ *
+ * `color` is the READER for the `mathColor` preference (Editor › Code & Math,
+ * "Math text color"). Task 326: the pref was plumbed end to end — interface,
+ * shipped default, dialog row, PREF_TO_CSS, first-paint seed — and NOTHING
+ * read the token, so the picker had never done anything. KaTeX declares no
+ * `color` of its own, so setting it on the wrapper is what reaches the glyphs;
+ * its fraction bars (`.katex *` → `border-color: currentColor`) and its sqrt
+ * radicals (`.katex svg` → `fill/stroke: currentColor`) resolve from the same
+ * ink. `.math-popover-preview` (the live edit preview, which renders KaTeX
+ * directly with no `.inline-math` wrapper) takes it too, so the preview shows
+ * the ink the document will get. Error spans keep KaTeX's own `errorColor`
+ * inline style, which wins over this.
+ *
+ * PRINT, deliberately unscoped: math prints in the user's ink. The @media
+ * print block flattens exactly two inline atoms to `color: inherit` —
+ * `.citation-node` and `.label-ref-node` — and its own comment says why: they
+ * "lose the chip border and tinted background so they read as plain prose."
+ * That is a rule about CHIPS, not about pref ink on paper; the non-chip
+ * colored atoms (`.footnote-marker` superscript red, `.latex-comment` steel
+ * blue) already print in theirs. Math is a glyph atom, so it joins the
+ * majority. Recorded here because the rule is unscoped and the choice would
+ * otherwise read as an oversight. */
+.inline-math,
+.display-math,
+.math-popover-preview {
+  color: var(--math-color);
+}
+
 .inline-math {
   display: inline-block;
   cursor: pointer;

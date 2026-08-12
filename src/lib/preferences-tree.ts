@@ -144,7 +144,6 @@ export const PREFERENCES_TREE: PrefNode[] = [
           { type: "color", key: "codeBackground", label: "Code background", description: "Fill behind inline code spans" },
           { type: "color", key: "codeBlockBackground", label: "Code block background", description: "Fill behind fenced code blocks" },
           { type: "color", key: "mathColor", label: "Math text color", description: "Color of rendered math expressions" },
-          { type: "color", key: "mathPrefixColor", label: "Math prefix color", description: "Color of $ delimiters and prefixes" },
         ],
       },
       {
@@ -291,7 +290,6 @@ export const PREF_TO_CSS: CssMapping[] = [
   { key: "codeBackground", cssVar: "--code-bg", isColor: true },
   { key: "codeBlockBackground", cssVar: "--code-block-bg", isColor: true },
   { key: "mathColor", cssVar: "--math-color", isColor: true },
-  { key: "mathPrefixColor", cssVar: "--math-prefix-color", isColor: true },
 
   // Inline elements
   { key: "accentColor", cssVar: "--accent", isColor: true },

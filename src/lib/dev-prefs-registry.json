@@ -84,7 +84,6 @@
     "--code-bg":                   { "source": "editor.codeBackground" },
     "--code-block-bg":             { "source": "editor.codeBlockBackground" },
     "--math-color":                { "source": "editor.mathColor" },
-    "--math-prefix-color":         { "source": "editor.mathPrefixColor" },
     "--comment-color":             { "source": "editor.commentColor" },
     "--latex-comment-color":       { "source": "editor.latexCommentColor" },
     "--citation-color":            { "source": "editor.citationColor" },

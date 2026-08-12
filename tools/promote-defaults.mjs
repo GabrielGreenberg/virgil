@@ -49,11 +49,78 @@ function applyWhitelist(target, source, whitelist) {
   return next;
 }
 
-/** Replace every key present in `source`; leave others intact. */
-function applyAll(target, source) {
+/**
+ * Replace every key the TARGET already declares; IGNORE keys it does not.
+ *
+ * The snapshot supplies VALUES, never vocabulary. Gabriel's localStorage blob
+ * is written by `loadPrefs`'s `{ ...DEFAULT_PREFS, ...JSON.parse(raw) }` and
+ * re-serialized whole, so a preference retired from the interface is never
+ * pruned from his storage — and the mirror POSTs that blob verbatim. Copying
+ * every source key therefore RESURRECTS a retired preference into the shipped
+ * defaults on the next cron tick, which `check-prefs-coverage` cannot see (it
+ * asserts interface ⊆ defaults, so an extra key in the JSON is not a failure)
+ * and `sync-defaults.sh` cannot see (its gate is `JSON.parse`, deliberately no
+ * tsc and no tests) — and it commits and pushes to main unattended.
+ *
+ * That is not hypothetical: `aiMarkerText`/`aiMarkerBg`/`aiMarkerBorder` were
+ * retired from `EditorPreferences` and from the defaults JSON in `1c0c52be`,
+ * and the routine promote commit `ffa7dfe0` put all three back into the JSON
+ * the next day, where they sat unread until task 326 deleted them again.
+ *
+ * Both `replace-all` targets (the only two: this file and
+ * `panel-theme.defaults.json`) are closed vocabularies in TRACKED SOURCE, so a
+ * legitimately NEW key is always already present in the target and survives
+ * this rule untouched. What holds each closed is a TEST, not a type — say so
+ * precisely, because the obvious answer is wrong in both cases:
+ *   - `usePreferences.defaults.json`: `check-prefs-coverage` check 1 (every
+ *     `EditorPreferences` key must appear here). NOT tsc — `DEFAULT_PREFS` is
+ *     an `as` cast (usePreferences.ts), which cannot see a missing key.
+ *   - `panel-theme.defaults.json`: the hand-written `FROZEN_THEME_KEYS` set in
+ *     `panel-theme-key-freeze.test.ts`, which asserts the JSON's key set
+ *     EXACTLY. `DEFAULT_PANEL_COLORS` is likewise a cast
+ *     (`defaultPanelColorsJson as Record<PanelThemeKey, string>`), so the type
+ *     annotation proves nothing — the same thing `print.ts` already says out
+ *     loud about its own `as PrintOptions`. (Precisely: that test closes the
+ *     JSON's key set, which is what this rule needs. It does NOT pin the
+ *     `PanelThemeKey` union to the JSON, so a new union member with no JSON
+ *     row is invisible to it — but such a member is unreachable anyway, since
+ *     `CARD_THEMES` folds over the JSON and every `CARD_REGISTRY.themeKey`
+ *     must be frozen.)
+ *
+ * The REGRESSION this rule accepts, stated rather than hidden: a preference
+ * added to `EditorPreferences` and forgotten in the defaults JSON used to be
+ * healed silently by the next promote tick (it arrived via Gabriel's blob).
+ * Now it is dropped every tick, and `sync-defaults.sh` does NOT run
+ * `check-prefs-coverage` (its only gate is `JSON.parse`), so under launchd the
+ * sole signal is the log line below. That trade is deliberate: acquiring
+ * VOCABULARY from one developer's browser is how a retired pref comes back
+ * from the dead, and a shipped default that no interface declares is worse
+ * than a loud missing one. Run `npm run test:prefs` when adding a preference.
+ *
+ * Dropped keys are LOGGED rather than silently skipped.
+ */
+function applyAll(target, source, label) {
   const next = { ...target };
+  const ignored = [];
   for (const [key, value] of Object.entries(source)) {
+    // `Object.hasOwn`, not `key in target`: `in` consults the prototype chain,
+    // so a snapshot key spelled `constructor` / `toString` / `valueOf` would
+    // read as DECLARED and be written into the shipped defaults — the exact
+    // inverse of this rule. `label` is required for the same reason the mode
+    // argument in `bridgeCardAiRequestFlag` is: the log line below is the only
+    // signal this mechanism emits, and a defaulted "" would silently strip the
+    // filename out of it.
+    if (!Object.hasOwn(target, key)) {
+      ignored.push(key);
+      continue;
+    }
     next[key] = value;
+  }
+  if (ignored.length) {
+    console.log(
+      `  ${label}: ignored ${ignored.length} snapshot key(s) the shipped defaults do not declare` +
+        ` (retired or unknown) — ${ignored.join(", ")}`,
+    );
   }
   return next;
 }
@@ -102,7 +169,7 @@ function main() {
         next = applyWhitelist(cur, src, entry.whitelist ?? []);
         break;
       case "replace-all":
-        next = applyAll(cur, src);
+        next = applyAll(cur, src, entry.defaultsFile);
         break;
       case "print-options":
         next = applyPrintOptions(cur, src);
