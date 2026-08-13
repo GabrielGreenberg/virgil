@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import type { CutterGoal } from "@/lib/types";
-import { Input } from "@/components/field-primitives";
+import { PanelGoalStrip } from "@/panels/_shared/PanelGoalStrip";
 
-interface CutterGoalStripProps {
+interface CutterStripProps {
   goal: CutterGoal | null;
   currentWords: number;
   /** Second arg is the current word count — used only to capture the baseline
@@ -15,124 +14,42 @@ interface CutterGoalStripProps {
 
 const fmt = (n: number) => n.toLocaleString();
 
+/**
+ * The Cutter's adapter over the shared `PanelGoalStrip` (task 286) — it owns
+ * the cut-goal ARITHMETIC and the strings, and no chrome at all.
+ *
+ * Progress is measured against the baseline captured when the goal was set
+ * (`goal.initialWords`), not against the target alone: the bar answers "how
+ * much of the cut have I made", so it fills as words LEAVE the document.
+ *
+ * An empty draft is IGNORED here (the `onCommit(null)` seam): clearing a cut
+ * goal discards `initialWords`, and that baseline is unrecoverable — ✕ is the
+ * deliberate affordance for it. Revisions answers the same seam the other way.
+ */
 export function CutterGoalStrip({
   goal,
   currentWords,
   onSetGoal,
   onClearGoal,
-}: CutterGoalStripProps) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    if (editing) inputRef.current?.focus();
-  }, [editing]);
-
-  const startEditing = () => {
-    setDraft(goal ? String(goal.target) : "");
-    setEditing(true);
-  };
-
-  const commit = () => {
-    const target = parseInt(draft.trim(), 10);
-    if (Number.isFinite(target) && target >= 0) {
-      onSetGoal(target, currentWords);
-    }
-    setEditing(false);
-  };
-
-  const cancel = () => {
-    setEditing(false);
-    setDraft("");
-  };
-
-  if (editing) {
-    return (
-      <div className="px-3 py-1.5 flex items-center gap-2 text-[11px] border-b border-edge-subtle">
-        <span className="text-[var(--muted)]">{fmt(currentWords)} words</span>
-        <Input
-          ref={inputRef}
-          type="number"
-          density="dense"
-          min={0}
-          inputMode="numeric"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              commit();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              cancel();
-            }
-          }}
-          onBlur={commit}
-          placeholder="goal"
-          ink="strong"
-          className="ml-auto w-20 px-1.5 py-0.5 text-[11px]"
-        />
-      </div>
-    );
-  }
-
-  if (!goal) {
-    return (
-      <div className="px-3 py-1.5 flex items-center gap-2 text-[11px] border-b border-edge-subtle">
-        <span className="text-[var(--muted)]">{fmt(currentWords)} words</span>
-        <button
-          type="button"
-          onClick={startEditing}
-          className="ml-auto text-[var(--muted)] hover:text-ink-strong cursor-pointer rounded px-1.5 py-0.5 hover-on-light"
-          data-hint="Set goal"
-        >
-          + goal
-        </button>
-      </div>
-    );
-  }
-
-  const totalToCut = Math.max(0, goal.initialWords - goal.target);
-  const cutSoFar = Math.max(0, goal.initialWords - currentWords);
-  const leftToCut = Math.max(0, currentWords - goal.target);
-  const reached = currentWords <= goal.target;
-  const progress = totalToCut === 0 ? 1 : Math.min(1, cutSoFar / totalToCut);
-  const pct = Math.round(progress * 100);
+}: CutterStripProps) {
+  const totalToCut = goal ? Math.max(0, goal.initialWords - goal.target) : 0;
+  const cutSoFar = goal ? Math.max(0, goal.initialWords - currentWords) : 0;
+  const leftToCut = goal ? Math.max(0, currentWords - goal.target) : 0;
+  const reached = !!goal && currentWords <= goal.target;
 
   return (
-    <div className="px-3 py-1.5 border-b border-edge-subtle">
-      <div className="flex items-center gap-2 text-[11px] mb-1">
-        <span className={reached ? "text-emerald-700" : "text-ink-body"}>
-          {reached ? "goal reached" : `${fmt(leftToCut)} words to cut`}
-        </span>
-        <button
-          type="button"
-          onClick={startEditing}
-          className="ml-auto text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light"
-          data-hint="Edit goal"
-        >
-          edit
-        </button>
-        <button
-          type="button"
-          onClick={onClearGoal}
-          className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light"
-          data-hint="Clear goal"
-          aria-label="Clear goal"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="h-1.5 w-full rounded-full bg-edge-subtle overflow-hidden">
-        <div
-          className={`h-full ${reached ? "bg-emerald-500" : "bg-[var(--accent)]"} transition-[width] duration-200`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="mt-1 text-[10px] text-[var(--muted-light)]">
-        {fmt(currentWords)} / {fmt(goal.target)}
-      </div>
-    </div>
+    <PanelGoalStrip
+      summary={`${fmt(currentWords)} words`}
+      hasGoal={!!goal}
+      reached={reached}
+      statusLabel={reached ? "goal reached" : `${fmt(leftToCut)} words to cut`}
+      footer={goal ? `${fmt(currentWords)} / ${fmt(goal.target)}` : ""}
+      progress={totalToCut === 0 ? 1 : Math.min(1, cutSoFar / totalToCut)}
+      initialDraft={goal ? String(goal.target) : ""}
+      onCommit={(target) => {
+        if (target != null) onSetGoal(target, currentWords);
+      }}
+      onClear={onClearGoal}
+    />
   );
 }

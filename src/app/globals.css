@@ -429,6 +429,30 @@
   --danger-muted: var(--footnote-500);  /* #b45757 — conflict / warning ink, delete-hover fill */
   --danger-strong: #b8261a;             /* strongest destructive ink+border: error text, chrome-btn hover */
 
+  /* ── Positive / attained roles ────────────────────────────────────
+     The affirmative counterpart of the destructive family above: the
+     look a surface takes when a thing the user was working toward is
+     DONE — a goal met, a suggestion accepted. Two rungs, because that
+     is what the surfaces need: a solid FILL and an INK that reads on a
+     light panel.
+
+     Values pinned to what the app already painted (emerald-500 /
+     emerald-700), so adopting the token is a zero-diff swap — the same
+     rule the status-dot family below states.
+
+     Deliberately NOT merged with `--status-ok` (#22c55e), which the
+     `--danger-strong` comment's merge test would ask about. That token
+     is a member of a TRAFFIC LIGHT: it means "ok" only in opposition to
+     `--status-warn` / `--status-danger` in the same glyph, and its
+     value is chosen against those two. These are standalone
+     affirmatives shown with no red or yellow sibling in view. Same
+     hue family, different statement — and unlike the two darks that
+     merge above, both of these have live consumers today, so a merge
+     would be a visual change, not a consolidation. If a future surface
+     shows both at once, revisit here. */
+  --positive: #10b981;         /* solid positive fill: goal-reached bar, accepted status dot (≈ emerald-500) */
+  --positive-strong: #047857;  /* positive ink on a light panel: the "goal reached" label (≈ emerald-700) */
+
   /* Status dots (traffic-light) — the semantic triple every red/green/yellow
      status affordance reads from (the Virgil-bar AI-status dot today; other
      status glyphs can converge here). Values pinned to their prior hexes so

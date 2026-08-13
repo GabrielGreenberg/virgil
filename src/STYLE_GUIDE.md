@@ -242,6 +242,18 @@ The token scales:
   keeps painting blue after the user retints the accent — the fill moves and its
   halo doesn't. Same rule as Library edge below: derive from the token, never
   re-spell its channels.
+- **Positive / attained** (`--positive` fill, `--positive-strong` ink): the
+  affirmative counterpart of the destructive family — the look a surface takes
+  when a thing the user was working toward is DONE. Two consumers today, and
+  the pair is the point: the shared `PanelGoalStrip`'s goal-reached bar + label
+  and the `accepted` suggestion status dot, which is the same statement on a
+  different surface. Values pinned to the emerald-500 / emerald-700 both
+  previously spelled raw, so adoption was a zero-diff swap. Deliberately NOT
+  merged with `--status-ok`: that green is a member of a traffic light and
+  means "ok" only against `--status-warn` / `--status-danger` in the same
+  glyph, while these are shown with no red or yellow sibling in view (globals.css
+  states the test). Any new "done / met / accepted" chrome consumes THIS pair —
+  never a raw `bg-emerald-*`, which the panel-chrome guard below now refuses.
 - **Library edge** (`--library-edge`): the SSOT for every Library-surface
   page edge — tab silhouette strokes, the panel/body frame border, NavPod.
   DERIVED, not a literal: `color-mix(in oklab, var(--library-bg) 82%, #000)`,
@@ -267,7 +279,22 @@ Forbidden in new code: `text-stone-*`, `border-stone-*`,
 `bg-stone-*-with-opacity`, hex literals in components, `bg-blue-*` /
 `bg-emerald-*` / `bg-red-*` in panel chrome, and **literal corner radii**
 (`borderRadius: 6`, `border-radius: 0.375rem`, `rounded-[6px]`) — use the
-radius scale below. The guard `npm run check:radius` enforces this.
+radius scale below. The guard `npm run check:radius` enforces the radius half.
+
+The **palette half is enforced too**, since task 286 — and it was unenforced
+prose until then, which is how one banned `bg-emerald-500` grew to three sites
+in one card family with CI green.
+[panel-chrome-palette-guardrail.test.ts](panels/__tests__/panel-chrome-palette-guardrail.test.ts)
+censuses every raw Tailwind palette utility (`bg-`/`text-`/`border-`/… ×
+`emerald`/`blue`/`red`/`amber`/… × a numeric step) in `src/panels/**` plus the
+two shared panel/field primitives, and fails any that is not on
+`PERMITTED_RAW_PALETTE_LITERALS` — the pre-existing set, keyed `file :: literal`
+(not per line: line numbers churn on every unrelated edit above them, so a
+line-keyed list would fail for reasons that have nothing to do with colour) and
+each carrying the reason it survives plus the task that owns draining it. **The list may only
+shrink**: a new literal is TOKENIZE-it, never a new entry. The census is
+deliberately wider than the three families the prose bans, because the drift is
+one of habit rather than of hue.
 
 That ban is on the **declaration, not the file**: a radius authored as CSS
 inside a `.tsx` string (`el.style.cssText = "…;border-radius:6px;…"`), as a
