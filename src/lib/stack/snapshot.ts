@@ -307,29 +307,22 @@ export function snapshotTextObject(
 }
 
 // ── Card snapshot ─────────────────────────────────────────────────────
-/** Side-channel data the snapshot helper needs to attach citation
- *  bib sidecars. Optional — when absent, citation snapshots
- *  carry only the citation ref itself. */
-export interface CardSnapshotCtx {
-  /** Resolve a bib citekey to its full entry (for citations). */
-  getBibEntry?: (key: string) => BibEntry | undefined;
-  /** Resolve a bib entry's user-authored annotation (the bib-review note)
-   *  by citekey. Annotations live in a separate per-doc `annotations.json`
-   *  sidecar, NOT on the `BibEntry` — so bibliography/citation snapshots must
-   *  pull them through here or a cross-doc pull loses them silently. Returns
-   *  "" / undefined when the entry has no annotation. */
-  getAnnotation?: (key: string) => string | undefined;
-}
-
-/** Build a card snapshot for a given kind. The card record is deep-
- *  cloned and any per-doc references (links, paragraphs) are kept on
- *  the snapshot — the pull spec strips them when materializing a fresh
- *  card. */
+/**
+ * Build a card snapshot for a given kind. The card record is deep-cloned and
+ * any per-doc references (links, paragraphs) are kept on the snapshot — the
+ * pull spec strips them when materializing a fresh card.
+ *
+ * **No bib resolution happens here** (task 235). It used to, through a
+ * `CardSnapshotCtx` only the citation/bibliography arms consulted — which is
+ * why the three CONTENT payloads, built by the helpers above with no ctx at
+ * all, shipped bib-incomplete. The referenced bibliography is resolved once for
+ * every payload family at the stack-ADD door (`addStackItem` → `withBibCarry`,
+ * lib/stack/bib-carry.ts), so a snapshot helper is a pure serializer again.
+ */
 export function snapshotCard(
   cardKind: StackCardKind,
   data: unknown,
   source: { docId: string | null; docTitle?: string },
-  ctx?: CardSnapshotCtx,
 ): StackItem | null {
   if (!data || typeof data !== "object") return null;
   const cloned = deepClone(data) as Record<string, unknown>;
@@ -345,40 +338,12 @@ export function snapshotCard(
     case "footnote":
       card = { cardKind, data: cloned as unknown as FootnoteRef };
       break;
-    case "citation": {
-      const cit = cloned as unknown as CitationRef;
-      const bibEntries: BibEntry[] = [];
-      const bibAnnotations: Record<string, string> = {};
-      if (ctx?.getBibEntry && Array.isArray(cit.keys)) {
-        for (const k of cit.keys) {
-          const e = ctx.getBibEntry(k);
-          if (e) {
-            bibEntries.push(deepClone(e));
-            // Carry the entry's annotation (keyed by its own citekey) so the
-            // pull can re-attach it in the destination doc's sidecar.
-            const ann = ctx.getAnnotation?.(e.key);
-            if (ann) bibAnnotations[e.key] = ann;
-          }
-        }
-      }
-      card = {
-        cardKind,
-        data: cit,
-        ...(bibEntries.length > 0 ? { bibEntries } : {}),
-        ...(Object.keys(bibAnnotations).length > 0 ? { bibAnnotations } : {}),
-      };
+    case "citation":
+      card = { cardKind, data: cloned as unknown as CitationRef };
       break;
-    }
-    case "bibliography": {
-      const entry = cloned as unknown as BibEntry;
-      const annotation = ctx?.getAnnotation?.(entry.key);
-      card = {
-        cardKind,
-        data: entry,
-        ...(annotation ? { annotation } : {}),
-      };
+    case "bibliography":
+      card = { cardKind, data: cloned as unknown as BibEntry };
       break;
-    }
     case "todo":
       card = { cardKind, data: cloned as unknown as TodoItem };
       break;

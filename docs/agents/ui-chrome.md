@@ -251,7 +251,9 @@ Pull-from-stack flow (thumbnail → editor):
 3. On release at a valid placement, the spec dispatches by payload kind. Cards materialize via the `ctx.stack: StackPullApi` bag (see `DropCtx` in [src/components/drop-mode/types.ts](../../src/components/drop-mode/types.ts)) — each method creates a fresh entity with a new id (paste-as-new).
 4. The stack item is **kept** (`postDrop: "keep"`); pulls are copy, not pop.
 
-Snapshot stripping: `snapshotSelection` / `snapshotParagraph` / `snapshotHeadingSection` recursively strip `linkedAnchor`, `footnoteRef`, `citationRef` marks (cross-doc-bound), and replace `attrs.uuid` so a fresh uuid is regenerated on pull. Citation snapshots additionally carry sidecar bib entries (`StackCardSnapshot.bibEntries`) so the destination doc can upsert any missing keys.
+Snapshot stripping: `snapshotSelection` / `snapshotParagraph` / `snapshotHeadingSection` recursively strip `linkedAnchor`, `footnoteRef`, `citationRef` marks (cross-doc-bound), and replace `attrs.uuid` so a fresh uuid is regenerated on pull.
+
+Bib completeness (task 235): whatever a payload's `\cite` atoms reference rides `StackItem.bib` — ONE carrier for every payload family, resolved at the single add door (`addStackItem` → `withBibCarry`, [src/lib/stack/bib-carry.ts](../../src/lib/stack/bib-carry.ts)) and discharged on the single pull door (`withBibUpsert` wraps every resolved plan). The snapshot helpers are pure serializers; the retired per-card `bibEntries`/`bibAnnotations`/`annotation` fields are lifted off legacy blobs by `normalizeStackItemBib` at the read door. See AGENTS.md "The transport half".
 
 Hidden in zen mode (`viewPrefs.zenMode`).
 

@@ -42,6 +42,7 @@ import type {
   StackItem,
   StackPayload,
 } from "@/lib/stack/types";
+import { applyBibCarry } from "@/lib/stack/bib-carry";
 import { generateShortId } from "@/lib/uuid";
 import { remintNestedAtomIds } from "@/lib/inline-content";
 import { rangeSliceToBlocks } from "@/lib/linked-anchor-range";
@@ -256,23 +257,67 @@ export const stackPullDropSpec: DropSpec = plannedDropSpec({
     // arm refuses quietly rather than throwing — the payload comes from a
     // persisted envelope `readEnvelope` validates only shallowly, and the
     // hit-test has already refused it a placement (`placementsForPayload`).
-    switch (p.kind) {
-      case "text":
-        return planInsertText(main, placement, p);
-      case "paragraph":
-        return planInsertParagraph(main, placement, p);
-      case "heading":
-        return planInsertHeading(main, placement, p);
-      case "card":
-        return planCardDrop(item, placement, ctx);
-      default: {
-        const unhandled: never = p;
-        void unhandled;
-        return null;
+    const inner = ((): DropPlan | null => {
+      switch (p.kind) {
+        case "text":
+          return planInsertText(main, placement, p);
+        case "paragraph":
+          return planInsertParagraph(main, placement, p);
+        case "heading":
+          return planInsertHeading(main, placement, p);
+        case "card":
+          return planCardDrop(item, placement, ctx);
+        default: {
+          const unhandled: never = p;
+          void unhandled;
+          return null;
+        }
       }
-    }
+    })();
+    if (!inner) return null;
+    return withBibUpsert(item, ctx, inner);
   },
 });
+
+/**
+ * **The bib half of every pull, discharged in ONE place (task 235).**
+ *
+ * Wrapping the resolved plan — rather than repeating an upsert inside each
+ * payload branch — is the whole of the fix's pull side: the card branch was
+ * bib-complete since task 069 and the three CONTENT branches silently were not,
+ * although a `\cite` rides a text slice just as readily as it rides a citation
+ * card. Here no branch can be forgotten, because no branch is asked.
+ *
+ * The upsert runs inside `commit`, never in the plan: a plan is pure and runs
+ * twice per gesture (once per door), so writing the destination's `.bib` from
+ * it would upsert on the classify pass too.
+ *
+ * **A carry we cannot discharge REFUSES.** `ctx.stack` is absent only in a host
+ * with no citation/bib hooks wired at all; landing the content there anyway is
+ * exactly the dangling-`\cite` outcome this task closes, so the pull becomes a
+ * `no-op` decision instead — the same "decline rather than fall back" the card
+ * branch already takes for a missing sub-bag, and it costs the user nothing
+ * (a pull is a copy; the item stays on the Stack).
+ */
+function withBibUpsert(
+  item: StackItem,
+  ctx: import("../types").DropCtx,
+  inner: DropPlan,
+): DropPlan | null {
+  const carry = item.bib;
+  if (!carry) return inner;
+  const stack = ctx.stack;
+  if (!stack) return null;
+  return {
+    commit: () => {
+      // Before the payload lands, so a pulled cite is never momentarily
+      // dangling. Idempotent — a same-doc pull re-upserts entries that are
+      // already there and writes nothing new.
+      applyBibCarry(carry, stack);
+      inner.commit();
+    },
+  };
+}
 
 function lookup(cardKey: string): StackItem | null {
   const sep = cardKey.indexOf(":");
@@ -609,15 +654,11 @@ function planCardDrop(
       case "citation":
         return () => void stack.addCitation(card.data);
       case "bibliography":
-        return () => {
-          stack.upsertBibEntry(card.data);
-          // Re-attach the user-authored annotation carried by the snapshot so a
-          // cross-doc pull doesn't silently lose it. Only fires when the
-          // snapshot carried one, so a same-doc pull writes nothing spurious.
-          if ("annotation" in card && card.annotation) {
-            stack.setAnnotation(card.data.key, card.annotation);
-          }
-        };
+        // The entry IS this card's payload, so it is upserted here as the
+        // card's own action, not as a reference. Its user-authored annotation
+        // rides `item.bib` like every other referenced key's does and is
+        // re-attached by `withBibUpsert` before this runs (task 235).
+        return () => void stack.upsertBibEntry(card.data);
       case "todo":
         return () => void stack.addTodo(paragraphId, { text: card.data.text });
       case "archive":
@@ -658,25 +699,10 @@ function planCardDrop(
   })();
   if (!create) return null;
 
-  return {
-    commit: () => {
-      // Citation — upsert bib sidecars first so the destination doc can
-      // resolve cite keys, then re-attach their user-authored annotations
-      // (which live in a per-doc sidecar, not on the BibEntry, so they'd be
-      // dropped by a cross-doc pull otherwise).
-      if (card.cardKind === "citation") {
-        const entries = "bibEntries" in card ? card.bibEntries : undefined;
-        if (entries) {
-          for (const e of entries) stack.upsertBibEntry(e);
-        }
-        const anns = "bibAnnotations" in card ? card.bibAnnotations : undefined;
-        if (anns) {
-          for (const [key, html] of Object.entries(anns)) {
-            if (html) stack.setAnnotation(key, html);
-          }
-        }
-      }
-      create();
-    },
-  };
+  // No bib handling here (task 235). A citation card's referenced entries +
+  // annotations used to be upserted in this commit, from fields only the card
+  // payload carried — which is why a `\cite` riding a TEXT slice arrived
+  // dangling. Both now ride `item.bib` and are discharged by `withBibUpsert`
+  // for every payload family alike.
+  return { commit: create };
 }

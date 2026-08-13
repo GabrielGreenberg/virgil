@@ -612,6 +612,9 @@ function stackCtx(editor: Editor, withApi: boolean): {
     addFootnote: rec("addFootnote"),
     addCitation: rec("addCitation"),
     upsertBibEntry: rec("upsertBibEntry"),
+    // A READ, not a factory: deliberately unrecorded, so the per-kind
+    // derivations below stay a census of what a branch CREATES (task 235).
+    getAnnotation: () => "",
     setAnnotation: rec("setAnnotation"),
   };
   return {
