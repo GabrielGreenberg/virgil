@@ -259,16 +259,50 @@ describe("withBibCarry / applyBibCarry — the two doors", () => {
       { entries: [SMITH, JONES], annotations: { smith2020: "<p>n</p>", jones1990: "" } },
       {
         upsertBibEntry: (e) => calls.push(`upsert:${e.key}`),
+        getAnnotation: () => "",
         setAnnotation: (k) => calls.push(`annotate:${k}`),
       },
     );
     expect(calls).toEqual(["upsert:smith2020", "upsert:jones1990", "annotate:smith2020"]);
   });
 
+  it("ONE conflict rule for both halves: what the destination has, it KEEPS", () => {
+    // `upsertBibEntry` is insert-if-absent by its own contract, so the
+    // destination keeps its own `BibEntry` for a key it already knows — and an
+    // overwriting note would then describe the entry that was DISCARDED, on a
+    // work that may merely share the citekey. A carry fills empty slots.
+    const calls: string[] = [];
+    applyBibCarry(
+      { entries: [SMITH], annotations: { smith2020: "<p>Doc A's note.</p>" } },
+      {
+        upsertBibEntry: (e) => calls.push(`upsert:${e.key}`),
+        getAnnotation: (k) => (k === "smith2020" ? "<p>Doc B's own note.</p>" : ""),
+        setAnnotation: (k, html) => calls.push(`annotate:${k}=${html}`),
+      },
+    );
+    expect(calls).toEqual(["upsert:smith2020"]);
+  });
+
+  it("a same-doc pull writes NOTHING at all (idempotent in both halves)", () => {
+    // `usePersistentState.update` bails only on referential equality, so a
+    // re-write of a byte-identical note would still schedule a sidecar persist.
+    const writes: string[] = [];
+    applyBibCarry(
+      { entries: [SMITH], annotations: { smith2020: "<p>Smith note.</p>" } },
+      {
+        upsertBibEntry: () => {},
+        getAnnotation: () => "<p>Smith note.</p>",
+        setAnnotation: (k) => writes.push(k),
+      },
+    );
+    expect(writes).toEqual([]);
+  });
+
   it("an absent carry writes nothing", () => {
     const calls: string[] = [];
     applyBibCarry(undefined, {
       upsertBibEntry: (e) => calls.push(e.key),
+      getAnnotation: () => "",
       setAnnotation: (k) => calls.push(k),
     });
     expect(calls).toEqual([]);

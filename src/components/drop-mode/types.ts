@@ -356,16 +356,20 @@ export interface StackPullApi {
   addCitation: (seed: CitationRef) => CitationRef;
   /** Upsert a bib entry. No-op when the key already exists. */
   upsertBibEntry: (entry: BibEntry) => void;
+  /** The destination doc's CURRENT bib annotation for a citekey (`""` ⇒ none).
+   *  Read before writing, because a carry fills empty slots and never restates
+   *  doc A's bibliography over doc B's — see `applyBibCarry` (task 235). */
+  getAnnotation: (key: string) => string;
   /** Re-attach a user-authored bib annotation (the bib-review note) in the
    *  destination doc's per-doc `annotations.json` sidecar, keyed by citekey.
-   *  Called after `upsertBibEntry` on a bibliography/citation pull so the
+   *  Called after `upsertBibEntry` on a pull whose payload carried one, so the
    *  note survives a cross-doc round-trip (annotations don't ride the
-   *  `BibEntry`). The CALL is conditional — the branches invoke it only when the
-   *  snapshot carried an annotation, so a same-doc pull writes nothing spurious
-   *  — but the METHOD is required like every other member (task 259): optional
-   *  meant a host could silently drop the user's bib note on every cross-doc
-   *  pull, which is the same shape as a missing per-kind factory, one field
-   *  smaller. */
+   *  `BibEntry`). The CALL is conditional — `applyBibCarry` invokes it only for
+   *  a carried note the destination doesn't already have, so a same-doc pull
+   *  writes nothing spurious — but the METHOD is required like every other
+   *  member (task 259): optional meant a host could silently drop the user's
+   *  bib note on every cross-doc pull, which is the same shape as a missing
+   *  per-kind factory, one field smaller. */
   setAnnotation: (key: string, html: string) => void;
 }
 

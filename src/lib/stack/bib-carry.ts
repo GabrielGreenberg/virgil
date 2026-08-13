@@ -75,10 +75,23 @@ export interface StackBibCtx {
   getAnnotation: (key: string) => string | undefined;
 }
 
-/** What a pull needs to discharge a carry — the two `StackPullApi` members it
- *  uses, structurally, so this module stays a leaf. */
+/**
+ * What a pull needs to discharge a carry — the `StackPullApi` members it uses,
+ * structurally, so this module stays a leaf.
+ *
+ * `getAnnotation` is here because **both halves of a carry must resolve a
+ * conflict the SAME way**, and only one of them can answer that on its own:
+ * `upsertBibEntry` is insert-if-absent (the destination's own `BibEntry` wins,
+ * by its own contract), so a `setAnnotation` that overwrites would apply the
+ * SOURCE's note to the entry the destination KEPT — the user's authored note
+ * replaced, in a sidecar write with no undo, on a work that may not even be the
+ * one the note describes (author-year citekeys collide across papers). Reading
+ * first is what lets {@link applyBibCarry} state one rule for both.
+ */
 export interface BibCarrySink {
   upsertBibEntry: (entry: BibEntry) => void;
+  /** The destination's current note for a citekey; `""`/undefined ⇒ none. */
+  getAnnotation: (key: string) => string | undefined;
   setAnnotation: (key: string, html: string) => void;
 }
 
@@ -212,10 +225,23 @@ export function withBibCarry(item: StackItem, ctx: StackBibCtx): StackItem {
 }
 
 /**
- * Discharge a carry into the DESTINATION doc: upsert every referenced entry,
- * then re-attach every annotation. Runs before the payload lands, so a cite is
- * never momentarily dangling, and is idempotent (`upsertBibEntry` is a no-op on
- * an existing key), which is what makes a same-doc pull write nothing new.
+ * Discharge a carry into the DESTINATION doc: fill in every referenced entry,
+ * then every annotation. Runs before the payload lands, so a cite is never
+ * momentarily dangling.
+ *
+ * **ONE conflict rule for both halves: what the destination already has, it
+ * keeps.** A carry exists to make a pulled `\cite` RESOLVABLE — to fill an
+ * empty slot — never to restate doc A's bibliography over doc B's. So an entry
+ * whose key is already known is left alone (`upsertBibEntry`'s own contract)
+ * and an annotation is written only where the destination has none. The
+ * asymmetric alternative is worse than it looks: since the upsert declines, the
+ * destination keeps its OWN entry, and an overwriting note would land on a work
+ * that merely shares the citekey — replacing authored prose in a sidecar write
+ * with no undo and no warning.
+ *
+ * Idempotent in both halves, which is what makes a same-doc pull write nothing
+ * at all: `usePersistentState.update` bails only on referential equality, so a
+ * re-`setAnnotation` of a byte-identical note would still schedule a persist.
  */
 export function applyBibCarry(
   carry: StackBibCarry | undefined,
@@ -224,7 +250,9 @@ export function applyBibCarry(
   if (!carry) return;
   for (const entry of carry.entries) sink.upsertBibEntry(entry);
   for (const [key, html] of Object.entries(carry.annotations)) {
-    if (html) sink.setAnnotation(key, html);
+    if (!html) continue;
+    if (sink.getAnnotation(key)) continue;
+    sink.setAnnotation(key, html);
   }
 }
 

@@ -42,12 +42,14 @@ function bibEntry(overrides: Partial<BibEntry> = {}): BibEntry {
   };
 }
 
-/** A fake StackPullApi that records the calls we care about. */
-function fakeStack() {
+/** A fake StackPullApi that records the calls we care about. `existing` seeds
+ *  the DESTINATION's own bib notes, which a carry must never overwrite. */
+function fakeStack(existing: Record<string, string> = {}) {
   const upserts: BibEntry[] = [];
   const annotations: Array<[string, string]> = [];
   const api = {
     upsertBibEntry: (e: BibEntry) => upserts.push(e),
+    getAnnotation: (k: string) => existing[k] ?? "",
     setAnnotation: (k: string, html: string) => annotations.push([k, html]),
     addCitation: (seed: CitationRef) => seed,
     // Unused-by-these-tests members left as no-op stubs.
@@ -185,16 +187,25 @@ describe("stack-pull — citation bib annotations re-attach (task 069 cluster)",
     expect(annotations).toEqual([["smith2020", "<p>Smith note.</p>"]]);
   });
 
-  it("REFUSES rather than landing content it cannot make resolvable", () => {
-    // A host with no citation/bib hooks wired (`ctx.stack` absent) cannot
-    // discharge the carry, and landing the payload anyway is exactly the
-    // dangling-`\cite` outcome 235 closes. A pull is a copy, so refusing costs
-    // the user nothing — the item stays on the Stack.
+  it("KEEPS the destination's own note — a carry fills empty slots, it does not restate", () => {
+    // The two halves resolve a conflict the same way: `upsertBibEntry` is
+    // insert-if-absent, so doc B keeps its own `smith2020` entry — and a note
+    // written over it would describe the entry that was DISCARDED. Sidecar
+    // write, no undo, no warning; so the carried note stands down.
     readStackItemMock.mockReturnValue(citationItem());
-    const { ctx, placement } = ctxFor(undefined);
-
-    expect(stackPullDropSpec.classifyDrop(placement, CARD_KEY, ctx)).toEqual({
-      kind: "no-op",
+    const { api, upserts, annotations } = fakeStack({
+      smith2020: "<p>Doc B's own note.</p>",
     });
+    const { ctx, placement } = ctxFor(api);
+
+    stackPullDropSpec.applyDrop(placement, CARD_KEY, ctx);
+
+    expect(upserts.map((e) => e.key)).toEqual(["smith2020", "jones1990"]);
+    expect(annotations).toEqual([]);
   });
 });
+
+// The refusal `withBibUpsert` itself owns (a carry with no `ctx.stack`) is
+// pinned in `stack-content-bib-carry.test.ts`, against a CONTENT payload: for a
+// CARD payload `planCardDrop`'s own pre-321 `if (!stack) return null` refuses
+// first, so a card-shaped leg here would pass without reaching the new code.

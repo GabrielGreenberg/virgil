@@ -136,7 +136,7 @@ function liveEditor(doc: PMNode, selection?: { from: number; to: number }) {
  *  the pull writes into it. `landedCiteAt` snapshots how many cite atoms the
  *  doc held when the first entry was upserted — the ordering guarantee (a
  *  pulled cite is never momentarily dangling). */
-function destination() {
+function destination(existingNotes: Record<string, string> = {}) {
   const doc = schema.node("doc", null, [schema.node("paragraph", { uuid: "dest-1" }, [schema.text("dest")])]);
   const harness = liveEditor(doc);
   const upserts: BibEntry[] = [];
@@ -155,6 +155,7 @@ function destination() {
       if (citesAtFirstUpsert === null) citesAtFirstUpsert = countCites();
       upserts.push(e);
     },
+    getAnnotation: (k: string) => existingNotes[k] ?? "",
     setAnnotation: (k: string, html: string) => annotations.push([k, html]),
     addNote: vi.fn(),
     addHighlight: vi.fn(),
@@ -316,6 +317,62 @@ describe("cross-doc stack pull — a cite riding CONTENT carries its bibliograph
 
     expect(dest.upserts).toEqual([]);
     expect(dest.annotations).toEqual([]);
+  });
+
+  it("KEEPS a note the DESTINATION already authored for that key", () => {
+    // `upsertBibEntry` is insert-if-absent, so doc B keeps its own entry for a
+    // key it knows — and a note written over doc B's would then describe the
+    // entry that was discarded, on a work that may merely share the citekey
+    // (author-year keys collide across papers routinely). Same rule, both
+    // halves: what the destination has, it keeps.
+    const source = liveEditor(sourceDoc());
+    readStackItemMock.mockReturnValue(
+      addToStack(snapshotParagraph(source.editor, "para-1", SRC)),
+    );
+
+    const dest = destination({ smith2020: "<p>Superseded — see Lee 2024.</p>" });
+    pullInto(dest);
+
+    expect(dest.annotations).toEqual([]);
+    // The entry still travels — filling doc B's `.bib` is the whole point, and
+    // its own upsert declines on a key it already knows.
+    expect(dest.upserts.map((e) => e.key)).toEqual(["smith2020"]);
+    expect(dest.countCites()).toBe(1);
+  });
+
+  it("REFUSES a carry it cannot discharge — and lands the same payload when it can", () => {
+    // The refusal `withBibUpsert` itself owns. Deliberately a CONTENT payload:
+    // for a CARD payload `planCardDrop`'s own pre-321 `if (!stack) return null`
+    // refuses first, so a card-shaped leg would pass without reaching this code.
+    const source = liveEditor(sourceDoc());
+    readStackItemMock.mockReturnValue(
+      addToStack(snapshotParagraph(source.editor, "para-1", SRC)),
+    );
+
+    const dest = destination();
+    const placement = {
+      kind: "between-blocks",
+      editor: dest.editor,
+      insertPos: dest.getState().doc.content.size,
+    } as unknown as Placement;
+
+    // No `ctx.stack`: landing the content anyway is exactly the dangling-cite
+    // outcome this task closes, and a pull is a copy — refusing costs nothing.
+    expect(
+      stackPullDropSpec.classifyDrop(placement, CARD_KEY, {
+        mainEditor: dest.editor,
+      } as unknown as DropCtx),
+    ).toEqual({ kind: "no-op" });
+    expect(dest.countCites()).toBe(0);
+
+    // The control, so the leg cannot pass because the plan failed for some
+    // other reason: the same payload at the same placement WITH a stack applies.
+    expect(
+      stackPullDropSpec.classifyDrop(placement, CARD_KEY, {
+        mainEditor: dest.editor,
+        stack: dest.stack,
+      } as unknown as DropCtx),
+    ).toEqual({ kind: "apply" });
   });
 
   it("a key the SOURCE doc cannot resolve is not invented in the destination", () => {

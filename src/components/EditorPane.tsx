@@ -2686,6 +2686,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       addCitation: (seed) =>
         citationsHook.addCitation(seed.command, undefined, true),
       upsertBibEntry: (entry) => citationsHook.addBibEntry(entry),
+      // Read before write: a carry fills an empty slot and never restates the
+      // source doc's bibliography over this one's (task 235).
+      getAnnotation: (key) => annotationsHook.getAnnotation(key),
       // Re-attach a bib annotation on a cross-doc bib/citation pull (task
       // 069). Annotations live in the per-doc `annotations.json` sidecar, not
       // on the BibEntry, so the stack snapshot carries them separately and the
