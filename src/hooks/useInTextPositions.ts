@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { getLinkedTextObjectIds } from "@/links/links";
 import type { Link } from "@/links/_shared/types";
+import { DATA_LINK_CARD, linkCardIdSelector } from "@/links/link-dom-contract";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
@@ -263,7 +264,7 @@ export function approxTopForPos(
   return a.top + t * (b.top - a.top);
 }
 
-const DEFAULT_ENTRY = (id: string) => `[data-link-card$=":${id}"]`;
+const DEFAULT_ENTRY = (id: string) => linkCardIdSelector(id);
 
 /** Optional pin: force one card's `top` to a fixed pod-relative Y. Cards
  *  AFTER the pinned card in source-anchor-order cascade off the pinned
@@ -997,7 +998,7 @@ export function useInTextPositions(
       computeRafRef.current = requestAnimationFrame(measure);
     };
     const obs = new ResizeObserver(onResize);
-    const bareAttr = typeof entry === "string" ? entry : "data-link-card";
+    const bareAttr = typeof entry === "string" ? entry : DATA_LINK_CARD;
     panelEl.querySelectorAll(`[${bareAttr}]`).forEach((el) => obs.observe(el));
     panelEl.addEventListener("focusout", onFocusOut);
     return () => {

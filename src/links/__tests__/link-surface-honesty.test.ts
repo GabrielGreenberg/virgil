@@ -35,11 +35,48 @@
 // point (which is where deleting it starts anyway).
 //
 // The DOM contract half is the same law read forwards: what survived the cut is
-// `link-dom-contract.ts`, and it only stays honest if the producers actually
-// emit through it rather than hand-writing the attribute names beside it.
+// `link-dom-contract.ts`, and it only stays honest if the call sites actually go
+// through it rather than hand-writing the attribute names beside it.
+//
+// TASK 204 — the half task 202 left open, and WHY it left it open. 202 closed
+// the PRODUCERS and wrote "READS stay free" into the leg below, on the stated
+// ground that `[data-link-card="citation:${id}"]` reads better than
+// `` `[${DATA_LINK_CARD}="${key}"]` ``. That reason was correct and the
+// conclusion drawn from it was not: the module owned two rungs of a three-rung
+// ladder — the attribute NAMES and the token GRAMMAR — and not the SELECTOR,
+// which is the only form either is ever used in at a query site. With no third
+// rung the only alternative to the literal really was the ugly one, so the
+// missing rung made the wrong answer the better-reading one. The sibling
+// grammar had all three the whole time (`cardPopKey` / `parseAnyKey` /
+// `cardDomSelector`, the last pinned byte-exact by
+// `card-key-seams-contract.test.ts`).
+//
+// Two live consequences it left behind, neither visible to the 202 legs:
+//   - a COMPOSITE address hand-copied — `marker-clicks.ts` and
+//     `panel-selection.ts` each spelled the footnote and citation entry
+//     selectors, byte for byte, in two files with no shared owner;
+//   - the PARSER half of the grammar with a second speller —
+//     `useTextHoverBridge` read `getAttribute("data-link-card")` and then did
+//     `indexOf(":")` + two slices, which is `parseLinkCardKey` re-typed. The
+//     token leg below matches BUILD shapes only, so a hand parse was
+//     structurally invisible to it. Both failure modes are the same one: the
+//     query stops MATCHING rather than stops compiling.
+// So the name census is now TOTAL over both silos (writes AND reads AND bare
+// `getAttribute` names), and a parse leg sits beside the build leg.
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import path from "node:path";
+import {
+  DATA_LINK_CARD,
+  DATA_LINK_ID,
+  DATA_LINK_KIND,
+  linkCardIdSelector,
+  linkCardKey,
+  linkCardSelector,
+  linkIdSelector,
+  linkKindSelector,
+  parseLinkCardKey,
+} from "../link-dom-contract";
 
 const SRC = path.resolve(__dirname, "../..");
 const LINKS = path.join(SRC, "links");
@@ -325,43 +362,86 @@ describe("the link DOM contract has ONE speller", () => {
       "JSX `data-link-card={linkCardKey(\"citation\", …)}` — same reason.",
   };
 
-  it("the producer list is DERIVED — nothing writes a contract attribute off-list", () => {
-    // The leg the first draft of this file lacked, and the one that catches the
-    // shape that actually recurs: PRODUCERS below is hand-kept, so a NEW inline
-    // atom shipping `renderHTML` with `"data-link-id": id, "data-link-kind":
-    // "figure"` would simply not be read by the legs after it — CI green, two
-    // spellers, exactly the drift the law exists to prevent. So the census finds
-    // its own subjects: any file that WRITES one of these attribute names as a
-    // literal (object key, JSX attribute, or setAttribute) must be a known
-    // producer or carry a justification. READS stay free — a `[data-link-card=…]`
-    // selector may spell the name, and `globals.css` cannot do otherwise.
+  /** Occurrences that MENTION an attribute name inside a message string —
+   *  prose that happens not to be a comment, so the census (which strips
+   *  comments and keeps strings, deliberately, because the drift lives in
+   *  strings) still sees it. An entry is a claim that the occurrence is not
+   *  OPERATIVE: nothing queries or writes with it, so a rename makes the
+   *  sentence stale rather than wrong.
+   *
+   *  Keyed by a distinctive FRAGMENT of the prose, not by the file — and that
+   *  is the whole design. `PERMITTED_LITERAL_ATTR_WRITERS` above is file-scoped
+   *  because it exempts a file for the same shape it justifies (a JSX write).
+   *  These entries justify a READ mention, so a file-scoped exemption would
+   *  hand back the WRITE coverage the file already had — and one of the two
+   *  files is `links.ts`, the module whose four query sites task 204 converted
+   *  and therefore the likeliest place for a fifth to appear. The stale-entry
+   *  leg cannot see that drift either: it re-tests the same needle, which an
+   *  operative selector satisfies exactly as well as prose does. So the
+   *  exemption is per-LINE. Reformatting a message costs a one-line update
+   *  here, which is the loud failure, not the silent one. */
+  const PERMITTED_ATTR_NAME_MENTIONS: Record<string, ReadonlyArray<{ fragment: string; why: string }>> = {
+    "cards/legacy-token-crosswalk.ts": [
+      {
+        fragment: "rule reads",
+        why: "A dev-only `console.error` naming the CSS rule the crosswalk feeds ([data-link-card^=\"revision-comment:\"]). Diagnostic prose, queried by nothing.",
+      },
+    ],
+    "links/links.ts": [
+      {
+        fragment: "may match no CSS rule",
+        why: "A dev-only `console.error` in the legacy-kind fallback. Same: prose in a message.",
+      },
+    ],
+  };
+
+  it("NOTHING in TypeScript spells a contract attribute name — write, query or read", () => {
+    // Widened from the 202 shape (writes only) to the whole surface, because
+    // the reads were where both silent failure modes actually met. A file that
+    // needs the name interpolates the constant (`[${DATA_LINK_ID}]`, a presence
+    // test that reads fine); a file that needs a name PLUS a value calls a
+    // selector builder, which is what the module was missing.
+    //
+    // The message still distinguishes writes from reads, because the remedy
+    // differs: a WRITER emits through the contract and joins PRODUCERS, a
+    // READER takes a selector builder.
     const WRITE_SHAPES = [
       /["'`]data-link-(?:id|kind|card)["'`]\s*:/, //            { "data-link-id": x }
       /(^|[^[])\bdata-link-(?:id|kind|card)\s*=\s*[{]/, //      <El data-link-id={x}
       /setAttribute\(\s*["'`]data-link-(?:id|kind|card)/, //    el.setAttribute("data-link-id", x)
     ];
+    const NAME = /data-link-(?:id|kind|card|ids)/;
     const offenders: string[] = [];
     for (const file of ALL_FILES) {
-      if (file.includes("__tests__")) continue;
+      if (file.includes("__tests__") || /\.test\.tsx?$/.test(file)) continue;
+      if (file === path.join(LINKS, "link-dom-contract.ts")) continue; // the declaration
       const rel = path.relative(SRC, file).split(path.sep).join("/");
-      if (PRODUCERS.includes(rel) || PERMITTED_LITERAL_ATTR_WRITERS[rel]) continue;
+      if (PERMITTED_LITERAL_ATTR_WRITERS[rel]) continue; // whole-file: see above
+      const mentions = PERMITTED_ATTR_NAME_MENTIONS[rel] ?? [];
       const text = callableText(readFileSync(file, "utf8"));
       for (const line of text.split("\n")) {
-        if (WRITE_SHAPES.some((re) => re.test(line))) {
-          offenders.push(`${rel}: ${line.trim()}`);
-        }
+        if (!NAME.test(line)) continue;
+        const isWrite = WRITE_SHAPES.some((re) => re.test(line));
+        // A mention exemption is per-LINE and never excuses a WRITE: the
+        // justification is "nothing queries or writes with it".
+        if (!isWrite && mentions.some((m) => line.includes(m.fragment))) continue;
+        offenders.push(`${rel} [${isWrite ? "WRITE" : "READ"}]: ${line.trim()}`);
       }
     }
     expect(
       offenders,
-      "writes a data-link-* attribute name as a literal. Emit it from " +
-        "@/links/link-dom-contract (and add the file to PRODUCERS), or — if it is " +
-        "JSX, which has no computed-attribute syntax — justify it in " +
-        "PERMITTED_LITERAL_ATTR_WRITERS.",
+      "spells a data-link-* attribute name in TypeScript. A [WRITE] emits it " +
+        "from @/links/link-dom-contract (and joins PRODUCERS) — or, if it is JSX, " +
+        "which has no computed-attribute syntax, justifies itself in " +
+        "PERMITTED_LITERAL_ATTR_WRITERS. A [READ] takes a selector builder " +
+        "(linkIdSelector / linkKindSelector / linkCardSelector / " +
+        "linkCardIdSelector), or interpolates the bare " +
+        "constant where there is no value to interleave. globals.css is the one " +
+        "boundary that cannot participate, and it is not censused here.",
     ).toEqual([]);
   });
 
-  it("the literal-writer allowlist has no stale entries", () => {
+  it("the attribute-name allowlists have no stale entries", () => {
     for (const rel of Object.keys(PERMITTED_LITERAL_ATTR_WRITERS)) {
       const full = path.join(SRC, rel);
       expect(existsSync(full), `${rel} is allowlisted but does not exist`).toBe(true);
@@ -369,6 +449,28 @@ describe("the link DOM contract has ONE speller", () => {
         /data-link-(?:id|kind|card)/.test(callableText(readFileSync(full, "utf8"))),
         `${rel} is allowlisted but no longer writes a contract attribute`,
       ).toBe(true);
+    }
+    // The mention list rots the same way, and being per-LINE is what makes
+    // checking it meaningful: the fragment must still be present AND the line
+    // carrying it must still be the prose the entry describes. A file-scoped
+    // version could only re-test the same needle the census uses, which an
+    // operative selector satisfies exactly as well as a sentence does — so it
+    // would keep reading fresh after the justification had become a query.
+    for (const [rel, mentions] of Object.entries(PERMITTED_ATTR_NAME_MENTIONS)) {
+      const full = path.join(SRC, rel);
+      expect(existsSync(full), `${rel} is allowlisted but does not exist`).toBe(true);
+      const lines = callableText(readFileSync(full, "utf8")).split("\n");
+      for (const { fragment } of mentions) {
+        const hit = lines.find((l) => l.includes(fragment));
+        expect(
+          hit,
+          `${rel} is allowlisted for a mention fragment ("${fragment}") it no longer contains — drop or update the entry`,
+        ).toBeTruthy();
+        expect(
+          /data-link-(?:id|kind|card)/.test(hit ?? ""),
+          `${rel}: the line holding "${fragment}" no longer names a contract attribute — the exemption is doing nothing`,
+        ).toBe(true);
+      }
     }
   });
 
@@ -442,6 +544,87 @@ describe("the link DOM contract has ONE speller", () => {
       "spells a `<cardKind>:<cardId>` token beside data-link-card by hand — " +
         "build it with linkCardKey (@/links/link-dom-contract), emit or query alike",
     ).toEqual([]);
+  });
+
+  it("nothing hand-PARSES the grammar either — the leg the build census cannot be", () => {
+    // `HAND_BUILT_TOKEN` above matches interpolation shapes, so it sees a token
+    // being CONSTRUCTED and is blind to one being TAKEN APART. That blindness
+    // was live: `useTextHoverBridge` read the attribute and then ran
+    // `card.indexOf(":")` + `slice(0, idx)` + `slice(idx + 1)` — `parseLinkCardKey`
+    // re-typed, four lines from a module that exports it, with every 202 leg
+    // green (task 204).
+    //
+    // Shape, and its stated limit: a colon-split whose PRECEDING window names
+    // the card attribute or a `linkCard` value. A window is coarser than a
+    // scope, and deliberately so — the alternative is parsing declarations to
+    // find the enclosing function, which buys precision this needle does not
+    // need. The window is anchored BEHIND the split because that is the order
+    // the defect reads in (get the attribute, then take it apart).
+    const SPLIT = /\.(?:indexOf|lastIndexOf|split)\(\s*["'`]:["'`]\s*\)/;
+    const CARD_VALUE = /data-link-card|DATA_LINK_CARD|\blinkCard\b/;
+    const WINDOW = 10;
+    const offenders: string[] = [];
+    for (const file of ALL_FILES) {
+      if (file.includes("__tests__") || /\.test\.tsx?$/.test(file)) continue;
+      if (file === path.join(LINKS, "link-dom-contract.ts")) continue; // the parser
+      const lines = callableText(readFileSync(file, "utf8")).split("\n");
+      for (const [i, line] of lines.entries()) {
+        if (!SPLIT.test(line)) continue;
+        const before = lines.slice(Math.max(0, i - WINDOW), i + 1).join("\n");
+        if (!CARD_VALUE.test(before)) continue;
+        offenders.push(
+          `${path.relative(SRC, file).split(path.sep).join("/")}:${i + 1}: ${line.trim()}`,
+        );
+      }
+    }
+    expect(
+      offenders,
+      "takes a `<cardKind>:<cardId>` token apart by hand — read it with " +
+        "parseLinkCardKey (@/links/link-dom-contract). A second parser drifts " +
+        "exactly like a second builder: silently, by no longer matching.",
+    ).toEqual([]);
+  });
+
+  it("the selector builders ARE the name and the grammar, composed", () => {
+    // The third rung, pinned byte-exact against the two rungs it composes —
+    // the same contract `card-key-seams-contract.test.ts` holds `cardDomSelector`
+    // to. Byte-exactness is the whole point of the refactor that introduced
+    // them: every call site they replaced produced these strings, so a
+    // divergence here is a behaviour change wearing a cleanup's clothes.
+    expect(linkIdSelector("abc")).toBe(`[${DATA_LINK_ID}="abc"]`);
+    expect(linkKindSelector("anchor")).toBe(`[${DATA_LINK_KIND}="anchor"]`);
+    expect(linkCardSelector("citation", "c1")).toBe(
+      `[${DATA_LINK_CARD}="${linkCardKey("citation", "c1")}"]`,
+    );
+    // The suffix form restates the SEPARATOR as well as the name, which is why
+    // it lives in the module rather than at its one call site.
+    expect(linkCardIdSelector("x9")).toBe(`[${DATA_LINK_CARD}$=":x9"]`);
+
+    // And the literal strings they replaced, spelled out once here so a rename
+    // of the constants cannot quietly move the DOM contract: these are the
+    // bytes that shipped before task 204.
+    expect(linkIdSelector("q")).toBe('[data-link-id="q"]');
+    expect(linkKindSelector("citation")).toBe('[data-link-kind="citation"]');
+    expect(linkCardSelector("footnote", "q")).toBe('[data-link-card="footnote:q"]');
+    expect(linkCardIdSelector("q")).toBe('[data-link-card$=":q"]');
+  });
+
+  it("the two ends of one address stay in lockstep — marker query, card query", () => {
+    // `data-link-card` is an address precisely because the marker and the panel
+    // card carry the SAME token, and the two JSX card writers are allowlisted
+    // above to spell the attribute name inline. So pin that the value they
+    // build is the value the query looks for. (This is what the duplicated
+    // composite entry selector in marker-clicks/panel-selection was silently
+    // betting on, from two files.)
+    for (const [kind, id] of [
+      ["citation", "cit-1"],
+      ["example", "ex-1"],
+      ["footnote", "fn-1"],
+    ] as const) {
+      const written = linkCardKey(kind, id);
+      expect(linkCardSelector(kind, id)).toContain(`"${written}"`);
+      expect(parseLinkCardKey(written)).toEqual({ kind, id });
+    }
   });
 
   it("the contract module declares only what ships", () => {

@@ -17,7 +17,7 @@
 
 import { useEffect } from "react";
 import type { Editor } from "@tiptap/react";
-import { DATA_LINK_ID } from "../link-dom-contract";
+import { linkIdSelector } from "../link-dom-contract";
 
 const DATA_HIGHLIGHT = "data-link-highlight";
 
@@ -66,7 +66,7 @@ export function useLinkHighlight({
 
     if (!effectiveId || !state) return;
     const fresh = root.querySelectorAll(
-      `.linked-anchor[${DATA_LINK_ID}="${effectiveId}"]`,
+      `.linked-anchor${linkIdSelector(effectiveId)}`,
     );
     for (const el of fresh) el.setAttribute(DATA_HIGHLIGHT, state);
   }, [editor, activeLinkId, hoveredLinkId]);

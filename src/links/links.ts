@@ -34,9 +34,9 @@ import type { Link, LinkResolution } from "./_shared/types";
 import { normalizeParagraphText } from "./_shared/normalize-text";
 import { generateEntityId } from "@/lib/uuid";
 import {
-  DATA_LINK_ID,
-  linkCardKey,
   linkCardKeyFromToken,
+  linkCardSelector,
+  linkIdSelector,
   parseLinkCardKey,
 } from "./link-dom-contract";
 import {
@@ -297,7 +297,7 @@ export function resolveLink(
     // their id as `data-footnote-id`/`data-citation-id`, not linkId.
     const queried = domLinkId
       ? (editor.view.dom.querySelector(
-          `[${DATA_LINK_ID}="${domLinkId}"]`,
+          linkIdSelector(domLinkId),
         ) as HTMLElement | null)
       : null;
     const nodeDom = editor.view.nodeDOM(pos);
@@ -322,7 +322,7 @@ export function resolveLink(
       );
       if (range) {
         const domEl = editor.view.dom.querySelector(
-          `[data-link-id="${link.anchor.textRange.anchorId}"]`,
+          linkIdSelector(link.anchor.textRange.anchorId),
         ) as HTMLElement | null;
         return { kind: "text-range", from: range.from, to: range.to, domEl };
       }
@@ -409,9 +409,8 @@ export function jumpToLink(
     }
   }
   if (dir === "to-card" || dir === "both") {
-    const cardKey = linkCardKey(link.target.ref.kind, link.target.ref.id);
     const entryEl = document.querySelector(
-      `[data-link-card="${cardKey}"]`,
+      linkCardSelector(link.target.ref.kind, link.target.ref.id),
     ) as HTMLElement | null;
     if (entryEl) {
       if (sourceY != null) {
