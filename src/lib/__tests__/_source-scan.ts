@@ -105,6 +105,88 @@ export const codeOnly = (src: string) => strip(src, false);
 export const commentsStripped = (src: string) => strip(src, true);
 
 /**
+ * CSS RULE BODIES only — the token-home blocks (`:root`, `@theme`) removed.
+ *
+ * The question every colour census asks is "is this literal spelled where it
+ * BELONGS?", and a `:root` block is exactly where it belongs: that is the
+ * definition, not a drift. So a census over literals has to be able to see the
+ * two regions apart, and it cannot do that with a regex — it needs brace depth
+ * plus the selector that opened the block.
+ *
+ * SECOND caller earns the extraction (`color-token-consumers.test.ts` had the
+ * first copy; task 2026-07-20-195's destructive-red census is the second) —
+ * the same rule the two strippers above record, applied one construct over.
+ *
+ * Comment handling is deliberately NOT folded in: a caller that must not count
+ * a hex NAMED in prose composes `cssRuleBodies(cssCommentsStripped(css))`, and
+ * one whose needle is a whole declaration does not have to pay for it.
+ *
+ * A CHARACTER scanner, not a line filter, and each of its three differences
+ * from the line-based copy it replaces is a hole that copy had:
+ *
+ *  - **The token-home test reads the WHOLE selector**, not whether `:root`
+ *    appears in it. `:root` is also a legitimate ANCESTOR combinator, and
+ *    `globals.css` uses it that way three times
+ *    (`:root[data-display-mode="window-controls-overlay"] .virgil-bar …`), so
+ *    a substring test silently exempted three ordinary rule bodies.
+ *  - **A rule's opening line keeps everything after its `{`.** A line filter
+ *    must drop the whole line (the depth is still 0 when it is read), so every
+ *    SINGLE-LINE rule — `globals.css` has a 20-rule block of them — was
+ *    invisible in its entirety, declarations included.
+ *  - **Token homes nest.** Depth is tracked per block rather than reset at 0,
+ *    so a `:root` inside `@media print` is still a definition and a rule
+ *    inside one is still a rule.
+ *
+ * Blanked characters become spaces and NEWLINES ARE PRESERVED, so byte and
+ * line offsets survive — a caller reporting `file:line` stays honest.
+ */
+export function cssRuleBodies(css: string): string {
+  /**
+   * `:root {`, `:root, html {`, `@theme inline {` — never `:root[x] .y {`.
+   *
+   * Comments are dropped HERE rather than required of the caller: the text
+   * before a selector routinely includes the prose explaining it, and
+   * `color-token-consumers` passes the raw sheet. Missing this made the whole
+   * `:root` block read as a rule body — with every token definition in it.
+   */
+  const isTokenHome = (selector: string) => {
+    const s = selector.replace(/\/\*[\s\S]*?\*\//g, " ").trim();
+    if (s.startsWith("@theme")) return true;
+    return s.length > 0 && s.split(",").every((p) => p.trim() === ":root");
+  };
+
+  let out = "";
+  let depth = 0;
+  let tokenHomeDepth: number | null = null;
+  let selector = "";
+  const blank = (c: string) => (c === "\n" ? "\n" : " ");
+
+  for (const c of css) {
+    if (c === "{") {
+      if (tokenHomeDepth === null && isTokenHome(selector)) tokenHomeDepth = depth;
+      depth++;
+      selector = "";
+      out += " ";
+      continue;
+    }
+    if (c === "}") {
+      depth--;
+      if (tokenHomeDepth !== null && depth <= tokenHomeDepth) tokenHomeDepth = null;
+      selector = "";
+      out += " ";
+      continue;
+    }
+    // A `;` ends a statement, so the selector candidate starts after it —
+    // otherwise a top-level `@import "…";` (and everything before it) is still
+    // glued to the front of the next selector.
+    if (c === ";") selector = "";
+    else selector += c;
+    out += depth > 0 && tokenHomeDepth === null ? c : blank(c);
+  }
+  return out;
+}
+
+/**
  * The CSS twin: blank `/* … *​/` comments so a token merely NAMED in prose is
  * neither a definition nor a read. CSS has no line comment and no string
  * escape worth modelling here, so it is a much smaller scanner than `strip` —

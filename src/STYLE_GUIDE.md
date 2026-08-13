@@ -52,13 +52,75 @@ is premultiplied, so it is exactly the live token at that alpha, and it keeps
 tracking the token when the value changes. Never re-spell a channel triple.
 (There is no CI guard for this yet — `check:radius` covers radii only.)
 
+### The destructive / alarm family
+
+Four rungs, and the choice between them is about EMPHASIS, not about which
+surface you happen to be on — the pre-2026-08 state was one family per surface,
+which is how the same role reached six hexes:
+
+| Token | Value | Role |
+|---|---|---|
+| `--danger` | `#ef4444` | destructive action text and icon-button ink in panel/card chrome (`text-danger`, `.iconbtn-danger`) |
+| `--danger-soft` | `var(--footnote-50)` | the wash behind it (`bg-danger-soft`) |
+| `--danger-muted` | `var(--footnote-500)` | conflict / warning ink and delete-hover FILL — the label-lozenge register |
+| `--danger-strong` | `#b8261a` | the strongest rung: error TEXT and destructive button hover ink/border |
+
+Two rules the family carries:
+
+- **Error TEXT takes `--danger-strong`, never `--danger`** — a rule about
+  contrast, not taste: `#ef4444` measures 3.25:1 on `--code-bg` and 3.76:1 on
+  white, under AA for body text, where `--danger-strong` measures 5.45:1 and
+  6.31:1. `--danger` remains right for an ICON, a border, or a menu row, none of
+  which carries the text contrast obligation.
+
+  Stated as a rule the codebase is **converging on, not one it already meets**:
+  the sites settled so far are `.figure-error`, `.math-error`, KaTeX's
+  `errorColor` (which arrives as `KATEX_ERROR_COLOR` because KaTeX writes it
+  onto an inline style no stylesheet rule can outrank) and the two library
+  permission-gate `role="alert"` strings (5.45:1 on `--code-bg`, 6.31:1 on
+  white). Other error strings — `BibEditModal`, `NewDocumentModal`,
+  `ErrorCard`'s `error` severity, `Toaster`'s attention
+  accent — still resolve `--danger` and are therefore under AA today. That is a
+  real accessibility residual, recorded rather than fixed: repainting them is a
+  visual pass across dialogs, toasts and cards, and it is the obvious next step
+  for this family.
+- **Two rungs ALIAS the rust scale rather than restating its hex.** That is the
+  point, not an optimization. The historical migration record
+  (`docs/virgil-design-system/10-audit.md` §8, no longer the spec) complains
+  that the relationship between the app's reds is implicit, and a
+  re-spelled `#b45757` leaves the two scales free to drift. The alias is to the
+  FIXED `--footnote-500`, not the user's `--footnote-color` pref, so retinting
+  footnote markers correctly leaves destructive chrome alone.
+
+CI: `src/__tests__/destructive-red-tokens.test.ts` censuses both silos for a red
+spelled in a CSS rule body or a `.tsx`, keyed on HUE rather than on a list of
+known hexes. That choice is load-bearing: `#fff5f5` — the sixth rust hex the
+audit's count of five missed — was found by the predicate rather than by
+anyone's list, as was the library page-mark red the census then correctly
+excludes as a different family. `globals.css` is empty of them. Each allowlist
+entry states a reason, and each set is pinned EXACTLY, so a new site fails CI
+while a removal is a deliberate edit.
+
+**The residual, stated.** The hue needle reads hexes, so it is structurally
+blind to the other two spellings this section's own token rules warn about —
+stock `*-red-N` / `*-rose-N` utilities and decimal `rgba(220, 38, 38, …)`. Both
+remaining sets are therefore pinned by the same suite as exact FILE lists, so a
+new one still fails CI even though its colour is invisible to the needle. They
+are deliberately not repainted: the suggestion-card "Original" dialect is a
+designed look needing two rungs this family does not have (a light border and a
+dark body ink), the library status chips wear the adjacent `rose` ramp, and the
+decimal pair is one CodeMirror theme object whose accent is equally decimal
+(`rgba(124, 94, 60, …)` IS `--accent`) plus an Outline wash already scoped by
+its own queued task. Each is a visual decision per surface, not a sweep.
+
 ### Which tokens have a Tailwind utility
 
 A token minted in `:root` does **not** get a Tailwind utility for free. Only
 tokens re-declared in the `@theme inline` blocks of `globals.css` emit classes
 — today the `--ink-*`/`--edge-*`/`--surface-*` scales, `--accent`,
 `--accent-light`, `--btn-primary`, `--menu-roving-bg`, `--overlay-scrim`,
-`--danger`/`--danger-soft`, `--ring-drag-target`, `--background`/`--foreground`,
+`--danger`/`--danger-soft`/`--danger-muted`, `--ring-drag-target`,
+`--background`/`--foreground`,
 the four font families and the radius scale. Read the block; don't trust that
 list.
 

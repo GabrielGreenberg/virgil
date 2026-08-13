@@ -30,6 +30,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import katex from "katex";
 import { Kbd } from "./Kbd";
 import { useFloatingMenuPosition } from "@/hooks/useFloatingMenuPosition";
+import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
 import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 
 export type NodeEditFamily = "math" | "figure";
@@ -110,7 +111,7 @@ export default function NodeEditPopover({
       katex.render(value, target, {
         throwOnError: false,
         displayMode: isDisplay,
-        errorColor: "#cc0000",
+        errorColor: KATEX_ERROR_COLOR,
         output: "html",
       });
     } catch {

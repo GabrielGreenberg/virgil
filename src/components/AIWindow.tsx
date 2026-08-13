@@ -894,7 +894,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
       {req.onCancel && (
         <button
           onClick={handleCancel}
-          className="shrink-0 text-[10px] text-ink-muted hover:text-[#b45757] transition-colors px-1"
+          className="shrink-0 text-[10px] text-ink-muted hover:text-danger-muted transition-colors px-1"
           data-hint="Cancel"
         >
           ×

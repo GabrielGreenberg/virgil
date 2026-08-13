@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { cssRuleBodies } from "@/lib/__tests__/_source-scan";
 
 /**
  * Color-token CONSUMER contract (task 2026-07-18-171).
@@ -30,22 +31,10 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const globals = readFileSync(path.join(ROOT, "src/app/globals.css"), "utf8");
 const read = (rel: string) => readFileSync(path.join(ROOT, rel), "utf8");
 
-/** Rule bodies only — the `:root` blocks are where literals BELONG. */
-function ruleBodies(css: string): string {
-  const out: string[] = [];
-  let depth = 0;
-  let inRoot = false;
-  for (const line of css.split("\n")) {
-    const opens = (line.match(/\{/g) ?? []).length;
-    const closes = (line.match(/\}/g) ?? []).length;
-    // A selector line carrying `:root` opens the token-home block.
-    if (depth === 0 && opens > 0 && /:root/.test(line)) inRoot = true;
-    if (depth > 0 && !inRoot) out.push(line);
-    depth += opens - closes;
-    if (depth === 0) inRoot = false;
-  }
-  return out.join("\n");
-}
+/** Rule bodies only — the `:root` blocks are where literals BELONG. The walker
+ *  moved to `_source-scan.ts` when task 195's destructive-red census became its
+ *  second caller; one copy, same rule as the two strippers beside it. */
+const ruleBodies = cssRuleBodies;
 
 describe("amber highlight role-set", () => {
   it.each([

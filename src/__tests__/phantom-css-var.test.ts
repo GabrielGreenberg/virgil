@@ -220,7 +220,15 @@ const PERMITTED_DECORATIVE_PHANTOMS: Readonly<Record<string, string>> = {
 
   // Library-silo status vocabulary, same shape as --mono/--serif but honest
   // about it. Which live token each should take is a color decision.
-  "--error": "library picker/gate error text; fallback #b00020",
+  //
+  // `--error` RETIRED (task 2026-07-20-195): the colour decision this entry was
+  // waiting on is the one that task made. Both `role="alert"` sites now read
+  // `--danger-strong`, the destructive family's error-ink rung — the same token
+  // `.figure-error` / `.math-error` / KaTeX's `errorColor` resolve, so the two
+  // silos state error ink once. Stated exactly rather than favourably: #b00020
+  // → #b8261a moves alert text 7.33:1 → 6.31:1 on white, a real step DOWN
+  // (through AAA, still comfortably over AA) accepted to end the fork — where
+  // the lighter `--danger` would have taken it to 3.76:1, under AA.
   "--success": "style-editor validity tick; fallback #15803d",
   "--surface-warning": "float-sync stale banner; fallback in the Tailwind arbitrary value",
   "--ink-warning": "float-sync stale banner; fallback in the Tailwind arbitrary value",

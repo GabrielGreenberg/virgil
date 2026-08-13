@@ -121,7 +121,13 @@ but ~200 sites still use raw `text-stone-500`, `border-stone-300`, etc.
 
 ## 8. Footnote rust appears as 5 different hexes
 
-> **Status — PARTIAL (verified 2026-08-09).** The `--footnote-50/100/200/300/500` scale and its `--footnote-color`/`-bg`/`-bg-hover` aliases shipped (`globals.css:256-287`), but the consumer sweep never ran: ~15 raw `#b45757`/`#fecaca`/`#fef2f2` spellings remain across 13 sites (9 in `globals.css`), and `--par-title-color: #c45a5a` still sits outside the scale.
+> **Status — LANDED for the STYLESHEET, residuals recorded (verified 2026-08-12, task 2026-07-20-195).** The consumer sweep ran. `globals.css` now holds **zero** raw reds in a rule body — meaning a hex spelled as a declaration's own value; the ~20 surviving `var(--footnote-color, #b45757)`-style FALLBACKS are deliberately out of scope, being the documented idiom and governed as a pinned census by `phantom-css-var.test.ts`. The count was wrong in two directions: there was a **sixth** hex (`#fff5f5`, the footnote/RTF drop-target wash — folded onto `--footnote-50`), and the family reached well past footnotes.
+>
+> Two surfaces this item never named were painting the same reds with no token at all — the **figure** chrome (`#cc0000` error text, `#b8261a` chrome-danger hover, `#b45757` conflict/warning/delete-hover) and its **twin**, the *heading* label lozenge, which carries the same four destructive declarations (the two rules differ only in layout: the heading warning is `display:block` + `margin-top`, the figure one `inline-block` + `margin-left`). `.math-error` was a third `#cc0000`. And this item never mentioned `--danger`, which had existed the whole time and served the panel/card chrome one directory over.
+>
+> The resolution generalized rather than aliasing: `--danger` grew a **role family** (`--danger-soft` / `--danger-muted` / `--danger-strong`, `src/STYLE_GUIDE.md` → *The destructive / alarm family*) whose two coincident rungs ALIAS `--footnote-50` / `--footnote-500` instead of restating them — codifying exactly the relationship this item calls implicit, so the footnote reds and the destructive reds now converge on one scale as the fix note below hoped. `#cc0000` and `#b8261a` merged into one rung on a contrast argument (adopting the light `--danger` for error text would have dropped it to 3.25:1, under AA). CI: `src/__tests__/destructive-red-tokens.test.ts`, keyed on hue rather than on a list of literals.
+>
+> **Residual:** `--par-title-color: #c45a5a` still sits outside the scale, deliberately — it is the paragraph-title *concept* colour rather than an alarm, so folding it in is a visual decision, not a sweep. The Outline panel's two borrowed `#b45757` spellings are scoped by queued task **2026-08-02-284** and allowlisted with that pointer.
 
 `#b45757` in some places, `#c45a5a` in `--par-title-color`, `#fef2f2`
 for bg, `#fde8e8` for one-off hover, `#fecaca` for selected. The

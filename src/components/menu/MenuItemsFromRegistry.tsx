@@ -52,7 +52,11 @@ function RegistryItem({ row }: RegistryItemProps) {
   const baseColor = row.disabled
     ? "var(--ink-subtle)"
     : row.destructive
-      ? "var(--danger, #b45757)"
+      // No fallback: the token is defined unconditionally in globals.css, and
+      // the fallback this replaced spelled #b45757 — a DIFFERENT red from the
+      // token's own #ef4444, so it silently described a colour this row has
+      // never painted (task 2026-07-20-195).
+      ? "var(--danger)"
       : "var(--ink-strong)";
 
   const style: CSSProperties = {
