@@ -21,11 +21,30 @@ import type { AiRequest, AiRequestsState } from "@/lib/types";
 // returns, `written` captures every writeSidecar payload.
 const seeded: { state: AiRequestsState } = { state: { requests: [] } };
 const written: { file: string; data: AiRequestsState }[] = [];
+// Since task 220 the bridge routes its whole read-modify-write through the
+// serialized `mutateSidecar` door (read INSIDE the write critical section), so
+// the mock reproduces that door: apply the mutator to the seeded on-disk list,
+// record what it persists, and honor `null` = nothing-to-change (which is what
+// every "pure no-op, no write at all" pin below now asserts against).
 vi.mock("@/lib/storage", () => ({
   readSidecar: vi.fn(async () => seeded.state),
   writeSidecar: vi.fn(async (_handle: unknown, file: string, data: unknown) => {
     written.push({ file, data: data as AiRequestsState });
   }),
+  mutateSidecar: vi.fn(
+    async (
+      _handle: unknown,
+      file: string,
+      _defaultValue: unknown,
+      mutate: (current: AiRequestsState) => AiRequestsState | null,
+    ) => {
+      const next = mutate(seeded.state);
+      if (next === null) return null;
+      seeded.state = next;
+      written.push({ file, data: next });
+      return next;
+    },
+  ),
 }));
 vi.mock("@/lib/multi-window/doc-pipeline", () => ({
   getActiveHandle: vi.fn(() => ({})),

@@ -37,6 +37,23 @@ vi.mock("@/lib/storage", () => ({
     DISK[file] = data;
     writes.push({ file, data });
   }),
+  // The serialized read-modify-write door (task 220) the ai-requests authority
+  // uses: read the in-memory disk INSIDE the write, apply, persist. `null` from
+  // the mutator means nothing to change — no write, no recorded entry.
+  mutateSidecar: vi.fn(
+    async (
+      _handle: unknown,
+      file: string,
+      dflt: unknown,
+      mutate: (current: unknown) => unknown,
+    ) => {
+      const next = mutate(file in DISK ? DISK[file] : dflt);
+      if (next === null) return null;
+      DISK[file] = next;
+      writes.push({ file, data: next });
+      return next;
+    },
+  ),
 }));
 
 import { useFootnotes } from "../useFootnotes";

@@ -18,22 +18,11 @@
  */
 
 import { generateEntityId } from "@/lib/uuid";
-import { readSidecar, writeSidecar } from "@/lib/storage";
-import type {
-  AiRequest,
-  AiRequestLink,
-  AiRequestsState,
-} from "@/lib/types";
-import {
-  getActiveHandle,
-  isStalePipelineError,
-} from "@/lib/multi-window/doc-pipeline";
-import { publishAiRequests } from "@/lib/ai-request-events";
+import type { AiRequest, AiRequestLink } from "@/lib/types";
+import { mutateAiRequests } from "@/lib/ai-requests-store";
 import { isRequestOpen, isTerminalStatus } from "@/lib/ai-request-open";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import type { CardKind } from "@/cards/types";
-
-const EMPTY: AiRequestsState = { requests: [] };
 
 /**
  * A request that `terminate` mode must close: it's linked to `link`'s card AND
@@ -107,6 +96,15 @@ export type AiRequestSyncMode = "toggle" | "terminate";
  * Best-effort: errors are logged, not thrown. The card flag is the source
  * of truth for the panel UI; a stale `ai-requests.json` will self-heal on
  * the next toggle or skill drain.
+ *
+ * PERSISTENCE (task 220): the whole read-modify-write runs as ONE mutation
+ * through `mutateAiRequests`, so the list it merges over is read INSIDE the
+ * serialized write critical section. It used to `readSidecar` first and
+ * `writeSidecar` after — a base read outside the queue and the cross-window
+ * doc lock, which a concurrent writer could invalidate between the two halves.
+ * Everything below the mutator boundary is therefore PURE (see
+ * `AiRequestsMutator`): the request object and its id/timestamp are built
+ * BEFORE the mutation so re-running it over a different base is stable.
  */
 export async function bridgeCardAiRequestFlag(
   docId: string | null,
@@ -132,111 +130,82 @@ export async function bridgeCardAiRequestFlag(
     return;
   }
   const link: AiRequestLink = { panel: routing.linkPanel, cardId };
-  const handle = getActiveHandle(docId);
-  if (!handle) return;
 
-  let state: AiRequestsState | null;
-  try {
-    state = await readSidecar<AiRequestsState>(docId, "ai-requests.json", EMPTY);
-  } catch {
-    return;
-  }
-  // Best-effort contract (this module never throws): tolerate a storage backend
-  // that returns null/undefined for a missing sidecar instead of the default —
-  // treat it as an empty queue rather than dereferencing null.
-  const requests = Array.isArray(state?.requests) ? state.requests : [];
+  // The NEW row this call would file, minted BEFORE the mutation so the mutator
+  // stays pure (`AiRequestsMutator`): re-running it over a different base must
+  // not mint a second id or a second timestamp. Unused on every branch that
+  // matches an existing row, and on the terminate branch — cheap either way.
+  const freshRequest: AiRequest = {
+    id: generateEntityId(),
+    kind: routing.kind,
+    text: ctx.text,
+    createdAt: new Date().toISOString(),
+    status: "pending",
+    linkedTo: link,
+    paragraphIds: ctx.paragraphIds,
+    selectedText: ctx.selectedText,
+  };
 
-  // Archive intent (task 093): the card is gone, so terminate EVERY linked
-  // non-terminal row — a plain-open row OR a 043-protected answered-L3
-  // (`in-progress`+`resultId`) — to `complete`, regardless of current openness.
-  // NOT just the first (task 253): a single card can carry two non-terminal
-  // linked rows at once (an answered-L3 row closed to the drain plus a fresh
-  // re-toggled `pending` row, per task 043), and archive/delete means the card
-  // is gone, so all of them must close or a stray row is re-served for a card
-  // that no longer exists. This is the SINGLE ai-requests.json writer on archive
-  // (callers reach it via `clearAiRequestForKind` → the panel setters with
-  // `mode: "terminate"`), so it never races a second toggle-off write.
-  // Byte-mirror of Python `close_linked_request(force=True)` on `cmd_archive`:
-  // both stamp `status: complete` + `result: "auto-applied"`. Idempotent — an
-  // unmatched or already-terminal card writes nothing (no spurious terminal row,
-  // no needless write), and the `value` argument is irrelevant here (archive is
-  // always a resolve).
-  if (mode === "terminate") {
-    let matched = false;
-    const terminated = requests.map((r) => {
-      if (!isLinkedNonTerminal(r, link)) return r;
-      matched = true;
-      return { ...r, status: "complete", result: "auto-applied" } as AiRequest;
-    });
-    if (!matched) return;
-    try {
-      await writeSidecar(handle, "ai-requests.json", { requests: terminated });
-    } catch (err) {
-      if (isStalePipelineError(err)) return;
-      console.error("Failed to terminate linked AI request on archive:", err);
-      return;
+  // ONE serialized read-modify-write: `mutateAiRequests` reads the on-disk list
+  // inside the write critical section, hands it to this mutator, persists the
+  // result and publishes it. A `null` return means "nothing to change" — no
+  // write, no publish, no spurious ledger stamp.
+  await mutateAiRequests(docId, (requests) => {
+    // Archive intent (task 093): the card is gone, so terminate EVERY linked
+    // non-terminal row — a plain-open row OR a 043-protected answered-L3
+    // (`in-progress`+`resultId`) — to `complete`, regardless of current
+    // openness. NOT just the first (task 253): a single card can carry two
+    // non-terminal linked rows at once (an answered-L3 row closed to the drain
+    // plus a fresh re-toggled `pending` row, per task 043), and archive/delete
+    // means the card is gone, so all of them must close or a stray row is
+    // re-served for a card that no longer exists. Byte-mirror of Python
+    // `close_linked_request(force=True)` on `cmd_archive`: both stamp
+    // `status: complete` + `result: "auto-applied"`. Idempotent — an unmatched
+    // or already-terminal card returns `null`, so nothing is written (no
+    // spurious terminal row, no needless write), and the `value` argument is
+    // irrelevant here (archive is always a resolve).
+    if (mode === "terminate") {
+      let matched = false;
+      const terminated = requests.map((r) => {
+        if (!isLinkedNonTerminal(r, link)) return r;
+        matched = true;
+        return { ...r, status: "complete", result: "auto-applied" } as AiRequest;
+      });
+      return matched ? terminated : null;
     }
-    publishAiRequests(docId, terminated);
-    return;
-  }
 
-  const existingIdx = requests.findIndex(
-    (r) =>
-      r.linkedTo &&
-      r.linkedTo.panel === link.panel &&
-      r.linkedTo.cardId === link.cardId &&
-      // Match only requests the drain still considers OPEN. `isRequestOpen` is
-      // the SSOT mirror of the Python drain rule (`list_requests.py`): a
-      // terminal (`complete`/`failed`) row OR an answered L3 proposal
-      // (`in-progress`+`resultId`) is closed, so a re-toggle files a FRESH
-      // request instead of matching a row the drain will never re-serve — and a
-      // value=false toggle can't delete an answered row out from under the
-      // accept/reject flow that depends on its `resultId` (task 043).
-      isRequestOpen(r),
-  );
+    const existingIdx = requests.findIndex(
+      (r) =>
+        r.linkedTo &&
+        r.linkedTo.panel === link.panel &&
+        r.linkedTo.cardId === link.cardId &&
+        // Match only requests the drain still considers OPEN. `isRequestOpen` is
+        // the SSOT mirror of the Python drain rule (`list_requests.py`): a
+        // terminal (`complete`/`failed`) row OR an answered L3 proposal
+        // (`in-progress`+`resultId`) is closed, so a re-toggle files a FRESH
+        // request instead of matching a row the drain will never re-serve — and a
+        // value=false toggle can't delete an answered row out from under the
+        // accept/reject flow that depends on its `resultId` (task 043).
+        isRequestOpen(r),
+    );
 
-  let nextRequests: AiRequest[];
-  if (value) {
-    if (existingIdx >= 0) {
-      // Refresh context fields on re-toggle so the skill sees current anchors.
-      nextRequests = requests.map((r, i) =>
-        i === existingIdx
-          ? {
-              ...r,
-              text: ctx.text || r.text,
-              paragraphIds: ctx.paragraphIds ?? r.paragraphIds,
-              selectedText: ctx.selectedText ?? r.selectedText,
-            }
-          : r,
-      );
-    } else {
-      const req: AiRequest = {
-        id: generateEntityId(),
-        kind: routing.kind,
-        text: ctx.text,
-        createdAt: new Date().toISOString(),
-        status: "pending",
-        linkedTo: link,
-        paragraphIds: ctx.paragraphIds,
-        selectedText: ctx.selectedText,
-      };
-      nextRequests = [...requests, req];
+    if (value) {
+      if (existingIdx >= 0) {
+        // Refresh context fields on re-toggle so the skill sees current anchors.
+        return requests.map((r, i) =>
+          i === existingIdx
+            ? {
+                ...r,
+                text: ctx.text || r.text,
+                paragraphIds: ctx.paragraphIds ?? r.paragraphIds,
+                selectedText: ctx.selectedText ?? r.selectedText,
+              }
+            : r,
+        );
+      }
+      return [...requests, freshRequest];
     }
-  } else {
-    if (existingIdx < 0) return;
-    nextRequests = requests.filter((_, i) => i !== existingIdx);
-  }
-
-  try {
-    await writeSidecar(handle, "ai-requests.json", { requests: nextRequests });
-  } catch (err) {
-    if (isStalePipelineError(err)) return;
-    console.error("Failed to bridge card AI request flag:", err);
-    return;
-  }
-  // Announce the authoritative post-write list so the live inbox
-  // (`useAiRequests`) adopts it without a reload/remount (drop D3). Only after a
-  // successful persist — a failed write leaves the on-disk queue unchanged, so
-  // the in-memory inbox must not diverge from it.
-  publishAiRequests(docId, nextRequests);
+    if (existingIdx < 0) return null;
+    return requests.filter((_, i) => i !== existingIdx);
+  });
 }
