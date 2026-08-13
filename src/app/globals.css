@@ -395,9 +395,37 @@
   --ink-body: #44403c;      /* section titles, strong readable text (≈ stone-700) */
   --ink-strong: #292524;    /* modal titles, primary bold text (≈ stone-800) */
 
-  /* Destructive */
-  --danger: #ef4444;        /* destructive action text (≈ red-500) */
-  --danger-soft: #fef2f2;   /* destructive action hover bg (≈ red-50) */
+  /* ── Destructive / alarm roles ────────────────────────────────────
+     The ROLE family every destructive, error and conflict affordance
+     reads. Two rungs existed and served the panel/card chrome
+     (`text-danger`, `bg-danger-soft`, `.iconbtn-danger`); the block
+     surfaces — figure chrome, heading/figure label lozenges, math and
+     figure error text — painted their own raw hexes instead, which is
+     the "scattered reds, relationship implicit, no token" class
+     `docs/virgil-design-system/10-audit.md` §8 records for the footnote
+     rust (task 2026-07-20-195).
+
+     Values are pinned to what the app already paints, and the rungs
+     that COINCIDE with the rust scale alias into it rather than
+     restating the hex — codifying the relationship is the whole of
+     §8's ask. (The scale is deliberately shared: its own header says
+     "Footnote, cut, and error markers consolidate here." It is the
+     FIXED scale, not the user's `--footnote-color` pref, so a retinted
+     footnote marker correctly leaves destructive chrome alone.)
+
+     `--danger-strong` merges two near-identical darks that no reader
+     could tell apart: the figure chrome-button hover `#b8261a` and the
+     error-text `#cc0000` of `.figure-error` / `.math-error`. #b8261a
+     wins the merge on both counts that matter — it is the warm,
+     hand-picked hue this palette is built from rather than a pure
+     primary, and on `--code-bg` it measures 5.45:1 against #cc0000's
+     5.08:1, so the consolidation slightly IMPROVES error-text contrast
+     (where adopting the light `--danger` would have dropped it to
+     3.25:1, under AA). */
+  --danger: #ef4444;                    /* destructive action text (≈ red-500) */
+  --danger-soft: var(--footnote-50);    /* #fef2f2 — destructive hover bg (≈ red-50) */
+  --danger-muted: var(--footnote-500);  /* #b45757 — conflict / warning ink, delete-hover fill */
+  --danger-strong: #b8261a;             /* strongest destructive ink+border: error text, chrome-btn hover */
 
   /* Status dots (traffic-light) — the semantic triple every red/green/yellow
      status affordance reads from (the Virgil-bar AI-status dot today; other
@@ -523,6 +551,10 @@ body[data-zen-mode="on"] {
   --color-ink-strong: var(--ink-strong);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-danger-muted: var(--danger-muted);
+  /* No --color-danger-strong: its consumers are all CSS rules, which read
+     var(--danger-strong) directly. Add the Tailwind alias with its first
+     JSX reader, not ahead of one. */
   --color-ring-drag-target: var(--ring-drag-target);
 }
 
@@ -1388,7 +1420,7 @@ textarea,
 }
 
 .heading-annotation-delete:hover {
-  background: #b45757;
+  background: var(--danger-muted);
   color: #fff;
 }
 
@@ -1406,14 +1438,14 @@ textarea,
 }
 
 .heading-label-input.has-conflict {
-  border-bottom-color: #b45757;
-  color: #b45757;
+  border-bottom-color: var(--danger-muted);
+  color: var(--danger-muted);
 }
 
 .heading-label-warning {
   display: block;
   margin-top: 0.2em;
-  color: #b45757;
+  color: var(--danger-muted);
   font-size: 0.62rem;
   font-weight: 500;
   letter-spacing: 0.04em;
@@ -2339,7 +2371,7 @@ textarea,
 }
 
 .math-error {
-  color: #cc0000;
+  color: var(--danger-strong);
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.9em;
 }
@@ -2695,14 +2727,14 @@ textarea,
 }
 
 .figure-block .figure-label-input.has-conflict {
-  border-bottom-color: #b45757;
-  color: #b45757;
+  border-bottom-color: var(--danger-muted);
+  color: var(--danger-muted);
 }
 
 .figure-block .figure-label-warning {
   display: inline-block;
   margin-left: 0.5em;
-  color: #b45757;
+  color: var(--danger-muted);
   font-size: 0.62rem;
   font-weight: 500;
   letter-spacing: 0.04em;
@@ -2727,7 +2759,7 @@ textarea,
 }
 
 .figure-block .figure-annotation-delete:hover {
-  background: #b45757;
+  background: var(--danger-muted);
   color: #fff;
 }
 
@@ -2744,7 +2776,7 @@ textarea,
 .figure-block .figure-error {
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.85em;
-  color: #cc0000;
+  color: var(--danger-strong);
   padding: 1em;
   background: var(--code-bg, #f0eeeb);
   border-radius: var(--radius-sm);
@@ -2829,8 +2861,8 @@ textarea,
 }
 
 .figure-block .figure-chrome-btn-danger:hover {
-  color: #b8261a;
-  border-color: #b8261a;
+  color: var(--danger-strong);
+  border-color: var(--danger-strong);
 }
 
 /* Scale composite: [ − | 60 | + ] attached, shares the chrome-btn look. */
@@ -3128,7 +3160,9 @@ textarea,
 }
 
 .footnote-highlight-marker {
-  background: #fecaca;
+  /* The --footnote-200 scale step, not a re-spelled literal (§8's consumer
+     sweep; same treatment its sibling `.footnote-marker:hover` got in 175). */
+  background: var(--footnote-200);
   box-shadow: 0 0 0 2px var(--footnote-color, #b45757);
   border-radius: var(--radius-xs);
 }
@@ -3397,7 +3431,11 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
 .footnote-card-drop-target {
   outline: 2px dashed var(--footnote-color, #b45757);
   outline-offset: -2px;
-  background: #fff5f5;
+  /* Was #fff5f5 — a SIXTH rust hex (§8 counted five) whose only role was
+     "palest rust wash", which is what --footnote-50 already is. The
+     1/255-per-channel delta is below any perceptual threshold on a
+     transient drop wash. */
+  background: var(--footnote-50);
 }
 
 /* RichTextField mini-editor (Tiptap-backed footnote/note bodies) */
@@ -3457,7 +3495,7 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
 .rtf-drop-target {
   outline: 2px dashed var(--footnote-color, #b45757);
   outline-offset: -2px;
-  background: #fff5f5;
+  background: var(--footnote-50); /* was #fff5f5 — see .footnote-card-drop-target */
 }
 
 /* Footnote edit popup */

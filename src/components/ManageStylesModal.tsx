@@ -503,7 +503,7 @@ export default function ManageStylesModal({
                             ? "Library must contain at least one style"
                             : undefined
                         }
-                        className="px-2 py-1 hover:bg-surface-muted rounded text-[var(--danger,#b91c1c)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-2 py-1 hover:bg-surface-muted rounded text-[var(--danger)] disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         Delete
                       </button>

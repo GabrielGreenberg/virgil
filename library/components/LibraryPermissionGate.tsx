@@ -53,7 +53,7 @@ export default function LibraryPermissionGate({ onGrant, onReset, pickerError }:
         <p
           role="alert"
           style={{
-            color: "var(--error, #b00020)",
+            color: "var(--danger-strong)",
             maxWidth: 460,
             textAlign: "center",
             fontSize: 13,

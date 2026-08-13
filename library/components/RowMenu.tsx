@@ -253,7 +253,7 @@ function MenuItem({
         color: disabled
           ? "var(--muted-light)"
           : destructive
-            ? "var(--danger, #b3261e)"
+            ? "var(--danger)"
             : "var(--foreground)",
         cursor: disabled ? "default" : "pointer",
         fontFamily: "inherit",

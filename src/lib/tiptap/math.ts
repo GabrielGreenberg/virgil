@@ -16,6 +16,19 @@ import { ATOM_REGISTRY } from "./atom-registry";
 
 const INLINE_MATH_ATOM = ATOM_REGISTRY["inline-math"];
 
+/**
+ * The ink KaTeX paints a parse error in, as a TOKEN read rather than a hex.
+ *
+ * KaTeX writes `errorColor` onto the error span's INLINE style, which beats
+ * any stylesheet rule — so a `.katex-error { color: … }` rule could not own
+ * this and the value has to arrive here. That makes it a colour two layers
+ * must agree on byte-for-byte (this inline style and `.math-error`'s CSS
+ * fallback rule), which is the "spelled ONCE" rule `src/lib/latex-markers.ts`
+ * earned: both now resolve `--danger-strong`, and the popover preview reads
+ * this same constant instead of its own copy (task 2026-07-20-195).
+ */
+export const KATEX_ERROR_COLOR = "var(--danger-strong)";
+
 // Exported for the static T1 card tier (StaticBorrowedText's one-shot KaTeX
 // pass over `[data-type="inline-math"|"display-math"]` spans) — the SAME
 // paint the live NodeView runs, placeholder/error sentinels included.
@@ -32,7 +45,7 @@ export function renderMath(target: HTMLElement, latex: string, displayMode: bool
     katex.render(latex, target, {
       throwOnError: false,
       displayMode,
-      errorColor: "#cc0000",
+      errorColor: KATEX_ERROR_COLOR,
       output: "html",
     });
   } catch {

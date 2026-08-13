@@ -43,7 +43,7 @@ export default function LibraryFolderPicker({ onPick, pickerError }: Props) {
         <p
           role="alert"
           style={{
-            color: "var(--error, #b00020)",
+            color: "var(--danger-strong)",
             maxWidth: 480,
             textAlign: "center",
             fontSize: 13,

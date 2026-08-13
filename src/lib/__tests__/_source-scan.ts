@@ -121,6 +121,40 @@ export const commentsStripped = (src: string) => strip(src, true);
  * that count declarations or match braces are unaffected either way; a caller
  * that reports `file:line` is now honest.
  */
+/**
+ * CSS RULE BODIES only — the token-home blocks (`:root`, `@theme`) removed.
+ *
+ * The question every colour census asks is "is this literal spelled where it
+ * BELONGS?", and a `:root` block is exactly where it belongs: that is the
+ * definition, not a drift. So a census over literals has to be able to see the
+ * two regions apart, and it cannot do that with a regex — it needs brace depth
+ * plus the selector that opened the block.
+ *
+ * SECOND caller earns the extraction (`color-token-consumers.test.ts` had the
+ * first copy; task 2026-07-20-195's destructive-red census is the second) —
+ * the same rule the two strippers above record, applied one construct over.
+ *
+ * Comment handling is deliberately NOT folded in: a caller that must not count
+ * a hex NAMED in prose composes `cssRuleBodies(cssCommentsStripped(css))`, and
+ * one whose needle is a whole declaration does not have to pay for it.
+ */
+export function cssRuleBodies(css: string): string {
+  const out: string[] = [];
+  let depth = 0;
+  let inTokenHome = false;
+  for (const line of css.split("\n")) {
+    const opens = (line.match(/\{/g) ?? []).length;
+    const closes = (line.match(/\}/g) ?? []).length;
+    // A top-level selector carrying `:root` (or an `@theme` at-rule) opens the
+    // block where custom properties are DEFINED.
+    if (depth === 0 && opens > 0 && /:root|@theme/.test(line)) inTokenHome = true;
+    out.push(depth > 0 && !inTokenHome ? line : "");
+    depth += opens - closes;
+    if (depth === 0) inTokenHome = false;
+  }
+  return out.join("\n");
+}
+
 export function cssCommentsStripped(css: string): string {
   let out = "";
   let i = 0;
