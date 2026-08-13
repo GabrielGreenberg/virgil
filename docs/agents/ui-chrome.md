@@ -1,4 +1,4 @@
-<!-- last-verified: ef13712e 2026-08-11 -->
+<!-- last-verified: 7770419e 2026-08-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts -->
 
@@ -318,6 +318,8 @@ State: `useCollab()` in [src/hooks/useCollab.ts](../../src/hooks/useCollab.ts). 
 ## Dialogs, scrim & z-tiers
 
 Modal dialogs (`SystemDialog` / `ConfirmDialog` / imperative `confirm`/`prompt`) were de-browned in 1c243822: the `primary` Button variant now backs onto `--btn-primary` (→ taupe `--control-selected`), so affirmative buttons render taupe, not the saturated `--accent` brown (`--accent` stays on links/marks/CTAs). The modal **scrim** `--overlay-scrim` is re-derived from `--ink-strong` (warm near-black), and the dialog surface adopts the `--shadow-float` token.
+
+Form controls inside dialogs go through the field primitives — `Input` / `Textarea` / `Select`, all three built on one `fieldChrome()` ([src/components/field-primitives.tsx](../../src/components/field-primitives.tsx), task 190) — the text-field twin of what `Button` always was for buttons. Don't hand-roll a bordered input; take the primitive and pick a `tone` / `ink` / `density`. See STYLE_GUIDE "Text fields".
 
 The modal/tooltip **z-tiers are named** in [src/floats/float-policy.ts](../../src/floats/float-policy.ts): `DROP_INDICATOR_Z` (9999), `MODAL_SCRIM_Z` (10000), `HINT_Z` (10010), plus `OPEN_CHROME_MENU_Z` — the tier shared by the `<Menu>` primitive, `NodeEditPopover`, and (since 29cad190) the caret popups (`SlashCommandPopup`, promoted off the ad-hoc `zIndex:1000` so a popped card / lifted overlay can no longer occlude them). The full ladder is documented in `STYLE_GUIDE.md`.
 

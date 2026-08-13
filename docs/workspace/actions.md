@@ -1,4 +1,4 @@
-<!-- last-verified: ef13712e 2026-08-11 -->
+<!-- last-verified: 7770419e 2026-08-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -45,10 +45,16 @@ once below and the variants point at it.
 ### The action vocabulary: `VIRGIL_ACTION_REGISTRY`
 
 The SSOT for the action vocabulary is **`VIRGIL_ACTION_REGISTRY`** in
-[action-registry.ts:2718](../../src/lib/actions/action-registry.ts) — the single
+[action-registry.ts:2959](../../src/lib/actions/action-registry.ts) — the single
 registry every surface reads off (CHIP 3 inverted the old dependency: the array
 `MENU_ENTRIES` is **deleted**, and the two live menus now render FROM the
-registry via `cardActionRows("grab" | "lightning")`). The card-action slice is
+registry via `cardActionRows("grab" | "lightning")`). Since task 260 the registry
+is a **total** `Readonly<Record<ActionId, ActionSpec>>` spread from six
+per-family `Record<<Family>ActionId, ActionSpec>` row tables, and
+`EXPECTED_ACTION_IDS` + every `COVERED_*` slice are *derived* from those keys —
+so a new `ActionId` is a compile error at its family's table, not a hand-list to
+remember. (`assertActionCoverage`'s step-5 leg now compares two derived sets, so
+it checks for a derivation fork, not completeness.) The card-action slice is
 **11** rows; the `DragHandleAction` union ([DragHandleMenu.tsx:39](../../src/components/DragHandleMenu.tsx))
 stays as the shared action-id union the dispatcher + the per-kind
 `TEXT_OBJECT_REGISTRY[kind].actions` lists speak. Each row's menu presentation

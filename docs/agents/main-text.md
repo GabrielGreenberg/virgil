@@ -1,4 +1,4 @@
-<!-- last-verified: ef13712e 2026-08-11 -->
+<!-- last-verified: 7770419e 2026-08-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#latex-round-trip-vocabulary, docs/architecture/VIRGIL.md#uuid-marker-emission -->
 <!-- covers-code: src/lib/tiptap, src/links, src/lib/marginalia.ts, src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/text-objects, src/hooks/useReconcileModeAAnchors.ts, src/lib/anchor-mint-signal.ts -->
 
@@ -166,7 +166,7 @@ Panel cards carry the same `data-link-card="<cardKind>:<cardId>"` — that pairi
 
 **The exception:** a *transient* `linkedAnchor` range handle — a plain selection grab that no card has claimed yet — carries no card, so it emits **no** `data-link-card` at all, and `.linked-anchor:not([data-link-card])` in `globals.css` is what paints it. Every other marker carries all three.
 
-A `data-link-ids="<id1> <id2> …"` attribute for multi-anchor cards was documented here for months and **never existed**: nothing in either silo emitted it, and the constant declaring it was deleted in task 202. [link-surface-honesty.test.ts](../../src/links/__tests__/link-surface-honesty.test.ts) now fails CI if anything starts. Build the token with `linkCardKey` and read it with `parseLinkCardKey` ([link-dom-contract.ts](../../src/links/link-dom-contract.ts)) — never by hand, emitting or querying.
+A `data-link-ids="<id1> <id2> …"` attribute for multi-anchor cards was documented here for months and **never existed**: nothing in either silo emitted it, and the constant declaring it was deleted in task 202. [link-surface-honesty.test.ts](../../src/links/__tests__/link-surface-honesty.test.ts) now fails CI if anything starts. Build the token with `linkCardKey` and read it with `parseLinkCardKey` ([link-dom-contract.ts](../../src/links/link-dom-contract.ts)) — never by hand, emitting or querying. Task 204 added the third rung: a *selector* (a name composed with a value) is contract-owned too, so query through `linkIdSelector` / `linkKindSelector` / `linkCardSelector` / `linkCardIdSelector` rather than interpolating an attribute name into a string. A bare presence test (`.linked-anchor[${DATA_LINK_ID}]`) has no value to interleave and stays inline.
 
 ### Resolution
 

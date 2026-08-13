@@ -1,4 +1,4 @@
-<!-- last-verified: ef13712e 2026-08-11 -->
+<!-- last-verified: 7770419e 2026-08-13 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -197,6 +197,15 @@ being an Archive **text-object** snippet.)
 `AiRequestsState { requests: AiRequest[] }` — the parallel store the cowork loop
 turns on (the retired `ai` kind survives only as `AiRequestKind`, not a CardKind). **Never hand-edit it**; the writeback owns it
 ([structure.md](structure.md#the-write-path)).
+
+This file has three writers (two in-app, plus the `/editor/*` skills writing it
+on disk), so it has ONE authority: `mutateAiRequests` / `readAiRequests` in
+[src/lib/ai-requests-store.ts](../../src/lib/ai-requests-store.ts) (task 220).
+Every mutation is a pure function of the list as it is on disk, computed inside
+the serialized write critical section (`mutateSidecar`) and published on success;
+a stale edit whose row is gone DECLINES rather than resurrecting it. The filename
+constant is module-private — address the file through the authority, never
+through `mutateSidecar` directly.
 
 ```ts
 AiRequest {
