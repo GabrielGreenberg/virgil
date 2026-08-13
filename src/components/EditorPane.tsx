@@ -4012,9 +4012,12 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       runAction(id: ActionId, seed) {
         const spec = VIRGIL_ACTION_REGISTRY[id];
         if (!spec) {
-          // Unknown / not-yet-migrated id — no-op (dev-warn so a 4a-ii
-          // call-site typo is loud). The registry is partial until later
-          // chips populate the slash/typed/block/format rows.
+          // Defence only — since task 260 the registry is a TOTAL
+          // `Record<ActionId, ActionSpec>` (a missing row is a compile error),
+          // so this is unreachable through the typed door. It stays because
+          // `runAction` is the plugin-land bridge's entry point and a caller
+          // reaching it through a cast should get a loud dev warning rather
+          // than a `.run` on undefined.
           if (process.env.NODE_ENV !== "production") {
             console.warn(
               `[editor-actions-bridge] runAction("${id}") — no registry row; ignoring`,
