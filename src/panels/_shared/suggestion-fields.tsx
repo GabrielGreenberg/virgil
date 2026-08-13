@@ -49,11 +49,18 @@ export type SuggestionStatus =
   | "rejected";
 export type SuggestionAuthor = "human" | "ai";
 
+/** `accepted` is the one member with a semantic token behind it — it is the
+ *  same "a thing you were working toward is DONE" statement the goal strip's
+ *  reached fill makes, so both read `--positive` (task 286). The other four
+ *  are still raw palette literals, pinned on `PERMITTED_RAW_PALETTE_LITERALS`
+ *  in panel-chrome-palette-guardrail.test.ts: this map is a five-way status
+ *  vocabulary whose home is arguably the `--status-*` traffic-light family,
+ *  and converging it would MOVE four colours — a visual call, not a swap. */
 export const STATUS_DOT: Record<SuggestionStatus, string> = {
   pending: "bg-blue-400",
   applied: "bg-sky-300",
   stale: "bg-amber-400",
-  accepted: "bg-emerald-500",
+  accepted: "bg-[var(--positive)]",
   rejected: "bg-red-400",
 };
 
