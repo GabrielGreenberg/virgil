@@ -10,10 +10,21 @@
  * THIS chip — the final two slices: `ref` (the `\ref` cross-reference, slash +
  * the lightning 'Cross-ref' cell, via the shared `openAtomCreate` seam) and the
  * `title`/`author`/`date` title fields (pure-PM `titleFieldRun`, SLASH-ONLY by
- * design — a doc-top singleton has no menu twin). The coverage assertion asserts
- * **ZERO pending ids** (covered == `EXPECTED_ACTION_IDS`, both directions) — a
- * new union member without a row trips CI. Wired via a vitest
- * (`action-coverage-assertion.test.ts`).
+ * design — a doc-top singleton has no menu twin).
+ *
+ * Completeness is enforced by the COMPILER (task 260): each family arrives as a
+ * `Record<<Family>ActionId, ActionSpec>` and the six spread into an annotated
+ * total `Record<ActionId, ActionSpec>`, so a new `ActionId` without a row fails
+ * to compile at its family's exhaustive table — the ROW table for atom / title /
+ * block / format, and the presentation / level table it is derived FROM for
+ * card / heading (those two are `mapRecord` results and so can never be missing
+ * a key; their annotations still refuse a degraded `mapRecord`).
+ * `EXPECTED_ACTION_IDS` + the `COVERED_*`
+ * slices are derived from those keys, and `assertActionCoverage` — wired via a
+ * vitest (`action-coverage-assertion.test.ts`) — checks what a type cannot: each
+ * row's SHAPE and the slash reconciliation. Before 260 the completeness claim
+ * rested on two hand-authored lists compared to each other, which held for
+ * card/format/heading only by the accident of an exhaustive `Record` elsewhere.
  * ──────────────────────────────────────────────────────────────────────────
  *
  * # Why this registry exists
@@ -277,6 +288,21 @@ export type BlockActionId =
   | "inline-math" // $x$ wrap/insert
   | "display-math"; // $$…$$ wrap/insert
 
+/** The HEADING subset of `BlockActionId` — the four `heading-*` ids. Named once
+ *  (task 260) so the level table, the row table and the coverage slice all read
+ *  the SAME sub-union instead of re-spelling the template-literal intersection.
+ *  A fifth heading command added to `BlockActionId` lands here automatically. */
+export type HeadingActionId = BlockActionId & `heading-${string}`;
+
+/** The NON-heading half of `BlockActionId` — `example` / `tex` / `figure` /
+ *  `graphics` / `inline-math` / `display-math`. DERIVED by `Exclude`, never
+ *  hand-listed: the two halves partition `BlockActionId` by construction, so a
+ *  new block insert (`table`, `verbatim`, …) is forced into exactly one of them
+ *  and its exhaustive row table stops compiling until someone gives it a row
+ *  (task 260 — the family whose absence made the old completeness guard a
+ *  tautology). */
+export type NonHeadingBlockActionId = Exclude<BlockActionId, HeadingActionId>;
+
 /** Title-field tools (`\title` / `\author` / `\date` slash commands; the
  *  `titleField` node). Singletons hoisted to the doc top. */
 export type TitleActionId = "title" | "author" | "date";
@@ -301,6 +327,37 @@ export type ActionId =
   | BlockActionId
   | TitleActionId
   | FormatActionId;
+
+// ---------------------------------------------------------------------------
+// Exhaustiveness plumbing (task 260) — two tiny generics that let a per-family
+// table CARRY its key union instead of a hand-list restating it.
+//
+// Array-element typing (`readonly CardActionId[]`) enforces SUBSET only: every
+// element is a valid member, never that every member is present. That is what
+// made the old `EXPECTED_ACTION_IDS` / `COVERED_*` manifests a pair of hand-kept
+// lists the `ActionId` union never checked. A `Record<<Family>ActionId, …>`
+// enforces the SUPERSET direction the union actually needs, so every id list
+// below is DERIVED from a Record's keys and nothing is spelled twice.
+// ---------------------------------------------------------------------------
+
+/** `Object.keys` that keeps the key union. Insertion order preserved, so a list
+ *  derived from a Record is byte-identical to the hand-list it replaces. */
+function keysOf<K extends string, V>(record: Readonly<Record<K, V>>): readonly K[] {
+  return Object.keys(record) as K[];
+}
+
+/** Map a keyed table to another table over the SAME keys. The result type is
+ *  `Record<K, B>`, so an exhaustive source yields an exhaustive result — this is
+ *  how the card + heading row tables inherit exhaustiveness from the
+ *  presentation / level tables that already declare it. */
+function mapRecord<K extends string, A, B>(
+  record: Readonly<Record<K, A>>,
+  build: (value: A, key: K) => B,
+): Record<K, B> {
+  const out = {} as Record<K, B>;
+  for (const key of keysOf(record)) out[key] = build(record[key], key);
+  return out;
+}
 
 /** The `ActionSpec.category` discriminant. */
 export type ActionCategory = "card" | "atom" | "block" | "format";
@@ -1374,7 +1431,7 @@ function footnoteRun(ctx: ActionContext): void {
 /** The heading level each heading `ActionId` sets. The id is the SSOT (one id
  *  per `\`-command name — see the HEADING ID SCHEME note on `BlockActionId`);
  *  this lookup recovers the scalar `level` for the `setBlockType` attrs. */
-const HEADING_ID_LEVEL: Readonly<Record<BlockActionId & `heading-${string}`, number>> = {
+const HEADING_ID_LEVEL: Readonly<Record<HeadingActionId, number>> = {
   "heading-chapter": 1,
   "heading-section": 2,
   "heading-subsection": 3,
@@ -1439,7 +1496,7 @@ function headingRun(level: number): (ctx: ActionContext) => void {
 //   - `\date` pre-fills today (pretty-printed `\today`; `isToday: true` so the
 //     serializer emits `\date{\today}`).
 // ---------------------------------------------------------------------------
-function titleFieldRun(field: "title" | "author" | "date"): (ctx: ActionContext) => void {
+function titleFieldRun(field: TitleActionId): (ctx: ActionContext) => void {
   return (ctx: ActionContext) => {
     if (isCollabReadOnly(ctx)) return; // CHIP 7b: uniform collab gate — no-op
     const view = ctx.view;
@@ -1554,7 +1611,7 @@ function titleFieldRun(field: "title" | "author" | "date"): (ctx: ActionContext)
  * In practice these are only invoked from a caret (the slash command), so "ok"
  * everywhere reachable.
  */
-function titleFieldRow(field: "title" | "author" | "date"): ActionSpec {
+function titleFieldRow(field: TitleActionId): ActionSpec {
   const label = field.charAt(0).toUpperCase() + field.slice(1);
   return {
     id: field,
@@ -1571,10 +1628,14 @@ function titleFieldRow(field: "title" | "author" | "date"): ActionSpec {
   };
 }
 
-/** The 3 title-field ids, in canonical doc-top order. The registry + the
- *  coverage assertion iterate this list; the slash commands look up the row by
- *  id via `runViewOnlyAction`. */
-const TITLE_ACTION_IDS: readonly TitleActionId[] = ["title", "author", "date"];
+/** The 3 title-field rows, in canonical doc-top order. Exhaustive over
+ *  `TitleActionId` (task 260 — this family had NO exhaustive source, so a
+ *  fourth title field used to ship row-less with every guard green). */
+const TITLE_ACTION_ROWS: Readonly<Record<TitleActionId, ActionSpec>> = {
+  title: titleFieldRow("title"),
+  author: titleFieldRow("author"),
+  date: titleFieldRow("date"),
+};
 
 // ---------------------------------------------------------------------------
 // texRun — the SECOND pure-ProseMirror block action (CHIP 5b), modeled on
@@ -2597,22 +2658,10 @@ const TEXT_COLOR_ACTION_ROW: ActionSpec = {
   run: textColorRun,
 };
 
-/** The 8 format ids, in grid render order (the order `ActionsMenuPanel` lays out
- *  the cells). The registry appends these after the block-atom slice; the
- *  coverage assertion + the grid both iterate by id. */
-const FORMAT_ACTION_IDS: readonly FormatActionId[] = [
-  "bold",
-  "italic",
-  "strike",
-  "code",
-  "bullet-list",
-  "ordered-list",
-  "blockquote",
-  "text-color",
-];
-
-/** The format rows by id (built above), for the registry assembly + the grid
- *  render. */
+/** The format rows by id (built above), in grid render order (the order
+ *  `ActionsMenuPanel` lays out the cells), for the registry assembly + the grid
+ *  render. Exhaustive over `FormatActionId`, so a ninth format id stops
+ *  compiling here. */
 const FORMAT_ACTION_ROWS: Readonly<Record<FormatActionId, ActionSpec>> = {
   bold: BOLD_ACTION_ROW,
   italic: ITALIC_ACTION_ROW,
@@ -2623,6 +2672,10 @@ const FORMAT_ACTION_ROWS: Readonly<Record<FormatActionId, ActionSpec>> = {
   blockquote: BLOCKQUOTE_ACTION_ROW,
   "text-color": TEXT_COLOR_ACTION_ROW,
 };
+
+/** The 8 format ids, in grid render order — DERIVED from the row table's keys
+ *  (task 260), so the grid order and the row set cannot drift. */
+const FORMAT_ACTION_IDS: readonly FormatActionId[] = keysOf(FORMAT_ACTION_ROWS);
 
 /**
  * Can a heading actually REPLACE the textblock(s) the current selection spans?
@@ -2708,7 +2761,7 @@ function selectionCanHostHeading(view: EditorView): boolean {
  * applicability test, so the registry can never claim "ok" where the run() would
  * no-op.
  */
-function headingRow(id: BlockActionId & `heading-${string}`): ActionSpec {
+function headingRow(id: HeadingActionId): ActionSpec {
   const level = HEADING_ID_LEVEL[id];
   // \chapter → "chapter", … — the slashName WITHOUT the backslash, reconciled
   // against VIRGIL_COMMAND_NAMES by assertActionCoverage.
@@ -2745,15 +2798,13 @@ function headingRow(id: BlockActionId & `heading-${string}`): ActionSpec {
   };
 }
 
-/** The 4 heading ids, in level order. The registry + the coverage assertion
- *  iterate this list; the slash command + the BlockType dropdown look up the
- *  row by id. */
-const HEADING_ACTION_IDS: readonly (BlockActionId & `heading-${string}`)[] = [
-  "heading-chapter",
-  "heading-section",
-  "heading-subsection",
-  "heading-subsubsection",
-];
+/** The 4 heading rows, in level order — DERIVED from `HEADING_ID_LEVEL`, the
+ *  exhaustive `Record<HeadingActionId, number>` that already had to name every
+ *  heading id to recover its level. A fifth heading command therefore stops
+ *  compiling at the LEVEL table (where its level must be stated anyway) rather
+ *  than shipping row-less (task 260). */
+const HEADING_ACTION_ROWS: Readonly<Record<HeadingActionId, ActionSpec>> =
+  mapRecord(HEADING_ID_LEVEL, (_level, id) => headingRow(id));
 
 /**
  * The DA-5 selection-mode (CHIP 7b) for each card action. ONLY `highlight` is
@@ -2839,48 +2890,114 @@ function cardRow(id: CardActionId): ActionSpec {
 // `CITATION_INPUT_RULE_PATTERNS` + `FOOTNOTE_INPUT_RULE_PATTERN` re-exports were
 // removed — task 225 — as dead, zero-importer symbols that mislabeled the join.)
 
-/** The 11 card ids, in canonical MENU-DISPLAY order — derived from
- *  `CARD_ACTION_ORDER` (the insertion order of `CARD_ACTION_PRESENTATION`,
- *  which mirrors the former `MENU_ENTRIES` order). Equal to `CardActionId` —
- *  pinned by the coverage assertion. The menus iterate this same order via
- *  `cardActionRows()` so the registry and the live menus can never disagree. */
-const CARD_ACTION_IDS: readonly CardActionId[] = CARD_ACTION_ORDER;
+/** The 11 CARD rows, in canonical MENU-DISPLAY order — DERIVED from
+ *  `CARD_ACTION_PRESENTATION` (the exhaustive `Record<CardActionId, …>` that
+ *  already owns each card's label/letter/icon, and from whose insertion order
+ *  `CARD_ACTION_ORDER` is taken). Card / format / heading were the three
+ *  families union-pinned all along, each by the accident of an exhaustive
+ *  `Record` kept for another purpose; task 260 makes that the DECLARED shape for
+ *  all six tables rather than a property three of them happened to have. */
+const CARD_ACTION_ROWS: Readonly<Record<CardActionId, ActionSpec>> = mapRecord(
+  CARD_ACTION_PRESENTATION,
+  (_presentation, id) => cardRow(id),
+);
+
+/** The single ATOM row — `ref`. Exhaustive over `AtomActionId` (task 260 — the
+ *  family the old `COVERED_ATOM_IDS = ["ref"]` hand-list could not pin: adding
+ *  `eqref` to the union shipped it row-less, `tsc` green, assertion green). */
+const ATOM_ACTION_ROWS: Readonly<Record<AtomActionId, ActionSpec>> = {
+  ref: REF_ACTION_ROW,
+};
+
+/** The 6 NON-heading block rows, in registration order. Exhaustive over
+ *  `NonHeadingBlockActionId` — the family with no exhaustive source anywhere
+ *  before task 260, so a new block insert (`table` / `verbatim`) shipped with no
+ *  row and resolved to nothing at runtime.
+ *
+ *  `tex`/`example` own the slash surface AND the lightning surface; the 4
+ *  block-ATOM rows (`inline-math` / `display-math` / `figure` / `graphics`) are
+ *  LIGHTNING-ONLY grid cells — math WRAPS the selection, figure/graphics INSERT
+ *  via `smartInsertBlock`. */
+const NON_HEADING_BLOCK_ACTION_ROWS: Readonly<
+  Record<NonHeadingBlockActionId, ActionSpec>
+> = {
+  tex: TEX_ACTION_ROW,
+  example: EXAMPLE_ACTION_ROW,
+  "inline-math": INLINE_MATH_ACTION_ROW,
+  "display-math": DISPLAY_MATH_ACTION_ROW,
+  figure: FIGURE_ACTION_ROW,
+  graphics: GRAPHICS_ACTION_ROW,
+};
 
 /**
- * The SSOT map. `Partial<Record<…>>` is a defensive shape (a lookup miss reads
- * as "absent") — but as of CHIP 7a EVERY `ActionId` is populated below: the 11
- * CARD rows, the heading / tex / example / block-atom / format / title slices,
- * and `ref`. `assertActionCoverage` asserts this is complete (covered ==
- * `EXPECTED_ACTION_IDS`, both directions) — the old covered-vs-pending
- * partition is now vacuous.
+ * The SSOT map — TOTAL over `ActionId`, and total *by the compiler* (task 260).
+ *
+ * It was `Partial<Record<…>>` built through `Object.fromEntries` + an `as`
+ * cast, which made a MISSING row legal: the "complete SSOT" promise rested
+ * entirely on `assertActionCoverage` comparing two HAND-authored lists
+ * (`EXPECTED_ACTION_IDS` vs the `COVERED_*` slices) that the `ActionId` union
+ * never checked. Array-element typing enforces subset, not superset, so for
+ * atom / title / non-heading-block — the three families with no incidental
+ * exhaustive `Record` — a new union member shipped with no row, no manifest
+ * entry, a green `tsc` and a green assertion, resolving to nothing at runtime.
+ *
+ * Now every family arrives as a `Record<<Family>ActionId, ActionSpec>` and the
+ * six spread into an annotated total `Record<ActionId, ActionSpec>`: a new
+ * member of ANY family fails to compile at that family's exhaustive table (the
+ * row table below, or — for card / heading, whose tables are `mapRecord`
+ * results — the presentation / level table they derive from), and a whole new
+ * family added to the union fails to compile HERE. `EXPECTED_ACTION_IDS`
+ * and the `COVERED_*` slices are derived from these keys rather than restated,
+ * so the assertion's remaining legs check row SHAPE and cross-surface
+ * reconciliation — the things a type cannot say — instead of re-asserting a
+ * completeness the compiler now owns.
+ *
+ * Key order (pinned by `action-coverage-assertion.test.ts`): cards in menu
+ * order, then headings by level, the block slice, the 8 format grid cells, then
+ * the CHIP 7a `ref` + the 3 title fields last.
  */
-export const VIRGIL_ACTION_REGISTRY: Partial<Record<ActionId, ActionSpec>> =
-  Object.fromEntries([
-    ...CARD_ACTION_IDS.map((id) => [id, cardRow(id)] as const),
-    // CHIP 5a: the 4 heading rows (pure-PM block actions; slash + lightning).
-    ...HEADING_ACTION_IDS.map((id) => [id, headingRow(id)] as const),
-    // CHIP 5b: the single `tex` row (pure-PM block action; slash + lightning).
-    ["tex", TEX_ACTION_ROW] as const,
-    // CHIP 5c: the single `example` row (pure-PM block insert; slash + lightning).
-    ["example", EXAMPLE_ACTION_ROW] as const,
-    // CHIP 6a: the 4 block-ATOM grid rows (lightning-only — no slash/typed/grab).
-    // math WRAPS the selection; figure/graphics INSERT via `smartInsertBlock`.
-    ["inline-math", INLINE_MATH_ACTION_ROW] as const,
-    ["display-math", DISPLAY_MATH_ACTION_ROW] as const,
-    ["figure", FIGURE_ACTION_ROW] as const,
-    ["graphics", GRAPHICS_ACTION_ROW] as const,
-    // CHIP 6b: the 8 FORMAT grid rows (lightning-only; `backbone: "tiptap-chain"`).
-    // The mark/list/quote toggles + text-color — completing the grid fold (every
-    // grid cell now renders from the registry).
-    ...FORMAT_ACTION_IDS.map((id) => [id, FORMAT_ACTION_ROWS[id]] as const),
-    // CHIP 7a: the FINAL slices — `ref` (atom; slash `\ref` + the NEW lightning
-    // 'Cross-ref' cell; `refRun` opens the LabelRef create-mode popover) and the
-    // 3 title-field rows (pure-PM block inserts; SLASH-ONLY — no menu twin by
-    // design; idempotent find-existing-or-insert; date pre-fills today). With
-    // these every `ActionId` has a row — the registry is the COMPLETE SSOT.
-    ["ref", REF_ACTION_ROW] as const,
-    ...TITLE_ACTION_IDS.map((id) => [id, titleFieldRow(id)] as const),
-  ]) as Partial<Record<ActionId, ActionSpec>>;
+export const VIRGIL_ACTION_REGISTRY: Readonly<Record<ActionId, ActionSpec>> = {
+  ...CARD_ACTION_ROWS,
+  ...HEADING_ACTION_ROWS,
+  ...NON_HEADING_BLOCK_ACTION_ROWS,
+  ...FORMAT_ACTION_ROWS,
+  ...ATOM_ACTION_ROWS,
+  ...TITLE_ACTION_ROWS,
+};
+
+/**
+ * Compile-time proof that the six family tables PARTITION `ActionId` — stated
+ * once, legibly, beside the assembly it explains (task 260).
+ *
+ * The annotation above already refuses an incomplete registry, so this is not
+ * the mechanism — it is the DIAGNOSTIC. A new member of an existing family
+ * fails at that family's exhaustive table (where the author is already
+ * standing — the row table, or the presentation / level table for the two
+ * `mapRecord` families) and never reaches here; what reaches here is a whole
+ * new FAMILY added to
+ * `ActionId` with no table of its own, which the annotation above reports as
+ * "property 'x' is missing" on a six-line spread. This reports it as
+ * `{ "an ActionId family has no exhaustive row table": "x" }`, which says what
+ * to do about it. `_MissingFromFamilyTables` is every id no family table claims;
+ * `_ForeignInFamilyTables` is every family key that is not an `ActionId`. Both
+ * must be `never`, and the assignment below is the thing that says so.
+ */
+type _FamilyCoveredActionId =
+  | keyof typeof CARD_ACTION_ROWS
+  | keyof typeof HEADING_ACTION_ROWS
+  | keyof typeof NON_HEADING_BLOCK_ACTION_ROWS
+  | keyof typeof FORMAT_ACTION_ROWS
+  | keyof typeof ATOM_ACTION_ROWS
+  | keyof typeof TITLE_ACTION_ROWS;
+type _MissingFromFamilyTables = Exclude<ActionId, _FamilyCoveredActionId>;
+type _ForeignInFamilyTables = Exclude<_FamilyCoveredActionId, ActionId>;
+const _ACTION_ID_PARTITION_PROOF: [
+  _MissingFromFamilyTables,
+  _ForeignInFamilyTables,
+] extends [never, never]
+  ? true
+  : { "an ActionId family has no exhaustive row table": _MissingFromFamilyTables } = true;
+void _ACTION_ID_PARTITION_PROOF;
 
 // ---------------------------------------------------------------------------
 // Menu views over the registry — the two live React menus (`DragHandleMenu`,
@@ -2931,48 +3048,31 @@ export function formatActionRows(): readonly ActionSpec[] {
 // ---------------------------------------------------------------------------
 
 /**
- * The set of `ActionId`s that MUST have a registry row once population is
- * complete — encoded as a manifest because not every source list is cleanly
- * importable as a flat string array (the slash names fan out 4→1 for
- * headings; the typed/format/stray surfaces have no single exported list).
- * The assertion below cross-checks the importable lists (`VIRGIL_COMMAND_NAMES`
- * + the populated registry rows) against this manifest, so the manifest and
- * the live sources can't silently diverge. (As of CHIP 3 the card rows OWN
- * their label/letter/icon via `CARD_ACTION_PRESENTATION` — the registry is the
- * SSOT and the two live menus render off it; the former `MENU_ENTRIES` array
- * is gone.)
+ * The `ActionId`s that have a registry row — DERIVED from the registry's own
+ * keys (task 260), never a hand-authored manifest.
  *
- * Provenance of each entry (the four surfaces). As of CHIP 7a this manifest is
- * FULLY covered — every id has a registry row (the registry is the COMPLETE
- * SSOT):
+ * It WAS a hand list, and that is precisely what made the "COMPLETE SSOT, both
+ * directions" guard below a tautology: two lists kept by hand, compared to each
+ * other, with the `ActionId` union — the actual master vocabulary — the
+ * reference of neither. Deriving it means the manifest cannot omit a live row,
+ * and the total `Record<ActionId, ActionSpec>` annotation on the registry means
+ * the registry cannot omit a union member. The two facts together are the
+ * completeness the old prose promised.
+ *
+ * Provenance of each slice (the four surfaces):
  *   - 11 card ids       ← the card vocabulary (grab + lightning menus)
- *   - ref               ← `\ref` slash + the lightning 'Cross-ref' grid cell (CHIP 7a)
  *   - 4 heading ids     ← `\chapter/\section/\subsection/\subsubsection` + dropdown
  *   - example           ← `\ex` slash + lightning grid `ex` cell (CHIP 5c)
  *   - tex               ← `\tex` slash + lightning grid
  *   - figure / graphics ← lightning grid (no slash today)
  *   - inline/display-math ← lightning grid math buttons
- *   - title/author/date ← `\title/\author/\date` slash (SLASH-ONLY by design —
- *                          a titleField is a doc-top singleton, no menu twin; CHIP 7a)
  *   - 8 format ids      ← lightning formatting grid (bold/italic/strike/code/
  *                          bullet-list/ordered-list/blockquote/text-color)
+ *   - ref               ← `\ref` slash + the lightning 'Cross-ref' grid cell (CHIP 7a)
+ *   - title/author/date ← `\title/\author/\date` slash (SLASH-ONLY by design —
+ *                          a titleField is a doc-top singleton, no menu twin; CHIP 7a)
  */
-const EXPECTED_ACTION_IDS: readonly ActionId[] = [
-  // card (11)
-  "highlight", "note", "footnote", "citation", "todo", "suggest-edit",
-  "cutter", "report", "duplicate", "archive", "delete",
-  // atom (1)
-  "ref",
-  // block / structural
-  "heading-chapter", "heading-section", "heading-subsection",
-  "heading-subsubsection", "example", "tex", "figure", "graphics",
-  "inline-math", "display-math",
-  // title fields (3)
-  "title", "author", "date",
-  // format marks (8)
-  "bold", "italic", "strike", "code", "bullet-list", "ordered-list",
-  "blockquote", "text-color",
-];
+const EXPECTED_ACTION_IDS: readonly ActionId[] = keysOf(VIRGIL_ACTION_REGISTRY);
 
 /**
  * Map a `VIRGIL_COMMAND_NAMES` entry (the slash command name, no backslash)
@@ -3015,50 +3115,46 @@ export const SLASH_NAME_TO_ACTION_ID: Readonly<Record<string, ActionId>> = {
   quotation: "blockquote",
 };
 
-/**
- * The 11 card ids — the CARD slice of `EXPECTED_ACTION_IDS`. This was the first
- * slice migrated onto the registry (CHIP 2); the remaining ids (atom / block /
- * title / format) landed in CHIPs 4–7 and now have their own `COVERED_*`
- * slices, so the union of all slices EQUALS `EXPECTED_ACTION_IDS` (no pending
- * ids remain). `assertActionCoverage` still checks each slice's row shapes.
- *
- * Equal to `CARD_ACTION_IDS` (the row-population list) but typed against the
- * `CardActionId` union so a drift between the two trips the typechecker.
- */
-const COVERED_CARD_IDS: readonly CardActionId[] = CARD_ACTION_IDS;
+// ---------------------------------------------------------------------------
+// The COVERED_* slices — each DERIVED from its family's exhaustive row table
+// (task 260), never hand-listed.
+//
+// They were `readonly <SubUnion>[]` hand-lists whose doc comments each claimed
+// "a drift trips the typechecker." Array-element typing says no such thing: it
+// enforces that every element IS a member, never that every member IS present.
+// For card / format / heading the claim happened to hold anyway — each had an
+// incidental exhaustive `Record` elsewhere (`CARD_ACTION_PRESENTATION`,
+// `FORMAT_ACTION_ROWS`, `HEADING_ID_LEVEL`) that a new member would break first.
+// For atom / title / non-heading-block there was no such Record, so the claim
+// was simply false. Every family now has one, and these read its keys.
+// ---------------------------------------------------------------------------
+
+/** The 11 card ids — the CARD slice. Each row is `category: "card"` on the grab
+ *  + lightning surfaces with a single-letter hint from
+ *  `CARD_ACTION_PRESENTATION`; `assertActionCoverage` checks that SHAPE. */
+const COVERED_CARD_IDS: readonly CardActionId[] = keysOf(CARD_ACTION_ROWS);
 
 /**
  * The 4 heading ids — the block slice CHIP 5a populates. Each owns the slash
  * surface (`\chapter` … `\subsubsection`) AND the lightning surface (the
  * BlockType dropdown), routes through the canonical SET+numbered `headingRun`,
  * and carries a `slashName` the assertion reconciles against
- * `VIRGIL_COMMAND_NAMES`. Like the card slice, this set moves these ids from
- * EXPECTED-PENDING to COVERED so step (4) doesn't flag the new rows as
- * out-of-order. Typed against the heading subset of `BlockActionId` so a drift
- * trips the typechecker.
+ * `VIRGIL_COMMAND_NAMES`.
  */
-const COVERED_HEADING_IDS: readonly (BlockActionId & `heading-${string}`)[] =
-  HEADING_ACTION_IDS;
+const COVERED_HEADING_IDS: readonly HeadingActionId[] =
+  keysOf(HEADING_ACTION_ROWS);
 
 /**
- * The non-heading block ids covered so far — CHIP 5b adds `tex`; CHIP 5c adds
- * `example`; CHIP 6a adds the 4 block-ATOM ids (`inline-math` / `display-math` /
- * `figure` / `graphics`). The tex/example rows own the slash surface (`\tex` /
- * `\ex`) AND the lightning surface; the 4 block-atom rows are LIGHTNING-ONLY (no
- * slash/typed/grab today — they're grid cells). Each routes through its canonical
- * pure-PM creator (`texRun` / `exampleRun` / `mathRun` / `figureRun` /
- * `graphicsRun`). Moves these ids from EXPECTED-PENDING to COVERED so step (4)
- * doesn't flag the new rows as out-of-order. Typed against `BlockActionId` so a
- * drift trips the typechecker.
+ * The 6 non-heading block ids — CHIP 5b `tex`; CHIP 5c `example`; CHIP 6a the 4
+ * block-ATOM ids (`inline-math` / `display-math` / `figure` / `graphics`). The
+ * tex/example rows own the slash surface (`\tex` / `\ex`) AND the lightning
+ * surface; the 4 block-atom rows are LIGHTNING-ONLY (no slash/typed/grab today —
+ * they're grid cells). Each routes through its canonical pure-PM creator
+ * (`texRun` / `exampleRun` / `mathRun` / `figureRun` / `graphicsRun`).
  */
-const COVERED_BLOCK_IDS: readonly BlockActionId[] = [
-  "tex",
-  "example",
-  "inline-math",
-  "display-math",
-  "figure",
-  "graphics",
-];
+const COVERED_BLOCK_IDS: readonly NonHeadingBlockActionId[] = keysOf(
+  NON_HEADING_BLOCK_ACTION_ROWS,
+);
 
 /**
  * The block ids that own the SLASH surface (tex `\tex`, example `\ex`) — the
@@ -3080,11 +3176,9 @@ const BLOCK_IDS_WITH_SLASH: ReadonlySet<BlockActionId> = new Set<BlockActionId>(
  * The five MARK toggles (bold/italic/strike/code/text-color) are lightning-ONLY
  * (a mark is not a slash command or input rule; StarterKit owns the keybindings).
  * The three structural WRAPPER toggles (in `FORMAT_IDS_WITH_SLASH`) ALSO own the
- * slash surface as of task 062. Moves these ids from EXPECTED-PENDING to COVERED
- * so step (4) doesn't flag the new rows as out-of-order. Typed against
- * `FormatActionId` so a drift trips the typechecker.
+ * slash surface as of task 062.
  */
-const COVERED_FORMAT_IDS: readonly FormatActionId[] = FORMAT_ACTION_IDS;
+const COVERED_FORMAT_IDS: readonly FormatActionId[] = keysOf(FORMAT_ACTION_ROWS);
 
 /**
  * The format ids that ALSO own the SLASH surface (task 062) — the three
@@ -3103,22 +3197,23 @@ const FORMAT_IDS_WITH_SLASH: ReadonlySet<FormatActionId> =
  * The single ATOM id — `ref` — the slice CHIP 7a populates. `category: "atom"`,
  * exposed on the slash surface (`\ref`) AND the lightning surface (the new
  * 'Cross-ref' grid cell). Routes through `refRun` → `ctx.openAtomCreate("ref")`
- * (the shared create popover is the creator). Moves `ref` from EXPECTED-
- * PENDING to COVERED. Typed against `AtomActionId` so a drift trips the
- * typechecker.
+ * (the shared create popover is the creator).
+ *
+ * This was the WORST of the three false claims: `["ref"]`, a one-element hand
+ * list whose comment promised a typechecker that had nothing to check it
+ * against (task 260). Now derived from `ATOM_ACTION_ROWS`, so a second atom
+ * action stops compiling until it has a row.
  */
-const COVERED_ATOM_IDS: readonly AtomActionId[] = ["ref"];
+const COVERED_ATOM_IDS: readonly AtomActionId[] = keysOf(ATOM_ACTION_ROWS);
 
 /**
  * The 3 TITLE-field ids — `title` / `author` / `date` — the slice CHIP 7a
- * populates, COMPLETING the registry (every `ActionId` now has a row). Each is
- * `category: "block"` and SLASH-ONLY (`\title` / `\author` / `\date`; no menu/
- * typed/keyboard twin — a titleField is a doc-top singleton, not a card). Routes
- * through the idempotent `titleFieldRun` (find-existing-or-insert; date pre-fills
- * today). Moves these ids from EXPECTED-PENDING to COVERED. Typed against
- * `TitleActionId` so a drift trips the typechecker.
+ * populates. Each is `category: "block"` and SLASH-ONLY (`\title` / `\author` /
+ * `\date`; no menu/typed/keyboard twin — a titleField is a doc-top singleton,
+ * not a card). Routes through the idempotent `titleFieldRun`
+ * (find-existing-or-insert; date pre-fills today).
  */
-const COVERED_TITLE_IDS: readonly TitleActionId[] = TITLE_ACTION_IDS;
+const COVERED_TITLE_IDS: readonly TitleActionId[] = keysOf(TITLE_ACTION_ROWS);
 
 /**
  * The card ids that ALSO own the PM-land surfaces (slash + typed): `citation`
@@ -3131,17 +3226,26 @@ const CARD_IDS_WITH_PM_SURFACES: ReadonlySet<CardActionId> =
   new Set<CardActionId>(["citation", "footnote"]);
 
 /**
- * DEV-ONLY coverage assertion — partitioned for the PHASED rollout.
+ * DEV-ONLY coverage assertion — row SHAPE + cross-surface reconciliation.
  *
- * ── MILESTONE (CHIP 7a): the registry is the COMPLETE SSOT. ── Each chip
- * migrated a slice of the vocabulary onto the registry; this assertion grew a
- * `COVERED_*` partition per slice. As of CHIP 7a the FINAL slices land —
- * `ref` (atom) + `title`/`author`/`date` (title fields) — so the covered set now
- * EQUALS `EXPECTED_ACTION_IDS`. There are **ZERO pending ids**: every `ActionId`
- * has a registry row, and step (5) below ASSERTS that equality (covered ==
- * expected, both directions) so the registry can never silently fall short of
- * the full vocabulary again. The per-slice loops still run (they pin each row's
- * shape); the old "expected-pending" branch is now vacuous by construction.
+ * ── WHERE COMPLETENESS LIVES (task 260). ── This assertion used to advertise
+ * itself as the COMPLETE-SSOT guard: step (5) compared the covered set against
+ * `EXPECTED_ACTION_IDS` "in BOTH directions," and its comment promised that a
+ * future chip adding an `ActionId` to the union without a row would trip here.
+ * It could not. Both sides were HAND-authored lists and the `ActionId` union was
+ * the reference of neither — array-element typing enforces subset, not superset
+ * — so for the three families with no incidental exhaustive `Record`
+ * (atom / title / non-heading block) a new member shipped with no row, resolving
+ * to nothing at runtime, with `tsc` green and this function returning `[]`.
+ *
+ * Completeness is now a COMPILE-TIME property, stated at the registry: every
+ * family is a `Record<<Family>ActionId, ActionSpec>` and the six spread into an
+ * annotated total `Record<ActionId, ActionSpec>`, with `EXPECTED_ACTION_IDS` and
+ * every `COVERED_*` slice DERIVED from those keys. A new union member fails to
+ * compile at its family table; a whole new family fails at the assembly. What is
+ * left for this function is what a type cannot say: each row's SHAPE (category,
+ * surfaces, letter, the PM-land join keys) and the slash reconciliation against
+ * the live command list.
  *
  * Verifies, for the CARD slice:
  *   1. every card id in `COVERED_CARD_IDS` has a registry row whose key === id;
@@ -3152,13 +3256,15 @@ const CARD_IDS_WITH_PM_SURFACES: ReadonlySet<CardActionId> =
  *      `surfaces.slash` + `surfaces.typed` AND carry a `slashName` +
  *      `inputRulePattern` (the PM-land join keys).
  *
- * And, for the (now-empty) pending vocabulary:
- *   4. nothing has a row outside the covered set (a stray/typo'd row). With the
- *      covered set == `EXPECTED_ACTION_IDS` this catches only an UNEXPECTED row.
- *   5. (CHIP 7a) the covered set EQUALS `EXPECTED_ACTION_IDS` in BOTH directions
- *      — no expected id is left uncovered, and no covered id is unexpected. This
- *      is the COMPLETE-SSOT guard: a new `ActionId` added to the union without a
- *      `COVERED_*` entry (or vice-versa) trips here.
+ * And, across the whole vocabulary:
+ *   4. nothing has a row outside the covered set (a stray/typo'd row);
+ *   5. the covered set equals `EXPECTED_ACTION_IDS` in both directions. Since
+ *      task 260 both sides are derived — (5) no longer *establishes*
+ *      completeness, it checks that the DERIVATION has not forked: a slice
+ *      re-hand-listed, or a row spread into the registry from outside a family
+ *      table, shows up here. The `!row` branches below are likewise defence
+ *      rather than mechanism (the total Record makes a miss unreachable), kept
+ *      because tests mutate the registry through a cast.
  *
  * The slash reconciliation against `VIRGIL_COMMAND_NAMES` runs BOTH directions:
  *   - forward (name → row): every live slash command's target row exists +
@@ -3477,11 +3583,9 @@ export function assertActionCoverage(): string[] {
     }
   }
 
-  // (4) nothing PENDING has leaked in ahead of its chip. As of CHIP 7a the
-  // covered set EQUALS `EXPECTED_ACTION_IDS` — every ActionId has a registry row,
-  // so the registry is the COMPLETE SSOT and this loop has ZERO pending ids to
-  // skip (it now only catches an unexpected/typo'd row). See the milestone note
-  // on `assertActionCoverage`.
+  // (4) a row that no COVERED_* slice claims — i.e. one that reached the
+  // registry from outside a family table. With both sides derived (task 260)
+  // this is the derivation-fork check, not a pending-ids check.
   for (const id of EXPECTED_ACTION_IDS) {
     if (covered.has(id)) continue;
     if (VIRGIL_ACTION_REGISTRY[id]) {
@@ -3492,13 +3596,15 @@ export function assertActionCoverage(): string[] {
     }
   }
 
-  // (5) COMPLETE-SSOT guard (CHIP 7a): the covered set EQUALS `EXPECTED_ACTION_IDS`
-  // — ZERO pending ids, in BOTH directions.
-  //   (a) every expected id is covered (nothing left to migrate); AND
-  //   (b) every covered id is expected (no covered id outside the manifest).
-  // After this chip these must both be empty. If a future chip adds an `ActionId`
-  // to the union, it MUST add it to `EXPECTED_ACTION_IDS` + a `COVERED_*` entry +
-  // a row — otherwise this guard trips, keeping the registry a COMPLETE SSOT.
+  // (5) DERIVATION-FORK guard (task 260, formerly the "COMPLETE-SSOT" guard):
+  //   (a) every id with a row is claimed by some family table; AND
+  //   (b) every family-table key has a row.
+  // Both sides are now derived from the family tables, so this cannot fail while
+  // the derivation is intact — which is the point: it fails the moment someone
+  // re-hand-lists a slice or grows the registry outside a family table. The
+  // guarantee this leg USED to claim (a new union member can't ship row-less)
+  // lives at the registry's total `Record<ActionId, ActionSpec>` annotation and
+  // the `_ACTION_ID_PARTITION_PROOF` beside it — a `tsc` error, not a string.
   const expectedSet = new Set<ActionId>(EXPECTED_ACTION_IDS);
   for (const id of EXPECTED_ACTION_IDS) {
     if (!covered.has(id)) {
