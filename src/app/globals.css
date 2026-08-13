@@ -413,9 +413,11 @@
      FIXED scale, not the user's `--footnote-color` pref, so a retinted
      footnote marker correctly leaves destructive chrome alone.)
 
-     `--danger-strong` merges two near-identical darks that no reader
-     could tell apart: the figure chrome-button hover `#b8261a` and the
-     error-text `#cc0000` of `.figure-error` / `.math-error`. #b8261a
+     `--danger-strong` merges two darks that carry the SAME role and no
+     distinct meaning: the figure chrome-button hover `#b8261a` and the
+     error text `#cc0000` of `.figure-error` / `.math-error`. They are
+     tellable apart side by side (ΔE ≈ 17) — what they are not is two
+     different statements, and no surface shows both. #b8261a
      wins the merge on both counts that matter — it is the warm,
      hand-picked hue this palette is built from rather than a pure
      primary, and on `--code-bg` it measures 5.45:1 against #cc0000's
@@ -552,9 +554,11 @@ body[data-zen-mode="on"] {
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-danger-muted: var(--danger-muted);
-  /* No --color-danger-strong: its consumers are all CSS rules, which read
-     var(--danger-strong) directly. Add the Tailwind alias with its first
-     JSX reader, not ahead of one. */
+  /* No --color-danger-strong: nothing spells it as a Tailwind UTILITY. Its
+     three JS-side consumers (KATEX_ERROR_COLOR and the two library alert
+     strings) read `var(--danger-strong)` as an inline style value, which needs
+     no `--color-*` entry. Add the alias with its first `text-danger-strong`,
+     not ahead of one. */
   --color-ring-drag-target: var(--ring-drag-target);
 }
 
@@ -3433,8 +3437,8 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
   outline-offset: -2px;
   /* Was #fff5f5 — a SIXTH rust hex (§8 counted five) whose only role was
      "palest rust wash", which is what --footnote-50 already is. The
-     1/255-per-channel delta is below any perceptual threshold on a
-     transient drop wash. */
+     delta is (1, 3, 3)/255 — deltaE2000 ~1.0, under the ~2.3 JND — so
+     it is below any perceptual threshold on a transient drop wash. */
   background: var(--footnote-50);
 }
 

@@ -33,17 +33,19 @@ import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
  *
  * ## The needle is a HUE, not a list
  *
- * Keying on the five hexes someone happened to find is the weakness task 194
- * recorded: it cannot see the sixth. `#fff5f5` (a wash `--footnote-50` already
- * covered) and `#c0392b` were both found BY the hue predicate during this task,
- * after the finding had enumerated three. So the needle is
+ * Keying on the hexes someone happened to find is the weakness task 194
+ * recorded: it cannot see the next one. `#fff5f5` — the sixth rust hex, where
+ * the audit's §8 count said five — was found BY the hue predicate during this
+ * task, after the finding had enumerated three; so was the library page-mark
+ * `#c0392b`, which the predicate then correctly hands to a reader, who excludes
+ * it as a different family. So the needle is
  * `saturation ≥ 15% ∧ hue ∈ [340°, 20°]`, computed through `color-math` — the
  * repo's one home for hex↔HSL — and the anti-vacuity legs below pin that it
  * catches the reds and spares the warm neutrals and ambers this palette is
  * mostly made of (a manila/stone/umber palette sits at hue 30-50, so the window
  * has real room either side).
  *
- * ## Two stated limits
+ * ## Three stated limits
  *
  *  1. **A `var(--token, #hex)` fallback is excluded by RULE**, not by
  *     allowlist: it is the repo's documented idiom and there are 255 of them.
@@ -55,7 +57,16 @@ import { KATEX_ERROR_COLOR } from "@/lib/tiptap/math";
  *  2. **Hue is not role.** The predicate cannot tell a destructive affordance
  *     from a red used for something else, so a legitimately non-destructive red
  *     lands on an allowlist with its reason rather than being silently skipped —
- *     the rule task 326 states. Both allowlists may only SHRINK.
+ *     the rule task 326 states. Both allowlists may only shrink, by convention:
+ *     each is an EXACT set, so growth fails CI and a removal is a deliberate
+ *     edit.
+ *  3. **A red does not have to be a hex.** The needle reads hexes, so stock
+ *     `*-red-N` / `*-rose-N` utilities and decimal `rgb()` are invisible to
+ *     legs 1-2. Leg 7 pins both as exact FILE sets so a new one still fails CI,
+ *     and the self-checks below pin the three shapes that used to slip through
+ *     the hex path itself (a 3-digit `#c00`, a single-line rule, a nested
+ *     `:root`). What remains genuinely unseen: `hsl()`, `oklch()`, and a colour
+ *     assembled at runtime.
  */
 
 const ROOT = path.resolve(__dirname, "..", "..");
@@ -72,7 +83,13 @@ const RED_HUE_MIN = 340;
 const RED_SAT_FLOOR = 0.15;
 
 export function isDestructiveRed(hex: string): boolean {
-  const [h, s] = rgbToHsl(...hexToRgb(hex));
+  // Expand `#c00` → `#cc0000` FIRST: color-math's `hexToRgb` accepts only the
+  // 6-digit form and returns [0,0,0] otherwise, so every 3-digit red would
+  // classify as BLACK and walk straight through the census. `#c00` is exactly
+  // the `.math-error` red this task retired, in the spelling that evades it.
+  const m = /^#([0-9a-f]{3})$/i.exec(hex.trim());
+  const full = m ? `#${m[1].split("").map((c) => c + c).join("")}` : hex;
+  const [h, s] = rgbToHsl(...hexToRgb(full));
   return s >= RED_SAT_FLOOR && (h >= RED_HUE_MIN || h <= RED_HUE_MAX);
 }
 
@@ -143,7 +160,10 @@ describe("stylesheets spell no raw destructive red in a rule body", () => {
     expect(inGlobals.map(fmt)).toEqual([]);
   });
 
-  it("every exception states why", () => {
+  // A FLOOR against an empty or one-word excuse, not a test of the reasoning —
+  // only a reader settles whether a sentence is true. Stated so the next person
+  // does not mistake a green run for the justification having been checked.
+  it("no exception is excused wordlessly", () => {
     for (const [key, why] of Object.entries(PERMITTED_RAW_CSS_REDS)) {
       expect(why.length, `${key} needs a real reason`).toBeGreaterThan(40);
     }
@@ -175,10 +195,12 @@ function walkSource(rel: string, out: string[] = []): string[] {
 }
 
 /**
- * Keyed `file:#hex`, per SITE rather than per FILE — the lesson task 189 paid
+ * Keyed `file:#hex` — finer than per FILE, which is the lesson task 189 paid
  * for. `AIWindow.tsx` is why: it holds an allowlisted status palette AND the
  * destructive hover this task migrated, so a file-level entry would have
- * exempted the very site under repair.
+ * exempted the very site under repair. It is deliberately NOT per LINE: a line
+ * number churns on every edit above it, and the pair (file, colour) is what
+ * actually identifies the decision being excused.
  */
 const PERMITTED_RAW_TS_REDS: Readonly<Record<string, string>> = {
   "src/lib/panel-theme.ts:#b45757":
@@ -213,7 +235,7 @@ describe("src/ and library/ spell no raw destructive red outside the recorded si
     );
   });
 
-  it("every exception states why", () => {
+  it("no exception is excused wordlessly", () => {
     for (const [key, why] of Object.entries(PERMITTED_RAW_TS_REDS)) {
       expect(why.length, `${key} needs a real reason`).toBeGreaterThan(40);
     }
@@ -241,6 +263,26 @@ describe("the destructive role family", () => {
 
   it("pins --danger-strong to the warm hand-picked dark, not a pure primary", () => {
     expect(decl("--danger-strong")).toBe("#b8261a");
+  });
+
+  it("emits a Tailwind alias for every rung spelled as a utility class", () => {
+    // The silent half of the boundary STYLE_GUIDE describes: a token minted in
+    // `:root` gets no utility for free, so `text-danger-muted` without a
+    // `--color-danger-muted` row emits NO CLASS AT ALL — no error, no style,
+    // nothing to grep. This leg exists because an edit to the COMMENT beside
+    // that row deleted it during this very task, with every other leg green.
+    const theme = cssCommentsStripped(globals);
+    for (const rung of ["danger", "danger-soft", "danger-muted", "danger-strong"]) {
+      const usedAsUtility = [...walkSource("src"), ...walkSource("library")].some((rel) =>
+        new RegExp(
+          `\\b(?:hover:|focus:|active:|group-hover:|disabled:)?(?:text|bg|border|ring|fill|stroke)-${rung}\\b`,
+        ).test(commentsStripped(read(rel))),
+      );
+      const aliased = new RegExp(`--color-${rung}:\\s*var\\(--${rung}\\)`).test(theme);
+      expect(aliased, `${rung} is spelled as a utility class but has no --color-${rung} alias`).toBe(
+        usedAsUtility,
+      );
+    }
   });
 
   it("keeps error ink above AA on the surface it actually paints on", () => {
@@ -355,6 +397,92 @@ describe("no danger-family read carries a hex fallback", () => {
   });
 });
 
+/* ── Leg 7: the two spellings the hex needle cannot see ──────────── */
+
+/**
+ * A red does not have to be a hex. `src/STYLE_GUIDE.md` names both escapes in
+ * its own token section — "that ban covers the value, not the spelling"
+ * (`rgba(59, 130, 246, …)` is `#3b82f6` in decimal) and the stock-Tailwind trap
+ * (`bg-amber-50` is a real utility, so it satisfies "no hex literal" while
+ * bypassing the token and painting the WRONG warm). Everything above is
+ * hex-keyed and is therefore structurally blind to both.
+ *
+ * These two sets are the honest residual, PINNED rather than mentioned — the
+ * rule task 326 states. They are deliberately NOT repaired here:
+ *
+ *  - The stock-red sites are the suggestion-card "Original" dialect and its
+ *    relatives (`bg-danger-soft` + `border-red-200` + `text-red-700` is a
+ *    DESIGNED look). Repainting them needs two rungs this family does not have
+ *    — a light border and a dark body ink — and a visual decision per card
+ *    surface, which is a product call, not a sweep.
+ *  - The decimal sites are one file's CodeMirror theme object, whose accent is
+ *    equally decimal (`rgba(124, 94, 60, …)` IS `--accent`), plus the Outline
+ *    wash already scoped by task 2026-08-02-284. Tokenizing the code-view theme
+ *    is that file's own unit of work.
+ *
+ * Pinning them means a NEW one fails CI even though this file cannot see its
+ * hex, and both sets can only SHRINK.
+ */
+const PINNED_STOCK_RED_SITES: readonly string[] = [
+  // `rose` is in the needle, not just `red`: Tailwind's rose ramp lands at hue
+  // ~350 — inside the hue window the hex leg uses — so a rose utility IS this
+  // family wearing another palette's name. Both sites are the same
+  // `bg-rose-50 border-rose-200 text-rose-700` library status chip.
+  "src/components/library/library-entry-status.tsx",
+  "src/components/library/provenance-chips.tsx",
+  "src/components/DocPermissionGate.tsx",
+  "src/components/PreferencesModal.tsx",
+  // NOT field-primitives.tsx: its only `border-red-300` is inside the doc
+  // comment explaining why the primitive refuses one (task 190). The comment
+  // strip is what tells those apart — a raw grep reports it as a live site.
+  "src/panels/Cutter/CutterSuggestionCard.tsx",
+  "src/panels/Revisions/RevisionSuggestionCard.tsx",
+  "src/panels/_shared/suggestion-fields.tsx",
+];
+
+const PINNED_DECIMAL_RED_SITES: readonly string[] = [
+  "src/components/CodeEditor.tsx", // .cm-virgil-band, rgba(220, 38, 38, 0.09)
+  "src/panels/Outline/OutlinePanel.tsx", // position wash, rgba(180, 87, 87, …) = #b45757
+];
+
+describe("the residual red spellings are a pinned census", () => {
+  const files = [...walkSource("src"), ...walkSource("library")];
+
+  it("stock Tailwind red utilities appear in exactly the recorded files", () => {
+    const found = files
+      .filter((rel) =>
+        /\b(?:hover:|focus:|active:|placeholder:|group-hover:|disabled:)?(?:text|bg|border|ring|from|via|to|fill|stroke|decoration|outline|shadow|accent|caret)-(?:red|rose)-\d{2,3}\b/.test(
+          commentsStripped(read(rel)),
+        ),
+      )
+      .sort();
+    expect(found).toEqual([...PINNED_STOCK_RED_SITES].sort());
+  });
+
+  it("decimal-spelled reds appear in exactly the recorded files", () => {
+    // Both silos AND both stylesheets: a decimal red is as reachable from CSS
+    // as from a theme object, and scanning only *.tsx would have left the
+    // sheets — the surface this whole task is about — outside this leg.
+    const found = [...files, ...STYLESHEETS]
+      .filter((rel) => {
+        const src = /\.css$/.test(rel) ? cssCommentsStripped(read(rel)) : commentsStripped(read(rel));
+        // Legacy comma form AND the modern space form (`rgb(220 38 38 / 9%)`),
+        // which is what a new site is most likely to be written in.
+        for (const m of src.matchAll(
+          /rgba?\(\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*[, ]\s*(\d{1,3})/g,
+        )) {
+          const [r, g, b] = [+m[1], +m[2], +m[3]];
+          // Same shape as the hue needle, expressed on raw channels: red
+          // dominant by a wide margin over BOTH others.
+          if (r > 120 && r - g > 40 && r - b > 40) return true;
+        }
+        return false;
+      })
+      .sort();
+    expect(found).toEqual([...PINNED_DECIMAL_RED_SITES].sort());
+  });
+});
+
 /* ── Self-checks: the census can SEE, and does not over-see ──────── */
 
 describe("the hue needle is neither blind nor indiscriminate", () => {
@@ -395,6 +523,39 @@ describe("the hue needle is neither blind nor indiscriminate", () => {
   it("does not count a red in a :root definition", () => {
     const def = ":root {\n  --footnote-500: #b45757;\n}\n";
     expect(redHits("x.css", cssRuleBodies(cssCommentsStripped(def)))).toHaveLength(0);
+  });
+
+  it("flags a 3-digit shorthand red", () => {
+    // color-math's hexToRgb takes only the 6-digit form and returns black
+    // otherwise, so an unexpanded `#c00` — the retired .math-error red exactly
+    // — would classify as a neutral and walk through every leg above.
+    expect(isDestructiveRed("#c00")).toBe(true);
+    expect(isDestructiveRed("#f00")).toBe(true);
+    expect(isDestructiveRed("#fff")).toBe(false);
+  });
+
+  it("sees a red in a SINGLE-LINE rule", () => {
+    // A line filter must drop the whole opening line (depth is still 0 when it
+    // is read), which hides every single-line rule's declarations. globals.css
+    // has a 20-rule block of them.
+    const oneLiner = '.linked-anchor[data-x="y"] { color: #cc0000; }\n';
+    expect(redHits("x.css", cssRuleBodies(cssCommentsStripped(oneLiner)))).toHaveLength(1);
+  });
+
+  it("treats a NESTED :root as a definition and a nested rule as a rule", () => {
+    const nested =
+      "@media print {\n  :root { --x: #b45757; }\n  .r { color: #cc0000; }\n}\n";
+    const hits = redHits("x.css", cssRuleBodies(cssCommentsStripped(nested)));
+    expect(hits.map((h) => h.hex)).toEqual(["#cc0000"]);
+  });
+
+  it("DOES count a red under a :root ANCESTOR combinator", () => {
+    // The hole the private copy of this walker carried: `:root` is also a
+    // legitimate ancestor selector, and `globals.css` uses it that way for the
+    // three WCO rules. A substring test exempts those bodies from every census
+    // built on the walker — silently, since an exemption looks like a pass.
+    const wco = ':root[data-display-mode="window-controls-overlay"] .virgil-bar {\n  color: #cc0000;\n}\n';
+    expect(redHits("x.css", cssRuleBodies(cssCommentsStripped(wco)))).toHaveLength(1);
   });
 
   it("the strippers did not swallow the stylesheet", () => {

@@ -225,8 +225,10 @@ const PERMITTED_DECORATIVE_PHANTOMS: Readonly<Record<string, string>> = {
   // waiting on is the one that task made. Both `role="alert"` sites now read
   // `--danger-strong`, the destructive family's error-ink rung — the same token
   // `.figure-error` / `.math-error` / KaTeX's `errorColor` resolve, so the two
-  // silos state error ink once. #b00020 → #b8261a keeps it a dark red (6.3:1 on
-  // white); the lighter `--danger` would have dropped alert text to 3.8:1.
+  // silos state error ink once. Stated exactly rather than favourably: #b00020
+  // → #b8261a moves alert text 7.33:1 → 6.31:1 on white, a real step DOWN
+  // (through AAA, still comfortably over AA) accepted to end the fork — where
+  // the lighter `--danger` would have taken it to 3.76:1, under AA.
   "--success": "style-editor validity tick; fallback #15803d",
   "--surface-warning": "float-sync stale banner; fallback in the Tailwind arbitrary value",
   "--ink-warning": "float-sync stale banner; fallback in the Tailwind arbitrary value",
