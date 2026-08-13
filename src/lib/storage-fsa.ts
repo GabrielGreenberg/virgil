@@ -352,6 +352,36 @@ export async function readSidecarIfExists<T>(
   }
 }
 
+/**
+ * The WRITE half of a sidecar persist, run INSIDE the caller's already-held
+ * critical section (`enqueueDocWrite`'s queued task). Factored so `writeSidecar`
+ * (whole-snapshot) and `mutateSidecar` (serialized read-modify-write) state the
+ * two post-write obligations — bundle coherence and the disk-ledger stamp —
+ * exactly once. NEVER call this outside the funnel: it does no queueing, no
+ * pipeline check and no library-paper guard of its own.
+ */
+async function persistSidecarInLock<T>(
+  docId: string,
+  filename: string,
+  data: T,
+): Promise<void> {
+  const docHandle = await requireDocHandle(docId);
+  const virgil = await getVirgilSubdir(docHandle);
+  const fileHandle = await virgil.getFileHandle(filename, { create: true });
+  const serialized = JSON.stringify(data, null, 2);
+  await writeTextToHandle(fileHandle, serialized);
+  // Keep the bundle coherent: the value we just wrote IS the freshest, so
+  // update it in place rather than invalidating (a read-after-write sees it).
+  const bundle = sidecarCache.get(docId);
+  if (bundle) bundle.files.set(filename, data);
+  // Stamp the disk ledger with the authoritative post-write fingerprint so
+  // the SidecarWatcher never misreads Virgil's OWN debounced sidecar autosave
+  // as an external change (the own-write guard — same false-positive killer
+  // the .tex/.bib path uses). Keyed on the `virgil/<filename>` relPath the
+  // watcher stats. Best-effort: `stampLedger` never throws.
+  await stampLedger(docId, `virgil/${filename}`, serialized);
+}
+
 export async function writeSidecar<T>(
   h: DocWriteHandle,
   filename: string,
@@ -360,23 +390,54 @@ export async function writeSidecar<T>(
   // Read-only library-paper docs never persist — the guard lives at the
   // `enqueueDocWrite` funnel below, which this (and every other writer) routes
   // through.
-  return enqueueDocWrite(h, `virgil/${filename}`, async () => {
-    const docHandle = await requireDocHandle(h.docId);
-    const virgil = await getVirgilSubdir(docHandle);
-    const fileHandle = await virgil.getFileHandle(filename, { create: true });
-    const serialized = JSON.stringify(data, null, 2);
-    await writeTextToHandle(fileHandle, serialized);
-    // Keep the bundle coherent: the value we just wrote IS the freshest, so
-    // update it in place rather than invalidating (a read-after-write sees it).
-    const bundle = sidecarCache.get(h.docId);
-    if (bundle) bundle.files.set(filename, data);
-    // Stamp the disk ledger with the authoritative post-write fingerprint so
-    // the SidecarWatcher never misreads Virgil's OWN debounced sidecar autosave
-    // as an external change (the own-write guard — same false-positive killer
-    // the .tex/.bib path uses). Keyed on the `virgil/<filename>` relPath the
-    // watcher stats. Best-effort: `stampLedger` never throws.
-    await stampLedger(h.docId, `virgil/${filename}`, serialized);
-  });
+  return enqueueDocWrite(h, `virgil/${filename}`, () =>
+    persistSidecarInLock(h.docId, filename, data),
+  );
+}
+
+/**
+ * Serialized READ-MODIFY-WRITE of one sidecar (task 220).
+ *
+ * The difference from `writeSidecar` is WHERE the read happens. A caller that
+ * does `readSidecar(...)` and then `writeSidecar(...)` reads OUTSIDE the write
+ * queue and the cross-window doc lock, so between its read and its write any
+ * other writer for the same file can land — and the read-modify-write then
+ * persists a merge computed from a base that no longer exists, silently
+ * dropping the interleaved change. Here the read runs INSIDE the same queued,
+ * doc-locked task as the write, so `mutate` always sees the freshest on-disk
+ * value and no writer can interleave between the two halves.
+ *
+ * The read deliberately goes through `readSidecar` (a DIRECT disk read that
+ * bypasses the bundle cache), never `readSidecarIfExists` — a cached snapshot
+ * is exactly the stale base this exists to eliminate.
+ *
+ * `mutate` must be PURE and cheap: it runs while the doc lock is held, and a
+ * caller that also applies it to in-memory state runs it a second time on a
+ * different base. Returning `null` means "nothing to change" — no write, no
+ * ledger stamp, and the call resolves `null`, so a caller can tell a no-op
+ * apart from a landed write. A library-paper (read-only) doc also resolves
+ * `null`: nothing was persisted, which is the honest report.
+ */
+export async function mutateSidecar<T>(
+  h: DocWriteHandle,
+  filename: string,
+  defaultValue: T,
+  mutate: (current: T) => T | null,
+): Promise<T | null> {
+  const result = await enqueueDocWrite<T | null>(
+    h,
+    `virgil/${filename}`,
+    async () => {
+      const current = await readSidecar<T>(h.docId, filename, defaultValue);
+      const next = mutate(current);
+      if (next === null) return null;
+      await persistSidecarInLock(h.docId, filename, next);
+      return next;
+    },
+  );
+  // `enqueueDocWrite` short-circuits a library-paper doc to `undefined` without
+  // running the task — normalize to the same "nothing persisted" report.
+  return result ?? null;
 }
 
 // ---------------------------------------------------------------------------

@@ -273,6 +273,29 @@ export async function readSidecarIfExists<T>(
   return fetchJsonIfExists<T>(docFileUrl(docId, `virgil/${filename}`));
 }
 
+/** Dev mirror of storage-fsa's `persistSidecarInLock` — the write half, run
+ *  inside the per-file serial queue. No queueing/guards of its own. */
+async function persistSidecarInLock<T>(
+  docId: string,
+  filename: string,
+  data: T,
+): Promise<void> {
+  const serialized = JSON.stringify(data, null, 2);
+  await putText(docFileUrl(docId, `virgil/${filename}`), serialized);
+  const bundle = sidecarCache.get(docId);
+  if (bundle) bundle.files.set(filename, data);
+  // Stamp the disk ledger so the SidecarWatcher never misreads Virgil's own
+  // debounced sidecar autosave as an external change (own-write guard; dev
+  // mirror of storage-fsa). Keyed on the `virgil/<filename>` relPath the watcher
+  // stats. Best-effort: `stampLedger` never throws.
+  await stampLedger(docId, `virgil/${filename}`, serialized);
+}
+
+/** The per-file serial-queue key, shared by BOTH sidecar write doors so a
+ *  snapshot write and a read-modify-write can never interleave (task 220). */
+const sidecarWriteKey = (docId: string, filename: string) =>
+  `${docId}/virgil/${filename}`;
+
 export async function writeSidecar<T>(
   h: DocWriteHandle,
   filename: string,
@@ -284,15 +307,33 @@ export async function writeSidecar<T>(
   // "No folder handle stored" throw the Reader hits in production).
   if (isLibraryPaper(h.docId)) return;
   assertActive(h);
-  const serialized = JSON.stringify(data, null, 2);
-  await putText(docFileUrl(h.docId, `virgil/${filename}`), serialized);
-  const bundle = sidecarCache.get(h.docId);
-  if (bundle) bundle.files.set(filename, data);
-  // Stamp the disk ledger so the SidecarWatcher never misreads Virgil's own
-  // debounced sidecar autosave as an external change (own-write guard; dev
-  // mirror of storage-fsa). Keyed on the `virgil/<filename>` relPath the watcher
-  // stats. Best-effort: `stampLedger` never throws.
-  await stampLedger(h.docId, `virgil/${filename}`, serialized);
+  // Serialize per file, matching storage-fsa's `enqueueDocWrite` funnel. Before
+  // task 220 the dev backend PUT straight through, so two writers for one
+  // sidecar raced here in a way they never could under FSA — and the
+  // read-modify-write door below would have had nothing to serialize against.
+  return enqueueWrite(sidecarWriteKey(h.docId, filename), () =>
+    persistSidecarInLock(h.docId, filename, data),
+  );
+}
+
+/** Dev mirror of storage-fsa's `mutateSidecar` — see there for the contract.
+ *  Same queue key as `writeSidecar`, so the read half is inside the critical
+ *  section no snapshot write can interleave with. */
+export async function mutateSidecar<T>(
+  h: DocWriteHandle,
+  filename: string,
+  defaultValue: T,
+  mutate: (current: T) => T | null,
+): Promise<T | null> {
+  if (isLibraryPaper(h.docId)) return null;
+  assertActive(h);
+  return enqueueWrite(sidecarWriteKey(h.docId, filename), async () => {
+    const current = await readSidecar<T>(h.docId, filename, defaultValue);
+    const next = mutate(current);
+    if (next === null) return null;
+    await persistSidecarInLock(h.docId, filename, next);
+    return next;
+  });
 }
 
 // ---------------------------------------------------------------------------

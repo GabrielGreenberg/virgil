@@ -19,11 +19,29 @@ import type { AiRequest, AiRequestsState } from "@/lib/types";
 // sidecar I/O so we can seed the read and fail the write on demand.
 const seeded: { state: AiRequestsState } = { state: { requests: [] } };
 const writeShouldThrow: { value: boolean } = { value: false };
+// Since task 220 the bridge writes through the serialized `mutateSidecar` door
+// (read INSIDE the write critical section); the mock reproduces it, including
+// the failure path these pins exist for — a mutator that would have written but
+// whose persist THREW must not publish.
 vi.mock("@/lib/storage", () => ({
   readSidecar: vi.fn(async () => seeded.state),
   writeSidecar: vi.fn(async () => {
     if (writeShouldThrow.value) throw new Error("simulated write failure");
   }),
+  mutateSidecar: vi.fn(
+    async (
+      _handle: unknown,
+      _file: string,
+      _defaultValue: unknown,
+      mutate: (current: AiRequestsState) => AiRequestsState | null,
+    ) => {
+      const next = mutate(seeded.state);
+      if (next === null) return null;
+      if (writeShouldThrow.value) throw new Error("simulated write failure");
+      seeded.state = next;
+      return next;
+    },
+  ),
 }));
 vi.mock("@/lib/multi-window/doc-pipeline", () => ({
   getActiveHandle: vi.fn(() => ({})),

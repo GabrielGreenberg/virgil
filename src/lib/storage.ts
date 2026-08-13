@@ -27,6 +27,11 @@ const backend: typeof import("@/lib/storage-fsa") = isDevStorage
 export const readSidecar = backend.readSidecar;
 export const readSidecarIfExists = backend.readSidecarIfExists;
 export const writeSidecar = backend.writeSidecar;
+// Serialized read-modify-write of ONE sidecar: the read runs inside the same
+// queued + doc-locked critical section as the write, so no writer can
+// interleave between a caller's read and its merge (task 220). Required for any
+// sidecar with more than one in-app writer; see storage-fsa.ts for the contract.
+export const mutateSidecar = backend.mutateSidecar;
 export const readSidecarBundle = backend.readSidecarBundle;
 export const invalidateSidecarBundle = backend.invalidateSidecarBundle;
 export const readTex = backend.readTex;

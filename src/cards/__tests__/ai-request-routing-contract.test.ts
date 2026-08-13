@@ -14,12 +14,30 @@ import { describe, it, expect, vi } from "vitest";
 // The bridge imports `@/lib/storage`, whose `require("@/lib/storage-fsa")`
 // vitest's resolver can't alias (the known barrel/storage gotcha) — and the
 // test must intercept sidecar I/O anyway to observe the written request.
+// Since task 220 the bridge routes its whole read-modify-write through the
+// serialized `mutateSidecar` door (read INSIDE the write critical section), so
+// the mock reproduces that door rather than a read + a write: apply the
+// mutator to the seeded list, record what it would persist, and honor the
+// `null` = nothing-to-change contract.
 const written: { file: string; data: unknown }[] = [];
 vi.mock("@/lib/storage", () => ({
   readSidecar: vi.fn(async () => ({ requests: [] })),
   writeSidecar: vi.fn(async (_handle: unknown, file: string, data: unknown) => {
     written.push({ file, data });
   }),
+  mutateSidecar: vi.fn(
+    async (
+      _handle: unknown,
+      file: string,
+      _defaultValue: unknown,
+      mutate: (current: unknown) => unknown,
+    ) => {
+      const next = mutate({ requests: [] });
+      if (next === null) return null;
+      written.push({ file, data: next });
+      return next;
+    },
+  ),
 }));
 vi.mock("@/lib/multi-window/doc-pipeline", () => ({
   getActiveHandle: vi.fn(() => ({})),
