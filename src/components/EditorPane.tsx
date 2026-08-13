@@ -199,6 +199,7 @@ import { StackIcon } from "./stack/StackIcon";
 import { StackStrip } from "./stack/StackStrip";
 import { useStack, addStackItem } from "@/hooks/useStack";
 import type { StackItem as StackItemType } from "@/lib/stack/types";
+import type { StackBibCtx } from "@/lib/stack/bib-carry";
 import { textObjectFloatable } from "@/text-objects/text-object-floatable";
 import { isTextObjectKind } from "@/text-objects/text-object-registry";
 import { useDragHandleActions, type DragHandleRef } from "./editor-layout/card-actions/drag-handle-actions";
@@ -1804,6 +1805,23 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   const [stackOpen, setStackOpen] = useState(false);
   const stackSourceRef = useRef<{ docId: string | null }>({ docId: docId ?? null });
   stackSourceRef.current = { docId: docId ?? null };
+  // The SOURCE doc's bibliography, for the stack-add door (task 235). Every
+  // producer answers the bib question through this one bag, so a `\cite`
+  // riding ANY payload — a card, a text slice, a paragraph, a heading section
+  // — carries its `BibEntry` + bib-review annotation into a cross-doc pull.
+  // Held in a ref, kept current each render, because the two consumers are a
+  // window-listener effect (which must not re-register whenever the user edits
+  // an entry) and a child prop; the resolvers are only ever called on a drop
+  // gesture, never per keystroke.
+  const stackBibCtx: StackBibCtx = useMemo(
+    () => ({
+      getBibEntry: (k) => citationsHook.bibEntries.find((e) => e.key === k),
+      getAnnotation: (k) => annotationsHook.getAnnotation(k),
+    }),
+    [citationsHook.bibEntries, annotationsHook],
+  );
+  const stackBibCtxRef = useRef<StackBibCtx>(stackBibCtx);
+  stackBibCtxRef.current = stackBibCtx;
   // Click-away: close the strip when the user mousedowns outside both
   // the icon and the strip. Effect is skipped while the strip is
   // closed to avoid a persistent document listener.
@@ -5072,7 +5090,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         const f = CARD_REGISTRY[parsed.kind].toFloatable(id, popoutsDeps);
         item = f?.snapshotForStack(source) ?? null;
       }
-      if (item) addStackItem(item);
+      // The bib carry is resolved at the ADD door for every payload family
+      // alike (task 235) — a card, a text slice, a paragraph, a heading.
+      if (item) addStackItem(item, stackBibCtxRef.current);
       // Close the source float regardless of snapshot success — the
       // user's intent is clear.
       viewPrefs?.closeCardPopout(cardKey);
@@ -5747,6 +5767,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                 onToggle={() => setStackOpen((v) => !v)}
                 mainEditor={editor}
                 source={{ docId: docId ?? null }}
+                bibCtx={stackBibCtx}
               />
               <StackStrip
                 open={stackOpen}

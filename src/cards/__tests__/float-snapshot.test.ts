@@ -39,25 +39,22 @@ import { CARD_KINDS } from "@/cards/predicates";
 import type { CardFloatCtx } from "@/cards/card-float-ctx";
 import type { CardKind } from "@/cards/types";
 import { stackCardKindFor, type StackItem } from "@/lib/stack/types";
+import { withBibCarry } from "@/lib/stack/bib-carry";
+import type { BibEntry } from "@/lib/types";
 
 const SOURCE = { docId: "doc-1" };
 
-/** Narrow a (card) StackItem to its `{ cardKind, data, bibEntries }`. Throws if
- *  the payload isn't a card — the caller has already asserted it is. */
+/** Narrow a (card) StackItem to its `{ cardKind, data }`. Throws if the payload
+ *  isn't a card — the caller has already asserted it is. */
 function cardPayload(item: StackItem): {
   cardKind: string;
   data: Record<string, unknown>;
-  bibEntries?: Array<Record<string, unknown>>;
 } {
   if (item.payload.kind !== "card") throw new Error("expected a card payload");
   const card = item.payload.card;
   return {
     cardKind: card.cardKind,
     data: card.data as unknown as Record<string, unknown>,
-    bibEntries:
-      "bibEntries" in card
-        ? (card.bibEntries as unknown as Array<Record<string, unknown>>)
-        : undefined,
   };
 }
 
@@ -184,12 +181,28 @@ describe("card Floatable.snapshotForStack", () => {
     expect(cardPayload(item!).data.content).toEqual(richDoc("fn body"));
   });
 
-  it("citation attaches the resolved bib sidecar (R3)", () => {
+  it("citation snapshots the ref alone — its bibliography rides the ADD door (task 235)", () => {
+    // R3 used to resolve the cited `BibEntry` into a per-card `bibEntries`
+    // sidecar HERE, through a ctx only the citation/bibliography arms consulted
+    // — which is exactly why a `\cite` riding a text slice reached a second doc
+    // dangling. The referenced bibliography is now resolved once for every
+    // payload family at the stack-add door (`withBibCarry`), so a snapshot
+    // helper is a pure serializer and carries no bib fields at all.
     const f = build("citation", "cit-1");
-    const item = f!.snapshotForStack(SOURCE);
-    const { bibEntries } = cardPayload(item!);
-    expect(bibEntries).toHaveLength(1);
-    expect(bibEntries![0].key).toBe("bib-1");
+    const item = f!.snapshotForStack(SOURCE)!;
+    const { cardKind, data } = cardPayload(item);
+    expect(cardKind).toBe("citation");
+    expect(data.keys).toEqual(["bib-1"]);
+    expect(item.bib).toBeUndefined();
+
+    // …and the entry that used to be side-channelled here is what the add door
+    // resolves, for this payload exactly as for a content one.
+    const carried = withBibCarry(item, {
+      getBibEntry: (k) =>
+        (mockCtx.bibEntries as unknown as BibEntry[]).find((e) => e.key === k),
+      getAnnotation: () => "",
+    });
+    expect(carried.bib?.entries.map((e) => e.key)).toEqual(["bib-1"]);
   });
 
   // The other half of the biconditional, also derived: a kind the registry

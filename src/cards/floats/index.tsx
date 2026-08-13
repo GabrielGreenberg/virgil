@@ -517,10 +517,10 @@ registerCardFloatable("bib", (id, ctx: CardFloatCtx) => {
     bareWindow: true, // bespoke in-body header until Stage 6
     canJump: false,
     jumpToSource: () => {},
-    snapshotForStack: (source) =>
-      snapshotCard("bibliography", entry, source, {
-        getAnnotation: ctx.getAnnotation,
-      }),
+    // No bib resolution here (task 235): the entry's own annotation, and any
+    // entry a payload merely REFERENCES, ride `StackItem.bib`, resolved once
+    // at the stack-add door for every payload family alike.
+    snapshotForStack: (source) => snapshotCard("bibliography", entry, source),
     renderBody: () => (
       <BibEntryCard
         entry={entry}
@@ -561,13 +561,10 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
     jumpToSource: isAnchored
       ? () => ctx.editorRef.current?.scrollToCitation(cit.id, null)
       : () => {},
-    // R3: resolve bib sidecars from the ctx's already-loaded entries — no
-    // separate getBibEntry hook needed.
-    snapshotForStack: (source) =>
-      snapshotCard("citation", cit, source, {
-        getBibEntry: (k) => ctx.bibEntries.find((e) => e.key === k),
-        getAnnotation: ctx.getAnnotation,
-      }),
+    // No bib sidecars here (task 235). The cited entries + their annotations
+    // ride `StackItem.bib`, resolved at the single stack-add door — the same
+    // seam that gives a `\cite` inside a TEXT slice the same guarantee.
+    snapshotForStack: (source) => snapshotCard("citation", cit, source),
     renderBody: () => (
       <CitationCard
         citation={cit}

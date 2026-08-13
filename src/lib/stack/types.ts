@@ -40,32 +40,23 @@ export {
 
 /** Per-card-kind snapshot payload. The `data` field carries the source
  *  card's serialized record verbatim; consumers re-serialize on pull,
- *  swapping in a fresh id. Sidecars carry data the destination doc may
- *  not have (bib entries for citations). */
+ *  swapping in a fresh id.
+ *
+ *  **No per-kind bib sidecar lives here.** The bibliography a snapshot
+ *  references rides {@link StackItem.bib} — ONE carrier for every payload
+ *  family, since a citation atom can travel inside a text slice, a block, a
+ *  section or a card body just as readily as it can be the card (task 235).
+ *  The `citation` variant's `bibEntries`/`bibAnnotations` and the
+ *  `bibliography` variant's `annotation` were that carrier for the CARD family
+ *  only, which is exactly how the content families shipped bib-incomplete;
+ *  `normalizeStackItemBib` lifts them off a persisted blob written before the
+ *  unification. */
 export type StackCardSnapshot =
   | { cardKind: "note"; data: UserNote }
   | { cardKind: "highlight"; data: HighlightCard }
   | { cardKind: "footnote"; data: FootnoteRef }
-  | {
-      cardKind: "citation";
-      data: CitationRef;
-      bibEntries?: BibEntry[];
-      /** User-authored annotations for the side-channelled `bibEntries`,
-       *  keyed by citekey. Annotations live in a per-doc `annotations.json`
-       *  sidecar (NOT on the `BibEntry`), so they must ride the snapshot or a
-       *  cross-doc pull drops them silently. Only non-empty entries are
-       *  carried; absent ⇒ none of the referenced entries had a note. */
-      bibAnnotations?: Record<string, string>;
-    }
-  | {
-      cardKind: "bibliography";
-      data: BibEntry;
-      /** User-authored annotation for this entry (the bib-review note),
-       *  resolved from the per-doc `annotations.json` sidecar at snapshot
-       *  time. Carried so a cross-doc pull can re-attach it; absent/empty ⇒
-       *  the entry had no annotation. */
-      annotation?: string;
-    }
+  | { cardKind: "citation"; data: CitationRef }
+  | { cardKind: "bibliography"; data: BibEntry }
   | { cardKind: "todo"; data: TodoItem }
   | { cardKind: "archive"; data: ArchivedSnippet }
   | { cardKind: "revision-comment"; data: Extract<RevisionCard, { kind: "comment" }> }
@@ -120,6 +111,32 @@ export type StackPayload =
    *  (including its original id, which is rewritten on pull). */
   | { kind: "card"; card: StackCardSnapshot };
 
+/**
+ * The bibliography a snapshot REFERENCES, resolved in the SOURCE doc and
+ * carried so a pull into a DIFFERENT doc isn't dangling (task 235).
+ *
+ * `references.bib` is per-doc and annotations live in a per-doc
+ * `annotations.json` sidecar, so no global resolver rescues an unknown citekey
+ * in the destination: whatever a payload's `\cite` atoms (and its bibliographic
+ * cards) point at has to travel WITH the payload or it arrives as a LaTeX
+ * undefined reference with the source's bib-review note silently gone.
+ *
+ * ONE carrier for every payload family — see the note on
+ * {@link StackCardSnapshot}. Produced by `buildBibCarry` at the single stack-add
+ * door and consumed by `applyBibCarry` on the single pull door, so a payload
+ * family cannot be bib-complete while its sibling silently is not.
+ */
+export interface StackBibCarry {
+  /** The referenced `BibEntry` records that resolved in the source doc.
+   *  A referenced key with no entry there simply doesn't appear — the source
+   *  itself was dangling, and inventing an entry would be worse. */
+  entries: BibEntry[];
+  /** citekey → user-authored annotation HTML (the bib-review note), for every
+   *  referenced key that had one. Keyed by citekey rather than uid because the
+   *  destination mints its own uids on upsert. */
+  annotations: Record<string, string>;
+}
+
 export interface StackItem {
   /** Stack-local uuid; not the source entity's id. */
   id: string;
@@ -129,6 +146,10 @@ export interface StackItem {
    *  so a thumbnail tooltip can show "from <doc>". */
   source: { docId: string | null; docTitle?: string };
   payload: StackPayload;
+  /** The bibliography this payload references (task 235). Absent ⇒ the payload
+   *  references nothing, or nothing it references resolved in the source doc.
+   *  Never per-payload-kind: see {@link StackBibCarry}. */
+  bib?: StackBibCarry;
 }
 
 /** Storage envelope. Versioned so future schema changes can migrate

@@ -19,6 +19,11 @@ import {
   type StackItem,
 } from "@/lib/stack/types";
 import { subscribeToStorageKey } from "@/lib/cross-window-storage";
+import {
+  normalizeStackItemBib,
+  withBibCarry,
+  type StackBibCtx,
+} from "@/lib/stack/bib-carry";
 
 const EMPTY_ENVELOPE: StackEnvelope = { version: 1, items: [] };
 
@@ -32,7 +37,15 @@ function readEnvelope(): StackEnvelope {
     if (parsed.version !== 1 || !Array.isArray(parsed.items)) {
       return EMPTY_ENVELOPE;
     }
-    return { version: 1, items: parsed.items as StackItem[] };
+    // Normalize the pre-235 per-card bib sidecars onto the unified
+    // `item.bib` carrier (task 235). This is the ONE read door — the hook's
+    // state, its cross-window re-read, and the non-React `readStackItem` the
+    // pull spec uses all come through here — so no consumer downstream ever
+    // sees the old shape and the pull side needs no legacy branch.
+    return {
+      version: 1,
+      items: (parsed.items as StackItem[]).map(normalizeStackItemBib),
+    };
   } catch {
     return EMPTY_ENVELOPE;
   }
@@ -58,7 +71,6 @@ function notifySameWindow() {
 
 export interface UseStackValue {
   items: StackItem[];
-  add: (item: StackItem) => void;
   remove: (id: string) => void;
   clear: () => void;
   /** Look up a stack item by id — used by the stack-pull drop spec. */
@@ -90,15 +102,6 @@ export function useStack(): UseStackValue {
     notifySameWindow();
   }, []);
 
-  const add = useCallback(
-    (item: StackItem) => {
-      const cur = readEnvelope().items;
-      const next = [item, ...cur].slice(0, STACK_MAX_ITEMS);
-      persist(next);
-    },
-    [persist],
-  );
-
   const remove = useCallback(
     (id: string) => {
       const cur = readEnvelope().items;
@@ -118,7 +121,7 @@ export function useStack(): UseStackValue {
     [items],
   );
 
-  return { items, add, remove, clear, getItem };
+  return { items, remove, clear, getItem };
 }
 
 /**
@@ -132,12 +135,22 @@ export function readStackItem(id: string): StackItem | null {
 }
 
 /**
- * Imperative add for callers outside the React tree (FloatingPanel's
- * drag-end handler runs in a window mouseup listener).
+ * **The ONE door into the Stack** — imperative because every producer runs
+ * outside the React tree (the `virgil-stack-drop` window listener, StackIcon's
+ * HTML5 drop handler). The hook's own `add` was deleted with task 235 rather
+ * than given the same signature: it had no caller, and a second add door is a
+ * door someone reaches for without the obligation below.
+ *
+ * `bib` is REQUIRED (task 235). The referenced bibliography is resolved HERE,
+ * once, for every payload family, so a producer cannot land an item without
+ * answering the question — including producers that never touch
+ * `lib/stack/snapshot.ts` and would therefore have been missed by a per-helper
+ * ctx parameter. A doc with no bibliography answers with resolvers that return
+ * undefined, which is an answer; there is no default to omit.
  */
-export function addStackItem(item: StackItem): void {
+export function addStackItem(item: StackItem, bib: StackBibCtx): void {
   const cur = readEnvelope().items;
-  const next = [item, ...cur].slice(0, STACK_MAX_ITEMS);
+  const next = [withBibCarry(item, bib), ...cur].slice(0, STACK_MAX_ITEMS);
   writeEnvelope({ version: 1, items: next });
   notifySameWindow();
 }

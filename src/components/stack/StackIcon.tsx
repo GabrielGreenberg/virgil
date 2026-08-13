@@ -17,6 +17,7 @@ import { useStackDropTarget, setStackIconRect } from "@/lib/stack/stack-drop-tar
 import { MIME_TEXT_INSERT } from "@/lib/marginalia";
 import type { Editor } from "@tiptap/react";
 import { addStackItem } from "@/hooks/useStack";
+import type { StackBibCtx } from "@/lib/stack/bib-carry";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { LAYOUT_SITE_STACK_ICON } from "@/lib/layout-gesture-probe";
 
@@ -28,6 +29,13 @@ export interface StackIconProps {
   mainEditor: Editor | null;
   /** Source attribution for new stack items. */
   source: { docId: string | null; docTitle?: string };
+  /** The SOURCE doc's bibliography resolvers (task 235). REQUIRED — this
+   *  component is a stack PRODUCER, and every producer answers the bib
+   *  question at the add door so a `\cite` riding the dropped content isn't
+   *  dangling after a cross-doc pull. An HTML5 `MIME_TEXT_INSERT` payload is
+   *  exactly the family that never goes through `lib/stack/snapshot.ts`, which
+   *  is why the obligation sits on `addStackItem` rather than in a helper. */
+  bibCtx: StackBibCtx;
 }
 
 const ICON_DIAMETER = 56;
@@ -39,6 +47,7 @@ export function StackIcon({
   onToggle,
   mainEditor,
   source,
+  bibCtx,
 }: StackIconProps) {
   const [html5Hover, setHtml5Hover] = useState(false);
   const [hover, setHover] = useState(false);
@@ -120,7 +129,7 @@ export function StackIcon({
               kind: "paragraph",
               node: node as unknown as import("@tiptap/react").JSONContent,
             },
-          });
+          }, bibCtx);
         }
       } catch {
         /* ignore */

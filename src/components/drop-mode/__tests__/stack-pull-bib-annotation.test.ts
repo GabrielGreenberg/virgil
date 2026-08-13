@@ -1,13 +1,20 @@
 /**
- * Task 069 — the RESTORE half. A bib/citation stack pull must re-attach the
- * user-authored annotation the snapshot carried (annotations live in a per-doc
- * `annotations.json` sidecar, not on the `BibEntry`, so a cross-doc pull would
- * otherwise drop them silently). These tests drive the real
- * `stackPullDropSpec.applyDrop` against a fake `StackPullApi`, asserting:
+ * Task 069 — the RESTORE half, re-expressed on task 235's unified carrier.
+ *
+ * A bib entry's user-authored annotation lives in a per-doc `annotations.json`
+ * sidecar, not on the `BibEntry`, so a cross-doc pull would drop it silently
+ * unless the snapshot carries it. 069 built that carry into the CARD payload's
+ * own fields (`bibEntries` / `bibAnnotations` / `annotation`); 235 moved it onto
+ * `StackItem.bib`, the ONE carrier every payload family rides, and the discharge
+ * from the card branch's commit to `withBibUpsert`, which wraps EVERY resolved
+ * plan. The contract is unchanged and is what these tests still pin:
  *   - bibliography pull → `setAnnotation(key, html)` after `upsertBibEntry`;
- *   - citation pull → per-key `setAnnotation` for each side-channelled entry;
- *   - a snapshot with NO annotation writes nothing (same-doc / note-less path).
- * The snapshot half is covered by `lib/stack/__tests__/snapshot-bib-annotation`.
+ *   - citation pull → per-key `setAnnotation` for each referenced entry;
+ *   - a snapshot with NO annotation writes nothing (same-doc / note-less path);
+ *   - a blob PERSISTED BEFORE 235 still restores, through `normalizeStackItemBib`.
+ *
+ * The seam's unit contract is `lib/stack/__tests__/bib-carry.test.ts`; the
+ * content-payload half (the defect 235 fixed) is `stack-content-bib-carry.test.ts`.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -19,6 +26,7 @@ vi.mock("@/hooks/useStack", () => ({ readStackItem: readStackItemMock }));
 import { stackPullDropSpec } from "../specs/stack-pull";
 import type { DropCtx, Placement, StackPullApi } from "../types";
 import type { StackItem } from "@/lib/stack/types";
+import { normalizeStackItemBib } from "@/lib/stack/bib-carry";
 import type { BibEntry, CitationRef } from "@/lib/types";
 
 const CARD_KEY = "stack-pull:item-1";
@@ -57,7 +65,7 @@ function fakeStack() {
 
 /** A between-blocks placement + ctx whose mainEditor === placement.editor
  *  (the card path never touches the editor for bib/citation). */
-function ctxFor(stack: StackPullApi): { ctx: DropCtx; placement: Placement } {
+function ctxFor(stack: StackPullApi | undefined): { ctx: DropCtx; placement: Placement } {
   const mainEditor = {} as unknown as import("@tiptap/react").Editor;
   const placement = {
     kind: "between-blocks",
@@ -68,16 +76,24 @@ function ctxFor(stack: StackPullApi): { ctx: DropCtx; placement: Placement } {
   return { ctx, placement };
 }
 
-function bibItem(annotation?: string): StackItem {
+function item(payload: StackItem["payload"], bib?: StackItem["bib"]): StackItem {
   return {
     id: "item-1",
     capturedAt: "2026-07-06T00:00:00.000Z",
     source: { docId: "docA" },
-    payload: {
-      kind: "card",
-      card: { cardKind: "bibliography", data: bibEntry(), ...(annotation ? { annotation } : {}) },
-    },
+    payload,
+    ...(bib ? { bib } : {}),
   };
+}
+
+function bibItem(annotation?: string): StackItem {
+  return item(
+    { kind: "card", card: { cardKind: "bibliography", data: bibEntry() } },
+    {
+      entries: [bibEntry()],
+      annotations: annotation ? { smith2020: annotation } : {},
+    },
+  );
 }
 
 describe("stack-pull — bibliography annotation re-attach (task 069)", () => {
@@ -89,7 +105,13 @@ describe("stack-pull — bibliography annotation re-attach (task 069)", () => {
 
     stackPullDropSpec.applyDrop(placement, CARD_KEY, ctx);
 
-    expect(upserts.map((e) => e.key)).toEqual(["smith2020"]);
+    // Twice, by design and harmlessly: a bibliography card DECLARES its own key
+    // (which is how its annotation gets carried at all), so the entry arrives
+    // once through the carry and once as the card's own payload action.
+    // `upsertBibEntry` is a no-op on an existing key, so the second is free —
+    // and special-casing the payload's own entry out of the carry would buy a
+    // per-kind branch in the seam whose whole point is not having one.
+    expect(upserts.map((e) => e.key)).toEqual(["smith2020", "smith2020"]);
     expect(annotations).toEqual([["smith2020", html]]);
   });
 
@@ -100,20 +122,45 @@ describe("stack-pull — bibliography annotation re-attach (task 069)", () => {
 
     stackPullDropSpec.applyDrop(placement, CARD_KEY, ctx);
 
-    expect(upserts.map((e) => e.key)).toEqual(["smith2020"]);
+    expect(upserts.map((e) => e.key)).toEqual(["smith2020", "smith2020"]);
     expect(annotations).toEqual([]);
   });
 });
 
 describe("stack-pull — citation bib annotations re-attach (task 069 cluster)", () => {
+  const cit: CitationRef = {
+    id: "cit-1",
+    command: "\\citep{smith2020,jones1990}",
+    keys: ["smith2020", "jones1990"],
+    createdAt: "2026-07-06T00:00:00.000Z",
+  };
+
   function citationItem(): StackItem {
-    const cit: CitationRef = {
-      id: "cit-1",
-      command: "\\citep{smith2020,jones1990}",
-      keys: ["smith2020", "jones1990"],
-      createdAt: "2026-07-06T00:00:00.000Z",
-    };
-    return {
+    return item(
+      { kind: "card", card: { cardKind: "citation", data: cit } },
+      {
+        entries: [bibEntry(), bibEntry({ uid: "uid-jones", key: "jones1990" })],
+        annotations: { smith2020: "<p>Smith note.</p>" },
+      },
+    );
+  }
+
+  it("upserts every referenced entry and re-attaches only the annotated ones", () => {
+    readStackItemMock.mockReturnValue(citationItem());
+    const { api, upserts, annotations } = fakeStack();
+    const { ctx, placement } = ctxFor(api);
+
+    stackPullDropSpec.applyDrop(placement, CARD_KEY, ctx);
+
+    expect(upserts.map((e) => e.key)).toEqual(["smith2020", "jones1990"]);
+    expect(annotations).toEqual([["smith2020", "<p>Smith note.</p>"]]);
+  });
+
+  it("a pre-235 PERSISTED blob still restores, via the read door's normalization", () => {
+    // The shape an older build wrote: the bib rode the citation card's own
+    // fields. `readEnvelope` lifts it onto `item.bib` for every consumer, so the
+    // pull side needs no legacy branch — this is that guarantee, end to end.
+    const legacy = {
       id: "item-1",
       capturedAt: "2026-07-06T00:00:00.000Z",
       source: { docId: "docA" },
@@ -126,11 +173,9 @@ describe("stack-pull — citation bib annotations re-attach (task 069 cluster)",
           bibAnnotations: { smith2020: "<p>Smith note.</p>" },
         },
       },
-    };
-  }
+    } as unknown as StackItem;
+    readStackItemMock.mockReturnValue(normalizeStackItemBib(legacy));
 
-  it("upserts every referenced entry and re-attaches only the annotated ones", () => {
-    readStackItemMock.mockReturnValue(citationItem());
     const { api, upserts, annotations } = fakeStack();
     const { ctx, placement } = ctxFor(api);
 
@@ -138,5 +183,18 @@ describe("stack-pull — citation bib annotations re-attach (task 069 cluster)",
 
     expect(upserts.map((e) => e.key)).toEqual(["smith2020", "jones1990"]);
     expect(annotations).toEqual([["smith2020", "<p>Smith note.</p>"]]);
+  });
+
+  it("REFUSES rather than landing content it cannot make resolvable", () => {
+    // A host with no citation/bib hooks wired (`ctx.stack` absent) cannot
+    // discharge the carry, and landing the payload anyway is exactly the
+    // dangling-`\cite` outcome 235 closes. A pull is a copy, so refusing costs
+    // the user nothing — the item stays on the Stack.
+    readStackItemMock.mockReturnValue(citationItem());
+    const { ctx, placement } = ctxFor(undefined);
+
+    expect(stackPullDropSpec.classifyDrop(placement, CARD_KEY, ctx)).toEqual({
+      kind: "no-op",
+    });
   });
 });
