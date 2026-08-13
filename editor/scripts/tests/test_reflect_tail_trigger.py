@@ -238,20 +238,61 @@ check(len(memo_files(mem)) == 0, "DEV-off wrote NO memo (the never-ships-to-user
 print("\n=== throwaway-paper guard (temp sandbox + default sink → no memo) ===")
 import _common  # noqa: E402  (imported here: the guard is the subject, not a helper)
 
-sb = sandbox()
-check(_common._is_throwaway_paper(sb),
-      "a temp-dir paper with NO pinned sink is throwaway (suppressed)")
-check(not _common._is_throwaway_paper(ROOT / "samples/annotation-history"),
-      "a real in-repo paper is never throwaway")
-
+# The predicate reads PROCESS STATE, so this block CONTROLS that state — the
+# save/clear/restore idiom its own sibling at the top of this file already uses,
+# and which the end-to-end leg 15 lines below already applies to this very
+# variable (`env.pop(...)`). Before 2026-08-13 this block did neither and simply
+# inherited whatever the developer's shell pinned, which cost two ways at once:
+# on the one machine that runs the dev-loop ~/.zshenv pins VIRGIL_DEV_MEMOS_DIR,
+# so the "NO pinned sink" case asserted a condition it never established (red for
+# three nights, and reading as a code defect the whole time), while the
+# "EXPLICITLY pinned" case passed VACUOUSLY — ambiently it would have passed with
+# its own pin line deleted, a canary standing on the defect. A test that names an
+# environment must establish it, or it is measuring the shell, not the code.
 _prev = os.environ.get("VIRGIL_DEV_MEMOS_DIR")
-os.environ["VIRGIL_DEV_MEMOS_DIR"] = tempfile.mkdtemp(prefix="cowork-pin-")
-check(not _common._is_throwaway_paper(sb),
-      "an EXPLICITLY pinned sink always writes, temp paper or not")
-if _prev is None:
+os.environ.pop("VIRGIL_DEV_MEMOS_DIR", None)
+try:
+    sb = sandbox()
+    check(_common._is_throwaway_paper(sb),
+          "a temp-dir paper with NO pinned sink is throwaway (suppressed)")
+    check(not _common._is_throwaway_paper(ROOT / "samples/annotation-history"),
+          "a real in-repo paper is never throwaway")
+
+    os.environ["VIRGIL_DEV_MEMOS_DIR"] = tempfile.mkdtemp(prefix="cowork-pin-")
+    check(not _common._is_throwaway_paper(sb),
+          "an EXPLICITLY pinned sink always writes, temp paper or not")
+finally:
     os.environ.pop("VIRGIL_DEV_MEMOS_DIR", None)
-else:
-    os.environ["VIRGIL_DEV_MEMOS_DIR"] = _prev
+    if _prev is not None:
+        os.environ["VIRGIL_DEV_MEMOS_DIR"] = _prev
+
+
+# ── the ENVIRONMENT half of the same guard, reported as ITS OWN finding ──────
+# The three checks above interrogate the CODE, and now pass on every machine.
+# This one interrogates THIS MACHINE, because the guard's escape hatch ("an
+# explicit pin means a caller has said where the memos go") is satisfied
+# VACUOUSLY by a pin whose value IS the default it purports to override: the
+# guard then suppresses nothing, one suite run files ~280 sandbox memos into the
+# human's real dev-loop stream, and the next dream reads a window that is a
+# census of test fixtures (measured 1 → 30 on both 2026-08-10 and 2026-08-11).
+# Splitting it out is the point. Fused into the code checks it was unreadable —
+# a red line whose label said "a temp-dir paper … is throwaway", which is a
+# sentence about the predicate — so three consecutive digests argued about
+# whether a *boundary* had to be crossed to repair a *config* line.
+print("\n=== environment: is the throwaway guard actually armed on this machine? ===")
+_pin = os.environ.get("VIRGIL_DEV_MEMOS_DIR", "").strip()
+_vacuous = bool(_pin) and Path(_pin).expanduser().resolve() == (
+    _common.dev_home() / "memos").resolve()
+check(not _vacuous,
+      "no VACUOUS sink pin in the ambient env (a pin that names the default "
+      "expresses no caller intent, and disarms the throwaway guard)")
+if _vacuous:
+    print(f"       ENV  VIRGIL_DEV_MEMOS_DIR={_pin}")
+    print( "            …is exactly _common.dev_home()/memos, so it redirects nothing,")
+    print( "            …yet _is_throwaway_paper() reads it as intent and returns False.")
+    print( "       FIX  no code change: drop the redundant VIRGIL_DEV_MEMOS_DIR and")
+    print( "            VIRGIL_DREAM_DIGESTS_DIR exports from ~/.zshenv — both name the")
+    print( "            values the code already computes. Keep VIRGIL_REPO_ROOT (load-bearing).")
 
 # End to end: a real writeback on a temp sandbox, sink unpinned, writes nothing.
 sb = sandbox()
