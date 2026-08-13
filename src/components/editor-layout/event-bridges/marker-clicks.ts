@@ -4,7 +4,11 @@ import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 // A selector may spell the ATTRIBUTE name inline, but not the token: the
 // `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
 // is a second speller that silently stops matching if it ever changes (202).
-import { linkCardKey } from "@/links/link-dom-contract";
+import { linkIdSelector } from "@/links/link-dom-contract";
+// The footnote/citation entry addresses below were hand-copied from
+// `panelEntrySelector`'s own rows, byte for byte. One owner now (task 204):
+// a composite selector drifts the way selectors do — by not matching.
+import { panelEntrySelector } from "../panel-selection";
 // Pure dock-stack derivation — imported from the LEAF (not the hook module) so
 // this bridge stays clear of `useViewPrefs`'s heavy `OmniViewPanel` → storage
 // runtime chain (see view-prefs-derived.ts + anchor-route-derivation-contract).
@@ -175,7 +179,7 @@ function routeAnchorClick(
   );
   if (typeof clickY === "number") {
     const sourceEl = document.querySelector(
-      `.linked-anchor[data-link-id="${id}"]`,
+      `.linked-anchor${linkIdSelector(id)}`,
     ) as HTMLElement | null;
     // alignOmniCardWithClick converts clickY → pod-relative and
     // publishes a pin request. Retries one rAF later if the panel
@@ -289,7 +293,9 @@ export function useMarkerClickBridges(deps: {
       openForCard(
         {
           omniKey: cardPopKey("footnote", detail.footnoteId),
-          entrySelector: `[data-footnote-entry="${detail.footnoteId}"], [data-link-card="${linkCardKey("footnote", detail.footnoteId)}"]`,
+          // Non-null: `panelEntrySelector` returns null only for the panels
+          // with no selection concept, and "footnotes" is not one of them.
+          entrySelector: panelEntrySelector("footnotes", detail.footnoteId)!,
           panelId: "footnotes",
           cardKind: "footnote",
           // skipScroll: alignment is handled by shifting the omni cards
@@ -334,7 +340,7 @@ export function useMarkerClickBridges(deps: {
       openForCard(
         {
           omniKey: cardPopKey("citation", detail.citationId),
-          entrySelector: `[data-link-card="${linkCardKey("citation", detail.citationId)}"]`,
+          entrySelector: panelEntrySelector("citations", detail.citationId)!,
           panelId: "citations",
           cardKind: "citation",
           // skipScroll: alignment is handled by shifting the omni cards

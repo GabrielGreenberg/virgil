@@ -29,6 +29,11 @@ import type { UserNote, CutterCard, RevisionCard, ReportItem } from "@/lib/types
 import { getTextAnchor } from "../links";
 import { cardKindFromRecord } from "@/cards/predicates";
 import { ATOM_REGISTRY } from "@/lib/tiptap/atom-registry";
+import {
+  DATA_LINK_CARD,
+  DATA_LINK_ID,
+  parseLinkCardKey,
+} from "../link-dom-contract";
 import type { EntityKind } from "./entity-hover";
 
 interface AnchorIdEntry {
@@ -99,9 +104,9 @@ export function useTextHoverBridge({
       if (!el) return null;
 
       // Mode B text-range span.
-      const anchorEl = el.closest<HTMLElement>(".linked-anchor[data-link-id]");
+      const anchorEl = el.closest<HTMLElement>(`.linked-anchor[${DATA_LINK_ID}]`);
       if (anchorEl) {
-        const anchorId = anchorEl.getAttribute("data-link-id");
+        const anchorId = anchorEl.getAttribute(DATA_LINK_ID);
         if (anchorId) {
           const entry = mapRef.current.get(anchorId);
           if (entry) return entry;
@@ -125,17 +130,16 @@ export function useTextHoverBridge({
       }
 
       // Generic data-link-card fallback (covers any future link atom that
-      // adopts the canonical contract).
-      const atomEl = el.closest<HTMLElement>("[data-link-card]");
+      // adopts the canonical contract). The token is READ through
+      // `parseLinkCardKey` — this branch used to hand-roll `indexOf(":")` +
+      // two slices, a verbatim second copy of the parser, and the census that
+      // guards the grammar only ever looked at BUILD shapes, so it was
+      // structurally invisible (task 204).
+      const atomEl = el.closest<HTMLElement>(`[${DATA_LINK_CARD}]`);
       if (atomEl) {
-        const card = atomEl.getAttribute("data-link-card") || "";
-        const idx = card.indexOf(":");
-        if (idx > 0) {
-          const k = card.slice(0, idx);
-          const id = card.slice(idx + 1);
-          if ((k === "footnote" || k === "citation") && id) {
-            return { entityId: id, kind: k };
-          }
+        const parsed = parseLinkCardKey(atomEl.getAttribute(DATA_LINK_CARD) || "");
+        if (parsed && (parsed.kind === "footnote" || parsed.kind === "citation")) {
+          return { entityId: parsed.id, kind: parsed.kind };
         }
       }
 
@@ -168,10 +172,10 @@ export function useTextHoverBridge({
             ? e.target.parentElement
             : null;
       if (!el) return;
-      const anchorEl = el.closest<HTMLElement>(".linked-anchor[data-link-id]");
+      const anchorEl = el.closest<HTMLElement>(`.linked-anchor[${DATA_LINK_ID}]`);
       if (!anchorEl) return;
 
-      const anchorId = anchorEl.getAttribute("data-link-id");
+      const anchorId = anchorEl.getAttribute(DATA_LINK_ID);
       if (!anchorId) return;
       const entry = mapRef.current.get(anchorId);
       if (!entry) return;

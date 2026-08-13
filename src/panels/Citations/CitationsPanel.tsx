@@ -5,7 +5,7 @@ import type { BibEntry, CitationRef } from "@/lib/types";
 // A selector may spell the ATTRIBUTE name inline, but not the token: the
 // `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
 // is a second speller that silently stops matching if it ever changes (202).
-import { linkCardKey } from "@/links/link-dom-contract";
+import { linkCardSelector } from "@/links/link-dom-contract";
 import {
   ItemMenu,
   PANEL,
@@ -196,7 +196,7 @@ function CitationsPanel({
       jumpToCitation(cit.id);
       requestAnimationFrame(() => {
         const card = panelScrollRef.current?.querySelector(
-          `[data-link-card="${linkCardKey("citation", cit.id)}"]`,
+          linkCardSelector("citation", cit.id),
         );
         card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });

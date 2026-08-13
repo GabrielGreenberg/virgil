@@ -1,9 +1,9 @@
 import type { PanelId } from "@/hooks/useViewPrefs";
 import type { SelectionsContextValue } from "./contexts/selections";
-// A selector may spell the ATTRIBUTE name inline, but not the token: the
-// `<cardKind>:<cardId>` grammar has one builder, and a query that restates it
-// is a second speller that silently stops matching if it ever changes (202).
-import { linkCardKey } from "@/links/link-dom-contract";
+// Neither the attribute NAME nor the `<cardKind>:<cardId>` token is spelled
+// here: a query that restates either is a second speller that silently stops
+// matching if the contract ever changes (task 202 → 204).
+import { linkCardSelector } from "@/links/link-dom-contract";
 
 /**
  * Map a panel id to its "which card is currently selected" state slot
@@ -23,7 +23,7 @@ export function getPanelSelection(
 ): { selectedId: string; selector: string } | null {
   const id = panelSelectedId(panelId, s);
   if (!id) return null;
-  const selector = panelSelector(panelId, id);
+  const selector = panelEntrySelector(panelId, id);
   if (!selector) return null;
   return { selectedId: id, selector };
 }
@@ -39,16 +39,24 @@ function panelSelectedId(panelId: PanelId, s: SelectionsContextValue): string | 
   }
 }
 
-function panelSelector(panelId: PanelId, id: string): string | null {
+/**
+ * The DOM address of one panel's card, by panel + entity id.
+ *
+ * Exported because `marker-clicks.ts` needs the SAME answer for its
+ * `openForCard({ entrySelector })` calls and used to hand-copy two of these
+ * rows byte-for-byte — a duplicated *composite* address, which drifts in the
+ * way selectors always do: silently, by not matching (task 204).
+ */
+export function panelEntrySelector(panelId: PanelId, id: string): string | null {
   // Panels render different DOM in list vs in-text view modes. Citations
   // emit `data-link-card` in both modes; the others emit their own
   // `data-<kind>-entry` always, plus `data-link-card` in in-text mode
   // for footnotes. We OR them so either mode resolves.
   switch (panelId) {
     case "footnotes":
-      return `[data-footnote-entry="${id}"], [data-link-card="${linkCardKey("footnote", id)}"]`;
+      return `[data-footnote-entry="${id}"], ${linkCardSelector("footnote", id)}`;
     case "citations":
-      return `[data-link-card="${linkCardKey("citation", id)}"]`;
+      return linkCardSelector("citation", id);
     case "archive":
       return `[data-archive-entry="${id}"]`;
     case "notes":

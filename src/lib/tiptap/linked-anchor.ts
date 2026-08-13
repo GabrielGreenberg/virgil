@@ -5,6 +5,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import type { MutableRefObject } from "react";
 import { readPendingDiff } from "@/lib/tiptap/doc-structure";
 import { linkedAnchorRenderAttrs } from "@/lib/tiptap/linked-anchor-attrs";
+import { linkKindSelector } from "@/links/link-dom-contract";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LinkedAnchor — invisible mark placed on a text range. Used by Notes,
@@ -97,7 +98,7 @@ export const LinkedAnchor = Mark.create({
     // `data-link-id` when `data-link-kind="anchor"`.
     return [
       { tag: "span[data-anchor-id]" },
-      { tag: 'span[data-link-kind="anchor"]' },
+      { tag: `span${linkKindSelector("anchor")}` },
     ];
   },
 

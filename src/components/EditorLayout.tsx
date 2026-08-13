@@ -11,6 +11,7 @@ import {
   geomBreadcrumbEnabled,
 } from "@/lib/editor-geometry/section-path";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
+import { linkIdSelector, linkKindSelector } from "@/links/link-dom-contract";
 import { isDevStorage } from "@/lib/storage-mode";
 import { opfsAvailable } from "@/lib/example-doc/opfs-doc-location";
 import { isTier1BDisabled } from "@/lib/perf-flags";
@@ -1727,7 +1728,7 @@ export default function EditorLayout() {
     const els: HTMLElement[] = [];
     for (const c of matching) {
       const el = document.querySelector(
-        `[data-link-kind="citation"][data-link-id="${c.citationId}"]`,
+        `${linkKindSelector("citation")}${linkIdSelector(c.citationId)}`,
       ) as HTMLElement | null;
       if (el) {
         el.classList.add("citation-highlight-bib");
