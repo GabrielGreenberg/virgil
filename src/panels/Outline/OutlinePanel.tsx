@@ -155,6 +155,13 @@ function posToAttr(pos: ResolvedPosition | null): string | null {
  * red wash — the primary current-section selector) from the mirror pane
  * ("edge", a slim accent bar) so a split view showed both without two
  * clashing washes.)
+ *
+ * The wash is an ACCENT tint (task 284). It used to be
+ * `rgba(180, 87, 87, 0.13)` — `--footnote-500` at 13%, spelled in decimal, a
+ * borrowed colour for a job that has nothing to do with footnotes. "Where the
+ * caret is" is what `--accent` names ("Links, selections, and active
+ * controls"), and `--accent` is user-themeable, so the selector now follows the
+ * user's accent instead of a frozen red.
  */
 function PositionHighlight({ scrollRef, attr, color }: {
   scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -219,7 +226,25 @@ function PositionHighlight({ scrollRef, attr, color }: {
   );
 }
 
-/** Inline label: shows existing label (click to edit) or a "+" on hover to create one. */
+/**
+ * Inline label: shows existing label (click to edit) or a "+" on hover to create one.
+ *
+ * This is the PANEL-SIDE twin of the in-prose heading-label chrome
+ * (`globals.css` `.heading-label-input` / `.heading-label-add` / the
+ * `.heading-annotation` lozenge) — the same `\label{key}` on the same heading,
+ * rendered in the Outline instead of the margin. So it takes the same tokens
+ * (task 284): `--heading-annotation-color` for the key + its underline + the
+ * "+" affordance, `--danger-muted` for the rename-conflict ink and border and
+ * the ⚠ line, exactly as `.heading-label-input.has-conflict` and
+ * `.heading-label-warning` do.
+ *
+ * It previously painted stock Tailwind `blue-500`/`blue-400` and a raw
+ * `#b45757` — the one blue in either silo, and a hand-spelling of
+ * `--footnote-500` used for an error. `--heading-annotation-color` is
+ * user-themeable (Preferences › Editor › "Annotations displayed alongside
+ * headings"), so the frozen blue also meant recolouring your heading
+ * annotations moved the margin lozenge and left the Outline behind.
+ */
 function InlineLabel({
   label,
   onCommit,
@@ -268,13 +293,13 @@ function InlineLabel({
           onClick={(e) => e.stopPropagation()}
           className={`text-[11px] leading-tight mt-0.5 bg-transparent outline-none border-b w-full ${
             conflict
-              ? "text-[#b45757] border-[#b45757]"
-              : "text-blue-500 border-blue-400"
+              ? "text-danger-muted border-danger-muted"
+              : "text-[var(--heading-annotation-color,#6b9ac4)] border-[var(--heading-annotation-color,#6b9ac4)]"
           }`}
           placeholder="label key"
         />
         {conflict && (
-          <div className="text-[10px] text-[#b45757] leading-tight mt-0.5">
+          <div className="text-[10px] text-danger-muted leading-tight mt-0.5">
             ⚠ label already in use
           </div>
         )}
@@ -285,7 +310,7 @@ function InlineLabel({
   if (label) {
     return (
       <div
-        className="text-[11px] text-blue-500 leading-tight mt-0.5 truncate cursor-text hover:underline"
+        className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 truncate cursor-text hover:underline"
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         data-hint="Edit label"
         data-hint-pos="above"
@@ -298,7 +323,7 @@ function InlineLabel({
   // No label — show "+" on hover (parent row has `group` class)
   return (
     <span
-      className="text-[11px] text-blue-400 leading-tight mt-0.5 pl-[1px] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer select-none"
+      className="text-[11px] text-[var(--heading-annotation-color,#6b9ac4)] leading-tight mt-0.5 pl-[1px] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer select-none"
       onClick={(e) => { e.stopPropagation(); setEditing(true); }}
       data-hint="Add label"
       data-hint-pos="above"
@@ -716,7 +741,7 @@ function OutlineNode({
               <div
                 key={`pt-${i}`}
                 data-outline-pos={`pt-${pt.index}`}
-                className={`cursor-pointer rounded text-[11px] text-[#857070] truncate ${isFocusEditing ? "" : "hover-on-light"}`}
+                className={`cursor-pointer rounded text-[11px] text-[var(--par-title-color,#c45a5a)] truncate ${isFocusEditing ? "" : "hover-on-light"}`}
                 style={{
                   paddingLeft: `${parTitleIndent(depth)}px`,
                   paddingRight: 8,
@@ -1014,7 +1039,7 @@ const EditablePod = memo(function EditablePod({
             }}
             onBlur={commitRename}
             className={`flex-1 min-w-0 bg-transparent outline-none border-b border-[var(--accent)] ${
-              isParTitle ? "text-[11px] text-[#857070]" : "text-sm text-ink-strong"
+              isParTitle ? "text-[11px] text-[var(--par-title-color,#c45a5a)]" : "text-sm text-ink-strong"
             }`}
           />
         ) : (
@@ -1022,7 +1047,7 @@ const EditablePod = memo(function EditablePod({
             onClick={() => { setEditText(pod.text); setEditing(true); }}
             className={`flex-1 min-w-0 truncate cursor-text ${
               isParTitle
-                ? "text-[11px] text-[#857070]"
+                ? "text-[11px] text-[var(--par-title-color,#c45a5a)]"
                 : pod.level <= 1
                   ? "text-sm font-semibold text-ink-strong"
                   : pod.level === 2
@@ -1381,7 +1406,12 @@ function FocusBand({
           right: 2,
           top: band.top,
           height: band.height,
-          background: "#fef9c3",
+          // The focus band is the app's "lit region" language, so it takes the
+          // shared amber-highlight family rather than a private yellow (task
+          // 284). `--amber-highlight-wash` is #fef3c3 against the retired
+          // #fef9c3 — green alone, 6/255, and at opacity .55 over a white panel
+          // that is 3.3/255 on screen.
+          background: "var(--amber-highlight-wash)",
           opacity: 0.55,
           borderRadius: "var(--radius-md)",
           pointerEvents: "none",
@@ -1397,7 +1427,10 @@ function FocusBand({
           right: 2,
           top: band.top,
           height: band.height,
-          border: "1.5px solid #d4aa17",
+          // `--amber-highlight-edge` (= --amber-500, #d4a843) is the family's
+          // stated "border + ring" rung; the retired #d4aa17 was the same red
+          // and green with a colder blue (23 → 67), i.e. a hair less pastel.
+          border: "1.5px solid var(--amber-highlight-edge)",
           opacity: 0.5,
           borderRadius: "var(--radius-md)",
           pointerEvents: "none",
@@ -1418,7 +1451,7 @@ function FocusBand({
             marginLeft: -5,
             borderRadius: "50%",
             background: "var(--accent)",
-            border: "2px solid white",
+            border: "2px solid var(--surface, #ffffff)",
             cursor: "ns-resize",
             zIndex: 6,
             transition: animated ? "top 180ms ease" : "none",
@@ -1439,7 +1472,7 @@ function FocusBand({
             marginLeft: -5,
             borderRadius: "50%",
             background: "var(--accent)",
-            border: "2px solid white",
+            border: "2px solid var(--surface, #ffffff)",
             cursor: "ns-resize",
             zIndex: 6,
             transition: animated ? "top 180ms ease" : "none",
@@ -1769,7 +1802,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                 (task 115), where it had been painting Document-start with no
                 mirror to track. */}
             {showPosition && (
-              <PositionHighlight scrollRef={scrollRef} attr={posToAttr(pos1)} color="rgba(180, 87, 87, 0.13)" />
+              <PositionHighlight scrollRef={scrollRef} attr={posToAttr(pos1)} color="color-mix(in oklab, var(--accent) 13%, transparent)" />
             )}
 
             {/* Fixed top row — document start / title. Hidden when locked
@@ -1826,7 +1859,7 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                     <div
                       key={`preamble-pt-${i}`}
                       data-outline-pos={`pt-${pt.index}`}
-                      className={`cursor-pointer rounded text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
+                      className={`cursor-pointer rounded text-[11px] text-[var(--par-title-color,#c45a5a)] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                       style={{
                         paddingLeft: parTitleIndent(0), paddingRight: 8, paddingTop: 2, paddingBottom: 2,
                         opacity: ptDim ? 0.3 : 1,

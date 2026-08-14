@@ -215,10 +215,6 @@ const PERMITTED_RAW_TS_REDS: Readonly<Record<string, string>> = {
     "the 'open' status chip's foreground, one of a dot/bg/fg triple beside amber " +
     "siblings. A STATUS palette, not a destructive one; folding those onto the " +
     "--status-* family is its own decision, and pre-existing.",
-  "src/panels/Outline/OutlinePanel.tsx:#b45757":
-    "the InlineLabel conflict ink. Deliberately NOT repaired here: it is one of the " +
-    "eight sites already scoped by queued task 2026-08-02-284 (Outline panel colour " +
-    "literals), whose fix spans non-red literals too. This entry retires with it.",
 };
 
 describe("src/ and library/ spell no raw destructive red outside the recorded sites", () => {
@@ -415,10 +411,12 @@ describe("no danger-family read carries a hex fallback", () => {
  *    DESIGNED look). Repainting them needs two rungs this family does not have
  *    — a light border and a dark body ink — and a visual decision per card
  *    surface, which is a product call, not a sweep.
- *  - The decimal sites are one file's CodeMirror theme object, whose accent is
- *    equally decimal (`rgba(124, 94, 60, …)` IS `--accent`), plus the Outline
- *    wash already scoped by task 2026-08-02-284. Tokenizing the code-view theme
- *    is that file's own unit of work.
+ *  - The decimal site is one file's CodeMirror theme object, whose accent is
+ *    equally decimal (`rgba(124, 94, 60, …)` IS `--accent`). Tokenizing the
+ *    code-view theme is that file's own unit of work. (The Outline position
+ *    wash sat here too until task 2026-08-02-284 retired it — it was
+ *    `--footnote-500` at 13% marking where the CARET is, and it now reads an
+ *    `--accent` tint, so the whole borrow is gone rather than re-spelled.)
  *
  * Pinning them means a NEW one fails CI even though this file cannot see its
  * hex, and both sets can only SHRINK.
@@ -442,7 +440,6 @@ const PINNED_STOCK_RED_SITES: readonly string[] = [
 
 const PINNED_DECIMAL_RED_SITES: readonly string[] = [
   "src/components/CodeEditor.tsx", // .cm-virgil-band, rgba(220, 38, 38, 0.09)
-  "src/panels/Outline/OutlinePanel.tsx", // position wash, rgba(180, 87, 87, …) = #b45757
 ];
 
 describe("the residual red spellings are a pinned census", () => {

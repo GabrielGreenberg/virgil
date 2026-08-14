@@ -4040,11 +4040,15 @@ body.perf-contain .static-borrowed-text {
   white-space: nowrap;
 }
 
-.citation-preview {
-  background: #fef9c3;
-  padding: 0 3px;
-  border-radius: var(--radius-xs);
-}
+/* `.citation-preview` lived here and is DELETED (task 284). It was the second
+   raw speller of the Outline focus band's #fef9c3, which is why this task went
+   looking for it — and it turned out to have NO producer in either silo, nor in
+   `editor/`. It had one once: the class shipped in the repo's first commit on a
+   citation-builder preview `<span>`, and its last producer was removed with that
+   expanded view in `74f95055` (2026-05-18), leaving the rule dead in the sheet
+   ever since. Tokenizing it would have dressed a corpse and left the "shared
+   wash" claim resting on a consumer that does not exist. WIRE it or DELETE it,
+   the rule this repo already applies to a dead export. */
 
 /* ── Label-ref popover: group headings + ref-command tri-toggle ── */
 
