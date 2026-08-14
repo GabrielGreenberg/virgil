@@ -31,6 +31,22 @@
   --control-selected: #8a7355;
   --control-selected-tint: #efe9e0;
   --control-selected-ink: #6b5840;
+  /* The CHECKBOX glyph's two checked-state colours (task 287). The box EDGE is
+     --muted-light at every variant, so it has no token of its own here — one
+     read, no indirection rung. These two are the pair --muted-light cannot
+     answer:
+       --checkbox-fill  the square's fill once checked (neutral variant only;
+                        the AI-request variant stays hollow and marks in its
+                        kind accent, which lives on the panel-theme registry,
+                        not here — see CheckSquare in panel-primitives.tsx).
+       --checkbox-mark  the tick ink on that fill.
+     Both are seeded to the literals they replaced, so this task moved no pixel.
+     They sit beside --control-selected-* because a checked box IS a toggle "on"
+     state, and CONVERGING them (fill → --control-selected-tint, 3/0/4 away in
+     RGB; mark → --control-selected-ink, a visible near-black → taupe move) is
+     the obvious next step — a VISUAL decision, deliberately not made here. */
+  --checkbox-fill: #ece9e4;
+  --checkbox-mark: #1c1917;
   /* Fill for the affirmative (primary) button on dialogs, prompts, and
      confirms. Aliases --control-selected — the SAME low-chroma warm taupe
      the toggle "on" state uses — so a solid affirmative button reads as "a

@@ -7,6 +7,7 @@ import {
   PanelCard,
   CardTitleInput,
   AiRequestCheckbox,
+  CheckSquare,
   useCardDeleteKey,
 } from "@/components/panel-primitives";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -22,7 +23,12 @@ import { iconHint } from "@/components/Hint";
 
 /** The done/undone checkbox shown in a Todo's header (docked) and its float
  *  chrome trailing slot. Exported so the `toFloatable` factory can place the
- *  same control in `FloatChrome` without duplicating the SVG. */
+ *  same control in `FloatChrome` without duplicating the SVG.
+ *
+ *  The glyph is the shared {@link CheckSquare} — this component owns only the
+ *  BUTTON (its hint, its stop-propagation, its focus ring). The square and tick
+ *  used to be authored here a second time, five raw hex literals between the two
+ *  copies (task 2026-08-02-287). */
 export function TodoDoneToggle({
   item,
   onToggle,
@@ -40,16 +46,7 @@ export function TodoDoneToggle({
       className="shrink-0 bg-transparent p-0 focus-ring"
       {...iconHint({ label: item.done ? "Undo done" : "Mark done", pos: "above" })}
     >
-      {item.done ? (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-          <rect x="1" y="1" width="14" height="14" rx="3" fill="#ece9e4" stroke="#b5b0aa" strokeWidth="1.5" />
-          <path d="M4.5 8l2.5 2.5 4.5-5" stroke="#1c1917" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-          <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
-        </svg>
-      )}
+      <CheckSquare variant="done" checked={item.done} />
     </button>
   );
 }

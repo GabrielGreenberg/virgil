@@ -212,17 +212,17 @@ function hexToRgb(hex: string): [number, number, number] {
  * shrink-only rule as the palette list above.
  */
 const PERMITTED_RAW_VALUE_LITERALS: Record<string, string> = {
-  // The done-checkbox glyph pair. `TodoRow`'s `TodoDoneToggle` and the shared
-  // `AiRequestCheckbox` draw the same 14×14 rounded rect from the same literals
-  // — including `#b5b0aa`, which is a verbatim re-spelling of the `--muted-light`
-  // token. Both the literals AND the duplicated markup are queued task
-  // 2026-08-02-287, which owns draining them together; splitting the value half
-  // off here would leave that task holding only the markup half.
-  "src/panels/Todo/TodoRow.tsx :: #ece9e4": "task 2026-08-02-287 (done-checkbox glyph: raw hex + markup shared with AiRequestCheckbox)",
-  "src/panels/Todo/TodoRow.tsx :: #b5b0aa": "task 2026-08-02-287 (done-checkbox glyph: raw hex + markup shared with AiRequestCheckbox)",
-  "src/panels/Todo/TodoRow.tsx :: #1c1917": "task 2026-08-02-287 (done-checkbox glyph: raw hex + markup shared with AiRequestCheckbox)",
-  "src/components/panel-primitives.tsx :: #b5b0aa": "task 2026-08-02-287 — the AiRequestCheckbox twin of the TodoRow glyph above",
-  "src/components/panel-primitives.tsx :: #0369a1": "task 2026-08-02-287 — the AiRequestCheckbox tick ink, the glyph's only chromatic literal",
+  // EMPTY. The five entries that lived here — the done-checkbox glyph pair,
+  // where `TodoRow`'s `TodoDoneToggle` and the shared `AiRequestCheckbox` drew
+  // the same 14×14 rounded rect from the same literals — were drained by task
+  // 2026-08-02-287: one `CheckSquare` primitive owns the geometry, the box edge
+  // reads `--muted-light` (the token `#b5b0aa` was re-spelling), the checked
+  // fill and tick read the minted `--checkbox-fill` / `--checkbox-mark`, and the
+  // AI tick derives from the `aiRequest` panel-theme accent. Contract:
+  // `src/components/__tests__/checkbox-glyph-ssot.test.tsx`.
+  //
+  // A new entry here is TOKENIZE-it, not a listing: this set may only grow when
+  // it names a decision nobody has made yet, and it has none pending.
 };
 
 /**
