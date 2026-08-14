@@ -747,6 +747,24 @@ a PanelCard (the shape `BibEntryCard` carried until task 055, the last
 offender). A stacked bespoke header competes with the title for width and
 drifts from the standard chrome.
 
+**A card type is NAMED once, and structural twins share the name.**
+`CARD_REGISTRY[kind].label` is the SSOT for four user-visible surfaces at
+once — the card overline, the kind-chevron option, the panel's +Add entry,
+and the morph-confirm verb ("Make it a Revision") — so a kind's type name
+is never re-typed as a literal anywhere, including a card body's
+`placeholder` (`` placeholder={`${cardTypeLabel(kind)} text…`} ``, not
+`"Request text…"`). And where two panels host *structurally identical*
+twin families — Revisions and Cutter each have a comment kind and a
+suggestion kind with the same morph shape, lifecycle and content facets —
+the pair presents ONE vocabulary: both comment sides read "Request", both
+suggestion sides read "Revision" (task 304; before it the cutter twin read
+"Suggestion", so the same operation was named the domain noun on one panel
+and the speech-act on the other). Two guards, deliberately blind to
+different halves: `twin-vocabulary-parity.test.ts` derives twin-ness from
+the registry's own structural facets and requires the labels to agree;
+`add-menu-labels-from-registry.test.ts` forbids any add-menu or
+placeholder literal that restates a registry label.
+
 Card chrome colors come from theme tokens (`theme.accent`,
 `theme.titleColor`, …), never raw Tailwind palette literals
 (`text-sky-500`). This holds for the system themes too (`aiRequest`,

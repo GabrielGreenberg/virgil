@@ -703,7 +703,19 @@ export const CARD_REGISTRY: Record<CardKind, CardMeta> = {
     toFloatable: PLACEHOLDER_TO_FLOATABLE,
   },
   "cutter-suggestion": {
-    label: "Suggestion",
+    // "Revision", NOT "Suggestion" — the Cutter and Revisions panels host
+    // structurally identical TWIN families (a comment kind + a suggestion kind,
+    // same morph shape, same lifecycle, same content facets), and a twin pair
+    // presents ONE vocabulary: the comment sides have always both read
+    // "Request", and since task 304 the suggestion sides both read "Revision"
+    // (Gabriel's decision, overriding a "Suggestion" recommendation — the
+    // shared `user_text` field placeholder already said "Your revision…" on
+    // BOTH panels). `label` is the SSOT for the card overline, the kind-chevron
+    // option, the panel's +Add entry and the morph-confirm verb, so all four
+    // read this one string. Pinned by `twin-vocabulary-parity.test.ts`, which
+    // derives twin-ness from the registry's own structural facets rather than
+    // from a hand list of kinds.
+    label: "Revision",
     titleLabel: null,
     keyPrefix: "cutter-suggestion",
     themeKey: "cut",
