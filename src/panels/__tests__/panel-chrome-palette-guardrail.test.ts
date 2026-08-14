@@ -43,30 +43,54 @@ import { commentsStripped, cssCommentsStripped } from "@/lib/__tests__/_source-s
  *
  * The header above says the drift is a habit rather than a hue, and that was
  * one word short: the habit is "reach for a colour", and the Tailwind utility
- * is only ONE of its three spellings. The other two are the arbitrary-value
- * class (`text-[#857070]`) and the inline style (`background: "#fef9c3"`), and
- * NOTHING in the repo could see either — `RAW_PALETTE` matches a palette NAME,
- * and `destructive-red-tokens`'s hex needle is scoped to a red hue window with
- * a saturation floor of 0.15. The Outline panel painted seven such literals for
- * a year across all three spellings, with every colour guard green, and the two
- * that were catchable sat on allowlists pointing at this task. `#857070` in
- * particular measures sat ≈0.086 — under the red guard's floor, so even the
- * needle nearest to it was structurally entitled to miss it.
+ * is only ONE of its spellings. The others are the arbitrary-value class
+ * (`text-[#857070]`), the inline style (`background: "#fef9c3"`), the
+ * functional form (`rgba(180, 87, 87, .13)`) and the bare CSS keyword
+ * (`"2px solid white"`). The Outline panel shipped EIGHT such literals across
+ * all four, and the hue-scoped guards could only ever see some of them:
+ * `destructive-red-tokens` scans the same `.tsx` files and DID see both the
+ * arbitrary-value `text-[#b45757]` and the decimal wash — it just could not
+ * judge the other hues, since its needle is a red hue window with a saturation
+ * floor of 0.15. Four of the eight were therefore catchable and sat on
+ * allowlists pointing at this task; `#857070`, `#fef9c3`, `#d4aa17` and the two
+ * `white` rings were invisible to every guard in the repo. `#857070` measures
+ * sat ≈0.0857, just under that floor — so even the needle nearest to it was
+ * structurally entitled to miss it, which is the reason this one is exact
+ * rather than thresholded.
  *
  * So `RAW_VALUE` censuses the value spellings beside the name spelling, and two
  * exclusions keep it honest — each of them a decision, not an omission:
  *
  *  - **A `var(--token, #fallback)` fallback is not a literal.** It is the
- *    repo's compliant idiom (globals.css spells it ~40 times, and STYLE_GUIDE
- *    discusses the form), so indicting it would make the compliant answer the
- *    failing one — the trap task 204 names, where a guard whose compliant form
- *    reads worse than the violation loses quietly.
+ *    repo's compliant idiom (globals.css carries 184 hex-fallback reads across
+ *    59 tokens, and STYLE_GUIDE discusses the form), so indicting it would make
+ *    the compliant answer the failing one — the trap task 204 names, where a
+ *    guard whose compliant form reads worse than the violation loses quietly.
  *  - **An ACHROMATIC value (r == g == b) is not a palette choice.** The panel
  *    tree's remaining ones are all `rgba(0, 0, 0, α)` drop shadows, which are a
  *    SHADOW decision with its own filed scale task; flagging them would eat
  *    that diff and say nothing about colour. The chromatic test is deliberately
- *    exact rather than a saturation floor, because a floor is precisely what
- *    let `#857070` through the guard that had one.
+ *    exact rather than a saturation floor, for the `#857070` reason above.
+ *
+ * **Limits, stated rather than implied** — every sibling colour guard carries
+ * such a list, and the first draft of this one carried none:
+ *
+ *  - `white` / `black` / `gray` are CSS keywords for ACHROMATIC values, so the
+ *    exclusion above covers them by the same rule that covers `#ffffff`. Task
+ *    284 retired two `"2px solid white"` rings by hand and this census would
+ *    NOT have flagged them — deliberate, and the reason the defect leg below is
+ *    scoped to the chromatic spellings rather than claiming all of them.
+ *  - `oklch()` / `lab()` / `color()` are not matched at all. None occurs in
+ *    either silo today; a new one is a hole, not a pass.
+ *  - `hsl()` is matched only in the CSS-Color-4 number form, since the legacy
+ *    `%`-suffixed form defeats the channel capture. It is decomposed through
+ *    `hslIsChromatic` (saturation zero) rather than through the r==g==b test,
+ *    which would read H/S/L as if they were R/G/B and answer backwards in both
+ *    directions. No `hsl(` exists in the censused tree today either.
+ *  - A hex is matched textually, so a 3- or 6-character DOM id in a
+ *    `querySelector("#abc")` would read as a colour. None occurs today.
+ *  - A value assembled at runtime (`"#" + hex`) is invisible, as it is to every
+ *    other colour guard in the repo.
  */
 const ROOT = path.resolve(__dirname, "..", "..", "..");
 
@@ -126,11 +150,49 @@ const PERMITTED_RAW_PALETTE_LITERALS: Record<string, string> = {
 };
 
 /**
- * A hex literal, or the first three channels of a functional colour. Both
- * spellings resolve to an r/g/b triple so the achromatic test can run on either.
+ * The CSS named colours that are CHROMATIC. The achromatic keywords
+ * (`white`/`black`/`gray`/`silver`/`gainsboro`/…) are deliberately absent: they
+ * are covered by the achromatic exclusion exactly as their hex twins are, and
+ * `bg-white` / `text-white` are live Tailwind utilities in this tree.
  */
-const RAW_VALUE =
-  /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b|\b(?:rgba?|hsla?)\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/g;
+const NAMED_COLOURS = [
+  "aliceblue","antiquewhite","aqua","aquamarine","azure","beige","bisque","blanchedalmond",
+  "blue","blueviolet","brown","burlywood","cadetblue","chartreuse","chocolate","coral",
+  "cornflowerblue","cornsilk","crimson","cyan","darkblue","darkcyan","darkgoldenrod",
+  "darkgreen","darkkhaki","darkmagenta","darkolivegreen","darkorange","darkorchid","darkred",
+  "darksalmon","darkseagreen","darkslateblue","darkturquoise","darkviolet","deeppink",
+  "deepskyblue","dodgerblue","firebrick","floralwhite","forestgreen","fuchsia","ghostwhite",
+  "gold","goldenrod","green","greenyellow","honeydew","hotpink","indianred","indigo","ivory",
+  "khaki","lavender","lavenderblush","lawngreen","lemonchiffon","lightblue","lightcoral",
+  "lightcyan","lightgreen","lightpink","lightsalmon","lightseagreen","lightskyblue",
+  "lightsteelblue","lightyellow","lime","limegreen","linen","magenta","maroon","mediumblue",
+  "mediumorchid","mediumpurple","mediumseagreen","mediumslateblue","mediumturquoise",
+  "mediumvioletred","midnightblue","mintcream","mistyrose","moccasin","navajowhite","navy",
+  "oldlace","olive","olivedrab","orange","orangered","orchid","palegreen","paleturquoise",
+  "palevioletred","papayawhip","peachpuff","peru","pink","plum","powderblue","purple",
+  "rebeccapurple","red","rosybrown","royalblue","saddlebrown","salmon","sandybrown",
+  "seagreen","seashell","sienna","skyblue","slateblue","springgreen","steelblue","tan",
+  "teal","thistle","tomato","turquoise","violet","wheat","yellow","yellowgreen",
+] as const;
+
+/**
+ * A hex literal, the first three channels of a functional colour, or a
+ * chromatic CSS keyword. The hex and `rgb()` forms resolve to an r/g/b triple
+ * so the achromatic test can run on either; `hsl()` is judged by its SATURATION
+ * instead (see `hslIsChromatic` — reading H/S/L through the r==g==b test would
+ * answer backwards in both directions), and a keyword is chromatic by
+ * membership in the list above.
+ *
+ * The keyword arm is fenced by `(?<![-\w])` / `(?![-\w])` so it cannot fire on
+ * the palette utilities the FIRST needle already owns: without it, every
+ * `text-red-700` in the tree reports a second time as a bare `red`.
+ */
+const RAW_VALUE = new RegExp(
+  "#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\\b" +
+    "|\\b(rgba?|hsla?)\\(\\s*([\\d.]+)[\\s,]+([\\d.]+)[\\s,]+([\\d.]+)" +
+    `|(?<![-\\w])(?:${NAMED_COLOURS.join("|")})(?![-\\w])`,
+  "g",
+);
 
 /** The fallback slot of a `var(--token, …)` read, ending exactly at the match. */
 const VAR_FALLBACK = /var\(\s*--[a-zA-Z0-9-]+\s*,\s*$/;
@@ -160,8 +222,16 @@ const PERMITTED_RAW_VALUE_LITERALS: Record<string, string> = {
   "src/panels/Todo/TodoRow.tsx :: #b5b0aa": "task 2026-08-02-287 (done-checkbox glyph: raw hex + markup shared with AiRequestCheckbox)",
   "src/panels/Todo/TodoRow.tsx :: #1c1917": "task 2026-08-02-287 (done-checkbox glyph: raw hex + markup shared with AiRequestCheckbox)",
   "src/components/panel-primitives.tsx :: #b5b0aa": "task 2026-08-02-287 — the AiRequestCheckbox twin of the TodoRow glyph above",
-  "src/components/panel-primitives.tsx :: #0369a1": "task 2026-08-02-287 — the AiRequestCheckbox tick ink; the one blue left in the panel tree",
+  "src/components/panel-primitives.tsx :: #0369a1": "task 2026-08-02-287 — the AiRequestCheckbox tick ink, the glyph's only chromatic literal",
 };
+
+/**
+ * An `hsl()` is achromatic exactly when its SATURATION is zero, whatever its
+ * hue and lightness. Feeding H/S/L to the r==g==b test instead answers
+ * backwards in BOTH directions — `hsl(50 50 50)`, a saturated olive, would be
+ * spared as "achromatic", and `hsl(0 0 60)`, a true grey, would be flagged.
+ */
+const hslIsChromatic = (s: number) => s !== 0;
 
 /** Every censused source file, repo-relative, POSIX-separated. */
 function censusFiles(): string[] {
@@ -227,12 +297,26 @@ function flaggedValues(source?: (rel: string) => string): Set<string> {
     for (const m of src.matchAll(RAW_VALUE)) {
       const start = m.index ?? 0;
       if (VAR_FALLBACK.test(src.slice(Math.max(0, start - 80), start))) continue;
-      const rgb: [number, number, number] =
-        m[0][0] === "#"
-          ? hexToRgb(m[0])
-          : [Number(m[1]), Number(m[2]), Number(m[3])];
-      if (rgb[0] === rgb[1] && rgb[1] === rgb[2]) continue;
-      flagged.add(`${rel} :: ${m[0][0] === "#" ? m[0] : `rgb(${rgb.join(",")})`}`);
+      const [fn, c1, c2, c3] = [m[1], Number(m[2]), Number(m[3]), Number(m[4])];
+      if (m[0][0] === "#") {
+        const rgb = hexToRgb(m[0]);
+        if (rgb[0] === rgb[1] && rgb[1] === rgb[2]) continue;
+        flagged.add(`${rel} :: ${m[0]}`);
+      } else if (fn) {
+        // `c2` is GREEN for rgb() and SATURATION for hsl() — two different
+        // questions, so the two forms are judged apart rather than through one
+        // triple that only means something for the first.
+        if (fn.startsWith("hsl")) {
+          if (!hslIsChromatic(c2)) continue;
+          flagged.add(`${rel} :: hsl(${c1},${c2},${c3})`);
+        } else {
+          if (c1 === c2 && c2 === c3) continue;
+          flagged.add(`${rel} :: rgb(${c1},${c2},${c3})`);
+        }
+      } else {
+        // A chromatic CSS keyword; membership in NAMED_COLOURS IS the test.
+        flagged.add(`${rel} :: ${m[0]}`);
+      }
     }
   }
   return flagged;
@@ -334,11 +418,17 @@ describe("census self-checks", () => {
     }
   });
 
-  it("would have caught every spelling the Outline shipped (defect leg)", () => {
+  it("would have caught every CHROMATIC spelling the Outline shipped (defect leg)", () => {
     // Driven through the REAL census over a substituted OutlinePanel, not
     // through a re-implementation of the needle: what has to be proven is that
     // the census catches these, and only the census can prove that. Every line
     // is verbatim from the pre-284 file.
+    //
+    // CHROMATIC is the honest scope, not a hedge. The pre-284 file also carried
+    // `border: "2px solid white"` twice, which task 284 retired by hand and
+    // which this census does NOT flag — `white` is achromatic, so the stated
+    // exclusion covers it exactly as it covers `#ffffff`. Claiming "every
+    // spelling" here would be the overstatement this suite exists to prevent.
     const OUTLINE = "src/panels/Outline/OutlinePanel.tsx";
     const preFix = [
       'const a = "text-[11px] text-[#857070] truncate";',
@@ -346,6 +436,9 @@ describe("census self-checks", () => {
       'const c = { border: "1.5px solid #d4aa17" };',
       'const d = "text-[#b45757] border-[#b45757]";',
       '<PositionHighlight color="rgba(180, 87, 87, 0.13)" />;',
+      // Present so the achromatic exclusion is exercised on the real pre-fix
+      // line, not merely asserted in prose above.
+      'const e = { border: "2px solid white" };',
     ].join("\n");
     const flagged = flaggedValues((rel) =>
       rel === OUTLINE ? preFix : readFileSync(path.join(ROOT, rel), "utf8"),
@@ -376,6 +469,27 @@ describe("census self-checks", () => {
     );
     expect([...flagged].filter((k) => k.startsWith(`${OUTLINE} ::`))).toEqual([
       `${OUTLINE} :: #857070`,
+    ]);
+  });
+
+  it("judges hsl by SATURATION and keywords by MEMBERSHIP (the two new arms)", () => {
+    // Both arms are unreachable from the live tree — no `hsl(` and no chromatic
+    // keyword exists in the censused scope today — so without this leg they
+    // would ship untested and could be silently wrong in either direction.
+    const OUTLINE = "src/panels/Outline/OutlinePanel.tsx";
+    const fixture = [
+      'const a = { color: "hsl(50 50 50)" };',      // saturated olive -> FLAGGED
+      'const b = { color: "hsl(0 0 60)" };',        // true grey       -> spared
+      'const c = { border: "2px solid gold" };',    // chromatic name  -> FLAGGED
+      'const d = { border: "2px solid black" };',   // achromatic name -> spared
+      'const e = "text-red-700";',                  // the FIRST needle's, not this one
+    ].join("\n");
+    const flagged = [...flaggedValues((rel) =>
+      rel === OUTLINE ? fixture : readFileSync(path.join(ROOT, rel), "utf8"),
+    )].filter((k) => k.startsWith(`${OUTLINE} ::`)).sort();
+    expect(flagged).toEqual([
+      `${OUTLINE} :: gold`,
+      `${OUTLINE} :: hsl(50,50,50)`,
     ]);
   });
 
@@ -439,10 +553,11 @@ describe("the Outline panel mirrors its in-prose originals' tokens (task 284)", 
     // Not a new decision: the prose annotation, the card-title primitive and the
     // Search breadcrumb all already read it at full strength. The Outline was
     // the sole surface frozen against a user-recolourable pref.
-    const search = commentsStripped(
-      readFileSync(path.join(ROOT, "src/panels/Search/SearchPanel.tsx"), "utf8"),
-    );
-    expect(search).toContain("text-[var(--par-title-color,#c45a5a)]");
+    //
+    // Read from the in-prose RULE, like its four sibling legs — an earlier draft
+    // asserted a literal class string inside SearchPanel.tsx, which made a
+    // whitespace reformat over there fail a test named for the Outline.
+    expect(ruleBody(".par-title-annotation")).toMatch(/--par-title-color/);
     expect(outline).toContain("text-[var(--par-title-color,#c45a5a)]");
     expect(outline).not.toContain("#857070");
   });
@@ -457,6 +572,17 @@ describe("the Outline panel mirrors its in-prose originals' tokens (task 284)", 
     expect(globalsCode).not.toContain("#fef9c3");
     expect(outline).not.toContain("#fef9c3");
     expect(outline).not.toContain("#d4aa17");
+  });
+
+  it("rings the focus-band handles in the surface they actually sit on", () => {
+    // `--pod-panel`, not `--surface`: `FloatingPanel` fills a `surface="panel"`
+    // host (the Outline's default) with `var(--pod-panel, …)` in BOTH docked and
+    // floating modes. The two are separate preferences whose shipped defaults
+    // already differ (#fffdfa vs #ffffff), so a ring bound to `--surface` would
+    // follow a recolour of a card background this panel does not have — the
+    // wrong-by-token shape task 284 exists to retire.
+    expect(outline).toContain('border: "2px solid var(--pod-panel, #fffdfa)"');
+    expect(outline).not.toMatch(/2px solid (?:white|var\(--surface)/);
   });
 
   it("marks the caret's section with an accent tint, not a borrowed red", () => {

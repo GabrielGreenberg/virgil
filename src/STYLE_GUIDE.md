@@ -297,19 +297,24 @@ deliberately wider than the three families the prose bans, because the drift is
 one of habit rather than of hue.
 
 That last sentence was a word short, and task 284 paid for it. The habit is
-"reach for a colour", and the palette utility is only **one of its three
-spellings** — the other two are the arbitrary-value class (`text-[#857070]`)
-and the inline style (`background: "#fef9c3"`), and nothing in the repo could
-see either: the palette needle matches a palette *name*, and
-`destructive-red-tokens`'s hex needle is scoped to a red hue window with a
+"reach for a colour", and the palette utility is only **one of its spellings** —
+the others are the arbitrary-value class (`text-[#857070]`), the inline style
+(`background: "#fef9c3"`), the functional form (`rgba(180, 87, 87, .13)`) and
+the bare CSS keyword (`"2px solid white"`). The hue-scoped guards could only
+ever see *some* of them: `destructive-red-tokens` scans the same `.tsx` files
+and did see the arbitrary-value `#b45757` and the decimal wash — it simply could
+not judge the other hues, its needle being a red hue window with a 0.15
 saturation floor. So the same suite now runs a **second census** over raw colour
 VALUES in the same scope, with two exclusions that are decisions rather than
 omissions. A `var(--token, #fallback)` fallback is **not** a literal — it is the
-compliant idiom, and a guard whose compliant form fails is the trap task 204
-names. An **achromatic** value (`r == g == b`) is not a palette choice — the
-remaining ones are `rgba(0, 0, 0, α)` drop shadows, which belong to the shadow
-scale's own task. The chromatic test is exact rather than a saturation floor,
-because a floor is precisely what let `#857070` through the guard that had one.
+compliant idiom (184 hex-fallback reads in `globals.css` across 59 tokens), and
+a guard whose compliant form fails is the trap task 204 names. An **achromatic**
+value (`r == g == b`, and the `white`/`black`/`gray` keywords with it) is not a
+palette choice — the remaining ones are `rgba(0, 0, 0, α)` drop shadows, which
+belong to the shadow scale's own task. The chromatic test is exact rather than a
+saturation floor, because a floor is precisely what let `#857070` (sat 0.0857)
+through the guard that had one. The suite states its own limits — `oklch()`,
+percentage-form `hsl()`, and runtime-assembled values are holes, not passes.
 
 **Chrome that MIRRORS the document reads the document's token.** A panel that
 re-renders something the editor already draws is not making a fresh colour
@@ -323,6 +328,20 @@ behind. Its paragraph-title rows were the same shape against `--par-title-color`
 while three sibling surfaces (the prose annotation, the card-title primitive,
 the Search breadcrumb) all read it. Before minting anything for a panel, find
 what the document already calls the thing.
+
+**Mirror the token, then check the CONTRAST — the copy may render it harder.**
+The same adoption that fixes the vocabulary can cost legibility, because the
+panel usually renders smaller and lighter than the surface it copies. Measured
+against the Outline's own fill (`--pod-panel` #fffdfa) at its 11px/400 rows:
+the label ink moved 3.62:1 → **2.94:1** (`blue-500` → `--heading-annotation-color`)
+and the paragraph title 4.55:1 → **4.17:1** (`#857070` → `--par-title-color`,
+crossing the 4.5:1 AA line). In prose the same blue is carried by the bordered
+`.heading-annotation` lozenge, and every other `--par-title-color` consumer
+renders at 12.5px/500 — so the token is right and the *rendering context* is
+what differs. Recorded as an open accessibility residual (task
+**2026-08-14-327**), in the same register as the `--danger` error-text residual
+below: the swap is not reverted, and the fix is a weight/size or a derived
+darker rung, which is a visual decision rather than a sweep.
 
 That ban is on the **declaration, not the file**: a radius authored as CSS
 inside a `.tsx` string (`el.style.cssText = "…;border-radius:6px;…"`), as a

@@ -1428,8 +1428,10 @@ function FocusBand({
           top: band.top,
           height: band.height,
           // `--amber-highlight-edge` (= --amber-500, #d4a843) is the family's
-          // stated "border + ring" rung; the retired #d4aa17 was the same red
-          // and green with a colder blue (23 → 67), i.e. a hair less pastel.
+          // stated "border + ring" rung. Against the retired #d4aa17 only RED
+          // is identical: green moves 170 → 168 and blue 23 → 67, i.e. warmer
+          // and a hair less saturated. At 1.5px and opacity .5 over the panel
+          // that composites to a 22/255 move in blue alone.
           border: "1.5px solid var(--amber-highlight-edge)",
           opacity: 0.5,
           borderRadius: "var(--radius-md)",
@@ -1451,7 +1453,7 @@ function FocusBand({
             marginLeft: -5,
             borderRadius: "50%",
             background: "var(--accent)",
-            border: "2px solid var(--surface, #ffffff)",
+            border: "2px solid var(--pod-panel, #fffdfa)",
             cursor: "ns-resize",
             zIndex: 6,
             transition: animated ? "top 180ms ease" : "none",
@@ -1472,7 +1474,7 @@ function FocusBand({
             marginLeft: -5,
             borderRadius: "50%",
             background: "var(--accent)",
-            border: "2px solid var(--surface, #ffffff)",
+            border: "2px solid var(--pod-panel, #fffdfa)",
             cursor: "ns-resize",
             zIndex: 6,
             transition: animated ? "top 180ms ease" : "none",
