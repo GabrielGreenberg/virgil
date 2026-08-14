@@ -62,6 +62,7 @@ import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
 import CollabClaimPill from "./CollabClaimPill";
 import CollabPresenceDots from "./CollabPresenceDots";
 import { omniPinStore } from "./editor-layout/omni-pin-store";
+import { iconHint } from "@/components/Hint";
 
 /**
  * True when a keyboard event originated from an interactive control nested
@@ -798,9 +799,8 @@ export function CardJumpChevron({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body transition-colors bg-transparent p-0 shrink-0"
-      data-hint={title}
-      aria-label={title}
+      className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body transition-colors bg-transparent p-0 shrink-0 focus-ring"
+      {...iconHint({ label: title })}
     >
       <JumpChevron />
     </button>
@@ -866,9 +866,8 @@ export function CardDropButton({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       disabled={disabled}
-      className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body transition-colors bg-transparent p-0 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-ink-muted cursor-grab"
-      data-hint={disabled ? "Add a citation key to anchor" : title}
-      aria-label={title}
+      className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body transition-colors bg-transparent p-0 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-ink-muted cursor-grab focus-ring"
+      {...iconHint({ label: title, hint: disabled ? "Add a citation key to anchor" : title })}
     >
       <DropChevrons />
     </button>
@@ -1736,7 +1735,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={type}
       {...rest}
-      className={`${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]}${className ? ` ${className}` : ""}`}
+      className={`${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]}${className ? ` ${className}` : ""} focus-ring`}
     />
   );
 });
@@ -1885,8 +1884,7 @@ export function PopoutButton({
         e.preventDefault();
       }}
       className={className ?? POPOUT_BUTTON_CLASS}
-      aria-label={title}
-      data-hint={isPoppedOut ? "Dock" : "Pop out"}
+      {...iconHint({ label: title, hint: isPoppedOut ? "Dock" : "Pop out" })}
       dangerouslySetInnerHTML={{
         __html: popoutSvgOuter(popoutSvgInner(isPoppedOut, variant)),
       }}
@@ -1952,8 +1950,7 @@ export function PanelClose() {
       type="button"
       onClick={chrome.onClose}
       className="iconbtn-sm -mr-1"
-      aria-label="Close panel"
-      data-hint="Close panel"
+      {...iconHint({ label: "Close panel" })}
     >
       <svg
         width="14"
@@ -2053,9 +2050,7 @@ export function CardTrashButton({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className="iconbtn-sm iconbtn-danger absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
-      aria-label={title}
-      data-hint="Delete"
-      data-hint-pos="above"
+      {...iconHint({ label: title, hint: "Delete", pos: "above" })}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="3 6 5 6 21 6" />
@@ -2091,9 +2086,7 @@ export function CardArchiveButton({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className="iconbtn-sm absolute bottom-1.5 right-7 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
-      aria-label={isArchived ? "Unarchive" : "Archive"}
-      data-hint={isArchived ? "Unarchive" : "Archive"}
-      data-hint-pos="above"
+      {...iconHint({ label: isArchived ? "Unarchive" : "Archive", pos: "above" })}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="2" y="3" width="20" height="5" rx="1" />
@@ -2134,9 +2127,7 @@ export function CardRestoreButton({ onClick }: { onClick: (e: React.MouseEvent) 
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className="iconbtn-sm absolute bottom-1.5 right-[3.125rem] opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
-      aria-label="Restore to document"
-      data-hint="Restore to document"
-      data-hint-pos="above"
+      {...iconHint({ label: "Restore to document", pos: "above" })}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="9 14 4 9 9 4" />
@@ -2777,7 +2768,7 @@ export function PanelHeader({
         <button
           onClick={(e) => onAdd(e.currentTarget.getBoundingClientRect())}
           className="iconbtn-sm"
-          data-hint="Add"
+          {...iconHint({ label: "Add" })}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />

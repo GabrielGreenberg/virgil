@@ -10,7 +10,7 @@
 // for — so this suite renders the PRE-286 components (embedded verbatim below)
 // against the post-286 adapters and demands byte-identical DOM in every state.
 //
-// **The two sanctioned differences, stated rather than smuggled.** (1) The
+// **The three sanctioned differences, stated rather than smuggled.** (1) The
 // legacy fixtures keep their raw `bg-emerald-500` / `text-emerald-700`; the
 // shipped primitive reads `--positive` / `--positive-strong`, whose values are
 // pinned to exactly those two emeralds (globals.css). `tokenized()` performs
@@ -19,8 +19,13 @@
 // would make every parity leg pass vacuously. (2) `canonical()` sorts each
 // class attribute, because class-attribute ORDER is not a rendering fact and
 // the primitive composes its inline wrapper in a different order than the twins
-// spelled it. Nothing else is normalized: element order, text, `data-hint`,
-// `aria-label` and the inline `width:` are compared as they render.
+// spelled it — and, since task 281, each ATTRIBUTE list, because `iconHint`
+// spreads the name and the tooltip in one order and the twins spelled them in
+// another. (3) That same task gave the shared ghost button the `focus-ring`
+// class; `TOKENIZED_281` adds it to the legacy HTML and is counted SEPARATELY,
+// so no leg can prove one difference with the other. Nothing else is
+// normalized: element order, text, and every attribute NAME, VALUE and the
+// inline `width:` are compared as they render.
 //
 // The behavioural half is here for the same reason: the `onCommit(null)` seam
 // is the one place the two panels genuinely disagree (Cutter IGNORES an empty
@@ -317,15 +322,40 @@ const TOKENIZED: ReadonlyArray<readonly [string, string]> = [
   ["text-emerald-700", "text-[var(--positive-strong)]"],
 ];
 
-function tokenized(html: string): { html: string; substitutions: number } {
+/** Task 2026-08-02-281's a11y chrome, the second sanctioned VALUE difference.
+ *
+ *  The shared `GHOST_BTN` gained `focus-ring` — the design system's focus
+ *  indicator, unbundled from `iconbtn-*`'s geometry — so both ghost buttons
+ *  render one class the pre-286 copies cannot carry. Declared here, counted
+ *  like the emeralds, rather than smuggled into the legacy fixtures: a
+ *  "verbatim" reference that quietly acquires the changes it is meant to
+ *  measure stops being a reference. */
+const TOKENIZED_281: ReadonlyArray<readonly [string, string]> = [
+  [
+    "cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light",
+    "cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light focus-ring",
+  ],
+];
+
+function tokenized(html: string): {
+  html: string;
+  substitutions: number;
+  a11y: number;
+} {
   let out = html;
-  let substitutions = 0;
-  for (const [from, to] of TOKENIZED) {
-    const parts = out.split(from);
-    substitutions += parts.length - 1;
-    out = parts.join(to);
-  }
-  return { html: out, substitutions };
+  const counts = [TOKENIZED, TOKENIZED_281].map((table) => {
+    let n = 0;
+    for (const [from, to] of table) {
+      const parts = out.split(from);
+      n += parts.length - 1;
+      out = parts.join(to);
+    }
+    return n;
+  });
+  // Counted per TABLE, not in one total: each sanctioned difference has to be
+  // provable on its own, or a leg asserting "the emeralds were really there"
+  // can be satisfied by an a11y class instead.
+  return { html: out, substitutions: counts[0], a11y: counts[1] };
 }
 
 /**
@@ -338,9 +368,29 @@ function tokenized(html: string): { html: string; substitutions: number } {
  * `data-hint`, `aria-label`, the inline `width:` style) is compared as-is.
  */
 function canonical(html: string): string {
+  return sortAttributes(
+    html.replace(
+      /class="([^"]*)"/g,
+      (_, cls: string) => `class="${cls.trim().split(/\s+/).sort().join(" ")}"`,
+    ),
+  );
+}
+
+/**
+ * ATTRIBUTE order is not a rendering fact either, for the same reason class
+ * order isn't — and task 281 moved exactly one pair: the Clear button's
+ * `data-hint` and `aria-label` now come from ONE `iconHint({ label })` call,
+ * which spreads the name first. Same attributes, same values, same pixels,
+ * same announcement. Sorting is a strictly weaker normalization than dropping:
+ * a MISSING or ADDED attribute still differs (pinned in the self-check below).
+ */
+function sortAttributes(html: string): string {
   return html.replace(
-    /class="([^"]*)"/g,
-    (_, cls: string) => `class="${cls.trim().split(/\s+/).sort().join(" ")}"`,
+    /<([a-z][\w-]*)((?:\s+[\w:-]+="[^"]*")+)(\s*\/?)>/g,
+    (_, tag: string, attrs: string, tail: string) => {
+      const sorted = (attrs.match(/[\w:-]+="[^"]*"/g) ?? []).sort();
+      return `<${tag} ${sorted.join(" ")}${tail}>`;
+    },
   );
 }
 
@@ -369,7 +419,7 @@ function parity(
   legacy: React.ReactElement,
   shipped: React.ReactElement,
   drive?: (container: HTMLElement) => void,
-): { legacy: string; shipped: string; substitutions: number } {
+): { legacy: string; shipped: string; substitutions: number; a11y: number } {
   const before = renderDriven(legacy, drive);
   const after = renderDriven(shipped, drive);
   const norm = tokenized(before);
@@ -377,6 +427,7 @@ function parity(
     legacy: canonical(norm.html),
     shipped: canonical(after),
     substitutions: norm.substitutions,
+    a11y: norm.a11y,
   };
 }
 
@@ -395,10 +446,22 @@ describe("the normalizations cannot hide a real difference", () => {
     // in disguise, which is the only way this could launder chrome drift.
     expect(canonical('<i class="a b">x</i>')).not.toBe(canonical('<i class="a">x</i>'));
     expect(canonical('<i class="a">x</i>')).not.toBe(canonical('<i class="a z">x</i>'));
-    // Everything outside a class attribute is untouched.
+    // Everything outside a class attribute is untouched (attributes here are
+    // already in sorted order, so the attribute pass is a no-op on them).
     expect(canonical('<i data-hint="b a" style="width: 50%;">b a</i>')).toBe(
       '<i data-hint="b a" style="width: 50%;">b a</i>',
     );
+  });
+
+  it("canonical() reorders attributes and nothing else", () => {
+    expect(canonical('<i style="width: 50%;" data-hint="x">y</i>')).toBe(
+      canonical('<i data-hint="x" style="width: 50%;">y</i>'),
+    );
+    // A DROPPED or ADDED attribute — or a changed VALUE — still differs. The
+    // sort must not become an attribute-set union, which is the only way it
+    // could launder a missing accessible name.
+    expect(canonical('<i a="1" b="2">x</i>')).not.toBe(canonical('<i a="1">x</i>'));
+    expect(canonical('<i a="1">x</i>')).not.toBe(canonical('<i a="2">x</i>'));
   });
 
   it("tokenized() reports what it actually substituted", () => {
@@ -455,6 +518,8 @@ describe("CutterGoalStrip renders identically to its pre-286 self", () => {
     // Both emerald spellings were really there — otherwise `tokenized()` is a
     // no-op and every leg in this file passes for free.
     expect(r.substitutions).toBe(2);
+    // …and so was the a11y ring, on both ghost buttons.
+    expect(r.a11y).toBe(2);
     expect(r.shipped).toContain("bg-[var(--positive)]");
     expect(r.shipped).toContain("text-[var(--positive-strong)]");
   });
@@ -512,6 +577,7 @@ describe("RevisionsTrackerStrip renders identically to its pre-286 self", () => 
     );
     expect(r.shipped).toBe(r.legacy);
     expect(r.substitutions).toBe(2);
+    expect(r.a11y).toBe(2);
   });
 
   it("editing state, opened from edit", () => {

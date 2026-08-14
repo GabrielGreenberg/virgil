@@ -22,6 +22,7 @@ import {
   saveIdentity,
   type CollabIdentity,
 } from "@/lib/collab";
+import { iconHint } from "@/components/Hint";
 
 export interface CollaboratorIdentityDialogProps {
   open: boolean;
@@ -91,13 +92,13 @@ export default function CollaboratorIdentityDialog({
                     key={c.hex}
                     type="button"
                     onClick={() => setColor(c.hex)}
-                    data-hint={c.name}
-                    className="w-6 h-6 rounded-full border-2 transition-transform"
+                    {...iconHint({ label: c.name })}
+                    className="w-6 h-6 rounded-full border-2 transition-transform focus-ring"
                     style={{
                       background: c.hex,
                       borderColor: selected ? "#1a1a1a" : "transparent",
                       transform: selected ? "scale(1.1)" : undefined,
-                    }} aria-label={c.name}
+                    }}
                   />
                 );
               })}

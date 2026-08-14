@@ -49,6 +49,7 @@ import type {
   ExternalChangeState,
   FileChange,
 } from "@/lib/disk-watcher";
+import { iconHint } from "@/components/Hint";
 
 // Drop below the trigger, flip above near the viewport bottom — the ONE
 // button-anchored placement vocabulary, shared with `<AnchoredMenu>` so a
@@ -381,9 +382,8 @@ function ExternalChangeBadge() {
         ref={kebabRef}
         type="button"
         onClick={toggleMenu}
-        className="w-5 h-5 inline-flex items-center justify-center rounded hover:bg-surface-muted text-ink-subtle"
-        data-hint="External change options"
-        aria-label="External change options"
+        className="w-5 h-5 inline-flex items-center justify-center rounded hover:bg-surface-muted text-ink-subtle focus-ring"
+        {...iconHint({ label: "External change options" })}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
       >

@@ -922,7 +922,7 @@ function FigureChrome({
       >
         <button
           type="button"
-          className="figure-scale-btn"
+          className="figure-scale-btn focus-ring"
           aria-label="Decrease width"
           onMouseDown={stopProp}
           onClick={(e) => stepBy(-1, e)}
@@ -958,7 +958,7 @@ function FigureChrome({
         />
         <button
           type="button"
-          className="figure-scale-btn"
+          className="figure-scale-btn focus-ring"
           aria-label="Increase width"
           onMouseDown={stopProp}
           onClick={(e) => stepBy(1, e)}

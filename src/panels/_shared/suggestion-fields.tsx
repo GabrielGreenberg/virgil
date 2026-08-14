@@ -37,6 +37,7 @@ export {
   type SuggestionField,
 } from "./suggestion-field-vocabulary";
 import type { SuggestionField } from "./suggestion-field-vocabulary";
+import { iconHint } from "@/components/Hint";
 
 /** The two cards share a
  *  `"pending" | "applied" | "stale" | "accepted" | "rejected"` status union.
@@ -178,10 +179,8 @@ export function CopyButton({ text }: { text: string }) {
       onClick={handle}
       onMouseDown={(e) => e.stopPropagation()}
       disabled={!text}
-      data-hint="Copy"
-      data-hint-pos="above"
-      aria-label="Copy"
-      className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer disabled:opacity-40 disabled:cursor-default"
+      {...iconHint({ label: "Copy", pos: "above" })}
+      className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer disabled:opacity-40 disabled:cursor-default focus-ring"
     >
       {copied ? (
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -226,10 +225,8 @@ export function FieldTitleRow({
               onToggleFold();
             }}
             onMouseDown={(e) => e.stopPropagation()}
-            className="text-[var(--muted)] hover:text-ink-strong cursor-pointer flex items-center"
-            data-hint="Toggle fold"
-            data-hint-pos="above"
-            aria-label={folded ? "Expand" : "Collapse"}
+            className="text-[var(--muted)] hover:text-ink-strong cursor-pointer flex items-center focus-ring"
+            {...iconHint({ label: folded ? "Expand" : "Collapse", hint: "Toggle fold", pos: "above" })}
             aria-expanded={!folded}
           >
             <Chevron expanded={!folded} />
@@ -550,7 +547,7 @@ export function AppliedRecordBody({
               e.stopPropagation();
               controller?.keep(family, id);
             }}
-            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-emerald-600 hover:bg-emerald-50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-emerald-600 hover:bg-emerald-50 disabled:opacity-40 disabled:pointer-events-none transition-colors focus-ring"
           >
             <CommitGlyph kind="check" />
           </button>
@@ -565,7 +562,7 @@ export function AppliedRecordBody({
               e.stopPropagation();
               controller?.dismiss(family, id);
             }}
-            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-ink-subtle hover:bg-danger-soft hover:text-danger disabled:opacity-40 disabled:pointer-events-none transition-colors"
+            className="inline-flex items-center justify-center h-6 w-6 rounded-md text-ink-subtle hover:bg-danger-soft hover:text-danger disabled:opacity-40 disabled:pointer-events-none transition-colors focus-ring"
           >
             <CommitGlyph kind="cross" />
           </button>

@@ -71,7 +71,7 @@ export function InstallPwaPrompt() {
           localStorage.setItem(DISMISSED_KEY, "1");
           setDismissed(true);
         }}
-        className="text-ink-subtle hover:text-ink-strong"
+        className="text-ink-subtle hover:text-ink-strong focus-ring"
         aria-label="Dismiss install prompt"
       >
         ×

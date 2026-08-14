@@ -12,6 +12,7 @@ import {
   CodePaneSplitProvider,
   type CodePaneSplitState,
 } from "./CodePaneSplitContext";
+import { iconHint } from "@/components/Hint";
 
 /**
  * Vertical split: editor pane on the left, code pane on the right,
@@ -395,10 +396,9 @@ export function SplitWithCode({
                 >
                   <button
                     type="button"
-                    className="flex items-center justify-center text-ink-muted hover:text-ink-body hover-on-light"
+                    className="flex items-center justify-center text-ink-muted hover:text-ink-body hover-on-light focus-ring"
                     style={{ width: 18, height: 18 }}
-                    data-hint="Sync text to code position"
-                    aria-label="Sync text to code position"
+                    {...iconHint({ label: "Sync text to code position" })}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={onMoveTextToCode}
                   >
@@ -424,10 +424,9 @@ export function SplitWithCode({
                   />
                   <button
                     type="button"
-                    className="flex items-center justify-center text-ink-muted hover:text-ink-body hover-on-light"
+                    className="flex items-center justify-center text-ink-muted hover:text-ink-body hover-on-light focus-ring"
                     style={{ width: 18, height: 18 }}
-                    data-hint="Sync code to text position"
-                    aria-label="Sync code to text position"
+                    {...iconHint({ label: "Sync code to text position" })}
                     onMouseDown={(e) => e.stopPropagation()}
                     onClick={onMoveCodeToText}
                   >

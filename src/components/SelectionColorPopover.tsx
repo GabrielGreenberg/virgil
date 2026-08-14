@@ -48,6 +48,7 @@ import type { FloatingMenuPlacement } from "@/hooks/useFloatingMenuPosition";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
 import type { MenuRole } from "./menu/types";
+import { iconHint } from "@/components/Hint";
 
 const POPOVER_W = 220;
 const SWATCH_SIZE = 22;
@@ -209,8 +210,7 @@ function Swatch({ id, color, onApply }: SwatchProps) {
     <button
       {...getItemProps()}
       type="button"
-      data-hint={color}
-      aria-label={color}
+      {...iconHint({ label: color })}
       style={{
         width: SWATCH_SIZE,
         height: SWATCH_SIZE,
@@ -293,8 +293,7 @@ function ClearButton({ onClear }: ClearButtonProps) {
     <button
       {...getItemProps()}
       type="button"
-      data-hint="Clear color"
-      aria-label="Clear color"
+      {...iconHint({ label: "Clear color" })}
       style={{
         width: SWATCH_SIZE,
         height: SWATCH_SIZE,

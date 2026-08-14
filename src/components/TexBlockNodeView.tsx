@@ -7,6 +7,7 @@ import { latex } from "codemirror-lang-latex";
 import { EditorState } from "@codemirror/state";
 import ConfirmDialog from "./ConfirmDialog";
 import type { TexBlockOptions } from "@/lib/tiptap/tex-block";
+import { iconHint } from "@/components/Hint";
 
 // Slimmed-down version of CodeEditor.tsx's virgilTheme, sized for inline
 // embedding inside a doc paragraph rather than a full code-view pane.
@@ -187,8 +188,8 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
               {!collapsed && (
                 <button
                   type="button"
-                  className="par-title-delete"
-                  data-hint="Remove title"
+                  className="par-title-delete focus-ring"
+                  {...iconHint({ label: "Remove title" })}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -232,7 +233,7 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
             position:relative, so it lines up with the blue outline. */}
         <button
           type="button"
-          className={`tex-block-fold-chevron${collapsed ? " is-folded" : ""}`}
+          className={`tex-block-fold-chevron${collapsed ? " is-folded" : ""} focus-ring`}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -242,8 +243,7 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
             e.preventDefault();
             e.stopPropagation();
           }}
-          data-hint={collapsed ? "Expand LaTeX block" : "Collapse LaTeX block"}
-          aria-label={collapsed ? "Expand LaTeX block" : "Collapse LaTeX block"}
+          {...iconHint({ label: collapsed ? "Expand LaTeX block" : "Collapse LaTeX block" })}
           contentEditable={false}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -327,9 +327,8 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
             e.stopPropagation();
             e.preventDefault();
           }}
-          data-hint="Delete LaTeX block"
-          aria-label="Delete LaTeX block"
-          className="absolute bottom-1.5 right-1.5 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--danger)] hover:bg-edge-subtle focus:text-[var(--danger)] opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity"
+          {...iconHint({ label: "Delete LaTeX block" })}
+          className="absolute bottom-1.5 right-1.5 p-1 rounded text-[var(--ink-muted)] hover:text-[var(--danger)] hover:bg-edge-subtle focus:text-[var(--danger)] opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity focus-ring"
           contentEditable={false}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

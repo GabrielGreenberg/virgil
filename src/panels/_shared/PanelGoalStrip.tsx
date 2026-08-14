@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/field-primitives";
+import { iconHint } from "@/components/Hint";
 
 /**
  * PanelGoalStrip — THE panel goal strip (task 2026-08-02-286).
@@ -61,7 +62,7 @@ export interface PanelGoalStripProps {
 const WRAPPER = "px-3 py-1.5 border-b border-edge-subtle";
 const INLINE_WRAPPER = `${WRAPPER} flex items-center gap-2 text-[11px]`;
 const GHOST_BTN =
-  "text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light";
+  "text-[var(--muted-light)] hover:text-ink-strong cursor-pointer text-[10px] rounded px-1 py-0.5 hover-on-light focus-ring";
 
 export function PanelGoalStrip({
   summary,
@@ -171,8 +172,7 @@ export function PanelGoalStrip({
           type="button"
           onClick={onClear}
           className={GHOST_BTN}
-          data-hint="Clear goal"
-          aria-label="Clear goal"
+          {...iconHint({ label: "Clear goal" })}
         >
           ✕
         </button>

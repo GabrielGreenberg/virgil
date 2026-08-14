@@ -248,6 +248,7 @@ import {
   OUTER_LIBRARY_ROOT_ID,
 } from "@/lib/doc-index";
 import { useLibraryRegistry } from "@library/hooks/useLibraryRegistry";
+import { iconHint } from "@/components/Hint";
 
 
 export default function EditorLayout() {
@@ -3495,9 +3496,8 @@ export default function EditorLayout() {
                               <button
                                 type="button"
                                 onClick={() => setErrorsSidebarOpen(false)}
-                                className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light text-sm leading-none"
-                                data-hint="Hide errors panel"
-                                aria-label="Hide errors panel"
+                                className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light text-sm leading-none focus-ring"
+                                {...iconHint({ label: "Hide errors panel" })}
                               >
                                 ×
                               </button>

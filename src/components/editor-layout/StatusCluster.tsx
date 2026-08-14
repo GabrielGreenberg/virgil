@@ -15,6 +15,7 @@ import SkillSyncControls from "../SkillSyncControls";
 import CollabStatusPill from "../CollabStatusPill";
 import ExternalChangeBadge from "../ExternalChangeBadge";
 import { ExternalChangeActiveReporter } from "./ExternalChangeActiveReporter";
+import { iconHint } from "@/components/Hint";
 
 /** The subset of the (memoized) Virgil-bar `vbar` value this cluster reads. */
 export type StatusClusterVBar = {
@@ -271,7 +272,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
         onClick={() => setPreferencesOpen((v) => !v)}
         className="topbarbtn"
         aria-pressed={preferencesOpen}
-        data-hint="Preferences"
+        {...iconHint({ label: "Preferences" })}
       >
         {/* Painter's palette icon — solid silhouette with the classic
             thumb-hole cutout on the right and four color wells punched
@@ -285,7 +286,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
           ref={helperBtnRef}
           onClick={(e) => { e.stopPropagation(); setHelperMenuOpen((v) => !v); }}
           className="topbarbtn"
-          data-hint="Help"
+          {...iconHint({ label: "Help" })}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
@@ -377,7 +378,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
         disabled={!currentDocId || codeView || pdfView}
         className="topbarbtn"
         aria-pressed={printOpen}
-        data-hint="Print"
+        {...iconHint({ label: "Print" })}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="6 9 6 2 18 2 18 9" />
@@ -391,7 +392,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
         onClick={() => setAiWindowOpen((v) => !v)}
         className="topbarbtn relative"
         aria-pressed={aiWindowOpen}
-        data-hint="AI requests"
+        {...iconHint({ label: "AI requests" })}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <g transform="rotate(15 12 12)">
@@ -494,8 +495,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
         onClick={() => setTopbarRightCollapsed((v) => !v)}
         className="topbarbtn"
         aria-pressed={topbarRightCollapsed}
-        aria-label={topbarRightCollapsed ? "Expand toolbar" : "Collapse toolbar"}
-        data-hint="Collapse toolbar"
+        {...iconHint({ label: topbarRightCollapsed ? "Expand toolbar" : "Collapse toolbar", hint: "Collapse toolbar" })}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           {topbarRightCollapsed ? (

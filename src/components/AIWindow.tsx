@@ -54,6 +54,7 @@ import SystemDialog from "./system-dialog";
 import { Button } from "./panel-primitives";
 import { Input, Select, Textarea } from "./field-primitives";
 import { useTabIndent } from "@/hooks/useTabIndent";
+import { iconHint } from "@/components/Hint";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -606,7 +607,7 @@ export default function AIWindow({
             <button
               onClick={() => refreshAll()}
               className="iconbtn-md"
-              data-hint="Refresh"
+              {...iconHint({ label: "Refresh" })}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="23 4 23 10 17 10" />
@@ -618,7 +619,7 @@ export default function AIWindow({
           <button
             onClick={onClose}
             className="iconbtn-md"
-            data-hint="Close"
+            {...iconHint({ label: "Close" })}
           >
             <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 3l8 8M11 3l-8 8" />
@@ -894,8 +895,8 @@ function RequestCard({ req }: { req: AIRequestVM }) {
       {req.onCancel && (
         <button
           onClick={handleCancel}
-          className="shrink-0 text-[10px] text-ink-muted hover:text-danger-muted transition-colors px-1"
-          data-hint="Cancel"
+          className="shrink-0 text-[10px] text-ink-muted hover:text-danger-muted transition-colors px-1 focus-ring"
+          {...iconHint({ label: "Cancel" })}
         >
           ×
         </button>

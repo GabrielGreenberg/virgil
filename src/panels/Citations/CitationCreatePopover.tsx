@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { BibEntry } from "@/lib/types";
 import { Button } from "@/components/panel-primitives";
 import { CitekeyPicker } from "./CitekeyPicker";
+import { iconHint } from "@/components/Hint";
 
 export interface CitationCreatePopoverProps {
   /** Caret rect captured at trigger time — the popover anchors here. */
@@ -139,9 +140,8 @@ function StagedFooter({ staged, onRemove, onOk }: StagedFooterProps) {
               <button
                 type="button"
                 onClick={() => onRemove(key)}
-                className="text-[var(--muted)] hover:text-ink-body leading-none"
-                data-hint={`Remove ${key}`}
-                aria-label={`Remove ${key}`}
+                className="text-[var(--muted)] hover:text-ink-body leading-none focus-ring"
+                {...iconHint({ label: `Remove ${key}` })}
               >
                 <svg
                   width="9"

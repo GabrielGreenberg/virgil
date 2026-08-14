@@ -49,7 +49,12 @@ import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { strip } from "./_source-scan";
+import {
+  strip,
+  tagAround,
+  tagsContaining,
+  elementSubtree,
+} from "./_source-scan";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../.."); // src/
@@ -153,109 +158,12 @@ export function stripComments(source: string): string {
   return strip(source, true);
 }
 
-/**
- * Where the JSX open tag starting at `start` ends: the index of the `>` that
- * closes it at BRACE depth zero, or -1.
- *
- * Depth-aware rather than `[^>]*`, because `onMouseDown={(e) => beginResize(e)}`
- * is the dominant handler idiom in this repo and a character class truncates
- * such a tag at its arrow, dropping every attribute AFTER it out of the match.
- * A needle looking for `aria-label` there reports CLEAN on a tag that carries
- * one — precisely how the first version of this census passed over the four
- * margin-guide hit-zones while its own doctrine indicted them.
- */
-function tagEnd(source: string, start: number): number {
-  let depth = 0;
-  for (let j = start + 1; j < source.length; j++) {
-    const c = source[j];
-    if (c === '"' || c === "'" || c === "`") {
-      const q = c;
-      j++;
-      while (j < source.length && source[j] !== q) {
-        if (source[j] === "\\") j++;
-        j++;
-      }
-      continue;
-    }
-    if (c === "{") depth++;
-    else if (c === "}") depth--;
-    else if (c === ">" && depth <= 0) return j;
-  }
-  return -1;
-}
+export { tagAround, tagsContaining, elementSubtree };
 
-/**
- * The whole open tag CONTAINING the character at `index`, or null.
- *
- * Anchored on the needle and walked outward, deliberately — enumerating every
- * `<` in a file first is what an earlier draft did, and a bare `<` from a
- * comparison or a generic (`useState<Foo>`) starts a pseudo-tag whose
- * brace-balanced scan can run past, and swallow, the real tag after it. In a
- * 3,000-line component that silently produced a handle with no tags, i.e. a
- * false "unchromed" report. Anchoring means a junk `<` can only ever affect
- * its own line.
- */
-export function tagAround(source: string, index: number): string | null {
-  const start = source.lastIndexOf("<", index);
-  if (start < 0 || !/[A-Za-z/]/.test(source[start + 1] ?? "")) return null;
-  const end = tagEnd(source, start);
-  if (end < index) return null;
-  return source.slice(start, end + 1);
-}
-
-/** Every distinct JSX open tag whose text matches `needle`. */
-export function tagsContaining(source: string, needle: RegExp): string[] {
-  const g = new RegExp(
-    needle.source,
-    needle.flags.includes("g") ? needle.flags : `${needle.flags}g`,
-  );
-  const out = new Set<string>();
-  for (const m of source.matchAll(g)) {
-    const tag = tagAround(source, m.index ?? 0);
-    if (tag) out.add(tag);
-  }
-  return [...out];
-}
-
-/** The element name an open tag declares (`div` for `<div …>`). */
-function tagName(tag: string): string {
-  return /^<([A-Za-z][\w.-]*)/.exec(tag)?.[1] ?? "";
-}
-
-/**
- * The source enclosed by the element whose open tag is `tag` — "" when the tag
- * is self-closing, null when the close can't be located (fail LOUD: an
- * unparsed subtree must not read as "no focusable children").
- *
- * Depth counting must ask each same-named open tag whether it SELF-CLOSES; a
- * regex that counts `<div` occurrences treats `<div … />` as opening a level
- * that never closes, and every handle wrapping a self-closing child then
- * reports "close tag not found" — which is what the first draft did to
- * `panel-column`, whose widened hit-target is exactly that shape.
- */
-export function elementSubtree(source: string, tag: string): string | null {
-  if (/\/\s*>$/.test(tag)) return "";
-  const start = source.indexOf(tag);
-  if (start < 0) return null;
-  const name = tagName(tag);
-  if (!name) return null;
-  const step = new RegExp(`</?${name}(?![\\w.-])`, "g");
-  let depth = 1;
-  step.lastIndex = start + tag.length;
-  let m: RegExpExecArray | null;
-  while ((m = step.exec(source))) {
-    if (m[0].startsWith("</")) {
-      depth--;
-      if (depth === 0) return source.slice(start + tag.length, m.index);
-      continue;
-    }
-    const end = tagEnd(source, m.index);
-    if (end < 0) return null;
-    if (source[end - 1] !== "/") depth++; // a self-closing tag opens nothing
-    step.lastIndex = end;
-  }
-  return null;
-}
+/* The JSX tag scanner these censuses run on lives in the repo's ONE source
+ * scanner beside `strip` — see `_source-scan.ts` for why each of its three
+ * properties is load-bearing. Re-exported here because this file was its
+ * first home and the pin below reads them from it. */
 
 /**
  * The guarded class as a machine-detectable conjunction: a file that

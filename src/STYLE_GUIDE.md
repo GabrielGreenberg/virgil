@@ -506,6 +506,15 @@ a finding:
 - `ItemMenu`'s panel-header trigger (`align="left"`) — bare button by
   design, no rounded lozenge.
 
+**A sanctioned hand-roll still owes the two things `iconbtn-*` was
+carrying for it**: the accessible name (`iconHint`, see **Hints**) and
+the focus indicator (`.focus-ring`, see **Interaction**). Those are not
+part of the look, which is the only axis these exceptions buy — the
+same rule the resize-gutter family states about its own one exception.
+A roving MENU row is the exception to the second half and not to the
+first: it is `tabIndex={-1}` and shows `data-active` instead, so it
+needs a name and no ring.
+
 Icons are stroke-only, stroke-width 2, round caps and joins, single
 color (`currentColor`). Three exceptions are filled by design: the AI
 star (sky `#0ea5e9`), the trash icon (`text-danger`), and the
@@ -546,7 +555,17 @@ Five states. One implementation each.
   Inputs use a thicker border instead of a ring. Never leave the UA default
   ring, and never strip it bare: `outline: none` is legal only where the same
   rule supplies the replacement — the model is `.iconbtn-*` / `.topbarbtn`
-  (`outline: none` + `box-shadow: 0 0 0 2px var(--edge-strong)`). Two
+  (`outline: none` + `box-shadow: 0 0 0 2px var(--edge-strong)`), and all three
+  now share ONE declaration block with **`.focus-ring`**, which is that
+  indicator UNBUNDLED from geometry and palette. Reach for `.focus-ring` on a
+  control the size utilities genuinely don't fit — a 10px outline chevron, a
+  button whose ink is accent-when-active (`iconbtn-*` would win the colour), an
+  inline-styled library control. It is not an escape from `iconbtn-*`: if the
+  utility fits, take the utility. One caveat with teeth — an element whose
+  elevation is an INLINE `box-shadow` can't be ringed at all (inline beats the
+  sheet), and adding the class there deletes the UA outline while supplying
+  nothing; leave those alone (`StackIcon` is the one, allowlisted in the
+  icon-button census with that reason). Two
   standing exceptions, both deliberate: a **contenteditable** surface (the
   `.tiptap` body, the float bodies, `RichTextField`, `BorrowedMainText`)
   strips with no replacement because the caret is the indicator, and a
@@ -1129,10 +1148,13 @@ Spread `useHint(...)` onto an element, or wrap it with `<Hint>`:
 
 ```tsx
 const hint = useHint({ label: "Open actions menu", keys: "Mod+/" });
-<button {...hint} aria-label="Open actions menu">⚡</button>
+<button {...hint}>Actions</button>
 
 // …or without touching the child's props:
 <Hint label="Delete" keys="Backspace"><IconButton …/></Hint>
+
+// An ICON-ONLY control takes `iconHint` — one label, tooltip AND name:
+<button {...iconHint({ label: "Close tab" })}><IconX /></button>
 ```
 
 Both just stamp the attribute protocol that `HintLayer` reads:
@@ -1148,10 +1170,24 @@ keyboard `:focus-visible`, and instantly for every hinted element while Helper
 mode is on. It dismisses on Escape / scroll / pointer-down / pointer-leave and
 positions via `useFloatingMenuPosition`.
 
-**Accessibility:** `data-hint` is *not* an accessible name. Icon-only controls
-still need `aria-label` (the `title`→hint migration adds one automatically).
-Where the element already has visible text, that text is the name — don't add a
-redundant `aria-label`.
+**Accessibility:** `data-hint` is *not* an accessible name — it is a CSS
+tooltip hook. An icon-only control needs both, and takes them from ONE string
+through **`iconHint({ label })`** ([Hint.tsx](components/Hint.tsx)), never by
+hand-pairing the two attributes. Where the element already has visible text,
+that text is the name — keep `useHint`/`data-hint` alone and don't add a
+redundant `aria-label` (an `aria-label` that disagrees with visible text is a
+worse defect than a missing one). A tooltip that must say more than the name
+passes `hint` beside the label; it is still one call, so the two can't drift.
+
+That rule is CI-enforced over both silos by
+[icon-button-a11y-guardrail.test.ts](components/__tests__/icon-button-a11y-guardrail.test.ts),
+which reads markup and fails an icon-only `<button>` that announces nothing, or
+that spells its label twice. Task 142 named the sweep and deferred it; the
+guardrail exists because the half-finished state — cards migrated, panel chrome
+not — is what let `StatusCluster`'s toolbar toggle announce "Expand toolbar"
+while its tooltip said "Collapse toolbar". Both allowlists are EMPTY: `data-hint`
+is not a name, and there is no true statement of the form "this control is
+icon-only and should announce nothing."
 
 ### Keyboard shortcuts — `<Kbd>`
 

@@ -14,6 +14,7 @@ import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { popKey as buildPopKey } from "@/panels/panel-registry";
 import { AMBER_ATTENTION_STRIP } from "@/panels/_shared/amber-attention";
 import { sanitizeAnnotationHtml } from "@/lib/sanitize-html";
+import { iconHint } from "@/components/Hint";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -94,7 +95,7 @@ function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElemen
         className="w-6 h-6 flex items-center justify-center rounded text-xs underline text-ink-body hover-on-light" data-hint="Underline">U</button>
       <div className="w-px h-4 bg-edge-subtle mx-0.5" />
       <button onMouseDown={(e) => { e.preventDefault(); exec("insertUnorderedList"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover-on-light" data-hint="Bullet list" aria-label="Bullet list">
+        className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover-on-light focus-ring" {...iconHint({ label: "Bullet list" })}>
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <circle cx="2" cy="4" r="1.5" /><rect x="5" y="3" width="10" height="2" rx="0.5" />
           <circle cx="2" cy="8" r="1.5" /><rect x="5" y="7" width="10" height="2" rx="0.5" />
@@ -461,8 +462,8 @@ export default function BibEntryCard({
         <span className="text-xs font-mono text-ink-muted break-all">{entry.key}</span>
         <button
           onClick={handleCopyKey}
-          className="p-0.5 text-ink-faint hover:text-ink-subtle transition-colors"
-          data-hint="Copy cite key" aria-label="Copy cite key"
+          className="p-0.5 text-ink-faint hover:text-ink-subtle transition-colors focus-ring"
+          {...iconHint({ label: "Copy cite key" })}
         >
           {copied ? (
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -539,7 +540,7 @@ export default function BibEntryCard({
                         type="button"
                         onClick={(e) => { e.stopPropagation(); removeEditBibField(field); }}
                         className="iconbtn-sm text-ink-muted hover:text-danger flex-shrink-0"
-                        data-hint={`Remove ${field}`} aria-label={`Remove field ${field}`}
+                        {...iconHint({ label: `Remove field ${field}`, hint: `Remove ${field}` })}
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                       </button>
@@ -673,8 +674,8 @@ export default function BibEntryCard({
         >
           <button
             onClick={(e) => { e.stopPropagation(); occurrenceInfo!.onCycle(-1); }}
-            className="hover:text-ink-body flex items-center"
-            data-hint="Previous occurrence" aria-label="Previous occurrence"
+            className="hover:text-ink-body flex items-center focus-ring"
+            {...iconHint({ label: "Previous occurrence" })}
           >
             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
@@ -683,8 +684,8 @@ export default function BibEntryCard({
           <span className="card-mono tabular-nums">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
           <button
             onClick={(e) => { e.stopPropagation(); occurrenceInfo!.onCycle(1); }}
-            className="hover:text-ink-body flex items-center"
-            data-hint="Next occurrence" aria-label="Next occurrence"
+            className="hover:text-ink-body flex items-center focus-ring"
+            {...iconHint({ label: "Next occurrence" })}
           >
             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 18 15 12 9 6" />

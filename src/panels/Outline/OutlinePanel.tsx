@@ -22,6 +22,7 @@ import {
 import { useFocusBandEdgeDrag, type FocusBandRow } from "./focus-band-drag";
 import { landingBlockIndex, isRejectedDrop, resolveDropIndicator } from "./outline-drop";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
+import { iconHint } from "@/components/Hint";
 
 /* ── Indentation model (single source of truth) ─────────────────────────
  * One place defines the outline's left-edge geometry, used by both the view
@@ -636,7 +637,12 @@ function OutlineNode({
               e.stopPropagation();
               onToggle(node.heading.id);
             }}
-            className="mt-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0 flex items-center justify-center"
+            /* Name only, no tooltip: the twisty sits under the pointer for the
+               whole of a row hover, and a bubble there would cover the row it
+               belongs to. Its `EditablePod` sibling below is a distinct
+               control (it folds the POD) and keeps its hint. */
+            aria-label={isCollapsed ? "Expand section" : "Collapse section"}
+            className="mt-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0 flex items-center justify-center focus-ring"
             style={{ width: OUTLINE_TWIST_COL, height: 16 }}
           >
             <svg
@@ -976,9 +982,8 @@ const EditablePod = memo(function EditablePod({
               onToggleCollapse(pod.id);
             }}
             onMouseDown={(e) => e.stopPropagation()}
-            className="p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0"
-            data-hint={isCollapsed ? "Expand" : "Collapse"}
-            data-hint-pos="above"
+            className="p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0 focus-ring"
+            {...iconHint({ label: isCollapsed ? "Expand" : "Collapse", pos: "above" })}
           >
             <svg
               width="10"
@@ -1680,8 +1685,8 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
             focusState.locked
               ? "text-[var(--accent)]"
               : "text-[var(--muted)] hover:text-ink-body"
-          }`}
-          data-hint={focusState.locked ? "Unlock focus" : "Lock focus"}
+          } focus-ring`}
+          {...iconHint({ label: focusState.locked ? "Unlock focus" : "Lock focus" })}
         >
           {focusState.locked ? (
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1702,8 +1707,8 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
       <span className="w-px h-3.5 bg-[var(--border)] mx-0.5" aria-hidden="true" />
       <button
         onClick={expandAll}
-        className="p-0.5 rounded-md text-[var(--muted)] hover:text-ink-body transition-colors"
-        data-hint="Expand all"
+        className="p-0.5 rounded-md text-[var(--muted)] hover:text-ink-body transition-colors focus-ring"
+        {...iconHint({ label: "Expand all" })}
       >
         <svg width="12" height="9" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 1 L7 4.5 L12 1" />
@@ -1712,8 +1717,8 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
       </button>
       <button
         onClick={collapseAll}
-        className="p-0.5 rounded-md text-[var(--muted)] hover:text-ink-body transition-colors"
-        data-hint="Collapse all"
+        className="p-0.5 rounded-md text-[var(--muted)] hover:text-ink-body transition-colors focus-ring"
+        {...iconHint({ label: "Collapse all" })}
       >
         <svg width="12" height="9" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 4.5 L7 1 L12 4.5" />

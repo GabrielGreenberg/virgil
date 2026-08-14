@@ -685,6 +685,18 @@ body[data-zen-mode="on"] {
 .iconbtn-lg:active {
   transform: translateY(0.5px);
 }
+/* ── The focus indicator ──────────────────────────────────────────
+   ONE rule for every control that supplies the sanctioned replacement
+   ring (STYLE_GUIDE "Interaction" → Focus). `.focus-ring` is that
+   indicator UNBUNDLED from geometry and palette: a hand-rolled icon
+   button that can't take an `iconbtn-*` size — a sub-spec box, its own
+   accent-when-active ink, a 10px chevron — takes this instead, so
+   "keyboard focus is visible" never depends on whether a control could
+   afford the whole utility. The selectors share ONE declaration block
+   rather than three identical ones, so the ring cannot drift into
+   three rings. */
+.focus-ring:focus-visible,
+.topbarbtn:focus-visible,
 .iconbtn-xs:focus-visible,
 .iconbtn-sm:focus-visible,
 .iconbtn-md:focus-visible,
@@ -832,10 +844,7 @@ body[data-zen-mode="on"] {
 .topbarbtn:active {
   transform: translateY(0.5px);
 }
-.topbarbtn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--edge-strong);
-}
+/* :focus-visible — see the shared focus-indicator rule above. */
 .topbarbtn[disabled],
 .topbarbtn[aria-disabled="true"] {
   opacity: 0.4;

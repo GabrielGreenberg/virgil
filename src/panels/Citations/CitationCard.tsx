@@ -43,6 +43,7 @@ import { OpenEntryLink } from "@/components/library/open-library-entry";
 import { CitekeyPicker } from "./CitekeyPicker";
 import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
+import { iconHint } from "@/components/Hint";
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -1027,7 +1028,7 @@ export function CitationCard({
                     setCodeDraft(cit.command);
                   }}
                   className="text-[10px] card-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border border-transparent rounded px-1 py-0 cursor-text hover:border-edge-hover hover:bg-surface transition-colors"
-                  data-hint="Edit raw LaTeX" aria-label="Edit raw LaTeX"
+                  {...iconHint({ label: "Edit raw LaTeX" })}
                 >
                   {cit.command || (
                     <span className="text-ink-body italic">
@@ -1247,8 +1248,8 @@ function CitationKeyRow({
                 e.stopPropagation();
                 setPgOpen(false);
               }}
-              className="text-[var(--muted)] hover:text-ink-body p-0.5"
-              data-hint="Close" aria-label="Close"
+              className="text-[var(--muted)] hover:text-ink-body p-0.5 focus-ring"
+              {...iconHint({ label: "Close" })}
             >
               <svg
                 width="9"
@@ -1359,8 +1360,8 @@ function CitationKeyRow({
                 e.stopPropagation();
                 onRemove();
               }}
-              className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-ink-body hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity"
-              data-hint="Remove this row" aria-label="Remove this row"
+              className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-ink-body hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity focus-ring"
+              {...iconHint({ label: "Remove this row" })}
             >
               <svg
                 width="11"
@@ -1400,7 +1401,7 @@ function CitationKeyRow({
             type="button"
             onClick={copyCitekey}
             className="iconbtn-sm text-[var(--muted)] hover:text-ink-body"
-            data-hint={copied ? "Copied" : "Copy citekey"} aria-label={copied ? "Copied" : "Copy citekey"}
+            {...iconHint({ label: copied ? "Copied" : "Copy citekey" })}
           >
             {copied ? (
               <svg
@@ -1465,8 +1466,8 @@ function CitationKeyRow({
             }}
             className={`shrink-0 w-5 h-5 flex items-center justify-center rounded text-[var(--muted)] hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity ${
               !canRemove ? "pointer-events-none" : ""
-            }`}
-            data-hint="Remove this key" aria-label="Remove this key"
+            } focus-ring`}
+            {...iconHint({ label: "Remove this key" })}
           >
             <svg
               width="11"

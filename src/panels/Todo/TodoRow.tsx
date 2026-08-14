@@ -18,6 +18,7 @@ import { useTabIndent } from "@/hooks/useTabIndent";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
+import { iconHint } from "@/components/Hint";
 
 /** The done/undone checkbox shown in a Todo's header (docked) and its float
  *  chrome trailing slot. Exported so the `toFloatable` factory can place the
@@ -36,9 +37,8 @@ export function TodoDoneToggle({
         onToggle(item.id);
       }}
       onMouseDown={(e) => e.stopPropagation()}
-      className="shrink-0 bg-transparent p-0"
-      data-hint={item.done ? "Undo done" : "Mark done"}
-      data-hint-pos="above"
+      className="shrink-0 bg-transparent p-0 focus-ring"
+      {...iconHint({ label: item.done ? "Undo done" : "Mark done", pos: "above" })}
     >
       {item.done ? (
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none">

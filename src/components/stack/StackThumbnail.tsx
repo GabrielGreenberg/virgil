@@ -88,6 +88,7 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
         {summary || "(empty)"}
       </div>
       <button
+        className="focus-ring"
         type="button"
         data-stack-thumb-x="true"
         aria-label="Remove from stack"

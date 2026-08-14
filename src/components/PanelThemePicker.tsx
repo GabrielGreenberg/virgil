@@ -11,6 +11,7 @@ import {
 import { usePanelColor, useIsPanelColorOverridden } from "@/hooks/usePanelTheme";
 import { AnchoredMenu } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
+import { iconHint } from "@/components/Hint";
 
 /**
  * Color-picker swatch for per-panel theming. Renders a small color box that
@@ -178,11 +179,10 @@ function PresetSwatch({
     <button
       {...getItemProps()}
       type="button"
-      data-hint={name}
-      aria-label={name}
+      {...iconHint({ label: name })}
       className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${
         active ? "ring-2 ring-offset-1 ring-stone-500" : "border-edge-hover"
-      } ${roving ? "outline outline-2 outline-offset-1 outline-[var(--accent-blue)]" : ""}`}
+      } ${roving ? "outline outline-2 outline-offset-1 outline-[var(--accent-blue)]" : ""} focus-ring`}
       style={{ background: hex }}
     />
   );

@@ -501,7 +501,7 @@ export function PendingChangePill({
           e.stopPropagation();
           target.onKeep();
         }}
-        className="inline-flex items-center justify-center h-6 w-6 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors"
+        className="inline-flex items-center justify-center h-6 w-6 rounded-md text-emerald-600 hover:bg-emerald-50 transition-colors focus-ring"
       >
         <PillGlyph kind="check" />
       </button>
@@ -515,7 +515,7 @@ export function PendingChangePill({
           e.stopPropagation();
           target.onDismiss();
         }}
-        className="inline-flex items-center justify-center h-6 w-6 rounded-md text-ink-subtle hover:bg-danger-soft hover:text-danger transition-colors"
+        className="inline-flex items-center justify-center h-6 w-6 rounded-md text-ink-subtle hover:bg-danger-soft hover:text-danger transition-colors focus-ring"
       >
         <PillGlyph kind="cross" />
       </button>

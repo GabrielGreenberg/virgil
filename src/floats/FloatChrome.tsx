@@ -6,6 +6,7 @@ import { DropChevrons } from "@/components/icons/DropChevrons";
 import { JumpChevron } from "@/components/icons/JumpChevron";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
 import { FONT_SANS } from "@/lib/font-stacks";
+import { iconHint } from "@/components/Hint";
 
 /**
  * `FloatChrome` — the ONE header skeleton for every popped-out window, shared
@@ -123,9 +124,8 @@ export function FloatChrome({
         <button
           type="button"
           onClick={onJump}
-          className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light"
-          data-hint={`Jump to ${labelNoun}`}
-          aria-label={`Jump to ${labelNoun}`}
+          className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light focus-ring"
+          {...iconHint({ label: `Jump to ${labelNoun}` })}
         >
           <JumpChevron />
         </button>
@@ -171,9 +171,8 @@ export function FloatChrome({
             e.stopPropagation();
             e.preventDefault();
           }}
-          className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light bg-transparent p-0 shrink-0 cursor-grab"
-          data-hint={`Drop ${labelNoun} into text`}
-          aria-label={`Drop ${labelNoun} into text`}
+          className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light bg-transparent p-0 shrink-0 cursor-grab focus-ring"
+          {...iconHint({ label: `Drop ${labelNoun} into text` })}
         >
           <DropChevrons />
         </button>

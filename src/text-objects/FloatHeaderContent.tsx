@@ -3,6 +3,7 @@
 import { PopoutButton } from "@/components/panel-primitives";
 import { JumpChevron } from "@/components/icons/JumpChevron";
 import { FONT_SANS } from "@/lib/font-stacks";
+import { iconHint } from "@/components/Hint";
 
 /**
  * Shared INNER content of a TextObject float header — the kind label, a
@@ -82,9 +83,8 @@ export function FloatHeaderContent({
         type="button"
         onClick={onJump}
         tabIndex={onJump ? undefined : -1}
-        className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light"
-        data-hint={`Jump to ${labelNoun}`}
-        aria-label={`Jump to ${labelNoun}`}
+        className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light focus-ring"
+        {...iconHint({ label: `Jump to ${labelNoun}` })}
       >
         <JumpChevron />
       </button>

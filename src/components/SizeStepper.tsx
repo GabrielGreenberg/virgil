@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Input } from "./field-primitives";
+import { iconHint } from "@/components/Hint";
 
 interface SizeStepperProps {
   value: number;
@@ -67,9 +68,8 @@ export default function SizeStepper({
         type="button"
         onClick={() => bump(-step)}
         disabled={value <= min}
-        className="w-7 h-7 rounded border border-edge-subtle bg-surface text-ink-muted hover:bg-edge-subtle hover:text-ink-body disabled:opacity-30 disabled:cursor-default flex items-center justify-center text-base leading-none"
-        data-hint="Smaller"
-        aria-label="Smaller"
+        className="w-7 h-7 rounded border border-edge-subtle bg-surface text-ink-muted hover:bg-edge-subtle hover:text-ink-body disabled:opacity-30 disabled:cursor-default flex items-center justify-center text-base leading-none focus-ring"
+        {...iconHint({ label: "Smaller" })}
       >
         −
       </button>
@@ -77,9 +77,8 @@ export default function SizeStepper({
         type="button"
         onClick={() => bump(step)}
         disabled={value >= max}
-        className="w-7 h-7 rounded border border-edge-subtle bg-surface text-ink-muted hover:bg-edge-subtle hover:text-ink-body disabled:opacity-30 disabled:cursor-default flex items-center justify-center text-base leading-none"
-        data-hint="Larger"
-        aria-label="Larger"
+        className="w-7 h-7 rounded border border-edge-subtle bg-surface text-ink-muted hover:bg-edge-subtle hover:text-ink-body disabled:opacity-30 disabled:cursor-default flex items-center justify-center text-base leading-none focus-ring"
+        {...iconHint({ label: "Larger" })}
       >
         +
       </button>

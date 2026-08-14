@@ -28,6 +28,7 @@ import {
   LibraryEntryMenu,
   type RowState,
 } from "@/components/library/LibraryEntryMenu";
+import { iconHint } from "@/components/Hint";
 
 /** True when two bib entries describe the same record at field level —
  *  same `@type` and exact field/value pairs. `raw` differences (whitespace,
@@ -656,8 +657,8 @@ function BibliographyPanel({
           showSearch
             ? "text-ink-body bg-surface-muted"
             : "text-ink-muted hover:text-ink-body hover-on-light"
-        }`}
-        data-hint={showSearch ? "Close search" : "Search"}
+        } focus-ring`}
+        {...iconHint({ label: showSearch ? "Close search" : "Search" })}
         aria-pressed={showSearch}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -757,8 +758,8 @@ function BibliographyPanel({
             </div>
             <button
               onClick={closeSearch}
-              className="text-ink-muted hover:text-ink-body p-0.5 shrink-0"
-              data-hint="Close search"
+              className="text-ink-muted hover:text-ink-body p-0.5 shrink-0 focus-ring"
+              {...iconHint({ label: "Close search" })}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
@@ -838,8 +839,8 @@ function BibliographyPanel({
                 setShowRequestForm(false);
                 setRequestText("");
               }}
-              className="ml-auto text-ink-muted hover:text-ink-body p-0.5"
-              data-hint="Cancel"
+              className="ml-auto text-ink-muted hover:text-ink-body p-0.5 focus-ring"
+              {...iconHint({ label: "Cancel" })}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
@@ -899,9 +900,8 @@ function BibliographyPanel({
               </p>
               <button
                 onClick={() => onRemoveEntryRequest(req.id)}
-                className="text-ink-muted hover:text-ink-body shrink-0 p-0.5"
-                data-hint="Dismiss"
-                data-hint-pos="above"
+                className="text-ink-muted hover:text-ink-body shrink-0 p-0.5 focus-ring"
+                {...iconHint({ label: "Dismiss", pos: "above" })}
               >
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
