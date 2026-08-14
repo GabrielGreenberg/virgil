@@ -11,6 +11,9 @@
  *     controller (`useMenuKeyboard`);
  *   - portals to `document.body` (default) or docks inline (`portal={false}`,
  *     for MenuBar's stacking context);
+ *   - stamps the ONE menu SURFACE (`.menu-surface`: bg + border + shadow +
+ *     radius off the `--menu-*` tier) on its container, so no consumer
+ *     re-authors menu chrome (task 295; `surface="none"` opts out, allowlisted);
  *   - publishes itself to `registryFor(id)` (the cross-backend seam) and, when
  *     nested inside a parent `<MenuProvider>`, auto-registers its container
  *     into the parent's click-outside exclude set (R8).
@@ -109,9 +112,28 @@ export interface MenuProviderProps {
   onClose: () => void;
   /** ARIA label for the container. */
   ariaLabel?: string;
-  /** Container style overrides (width / chrome). */
+  /**
+   * Container surface chrome (task 295). `"menu"` (the default, and what every
+   * menu wants) stamps `.menu-surface` — the ONE bg + border + shadow + radius
+   * for every dropdown in the app, off the `--menu-*` tier in `globals.css`.
+   *
+   * `"none"` opts a container out entirely, for a surface whose look is its
+   * IDENTITY rather than drift — today only `LabelRefPopover`, whose amber edge
+   * ties the popover to the amber `\ref` highlight in the text it points at.
+   * Every `"none"` site must be on `PERMITTED_UNSURFACED_MENUS` in
+   * menu-surface-guardrail.test.ts with a stated reason.
+   *
+   * `containerClassName` / `containerStyle` still compose on top — but for
+   * WIDTH, PADDING and docked-anchor placement only. A caller that re-authors
+   * a background / border / shadow / radius is the drift this exists to end,
+   * and the same census fails it.
+   */
+  surface?: "menu" | "none";
+  /** Container style overrides (width / padding / docked-anchor placement).
+   *  NOT chrome — see `surface`. */
   containerStyle?: CSSProperties;
-  /** Container className. */
+  /** Container className (width / padding / docked-anchor placement). NOT
+   *  chrome — see `surface`. */
   containerClassName?: string;
   /** The menu items (bespoke JSX + `<MenuItemsFromRegistry>` / `<MenuGrid>` /
    *  `<MenuList>`). */
@@ -154,6 +176,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
     keyboardSource = "window",
     onClose,
     ariaLabel,
+    surface = "menu",
     containerStyle,
     containerClassName,
     children,
@@ -342,6 +365,14 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
 
   if (typeof document === "undefined") return null;
 
+  // The surface class comes FIRST so a caller's own classes read as the
+  // overrides they are (width floors, padding, docked-anchor placement) rather
+  // than losing a same-specificity tie to the primitive by source order.
+  const surfaceClassName =
+    surface === "menu"
+      ? `menu-surface${containerClassName ? ` ${containerClassName}` : ""}`
+      : containerClassName;
+
   const container = (
     <div
       ref={setContainerRef}
@@ -350,7 +381,7 @@ export function MenuProvider(props: MenuProviderProps): ReactNode {
       // `aria-controls` points at (§3.5). Command menus leave it unset.
       id={listboxId}
       aria-label={ariaLabel}
-      className={containerClassName}
+      className={surfaceClassName}
       style={{
         ...(portal ? positionStyle : { position: "relative" as const }),
         zIndex: CHROME_Z,

@@ -102,12 +102,14 @@ export const ANCHORED_MENU_PLACEMENTS: Record<
   ],
 };
 
-/** The menu surface's chrome — the literal every hand-rolled dropdown copied
- *  (`bg-surface border rounded-lg shadow-lg py-1`) minus the `fixed z-[9999]`
- *  the primitive now owns. `shadow-lg` is the established menu/dropdown
- *  elevation (`--shadow-float` is scoped to SystemDialog). */
-export const MENU_SURFACE_CLASS =
-  "bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1";
+/** The menu body's default row PADDING — the one non-chrome survivor of the
+ *  old `MENU_SURFACE_CLASS` (`bg-surface border rounded-lg shadow-lg py-1`),
+ *  whose four chrome axes moved onto the primitive's `.menu-surface` in task
+ *  295. Padding stays here because it genuinely varies per menu (the pod menus
+ *  set their own `MENU_PAD_Y`, the combobox has none), so it is a shell
+ *  default rather than part of the surface. Module-private: an exported
+ *  class string is how the MenuBar dropdowns came to carry a hand-copy. */
+const MENU_BODY_PAD_CLASS = "py-1";
 
 export interface AnchoredMenuRenderProps {
   /** Close the menu (and drop the anchor). */
@@ -140,10 +142,12 @@ export interface AnchoredMenuProps {
   orientation?: MenuOrientation;
   /** ARIA container-role fork, forwarded to `MenuProvider`. Default "menu". */
   role?: MenuRole;
-  /** Container style overrides (width / padding / bespoke chrome), forwarded to
-   *  `MenuProvider`. Merged AFTER the shell's own placement + z-tier, exactly as
-   *  the provider merges it, so a caller can size a swatch grid without
-   *  re-deriving the surface. */
+  /** Container style overrides (width / padding), forwarded to `MenuProvider`.
+   *  Merged AFTER the shell's own placement + z-tier, exactly as the provider
+   *  merges it, so a caller can size a swatch grid without re-deriving the
+   *  surface — which since task 295 it cannot do at all: chrome belongs to
+   *  `.menu-surface`, and the census fails a bg / border / shadow / radius
+   *  written here. */
   containerStyle?: CSSProperties;
   /** Which of the trigger's edges the menu aligns to. Default "start". */
   align?: AnchoredMenuAlign;
@@ -165,8 +169,10 @@ export interface AnchoredMenuProps {
   triggerAriaLabel?: string;
   /** Wrapper (positioning context for the trigger) className. */
   wrapperClassName?: string;
-  /** Extra classes on the menu surface — width floors, mostly. Appended to
-   *  `MENU_SURFACE_CLASS`. */
+  /** Extra classes on the menu container — width floors, mostly. Appended to
+   *  the shell's body padding. NOT chrome: the surface is the primitive's
+   *  `.menu-surface` (task 295), and the census fails a caller that re-authors
+   *  a background / border / shadow / radius here. */
   menuClassName?: string;
   /**
    * Close on ANY click that bubbles out of the menu body. For menus whose rows
@@ -310,7 +316,7 @@ export function AnchoredMenu({
           onClose={close}
           ariaLabel={ariaLabel}
           containerStyle={containerStyle}
-          containerClassName={`${MENU_SURFACE_CLASS}${menuClassName ? ` ${menuClassName}` : ""}`}
+          containerClassName={`${MENU_BODY_PAD_CLASS}${menuClassName ? ` ${menuClassName}` : ""}`}
         >
           {/* The click that ESCAPES a menu is fenced by `MenuProvider` at the
               container (task 181) — it has to be, because the surface's own

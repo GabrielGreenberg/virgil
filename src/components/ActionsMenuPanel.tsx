@@ -533,10 +533,6 @@ export function ActionsMenuPanel({
         containerClassName="selection-actions-menu"
         containerStyle={{
           width: MENU_W,
-          background: "var(--pod-editor)",
-          border: "var(--pod-border)",
-          boxShadow: "var(--pod-shadow)",
-          borderRadius: "var(--pod-radius)",
           padding: `${MENU_PAD_Y}px 0`,
         }}
       >

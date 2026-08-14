@@ -374,7 +374,7 @@ onto the Tailwind `rounded-*` utilities via an `@theme` block, so
 | `--radius-xs` | 3 | `rounded-xs` | in-text/chip micro details: inline marks (highlight, citation/footnote/label/note markers), annotation chips/toggles/delete, `kbd`, scrollbar thumb. |
 | `--radius-sm` | 4 | `rounded-sm` | small controls & inner rows: icon/topbar buttons, color swatches, inner list rows, form inputs inside a popover, drag-handle hit area. |
 | `--radius-md` | 6 | `rounded-md` | primary CONTROL radius: `<Button>`, inputs, segmented controls, copy buttons, tooltips, hint bubbles. |
-| `--pod-radius` | 8 | `rounded-lg` | CARD + POD + MENU tier: cards, sub-pods, dropdown/popover menus, floating menus, editor pod, code / display-math blocks, figure images. |
+| `--pod-radius` | 8 | `rounded-lg` | CARD + POD + MENU tier: cards, sub-pods, dropdown/popover menus, floating menus, editor pod, code / display-math blocks, figure images. Menus reach it through `--menu-radius` (see **Menus** → Menu surface), never by naming it. |
 | `--panel-radius` | 14 | `rounded-xl` | large PANEL + MODAL tier: sidebar panel pods, docked floating panels, system/font dialogs. |
 | `--radius-pill` | 9999 | `rounded-pill` / `rounded-full` | fully-round capsules: status pills, page-scroll lozenges, pgmark chips, drag-ghost badges. |
 
@@ -1420,7 +1420,43 @@ for any command menu, kebab, or anchored dropdown; don't hand-roll a portal +
 - **keyboard / roving nav** — one `useMenuKeyboard` controller; items opt in via
   `useMenuItem` (or `<MenuItemsFromRegistry>`) to gain arrow-nav + the roving
   active highlight. Items never take `.focus()` (roving `aria-activedescendant`
-  only) so the editor caret never moves.
+  only) so the editor caret never moves;
+- **container surface** — `.menu-surface`, stamped on the container: background,
+  border, shadow and radius, each from the `--menu-*` tier in `globals.css`
+  (see **Menu surface** below).
+
+**Menu surface.** The four chrome axes are the PRIMITIVE's, not the caller's
+(task 295). A consumer passes `containerClassName` / `containerStyle` for
+**width, padding and docked-anchor placement only**; a background, border,
+shadow or radius written there fails
+[menu-surface-guardrail.test.ts](components/menu/__tests__/menu-surface-guardrail.test.ts),
+which censuses every `<MenuProvider>` / `<AnchoredMenu>` mount in both silos —
+including a class string composed into a local `const` and passed by name, the
+dialect MenuBar's two dropdowns actually shipped.
+
+The values live on `--menu-bg` / `--menu-border` / `--menu-shadow` /
+`--menu-radius`, aliased onto the pod tokens: the grab + lightning menus are the
+house reference and already consumed them, and `--pod-radius` is the radius tier
+every menu converged on in task 134. Aliases rather than copies, so a decision
+that menus should sit deeper than the editor pod is one line in `:root` and
+cannot drag cards or panels along — which is what made picking between the tight
+pod halo and Tailwind's `shadow-lg` a real judgment call the first time.
+
+Why this belongs to the primitive at all: before 295 it owned behaviour and
+delegated all four axes, so ~12 containers hand-authored their own surface and
+drifted into **six** vocabularies — the pod tokens inline (7 menus), an exported
+`MENU_SURFACE_CLASS` on `--border` + `shadow-lg`, MenuBar's two hand-copies of
+that string, and `BibEntryPickerMenu`'s third border grey + third shadow. Task
+134 converged the radius axis site-by-site, which is exactly what guarantees the
+next axis drifts the same way while the primitive owns no surface. Every one of
+these menus floats or portals, so there was never an inline-vs-floating
+distinction to justify one depth on the editor's menus and another on the
+header's.
+
+A menu whose look is its IDENTITY passes `surface="none"` and takes an allowlist
+entry stating why — today only `LabelRefPopover`, whose amber edge and halo bind
+it to the amber `\ref` highlight in the text it points at. "It looked like that
+before" is not a reason; each of the six vocabularies could have said it.
 
 **`ItemMenu`** (the three-dot card/panel menu in `panel-primitives.tsx`, used by
 all 8 card panels + `CardViewModeMenu` + Outline's view options) is **folded onto

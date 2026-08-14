@@ -215,7 +215,10 @@ function BibEntryPickerMenuInner({
       excludeRefs={excludeRefs}
       onClose={onClose}
       ariaLabel={ariaLabel}
-      containerClassName="bib-entry-picker-menu bg-surface border border-edge-subtle rounded-lg shadow-md"
+      // Layout only — surface chrome is the primitive's `.menu-surface`
+      // (task 295; this container used to spell a THIRD border grey and a
+      // THIRD shadow depth of its own).
+      containerClassName="bib-entry-picker-menu"
       containerStyle={{
         width: POPUP_WIDTH,
         display: "flex",

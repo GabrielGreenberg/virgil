@@ -161,12 +161,6 @@ export function TabPlusMenu({
       onClose={close}
       ariaLabel="Open paper or create new"
       containerClassName="min-w-[280px] py-1.5"
-      containerStyle={{
-        background: "var(--pod-editor)",
-        border: "var(--pod-border)",
-        boxShadow: "var(--pod-shadow)",
-        borderRadius: "var(--pod-radius)",
-      }}
     >
       {recents.length > 0 && (
         <>
