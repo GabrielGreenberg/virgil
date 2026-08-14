@@ -139,9 +139,11 @@ const PERMITTED_RAW_PALETTE_LITERALS: Record<string, string> = {
   // Owned by other filed tasks — deliberately NOT drained here, so this task
   // does not eat their diffs. (The three Outline blues that sat here retired
   // with task 2026-08-02-284: the Outline's InlineLabel now reads
-  // `--heading-annotation-color`, the token its in-prose twin already used.)
-  "src/panels/Search/SearchPanel.tsx :: bg-amber-50/60": "task 2026-08-06-309 (search toggles bypass the toggle-state SSOT)",
-  "src/panels/Search/SearchPanel.tsx :: bg-amber-200/80": "task 2026-08-06-309 (search toggles bypass the toggle-state SSOT)",
+  // `--heading-annotation-color`, the token its in-prose twin already used.
+  // The two Search ambers retired with task 2026-08-06-309: the `Aa`/`W` mode
+  // toggles now read the toggle-state SSOT's tint path and the result
+  // `<mark>` the `--amber-highlight-*` family — pinned by
+  // `src/panels/Search/__tests__/search-token-convergence.test.ts`.)
 
   // Singletons with no filed owner yet.
   "src/panels/Bibliography/BibliographyPanel.tsx :: bg-amber-400": "in-flight pulse dot; wants the amber family or a --status-* member",
