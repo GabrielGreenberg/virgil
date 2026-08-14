@@ -37,6 +37,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import type { HeadingEntry } from "@/lib/tiptap/doc-structure";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { SECTION_ACTIVE_LINE_FRACTION } from "@/components/editor-layout/layout-scroll";
+import { posAtViewportY } from "./viewport-probe";
 
 export interface SectionPathResult {
   path: { text: string; index: number; sectionNumber: string | null }[];
@@ -169,16 +170,8 @@ export function computeSectionPathAt(
   // which yields the same empty path the walk produced).
   const domRect = view.dom.getBoundingClientRect();
   if (domRect.height <= 0) return null;
-  const x = domRect.left + domRect.width / 2;
-  const y = Math.min(Math.max(referenceY, domRect.top + 1), domRect.bottom - 1);
-  let p: number;
-  try {
-    const found = view.posAtCoords({ left: x, top: y });
-    if (!found) return null;
-    p = found.pos;
-  } catch {
-    return null;
-  }
+  const p = posAtViewportY(view, referenceY, domRect);
+  if (p === null) return null;
   // When the content box starts BELOW the reference line entirely (doc at
   // top, line above the first block), nothing is crossed.
   if (referenceY < domRect.top) {
