@@ -229,6 +229,14 @@ describe("the lift grip paints iff the lift can land (task 277)", () => {
 // second render site that doesn't consult it is, and no rendered-DOM test can
 // see one that no suite happens to mount. Same discipline as the repo's other
 // call-site censuses (keystroke subscribers, scroll repositioners, …).
+//
+// Stated limits, rather than implied: the needle is the literal JSX tag, so a
+// render through an alias (`const G = CardDragHandle; <G />`) or a hand-rolled
+// copy of the glyph passes — neither is an idiom this repo uses, and the second
+// is the `bib-entry-chrome.tsx` case, which is a DIFFERENT gesture ("Drag to a
+// library") with its own honest affordance. And the gate is matched on the
+// render LINE, so wrapping the same expression across two lines would need this
+// needle widened rather than the rule relaxed.
 
 const ROOT = join(__dirname, "..", "..", "..");
 
