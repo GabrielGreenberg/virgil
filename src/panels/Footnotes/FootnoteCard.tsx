@@ -194,6 +194,25 @@ export interface OrphanedFootnoteCardProps {
   extraDataAttrs?: Record<string, string>;
 }
 
+/**
+ * An ORPHANED footnote — a body in `orphaned-footnotes.json` whose `\footnote`
+ * callout the user deleted, offered for re-drop.
+ *
+ * Task 277 — it threads **no `cardKey`, deliberately**, and that omission is
+ * the whole of its non-poppability. Popping this state out was declined
+ * (Gabriel, 2026-08-08: not worth building for an edge state), and
+ * `registerCardFloatable("footnote")` resolves only the anchored (live atom)
+ * and unanchored (`FootnoteRef` sidecar) halves — `CardFloatCtx` carries no
+ * orphan list at all, so a float for this id would render nothing. With no
+ * key, `PanelCard.canLift` is false, so no grab-cursor grip paints: the card
+ * offers no lift rather than offering one it cannot honor (before 277 the grip
+ * painted here and the gesture died at its first gate, silently).
+ *
+ * If the decision is ever reversed, BOTH ends move together — a
+ * `ctx.orphanedFootnotes` source + a third builder branch, and the `cardKey`
+ * here. Threading the key alone reinstates the blank-window regression task
+ * 316 fixed for the parked twin.
+ */
 export function OrphanedFootnoteCard({
   orphan,
   isSelected = false,
