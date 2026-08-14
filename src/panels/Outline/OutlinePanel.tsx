@@ -1594,10 +1594,13 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
   const perSectionCounts = useMemo(() => {
     const result = new Map<string, number>();
     if (editMode || !showWordCount) return result; // skip work — not displayed
-    for (let i = 0; i < headings.length; i++) {
-      const h = headings[i];
-      const next = headings.find((nh, ni) => ni > i && nh.level <= h.level);
-      const toIdx = next ? next.index : totalBlocks;
+    for (const h of headings) {
+      // The section's end through the SHARED rule (task 285) — the FOURTH
+      // copy, found by the adversarial pass on that fix. Display-only, so a
+      // divergence here misreports a number rather than moving blocks; it is
+      // still the copy a future edit to the rule would forget, on the same row
+      // whose `blockCount` drives the drop indicator.
+      const toIdx = h.index + sectionExtentFromHeadings(h.index, headings, totalBlocks);
       result.set(
         h.id,
         sumIncludedWords(perBlockCounts, h.index, toIdx, wcConfig.include),

@@ -7,16 +7,18 @@
  * that only has to work against an unchanged document is an index):
  *
  *   1. a hydrated address resolves by uuid and NEVER by its carried index;
- *   2. an unhydrated one falls back to that index, bounds-checked;
+ *   2. an unhydrated one falls back to that index for a READ (bounds-checked)
+ *      and is REFUSED at the span door, which is what a WRITE enters through;
  *   3. a span's extent is derived live, never carried.
  */
 
 import { describe, it, expect } from "vitest";
 import {
+  collectTopLevelHeadings,
   DOC_START_BLOCK_INDEX,
   resolveBlockIndex,
   resolveBlockSpan,
-  sectionExtentAt,
+  sectionExtentFromHeadings,
   topLevelIndexOfUuid,
 } from "@/lib/tiptap/block-address";
 import { doc, heading, paragraph } from "../doc-structure/__tests__/fixtures";
@@ -94,16 +96,40 @@ describe("resolveBlockIndex — rule 2: the unhydrated positional fallback", () 
   });
 });
 
-describe("sectionExtentAt — rule 3: the extent is derived live", () => {
+// The extent is reached through the SPAN door, never as a loose piece — the
+// doc adapter is module-private precisely so no caller can pair it with an
+// index it resolved some other way.
+const extentOf = (d: ReturnType<typeof sampleDoc>, uuid: string) =>
+  resolveBlockSpan(d, { uuid, index: -1, section: true })?.count ?? null;
+
+describe("the section rule — rule 3: the extent is derived live", () => {
   it("runs a heading to the next heading of the same or a higher level", () => {
     const d = sampleDoc();
-    expect(sectionExtentAt(d, 0)).toBe(5); // Alpha owns its body + nested Beta
-    expect(sectionExtentAt(d, 3)).toBe(2); // Beta (level 2) stops at Gamma
-    expect(sectionExtentAt(d, 5)).toBe(2); // Gamma runs to the end of the doc
+    expect(extentOf(d, "h-a")).toBe(5); // Alpha owns its body + nested Beta
+    expect(extentOf(d, "h-b")).toBe(2); // Beta (level 2) stops at Gamma
+    expect(extentOf(d, "h-c")).toBe(2); // Gamma runs to the end of the doc
   });
 
   it("gives a non-heading block an extent of exactly itself", () => {
-    expect(sectionExtentAt(sampleDoc(), 1)).toBe(1);
+    expect(resolveBlockSpan(sampleDoc(), { uuid: "p-a1", index: -1, section: false })?.count).toBe(1);
+  });
+
+  it("the list adapter and the doc adapter answer the same rule", () => {
+    const d = sampleDoc();
+    const headings = collectTopLevelHeadings(d);
+    expect(headings).toEqual([
+      { index: 0, level: 1 },
+      { index: 3, level: 2 },
+      { index: 5, level: 1 },
+    ]);
+    for (const h of headings) {
+      const viaDoc = resolveBlockSpan(d, {
+        uuid: d.child(h.index).attrs?.uuid as string,
+        index: -1,
+        section: true,
+      })?.count;
+      expect(viaDoc).toBe(sectionExtentFromHeadings(h.index, headings, d.childCount));
+    }
   });
 
   it("GROWS when a block is inserted inside the section", () => {
@@ -117,11 +143,21 @@ describe("sectionExtentAt — rule 3: the extent is derived live", () => {
       paragraph("p-a2", "two"),
       heading("h-c", 1, "Gamma"),
     );
-    expect(sectionExtentAt(grown, 0)).toBe(4);
+    expect(resolveBlockSpan(grown, { uuid: "h-a", index: -1, section: true })?.count).toBe(4);
   });
 
-  it("reports 0 for an out-of-range index", () => {
-    expect(sectionExtentAt(sampleDoc(), 99)).toBe(0);
+
+});
+
+describe("resolveBlockSpan — the STRICT door (a write refuses where a read degrades)", () => {
+  it("refuses an unhydrated address, where resolveBlockIndex would degrade to the index", () => {
+    const d = sampleDoc();
+    // The same address, through the two doors. Navigation spends the
+    // pre-hydration window rather than becoming a dead control; the splice
+    // must not — that address IS the pre-285 integer.
+    expect(resolveBlockIndex(d, { uuid: null, index: 2 })).toBe(2);
+    expect(resolveBlockSpan(d, { uuid: null, index: 2, section: false })).toBeNull();
+    expect(resolveBlockSpan(d, { uuid: null, index: 0, section: true })).toBeNull();
   });
 });
 

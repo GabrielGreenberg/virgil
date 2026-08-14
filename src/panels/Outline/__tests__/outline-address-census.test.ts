@@ -38,19 +38,41 @@ const PERMITTED_UUIDLESS_ADDRESSES = [
   'attrs.push({ attr: "docstart", blockIndex: 0, uuid: null })',
 ];
 
+/** The needle, read by BOTH the census and its canary — a canary defending a
+ *  COPY of the rule proves only that the stripper works. */
+const UUIDLESS = /uuid:\s*null/;
+
 function sourceLines(file: string): string[] {
   return commentsStripped(readFileSync(join(OUTLINE_DIR, file), "utf8")).split("\n");
+}
+
+/**
+ * Report a hit by its REAL line in the file.
+ *
+ * The shared `strip()` DELETES a block comment including its newlines rather
+ * than blanking them, so an index into the stripped text is short by every
+ * newline inside every `/* … *\/` above it — dozens, in a file whose first doc
+ * comment starts at line 27. Detection is unaffected; the diagnostic would send
+ * the reader to the wrong function, which is the drift the CSS half of the
+ * stripper already had fixed. So locate the offending text in the ORIGINAL.
+ */
+function realLineOf(file: string, strippedLine: string): number | null {
+  const needle = strippedLine.trim();
+  if (!needle) return null;
+  const original = readFileSync(join(OUTLINE_DIR, file), "utf8").split("\n");
+  const i = original.findIndex((l) => l.includes(needle));
+  return i === -1 ? null : i + 1;
 }
 
 describe("Outline address census — every producer carries the durable uuid", () => {
   it("writes `uuid: null` only where the address is positional by design", () => {
     const offenders: string[] = [];
     for (const file of PRODUCER_FILES) {
-      sourceLines(file).forEach((line, i) => {
-        if (!/uuid:\s*null/.test(line)) return;
-        if (PERMITTED_UUIDLESS_ADDRESSES.some((ok) => line.includes(ok))) return;
-        offenders.push(`${file}:${i + 1}  ${line.trim()}`);
-      });
+      for (const line of sourceLines(file)) {
+        if (!UUIDLESS.test(line)) continue;
+        if (PERMITTED_UUIDLESS_ADDRESSES.some((ok) => line.includes(ok))) continue;
+        offenders.push(`${file}:${realLineOf(file, line) ?? "?"}  ${line.trim()}`);
+      }
     }
     expect(offenders).toEqual([]);
   });
@@ -68,14 +90,18 @@ describe("Outline address census — every producer carries the durable uuid", (
     const fixture = commentsStripped(
       ['// uuid: null in a comment must NOT count', 'return { uuid: null, index: pod.blockIndex };'].join("\n"),
     ).split("\n");
-    const hits = fixture.filter((l) => /uuid:\s*null/.test(l));
+    const hits = fixture.filter((l) => UUIDLESS.test(l));
     expect(hits).toHaveLength(1);
     expect(hits[0]).toContain("pod.blockIndex");
   });
 
   it("the pod address reads the pod's own uuid", () => {
     const src = commentsStripped(readFileSync(join(OUTLINE_DIR, "OutlinePanel.tsx"), "utf8"));
-    expect(src).toMatch(/function podAddress\(pod: OutlinePod\): BlockSpanAddress \{[\s\S]*?uuid: pod\.uuid/);
+    // Bounded to the function's own body: an unbounded `[\s\S]*?` would happily
+    // match a `uuid: pod.uuid` anywhere later in a 2000-line file.
+    const body = src.match(/function podAddress\(pod: OutlinePod\): BlockSpanAddress \{([^}]*)\}/);
+    expect(body).not.toBeNull();
+    expect(body![1]).toContain("uuid: pod.uuid");
   });
 
   it("the drop hands over addresses, never the pod's snapshot integers", () => {

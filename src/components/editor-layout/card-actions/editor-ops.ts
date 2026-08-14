@@ -13,6 +13,7 @@ import {
   type BlockAddress,
   type BlockSpanAddress,
 } from "@/lib/tiptap/block-address";
+import { isInsideOwnRange, isNoOpLanding } from "@/panels/Outline/outline-drop";
 import { docProductsEnabled } from "@/lib/doc-products/use-doc-products";
 
 /**
@@ -115,30 +116,40 @@ export function useEditorOps(deps: {
       doc.forEach((node, offset) => {
         positions.push({ from: offset, to: offset + node.nodeSize });
       });
+      // Defence in depth. `resolveBlockSpan` bounds-checks its index and caps
+      // the extent at the doc's end, so neither condition can hold today.
       if (fromIndex < 0 || fromIndex + count > positions.length || toIndex < 0 || toIndex > positions.length) return;
-      // Own-range rejection, re-checked against the LIVE spans: a landing at (or
-      // inside) the dragged section's own range is a no-op or a move-into-self.
-      // The panel runs the same check on its snapshot to keep the drop indicator
-      // honest; this one is what actually protects the document.
-      if (toIndex >= fromIndex && toIndex <= fromIndex + count) return;
+      // Own-range rejection through the SHARED predicates the drop indicator
+      // reads (task 285), so neither side can hand-write its own copy of the
+      // rule. The write refuses one case MORE than the indicator does — a
+      // landing on either boundary leaves the section where it is, which the
+      // indicator deliberately still lights (the drop is honest: nothing moves,
+      // and nothing was supposed to) but which must not dispatch an
+      // effect-less transaction. The two also ask against different documents:
+      // the panel against its snapshot, this against the live spans, and only
+      // this one protects the document.
+      if (isInsideOwnRange(fromIndex, count, toIndex)) return;
+      if (isNoOpLanding(fromIndex, count, toIndex)) return;
 
       const sliceFrom = positions[fromIndex].from;
       const sliceTo = positions[fromIndex + count - 1].to;
       const slice = doc.slice(sliceFrom, sliceTo);
+      const landingPos = toIndex >= positions.length
+        ? positions[positions.length - 1].to
+        : positions[toIndex].from;
 
+      // Ask the transaction where a position went; never predict it (the law
+      // the container fit and the identity net both earned). The delta of a
+      // splice is not reliably the payload's declared size — the fitter may pad
+      // or reshape — so the second half of each branch MAPS its position
+      // through the first half instead of adding/subtracting `content.size`.
       let tr = editor.state.tr;
       if (toIndex < fromIndex) {
-        const insertPos = positions[toIndex].from;
-        tr = tr.insert(insertPos, slice.content);
-        const shift = slice.content.size;
-        tr = tr.delete(sliceFrom + shift, sliceTo + shift);
+        tr = tr.insert(landingPos, slice.content);
+        tr = tr.delete(tr.mapping.map(sliceFrom), tr.mapping.map(sliceTo));
       } else {
         tr = tr.delete(sliceFrom, sliceTo);
-        const shift = sliceTo - sliceFrom;
-        const insertPos = toIndex >= positions.length
-          ? positions[positions.length - 1].to - shift
-          : positions[toIndex].from - shift;
-        tr = tr.insert(insertPos, slice.content);
+        tr = tr.insert(tr.mapping.map(landingPos), slice.content);
       }
       editor.view.dispatch(tr);
     },
