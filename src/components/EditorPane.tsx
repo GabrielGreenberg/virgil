@@ -362,6 +362,7 @@ import {
   assertLifecycleCoverage,
   type CardLifecycleRegistry,
 } from "@/panels/card-lifecycle-registry";
+import { iconHint } from "@/components/Hint";
 
 // Stable no-op for `PaneState` fields that aren't yet wired to a real
 // hook. Keeping the reference module-scope avoids a fresh closure per
@@ -6578,8 +6579,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                   <div className="absolute top-2 left-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150 pointer-events-auto">
                     <button
                       onClick={() => innerRef.current?.expandAllSections()}
-                      className="text-[var(--muted)] hover:text-ink-body transition-colors"
-                      data-hint="Expand all sections" aria-label="Expand all sections"
+                      className="text-[var(--muted)] hover:text-ink-body transition-colors focus-ring"
+                      {...iconHint({ label: "Expand all sections" })}
                     >
                       <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M2 1 L7 4.5 L12 1" />
@@ -6588,8 +6589,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     </button>
                     <button
                       onClick={() => innerRef.current?.collapseAllSections()}
-                      className="text-[var(--muted)] hover:text-ink-body transition-colors"
-                      data-hint="Collapse all sections" aria-label="Collapse all sections"
+                      className="text-[var(--muted)] hover:text-ink-body transition-colors focus-ring"
+                      {...iconHint({ label: "Collapse all sections" })}
                     >
                       <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M2 4.5 L7 1 L12 4.5" />
@@ -6831,9 +6832,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         <button
                           type="button"
                           onClick={cancelMarginEdit}
-                          data-hint="Discard margin changes (Esc)"
-                          aria-label="Cancel margin edit"
-                          className="flex items-center justify-center"
+                          {...iconHint({ label: "Cancel margin edit", hint: "Discard margin changes (Esc)" })}
+                          className="flex items-center justify-center focus-ring"
                           style={{
                             width: 22,
                             height: 22,
@@ -6852,9 +6852,8 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                         <button
                           type="button"
                           onClick={saveMarginEdit}
-                          data-hint="Save margins"
-                          aria-label="Save margins"
-                          className="flex items-center justify-center"
+                          {...iconHint({ label: "Save margins" })}
+                          className="flex items-center justify-center focus-ring"
                           style={{
                             width: 22,
                             height: 22,
@@ -7444,8 +7443,7 @@ function IconStrip({
           }}
           className="iconbtn-md iconbtn-toggle"
           aria-pressed={isOpen}
-          aria-label="Toggle sidebar"
-          data-hint="Toggle sidebar"
+          {...iconHint({ label: "Toggle sidebar" })}
         >
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <rect x="4" y="4" width="16" height="16" rx="1.5" />
@@ -7461,8 +7459,7 @@ function IconStrip({
           onClick={() => viewPrefs.toggleOmniHideAllCards(side)}
           className="iconbtn-md iconbtn-toggle"
           aria-pressed={viewPrefs.getOmniHideAll(side)}
-          aria-label="Omni view"
-          data-hint="Omni view"
+          {...iconHint({ label: "Omni view" })}
         >
           <IconBlank active={viewPrefs.getOmniHideAll(side)} />
         </button>

@@ -26,6 +26,7 @@ import { useCollabContext } from "@/hooks/useCollab";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
+import { iconHint } from "@/components/Hint";
 
 // Anchor the kebab dropdown below its trigger, flipping above when the topbar
 // sits near the viewport bottom. Matches ExternalChangeBadge (the sibling
@@ -140,7 +141,7 @@ function CollabStatusPill({
       <button
         onClick={handleClick}
         className="topbarbtn"
-        data-hint="Collaborator mode"
+        {...iconHint({ label: "Collaborator mode" })}
         aria-pressed={!!collab.enabled}
       >
         <CollaboratorsIcon />
@@ -274,11 +275,10 @@ function CollabStatusPill({
         ref={kebabRef}
         type="button"
         onClick={toggleMenu}
-        data-hint="Collaborator options"
-        aria-label="Collaborator options"
+        {...iconHint({ label: "Collaborator options" })}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        className="w-5 h-5 inline-flex items-center justify-center rounded hover:bg-surface-muted text-ink-subtle"
+        className="w-5 h-5 inline-flex items-center justify-center rounded hover:bg-surface-muted text-ink-subtle focus-ring"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
           <circle cx="5" cy="12" r="1.6" />

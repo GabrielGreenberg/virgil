@@ -3,6 +3,7 @@
 import { memo, type ReactNode } from "react";
 import { IconX } from "./panel-icons";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { iconHint } from "@/components/Hint";
 
 /**
  * Inline (inactive) tab label rendered as flat clickable text in the Virgil
@@ -91,7 +92,7 @@ function InlineTabLabelImpl({
             onClose(id);
           }}
           className="relative topbarbtn topbarbtn-icon opacity-40 group-hover:opacity-100 hover:!opacity-100 transition-opacity"
-          data-hint="Close tab"
+          {...iconHint({ label: "Close tab" })}
         >
           <IconX />
         </button>

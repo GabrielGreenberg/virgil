@@ -275,7 +275,7 @@ export default function PreferenceModePicker() {
         </span>
         <button
           onClick={() => setSelection(null)}
-          className="text-ink-muted hover:text-ink-body text-xs"
+          className="text-ink-muted hover:text-ink-body text-xs focus-ring"
           aria-label="Close"
         >
           ✕

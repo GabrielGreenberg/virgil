@@ -261,6 +261,7 @@ function Header({
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <ModeToggle mode={mode} onChange={onSwitchMode} />
         <button
+          className="focus-ring"
           type="button"
           aria-label="Close"
           onClick={onClose}
@@ -604,6 +605,7 @@ function ExtraRows({
             style={inputStyle}
           />
           <button
+            className="focus-ring"
             type="button"
             onClick={() => removeRow(r.id)}
             aria-label={`Remove ${r.key || "row"}`}

@@ -58,6 +58,7 @@ import { MenuProvider } from "@/components/menu/MenuProvider";
 import { useMenuItem } from "@/components/menu/useMenuItem";
 import { useMenuCombobox } from "@/components/menu/useMenuCombobox";
 import { useMenuContext } from "@/components/menu/context";
+import { iconHint } from "@/components/Hint";
 
 export type RowState = "addable" | "added" | "conflict";
 
@@ -480,9 +481,8 @@ function BibEntryPickerBody({
           <button
             type="button"
             onClick={onClose}
-            className="text-ink-muted hover:text-ink-body p-0.5 shrink-0"
-            data-hint="Close (Esc)"
-            aria-label="Close (Esc)"
+            className="text-ink-muted hover:text-ink-body p-0.5 shrink-0 focus-ring"
+            {...iconHint({ label: "Close (Esc)" })}
           >
             <svg
               width="11"
@@ -647,9 +647,8 @@ function BibEntryPickerRow({
               e.stopPropagation();
               onToggleExpand();
             }}
-            className="w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover:bg-edge-subtle"
-            data-hint={expanded ? "Hide details" : "Show details"}
-            aria-label={expanded ? "Hide details" : "Show details"}
+            className="w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover:bg-edge-subtle focus-ring"
+            {...iconHint({ label: expanded ? "Hide details" : "Show details" })}
           >
             <svg
               width="11"
@@ -751,9 +750,8 @@ function AddButton({
         e.stopPropagation();
         onClick();
       }}
-      className="w-5 h-5 flex items-center justify-center rounded-full text-blue-600 bg-blue-50 hover:bg-blue-100"
-      data-hint={title}
-      aria-label={title}
+      className="w-5 h-5 flex items-center justify-center rounded-full text-blue-600 bg-blue-50 hover:bg-blue-100 focus-ring"
+      {...iconHint({ label: title })}
     >
       <svg
         width="12"
@@ -848,9 +846,8 @@ function CitekeyRow({ citekey }: { citekey: string }) {
           e.stopPropagation();
           onCopy();
         }}
-        className="text-ink-muted hover:text-ink-body p-0.5 rounded hover:bg-edge-subtle"
-        data-hint={copied ? "Copied" : "Copy citekey"}
-        aria-label={copied ? "Copied" : "Copy citekey"}
+        className="text-ink-muted hover:text-ink-body p-0.5 rounded hover:bg-edge-subtle focus-ring"
+        {...iconHint({ label: copied ? "Copied" : "Copy citekey" })}
       >
         {copied ? (
           <svg

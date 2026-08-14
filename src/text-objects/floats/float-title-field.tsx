@@ -13,6 +13,7 @@
 
 import { useEffect, useRef } from "react";
 import { autoSizeInput } from "@/lib/autoSizeInput";
+import { iconHint } from "@/components/Hint";
 
 export interface FloatTitleFieldProps {
   /** Current title text, or null when there's no title. */
@@ -105,8 +106,8 @@ export function FloatTitleField({
           <span className="par-title-text">{title}</span>
           <button
             type="button"
-            className="par-title-delete"
-            data-hint="Remove title"
+            className="par-title-delete focus-ring"
+            {...iconHint({ label: "Remove title" })}
             onMouseDown={(e) => {
               e.preventDefault();
               e.stopPropagation();

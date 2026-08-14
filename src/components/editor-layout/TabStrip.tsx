@@ -24,6 +24,7 @@ import { TabSeparator } from "./TabSeparator";
 import { TabPlusMenu } from "../TabPlusMenu";
 import { PaperDropIndicator } from "./PaperDropIndicator";
 import { FONT_MONO } from "@/lib/font-stacks";
+import { iconHint } from "@/components/Hint";
 
 // Negative margins applied to the active folder-tab wrapper so promoting a
 // tab from inline → folder keeps the surrounding strip pixel-stable. Kept
@@ -231,7 +232,7 @@ function TabStripImpl(props: TabStripProps) {
                   onClosePaper(citekey);
                 }}
                 className="topbarbtn topbarbtn-icon"
-                data-hint="Close tab"
+                {...iconHint({ label: "Close tab" })}
               >
                 <IconX />
               </button>
@@ -348,7 +349,7 @@ function TabStripImpl(props: TabStripProps) {
                   onCloseLibraryOuter(libId);
                 }}
                 className="topbarbtn topbarbtn-icon"
-                data-hint="Close tab"
+                {...iconHint({ label: "Close tab" })}
               >
                 <IconX />
               </button>
@@ -456,7 +457,7 @@ function TabStripImpl(props: TabStripProps) {
             <button
               onClick={(e) => { e.stopPropagation(); onCloseDoc(doc.id); }}
               className="topbarbtn topbarbtn-icon"
-              data-hint="Close tab"
+              {...iconHint({ label: "Close tab" })}
             >
               <IconX />
             </button>

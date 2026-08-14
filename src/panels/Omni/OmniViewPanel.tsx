@@ -37,6 +37,7 @@ import {
   type PinSide,
 } from "@/components/editor-layout/omni-pin-store";
 import { INTERACTIVE_CONTROL_SELECTOR } from "@/lib/drag-blocklist";
+import { iconHint } from "@/components/Hint";
 
 /**
  * The Omni-view threads pods from several other panels into a single
@@ -473,16 +474,19 @@ function NavArrow({
     <button
       type="button"
       disabled={disabled}
-      aria-label={dir === "up" ? "Previous change" : "Next change"}
-      data-hint={
-        dir === "up" ? "Jump to the previous change" : "Jump to the next change"
-      }
+      {...iconHint({
+        label: dir === "up" ? "Previous change" : "Next change",
+        hint:
+          dir === "up"
+            ? "Jump to the previous change"
+            : "Jump to the next change",
+      })}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
         onClick();
       }}
-      className="inline-flex h-5 w-5 items-center justify-center rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors disabled:opacity-30 disabled:pointer-events-none"
+      className="inline-flex h-5 w-5 items-center justify-center rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors disabled:opacity-30 disabled:pointer-events-none focus-ring"
     >
       <svg
         width="11"

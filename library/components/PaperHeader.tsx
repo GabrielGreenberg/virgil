@@ -427,6 +427,7 @@ export default function PaperHeader({
               </code>
               {citekey && (
                 <button
+                  className="focus-ring"
                   type="button"
                   onClick={() => {
                     void navigator.clipboard?.writeText(citekey).then(

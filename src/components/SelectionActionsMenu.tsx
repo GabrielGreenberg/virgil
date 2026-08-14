@@ -516,7 +516,7 @@ export function SelectionActionsMenu({
       // (0,2,0, and unlayered vs. Tailwind's `@layer utilities`) wins and the
       // one-step tint fires — matching the left-side TextObjectGrabHandle twin
       // and every other `hover-on-light` control (task 299).
-      className="flex items-center justify-center hover-on-light bg-[var(--pod-editor)]"
+      className="flex items-center justify-center hover-on-light bg-[var(--pod-editor)] focus-ring"
       style={{
         position: "fixed",
         left: placement.left,

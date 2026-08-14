@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import type { SkillSyncError, SkillSyncNotice } from "@/hooks/useFiles";
+import { iconHint } from "@/components/Hint";
 
 interface Props {
   error: SkillSyncError | null;
@@ -99,8 +100,7 @@ function SkillSyncControls({
             onClick={onDismissError}
             className="topbarbtn topbarbtn-icon"
             style={{ height: 20, color: "var(--danger)" }}
-            data-hint="Dismiss"
-            aria-label="Dismiss skill-sync error"
+            {...iconHint({ label: "Dismiss skill-sync error", hint: "Dismiss" })}
           >
             <svg
               width="12"
@@ -153,8 +153,7 @@ function SkillSyncControls({
             onClick={onDismissNotice}
             className="topbarbtn topbarbtn-icon"
             style={{ height: 20, color: "var(--accent)" }}
-            data-hint="Dismiss"
-            aria-label="Dismiss skills-updated notice"
+            {...iconHint({ label: "Dismiss skills-updated notice", hint: "Dismiss" })}
           >
             <svg
               width="12"

@@ -32,6 +32,7 @@ import { paragraphUuidAt } from "@/links/links";
 // bails on — so the dropdown's OUT-of-scope levels (0/5/6), which never reach
 // `headingRun`, can't corrupt a titleField / codeBlock / latexComment either.
 import { posHostsBlockInsert } from "@/text-objects/text-object-registry";
+import { iconHint } from "@/components/Hint";
 
 // CHIP 5c: the example creators (`buildExampleTemplate` / `insertExampleAtCursor`
 // / `handleExampleMenuPick`) were RETIRED here. The single canonical example
@@ -562,8 +563,8 @@ export function ViewMenu({
       <button
         ref={triggerRef}
         onClick={() => setOpen(!open)}
-        className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
-        data-hint="View options"
+        className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"} focus-ring`}
+        {...iconHint({ label: "View options" })}
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -769,8 +770,8 @@ function MenuBarContent({
             <button
               onClick={onParaNavBack}
               disabled={paraNavBackDisabled}
-              data-hint="Go back"
-              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+              {...iconHint({ label: "Go back" })}
+              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body focus-ring"
               style={{ width: 16, height: 20 }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -782,8 +783,8 @@ function MenuBarContent({
             <button
               onClick={onParaNavForward}
               disabled={paraNavForwardDisabled}
-              data-hint="Go forward"
-              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+              {...iconHint({ label: "Go forward" })}
+              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body focus-ring"
               style={{ width: 16, height: 20 }}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

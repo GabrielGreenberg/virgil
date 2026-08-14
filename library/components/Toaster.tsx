@@ -150,6 +150,7 @@ function Toast({ toast, onClose }: { toast: ToastEntry; onClose: () => void }) {
           {toast.citekey ? ` · ${toast.citekey}` : ""}
         </div>
         <button
+          className="focus-ring"
           type="button"
           aria-label="Dismiss notification"
           onClick={onClose}

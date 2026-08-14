@@ -37,6 +37,7 @@ import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { applyExpexWidthVars, computeExpexWidths } from "@/lib/tiptap/expex";
 import { FLOAT_WRITE_META } from "@/lib/float-sync";
 import { reseedPreservingCaret } from "@/lib/reseed-caret";
+import { iconHint } from "@/components/Hint";
 
 export interface ExampleCardProps {
   example: ExampleInfo;
@@ -644,9 +645,8 @@ export function ExampleCard({
             e.stopPropagation();
             setShowHelp((v) => !v);
           }}
-          className="text-[10px] px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0 font-semibold"
-          data-hint={showHelp ? "Hide help" : "Help"}
-          data-hint-pos="above"
+          className="text-[10px] px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0 font-semibold focus-ring"
+          {...iconHint({ label: showHelp ? "Hide help" : "Help", pos: "above" })}
         >
           ?
         </button>

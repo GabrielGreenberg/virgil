@@ -895,6 +895,7 @@ export default function LibraryView({
             {syncError.permission ? "Grant & retry" : "Retry"}
           </button>
           <button
+            className="focus-ring"
             onClick={onDismissSyncError}
             aria-label="Dismiss skill-sync error"
             style={{

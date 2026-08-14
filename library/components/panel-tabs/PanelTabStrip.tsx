@@ -877,6 +877,7 @@ function PinButton({
   const activeColor = pinned ? PIN_ACTIVE_COLOR : idleColor;
   return (
     <button
+      className="focus-ring"
       type="button"
       onClick={(e) => {
         e.stopPropagation();
@@ -938,6 +939,7 @@ function CloseButton({
 }) {
   return (
     <button
+      className="focus-ring"
       type="button"
       onClick={(e) => {
         e.stopPropagation();
@@ -987,6 +989,7 @@ const AddTabButton = forwardRef<HTMLButtonElement, { onClick: () => void }>(
   function AddTabButton({ onClick }, ref) {
   return (
     <button
+      className="focus-ring"
       ref={ref}
       type="button"
       onClick={onClick}
@@ -1046,6 +1049,7 @@ function TabMenuTrigger({
       }}
     >
       <button
+        className="focus-ring"
         ref={btnRef}
         type="button"
         onClick={(e) => {

@@ -8,6 +8,7 @@ import PreferenceTree from "./PreferenceTree";
 import { Input, Select } from "./field-primitives";
 import SmartPreferences from "./SmartPreferences";
 import SystemDialog, { useSystemDialogDrag } from "./system-dialog";
+import { iconHint } from "@/components/Hint";
 
 interface PreferencesModalProps {
   prefs: EditorPreferences;
@@ -176,7 +177,7 @@ function PreferencesHeader({ onClose }: { onClose: () => void }) {
         onClick={onClose}
         onMouseDown={(e) => e.stopPropagation()}
         className="iconbtn-md"
-        data-hint="Close" aria-label="Close"
+        {...iconHint({ label: "Close" })}
       >
         <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M3 3l8 8M11 3l-8 8" />

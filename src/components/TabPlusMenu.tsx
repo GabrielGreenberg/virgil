@@ -38,6 +38,7 @@ import { Kbd } from "./Kbd";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
+import { iconHint } from "@/components/Hint";
 
 interface Props {
   docs: FsaDocMeta[];
@@ -265,7 +266,7 @@ export function TabPlusMenu({
         onClick={toggle}
         className="topbarbtn topbarbtn-icon"
         style={{ padding: "0 4px" }}
-        data-hint="Open paper or create new"
+        {...iconHint({ label: "Open paper or create new" })}
         aria-haspopup="menu"
         aria-expanded={open}
       >

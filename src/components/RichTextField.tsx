@@ -32,6 +32,7 @@ import type { PanelBodyKey } from "@/lib/panel-typography";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import { useCitationDisplayContextOrNull } from "@/components/editor-layout/contexts/citation-display";
+import { iconHint } from "@/components/Hint";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -102,8 +103,8 @@ function FormatToolbar({
   if (!editor) return null;
 
   const btnClass = selected
-    ? "w-6 h-6 flex items-center justify-center rounded text-xs text-white/80 hover-on-dark"
-    : "w-6 h-6 flex items-center justify-center rounded text-xs text-ink-body hover-on-light";
+    ? "w-6 h-6 flex items-center justify-center rounded text-xs text-white/80 hover-on-dark focus-ring"
+    : "w-6 h-6 flex items-center justify-center rounded text-xs text-ink-body hover-on-light focus-ring";
   const dividerClass = selected
     ? "w-px h-4 bg-surface/20 mx-0.5"
     : "w-px h-4 bg-[var(--border-light)] mx-0.5";
@@ -137,7 +138,7 @@ function FormatToolbar({
       <button
         onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBulletList().run(); }}
         className={btnClass}
-        data-hint="Bullet list" aria-label="Bullet list"
+        {...iconHint({ label: "Bullet list" })}
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <circle cx="2" cy="4" r="1.5" />
