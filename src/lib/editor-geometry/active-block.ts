@@ -39,6 +39,7 @@ import { getBus } from "@/lib/tiptap/doc-structure";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { coordsAtPosCached } from "./registry";
+import { posAtViewportY } from "./viewport-probe";
 
 /** Sentinel for "scrolled to the very top (title area visible)". */
 export const DOC_TOP_SENTINEL = "__DOC_TOP__";
@@ -164,16 +165,8 @@ export function computeActiveBlockId(
   //    overlap rules both pivot on), clamped into the content box. ──
   const domRect = view.dom.getBoundingClientRect();
   if (domRect.height <= 0) return null;
-  const x = domRect.left + domRect.width / 2;
-  const y = Math.min(Math.max(viewTopY + 1, domRect.top + 1), domRect.bottom - 1);
-  let pTop: number;
-  try {
-    const found = view.posAtCoords({ left: x, top: y });
-    if (!found) return null;
-    pTop = found.pos;
-  } catch {
-    return null;
-  }
+  const pTop = posAtViewportY(view, viewTopY + 1, domRect);
+  if (pTop === null) return null;
 
   const vocab = blockVocab(editor, structure);
   const posOf = (uuid: string) => structure.blocks.get(uuid)?.pos;

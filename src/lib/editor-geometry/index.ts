@@ -19,6 +19,11 @@ export {
   type SectionSkipBand,
 } from "./section-path";
 export {
+  posAtViewportY,
+  resolveVisiblePosBand,
+  type PosBand,
+} from "./viewport-probe";
+export {
   DOC_TOP_SENTINEL,
   computeActiveBlockId,
   computeActiveParagraphId,

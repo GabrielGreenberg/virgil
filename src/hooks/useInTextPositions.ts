@@ -10,6 +10,7 @@ import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { resolveVisiblePosBand } from "@/lib/editor-geometry/viewport-probe";
 import { onFontReady } from "@/lib/text-metrics";
 import {
   isLayoutGestureActive,
@@ -234,9 +235,13 @@ export interface TopKnot {
  * approximation is anchored at the document's real extent; the common
  * single-edit case shifts everything below the edit uniformly, which linear
  * interpolation between an exact in-band knot and the exact doc-end knot
- * reproduces closely. Items the user can SEE are never approximated — the
- * in-band set gets exact reads, and the scroll-idle refinement re-runs the
- * pass when approximated items exist so a jump-to-far-card settles exact.
+ * reproduces closely. Items the user can SEE are never approximated — since
+ * task 327 that is a structural guarantee rather than an assumption: band
+ * membership is decided on the item's `pos` against the band's document
+ * position range (`resolveVisiblePosBand`), so an approximation can never
+ * disqualify itself from the exact read that would correct it. The
+ * scroll-idle refinement re-runs the pass while approximated items exist, so
+ * a jump-to-far-card settles exact.
  *
  * `knots` must be sorted by pos with ≥1 entry; out-of-range positions clamp
  * to the outermost knots.
@@ -357,7 +362,9 @@ export function resolveCascade(
  *   1. **Measurement** (DOM-touching, slow): `coordsAtPos` per IN-BAND item
  *      and `getBoundingClientRect` per in-band card; out-of-band items are
  *      interpolated (`approxTopForPos`, zero DOM reads — wave-2b C5) and
- *      refined to exact on scroll idle. Writes a ref and bumps a
+ *      refined to exact on scroll idle. "In-band" is decided on the item's
+ *      document POSITION against the band's pos range (task 327), never on
+ *      the item's own previously-committed top. Writes a ref and bumps a
  *      version counter. Runs on editor content change, card-size change
  *      (ResizeObserver), window resize, or items-list change.
  *
@@ -525,6 +532,9 @@ export function useInTextPositions(
 
     const podRect = panelEl.getBoundingClientRect();
     const editorDom = editor.view.dom as HTMLElement;
+    // Read ONCE per pass and share: the band probes below and the deferred
+    // branch's `editorTopInPod` all want it, and each read is a forced layout.
+    const editorRect = editorDom.getBoundingClientRect();
     // Dirty-gate width baseline: record the content width at each visible measure.
     // A width change while hidden (window resize / panel toggle) re-wraps text and
     // moves anchors, so the re-show effect compares against this to decide dirty.
@@ -541,10 +551,19 @@ export function useInTextPositions(
     // still positions them so click/scroll-into-view works; we just
     // don't pay the layout-read cost for cards the user can't see.
     const scrollEl = findEditorScrollFor(editorDom);
+    // The band twice over: the REAL visible edges (what the pos-band probes
+    // ask about — they are on screen, which is what keeps the probe on the
+    // browser's fast hit-test path) and the ±NEAR_ZONE_PX padded edges (the
+    // px comparison for the per-card height read below, which measures
+    // nothing and can name an off-screen Y freely).
+    let visibleTop = -Infinity;
+    let visibleBottom = Infinity;
     let viewTop = -Infinity;
     let viewBottom = Infinity;
     if (scrollEl) {
       const sr = scrollEl.getBoundingClientRect();
+      visibleTop = sr.top;
+      visibleBottom = sr.bottom;
       viewTop = sr.top - NEAR_ZONE_PX;
       viewBottom = sr.bottom + NEAR_ZONE_PX;
     }
@@ -553,13 +572,52 @@ export function useInTextPositions(
     // `coordsAtPos` is a forced-layout read, and pre-C5 it ran for EVERY item
     // every pass (only the card-rect read was culled) — O(items) layout reads
     // per RO fire on a doc whose card deck is mostly off-screen. Items are
-    // CLASSIFIED against the band first, using their retained pod-relative
-    // top (scroll-invariant, so exactly as current as the old in-band gate,
-    // which was likewise only re-evaluated when a measure trigger fired):
-    // in-band (or never measured) → exact read; out-of-band → deferred to an
-    // `approxTopForPos` interpolation over this pass's exact knots. The
-    // scroll-idle refinement re-runs the pass when approximated items exist,
-    // so an item scrolled into view settles to exact.
+    // CLASSIFIED against the band first: in-band (or never measured) → exact
+    // read; out-of-band → deferred to an `approxTopForPos` interpolation over
+    // this pass's exact knots. The scroll-idle refinement re-runs the pass
+    // when approximated items exist, so an item scrolled into view settles to
+    // exact.
+    //
+    // The classification is by POS, not by retained px (task 327). C5 shipped
+    // it the other way — each already-measured item was judged by its own
+    // retained pod-relative top — and that gate READS THE VALUE IT EXISTS TO
+    // REFINE, which makes its error mode absorbing: an item whose retained top
+    // is wrong by more than NEAR_ZONE_PX is classified out-of-band,
+    // re-approximated from the same knots, and classified out AGAIN, forever.
+    // The exact read that would correct the retained top is precisely what the
+    // wrong retained top prevents. A cold prod open plants exactly that seed
+    // (the first measure races FOUT / KaTeX / figure NodeViews and commits
+    // compressed tops — see the degeneracy guard's "commit rather than render
+    // a blank column" note — while a restored mid-doc scroll puts the viewport
+    // far from the well-seeded region), so the lane rendered at wrong Ys with
+    // never-measured placeholder heights and could never heal.
+    //
+    // Resolving the band to a POSITION range instead moves the comparison into
+    // a space where our input is ground truth: `pos` is maintained by the
+    // observer's mapping, never estimated. No output of this pass can
+    // influence the next pass's eligibility, so the fixed point stops being
+    // representable rather than merely unlikely.
+    //
+    // Cost: TWO `posAtCoords` probes per pass replace the per-item px compare.
+    // They are handed the VISIBLE edges, not the padded ones — an off-screen
+    // probe defeats the browser's hit-test and drops into ProseMirror's
+    // doc-proportional rect scan, which would have quietly reinstated the
+    // O(blocks) forced-layout cost C5 exists to remove. `resolveVisiblePosBand`
+    // owns that rule (and the padding, converted to pos space), and fails OPEN
+    // on anything it can't resolve.
+    //
+    // A never-measured item is still exact-read regardless of band (the C5
+    // behaviour): "have I ever measured this?" is a fact about history, not a
+    // derived geometry estimate, and it only ever WIDENS the exact set — so it
+    // cannot re-introduce the absorbing state, while it keeps the cold pass
+    // richly seeded with knots for everything that follows.
+    const band = resolveVisiblePosBand(
+      editor.view,
+      visibleTop,
+      visibleBottom,
+      NEAR_ZONE_PX,
+      editorRect,
+    );
     const next = new Map<string, NaturalEntry>();
     const raws: RawMeasure[] = [];
     const nextApprox = new Set<string>();
@@ -572,13 +630,12 @@ export function useInTextPositions(
       // captured pos for kinds the resolver doesn't cover.
       const livePos = resolvePos?.(item.id);
       const pos = Math.min(livePos ?? item.pos, editor.state.doc.content.size);
-      const prev = naturalRef.current.get(item.id);
-      if (prev) {
-        const prevViewportTop = podRect.top + prev.naturalTop;
-        if (prevViewportTop < viewTop || prevViewportTop > viewBottom) {
-          deferredItems.push({ id: item.id, pos });
-          continue;
-        }
+      if (
+        naturalRef.current.has(item.id) &&
+        (pos < band.start || pos > band.end)
+      ) {
+        deferredItems.push({ id: item.id, pos });
+        continue;
       }
       exactItems.push({ id: item.id, pos });
     }
@@ -631,8 +688,7 @@ export function useInTextPositions(
     // endpoint knots are EXACT O(1) reads: the editor's top edge in pod
     // coordinates, and that edge plus the content height already read above.
     if (deferredItems.length > 0) {
-      const editorTopInPod =
-        editorDom.getBoundingClientRect().top - podRect.top;
+      const editorTopInPod = editorRect.top - podRect.top;
       knots.push({ pos: 0, top: editorTopInPod });
       knots.push({
         pos: editor.state.doc.content.size,

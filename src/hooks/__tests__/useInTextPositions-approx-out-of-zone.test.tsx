@@ -11,6 +11,13 @@
 //
 // Also pins the pure interpolation: exact endpoints, clamping, monotone
 // ordering (a cascade fed inverted tops would z-fight the deck).
+//
+// Task 327: band membership is now decided on the item's document POSITION
+// against the band's pos range, so the harness must mock `posAtCoords` as the
+// INVERSE of its `coordsAtPos` map. Feeding one and not the other leaves the
+// band probe unanswerable, and `resolveVisiblePosBand` deliberately fails OPEN
+// (everything exact) — correct, but it would make this suite's culling legs
+// vacuous. The behavioural contract below is unchanged.
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 
@@ -153,6 +160,15 @@ describe("useInTextPositions — out-of-zone approximation (wave-2b C5)", () => 
         left: 0,
         right: 0,
       }));
+    // The inverse of that map: y below 2500 is the "near" region, above it the
+    // tail. The band probe at viewBottom (700) therefore lands at pos 5, so the
+    // band is [0, 5] — "near" (pos 1) inside, "far" (pos ≈ docSize) outside.
+    vi.spyOn(editor.view, "posAtCoords").mockImplementation(
+      ({ top }: { left: number; top: number }) => ({
+        pos: top < 2500 ? 5 : editor.state.doc.content.size - 2,
+        inside: -1,
+      }),
+    );
     const editorDom = editor.view.dom as HTMLElement;
     Object.defineProperty(editorDom, "scrollHeight", {
       value: 6000,
