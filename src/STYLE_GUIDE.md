@@ -1150,6 +1150,24 @@ active styling (sidebar strips, top-bar mode toggles). They don't fit
 `<Button>` and stay hand-rolled — a future `toggle` variant could
 subsume them, but until one exists this is not drift.
 
+**The SHAPE may be hand-rolled; the "on" PALETTE never is.** Every toggle
+"on" state in the app reads the `--control-selected*` family, on one of two
+paths: **solid** (`--control-selected` fill + white label — filled segments:
+Outline Edit/Focus, PrintDialog font size) or **tint**
+(`--control-selected-tint` background + `--control-selected-ink` text/icon,
+AA-verified at 5.6:1 — what `.topbarbtn[aria-pressed="true"]` and
+`.iconbtn-toggle[aria-pressed="true"]` paint, and what an outlined mini-chip
+like the Search panel's `Aa`/`W` mode toggles takes). A toggle never wears
+`--accent`: that token is the user-overridable link / selection / mark / CTA
+accent, so a retint would move the toggles that borrowed it and no others —
+its own declaration says the toggle aesthetic is decoupled from it on
+purpose. Where the class utilities fit, take them and drive the state from
+`aria-pressed`; where you must hand-roll, still announce `aria-pressed` and
+spell the treatment ONCE per control family, not once per button (task 309:
+the two Search toggles were spelled twice, had drifted together onto raw
+Tailwind amber + `--accent`, and were pinned by a directory census —
+`src/panels/Search/__tests__/search-token-convergence.test.ts`).
+
 ## Inputs
 
 `bg-surface border-edge-subtle rounded-md` (6px). Focus thickens the

@@ -118,6 +118,38 @@ export function clampMark(match: string): string {
   if (match.length <= MARK_MAX) return match;
   return match.slice(0, MARK_MAX).trimEnd() + "…";
 }
+/**
+ * The two search-MODE toggles (match-case `Aa`, whole-word `W`), task 309.
+ *
+ * They used to paint their ON state `border-[var(--accent)]
+ * text-[var(--accent)] bg-amber-50/60` — a raw Tailwind amber (which is v4's
+ * DEFAULT amber, not the repo's warm `--amber-*` family: there is no
+ * `--color-amber-*` in the `@theme inline` block) over a token whose own
+ * declaration comment reserves it for the user-overridable link/selection/CTA
+ * accent and says the toggle aesthetic is "decoupled from --accent on
+ * purpose". Retinting `--accent` therefore moved these two toggles and no
+ * other segmented control in the app.
+ *
+ * The toggle "on" aesthetic has its own SSOT one declaration below `--accent`
+ * in globals.css: `--control-selected` (solid path — Outline Edit/Focus,
+ * PrintDialog font size) and the TINT path `--control-selected-tint` /
+ * `--control-selected-ink` that `.topbarbtn[aria-pressed="true"]` and
+ * `.iconbtn-toggle[aria-pressed="true"]` already paint from. These are
+ * outlined mini-chips rather than filled segments, so they take the tint path
+ * — which is also its first consumer in a `.tsx`.
+ *
+ * ONE pair of constants, because the two buttons are the same control twice:
+ * spelled per-button they had already drifted together and could next drift
+ * apart. `aria-pressed` rides along as the semantic the utility form of this
+ * treatment keys on (STYLE_GUIDE: toggle state via `aria-pressed`, not a
+ * conditional class) — here it is announced state, not a selector.
+ */
+const MODE_TOGGLE_BASE =
+  "text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors";
+const MODE_TOGGLE_ON =
+  "border-[var(--control-selected-ink)] text-[var(--control-selected-ink)] bg-[var(--control-selected-tint)]";
+const MODE_TOGGLE_OFF = "border-edge-hover text-ink-muted hover:text-ink-body";
+
 const FIELD_LABEL: Record<NonNullable<SearchHit["field"]>, string> = {
   title: "title",
   body: "body",
@@ -870,22 +902,16 @@ function SearchPanel({
         />
         <button
           onClick={() => setCaseSensitive((v) => !v)}
-          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors ${
-            caseSensitive
-              ? "border-[var(--accent)] text-[var(--accent)] bg-amber-50/60"
-              : "border-edge-hover text-ink-muted hover:text-ink-body"
-          }`}
+          aria-pressed={caseSensitive}
+          className={`${MODE_TOGGLE_BASE} ${caseSensitive ? MODE_TOGGLE_ON : MODE_TOGGLE_OFF}`}
           data-hint="Match case"
         >
           Aa
         </button>
         <button
           onClick={() => setWholeWord((v) => !v)}
-          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors ${
-            wholeWord
-              ? "border-[var(--accent)] text-[var(--accent)] bg-amber-50/60"
-              : "border-edge-hover text-ink-muted hover:text-ink-body"
-          }`}
+          aria-pressed={wholeWord}
+          className={`${MODE_TOGGLE_BASE} ${wholeWord ? MODE_TOGGLE_ON : MODE_TOGGLE_OFF}`}
           data-hint="Whole word"
         >
           W
@@ -1187,7 +1213,12 @@ const ResultCard = memo(function ResultCard({
               {result.before}
             </span>
           )}
-          <mark className="bg-amber-200/80 text-ink-strong rounded-sm px-px">
+          {/* The matched run IS a text highlight, so it takes the purpose-built
+              `--amber-highlight-*` family (the wash the app's other lit/selected
+              text surfaces read) rather than a raw `bg-amber-200/80`, which
+              resolves to Tailwind v4's default amber — a colour this repo's
+              amber scale does not contain. Task 309. */}
+          <mark className="bg-[var(--amber-highlight-wash-active)] text-[var(--amber-highlight-ink)] rounded-sm px-px">
             {clampMark(result.match)}
           </mark>
           {result.after.length > 0 && (
