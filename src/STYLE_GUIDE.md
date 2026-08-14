@@ -338,8 +338,9 @@ and the paragraph title 4.55:1 → **4.17:1** (`#857070` → `--par-title-color`
 crossing the 4.5:1 AA line). In prose the same blue is carried by the bordered
 `.heading-annotation` lozenge, and every other `--par-title-color` consumer
 renders at 12.5px/500 — so the token is right and the *rendering context* is
-what differs. Recorded as an open accessibility residual (task
-**2026-08-14-327**), in the same register as the `--danger` error-text residual
+what differs. Recorded as an open accessibility residual — filed to the task
+catcher as `inbox/2026-08-14-from-worker-284-outline-token-adoption-contrast-residual.md`,
+awaiting an id — in the same register as the `--danger` error-text residual
 below: the swap is not reverted, and the fix is a weight/size or a derived
 darker rung, which is a visual decision rather than a sweep.
 
