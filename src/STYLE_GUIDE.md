@@ -296,6 +296,34 @@ shrink**: a new literal is TOKENIZE-it, never a new entry. The census is
 deliberately wider than the three families the prose bans, because the drift is
 one of habit rather than of hue.
 
+That last sentence was a word short, and task 284 paid for it. The habit is
+"reach for a colour", and the palette utility is only **one of its three
+spellings** — the other two are the arbitrary-value class (`text-[#857070]`)
+and the inline style (`background: "#fef9c3"`), and nothing in the repo could
+see either: the palette needle matches a palette *name*, and
+`destructive-red-tokens`'s hex needle is scoped to a red hue window with a
+saturation floor. So the same suite now runs a **second census** over raw colour
+VALUES in the same scope, with two exclusions that are decisions rather than
+omissions. A `var(--token, #fallback)` fallback is **not** a literal — it is the
+compliant idiom, and a guard whose compliant form fails is the trap task 204
+names. An **achromatic** value (`r == g == b`) is not a palette choice — the
+remaining ones are `rgba(0, 0, 0, α)` drop shadows, which belong to the shadow
+scale's own task. The chromatic test is exact rather than a saturation floor,
+because a floor is precisely what let `#857070` through the guard that had one.
+
+**Chrome that MIRRORS the document reads the document's token.** A panel that
+re-renders something the editor already draws is not making a fresh colour
+choice, and the Outline was the standing proof of what happens when it thinks it
+is: its `InlineLabel` is the panel-side twin of the in-prose
+`.heading-label-input` — the same `\label{key}` on the same heading — and it
+painted stock `blue-500`/`blue-400` where the original reads
+`--heading-annotation-color`, a **user preference**. So recolouring "annotations
+displayed alongside headings" moved the margin lozenge and left the Outline
+behind. Its paragraph-title rows were the same shape against `--par-title-color`
+while three sibling surfaces (the prose annotation, the card-title primitive,
+the Search breadcrumb) all read it. Before minting anything for a panel, find
+what the document already calls the thing.
+
 That ban is on the **declaration, not the file**: a radius authored as CSS
 inside a `.tsx` string (`el.style.cssText = "…;border-radius:6px;…"`), as a
 property assignment (`el.style.borderRadius = "3px"`), or as an expression

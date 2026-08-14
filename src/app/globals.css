@@ -4041,7 +4041,9 @@ body.perf-contain .static-borrowed-text {
 }
 
 .citation-preview {
-  background: #fef9c3;
+  /* Second speller of the Outline focus band's retired #fef9c3 — both are the
+     "lit region" wash, so both read the family (task 284). */
+  background: var(--amber-highlight-wash);
   padding: 0 3px;
   border-radius: var(--radius-xs);
 }
