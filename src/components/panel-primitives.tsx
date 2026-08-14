@@ -57,7 +57,7 @@ import type { CardKind } from "@/panels/_shared/types";
 import { useInOmni } from "./editor-layout/contexts/omni";
 import { useCompressedLines } from "./editor-layout/contexts/card-display";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme, type PanelThemeKey } from "@/lib/panel-theme";
+import { themeFromAccent, DEFAULT_PANEL_COLORS, accentInk, getPanelColor, type CardTheme, type PanelThemeKey } from "@/lib/panel-theme";
 import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
 import CollabClaimPill from "./CollabClaimPill";
 import CollabPresenceDots from "./CollabPresenceDots";
@@ -1621,10 +1621,113 @@ export function EditableCard({
   );
 }
 
+/* ── CheckSquare — THE checkbox glyph (task 2026-08-02-287) ─────────
+ *
+ * One rounded square + one tick path, authored ONCE. Both of the app's
+ * checkboxes — the Todo done-toggle and the per-card AI-request toggle — drew
+ * the identical `<rect x=1 y=1 w=14 h=14 rx=3>` in a 16-unit viewBox and the
+ * identical `M4.5 8l2.5 2.5 4.5-5` tick, in two files, from five raw hex
+ * literals between them (`#b5b0aa` alone was spelled three times — a verbatim
+ * re-spelling of `--muted-light`, which STYLE_GUIDE locks to `--scrollbar-hover`
+ * and which would therefore have retoned the scrollbar and left both checkbox
+ * borders behind).
+ *
+ * The component takes a VARIANT, never a colour. A `checkColor`-style prop
+ * would keep the door open for a call site to pass a sixth literal, which is
+ * the thing this exists to close; the table below is the whole palette, and
+ * every value in it is a token read (`var(--…)`) or a value derived from the
+ * panel-theme registry — never a literal.
+ *
+ * The two variants differ in FOUR ways, and each difference is stated here
+ * rather than hidden in two files: rendered size, tick stroke weight, whether
+ * the box fills when checked, and the tick ink. Their two inks come from two
+ * different SSOTs, correctly:
+ *   · `done` is neutral UI chrome, so it reads globals.css tokens;
+ *   · `ai-request` is a KIND IDENTITY, and identity colours live on the
+ *     panel-theme registry — whose own header says the `aiRequest` / `error`
+ *     system accents were folded into `DEFAULT_PANEL_COLORS` so they derive
+ *     from one source "instead of string-literal hexes". `#0369a1` was exactly
+ *     such a literal, and `aiRequest` had ZERO readers until this call: the
+ *     tick is now `accentInk` of that accent, the same ink every themed badge
+ *     and card title takes.
+ *
+ * Sizes are numbers rather than a `size` prop for the same reason the colours
+ * are not props: nothing needs a third size today, and an option nothing reads
+ * is the dead-field class. Add one with its first real consumer. */
+export type CheckSquareVariant = "done" | "ai-request";
+
+const CHECK_SQUARE: Record<
+  CheckSquareVariant,
+  {
+    /** Rendered px. The viewBox is always 16, so this also sets the scale. */
+    size: number;
+    /** Tick stroke-width in viewBox units. */
+    tickWidth: number;
+    /** Box fill once checked. `"none"` keeps the box hollow. */
+    checkedFill: string;
+    /** Tick ink. */
+    tick: string;
+  }
+> = {
+  done: {
+    size: 14,
+    tickWidth: 2.4,
+    checkedFill: "var(--checkbox-fill)",
+    tick: "var(--checkbox-mark)",
+  },
+  "ai-request": {
+    size: 12,
+    tickWidth: 2.2,
+    checkedFill: "none",
+    // `aiRequest` is a SYSTEM theme key (`SYSTEM_THEME_KEYS`): the colour picker
+    // skips it, `setPanelColor` refuses it, and `readOverridesFromStorage` drops
+    // it from a peer's blob — so the accent is a constant and its ink can be
+    // derived once at module scope rather than through a subscription per
+    // mounted checkbox. If that key ever becomes user-overridable, this must
+    // move to `usePanelColor("aiRequest")` inside the component.
+    tick: accentInk(getPanelColor("aiRequest")),
+  },
+};
+
+export function CheckSquare({
+  variant,
+  checked,
+}: {
+  variant: CheckSquareVariant;
+  checked: boolean;
+}) {
+  const { size, tickWidth, checkedFill, tick } = CHECK_SQUARE[variant];
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className="shrink-0">
+      <rect
+        x="1"
+        y="1"
+        width="14"
+        height="14"
+        rx="3"
+        fill={checked ? checkedFill : "none"}
+        stroke="var(--muted-light)"
+        strokeWidth="1.5"
+      />
+      {checked && (
+        <path
+          d="M4.5 8l2.5 2.5 4.5-5"
+          stroke={tick}
+          strokeWidth={tickWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      )}
+    </svg>
+  );
+}
+
 /* ── AiRequestCheckbox — centralized "AI request" checkbox ──────────
  * Single source of truth for the per-card "AI request" toggle. Used by
  * NoteCard, TodoRow, CutterCommentCard, RevisionRequestCard. Update the
- * markup or styling here to change every consumer at once. */
+ * markup or styling here to change every consumer at once. The glyph itself
+ * is `CheckSquare` above — shared with the Todo done-toggle. */
 export function AiRequestCheckbox({
   checked,
   onToggle,
@@ -1645,12 +1748,7 @@ export function AiRequestCheckbox({
       onMouseDown={(e) => e.stopPropagation()}
       className={`flex items-center gap-1.5 text-[11px] text-ink-subtle cursor-pointer select-none bg-transparent p-0${className ? ` ${className}` : ""}`}
     >
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="shrink-0">
-        <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" fill="none" />
-        {checked && (
-          <path d="M4.5 8l2.5 2.5 4.5-5" stroke="#0369a1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        )}
-      </svg>
+      <CheckSquare variant="ai-request" checked={checked} />
       AI request
     </button>
   );

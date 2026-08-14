@@ -50,7 +50,15 @@ violation. For an alpha variant of a token, reach for
 `color-mix(in oklab, var(--token) 45%, transparent)` — mixing with `transparent`
 is premultiplied, so it is exactly the live token at that alpha, and it keeps
 tracking the token when the value changes. Never re-spell a channel triple.
-(There is no CI guard for this yet — `check:radius` covers radii only.)
+
+CI, and the honest limit of it: `panel-chrome-palette-guardrail.test.ts` censuses
+BOTH spellings — the Tailwind palette utility and the raw VALUE (hex, `rgb()`,
+`hsl()`, chromatic CSS keyword) — but only over `src/panels/**` plus the two
+shared panel/field primitives. Both of its allowlists may only SHRINK, and the
+raw-value one is now EMPTY (task 287 drained the last five, the checkbox glyph's).
+Chrome authored elsewhere under `src/components/**` is **not** censused; widening
+it is a separate decision with its own draining cost. `check:radius` still covers
+radii only.
 
 ### The destructive / alarm family
 
@@ -1179,7 +1187,45 @@ migrate-it), and the accent-focus and ring bans hold over primitive calls
 too, since `className="focus:ring-1"` is the same defect one indirection in.
 
 Toggle: 22×14 pill, off `bg-edge-hover`, on `bg-accent`.
-Checkbox: 16×16 box, off `border-edge-strong`, on `bg-accent`.
+
+### The checkbox glyph
+
+**One component draws every checkbox: `CheckSquare`** (`panel-primitives.tsx`)
+— a 14-unit rounded square (`rx=3`, 1.5 stroke) in a 16 viewBox plus the tick
+`M4.5 8l2.5 2.5 4.5-5`, rendered at the variant's own size. Two variants today,
+and a call site picks one; **it never passes a colour**, because a colour prop
+is the door a sixth hex literal walks through:
+
+| Variant | Size | Checked box | Tick |
+|---|---|---|---|
+| `done` (Todo done-toggle) | 14px | `--checkbox-fill` | `--checkbox-mark` |
+| `ai-request` (the per-card AI toggle) | 12px | stays hollow | the `aiRequest` accent's ink |
+
+The box EDGE is `--muted-light` at both variants — one read, no aliasing rung.
+The two inks come from two different SSOTs on purpose: `done` is neutral chrome,
+so it reads `globals.css`; the AI tick is a KIND IDENTITY, and those live on the
+panel-theme registry, whose own header says the `aiRequest` / `error` system
+accents were folded into `DEFAULT_PANEL_COLORS` so they derive from one source
+"instead of string-literal hexes" — which `#0369a1` had been, and `aiRequest`
+had no reader at all until this glyph took its ink.
+
+This line used to read *"Checkbox: 16×16 box, off `border-edge-strong`, on
+`bg-accent`"* — a spec with **no implementation anywhere in either silo**, while
+the two real checkboxes were 14-unit, `--muted-light`-edged, and hand-authored
+twice from five raw hex literals (task 2026-08-02-287). A spec that describes
+nothing is the "stated invariant with no consumer" failure, one document over.
+
+The exceptions are the three **native** `<input type="checkbox">` — the archive
+confirm dialog's "Don't ask again", and the Library's PDF-drop intro and
+"Cited only" filter. All three are browser controls inside a dialog or a filter
+row, unstyled by choice (the Library pair sets only `cursor`), and none is a
+glyph. If one ever wants the app's look it takes `CheckSquare`, not its own SVG.
+
+Converging the two `--checkbox-*` tokens onto the toggle family
+(`--control-selected-tint` is 3/0/4 away from the fill in RGB;
+`--control-selected-ink` is a visible near-black → taupe move for the mark) is
+the obvious next step and a VISUAL decision — the tokens ship seeded to the
+literals they replaced, so 287 moved no pixel.
 
 ## Hints, tooltips & keyboard shortcuts
 
