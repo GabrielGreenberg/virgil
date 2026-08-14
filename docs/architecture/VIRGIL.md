@@ -1,4 +1,4 @@
-<!-- last-verified: 7770419e 2026-08-13 -->
+<!-- last-verified: 9b4f80cb 2026-08-14 -->
 <!-- derives-from: (root — verified against code) -->
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
@@ -218,7 +218,7 @@ The agent writes `<sidecar>.json` (the new/changed card) + `ai-requests.json` (T
 ## Code organization
 <!-- covers-code: src/app, src/cards, src/components, src/hooks, src/lib, src/links, src/panels, src/text-objects, src/types, library, editor -->
 
-*An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: ef13712e`).*
+*An orienting map. The authoritative how-to-work-on-it detail lives in the `docs/agents/*` derivatives — this section is the conceptual index those docs specialize. Verified against `docs/agents/overview.md` + `architecture.md` (both `last-verified: 9b4f80cb`).*
 
 ### `src/` top-level map
 
@@ -246,7 +246,7 @@ Before adding a new panel, link kind, theme, or text-object kind, **extend the r
 | Link kinds | The `LinkKind` union in [src/links/_shared/types.ts](../../src/links/_shared/types.ts) — no per-kind registry (task 202 deleted `LINK_REGISTRY` as a table nothing read). The link layer's one SSOT is its DOM contract, [src/links/link-dom-contract.ts](../../src/links/link-dom-contract.ts). |
 | TextObject kinds | `TEXT_OBJECT_REGISTRY` in [src/text-objects/text-object-registry.ts](../../src/text-objects/text-object-registry.ts) |
 | Editing actions (all four surfaces) | `VIRGIL_ACTION_REGISTRY` in [src/lib/actions/action-registry.ts](../../src/lib/actions/action-registry.ts) — one row per action across grab-handle menu, margin bolt (the far-right lightning panel), slash commands, typed-LaTeX input rules. The two live menus render from it; PM→React dispatch via [src/lib/actions/editor-actions-bridge.ts](../../src/lib/actions/editor-actions-bridge.ts). |
-| Action-menu keyboard behavior | The `<Menu>` primitive in [src/components/menu/](../../src/components/menu/) — build new action menus on `MenuProvider` + `useMenuItem` (one per-provider `MenuRegistry`, arrow/letter nav in `nav-core.ts`); don't roll your own keyboard handling. Migrated menus: grab-bar, lightning panel, color/label/heading/tab-plus popovers, bib-entry combobox, MenuBar block-type + view menus. The slash popup is a documented exception. |
+| Action-menu keyboard behavior, chrome + trigger | The `<Menu>` primitive in [src/components/menu/](../../src/components/menu/) — build new action menus on `MenuProvider` + `useMenuItem` (one per-provider `MenuRegistry`, arrow/letter nav in `nav-core.ts`); don't roll your own keyboard handling, and don't author your own menu **surface** or trigger button — the primitive owns both since task 295 (`<AnchoredMenu>` states the trigger contract once: the `<button>`, the tracked anchor rect, `maxHeight`/flip, the `excludeRefs` self-close guard, the menu ARIA). Migrated menus: grab-bar, lightning panel, color/label/heading/tab-plus popovers, bib-entry combobox, MenuBar block-type + view menus. The slash popup is a documented exception. |
 | Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) |
 | Type definitions | [src/lib/types.ts](../../src/lib/types.ts) |
 | Design tokens | [src/app/globals.css](../../src/app/globals.css) + [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) |

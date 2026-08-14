@@ -1,4 +1,4 @@
-<!-- last-verified: 7770419e 2026-08-13 -->
+<!-- last-verified: 9b4f80cb 2026-08-14 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -215,8 +215,12 @@ renders `<MenuProvider layout="list">` + `<MenuItemsFromRegistry rows={cardActio
 `ActionsMenuPanel` renders `<MenuProvider layout="composite">` with a `<MenuGrid cols={4}>`
 above a `<MenuList>` carrying `<MenuItemsFromRegistry rows={cardActionRows("lightning")}>`.
 The primitive owns positioning, arrow-key/letter nav, the roving "selection
-square" highlight (CSS token `--menu-roving-bg`), and a container-mousedown
-`preventDefault` so a menu click can't blur the editor — but the action vocabulary
+square" highlight (CSS token `--menu-roving-bg`), a container-mousedown
+`preventDefault` so a menu click can't blur the editor, and — since task 295 —
+the menu **surface** itself, so no menu authors its own chrome. Its `<AnchoredMenu>`
+trigger half states the button contract once (renders the `<button>`, captures +
+re-reads the anchor rect, `maxHeight` on by default, `excludeRefs` self-close
+guard, `aria-haspopup`/`aria-expanded`); the action vocabulary
 is still `VIRGIL_ACTION_REGISTRY`, unchanged. The same primitive backs the
 migrated `SelectionColorPopover`, `LabelRefPopover`, `HeadingTypeMenu`,
 `TabPlusMenu`, `BibEntryPickerMenu` (combobox path), and MenuBar's
