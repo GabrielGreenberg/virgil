@@ -450,9 +450,10 @@ describe("the Outline panel mirrors its in-prose originals' tokens (task 284)", 
   it("paints the focus band from the shared amber-highlight family", () => {
     expect(outline).toContain("var(--amber-highlight-wash)");
     expect(outline).toContain("var(--amber-highlight-edge)");
-    // The band's retired fill had a SECOND speller; both read the family now, so
-    // neither #fef9c3 nor the gold survives in either file.
-    expect(ruleBody(".citation-preview")).toMatch(/var\(--amber-highlight-wash\)/);
+    // The band's retired fill had a SECOND speller in globals.css,
+    // `.citation-preview` — which turned out to have no producer anywhere and
+    // was DELETED rather than tokenized. So the invariant is the value's
+    // absence from the sheet, not a second rule reading the token.
     expect(globalsCode).not.toContain("#fef9c3");
     expect(outline).not.toContain("#fef9c3");
     expect(outline).not.toContain("#d4aa17");

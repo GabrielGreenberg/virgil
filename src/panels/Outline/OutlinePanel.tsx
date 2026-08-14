@@ -1409,8 +1409,8 @@ function FocusBand({
           // The focus band is the app's "lit region" language, so it takes the
           // shared amber-highlight family rather than a private yellow (task
           // 284). `--amber-highlight-wash` is #fef3c3 against the retired
-          // #fef9c3 — one channel, 6/255, and at opacity .55 over the panel
-          // that is 2/255 on screen.
+          // #fef9c3 — green alone, 6/255, and at opacity .55 over a white panel
+          // that is 3.3/255 on screen.
           background: "var(--amber-highlight-wash)",
           opacity: 0.55,
           borderRadius: "var(--radius-md)",
