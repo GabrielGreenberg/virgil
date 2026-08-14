@@ -73,14 +73,15 @@ function makeStubEditor() {
   const editor = {
     state: {
       doc: {
-        // forEach(cb) visits each top-level node with (node, pos). The
-        // onScrollToHeading body only uses the running index/pos; the menuBar's
-        // divider-level walk reads `node.type.name` + `node.attrs.level`, so
-        // the stub nodes carry both (two headings at levels 1/2 + a paragraph).
-        forEach: (cb: (n: unknown, pos: number) => void) => {
-          cb({ type: { name: "heading" }, attrs: { level: 1 } }, 0);
-          cb({ type: { name: "heading" }, attrs: { level: 2 } }, 1);
-          cb({ type: { name: "paragraph" }, attrs: {} }, 2);
+        // forEach(cb) visits each top-level node with (node, pos, index) — the
+        // real PM signature, which task 285's uuid→index resolve reads. The
+        // menuBar's divider-level walk reads `node.type.name` + `attrs.level`,
+        // and the nodes carry a `uuid` so an address can name one.
+        childCount: 3,
+        forEach: (cb: (n: unknown, pos: number, index: number) => void) => {
+          cb({ type: { name: "heading" }, attrs: { level: 1, uuid: "h000" } }, 0, 0);
+          cb({ type: { name: "heading" }, attrs: { level: 2, uuid: "h111" } }, 1, 1);
+          cb({ type: { name: "paragraph" }, attrs: { uuid: "p222" } }, 2, 2);
         },
       },
     },
@@ -109,8 +110,10 @@ describe("useReaderView — onScrollToHeading is a REAL handler", () => {
       useReaderView(stub.editor, NULL_HANDLE_REF, null),
     );
 
-    // Scroll to the 2nd top-level block (index 1 → pos 1).
-    result.current.viewPrefs.onScrollToHeading(1);
+    // Scroll to the 2nd top-level block, addressed by its durable uuid — the
+    // snapshot index it carries is deliberately WRONG (task 285: a hydrated
+    // address resolves by uuid only, never by the index it travelled with).
+    result.current.viewPrefs.onScrollToHeading({ uuid: "h111", index: 99 });
 
     expect(stub.focus).toHaveBeenCalledTimes(1);
     expect(stub.setTextSelection).toHaveBeenCalledWith(1);
@@ -123,7 +126,9 @@ describe("useReaderView — onScrollToHeading is a REAL handler", () => {
       useReaderView(null, NULL_HANDLE_REF, null),
     );
     // No editor → no throw, simply does nothing.
-    expect(() => result.current.viewPrefs.onScrollToHeading(0)).not.toThrow();
+    expect(() =>
+      result.current.viewPrefs.onScrollToHeading({ uuid: "h000", index: 0 }),
+    ).not.toThrow();
   });
 
   it("the bundle satisfies the EditorPaneViewPrefs shape (key members defined)", () => {

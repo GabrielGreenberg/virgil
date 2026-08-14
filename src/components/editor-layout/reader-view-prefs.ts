@@ -79,6 +79,11 @@ import {
 } from "@/lib/pane-resize";
 import { LAYOUT_SITE_READER_SECTION_PATH } from "@/lib/layout-gesture-probe";
 import type { SectionPathEntry } from "@/panels/Outline";
+import {
+  DOC_START_BLOCK_INDEX,
+  resolveBlockIndex,
+  type BlockAddress,
+} from "@/lib/tiptap/block-address";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import {
   PANEL_TO_CATEGORY,
@@ -222,7 +227,7 @@ export function useParaNavHistory(
   const scrollToParagraph = useCallback(
     (uuid: string) => {
       if (uuid === "__DOC_TOP__") {
-        editorHandleRef.current?.scrollToHeading(-1);
+        editorHandleRef.current?.scrollToHeading(DOC_START_BLOCK_INDEX);
         return;
       }
       editorHandleRef.current?.scrollToParagraphId(uuid);
@@ -611,8 +616,15 @@ export function useReaderView(
   // branch in EditorPane: find the heading by its top-level block index,
   // select it, and scroll its DOM node into view.
   const onScrollToHeading = useCallback(
-    (headingIndex: number) => {
+    (target: BlockAddress | null) => {
       if (!editor) return;
+      // Task 285: resolve the outline's DURABLE address against the live doc.
+      // `null` is the Document-start row — the Reader's pre-285 handler took a
+      // bare index and its -1 sentinel matched no block, so that row was inert;
+      // it now lands on the first block, which is what the row means.
+      const headingIndex =
+        target == null ? 0 : resolveBlockIndex(editor.state.doc, target);
+      if (headingIndex == null) return;
       let idx = 0;
       let foundPos: number | null = null;
       editor.state.doc.forEach((_node, pos) => {

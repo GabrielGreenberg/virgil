@@ -27,6 +27,7 @@ import type {
 import type { OmniCategory } from "@/panels/Omni/OmniViewPanel";
 import type { FocusState } from "@/hooks/useFocusMode";
 import type { FocusBand } from "@/lib/focus-view";
+import type { BlockAddress, BlockSpanAddress } from "@/lib/tiptap/block-address";
 import type { SectionPathEntry } from "@/panels/Outline";
 import type { OrphanedFootnote } from "@/lib/types";
 
@@ -52,10 +53,16 @@ export interface EditorMutationHandlers {
   // mutation, but it's EditorLayout-supplied (it needs the live editor +
   // section model), so it lives with the editor handlers — and the Reader
   // ports a REAL implementation here, not a no-op.
-  onScrollToHeading: (blockIndex: number) => void;
+  // Task 285: the target is a durable block address (`null` = document start),
+  // never a snapshot index.
+  onScrollToHeading: (target: BlockAddress | null) => void;
 
   // Structural edits driven from the Outline panel.
-  onReorderBlocks: (fromIndex: number, count: number, toIndex: number) => void;
+  onReorderBlocks: (
+    source: BlockSpanAddress,
+    target: BlockSpanAddress,
+    side: "above" | "below",
+  ) => void;
   onRenameHeading: (uuid: string, newText: string) => void;
   onRenameParTitle: (uuid: string, newTitle: string) => void;
   onUpdateLabel: (uuid: string, newLabel: string | null) => void;
@@ -65,9 +72,9 @@ export interface EditorMutationHandlers {
   onFocusActivate: () => void;
   onFocusDeactivate: () => void;
   onFocusToggleLock: () => void;
-  onFocusMoveTo: (blockIndex: number) => void;
-  onFocusExpandTo: (blockIndex: number) => void;
-  onFocusSnapBoundary: (edge: "top" | "bottom", blockIndex: number) => void;
+  onFocusMoveTo: (target: BlockAddress) => void;
+  onFocusExpandTo: (target: BlockAddress) => void;
+  onFocusSnapBoundary: (edge: "top" | "bottom", target: BlockAddress) => void;
 
   // Float focus management (raise-on-click).
   focusFloating: EditorPaneViewPrefs["focusFloating"];

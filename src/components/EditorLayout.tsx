@@ -31,6 +31,7 @@ import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { DOC_START_BLOCK_INDEX } from "@/lib/tiptap/block-address";
 import { useStructuralRevisions } from "@/hooks/useStructuralRevisions";
 import {
   useDocJson,
@@ -1626,7 +1627,7 @@ export default function EditorLayout() {
   const scrollToParagraph = useCallback((uuid: string) => {
     // Sentinel for document top / title area
     if (uuid === "__DOC_TOP__") {
-      editorRef.current?.scrollToHeading(-1);
+      editorRef.current?.scrollToHeading(DOC_START_BLOCK_INDEX);
       return;
     }
     if (codeView) {

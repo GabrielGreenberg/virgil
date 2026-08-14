@@ -6,6 +6,14 @@ import {
   renameParTitleByUuid,
   updateHeadingLabelByUuid,
 } from "@/lib/tiptap/structural-edit";
+import {
+  DOC_START_BLOCK_INDEX,
+  resolveBlockIndex,
+  resolveBlockSpan,
+  type BlockAddress,
+  type BlockSpanAddress,
+} from "@/lib/tiptap/block-address";
+import { isInsideOwnRange, isNoOpLanding } from "@/panels/Outline/outline-drop";
 import { docProductsEnabled } from "@/lib/doc-products/use-doc-products";
 
 /**
@@ -60,42 +68,88 @@ export function useEditorOps(deps: {
     [setLatestDoc],
   );
 
+  // Outline click-to-scroll — IDENTITY-addressed (task 285). `null` is the
+  // Document-start row. A hydrated address whose block a concurrent writer
+  // deleted resolves to null and the click no-ops, rather than scrolling to
+  // whatever slid into that index.
   const handleScrollToHeading = useCallback(
-    (blockIndex: number) => {
-      editorRef.current?.scrollToHeading(blockIndex);
+    (target: BlockAddress | null) => {
+      const handle = editorRef.current;
+      if (!handle) return;
+      if (!target) {
+        handle.scrollToHeading(DOC_START_BLOCK_INDEX);
+        return;
+      }
+      const editor = handle.getEditor();
+      if (!editor) return;
+      const index = resolveBlockIndex(editor.state.doc, target);
+      if (index == null) return;
+      handle.scrollToHeading(index);
     },
     [editorRef],
   );
 
+  // Outline drag-reorder — IDENTITY-addressed on BOTH ends (task 285). The
+  // dragged section and the drop target are named by durable block uuid, and
+  // each one's EXTENT is re-derived from the live doc here, so neither the
+  // start index nor the block count can have drifted since the outline
+  // snapshot the drag was painted from. `side` is the hover half, resolved to a
+  // landing index only now that the target's live span is known — the pre-285
+  // `landingBlockIndex` folded the target's STALE `blockCount` into the number
+  // it handed over, so a write inside the target section mis-landed the drop
+  // even when the source addressed correctly.
   const handleReorderBlocks = useCallback(
-    (fromIndex: number, count: number, toIndex: number) => {
+    (source: BlockSpanAddress, target: BlockSpanAddress, side: "above" | "below") => {
       const editor = editorRef.current?.getEditor();
       if (!editor) return;
       const doc = editor.state.doc;
+      const src = resolveBlockSpan(doc, source);
+      const tgt = resolveBlockSpan(doc, target);
+      // Either end deleted under the drag → refuse. Moving a section to where a
+      // now-absent block used to be is a guess, not a gesture.
+      if (!src || !tgt) return;
+      const fromIndex = src.index;
+      const count = src.count;
+      const toIndex = side === "above" ? tgt.index : tgt.index + tgt.count;
+
       const positions: { from: number; to: number }[] = [];
       doc.forEach((node, offset) => {
         positions.push({ from: offset, to: offset + node.nodeSize });
       });
+      // Defence in depth. `resolveBlockSpan` bounds-checks its index and caps
+      // the extent at the doc's end, so neither condition can hold today.
       if (fromIndex < 0 || fromIndex + count > positions.length || toIndex < 0 || toIndex > positions.length) return;
-      if (toIndex >= fromIndex && toIndex <= fromIndex + count) return;
+      // Own-range rejection through the SHARED predicates the drop indicator
+      // reads (task 285), so neither side can hand-write its own copy of the
+      // rule. The write refuses one case MORE than the indicator does — a
+      // landing on either boundary leaves the section where it is, which the
+      // indicator deliberately still lights (the drop is honest: nothing moves,
+      // and nothing was supposed to) but which must not dispatch an
+      // effect-less transaction. The two also ask against different documents:
+      // the panel against its snapshot, this against the live spans, and only
+      // this one protects the document.
+      if (isInsideOwnRange(fromIndex, count, toIndex)) return;
+      if (isNoOpLanding(fromIndex, count, toIndex)) return;
 
       const sliceFrom = positions[fromIndex].from;
       const sliceTo = positions[fromIndex + count - 1].to;
       const slice = doc.slice(sliceFrom, sliceTo);
+      const landingPos = toIndex >= positions.length
+        ? positions[positions.length - 1].to
+        : positions[toIndex].from;
 
+      // Ask the transaction where a position went; never predict it (the law
+      // the container fit and the identity net both earned). The delta of a
+      // splice is not reliably the payload's declared size — the fitter may pad
+      // or reshape — so the second half of each branch MAPS its position
+      // through the first half instead of adding/subtracting `content.size`.
       let tr = editor.state.tr;
       if (toIndex < fromIndex) {
-        const insertPos = positions[toIndex].from;
-        tr = tr.insert(insertPos, slice.content);
-        const shift = slice.content.size;
-        tr = tr.delete(sliceFrom + shift, sliceTo + shift);
+        tr = tr.insert(landingPos, slice.content);
+        tr = tr.delete(tr.mapping.map(sliceFrom), tr.mapping.map(sliceTo));
       } else {
         tr = tr.delete(sliceFrom, sliceTo);
-        const shift = sliceTo - sliceFrom;
-        const insertPos = toIndex >= positions.length
-          ? positions[positions.length - 1].to - shift
-          : positions[toIndex].from - shift;
-        tr = tr.insert(insertPos, slice.content);
+        tr = tr.insert(tr.mapping.map(landingPos), slice.content);
       }
       editor.view.dispatch(tr);
     },

@@ -347,6 +347,7 @@ import { bandSlotKey, dockedSideOf } from "@/hooks/useViewPrefs";
 import { useMarginEdit, MARGIN_AXIS } from "@/hooks/useMarginEdit";
 import { type FocusState } from "@/hooks/useFocusMode";
 import type { FocusBand } from "@/lib/focus-view";
+import type { BlockAddress, BlockSpanAddress } from "@/lib/tiptap/block-address";
 import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
 import type { PanelKind, CardKind } from "@/panels/_shared/types";
@@ -534,9 +535,16 @@ export interface EditorPaneViewPrefs {
   onEditOrphanTitle: (id: string, title: string) => void;
 
   // ── OutlineHost handlers ────────────────────────────────────────
-  onScrollToHeading: (blockIndex: number) => void;
-  onReorderBlocks: (fromIndex: number, count: number, toIndex: number) => void;
-  // T3 (W3a): rename/label address by durable block uuid, not integer index.
+  // T3 (W3a) + task 285: EVERY outline callback addresses the live doc by
+  // durable block uuid — rename/label by bare uuid, scroll/reorder/focus by a
+  // `BlockAddress` (uuid + a pre-hydration index fallback). `null` on the
+  // scroll is the Document-start row.
+  onScrollToHeading: (target: BlockAddress | null) => void;
+  onReorderBlocks: (
+    source: BlockSpanAddress,
+    target: BlockSpanAddress,
+    side: "above" | "below",
+  ) => void;
   onRenameHeading: (uuid: string, newText: string) => void;
   onRenameParTitle: (uuid: string, newTitle: string) => void;
   onUpdateLabel: (uuid: string, newLabel: string | null) => void;
@@ -544,9 +552,9 @@ export interface EditorPaneViewPrefs {
   onFocusActivate: () => void;
   onFocusDeactivate: () => void;
   onFocusToggleLock: () => void;
-  onFocusMoveTo: (blockIndex: number) => void;
-  onFocusExpandTo: (blockIndex: number) => void;
-  onFocusSnapBoundary: (edge: "top" | "bottom", blockIndex: number) => void;
+  onFocusMoveTo: (target: BlockAddress) => void;
+  onFocusExpandTo: (target: BlockAddress) => void;
+  onFocusSnapBoundary: (edge: "top" | "bottom", target: BlockAddress) => void;
 
   // ── Floating-panel focus management ─────────────────────────────
   /** Brings a floating panel to the top of the z-stack. Also accepts

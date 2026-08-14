@@ -21,6 +21,11 @@ import {
 } from "./outline-prefs-store";
 import { useFocusBandEdgeDrag, type FocusBandRow } from "./focus-band-drag";
 import { landingBlockIndex, isRejectedDrop, resolveDropIndicator } from "./outline-drop";
+import {
+  sectionExtentFromHeadings,
+  type BlockAddress,
+  type BlockSpanAddress,
+} from "@/lib/tiptap/block-address";
 import { attachClampedDragGhost, buildTextDragGhost } from "@/lib/drag-ghost";
 import { iconHint } from "@/components/Hint";
 
@@ -339,8 +344,19 @@ interface OutlinePanelProps {
       per-doc; 4-hex block uuids are only unique within one doc). Optional
       for type permissiveness; an omitted id shares the "" bucket. */
   docId?: string;
-  onScrollTo: (headingIndex: number) => void;
-  onReorderBlocks?: (fromIndex: number, count: number, toIndex: number) => void;
+  /** Jump to a block. `null` is the Document-start row. Task 285: the address
+   *  is a durable block uuid (+ a pre-hydration index fallback), never a bare
+   *  snapshot index — see `@/lib/tiptap/block-address`. */
+  onScrollTo: (target: BlockAddress | null) => void;
+  /** Move `source` (a heading pod = its whole live section; a parTitle pod =
+   *  that one block) to the `side` of `target`. Both ends are durable
+   *  addresses; the landing index and both extents are resolved against the
+   *  LIVE doc at apply time (task 285). */
+  onReorderBlocks?: (
+    source: BlockSpanAddress,
+    target: BlockSpanAddress,
+    side: "above" | "below",
+  ) => void;
   // T3 (W3a): rename/label address by durable block uuid, not integer index.
   onRenameHeading?: (uuid: string, newText: string) => void;
   onRenameParTitle?: (uuid: string, newTitle: string) => void;
@@ -365,9 +381,12 @@ interface OutlinePanelProps {
   onFocusActivate?: () => void;
   onFocusDeactivate?: () => void;
   onFocusToggleLock?: () => void;
-  onFocusMoveTo?: (blockIndex: number) => void;
-  onFocusExpandTo?: (blockIndex: number) => void;
-  onFocusSnapBoundary?: (edge: "top" | "bottom", blockIndex: number) => void;
+  // Task 285: the focus band's three WRITE callbacks take a durable address
+  // too. The engine already reads its heading list and total from the LIVE
+  // doc, so the row index the outline handed over was the one stale input.
+  onFocusMoveTo?: (target: BlockAddress) => void;
+  onFocusExpandTo?: (target: BlockAddress) => void;
+  onFocusSnapBoundary?: (edge: "top" | "bottom", target: BlockAddress) => void;
 }
 
 /* ── Doc text extraction ───────────────────────────────────────────── */
@@ -598,7 +617,7 @@ function OutlineNode({
   node: TreeNode;
   collapsed: Set<string>;
   onToggle: (id: string) => void;
-  onScrollTo: (index: number) => void;
+  onScrollTo: (target: BlockAddress | null) => void;
   depth: number;
   showLabels: boolean;
   showTitles: boolean;
@@ -609,8 +628,8 @@ function OutlineNode({
   onUpdateLabel?: (uuid: string, newLabel: string | null) => void;
   isLabelTaken?: (candidate: string, excludeLabel: string | null) => boolean;
   focusState?: FocusState | null;
-  onFocusMoveTo?: (blockIndex: number) => void;
-  onFocusExpandTo?: (blockIndex: number) => void;
+  onFocusMoveTo?: (target: BlockAddress) => void;
+  onFocusExpandTo?: (target: BlockAddress) => void;
 }) {
   const hasSubHeadings = node.children.length > 0;
   const hasTitles = showTitles && node.heading.parTitles.length > 0;
@@ -636,15 +655,15 @@ function OutlineNode({
     return null;
   }
 
-  const handleRowClick = (blockIndex: number) => (e: React.MouseEvent) => {
+  const handleRowClick = (target: BlockAddress) => (e: React.MouseEvent) => {
     if (isFocusEditing && onFocusMoveTo && onFocusExpandTo) {
       if (e.shiftKey) {
-        onFocusExpandTo(blockIndex);
+        onFocusExpandTo(target);
       } else {
-        onFocusMoveTo(blockIndex);
+        onFocusMoveTo(target);
       }
     } else {
-      onScrollTo(blockIndex);
+      onScrollTo(target);
     }
   };
 
@@ -654,7 +673,7 @@ function OutlineNode({
         data-outline-pos={`h-${node.heading.index}`}
         className={`flex items-start group cursor-pointer rounded ${isFocusEditing ? "" : "hover-on-light"}`}
         style={{ paddingLeft: `${headingIndent(depth)}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, gap: OUTLINE_ROW_GAP, opacity: dimOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: "relative", zIndex: 5 }}
-        onClick={handleRowClick(node.heading.index)}
+        onClick={handleRowClick({ uuid: node.heading.uuid, index: node.heading.index })}
       >
         {hasChildren ? (
           <button
@@ -752,7 +771,7 @@ function OutlineNode({
                   position: "relative",
                   zIndex: 5,
                 }}
-                onClick={handleRowClick(pt.index)}
+                onClick={handleRowClick({ uuid: pt.uuid, index: pt.index })}
               >
                 {pt.title}
               </div>
@@ -807,6 +826,16 @@ interface OutlinePod {
                                     // would be hidden by collapsing
 }
 
+/**
+ * The durable address of a pod's own top-level block (task 285). A heading pod
+ * owns its whole SECTION — `section: true` tells the resolver to re-derive that
+ * extent from the live doc rather than trust the snapshot's `blockCount`; a
+ * parTitle pod owns exactly its own block.
+ */
+function podAddress(pod: OutlinePod): BlockSpanAddress {
+  return { uuid: pod.uuid, index: pod.blockIndex, section: pod.type === "heading" };
+}
+
 function buildPods(headings: HeadingItem[], totalBlocks: number): OutlinePod[] {
   const pods: OutlinePod[] = [];
 
@@ -824,14 +853,12 @@ function buildPods(headings: HeadingItem[], totalBlocks: number): OutlinePod[] {
     }
     const parentHeadingId = stack[stack.length - 1]?.id;
 
-    // blockCount: from this heading to the next heading of same/higher level
-    let blockCount = 1;
-    const nextSameOrHigher = headings.find((nh, ni) => ni > i && nh.level <= h.level);
-    if (nextSameOrHigher) {
-      blockCount = nextSameOrHigher.index - h.index;
-    } else {
-      blockCount = totalBlocks - h.index;
-    }
+    // blockCount: from this heading to the next heading of same/higher level —
+    // through the SHARED section rule (task 285), whose doc-side adapter the
+    // reorder handler uses. The indicator paints from this snapshot copy and
+    // the drop lands by the live one, so a second implementation here would be
+    // a line that can lie about where the blocks go.
+    const blockCount = sectionExtentFromHeadings(h.index, headings, totalBlocks);
 
     const hasSubHeading = i < headings.length - 1 && headings[i + 1].level > h.level;
     const hasCollapsibleChildren = hasSubHeading || h.parTitles.length > 0;
@@ -1081,7 +1108,11 @@ function EditableOutline({
   totalBlocks: number;
   collapsed: Set<string>;
   onToggleCollapse: (id: string) => void;
-  onReorderBlocks: (fromIndex: number, count: number, toIndex: number) => void;
+  onReorderBlocks: (
+    source: BlockSpanAddress,
+    target: BlockSpanAddress,
+    side: "above" | "below",
+  ) => void;
   onRenameHeading: (uuid: string, newText: string) => void;
   onRenameParTitle: (uuid: string, newTitle: string) => void;
 }) {
@@ -1169,8 +1200,11 @@ function EditableOutline({
       return;
     }
 
-    // Landing index + own-range rejection through the shared outline-drop
-    // helpers — the same math the indicator paints from (task 114).
+    // Own-range rejection through the shared outline-drop helpers — the same
+    // SNAPSHOT math the indicator paints from (task 114), so a hover the drop
+    // will refuse lights nothing. It is the affordance half only: the handler
+    // re-runs the same rejection against the live spans, which is what
+    // actually protects the document (task 285).
     const targetBlockIndex = landingBlockIndex(targetPod, dropTarget.position);
     if (isRejectedDrop(sourcePod, targetPod, targetBlockIndex)) {
       setDraggingId(null);
@@ -1178,7 +1212,11 @@ function EditableOutline({
       return;
     }
 
-    onReorderBlocks(sourcePod.blockIndex, sourcePod.blockCount, targetBlockIndex);
+    // Hand over DURABLE addresses, not the snapshot's integers. A heading pod
+    // moves its whole section, so its extent is re-derived live at apply time;
+    // the pod's own `blockCount` is as stale as its `blockIndex` and — under an
+    // edit INSIDE the section — stale in a way no index fix would catch.
+    onReorderBlocks(podAddress(sourcePod), podAddress(targetPod), dropTarget.position);
     setDraggingId(null);
     setDropTarget(null);
   }, [draggingId, dropTarget, pods, onReorderBlocks]);
@@ -1246,9 +1284,9 @@ function FocusBand({
   scrollRef: React.RefObject<HTMLDivElement | null>;
   focusState: FocusState;
   headings: HeadingItem[];
-  preambleTitles: { title: string; index: number }[];
+  preambleTitles: ParTitleItem[];
   totalBlocks: number;
-  onSnapBoundary?: (edge: "top" | "bottom", blockIndex: number) => void;
+  onSnapBoundary?: (edge: "top" | "bottom", target: BlockAddress) => void;
 }) {
   // The band's measured rectangle. Once a real measurement lands, we never
   // reset this to null — keeping the last good value avoids the flicker
@@ -1272,16 +1310,21 @@ function FocusBand({
 
   // Stable identity for outline row attrs, used both for measurement and as
   // the candidate set for drag snapping.
+  // Each row carries its durable `uuid` alongside the snapshot index: the index
+  // measures and matches WITHIN this snapshot (band rect, nearest-row snap),
+  // and the uuid is what the single commit hands to the engine (task 285). The
+  // Document-start row is deliberately uuid-less — "the first block" is a
+  // positional fact, not an identity, and stays true under an insert above.
   const allRowAttrs = useMemo(() => {
-    const attrs: { attr: string; blockIndex: number }[] = [];
-    attrs.push({ attr: "docstart", blockIndex: 0 });
+    const attrs: { attr: string; blockIndex: number; uuid: string | null }[] = [];
+    attrs.push({ attr: "docstart", blockIndex: 0, uuid: null });
     for (const pt of preambleTitles) {
-      attrs.push({ attr: `pt-${pt.index}`, blockIndex: pt.index });
+      attrs.push({ attr: `pt-${pt.index}`, blockIndex: pt.index, uuid: pt.uuid });
     }
     for (const h of headings) {
-      attrs.push({ attr: `h-${h.index}`, blockIndex: h.index });
+      attrs.push({ attr: `h-${h.index}`, blockIndex: h.index, uuid: h.uuid });
       for (const pt of h.parTitles) {
-        attrs.push({ attr: `pt-${pt.index}`, blockIndex: pt.index });
+        attrs.push({ attr: `pt-${pt.index}`, blockIndex: pt.index, uuid: pt.uuid });
       }
     }
     return attrs;
@@ -1362,7 +1405,7 @@ function FocusBand({
       if (!el) continue;
       const top = el.offsetTop;
       const bottom = el.offsetTop + el.offsetHeight;
-      rows.push({ blockIndex: r.blockIndex, top, mid: top + el.offsetHeight / 2, bottom });
+      rows.push({ index: r.blockIndex, uuid: r.uuid, top, mid: top + el.offsetHeight / 2, bottom });
     }
     return rows;
   }, [scrollRef, allRowAttrs]);
@@ -1551,10 +1594,13 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
   const perSectionCounts = useMemo(() => {
     const result = new Map<string, number>();
     if (editMode || !showWordCount) return result; // skip work — not displayed
-    for (let i = 0; i < headings.length; i++) {
-      const h = headings[i];
-      const next = headings.find((nh, ni) => ni > i && nh.level <= h.level);
-      const toIdx = next ? next.index : totalBlocks;
+    for (const h of headings) {
+      // The section's end through the SHARED rule (task 285) — the FOURTH
+      // copy, found by the adversarial pass on that fix. Display-only, so a
+      // divergence here misreports a number rather than moving blocks; it is
+      // still the copy a future edit to the rule would forget, on the same row
+      // whose `blockCount` drives the drop indicator.
+      const toIdx = h.index + sectionExtentFromHeadings(h.index, headings, totalBlocks);
       result.set(
         h.id,
         sumIncludedWords(perBlockCounts, h.index, toIdx, wcConfig.include),
@@ -1823,11 +1869,15 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                   zIndex: 5,
                 }}
                 onClick={(e) => {
+                  // "Document start" is a POSITIONAL fact — whatever block is
+                  // first — so it addresses index 0 with no uuid by design, and
+                  // stays correct under an insert above (task 285).
                   if (focusState?.active && !focusState.locked && onFocusMoveTo) {
-                    if (e.shiftKey && onFocusExpandTo) onFocusExpandTo(0);
-                    else onFocusMoveTo(0);
+                    const docStart = { uuid: null, index: 0 };
+                    if (e.shiftKey && onFocusExpandTo) onFocusExpandTo(docStart);
+                    else onFocusMoveTo(docStart);
                   } else {
-                    onScrollTo(-1);
+                    onScrollTo(null);
                   }
                 }}
               >
@@ -1870,11 +1920,12 @@ function OutlinePanel({ content, docId, onScrollTo, onReorderBlocks, onRenameHea
                         zIndex: 5,
                       }}
                       onClick={(e) => {
+                        const target = { uuid: pt.uuid, index: pt.index };
                         if (focusState?.active && !focusState.locked && onFocusMoveTo) {
-                          if (e.shiftKey && onFocusExpandTo) onFocusExpandTo(pt.index);
-                          else onFocusMoveTo(pt.index);
+                          if (e.shiftKey && onFocusExpandTo) onFocusExpandTo(target);
+                          else onFocusMoveTo(target);
                         } else {
-                          onScrollTo(pt.index);
+                          onScrollTo(target);
                         }
                       }}
                     >

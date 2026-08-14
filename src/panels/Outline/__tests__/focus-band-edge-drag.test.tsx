@@ -20,6 +20,7 @@ import { renderHook, cleanup, act } from "@testing-library/react";
 import { useRef } from "react";
 
 import { useFocusBandEdgeDrag, type FocusBandRow } from "../focus-band-drag";
+import type { BlockAddress } from "@/lib/tiptap/block-address";
 
 // Deterministic RAF: callbacks queue until flushRaf(); cancel really cancels.
 let rafSeq = 0;
@@ -50,14 +51,16 @@ afterEach(() => {
 });
 
 // Three rows, 100px apart — a cursor at y snaps to the nearest `mid`.
+// Each row is a BlockAddress + its offsets (task 285), so the commit carries
+// the row's durable uuid rather than the snapshot index it snapped on.
 const ROWS: FocusBandRow[] = [
-  { blockIndex: 0, top: 0, mid: 50, bottom: 100 },
-  { blockIndex: 5, top: 100, mid: 150, bottom: 200 },
-  { blockIndex: 9, top: 200, mid: 250, bottom: 300 },
+  { uuid: "aaa0", index: 0, top: 0, mid: 50, bottom: 100 },
+  { uuid: "bbb5", index: 5, top: 100, mid: 150, bottom: 200 },
+  { uuid: "ccc9", index: 9, top: 200, mid: 250, bottom: 300 },
 ];
 
 function setup() {
-  const onSnapBoundary = vi.fn<(edge: "top" | "bottom", blockIndex: number) => void>();
+  const onSnapBoundary = vi.fn<(edge: "top" | "bottom", target: BlockAddress) => void>();
   const setBand = vi.fn();
   const setAnimated = vi.fn();
   const restore = vi.fn();
@@ -136,7 +139,7 @@ describe("useFocusBandEdgeDrag — pointer invariants (task 185)", () => {
     }
     // The gesture ends as a normal release at the last held row.
     expect(onSnapBoundary).toHaveBeenCalledTimes(1);
-    expect(onSnapBoundary).toHaveBeenCalledWith("bottom", 9);
+    expect(onSnapBoundary).toHaveBeenCalledWith("bottom", { uuid: "ccc9", index: 9 });
   });
 
   it("the next click after a missed release commits nothing (the durable harm)", () => {
@@ -171,7 +174,7 @@ describe("useFocusBandEdgeDrag — pointer invariants (task 185)", () => {
     move(250);
     release();
     expect(onSnapBoundary).toHaveBeenCalledTimes(1);
-    expect(onSnapBoundary).toHaveBeenCalledWith("bottom", 9);
+    expect(onSnapBoundary).toHaveBeenCalledWith("bottom", { uuid: "ccc9", index: 9 });
   });
 
   it("commits the painted row when release lands in the same frame as the move", () => {
@@ -183,7 +186,7 @@ describe("useFocusBandEdgeDrag — pointer invariants (task 185)", () => {
       document.dispatchEvent(new MouseEvent("mousemove", { clientY: 250, buttons: 1 }));
     }); // no flushRaf — the frame is still pending
     release();
-    expect(onSnapBoundary).toHaveBeenCalledWith("bottom", 9);
+    expect(onSnapBoundary).toHaveBeenCalledWith("bottom", { uuid: "ccc9", index: 9 });
     expect(rendered.result.current.isDraggingRef.current).toBe(false);
   });
 

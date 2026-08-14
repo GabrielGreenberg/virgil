@@ -29,10 +29,52 @@ export function landingBlockIndex(
 }
 
 /**
- * True when handleDrop would reject this hover: dropping on the dragged pod
- * itself, or landing strictly inside the dragged pod's own block range
- * (moving a section into itself). The indicator must not light for these —
- * a lit line the drop then ignores is the 083 false-affordance class.
+ * Landing STRICTLY inside the dragged run — moving a section into itself.
+ * Refused by both the indicator and the write, because there is no coherent
+ * result to produce.
+ */
+export function isInsideOwnRange(
+  sourceIndex: number,
+  sourceCount: number,
+  landing: number,
+): boolean {
+  return landing > sourceIndex && landing < sourceIndex + sourceCount;
+}
+
+/**
+ * Landing on either BOUNDARY of the dragged run — its own start, or
+ * immediately after its own end. The section does not move.
+ *
+ * The two questions are deliberately separate, and the split is a UX call
+ * rather than an oversight (task 285's adversarial pass proposed folding them,
+ * and the pre-existing suite had already pinned the answer). The WRITE must
+ * refuse a no-op: dispatching a delete-and-reinsert that changes nothing costs
+ * a history entry and an autosave for a gesture with no effect. The INDICATOR
+ * must still light it: a section dropped back where it already is leaves the
+ * document exactly as the user intended, so the lit line is honest — and going
+ * dark there would paint a forbidden-looking band around the dragged section's
+ * own position. This is not the 083 false-affordance class, which is a line
+ * that promises a change and delivers none.
+ */
+export function isNoOpLanding(
+  sourceIndex: number,
+  sourceCount: number,
+  landing: number,
+): boolean {
+  return landing === sourceIndex || landing === sourceIndex + sourceCount;
+}
+
+/**
+ * True when the drop is a move-into-self and must not be offered: dropping on
+ * the dragged pod itself, or landing strictly inside its own block range. A lit
+ * line the drop then ignores is the 083 false-affordance class.
+ *
+ * This is the SNAPSHOT half — it keeps the affordance honest against what the
+ * user can see. The live half runs in `handleReorderBlocks` against the
+ * resolved spans, off the same `isInsideOwnRange` core plus `isNoOpLanding`,
+ * and is what actually protects the document; under a concurrent write the two
+ * can legitimately disagree, since only the second one knows what the document
+ * is now.
  */
 export function isRejectedDrop(
   source: DropPod | undefined,
@@ -41,10 +83,7 @@ export function isRejectedDrop(
 ): boolean {
   if (!source) return false;
   if (source.id === target.id) return true;
-  return (
-    landing > source.blockIndex &&
-    landing < source.blockIndex + source.blockCount
-  );
+  return isInsideOwnRange(source.blockIndex, source.blockCount, landing);
 }
 
 /**

@@ -3,13 +3,20 @@
 import type { JSONContent } from "@tiptap/react";
 import OutlinePanel, { type SectionPathEntry } from "@/panels/Outline";
 import type { FocusBand } from "@/lib/focus-view";
+import type { BlockAddress, BlockSpanAddress } from "@/lib/tiptap/block-address";
 
 export interface OutlineHostProps {
   content: JSONContent | null;
   /** Scopes the persisted fold set to this document (task 111). */
   docId: string;
-  onScrollTo: (blockIndex: number) => void;
-  onReorderBlocks: (fromIndex: number, count: number, toIndex: number) => void;
+  // Task 285: the Outline's write/navigate boundary speaks durable block
+  // addresses, never snapshot indices. `null` = the Document-start row.
+  onScrollTo: (target: BlockAddress | null) => void;
+  onReorderBlocks: (
+    source: BlockSpanAddress,
+    target: BlockSpanAddress,
+    side: "above" | "below",
+  ) => void;
   // T3 (W3a): rename/label address by durable block uuid, not integer index.
   onRenameHeading: (uuid: string, newText: string) => void;
   onRenameParTitle: (uuid: string, newTitle: string) => void;
@@ -23,9 +30,9 @@ export interface OutlineHostProps {
   onFocusActivate: () => void;
   onFocusDeactivate: () => void;
   onFocusToggleLock: () => void;
-  onFocusMoveTo: (blockIndex: number) => void;
-  onFocusExpandTo: (blockIndex: number) => void;
-  onFocusSnapBoundary: (edge: "top" | "bottom", blockIndex: number) => void;
+  onFocusMoveTo: (target: BlockAddress) => void;
+  onFocusExpandTo: (target: BlockAddress) => void;
+  onFocusSnapBoundary: (edge: "top" | "bottom", target: BlockAddress) => void;
 }
 
 export function OutlineHost(p: OutlineHostProps) {

@@ -10,6 +10,13 @@ import {
   INACTIVE_BAND,
   resolveFocusBand,
 } from "@/lib/focus-view";
+import {
+  collectTopLevelHeadings,
+  resolveBlockIndex,
+  topLevelIndexOfUuid,
+  sectionExtentFromHeadings,
+  type BlockAddress,
+} from "@/lib/tiptap/block-address";
 
 /**
  * The index-based view of the focus band, kept for the OUTLINE's positional
@@ -94,14 +101,6 @@ function uuidOfIndex(doc: PMNode, i: number): string | null {
   return (doc.child(i).attrs?.uuid as string | null | undefined) ?? null;
 }
 
-function blockIndexOfUuid(doc: PMNode, uuid: string): number {
-  let idx = -1;
-  doc.forEach((node, _offset, index) => {
-    if ((node.attrs?.uuid as string | undefined) === uuid) idx = index;
-  });
-  return idx;
-}
-
 /** Build a UUID band from an inclusive index range; doc-edge → null sentinel. */
 function bandFromIndices(
   doc: PMNode,
@@ -137,15 +136,11 @@ export function sectionRange(
   headings: { index: number; level: number }[],
   totalBlocks: number,
 ): [number, number] {
-  const hi = headings.findIndex((h) => h.index === blockIndex);
-  if (hi !== -1) {
-    const heading = headings[hi];
-    for (let i = hi + 1; i < headings.length; i++) {
-      if (headings[i].level <= heading.level) {
-        return [blockIndex, headings[i].index - 1];
-      }
-    }
-    return [blockIndex, totalBlocks - 1];
+  if (headings.some((h) => h.index === blockIndex)) {
+    // The heading branch is the SHARED section rule (task 285) — the same one
+    // the outline's pods and the reorder handler read — expressed as an
+    // inclusive range instead of an extent.
+    return [blockIndex, blockIndex + sectionExtentFromHeadings(blockIndex, headings, totalBlocks) - 1];
   }
 
   if (headings.length === 0) return [0, totalBlocks - 1];
@@ -174,6 +169,34 @@ export function regionForNode(
   const isHeading = headings.some((h) => h.index === blockIndex);
   if (isHeading) return sectionRange(blockIndex, headings, totalBlocks);
   return [blockIndex, blockIndex];
+}
+
+/**
+ * The region a durable ADDRESS owns in the LIVE document — the one entry point
+ * the focus band's three write actions use (task 285), and the reason they take
+ * no heading list.
+ *
+ * Resolving the address live was only half the fix: the heading list it is
+ * interpreted against used to be threaded in from `EditorLayout`'s
+ * `focusStructure`, a `useMemo` evaluated during RENDER and closed over by the
+ * handler. So a transaction landing between the last committed render and the
+ * click left the index on revision N+1 and the heading list on revision N, and
+ * `regionForNode` compared the two — a milder version of the very drift the
+ * address was introduced to close, and one the fix's own first draft claimed
+ * was gone. Deriving the headings HERE, from the same `doc` the address
+ * resolves against, is what actually puts every input on one revision.
+ *
+ * Returns `null` when the address no longer names a live block — the caller
+ * then does nothing, rather than confining the band to a block the user never
+ * pointed at. O(top-level blocks), on a click or a drag release.
+ */
+export function regionForAddress(
+  doc: PMNode,
+  target: BlockAddress,
+): [number, number] | null {
+  const blockIndex = resolveBlockIndex(doc, target);
+  if (blockIndex == null) return null;
+  return regionForNode(blockIndex, collectTopLevelHeadings(doc), doc.childCount);
 }
 
 export function useFocusMode(docId: string | null, editor: Editor | null) {
@@ -261,8 +284,13 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     if (isLegacy || !band.active) return;
     const doc = editor?.state?.doc;
     if (!doc) return;
-    const startAlive = band.startUuid == null || blockIndexOfUuid(doc, band.startUuid) !== -1;
-    const endAlive = band.endUuid == null || blockIndexOfUuid(doc, band.endUuid) !== -1;
+    // Existence only — the shared walk (task 285) rather than a fourth private
+    // copy of "which top-level index carries this uuid". Its first-match
+    // tie-break differs from the copy this replaced, which took the LAST match;
+    // that can only matter while two blocks transiently share a uuid, and both
+    // answers are `!== -1` there.
+    const startAlive = band.startUuid == null || topLevelIndexOfUuid(doc, band.startUuid) !== -1;
+    const endAlive = band.endUuid == null || topLevelIndexOfUuid(doc, band.endUuid) !== -1;
     if (startAlive && endAlive) return;
     if (!startAlive && !endAlive) {
       update(() => INACTIVE_BAND);
@@ -326,21 +354,33 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     update((s) => (s.active ? { ...s, locked: !s.locked } : s));
   }, [update]);
 
+  // The three WRITE actions below take a `BlockAddress` and NOTHING ELSE
+  // (task 285). The outline resolves its rows from a debounced snapshot and
+  // calls back a frame or more later, so an integer index it captured can name
+  // a different block by the time it arrives — and a heading list threaded in
+  // from a render-time memo is a second stale clock, which is why these no
+  // longer take one: `regionForAddress` derives both from the live doc it
+  // resolves against. An address whose block was deleted under the gesture
+  // resolves to null and the action is a no-op, never a mis-address.
   const moveTo = useCallback(
-    (blockIndex: number, headings: { index: number; level: number }[], totalBlocks: number) => {
+    (target: BlockAddress) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
-      const [start, end] = regionForNode(blockIndex, headings, totalBlocks);
+      const region = regionForAddress(doc, target);
+      if (!region) return;
+      const [start, end] = region;
       update((s) => (s.active ? bandFromIndices(doc, start, end, true, s.locked) : s));
     },
     [update],
   );
 
   const expandTo = useCallback(
-    (blockIndex: number, headings: { index: number; level: number }[], totalBlocks: number) => {
+    (target: BlockAddress) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
-      const [clickStart, clickEnd] = regionForNode(blockIndex, headings, totalBlocks);
+      const region = regionForAddress(doc, target);
+      if (!region) return;
+      const [clickStart, clickEnd] = region;
       update((s) => {
         if (!s.active) return s;
         const cur = resolveFocusBand(doc, s) ?? { startIdx: 0, endIdx: doc.childCount - 1 };
@@ -364,18 +404,15 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
   // visual band rect (OutlinePanel `measure()`) already lands botEl on the last
   // visible row ≤ endBlockIndex, so the committed range paints with no jump.
   const snapBoundary = useCallback(
-    (
-      edge: "top" | "bottom",
-      blockIndex: number,
-      headings: { index: number; level: number }[],
-      totalBlocks: number,
-    ) => {
+    (edge: "top" | "bottom", target: BlockAddress) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
+      const region = regionForAddress(doc, target);
+      if (!region) return;
       update((s) => {
         if (!s.active || s.locked) return s;
         const cur = resolveFocusBand(doc, s) ?? { startIdx: 0, endIdx: doc.childCount - 1 };
-        const [regionStart, regionEnd] = regionForNode(blockIndex, headings, totalBlocks);
+        const [regionStart, regionEnd] = region;
         if (edge === "top") {
           const newStart = Math.min(regionStart, cur.endIdx);
           return bandFromIndices(doc, newStart, cur.endIdx, true, s.locked);
