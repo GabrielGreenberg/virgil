@@ -25,6 +25,7 @@ import {
   filterPrintPanels,
   clampStack,
 } from "./dropUnknownPanelIds";
+import { applyPanelRenames, PANEL_RENAMES } from "./rename-panel-id";
 import { dockedSideOf } from "./view-prefs-derived";
 import {
   MAX_STACK,
@@ -600,7 +601,18 @@ export function loadPrefs(): ViewPrefs {
       localStorage.setItem(windowStorageKey(), JSON.stringify(windowParsed));
     }
 
-    const parsed = { ...windowParsed, ...globalParsed };
+    // Panel RENAMES, applied to EVERY PanelId-keyed carrier before anything
+    // else touches the blob — and in particular before the subtractive
+    // cleaners (`filterPlacements` / `clampStack` / `validPanelId` /
+    // `filterOmniCategories` / `filterPrintPanels`) and the legacy `active*`
+    // deletes, which are what silently DROP an id nobody renamed. The three
+    // shipped renames live as data in `PANEL_RENAMES`; the applier is the
+    // additive twin of `dropUnknownPanelIds` (task 275).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parsed: any = applyPanelRenames(
+      { ...windowParsed, ...globalParsed },
+      PANEL_RENAMES,
+    );
 
     // AF popout-key migration (read-time leg). Converts every persisted key to
     // the unified `float:<domain>:<kind>:<id>` grammar, in LOCKSTEP across
@@ -641,41 +653,19 @@ export function loadPrefs(): ViewPrefs {
       }
     }
 
-    // Migrate: replace old "references" panel with "citations" + "bibliography"
+    // The three panel renames (references→citations+bibliography,
+    // comments→notes+revisions, suggestions→revisions) already ran above, on
+    // EVERY PanelId-keyed carrier — see `applyPanelRenames`. They used to be
+    // hand-inlined here and touched only `placements` + the legacy `active*`
+    // scalars, so a docked/floating panel under an old id was dropped and its
+    // rect/height/mode/archive-view orphaned (task 275).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let placements: any[] = parsed.placements || [];
-    const hasOldRef = placements.some((p: any) => p.id === "references");
-    if (hasOldRef) {
-      const refSide = placements.find((p: any) => p.id === "references")!.side;
-      placements = placements.filter((p: any) => p.id !== "references");
-      placements.push({ id: "citations", side: refSide });
-      placements.push({ id: "bibliography", side: refSide });
-      if (parsed.activeLeft === "references") parsed.activeLeft = "citations";
-      if (parsed.activeRight === "references") parsed.activeRight = "citations";
-    }
-    // Migrate: replace old "comments" panel with "notes" + "revisions"
-    const hasOldComments = placements.some((p: any) => p.id === "comments");
-    if (hasOldComments) {
-      const commentsSide = placements.find((p: any) => p.id === "comments")!.side;
-      placements = placements.filter((p: any) => p.id !== "comments");
-      placements.push({ id: "notes", side: commentsSide });
-      placements.push({ id: "revisions", side: commentsSide });
-      if (parsed.activeLeft === "comments") parsed.activeLeft = "revisions";
-      if (parsed.activeRight === "comments") parsed.activeRight = "revisions";
-    }
-    // Migrate: standalone "suggestions" panel was folded into "revisions"
-    // (suggestion cards now live alongside comment cards in one panel).
-    const hasOldSuggestions = placements.some((p: any) => p.id === "suggestions");
-    if (hasOldSuggestions) {
-      placements = placements.filter((p: any) => p.id !== "suggestions");
-      if (parsed.activeLeft === "suggestions") parsed.activeLeft = "revisions";
-      if (parsed.activeRight === "suggestions") parsed.activeRight = "revisions";
-    }
     // Migrate: presentation-pod panels (registry `defaultStripSide: null`,
     // e.g. "omni") must never have a side placement. A drag in an older
     // build could leave one persisted, which then leaks the panel back
     // onto the strip as a stray icon. Strip them on load.
-    placements = placements.filter((p: any) => {
+    placements = placements.filter((p: PanelPlacement) => {
       // PANEL_REGISTRY is keyed by PanelKind; "blank" (a PanelId-only
       // layout slot) and unknown ids return undefined.
       const reg = (PANEL_REGISTRY as Record<string, { defaultStripSide: Side | null } | undefined>)[p.id];
