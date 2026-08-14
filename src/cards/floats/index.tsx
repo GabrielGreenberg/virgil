@@ -235,6 +235,23 @@ registerCardFloatable("footnote", (id, ctx: CardFloatCtx) => {
   // which would otherwise pop it into a blank window. The citation twin already
   // had this shape for free (it iterates ONE list and resolves a position per
   // entry) — this is that fork closed, not a new capability.
+  //
+  // Task 277 — the RATIFIED boundary, so the two halves are not mistaken for
+  // one. A footnote card has three states and this builder resolves TWO:
+  // ANCHORED (a live `\footnote` atom, read from the editor above) and
+  // UNANCHORED (a deliberately-parked `FootnoteRef`, read from the
+  // `footnotes.json` sidecar below). The third — ORPHANED, a body in
+  // `orphaned-footnotes.json` whose callout the user deleted — is deliberately
+  // NOT poppable (Gabriel, 2026-08-08: the pop-out is not worth building for
+  // that state), and `CardFloatCtx` carries no orphan list to resolve it from.
+  // That decision is honored at the AFFORDANCE rather than left to fail here:
+  // `OrphanedFootnoteCard` threads no `cardKey`, so `PanelCard.canLift` is
+  // false and no grip is painted — the card offers no lift, instead of
+  // offering one that lands in a window this function cannot fill. Flipping
+  // the decision is one arm (a `ctx.orphanedFootnotes` source + a third
+  // branch) plus the `cardKey` thread — and BOTH ends must move together, which
+  // is what `panels/Footnotes/__tests__/footnote-lift-boundary.test.tsx` pins:
+  // per state, the card offers a lift exactly when this builder can honor one.
   if (!fn) return unanchoredFootnoteFloatable(id, ctx);
   const isSelected = ctx.selectedFootnoteId === fn.footnoteId;
   return cardFloatable("footnote", id, {
@@ -550,13 +567,17 @@ registerCardFloatable("citation", (id, ctx: CardFloatCtx) => {
   const isAnchored = pos !== null;
   const isSelected = ctx.selectedCitationId === cit.id;
   return cardFloatable("citation", id, {
-    // Citation is the only collection that can hold an unanchored-yet-poppable
-    // member, so — unlike footnote/example whose atoms are always live — the
-    // FloatChrome jump affordance must derive from the anchored state the
-    // builder already resolved, matching the docked card, the omni card, and
-    // the in-body chevron (all gate on `pos !== null` / `isAnchored`). An
-    // unanchored citation's `scrollToCitation` resolves no in-text atom and is
-    // a dead control, so gate `jumpToSource` the same way.
+    // A citation's atom is NOT always live — nor is a footnote's (task 277:
+    // this comment used to say "unlike footnote/example whose atoms are always
+    // live", which the orphan/unanchored footnote features had already
+    // falsified; `example` is the only kind for which it is still true, since
+    // an example block is always in-doc). Both collections can hold an
+    // unanchored-yet-poppable member — see `unanchoredFootnoteFloatable` for
+    // the footnote half — so the FloatChrome jump affordance derives from the
+    // anchored state the builder already resolved, matching the docked card,
+    // the omni card, and the in-body chevron (all gate on `pos !== null` /
+    // `isAnchored`). An unanchored citation's `scrollToCitation` resolves no
+    // in-text atom and is a dead control, so gate `jumpToSource` the same way.
     canJump: isAnchored,
     jumpToSource: isAnchored
       ? () => ctx.editorRef.current?.scrollToCitation(cit.id, null)

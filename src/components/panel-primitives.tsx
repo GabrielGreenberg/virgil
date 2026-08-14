@@ -1973,12 +1973,21 @@ export function PanelClose() {
 }
 
 /**
- * Universal card grip — leftmost element of every card header.
+ * The card grip — leftmost element of every card header **that can actually be
+ * lifted**.
  *
  * Pure visual: not draggable, no event handlers. The lift-to-popout
  * gesture lives on the wrapping header (see `PanelCard.onWrapperMouseDown`),
  * which adds `.is-pressed` to this element on mousedown so the grip
  * "squeezes" regardless of where in the header the press lands.
+ *
+ * Task 277 — it is **not** universal, and calling it that is what let it lie.
+ * `cursor-grab` + "Drag to pop out" is the ONLY visual promise the header
+ * drag-lift makes, and it painted on every unified header including the ones
+ * the gesture bails on at its first gate (a card with no `cardKey`; a kind the
+ * registry declares non-poppable). So `PanelCard` derives ONE `canLift` answer
+ * and gates both this paint and `onWrapperMouseDown` on it — the affordance and
+ * the mechanism are one declaration (the task-316 lesson, one surface up).
  */
 export function CardDragHandle() {
   return (
@@ -2385,23 +2394,44 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   // rendering (e.g. BibEntryCard) still get the lift gesture even when
   // they don't pass onTogglePopout up to PanelCard.
   const popped = usePoppedCards();
+  // ── canLift: the ONE answer both the grip and the gesture read (task 277) ──
+  // Every clause below is a STATIC (render-time) gate the lift would apply
+  // anyway; collecting them here is what keeps the affordance from outliving
+  // the mechanism. The gesture's remaining gates are dynamic (which button,
+  // where in the header the press landed) and stay in the handler, since no
+  // paint decision can be made from them.
+  //
+  //  1. `cardKey` — the lift's identity, and the float's. A card that threads
+  //     none can never pop out; the production instance is the ORPHANED
+  //     footnote card, whose float builder has no source to resolve it from
+  //     (ratified non-poppable — see `cards/floats/index.tsx`). Before this it
+  //     still painted a grab cursor + a "Drag to pop out" hint over a gesture
+  //     that returned on its first line.
+  //  2. `isPoppedOut` — a floating card is moved by its `FloatChrome` title
+  //     bar, not by an in-card grip.
+  //  3. the popped RESIDUE — the docked twin of an already-popped card must
+  //     not re-lift: `popOutAtRect` would no-op (key already popped), leaving
+  //     a dead drag and a stale lift handoff that a later programmatic mount
+  //     of the same key would consume as a phantom `beginDragAt`. The residue
+  //     header degrades to plain click (select/toggle still work) — and now
+  //     LOOKS like it, instead of advertising a second lift.
+  //  4. `isPoppable` — the SINGLE registry SSOT for poppability. A
+  //     non-poppable kind (`error`, whose `toFloatable` resolves to null)
+  //     would lift into a blank ghost float (FloatHost renders nothing).
+  //  5. a reachable pop-out door — no `popOutAtRect` context and no
+  //     `onTogglePopout` callback means nothing to lift INTO.
+  const canLift =
+    !!cardKey &&
+    !isPoppedOut &&
+    !popped?.isPopped(cardKey) &&
+    (kind == null || isPoppable(kind)) &&
+    !!(popped?.popOutAtRect || onTogglePopout);
   const onWrapperMouseDown = (e: React.MouseEvent) => {
     // Lift-to-popout is allowed in both expanded and collapsed states —
-    // the drag handle is the only popout affordance now. Only a popped
-    // card disables the gesture (the X in its header docks it back).
-    if (!cardKey || isPoppedOut) return;
-    // The docked residue of an ALREADY-POPPED card must not re-lift:
-    // popOutAtRect would no-op (key already popped), leaving a dead drag
-    // and a stale lift handoff that a later programmatic mount of the same
-    // key would consume as a phantom beginDragAt. The residue header
-    // degrades to plain click (select/toggle still work).
-    if (popped?.isPopped(cardKey)) return;
-    // `isPoppable` is the SINGLE registry SSOT for poppability — it gates this
-    // drag-lift (the only pop-out path now that the docked button is retired).
-    // Without this, a non-poppable kind (`error`, whose toFloatable resolves
-    // to null) would lift into a blank ghost float (FloatHost renders nothing).
-    if (kind && !isPoppable(kind)) return;
-    if (!popped?.popOutAtRect && !onTogglePopout) return;
+    // the drag handle is the only popout affordance now. `!cardKey` is already
+    // subsumed by `canLift`; it is restated so TS narrows the key to `string`
+    // for the handoff payloads below.
+    if (!canLift || !cardKey) return;
     if (e.button !== 0) return;
     const cardEl = innerRef.current;
     if (!cardEl) return;
@@ -2622,7 +2652,11 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
                 }
               : {})}
           >
-            <CardDragHandle />
+            {/* The grip paints iff the lift can land (task 277) — same
+                `canLift` the gesture reads, so the app never offers a drag it
+                will refuse. A card that can't lift simply starts at the badge;
+                a dead grab cursor is worse than a missing one. */}
+            {canLift && <CardDragHandle />}
             {footnoteBadge}
             <CardKindHeader
               kind={kind!}

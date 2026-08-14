@@ -746,6 +746,25 @@ trailing click (suppress-click ref) so it can't also toggle. Tab focus
 on the header is inert (`data-card-header` bails the focus-capture
 auto-activation) — Enter/Space are the sole keyboard activation.
 
+**The grip paints iff the lift can land (task 277).** The dots glyph is
+the *only* visual promise the drag-lift makes, so it is not universal
+chrome: `PanelCard` derives ONE `canLift` answer — a `cardKey` is
+threaded, the card isn't already floating or the docked residue of a
+float, `isPoppable(kind)` (the registry SSOT), and some pop-out door is
+reachable — and both the grip's paint and the gesture read it. A card
+that can't lift simply starts at its badge; **a dead grab cursor is
+worse than a missing one**, and it reads as a bug in the drag rather
+than as a state of the card. Two surfaces were making that promise
+falsely for months: every `ErrorCard` (`error` is the ratified
+non-poppable kind) and `OrphanedFootnoteCard` (no `cardKey` — its float
+builder has no orphan source to resolve, ratified 2026-08-08). Same rule
+as the pop-out button's own retirement and the jump chevron's
+`canJump` gate: a control that claims to work and then refuses is worse
+than one that stays quiet. Contract:
+`components/__tests__/card-lift-affordance.test.tsx` — grip present ⇔ a
+real drag pops out, per configuration, plus a census that the glyph has
+exactly one render site and it asks.
+
 ### The drop button (re-anchor) — header control
 
 Every card that has a text anchor carries a **drop button**: a
