@@ -140,6 +140,12 @@ export default function LabelRefPopover({
       onEscape={onEscape}
       onClose={onClose}
       ariaLabel="Cross-reference labels"
+      // The ONE menu that authors its own surface (task 295). `.label-ref-popover`
+      // is a 2px `--amber-highlight-edge` border + a matching halo, which binds
+      // the popover to the amber `\ref` highlight in the text it points at —
+      // an identity, not the chrome drift the shared surface exists to end.
+      // Allowlisted in menu-surface-guardrail.test.ts.
+      surface="none"
       containerStyle={{ width: POPOVER_WIDTH }}
       containerClassName="label-ref-popover"
     >

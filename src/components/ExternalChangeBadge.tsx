@@ -304,15 +304,10 @@ function ExternalChangeBadge() {
         excludeRefs={[wrapEl]}
         onClose={closeMenu}
         ariaLabel="External change actions"
-        containerClassName="min-w-[240px] max-w-[320px] py-1"
         // Body-portaled at the menu primitive's CHROME_Z (z:2000-tier) so the
-        // sticky topbar's z-30 stacking context can't clip the dropdown.
-        containerStyle={{
-          background: "var(--pod-editor)",
-          border: "var(--pod-border)",
-          boxShadow: "var(--pod-shadow)",
-          borderRadius: "var(--pod-radius)",
-        }}
+        // sticky topbar's z-30 stacking context can't clip the dropdown; its
+        // surface chrome is the primitive's `.menu-surface` (task 295).
+        containerClassName="min-w-[240px] max-w-[320px] py-1"
       >
         <MenuRow
           id="reload"

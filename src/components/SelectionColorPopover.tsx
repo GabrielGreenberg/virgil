@@ -131,10 +131,6 @@ export function SelectionColorPopover({
       ariaLabel="Text color"
       containerStyle={{
         width: POPOVER_W,
-        background: "var(--pod-editor)",
-        border: "var(--pod-border)",
-        boxShadow: "var(--pod-shadow)",
-        borderRadius: "var(--pod-radius)",
         padding: 8,
       }}
     >

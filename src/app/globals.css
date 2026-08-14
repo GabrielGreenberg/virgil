@@ -164,6 +164,28 @@
   --pod-border: 1px solid var(--border-light);
   --panel-border: none; /* borderless: panels are warm sheets; separation via --pod-gap + shadow. Also derived at runtime in preferences-tree.ts — keep both in sync. */
   --pod-shadow: 0 1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06);
+  /* ── MENU tier surface (SSOT, task 295) ───────────────────────────────
+     The four axes of a dropdown / context-menu container, named once so a
+     menu's chrome can be moved in ONE place. `--pod-radius` already called
+     itself the "CARD + POD + MENU tier" above; these three complete the tier
+     on the axes that had forked (border 3 ways, shadow 3 ways, bg 2 spellings)
+     because the `<Menu>` primitive owned behavior and delegated ALL surface
+     chrome to its callers.
+
+     Aliased onto the pod values deliberately: the grab + lightning menus are
+     the house reference and already consumed them, and `--pod-radius` is the
+     radius tier SSOT that task 134 converged every menu onto. Aliases rather
+     than copies so a future "menus should sit deeper than the pod" decision is
+     a ONE-LINE change here that cannot drag cards / panels / the editor pod
+     along with it — which is exactly what made choosing between the tight pod
+     halo and Tailwind's `shadow-lg` a rendered judgment call the first time.
+
+     The ONE consumer is `.menu-surface` below, stamped by `MenuProvider` on
+     every menu container. CI: menu-surface-guardrail.test.ts. */
+  --menu-bg: var(--pod-editor);
+  --menu-border: var(--pod-border);
+  --menu-shadow: var(--pod-shadow);
+  --menu-radius: var(--pod-radius);
   /* Drop-shadow for a detached FLOATING panel (surface !== "card"). Single
    * consumer: FloatingPanel's floating-branch boxShadow. Kept DISTINCT from
    * --card-shadow-ambient so it can read as "lifted off the canvas" without
@@ -3899,6 +3921,32 @@ body.perf-contain .static-borrowed-text {
 .label-ref-node:active,
 .inline-math:active {
   cursor: grabbing;
+}
+
+/* ── Menu surface (task 295) ──────────────────────────────────────────────
+ *
+ * The ONE container chrome for every dropdown / context menu. `MenuProvider`
+ * stamps this class on its container, so a menu cannot author its own surface
+ * — callers pass width / padding / docked-anchor classes and nothing else.
+ *
+ * Before this, the `<Menu>` primitive owned positioning, portal, z-tier,
+ * dismissal and roving nav, and delegated all four surface axes to whoever
+ * mounted it. Six vocabularies resulted: the pod tokens (grab / lightning /
+ * heading-type / color popover / tab-plus / the two topbar kebabs),
+ * `AnchoredMenu`'s `MENU_SURFACE_CLASS` (`--border` + `shadow-lg`), MenuBar's
+ * two hand-copied twins of that string, and `BibEntryPickerMenu`'s third
+ * border grey + third shadow. Nothing failed when one drifted; task 134
+ * converged the radius axis site-by-site and left the other three forked,
+ * which is what a per-consumer surface guarantees will keep happening.
+ *
+ * Values live on the `--menu-*` tier in `:root` (see there for why they alias
+ * the pod). Nothing here is layout: no padding, no overflow, no width — those
+ * are the caller's, and `maxHeight` writes overflow from the positioner. */
+.menu-surface {
+  background: var(--menu-bg);
+  border: var(--menu-border);
+  border-radius: var(--menu-radius);
+  box-shadow: var(--menu-shadow);
 }
 
 /* ── LabelRef Popover ── */

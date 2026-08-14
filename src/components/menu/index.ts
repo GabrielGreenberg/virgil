@@ -10,11 +10,7 @@
 
 export { MenuProvider } from "./MenuProvider";
 export type { MenuProviderProps } from "./MenuProvider";
-export {
-  AnchoredMenu,
-  ANCHORED_MENU_PLACEMENTS,
-  MENU_SURFACE_CLASS,
-} from "./AnchoredMenu";
+export { AnchoredMenu, ANCHORED_MENU_PLACEMENTS } from "./AnchoredMenu";
 export type {
   AnchoredMenuProps,
   AnchoredMenuAlign,

@@ -343,8 +343,13 @@ export function BlockTypeDropdown({ editor }: { editor: Editor }) {
   // capture listener every time the placement state re-renders.
   const close = useCallback(() => setOpen(false), []);
 
+  // Placement + sizing ONLY — the surface (bg / border / shadow / radius) is
+  // the primitive's `.menu-surface` (task 295). This string used to carry a
+  // hand-copy of `MENU_SURFACE_CLASS`, which is how the header dropdowns came
+  // to wear a different border grey and a heavier shadow than the editor's own
+  // menus while every test stayed green.
   const dropdownClassName = [
-    "absolute bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 min-w-[160px]",
+    "absolute py-1 min-w-[160px]",
     placement.v === "below" ? "top-full mt-1" : "bottom-full mb-1",
     placement.h === "left" ? "left-0" : "right-0",
   ].join(" ");
@@ -552,8 +557,9 @@ export function ViewMenu({
   // reader — NO `.focus()` on the rows).
   const getActiveDescendantHost = useCallback(() => triggerRef.current, []);
 
+  // Placement + sizing ONLY; surface chrome is `.menu-surface` (task 295).
   const dropdownClass = [
-    "bg-surface border border-[var(--border)] rounded-lg shadow-lg w-52 py-1",
+    "w-52 py-1",
     placement.v === "below" ? "top-full mt-1.5" : "bottom-full mb-1.5",
     placement.h === "right" ? "right-0" : "left-0",
   ].join(" ");
