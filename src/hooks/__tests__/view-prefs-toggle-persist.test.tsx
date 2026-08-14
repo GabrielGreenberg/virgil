@@ -107,7 +107,7 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
         <Toggle
           testId="par"
           pick={(p) => p.showParTitles}
-          onClick={(vp) => vp.toggleParTitles()}
+          onClick={(vp) => vp.toggleViewPref("showParTitles")}
         />
       </StrictMode>,
     );
@@ -129,7 +129,7 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
         <Toggle
           testId="par"
           pick={(p) => p.showParTitles}
-          onClick={(vp) => vp.toggleParTitles()}
+          onClick={(vp) => vp.toggleViewPref("showParTitles")}
         />
       </StrictMode>,
     );
@@ -141,13 +141,13 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
     expect(persistedGlobal().showParTitles).toBe(start);
   });
 
-  it("% comments twin persists (no revert)", () => {
+  it("% comments persists (no revert)", () => {
     const { getByTestId } = render(
       <StrictMode>
         <Toggle
           testId="lc"
           pick={(p) => p.showLatexComments}
-          onClick={(vp) => vp.toggleLatexComments()}
+          onClick={(vp) => vp.toggleViewPref("showLatexComments")}
         />
       </StrictMode>,
     );
@@ -158,7 +158,7 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
     expect(persistedGlobal().showLatexComments).toBe(!start);
   });
 
-  it("a generic registry toggle (heading labels) persists (no revert)", () => {
+  it("heading labels persists (no revert)", () => {
     const { getByTestId } = render(
       <StrictMode>
         <Toggle
@@ -173,5 +173,31 @@ describe("useViewPrefs — global toggles persist through a real click (no rever
     fireEvent.click(btn);
     expect(btn.textContent).toBe(String(!start));
     expect(persistedGlobal().showHeadingLabels).toBe(!start);
+  });
+
+  // The SET half of the API (task 274) takes the same React path, so it can
+  // take the same revert: a set-member toggle applied twice per dispatch is a
+  // NO-OP (add then remove) rather than a visible bounce — quieter than the
+  // boolean revert and just as wrong. Drive it through a real StrictMode click.
+  it("a set-member toggle (hidden marginalia type) persists — add then remove", () => {
+    const { getByTestId } = render(
+      <StrictMode>
+        <Toggle
+          testId="hmt"
+          pick={(p) => p.hiddenMarginaliaTypes.includes("todo")}
+          onClick={(vp) => vp.toggleViewPrefMember("hiddenMarginaliaTypes", "todo")}
+        />
+      </StrictMode>,
+    );
+    const btn = getByTestId("hmt");
+    const start = btn.textContent === "true";
+
+    fireEvent.click(btn);
+    expect(btn.textContent).toBe(String(!start));
+    expect(persistedGlobal().hiddenMarginaliaTypes.includes("todo")).toBe(!start);
+
+    fireEvent.click(btn);
+    expect(btn.textContent).toBe(String(start));
+    expect(persistedGlobal().hiddenMarginaliaTypes.includes("todo")).toBe(start);
   });
 });

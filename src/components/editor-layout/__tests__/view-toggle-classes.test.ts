@@ -27,8 +27,11 @@ import { viewToggleClasses } from "../chrome-config";
 
 type MenuBarArg = Parameters<typeof viewToggleClasses>[0];
 
-/** Build a partial menuBar carrying only the fields `viewToggleClasses`
- *  reads, cast to the full bundle type (the function ignores the rest). */
+/** Build a partial menuBar carrying only what `viewToggleClasses` reads, cast
+ *  to the full bundle type (the function ignores the rest). The three pref
+ *  reads live under `prefs` since task 274 (the bundle carries the registry
+ *  slice, not one field per pref); `activeDividerLevels` is a DERIVATION and
+ *  stays top-level. The fixtures below keep their flat spelling. */
 function mb(partial: {
   showParTitles?: boolean;
   showLatexComments?: boolean;
@@ -36,7 +39,8 @@ function mb(partial: {
   activeDividerLevels: Set<number>;
   dividerWidth: string;
 }): MenuBarArg {
-  return partial as unknown as MenuBarArg;
+  const { activeDividerLevels, ...prefs } = partial;
+  return { prefs, activeDividerLevels } as unknown as MenuBarArg;
 }
 
 /** The EXACT `.editor-pane-column` className expression as it stood BEFORE
@@ -51,7 +55,7 @@ function columnClassOld(menuBar: MenuBarArg): string {
     if (!levels) return "";
     return [...levels].map((lvl) => `show-dividers-${lvl}`).join(" ");
   })();
-  return `editor-pane-column${menuBar?.showParTitles === false ? " hide-par-titles" : ""}${menuBar?.showLatexComments === false ? " hide-latex-comments" : ""}${menuBar?.showHeadingLabels === false ? " hide-heading-labels" : ""}${dividerClassName ? ` ${dividerClassName}` : ""}${menuBar ? ` dividers-width-${menuBar.dividerWidth}` : ""}`;
+  return `editor-pane-column${menuBar?.prefs.showParTitles === false ? " hide-par-titles" : ""}${menuBar?.prefs.showLatexComments === false ? " hide-latex-comments" : ""}${menuBar?.prefs.showHeadingLabels === false ? " hide-heading-labels" : ""}${dividerClassName ? ` ${dividerClassName}` : ""}${menuBar ? ` dividers-width-${menuBar.prefs.dividerWidth}` : ""}`;
 }
 
 // The three surfaces' className builders, mirroring the live code verbatim:

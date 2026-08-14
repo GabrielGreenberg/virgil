@@ -26,6 +26,7 @@ import { render, cleanup, act, fireEvent } from "@testing-library/react";
 import { BlockTypeDropdown, ViewMenu } from "../../MenuBar";
 import type { Editor } from "@tiptap/react";
 import type { DividerLevel } from "@/hooks/useViewPrefs";
+import { REGISTRY_DEFAULTS, type RegistryPrefs } from "@/lib/view-prefs/registry";
 
 // Task 153: the dropdown's out-of-scope levels (0/5/6) now gate their direct
 // `setNode` on `posHostsBlockInsert`. These tests drive a STUB editor (no real
@@ -233,35 +234,35 @@ describe("BlockTypeDropdown — NEW keyboard navigation", () => {
 
 type ViewMenuProps = Parameters<typeof ViewMenu>[0];
 
-/** Build ViewMenu props with all callbacks as spies. Pass overrides to control
- *  the checked/expanded-reflecting state values. */
-function makeViewProps(overrides: Partial<ViewMenuProps> = {}): ViewMenuProps {
+/** Build ViewMenu props with the three registry writers as spies (task 274 —
+ *  the menu takes ONE values object keyed by registry key plus those writers,
+ *  not a per-pref prop pair). `prefs` overrides layer onto the real
+ *  `REGISTRY_DEFAULTS`, so a new pref needs no edit here either. */
+function makeViewProps(
+  prefs: Partial<RegistryPrefs> = {},
+  overrides: Partial<ViewMenuProps> = {},
+): ViewMenuProps {
   return {
-    showParTitles: false,
-    onToggleParTitles: vi.fn(),
-    showCardTitles: false,
-    onToggleCardTitles: vi.fn(),
-    showLatexComments: false,
-    onToggleLatexComments: vi.fn(),
-    showHeadingLabels: false,
-    onToggleHeadingLabels: vi.fn(),
-    omniDimResting: false,
-    onToggleOmniDimResting: vi.fn(),
-    cardOutlineChrome: false,
-    onToggleCardOutline: vi.fn(),
-    showMarginalia: true,
-    onToggleMarginalia: vi.fn(),
-    hiddenMarginaliaTypes: new Set(),
-    onToggleMarginaliaType: vi.fn(),
-    showHighlights: true,
-    onToggleHighlights: vi.fn(),
-    hiddenHighlightTypes: new Set(),
-    onToggleHighlightType: vi.fn(),
+    viewPrefs: {
+      ...REGISTRY_DEFAULTS,
+      showParTitles: false,
+      showCardTitles: false,
+      showLatexComments: false,
+      showHeadingLabels: false,
+      omniDimResting: false,
+      cardOutlineChrome: false,
+      showMarginalia: true,
+      hiddenMarginaliaTypes: [],
+      showHighlights: true,
+      hiddenHighlightTypes: [],
+      dividerLevels: [2],
+      dividerWidth: "full",
+      ...prefs,
+    },
     availableDividerLevels: new Set<DividerLevel>([1, 2, 3]),
-    dividerLevels: new Set<DividerLevel>([2]),
-    onToggleDividerLevel: vi.fn(),
-    dividerWidth: "full",
-    onSetDividerWidth: vi.fn(),
+    onToggleViewPref: vi.fn(),
+    onSetViewPref: vi.fn(),
+    onToggleViewPrefMember: vi.fn(),
     onCloseAllPanels: vi.fn(),
     onOpenFontsDialog: vi.fn(),
     onOpenMarginsMode: vi.fn(),
@@ -301,7 +302,9 @@ describe("ViewMenu — checkbox rows (toggle + close/keep-open split)", () => {
     expect(par.getAttribute("role")).toBe("menuitemcheckbox");
     expect(checkedOf(par)).toBe(true);
     fireEvent.click(par);
-    expect(props.onToggleParTitles).toHaveBeenCalledTimes(1);
+    // The write travels BY KEY through the one registry-driven toggler.
+    expect(props.onToggleViewPref).toHaveBeenCalledTimes(1);
+    expect(props.onToggleViewPref).toHaveBeenCalledWith("showParTitles");
     expect(container.querySelector('[role="menu"]')).toBeNull(); // closed
   });
 
@@ -311,8 +314,25 @@ describe("ViewMenu — checkbox rows (toggle + close/keep-open split)", () => {
     fireEvent.click(viewRowByLabel("Marginalia")!); // expand
     const showMarg = viewRowByLabel("Show marginalia")!;
     fireEvent.click(showMarg);
-    expect(props.onToggleMarginalia).toHaveBeenCalledTimes(1);
+    expect(props.onToggleViewPref).toHaveBeenCalledWith("showMarginalia");
     expect(document.querySelector('[role="menu"]')).toBeTruthy(); // STILL open
+  });
+
+  it("a per-type sub-row toggles that SET's member; a width row SETs the enum", () => {
+    const props = makeViewProps();
+    openViewMenu(props);
+    fireEvent.click(viewRowByLabel("Marginalia")!); // expand
+    fireEvent.click(viewRowByLabel("Notes")!);
+    expect(props.onToggleViewPrefMember).toHaveBeenCalledWith(
+      "hiddenMarginaliaTypes",
+      "note",
+    );
+    fireEvent.click(viewRowByLabel("Show dividers for…")!); // expand
+    fireEvent.click(viewRowByLabel("Sections")!);
+    expect(props.onToggleViewPrefMember).toHaveBeenCalledWith("dividerLevels", 2);
+    fireEvent.click(viewRowByLabel("Divider preferences")!); // expand
+    fireEvent.click(viewRowByLabel("Mid width")!);
+    expect(props.onSetViewPref).toHaveBeenCalledWith("dividerWidth", "mid");
   });
 });
 
@@ -441,7 +461,7 @@ describe("ViewMenu — Escape + click-outside", () => {
   });
 
   it("the dividers group is suppressed when no divider levels are available", () => {
-    const props = makeViewProps({ availableDividerLevels: new Set<DividerLevel>() });
+    const props = makeViewProps({}, { availableDividerLevels: new Set<DividerLevel>() });
     openViewMenu(props);
     expect(viewRowByLabel("Show dividers for…")).toBeUndefined();
   });

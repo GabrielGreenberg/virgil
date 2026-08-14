@@ -35,6 +35,15 @@ export type ViewPrefMenuGroup = "display" | "marginalia" | "highlights" | "divid
  * `view-menu-registry-source.test.ts` cross-checks the JSON whitelist against
  * this flag in both directions. Ignored for `window`-scope prefs (they never
  * promote regardless).
+ *
+ * `menuRowId` — the stable DOM/menu-registry id of the row this toggle renders
+ * as in the View menu. REQUIRED (task 274): the registry already owns the row's
+ * label and its group, so owning its id is what makes the Display block fully
+ * registry-driven — a new Display toggle is one row here and ZERO edits in
+ * `MenuBar.tsx`. It is declared rather than derived from the key because these
+ * ids are addressed by tests and the menu registry ("card-outline", not
+ * "card-outline-chrome"), so a naming rule would have to be reverse-engineered
+ * from the ids it must not change.
  */
 interface ToggleDef<D extends boolean = boolean> {
   kind: "toggle";
@@ -42,6 +51,7 @@ interface ToggleDef<D extends boolean = boolean> {
   default: D;
   label: string;
   menu: ViewPrefMenuGroup;
+  menuRowId: string;
   promote?: boolean;
 }
 interface EnumDef<V extends string> {
@@ -81,19 +91,19 @@ export const VIEW_PREF_REGISTRY = {
   // promote:false — ship default frozen at the registry value (task 057). A prior
   // promote-defaults folded Gabriel's personal snapshot and drifted this true→false;
   // opting out of promotion makes the registry the durable SSOT so it can't recur.
-  showParTitles:        { kind: "toggle", scope: "global", default: true, label: "Paragraph titles", menu: "display", promote: false },
-  showCardTitles:       { kind: "toggle", scope: "global", default: true, label: "Card titles",       menu: "display" },
-  showLatexComments:    { kind: "toggle", scope: "global", default: true, label: "% comments",        menu: "display" },
-  showHeadingLabels:    { kind: "toggle", scope: "global", default: true, label: "Labels",            menu: "display" },
-  omniDimResting:       { kind: "toggle", scope: "global", default: true, label: "Dim cards at rest",  menu: "display" },
-  cardOutlineChrome:    { kind: "toggle", scope: "global", default: false, label: "Card outline",       menu: "display" },
+  showParTitles:        { kind: "toggle", scope: "global", default: true, label: "Paragraph titles", menu: "display", menuRowId: "par-titles", promote: false },
+  showCardTitles:       { kind: "toggle", scope: "global", default: true, label: "Card titles",       menu: "display", menuRowId: "card-titles" },
+  showLatexComments:    { kind: "toggle", scope: "global", default: true, label: "% comments",        menu: "display", menuRowId: "latex-comments" },
+  showHeadingLabels:    { kind: "toggle", scope: "global", default: true, label: "Labels",            menu: "display", menuRowId: "heading-labels" },
+  omniDimResting:       { kind: "toggle", scope: "global", default: true, label: "Dim cards at rest",  menu: "display", menuRowId: "omni-dim-resting" },
+  cardOutlineChrome:    { kind: "toggle", scope: "global", default: false, label: "Card outline",       menu: "display", menuRowId: "card-outline" },
   // Marginalia
-  showMarginalia:       { kind: "toggle", scope: "global", default: true, label: "Show marginalia",   menu: "marginalia" },
+  showMarginalia:       { kind: "toggle", scope: "global", default: true, label: "Show marginalia",   menu: "marginalia", menuRowId: "marginalia-show" },
   hiddenMarginaliaTypes:{ kind: "set", scope: "global", default: [] as MarginaliaType[], members: (["note", "archive", "todo"] as const) satisfies readonly MarginaliaType[],
                           polarity: "hidden", label: "Marginalia types", menu: "marginalia",
                           memberLabels: { note: "Notes", archive: "Archive", todo: "Todo" } },
   // Highlights
-  showHighlights:       { kind: "toggle", scope: "global", default: true, label: "Show highlights",   menu: "highlights" },
+  showHighlights:       { kind: "toggle", scope: "global", default: true, label: "Show highlights",   menu: "highlights", menuRowId: "highlights-show" },
   hiddenHighlightTypes: { kind: "set", scope: "global", default: [] as HighlightType[], members: (["note", "todo", "comment", "cut"] as const) satisfies readonly HighlightType[],
                           polarity: "hidden", label: "Highlight types", menu: "highlights",
                           memberLabels: { note: "Notes", todo: "Todo", comment: "Revisions", cut: "Cuts" } },
@@ -110,6 +120,19 @@ export const VIEW_PREF_REGISTRY = {
 } as const satisfies Record<string, ViewPrefDef>;
 
 export type ViewPrefKey = keyof typeof VIEW_PREF_REGISTRY;
+
+/** The registry keys whose `kind` is `"set"` — the exact domain of the generic
+ *  member toggle (`toggleViewPrefMember`). Derived from the table, so a new
+ *  `set` pref joins it by declaration alone. */
+export type SetViewPrefKey = {
+  [K in ViewPrefKey]: (typeof VIEW_PREF_REGISTRY)[K] extends { kind: "set" } ? K : never;
+}[ViewPrefKey];
+
+/** The registry keys whose `kind` is `"toggle"` — the domain of
+ *  `toggleViewPref`. (The generic setter accepts every key.) */
+export type ToggleViewPrefKey = {
+  [K in ViewPrefKey]: (typeof VIEW_PREF_REGISTRY)[K] extends { kind: "toggle" } ? K : never;
+}[ViewPrefKey];
 
 /* ── Type generation ──────────────────────────────────────────────────── */
 
@@ -159,3 +182,22 @@ export const REGISTRY_PROMOTED_GLOBAL_KEYS = REGISTRY_GLOBAL_KEYS.filter(
 
 /** All registry keys, in declaration order. */
 export const VIEW_PREF_KEYS = Object.keys(VIEW_PREF_REGISTRY) as ViewPrefKey[];
+
+/** The element type of a `kind: "set"` pref's stored array — what
+ *  `toggleViewPrefMember` adds to / removes from that array. */
+export type ViewPrefMember<K extends SetViewPrefKey> = RegistryPrefs[K][number];
+
+/** A menu-group's toggle rows, in registry declaration order: the key that
+ *  supplies the row's value + its stable row id + its label. The View menu's
+ *  Display block renders straight off this, so a new Display toggle is ONE
+ *  registry row and zero MenuBar edits (task 274). */
+export function toggleRowsInMenuGroup(
+  group: ViewPrefMenuGroup,
+): ReadonlyArray<{ key: ToggleViewPrefKey; id: string; label: string }> {
+  return Object.entries(VIEW_PREF_REGISTRY)
+    .filter(([, d]) => d.kind === "toggle" && d.menu === group)
+    .map(([key, d]) => {
+      const def = d as ToggleDef;
+      return { key: key as ToggleViewPrefKey, id: def.menuRowId, label: def.label };
+    });
+}

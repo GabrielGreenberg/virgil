@@ -516,10 +516,14 @@ export interface EditorPaneViewPrefs {
     mode: import("@/hooks/useViewPrefs").CardArchiveView,
   ) => void;
   setSuppressArchiveAtomWarning: (v: boolean) => void;
-  /** Bug 3: persist the Bibliography "Cited only / Full" filter (per-window).
-   *  Read side is `prefs.bibFilter`; mirror of the `cardArchiveView`
-   *  per-window precedent above. */
-  setBibFilter: (v: import("@/hooks/useViewPrefs").ViewPrefs["bibFilter"]) => void;
+  /** The registry-driven view-pref setter (task 274). The Bibliography panel's
+   *  "Cited only / Full" filter is a `kind: "enum"` registry pref, so it is
+   *  written as `setViewPref("bibFilter", v)` — there is no per-pref setter to
+   *  thread. Read side stays `prefs.bibFilter`. */
+  setViewPref: <K extends import("@/lib/view-prefs/registry").ViewPrefKey>(
+    key: K,
+    value: import("@/lib/view-prefs/registry").RegistryPrefs[K],
+  ) => void;
   /** Footnotes that exist as orphan cards (no in-doc reference). The
    *  Reader has none; the main app feeds these via EditorPane's own
    *  footnote-add handler (`handleAddFootnote`). */
@@ -592,33 +596,30 @@ export interface EditorPaneViewPrefs {
  * dock/float-shaped state.
  */
 export interface EditorPaneMenuBarBundle {
-  // ── Toggle state (read) ────────────────────────────────────────
-  showParTitles: boolean;
-  showCardTitles: boolean;
-  showLatexComments: boolean;
-  showHeadingLabels: boolean;
-  omniDimResting: boolean;
-  cardOutlineChrome: boolean;
-  showMarginalia: boolean;
-  hiddenMarginaliaTypes: Set<import("./MenuBar").MarginaliaType>;
-  hiddenHighlightTypes: Set<import("@/hooks/useViewPrefs").HighlightType>;
-  availableDividerLevels: Set<import("./MenuBar").DividerLevel>;
-  activeDividerLevels: Set<import("./MenuBar").DividerLevel>;
-  dividerWidth: import("./MenuBar").DividerWidth;
+  // ── Registry-owned view-pref VALUES (task 274) ─────────────────
+  // One object, read straight off the store, instead of one field per pref.
+  // Every consumer (the View menu, `viewToggleClasses`, the marginalia marker
+  // filter) addresses what it needs by registry key, so a new view pref adds
+  // no field here and no prop anywhere below.
+  prefs: import("@/lib/view-prefs/registry").RegistryPrefs;
 
-  // ── Toggle setters ─────────────────────────────────────────────
-  onToggleParTitles: () => void;
-  onToggleCardTitles: () => void;
-  onToggleLatexComments: () => void;
-  toggleHeadingLabels: () => void;
-  onToggleOmniDimResting: () => void;
-  onToggleCardOutline: () => void;
-  toggleMarginalia: () => void;
-  toggleMarginaliaType: (type: import("./MenuBar").MarginaliaType) => void;
-  toggleHighlightType: (type: import("@/hooks/useViewPrefs").HighlightType) => void;
-  toggleDividerLevel: (level: import("./MenuBar").DividerLevel) => void;
-  setDividerWidth: (w: import("./MenuBar").DividerWidth) => void;
-  setShowHighlights: (v: boolean) => void;
+  // ── Doc-DERIVED divider sets (not prefs) ───────────────────────
+  /** Heading levels actually present in the doc. */
+  availableDividerLevels: Set<import("./MenuBar").DividerLevel>;
+  /** `prefs.dividerLevels ∩ availableDividerLevels` — the `show-dividers-N`
+   *  class tokens are built from this, so it stays a derivation, not a pref. */
+  activeDividerLevels: Set<import("./MenuBar").DividerLevel>;
+
+  // ── The three registry-driven writers ──────────────────────────
+  toggleViewPref: (key: import("@/lib/view-prefs/registry").ViewPrefKey) => void;
+  setViewPref: <K extends import("@/lib/view-prefs/registry").ViewPrefKey>(
+    key: K,
+    value: import("@/lib/view-prefs/registry").RegistryPrefs[K],
+  ) => void;
+  toggleViewPrefMember: <K extends import("@/lib/view-prefs/registry").SetViewPrefKey>(
+    key: K,
+    member: import("@/lib/view-prefs/registry").ViewPrefMember<K>,
+  ) => void;
   closeAllPanels: () => void;
 
   // ── Para nav (back/forward through paragraph history) ──────────
@@ -3669,20 +3670,20 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // from the menu bundle. Reader (no menuBar) defaults to showing all
   // markers — `menuBar?.showMarginalia === false` is false for undefined.
   const visibleMarginaliaMarkers = useMemo(() => {
-    if (menuBar?.showMarginalia === false) return [];
-    const hidden = menuBar?.hiddenMarginaliaTypes;
+    if (menuBar?.prefs.showMarginalia === false) return [];
+    const hidden = menuBar?.prefs.hiddenMarginaliaTypes;
     // Archived cards drop out of the margin entirely (they live only under
     // their panel's View Archives/All), on top of the per-type hide set.
     return marginaliaMarkers.filter(
       (m) =>
         !archivedIds.has(m.entityId) &&
-        (!hidden || hidden.size === 0 || !hidden.has(m.type as MarginaliaType)),
+        (!hidden || hidden.length === 0 || !hidden.includes(m.type as MarginaliaType)),
     );
   }, [
     marginaliaMarkers,
     archivedIds,
-    menuBar?.showMarginalia,
-    menuBar?.hiddenMarginaliaTypes,
+    menuBar?.prefs.showMarginalia,
+    menuBar?.prefs.hiddenMarginaliaTypes,
   ]);
 
   const cardCreation = useCardCreation({
@@ -4369,7 +4370,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // this one flag.
   const marginaliaLaneReserved =
     !!menuBar &&
-    menuBar.showMarginalia !== false &&
+    menuBar.prefs.showMarginalia !== false &&
     !viewPrefs?.zenMode &&
     !compressX;
   const {
@@ -6475,31 +6476,11 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
                     {menuBar && (
                     <MenuBar
                       editor={overrideEditor ?? editor}
-                      showParTitles={menuBar.showParTitles}
-                      onToggleParTitles={menuBar.onToggleParTitles}
-                      showCardTitles={menuBar.showCardTitles}
-                      onToggleCardTitles={menuBar.onToggleCardTitles}
-                      showLatexComments={menuBar.showLatexComments}
-                      onToggleLatexComments={menuBar.onToggleLatexComments}
-                      showHeadingLabels={menuBar.showHeadingLabels}
-                      onToggleHeadingLabels={menuBar.toggleHeadingLabels}
-                      omniDimResting={menuBar.omniDimResting}
-                      onToggleOmniDimResting={menuBar.onToggleOmniDimResting}
-                      cardOutlineChrome={menuBar.cardOutlineChrome}
-                      onToggleCardOutline={menuBar.onToggleCardOutline}
-                      showMarginalia={menuBar.showMarginalia}
-                      onToggleMarginalia={menuBar.toggleMarginalia}
-                      hiddenMarginaliaTypes={menuBar.hiddenMarginaliaTypes}
-                      onToggleMarginaliaType={menuBar.toggleMarginaliaType}
-                      showHighlights={viewPrefs ? viewPrefs.prefs.showHighlights : true}
-                      onToggleHighlights={() => menuBar.setShowHighlights(viewPrefs ? !viewPrefs.prefs.showHighlights : false)}
-                      hiddenHighlightTypes={menuBar.hiddenHighlightTypes}
-                      onToggleHighlightType={menuBar.toggleHighlightType}
+                      viewPrefs={menuBar.prefs}
                       availableDividerLevels={menuBar.availableDividerLevels}
-                      dividerLevels={menuBar.activeDividerLevels}
-                      onToggleDividerLevel={menuBar.toggleDividerLevel}
-                      dividerWidth={menuBar.dividerWidth}
-                      onSetDividerWidth={menuBar.setDividerWidth}
+                      onToggleViewPref={menuBar.toggleViewPref}
+                      onSetViewPref={menuBar.setViewPref}
+                      onToggleViewPrefMember={menuBar.toggleViewPrefMember}
                       onParaNavBack={menuBar.paraNavBack}
                       onParaNavForward={menuBar.paraNavForward}
                       paraNavBackDisabled={menuBar.paraNavBackDisabled}
@@ -8191,7 +8172,7 @@ function PaneRailBody({
         addEntryRequest={bibSettingsHook.addEntryRequest}
         removeEntryRequest={bibSettingsHook.removeEntryRequest}
         bibFilter={viewPrefs?.prefs.bibFilter}
-        setBibFilter={viewPrefs?.setBibFilter}
+        setViewPref={viewPrefs?.setViewPref}
       />
     );
   }

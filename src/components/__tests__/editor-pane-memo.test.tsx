@@ -66,7 +66,7 @@ const VP = {
   closeCardPopout: stableFn,
   setCardFloatPosition: stableFn,
   toggleOmniHideAllCards: stableFn,
-  setBibFilter: stableFn,
+  setViewPref: stableFn,
   collapseLeft: stableFn,
   collapseRight: stableFn,
   expandLeft: stableFn,
@@ -132,7 +132,7 @@ describe("buildEditorPaneViewPrefs — section-path isolation (Phase 5a)", () =>
     expect(a.togglePanel).toBe(b.togglePanel);
     expect(a.onScrollToHeading).toBe(b.onScrollToHeading);
     expect(a.getOmniEnabled).toBe(b.getOmniEnabled);
-    expect(a.setBibFilter).toBe(b.setBibFilter);
+    expect(a.setViewPref).toBe(b.setViewPref);
   });
 
   it("active bundle: the live section path flows through to the consumers", () => {
