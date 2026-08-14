@@ -301,46 +301,20 @@ function useReaderMenuBarBundle(
     return s;
   }, [vp.prefs.dividerLevels, availableDividerLevels]);
 
-  // Memoize the hidden-type Sets on their `vp.prefs.*` source so MenuBar's
-  // `memo()` isn't defeated each render (mirrors EditorLayout :912 / :1184).
-  const hiddenMarginaliaTypes = useMemo(
-    () => new Set(vp.prefs.hiddenMarginaliaTypes),
-    [vp.prefs.hiddenMarginaliaTypes],
-  );
-  const hiddenHighlightTypes = useMemo(
-    () => new Set(vp.prefs.hiddenHighlightTypes),
-    [vp.prefs.hiddenHighlightTypes],
-  );
-
   return useMemo<EditorPaneMenuBarBundle>(
     () => ({
-      // ── Read state ──────────────────────────────────────────────
-      showParTitles: vp.prefs.showParTitles,
-      showCardTitles: vp.prefs.showCardTitles,
-      showLatexComments: vp.prefs.showLatexComments,
-      showHeadingLabels: vp.prefs.showHeadingLabels,
-      omniDimResting: vp.prefs.omniDimResting,
-      cardOutlineChrome: vp.prefs.cardOutlineChrome,
-      showMarginalia: vp.prefs.showMarginalia,
-      hiddenMarginaliaTypes,
-      hiddenHighlightTypes,
+      // ── Read state: the whole registry slice, straight off the store ──
+      // (task 274 — the per-pref fields, and the two `new Set(…)` memos that
+      // fed them, are gone; `vp.prefs.hidden*Types` is already reference-stable
+      // per field, so MenuBar's `memo()` is better served than before.)
+      prefs: vp.prefs,
       availableDividerLevels,
       activeDividerLevels,
-      dividerWidth: vp.prefs.dividerWidth,
 
-      // ── Toggle setters (all off the same ephemeral `vp`) ────────
-      onToggleParTitles: vp.toggleParTitles,
-      onToggleCardTitles: () => vp.toggleViewPref("showCardTitles"),
-      onToggleLatexComments: vp.toggleLatexComments,
-      toggleHeadingLabels: vp.toggleHeadingLabels,
-      onToggleOmniDimResting: () => vp.toggleViewPref("omniDimResting"),
-      onToggleCardOutline: () => vp.toggleViewPref("cardOutlineChrome"),
-      toggleMarginalia: vp.toggleMarginalia,
-      toggleMarginaliaType: vp.toggleMarginaliaType,
-      toggleHighlightType: vp.toggleHighlightType,
-      toggleDividerLevel: vp.toggleDividerLevel,
-      setDividerWidth: vp.setDividerWidth,
-      setShowHighlights: vp.setShowHighlights,
+      // ── The three writers (all off the same ephemeral `vp`) ─────
+      toggleViewPref: vp.toggleViewPref,
+      setViewPref: vp.setViewPref,
+      toggleViewPrefMember: vp.toggleViewPrefMember,
       closeAllPanels: vp.closeAllPanels,
 
       // ── Paragraph back/forward nav (functional port) ────────────
@@ -356,7 +330,7 @@ function useReaderMenuBarBundle(
       onOpenFontsDialog: () => {},
       onOpenMarginsMode: () => {},
     }),
-    [vp, availableDividerLevels, activeDividerLevels, hiddenMarginaliaTypes, hiddenHighlightTypes, paraNav],
+    [vp, availableDividerLevels, activeDividerLevels, paraNav],
   );
 }
 

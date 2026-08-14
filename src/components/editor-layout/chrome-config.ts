@@ -67,11 +67,11 @@ export function viewToggleClasses(
 ): string {
   if (!menuBar) return "";
   const tokens: string[] = [];
-  if (menuBar.showParTitles === false) tokens.push("hide-par-titles");
-  if (menuBar.showLatexComments === false) tokens.push("hide-latex-comments");
-  if (menuBar.showHeadingLabels === false) tokens.push("hide-heading-labels");
+  if (menuBar.prefs.showParTitles === false) tokens.push("hide-par-titles");
+  if (menuBar.prefs.showLatexComments === false) tokens.push("hide-latex-comments");
+  if (menuBar.prefs.showHeadingLabels === false) tokens.push("hide-heading-labels");
   for (const lvl of menuBar.activeDividerLevels) tokens.push(`show-dividers-${lvl}`);
-  tokens.push(`dividers-width-${menuBar.dividerWidth}`);
+  tokens.push(`dividers-width-${menuBar.prefs.dividerWidth}`);
   return tokens.join(" ");
 }
 

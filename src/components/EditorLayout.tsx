@@ -628,8 +628,6 @@ export default function EditorLayout() {
     tradePanelHeights,
     notePanelUse,
     setCodePaneRatio,
-    setShowHighlights,
-    toggleHighlightType,
     togglePopout,
     closePopout,
     openPanelFloat,
@@ -647,20 +645,18 @@ export default function EditorLayout() {
     setEditorTopMargin,
     setEditorBottomMargin,
     setTopbarRightCollapsed,
-    toggleMarginalia,
-    toggleMarginaliaType,
-    toggleHeadingLabels,
-    toggleDividerLevel,
-    setDividerWidth,
-    toggleParTitles,
-    toggleLatexComments,
+    // The three registry-driven view-pref writers (task 274). Every view pref
+    // — par titles, % comments, marginalia + its hidden types, heading labels,
+    // highlights + their hidden types, divider levels/width, the bib filter —
+    // is written by key through these; there are no per-pref setters.
+    setViewPref,
     toggleViewPref,
+    toggleViewPrefMember,
     toggleOmniCategory,
     resetOmniSide,
     toggleOmniHideAllCards,
     setCardArchiveView,
     setSuppressArchiveAtomWarning,
-    setBibFilter,
   } = viewPrefsResult;
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -937,26 +933,20 @@ export default function EditorLayout() {
   // useWordCount is consumed inside EditorPane (per-doc); no shell-side
   // counter needed.
   const focusMode = useFocusMode(docIdForHooks, editorInstance);
-  // Paragraph-titles + %-comments visibility — persisted via ViewPrefs
-  // (global, like their View-menu siblings). Previously a plain
-  // `useState(true)` here, which reset on every reload (the reported bug);
-  // now derived read-side from `prefs`, toggled via `toggleParTitles` /
-  // `toggleLatexComments`.
-  const showParTitles = prefs.showParTitles;
+  // The View-menu visibility prefs (paragraph titles, % comments, marginalia,
+  // heading labels, dividers, …) are persisted via ViewPrefs — global, mirrored
+  // across windows, riding the personal-prefs promotion pipeline. They are READ
+  // off `prefs` wherever needed and WRITTEN by key through the three registry
+  // writers above (task 274); the two below are pulled out only because a local
+  // effect reflects each onto a <body> class.
   const showCardTitles = prefs.showCardTitles;
-  const showLatexComments = prefs.showLatexComments;
 
   // Card +T add-title affordance visibility — the card analog of
   // `showParTitles`. Unlike paragraph titles (gated by a class on
   // `.editor-pane-column` via `viewToggleClasses`), cards render in the panel
   // strips, the omni host, AND body-portaled float popouts — none under that
   // column — so the gate lives on a body-level `.hide-card-titles` class that
-  // every card surface descends from. Toggled via the generic registry-guarded
-  // setter (the blessed path for new toggles).
-  const toggleCardTitles = useCallback(
-    () => toggleViewPref("showCardTitles"),
-    [toggleViewPref],
-  );
+  // every card surface descends from.
   // Reflect the pref onto <body> so the CSS gate reaches every card surface,
   // including popouts portaled outside the React tree. Depends only on the
   // boolean pref — zero per-keystroke work (keystroke sanctity).
@@ -966,35 +956,11 @@ export default function EditorLayout() {
     return () => document.body.classList.remove(cls);
   }, [showCardTitles]);
 
-  // Marginalia / divider / heading-label visibility — persisted via
-  // ViewPrefs (global, mirrors across windows, rides the personal-prefs
-  // promotion pipeline). The toggles arrive as setters from useViewPrefs
-  // above; we derive the read-side state here so existing usage sites
-  // (props plumbing into MenuBar, EditorPane decoration classes) keep
-  // their current shape.
-  const showMarginalia = prefs.showMarginalia;
-  const hiddenMarginaliaTypes = useMemo(
-    () => new Set(prefs.hiddenMarginaliaTypes),
-    [prefs.hiddenMarginaliaTypes],
-  );
-  const showHeadingLabels = prefs.showHeadingLabels;
-  const omniDimResting = prefs.omniDimResting;
-  // Stable toggle for the omni "dim at rest" view-pref via the generic
-  // registry-guarded setter (the blessed path for new toggles).
-  const toggleOmniDimResting = useCallback(
-    () => toggleViewPref("omniDimResting"),
-    [toggleViewPref],
-  );
-  // Card outline chrome — the colored hover/select outline is now OPT-IN
-  // (default off: retint/brighten stays, colored edge is gone). Toggled via
-  // the generic registry-guarded setter and reflected to a body class so the
-  // CSS gate reaches every card surface (docked + omni + portaled floats),
-  // exactly like `showCardTitles`.
+  // Card outline chrome — the colored hover/select outline is OPT-IN
+  // (default off: retint/brighten stays, colored edge is gone), reflected to a
+  // body class so the CSS gate reaches every card surface (docked + omni +
+  // portaled floats), exactly like `showCardTitles`.
   const cardOutlineChrome = prefs.cardOutlineChrome;
-  const toggleCardOutline = useCallback(
-    () => toggleViewPref("cardOutlineChrome"),
-    [toggleViewPref],
-  );
   // Reflect the opt-in pref onto <body>: the outline rules require
   // `.card-outline-chrome`, so the default (class absent) is the no-outline
   // look. Depends only on the boolean — zero per-keystroke work.
@@ -1003,11 +969,12 @@ export default function EditorLayout() {
     document.body.classList.toggle(cls, cardOutlineChrome);
     return () => document.body.classList.remove(cls);
   }, [cardOutlineChrome]);
+  // Divider levels the user has ENABLED, as a Set for the ∩ below (the pref
+  // itself is an array; only this derivation wants set semantics).
   const dividerLevels = useMemo(
     () => new Set(prefs.dividerLevels),
     [prefs.dividerLevels],
   );
-  const dividerWidth = prefs.dividerWidth;
 
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
@@ -2305,31 +2272,17 @@ export default function EditorLayout() {
   );
 
 
+  // The MenuBar bundle: the registry slice + the two doc-derived divider sets
+  // + the three registry-driven writers (task 274). It carries no per-pref
+  // field and no per-pref callback, so a new view pref is a registry row and
+  // nothing here.
   const editorPaneMenuBar: EditorPaneMenuBarBundle = useMemo(() => ({
-    showParTitles,
-    showCardTitles,
-    showLatexComments,
-    showHeadingLabels,
-    omniDimResting,
-    cardOutlineChrome,
-    showMarginalia,
-    hiddenMarginaliaTypes,
-    hiddenHighlightTypes,
+    prefs,
     availableDividerLevels,
     activeDividerLevels,
-    dividerWidth,
-    onToggleParTitles: toggleParTitles,
-    onToggleCardTitles: toggleCardTitles,
-    onToggleLatexComments: toggleLatexComments,
-    toggleHeadingLabels,
-    onToggleOmniDimResting: toggleOmniDimResting,
-    onToggleCardOutline: toggleCardOutline,
-    toggleMarginalia,
-    toggleMarginaliaType,
-    toggleHighlightType,
-    toggleDividerLevel,
-    setDividerWidth,
-    setShowHighlights,
+    toggleViewPref,
+    setViewPref,
+    toggleViewPrefMember,
     closeAllPanels,
     paraNavBack,
     paraNavForward,
@@ -2338,30 +2291,12 @@ export default function EditorLayout() {
     onOpenFontsDialog: () => setFontsOpen(true),
     onOpenMarginsMode: enterMarginEditMode,
   }), [
-    showParTitles,
-    showCardTitles,
-    showLatexComments,
-    showHeadingLabels,
-    omniDimResting,
-    cardOutlineChrome,
-    showMarginalia,
-    hiddenMarginaliaTypes,
-    hiddenHighlightTypes,
+    prefs,
     availableDividerLevels,
     activeDividerLevels,
-    dividerWidth,
-    toggleParTitles,
-    toggleCardTitles,
-    toggleLatexComments,
-    toggleHeadingLabels,
-    toggleOmniDimResting,
-    toggleCardOutline,
-    toggleMarginalia,
-    toggleMarginaliaType,
-    toggleHighlightType,
-    toggleDividerLevel,
-    setDividerWidth,
-    setShowHighlights,
+    toggleViewPref,
+    setViewPref,
+    toggleViewPrefMember,
     closeAllPanels,
     paraNavBack,
     paraNavForward,
@@ -3742,7 +3677,7 @@ export default function EditorLayout() {
         onClose={() => setPrintOpen(false)}
         options={prefs.printOptions}
         onOptionsChange={setPrintOptions}
-        marginaliaLive={showMarginalia}
+        marginaliaLive={prefs.showMarginalia}
       />
       <FontsDialog
         open={fontsOpen}

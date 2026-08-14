@@ -2,8 +2,15 @@
 
 import { memo, useCallback, useState, useRef, useEffect, type ReactNode } from "react";
 import { Editor } from "@tiptap/react";
-import type { HighlightType, MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
-import { VIEW_PREF_REGISTRY } from "@/lib/view-prefs/registry";
+import type { DividerLevel } from "@/hooks/useViewPrefs";
+import {
+  VIEW_PREF_REGISTRY,
+  toggleRowsInMenuGroup,
+  type RegistryPrefs,
+  type ViewPrefKey,
+  type SetViewPrefKey,
+  type ViewPrefMember,
+} from "@/lib/view-prefs/registry";
 import { MenuProvider } from "./menu/MenuProvider";
 import { useMenuItem } from "./menu/useMenuItem";
 import { MenuToggleRow } from "./menu/MenuToggleRow";
@@ -41,25 +48,20 @@ import { posHostsBlockInsert } from "@/text-objects/text-object-registry";
 // Re-exported here for back-compat with existing consumers.
 export type { MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
 
-// Row labels are sourced from VIEW_PREF_REGISTRY (the single source of truth),
-// not re-declared here. The ViewMenu maps the registry's `memberLabels` /
-// `valueLabels` / `menu` grouping into the existing MenuToggleRow/ViewGroupRow
-// JSX, keeping the prop-controlled `checked`/`onToggle` contract intact.
+// Row labels, member/value vocabularies AND stable row ids are all sourced from
+// VIEW_PREF_REGISTRY (the single source of truth), never re-declared here. Since
+// task 274 the VALUES and the WRITES travel by registry key too — every row
+// reads `viewPrefs[key]` and calls one of the three registry-driven writers — so
+// the ViewMenu holds no per-pref knowledge at all.
 const DIVIDER_LEVEL_LABELS = VIEW_PREF_REGISTRY.dividerLevels.memberLabels as Record<DividerLevel, string>;
-const DIVIDER_WIDTH_LABELS = VIEW_PREF_REGISTRY.dividerWidth.valueLabels as Record<DividerWidth, string>;
-/** Display-group rows in render order, with each row's label + the props key
- *  that supplies its `checked`/`onToggle`. Enumerated from the registry
- *  (`menu === "display"`) so the Display block is registry-driven; the prop
- *  wiring stays explicit (the keyboard test mounts ViewMenu with a full prop
- *  bag). The id is the existing row id (kept stable for the menu registry). */
-const DISPLAY_ROWS = [
-  { id: "par-titles", key: "showParTitles", label: VIEW_PREF_REGISTRY.showParTitles.label },
-  { id: "card-titles", key: "showCardTitles", label: VIEW_PREF_REGISTRY.showCardTitles.label },
-  { id: "latex-comments", key: "showLatexComments", label: VIEW_PREF_REGISTRY.showLatexComments.label },
-  { id: "heading-labels", key: "showHeadingLabels", label: VIEW_PREF_REGISTRY.showHeadingLabels.label },
-  { id: "omni-dim-resting", key: "omniDimResting", label: VIEW_PREF_REGISTRY.omniDimResting.label },
-  { id: "card-outline", key: "cardOutlineChrome", label: VIEW_PREF_REGISTRY.cardOutlineChrome.label },
-] as const;
+const DIVIDER_WIDTH_LABELS = VIEW_PREF_REGISTRY.dividerWidth.valueLabels;
+/** Display-group rows in registry declaration order — key + stable row id +
+ *  label, all three sourced from `VIEW_PREF_REGISTRY` (task 274). The value and
+ *  the write both travel BY KEY (`viewPrefs[key]` / `onToggleViewPref(key)`),
+ *  so adding a Display toggle is one registry row and zero edits here — where
+ *  it previously needed a row in this list, a prop pair on `MenuBarProps`, an
+ *  entry in ViewMenu's `Pick`, and two entries in the checked/toggle maps. */
+const DISPLAY_ROWS = toggleRowsInMenuGroup("display");
 /** Marginalia per-type sub-rows (members + labels from the registry). */
 const MARGINALIA_TYPE_ROWS = VIEW_PREF_REGISTRY.hiddenMarginaliaTypes.members.map((type) => ({
   type,
@@ -73,31 +75,21 @@ const HIGHLIGHT_TYPE_ROWS = VIEW_PREF_REGISTRY.hiddenHighlightTypes.members.map(
 
 interface MenuBarProps {
   editor: Editor | null;
-  showParTitles: boolean;
-  onToggleParTitles: () => void;
-  showCardTitles: boolean;
-  onToggleCardTitles: () => void;
-  showLatexComments: boolean;
-  onToggleLatexComments: () => void;
-  showHeadingLabels: boolean;
-  onToggleHeadingLabels: () => void;
-  omniDimResting: boolean;
-  onToggleOmniDimResting: () => void;
-  cardOutlineChrome: boolean;
-  onToggleCardOutline: () => void;
-  showMarginalia: boolean;
-  onToggleMarginalia: () => void;
-  hiddenMarginaliaTypes: Set<MarginaliaType>;
-  onToggleMarginaliaType: (type: MarginaliaType) => void;
-  showHighlights: boolean;
-  onToggleHighlights: () => void;
-  hiddenHighlightTypes: Set<HighlightType>;
-  onToggleHighlightType: (type: HighlightType) => void;
+  /** Every registry-owned view-pref VALUE, in one object read straight off the
+   *  store (task 274). The View menu addresses each row's value by its registry
+   *  key, so a new pref adds no prop here. */
+  viewPrefs: RegistryPrefs;
+  /** Heading levels actually PRESENT in the doc — a derivation, not a pref, so
+   *  it stays its own prop. Rows outside it aren't rendered. */
   availableDividerLevels: Set<DividerLevel>;
-  dividerLevels: Set<DividerLevel>;
-  onToggleDividerLevel: (level: DividerLevel) => void;
-  dividerWidth: DividerWidth;
-  onSetDividerWidth: (width: DividerWidth) => void;
+  /** The three registry-driven writers (`useViewPrefs`), keyed by
+   *  `ViewPrefKey`. The menu never holds a per-pref callback. */
+  onToggleViewPref: (key: ViewPrefKey) => void;
+  onSetViewPref: <K extends ViewPrefKey>(key: K, value: RegistryPrefs[K]) => void;
+  onToggleViewPrefMember: <K extends SetViewPrefKey>(
+    key: K,
+    member: ViewPrefMember<K>,
+  ) => void;
   onParaNavBack?: () => void;
   onParaNavForward?: () => void;
   paraNavBackDisabled?: boolean;
@@ -502,47 +494,18 @@ function ViewActionRow({ id, label, onRun }: { id: string; label: string; onRun:
  *  controlled props; the default-export `MenuBar` is the only production
  *  consumer (via `MenuBarContent`). */
 export function ViewMenu({
-  showParTitles,
-  onToggleParTitles,
-  showCardTitles,
-  onToggleCardTitles,
-  showLatexComments,
-  onToggleLatexComments,
-  showHeadingLabels,
-  onToggleHeadingLabels,
-  omniDimResting,
-  onToggleOmniDimResting,
-  cardOutlineChrome,
-  onToggleCardOutline,
-  showMarginalia,
-  onToggleMarginalia,
-  hiddenMarginaliaTypes,
-  onToggleMarginaliaType,
-  showHighlights,
-  onToggleHighlights,
-  hiddenHighlightTypes,
-  onToggleHighlightType,
+  viewPrefs,
   availableDividerLevels,
-  dividerLevels,
-  onToggleDividerLevel,
-  dividerWidth,
-  onSetDividerWidth,
+  onToggleViewPref,
+  onSetViewPref,
+  onToggleViewPrefMember,
   onCloseAllPanels,
   onOpenFontsDialog,
   onOpenMarginsMode,
 }: Pick<MenuBarProps,
-  | "showParTitles" | "onToggleParTitles"
-  | "showCardTitles" | "onToggleCardTitles"
-  | "showLatexComments" | "onToggleLatexComments"
-  | "showHeadingLabels" | "onToggleHeadingLabels"
-  | "omniDimResting" | "onToggleOmniDimResting"
-  | "cardOutlineChrome" | "onToggleCardOutline"
-  | "showMarginalia" | "onToggleMarginalia"
-  | "hiddenMarginaliaTypes" | "onToggleMarginaliaType"
-  | "showHighlights" | "onToggleHighlights"
-  | "hiddenHighlightTypes" | "onToggleHighlightType"
-  | "availableDividerLevels" | "dividerLevels" | "onToggleDividerLevel"
-  | "dividerWidth" | "onSetDividerWidth"
+  | "viewPrefs"
+  | "availableDividerLevels"
+  | "onToggleViewPref" | "onSetViewPref" | "onToggleViewPrefMember"
   | "onCloseAllPanels"
   | "onOpenFontsDialog"
   | "onOpenMarginsMode"
@@ -651,50 +614,31 @@ export function ViewMenu({
         >
         <div ref={dropdownRef}>
           <MenuSectionLabel>Display</MenuSectionLabel>
-          {/* The Display rows are enumerated from VIEW_PREF_REGISTRY (id + label
-              + membership). `checked`/`onToggle` stay PROP-controlled — the
-              keyboard test mounts ViewMenu with a full prop bag — so these two
-              small maps bridge the registry key to the existing per-row props. */}
-          {(() => {
-            const displayChecked: Record<(typeof DISPLAY_ROWS)[number]["key"], boolean> = {
-              showParTitles,
-              showCardTitles,
-              showLatexComments,
-              showHeadingLabels,
-              omniDimResting,
-              cardOutlineChrome,
-            };
-            const displayToggle: Record<(typeof DISPLAY_ROWS)[number]["key"], () => void> = {
-              showParTitles: onToggleParTitles,
-              showCardTitles: onToggleCardTitles,
-              showLatexComments: onToggleLatexComments,
-              showHeadingLabels: onToggleHeadingLabels,
-              omniDimResting: onToggleOmniDimResting,
-              cardOutlineChrome: onToggleCardOutline,
-            };
-            return DISPLAY_ROWS.map((row) => (
-              <MenuToggleRow
-                key={row.id}
-                id={row.id}
-                label={row.label}
-                checked={displayChecked[row.key]}
-                onToggle={() => { displayToggle[row.key](); setOpen(false); }}
-              />
-            ));
-          })()}
+          {/* Every row below reads its value as `viewPrefs[<registry key>]` and
+              writes through one of the three registry-driven writers, so the
+              menu holds no per-pref knowledge at all (task 274). */}
+          {DISPLAY_ROWS.map((row) => (
+            <MenuToggleRow
+              key={row.id}
+              id={row.id}
+              label={row.label}
+              checked={viewPrefs[row.key]}
+              onToggle={() => { onToggleViewPref(row.key); setOpen(false); }}
+            />
+          ))}
           <MenuSeparator />
           <ViewGroupRow id="marginalia-group" label="Marginalia" expanded={marginaliaExpanded} onToggle={() => setMarginaliaExpanded((p) => !p)} />
           {marginaliaExpanded && (
             <>
-              <MenuToggleRow id="marginalia-show" label={VIEW_PREF_REGISTRY.showMarginalia.label} checked={showMarginalia} indent={1} onToggle={() => onToggleMarginalia()} />
-              {showMarginalia && MARGINALIA_TYPE_ROWS.map(({ type, label }) => (
+              <MenuToggleRow id={VIEW_PREF_REGISTRY.showMarginalia.menuRowId} label={VIEW_PREF_REGISTRY.showMarginalia.label} checked={viewPrefs.showMarginalia} indent={1} onToggle={() => onToggleViewPref("showMarginalia")} />
+              {viewPrefs.showMarginalia && MARGINALIA_TYPE_ROWS.map(({ type, label }) => (
                 <MenuToggleRow
                   key={type}
                   id={`marginalia-type-${type}`}
                   label={label}
-                  checked={!hiddenMarginaliaTypes.has(type)}
+                  checked={!viewPrefs.hiddenMarginaliaTypes.includes(type)}
                   indent={1}
-                  onToggle={() => onToggleMarginaliaType(type)}
+                  onToggle={() => onToggleViewPrefMember("hiddenMarginaliaTypes", type)}
                 />
               ))}
             </>
@@ -702,15 +646,15 @@ export function ViewMenu({
           <ViewGroupRow id="highlights-group" label="Highlights" expanded={highlightsExpanded} onToggle={() => setHighlightsExpanded((p) => !p)} />
           {highlightsExpanded && (
             <>
-              <MenuToggleRow id="highlights-show" label={VIEW_PREF_REGISTRY.showHighlights.label} checked={showHighlights} indent={1} onToggle={onToggleHighlights} />
-              {showHighlights && HIGHLIGHT_TYPE_ROWS.map(({ type, label }) => (
+              <MenuToggleRow id={VIEW_PREF_REGISTRY.showHighlights.menuRowId} label={VIEW_PREF_REGISTRY.showHighlights.label} checked={viewPrefs.showHighlights} indent={1} onToggle={() => onToggleViewPref("showHighlights")} />
+              {viewPrefs.showHighlights && HIGHLIGHT_TYPE_ROWS.map(({ type, label }) => (
                 <MenuToggleRow
                   key={type}
                   id={`highlights-type-${type}`}
                   label={label}
-                  checked={!hiddenHighlightTypes.has(type)}
+                  checked={!viewPrefs.hiddenHighlightTypes.includes(type)}
                   indent={1}
-                  onToggle={() => onToggleHighlightType(type)}
+                  onToggle={() => onToggleViewPrefMember("hiddenHighlightTypes", type)}
                 />
               ))}
             </>
@@ -725,9 +669,9 @@ export function ViewMenu({
                       key={lvl}
                       id={`divider-level-${lvl}`}
                       label={DIVIDER_LEVEL_LABELS[lvl]}
-                      checked={dividerLevels.has(lvl)}
+                      checked={viewPrefs.dividerLevels.includes(lvl)}
                       indent={1}
-                      onToggle={() => onToggleDividerLevel(lvl)}
+                      onToggle={() => onToggleViewPrefMember("dividerLevels", lvl)}
                     />
                   ))}
                   <ViewGroupRow id="divider-prefs-group" label={VIEW_PREF_REGISTRY.dividerWidth.label} expanded={dividerPrefsExpanded} indent={1} onToggle={() => setDividerPrefsExpanded((p) => !p)} />
@@ -736,9 +680,9 @@ export function ViewMenu({
                       key={w}
                       id={`divider-width-${w}`}
                       label={DIVIDER_WIDTH_LABELS[w]}
-                      checked={dividerWidth === w}
+                      checked={viewPrefs.dividerWidth === w}
                       indent={2}
-                      onToggle={() => onSetDividerWidth(w)}
+                      onToggle={() => onSetViewPref("dividerWidth", w)}
                     />
                   ))}
                 </>
@@ -781,18 +725,9 @@ export function ViewMenu({
  *  reloads. See `split-editor-panes.tsx` for the parked machinery.) */
 function MenuBarContent({
   editor,
-  showParTitles, onToggleParTitles,
-  showCardTitles, onToggleCardTitles,
-  showLatexComments, onToggleLatexComments,
-  showHeadingLabels, onToggleHeadingLabels,
-  omniDimResting, onToggleOmniDimResting,
-  cardOutlineChrome, onToggleCardOutline,
-  showMarginalia, onToggleMarginalia,
-  hiddenMarginaliaTypes, onToggleMarginaliaType,
-  showHighlights, onToggleHighlights,
-  hiddenHighlightTypes, onToggleHighlightType,
-  availableDividerLevels, dividerLevels, onToggleDividerLevel,
-  dividerWidth, onSetDividerWidth,
+  viewPrefs,
+  availableDividerLevels,
+  onToggleViewPref, onSetViewPref, onToggleViewPrefMember,
   onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled,
   onCloseAllPanels,
   onOpenFontsDialog,
@@ -808,31 +743,11 @@ function MenuBarContent({
 } & Omit<MenuBarProps, "editor">) {
   const viewMenu = (
     <ViewMenu
-      showParTitles={showParTitles}
-      onToggleParTitles={onToggleParTitles}
-      showCardTitles={showCardTitles}
-      onToggleCardTitles={onToggleCardTitles}
-      showLatexComments={showLatexComments}
-      onToggleLatexComments={onToggleLatexComments}
-      showHeadingLabels={showHeadingLabels}
-      onToggleHeadingLabels={onToggleHeadingLabels}
-      omniDimResting={omniDimResting}
-      onToggleOmniDimResting={onToggleOmniDimResting}
-      cardOutlineChrome={cardOutlineChrome}
-      onToggleCardOutline={onToggleCardOutline}
-      showMarginalia={showMarginalia}
-      onToggleMarginalia={onToggleMarginalia}
-      hiddenMarginaliaTypes={hiddenMarginaliaTypes}
-      onToggleMarginaliaType={onToggleMarginaliaType}
-      showHighlights={showHighlights}
-      onToggleHighlights={onToggleHighlights}
-      hiddenHighlightTypes={hiddenHighlightTypes}
-      onToggleHighlightType={onToggleHighlightType}
+      viewPrefs={viewPrefs}
       availableDividerLevels={availableDividerLevels}
-      dividerLevels={dividerLevels}
-      onToggleDividerLevel={onToggleDividerLevel}
-      dividerWidth={dividerWidth}
-      onSetDividerWidth={onSetDividerWidth}
+      onToggleViewPref={onToggleViewPref}
+      onSetViewPref={onSetViewPref}
+      onToggleViewPrefMember={onToggleViewPrefMember}
       onCloseAllPanels={onCloseAllPanels}
       onOpenFontsDialog={showEditItems ? onOpenFontsDialog : undefined}
       onOpenMarginsMode={showEditItems ? onOpenMarginsMode : undefined}

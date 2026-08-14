@@ -14,6 +14,9 @@ import {
   VIEW_PREF_REGISTRY,
   type RegistryPrefs,
   type ViewPrefKey,
+  type SetViewPrefKey,
+  type ViewPrefMember,
+  type ViewPrefDef,
 } from "@/lib/view-prefs/registry";
 import { migrateFloatKeys, migrateLegacyKeyToFloat } from "@/floats/float-key";
 import {
@@ -1255,86 +1258,28 @@ export function useViewPrefs(opts?: {
     update((p) => notePanelUseIn(p, side, id));
   }, [update]);
 
-  const setShowHighlights = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
-    update((p) => ({
-      ...p,
-      showHighlights: typeof v === "function" ? v(p.showHighlights) : v,
-    }));
-  }, [update]);
+  /* ── The registry-driven view-pref writers (task 274) ─────────────
+   *
+   * THREE doors, one per `kind`, and NOTHING else writes a registry field.
+   * Every pref this hook stores under `VIEW_PREF_REGISTRY` is written by key
+   * through one of them, so a new toggle / enum / set pref is ONE registry row
+   * with no new setter, no new prop, and no new thread through EditorLayout →
+   * EditorPane → MenuBar.
+   *
+   * Before this, ten hand-written twins sat beside these — `toggleParTitles`,
+   * `toggleLatexComments`, `toggleMarginalia`, `toggleHeadingLabels`,
+   * `setShowHighlights`, `setDividerWidth`, `setBibFilter`,
+   * `toggleHighlightType`, `toggleMarginaliaType`, `toggleDividerLevel` — each
+   * byte-equivalent to the generic path for its `kind`, each threaded through
+   * four layers by name. Nothing forced the copies to agree; the set-member
+   * trio were three copies of one includes/filter/append. They are retired, and
+   * `view-pref-writer-ssot.test.ts` fails any spread-update in this file that
+   * names a registry key, so a twin can't quietly reappear.
+   */
 
-  const toggleHighlightType = useCallback((type: HighlightType) => {
-    update((p) => {
-      const has = p.hiddenHighlightTypes.includes(type);
-      return {
-        ...p,
-        hiddenHighlightTypes: has
-          ? p.hiddenHighlightTypes.filter((t) => t !== type)
-          : [...p.hiddenHighlightTypes, type],
-      };
-    });
-  }, [update]);
-
-  /* ── Editor decoration setters ──────────────────────────────────── */
-
-  const toggleMarginalia = useCallback(() => {
-    update((p) => ({ ...p, showMarginalia: !p.showMarginalia }));
-  }, [update]);
-
-  const toggleMarginaliaType = useCallback((type: MarginaliaType) => {
-    update((p) => {
-      const has = p.hiddenMarginaliaTypes.includes(type);
-      return {
-        ...p,
-        hiddenMarginaliaTypes: has
-          ? p.hiddenMarginaliaTypes.filter((t) => t !== type)
-          : [...p.hiddenMarginaliaTypes, type],
-      };
-    });
-  }, [update]);
-
-  const toggleHeadingLabels = useCallback(() => {
-    update((p) => ({ ...p, showHeadingLabels: !p.showHeadingLabels }));
-  }, [update]);
-
-  const toggleDividerLevel = useCallback((level: DividerLevel) => {
-    update((p) => {
-      const has = p.dividerLevels.includes(level);
-      return {
-        ...p,
-        dividerLevels: has
-          ? p.dividerLevels.filter((l) => l !== level)
-          : [...p.dividerLevels, level],
-      };
-    });
-  }, [update]);
-
-  const setDividerWidth = useCallback((w: DividerWidth) => {
-    update((p) => ({ ...p, dividerWidth: w }));
-  }, [update]);
-
-  /* ── Registry-backed view toggles (Bug 1/2 + generic) ────────────── */
-
-  /** Bug 1: persist the "Paragraph titles" View-menu toggle (global). Was a
-   *  plain `useState(true)` in EditorLayout, so it reset on every reload. */
-  const toggleParTitles = useCallback(() => {
-    update((p) => ({ ...p, showParTitles: !p.showParTitles }));
-  }, [update]);
-
-  /** Bug 2: persist the "% comments" View-menu toggle (global). Same defect
-   *  as par-titles, adjacent line. */
-  const toggleLatexComments = useCallback(() => {
-    update((p) => ({ ...p, showLatexComments: !p.showLatexComments }));
-  }, [update]);
-
-  /** Bug 3: persist the Bibliography panel's "Cited only / Full" filter
-   *  (per-window). Was a plain `useState("cited")` in BibliographyPanel. */
-  const setBibFilter = useCallback((v: ViewPrefs["bibFilter"]) => {
-    update((p) => ({ ...p, bibFilter: v }));
-  }, [update]);
-
-  /** Generic registry-guarded setter: write any single registry field by key.
-   *  Refuses keys not in `VIEW_PREF_REGISTRY` so a typo can't silently smear a
-   *  non-pref field. Persistence scope is decided by the registry's `scope`. */
+  /** Write any single registry field by key. Refuses keys not in
+   *  `VIEW_PREF_REGISTRY` so a typo can't silently smear a non-pref field.
+   *  Persistence scope is decided by the registry's `scope`. */
   const setViewPref = useCallback(
     <K extends ViewPrefKey>(key: K, value: RegistryPrefs[K]) => {
       if (!(key in VIEW_PREF_REGISTRY)) return;
@@ -1343,13 +1288,39 @@ export function useViewPrefs(opts?: {
     [update],
   );
 
-  /** Generic registry-guarded toggle for the boolean (`kind: "toggle"`)
-   *  registry fields. A no-op for non-toggle keys (guards at runtime). */
+  /** Flip a boolean (`kind: "toggle"`) registry field. A no-op for non-toggle
+   *  keys (guards at runtime as well as in the type). */
   const toggleViewPref = useCallback(
     (key: ViewPrefKey) => {
       const def = VIEW_PREF_REGISTRY[key];
       if (!def || def.kind !== "toggle") return;
       update((p) => ({ ...p, [key]: !(p as RegistryPrefs)[key] }));
+    },
+    [update],
+  );
+
+  /**
+   * Add/remove one member of an array (`kind: "set"`) registry field — the
+   * generic form of the three set-membership togglers this replaced. A no-op
+   * for non-set keys (guards at runtime as well as in the type).
+   *
+   * Deliberately does NOT validate `member ∈ def.members`: the registry's own
+   * contract says a stored `set` value may legitimately include members the
+   * MENU doesn't render (the header on `VIEW_PREF_REGISTRY` names the "report"
+   * marginalia type), so a membership check would silently no-op exactly those
+   * — a behaviour change wearing a guard's clothes. `members` is the render
+   * vocabulary; the stored array is the value.
+   */
+  const toggleViewPrefMember = useCallback(
+    <K extends SetViewPrefKey>(key: K, member: ViewPrefMember<K>) => {
+      const def = VIEW_PREF_REGISTRY[key] as ViewPrefDef | undefined;
+      if (!def || def.kind !== "set") return;
+      update((p) => {
+        const list = (p as RegistryPrefs)[key] as readonly (string | number)[];
+        const m = member as string | number;
+        const next = list.includes(m) ? list.filter((x) => x !== m) : [...list, m];
+        return { ...p, [key]: next };
+      });
     },
     [update],
   );
@@ -1622,18 +1593,9 @@ export function useViewPrefs(opts?: {
     setEditorRightMargin,
     setEditorTopMargin,
     setEditorBottomMargin,
-    setShowHighlights,
-    toggleHighlightType,
-    toggleMarginalia,
-    toggleMarginaliaType,
-    toggleHeadingLabels,
-    toggleDividerLevel,
-    setDividerWidth,
-    toggleParTitles,
-    toggleLatexComments,
-    setBibFilter,
     setViewPref,
     toggleViewPref,
+    toggleViewPrefMember,
     toggleOmniCategory,
     resetOmniSide,
     toggleOmniHideAllCards,

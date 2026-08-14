@@ -1,12 +1,13 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
+import { useCallback, type Dispatch, type SetStateAction } from "react";
 import BibliographyPanel from "@/panels/Bibliography";
 import type { useCitations } from "@/hooks/useCitations";
 import type { useAnnotations } from "@/hooks/useAnnotations";
 import type { useBibReview } from "@/hooks/useBibReview";
 import type { useBibSettings } from "@/hooks/useBibSettings";
 import type { Side, ViewPrefs } from "@/hooks/useViewPrefs";
+import type { RegistryPrefs, ViewPrefKey } from "@/lib/view-prefs/registry";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 
@@ -37,16 +38,26 @@ export interface BibliographyHostProps {
   entryRequests: BibSettingsHook["entryRequests"];
   addEntryRequest: BibSettingsHook["addEntryRequest"];
   removeEntryRequest: BibSettingsHook["removeEntryRequest"];
-  /** Bug 3: the persisted "Cited only / Full" filter (per-window) + its
-   *  setter. Optional so the Reader path (no `viewPrefs`) falls back to the
-   *  panel's own default. */
+  /** Bug 3: the persisted "Cited only / Full" filter (per-window) + the generic
+   *  registry setter that writes it (task 274 — `bibFilter` is a `kind: "enum"`
+   *  registry pref, so there is no bespoke `setBibFilter`). Both optional so the
+   *  Reader path (no `viewPrefs`) falls back to the panel's own default. */
   bibFilter?: ViewPrefs["bibFilter"];
-  setBibFilter?: (v: ViewPrefs["bibFilter"]) => void;
+  setViewPref?: <K extends ViewPrefKey>(key: K, value: RegistryPrefs[K]) => void;
 }
 
 export function BibliographyHost(p: BibliographyHostProps) {
   const { editorRef } = useEditorRefContext();
   const { selectedBibKey, setSelectedBibKey } = useSelectionsContext();
+  // Bind the panel-local filter control to the registry key ONCE, here — the
+  // panel keeps a presentational `onSetBibFilter` prop and the store keeps its
+  // one keyed writer. `useCallback` so the panel's memo isn't defeated per
+  // render.
+  const setViewPref = p.setViewPref;
+  const onSetBibFilter = useCallback(
+    (v: ViewPrefs["bibFilter"]) => setViewPref?.("bibFilter", v),
+    [setViewPref],
+  );
   return (
     <BibliographyPanel
       citations={p.citations}
@@ -71,7 +82,7 @@ export function BibliographyHost(p: BibliographyHostProps) {
       onAddEntryRequest={p.addEntryRequest}
       onRemoveEntryRequest={p.removeEntryRequest}
       bibFilter={p.bibFilter}
-      setBibFilter={p.setBibFilter}
+      onSetBibFilter={p.setViewPref ? onSetBibFilter : undefined}
     />
   );
 }

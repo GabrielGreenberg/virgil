@@ -35,6 +35,7 @@ import { renderHook, act } from "@testing-library/react";
 import type { Editor } from "@tiptap/react";
 import type { EditorHandle } from "@/components/Editor";
 import { useReaderView } from "../reader-view-prefs";
+import { VIEW_PREF_KEYS } from "@/lib/view-prefs/registry";
 
 // The Reader's menuBar paragraph-nav recorder needs an EditorHandle ref + a
 // scroll element. The wiring test doesn't exercise nav, so an empty ref +
@@ -150,7 +151,9 @@ describe("useReaderView — onScrollToHeading is a REAL handler", () => {
       "movePanel",
       "toggleCardPopout",
       "toggleOmniHideAllCards",
-      "setBibFilter",
+      // The Bibliography filter is written through the ONE registry-driven
+      // setter (task 274) — there is no bespoke `setBibFilter` any more.
+      "setViewPref",
       "getOmniEnabled",
       "getOmniHideAll",
       "remapCardPopKey",
@@ -280,31 +283,23 @@ describe("useReaderView — menuBar bundle (F#16)", () => {
     );
     const menuBar = result.current.menuBar;
 
-    // Read state present (booleans from the ephemeral engine).
-    expect(typeof menuBar.showParTitles).toBe("boolean");
-    expect(typeof menuBar.showCardTitles).toBe("boolean");
-    expect(typeof menuBar.showLatexComments).toBe("boolean");
-    expect(typeof menuBar.omniDimResting).toBe("boolean");
+    // Read state present: the whole registry slice off the ephemeral engine
+    // (task 274 — one object, keyed by registry key, not one field per pref).
+    for (const key of VIEW_PREF_KEYS) {
+      expect(menuBar.prefs[key]).toBeDefined();
+    }
 
     // Divider levels are walked from the doc's heading nodes (levels 1 & 2).
     expect(menuBar.availableDividerLevels.has(1)).toBe(true);
     expect(menuBar.availableDividerLevels.has(2)).toBe(true);
     expect(menuBar.availableDividerLevels.has(3)).toBe(false);
 
-    // Every required setter / nav / opener is a function (type-completeness in
+    // Every required writer / nav / opener is a function (type-completeness in
     // full means a missing one is a compile error; this pins them at runtime).
     for (const member of [
-      "onToggleParTitles",
-      "onToggleCardTitles",
-      "onToggleLatexComments",
-      "toggleHeadingLabels",
-      "onToggleOmniDimResting",
-      "toggleMarginalia",
-      "toggleMarginaliaType",
-      "toggleHighlightType",
-      "toggleDividerLevel",
-      "setDividerWidth",
-      "setShowHighlights",
+      "toggleViewPref",
+      "setViewPref",
+      "toggleViewPrefMember",
       "closeAllPanels",
       "paraNavBack",
       "paraNavForward",
@@ -325,10 +320,10 @@ describe("useReaderView — menuBar bundle (F#16)", () => {
       useReaderView(stub.editor, NULL_HANDLE_REF, null),
     );
 
-    const before = result.current.menuBar.showParTitles;
-    act(() => result.current.menuBar.onToggleParTitles());
+    const before = result.current.menuBar.prefs.showParTitles;
+    act(() => result.current.menuBar.toggleViewPref("showParTitles"));
     // The menuBar read-state flipped...
-    expect(result.current.menuBar.showParTitles).toBe(!before);
+    expect(result.current.menuBar.prefs.showParTitles).toBe(!before);
     // ...and the SAME flip is visible on the viewPrefs bundle's prefs (proving
     // both bundles are backed by one ephemeral `vp`).
     expect(result.current.viewPrefs.prefs.showParTitles).toBe(!before);

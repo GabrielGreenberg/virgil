@@ -230,7 +230,9 @@ export function buildEditorPaneViewPrefs(
     // ── Card archive view + bib filter ──────────────────────────────
     setCardArchiveView: editorHandlers.setCardArchiveView,
     setSuppressArchiveAtomWarning: editorHandlers.setSuppressArchiveAtomWarning,
-    setBibFilter: vp.setBibFilter,
+    // The one registry-driven pref writer this bundle carries (task 274) — the
+    // Bibliography filter is written as `setViewPref("bibFilter", v)`.
+    setViewPref: vp.setViewPref,
 
     // ── Orphaned footnotes + editor-only handlers ───────────────────
     // Phase 5b: the orphan ARRAY is no longer sourced from `editorHandlers`
