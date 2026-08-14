@@ -16,7 +16,7 @@ import {
   hasTextAnchor,
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { cardPopKey } from "@/panels/panel-registry";
+import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
 import { cardKindsForPanel, bodyVariantForCardKind } from "@/cards/predicates";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
@@ -147,7 +147,7 @@ export function CutterCommentCard({
       value={card.content}
       variant={bodyVariantForCardKind("cutter-comment")}
       panelKey="cut"
-      placeholder="Comment text…"
+      placeholder={`${cardTypeLabel("cutter-comment")} text…`}
       onChange={handleChange}
       dataAttr={{ name: "cutter-comment-entry", value: card.id }}
       extraDataAttrs={{

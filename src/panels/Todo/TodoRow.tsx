@@ -16,7 +16,7 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
-import { popKey } from "@/panels/panel-registry";
+import { popKey, cardTypeLabel } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { iconHint } from "@/components/Hint";
@@ -190,7 +190,7 @@ export function TodoRow({
         <CardTitleInput
           defaultValue={item.text}
           onChange={(t) => onUpdate(item.id, t)}
-          placeholder="Task"
+          placeholder={cardTypeLabel("todo")}
           theme={theme}
           // TITLE dialect — design-system-fixed (CardTitleInput owns the
           // par-title styling). The per-panel body-font picker

@@ -9,7 +9,7 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import { getLinkedTextObjectIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { cardPopKey } from "@/panels/panel-registry";
+import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { bodyVariantForCardKind, cardKindsForPanel } from "@/cards/predicates";
@@ -110,7 +110,7 @@ export function ReportCard({
       value={report.content}
       variant={bodyVariantForCardKind("report")}
       panelKey="report"
-      placeholder="Report text."
+      placeholder={`${cardTypeLabel("report")} text.`}
       onChange={handleChange}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}

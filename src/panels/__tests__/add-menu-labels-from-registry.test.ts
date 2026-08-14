@@ -13,6 +13,27 @@
 // Genuine ACTION labels are unaffected: `BibliographyPanel`'s
 // "Search library…" / "Request entry" are not any card kind's type name, so
 // they don't match a registry label and correctly stay hardcoded.
+//
+// WIDENED (task 304, same rule one surface over): a card BODY's `placeholder`
+// is the same re-hardcoding when it restates the kind's type name — "Request
+// text…", "Report text.", "Task". The cutter twin proved why that matters: its
+// body said "Comment text…" while its own registry label read "Request", so the
+// card's overline and its empty body named the kind two different things, and
+// the 304 label change would have left a fourth stale copy behind. Now every
+// such placeholder interpolates `cardTypeLabel(kind)`, so a rename reaches the
+// body text too.
+//
+// TWO STATED LIMITS. (1) This leg is NOT the guard that catches 304's original
+// shape: it can only see a placeholder that names a label it should derive, and
+// is structurally blind to one that names something ELSE entirely (the cutter
+// "Comment text…" matched no registry label at all). The direction that catches
+// that is the twin-parity census in
+// `src/cards/__tests__/twin-vocabulary-parity.test.ts`. (2) The scan is every
+// `.tsx` under `src/panels/`, not only card bodies — a filter/search placeholder
+// that happened to spell a card-type label as a whole word would be flagged
+// too. That is deliberate (a placeholder naming a card type IS the thing being
+// governed, wherever it sits) and it fails LOUDLY, so the resolution is a
+// judgment call at the failure rather than a hole in the census.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
@@ -29,13 +50,22 @@ const REGISTRY_LABELS = new Set(
 
 /** Recursively collect `*Panel.tsx` sources under src/panels/. */
 function findPanelFiles(dir: string): string[] {
+  return findFiles(dir, (name) => name.endsWith("Panel.tsx"));
+}
+
+/** Recursively collect every `.tsx` source under src/panels/ (tests excluded). */
+function findAllPanelSources(dir: string): string[] {
+  return findFiles(dir, (name) => name.endsWith(".tsx"));
+}
+
+function findFiles(dir: string, accept: (name: string) => boolean): string[] {
   const out: string[] = [];
   for (const ent of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, ent.name);
     if (ent.isDirectory()) {
       if (ent.name === "__tests__" || ent.name === "node_modules") continue;
-      out.push(...findPanelFiles(full));
-    } else if (ent.name.endsWith("Panel.tsx")) {
+      out.push(...findFiles(full, accept));
+    } else if (accept(ent.name)) {
       out.push(full);
     }
   }
@@ -113,6 +143,38 @@ describe("panel +Add menus derive card-type labels from the registry SSOT", () =
         }
       }
     }
+    expect(offenders).toEqual([]);
+  });
+
+  it("no card body placeholder restates a registry-owned card-type label", () => {
+    // `placeholder="…"` string literals only — a `placeholder={…}` expression is
+    // already deriving (that is the compliant form this leg asks for).
+    const re = /placeholder=(?:"([^"]*)"|'([^']*)')/g;
+    const offenders: string[] = [];
+    let seen = 0;
+    for (const file of findAllPanelSources(PANELS_DIR)) {
+      const src = readFileSync(file, "utf8");
+      let m: RegExpExecArray | null;
+      re.lastIndex = 0;
+      while ((m = re.exec(src)) !== null) {
+        const text = m[1] ?? m[2] ?? "";
+        seen++;
+        for (const label of REGISTRY_LABELS) {
+          // Case-SENSITIVE, whole-word: "Describe the bibliography entry you
+          // need…" and "Filter errors…" name a concept in prose, not the card
+          // type, and correctly stay hardcoded.
+          const word = new RegExp(`\\b${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+          if (word.test(text)) {
+            offenders.push(
+              `${file.slice(file.indexOf("src/"))}: placeholder="${text}" restates the "${label}" card-type label — interpolate cardTypeLabel(<kind>) instead`,
+            );
+          }
+        }
+      }
+    }
+    // Accepting control: the sweep really reaches the panel sources, so a
+    // future directory move can't make the leg pass vacuously.
+    expect(seen).toBeGreaterThanOrEqual(10);
     expect(offenders).toEqual([]);
   });
 

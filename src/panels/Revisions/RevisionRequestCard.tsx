@@ -17,7 +17,7 @@ import {
   hasTextAnchor,
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { popKey } from "@/panels/panel-registry";
+import { popKey, cardTypeLabel } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { useCardStore } from "@/links/_shared/anchored-card-store";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -146,7 +146,7 @@ export function RevisionRequestCard({
       value={card.content}
       variant={bodyVariantForCardKind("revision-comment")}
       panelKey="revision"
-      placeholder="Request text…"
+      placeholder={`${cardTypeLabel("revision-comment")} text…`}
       onChange={handleChange}
       dataAttr={{ name: "revision-request-entry", value: card.id }}
       extraDataAttrs={{
