@@ -6,6 +6,13 @@ import {
   renameParTitleByUuid,
   updateHeadingLabelByUuid,
 } from "@/lib/tiptap/structural-edit";
+import {
+  DOC_START_BLOCK_INDEX,
+  resolveBlockIndex,
+  resolveBlockSpan,
+  type BlockAddress,
+  type BlockSpanAddress,
+} from "@/lib/tiptap/block-address";
 import { docProductsEnabled } from "@/lib/doc-products/use-doc-products";
 
 /**
@@ -60,23 +67,59 @@ export function useEditorOps(deps: {
     [setLatestDoc],
   );
 
+  // Outline click-to-scroll — IDENTITY-addressed (task 285). `null` is the
+  // Document-start row. A hydrated address whose block a concurrent writer
+  // deleted resolves to null and the click no-ops, rather than scrolling to
+  // whatever slid into that index.
   const handleScrollToHeading = useCallback(
-    (blockIndex: number) => {
-      editorRef.current?.scrollToHeading(blockIndex);
+    (target: BlockAddress | null) => {
+      const handle = editorRef.current;
+      if (!handle) return;
+      if (!target) {
+        handle.scrollToHeading(DOC_START_BLOCK_INDEX);
+        return;
+      }
+      const editor = handle.getEditor();
+      if (!editor) return;
+      const index = resolveBlockIndex(editor.state.doc, target);
+      if (index == null) return;
+      handle.scrollToHeading(index);
     },
     [editorRef],
   );
 
+  // Outline drag-reorder — IDENTITY-addressed on BOTH ends (task 285). The
+  // dragged section and the drop target are named by durable block uuid, and
+  // each one's EXTENT is re-derived from the live doc here, so neither the
+  // start index nor the block count can have drifted since the outline
+  // snapshot the drag was painted from. `side` is the hover half, resolved to a
+  // landing index only now that the target's live span is known — the pre-285
+  // `landingBlockIndex` folded the target's STALE `blockCount` into the number
+  // it handed over, so a write inside the target section mis-landed the drop
+  // even when the source addressed correctly.
   const handleReorderBlocks = useCallback(
-    (fromIndex: number, count: number, toIndex: number) => {
+    (source: BlockSpanAddress, target: BlockSpanAddress, side: "above" | "below") => {
       const editor = editorRef.current?.getEditor();
       if (!editor) return;
       const doc = editor.state.doc;
+      const src = resolveBlockSpan(doc, source);
+      const tgt = resolveBlockSpan(doc, target);
+      // Either end deleted under the drag → refuse. Moving a section to where a
+      // now-absent block used to be is a guess, not a gesture.
+      if (!src || !tgt) return;
+      const fromIndex = src.index;
+      const count = src.count;
+      const toIndex = side === "above" ? tgt.index : tgt.index + tgt.count;
+
       const positions: { from: number; to: number }[] = [];
       doc.forEach((node, offset) => {
         positions.push({ from: offset, to: offset + node.nodeSize });
       });
       if (fromIndex < 0 || fromIndex + count > positions.length || toIndex < 0 || toIndex > positions.length) return;
+      // Own-range rejection, re-checked against the LIVE spans: a landing at (or
+      // inside) the dragged section's own range is a no-op or a move-into-self.
+      // The panel runs the same check on its snapshot to keep the drop indicator
+      // honest; this one is what actually protects the document.
       if (toIndex >= fromIndex && toIndex <= fromIndex + count) return;
 
       const sliceFrom = positions[fromIndex].from;

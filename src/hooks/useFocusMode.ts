@@ -10,6 +10,11 @@ import {
   INACTIVE_BAND,
   resolveFocusBand,
 } from "@/lib/focus-view";
+import {
+  resolveBlockIndex,
+  sectionExtentFromHeadings,
+  type BlockAddress,
+} from "@/lib/tiptap/block-address";
 
 /**
  * The index-based view of the focus band, kept for the OUTLINE's positional
@@ -137,15 +142,11 @@ export function sectionRange(
   headings: { index: number; level: number }[],
   totalBlocks: number,
 ): [number, number] {
-  const hi = headings.findIndex((h) => h.index === blockIndex);
-  if (hi !== -1) {
-    const heading = headings[hi];
-    for (let i = hi + 1; i < headings.length; i++) {
-      if (headings[i].level <= heading.level) {
-        return [blockIndex, headings[i].index - 1];
-      }
-    }
-    return [blockIndex, totalBlocks - 1];
+  if (headings.some((h) => h.index === blockIndex)) {
+    // The heading branch is the SHARED section rule (task 285) — the same one
+    // the outline's pods and the reorder handler read — expressed as an
+    // inclusive range instead of an extent.
+    return [blockIndex, blockIndex + sectionExtentFromHeadings(blockIndex, headings, totalBlocks) - 1];
   }
 
   if (headings.length === 0) return [0, totalBlocks - 1];
@@ -326,10 +327,21 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     update((s) => (s.active ? { ...s, locked: !s.locked } : s));
   }, [update]);
 
+  // The three WRITE actions below take a `BlockAddress`, not a raw index
+  // (task 285). The outline resolves its rows from a debounced snapshot and
+  // calls back a frame or more later, so an integer index it captured can name
+  // a different block by the time it arrives; `headings`/`totalBlocks` are
+  // already read from the LIVE doc (EditorLayout's `focusStructure`), which
+  // made the index the one input from the stale clock. Resolving it here — by
+  // uuid, against the same live doc those two came from — puts every input on
+  // one revision. An address whose block was deleted under the gesture
+  // resolves to null and the action is a no-op, never a mis-address.
   const moveTo = useCallback(
-    (blockIndex: number, headings: { index: number; level: number }[], totalBlocks: number) => {
+    (target: BlockAddress, headings: { index: number; level: number }[], totalBlocks: number) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
+      const blockIndex = resolveBlockIndex(doc, target);
+      if (blockIndex == null) return;
       const [start, end] = regionForNode(blockIndex, headings, totalBlocks);
       update((s) => (s.active ? bandFromIndices(doc, start, end, true, s.locked) : s));
     },
@@ -337,9 +349,11 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
   );
 
   const expandTo = useCallback(
-    (blockIndex: number, headings: { index: number; level: number }[], totalBlocks: number) => {
+    (target: BlockAddress, headings: { index: number; level: number }[], totalBlocks: number) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
+      const blockIndex = resolveBlockIndex(doc, target);
+      if (blockIndex == null) return;
       const [clickStart, clickEnd] = regionForNode(blockIndex, headings, totalBlocks);
       update((s) => {
         if (!s.active) return s;
@@ -366,12 +380,14 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
   const snapBoundary = useCallback(
     (
       edge: "top" | "bottom",
-      blockIndex: number,
+      target: BlockAddress,
       headings: { index: number; level: number }[],
       totalBlocks: number,
     ) => {
       const doc = editorRef.current?.state?.doc;
       if (!doc) return;
+      const blockIndex = resolveBlockIndex(doc, target);
+      if (blockIndex == null) return;
       update((s) => {
         if (!s.active || s.locked) return s;
         const cur = resolveFocusBand(doc, s) ?? { startIdx: 0, endIdx: doc.childCount - 1 };

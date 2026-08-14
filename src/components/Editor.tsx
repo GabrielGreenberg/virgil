@@ -37,6 +37,7 @@ import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import "@/text-objects/floats";
 import { generateShortId } from "@/lib/uuid";
 import { insertInlineAtom } from "@/lib/tiptap/insert-inline-atom";
+import { DOC_START_BLOCK_INDEX } from "@/lib/tiptap/block-address";
 import { restoreExcerptAtCaret } from "@/lib/tiptap/restore-excerpt";
 import { chromeAwareScrollMargin } from "@/lib/tiptap/chrome-scroll-margin";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
@@ -970,8 +971,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     scrollToHeading(blockIndex: number): void {
       if (!editor) return;
-      // Sentinel -1 means "scroll to the very top of the document"
-      if (blockIndex === -1) {
+      // The doc-start sentinel, spelled once in the address SSOT so the
+      // producers (the Outline's Document-start row, the paragraph-nav
+      // `__DOC_TOP__` branch) and this consumer cannot drift (task 285).
+      if (blockIndex === DOC_START_BLOCK_INDEX) {
         editor.commands.setTextSelection(1);
         const scrollEl = findEditorScrollFor(editor.view.dom);
         if (scrollEl) scrollEl.scrollTop = 0;

@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { useFocusMode } from "@/hooks/useFocusMode";
+import type { BlockAddress } from "@/lib/tiptap/block-address";
 
 type FocusMode = ReturnType<typeof useFocusMode>;
 type FocusHeading = { index: number; level: number };
@@ -29,17 +30,19 @@ export function useFocusActions(deps: {
     focusMode.activate(outlineHeadings, outlineTotalBlocks, currentSeedBlockIndex);
   }, [focusMode, outlineHeadings, outlineTotalBlocks, currentSeedBlockIndex]);
 
-  const handleFocusMoveTo = useCallback((blockIndex: number) => {
-    focusMode.moveTo(blockIndex, outlineHeadings, outlineTotalBlocks);
+  // Task 285: the outline addresses its target by durable block uuid; the
+  // heading list + total stay live-derived and are threaded here as before.
+  const handleFocusMoveTo = useCallback((target: BlockAddress) => {
+    focusMode.moveTo(target, outlineHeadings, outlineTotalBlocks);
   }, [focusMode, outlineHeadings, outlineTotalBlocks]);
 
-  const handleFocusExpandTo = useCallback((blockIndex: number) => {
-    focusMode.expandTo(blockIndex, outlineHeadings, outlineTotalBlocks);
+  const handleFocusExpandTo = useCallback((target: BlockAddress) => {
+    focusMode.expandTo(target, outlineHeadings, outlineTotalBlocks);
   }, [focusMode, outlineHeadings, outlineTotalBlocks]);
 
   const handleFocusSnapBoundary = useCallback(
-    (edge: "top" | "bottom", blockIndex: number) => {
-      focusMode.snapBoundary(edge, blockIndex, outlineHeadings, outlineTotalBlocks);
+    (edge: "top" | "bottom", target: BlockAddress) => {
+      focusMode.snapBoundary(edge, target, outlineHeadings, outlineTotalBlocks);
     },
     [focusMode, outlineHeadings, outlineTotalBlocks],
   );

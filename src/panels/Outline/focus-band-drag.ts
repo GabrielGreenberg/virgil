@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { isMissedRelease, isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
+import type { BlockAddress } from "@/lib/tiptap/block-address";
 
 /**
  * Focus-band drag commit decision (task 113).
@@ -18,27 +19,36 @@ import { isMissedRelease, isPrimaryDragStart } from "@/lib/pane-resize/pointer-i
  */
 export function resolveDragCommit({
   edge,
-  pendingBlockIndex,
+  pending,
   startBlockIndex,
   endBlockIndex,
 }: {
   edge: "top" | "bottom";
   /** Row the dragged edge is snapped to at release; null = no mousemove ran. */
-  pendingBlockIndex: number | null;
+  pending: BlockAddress | null;
   /** Committed range at drag start. */
   startBlockIndex: number;
   endBlockIndex: number;
-}): { commit: false } | { commit: true; blockIndex: number } {
+}): { commit: false } | { commit: true; target: BlockAddress } {
   const draggedBlockIndex = edge === "top" ? startBlockIndex : endBlockIndex;
-  if (pendingBlockIndex == null || pendingBlockIndex === draggedBlockIndex) {
+  // The MOVED test is an index comparison, and correctly so: both sides come
+  // from the outline's own snapshot (the rows were measured from it and the
+  // baseline is the snapshot-resolved band), so they describe one revision.
+  // What crosses the async gap is the COMMIT, and that carries the address
+  // (task 285).
+  if (pending == null || pending.index === draggedBlockIndex) {
     return { commit: false };
   }
-  return { commit: true, blockIndex: pendingBlockIndex };
+  return { commit: true, target: pending };
 }
 
-/** A candidate snap row, measured once at mousedown. */
-export interface FocusBandRow {
-  blockIndex: number;
+/**
+ * A candidate snap row, measured once at mousedown. It IS a `BlockAddress`
+ * (durable `uuid` + this snapshot's top-level `index`) plus the three offsets
+ * the gesture measures — so the row the edge snaps to is already the thing the
+ * commit hands over, with no second copy to keep in step.
+ */
+export interface FocusBandRow extends BlockAddress {
   top: number;
   mid: number;
   bottom: number;
@@ -54,7 +64,7 @@ interface FocusBandDragState {
   startBlockIndex: number;
   endBlockIndex: number;
   /** Row the dragged edge is snapped to right now; null = no move ran. */
-  pendingBlockIndex: number | null;
+  pending: BlockAddress | null;
 }
 
 export interface FocusBandEdgeDragOptions {
@@ -80,7 +90,7 @@ export interface FocusBandEdgeDragOptions {
    *  it in `measure()` to bail while a gesture is live — pushed out rather
    *  than returned so the owner's `measure` can also BE `restore`. */
   setDragging: (dragging: boolean) => void;
-  onSnapBoundary?: (edge: "top" | "bottom", blockIndex: number) => void;
+  onSnapBoundary?: (edge: "top" | "bottom", target: BlockAddress) => void;
 }
 
 /**
@@ -155,7 +165,7 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
       }
       const row = drag.rows[bestIdx];
       if (!row) return;
-      drag.pendingBlockIndex = row.blockIndex;
+      drag.pending = { uuid: row.uuid, index: row.index };
       // Transient rect against the fixed edge. Clamp so the band never inverts
       // or collapses (consistent with snapBoundary's 1-row clamp).
       if (drag.edge === "top") {
@@ -193,7 +203,7 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
         mode === "commit"
           ? resolveDragCommit({
               edge: drag.edge,
-              pendingBlockIndex: drag.pendingBlockIndex,
+              pending: drag.pending,
               startBlockIndex: drag.startBlockIndex,
               endBlockIndex: drag.endBlockIndex,
             })
@@ -210,7 +220,7 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
         // measure() recomputes the authoritative rect — which matches the
         // transient rect we already painted (same snapped row → same offsetTop/
         // offsetHeight), so there is no visible jump.
-        onSnapBoundary?.(drag.edge, decision.blockIndex);
+        onSnapBoundary?.(drag.edge, decision.target);
       } else {
         // No commit → focusState is untouched, so nothing re-runs measure()
         // for us (the MO fires on childList only). Restore the authoritative
@@ -278,7 +288,7 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
         fixedPx,
         startBlockIndex: range.startBlockIndex,
         endBlockIndex: range.endBlockIndex,
-        pendingBlockIndex: null,
+        pending: null,
       };
       setDragging(true);
       document.body.style.cursor = "ns-resize";
