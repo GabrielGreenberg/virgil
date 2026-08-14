@@ -109,4 +109,6 @@ Skipped <requestId> (already complete).
 - Never mutate `document.tex` — a Report is apparatus anchored beside the
   paragraph, not a change to the prose. If the user actually wanted a
   prose edit, draft a revision suggestion instead
-  (`/editor/draft-suggestion`).
+  (`/editor/draft-suggestion`). This is the ask-shape rule read from the
+  Reports side — [_ask-shape.md](_ask-shape.md) states it once, in both
+  directions, for every panel.

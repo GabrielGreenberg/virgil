@@ -36,7 +36,10 @@ matters" (write a note). Read the todo and dispatch.
    the virtual id), the source todo from `todos.json`, paragraph
    context for the anchored paragraph(s).
 
-2. **Classify.** Read `todo.text` + `todo.notes` and decide:
+2. **Classify** — the shared ask-shape rule, [_ask-shape.md](_ask-shape.md),
+   governs (this skill's classify step is where that doctrine was first
+   written down; the SSOT now holds it for every panel). Read `todo.text` +
+   `todo.notes` and decide:
    - **Text edit** ("tighten X", "rewrite Y", "fix the closing
      paragraph") → emit a **suggestion card** in `revisions.json`
      (`author: "ai"`, `status: "pending"`, with `original_text` from
@@ -48,6 +51,14 @@ matters" (write a note). Read the todo and dispatch.
      skill — for now, defer.) A todo asking to *pull a quoted passage*
      has no dedicated kind — file a **citation** follow-up (to surface
      the source) or emit a sibling **note/report** carrying the quote.
+   - **Verification / lookup** ("check this quote against the source",
+     "is this attribution right", "what does X actually say") → the answer
+     is **findings**, so emit a **report**, not a note:
+     ```bash
+     python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
+         --accept-task-kind todo --author ai \
+         --title "<short title>" --body "<findings>"
+     ```
    - **Analysis / explanation** ("why does this matter", "how does
      this connect to X") → emit a sibling **note** card.
    - **Action you can't take** ("get permission from coauthor",

@@ -38,12 +38,26 @@ the user can accept (which queues the textual replacement).
    Paragraph context via `get_para_context.py` (neighbors=2).
    Adjacent cards via `cards_for_paragraph.py`.
 
-2. **Compose.** Identify the slice of the anchored paragraph(s) you'd
+2. **Check the ask-shape** ([_ask-shape.md](_ask-shape.md)) — the Cutter's
+   default output is a cut, but the comment box accepts any ask. "Trim this",
+   "is this pulling its weight" → proceed, that is this skill's job. A
+   question about the world whose answer is **findings** ("is this claim
+   actually sourced", "check this quote against the original") belongs in a
+   report instead:
+   ```bash
+   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
+       --accept-task-kind suggestion --author ai \
+       --title "<short title>" --body "<findings>"
+   ```
+   That call drains the Task; emit the report *instead of* a cut, and name
+   both kinds in the `Done:` line. On a genuine coin-flip the panel wins.
+
+3. **Compose.** Identify the slice of the anchored paragraph(s) you'd
    cut or rewrite. Mode B: if `selectedText` is set on the comment,
    that's already the target span. Mode A: pick a coherent subspan
    from the paragraph to address the comment.
 
-3. **Build the CutterSuggestionCard** (`CutterSuggestionCard`,
+4. **Build the CutterSuggestionCard** (`CutterSuggestionCard`,
    `src/lib/types.ts`):
    ```json
    { "kind": "suggestion",
@@ -91,7 +105,7 @@ the user can accept (which queues the textual replacement).
    that generated this AI draft) — gives the user a Redo-style replay
    handle.
 
-4. **Land the proposal** via the contract's **L3 propose** path. A cut
+5. **Land the proposal** via the contract's **L3 propose** path. A cut
    suggestion is a *proposal* — `complete-task --propose` lands the card and
    leaves the Task **awaiting review** (`status: in-progress`), the `.tex`
    untouched until the user accepts via `/editor/accept-suggestion`. (Legacy
@@ -111,7 +125,7 @@ the user can accept (which queues the textual replacement).
    `clearSourceFlag: true` flips the source comment's `aiRequest` to `false`;
    the textual replacement rides `/editor/accept-suggestion`, not this draft.
 
-5. **Reply.**
+6. **Reply.**
    ```
    Done: drafted cutter suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: cutter.json (+ ai-requests.json status=in-progress, notifications, version).
    ```

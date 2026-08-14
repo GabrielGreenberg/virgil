@@ -52,15 +52,26 @@ source request in place.
    python3 editor/scripts/cards_for_paragraph.py <docPath> <uuid>
    ```
 
-2. **Choose your response shape.** The determining axis is whether
-   resolving the request requires a `.tex` mutation. Decide in order:
+2. **Choose your response shape** — the shared ask-shape rule,
+   [_ask-shape.md](_ask-shape.md), governs. Ask what the honest answer *is*,
+   not merely whether it touches the `.tex`. Decide in order:
    - **(a)** Does the request ask to *change document prose*
      (rephrase a sentence, tighten a paragraph, swap the lede)? →
      emit a **RevisionSuggestionCard**. See `/editor/draft-suggestion`
      for the schema.
-   - **(b)** Else (the request is a question, a take, a meta-remark)
-     → emit a sibling **RevisionRequestCard** with
-     `aiRequest: false`, anchored to the same paragraphs.
+   - **(b)** Does it ask a question *about the world* whose answer is
+     **findings** — "can you check this quote", "is this attribution
+     right", "what does the source actually say"? → emit a **report**,
+     which is where findings belong:
+     ```bash
+     python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
+         --accept-task-kind suggestion --author ai \
+         --title "<short title>" --body "<findings>"
+     ```
+     Emit the report *instead of* a suggestion, not alongside one.
+   - **(c)** Else (a take, a meta-remark, a question about the argument
+     rather than about a source) → emit a sibling **RevisionRequestCard**
+     with `aiRequest: false`, anchored to the same paragraphs.
 
 3. **Compose.** Read the source request carefully. Match the
    conversational tone of any other revision cards anchored to the
