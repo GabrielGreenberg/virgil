@@ -17,14 +17,20 @@ import {
   MARGINALIA_GRID_X_RIGHT,
   type AnchorNodeMetrics,
   type MarginaliaMarker,
+  marginaliaEffectiveCols,
 } from "@/lib/marginalia";
 
 const LINE_HEIGHT = 24;
 
-/** Both lanes host the grid — the normal markers-on editor. The cramped
- *  regime (a margin too narrow for the lane) has its own suite:
- *  `marginalia-lane-regime.test.ts`. */
-const BOTH_FIT = { left: true, right: true } as const;
+/** Both lanes host their FULL column count — the normal markers-on editor.
+ *  The cramped regime (a margin too narrow for the whole lane, where the
+ *  resolution hands back fewer columns or none) has its own suite:
+ *  `marginalia-lane-regime.test.ts`. Derived from the SSOT rather than
+ *  hand-written, so a change to either side's full width lands here too. */
+const BOTH_FIT = {
+  left: marginaliaEffectiveCols("left"),
+  right: marginaliaEffectiveCols("right"),
+} as const;
 
 function metricsFor(lineCount: number): AnchorNodeMetrics {
   return {

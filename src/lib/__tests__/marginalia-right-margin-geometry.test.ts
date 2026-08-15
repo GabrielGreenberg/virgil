@@ -28,6 +28,7 @@ import {
   MARKER_SCROLLBAR_GAP,
 } from "@/components/editor-layout/constants";
 import {
+  MARGINALIA_COLS,
   MARGINALIA_INNER_PAD,
   MARGINALIA_OUTER_PAD_LEFT,
   ICONS_BLOCK_WIDTH,
@@ -46,6 +47,7 @@ import {
   MARGINALIA_BOLT_SIZE,
   MARGINALIA_BOLT_MARKER_GAP,
   MARGINALIA_BOLT_SCROLLBAR_GAP,
+  MARGINALIA_BOLT_TUCK_X_RIGHT,
   computeBoltLeftFromPod,
   type AnchorNodeMetrics,
   type MarginaliaMarker,
@@ -92,10 +94,10 @@ function rightColumnRanges(): Array<[number, number]> {
     markers,
     {},
     // The band-disjointness geometry this file pins is the LANE-RESERVED
-    // layout, so both sides host the grid. The cramped regime (margin too
-    // narrow for the lane) is task 214's own suite,
-    // `marginalia-lane-regime.test.ts`.
-    { left: true, right: true },
+    // layout, so both sides get their full column count. The cramped regime
+    // (margin too narrow for the whole lane, where the resolution hands the
+    // outboard columns to the tucked bolt) is `marginalia-lane-regime.test.ts`.
+    { left: 1, right: MARGINALIA_COLS },
   );
   return positioned
     .map((p): [number, number] => [p.cell.x, p.cell.x + MARGINALIA_ICON_SIZE])
@@ -159,6 +161,25 @@ describe("right-margin geometry SSOT — the ordered band list", () => {
 
   it("rightLaneOffset throws on an unknown band (a typo can't silently read 0)", () => {
     expect(() => rightLaneOffset("nope")).toThrow();
+  });
+
+  it("the CRAMPED tuck is a lane offset too, and its two derivations agree (task 325)", () => {
+    // Task 045 pinned the tuck as pod arithmetic; task 325 re-based it into the
+    // container's coordinate space so the grid can ask which columns it covers.
+    // Byte-exact against BOTH spellings, so the re-basing is provably neutral:
+    // the pod form re-based, and the band form (the bolt's right edge sits where
+    // the marker→scrollbar gap begins, valid while the two gaps are one value).
+    expect(MARGINALIA_BOLT_TUCK_X_RIGHT).toBe(
+      MARGINALIA_MARGIN_WIDTH_RIGHT -
+        SCROLLBAR_GUTTER -
+        MARGINALIA_BOLT_SCROLLBAR_GAP -
+        BOLT_SIZE,
+    );
+    expect(MARGINALIA_BOLT_SCROLLBAR_GAP).toBe(MARKER_SCROLLBAR_GAP);
+    expect(MARGINALIA_BOLT_TUCK_X_RIGHT).toBe(
+      rightLaneOffset("marker-scrollbar-gap") - BOLT_SIZE,
+    );
+    expect(MARGINALIA_BOLT_TUCK_X_RIGHT).toBe(64);
   });
 });
 

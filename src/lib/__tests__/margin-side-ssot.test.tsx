@@ -235,10 +235,10 @@ function markerSideUnderDock(panelSides: PanelSideMap): "left" | "right" {
     () => null as AnchorNodeMetrics | null,
     [marker],
     panelSides,
-    // Both lanes host the grid: this suite is about which SIDE the marker
-    // resolves to, not whether that side's margin can host it (task 214's
-    // cramped regime, pinned in `marginalia-lane-regime.test.ts`).
-    { left: true, right: true },
+    // Both lanes host their full column count: this suite is about which SIDE
+    // the marker resolves to, not how much of that side's margin the lane gets
+    // (the cramped regime, pinned in `marginalia-lane-regime.test.ts`).
+    { left: 1, right: 2 },
   );
   return res.orphans[0].side;
 }

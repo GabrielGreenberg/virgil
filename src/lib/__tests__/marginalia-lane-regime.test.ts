@@ -1,5 +1,5 @@
 /**
- * Lane regime — the CRAMPED margin (task 2026-07-22-214).
+ * Lane regime — the CRAMPED margin (tasks 2026-07-22-214, 2026-08-10-325).
  *
  * Task 045 gave the selection bolt a cramped fallback: when the right margin is
  * too narrow to host its inboard slot, the bolt tucks against the scrollbar,
@@ -11,13 +11,21 @@
  * edge**, painting an opaque badge over the last words of every marked line.
  * No user action beyond opening the Code pane.
  *
- * The fix is ONE predicate, `laneSlotClearsProse(inset, available)`, asked by
+ * 214's fix is ONE predicate, `laneSlotClearsProse(inset, available)`, asked by
  * every pod-anchored lane element with its own inset — the bolt's inboard slot
  * (96 ⇒ needs a 104px margin, byte-identical to the comparison it replaces) and
  * the marker grid's innermost painted edge (right 62 ⇒ 70; left 44 ⇒ 52). The
- * bolt TUCKS when it fails; the grid HIDES that side (a two-column grid has no
- * sub-lane left to tuck into, and zen / the read-only reader were already
- * documented to hide).
+ * bolt TUCKS when it fails; the grid HIDES that side.
+ *
+ * Task 325 is what those two DIFFERING thresholds cost. Between 70 and 103 both
+ * elements render, and the tucked bolt's band is exactly marker col1's — so the
+ * outboard badge was painted over AND, the bolt being a fixed portal above the
+ * `pointer-events-auto` cells, unclickable. Two predicates asked separately
+ * cannot answer "who owns which pixels here", so the bolt's x and the grid's
+ * column count now come out of ONE ordered resolution (`resolveRightLane`):
+ * scrollbar fixed, bolt placed, grid takes the columns entirely inboard of it.
+ * The grid yields a COLUMN rather than the side — 214's honest 70–103 band
+ * survives, at the same single-column shape the left lane always had.
  *
  * These tests drive the REAL predicate into the REAL grid placement fn, so the
  * invariant they pin is the composition an actual render performs — not a
@@ -29,6 +37,7 @@ import { describe, it, expect } from "vitest";
 import {
   MARGINALIA_INNER_PAD,
   MARGINALIA_ICON_SIZE,
+  MARGINALIA_COL_GAP,
   MARGINALIA_MARGIN_WIDTH_LEFT,
   MARGINALIA_MARGIN_WIDTH_RIGHT,
   MARGINALIA_GRID_X_RIGHT,
@@ -41,7 +50,10 @@ import {
   laneSlotClearsProse,
   marginGridInset,
   marginaliaEffectiveCols,
-  markerGridFits,
+  resolveMarkerCols,
+  resolveRightLane,
+  MARGINALIA_BOLT_TUCK_X_RIGHT,
+  MARGINALIA_COLS,
   type AnchorNodeMetrics,
   type MarginaliaMarker,
 } from "@/lib/marginalia";
@@ -75,8 +87,8 @@ function markersOn(side: "left" | "right", n: number): MarginaliaMarker[] {
 
 /**
  * Render `n` markers on `side` the way the app does: resolve the lane regime
- * from the MEASURED margin through `markerGridFits`, then hand the resolved
- * booleans to the real grid. Returns each cell's ABSOLUTE x-range plus the
+ * from the MEASURED margin through `resolveMarkerCols`, then hand the resolved
+ * per-side column counts to the real grid. Returns each cell's ABSOLUTE x-range plus the
  * prose text edge, in the same coordinate space (`cell.x` is relative to the
  * marker container, which is `podRight − WIDTH_RIGHT` / `podLeft`).
  */
@@ -91,8 +103,8 @@ function render(
     markers,
     {},
     {
-      left: markerGridFits("left", side === "left" ? available : null),
-      right: markerGridFits("right", side === "right" ? available : null),
+      left: resolveMarkerCols("left", side === "left" ? available : null),
+      right: resolveMarkerCols("right", side === "right" ? available : null),
     },
   );
   const containerLeft =
@@ -133,10 +145,23 @@ describe("lane regime — the grid's inset is DERIVED from where the cells land"
   });
 
   it("the fit thresholds follow from inset + INNER_PAD (right 70, left 52)", () => {
-    expect(markerGridFits("right", 69)).toBe(false);
-    expect(markerGridFits("right", 70)).toBe(true);
-    expect(markerGridFits("left", 51)).toBe(false);
-    expect(markerGridFits("left", 52)).toBe(true);
+    expect(resolveMarkerCols("right", 69)).toBe(0);
+    expect(resolveMarkerCols("right", 70)).toBeGreaterThan(0);
+    expect(resolveMarkerCols("left", 51)).toBe(0);
+    expect(resolveMarkerCols("left", 52)).toBeGreaterThan(0);
+  });
+
+  it("the right inset is COLUMN-COUNT-INDEPENDENT, which is why the tuck can take a column without moving the prose threshold", () => {
+    // Right cells run OUTWARD from col0, so the innermost painted edge is
+    // col0's left edge whether the grid has one column or two. That is the
+    // whole reason task 325 could hand col1 to the bolt without renegotiating
+    // 214's derived 70px threshold — pinned so a future packing change that
+    // made the right grid pack INWARD has to state what it did to that.
+    expect(marginGridInset("right")).toBe(
+      MARGINALIA_MARGIN_WIDTH_RIGHT - MARGINALIA_GRID_X_RIGHT,
+    );
+    expect(resolveMarkerCols("right", 70)).toBe(1);
+    expect(resolveMarkerCols("right", 200)).toBe(MARGINALIA_COLS);
   });
 });
 
@@ -223,7 +248,7 @@ describe("lane regime — a hidden side hides its WHOLE column, and only that si
       (uuid) => (uuid === "p1" ? NODE : null),
       [...markersOn("left", 2), ...markersOn("right", 2)],
       {},
-      { left: markerGridFits("left", 120), right: markerGridFits("right", 48) },
+      { left: resolveMarkerCols("left", 120), right: resolveMarkerCols("right", 48) },
     );
     expect(positioned.every((p) => p.side === "left")).toBe(true);
     expect(positioned).toHaveLength(2);
@@ -235,14 +260,24 @@ describe("lane regime — an UNMEASURED frame fails OPEN", () => {
   // is indistinguishable from a zero-width margin. Hiding every marker there
   // would be a far worse failure than the overlap this guards, so `null` means
   // "render exactly as before this predicate existed".
-  it("markerGridFits(side, null) is true on both sides", () => {
-    expect(markerGridFits("left", null)).toBe(true);
-    expect(markerGridFits("right", null)).toBe(true);
+  it("resolveMarkerCols(side, null) gives each side its FULL column count", () => {
+    expect(resolveMarkerCols("left", null)).toBe(marginaliaEffectiveCols("left"));
+    expect(resolveMarkerCols("right", null)).toBe(MARGINALIA_COLS);
   });
 
   it("a NaN/Infinity available (a degenerate rect) also fails open", () => {
-    expect(markerGridFits("right", Number.NaN)).toBe(true);
-    expect(markerGridFits("right", Number.POSITIVE_INFINITY)).toBe(true);
+    expect(resolveMarkerCols("right", Number.NaN)).toBe(MARGINALIA_COLS);
+    expect(resolveMarkerCols("right", Number.POSITIVE_INFINITY)).toBe(
+      MARGINALIA_COLS,
+    );
+  });
+
+  it("the BOLT half fails open to its reserved inboard slot too (one resolution, one sentinel)", () => {
+    expect(resolveRightLane(null)).toEqual({
+      boltX: MARGINALIA_BOLT_X_RIGHT,
+      boltInboard: true,
+      markerCols: MARGINALIA_COLS,
+    });
   });
 
   it("with null, the grid places exactly what it placed at a full lane", () => {
@@ -273,7 +308,7 @@ describe("lane regime — the call site must ASK, and must measure the right ele
   const SRC = join(process.cwd(), "src");
   const LIBRARY = join(process.cwd(), "library");
 
-  it("every production caller of computeMarkerPositions derives its lane fits from markerGridFits", () => {
+  it("every production caller of computeMarkerPositions derives its lane columns from resolveMarkerCols", () => {
     const callers = [...walk(SRC), ...walk(LIBRARY)]
       // The declaring module names itself; a declaration is not a call.
       .filter((f) => !f.endsWith("src/lib/marginalia-grid.ts"))
@@ -286,10 +321,13 @@ describe("lane regime — the call site must ASK, and must measure the right ele
     for (const f of callers) {
       const src = readFileSync(f, "utf8");
       expect(src, `${f} must ask the lane-regime SSOT`).toContain(
-        "markerGridFits(",
+        "resolveMarkerCols(",
       );
-      // …and must not answer the question itself with a literal.
+      // …and must not answer the question itself with a literal — in either
+      // vocabulary, since the argument changed shape in task 325 and a stale
+      // boolean pair would be just as much a decision nobody made.
       expect(src).not.toMatch(/\{\s*left:\s*true\s*,\s*right:\s*true\s*\}/);
+      expect(src).not.toMatch(/\{\s*left:\s*\d+\s*,\s*right:\s*\d+\s*\}/);
     }
   });
 
@@ -349,7 +387,7 @@ describe("lane regime — ONE predicate, two slots (the bolt keeps its exact beh
 
   it("the two thresholds differ BECAUSE the bolt is inboard of the markers: 70…103 shows markers with the bolt already tucked", () => {
     for (const available of [70, 80, 103]) {
-      expect(markerGridFits("right", available)).toBe(true);
+      expect(resolveMarkerCols("right", available)).toBeGreaterThan(0);
       expect(laneSlotClearsProse(BOLT_INSET, available)).toBe(false);
       // The markers that survive there still clear the prose — the invariant
       // above, restated at the interesting band.
@@ -358,18 +396,113 @@ describe("lane regime — ONE predicate, two slots (the bolt keeps its exact beh
       for (const [left] of boxes) {
         expect(left).toBeGreaterThanOrEqual(textEdge! + MARGINALIA_INNER_PAD);
       }
-      // KNOWN RESIDUAL, stated rather than hidden: in this band the TUCKED
-      // bolt ([podRight−40, podRight−12]) overlaps marker col1
-      // ([podRight−34, podRight−12]) — the bolt tuck is a fixed pod-offset
-      // that ignores the markers. Pre-existing and strictly NARROWED by this
-      // change (before the cull it held for every margin below 104, markers
-      // included); this suite asserts prose clearance, which is 214's scope,
-      // and the bolt/marker overlap is filed separately.
-      // And the tucked bolt clears the prose too (task 045's own invariant).
+      // In this band the bolt is TUCKED and the markers still render — the
+      // collision task 325 closed. The disjointness half is swept below; here
+      // the tucked bolt clears the prose too (task 045's own invariant).
       const editorRight = POD_RIGHT - available;
       expect(
         computeBoltLeftFromPod({ podRight: POD_RIGHT, editorRight }),
       ).toBeGreaterThanOrEqual(editorRight + MARGINALIA_INNER_PAD);
+    }
+  });
+});
+
+describe("lane regime — the bolt and the grid never share a pixel (task 325)", () => {
+  const CONTAINER_LEFT = POD_RIGHT - MARGINALIA_MARGIN_WIDTH_RIGHT;
+  const BOLT_INSET = MARGINALIA_MARGIN_WIDTH_RIGHT - MARGINALIA_BOLT_X_RIGHT;
+
+  /** True iff [aL,aR) and [bL,bR) share any x. Touching edges are disjoint —
+   *  col0's right edge IS the tucked bolt's left edge, by construction. */
+  function intersects(a: [number, number], b: [number, number]): boolean {
+    return a[0] < b[1] && b[0] < a[1];
+  }
+
+  function boltBandAt(available: number): [number, number] {
+    const left = computeBoltLeftFromPod({
+      podRight: POD_RIGHT,
+      editorRight: POD_RIGHT - available,
+    });
+    return [left, left + MARGINALIA_BOLT_SIZE];
+  }
+
+  // THE invariant this task exists for, in the shape of the prose-clearance
+  // sweep above: every margin 0…200, enough markers to force a second row AND
+  // an overflow pill, and at each one the bolt's 28px band must miss every
+  // rendered cell. The bolt renders at EVERY margin (it is the sole entry to
+  // the actions menu), so there is no "is it showing?" gate to apply — which is
+  // exactly why the grid is the side that yields.
+  it("at every available margin, no rendered cell (or +K pill) intersects the bolt's band", () => {
+    let sawTuckedWithMarkers = false;
+    let sawReserved = false;
+    for (let available = 0; available <= 200; available++) {
+      const bolt = boltBandAt(available);
+      const tucked = !laneSlotClearsProse(BOLT_INSET, available);
+      const { boxes } = render("right", available, 9);
+      if (tucked && boxes.length > 0) sawTuckedWithMarkers = true;
+      if (!tucked && boxes.length > 0) sawReserved = true;
+      for (const box of boxes) {
+        expect(
+          intersects(box, bolt),
+          `margin ${available}: cell ${JSON.stringify(box)} under bolt ${JSON.stringify(bolt)}`,
+        ).toBe(false);
+      }
+    }
+    // The sweep is only meaningful if it crossed BOTH regimes with markers up —
+    // the tucked one is the band this task closed, the reserved one is the
+    // control that keeps the sweep from passing by hiding everything.
+    expect(sawTuckedWithMarkers).toBe(true);
+    expect(sawReserved).toBe(true);
+  });
+
+  it("in the 70…103 band the grid yields exactly its OUTBOARD column, and keeps col0", () => {
+    for (const available of [70, 80, 103]) {
+      expect(resolveRightLane(available)).toEqual({
+        boltX: MARGINALIA_BOLT_TUCK_X_RIGHT,
+        boltInboard: false,
+        markerCols: 1,
+      });
+      // Every surviving cell sits in col0 — the one column inboard of the tuck.
+      const { positioned, overflowGroups } = render("right", available, 9);
+      for (const p of [...positioned, ...overflowGroups]) {
+        expect(p.cell.col).toBe(0);
+        expect(p.cell.x).toBe(MARGINALIA_GRID_X_RIGHT);
+      }
+      expect(positioned.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("DEFECT LEG — the pre-fix grid packed col1 straight under the tucked bolt", () => {
+    // Reconstruct the placement this fix retired: a two-column grid at the
+    // wide-lane offsets whatever the margin was. col1's band is CONTAINED in
+    // the tuck's, so the marker was invisible AND — the bolt being a fixed
+    // portal over `pointer-events-auto` cells — unclickable.
+    const oldCol1: [number, number] = [
+      CONTAINER_LEFT +
+        MARGINALIA_GRID_X_RIGHT +
+        (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP),
+      CONTAINER_LEFT +
+        MARGINALIA_GRID_X_RIGHT +
+        (MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP) +
+        MARGINALIA_ICON_SIZE,
+    ];
+    const bolt = boltBandAt(80);
+    expect(intersects(oldCol1, bolt)).toBe(true);
+    expect(oldCol1[0]).toBeGreaterThanOrEqual(bolt[0]); // fully contained
+    expect(oldCol1[1]).toBeLessThanOrEqual(bolt[1]);
+    // And col0 was NOT under it — which is why the fix is "yield one column",
+    // not "hide the side": the honest 70–103 band task 214 preserved survives.
+    const col0: [number, number] = [
+      CONTAINER_LEFT + MARGINALIA_GRID_X_RIGHT,
+      CONTAINER_LEFT + MARGINALIA_GRID_X_RIGHT + MARGINALIA_ICON_SIZE,
+    ];
+    expect(intersects(col0, bolt)).toBe(false);
+    expect(col0[1]).toBe(bolt[0]); // they abut exactly
+  });
+
+  it("below the grid's own threshold the bolt keeps the whole lane (nothing to yield to)", () => {
+    for (const available of [0, MARGIN_MIN.right, CODE_VIEW_GUTTER_PX, 69]) {
+      expect(resolveMarkerCols("right", available)).toBe(0);
+      expect(render("right", available, 9).boxes).toHaveLength(0);
     }
   });
 });
