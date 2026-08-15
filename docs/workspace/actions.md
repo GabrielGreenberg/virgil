@@ -1,4 +1,4 @@
-<!-- last-verified: 9b4f80cb 2026-08-14 -->
+<!-- last-verified: baf05ee5 2026-08-15 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -93,9 +93,12 @@ the audit's CITE behavior, below.
 the new card is already surfaced at its anchor (float/panel). (1) The shared
 `finishCreate` tail calls `suppressNextPlacement()`
 ([usePlacement](../../src/links/_shared/usePlacement.ts)) before `setSelected`, so
-selecting the fresh card doesn't trip `usePlacement`'s card→text `alignEntryToY`
-scroll (one call covers all card kinds — footnote/citation were the reported
-jumps). (2) Inline-atom creates (footnote/citation/`\ref`/inline-math) route
+selecting the fresh card doesn't trip `usePlacement`'s card→text
+`alignEntryToYIfNeeded` scroll (one call covers all card kinds —
+footnote/citation were the reported jumps). Since task 328 that door is the
+gated one: a card already fully visible in its band holds rather than scrolls
+(`src/lib/reposition-policy.ts`), and raw `alignEntryToY` is callable only from
+`layout-scroll.ts` (CI: `gutter-stability-census.test.ts`). (2) Inline-atom creates (footnote/citation/`\ref`/inline-math) route
 through the unified no-scroll primitive **`insertInlineAtom`**
 ([insert-inline-atom.ts](../../src/lib/tiptap/insert-inline-atom.ts)) — `focus(null,
 { scrollIntoView: false })` + `insertContent`, never `.focus().scrollIntoView()`,

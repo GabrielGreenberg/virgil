@@ -1,4 +1,4 @@
-<!-- last-verified: 9b4f80cb 2026-08-14 -->
+<!-- last-verified: baf05ee5 2026-08-15 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#card-kind-taxonomy -->
 <!-- covers-code: src/panels/panel-registry.ts, src/components/MenuBar.tsx, src/components/EditorLayout.tsx, src/components/SkillSyncControls.tsx, src/components/panel-primitives.tsx, src/components/editor-layout, src/components/menu, src/floats, src/panels/_shared/card-archive-actions.tsx, src/panels/_shared/card-archive-view.tsx, src/panels/_shared/CardViewModeMenu.tsx, src/lib/view-prefs/registry.ts -->
 
@@ -304,9 +304,13 @@ For an **icon-only** control the visible label *is* its accessible name, so both
 
 See [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) → "Hints, tooltips & keyboard shortcuts" for authoring guidelines (label length, positioning zones, accessibility).
 
+## Status dot
+
+**StatusDot** ([src/components/StatusDot.tsx](../../src/components/StatusDot.tsx)) is THE small coloured status dot (task 315). The Virgil bar spelled the idiom four ways before it — the AI-requests overlay dot, the pdf-stale dot, the collab pen dot (a map of raw hex literals with a `?? "#888"` fallback) and `ExternalChangeBadge`'s private `PausedDot` twin. Callers state a **tone** (`ok` / `warn` / `danger` / `neutral` / …), never a colour: there is deliberately **no `color` prop**, since a caller that can pass a colour can pass a hex — the class this retires (STYLE_GUIDE "Three layers"). Sizes are the two the app paints: `sm` (6px, chrome default) and `md` (8px, a first-class state indicator inside a pill), with no default. A dot is `aria-hidden` unless given a `label`, which opts into `aria-label` + the app's `data-hint` tooltip via `iconHint`. Consumers: `StatusCluster`, `CollabStatusPill`, `ExternalChangeBadge`, `AIWindow`. Deliberately NOT converted: `EditorLayout`'s "PDF is out of date" chip, which paints the same signal from the Tailwind family (`bg-yellow-500` ≠ `var(--status-warn)` — they have already drifted, so converting it is a colour decision). CI: `status-dot-ssot.test.ts`.
+
 ## Collaborator mode UI
 
-**CollabStatusPill** ([src/components/CollabStatusPill.tsx](../../src/components/CollabStatusPill.tsx)) renders in two variants, both in the topbar:
+**CollabStatusPill** ([src/components/CollabStatusPill.tsx](../../src/components/CollabStatusPill.tsx)) renders in two variants, both in the topbar (its pen-state dot is a `StatusDot`, see above):
 
 - `variant="icon"` — always-visible two-person silhouette button in the menu-icon cluster. Click toggles collab on/off (via menu when on).
 - `variant="badge"` — pen-state pill (dot + label) and next-natural action (Take / Pass / Request / Take over) in the modes/views section. Hidden when collab is off.
