@@ -22,6 +22,7 @@ import {
   setStackDropTarget,
   getStackDropTarget,
 } from "@/lib/stack/stack-drop-target";
+import { canCaptureToStack } from "@/floats/stack-capture";
 import { WINDOW_DRAG_BLOCK_SELECTOR } from "@/lib/drag-blocklist";
 import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { getWindowInsetTopPx } from "@/hooks/useWindowChrome";
@@ -224,6 +225,16 @@ function FloatingPanelInner({
         // beginDragAt, or floating-mode header drags).
         dockedWidth: number | null;
         dockedHeight: number | null;
+        // Can this float be captured onto the Stack? Resolved ONCE here, at
+        // gesture start, from the registry (`canCaptureToStack`) — never per
+        // mousemove, since a registry read cannot change mid-gesture (the rule
+        // `resolveSessionPlacements` follows for a drop session, for the same
+        // reason). BOTH the hover affordance and the release read this one
+        // value, so the ring can never promise a capture the commit refuses
+        // (task 332). False for a non-card shell (no `cardKey`) and for a kind
+        // `CARD_REGISTRY` declares non-stackable — report / report-request /
+        // example.
+        canCapture: boolean;
       }
     | {
         mode: "resize";
@@ -249,8 +260,14 @@ function FloatingPanelInner({
   // and re-binding window listeners on every prop change, and keeps
   // the hooks dep array a fixed length even when optional props
   // (onMaybeRedock) are sometimes omitted.
-  const handlersRef = useRef({ onChange, onUndock, onMaybeRedock, mode });
-  handlersRef.current = { onChange, onUndock, onMaybeRedock, mode };
+  //
+  // `cardKey` rides along for the same reason: the window listeners install
+  // once and `beginDragAt` (the card-lift hand-off) lives in a
+  // `useImperativeHandle` with an empty dep list, so both would otherwise read
+  // the MOUNT-time popout key — and the stack-capture capability must be
+  // resolved from the same key the release then reports.
+  const handlersRef = useRef({ onChange, onUndock, onMaybeRedock, mode, cardKey });
+  handlersRef.current = { onChange, onUndock, onMaybeRedock, mode, cardKey };
 
   // Sync local pos when the parent's float rect changes (e.g. on
   // undock the parent calls onUndock which writes a new floatPosition;
@@ -340,7 +357,10 @@ function FloatingPanelInner({
         // caches its rect into a module-level signal so this stays a
         // pure-data lookup. Suppresses the dock outline so the two
         // affordances don't fight.
-        if (cardKey) {
+        // Gated on the CAPABILITY resolved at mousedown, not on `cardKey`
+        // alone: a float whose kind the Stack cannot carry lights no ring and
+        // falls through to the normal dock/redock handling below.
+        if (s.canCapture) {
           // Two acceptable conditions: the cursor itself is over the
           // icon, OR the dragged float's header strip overlaps the icon.
           // The latter makes the drop target much more forgiving — the
@@ -447,8 +467,17 @@ function FloatingPanelInner({
       // StackIcon at release. Emit a doc-level event so EditorPane
       // (which holds the per-doc hooks) can perform the snapshot. Skip
       // the rest of the redock flow on stack drop.
+      // Read through the ref: this effect installs its listeners once with an
+      // empty dep list, so the render-scope `cardKey` here would be the
+      // mount-time value — and it must be the same key the capability below
+      // was resolved from, or the two could disagree about what is travelling.
+      const dropKey = handlersRef.current.cardKey;
       const stackDropHit =
-        wasFloatingMove && cardKey != null &&
+        wasFloatingMove && dropKey != null &&
+        // The SAME resolved capability the hover read (task 332) — the
+        // affordance and the commit answer from one value, so a release that
+        // was never offered a ring can't dispatch a capture.
+        s.mode === "move" && s.canCapture &&
         (
           isOverStackIcon(e.clientX, e.clientY) ||
           isHeaderOverStackIcon({
@@ -463,10 +492,20 @@ function FloatingPanelInner({
         dragStateRef.current = null;
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
+        // Persist where the user actually left the float. This branch returns
+        // before the shared commit below, which was harmless only while a
+        // capture ALWAYS closed the float: since task 332 the host closes it
+        // only on a snapshot that landed, so a refused capture (a deleted
+        // source, an unresolvable id) would otherwise leave the float parked
+        // over the StackIcon at a rect nothing had stored. On a capture that
+        // does land this is a no-op in effect — `closeCardPopout` deletes the
+        // key's saved rect immediately afterwards, through a functional
+        // updater on the same store, so the write cannot outlive the delete.
+        handlersRef.current.onChange(latestPosRef.current);
         if (typeof window !== "undefined") {
           window.dispatchEvent(
             new CustomEvent("virgil-stack-drop", {
-              detail: { cardKey, clientX: e.clientX, clientY: e.clientY },
+              detail: { cardKey: dropKey, clientX: e.clientX, clientY: e.clientY },
             }),
           );
         }
@@ -572,6 +611,7 @@ function FloatingPanelInner({
       // the band's visual frame.
       dockedWidth: pendingUndock && primaryRect ? primaryRect.width : null,
       dockedHeight: pendingUndock && primaryRect ? primaryRect.height : null,
+      canCapture: cardKey != null && canCaptureToStack(cardKey),
     };
     document.body.style.userSelect = "none";
     document.body.style.cursor = "grabbing";
@@ -594,6 +634,10 @@ function FloatingPanelInner({
         sourceGhost: null,
         dockedWidth: null,
         dockedHeight: null,
+        canCapture: (() => {
+          const key = handlersRef.current.cardKey;
+          return key != null && canCaptureToStack(key);
+        })(),
       };
       document.body.style.userSelect = "none";
       document.body.style.cursor = "grabbing";

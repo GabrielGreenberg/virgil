@@ -415,6 +415,70 @@ CI: [planned-decision-guardrail.test.ts](src/components/drop-mode/__tests__/plan
 
 Known residual, unchanged by this and stated in the affordance half above: a refused position still paints an inviting bar and says nothing on release. Making refused positions unhoverable needs a predicate cheap enough for the per-frame hit-test (the plan is not — it builds transactions), so it is a product decision, not a follow-on.
 
+#### The other gesture: the Stack capture never asked the facet built to answer it
+
+Same law, outside drop-mode entirely (task 332) — and the case where the SSOT existed, was
+correct, was pinned three ways, and the gesture that most needed it simply never called it.
+
+Releasing a popped-out float over the StackIcon is a drag with no `DropSpec` in it: the shell
+(`FloatingPanel`) lights the icon's capture ring while dragging and dispatches a
+`virgil-stack-drop` window event on release; `EditorPane`'s handler resolves the `Floatable`
+and asks it to serialize. The hover gated on `if (cardKey)` and pure geometry. Only the
+handler read `CARD_REGISTRY[kind].stackable` — by which point the gesture had already
+promised. So a **Report / Report Request / Example** float lit the ring exactly as a note
+does, the release was accepted, `snapshotForStack` answered null, and the float was closed
+anyway under the comment *"Close the source float regardless of snapshot success — the user's
+intent is clear."* Right about the intent (capture) and wrong about the outcome: the card
+vanished from the screen with nothing on the Stack, no strip opening, and no message.
+Task 259 built `stackable` precisely so this question would have ONE answer; this gesture
+never asked it.
+
+Three pieces, mirroring the drop-mode halves above:
+
+- **The declaration.** [`canCaptureToStack(floatKey)`](src/floats/stack-capture.ts) — parse the
+  key, read the registry. `FloatingPanel` resolves it **ONCE at mousedown** onto the move
+  gesture's own state (never per mousemove: a registry read cannot change mid-gesture, the
+  rule `resolveSessionPlacements` follows), and BOTH the ring and the release read that one
+  value. A float whose kind cannot be captured lights no ring and falls through to the normal
+  drop/redock handling. The module is deliberately LIGHT — the card spine's runtime leaf and
+  the key grammar, nothing else — because the drag shell is imported by half the app; the
+  execution half may be heavy and lives elsewhere.
+- **The door.** [`captureFloatToStack`](src/floats/resolve-floatable.ts), built on the same
+  `resolveFloatable` `FloatHost` renders from. The host had carried its own copy of that
+  dispatch, announced in its comment as *"Mirror `FloatHost.resolveFloatable`"* — a stated fork,
+  which is the shape "A registry earns its name by being read" outlaws. Moving the
+  `@/cards/floats` registration import with it is what makes the capture path declare its own
+  obligation instead of inheriting it from whoever imported the renderer.
+- **The report is the permission.** The float closes only on a snapshot that actually landed.
+  The declaration cannot answer everything the execution can — a text-object float outlives the
+  block it was lifted from, so a deleted source resolves to null at capture time — and *that*
+  is exactly what the report is for. Which also earned the fix's one non-obvious line: the
+  stack-drop branch returns before the shared position commit, harmless only while a capture
+  always closed the float, so it now commits the dragged rect itself or a refused capture
+  strands the float over the icon at a position nothing stored.
+
+**A text-object float is capture-capable as a FAMILY, and that is derived rather than waved
+through**: `snapshotTextObject` is total over `TextObjectKind`, so there is no kind-shaped
+refusal to declare — only per-moment resolution failures, which the report owns. It is
+deliberately NOT keyed on `TEXT_OBJECT_REGISTRY[kind].floatBodyComponent`, which is mutable
+state written by a side-effect registration module: an affordance must not depend on import
+order.
+
+CI: [stack-capture-affordance.test.tsx](src/components/__tests__/stack-capture-affordance.test.tsx)
+drives the REAL gesture (mousedown → mousemove onto the icon's published rect → mouseup) for one
+stackable kind and the three non-stackable ones — **every other guard in this cluster is blind
+to the drag by construction**, which is how the gesture shipped for a year never asking the
+facet. Its close-gate leg reads `EditorPane` SOURCE, because that handler lives in a component
+no unit test mounts and the part that could misbehave was never the door. `stack-coverage`
+gains the affordance ⇔ declaration sweep per kind (keying the guard on the declaration alone
+would prove nothing — it has to ask the predicate the gesture reads), and `float-snapshot` the
+door's refusals plus a census that `snapshotForStack` has exactly ONE production caller: a
+second capture site would ask no capability at all, and the ring would be honest while the
+commit was not. The refusal legs assert the record is never even RESOLVED (the kind's
+`toFloatable` must go uncalled), since the null alone passes with the capability check deleted —
+the two-tables shape restored with CI green.
+
+
 #### The vocabulary half: an exemption is scoped to the shape it justifies
 
 Same gesture, and the case where the law was already written, already enforced, and enforced in a place two call sites had a written licence to skip (task 328). Rule 4 of the move half above — *a payload arrives in the target's vocabulary or not at all* — lived **inside** `fitNodesAtInsert`, as a private helper reachable only by going **through** the container fit. Two splices are deliberately exempt from that fit, each carrying a `container-fit-exempt:` marker whose stated reason is *"an open slice merging with the text around a caret… no container is being entered"* — a true statement about **containers** and a false one about **vocabularies**. Because the adoption sat in the same function, the exemption silently bought an exemption from it too.

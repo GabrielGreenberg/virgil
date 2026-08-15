@@ -10,6 +10,8 @@
 // be importable, not mounted.
 
 import { describe, it, expect, vi } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 // `@/cards/floats` transitively pulls `@/lib/storage`, whose
 // `require("@/lib/storage-fsa")` vitest's resolver can't alias (the known
@@ -39,6 +41,8 @@ import { CARD_KINDS } from "@/cards/predicates";
 import type { CardFloatCtx } from "@/cards/card-float-ctx";
 import type { CardKind } from "@/cards/types";
 import { stackCardKindFor, type StackItem } from "@/lib/stack/types";
+import { buildFloatKey } from "@/floats/float-key";
+import { captureFloatToStack } from "@/floats/resolve-floatable";
 import { withBibCarry } from "@/lib/stack/bib-carry";
 import type { BibEntry } from "@/lib/types";
 
@@ -220,4 +224,103 @@ describe("card Floatable.snapshotForStack", () => {
       expect(stackCardKindFor(kind)).toBeNull(); // …and the vocabulary agrees
     });
   }
+});
+
+/**
+ * Task 332 — the CAPTURE DOOR, one rung above the per-kind `Floatable`.
+ *
+ * `captureFloatToStack` is what the `virgil-stack-drop` host calls: it asks the
+ * declared capability (`canCaptureToStack`, the same table the drag's ring
+ * reads), resolves the `Floatable` through the ONE `resolveFloatable` FloatHost
+ * renders from, and serializes. Its null is a REPORT the host acts on — it
+ * closes the source float only when an item came back — so these legs pin the
+ * three ways it can answer null, all of which used to end with the float
+ * dismissed and nothing on the Stack.
+ */
+describe("captureFloatToStack — the ONE capture door", () => {
+  const stackable = CARD_KINDS.filter((k) => CARD_REGISTRY[k].stackable);
+
+  for (const kind of stackable) {
+    const fx = FIXTURES[kind]!;
+    it(`${kind}: captures through the door exactly as its Floatable does`, () => {
+      const key = buildFloatKey({ domain: "card", kind, id: fx.id });
+      const item = captureFloatToStack(key, mockCtx, SOURCE);
+      expect(item).not.toBeNull();
+      expect(cardPayload(item!).cardKind).toBe(stackCardKindFor(kind));
+    });
+  }
+
+  for (const kind of CARD_KINDS.filter(
+    (k) => !CARD_REGISTRY[k].stackable && FIXTURES[k] !== null,
+  )) {
+    it(`${kind}: REFUSES — the capability is read before any record is`, () => {
+      // The null alone would be VACUOUS: these kinds' own `snapshotForStack`
+      // already returns null (the leg above), so the assertion passes with the
+      // door's capability check deleted — and a door that re-answers from each
+      // kind's Floatable instead of from `canCaptureToStack` is the two-tables
+      // shape task 332 exists to retire, restored with CI green. So assert the
+      // record is never even resolved.
+      const spy = vi.spyOn(CARD_REGISTRY[kind], "toFloatable");
+      const key = buildFloatKey({ domain: "card", kind, id: FIXTURES[kind]!.id });
+      expect(captureFloatToStack(key, mockCtx, SOURCE)).toBeNull();
+      expect(
+        spy,
+        "the door must refuse from the DECLARATION, not from the record",
+      ).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+  }
+
+  it("a stackable kind whose record no longer resolves reports null", () => {
+    // The case the capability check CANNOT answer and the report must: the
+    // note was deleted between the drag starting and the release. Pre-332 this
+    // still closed the float — the user's card vanished with nothing captured.
+    const key = buildFloatKey({ domain: "card", kind: "note", id: "gone" });
+    expect(captureFloatToStack(key, mockCtx, SOURCE)).toBeNull();
+  });
+
+  it("an unparseable key reports null rather than throwing", () => {
+    expect(captureFloatToStack("not-a-key", mockCtx, SOURCE)).toBeNull();
+  });
+
+  it("reads the LEGACY key grammar too (the drag emits whatever prefs stored)", () => {
+    // `poppedOutCards` still holds un-migrated `<prefix>:<id>` keys, and the
+    // revision pair's `revision:s:<id>` spelling is the one prefix→kind
+    // divergence in the whole spine. Both doors must read them identically or
+    // the ring and the capture disagree for exactly those floats.
+    expect(captureFloatToStack("note:note-1", mockCtx, SOURCE)).not.toBeNull();
+    const rev = captureFloatToStack("revision:s:rev-s-1", mockCtx, SOURCE);
+    expect(cardPayload(rev!).cardKind).toBe("revision-suggestion");
+    expect(captureFloatToStack("report:report-1", mockCtx, SOURCE)).toBeNull();
+  });
+});
+
+describe("nothing captures except through the door", () => {
+  it("`snapshotForStack` has exactly ONE production caller", () => {
+    // The census. `captureFloatToStack` was never the part that could
+    // misbehave — a second capture site that resolves a `Floatable` and
+    // serializes it directly is, and such a site asks no capability at all:
+    // the ring would be honest and the commit would not. Both silos, source
+    // read, tests excluded (they call the method by design).
+    const roots = ["src", "library"];
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) {
+          if (e.name === "__tests__" || e.name === "node_modules") continue;
+          walk(full);
+        } else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name)) {
+          const src = readFileSync(full, "utf8");
+          if (src.includes("snapshotForStack(")) hits.push(full);
+        }
+      }
+    };
+    for (const r of roots) walk(resolve(__dirname, "../../..", r));
+    const callers = hits
+      .map((h) => h.replace(/^.*\/(src|library)\//, "$1/"))
+      .filter((h) => h !== "src/floats/types.ts") // the DECLARATION, not a call
+      .sort();
+    expect(callers).toEqual(["src/floats/resolve-floatable.ts"]);
+  });
 });
