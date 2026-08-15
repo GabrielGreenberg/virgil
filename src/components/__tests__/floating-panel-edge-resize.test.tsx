@@ -86,7 +86,10 @@ function dragEdge(
   fireEvent.mouseDown(zone(shell, edge), { clientX: sx, clientY: sy });
   fireEvent(
     window,
-    new MouseEvent("mousemove", { bubbles: true, clientX: mx, clientY: my }),
+    // `buttons: 1` — the primary button is HELD. Since task 330 the move
+    // handler bails on `isMissedRelease`, so a move with jsdom's default
+    // `buttons: 0` reads as a release this gesture never observed.
+    new MouseEvent("mousemove", { bubbles: true, clientX: mx, clientY: my, buttons: 1 }),
   );
 }
 
