@@ -2,14 +2,17 @@
 //
 // Task 330 — **a bespoke gesture buys a different SHAPE, not an exemption.**
 //
-// The float move is the one sanctioned bespoke window-level drag in `src/`
-// (the pane-resize engine's `getValue/apply/commit(px)` shape genuinely doesn't
-// fit a 2D free move), and for a year that bought it an exemption from the
-// engine's whole discipline. Per raw `mousemove` — 120-240 Hz on a high-Hz
-// mouse, with no RAF coalescing anywhere — the handler did BOTH:
+// The float move is a bespoke window-level drag (the pane-resize engine's
+// `getValue/apply/commit(px)` shape genuinely doesn't fit a 2D free move), and
+// for a year that bought it an exemption from the engine's whole discipline.
+// Per raw `mousemove` — 120-240 Hz on a high-Hz mouse, with no RAF coalescing
+// anywhere — the handler did BOTH:
 //
 //   1. `setPos(...)`, a React commit that rewrites the shell's `left`/`top`
-//      (invalidating layout), and
+//      (invalidating layout — but NOT re-rendering the hosted panel body, whose
+//      element is referentially identical across this component's own setState,
+//      so React's same-element bailout spares it; the first draft of this
+//      header claimed otherwise and an overstated claim is its own defect), and
 //   2. a forced-layout DOM sweep for the dock proximity test:
 //      `querySelectorAll("[data-panel-column-side]")` + `getComputedStyle(:root)`
 //      + a rect per column — and, inside the 80px dock gate, a second
@@ -31,6 +34,7 @@
 // that records it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { useState } from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { render, fireEvent, cleanup, act } from "@testing-library/react";
@@ -139,7 +143,9 @@ afterEach(() => {
   setDockDragTarget(null);
   document.body.style.userSelect = "";
   document.body.style.cursor = "";
-  document.querySelectorAll("[data-panel-column-side]").forEach((el) => el.remove());
+  document
+    .querySelectorAll("[data-panel-column-side], [data-dock-slot]")
+    .forEach((el) => el.remove());
   vi.restoreAllMocks();
 });
 
@@ -237,17 +243,25 @@ describe("the move path costs pointer arithmetic and one composited write", () =
   it("does ZERO DOM geometry reads per event (the sweep is ONE per gesture)", () => {
     mountDockFixture();
     const { header } = mountFloat();
-    const qsa = vi.spyOn(document, "querySelectorAll");
+    // Instrument WIDER than the claim: `document`-scoped queries alone would
+    // miss the exact shape the old code used (`col.querySelectorAll(…)` off a
+    // cached column element), and the fixture's own counter alone would miss a
+    // rect read on any element it didn't stub. Prototype spies cover both, and
+    // `rectReads` still covers the fixture elements whose own method shadows
+    // the prototype.
+    const qsa = vi.spyOn(Element.prototype, "querySelectorAll");
+    const docQsa = vi.spyOn(document, "querySelectorAll");
     const computed = vi.spyOn(window, "getComputedStyle");
+    const protoRects = vi.spyOn(Element.prototype, "getBoundingClientRect");
     rectReads = 0;
 
     fireEvent.mouseDown(header, { clientX: 500, clientY: 500, ...HELD });
     move(540, 520); // the gesture's one capture happens here
     flushFrame();
     const afterCapture = {
-      qsa: qsa.mock.calls.length,
+      qsa: qsa.mock.calls.length + docQsa.mock.calls.length,
       computed: computed.mock.calls.length,
-      rects: rectReads,
+      rects: rectReads + protoRects.mock.calls.length,
     };
     expect(afterCapture.qsa, "the capture really did sweep").toBeGreaterThan(0);
     expect(
@@ -261,11 +275,17 @@ describe("the move path costs pointer arithmetic and one composited write", () =
       move(560 + i * 4, 460 - i * 8);
       flushFrame();
     }
-    expect(qsa.mock.calls.length, "no querySelectorAll per move").toBe(afterCapture.qsa);
+    expect(
+      qsa.mock.calls.length + docQsa.mock.calls.length,
+      "no querySelectorAll per move — element- OR document-scoped",
+    ).toBe(afterCapture.qsa);
     expect(computed.mock.calls.length, "no getComputedStyle per move").toBe(
       afterCapture.computed,
     );
-    expect(rectReads, "no forced-layout rect read per move").toBe(afterCapture.rects);
+    expect(
+      rectReads + protoRects.mock.calls.length,
+      "no forced-layout rect read per move, on ANY element",
+    ).toBe(afterCapture.rects);
   });
 });
 
@@ -307,6 +327,135 @@ describe("what the outline OFFERS is what the release ACCEPTS", () => {
   });
 });
 
+describe("a gesture that begins DOCKED", () => {
+  /**
+   * The fix's most load-bearing timing claim, and the one with no coverage in
+   * the first cut: the lazy capture lands AFTER the undock reflow, because the
+   * undock move returns early and React commits in the microtask before the
+   * next `mousemove` task. Everything downstream (the band list the redock
+   * resolves against) depends on it.
+   */
+  function mountDocked() {
+    const onChange = vi.fn();
+    const onUndock = vi.fn();
+    const onMaybeRedock = vi.fn();
+    // The band the docked pod portals into, plus its own rect (the mousedown
+    // reads it to seed the lift-off geometry).
+    const slot = document.createElement("div");
+    slot.setAttribute("data-dock-slot", "right-0");
+    stubRect(slot, BAND0);
+    document.body.appendChild(slot);
+
+    /**
+     * Stand in for the real parent, which is what makes the mode flip part of
+     * the gesture: `onUndock` writes a float rect into prefs, and the shell
+     * re-renders as `mode="floating"` MID-DRAG while the same component
+     * instance keeps owning the gesture. Without this the shell stays docked
+     * for the whole gesture, `wasFloatingMove` is false at the release, and the
+     * redock half of the round trip is never reached.
+     */
+    function DockedHost() {
+      const [rect, setRect] = useState<
+        { x: number; y: number; width: number; height: number } | null
+      >(null);
+      return (
+        <FloatingPanel
+          panelId="notes"
+          mode={rect ? "floating" : "docked"}
+          slotKey={rect ? null : "right-0"}
+          initialX={rect?.x ?? INIT.x}
+          initialY={rect?.y ?? INIT.y}
+          initialWidth={rect?.width ?? INIT.width}
+          initialHeight={rect?.height ?? INIT.height}
+          zIndex={1200}
+          onChange={onChange}
+          onUndock={(r) => {
+            onUndock(r);
+            setRect(r);
+          }}
+          onMaybeRedock={onMaybeRedock}
+        >
+          <div data-testid="body">docked body</div>
+        </FloatingPanel>
+      );
+    }
+
+    const view = render(<DockedHost />);
+    const shell = document.querySelector<HTMLDivElement>('[data-floating-panel="true"]')!;
+    stubRect(shell, BAND0); // the pod fills its band
+    return {
+      view,
+      shell,
+      header: document.querySelector<HTMLElement>('[data-testid="body"]')!,
+      onChange,
+      onUndock,
+      onMaybeRedock,
+    };
+  }
+
+  it("undocks on the first movement, committing the docked-derived rect once", () => {
+    const { header, onUndock, onChange } = mountDocked();
+    fireEvent.mouseDown(header, { clientX: 500, clientY: 500, ...HELD });
+    // The lift-off ghost is armed from the docked rect at mousedown.
+    expect(getDockDragTarget()).toMatchObject({ side: "right", rect: BAND0 });
+
+    move(510, 505); // any motion undocks (threshold 0)
+    expect(onUndock).toHaveBeenCalledTimes(1);
+    expect(onUndock).toHaveBeenCalledWith({
+      // The docked rect's top-left, translated by the cursor delta; w/h clamped
+      // from the band's own frame.
+      x: BAND0.left + 10,
+      y: BAND0.top + 5,
+      width: Math.max(240, BAND0.width),
+      height: Math.max(200, BAND0.height),
+    });
+    expect(onChange, "the undock edge is not a persistence edge").not.toHaveBeenCalled();
+
+    up(510, 505);
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("captures the dock snapshot AFTER the undock, and the release still resolves a redock", () => {
+    // The column exists all along; what changes across the undock is the band
+    // list, which is why the capture must not happen at mousedown.
+    mountDockFixture();
+    const { header, onUndock, onMaybeRedock } = mountDocked();
+
+    fireEvent.mouseDown(header, { clientX: 500, clientY: 500, ...HELD });
+    // Move 1: undocks and returns early — no geometry read yet.
+    rectReads = 0;
+    move(501, 500);
+    expect(onUndock).toHaveBeenCalledTimes(1);
+    // Move 2: the first move that needs geometry, i.e. the first one AFTER the
+    // undock commit — so the sweep sees the post-undock stack.
+    move(501 + (880 - BAND0.left), 500 + (42 - BAND0.top));
+    expect(rectReads, "the sweep happened, and not before the undock").toBeGreaterThan(0);
+    flushFrame();
+
+    up(501 + (880 - BAND0.left), 500 + (42 - BAND0.top));
+    expect(
+      onMaybeRedock,
+      "a docked→float→dock round trip still redocks (the release reads the same door)",
+    ).toHaveBeenCalledTimes(1);
+    expect(onMaybeRedock.mock.calls[0][0].side).toBe("right");
+  });
+
+  it("a docked press with only the undock movement still resolves its redock on release", () => {
+    // The gap the review found: the undock branch returns BEFORE the geometry
+    // door, so a 1px drag followed by a release left the release with no
+    // snapshot at all — and the pre-fix live sweep WOULD have answered. The
+    // release now enters the same lazy door, so it captures once on the edge.
+    mountDockFixture();
+    const { header, onMaybeRedock } = mountDocked();
+    fireEvent.mouseDown(header, { clientX: 500, clientY: 500, ...HELD });
+    // One movement only — the undock — landing the float's top-right corner on
+    // the right column's snap corner.
+    move(500 + (880 - BAND0.left), 500 + (42 - BAND0.top));
+    up(500 + (880 - BAND0.left), 500 + (42 - BAND0.top));
+    expect(onMaybeRedock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("the pointer invariants (imported from the engine's SSOT)", () => {
   it("a mid-move with the primary button UP ends the gesture at the last live rect", () => {
     const { shell, header, onChange } = mountFloat();
@@ -339,6 +488,47 @@ describe("the pointer invariants (imported from the engine's SSOT)", () => {
     flushFrame();
     expect(geom(shell)).toEqual({ left: INIT.x + 40, top: INIT.y + 20, transform: "" });
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("a missed release redocks at the band the outline was PREVIEWING", () => {
+    // The band index is probed at the cursor's y. A release with no coordinate
+    // of its own must re-probe at the last one the gesture SAW — not fall back
+    // to the float's vertical centre, which for a tall float resolves a
+    // different band and makes the one safe end path break the
+    // hover-offers-what-the-commit-accepts law.
+    mountDockFixture();
+    const onChange = vi.fn();
+    const onMaybeRedock = vi.fn();
+    // 700px tall: its centre is far below the cursor, so centre-probing and
+    // cursor-probing answer DIFFERENT bands (midpoints 150 and 360).
+    render(
+      <FloatingPanel
+        panelId="notes"
+        mode="floating"
+        initialX={880}
+        initialY={42}
+        initialWidth={320}
+        initialHeight={700}
+        zIndex={1200}
+        onChange={onChange}
+        onMaybeRedock={onMaybeRedock}
+      >
+        <div data-testid="tall">tall body</div>
+      </FloatingPanel>,
+    );
+    const header = document.querySelector<HTMLElement>('[data-testid="tall"]')!;
+    fireEvent.mouseDown(header, { clientX: 1000, clientY: 100, ...HELD });
+    move(1000, 100); // no displacement; cursor y = 100 → above band0's midpoint
+    flushFrame();
+    const previewed = getDockDragTarget();
+    expect(previewed?.index, "the outline previews the cursor's band").toBe(0);
+
+    move(1000, 100, /* buttons */ 0); // the release we never saw
+    expect(onMaybeRedock).toHaveBeenCalledTimes(1);
+    expect(onMaybeRedock.mock.calls[0][0]).toEqual({
+      side: previewed!.side,
+      index: previewed!.index,
+    });
   });
 
   it("a non-primary press starts no gesture at all", () => {
@@ -429,6 +619,29 @@ describe("source contract: the MOVE branch reads no geometry and commits no stat
     return code.slice(start, end);
   }
 
+  /**
+   * The whole gesture EFFECT — every helper the move path can reach without
+   * leaving the file's hot region: `applyTranslate` (the RAF body, which runs
+   * per FRAME), the `geometry()` door, `commitPos`, `onMove`, `endGesture`,
+   * `onUp`.
+   *
+   * The region leg above is a lexical scan that follows no calls, and that is a
+   * real hole rather than a theoretical one: lifting the per-move dock read into
+   * a same-effect arrow function — the idiom `geometry()`/`scheduleTranslate()`
+   * already establishes here — takes every needle out of the branch while the
+   * work still runs per event. (Demonstrated on a scratch copy during the
+   * adversarial review of this very fix: every region leg stayed green.) So the
+   * effect-wide leg is the one with teeth, and the branch leg is what localizes
+   * a failure to the right line.
+   */
+  function gestureEffect(): string {
+    const start = code.indexOf("const liveRect = () =>");
+    expect(start, "the gesture effect moved — re-aim this census").toBeGreaterThan(0);
+    const end = code.indexOf("const onHeaderMouseDown", start);
+    expect(end, "the mousedown handler moved — re-aim this census").toBeGreaterThan(start);
+    return code.slice(start, end);
+  }
+
   it("names no DOM-measuring API", () => {
     const region = moveBranch();
     for (const needle of [
@@ -462,6 +675,34 @@ describe("source contract: the MOVE branch reads no geometry and commits no stat
     expect(region.includes("scheduleTranslate()"), "the shell moves by transform").toBe(true);
   });
 
+  it("NO helper reachable inside the gesture effect measures the DOM either", () => {
+    // The leg with teeth: a same-effect helper extraction defeats the region
+    // scan above and cannot defeat this. `readMoveGeometry` lives at MODULE
+    // scope, so the effect may name it exactly once — inside the `geometry()`
+    // door, which is what bounds it to once per gesture.
+    const effect = gestureEffect();
+    for (const needle of [
+      "querySelectorAll",
+      "querySelector(",
+      "getBoundingClientRect",
+      "getComputedStyle",
+      "getWindowInsetTopPx",
+      "readDockGeometry",
+      "offsetWidth",
+      "offsetHeight",
+      "getClientRects",
+      "elementFromPoint",
+      "scrollHeight",
+    ]) {
+      expect(
+        effect.includes(needle),
+        `nothing in the gesture effect may reach ${needle}`,
+      ).toBe(false);
+    }
+    const captures = effect.split("readMoveGeometry(").length - 1;
+    expect(captures, "exactly ONE capture site — the memoized door").toBe(1);
+  });
+
   it("the census can SEE its needles (swallow self-check)", () => {
     // A stripper bug (or a mis-aimed region) would make every leg above pass
     // vacuously, so anchor on text that must exist in the region and on a
@@ -469,6 +710,12 @@ describe("source contract: the MOVE branch reads no geometry and commits no stat
     const region = moveBranch();
     expect(region).toContain("isMissedRelease");
     expect(region.length).toBeGreaterThan(500);
+    const effect = gestureEffect();
+    expect(effect.length, "the effect region must be the LARGER of the two").toBeGreaterThan(
+      region.length,
+    );
+    expect(effect).toContain("endGesture");
+    expect(effect).toContain("appliedTranslateRef"); // the RAF body is inside it
     expect(code, "the file DOES read geometry — on the edges").toContain(
       "getBoundingClientRect",
     );

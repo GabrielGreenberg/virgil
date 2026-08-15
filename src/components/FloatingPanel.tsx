@@ -64,12 +64,23 @@ type ResizeEdges = { left?: boolean; right?: boolean; bottom?: boolean };
 
 /**
  * Everything a MOVE gesture's per-event arithmetic needs from outside itself,
- * captured in ONE sweep on the gesture edge (task 330). Every member is
- * gesture-invariant: the viewport doesn't resize while the user holds the
- * float's header (an OS window drag delivers no pointer events to the page —
- * the same reasoning the StackIcon's cached rect already rests on), and the
- * dock stack can't gain or lose a band mid-drag because the only band-count
- * change a drag can cause is its OWN undock, which happens before the capture.
+ * captured in ONE sweep on a gesture edge (task 330).
+ *
+ * Why once per gesture is safe: the dock stack cannot gain or lose a band
+ * mid-drag (the only band-count change a drag causes is its OWN undock, which
+ * happens before the capture), and a *continuous* viewport change while the
+ * user holds the header is the one case that can move these values — which the
+ * LayoutGestureBus publishes, and which re-arms the capture.
+ *
+ * The residual, stated rather than waved away: the bus's window publisher needs
+ * TWO resize events inside 100 ms to declare a gesture, deliberately, so a
+ * ONE-SHOT viewport change mid-drag (a keyboard maximize, a DPR change, an
+ * external display arriving) publishes nothing and leaves this snapshot stale
+ * for the rest of the gesture. That is survivable rather than merely tolerated:
+ * both the hover and the release read the SAME snapshot, so they stay stale
+ * TOGETHER — the outline and the redock still agree, which is the property that
+ * matters. It is also the exposure the StackIcon's cached rect already carries
+ * for the same hit-test.
  */
 interface MoveGeometry {
   /** Viewport clamp bounds — how far the shell may be pushed off-screen. */
@@ -198,16 +209,28 @@ interface FloatingPanelProps {
  *
  * ── THE MOVE GESTURE'S COST CONTRACT (task 330) ────────────────────────────
  *
- * This is the one sanctioned bespoke window-level drag in `src/` — the
- * pane-resize engine's `getValue/apply/commit(px)` shape genuinely doesn't fit
- * a 2D free move. "Bespoke" buys a different SHAPE, never an exemption from
- * the engine's discipline, and for a year it had been read as the latter: the
- * handler ran per raw `mousemove` (120-240 Hz on a high-Hz mouse) and each
- * invocation did BOTH a React commit (`setPos` — re-rendering the float AND
- * whatever panel body it hosts, which for Citations/Notes is hundreds of rows)
- * and a forced-layout DOM sweep (the dock proximity test, which grew a
- * rect-read-per-band inside the 80px dock gate). Write → read → write per
+ * This is a bespoke window-level drag — the pane-resize engine's
+ * `getValue/apply/commit(px)` shape genuinely doesn't fit a 2D free move, and
+ * the guardrail's allowlist sanctions it on that ground. "Bespoke" buys a
+ * different SHAPE, never an exemption from the engine's discipline, and for a
+ * year it had been read as the latter: the handler ran per raw `mousemove`
+ * (120-240 Hz on a high-Hz mouse) and each invocation did BOTH a React commit
+ * (`setPos`) and a forced-layout DOM sweep (the dock proximity test, which grew
+ * a rect-read-per-band inside the 80px dock gate). Write → read → write per
  * event: textbook layout thrash, worst exactly where Gabriel felt it worst.
+ *
+ * Stated precisely, because the first draft of this comment overstated it and
+ * an overstated claim is its own defect: the commit re-rendered THIS component
+ * and rewrote the shell's inline `left`/`top` (a layout invalidation), but NOT
+ * the hosted panel body — `children` is built by the PARENT's render, so it
+ * stays referentially identical across this component's own `setState` and
+ * React's same-element bailout spares that subtree. The cost was the per-event
+ * style write INTERLEAVED with the forced rect reads, which is enough.
+ *
+ * It is also not the only bespoke drag in `src/` (see
+ * `PERMITTED_WINDOW_DRAG_GESTURES`): the siblings that still owe some of the
+ * four obligations below are recorded in the queue rather than claimed fixed
+ * here.
  *
  * So, per event, this gesture now costs pointer ARITHMETIC and nothing else:
  *
@@ -226,18 +249,26 @@ interface FloatingPanelProps {
  *     window) leaves the panel ghost-glued to the cursor and commits on the
  *     user's next click.
  *
- * The RESIZE branch deliberately keeps its per-move `setPos`: a resize IS a
- * layout change (the panel body must reflow to the new width/height), so there
- * is no composite-only representation to defer to a frame — and the same
- * pointer invariants cover it.
+ * The RESIZE branch keeps its per-move `setPos`, and the honest reason is
+ * SCOPE, not a principle: a resize genuinely has no composite-only
+ * representation (the hosted body must reflow to the new width/height), but
+ * "must re-layout" is not "must re-layout uncoalesced" — the engine's own
+ * `apply()` writes real layout and still coalesces behind an equality bail. So
+ * this is a recorded residual, filed rather than fixed here: the reported
+ * defect and this task's contract are the MOVE path, and the resize branch does
+ * no DOM read, so it never had the interleaved-thrash half. Both pointer
+ * invariants cover it either way.
  *
- * One consequence of the transform, stated because it is a real semantic and
- * not a free win: a transform makes the shell a containing block for
- * `position: fixed` DESCENDANTS, so an overlay portaled inside the float would
- * travel with it for the duration of the drag instead of holding still against
- * the viewport. That is the better behaviour for the surfaces that can be open
- * while the header is held (they belong to the float), and it lasts only as
- * long as the gesture — the transform is dropped on the release commit.
+ * Two consequences of the transform, stated because neither is a free win. It
+ * makes the shell a containing block for `position: fixed` DESCENDANTS, so an
+ * overlay portaled inside the float travels with it for the duration of the
+ * drag instead of holding still against the viewport — the better behaviour for
+ * the surfaces that can be open while the header is held (they belong to the
+ * float), and it lasts only as long as the gesture. And `translate3d` asks for
+ * a composited layer, so the first real move frame pays a promotion +
+ * rasterization the pre-fix `left`/`top` write did not: a one-off cost at the
+ * start of the gesture, traded for every subsequent frame skipping layout, and
+ * given back when the transform is dropped on the release commit.
  */
 function FloatingPanelInner({
   panelId,
@@ -318,6 +349,15 @@ function FloatingPanelInner({
         // `CARD_REGISTRY` declares non-stackable — report / report-request /
         // example.
         canCapture: boolean;
+        // The last cursor position this gesture actually OBSERVED. The dock
+        // band index is probed at the cursor's y (user intent), so a release
+        // carrying no trustworthy coordinate — the missed-release bail — must
+        // re-probe at the last one it SAW rather than fall back to the float's
+        // vertical centre: that fallback can resolve a different insertion
+        // index than the outline was previewing, which would break the
+        // hover-offers-what-the-commit-accepts law on the one path that exists
+        // to end the gesture safely (task 330 review).
+        lastCursor: { x: number; y: number } | null;
       }
     | {
         mode: "resize";
@@ -333,6 +373,8 @@ function FloatingPanelInner({
         origY: number;
         origW: number;
         origH: number;
+        /** As above — the shared end edge reads this whichever kind it ends. */
+        lastCursor: { x: number; y: number } | null;
       }
     | null
   >(null);
@@ -406,6 +448,14 @@ function FloatingPanelInner({
       setRectEchoRef.current = null;
       return;
     }
+    // Retire any live gesture transform with this commit. The move gesture's
+    // translate is measured from the RENDERED pos, so a commit that moves the
+    // baseline while a transform is still applied paints at "new base + stale
+    // offset" for a frame. No production caller reaches this mid-gesture today
+    // (the undock's own commit goes through `commitPos`, which already clears),
+    // but "unreachable today" is what a latent trap looks like — and the clear
+    // is one ref write on a path that already re-renders.
+    clearTranslateOnCommitRef.current = true;
     setPos({ x: initialX, y: initialY, width: initialWidth, height: initialHeight });
   }, [initialX, initialY, initialWidth, initialHeight]);
 
@@ -494,6 +544,9 @@ function FloatingPanelInner({
         return;
       }
       e.preventDefault();
+      // Remember what we SAW, so an end edge with no coordinate of its own can
+      // probe where the outline last did instead of guessing.
+      s.lastCursor = { x: e.clientX, y: e.clientY };
       if (s.mode === "move") {
         const dx = e.clientX - s.startX;
         const dy = e.clientY - s.startY;
@@ -754,13 +807,18 @@ function FloatingPanelInner({
       // without a move can't have been offered anything either.
       let dropTarget: DockDragTarget | null = null;
       if (wasFloatingMove) {
-        const dock = moveGeomRef.current?.dock;
+        const dock = geometry().dock;
+        // Probe at the release coordinate, or — when the release carried none —
+        // at the last one the gesture OBSERVED, which is the coordinate the
+        // outline currently on screen was resolved from. Never the panel-centre
+        // fallback: that can answer a different band than the one offered.
+        const probe = cursor ?? s.lastCursor ?? undefined;
         if (dock) {
           dropTarget = resolveDockTargetByPanelProximity(
             dock,
             finalRect,
             undefined,
-            cursor ? { x: cursor.x, y: cursor.y } : undefined,
+            probe,
           );
         }
       }
@@ -790,9 +848,19 @@ function FloatingPanelInner({
     // A window-resize burst is the one real invalidation of the gesture
     // snapshot (an external display, Stage Manager, a live OS window resize
     // that overlaps the drag). The bus publishes membership changes, never
-    // frames — ≤2 fires per gesture — and the handler just re-arms the lazy
-    // capture, so it needs no kind filter and can't strand anything. Read
-    // through the SET channel per the bus's own rule.
+    // frames — ≤2 fires per gesture — so it needs no kind filter: dropping the
+    // snapshot is idempotent and safe whatever the edge was. Read through the
+    // SET channel per the bus's own rule.
+    //
+    // Nulling is safe ONLY because both readers go through `geometry()`, which
+    // re-captures on demand. That is load-bearing rather than incidental: while
+    // the release read the raw ref, a bus edge landing between the last
+    // mousemove and the mouseup — a `endWindowGesture` trailing-idle timer
+    // firing during the pause people take to confirm a drop target — left the
+    // release with no geometry, so a lit dock outline redocked NOWHERE and
+    // cleared itself with no feedback. The false-affordance shape this file's
+    // own comments invoke, reintroduced by the invalidation meant to prevent
+    // staleness (found by the adversarial pass on this task).
     const unsubscribeGestureBus = onLayoutGestureSetChange(() => {
       moveGeomRef.current = null;
     });
@@ -866,6 +934,7 @@ function FloatingPanelInner({
       dockedWidth: pendingUndock && primaryRect ? primaryRect.width : null,
       dockedHeight: pendingUndock && primaryRect ? primaryRect.height : null,
       canCapture: cardKey != null && canCaptureToStack(cardKey),
+      lastCursor: { x: e.clientX, y: e.clientY },
     };
     // Arm the move gesture's locals: no live position yet (the shell is where
     // React rendered it) and no geometry snapshot — the first move captures
@@ -897,6 +966,7 @@ function FloatingPanelInner({
           const key = handlersRef.current.cardKey;
           return key != null && canCaptureToStack(key);
         })(),
+        lastCursor: { x: clientX, y: clientY },
       };
       liveMoveRef.current = null;
       moveGeomRef.current = null;
@@ -910,6 +980,9 @@ function FloatingPanelInner({
       // updated rect, not the stale pre-setRect one.
       latestPosRef.current = next;
       setRectEchoRef.current = next;
+      // Same reason as the prop-sync effect above: this moves the transform's
+      // baseline, so any live gesture translate retires with it.
+      clearTranslateOnCommitRef.current = true;
       setPos(next);
       handlersRef.current.onChange(next);
     },
@@ -931,6 +1004,7 @@ function FloatingPanelInner({
       origY: pos.y,
       origW: pos.width,
       origH: pos.height,
+      lastCursor: { x: e.clientX, y: e.clientY },
     };
     document.body.style.userSelect = "none";
     document.body.style.cursor = resizeCursor(edges);

@@ -133,11 +133,13 @@ export interface DockRect {
 /** One dock column's captured geometry. */
 export interface DockColumnGeometry {
   side: Side;
-  /** The column's own viewport rect at capture time. */
+  /** The column's own horizontal extent at capture time. The proximity test
+   *  snaps to a column's OUTER edge and derives its corner y from
+   *  `TOP_BAR + podGap`, so the vertical extent is not part of the answer —
+   *  capturing `top`/`bottom` would be two fields nothing reads (their only
+   *  reader was the point-in-column test deleted with `findDockTargetAtPoint`). */
   left: number;
-  top: number;
   right: number;
-  bottom: number;
   /** The sticky dock region (`[data-stack-frame]`), or the derived phantom. */
   frame: DockRect;
   /** Band footprints (`[data-dock-slot]`), top→bottom. */
@@ -215,9 +217,7 @@ export function readDockGeometry(): DockGeometry {
     columns.push({
       side,
       left: r.left,
-      top: r.top,
       right: r.right,
-      bottom: r.bottom,
       frame: readStackFrameRect(col, r, side, podGap),
       bands: readBandRects(col),
     });
