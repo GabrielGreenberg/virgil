@@ -149,17 +149,24 @@ describe("pod seam — the census: no site re-spells the value", () => {
 });
 
 describe("pod seam — hit area is not the painted band", () => {
-  it("thinning the paint did not thin the grab target", () => {
-    // The seam below the last band is that band's ONLY resize handle. The
-    // invisible extension widens in lockstep so the target holds at the 18px
-    // the 10px gutter had at ±4. A gesture never pays for a look.
+  it("thinning the paint did not thin the REACHABLE grab target", () => {
+    // The seam below the last band is that band's ONLY resize handle, so
+    // thinning the paint must not thin the grab. The measurement that matters
+    // is the REACHABLE half, not the nominal box: the docked pod sits at
+    // z-1001 directly above the strip and swallows the upward extension whole
+    // (measured in the preview — a probe one pixel above the band's bottom
+    // edge hits the panel card list). So the floor is `seam + bottom`, and it
+    // is the 14px the pre-329 strip offered at 10px + 4.
+    //
+    // This leg's own first draft asserted the nominal `top + seam + bottom`
+    // and passed at a genuinely smaller target — a grab that had quietly gone
+    // 14 → 12 while the suite stayed green. Assert what the user can reach.
     const ext = panelColumn.match(
       /top:\s*-(\d+),\s*bottom:\s*-(\d+),\s*background:\s*'transparent'/,
     );
     expect(ext, "bottom-edge hit extension not found").not.toBeNull();
-    const target =
-      tokenPx("--pod-seam") + parseFloat(ext![1]) + parseFloat(ext![2]);
-    expect(target).toBeGreaterThanOrEqual(16);
+    const reachable = tokenPx("--pod-seam") + parseFloat(ext![2]);
+    expect(reachable).toBeGreaterThanOrEqual(14);
   });
 });
 
