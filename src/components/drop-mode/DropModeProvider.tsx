@@ -18,7 +18,7 @@
 import { useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { useConfirmDialog } from "../ConfirmDialog";
-import { setDropCtx } from "./controller";
+import { registerDropCtx } from "./controller";
 import { DropModeIndicator } from "./Indicator";
 import { InlineAtomGhost } from "./InlineAtomGhost";
 import type {
@@ -97,6 +97,14 @@ export function DropModeProvider({
   const ctxRef = useRef(snapshot);
   ctxRef.current = snapshot;
 
+  // This provider instance's registry key. Identity, not a docId: a provider
+  // registers before its `mainEditor` exists (the ctx resolves it later
+  // through the getter below), so there is nothing doc-shaped to key on at
+  // registration time — and a token minted per mount can never collide with a
+  // sibling pane's, which is the whole point.
+  const paneTokenRef = useRef<object | null>(null);
+  paneTokenRef.current ??= { pane: "drop-ctx" };
+
   useEffect(() => {
     // A stable ctx object whose getters always resolve to the latest snapshot,
     // so the controller's use-time reads stay fresh — hitTest reads
@@ -146,12 +154,16 @@ export function DropModeProvider({
         return ctxRef.current.atomCards;
       },
     };
-    setDropCtx(liveCtx);
-    return () => {
-      setDropCtx(null);
-    };
+    // Register under THIS provider's own key. The dispose removes only this
+    // entry — a background pane being evicted, a tab closing, or the Library
+    // reader unmounting on the way back to the doc tab can no longer disarm
+    // drag-and-drop for the pane the user is actually looking at (the old
+    // unconditional `setDropCtx(null)` did exactly that, app-wide). It still
+    // cancels a live session that STARTED here, which is the atoms-draggable
+    // protection.
+    return registerDropCtx(paneTokenRef.current!, liveCtx);
     // Register once; live values flow through `ctxRef`. (No reactive deps — the
-    // effect references only the ref and a module import.)
+    // effect references only refs and a module import.)
   }, []);
 
   return (

@@ -12,8 +12,10 @@
  * Shift-mousedown-on-a-FloatingPanel-header entry was retired in req-7.)
  *
  * Public API:
- *   - `setDropCtx(ctx)` — called once by EditorPane to register the
- *     per-doc hook bag.
+ *   - `registerDropCtx(token, ctx)` — called by each mounted
+ *     `DropModeProvider` (one per `EditorPane`) to publish ITS OWN
+ *     per-doc hook bag; returns a dispose that removes only that
+ *     entry. `setDropCtx(ctx | null)` is the view-less legacy publish.
  *   - `lookupSpec(kind)` — registry-aware spec lookup.
  *   - `beginDropSession({...})` — called from a producer's mousedown.
  *     Installs window listeners and a CSS hook.
@@ -24,6 +26,8 @@
  */
 
 import { useEffect, useState } from "react";
+import type { Editor } from "@tiptap/react";
+import { pickActiveByEditor } from "@/lib/active-editor-probe";
 import type { DropCtx, DropSession, DropSpec, Placement } from "./types";
 import { hitTest, isUnmintedParagraphId, mintPlacementUuid } from "./hit-test";
 import { resolveSessionPlacements } from "./placement-policy";
@@ -42,22 +46,136 @@ import { isMissedRelease } from "@/lib/pane-resize/pointer-invariants";
 import { feedAutoScroll, stopAutoScroll } from "./auto-scroll";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 
-// ── Per-doc context ──────────────────────────────────────────────────
+// ── Per-doc context: a REGISTRY, not a single slot ───────────────────
+//
+// The original design parked ONE `DropCtx` in a module-level cell under the
+// premise "called once by EditorPane". Multi-doc keep-alive (default ON,
+// capacity 3) falsified that: N `EditorPane`s render at once (one visible, the
+// rest `display:none`), each mounting its own `DropModeProvider`, and the
+// Library Reader mounts the same component again. A single slot produced two
+// bugs, and both are the exact pair `editor-actions-bridge.ts` names:
+//   (1) MIS-ROUTE — whichever pane mounted LAST owned the slot, and a warm
+//       switch is a `display:none` flip, not a remount, so ownership never
+//       moved. Every doc-scoped read (`ctx.mainEditor` for `main-only` hit
+//       tests, the panel hook bags, `closePopout`, `requestAnchorFlush`)
+//       addressed the WRONG document: no bar painted anywhere and the release
+//       did nothing. Worse for `inlineAtomMoveSpec`, whose create branch read
+//       `atomAttrsFor` off the other doc's footnote hook and landed an EMPTY
+//       `\footnote{}` (the task-233 shape).
+//   (2) CLOBBER — the unmount cleanup wrote `null` UNCONDITIONALLY, so an
+//       evicted/closed background pane (or a Library-reader round trip)
+//       disarmed drag-and-drop app-wide until some pane mounted fresh.
+//
+// The fix is the shape its two siblings already have: `target-registry.ts`
+// keys editors by DOM identity with an identity-guarded dispose, and
+// `editor-actions-bridge.ts` keys handles by `editor.view`. Here the key is the
+// PROVIDER INSTANCE (a token it mints once), because a provider registers while
+// its `mainEditor` may still be null — the ctx's own getter resolves it later.
+// Each entry is removed only by its own owner, so a departing pane can never
+// disarm a pane it doesn't own.
 
-let activeCtx: DropCtx | null = null;
-export function setDropCtx(ctx: DropCtx | null) {
-  // If the editor unmounts mid-drag (route change, or a card-body float
-  // closing mid-gesture), end any live session first. InlineAtomGrab starts
-  // sessions with `externalCommit`, so the controller has no mouseup of its
-  // own to fall back on — without this the body CSS hooks
-  // (`data-drop-mode-active`, the crosshair cursor, and the global
-  // `user-select:none` keyed on that attr) would stay stuck with nothing left
-  // to clear them, turning the whole document unselectable.
-  if (ctx === null && session) cancelDropSession();
-  activeCtx = ctx;
+/** A registered ctx plus the token that owns it. */
+interface CtxEntry {
+  token: object;
+  ctx: DropCtx;
 }
+
+/**
+ * Sentinel owner for the view-less legacy `setDropCtx` publish — one shared
+ * slot for producers (and test harnesses) that hold no provider token.
+ */
+const DEFAULT_TOKEN: object = { legacy: "drop-ctx:default" };
+
+const ctxRegistry = new Map<object, CtxEntry>();
+
+/**
+ * Publish this provider's per-doc ctx under its own key. Returns the dispose
+ * the provider's effect cleanup calls: it removes ONLY this entry (guarded on
+ * identity, so a re-register that already replaced it is not undone), and
+ * cancels a live drop session ONLY when that session was started under this
+ * entry.
+ *
+ * The cancel-on-unmount half is load-bearing and predates the registry: if the
+ * editor a gesture is running in unmounts mid-drag (route change, a card-body
+ * float closing), `InlineAtomGrab`-style sessions have `externalCommit` and so
+ * no mouseup of the controller's own to fall back on — the body CSS hooks
+ * (`data-drop-mode-active`, the crosshair cursor, and the global
+ * `user-select:none` keyed on that attr) would stay stuck with nothing left to
+ * clear them, turning the whole document unselectable. What the registry
+ * changes is its SCOPE: an unrelated pane unmounting no longer kills a gesture
+ * running in the visible one.
+ */
+export function registerDropCtx(token: object, ctx: DropCtx): () => void {
+  ctxRegistry.set(token, { token, ctx });
+  return () => {
+    const entry = ctxRegistry.get(token);
+    if (!entry || entry.ctx !== ctx) return; // already replaced — not ours to remove
+    ctxRegistry.delete(token);
+    if (session && session.ctx === ctx) cancelDropSession();
+  };
+}
+
+/**
+ * Legacy view-less publish: park a single ctx in the shared default slot (or
+ * clear it with `null`). Retained for producers and harnesses that hold no
+ * provider token; production registers per provider.
+ */
+export function setDropCtx(ctx: DropCtx | null) {
+  if (ctx) {
+    ctxRegistry.set(DEFAULT_TOKEN, { token: DEFAULT_TOKEN, ctx });
+    return;
+  }
+  const entry = ctxRegistry.get(DEFAULT_TOKEN);
+  ctxRegistry.delete(DEFAULT_TOKEN);
+  if (entry && session && session.ctx === entry.ctx) cancelDropSession();
+}
+
+/**
+ * The ACTIVE ctx — for a caller with no editor in hand. Today its callers are
+ * `getDropCtxFor`'s fallback and the drop-mode suites; it stays exported as the
+ * documented React-land door (the sibling of `getDropSession`), not because
+ * production reads it.
+ *
+ * Resolution:
+ *   - 0 entries → null;
+ *   - 1 entry → that one, WHATEVER its editor looks like. This rung is the
+ *     caller's, deliberately kept out of `pickActiveByEditor`: a sole pane with
+ *     a not-yet-created (or Reader-mode absent) `mainEditor` must still resolve,
+ *     and every hand-built test fixture leans on it;
+ *   - N entries → the FOCUSED-then-VISIBLE pane via `pickActiveByEditor` (the
+ *     same precedence the dev probes and the editor-actions bridge use); if
+ *     genuinely ambiguous, the legacy default slot if present, else `null`
+ *     (don't guess). NEVER "whichever was written last" — that was the bug.
+ */
 export function getDropCtx(): DropCtx | null {
-  return activeCtx;
+  if (ctxRegistry.size === 0) return null;
+  if (ctxRegistry.size === 1) {
+    return ctxRegistry.values().next().value?.ctx ?? null;
+  }
+  const picked = pickActiveByEditor(ctxRegistry.values(), (e) => e.ctx.mainEditor);
+  if (picked) return picked.ctx;
+  return ctxRegistry.get(DEFAULT_TOKEN)?.ctx ?? null;
+}
+
+/**
+ * EXACT lookup: the ctx whose `mainEditor` IS this editor, falling back to the
+ * active ctx. The entrypoint for a producer that knows which document its
+ * gesture started in (the in-text inline-atom grab and the lifted-overlay grab
+ * both fire from inside a specific editor) — correct even with two panes
+ * visible at once, where the ladder above can only guess.
+ */
+export function getDropCtxFor(editor: Editor | null | undefined): DropCtx | null {
+  if (editor) {
+    for (const entry of ctxRegistry.values()) {
+      if (entry.ctx.mainEditor === editor) return entry.ctx;
+    }
+  }
+  return getDropCtx();
+}
+
+/** TEST-ONLY: drop every entry (per-provider + the legacy slot). */
+export function __resetDropCtxRegistry(): void {
+  ctxRegistry.clear();
 }
 
 // ── Active session signal ────────────────────────────────────────────
@@ -104,6 +222,12 @@ export function useDropSession(): DropSession | null {
  * decides commit-vs-cancel per its own mode (lifted-overlay ghost vs
  * popout).
  *
+ * `editor` is an optional EXACT pane hint: the editor the gesture fired
+ * in. Producers that have one (the in-text atom grab, the lifted-overlay
+ * grab) pass it so the session binds to that document by construction
+ * rather than by the visible-pane ladder; the rest resolve through
+ * `getDropCtx()`.
+ *
  * Returns true if a session was started, false if rejected (no spec,
  * another session active, or no DropCtx registered).
  */
@@ -112,9 +236,16 @@ export function beginDropSession(opts: {
   origin: { x: number; y: number };
   inPlace?: boolean;
   externalCommit?: boolean;
+  editor?: Editor | null;
 }): boolean {
   if (session) return false; // first gesture wins
-  if (!activeCtx) return false;
+  // Resolve the ctx ONCE, here, and carry it on the session for its whole
+  // life: `ctx.mainEditor` then means "the document this gesture started in"
+  // BY CONSTRUCTION, which is the invariant every consumer already assumed and
+  // a module-level "current" could not deliver. It also makes the gesture
+  // immune to a pane mounting, unmounting, or gaining focus mid-drag.
+  const ctx = getDropCtxFor(opts.editor);
+  if (!ctx) return false;
   // `parseAnyKey` reads both the `float:` grammar and legacy/transient keys.
   const parsed = parseAnyKey(opts.cardKey);
   if (!parsed) return false;
@@ -130,6 +261,7 @@ export function beginDropSession(opts: {
     cardKey: opts.cardKey,
     kind,
     spec,
+    ctx,
     // Resolve the payload-aware placement list ONCE, here (task 258): the
     // resolution may read persisted state (stack-pull parses its localStorage
     // envelope), a cost the throttled per-move hit-test must never pay, and
@@ -223,7 +355,7 @@ function installListeners(opts: { attachMouseUp: boolean }) {
     // parked pointer as content slides underneath, and listener teardown
     // stops it.
     if (sessionScrollEl === undefined) {
-      const dom = activeCtx?.mainEditor?.view?.dom as HTMLElement | undefined;
+      const dom = session?.ctx.mainEditor?.view?.dom as HTMLElement | undefined;
       sessionScrollEl = (dom ? findEditorScrollFor(dom) : null) as
         | HTMLElement
         | null;
@@ -279,21 +411,21 @@ function removeListeners() {
  * during synthetic-event tests).
  */
 function handleMove(x: number, y: number) {
-  if (!session || !activeCtx) return;
+  if (!session) return;
   const now = Date.now();
   const minGap = 16;
   const sinceLast = now - lastMoveTs;
   const run = () => {
     pendingMove = null;
     lastMoveTs = Date.now();
-    if (!session || !activeCtx) return;
+    if (!session) return;
     const placement = hitTest(
       x,
       y,
       session.spec,
       session.placements,
       session.cardKey,
-      activeCtx.mainEditor,
+      session.ctx.mainEditor,
     );
     updatePlacement(placement);
   };
@@ -350,7 +482,7 @@ function placementsEqual(a: Placement | null, b: Placement | null): boolean {
  * directly from their own gesture handler.
  */
 export async function commitDropSession(): Promise<void> {
-  if (!session || !activeCtx) return;
+  if (!session) return;
   // The POINTER gesture is over the moment commit is entered — end the bus
   // gesture here, not after the async apply: a confirm dialog must not hold
   // every parked follower hostage while the user reads it, and the commit's
@@ -359,7 +491,10 @@ export async function commitDropSession(): Promise<void> {
   // call harmlessly for the cancel legs below.
   endContentGesture();
   const s = session;
-  const ctx = activeCtx;
+  // The ctx this gesture STARTED in — never a re-read of "the active pane",
+  // which can have changed under a long drag (a background pane mounting, the
+  // user tabbing away) and would apply the drop against a different document.
+  const ctx = s.ctx;
   let placement = s.placement;
   if (!placement) {
     cancelDropSession();

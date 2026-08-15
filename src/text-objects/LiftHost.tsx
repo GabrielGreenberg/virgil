@@ -481,6 +481,11 @@ export function LiftHost({ editorRef, children }: Props) {
         origin,
         inPlace: true,
         externalCommit: true,
+        // Exact pane hint: this lift fired from THIS editor, so the session
+        // binds to that document's DropCtx rather than to whichever pane the
+        // focused→visible ladder would pick (N panes are mounted at once under
+        // multi-doc keep-alive).
+        editor,
       });
 
       // ── Transform-only motion (wave 2 P4, the D3 fix). The pre-wave shape
