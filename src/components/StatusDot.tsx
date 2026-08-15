@@ -7,14 +7,20 @@
  * module-level map of RAW HEX literals with a raw `?? "#888"` fallback) — plus
  * `ExternalChangeBadge`'s private `PausedDot` helper, a byte-identical twin of
  * the collab markup with a neutral token. Four spellings of one 6-or-8px
- * circle, each free to drift in colour, size and a11y semantics.
+ * circle, each free to drift in colour, size and a11y semantics. A fifth lives
+ * one surface over and is deliberately NOT converted: `EditorLayout`'s "PDF is
+ * out of date" chip paints the SAME signal from a different family
+ * (`bg-yellow-500` vs `var(--status-warn)`), and those two have ALREADY drifted
+ * — Tailwind v4's yellow-500 is oklch(79.5% 0.184 86.047) ≈ #f0b100, not the
+ * v3 #eab308 the token carries. Converting it would repaint it, so which family
+ * wins is a colour decision; see the census allowlist.
  *
- * STYLE_GUIDE ("Layers") already names the fix: *a consumer that reaches around
- * a primitive to set a colour is a bug; the fix is to extend the primitive.*
- * So a caller states a TONE — what the dot MEANS — and this file owns the only
- * mapping from tone to token. There is no `color` prop by design: a caller that
- * could pass a colour is a caller that can pass a hex, which is the whole class
- * this retires (STYLE_GUIDE:38, "never a hex literal in *.tsx").
+ * STYLE_GUIDE ("Three layers") already names the fix: *a consumer that reaches
+ * around a primitive to set a colour is a bug; the fix is to extend the
+ * primitive.* So a caller states a TONE — what the dot MEANS — and this file
+ * owns the only mapping from tone to token. There is no `color` prop by design:
+ * a caller that could pass a colour is a caller that can pass a hex, which is
+ * the whole class this retires (STYLE_GUIDE:44, "never a hex literal in *.tsx").
  *
  * The tone vocabulary is deliberately SEMANTIC, not chromatic — `"warn"`, never
  * `"yellow"`. A colour-named state union just moves the decision one layer up:
@@ -38,8 +44,14 @@
 import { iconHint } from "@/components/Hint";
 
 /**
- * What a dot MEANS. Every member maps to a token in `TONE_TOKEN` below; nothing
- * else in the app may spell a status-dot colour.
+ * What a dot MEANS. Every member maps to a token in `TONE_TOKEN` below.
+ *
+ * Stated exactly, since a guard that overstates its reach is the failure mode
+ * this whole fix is about: four hand-rolled status dots survive OUTSIDE this
+ * vocabulary, each recorded with a reason in `status-dot-ssot.test.ts`'s
+ * `PERMITTED_HAND_ROLLED_STATUS_DOTS` — none of their values matches a token, so
+ * each needs a colour decision task 315 had no mandate to make. That list may
+ * only shrink; a NEW hand-rolled dot fails CI.
  *
  * The traffic-light four (`danger`/`ok`/`warn`/`info`) are the `--status-*`
  * family. `muted` and `inactive` are the two greys the app already painted, and

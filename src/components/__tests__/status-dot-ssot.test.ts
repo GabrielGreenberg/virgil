@@ -34,22 +34,50 @@
  *
  * REACH, STATED HONESTLY
  * ----------------------
- *   • SHAPE — the census keys on a JSX tag carrying `rounded-full` AND a
- *     dot-sized `w-*`/`h-*` pair (either class order). A dot sized by inline
- *     `style={{ width: 6 }}` is invisible to it — `CollabPresenceDots` and the
- *     library silo's own `Dot` primitive are both that shape. The library one
- *     is a REAL primitive with its own closed tone union
- *     (`library/components/StatusPill.tsx`), so the silo is not ungoverned;
- *     it simply isn't governed by this needle.
- *   • SIZE — `w-1` … `w-2.5`. Round BUTTONS (w-5/w-6) and colour-picker
- *     swatches are excluded by size, which is what keeps the census precise
- *     rather than merely large.
- *   • SCOPE — both silos, tests excluded. A test may hand-roll a dot.
+ * What it SEES: a JSX open tag carrying `rounded-full` (or `borderRadius` at a
+ * pill/50% value) together with a dot-sized box — a `w-*` and an `h-*` in the
+ * 1–2.5 range asked INDEPENDENTLY (not as an adjacent pair: `w-2 rounded-full
+ * h-2` is not an exotic authoring style, and requiring adjacency is a hole, not
+ * a precision), the `size-*` shorthand, or arbitrary `w-[Npx]`/`h-[Npx]` at
+ * ≤10px. Round BUTTONS (w-5/w-6) and colour-picker swatches fall out by size,
+ * which is what keeps this precise rather than merely large. Both silos; tests
+ * excluded, since a test may hand-roll a dot.
  *
- * The allowlists are keyed by file AND a distinctive fragment of the tag, not
- * by file alone: a file-scoped exemption would also excuse the NEXT dot added
- * beside the exempt one, which is the failure mode this repo keeps re-learning
- * (task 204's per-line rule).
+ * What it does NOT see, enumerated rather than gestured at — each of these
+ * reintroduces a hand-rolled dot with CI green:
+ *   • a dot sized entirely by inline style (`style={{ width: 6, height: 6 }}`)
+ *     — `CollabPresenceDots` and the library silo's `Dot` are both that shape,
+ *     and 10px `borderRadius: "50%"` knobs elsewhere prove the spelling is
+ *     native here;
+ *   • an SVG `<circle>` filled by a state;
+ *   • classes composed out of the tag — `clsx(DOT_SIZE, "rounded-full")`, or a
+ *     template literal whose size lives in a const. `tagAround` reads the open
+ *     tag's literal text and nothing else;
+ *   • a size outside the range (`w-3 h-3`).
+ * Closing those means parsing composition, which this needle deliberately does
+ * not attempt. It catches the shape the five converted sites actually had, and
+ * says so instead of implying more.
+ *
+ * A further limit in the helper: `tagAround` takes the nearest preceding `<`,
+ * so a comparison (`i<n`) or a generic (`Record<string,`) can start a
+ * pseudo-tag. Those normally die on its end-before-needle guard, but one whose
+ * scan runs past the needle could report a bogus tag at a misleading line. No
+ * such case is live — every censused hit today is a genuine element.
+ *
+ * The library silo is not ungoverned: `library/components/StatusPill.tsx`
+ * exports a real `Dot` with a closed tone union. Stated exactly, though — that
+ * union is CHROMATIC (`"green"`, `"amber"`, `"gray"`), the vocabulary
+ * `StatusDot.tsx` argues is a layer-shifting mistake. It is a primitive; it is
+ * not agreement with this law.
+ *
+ * ALLOWLIST KEYING — an entry names a file AND a fragment of the tag, and must
+ * match EXACTLY ONE censused hit. The "exactly one" half is the load-bearing
+ * part and the obvious version without it was wrong: `file + includes(fragment)`
+ * excuses every OTHER hit in the same file whose tag contains the fragment, so
+ * copy-pasting an allowlisted dot — the likeliest regression there is — passes.
+ * Requiring a unique match makes the second copy fail, without pinning line
+ * numbers that drift on every unrelated edit (task 204's per-line rule, in the
+ * form that survives reformatting).
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -125,12 +153,37 @@ const PERMITTED_HAND_ROLLED_STATUS_DOTS: ReadonlyArray<[file: string, fragment: 
     "rounded-full h-2 w-2 bg-amber-500",
     "PulsingDot's core, under a second ping layer — same amber-400/500 question as the Bibliography pending dot, plus a two-layer shape",
   ],
+  [
+    "src/components/EditorLayout.tsx",
+    "bg-yellow-500",
+    "the PDF-viewer chip's stale dot: the SAME signal StatusCluster's pdf-stale dot paints, from a different family. That one reads --status-warn (#eab308); this one is Tailwind v4's yellow-500 (oklch 79.5% 0.184 86.047 ≈ #f0b100), the ramp its own chip's bg-yellow-100/text-yellow-800 sit on — so the two ALREADY differ, and converting the dot alone both repaints it and strands it off its chip. Which family wins is a colour decision",
+  ],
 ];
 
 /* ── The census ─────────────────────────────────────────────────────── */
 
-const DOT_SIZED =
-  /(?:\bw-(?:1|1\.5|2|2\.5)\s+h-(?:1|1\.5|2|2\.5)\b|\bh-(?:1|1\.5|2|2\.5)\s+w-(?:1|1\.5|2|2\.5)\b)/;
+/** A round shape: the utility, or an inline radius at a pill/circle value. */
+const ROUND = /rounded-full|borderRadius:\s*["'`](?:50%|var\(--radius-pill\))/;
+
+/** The `w-*`/`h-*` halves are asked INDEPENDENTLY — see the header on why
+ *  adjacency is a hole rather than a precision. */
+const W_DOT = /\bw-(?:1|1\.5|2|2\.5)(?![\w.[-])/;
+const H_DOT = /\bh-(?:1|1\.5|2|2\.5)(?![\w.[-])/;
+const SIZE_DOT = /\bsize-(?:1|1\.5|2|2\.5)(?![\w.[-])/;
+const W_ARB = /\bw-\[(?:[0-9]|10)px\]/;
+const H_ARB = /\bh-\[(?:[0-9]|10)px\]/;
+
+/**
+ * BOTH axes must be small. Asking either axis alone is not a wider net, it is a
+ * wrong one: the Outline's drop indicator is `left-2 right-2 h-[2px] …
+ * rounded-full`, a full-width 2px RULE — round-capped, tiny on one axis, and
+ * not remotely a dot. A single-axis needle flags it and every pill-capped bar
+ * like it, which is how a census earns the reputation of crying wolf.
+ */
+function isDotSized(tag: string): boolean {
+  if (SIZE_DOT.test(tag)) return true;
+  return (W_DOT.test(tag) || W_ARB.test(tag)) && (H_DOT.test(tag) || H_ARB.test(tag));
+}
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -144,6 +197,31 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 
 type DotHit = { file: string; line: number; tag: string };
 
+/** The matcher, over ONE source string — factored out so the canary can run it
+ *  against a synthetic fixture instead of standing on a live allowlisted line
+ *  (a canary anchored on the defect evaporates the moment the defect is fixed,
+ *  which is exactly what the allowlist below is meant to make happen). */
+export function dotHitsIn(source: string, file: string): DotHit[] {
+  const hits: DotHit[] = [];
+  const seen = new Set<number>();
+  const rounds = new RegExp(ROUND.source, "g");
+  for (const m of source.matchAll(rounds)) {
+    const at = m.index ?? 0;
+    const tag = tagAround(source, at);
+    if (!tag || !isDotSized(tag)) continue;
+    // One hit per TAG, not per round-shape occurrence.
+    const start = source.lastIndexOf(tag, at);
+    if (seen.has(start)) continue;
+    seen.add(start);
+    hits.push({
+      file,
+      line: source.slice(0, at).split("\n").length,
+      tag: tag.replace(/\s+/g, " "),
+    });
+  }
+  return hits;
+}
+
 function censusDots(): DotHit[] {
   const hits: DotHit[] = [];
   for (const abs of [...sourceFiles(SRC), ...sourceFiles(LIBRARY)]) {
@@ -151,51 +229,80 @@ function censusDots(): DotHit[] {
     if (rel === PRIMITIVE) continue;
     // Comments stripped, string LITERALS kept: a dot's classes live in a
     // string, so blanking literals would blind the census to every hit.
-    const src = commentsStripped(read(abs));
-    for (const m of src.matchAll(/rounded-full/g)) {
-      const tag = tagAround(src, m.index ?? 0);
-      if (!tag || !DOT_SIZED.test(tag)) continue;
-      hits.push({
-        file: rel,
-        line: src.slice(0, m.index).split("\n").length,
-        tag: tag.replace(/\s+/g, " "),
-      });
-    }
+    hits.push(...dotHitsIn(commentsStripped(read(abs)), rel));
   }
   return hits;
 }
 
 const permitted = [...PERMITTED_NON_STATUS_DOTS, ...PERMITTED_HAND_ROLLED_STATUS_DOTS];
 
-const isPermitted = (hit: DotHit) =>
-  permitted.some(([file, fragment]) => hit.file === file && hit.tag.includes(fragment));
+const matchesFor = (hits: DotHit[], file: string, fragment: string) =>
+  hits.filter((h) => h.file === file && h.tag.includes(fragment));
 
 describe("status-dot census: no hand-rolled dot outside the allowlists", () => {
   it("flags every dot-shaped element, and every flagged one is allowlisted", () => {
-    const unlisted = censusDots().filter((h) => !isPermitted(h));
+    const hits = censusDots();
+    const unlisted = hits.filter(
+      (h) => !permitted.some(([file, fragment]) => h.file === file && h.tag.includes(fragment)),
+    );
     expect(
       unlisted.map((h) => `${h.file}:${h.line}  ${h.tag.slice(0, 140)}`),
     ).toEqual([]);
   });
 
-  it("can see dots at all (a census that finds nothing proves nothing)", () => {
-    // Anchored on the PERMITTED sites, never on a converted one: a canary
-    // standing on the defect evaporates the moment the defect is fixed.
-    const files = new Set(censusDots().map((h) => h.file));
-    expect(files.has("src/panels/_shared/suggestion-fields.tsx")).toBe(true);
-    expect(files.has("src/components/AIWindow.tsx")).toBe(true);
-    expect(censusDots().length).toBeGreaterThanOrEqual(permitted.length);
+  it("lets each allowlist entry excuse EXACTLY ONE site", () => {
+    // Without this, `file + includes(fragment)` excuses every other hit in the
+    // same file whose tag contains the fragment — so copy-pasting an
+    // allowlisted dot, the likeliest regression there is, passes. A second
+    // match means either a new dot to CONVERT or an entry to make specific.
+    const hits = censusDots();
+    const ambiguous = permitted
+      .map(([file, fragment]) => [file, fragment, matchesFor(hits, file, fragment)] as const)
+      .filter(([, , m]) => m.length !== 1)
+      .map(([file, fragment, m]) => `${file} :: "${fragment}" matched ${m.length} sites`);
+    expect(ambiguous).toEqual([]);
+  });
+
+  it("can see dots at all — against a SYNTHETIC fixture, not a live line", () => {
+    // The anchors are written here, so converting every allowlisted site (the
+    // stated goal) can never turn this canary red. Anchoring it on a real
+    // allowlisted dot would make the guard fight its own purpose.
+    const fixture = `
+      const A = () => <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#abc" }} />;
+      const B = () => <span className="w-2 rounded-full h-2" />;            // interleaved
+      const C = () => <span className="size-2 rounded-full shrink-0" />;    // size-* shorthand
+      const D = () => <span className="w-[6px] h-[6px] rounded-full" />;    // arbitrary px
+      const E = () => <button className="w-5 h-5 rounded-full">x</button>;  // a BUTTON, too big
+      const F = () => <span className="w-2 h-2 rounded-sm" />;              // square, not a dot
+      const G = () => <span className="w-3 h-3 rounded-full" />;            // outside the range
+      const H = () => <div className="left-2 right-2 h-[2px] rounded-full" />; // a BAR, one axis
+    `;
+    const found = dotHitsIn(fixture, "fixture.tsx").map((h) => h.tag);
+    expect(found).toHaveLength(4);
+    for (const marker of ["w-1.5 h-1.5", "w-2 rounded-full h-2", "size-2", "w-[6px]"]) {
+      expect(found.some((t) => t.includes(marker))).toBe(true);
+    }
+    // …and the four it must NOT flag. The last is the real shape that caught
+    // this needle's first draft out (Outline's round-capped drop indicator).
+    for (const marker of ["w-5 h-5", "rounded-sm", "w-3 h-3", "h-[2px]"]) {
+      expect(found.some((t) => t.includes(marker))).toBe(false);
+    }
+  });
+
+  it("finds the live sites too (the fixture proves the matcher, not the sweep)", () => {
+    // Deliberately a COUNT floor with headroom, not a set of file names: it
+    // asserts the directory walk reaches real source, and cannot be satisfied
+    // by an empty sweep. It carries no opinion about WHICH files.
+    expect(censusDots().length).toBeGreaterThan(0);
   });
 
   it("has no stale allowlist entry", () => {
     const hits = censusDots();
-    const stale = permitted.filter(
-      ([file, fragment]) => !hits.some((h) => h.file === file && h.tag.includes(fragment)),
-    );
+    const stale = permitted.filter(([file, fragment]) => matchesFor(hits, file, fragment).length === 0);
     expect(stale.map(([f, frag]) => `${f} :: ${frag}`)).toEqual([]);
   });
 
-  it("leaves the four Virgil-bar sites this task converted with no hand-rolled dot", () => {
+  it("leaves the three Virgil-bar sites this task converted with no hand-rolled dot", () => {
     // The defect leg: each of these rendered its own span before task 315, and
     // each would be reported by the census above if it did again.
     const converted = new Set(censusDots().map((h) => h.file));
@@ -203,7 +310,6 @@ describe("status-dot census: no hand-rolled dot outside the allowlists", () => {
       "src/components/CollabStatusPill.tsx",
       "src/components/editor-layout/StatusCluster.tsx",
       "src/components/ExternalChangeBadge.tsx",
-      "src/components/EditorLayout.tsx",
     ]) {
       expect(converted.has(file)).toBe(false);
     }
@@ -279,18 +385,39 @@ describe("the AI dot's producer names a state, not a colour", () => {
   });
 
   it("leaves the Virgil bar with no state→colour mapping of its own", () => {
+    // Stated exactly: this asks whether a COLOUR is selected by a conditional
+    // on a state, not merely whether a var() appears — StatusCluster keeps two
+    // legitimate unconditional ones (a divider's `--edge-strong`, a checkmark's
+    // `--accent`). What must not come back is the nested ternary the AI dot
+    // used to carry: three tokens chosen by `vbar.aiDot === …`.
     const src = commentsStripped(
       read(path.join(SRC, "components/editor-layout/StatusCluster.tsx")),
     );
     expect(src).not.toMatch(/var\(--status-/);
+    expect(src).not.toMatch(/aiDot\s*===/);
   });
 });
 
-/** A type-level accepting control for the tone map's totality: it goes red if
- *  `TONE_TOKEN` ever stops covering the union, and the `@ts-expect-error` twin
- *  goes red (TS2578) if the record is widened to something that accepts
- *  anything — so neither leg can pass for the wrong reason. Enforced by
- *  `tsc --noEmit`, not by vitest. */
+/**
+ * A type-level pin on the tone map's totality, plus its accepting control.
+ *
+ * The positive leg goes red if `TONE_TOKEN` ever stops covering the union. It
+ * is NOT sufficient on its own, and the reason is measured rather than assumed:
+ * a `Record<string, string>` (or `any`) IS assignable to `Record<StatusTone,
+ * string>`, so widening the annotation would make the positive leg pass
+ * vacuously while every tone lost its guarantee. The `@ts-expect-error` twin is
+ * the leg that catches exactly that — under either widening the missing
+ * `"scratch-tone"` becomes assignable, the expected error disappears, and
+ * TS2578 fires.
+ *
+ * (Its sibling in `action-union-exhaustiveness.test.ts` records the opposite
+ * measurement for ITS shape — there the registry is a large annotated object
+ * literal, so an index-signature widening reddens at the declaration. The
+ * difference is real, not a contradiction: what a positive leg can see depends
+ * on where the annotation sits.)
+ *
+ * Enforced by `tsc --noEmit`, not by vitest.
+ */
 const _toneMapIsTotal: Record<StatusTone, string> = TONE_TOKEN;
 void _toneMapIsTotal;
 // @ts-expect-error — a tone the union does not declare must not be assignable.
