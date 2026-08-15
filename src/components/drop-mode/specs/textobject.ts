@@ -20,9 +20,19 @@
  * targets (their adapter is `topLevelDropAdapter`, which returns
  * `drop-direct`). The classification still runs so future sub-object
  * additions are trivial.
+ *
+ * SCOPE — SAME-EDITOR by construction (task 331). `locate` resolves the dragged
+ * object inside `placement.editor`, the TARGET document, so the source is always
+ * in the editor the payload lands in. A `targetEditor === src.editor` fork
+ * guarding an insert-then-delete cross-editor branch was therefore true by
+ * construction, and the branch unreachable — code reasoning about a dispatch
+ * ordering that could never run, which the dead-SSOT rule outlaws. It is
+ * deleted rather than wired live: a cross-editor block move would newly enable
+ * main→card-body block capture, a product decision governed by the
+ * capture/schema-symmetry law. The genuinely cross-editor spec is
+ * `text-range-move.ts`, which resolves its source from the DropCtx.
  */
 
-import { TextSelection } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import {
   parseTextObjectPopoutKey,
@@ -41,6 +51,7 @@ import {
   fitNodesAtInsert,
 } from "./drop-context";
 import { plannedDropSpec } from "../planned-spec";
+import { insertNodesAdvancing, selectInsertedSpan } from "../util/mapped-insert";
 import type { DropPlan, DropSpec, Placement } from "../types";
 
 export const textObjectDropSpec: DropSpec = plannedDropSpec({
@@ -62,7 +73,6 @@ export const textObjectDropSpec: DropSpec = plannedDropSpec({
     if (!src) return null;
     // No-op if the drop position is inside the source's own range.
     if (
-      placement.editor === src.editor &&
       placement.insertPos >= src.move.from &&
       placement.insertPos <= src.move.to
     ) {
@@ -162,86 +172,23 @@ export const textObjectDropSpec: DropSpec = plannedDropSpec({
     // is exactly what `container-fit-guardrail` checks. `applyDrop` re-plans
     // immediately before committing (planned-spec.ts), so these transactions are
     // always built against the live state they are dispatched into.
-    if (targetEditor === src.editor) {
-      const tr = targetEditor.state.tr.delete(src.move.from, src.move.to);
-      // ASK the transaction where the insert position went; never predict it —
-      // the same rule the container fit follows about the fitter (task 257) and
-      // the identity net about multi-step transactions (task 320), one door
-      // over. This was `insertPos - (to - from)`, which assumes `tr.delete`
-      // removes exactly the source's declared node size. It does NOT when the
-      // source is the SOLE child of a container whose content expression
-      // forbids emptiness (`exampleItemList` is `exampleItem+`, and expex's own
-      // Tab keymap creates exactly that one-item shape): ProseMirror keeps a
-      // minimal valid residue and removes only part of the range — measured
-      // drift 4 for a sole `exampleItem`. The insert then landed FOUR positions
-      // early, inside the preceding peer item's paragraph, which the fitter can
-      // only accommodate by closing that item — tearing one node into two that
-      // BOTH keep its uuid, with its text severed across the halves, on a
-      // document that still `check()`s clean.
-      //
-      // Every guard upstream is blind to this by construction: `canDropDirect`
-      // and `fitNodesAtInsert` (including its trial-insert probe) both resolve
-      // against the PRE-delete doc, where the position is correct and the fit
-      // honestly reports `direct`. Nothing re-validated after the delete. The
-      // mapping does, for free, and it is also correct for the untouched
-      // direction (a position BEFORE the cut maps to itself).
-      const insertAt = tr.mapping.map(placement.insertPos);
-      let cursor = insertAt;
-      for (const n of toInsert) {
-        // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
-        // container fit sanctions an insert the fitter PADS, which adds more
-        // than the node itself — advancing by the node's size alone would put
-        // the next block inside or before this one (task 257 review).
-        const before = tr.doc.content.size;
-        tr.insert(cursor, n);
-        cursor += tr.doc.content.size - before;
-      }
-      // Select the inserted block(s).
-      const selStart = insertAt + 1;
-      const selEnd = cursor - 1;
-      if (selEnd > selStart) {
-        tr.setSelection(
-          TextSelection.between(
-            tr.doc.resolve(selStart),
-            tr.doc.resolve(selEnd),
-          ),
-        );
-      }
-      return {
-        commit: () => {
-          targetEditor.view.dispatch(tr);
-          targetEditor.view.focus();
-        },
-      };
-    }
-
-    // Cross-editor: insert first, then delete from source.
-    const insertTr = targetEditor.state.tr;
-    let cursor = placement.insertPos;
-    for (const n of toInsert) {
-      // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
-      // container fit sanctions an insert the fitter PADS, which adds more
-      // than the node itself — advancing by the node's size alone would put
-      // the next block inside or before this one (task 257 review).
-      const before = insertTr.doc.content.size;
-      insertTr.insert(cursor, n);
-      cursor += insertTr.doc.content.size - before;
-    }
-    const sourceEditor = src.editor;
-    const { from, to } = src.move;
+    const tr = targetEditor.state.tr.delete(src.move.from, src.move.to);
+    // ASK the transaction where the insert position went; never predict it —
+    // the same rule the container fit follows about the fitter (task 257) and
+    // the identity net about multi-step transactions (task 320). Task 234 fixed
+    // it here; task 331 lifted both halves of the rule (the mapping AND the
+    // advance-by-what-landed cursor) into `util/mapped-insert.ts`, because being
+    // correct in one spec and stale in its three twins is what shipped.
+    const span = insertNodesAdvancing(
+      tr,
+      { mapThrough: placement.insertPos },
+      toInsert,
+    );
+    selectInsertedSpan(tr, span);
     return {
       commit: () => {
-        targetEditor.view.dispatch(insertTr);
+        targetEditor.view.dispatch(tr);
         targetEditor.view.focus();
-        // The source delete is built HERE, not in the plan: it is dispatched
-        // AFTER a transaction landed in another editor, and ProseMirror throws
-        // `Applying a mismatched transaction` on a tr whose base doc is no
-        // longer the live one. The insert can't move the source doc today (the
-        // only non-main target is a card body), but building it in the plan
-        // would stake that on it — and this is the pre-321 order restored, at
-        // zero cost. The insert above is the one that must be pre-built: it is
-        // the splice the container fit governs.
-        sourceEditor.view.dispatch(sourceEditor.state.tr.delete(from, to));
       },
     };
   },
@@ -252,13 +199,20 @@ export const textObjectDropSpec: DropSpec = plannedDropSpec({
 // ---------------------------------------------------------------------------
 
 interface LocatedSource {
-  editor: import("@tiptap/react").Editor;
   kind: TextObjectKind;
   id: string;
   move: MoveSource;
   sourceContext: TextObjectSourceContext;
 }
 
+/**
+ * Resolve the dragged text object — in `placement.editor`, i.e. the TARGET
+ * document, which is what makes this spec SAME-EDITOR by construction (see the
+ * SCOPE note in the file header). The located source deliberately carries no
+ * `editor` field: a value that can only ever equal `placement.editor` invites a
+ * `targetEditor === src.editor` fork that is true by construction, which is the
+ * unreachable branch task 331 deleted. Unrepresentable beats deleted.
+ */
 function locate(placement: Placement, cardKey: string): LocatedSource | null {
   const ref = parseTextObjectPopoutKey(cardKey);
   if (!ref) return null;
@@ -266,7 +220,7 @@ function locate(placement: Placement, cardKey: string): LocatedSource | null {
   const move = resolveMoveSource(editor.state.doc, ref.kind, ref.id);
   if (!move) return null;
   const sourceContext = collectSourceContext(editor.state.doc, ref.kind, ref.id);
-  return { editor, kind: ref.kind, id: ref.id, move, sourceContext };
+  return { kind: ref.kind, id: ref.id, move, sourceContext };
 }
 
 function resolveMoveSource(

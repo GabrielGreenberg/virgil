@@ -79,6 +79,11 @@ import {
 } from "@/lib/tiptap/node-identity";
 import { fitNodesAtInsert } from "./drop-context";
 import { adoptSliceIntoSchema, insertLanded } from "../schema-adopt";
+import {
+  insertNodesAdvancing,
+  resolveInsertPos,
+  selectInsertedSpan,
+} from "../util/mapped-insert";
 import { plannedDropSpec } from "../planned-spec";
 import type { DropPlan, DropSpec, Placement } from "../types";
 
@@ -171,15 +176,22 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
     // is a property of the delete rather than of this code, so the guarantee
     // rests on `BlockUuidBackfill` — which is what a net is for.
     if (targetEditor === sourceEditor) {
-      // Single transaction: delete the source, then insert at the position
-      // adjusted for the delete (mirrors block-move / inline-atom-move).
-      const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
+      // Single transaction: delete the source, then ASK the transaction where
+      // the caret went (task 331). This was `insertPos - (to - from)`; the cut
+      // here is TEXT-bounded (`findLinkedAnchorRange` returns text positions),
+      // and no shape has been measured where that prediction and the mapping
+      // disagree — so this conversion is a HARDENING, not a bug fix, and its
+      // honest claim is uniformity: the mapping is right wherever the
+      // prediction was, and right where a residue would make it wrong. Its
+      // three siblings ARE measurably wrong (see `mapped-insert.ts`), and a
+      // rule that holds at three of four call sites is how this class recurs.
       const tr = targetEditor.state.tr.delete(from, to);
+      const at = resolveInsertPos(tr, { mapThrough: insertPos });
       // container-fit-exempt: the INLINE-CURSOR move — an open slice merging with
       // the text around a caret is exactly what ProseMirror's fitter is for, and
       // no container is being entered. The between-blocks branch below fits.
-      tr.replace(adjustedInsert, adjustedInsert, slice);
-      selectInserted(tr, adjustedInsert, slice.size);
+      tr.replace(at, at, slice);
+      selectInserted(tr, at, slice.size);
       return {
         commit: () => {
           targetEditor.view.dispatch(tr);
@@ -304,17 +316,12 @@ function planRangeBetweenBlocks(
       collectBlockUuids(tr.doc),
       collectAtomIds(tr.doc),
     );
-    let cursor = start;
-    for (const n of owned) {
-      // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
-      // container fit sanctions an insert the fitter PADS, which adds more
-      // than the node itself — advancing by the node's size alone would put
-      // the next block inside or before this one (task 257 review).
-      const before = tr.doc.content.size;
-      tr.insert(cursor, n);
-      cursor += tr.doc.content.size - before;
-    }
-    selectBlocks(tr, start, cursor);
+    // `liveAt`, not `mapThrough` (task 331): `dropEmptiedSourceBlock` above
+    // already mapped `insertPos` through the cut and may have RE-mapped it when
+    // it shed the residue, so `shed.protect` is in the transaction's current
+    // coordinates. Mapping it again would double-count the delete.
+    const span = insertNodesAdvancing(tr, { liveAt: start }, owned);
+    selectInsertedSpan(tr, span);
     return {
       commit: () => {
         targetEditor.view.dispatch(tr);
@@ -333,16 +340,10 @@ function planRangeBetweenBlocks(
     collectBlockUuids(insertTr.doc),
     collectAtomIds(insertTr.doc),
   );
-  let cursor = insertPos;
-  for (const n of owned) {
-    // Advance by what ACTUALLY landed, not by `n.nodeSize`: rule 3 of the
-    // container fit sanctions an insert the fitter PADS, which adds more
-    // than the node itself — advancing by the node's size alone would put
-    // the next block inside or before this one (task 257 review).
-    const before = insertTr.doc.content.size;
-    insertTr.insert(cursor, n);
-    cursor += insertTr.doc.content.size - before;
-  }
+  // `liveAt`: this transaction holds no prior steps (the source delete happens
+  // in the OTHER editor, in `commit`), so `insertPos` is already live and saying
+  // so is more honest than mapping it through an empty mapping.
+  const span = insertNodesAdvancing(insertTr, { liveAt: insertPos }, owned);
   // The same landed net as the inline-cursor twin (task 328). This branch DOES
   // adopt — it goes through `fitNodesAtInsert` — so nothing known today can
   // reach it; that is precisely why it belongs here. The fit answers "can this
@@ -352,7 +353,7 @@ function planRangeBetweenBlocks(
   if (!insertLanded(insertTr, owned.reduce((s, n) => s + n.nodeSize, 0))) {
     return null;
   }
-  selectBlocks(insertTr, insertPos, cursor);
+  selectInsertedSpan(insertTr, span);
   return {
     commit: () => {
       targetEditor.view.dispatch(insertTr);
@@ -464,23 +465,3 @@ function dropEmptiedSourceBlock(
   };
 }
 
-/** Select the inserted block run (just inside the first block to just inside
- *  the last) so the moved text lands selected — mirrors the block-move's
- *  selection. Guarded — a boundary that can't host a selection is skipped. */
-function selectBlocks(
-  tr: import("@tiptap/pm/state").Transaction,
-  start: number,
-  end: number,
-): void {
-  try {
-    const selStart = start + 1;
-    const selEnd = end - 1;
-    if (selEnd > selStart) {
-      tr.setSelection(
-        TextSelection.between(tr.doc.resolve(selStart), tr.doc.resolve(selEnd)),
-      );
-    }
-  } catch {
-    /* boundary can't host a selection — leave the doc's selection */
-  }
-}
