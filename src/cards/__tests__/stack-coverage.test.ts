@@ -48,6 +48,10 @@ import {
   type StackItem,
 } from "@/lib/stack/types";
 import { snapshotCard } from "@/lib/stack/snapshot";
+import { canCaptureToStack } from "@/floats/stack-capture";
+import { buildFloatKey } from "@/floats/float-key";
+import { TEXT_OBJECT_REGISTRY } from "@/text-objects/text-object-registry";
+import type { TextObjectKind } from "@/text-objects/types";
 import { stackPullDropSpec } from "@/components/drop-mode/specs/stack-pull";
 import type { DropCtx, Placement, StackPullApi } from "@/components/drop-mode/types";
 
@@ -282,5 +286,69 @@ describe("the vocabulary itself", () => {
       new Set(STACK_CARD_KINDS.map((s) => CARD_KIND_BY_STACK_CARD_KIND[s])),
     );
     expect(STACK_CARD_KINDS).not.toContain("example" as StackCardKind);
+  });
+});
+
+/**
+ * Task 332 — the GESTURE end of the same facet.
+ *
+ * `assertStackCoverage` pins the declaration against the vocabulary and
+ * `float-snapshot.test.ts` pins it against a built `Floatable`. Neither can see
+ * the drag: the StackIcon's capture ring gated on `if (cardKey)` and pure
+ * geometry, so a Report / Report Request / Example float lit the ring exactly
+ * as a note does, the release was accepted, and the float was dismissed with
+ * nothing captured. Keying this guard on the DECLARATION alone would prove
+ * nothing — it has to ask the predicate the gesture actually reads.
+ */
+describe("the capture affordance is the declared facet", () => {
+  it.each([...CARD_KINDS])(
+    "%s: canCaptureToStack === CARD_REGISTRY[kind].stackable",
+    (kind) => {
+      const key = buildFloatKey({ domain: "card", kind, id: "some-id" });
+      expect(canCaptureToStack(key)).toBe(CARD_REGISTRY[kind].stackable);
+    },
+  );
+
+  it("names the three poppable kinds the ring must NOT light for", () => {
+    // A canary on the sweep above: it would pass vacuously if every kind were
+    // stackable, and these three are the reported symptom verbatim.
+    for (const kind of ["report", "report-request", "example"] as CardKind[]) {
+      expect(CARD_REGISTRY[kind].poppable, `${kind} poppable`).toBe(true);
+      expect(
+        canCaptureToStack(buildFloatKey({ domain: "card", kind, id: "x" })),
+        `${kind} must not offer capture`,
+      ).toBe(false);
+    }
+  });
+
+  it("reads the legacy key grammars the prefs blob still holds", () => {
+    // The drag hands over whatever `poppedOutCards` stored, so an un-migrated
+    // `<prefix>:<id>` key must answer identically — including the one
+    // prefix→kind divergence in the spine, `revision:s:<id>`.
+    expect(canCaptureToStack("note:n1")).toBe(true);
+    expect(canCaptureToStack("revision:s:r1")).toBe(true);
+    expect(canCaptureToStack("report:r1")).toBe(false);
+    expect(canCaptureToStack("textobject:paragraph:u1")).toBe(true);
+  });
+
+  it("refuses a key it cannot parse or a kind it does not know", () => {
+    expect(canCaptureToStack("")).toBe(false);
+    expect(canCaptureToStack("not-a-key")).toBe(false);
+    expect(canCaptureToStack("float:card:not-a-kind:x")).toBe(false);
+  });
+
+  it("every text-object kind is capture-capable as a family", () => {
+    // `snapshotTextObject` is TOTAL over the kind union (heading → section,
+    // linkedRange / sub-objects → slice, everything else → block), so there is
+    // no kind-shaped refusal to declare here. A source that no longer resolves
+    // is answered by the capture's REPORT, not by the affordance.
+    const kinds = Object.keys(TEXT_OBJECT_REGISTRY) as TextObjectKind[];
+    expect(kinds.length).toBeGreaterThan(5);
+    for (const kind of kinds) {
+      expect(
+        canCaptureToStack(buildFloatKey({ domain: "textobject", kind, id: "u1" })),
+        kind,
+      ).toBe(true);
+    }
   });
 });

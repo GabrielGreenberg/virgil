@@ -170,7 +170,7 @@ import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";
 import { type PoppedCardDeps } from "./editor-layout/floating-cards";
 import { FloatHost } from "@/floats/FloatHost";
-import { parseAnyKey } from "@/floats/float-key";
+import { captureFloatToStack } from "@/floats/resolve-floatable";
 import { FLOAT_DEFAULT_SIZE } from "@/floats/float-policy";
 import { textObjectPopoutKey } from "@/text-objects/text-object-registry";
 import { LiftHost } from "@/text-objects/LiftHost";
@@ -198,10 +198,7 @@ import type { StackPullApi } from "./drop-mode/types";
 import { StackIcon } from "./stack/StackIcon";
 import { StackStrip } from "./stack/StackStrip";
 import { useStack, addStackItem } from "@/hooks/useStack";
-import type { StackItem as StackItemType } from "@/lib/stack/types";
 import type { StackBibCtx } from "@/lib/stack/bib-carry";
-import { textObjectFloatable } from "@/text-objects/text-object-floatable";
-import { isTextObjectKind } from "@/text-objects/text-object-registry";
 import { useDragHandleActions, type DragHandleRef } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
 // CHIP 4a-i — the PM→React bridge. EditorPane publishes an
@@ -1854,9 +1851,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
     };
   }, [stackOpen]);
   // The `virgil-stack-drop` handler lives below, right after `popoutsDeps`
-  // is declared — its CARD branch resolves the dropped float's
-  // `Floatable.snapshotForStack` via `CARD_REGISTRY[kind].toFloatable(id,
-  // popoutsDeps)`, so it must be declared after that memo (no TDZ on the dep).
+  // is declared — it resolves the dropped float's `Floatable.snapshotForStack`
+  // via `captureFloatToStack(key, popoutsDeps, …)`, so it must be declared
+  // after that memo (no TDZ on the dep).
 
   // ── Document load + compile state ─────────────────────────────────
   // `useDocument` reads its docId+pipeline from the surrounding
@@ -5037,11 +5034,19 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
 
   // FloatingPanel fires `virgil-stack-drop` with { cardKey, clientX,
   // clientY } when a popped-out float is released over the StackIcon.
-  // Snapshot via the appropriate path (paragraph / heading via the
-  // text-object helpers; card via the Floatable's own snapshotForStack),
-  // then close the float. Non-stackable kinds return null and are skipped.
-  // Declared here (after `popoutsDeps`) so the CARD branch can hand that bag
-  // to `toFloatable` without a TDZ on the dep array.
+  // `captureFloatToStack` is the ONE capture door (task 332): it asks the same
+  // `canCaptureToStack` table the drag's ring read, resolves the `Floatable`
+  // through the SAME `resolveFloatable` `FloatHost` renders from — this handler
+  // used to carry its own mirror of that dispatch — and asks it to serialize.
+  // Declared here (after `popoutsDeps`) so it can hand that bag to the resolver
+  // without a TDZ on the dep array.
+  //
+  // THE REPORT IS THE PERMISSION: the float closes only on a snapshot that
+  // actually landed. It used to close unconditionally, under the comment "the
+  // user's intent is clear" — right about the intent (capture) and wrong about
+  // the outcome, since for a non-stackable kind, a deleted source or an
+  // unresolvable key nothing had been captured. The card vanished from the
+  // screen with nothing on the Stack and no message.
   //
   // VISIBILITY GATE (task 329, the `DropCtx` sibling): this is a WINDOW
   // listener registered once per mounted pane, and multi-doc keep-alive mounts
@@ -5065,48 +5070,31 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
       }>).detail;
       if (!detail || typeof detail.cardKey !== "string") return;
       const cardKey = detail.cardKey;
-      // Dual-read the dropped float's key (AF `float:` grammar + legacy).
-      const parsed = parseAnyKey(cardKey);
-      if (!parsed) return;
-      const id = parsed.id;
-      const source = { docId: stackSourceRef.current.docId };
-      let item: StackItemType | null = null;
-      if (parsed.domain === "textobject" && isTextObjectKind(parsed.kind)) {
-        // Mirror the CARD branch (parity, BUG #48): build the SAME `Floatable`
-        // the text-object popout renders from and ask it to serialize itself.
-        // `snapshotForStack` is the single capture entry point now —
-        // `snapshotTextObject` dispatches by kind (paragraph / heading /
-        // block / list-item / range) inside the snapshot SSOT, so EditorPane
-        // no longer carries a per-kind branch. A one-shot doc read on the drop
-        // gesture, never keystroke-proportional. Returns null when the source
-        // can't be resolved (deleted) or the kind isn't poppable.
-        const f = textObjectFloatable({ kind: parsed.kind, id }, innerRef);
-        item = f?.snapshotForStack(source) ?? null;
-      } else if (parsed.domain === "card" && isCardKind(parsed.kind)) {
-        // Mirror `FloatHost.resolveFloatable`: build the same `Floatable` the
-        // popout renders from and ask it to serialize itself. Some builders
-        // (footnote) do a one-shot doc read here on the drop gesture, but
-        // `snapshotForStack` itself is a pure closure over the resolved record
-        // — never keystroke-proportional. Returns null for non-stackable kinds
-        // (report / report-request / example — `CARD_REGISTRY[kind].stackable`,
-        // pinned to the Stack vocabulary by `assertStackCoverage`).
-        const f = CARD_REGISTRY[parsed.kind].toFloatable(id, popoutsDeps);
-        item = f?.snapshotForStack(source) ?? null;
-      }
+      // One door for both float domains. Some builders (footnote, and every
+      // text-object kind) do a one-shot doc read here on the drop gesture, but
+      // the capture is a pure closure over the resolved record — never
+      // keystroke-proportional.
+      const item = captureFloatToStack(cardKey, popoutsDeps, {
+        docId: stackSourceRef.current.docId,
+      });
+      // Nothing captured → leave the user holding their float, and leave the
+      // Stack strip closed. The drag can no longer OFFER a capture this branch
+      // would refuse, so what reaches here is a resolution failure (a deleted
+      // source, an id the doc no longer knows) — the one case worth surfacing
+      // rather than swallowing.
+      if (!item) return;
       // The bib carry is resolved at the ADD door for every payload family
       // alike (task 235) — a card, a text slice, a paragraph, a heading.
-      if (item) addStackItem(item, stackBibCtxRef.current);
-      // Close the source float regardless of snapshot success — the
-      // user's intent is clear.
+      addStackItem(item, stackBibCtxRef.current);
       viewPrefs?.closeCardPopout(cardKey);
       // Open the strip so the new item is visible.
-      if (item) setStackOpen(true);
+      setStackOpen(true);
     };
     window.addEventListener("virgil-stack-drop", onDrop as EventListener);
     return () => {
       window.removeEventListener("virgil-stack-drop", onDrop as EventListener);
     };
-  }, [innerRef, viewPrefs, popoutsDeps]);
+  }, [viewPrefs, popoutsDeps]);
 
   // ── Bubble per-doc state up to the shell ────────────────────────
   // Step 7.1 (Path A): emit a synthesized `PaneState` so EditorLayout's

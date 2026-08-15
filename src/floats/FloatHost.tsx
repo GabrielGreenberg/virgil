@@ -1,17 +1,11 @@
 "use client";
 
 import { FloatWindow } from "./FloatWindow";
-import { parseAnyKey } from "./float-key";
-import type { Floatable } from "./types";
-// Side-effect: register every poppable card kind's `toFloatable` builder onto
-// CARD_REGISTRY before any popout renders (mirrors the text-object float
-// registry). Must run on the float-render path.
-import "@/cards/floats";
-import { CARD_REGISTRY } from "@/cards/card-registry";
-import { isCardKind } from "@/cards/predicates";
+// The key→`Floatable` dispatch (and the `@/cards/floats` registration
+// side-effect it carries) lives in its own module: the stack-capture host reads
+// the SAME resolver rather than mirroring it (task 332).
+import { resolveFloatable } from "./resolve-floatable";
 import type { CardFloatCtx } from "@/cards/card-float-ctx";
-import { textObjectFloatable } from "@/text-objects/text-object-floatable";
-import { isTextObjectKind } from "@/text-objects/text-object-registry";
 
 /**
  * The generic float dispatcher — AF's successor to `renderPoppedCard`. Maps
@@ -47,19 +41,4 @@ export function FloatHost({
       })}
     </>
   );
-}
-
-function resolveFloatable(key: string, cardCtx: CardFloatCtx): Floatable | null {
-  const parsed = parseAnyKey(key);
-  if (!parsed) return null;
-  if (parsed.domain === "textobject") {
-    if (!isTextObjectKind(parsed.kind)) return null;
-    return textObjectFloatable(
-      { kind: parsed.kind, id: parsed.id },
-      cardCtx.editorRef,
-    );
-  }
-  // card domain — `error` resolves to null (not poppable; never registered).
-  if (!isCardKind(parsed.kind)) return null;
-  return CARD_REGISTRY[parsed.kind].toFloatable(parsed.id, cardCtx);
 }

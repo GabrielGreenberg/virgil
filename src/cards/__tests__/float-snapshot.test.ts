@@ -39,6 +39,8 @@ import { CARD_KINDS } from "@/cards/predicates";
 import type { CardFloatCtx } from "@/cards/card-float-ctx";
 import type { CardKind } from "@/cards/types";
 import { stackCardKindFor, type StackItem } from "@/lib/stack/types";
+import { buildFloatKey } from "@/floats/float-key";
+import { captureFloatToStack } from "@/floats/resolve-floatable";
 import { withBibCarry } from "@/lib/stack/bib-carry";
 import type { BibEntry } from "@/lib/types";
 
@@ -220,4 +222,61 @@ describe("card Floatable.snapshotForStack", () => {
       expect(stackCardKindFor(kind)).toBeNull(); // …and the vocabulary agrees
     });
   }
+});
+
+/**
+ * Task 332 — the CAPTURE DOOR, one rung above the per-kind `Floatable`.
+ *
+ * `captureFloatToStack` is what the `virgil-stack-drop` host calls: it asks the
+ * declared capability (`canCaptureToStack`, the same table the drag's ring
+ * reads), resolves the `Floatable` through the ONE `resolveFloatable` FloatHost
+ * renders from, and serializes. Its null is a REPORT the host acts on — it
+ * closes the source float only when an item came back — so these legs pin the
+ * three ways it can answer null, all of which used to end with the float
+ * dismissed and nothing on the Stack.
+ */
+describe("captureFloatToStack — the ONE capture door", () => {
+  const stackable = CARD_KINDS.filter((k) => CARD_REGISTRY[k].stackable);
+
+  for (const kind of stackable) {
+    const fx = FIXTURES[kind]!;
+    it(`${kind}: captures through the door exactly as its Floatable does`, () => {
+      const key = buildFloatKey({ domain: "card", kind, id: fx.id });
+      const item = captureFloatToStack(key, mockCtx, SOURCE);
+      expect(item).not.toBeNull();
+      expect(cardPayload(item!).cardKind).toBe(stackCardKindFor(kind));
+    });
+  }
+
+  for (const kind of CARD_KINDS.filter(
+    (k) => !CARD_REGISTRY[k].stackable && FIXTURES[k] !== null,
+  )) {
+    it(`${kind}: REFUSES — the capability is read before any record is`, () => {
+      const key = buildFloatKey({ domain: "card", kind, id: FIXTURES[kind]!.id });
+      expect(captureFloatToStack(key, mockCtx, SOURCE)).toBeNull();
+    });
+  }
+
+  it("a stackable kind whose record no longer resolves reports null", () => {
+    // The case the capability check CANNOT answer and the report must: the
+    // note was deleted between the drag starting and the release. Pre-332 this
+    // still closed the float — the user's card vanished with nothing captured.
+    const key = buildFloatKey({ domain: "card", kind: "note", id: "gone" });
+    expect(captureFloatToStack(key, mockCtx, SOURCE)).toBeNull();
+  });
+
+  it("an unparseable key reports null rather than throwing", () => {
+    expect(captureFloatToStack("not-a-key", mockCtx, SOURCE)).toBeNull();
+  });
+
+  it("reads the LEGACY key grammar too (the drag emits whatever prefs stored)", () => {
+    // `poppedOutCards` still holds un-migrated `<prefix>:<id>` keys, and the
+    // revision pair's `revision:s:<id>` spelling is the one prefix→kind
+    // divergence in the whole spine. Both doors must read them identically or
+    // the ring and the capture disagree for exactly those floats.
+    expect(captureFloatToStack("note:note-1", mockCtx, SOURCE)).not.toBeNull();
+    const rev = captureFloatToStack("revision:s:rev-s-1", mockCtx, SOURCE);
+    expect(cardPayload(rev!).cardKind).toBe("revision-suggestion");
+    expect(captureFloatToStack("report:report-1", mockCtx, SOURCE)).toBeNull();
+  });
 });
