@@ -510,6 +510,13 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
         f"Acted on {len(acted)}, proposed {len(proposed)}, refused {len(refused)}."
     )
     out.append("")
+    if fm.get("_rotated"):
+        out.append(
+            f"> **Second run today.** The earlier run's digest was preserved as "
+            f"`{fm['_rotated']}` — read it too; its proposal branches are still live. "
+            f"This file covers only the memos written since that run."
+        )
+        out.append("")
 
     out.append(f"## Acted ({len(acted)})")
     out.append("_Landed directly on this dream branch — single-skill-prompt "
@@ -575,6 +582,45 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+def _rotate_prior_digest(target: Path, new_iso: str) -> Path | None:
+    """Move an existing digest for this date aside so tonight's write cannot
+    destroy it, returning where it went (or None if there was nothing to move).
+
+    Same-day re-runs are a SUPPORTED mode, not a mistake: this skill documents
+    `/loop /editor/dream` on an interval, and a scheduled job can fire twice
+    across a retry. But the digest filename is date-keyed, so run N used to
+    overwrite runs 1..N-1 — and `cmd_digest` re-derives its marker from the
+    latest digest, which after a successful run is TODAY's own. So the second
+    run of a day selects 0 memos and rewrites the day's record as an EMPTY one.
+
+    That is worse than losing a summary. The digest is the only durable output
+    the dream authors, and a `proposed` entry's `git merge dream/<date>` hint is
+    the ONLY pointer to a staged proposal worktree — erase it and the branch is
+    still there but nothing references it. The marker itself survives (an empty
+    re-select preserves it), so the window does not reopen; the loss is confined
+    to the record, which is exactly the part a human reads in the morning.
+
+    Rotation rather than merge, deliberately: `<date>.md` keeps meaning "the
+    latest run of that day" (so nothing that looks for it has to change), the
+    older run is preserved verbatim under `<date>-runN.md`, and no merge
+    semantics have to be invented for three free-form qualitative lists. A
+    rotated file keeps its own earlier `dreamedAt`, so `_last_marker` still
+    ranks tonight's digest above it and marker selection is unaffected."""
+    if not target.is_file():
+        return None
+    try:
+        fm, _ = _parse_memo(target.read_text(encoding="utf-8")[:2000])
+    except OSError:
+        return None
+    if (fm.get("dreamedAt") or "").strip() == new_iso:
+        return None          # same run rewriting its own file — nothing to save
+    n = 1
+    while (dest := target.with_name(f"{target.stem}-run{n}{target.suffix}")).exists():
+        n += 1
+    target.rename(dest)
+    return dest
+
+
 def cmd_digest(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="dream.py digest")
     p.add_argument("--report", default=None,
@@ -607,6 +653,8 @@ def cmd_digest(argv: list[str]) -> int:
 
     target = digests_root / f"{date_str}.md"
     target.parent.mkdir(parents=True, exist_ok=True)
+    rotated = _rotate_prior_digest(target, iso)
+    fm["_rotated"] = rotated.name if rotated else ""
     atomic_write([(target, _render_digest(fm, report, summ, recs))])
 
     rel = target
