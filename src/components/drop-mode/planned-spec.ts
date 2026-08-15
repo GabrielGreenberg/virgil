@@ -94,20 +94,34 @@ export interface PlannedDropSpecOptions
  *
  * So the boundary is restored here, on the door that lacks one. Refusing is also
  * the right ANSWER and not merely the safe one: a resolution that cannot be
- * completed is exactly what `null` means. (No such throw is reachable on today's
- * tree — `fitNodesAtInsert` is throw-safe end to end and both rehydrate sites
- * catch locally — which is precisely why it would be a latent trap.)
+ * completed is exactly what `null` means.
+ *
+ * **This is no longer merely precautionary** (task 328). It was, while every
+ * resolution reached ProseMirror through `fitNodesAtInsert`, which is throw-safe
+ * end to end. A resolution that builds its own transaction is not:
+ * `Transform.replace` resolves both positions (`RangeError: Position N out of
+ * range` on a stale `placement.pos`) and `Transform.step` THROWS `TransformError`
+ * on a step that fails to apply — and a hit-test position recorded on the last
+ * throttled mousemove can be stale by mouseup if the target doc shrank under it.
+ * So the containment is exported: `refuseOnThrow` is the ONE rule, and a spec
+ * that resolves on both doors WITHOUT being built here — `inlineAtomMoveSpec`,
+ * allowlisted for the symmetry of its doors and never for their safety — calls
+ * it around its own resolution rather than re-deriving the try/catch.
  */
+export function refuseOnThrow<T>(label: string, resolve: () => T | null): T | null {
+  try {
+    return resolve();
+  } catch (err) {
+    console.error(`[drop-mode] ${label} threw — refusing the drop:`, err);
+    return null;
+  }
+}
+
 function planOrRefuse(
   planDrop: DropPlanner,
   ...args: Parameters<DropPlanner>
 ): DropPlan | null {
-  try {
-    return planDrop(...args);
-  } catch (err) {
-    console.error("[drop-mode] planDrop threw — refusing the drop:", err);
-    return null;
-  }
+  return refuseOnThrow("planDrop", () => planDrop(...args));
 }
 
 /**

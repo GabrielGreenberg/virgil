@@ -47,6 +47,41 @@
 // container. Inline-atom placement qualifies (it inserts an inline node at an
 // inline-cursor position inside a textblock — a different question entirely).
 // A new BLOCK insert never does: route it through `fitNodesAtInsert`.
+//
+// ── The SECOND question (task 328): did you ADOPT? ──────────────────────────
+//
+// Same splice-site family, one axis over. `AGENTS.md` ("The move half", rule 4)
+// states the law — *a payload arrives in the target's vocabulary or not at all*
+// — and until 328 the ONLY enforcement was a private helper inside
+// `fitNodesAtInsert`, reachable solely THROUGH the container fit. So the two
+// splices deliberately exempted from the fit above took an exemption from the
+// ADOPTION with them, for free and in silence. The marker's stated reason ("an
+// open slice merging with the text around a caret… no container is being
+// entered") is a true statement about CONTAINERS and a false one about
+// VOCABULARIES, and nothing in this file could tell the difference.
+//
+// What that cost: a main-doc selection — or a footnote/citation atom — released
+// at an inline caret inside a card body was spliced with nodes from the SOURCE
+// schema. ProseMirror compares `NodeType`s by IDENTITY, so the fitter dropped
+// the payload, `replaceStep` returned null, and `Transform.replace` appended NO
+// step: `steps: 0`, `docChanged: false`, no throw. The move's second
+// transaction — the unconditional source delete — ran anyway. Prose gone from
+// the document, nothing in the card, float closed, no error.
+//
+// So: an exemption is scoped to the shape it justifies (task 204's rule). A
+// `container-fit-exempt:` marker does NOT satisfy the adoption question; a
+// splice that skips `fitNodesAtInsert` must either call an adoption door from
+// `schema-adopt.ts` or carry its OWN `schema-adopt-exempt: <why>` marker, and
+// each such marker is allowlisted PER LINE (not per file — a file-scoped
+// exemption would excuse the next splice added beside it, which is the drift
+// both halves of this guard exist to catch).
+//
+// STATED LIMIT, shared by both questions: the region is the enclosing
+// DECLARATION, so an adoption in one branch vouches for a splice in a sibling
+// branch of the same function. That is deliberate — the two live specs adopt
+// ABOVE their same/cross fork precisely so the vouching is honest — but it is a
+// granularity, not a proof, and a future declaration whose branches disagree
+// would need the adoption hoisted the same way rather than the guard relaxed.
 
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -76,6 +111,47 @@ const PERMITTED_UNFITTED_INSERTS: Record<string, string> = {
     "The container-fit PROBE itself — a throwaway trial transaction, never " +
     "dispatched, built to discover what the fitter would do.",
 };
+
+/**
+ * The permitted UNADOPTED splices (task 328), keyed by a fragment of the LINE
+ * rather than by file — a file-scoped exemption would also excuse the next
+ * splice added beside it, and two of the three entries below live in the very
+ * file whose cross-editor splice was the defect.
+ *
+ * An entry is a claim that the payload is in the TARGET editor's vocabulary by
+ * CONSTRUCTION — not that adoption would be inconvenient. Anything that can
+ * receive a node built by another editor calls `adoptNodeIntoSchema` /
+ * `adoptSliceIntoSchema` (schema-adopt.ts) and refuses on null.
+ */
+const PERMITTED_UNADOPTED_INSERTS: ReadonlyArray<{
+  file: string;
+  line: string;
+  why: string;
+}> = [
+  {
+    file: "util/inline-atom-move.ts",
+    line: "const tr = editor.state.tr.insert(insertPos, node);",
+    why:
+      "The CREATE branch ('anchor the unanchored'): `buildCreateNode` builds " +
+      "the node with `placement.editor.schema` — the target's own vocabulary " +
+      "— so no node crosses an editor boundary here.",
+  },
+  {
+    file: "util/inline-atom-move.ts",
+    line: "tr.insert(adjustedInsert, node);",
+    why:
+      "The SAME-EDITOR move: `resolveDrop` reaches this helper only on its " +
+      "`move-within` branch, where target and source are one editor.",
+  },
+  {
+    file: "specs/drop-context.ts",
+    line: "trialDoc = editor.state.tr.insert(insertPos, node).doc;",
+    why:
+      "The container-fit probe: the node was adopted by `fitNodesAtInsert` " +
+      "before `fitNodeInContainer` handed it here, and this transaction is " +
+      "never dispatched.",
+  },
+];
 
 /**
  * A splice site is governed by what appears in its ENCLOSING TOP-LEVEL
@@ -108,6 +184,15 @@ const SPLICE_CALL =
 /** A site is excused in place by this marker plus a stated reason. */
 const EXEMPT_MARKER = /container-fit-exempt:/;
 
+/** The ADOPTION question's own marker — deliberately distinct, because an
+ *  exemption is scoped to the shape it justifies and "no container is entered"
+ *  says nothing about whose vocabulary the payload speaks. */
+const ADOPT_EXEMPT_MARKER = /schema-adopt-exempt:/;
+
+/** Either door that puts a payload into the target's vocabulary: the adoption
+ *  SSOT directly, or the container fit, which calls it on every node. */
+const ADOPTS = /\b(?:fitNodesAtInsert|adoptNodeIntoSchema|adoptSliceIntoSchema)\(/;
+
 export function detectSpliceCall(line: string): boolean {
   if (isCommentLine(line)) return false;
   // `tr.insert(` and friends, but not `"".replace(/…/, …)` string mangling —
@@ -137,10 +222,12 @@ interface SpliceSite {
   text: string;
   exempt: boolean;
   fitted: boolean;
+  adoptExempt: boolean;
+  adopted: boolean;
 }
 
-/** Every splice site in the tree, each tagged with whether a fit governs it and
- *  whether it carries an in-place exemption. */
+/** Every splice site in the tree, each tagged with whether a fit governs it,
+ *  whether an adoption governs it, and which in-place exemptions it carries. */
 export function spliceSites(root = DROP_MODE): SpliceSite[] {
   const sites: SpliceSite[] = [];
   for (const full of walkSource(root)) {
@@ -155,10 +242,19 @@ export function spliceSites(root = DROP_MODE): SpliceSite[] {
         text: text.trim(),
         exempt: region.some((l) => EXEMPT_MARKER.test(l)),
         fitted: region.some((l) => /\bfitNodesAtInsert\(/.test(l)),
+        adoptExempt: region.some((l) => ADOPT_EXEMPT_MARKER.test(l)),
+        adopted: region.some((l) => ADOPTS.test(l)),
       });
     });
   }
   return sites;
+}
+
+/** Is this exact splice line on the per-LINE adoption allowlist? */
+function isPermittedUnadopted(site: SpliceSite): boolean {
+  return PERMITTED_UNADOPTED_INSERTS.some(
+    (ok) => ok.file === site.file && site.text.includes(ok.line),
+  );
 }
 
 describe("container-fit guardrail — every block splice asks the container", () => {
@@ -214,6 +310,53 @@ describe("container-fit guardrail — every block splice asks the container", ()
     // String mangling is not a document splice.
     expect(detectSpliceCall(`return s.replace(/["\\\\]/g, "\\\\$&");`)).toBe(false);
     expect(detectSpliceCall(`const t = name.replace("a", "b");`)).toBe(false);
+  });
+
+  it("catches a splice that skips fitNodesAtInsert AND does not adopt", () => {
+    // The task-328 defect, in its own shape: `container-fit-exempt:` alone must
+    // NOT satisfy the adoption question. On the pre-fix tree this leg names
+    // `specs/text-range-move.ts` (both inline-cursor splices) and
+    // `util/inline-atom-move.ts`'s cross-editor insert.
+    const unadopted = spliceSites()
+      .filter((s) => !s.adopted)
+      .filter((s) => !(s.adoptExempt && isPermittedUnadopted(s)))
+      .map((s) => `${s.file}:${s.line}  ${s.text}`);
+    expect(unadopted).toEqual([]);
+  });
+
+  it("only allowlisted LINES carry an adoption exemption (no stale, no new)", () => {
+    const marked = spliceSites().filter((s) => s.adoptExempt && !s.adopted);
+    // Every marked site is allowlisted…
+    expect(
+      marked.filter((s) => !isPermittedUnadopted(s)).map((s) => `${s.file}:${s.line}`),
+    ).toEqual([]);
+    // …and every allowlist entry still matches a real, still-unadopted site.
+    for (const ok of PERMITTED_UNADOPTED_INSERTS) {
+      expect(
+        marked.some((s) => s.file === ok.file && s.text.includes(ok.line)),
+        `stale adoption exemption: ${ok.file} — ${ok.line}`,
+      ).toBe(true);
+    }
+  });
+
+  it("the two exemptions are DISTINCT markers, not one excusing both questions", () => {
+    // If a `container-fit-exempt:` marker satisfied the adoption question, the
+    // whole class this leg guards would be invisible — that is precisely how it
+    // shipped. Pinned as a property of the detectors themselves, on a synthetic
+    // fixture rather than a live line (a canary must not stand on the defect).
+    const fixture = [
+      `function crossEditor(targetEditor, sourceEditor, insertPos, slice) {`,
+      `  // container-fit-exempt: an open slice at a caret enters no container.`,
+      `  const tr = targetEditor.state.tr.replace(insertPos, insertPos, slice);`,
+      `}`,
+    ];
+    const idx = fixture.findIndex((l) => l.includes("tr.replace("));
+    const region = enclosingRegion(fixture, idx);
+    expect(detectSpliceCall(fixture[idx])).toBe(true);
+    expect(region.some((l) => EXEMPT_MARKER.test(l))).toBe(true);
+    // …and yet it neither adopts nor claims an adoption exemption.
+    expect(region.some((l) => ADOPTS.test(l))).toBe(false);
+    expect(region.some((l) => ADOPT_EXEMPT_MARKER.test(l))).toBe(false);
   });
 
   it("the region is the enclosing DECLARATION: a fit in another function does not vouch", () => {

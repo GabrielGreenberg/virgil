@@ -39,8 +39,10 @@
 
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { getRegisteredEditors } from "../target-registry";
+import { adoptNodeIntoSchema, insertLanded } from "../schema-adopt";
+import { refuseOnThrow } from "../planned-spec";
 import { parseAnyKey } from "@/floats/float-key";
 import type {
   DropCtx,
@@ -153,6 +155,22 @@ export interface InlineAtomMoveOptions<
   allowedPlacements?: ReadonlyArray<PlacementKind>;
 }
 
+/**
+ * What the drop RESOLVES to, computed once and read by both doors.
+ *
+ * `null` (a refusal) and these three shapes are the whole answer space — so
+ * `classifyDrop` is `resolveDrop(...) ? apply : no-op` and `applyDrop` executes
+ * the very resolution `classifyDrop` decided on. That symmetry was already the
+ * reason this hand-written spec is allowlisted out of the `plannedDropSpec`
+ * derivation (`planned-decision-guardrail`), and task 328 is what made it
+ * load-bearing rather than incidental: the cross-editor branch can now REFUSE,
+ * and a refusal reachable from only one door is exactly the task-321 defect.
+ */
+type AtomResolution =
+  | { kind: "create"; node: PMNode }
+  | { kind: "move-within"; src: AtomLocation }
+  | { kind: "move-across"; src: AtomLocation; insertTr: Transaction };
+
 export function inlineAtomMoveSpec<
   K extends InlineAtomCardKind | undefined = undefined,
 >(opts: InlineAtomMoveOptions<K>): DropSpec {
@@ -160,6 +178,96 @@ export function inlineAtomMoveSpec<
     opts.resolveSource
       ? opts.resolveSource(cardKey, ctx)
       : locateAtom(opts, extractId(cardKey), ctx.mainEditor);
+
+  /**
+   * The ONE resolution. PURE — it builds values and transactions and dispatches
+   * nothing, so running it on both doors (and only on the two doors; never on a
+   * hover frame) is free of side effects.
+   *
+   * A THROW is a refusal (`refuseOnThrow`, the same containment `plannedDropSpec`
+   * puts around every planner, imported rather than re-derived). This is not
+   * decoration: since task 328 the cross-editor branch builds its own insert
+   * transaction, and `Transform.replace` resolves both positions — a
+   * `placement.pos` recorded on the last throttled mousemove can be out of range
+   * by mouseup if the target card body's doc shrank under it (a sidecar re-sync,
+   * a peer write, a tier demotion). `applyDrop` is caught by `finishApply`;
+   * `classifyDrop` is called BARE inside the controller's `async
+   * commitDropSession`, whose callers `void` it with no `.catch`, so an escaped
+   * throw there would become a rejected promise that never reaches
+   * `endDropSession()` — leaking the window listeners, the
+   * `data-drop-mode-active` body attr and the lift overlay past mouseup. The
+   * guard wraps the RESOLUTION rather than each door, so a third door cannot
+   * forget it.
+   */
+  const resolveDrop = (
+    placement: Parameters<DropSpec["applyDrop"]>[0],
+    cardKey: string,
+    ctx: DropCtx,
+  ): AtomResolution | null =>
+    refuseOnThrow("inlineAtomMoveSpec.resolveDrop", () =>
+      resolveDropOrThrow(placement, cardKey, ctx),
+    );
+
+  const resolveDropOrThrow = (
+    placement: Parameters<DropSpec["applyDrop"]>[0],
+    cardKey: string,
+    ctx: DropCtx,
+  ): AtomResolution | null => {
+    if (placement.kind !== "inline-cursor") return null;
+    const src = resolve(cardKey, ctx);
+    if (!src) {
+      // No marker in any editor. If a `createAtom` factory is configured AND it
+      // can build a node for this card (a serializable atom), this is the
+      // "anchor the unanchored" CREATE branch — apply, never confirm (the
+      // inline ghost can't survive an async modal). The factory declining
+      // (null) — e.g. an empty draft citation — is a refusal, exactly as if it
+      // weren't configured. The node is built with `placement.editor.schema`,
+      // so it is target-native by construction and needs no adoption.
+      const node = opts.createAtom
+        ? buildCreateNode(opts, placement, cardKey, ctx)
+        : null;
+      return node ? { kind: "create", node } : null;
+    }
+    // The in-text grab is same-editor only (v1): a cross-editor move splits
+    // into two transactions and would fire an unsuppressed footnote-orphan
+    // event in the source editor.
+    if (opts.sameEditorOnly && placement.editor !== src.editor) return null;
+    // Same-editor no-ops: dropping at the position the atom already occupies
+    // (either side) leaves it where it was.
+    if (
+      placement.editor === src.editor &&
+      placement.pos >= src.from &&
+      placement.pos <= src.to
+    ) {
+      return null;
+    }
+    if (placement.editor === src.editor) return { kind: "move-within", src };
+
+    // CROSS-EDITOR (task 328). A footnote/citation card's marker released
+    // inside a card body: `footnoteDropSpec` / `citationDropSpec` do not set
+    // `sameEditorOnly`, so this is live. The source node comes from the SOURCE
+    // editor's schema and ProseMirror compares `NodeType`s by IDENTITY, so
+    // splicing it straight in made the fitter drop the atom and append NO step
+    // — while the delete below took the marker out of the prose, and with it
+    // the footnote's BODY, which is the atom's `content` attr. Adopt, then
+    // require evidence the insert landed; either refusal leaves both documents
+    // untouched, and the float survives (`postDrop: "keep"`, plus the `no-op`
+    // decision cancels the session).
+    const node = adoptNodeIntoSchema(src.node, placement.editor.state.schema);
+    if (!node) return null;
+    // container-fit-exempt: an INLINE atom at an inline-cursor position inside a
+    // textblock — there is no block-in-container fit to decide and no container
+    // the fitter could split to accommodate it. (The VOCABULARY question, which
+    // that exemption is not entitled to answer, is settled one line above.)
+    const insertTr = placement.editor.state.tr.insert(placement.pos, node);
+    if (!insertLanded(insertTr, node.nodeSize)) return null;
+    try {
+      insertTr.setSelection(NodeSelection.create(insertTr.doc, placement.pos));
+    } catch {
+      /* skip silently */
+    }
+    return { kind: "move-across", src, insertTr };
+  };
 
   return {
     allowedPlacements: opts.allowedPlacements ?? ["inline-cursor"],
@@ -173,95 +281,57 @@ export function inlineAtomMoveSpec<
     createsAtom: !!opts.createAtom,
     requiresCardApi: opts.cardApiKind,
     classifyDrop(placement, cardKey, ctx) {
-      if (placement.kind !== "inline-cursor") return { kind: "no-op" };
-      const src = resolve(cardKey, ctx);
-      if (!src) {
-        // No marker in any editor. If a `createAtom` factory is configured
-        // AND it can build a node for this card (a serializable atom), this
-        // is the "anchor the unanchored" CREATE branch — apply, never
-        // confirm (the inline ghost can't survive an async modal). The
-        // factory declining (null) — e.g. an empty draft citation — falls
-        // through to no-op, exactly as if it weren't configured.
-        if (opts.createAtom && buildCreateNode(opts, placement, cardKey, ctx)) {
-          return { kind: "apply" };
-        }
-        return { kind: "no-op" };
-      }
-      // The in-text grab is same-editor only (v1): a cross-editor move
-      // splits into two transactions and would fire an unsuppressed
-      // footnote-orphan event in the source editor.
-      if (opts.sameEditorOnly && placement.editor !== src.editor) {
-        return { kind: "no-op" };
-      }
-      // Same-editor no-ops: dropping at the position the atom already
-      // occupies (either side) leaves it where it was.
-      if (
-        placement.editor === src.editor &&
-        placement.pos >= src.from &&
-        placement.pos <= src.to
-      ) {
-        return { kind: "no-op" };
-      }
-      return { kind: "apply" };
+      return resolveDrop(placement, cardKey, ctx)
+        ? { kind: "apply" }
+        : { kind: "no-op" };
     },
     applyDrop(placement, cardKey, ctx) {
-      if (placement.kind !== "inline-cursor") return;
-      const src = resolve(cardKey, ctx);
-      if (!src) {
-        // CREATE branch (mirrors classifyDrop): no marker exists, so build a
-        // fresh atom carrying the card's EXISTING id and insert it at the
-        // drop position. A silent insert — never a confirm.
-        if (opts.createAtom) {
-          const node = buildCreateNode(opts, placement, cardKey, ctx);
-          if (node) {
-            insertNewAtom(placement.editor, placement.pos, node, opts.select);
-            // The OTHER half of anchoring (task 233): the card is now in the
-            // prose, so its own "parked, re-placeable" intent must clear.
-            // Without this the sidecar keeps `unanchored` (and, for a card that
-            // got here via archive → unarchive, `archived`), and a panel that
-            // lists atomless refs straight from the sidecar renders the same
-            // entity twice — live in the prose AND as a stale parked duplicate.
-            //
-            // MAIN EDITOR ONLY. This spec's `targetScope` is `"any-editor"`, so
-            // the atom can legitimately land in a card body (an archive card's
-            // excerpt-scope field mounts `footnote`) — but the panels resolve
-            // "is it anchored?" against the MAIN doc alone (`getFootnotes()` /
-            // the citation position map). Clearing the parked intent for an
-            // atom the panel can't see would hide the card from BOTH lists at
-            // once: no flags left for the atomless list, no marker in the main
-            // doc for the anchored one. Reconcile only where the derivation can
-            // corroborate it; a card-body drop leaves the card parked, which is
-            // what the panel still shows.
-            const id = extractId(cardKey);
-            if (id && opts.cardApiKind && placement.editor === ctx.mainEditor) {
-              cardApiFor(opts.cardApiKind, ctx)?.onAnchored?.(id);
-            }
-          }
+      // RE-resolve rather than reuse what `classifyDrop` computed — the same
+      // rule `plannedDropSpec` follows, so the transaction dispatched below is
+      // always built against the state it lands in.
+      const plan = resolveDrop(placement, cardKey, ctx);
+      if (!plan || placement.kind !== "inline-cursor") return;
+      if (plan.kind === "create") {
+        insertNewAtom(placement.editor, placement.pos, plan.node, opts.select);
+        // The OTHER half of anchoring (task 233): the card is now in the
+        // prose, so its own "parked, re-placeable" intent must clear.
+        // Without this the sidecar keeps `unanchored` (and, for a card that
+        // got here via archive → unarchive, `archived`), and a panel that
+        // lists atomless refs straight from the sidecar renders the same
+        // entity twice — live in the prose AND as a stale parked duplicate.
+        //
+        // MAIN EDITOR ONLY. This spec's `targetScope` is `"any-editor"`, so
+        // the atom can legitimately land in a card body (an archive card's
+        // excerpt-scope field mounts `footnote`) — but the panels resolve
+        // "is it anchored?" against the MAIN doc alone (`getFootnotes()` /
+        // the citation position map). Clearing the parked intent for an
+        // atom the panel can't see would hide the card from BOTH lists at
+        // once: no flags left for the atomless list, no marker in the main
+        // doc for the anchored one. Reconcile only where the derivation can
+        // corroborate it; a card-body drop leaves the card parked, which is
+        // what the panel still shows.
+        const id = extractId(cardKey);
+        if (id && opts.cardApiKind && placement.editor === ctx.mainEditor) {
+          cardApiFor(opts.cardApiKind, ctx)?.onAnchored?.(id);
         }
         return;
       }
-      const { editor: targetEditor, pos: insertPos } = placement;
-      const { editor: sourceEditor, node, from, to } = src;
-      if (targetEditor === sourceEditor) {
+      if (plan.kind === "move-within") {
         // Single transaction: delete + adjusted insert (see helper).
-        moveInlineAtomWithin(targetEditor, node, from, to, insertPos, opts.select);
+        const { node, from, to } = plan.src;
+        moveInlineAtomWithin(placement.editor, node, from, to, placement.pos, opts.select);
         return;
       }
       // Cross-editor move: insert first (preserves node identity), then
       // delete in source. Order matters less for atoms than for
       // paragraphs because PM positions are decoupled across editors.
-      // (Unreachable when sameEditorOnly — classifyDrop already no-op'd.)
-      // container-fit-exempt: an INLINE atom at an inline-cursor position inside a
-      // textblock — there is no block-in-container fit to decide and no container
-      // the fitter could split to accommodate it.
-      const insertTr = targetEditor.state.tr.insert(insertPos, node);
-      try {
-        insertTr.setSelection(NodeSelection.create(insertTr.doc, insertPos));
-      } catch {
-        /* skip silently */
-      }
-      targetEditor.view.dispatch(insertTr);
-      targetEditor.view.focus();
+      // (Unreachable when sameEditorOnly — `resolveDrop` already refused.)
+      // The insert transaction was BUILT in the resolution, where its adoption
+      // and its landed-check could still turn into a refusal; here it is only
+      // dispatched, and the source delete happens on its strength alone.
+      const { editor: sourceEditor, from, to } = plan.src;
+      placement.editor.view.dispatch(plan.insertTr);
+      placement.editor.view.focus();
       // Park a caret at the atom's home in the SOURCE editor before the delete,
       // so that editor's undo `selectionBefore` is on-screen (same #8 rationale
       // as the same-editor path). Selection-only, addToHistory:false.
@@ -360,6 +430,9 @@ function insertNewAtom(
   // by prosemirror-history) is on-screen where the atom appears — see jsdoc.
   parkCaretBeforeChange(editor, insertPos);
   // container-fit-exempt: inline atom at an inline cursor (see above).
+  // schema-adopt-exempt: the CREATE branch — `buildCreateNode` builds this node
+  // with `placement.editor.schema`, i.e. THIS editor's own vocabulary, so there
+  // is no foreign node to adopt. Nothing crosses an editor boundary here.
   const tr = editor.state.tr.insert(insertPos, node);
   try {
     tr.setSelection(
@@ -407,6 +480,11 @@ function moveInlineAtomWithin(
   const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
   const tr = editor.state.tr.delete(from, to);
   // container-fit-exempt: inline atom at an inline cursor (see above).
+  // schema-adopt-exempt: the SAME-EDITOR move — `resolveDrop` reaches this
+  // helper only on its `move-within` branch, where target and source are the
+  // one editor, so the node is native by construction and no boundary is
+  // crossed. (The landed net is likewise inapplicable: this transaction deletes
+  // and inserts, so its net growth is not the payload's.)
   tr.insert(adjustedInsert, node);
   try {
     tr.setSelection(

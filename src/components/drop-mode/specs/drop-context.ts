@@ -20,7 +20,8 @@
  */
 
 import type { Editor } from "@tiptap/react";
-import type { Node as PMNode, NodeType, Schema } from "@tiptap/pm/model";
+import type { Node as PMNode, NodeType } from "@tiptap/pm/model";
+import { adoptNodeIntoSchema } from "../schema-adopt";
 import { fitNodeInContainer } from "@/text-objects/drop-adapters";
 import { TEXT_OBJECT_REGISTRY } from "@/text-objects/text-object-registry";
 import type { TextObjectKind } from "@/text-objects/types";
@@ -116,7 +117,14 @@ export function fitNodesAtInsert(
     // through the TARGET schema first — which also makes the refusal the right
     // one when the target's vocabulary is genuinely narrower (a card body has
     // no `heading`), instead of a mis-fit nobody checked.
-    const node = adoptIntoSchema(raw, schema);
+    //
+    // The adoption itself now lives in `schema-adopt.ts` (task 328): it is an
+    // obligation SEPARATE from fitting, and keeping it private here is what let
+    // the two `container-fit-exempt:` inline splices skip it — an exemption
+    // scoped to containers silently bought an exemption from vocabularies.
+    // Nothing on the fitting path changed; this call is the same code, reachable
+    // now by the splices that legitimately need it and nothing else.
+    const node = adoptNodeIntoSchema(raw, schema);
     if (!node) return { kind: "reject", nodeType: raw.type.name };
     const fit = fitNodeInContainer(parent, index, node, schema, {
       prefer: opts?.prefer,
@@ -126,18 +134,6 @@ export function fitNodesAtInsert(
     fitted.push(fit.kind === "wrap" ? fit.node : node);
   }
   return { kind: "ok", nodes: fitted };
-}
-
-/** Same schema → the node itself (the overwhelmingly common path, zero cost).
- *  Foreign schema → re-parse through the target's own vocabulary, or null when
- *  the target cannot represent it. */
-function adoptIntoSchema(node: PMNode, schema: Schema): PMNode | null {
-  if (node.type.schema === schema) return node;
-  try {
-    return schema.nodeFromJSON(node.toJSON());
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -199,6 +195,9 @@ function bareInsertTearsContainer(
     // container-fit-exempt: this IS the container-fit probe — a throwaway trial
     // transaction that is never dispatched, built precisely to find out what the
     // fitter would do before anything is committed.
+    // schema-adopt-exempt: the node reaching this probe was adopted by
+    // `fitNodesAtInsert` before it was handed to `fitNodeInContainer`, so it is
+    // already in `editor`'s vocabulary; and nothing here is dispatched.
     trialDoc = editor.state.tr.insert(insertPos, node).doc;
   } catch {
     return true;

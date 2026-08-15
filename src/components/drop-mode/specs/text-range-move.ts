@@ -51,6 +51,15 @@
  * the source is resolved from `ctx.mainEditor`. Same-editor drops delete +
  * adjusted-insert in one transaction (like block-move); a drop into a card
  * body inserts there then deletes from the source.
+ *
+ * VOCABULARY (task 328) — "a payload arrives in the target's vocabulary or not
+ * at all", the law `AGENTS.md` states one paragraph after the identity one and
+ * which this spec's INLINE branch used to break. The slice is adopted through
+ * the target's schema ONCE, above the same/cross-editor fork, and every splice
+ * that could cross an editor boundary is gated on evidence it LANDED before the
+ * source delete is allowed to dispatch — see `schema-adopt.ts` for why those are
+ * two obligations rather than one, and why the container fit could not carry
+ * either of them to a branch deliberately exempted from the fit.
  */
 
 import { TextSelection } from "@tiptap/pm/state";
@@ -69,6 +78,7 @@ import {
   remintCollidingIdentity,
 } from "@/lib/tiptap/node-identity";
 import { fitNodesAtInsert } from "./drop-context";
+import { adoptSliceIntoSchema, insertLanded } from "../schema-adopt";
 import { plannedDropSpec } from "../planned-spec";
 import type { DropPlan, DropSpec, Placement } from "../types";
 
@@ -124,8 +134,24 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
 
     // The payload: the marked slice with every linkedAnchor mark stripped, so
     // the relocated text sheds the transient (or any) anchor identity.
-    const slice = stripLinkedAnchorMarks(sourceEditor.state.doc.slice(from, to));
-    if (slice.size === 0) return null;
+    const raw = stripLinkedAnchorMarks(sourceEditor.state.doc.slice(from, to));
+    if (raw.size === 0) return null;
+
+    // ADOPT before the branch, not inside it (task 328). The two obligations
+    // are separate: the `container-fit-exempt:` markers below are true about
+    // CONTAINERS — an open slice merging with the text around a caret enters no
+    // container — and were silently read as covering VOCABULARY too, because
+    // the adoption lived inside `fitNodesAtInsert`. It did not: a slice built
+    // from the main doc's schema, spliced into a card body's, is content that
+    // schema's `NodeType`s cannot name, so PM's fitter drops it and
+    // `Transform.replace` appends NO step — and the source delete below ran
+    // regardless. Hoisting the adoption above the same/cross fork makes it
+    // unconditional rather than a branch someone has to remember: for a
+    // same-editor move it returns the identical slice by identity (zero cost),
+    // and for a cross-editor one it either re-hydrates the payload or REFUSES,
+    // which leaves both documents untouched.
+    const slice = adoptSliceIntoSchema(raw, targetEditor.state.schema);
+    if (!slice || slice.size === 0) return null;
 
     // The INLINE-CURSOR move is deliberately left exactly as L3f-2 shipped it —
     // no shell removal, no re-mint — and the reason is the same law, not an
@@ -165,6 +191,14 @@ export const textRangeMoveDropSpec: DropSpec = plannedDropSpec({
     // Cross-editor: insert into the target first, then delete from the source.
     // container-fit-exempt: the same inline-cursor move, cross-editor.
     const insertTr = targetEditor.state.tr.replace(insertPos, insertPos, slice);
+    // THE REPORT IS THE PERMISSION (task 328) — the second, independent net.
+    // Adoption settles the vocabulary; it does not settle the CONTENT
+    // EXPRESSION, because `Slice.fromJSON` validates types and marks and not
+    // where they may legally sit. So a payload the target can NAME but cannot
+    // HOLD at this caret still reaches the fitter, which drops it silently.
+    // This move's `commit` deletes the source unconditionally, so the delete is
+    // gated on evidence the insert landed rather than on the absence of a throw.
+    if (!insertLanded(insertTr, slice.size)) return null;
     selectInserted(insertTr, insertPos, slice.size);
     return {
       commit: () => {
@@ -308,6 +342,15 @@ function planRangeBetweenBlocks(
     const before = insertTr.doc.content.size;
     insertTr.insert(cursor, n);
     cursor += insertTr.doc.content.size - before;
+  }
+  // The same landed net as the inline-cursor twin (task 328). This branch DOES
+  // adopt — it goes through `fitNodesAtInsert` — so nothing known today can
+  // reach it; that is precisely why it belongs here. The fit answers "can this
+  // container hold it", the adoption answers "can this schema name it", and
+  // neither answers "did ProseMirror actually keep it", which is the only
+  // question the unconditional source delete in `commit` below depends on.
+  if (!insertLanded(insertTr, owned.reduce((s, n) => s + n.nodeSize, 0))) {
+    return null;
   }
   selectBlocks(insertTr, insertPos, cursor);
   return {

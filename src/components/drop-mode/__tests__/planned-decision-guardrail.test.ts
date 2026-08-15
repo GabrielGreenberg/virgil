@@ -209,12 +209,19 @@ describe("census — a spec that can refuse states ONE resolution", () => {
  * `classifyDrop`, asked of the same values.
  */
 const PERMITTED_HAND_WRITTEN_DECISIONS: Record<string, string> = {
-  // `inlineAtomMoveSpec` — symmetric by construction: one shared `resolve`
-  // closure for the move branch, and the create branch's decline is decided by
-  // the same pure `buildCreateNode` probe on both sides.
-  "CARD_REGISTRY.footnote": "inlineAtomMoveSpec — shared resolve + create probe",
-  "CARD_REGISTRY.citation": "inlineAtomMoveSpec — shared resolve + create probe",
-  "atom-grab": "inlineAtomMoveSpec — shared resolve + create probe",
+  // `inlineAtomMoveSpec` — symmetric by construction: since task 328 BOTH doors
+  // are generated from one pure `resolveDrop` (create | move-within |
+  // move-across), so neither can hold a refusal the other cannot see. Two things
+  // this entry does NOT vouch for, and both had to be supplied separately when
+  // that resolution grew a transaction of its own: throw containment (the
+  // resolution wraps itself in `refuseOnThrow`, the same guard `plannedDropSpec`
+  // applies, because `classifyDrop`'s caller has no catch) and the plan-purity
+  // rule (`parkCaretBeforeChange` and `onAnchored` stay in `applyDrop`, which is
+  // why this spec is here rather than converted). An entry on this list is a
+  // claim about AGREEMENT, never about safety.
+  "CARD_REGISTRY.footnote": "inlineAtomMoveSpec — one shared resolveDrop, both doors derived",
+  "CARD_REGISTRY.citation": "inlineAtomMoveSpec — one shared resolveDrop, both doors derived",
+  "atom-grab": "inlineAtomMoveSpec — one shared resolveDrop, both doors derived",
   // `textObjectSideReanchorSpec` — every `applyDrop` guard (kind, `!api`,
   // `!id || !exists`) has a one-for-one twin in `classifyDrop`, read off the
   // same `getApi(ctx)`. It is also the repo's only `confirm` producer, so no
