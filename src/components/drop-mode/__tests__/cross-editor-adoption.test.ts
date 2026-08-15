@@ -514,6 +514,37 @@ describe("inline-atom move into a foreign editor", () => {
     expect(textOf(src.getDoc())).toEqual(["before  after"]);
   });
 
+  it("a STALE placement position REFUSES on both doors instead of throwing", () => {
+    // The resolution now builds its own insert transaction, and
+    // `Transform.replace` resolves both positions — so a `placement.pos`
+    // recorded on the last throttled mousemove can be out of range by mouseup if
+    // the target card body shrank under it. `applyDrop` is caught by
+    // `finishApply`; `classifyDrop` is called BARE inside the controller's async
+    // `commitDropSession`, whose callers `void` it with no `.catch`, so an
+    // escaped throw would leave the session, its window listeners, the body attr
+    // and the lift overlay alive past mouseup.
+    const src = mainWithFootnote();
+    const target = liveEditor(
+      EXCERPT,
+      EXCERPT.nodes.doc.create(null, [EXCERPT.nodes.paragraph.create(null, [EXCERPT.text("hi")])])
+    );
+    const ctx = { mainEditor: src.editor } as unknown as DropCtx;
+    const stale = 9999; // far past the target doc's content size
+
+    expect(() =>
+      footnoteMoveSpec.classifyDrop(inlineCursor(target.editor, stale), ATOM_KEY, ctx)
+    ).not.toThrow();
+    expect(
+      footnoteMoveSpec.classifyDrop(inlineCursor(target.editor, stale), ATOM_KEY, ctx)
+    ).toEqual({ kind: "no-op" });
+    expect(() =>
+      footnoteMoveSpec.applyDrop(inlineCursor(target.editor, stale), ATOM_KEY, ctx)
+    ).not.toThrow();
+    // And the refusal is total — the source keeps its atom.
+    expect(src.dispatched).toHaveLength(0);
+    expect(countType(src.getDoc(), "footnote")).toBe(1);
+  });
+
   it("a SAME-EDITOR atom move is unchanged", () => {
     const src = mainWithFootnote();
     const ctx = { mainEditor: src.editor } as unknown as DropCtx;

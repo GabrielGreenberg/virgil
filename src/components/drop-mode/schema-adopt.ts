@@ -75,6 +75,16 @@ export function adoptNodeIntoSchema(node: PMNode, schema: Schema): PMNode | null
  * every schema by construction, so it passes through: `Slice.toJSON()` returns
  * `null` for one, which would otherwise round-trip to `Slice.empty` and lose
  * nothing — but saying so explicitly keeps the fast path total.
+ *
+ * **Limit, stated:** the first child speaks for the whole slice. A `Fragment`
+ * mixing two schemas would take the fast path and reach the fitter unadopted —
+ * but no caller can build one: `text-range-move` cuts a slice from ONE doc
+ * (`stripLinkedAnchorMarks` rebuilds through `n.copy`/`n.mark`, preserving that
+ * doc's schema), `inline-atom-move` adopts a single inline ATOM leaf, and the
+ * landed net catches the remainder. Deep-walking every descendant would cost a
+ * full traversal per hover-free drop to defend a shape nothing constructs; if a
+ * producer ever splices two documents' fragments together, this is the line to
+ * revisit rather than the net to lean on.
  */
 export function adoptSliceIntoSchema(slice: Slice, schema: Schema): Slice | null {
   const first = slice.content.firstChild;

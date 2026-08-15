@@ -42,6 +42,7 @@ import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { getRegisteredEditors } from "../target-registry";
 import { adoptNodeIntoSchema, insertLanded } from "../schema-adopt";
+import { refuseOnThrow } from "../planned-spec";
 import { parseAnyKey } from "@/floats/float-key";
 import type {
   DropCtx,
@@ -182,8 +183,32 @@ export function inlineAtomMoveSpec<
    * The ONE resolution. PURE — it builds values and transactions and dispatches
    * nothing, so running it on both doors (and only on the two doors; never on a
    * hover frame) is free of side effects.
+   *
+   * A THROW is a refusal (`refuseOnThrow`, the same containment `plannedDropSpec`
+   * puts around every planner, imported rather than re-derived). This is not
+   * decoration: since task 328 the cross-editor branch builds its own insert
+   * transaction, and `Transform.replace` resolves both positions — a
+   * `placement.pos` recorded on the last throttled mousemove can be out of range
+   * by mouseup if the target card body's doc shrank under it (a sidecar re-sync,
+   * a peer write, a tier demotion). `applyDrop` is caught by `finishApply`;
+   * `classifyDrop` is called BARE inside the controller's `async
+   * commitDropSession`, whose callers `void` it with no `.catch`, so an escaped
+   * throw there would become a rejected promise that never reaches
+   * `endDropSession()` — leaking the window listeners, the
+   * `data-drop-mode-active` body attr and the lift overlay past mouseup. The
+   * guard wraps the RESOLUTION rather than each door, so a third door cannot
+   * forget it.
    */
   const resolveDrop = (
+    placement: Parameters<DropSpec["applyDrop"]>[0],
+    cardKey: string,
+    ctx: DropCtx,
+  ): AtomResolution | null =>
+    refuseOnThrow("inlineAtomMoveSpec.resolveDrop", () =>
+      resolveDropOrThrow(placement, cardKey, ctx),
+    );
+
+  const resolveDropOrThrow = (
     placement: Parameters<DropSpec["applyDrop"]>[0],
     cardKey: string,
     ctx: DropCtx,

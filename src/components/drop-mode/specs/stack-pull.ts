@@ -418,6 +418,14 @@ function planInsertText(
   // container is being entered. The between-blocks branch above goes through the
   // fit (the region-level guard cannot tell the two branches apart, so this says
   // which one is which).
+  //
+  // The VOCABULARY question (task 328) is answered too, and NOT by that sibling
+  // fit: `slice` was rehydrated from the Stack's JSON envelope through
+  // `editor.state.schema` at the top of this function, so it is target-native by
+  // construction and there is no foreign node to adopt. This spec is
+  // `targetScope: "main-only"` besides. Said in place because the adoption
+  // census credits this line to the sibling branch's `fitNodesAtInsert`, which
+  // would be the wrong reason for a true verdict.
   const tr = editor.state.tr.replace(target, target, slice);
   // Try to select what was inserted so the user can see the landing point.
   try {
