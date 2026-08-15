@@ -994,10 +994,14 @@ drifted before it had an owner:
   why the two that overlap (a docked pod whose bottom edge sits near the
   column bottom) **summed to ~44px**, eleven times the deck's own 4px
   `MIN_GAP`. A stacking bug is what un-owned values look like.
-- **Hit area ≠ painted band.** The seam below the last docked band is also
-  that band's only resize handle. Thinning the paint widened the invisible hit
-  extension in lockstep (±6 around a 6px strip = the 18px target the 10px
-  strip had at ±4). A gesture never pays for a look.
+- **Hit area ≠ painted band, and the area that counts is the REACHABLE one.**
+  The seam below the last docked band is also that band's only resize handle,
+  so thinning the paint widened the invisible hit extension in lockstep. That
+  extension is deliberately asymmetric (−6 / −8 around a 6px strip): the pod
+  sits directly above at z-1001 and swallows the upward half whole, so what
+  the user can grab is `seam + bottom` = the 14px the 10px strip offered at
+  ±4. Measuring the nominal box instead is how this shipped a 14 → 12 grab
+  for an hour with a green suite. A gesture never pays for a look.
 
 A **fade** is not a seam and does not get the token: the ramp at the
 scrollport edge exists so a card dissolves rather than hard-clips where the

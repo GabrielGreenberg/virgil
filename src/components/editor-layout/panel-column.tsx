@@ -177,13 +177,18 @@ function BottomEdgeHandle({
       >
         {/* Wider invisible hit target — a CHILD of the handle so a grab here
             bubbles to the captured element and the `.dragging` grip chrome
-            lands on the visible gap. ±6 (BandDivider's is ±4 around a 10px
-            strip): the seam is 4px thinner than the gutter it replaced, so
-            the extension absorbs the difference and the grab target stays
-            18px. Thinning the paint must never thin the grab. */}
+            lands on the visible gap. Thinning the paint must never thin the
+            grab, and the extension is ASYMMETRIC because only one half of it
+            is reachable: the docked pod sits at z-1001 directly above, so it
+            eats the upward extension entirely (measured — a probe one pixel
+            above the band's bottom edge hits the panel card list, not this).
+            What the user can actually grab is `seam + bottom`, so the bottom
+            carries the whole compensation: 6 + 8 = the 14px the pre-329 strip
+            offered at 10 + 4. The top stays at the symmetric −6 for the case
+            the occluder is absent. */}
         <div
           className="absolute inset-x-0 cursor-row-resize"
-          style={{ top: -6, bottom: -6, background: 'transparent' }}
+          style={{ top: -6, bottom: -8, background: 'transparent' }}
         />
       </div>
       {/* No fade below the seam. A card in the omni gap under a docked pod is
