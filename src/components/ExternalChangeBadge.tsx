@@ -50,6 +50,7 @@ import type {
   FileChange,
 } from "@/lib/disk-watcher";
 import { iconHint } from "@/components/Hint";
+import { StatusDot } from "./StatusDot";
 
 // Drop below the trigger, flip above near the viewport bottom — the ONE
 // button-anchored placement vocabulary, shared with `<AnchoredMenu>` so a
@@ -391,14 +392,10 @@ function ExternalChangeBadge() {
   );
 }
 
+/** The paused indicator is the shared dot at the `inactive` tone (task 315) —
+ *  the private twin of the collab pill's markup this used to be is gone. */
 function PausedDot() {
-  return (
-    <span
-      aria-hidden
-      className="w-2 h-2 rounded-full shrink-0"
-      style={{ background: "var(--edge-strong)" }}
-    />
-  );
+  return <StatusDot tone="inactive" size="md" className="shrink-0" />;
 }
 
 export default memo(ExternalChangeBadge);

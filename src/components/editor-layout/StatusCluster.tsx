@@ -16,10 +16,12 @@ import CollabStatusPill from "../CollabStatusPill";
 import ExternalChangeBadge from "../ExternalChangeBadge";
 import { ExternalChangeActiveReporter } from "./ExternalChangeActiveReporter";
 import { iconHint } from "@/components/Hint";
+import { StatusDot } from "@/components/StatusDot";
+import type { AiDotTone } from "@/components/AIWindow";
 
 /** The subset of the (memoized) Virgil-bar `vbar` value this cluster reads. */
 export type StatusClusterVBar = {
-  aiDot: "red" | "green" | "yellow" | null;
+  aiDot: AiDotTone | null;
   compilePdf: () => void;
   isCompiling: boolean;
   pdfStale: boolean;
@@ -404,16 +406,11 @@ function StatusClusterImpl(props: StatusClusterProps) {
             <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
           </g>
         </svg>
+        {/* The producer names the STATE, so nothing maps a state to a colour
+            here — the tone travels straight through (task 315). Decorative:
+            the button it overlays carries its own hint + aria-label. */}
         {vbar.aiDot && (
-          <span
-            className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full"
-            style={{
-              backgroundColor:
-                vbar.aiDot === "red" ? "var(--status-danger)"
-                : vbar.aiDot === "green" ? "var(--status-ok)"
-                : "var(--status-warn)",
-            }}
-          />
+          <StatusDot tone={vbar.aiDot} size="sm" className="absolute top-0 right-0" />
         )}
       </button>
       {/* ── Document style ─────────────────────────────────────────
@@ -483,7 +480,7 @@ function StatusClusterImpl(props: StatusClusterProps) {
         </svg>
         PDF
         {vbar.pdfStale && pdfView && (
-          <span className="w-1.5 h-1.5 rounded-full ml-1" style={{ backgroundColor: "var(--status-warn)" }} data-hint="PDF is out of date" aria-label="PDF is out of date" />
+          <StatusDot tone="warn" size="sm" className="ml-1" label="PDF is out of date" />
         )}
       </button>
       </>)}

@@ -250,6 +250,7 @@ import {
 } from "@/lib/doc-index";
 import { useLibraryRegistry } from "@library/hooks/useLibraryRegistry";
 import { iconHint } from "@/components/Hint";
+import { StatusDot } from "@/components/StatusDot";
 
 
 export default function EditorLayout() {
@@ -3605,7 +3606,11 @@ export default function EditorLayout() {
           )}
           {paneState?.pdfStale && paneState?.pdfBlobUrl && (
             <div className="absolute top-3 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow flex items-center gap-1.5 z-10">
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
+              {/* The SAME signal StatusCluster's pdf-stale dot paints, and it
+                  used to be spelled from a different source (`bg-yellow-500`
+                  vs `var(--status-warn)`) — byte-identical today, free to
+                  drift tomorrow. One tone, one token (task 315). */}
+              <StatusDot tone="warn" size="sm" className="inline-block" />
               PDF is out of date
             </div>
           )}

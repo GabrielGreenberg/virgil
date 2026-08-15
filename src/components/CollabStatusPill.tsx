@@ -21,7 +21,8 @@
  */
 
 import { memo, useCallback, useRef, useState, type ReactNode } from "react";
-import { formatRelativeShort } from "@/lib/collab";
+import { formatRelativeShort, type PenStatus } from "@/lib/collab";
+import { StatusDot, type StatusTone } from "./StatusDot";
 import { useCollabContext } from "@/hooks/useCollab";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
@@ -67,11 +68,22 @@ interface CollabStatusPillProps {
   variant: "icon" | "badge";
 }
 
-const DOT_COLORS: Record<string, string> = {
-  active: "#15803d", // green
-  idle: "#d4a843", // amber
-  stale: "#78716c", // grey
-  free: "#7191b0", // steel
+/**
+ * Pen state → what the dot MEANS (task 315). Keyed on the closed `PenStatus`
+ * union, so a fifth pen state is a compile error rather than a silent grey —
+ * which is what retired the old `?? "#888"` fallback: it was a defensive branch
+ * over a `Record<string, string>` that could never fire, spelling a fifth raw
+ * hex to say so.
+ *
+ * `active`/`idle` take the pill's own `--status-collab-*` pair rather than the
+ * alarm ramp; `stale`/`free` take tokens that already fit. The colours are
+ * byte-identical to the four hex literals this replaced — see globals.css.
+ */
+const PEN_TONE: Readonly<Record<PenStatus, StatusTone>> = {
+  active: "collab-active",
+  idle: "collab-idle",
+  stale: "muted",
+  free: "info",
 };
 
 /** Two-person silhouette: a slightly smaller figure offset behind a primary
@@ -192,7 +204,6 @@ function CollabStatusPill({
     pen.requestedBy.some((r) => r.name === identity.name)
   );
   const partnerColor = collab.partnerColor;
-  const dotColor = DOT_COLORS[pen.status] ?? "#888";
   const pendingNames =
     collab.pen.requestedBy.length > 0 && iHavePen
       ? collab.pen.requestedBy.map((r) => r.name).join(", ")
@@ -240,11 +251,9 @@ function CollabStatusPill({
         style={partnerColor && !iHavePen ? { borderColor: partnerColor } : undefined}
         data-hint="Collaborator pen status" aria-label="Collaborator pen status"
       >
-        <span
-          aria-hidden
-          className="w-2 h-2 rounded-full shrink-0"
-          style={{ backgroundColor: dotColor }}
-        />
+        {/* Decorative: the pill's own text label states the pen state, and the
+            wrapper already carries an aria-label + hint. */}
+        <StatusDot tone={PEN_TONE[pen.status]} size="md" className="shrink-0" />
         <span className="truncate">{label}</span>
         {myRequestPending && !iHavePen && (
           <span className="text-[10px] text-ink-faint">· requested</span>

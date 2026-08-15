@@ -1978,6 +1978,37 @@ wiring (`excludeRefs={[wrapEl]}` to exempt the outside trigger,
 renders inline `absolute` but lives in the Library tab, away from the
 editor's floating overlays — port it if that ever changes.
 
+**Status dots — one primitive, a SEMANTIC tone, never a colour.** The tiny
+round "something is up" indicator is `<StatusDot tone=… size=… >`
+(`src/components/StatusDot.tsx`). A caller names what the dot MEANS
+(`warn`, `ok`, `danger`, `info`, `muted`, `inactive`, `collab-active`,
+`collab-idle`) and the primitive owns the only tone→token map; there is no
+`color` prop, because a caller that can pass a colour can pass a hex. Sizes are
+the two the app paints — `sm` (6px, an overlay badge or an inline marker beside
+a label) and `md` (8px, a first-class state indicator inside a pill) — and
+`size` is required, since the repo had no rule distinguishing them and a guessed
+default is a decision nobody made. Passing `label` opts into `aria-label` + the
+`data-hint` tooltip; omitting it renders `aria-hidden`, which is right whenever
+adjacent text already states the fact.
+
+The tone vocabulary is deliberately semantic, not chromatic. A colour-named
+state union (`"red" | "green" | "yellow"`) only moves the paint decision up a
+layer: the producer names the pixel and every consumer re-derives the meaning.
+So a producer whose value ends up in a dot returns tones — see
+`aiRequestDotStatus`'s `AiDotTone`, a subset of `StatusTone`.
+
+Two tones exist because their families genuinely differ, and merging them would
+be a colour change wearing a cleanup's clothes: `muted` is ink (a state that is
+real but unreachable — a stale collaborator) and `inactive` is an edge weight (a
+mechanism switched off — disk watching paused). The collaborator pen pair has
+its OWN `--status-collab-*` tokens rather than the `--status-*` traffic light,
+because the collab pill is a **mode** indicator, not an alarm, and ships a
+softer palette — and specifically not `--note-color` / `--amber-500`, which
+those hexes are byte-identical to today: borrowing them would let a retint of
+the Note card kind repaint the collaborator dot. **When a raw literal happens to
+match a token from another family, that coincidence is not a reason to adopt it.**
+CI: `status-dot-ssot.test.ts` censuses both silos for hand-rolled dots.
+
 **Window insets / WCO title bar.** The bar's geometry is inset-aware. One
 variable family — `--window-inset-{top,right,bottom,left}` (globals.css,
 "Window insets" block) — is the SSOT for every OS/browser-reserved edge: it
