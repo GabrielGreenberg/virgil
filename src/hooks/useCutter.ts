@@ -30,6 +30,8 @@ import {
 } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope } from "@/cards/envelope";
+import { cardHasContent } from "@/cards/has-content";
+import type { PullSeed } from "@/lib/stack/pull-seed";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -291,6 +293,79 @@ export function useCutter(
       if (!originalText && !anchor) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
+    },
+    [update, pristine],
+  );
+
+  /**
+   * Stack-pull doors (task 330) — the Cutter twins of
+   * `useRevisions.addCommentFromSeed` / `addSuggestionFromSeed`. Same law, same
+   * shape: spread the WHOLE surviving record; never read fields off the seed.
+   * (The duplication is the pre-existing revisions/cutter fork, filed as task
+   * 201 — not something to unify inside this one.)
+   */
+  const addCommentFromSeed = useCallback(
+    (
+      paragraphId: string | null,
+      seed: PullSeed<"cutter-comment">,
+    ): CutterCommentCard => {
+      const fresh = {
+        kind: "comment" as const,
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        links: [] as CutterCommentCard["links"],
+      };
+      let card: CutterCommentCard = {
+        text: "",
+        content: emptyRichContent(),
+        aiRequest: true,
+        ...fresh,
+        ...seed,
+        ...fresh, // identity floor — see `useNotes.addNoteFromSeed`
+      };
+      if (paragraphId)
+        card = addTextObjectLink(card, "cutter-comment", paragraphId);
+      const committed = cardHasContent("cutter-comment", card);
+      if (!committed) pristine.markNew(card.id);
+      update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
+      if (committed) bridgeComment(card, true);
+      return card;
+    },
+    [update, pristine, bridgeComment],
+  );
+
+  const addSuggestionFromSeed = useCallback(
+    (
+      paragraphId: string | null,
+      seed: PullSeed<"cutter-suggestion">,
+    ): CutterSuggestionCard => {
+      const fresh = {
+        kind: "suggestion" as const,
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        links: [] as CutterSuggestionCard["links"],
+      };
+      const card: CutterSuggestionCard = {
+        author: "human",
+        original_text: "",
+        suggested_text: "",
+        explanation: "",
+        user_text: "",
+        instructions: "",
+        ...fresh,
+        ...seed,
+        // Lifecycle floor: a pulled suggestion is always a fresh `pending`
+        // record — `appliedChange` describes a splice in another document.
+        status: "pending",
+        appliedChange: undefined,
+        ...fresh, // identity floor — see `useNotes.addNoteFromSeed`
+      };
+      const linked = paragraphId
+        ? addTextObjectLink(card, "cutter-suggestion", paragraphId)
+        : card;
+      if (!cardHasContent("cutter-suggestion", linked)) pristine.markNew(linked.id);
+      update((prev) => ({ ...prev, cards: [...prev.cards, linked] }));
+      return linked;
     },
     [update, pristine],
   );
@@ -671,7 +746,9 @@ export function useCutter(
       cards: state.cards,
       goal: state.goal ?? null,
       addComment,
+      addCommentFromSeed,
       addSuggestion,
+      addSuggestionFromSeed,
       updateCommentContent,
       updateCommentText,
       setCommentAiRequest,
@@ -698,7 +775,9 @@ export function useCutter(
       state.cards,
       state.goal,
       addComment,
+      addCommentFromSeed,
       addSuggestion,
+      addSuggestionFromSeed,
       updateCommentContent,
       updateCommentText,
       setCommentAiRequest,

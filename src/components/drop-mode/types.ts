@@ -26,6 +26,7 @@ import type {
   TodoItem,
   UserNote,
 } from "@/lib/types";
+import type { PullSeed } from "@/lib/stack/pull-seed";
 
 /** A rectangle in viewport coordinates, used to position the indicator. */
 export interface ViewportRect {
@@ -315,45 +316,54 @@ export type InlineAtomCardApis = {
  * and nothing in the console. Optionality is reserved for per-FIELD
  * enhancements, where absence loses a side-channel rather than the card
  * (`setAnnotation`, below).
+ *
+ * **Every per-kind seed is the WHOLE surviving record (task 330).** Each is a
+ * `PullSeed<K>` — the snapshot's record minus the fields `NON_TRAVELLING_FIELDS`
+ * withholds — never a hand-picked sub-shape. A narrowed seed type is not a
+ * smaller API, it is a field the host CANNOT deliver however carefully it is
+ * written: `addTodo`'s `{ text?: string }` made a todo's `notes` un-passable
+ * from the day the Stack landed, and no amount of care at the call site could
+ * have carried it. The implementation's job is to spread what it is given, not
+ * to choose from it.
  */
 export interface StackPullApi {
   /** Add a note. Returns the new card with a fresh id. */
-  addNote: (
-    paragraphId: string | null,
-    seed: { title?: string; content?: unknown },
-  ) => UserNote;
+  addNote: (paragraphId: string | null, seed: PullSeed<"note">) => UserNote;
   /** Add a highlight. v1 stack-pull skips re-anchoring a highlight's
    *  text range (the original mark is gone) — drops always create an
    *  unanchored highlight or a paragraph-anchored placeholder. */
-  addHighlight: (paragraphId: string | null) => HighlightCard;
-  addTodo: (paragraphId: string | null, seed: { text?: string }) => TodoItem;
+  addHighlight: (
+    paragraphId: string | null,
+    seed: PullSeed<"highlight">,
+  ) => HighlightCard;
+  addTodo: (paragraphId: string | null, seed: PullSeed<"todo">) => TodoItem;
   addArchive: (
     paragraphId: string | null,
-    seed: { title?: string; content?: unknown },
+    seed: PullSeed<"archive">,
   ) => ArchivedSnippet;
   addRevisionComment: (
     paragraphId: string | null,
-    seed: Extract<RevisionCard, { kind: "comment" }>,
+    seed: PullSeed<"revision-comment">,
   ) => RevisionCard;
   addRevisionSuggestion: (
     paragraphId: string | null,
-    seed: Extract<RevisionCard, { kind: "suggestion" }>,
+    seed: PullSeed<"revision-suggestion">,
   ) => RevisionCard;
   addCutterComment: (
     paragraphId: string | null,
-    seed: Extract<CutterCard, { kind: "comment" }>,
+    seed: PullSeed<"cutter-comment">,
   ) => CutterCard;
   addCutterSuggestion: (
     paragraphId: string | null,
-    seed: Extract<CutterCard, { kind: "suggestion" }>,
+    seed: PullSeed<"cutter-suggestion">,
   ) => CutterCard;
   /** Register a footnote ref (without inline marker insertion — v1
    *  stack-pull only adds the ref so the body content survives; the
    *  inline atom belongs to a future enhancement). */
-  addFootnote: (seed: FootnoteRef) => FootnoteRef;
+  addFootnote: (seed: PullSeed<"footnote">) => FootnoteRef;
   /** Add an unanchored citation; v1 stack-pull creates citations as
    *  unanchored entries in the panel. */
-  addCitation: (seed: CitationRef) => CitationRef;
+  addCitation: (seed: PullSeed<"citation">) => CitationRef;
   /** Upsert a bib entry. No-op when the key already exists. */
   upsertBibEntry: (entry: BibEntry) => void;
   /** The destination doc's CURRENT bib annotation for a citekey (`""` ⇒ none).

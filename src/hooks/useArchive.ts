@@ -11,6 +11,7 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
+import type { PullSeed } from "@/lib/stack/pull-seed";
 import { usePersistentState } from "./usePersistentState";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
 
@@ -76,6 +77,41 @@ export function useArchive(docId: string | null) {
       return snippet;
     },
     [update, state.snippets.length],
+  );
+
+  /**
+   * Stack-pull door (task 330): create a snippet FROM a snapshot seed.
+   *
+   * The pre-330 host was the CLOSEST of the four to right — it carried the
+   * title, through `updateSnippetTitle` — and that is exactly what makes it
+   * instructive: `updateSnippetTitle` stamps `titleAuto: false` (a user edit
+   * makes the title user-owned), so a pulled snippet with a machine-default
+   * title arrived claiming a human had typed it. A per-field setter re-decides
+   * provenance it has no business re-deciding; a spread carries the truth.
+   */
+  const archiveFromSeed = useCallback(
+    (paragraphId: string | null, seed: PullSeed<"archive">): ArchivedSnippet => {
+      const fresh = {
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        links: [] as ArchivedSnippet["links"],
+      };
+      const snippet: ArchivedSnippet = {
+        title: "",
+        titleAuto: true,
+        ...fresh,
+        ...seed,
+        // Born-free intent (task 104) is resolved by THIS pull, never carried:
+        // `unanchored` describes whether the record had an anchor target in the
+        // SOURCE doc, and the placement decides it here.
+        ...(paragraphId ? {} : { unanchored: true as const }),
+        content: normalizeRichContent(seed.content),
+        ...fresh, // identity floor — see `useNotes.addNoteFromSeed`
+      };
+      update((prev) => ({ snippets: [...prev.snippets, snippet] }));
+      return snippet;
+    },
+    [update],
   );
 
   const updateSnippet = useCallback(
@@ -249,6 +285,7 @@ export function useArchive(docId: string | null) {
     () => ({
       snippets: state.snippets,
       archiveContent,
+      archiveFromSeed,
       updateSnippet,
       updateSnippetTitle,
       addParagraphId,
@@ -263,6 +300,7 @@ export function useArchive(docId: string | null) {
     [
       state.snippets,
       archiveContent,
+      archiveFromSeed,
       updateSnippet,
       updateSnippetTitle,
       addParagraphId,
