@@ -26,6 +26,14 @@ this skill.
 > family and inline marks it lists; anything outside it renders as raw grey
 > monospace.
 
+> **Ask-shape doctrine.** A `suggestion` request means the user commented in
+> the revisions or cutter panel — it does **not** guarantee they want
+> replacement text. Before composing, read
+> [_ask-shape.md](_ask-shape.md) and check that a rewrite is what this ask
+> actually calls for. A verification question ("can you check this quote",
+> "is this right") wants **findings**, and findings do not fit in a
+> suggestion's `explanation`.
+
 ## Args
 
 - `<docPath>` — path to the doc folder.
@@ -38,7 +46,24 @@ this skill.
    `selectedText` is set on the request, that's the precise target;
    otherwise the whole anchored paragraph is the target.
 
-2. **Compose.**
+2. **Check the ask-shape** ([_ask-shape.md](_ask-shape.md)) — before you
+   write a word of replacement text. Read the request's `text` and ask what
+   the honest answer *is*, not what it is about. A command to change the prose
+   ("tighten this", "rewrite the opening") is this skill's job; proceed. A
+   question about the world ("can you check this quote against the source",
+   "is this attribution right", "find me the reference") wants **findings**,
+   and its home is a report:
+   ```bash
+   python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
+       --accept-task-kind suggestion --author ai \
+       --title "<short title>" --body "<findings>"
+   ```
+   That one call drains the `suggestion` Task, so do **not** also emit a
+   suggestion — name both kinds in the `Done:` line so the redirect is
+   visible. On a genuine coin-flip the panel wins: draft the suggestion and
+   put the answer in its `explanation`.
+
+3. **Compose.**
    - `original_text`: copy verbatim from the .tex (selected slice for
      Mode B, full paragraph for Mode A). Include `\vcid{...}`,
      `\vfid{...}`, and inline LaTeX verbatim — don't invent fresh
@@ -53,7 +78,7 @@ this skill.
    - `explanation`: one or two sentences on what changed and why.
    - `user_text`: empty (the user fills this when refining).
 
-3. **Build the RevisionSuggestionCard** (`RevisionSuggestionCard`,
+4. **Build the RevisionSuggestionCard** (`RevisionSuggestionCard`,
    `src/lib/types.ts`):
    ```json
    { "kind": "suggestion",
@@ -96,7 +121,7 @@ this skill.
    real `ai-requests.json` id; omit it for a `virtual:`-prefixed one (there's
    no Task to point back at).
 
-4. **Land the proposal** via the contract's **L3 propose** path. A suggestion
+5. **Land the proposal** via the contract's **L3 propose** path. A suggestion
    is a *proposal*, not an applied edit — `complete-task --propose` lands the
    card and leaves the Task **awaiting review** (`status: in-progress`), the
    `.tex` untouched until the user accepts. (Legacy default-apply marked the
@@ -117,7 +142,7 @@ this skill.
    The contract appends the card, points the Task's `resultId` at it, and
    leaves the Task `in-progress`; it splices **nothing** into the `.tex`.
 
-5. **Reply.**
+6. **Reply.**
    ```
    Done: drafted suggestion <newId> for request <requestId> — awaiting review (accept/reject in the editor). Output: revisions.json (+ ai-requests.json status=in-progress, notifications, version).
    ```

@@ -57,20 +57,34 @@ two paths:
      python3 editor/scripts/cards_for_paragraph.py <docPath> <uuid>
      ```
 
-2. **Choose your response shape.** The determining axis is: *does
-   resolving this request require a `.tex` mutation?* Decide in
-   order:
+2. **Choose your response shape** — the shared ask-shape rule,
+   [_ask-shape.md](_ask-shape.md), governs. Ask what the honest answer *is*,
+   not merely whether it touches the `.tex`. Decide in order:
    - **(a)** Does the request ask to *change document prose* — i.e.
      a `.tex` mutation (rephrase a sentence, tighten a paragraph,
      fix a claim)? → emit a **suggestion card** in `revisions.json`.
      Don't mutate the source note; leave it intact as the user's
      prompt. (Note: a request that asks for a "take" / "reaction" /
      "pushback" on a note's claim is *not* a `.tex` mutation — it's a
-     conversational reply, route to (b).)
-   - **(b)** Else, is there a source note (`linkedTo` set OR
+     conversational reply, route to (c).)
+   - **(b)** Does it ask a question *about the world* whose answer is
+     **findings** — "check this quote against the source", "is this
+     attribution right", "what does X actually say"? → emit a **report**;
+     a note's body is for commentary, not for a verification result with
+     page cites:
+     ```bash
+     python3 editor/scripts/create_card.py <docPath> <requestId> --kind=report \
+         --accept-task-kind note --accept-task-kind highlight --author ai \
+         --title "<short title>" --body "<findings>"
+     ```
+     Declare the Task's **own** kind — this skill drains `note` *and*
+     `highlight` (a flagged passage, routed here by `/editor/review`), and the
+     flag is repeatable, so pass both rather than guessing. Emit the report
+     *instead of* a note, and name both kinds in the `Done:` line.
+   - **(c)** Else, is there a source note (`linkedTo` set OR
      `virtual:notes:<cardId>` id)? → emit a **sibling note** titled
      `Re: <source title>` anchored to the same paragraph(s).
-   - **(c)** Else (standalone, no `linkedTo`) → emit a **new note**
+   - **(d)** Else (standalone, no `linkedTo`) → emit a **new note**
      card.
 
 3. **Compose.** Draft the note body as plain text — `create_card.py` wraps it
@@ -78,7 +92,7 @@ two paths:
    one to three short paragraphs. Match the user's tone (academic,
    conversational — read the source note first to gauge).
 
-4. **Land it via the contract** *(paths (b)/(c))*. The composition above is this
+4. **Land it via the contract** *(paths (c)/(d))*. The composition above is this
    skill's job; the mechanical write is not. Hand the body to
    `create_card.py --kind=note` — it builds the `UserNote`, anchors it (Mode A),
    stamps the `aiOriginRequestId` back-pointer, flips the Task's `status`/`result`,
@@ -88,18 +102,20 @@ two paths:
    `--title`. Don't pass `--margin`: which side a note's margin chrome sits on
    follows the Notes panel's dock and is resolved live by the app.
 
-   - **Path (c) — standalone** (a real `ai-requests.json` id, no `linkedTo`):
+   - **Path (d) — standalone** (a real `ai-requests.json` id, no `linkedTo`):
      anchor is read from the Task. Title is a short descriptive subject phrase
      (no `Re:`), matching the convention of existing notes in `notes.json`:
      ```bash
      python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
+         --accept-task-kind highlight \
          --body "<your reply>" --title "<subject phrase>"
      ```
-   - **Path (b) — sibling note** answering a source note (title `Re: <source title>`):
+   - **Path (c) — sibling note** answering a source note (title `Re: <source title>`):
      - Real `requestId` (bridged flag, `linkedTo.panel == "notes"`): anchor read
        from the Task —
        ```bash
        python3 editor/scripts/create_card.py <docPath> <requestId> --kind=note \
+           --accept-task-kind highlight \
            --body "<your reply>" --title "Re: <source title>"
        ```
      - Virtual id (`virtual:notes:<cardId>`, a pre-bridge flag with no Task row):
@@ -143,7 +159,7 @@ two paths:
    default-apply; it never edits the `.tex`.
 
 5. **Reply.** One line, per path:
-   - Path (b)/(c) — note created:
+   - Path (c)/(d) — note created:
      ```
      Done: drafted note <newId> for request <requestId>. Output: notes.json (+ ai-requests.json status/result, notifications, version).
      ```
@@ -161,7 +177,7 @@ Skipped <requestId> (already complete).
 
 ## Safety
 
-- For paths (b)/(c), don't hand-build the note JSON or call `apply_response.py`
+- For paths (c)/(d), don't hand-build the note JSON or call `apply_response.py`
   directly — route the write through `create_card.py` so the anchor,
   `aiOriginRequestId`, status/result, and version bump stay centralized (the
   same contract `draft-footnote` / `create-card` use). One future change to the
