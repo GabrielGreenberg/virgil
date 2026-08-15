@@ -3,10 +3,21 @@
  *
  * Used by paragraph and example block. Each block is identified by
  * `attrs.uuid` and `type.name`; the spec finds it in the target
- * editor's doc, builds a delete+insert transaction (single-tx for
- * same-editor, two-tx for cross-editor), and closes the source float
- * on success. No-op if the drop position lies inside the source's
- * own range.
+ * editor's doc, builds one delete+insert transaction, and closes the
+ * source float on success. No-op if the drop position lies inside the
+ * source's own range.
+ *
+ * SCOPE — this spec is SAME-EDITOR by construction, and says so rather than
+ * carrying a branch that cannot run (task 331). `locateSource` resolves the
+ * dragged block inside `placement.editor`, i.e. the TARGET document, so the
+ * source it finds is always in the editor the payload is landing in. Before
+ * this, a `targetEditor === sourceEditor` fork guarded an insert-then-delete
+ * cross-editor branch whose condition was true by construction — unreachable
+ * code reasoning about a dispatch ordering that could never occur, which is
+ * exactly what the dead-SSOT rule (`AGENTS.md`, "A registry earns its name by
+ * being read") outlaws. Making a cross-editor block move real is a PRODUCT
+ * decision, not a mechanical one: it would newly enable main→card-body block
+ * capture, which the capture/schema-symmetry law governs.
  *
  * For multi-block moves (a heading + its section body) see
  * `specs/heading.ts`, which uses `getSectionRangeByUuid` instead of
@@ -14,10 +25,10 @@
  */
 
 import { Node as PMNode } from "@tiptap/pm/model";
-import { TextSelection } from "@tiptap/pm/state";
 import type { DropPlan, DropSpec, Placement } from "../types";
 import { fitNodesAtInsert } from "../specs/drop-context";
 import { plannedDropSpec } from "../planned-spec";
+import { insertNodesAdvancing, selectInsertedSpan } from "./mapped-insert";
 import { parseAnyKey } from "@/floats/float-key";
 
 export interface BlockMoveOptions {
@@ -41,46 +52,33 @@ export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
       if (placement.kind !== "between-blocks") return null;
       const src = locateSource(opts, placement, cardKey);
       if (!src) return null;
-      if (
-        placement.editor === src.editor &&
-        placement.insertPos >= src.from &&
-        placement.insertPos <= src.to
-      ) {
+      if (placement.insertPos >= src.from && placement.insertPos <= src.to) {
         return null;
       }
-      const { editor: targetEditor, insertPos } = placement;
-      const { editor: sourceEditor, node: sourceNode, from, to } = src;
+      const { editor, insertPos } = placement;
+      const { node: sourceNode, from, to } = src;
       // The shared container-fit gate (task 257) — this factory asked NOTHING
       // about the drop context, so an exampleBlock card released in another
       // example's item gap spliced an `exampleBlock` into `exampleItemList` and
       // the fitter tore that example in two (duplicate uuid), the same class the
       // two move specs were hitting from their own half-answers. It fits or it
       // refuses; a refusal returns before the delete, leaving the doc untouched.
-      const fit = fitNodesAtInsert(targetEditor, insertPos, [sourceNode]);
+      const fit = fitNodesAtInsert(editor, insertPos, [sourceNode]);
       if (fit.kind === "reject") return null;
-      const node = fit.nodes[0];
-      if (targetEditor === sourceEditor) {
-        const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
-        const tr = targetEditor.state.tr.delete(from, to);
-        tr.insert(adjustedInsert, node);
-        selectInsertedBlock(tr, adjustedInsert, node.nodeSize);
-        return {
-          commit: () => {
-            targetEditor.view.dispatch(tr);
-            targetEditor.view.focus();
-          },
-        };
-      }
-      const insertTr = targetEditor.state.tr.insert(insertPos, node);
-      selectInsertedBlock(insertTr, insertPos, node.nodeSize);
+      const tr = editor.state.tr.delete(from, to);
+      // ASK the transaction where the insert position went; never predict it
+      // (task 331 — the shared rule, and the whole of `mapped-insert.ts`'s
+      // header). This was `insertPos - (to - from)`, which assumes `tr.delete`
+      // removed the source's declared node size; where the emptied parent keeps
+      // a minimal valid residue it does not, and the insert lands early enough
+      // to be spliced INSIDE the preceding block, which the fitter then closes
+      // — tearing one node into two that both keep its uuid.
+      const span = insertNodesAdvancing(tr, { mapThrough: insertPos }, fit.nodes);
+      selectInsertedSpan(tr, span);
       return {
         commit: () => {
-          targetEditor.view.dispatch(insertTr);
-          targetEditor.view.focus();
-          // Built HERE, after the target insert has landed — see the same note
-          // in `specs/textobject.ts`. A transaction is bound to the doc it was
-          // built from, and this one is dispatched second.
-          sourceEditor.view.dispatch(sourceEditor.state.tr.delete(from, to));
+          editor.view.dispatch(tr);
+          editor.view.focus();
         },
       };
     },
@@ -88,29 +86,9 @@ export function blockMoveSpec(opts: BlockMoveOptions): DropSpec {
 }
 
 interface SourceInfo {
-  editor: Placement["editor"];
   node: PMNode;
   from: number;
   to: number;
-}
-
-/**
- * After inserting `node` at `pos`, set the transaction's selection to
- * cover the node's inline content (just inside its block boundaries).
- * Uses `TextSelection.between` so positions near block edges are
- * snapped to the nearest valid text point.
- */
-function selectInsertedBlock(
-  tr: import("@tiptap/pm/state").Transaction,
-  pos: number,
-  nodeSize: number,
-): void {
-  const start = pos + 1;
-  const end = pos + nodeSize - 1;
-  if (end <= start) return;
-  const $start = tr.doc.resolve(start);
-  const $end = tr.doc.resolve(end);
-  tr.setSelection(TextSelection.between($start, $end));
 }
 
 function locateSource(
@@ -126,7 +104,7 @@ function locateSource(
   editor.state.doc.descendants((node, pos) => {
     if (found) return false;
     if (node.attrs?.uuid === uuid && node.type.name === opts.nodeName) {
-      found = { editor, node, from: pos, to: pos + node.nodeSize };
+      found = { node, from: pos, to: pos + node.nodeSize };
       return false;
     }
     return true;

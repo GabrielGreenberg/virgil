@@ -42,6 +42,7 @@ import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { getRegisteredEditors } from "../target-registry";
 import { adoptNodeIntoSchema, insertLanded } from "../schema-adopt";
+import { insertNodesAdvancing } from "./mapped-insert";
 import { refuseOnThrow } from "../planned-spec";
 import { parseAnyKey } from "@/floats/float-key";
 import type {
@@ -477,20 +478,27 @@ function moveInlineAtomWithin(
   // Park a caret at the atom's original home so the move's `selectionBefore`
   // (captured by prosemirror-history) is on-screen — see helper jsdoc.
   parkCaretBeforeChange(editor, from);
-  const adjustedInsert = insertPos > to ? insertPos - (to - from) : insertPos;
   const tr = editor.state.tr.delete(from, to);
+  // ASK the transaction where the insert position went; never predict it (task
+  // 331). This was `insertPos - (to - from)` — the fourth copy of an arithmetic
+  // that assumes `tr.delete` removes the range's declared width, which fails
+  // wherever the emptied parent keeps a minimal valid residue. An inline atom's
+  // parent is a textblock (`inline*`, emptiable), so no drift has been measured
+  // HERE; the conversion is for the uniformity, since a rule that holds at
+  // three of four call sites is exactly how this class kept recurring.
+  //
   // container-fit-exempt: inline atom at an inline cursor (see above).
   // schema-adopt-exempt: the SAME-EDITOR move — `resolveDrop` reaches this
   // helper only on its `move-within` branch, where target and source are the
   // one editor, so the node is native by construction and no boundary is
   // crossed. (The landed net is likewise inapplicable: this transaction deletes
   // and inserts, so its net growth is not the payload's.)
-  tr.insert(adjustedInsert, node);
+  const span = insertNodesAdvancing(tr, { mapThrough: insertPos }, [node]);
   try {
     tr.setSelection(
       select === "caret-after"
-        ? TextSelection.create(tr.doc, adjustedInsert + node.nodeSize)
-        : NodeSelection.create(tr.doc, adjustedInsert),
+        ? TextSelection.create(tr.doc, span.end)
+        : NodeSelection.create(tr.doc, span.start),
     );
   } catch {
     /* position couldn't host the selection — skip silently */

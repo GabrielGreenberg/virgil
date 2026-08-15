@@ -76,6 +76,23 @@
 // exemption would excuse the next splice added beside it, which is the drift
 // both halves of this guard exist to catch).
 //
+// ── Following the shared splice DOOR (task 331) ─────────────────────────────
+//
+// `util/mapped-insert.ts` lifted the delete-then-insert splice into one
+// primitive (`insertNodesAdvancing`), because the "ask the mapping, advance by
+// what landed" rule was re-derived at four call sites and stale at three. A
+// bare-name call is invisible to `SPLICE_CALL`, which requires a `.method(`
+// receiver — so, left alone, that refactor would have QUIETLY DRAINED this
+// census: every converted site would stop being a splice site and both
+// questions above would go unasked for it, which is precisely the drift these
+// legs exist to catch, arriving this time as a tidy-up.
+//
+// So the door is itself a splice call: `insertNodesAdvancing(` is in the family,
+// and the primitive's own internal `tr.insert(` carries BOTH exemptions. Those
+// two entries are honest ONLY because of the line above — the wrapper buys no
+// exemption for its callers, it relocates the question to them, where a refusal
+// can still return before the source is deleted.
+//
 // STATED LIMIT, shared by both questions: the region is the enclosing
 // DECLARATION, so an adoption in one branch vouches for a splice in a sibling
 // branch of the same function. That is deliberate — the two live specs adopt
@@ -110,6 +127,12 @@ const PERMITTED_UNFITTED_INSERTS: Record<string, string> = {
   "specs/drop-context.ts":
     "The container-fit PROBE itself — a throwaway trial transaction, never " +
     "dispatched, built to discover what the fitter would do.",
+  "util/mapped-insert.ts":
+    "The shared splice DOOR (task 331). It fits nothing and claims nothing: " +
+    "`insertNodesAdvancing(` is itself in SPLICE_CALL, so both questions are " +
+    "asked of every CALLER — which is also the only place a refusal can " +
+    "return before the source is deleted. Without that, this entry would be a " +
+    "hole rather than an exemption.",
 };
 
 /**
@@ -138,10 +161,18 @@ const PERMITTED_UNADOPTED_INSERTS: ReadonlyArray<{
   },
   {
     file: "util/inline-atom-move.ts",
-    line: "tr.insert(adjustedInsert, node);",
+    line: "const span = insertNodesAdvancing(tr, { mapThrough: insertPos }, [node]);",
     why:
       "The SAME-EDITOR move: `resolveDrop` reaches this helper only on its " +
       "`move-within` branch, where target and source are one editor.",
+  },
+  {
+    file: "util/mapped-insert.ts",
+    line: "tr.insert(cursor, n);",
+    why:
+      "The shared splice door's own splice. The nodes reaching it were fitted " +
+      "and adopted by the CALLER, which this census asks separately via the " +
+      "`insertNodesAdvancing(` splice-call form.",
   },
   {
     file: "specs/drop-context.ts",
@@ -179,7 +210,7 @@ function isCommentLine(line: string): boolean {
  * is unconstrained.
  */
 const SPLICE_CALL =
-  /\.(?:insert|insertContentAt|replace|replaceWith|replaceRangeWith|replaceSelectionWith|step)\(/;
+  /(?:\.(?:insert|insertContentAt|replace|replaceWith|replaceRangeWith|replaceSelectionWith|step)|\binsertNodesAdvancing)\(/;
 
 /** A site is excused in place by this marker plus a stated reason. */
 const EXEMPT_MARKER = /container-fit-exempt:/;
@@ -193,8 +224,14 @@ const ADOPT_EXEMPT_MARKER = /schema-adopt-exempt:/;
  *  SSOT directly, or the container fit, which calls it on every node. */
 const ADOPTS = /\b(?:fitNodesAtInsert|adoptNodeIntoSchema|adoptSliceIntoSchema)\(/;
 
+/** A DECLARATION is not a call. Only relevant for the bare-name arm of
+ *  `SPLICE_CALL`: `export function insertNodesAdvancing(` would otherwise
+ *  report the shared door's own signature as a splice site. */
+const DECLARATION = /\bfunction\s+insertNodesAdvancing\b/;
+
 export function detectSpliceCall(line: string): boolean {
   if (isCommentLine(line)) return false;
+  if (DECLARATION.test(line)) return false;
   // `tr.insert(` and friends, but not `"".replace(/…/, …)` string mangling —
   // a string replace takes a regex or a quoted pattern as its first argument.
   if (!SPLICE_CALL.test(line)) return false;
@@ -304,6 +341,10 @@ describe("container-fit guardrail — every block splice asks the container", ()
       `tr2.insert(cursor, node);`,
       `editor.commands.insertContentAt(pos, json);`,
       `tr.step(new ReplaceStep(pos, pos, slice));`,
+      // The shared splice DOOR (task 331) — a bare-name call with no receiver.
+      // If this stops matching, every converted call site silently leaves the
+      // census and both questions above go unasked for it.
+      `const span = insertNodesAdvancing(tr, { mapThrough: insertPos }, nodes);`,
     ];
     for (const line of shapes) expect(detectSpliceCall(line)).toBe(true);
 
