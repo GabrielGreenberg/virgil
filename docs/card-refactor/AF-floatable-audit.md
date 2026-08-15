@@ -187,9 +187,12 @@ For each surface: exact `file:line`, and whether it is **ALREADY SHARED** by bot
 
 ### 1.9 Re-dock + dock outline — ALREADY SHARED (panel-centric)
 - [`dock-drag.ts`](../../src/components/editor-layout/dock-drag.ts) — module-level `{slotKey, rect,
-  companionRect}` signal (`setDockDragTarget`/`useDockDragTarget`, `:38-73`), proximity finder
-  `findDockTargetByPanelProximity` ([`:266`](../../src/components/editor-layout/dock-drag.ts)),
-  point finder `findDockTargetAtPoint` ([`:95`](../../src/components/editor-layout/dock-drag.ts)).
+  companionRect}` signal (`setDockDragTarget`/`useDockDragTarget`), plus the geometry sweep
+  `readDockGeometry` and the pure proximity resolver `resolveDockTargetByPanelProximity`.
+  (Task 330 split those two halves and DELETED the live one-call finders this section used to
+  name — `findDockTargetByPanelProximity` and the already-dead `findDockTargetAtPoint`; a
+  per-move caller must now snapshot on a gesture edge and hit-test arithmetically. See
+  AGENTS.md "Pane-drag stability".)
 - [`DockOutline.tsx`](../../src/components/editor-layout/DockOutline.tsx) — body-portaled WAAPI
   crossfade outline (`:38`), mounted from EditorPane (`~:2965`).
 - Cards/text-objects **opt out**: `FloatCard` passes no `onMaybeRedock`/`onUndock`, and

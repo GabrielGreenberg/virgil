@@ -39,6 +39,11 @@ const ICON = { left: 12, top: 700, right: 68, bottom: 756 };
 const ICON_CENTER = { clientX: 40, clientY: 728 };
 // Well clear of the icon, and where every gesture below starts.
 const AWAY = { clientX: 500, clientY: 300 };
+// Every mousemove below must carry the primary button HELD: since task 330 the
+// move handler bails on `isMissedRelease` (the `(buttons & 1) === 0` bit test),
+// and jsdom defaults `buttons` to 0 — a move without this reads as a release
+// the handler never saw, which is exactly the invariant it is there to enforce.
+const HELD = { buttons: 1 };
 
 afterEach(() => {
   cleanup();
@@ -86,7 +91,7 @@ function dragOntoIcon(cardKey: string) {
   try {
     fireEvent.mouseDown(header, AWAY);
     act(() => {
-      fireEvent.mouseMove(window, ICON_CENTER);
+      fireEvent.mouseMove(window, { ...ICON_CENTER, ...HELD });
     });
     const ringLit = getStackDropTarget();
     act(() => {
@@ -157,7 +162,7 @@ describe("dragging a float onto the StackIcon", () => {
     window.addEventListener("virgil-stack-drop", onDrop);
     fireEvent.mouseDown(header, AWAY);
     act(() => {
-      fireEvent.mouseMove(window, { clientX: 520, clientY: 320 });
+      fireEvent.mouseMove(window, { clientX: 520, clientY: 320, ...HELD });
     });
     expect(getStackDropTarget()).toBe(false);
     act(() => {
