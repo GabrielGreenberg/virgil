@@ -5070,8 +5070,22 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // then close the float. Non-stackable kinds return null and are skipped.
   // Declared here (after `popoutsDeps`) so the CARD branch can hand that bag
   // to `toFloatable` without a TDZ on the dep array.
+  //
+  // VISIBILITY GATE (task 329, the `DropCtx` sibling): this is a WINDOW
+  // listener registered once per mounted pane, and multi-doc keep-alive mounts
+  // N panes at once — so every warm pane used to handle the same drop. Each ran
+  // its own `snapshotForStack` against ITS doc, and each called
+  // `closeCardPopout(cardKey)` on ITS prefs; a card id that resolved in two docs
+  // would have added the item twice. The event is app-global (dispatched on
+  // `window` by `FloatingPanel` when a float is released over the StackIcon),
+  // so the pane the user is looking at is the only one entitled to answer it.
+  // Read through the ref, not the render value: a warm pane is NOT remounted on
+  // a switch, so a captured value would freeze at its mount-time answer. A pane
+  // outside any keep-alive provider (the Library reader) reads `true` and
+  // behaves exactly as before.
   useEffect(() => {
     const onDrop = (raw: Event) => {
+      if (!isVisibleRef.current) return;
       const detail = (raw as CustomEvent<{
         cardKey: string;
         clientX: number;

@@ -502,6 +502,15 @@ export interface DropSession {
    *  look the spec up in the registry. */
   kind: string;
   spec: DropSpec;
+  /**
+   * The per-doc ctx this gesture STARTED in, resolved once at
+   * `beginDropSession` and carried for the session's whole life. N panes are
+   * mounted at once under multi-doc keep-alive, so "the current ctx" is not a
+   * module-level fact — binding it to the session is what makes
+   * `ctx.mainEditor` mean *the document this drag began in* by construction,
+   * for the hit-test AND for the commit.
+   */
+  ctx: DropCtx;
   /** The ordered placements THIS session may produce — `spec.placementsFor`'s
    *  answer for this cardKey, else `spec.allowedPlacements`. Resolved once at
    *  session start (`resolveSessionPlacements`) and handed to every hit-test,

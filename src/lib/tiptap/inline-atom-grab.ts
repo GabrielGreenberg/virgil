@@ -147,6 +147,11 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
         origin: { x: pending.startX, y: pending.startY },
         inPlace: true,
         externalCommit: true,
+        // Exact pane hint: the grab fired inside THIS editor, so the session
+        // binds to that document's DropCtx by construction rather than to
+        // whichever pane the focused→visible ladder resolves (N panes are
+        // mounted at once under multi-doc keep-alive).
+        editor,
       });
       if (!started) {
         clearInlineAtomSource();
