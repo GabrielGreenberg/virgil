@@ -3,8 +3,11 @@
  *
  * Every UUID-bearing text element generates an implicit grid in both margins:
  * - Rows = number of text lines in the element
- * - Columns = MARGINALIA_COLS (2) per side (1 effective column on the left —
- *   the inner-left slot is reserved for the paragraph popout button)
+ * - Columns = the `laneCols` the caller resolved for that side — up to
+ *   MARGINALIA_COLS (2) on the right, 1 on the left (its inner slot is
+ *   reserved for the paragraph popout button), and fewer (or none) at a
+ *   narrowed margin, where the lane SSOT hands the outboard bands to the
+ *   tucked selection bolt (`resolveMarkerCols`)
  *
  * Markers fill cells left-to-right, top-to-bottom. When a node's grid
  * overflows (more markers than cells), the LAST cell is reserved for a
@@ -20,7 +23,6 @@ import { marginSideForMarkerType, type PanelSideMap } from "./margin-side";
 import {
   MARGINALIA_COL_GAP,
   MARGINALIA_ICON_SIZE,
-  marginaliaEffectiveCols,
   marginaliaGridX,
   type AnchorNodeMetrics,
   type GridCell,
@@ -84,15 +86,20 @@ function cellAt(
  *                    `getMetrics` — it goes straight to the `orphans` bucket.
  * @param markers     Flat list of markers from the margin-marker builder
  * @param panelSides  Which side each panel is currently docked on
- * @param laneFits    Per-side "can this margin host the marker grid at all?",
- *                    from `markerGridFits` in the lane SSOT (task 214). A side
- *                    that does NOT fit renders NOTHING — no cells, no "+K"
- *                    pill, no re-pin dock — because the whole column is
- *                    pod-anchored at lane offsets the prose has taken back;
- *                    placing any of it would paint over the last words of the
- *                    line. Required (not defaulted) so no consumer can inherit
- *                    a "fits" it never decided; the fail-open case belongs to
- *                    `markerGridFits`, which owns what unmeasured means.
+ * @param laneCols    Per-side effective marker COLUMNS at the current margin,
+ *                    from `resolveMarkerCols` in the lane SSOT (tasks 214/325).
+ *                    `0` renders NOTHING on that side — no cells, no "+K" pill,
+ *                    no re-pin dock — because the whole column is pod-anchored
+ *                    at lane offsets the prose has taken back; placing any of it
+ *                    would paint over the last words of the line. A REDUCED
+ *                    count is the cramped right lane, where the tucked selection
+ *                    bolt occupies the outboard columns' bands and the grid
+ *                    keeps only what stays inboard of it; the surplus markers
+ *                    ride the "+K" overflow pill that already exists for an
+ *                    over-full grid. Required (not defaulted) so no consumer can
+ *                    inherit a count it never decided; the fail-open case
+ *                    belongs to `resolveMarkerCols`, which owns what unmeasured
+ *                    means.
  * @returns Positioned markers, per-(node, side) overflow groups (R16), and
  *          the orphan markers for the fixed re-pin dock (CHIP-B)
  */
@@ -100,7 +107,7 @@ export function computeMarkerPositions(
   getMetrics: (uuid: string) => AnchorNodeMetrics | null,
   markers: readonly MarginaliaMarker[],
   panelSides: PanelSideMap,
-  laneFits: { left: boolean; right: boolean },
+  laneCols: { left: number; right: number },
 ): MarkerPositionsResult {
   if (markers.length === 0)
     return { positioned: [], overflowGroups: [], orphans: [] };
@@ -131,9 +138,11 @@ export function computeMarkerPositions(
     // dock lives inside the same pod-anchored column, so a side the margin
     // can't host drops its whole chrome set together (grid cells, "+K" pill,
     // dock). This mirrors what zen and the read-only reader were already
-    // documented to do — hide — rather than the bolt's tuck, which markers
-    // can't borrow: a two-column grid has no sub-lane left to tuck into.
-    if (!laneFits[side]) continue;
+    // documented to do — hide. Between "all columns" and "none" the lane
+    // resolution can also hand back a REDUCED count (task 325: the tucked bolt
+    // takes the outboard bands); that is the sub-lane the pre-325 comment here
+    // wrongly said a two-column grid had none of.
+    if (laneCols[side] <= 0) continue;
 
     // CHIP-B: an orphan card has no live paragraph — it can't be line-aligned.
     // Carry it to the fixed re-pin dock instead of culling it (the RC2 vanish).
@@ -154,17 +163,18 @@ export function computeMarkerPositions(
     g.items.push(m);
   }
 
-  // Pass 2 — place each group's markers L→R, T→B. The inner-left slot
-  // (col=1 on the left) is reserved across all paragraphs and headings —
-  // it's the strip immediately next to the grab handle, kept clear for the
-  // paragraph popout button — so the left side uses a single effective
-  // column (`marginaliaEffectiveCols`, in the lane SSOT because the lane-fit
-  // inset derives from it too). The right side keeps both columns.
+  // Pass 2 — place each group's markers L→R, T→B, in whatever columns the lane
+  // resolution granted this side. The inner-left slot (col=1 on the left) is
+  // reserved across all paragraphs and headings — it's the strip immediately
+  // next to the grab handle, kept clear for the paragraph popout button — so
+  // the left side is always a single effective column; the right side gets both
+  // where the lane is whole and one where the tucked bolt has taken the outboard
+  // band. The count is the caller's resolved answer, never re-derived here.
   const positioned: PositionedMarker[] = [];
   const overflowGroups: MarkerOverflowGroup[] = [];
 
   for (const g of groups.values()) {
-    const effectiveCols = marginaliaEffectiveCols(g.side);
+    const effectiveCols = laneCols[g.side];
     const capacity = Math.max(1, g.node.lineCount) * effectiveCols;
     const overflowing = g.items.length > capacity;
     // R16: when overflowing, reserve the LAST cell for the "+K" pill; only

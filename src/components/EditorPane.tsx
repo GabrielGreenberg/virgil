@@ -4369,14 +4369,15 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // rather than eating ~150px+ of prose width. The normal (non-code-split)
   // editor keeps the floor untouched.
   //
-  // What "degrade" MEANS is decided in `<Marginalia>`, not here (task 214).
+  // What "degrade" MEANS is decided in `<Marginalia>`, not here (tasks 214/325).
   // This flag governs the FLOOR only; un-reserving it used to leave the grid
   // still packing at the wide-lane offsets, painting badges over the last words
-  // of every marked line. The grid now asks the lane-regime predicate
-  // (`markerGridFits`) against the MEASURED margin and hides the side it can't
-  // host — so the degradation this comment claims is real, and it holds for
-  // every narrowing path (zen, the reader, a hand-dragged margin), not just
-  // this one flag.
+  // of every marked line. The grid now reads the ordered lane RESOLUTION
+  // (`resolveMarkerCols` → `resolveRightLane`) against the MEASURED margin —
+  // yielding the columns the tucked selection bolt occupies, and hiding the
+  // side it can't host at all — so the degradation this comment claims is real,
+  // and it holds for every narrowing path (zen, the reader, a hand-dragged
+  // margin), not just this one flag.
   const marginaliaLaneReserved =
     !!menuBar &&
     menuBar.prefs.showMarginalia !== false &&

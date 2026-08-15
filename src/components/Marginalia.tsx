@@ -19,7 +19,7 @@ import {
   MARGINALIA_MARGIN_WIDTH_LEFT,
   MARGINALIA_MARGIN_WIDTH_RIGHT,
   MARGINALIA_ICON_SIZE,
-  markerGridFits,
+  resolveMarkerCols,
   resolveMarginaliaHost,
   type GridCell,
   type MarginaliaMarker,
@@ -97,15 +97,16 @@ function useMarginaliaHost(editor: Editor | null): HTMLElement | null {
   return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }
 
-// ── Lane regime (task 214) ──────────────────────────────────────────────────
+// ── Lane regime (tasks 214 / 325) ───────────────────────────────────────────
 //
 // The marker columns are POD-anchored at fixed lane offsets while the prose
 // text edge moves with the margin, so below a certain margin the badges land
 // back OVER the text — reachable with no user action beyond opening the Code
 // pane, which caps the margin at the 48px comfort gutter and stops reserving
-// the lane. The show/hide answer comes from the ONE lane-regime predicate
-// (`markerGridFits`), the same one the selection bolt asks for its own
-// inboard/tuck fork with its own inset.
+// the lane. And the tucked selection bolt lands on the lane's OUTBOARD columns,
+// so how many columns survive is not a show/hide flag but the ordered lane
+// RESOLUTION (`resolveMarkerCols` → `resolveRightLane`), the same one the bolt
+// reads for its own x. One decision, two readers.
 //
 // It is fed the MEASURED pod-edge → text-edge distance, not the `--editor-pl`
 // / `--editor-pr` pref: the pod is `.editor-pane-pod`, which is BOTH the
@@ -126,30 +127,30 @@ function useMarginaliaHost(editor: Editor | null): HTMLElement | null {
 // keystroke can cause, since a height change moves the frame's vertical
 // fields and the regime reads only horizontal ones.
 
-const LANE_FIT_LEFT = 1;
-const LANE_FIT_RIGHT = 2;
-const LANE_FITS_BOTH = LANE_FIT_LEFT | LANE_FIT_RIGHT;
+// The snapshot stays a PRIMITIVE (see the keystroke-sanctity note above), so the
+// per-side column counts are packed into one small integer: 4 bits each, which
+// is ample for a lane that will never hold 16 columns. Unmeasured resolves to
+// the full lane on both sides — the fail-open the SSOT owns, mirrored here only
+// because this code path never reaches the SSOT with a frame at all.
+const LANE_COLS_UNMEASURED =
+  (resolveMarkerCols("left", null) << 4) | resolveMarkerCols("right", null);
 
-function laneFitCode(frame: EditorViewportFrame | null): number {
+function laneColsCode(frame: EditorViewportFrame | null): number {
   // Unmeasured — the pre-first-refresh EMPTY frame, a keep-alive pane that
   // mounted while `display:none` (zero offsetHeight, so the service never
   // commits), a detached view. FAIL OPEN: every field of that frame is 0, so
   // reading the arithmetic instead of this sentinel would cull every marker on
   // the first commit of every pane and on every warm tab switch — a far worse
   // failure than the overlap this guards.
-  if (!frame || !frame.editorEl) return LANE_FITS_BOTH;
+  if (!frame || !frame.editorEl) return LANE_COLS_UNMEASURED;
   return (
-    (markerGridFits("left", frame.contentLeft - frame.podLeft)
-      ? LANE_FIT_LEFT
-      : 0) |
-    (markerGridFits("right", frame.podRight - frame.editorRight)
-      ? LANE_FIT_RIGHT
-      : 0)
+    (resolveMarkerCols("left", frame.contentLeft - frame.podLeft) << 4) |
+    resolveMarkerCols("right", frame.podRight - frame.editorRight)
   );
 }
 
-/** Which sides' margins can host the marker grid right now. */
-function useLaneFits(editor: Editor | null): { left: boolean; right: boolean } {
+/** How many marker columns each side's margin can host right now (0 = none). */
+function useLaneCols(editor: Editor | null): { left: number; right: number } {
   // Retain the engine for this consumer's lifetime (refcounted — the registry
   // adapter above holds one too; this hook does not depend on that).
   useEffect(() => {
@@ -166,19 +167,16 @@ function useLaneFits(editor: Editor | null): { left: boolean; right: boolean } {
   );
 
   const getSnapshot = useCallback(() => {
-    if (!editor || editor.isDestroyed) return LANE_FITS_BOTH;
-    return laneFitCode(getOrCreateGeometry(editor).getViewportFrame());
+    if (!editor || editor.isDestroyed) return LANE_COLS_UNMEASURED;
+    return laneColsCode(getOrCreateGeometry(editor).getViewportFrame());
   }, [editor]);
 
   const code = useSyncExternalStore(
     subscribe,
     getSnapshot,
-    () => LANE_FITS_BOTH,
+    () => LANE_COLS_UNMEASURED,
   );
-  return {
-    left: (code & LANE_FIT_LEFT) !== 0,
-    right: (code & LANE_FIT_RIGHT) !== 0,
-  };
+  return { left: (code >> 4) & 0xf, right: code & 0xf };
 }
 
 /**
@@ -204,18 +202,18 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   // Orphan markers (card resolved to `source:'orphan'`, CHIP-B) have no live
   // paragraph to line-align against — they come back in `orphans` and render
   // in the fixed re-pin dock instead of being silently culled.
-  // Lane regime (task 214) — see `useLaneFits` below.
-  const { left: fitsLeft, right: fitsRight } = useLaneFits(editor);
+  // Lane regime (tasks 214/325) — see `useLaneCols` below.
+  const { left: colsLeft, right: colsRight } = useLaneCols(editor);
 
   const { positioned, overflowGroups, orphans } = useMemo(
     () =>
       computeMarkerPositions(registry.getMetrics, markers, panelSides, {
-        left: fitsLeft,
-        right: fitsRight,
+        left: colsLeft,
+        right: colsRight,
       }),
     // registryVersion is the re-render trigger; getMetrics itself is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [registry, markers, panelSides, registryVersion, fitsLeft, fitsRight],
+    [registry, markers, panelSides, registryVersion, colsLeft, colsRight],
   );
 
   // The margin-pin re-anchor gesture is no longer native HTML5 DnD: grabbing

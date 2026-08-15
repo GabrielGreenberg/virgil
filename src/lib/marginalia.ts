@@ -543,6 +543,28 @@ export const MARGINALIA_GRID_X_RIGHT = rightLaneOffset("col0");
  */
 export const MARGINALIA_BOLT_X_RIGHT = rightLaneOffset("bolt");
 
+/**
+ * Container-relative x of the selection bolt's LEFT edge in the CRAMPED regime
+ * — the tuck against the scrollbar gutter, expressed as a lane offset like
+ * every other element rather than as loose pod arithmetic. (= 64.)
+ *
+ * Equal, by construction, to `podRight − SCROLLBAR_GUTTER − BOLT_SCROLLBAR_GAP
+ * − BOLT_SIZE` re-based on the container's left edge, which is the form task
+ * 045 pinned; also equal to `rightLaneOffset("marker-scrollbar-gap") −
+ * BOLT_SIZE` while `MARGINALIA_BOLT_SCROLLBAR_GAP === MARKER_SCROLLBAR_GAP`
+ * (both spellings pinned in `marginalia-right-margin-geometry.test.ts`). Stated
+ * in the SAME coordinate space as `MARGINALIA_GRID_X_RIGHT` on purpose: the
+ * tuck lands ON the lane's outboard marker columns, so which columns the grid
+ * still gets is arithmetic over one origin (`resolveRightLane`), not a
+ * comparison between two coordinate systems — the shape that let a fixed
+ * pod-offset paint over col1 for a year (task 325).
+ */
+export const MARGINALIA_BOLT_TUCK_X_RIGHT =
+  MARGINALIA_MARGIN_WIDTH_RIGHT -
+  SCROLLBAR_GUTTER -
+  MARGINALIA_BOLT_SCROLLBAR_GAP -
+  MARGINALIA_BOLT_SIZE;
+
 /** Back-compat alias — equal to the LEFT margin width. Callers that care
  *  about side should use the side-specific constants above. */
 export const MARGINALIA_MARGIN_WIDTH = MARGINALIA_MARGIN_WIDTH_LEFT;
@@ -655,23 +677,165 @@ export function marginGridInset(side: "left" | "right"): number {
 }
 
 /**
- * Does the marker grid fit on `side` at this `available` margin? The ONE
- * producer of the show/hide answer the grid consumes (`computeMarkerPositions`
- * takes the resolved booleans, so no call site re-derives this).
- *
- * `available === null` means geometry is not measured yet (the pre-refresh
- * EMPTY viewport frame, a hidden pane, a detached editor). That FAILS OPEN —
- * markers render exactly as they did before this predicate existed — because
- * a zeroed frame is indistinguishable from a zero-width margin, and hiding
- * every marker on an unmeasured editor would be a far worse failure than the
- * overlap this guards.
+ * Is the margin UNMEASURED? The pre-refresh EMPTY viewport frame, a hidden
+ * pane, a detached editor — every field of that frame is 0, so the arithmetic
+ * is indistinguishable from a zero-width margin. Every lane answer FAILS OPEN
+ * on it (the reserved layout, exactly what rendered before any of these
+ * predicates existed), because culling the whole lane on the first commit of
+ * every pane and on every warm tab switch is a far worse failure than the
+ * overlaps these guard.
  */
-export function markerGridFits(
+function laneUnmeasured(available: number | null): boolean {
+  return available === null || !Number.isFinite(available);
+}
+
+/**
+ * Does the marker grid clear the PROSE on `side` at this `available` margin?
+ * Task 214's question, and only that one — it says nothing about the other
+ * lane elements. Module-private: consumers read {@link resolveMarkerCols},
+ * which composes this with the bolt's band so "how much lane does the grid
+ * get?" has ONE answer (task 325). Exporting the prose half alone is how a
+ * consumer ends up asking the wrong half.
+ */
+function markerGridClearsProse(
   side: "left" | "right",
   available: number | null,
 ): boolean {
-  if (available === null || !Number.isFinite(available)) return true;
-  return laneSlotClearsProse(marginGridInset(side), available);
+  if (laneUnmeasured(available)) return true;
+  return laneSlotClearsProse(marginGridInset(side), available as number);
+}
+
+/**
+ * The RIGHT lane RESOLVED at a measured margin — which slot the bolt takes and
+ * how many marker columns are left over, as ONE answer in ONE coordinate space
+ * (container-relative, origin `podRight − MARGINALIA_MARGIN_WIDTH_RIGHT`).
+ *
+ * Why this exists (task 325). `RIGHT_LANE_BANDS` makes disjointness STRUCTURAL
+ * — sequential non-overlapping bands cannot collide — but that guarantee only
+ * ever covered the RESERVED regime, because both cramped fallbacks were
+ * computed OUTSIDE the list: the grid asked its own prose-clearance question
+ * and packed at the wide-lane column offsets, and the bolt tucked at a fixed
+ * pod-offset that knew nothing about the columns. The two thresholds differ
+ * (the grid clears the prose down to 70px, the bolt loses its inboard slot
+ * below 104px — correct, since the grid sits further outboard), so in the
+ * 70–103px band BOTH rendered, on the same pixels: the tucked bolt's band
+ * [64, 92] contains col1 [70, 92] exactly. The bolt is a fixed portal above
+ * the `pointer-events-auto` cells, so the collision cost col1's CLICKS as well
+ * as its pixels.
+ *
+ * The resolution is ORDERED, outboard → inboard, and states the priority once:
+ *
+ *  - the SCROLLBAR is never negotiable (it is the pod's own edge chrome);
+ *  - the BOLT places first — it is the sole entry to the actions menu (no other
+ *    surface reaches `ActionsMenuPanel`) and its 28px body cannot degrade, so
+ *    it takes its reserved inboard band where the lane is whole and otherwise
+ *    tucks outboard against the scrollbar, floored at the prose edge (045);
+ *  - the marker GRID takes the columns that remain ENTIRELY inboard of wherever
+ *    the bolt landed, and hides only when none clears the prose (214).
+ *
+ * Nothing is dropped that does not have to be. In the 70–103 band that leaves
+ * the right grid at ONE column (col0 [42, 64], which the tucked bolt abuts but
+ * never overlaps) — the same single-column shape the LEFT lane has always had,
+ * with the surplus markers riding the "+K" overflow pill that already exists
+ * for an over-full grid. And 214's derived threshold is untouched: right cells
+ * run OUTWARD from col0, so the grid's innermost painted edge is col0's left
+ * edge at ANY column count (see {@link marginGridInset}) — losing col1 cannot
+ * move the prose-clearance answer.
+ *
+ * KNOWN RESIDUAL, stated rather than implied: the orphan re-pin dock is NOT a
+ * band. It is flow-positioned at `right: 2` inside the same column, so it
+ * overlaps the scrollbar gutter in every regime and the tucked bolt in this
+ * one. Pre-existing and independent of the bolt (it predates the tuck), and
+ * moving it is a visible chrome relocation in the NORMAL regime — out of scope
+ * here, and NOT covered by the disjointness sweep, which asks about cells and
+ * the pill.
+ */
+export interface RightLaneResolution {
+  /** Container-relative x of the bolt's LEFT edge at this margin. */
+  readonly boltX: number;
+  /** True while the bolt holds its reserved inboard band (vs. the tuck). */
+  readonly boltInboard: boolean;
+  /** Marker columns the grid gets once the bolt has taken its band. 0 hides. */
+  readonly markerCols: number;
+}
+
+/** How many right marker columns sit ENTIRELY inboard of a bolt at `boltX`?
+ *  Derived by walking the same column offsets `cellAt` packs against, so the
+ *  count follows automatically from the bolt size, the column width and the
+ *  gaps — never a hand-written "one". */
+function rightColumnsClearingBolt(boltX: number): number {
+  const stride = MARGINALIA_ICON_SIZE + MARGINALIA_COL_GAP;
+  let cols = 0;
+  for (let col = 0; col < marginaliaEffectiveCols("right"); col++) {
+    const cellLeft = marginaliaGridX("right") + col * stride;
+    if (cellLeft + MARGINALIA_ICON_SIZE > boltX) break;
+    cols++;
+  }
+  return cols;
+}
+
+/** Resolve the right lane at this measured margin. See {@link RightLaneResolution}. */
+export function resolveRightLane(available: number | null): RightLaneResolution {
+  const reserved: RightLaneResolution = {
+    boltX: MARGINALIA_BOLT_X_RIGHT,
+    boltInboard: true,
+    markerCols: marginaliaEffectiveCols("right"),
+  };
+  if (laneUnmeasured(available)) return reserved;
+  const room = available as number;
+  // The bolt's inboard slot is taken only while it clears the prose — asked
+  // through the shared lane-regime predicate (214) with the bolt's own inset:
+  // its innermost edge is `WIDTH_RIGHT − BOLT_X_RIGHT` = 96 from the pod edge,
+  // so this reduces to `available ≥ 104` exactly as the inline comparison it
+  // replaced did. In that regime the band list already seats the bolt inboard
+  // of both columns, so the grid keeps them.
+  if (
+    laneSlotClearsProse(
+      MARGINALIA_MARGIN_WIDTH_RIGHT - MARGINALIA_BOLT_X_RIGHT,
+      room,
+    )
+  )
+    return reserved;
+  // CRAMPED — tuck the bolt against the scrollbar, FLOORED at the prose edge so
+  // it never overshoots back over the text. The tuck is a fixed lane offset that
+  // ignores the margin, so below a ~48px right margin it would land LEFT of the
+  // prose edge; the `Math.max` makes prose-clearance structural here too — the
+  // bolt slides toward the scrollbar as the margin narrows but stops at the
+  // prose edge + INNER_PAD (task 045). At the 48px gutter the two are equal.
+  // (The prose edge is `WIDTH_RIGHT − available` in container coordinates.)
+  const boltX = Math.max(
+    MARGINALIA_BOLT_TUCK_X_RIGHT,
+    MARGINALIA_MARGIN_WIDTH_RIGHT - room + MARGINALIA_INNER_PAD,
+  );
+  return {
+    boltX,
+    boltInboard: false,
+    // Both questions, in order: does any column clear the PROSE, and which of
+    // them clear the BOLT. A floored bolt (margin < 48) has already slid over
+    // col0 — and the grid is hidden there anyway, since 48 < 70 — so the two
+    // guards agree rather than racing.
+    markerCols: markerGridClearsProse("right", room)
+      ? rightColumnsClearingBolt(boltX)
+      : 0,
+  };
+}
+
+/**
+ * Effective marker columns on `side` at this `available` margin — THE answer
+ * `computeMarkerPositions` consumes, so no call site re-derives it. `0` means
+ * the side renders nothing (cells, "+K" pill and the re-pin dock together).
+ *
+ * The left lane has no bolt to negotiate with, so it is the prose-clearance
+ * question alone; the right lane is the full ordered resolution above.
+ */
+export function resolveMarkerCols(
+  side: "left" | "right",
+  available: number | null,
+): number {
+  if (side === "right") return resolveRightLane(available).markerCols;
+  return markerGridClearsProse("left", available)
+    ? marginaliaEffectiveCols("left")
+    : 0;
 }
 
 /** The COMFORTABLE per-side horizontal gutter the editor caps margins at when
@@ -738,7 +902,8 @@ export function resolveHorizontalMargin(
  *    between the text and the markers, disjoint from both marker columns AND
  *    the scrollbar by construction (the band SSOT). The slot is FIXED relative
  *    to the pod, so it's statically reserved and never reflows per selection.
- *  - CRAMPED (compressed code-split — only a ~48px gutter, lane NOT reserved):
+ *  - CRAMPED (a narrowed margin — the compressed code-split's ~48px gutter, zen,
+ *    the Library reader; lane NOT reserved):
  *    the inboard slot would land `MARGIN_WIDTH_RIGHT − gutter` px back OVER the
  *    prose, so instead tuck the bolt against the scrollbar inside whatever
  *    gutter exists — `podRight − SCROLLBAR_GUTTER − BOLT_SCROLLBAR_GAP − BOLT` —
@@ -747,6 +912,9 @@ export function resolveHorizontalMargin(
  *    would itself land back over the prose; the floor makes prose-clearance
  *    structural in this branch too, so the bolt degrades toward the scrollbar as
  *    the margin narrows but never starts left of the text (task 045).
+ *    The tuck lands ON the lane's outboard marker columns, so the GRID yields
+ *    them: `resolveRightLane` hands the grid only the columns entirely inboard
+ *    of the bolt (task 325). Both answers come out of that one resolution.
  *
  * Prose-clearance is the invariant in BOTH regimes: the inboard slot is taken
  * only while it clears the prose by at least INNER_PAD (`podRight − editorRight ≥
@@ -763,32 +931,12 @@ export function computeBoltLeftFromPod({
   podRight: number;
   editorRight: number;
 }): number {
-  const inboard =
-    podRight - MARGINALIA_MARGIN_WIDTH_RIGHT + MARGINALIA_BOLT_X_RIGHT;
-  // The inboard slot is taken only while it clears the prose — asked through
-  // the shared lane-regime predicate (task 214), with the bolt's own inset:
-  // its innermost edge is `WIDTH_RIGHT − BOLT_X_RIGHT` = 96 from the pod edge,
-  // so this reduces to `available ≥ 104` exactly as the inline comparison it
-  // replaces did. The marker grid asks the SAME question with ITS inset, so
-  // "which lane elements survive this margin?" has one answer, not three.
-  if (laneSlotClearsProse(
-      MARGINALIA_MARGIN_WIDTH_RIGHT - MARGINALIA_BOLT_X_RIGHT,
-      podRight - editorRight,
-    ))
-    return inboard;
-  // Cramped code-view gutter — tuck the bolt against the scrollbar, but FLOOR it
-  // at the prose edge so it never overshoots back over the text. The gutter tuck
-  // (`podRight − SCROLLBAR_GUTTER − BOLT_SCROLLBAR_GAP − BOLT`) is a fixed
-  // pod-offset that ignores `editorRight`, so below a ~48px right margin it lands
-  // LEFT of the prose edge; `Math.max` makes prose-clearance structural — the
-  // bolt slides toward the scrollbar as the margin narrows but stops at
-  // `editorRight + INNER_PAD`, degrading gracefully instead of painting over the
-  // last selected words (task 045). At the 48px gutter the two are equal.
-  return Math.max(
-    podRight -
-      SCROLLBAR_GUTTER -
-      MARGINALIA_BOLT_SCROLLBAR_GAP -
-      MARGINALIA_BOLT_SIZE,
-    editorRight + MARGINALIA_INNER_PAD,
-  );
+  // Both regimes come from the ONE ordered lane resolution, in the container's
+  // coordinate space, so the bolt's x and the grid's column count are the same
+  // decision read twice — not two formulas that agree only where the lane is
+  // whole (task 325). Re-based onto the pod here: the container's left edge is
+  // `podRight − MARGINALIA_MARGIN_WIDTH_RIGHT`, so this is byte-identical to
+  // the pod arithmetic it replaces at every margin.
+  const containerLeft = podRight - MARGINALIA_MARGIN_WIDTH_RIGHT;
+  return containerLeft + resolveRightLane(podRight - editorRight).boltX;
 }
