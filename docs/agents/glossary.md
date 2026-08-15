@@ -282,4 +282,12 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 
 ## Pending terminology
 
-_(Empty. Add entries here when the user uses a term not yet in the glossary.)_
+- **"Manila overhang"** / **"the giant moat"** (Gabriel, 2026-08-14) — the band of
+  canvas (`--background`, the manila desk) visible between a raised pod's edge and
+  the omni card lane behind it. Resolved referent: the **pod seam**, now
+  `--pod-seam` in [globals.css](../../src/app/globals.css), consumed by
+  `BottomEdgeHandle` and `ColumnEdgeFade` in
+  [panel-column.tsx](../../src/components/editor-layout/panel-column.tsx). It is
+  NOT `--pod-gap` (the resize gutter / column inset / band↔band desk) — the two
+  coincided at 10px until task 329 split them. Rule:
+  [STYLE_GUIDE](../../src/STYLE_GUIDE.md) → Panels → "The seam".

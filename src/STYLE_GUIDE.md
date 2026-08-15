@@ -961,6 +961,55 @@ continuous sheet. Separation between stacked pods comes from the cream
 `--pod-gap` gutter + each sheet's shadow — not a border. Don't add
 backdrops, glows, gradients, a border, or a header divider.
 
+### The seam — separation by elevation, never by a field moat
+
+> **Where a raised pod's edge meets a layer BEHIND it — the omni card lane
+> under a docked band, cards passing the scrollport edge — the separation is
+> the pod's own shadow plus a thin canvas SEAM. Never a wide field-colored
+> band. The seam is `--pod-seam`, stated once in `globals.css`, and its width
+> is DERIVED from the shadow it has to hold, not chosen.**
+
+This is the "giant moat" class (task 329). It is not a spacing preference; it
+is what separation *means* here. The desk is opaque, so a band of it between
+two layers reads as distance across a plane — the pod and the cards look like
+neighbours on the same surface with a gulf between them. A shadow reads as
+distance along the view axis, which is the actual relationship: the lane is
+*beneath* the pod, and a card sliding under a pod edge should be occluded by
+paper, not dissolved into fog.
+
+Three properties of the rule are load-bearing, and each is a way the value
+drifted before it had an owner:
+
+- **The width is derived.** `--pod-seam` is the greatest downward reach of the
+  pod's own `--card-shadow-ambient` (offset 2 + blur 6 ⇒ 5px), rounded up to
+  6. Narrower and the shadow smears onto the card below as a smudge; wider and
+  it is the moat again. If the shadow tier changes, re-derive it — the token's
+  comment says so, and that is the only place the arithmetic lives.
+- **One question per token.** `--pod-gap` (10px) is the *gutter*: the resize
+  strip's width, a pod's inset from its column edge, the desk between two
+  stacked sheets. `--pod-seam` is *canvas over a lower layer*. Those coincided
+  at 10px for a year, which is exactly why three separate painters could each
+  spell the seam differently — `--pod-gap` at the band bottom, a hard-coded
+  `10` fade under it, a hard-coded `10 + 14` gradient at the column edge — and
+  why the two that overlap (a docked pod whose bottom edge sits near the
+  column bottom) **summed to ~44px**, eleven times the deck's own 4px
+  `MIN_GAP`. A stacking bug is what un-owned values look like.
+- **Hit area ≠ painted band.** The seam below the last docked band is also
+  that band's only resize handle. Thinning the paint widened the invisible hit
+  extension in lockstep (±6 around a 6px strip = the 18px target the 10px
+  strip had at ±4). A gesture never pays for a look.
+
+A **fade** is not a seam and does not get the token: the ramp at the
+scrollport edge exists so a card dissolves rather than hard-clips where the
+scroll ends, and it stays a stated constant beside the seam it follows. But a
+fade over a card that nothing is clipping is just a thinner moat — the veil
+that used to sit under a lone docked band was deleted, not shortened.
+
+Every clause here is pinned by
+[src/components/editor-layout/\_\_tests\_\_/pod-seam-contract.test.ts](components/editor-layout/__tests__/pod-seam-contract.test.ts):
+the derivation against the live shadow token, the census that no seam site
+re-spells the value, and the grab-target floor.
+
 Body is a scrollable list with `space-y-2` between cards. No `border-b`
 between cards.
 
