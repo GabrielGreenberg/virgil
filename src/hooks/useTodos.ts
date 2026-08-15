@@ -17,6 +17,8 @@ import {
   type AiRequestSyncMode,
 } from "@/lib/ai-request-bridge";
 import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
+import { cardHasContent } from "@/cards/has-content";
+import type { PullSeed } from "@/lib/stack/pull-seed";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -84,6 +86,43 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     update((prev) => ({ items: [...prev.items, item] }));
     return item;
   }, [update, state.items.length, pristine]);
+
+  /**
+   * Stack-pull door (task 330): create a todo FROM a snapshot seed.
+   *
+   * This kind is where the hand-picking was sealed at the TYPE rather than at
+   * the call site: `StackPullApi.addTodo`'s seed was `{ text?: string }`, so a
+   * todo's `notes` — a declared content field (`textFields: ["text","notes"]`)
+   * and a plain textarea the user types into — could not be delivered by any
+   * host however careful. `done` and `titleAuto` travel for the same reason
+   * everything else does: the pull is a faithful copy, and nobody stated a
+   * reason for them to stay behind.
+   */
+  const addItemFromSeed = useCallback(
+    (seed: PullSeed<"todo">): TodoItem => {
+      const fresh = {
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        links: [] as TodoItem["links"],
+      };
+      const item: TodoItem = {
+        text: "",
+        titleAuto: true,
+        notes: "",
+        done: false,
+        aiRequest: false,
+        ...fresh,
+        ...seed,
+        ...fresh, // identity floor — see `useNotes.addNoteFromSeed`
+      };
+      // The registry's content model, not "is the body empty?": a pulled todo
+      // whose only content is its `notes` is real user writing.
+      if (!cardHasContent("todo", item)) pristine.markNew(item.id);
+      update((prev) => ({ items: [...prev.items, item] }));
+      return item;
+    },
+    [update, pristine],
+  );
 
   const toggleItem = useCallback((id: string) => {
     pristine.markDirty(id);
@@ -344,6 +383,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     () => ({
       items: state.items,
       addItem,
+      addItemFromSeed,
       appendItems,
       toggleItem,
       updateItem,
@@ -365,6 +405,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
     [
       state.items,
       addItem,
+      addItemFromSeed,
       appendItems,
       toggleItem,
       updateItem,

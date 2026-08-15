@@ -30,6 +30,8 @@ import {
 } from "@/lib/ai-request-bridge";
 import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope } from "@/cards/envelope";
+import { cardHasContent } from "@/cards/has-content";
+import type { PullSeed } from "@/lib/stack/pull-seed";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import { useReconcileModeAAnchors } from "./useReconcileModeAAnchors";
@@ -270,6 +272,94 @@ export function useRevisions(
       if (!originalText && !anchor) pristine.markNew(card.id);
       update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
+    },
+    [update, pristine],
+  );
+
+  /**
+   * Stack-pull doors (task 330): create a comment / suggestion FROM a snapshot
+   * seed. Both spread the WHOLE surviving record rather than reading fields off
+   * it.
+   *
+   * The suggestion door is where the loss was worst and least visible. The old
+   * host ran `addSuggestion(paragraphId, seed.original_text)` and then copied
+   * `suggested_text` + `explanation` back through `updateSuggestionField` — so
+   * `user_text` (the human's OWN rewrite, the field the apply path prefers:
+   * `replacement = user_text or suggested_text`) and `instructions` were
+   * dropped, and `author` was hard-coded `"human"` on a record the AI may have
+   * written. The Stack thumbnail previewed the very `user_text` the pull threw
+   * away.
+   *
+   * `status` and `appliedChange` deliberately do NOT travel — an applied
+   * suggestion's `appliedChange` binds a live range in the SOURCE paper's
+   * `.tex`, so a copy claiming `applied` here would offer Keep/Revert over a
+   * splice this document does not have (AGENTS.md, "The lifecycle half").
+   */
+  const addCommentFromSeed = useCallback(
+    (
+      paragraphId: string | null,
+      seed: PullSeed<"revision-comment">,
+    ): RevisionRequestCard => {
+      const fresh = {
+        kind: "comment" as const,
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        links: [] as RevisionRequestCard["links"],
+      };
+      let card: RevisionRequestCard = {
+        text: "",
+        content: emptyRichContent(),
+        aiRequest: true,
+        ...fresh,
+        ...seed,
+        ...fresh, // identity floor — see `useNotes.addNoteFromSeed`
+      };
+      if (paragraphId)
+        card = addTextObjectLink(card, "revision-comment", paragraphId);
+      const committed = cardHasContent("revision-comment", card);
+      if (!committed) pristine.markNew(card.id);
+      update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
+      // Same gate as `addComment`: a committed card bridges its default
+      // AI-request flag now, a pristine one bridges on first edit.
+      if (committed) bridgeComment(card, true);
+      return card;
+    },
+    [update, pristine, bridgeComment],
+  );
+
+  const addSuggestionFromSeed = useCallback(
+    (
+      paragraphId: string | null,
+      seed: PullSeed<"revision-suggestion">,
+    ): RevisionSuggestionCard => {
+      const fresh = {
+        kind: "suggestion" as const,
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        links: [] as RevisionSuggestionCard["links"],
+      };
+      const card: RevisionSuggestionCard = {
+        author: "human",
+        original_text: "",
+        suggested_text: "",
+        explanation: "",
+        user_text: "",
+        instructions: "",
+        ...fresh,
+        ...seed,
+        // Lifecycle floor, beside the identity one: a pulled suggestion is
+        // always a fresh `pending` record, because `appliedChange` describes a
+        // splice in a document that is not this one.
+        status: "pending",
+        appliedChange: undefined,
+        ...fresh, // identity floor — see `useNotes.addNoteFromSeed`
+      };
+      const linked = paragraphId
+        ? addTextObjectLink(card, "revision-suggestion", paragraphId)
+        : card;
+      if (!cardHasContent("revision-suggestion", linked)) pristine.markNew(linked.id);
+      update((prev) => ({ ...prev, cards: [...prev.cards, linked] }));
+      return linked;
     },
     [update, pristine],
   );
@@ -633,7 +723,9 @@ export function useRevisions(
       cards: state.cards,
       tracker: state.tracker ?? null,
       addComment,
+      addCommentFromSeed,
       addSuggestion,
+      addSuggestionFromSeed,
       updateCommentContent,
       updateCommentText,
       setCommentAiRequest,
@@ -659,7 +751,9 @@ export function useRevisions(
       state.cards,
       state.tracker,
       addComment,
+      addCommentFromSeed,
       addSuggestion,
+      addSuggestionFromSeed,
       updateCommentContent,
       updateCommentText,
       setCommentAiRequest,

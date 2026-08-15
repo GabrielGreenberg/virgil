@@ -28,6 +28,8 @@ import { resolveLoadedTitle, resolveTitleAuto } from "@/panels/panel-registry";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { applyCardMorph } from "@/cards/morphs";
 import { carryCardEnvelope } from "@/cards/envelope";
+import { cardHasContent } from "@/cards/has-content";
+import type { PullSeed } from "@/lib/stack/pull-seed";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -161,6 +163,53 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update, pristine, notes.length],
   );
 
+  /**
+   * Stack-pull door (task 330): create a note FROM a snapshot seed.
+   *
+   * The seed is the WHOLE surviving record (`pullSeed` already withheld
+   * identity, per-doc bindings and doc-bound lifecycle), so this spreads it
+   * rather than reading fields off it — which is the entire point. The old path
+   * ran `addNote(paragraphId, seed.content)` and let the defaults below stand,
+   * so a pulled note arrived with the user's `title` gone AND stamped
+   * `titleAuto: true`: "never titled" and "title lost" became the same record.
+   *
+   * `titleAuto` travelling is not a detail — it is what makes the title's
+   * provenance survive the copy. Routing through `updateNoteTitle` (which stamps
+   * `titleAuto: false`) would have restored the words and still lied about a
+   * machine-generated one.
+   */
+  const addNoteFromSeed = useCallback(
+    (paragraphId: string | null, seed: PullSeed<"note">): UserNote => {
+      const fresh = {
+        kind: "note" as const,
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        links: [] as UserNote["links"],
+      };
+      let newNote: UserNote = {
+        title: "",
+        titleAuto: true,
+        content: emptyRichContent(),
+        aiRequest: false,
+        ...fresh,
+        ...seed,
+        // Identity floor. The POLICY that these never travel is
+        // `NON_TRAVELLING_FIELDS`; this is defence in depth at the door, so a
+        // caller that hands over an unstripped record can never file the new
+        // card under the source's id or the source doc's paragraph links.
+        ...fresh,
+      };
+      if (paragraphId) newNote = addTextObjectLink(newNote, "note", paragraphId);
+      // Pristine asks the registry's own content model rather than "is there a
+      // body?": a pulled note whose only content is its TITLE is real user
+      // writing, and the body-only gate discarded it on the next click-away.
+      if (!cardHasContent("note", newNote)) pristine.markNew(newNote.id);
+      update((prev) => ({ cards: [...prev.cards, newNote] }));
+      return newNote;
+    },
+    [update, pristine],
+  );
+
   const addHighlight = useCallback(
     (
       anchor: { anchorId: string; anchorText: string },
@@ -184,6 +233,43 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         anchor.anchorId,
         anchor.anchorText,
       );
+      update((prev) => ({ cards: [...prev.cards, newCard] }));
+      return newCard;
+    },
+    [update],
+  );
+
+  /**
+   * Stack-pull door (task 330) for a highlight. v1 keeps the placeholder
+   * semantics — a highlight rides a text-range mark in the SOURCE doc and there
+   * is no mark to re-attach here, so the empty text anchor stands — and the
+   * seed carries what IS the user's: the tint.
+   *
+   * `highlightColor` is v1-always-null in practice, so today this seed carries
+   * nothing. It exists anyway, because a factory that CANNOT accept a field is
+   * how `addTodo`'s `{ text?: string }` made a todo's `notes` unreachable from
+   * the day the Stack landed: the loss was already sealed at the type, where no
+   * amount of care at the call site could reach it.
+   */
+  const addHighlightFromSeed = useCallback(
+    (paragraphId: string | null, seed: PullSeed<"highlight">): HighlightCard => {
+      const fresh = {
+        kind: "highlight" as const,
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        links: [] as HighlightCard["links"],
+      };
+      let newCard: HighlightCard = {
+        highlightColor: null,
+        aiRequest: false,
+        ...fresh,
+        ...seed,
+        ...fresh, // identity floor — see `addNoteFromSeed`
+      };
+      if (paragraphId) {
+        newCard = addTextObjectLink(newCard, "highlight", paragraphId);
+      }
+      newCard = setTextAnchorLink(newCard, "highlight", "", "");
       update((prev) => ({ cards: [...prev.cards, newCard] }));
       return newCard;
     },
@@ -613,8 +699,10 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       notes,
       highlights,
       addNote,
+      addNoteFromSeed,
       appendCards,
       addHighlight,
+      addHighlightFromSeed,
       updateNote,
       updateNoteTitle,
       setNoteAiRequest,
@@ -643,8 +731,10 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       notes,
       highlights,
       addNote,
+      addNoteFromSeed,
       appendCards,
       addHighlight,
+      addHighlightFromSeed,
       updateNote,
       updateNoteTitle,
       setNoteAiRequest,

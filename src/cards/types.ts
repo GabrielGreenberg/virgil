@@ -115,9 +115,17 @@ export type MorphDropField = "title" | "byline" | "aiRequest" | "body" | "keys" 
 
 /** Declarative content model (T4 §3.1). The single descriptor `cardHasContent`
  *  walks — both the panel-trash and margin-marker delete-confirm read it, so a
- *  kind can never silently delete user content the confirm couldn't see. Every
- *  named field must exist on the kind's record type (pinned by
- *  `assertContentCoverage`).
+ *  kind can never silently delete user content the confirm couldn't see.
+ *
+ *  A named field must exist on the shape `cardHasContent` is CALLED with, which
+ *  is not always the kind's sidecar record: `footnote` declares `title` (the
+ *  `\thanks` label), which lives on the `\footnote` ATOM's node attrs, and its
+ *  call sites compose `{ content, title }` from the node. `assertContentCoverage`
+ *  checks the descriptor's internal consistency (null-ness, non-emptiness, one
+ *  verdict per field) — it does NOT and cannot check field EXISTENCE, since
+ *  types are erased and the composed shapes are built at the call site. Said
+ *  plainly here because the previous wording claimed a pin that does not exist,
+ *  and a guard that overstates its reach is worse than none (task 330).
  *
  *  All four field lists are matched against the card record by name. A field
  *  holding a Tiptap JSONContent doc (`bodyField`) is walked for visible text;

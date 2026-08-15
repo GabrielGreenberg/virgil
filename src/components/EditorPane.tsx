@@ -2602,22 +2602,26 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // bridge is gone.
 
   // Stack-pull API — surfaces per-doc card-creation factories so the
-  // stack-pull DropSpec can materialize fresh entities on pull. Each
-  // method here mirrors the corresponding sidecar hook, ignoring the
-  // source snapshot's id and generating a fresh one (paste-as-new).
+  // stack-pull DropSpec can materialize fresh entities on pull. Each method
+  // FORWARDS the seed whole to its hook's seed door, which spreads it over a
+  // fresh record (task 330).
+  //
+  // Nothing here may read a FIELD off a seed. This host used to start each card
+  // from an empty record and hand-copy a few names, so every kind arrived
+  // incomplete — a note without its `title` (and stamped `titleAuto: true`, so
+  // "never titled" and "title lost" became indistinguishable), a todo without
+  // its `notes`, a suggestion without the human's own `user_text`. A copy list
+  // omits SILENTLY; the omission is indistinguishable from a field that does
+  // not exist. What a pull leaves behind is stated once, as a subtraction, in
+  // `NON_TRAVELLING_FIELDS`. CI: `stack-pull-content-fidelity.test.ts` fails a
+  // `seed.<field>` read added back here.
   const dropStackApi = useMemo<StackPullApi>(() => {
     return {
-      addNote: (paragraphId, seed) =>
-        notesHook.addNote(paragraphId, (seed.content ?? undefined) as JSONContent | undefined),
-      addHighlight: (paragraphId) =>
-        notesHook.addHighlight(
-          { anchorId: "", anchorText: "" },
-          paragraphId,
-          null,
-        ),
+      addNote: (paragraphId, seed) => notesHook.addNoteFromSeed(paragraphId, seed),
+      addHighlight: (paragraphId, seed) =>
+        notesHook.addHighlightFromSeed(paragraphId, seed),
       addTodo: (paragraphId, seed) => {
-        const t = todosHook.addItem();
-        if (seed.text) todosHook.updateItem(t.id, seed.text);
+        const t = todosHook.addItemFromSeed(seed);
         if (paragraphId) {
           // FOLD A: capture the live paragraph snapshot at CREATION so the
           // fresh Mode-A link is self-healing immediately (symmetric with
@@ -2629,10 +2633,9 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         return t;
       },
       addArchive: (paragraphId, seed) => {
-        // Born-free when no paragraphId (task 104): records the free intent so
-        // a link-less clip reads neutral, not orphaned-red.
-        const s = archiveHook.archiveContent(seed.content ?? "", { unanchored: !paragraphId });
-        if (seed.title) archiveHook.updateSnippetTitle(s.id, seed.title);
+        // Born-free when no paragraphId (task 104) — resolved inside the door,
+        // which is where the placement's answer belongs.
+        const s = archiveHook.archiveFromSeed(paragraphId, seed);
         if (paragraphId) {
           const ed = innerRef.current?.getEditor();
           const snapshot = captureParagraphSnapshot(ed, paragraphId);
@@ -2640,61 +2643,30 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
         }
         return s;
       },
-      addRevisionComment: (paragraphId, seed) => {
-        const c = revisionsHook.addComment(
-          paragraphId,
-          (seed.content ?? undefined) as JSONContent | undefined,
-        );
-        return c;
-      },
-      addRevisionSuggestion: (paragraphId, seed) => {
-        const c = revisionsHook.addSuggestion(
-          paragraphId,
-          seed.original_text || undefined,
-        );
-        // Best-effort copy of the meaningful fields.
-        if (seed.suggested_text) {
-          revisionsHook.updateSuggestionField(
-            c.id,
-            "suggested_text",
-            seed.suggested_text,
-          );
-        }
-        if (seed.explanation) {
-          revisionsHook.updateSuggestionField(c.id, "explanation", seed.explanation);
-        }
-        return c;
-      },
-      addCutterComment: (paragraphId, seed) => {
-        const c = cutterHook.addComment(
-          paragraphId,
-          (seed.content ?? undefined) as JSONContent | undefined,
-        );
-        return c;
-      },
-      addCutterSuggestion: (paragraphId, seed) => {
-        const c = cutterHook.addSuggestion(
-          paragraphId,
-          seed.original_text || undefined,
-        );
-        if (seed.suggested_text) {
-          cutterHook.updateSuggestionField(
-            c.id,
-            "suggested_text",
-            seed.suggested_text,
-          );
-        }
-        if (seed.explanation) {
-          cutterHook.updateSuggestionField(c.id, "explanation", seed.explanation);
-        }
-        return c;
-      },
+      addRevisionComment: (paragraphId, seed) =>
+        revisionsHook.addCommentFromSeed(paragraphId, seed),
+      addRevisionSuggestion: (paragraphId, seed) =>
+        revisionsHook.addSuggestionFromSeed(paragraphId, seed),
+      addCutterComment: (paragraphId, seed) =>
+        cutterHook.addCommentFromSeed(paragraphId, seed),
+      addCutterSuggestion: (paragraphId, seed) =>
+        cutterHook.addSuggestionFromSeed(paragraphId, seed),
+      // The two single-field kinds. Each record's ENTIRE travelling set is the
+      // one field named here — a footnote's body, a citation's command — and
+      // the hook re-derives the rest from it (`keys` via `parseCiteCommand`,
+      // the same derivation the destination's own `syncFromEditor` runs). These
+      // are the census's only two exempt lines, per LINE and with this reason,
+      // because a file-scoped exemption would excuse the next factory written
+      // beside them. NOTE the footnote asymmetry, recorded rather than implied:
+      // `CARD_REGISTRY.footnote.content` also names `title` (the `\thanks`
+      // label), which lives on the ATOM's node attrs and never reaches
+      // `FootnoteRef` — so the capture, not the pull, is where it is lost.
       addFootnote: (seed) =>
-        footnotesHook.addFootnote(
-          (seed.content ?? "") as JSONContent | string,
-        ),
+        // stack-pull-seed-exempt: the whole travelling set is `content`.
+        footnotesHook.addFootnote((seed.content ?? "") as JSONContent | string),
       addCitation: (seed) =>
-        citationsHook.addCitation(seed.command, undefined, true),
+        // stack-pull-seed-exempt: the whole travelling set is `command`.
+        citationsHook.addCitation(seed.command ?? "", undefined, true),
       upsertBibEntry: (entry) => citationsHook.addBibEntry(entry),
       // Read before write: a carry fills an empty slot and never restates the
       // source doc's bibliography over this one's (task 235).

@@ -43,6 +43,7 @@ import type {
   StackPayload,
 } from "@/lib/stack/types";
 import { applyBibCarry } from "@/lib/stack/bib-carry";
+import { pullSeed } from "@/lib/stack/pull-seed";
 import { generateShortId } from "@/lib/uuid";
 import { remintNestedAtomIds } from "@/lib/inline-content";
 import { rangeSliceToBlocks } from "@/lib/linked-anchor-range";
@@ -641,14 +642,15 @@ function planCardDrop(
   // Which factory this kind's pull runs, resolved WITHOUT running it. A kind
   // this build doesn't know returns null and the whole pull becomes a `no-op`
   // decision, instead of a gesture that reports success and creates nothing.
+  // Every factory below is handed the WHOLE surviving record — the snapshot
+  // minus `NON_TRAVELLING_FIELDS` (task 330). The switch chooses a FACTORY, never
+  // a set of FIELDS: each arm that hand-picked (`{ title, content }`,
+  // `{ text }`) silently dropped the rest, and the ones that passed
+  // `card.data` whole were then hand-picked one layer down, in the host.
   const create = ((): (() => void) | null => {
     switch (card.cardKind) {
       case "note":
-        return () =>
-          void stack.addNote(paragraphId, {
-            title: card.data.title,
-            content: card.data.content,
-          });
+        return () => void stack.addNote(paragraphId, pullSeed("note", card.data));
       case "highlight":
         // Highlights ride a text-range mark in the source doc — we have no mark
         // to attach here, so v1 creates a paragraph-anchored (or unanchored)
@@ -656,11 +658,12 @@ function planCardDrop(
         // 259: it was optional, and an optional per-KIND factory is the same
         // silent-loss vector as a missing switch case — a host that omitted it
         // made every highlight pull do nothing, with no error anywhere.
-        return () => void stack.addHighlight(paragraphId);
+        return () =>
+          void stack.addHighlight(paragraphId, pullSeed("highlight", card.data));
       case "footnote":
-        return () => void stack.addFootnote(card.data);
+        return () => void stack.addFootnote(pullSeed("footnote", card.data));
       case "citation":
-        return () => void stack.addCitation(card.data);
+        return () => void stack.addCitation(pullSeed("citation", card.data));
       case "bibliography":
         // The entry IS this card's payload, so it is upserted here as the
         // card's own action, not as a reference. Its user-authored annotation
@@ -668,21 +671,34 @@ function planCardDrop(
         // re-attached by `withBibUpsert` before this runs (task 235).
         return () => void stack.upsertBibEntry(card.data);
       case "todo":
-        return () => void stack.addTodo(paragraphId, { text: card.data.text });
+        return () => void stack.addTodo(paragraphId, pullSeed("todo", card.data));
       case "archive":
         return () =>
-          void stack.addArchive(paragraphId, {
-            title: card.data.title,
-            content: card.data.content,
-          });
+          void stack.addArchive(paragraphId, pullSeed("archive", card.data));
       case "revision-comment":
-        return () => void stack.addRevisionComment(paragraphId, card.data);
+        return () =>
+          void stack.addRevisionComment(
+            paragraphId,
+            pullSeed("revision-comment", card.data),
+          );
       case "revision-suggestion":
-        return () => void stack.addRevisionSuggestion(paragraphId, card.data);
+        return () =>
+          void stack.addRevisionSuggestion(
+            paragraphId,
+            pullSeed("revision-suggestion", card.data),
+          );
       case "cutter-comment":
-        return () => void stack.addCutterComment(paragraphId, card.data);
+        return () =>
+          void stack.addCutterComment(
+            paragraphId,
+            pullSeed("cutter-comment", card.data),
+          );
       case "cutter-suggestion":
-        return () => void stack.addCutterSuggestion(paragraphId, card.data);
+        return () =>
+          void stack.addCutterSuggestion(
+            paragraphId,
+            pullSeed("cutter-suggestion", card.data),
+          );
       default: {
         // **The silent-loss backstop (task 259).** Every case above ends in a
         // `ctx.stack` call, so a kind with no case here dropped onto the Stack
