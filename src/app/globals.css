@@ -161,6 +161,34 @@
      "Radius scale" exceptions; tangency lineage: task 014). */
   --library-manila-radius: 10px;
   --pod-gap: 10px;
+  /* ── The pod SEAM (SSOT, task 329) ────────────────────────────────────
+     `--pod-gap` was answering two different questions, and only one of them
+     is a gutter. (a) How wide is the resize gutter / how far is a pod inset
+     from its column edge — a GUTTER question, and still --pod-gap's. (b) How
+     much CANVAS shows between a raised pod's edge and the card lane BEHIND
+     it — a SEAM question, which is this token's.
+
+     They diverged because nobody owned (b): the band-bottom strip took
+     --pod-gap (10), the lone-band fade below it hard-coded another 10, and
+     the column-edge fade hard-coded a 10+14 gradient. Three painters, three
+     spellings, and where two of them met (a docked pod whose bottom edge sits
+     near the column bottom) they SUMMED to ~44px of opaque field — Gabriel's
+     "giant moat", five to eleven times the deck's own 4px MIN_GAP.
+
+     Separation between a raised pod and the layer beneath it is ELEVATION,
+     not moat-width: the pod's shadow does the work and the seam only has to
+     be wide enough to HOLD it. So the value is DERIVED, not chosen — it is
+     the greatest downward reach of --card-shadow-ambient (the docked pod's
+     own shadow: offset 2 + blur 6 ⇒ 2 + 6/2 = 5px), rounded up to 6. A
+     narrower seam would smear the shadow onto the card below; a wider one is
+     the moat. Re-derive it if that shadow changes.
+
+     Consumed by every site that paints canvas over the card lane at a raised
+     edge: panel-column.tsx's `BottomEdgeHandle` and `ColumnEdgeFade`. NOT by
+     `BandDivider` — a band↔band gutter is question (a), two sheets on a desk
+     with no lower layer to read through, and it stays --pod-gap.
+     See STYLE_GUIDE "Panels" → the seam rule. */
+  --pod-seam: 6px;
   --pod-border: 1px solid var(--border-light);
   --panel-border: none; /* borderless: panels are warm sheets; separation via --pod-gap + shadow. Also derived at runtime in preferences-tree.ts — keep both in sync. */
   --pod-shadow: 0 1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06);

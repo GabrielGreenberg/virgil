@@ -47,7 +47,13 @@ export function measureOmniGap(side: Side): number {
  *  horizontal bleed cancels the column's paddingLeft/Right: 4. `top: 0` /
  *  `bottom: 0` latch to the same row scrollport (`[data-virgil-row-scroll]`,
  *  which starts just below the 32px Virgil bar), so the two edges are exact
- *  mirrors. `data-tool-strip` is read existence-only by dock-drag.ts. */
+ *  mirrors. `data-tool-strip` is read existence-only by dock-drag.ts.
+ *
+ *  Task 329 — the SOLID run is a pod SEAM (canvas painted over the card lane
+ *  at a raised edge) and reads `--pod-seam`; the RAMP past it is the scroll
+ *  dissolve, this element's own affordance, and stays a stated constant. They
+ *  were one hand-tuned 10+14 pair, which is how this fade could SUM with the
+ *  band-bottom seam below a docked pod into ~44px of field. */
 function ColumnEdgeFade({ side, edge }: {
   side: "left" | "right";
   edge: "top" | "bottom";
@@ -61,10 +67,13 @@ function ColumnEdgeFade({ side, edge }: {
       style={{
         ...(isTop ? { top: 0 } : { bottom: 0 }),
         alignSelf: 'stretch',
-        // Bug sweep #2: shorten the omni-scroll edge dissolve to a rim — solid
-        // over the gutter, then a short 14px ramp to transparent (was 32px).
-        // Height + the negative margin stay in lockstep (zero net flow height).
-        background: `linear-gradient(${isTop ? 'to bottom' : 'to top'}, var(--background) 0, var(--background) var(--pod-gap), transparent calc(var(--pod-gap) + 14px))`,
+        // Solid for one seam (`--pod-seam`, the SSOT for canvas-over-lane),
+        // then a 10px ramp to transparent — 16px of visible field, down from
+        // the hand-tuned 10+14 = 24px. The box stays 34 tall (and its negative
+        // margin in lockstep, zero net flow height): the surplus past the
+        // gradient is fully transparent, so the box height is a bound, not a
+        // second spelling of the band.
+        background: `linear-gradient(${isTop ? 'to bottom' : 'to top'}, var(--background) 0, var(--background) var(--pod-seam), transparent calc(var(--pod-seam) + 10px))`,
         height: 34,
         ...(isTop ? { marginBottom: -34 } : { marginTop: -34 }),
         marginLeft: -4,
@@ -75,22 +84,27 @@ function ColumnEdgeFade({ side, edge }: {
   );
 }
 
-/** Bottom-edge resize handle for the last band in the stack. A thin
- *  pod-gap-tall strip pinned to the band's bottom edge. Dragging it
- *  grows/shrinks the bottom band, revealing or covering the omni gap
- *  below. Clamps `[MIN_BAND_PX, frameH - aboveStackPx]`. */
+/** Bottom-edge resize handle for the last band in the stack — and the SEAM
+ *  between the docked pod above it and the omni card lane behind/below.
+ *  One `--pod-seam`-tall strip of canvas pinned to the band's bottom edge:
+ *  wide enough to hold the pod's own shadow (that is how the token is
+ *  derived) and no wider, so the pod reads as paper lifted off the lane
+ *  rather than as a sheet marooned across a field. Dragging it grows/shrinks
+ *  the bottom band, revealing or covering the omni gap below. Clamps
+ *  `[MIN_BAND_PX, frameH - aboveStackPx]`.
+ *
+ *  The strip is also the lone band's ONLY resize handle, so thinning the
+ *  PAINT must not thin the GRAB: the invisible hit extension below widens in
+ *  lockstep (±6 around a 6px strip = the same 18px target the 10px strip had
+ *  at ±4). Hit area ≠ painted band. */
 function BottomEdgeHandle({
   bottomId,
   frameRef,
   onResize,
-  lone,
 }: {
   bottomId: PanelId;
   frameRef: React.RefObject<HTMLDivElement | null>;
   onResize: (id: PanelId, px: number) => void;
-  /** True when this is the only band on the side — fade the manilla
-   *  backing into the omni gap below instead of a hard edge. */
-  lone: boolean;
 }) {
   // Per-gesture snapshots, taken in getValue() — the engine's documented
   // single start-edge read point. `flex` records the band anchor's inline
@@ -155,38 +169,29 @@ function BottomEdgeHandle({
     <div
       data-bottom-edge={bottomId}
       className="relative shrink-0 z-10"
-      style={{ height: 'var(--pod-gap)', pointerEvents: 'auto' }}
+      style={{ height: 'var(--pod-seam)', pointerEvents: 'auto' }}
     >
       <div
         className="drag-gap drag-gap-h band-grip band-grip-occlude w-full h-full"
         {...handle}
       >
-        {/* Wider invisible hit target (mirrors BandDivider) — a CHILD of the
-            handle so a grab here bubbles to the captured element and the
-            `.dragging` grip chrome lands on the visible gap. */}
+        {/* Wider invisible hit target — a CHILD of the handle so a grab here
+            bubbles to the captured element and the `.dragging` grip chrome
+            lands on the visible gap. ±6 (BandDivider's is ±4 around a 10px
+            strip): the seam is 4px thinner than the gutter it replaced, so
+            the extension absorbs the difference and the grab target stays
+            18px. Thinning the paint must never thin the grab. */}
         <div
           className="absolute inset-x-0 cursor-row-resize"
-          style={{ top: -4, bottom: -4, background: 'transparent' }}
+          style={{ top: -6, bottom: -6, background: 'transparent' }}
         />
       </div>
-      {/* Lone panel: a manilla fade past the handle into the omni gap, so the
-          omni cards behind it dissolve into the desktop. Must be --background
-          (the canvas/manilla), NOT --pod-panel (the warm panel fill) — same
-          color as ColumnEdgeFade above. Non-interactive. */}
-      {lone && (
-        <div
-          aria-hidden="true"
-          className="absolute left-0 right-0"
-          style={{
-            top: '100%',
-            // Bug sweep #2: a short rim, not a long dissolve — the panel edge
-            // reads as a sheet with a thin shadow-ish fade into the omni gap.
-            height: 10,
-            background: 'linear-gradient(to bottom, var(--background), transparent)',
-            pointerEvents: 'none',
-          }}
-        />
-      )}
+      {/* No fade below the seam. A card in the omni gap under a docked pod is
+          not being clipped by anything — it sits in open canvas — so a second
+          field-colored veil over its top edge separated nothing and only
+          widened the moat (it was the third, hard-coded, spelling of this
+          band). The pod's own `--card-shadow-ambient`, falling inside the
+          seam, is what makes the card read as the layer beneath. Task 329. */}
     </div>
   );
 }
@@ -619,7 +624,6 @@ function BandFragment({
           bottomId={band.id}
           frameRef={frameRef}
           onResize={onResizeBottomEdge}
-          lone={index === 0}
         />
       )}
     </>
