@@ -817,7 +817,7 @@ function OmniViewPanel({
                 if (target.closest(INTERACTIVE_CONTROL_SELECTOR)) {
                   return;
                 }
-                holdOmniCard(item.id);
+                holdOmniCard(e.currentTarget);
               }}
             >
               {item.content}

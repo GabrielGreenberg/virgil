@@ -171,8 +171,11 @@ describe("the card door — clicking the text of a visible card moves nothing", 
   });
 
   it("holdOmniCard pins the current top — the collapse/expand freeze still works", () => {
-    scene(KEY, 300);
-    holdOmniCard(KEY);
+    // Takes the wrapper the user pressed, never a key: under multi-pane
+    // keep-alive a `document.querySelector` by key can answer with a
+    // `display:none` warm pane's twin, whose rects all read zero.
+    const { wrapper } = scene(KEY, 300);
+    holdOmniCard(wrapper);
     expect(omniPinStore.get("right")!.pinTop).toBe(300);
   });
 

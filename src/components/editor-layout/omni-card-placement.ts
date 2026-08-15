@@ -52,24 +52,43 @@ interface Resolved {
   pod: HTMLElement;
 }
 
-function resolve(cardKey: string): Resolved | null {
-  const wrapper = findOmniEntry(cardKey, "data-omni-entry-wrapper");
+/** Everything a placement needs, from the wrapper element itself. */
+function resolveFrom(
+  wrapper: HTMLElement | null,
+  fallbackKey: string,
+): Resolved | null {
   const pod = wrapper?.parentElement as HTMLElement | null;
   const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
   const side = sideEl?.dataset.panelColumnSide;
   if (!wrapper || !pod || (side !== "left" && side !== "right")) return null;
   return {
     side,
-    wrapperId: wrapper.dataset.omniEntryWrapper ?? cardKey,
+    wrapperId: wrapper.dataset.omniEntryWrapper ?? fallbackKey,
     wrapper,
     pod,
   };
 }
 
-function publish(cardKey: string, desired: DesiredCardTop | "hold"): void {
+/** `target` is either the EXACT wrapper (a caller holding the element it was
+ *  clicked on) or a key to look up. The distinction matters under multi-pane
+ *  keep-alive: N panes are mounted at once and `document.querySelector`
+ *  answers with the first in DOM order, which may be a `display:none` warm
+ *  pane whose rects all read zero — the task-329 shape. A caller that knows
+ *  its element passes it; only the two event-driven publishers, which have
+ *  nothing but a key, take the lookup. */
+function publish(
+  target: HTMLElement | { key: string },
+  desired: DesiredCardTop | "hold",
+): void {
   let retried = false;
   const apply = () => {
-    const r = resolve(cardKey);
+    const r =
+      target instanceof HTMLElement
+        ? resolveFrom(target, target.dataset.omniEntryWrapper ?? "")
+        : resolveFrom(
+            findOmniEntry(target.key, "data-omni-entry-wrapper"),
+            target.key,
+          );
     if (!r) {
       // The omni column may have been activated THIS render (a marker click
       // that opened the panel), so the wrapper isn't in the DOM yet. One
@@ -116,7 +135,7 @@ export function requestOmniCardPlacement(
   cardKey: string,
   desired: DesiredCardTop,
 ): void {
-  publish(cardKey, desired);
+  publish({ key: cardKey }, desired);
 }
 
 /**
@@ -129,7 +148,11 @@ export function requestOmniCardPlacement(
  * it costs is the one thing a refused placement deliberately avoids, namely
  * releasing whatever card was pinned before. That trade is pre-328 behaviour
  * and is what makes the freeze work at all.
+ *
+ * Takes the WRAPPER, not a key: this caller is holding the element the user
+ * pressed, and looking it up again by key would be strictly worse under
+ * multi-pane keep-alive (see `publish`).
  */
-export function holdOmniCard(cardKey: string): void {
-  publish(cardKey, "hold");
+export function holdOmniCard(wrapper: HTMLElement): void {
+  publish(wrapper, "hold");
 }
