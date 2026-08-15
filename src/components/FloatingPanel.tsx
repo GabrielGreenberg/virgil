@@ -492,6 +492,16 @@ function FloatingPanelInner({
         dragStateRef.current = null;
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
+        // Persist where the user actually left the float. This branch returns
+        // before the shared commit below, which was harmless only while a
+        // capture ALWAYS closed the float: since task 332 the host closes it
+        // only on a snapshot that landed, so a refused capture (a deleted
+        // source, an unresolvable id) would otherwise leave the float parked
+        // over the StackIcon at a rect nothing had stored. On a capture that
+        // does land this is a no-op in effect — `closeCardPopout` deletes the
+        // key's saved rect immediately afterwards, through a functional
+        // updater on the same store, so the write cannot outlive the delete.
+        handlersRef.current.onChange(latestPosRef.current);
         if (typeof window !== "undefined") {
           window.dispatchEvent(
             new CustomEvent("virgil-stack-drop", {

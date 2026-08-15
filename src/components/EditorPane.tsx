@@ -182,7 +182,7 @@ import { makeUnbridgingDelete } from "@/cards/lifecycle/unbridging-delete";
 import { makeUnbridgingFootnoteDelete } from "@/cards/lifecycle/unbridging-footnote-delete";
 import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import type { AiRequestSyncMode } from "@/lib/ai-request-bridge";
-import { isCardKind, panelForCardKind, isArchivable, archiveRemovesAtom, excerptCardKinds } from "@/cards/predicates";
+import { panelForCardKind, isArchivable, archiveRemovesAtom, excerptCardKinds } from "@/cards/predicates";
 import {
   CardArchiveActionsProvider,
   type CardArchiveActionsApi,

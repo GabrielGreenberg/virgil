@@ -48,8 +48,9 @@ afterEach(() => {
   document.body.style.cursor = "";
 });
 
-/** Mount a floating card shell for `cardKey` and return its header handle. */
+/** Mount a floating card shell for `cardKey`; returns its header + rect sink. */
 function mountFloat(cardKey: string) {
+  const onChange = vi.fn();
   render(
     <FloatingPanel
       cardKey={cardKey}
@@ -60,13 +61,16 @@ function mountFloat(cardKey: string) {
       initialWidth={320}
       initialHeight={240}
       zIndex={1200}
-      onChange={vi.fn()}
+      onChange={onChange}
     >
       <div data-testid="body">float body</div>
     </FloatingPanel>,
   );
   setStackIconRect(ICON);
-  return document.querySelector<HTMLDivElement>('[data-testid="body"]')!;
+  return {
+    header: document.querySelector<HTMLDivElement>('[data-testid="body"]')!,
+    onChange,
+  };
 }
 
 /**
@@ -75,7 +79,7 @@ function mountFloat(cardKey: string) {
  * release dispatched — the two halves that must agree.
  */
 function dragOntoIcon(cardKey: string) {
-  const header = mountFloat(cardKey);
+  const { header, onChange } = mountFloat(cardKey);
   const drops: unknown[] = [];
   const onDrop = (e: Event) => drops.push((e as CustomEvent).detail);
   window.addEventListener("virgil-stack-drop", onDrop);
@@ -88,7 +92,7 @@ function dragOntoIcon(cardKey: string) {
     act(() => {
       fireEvent.mouseUp(window, ICON_CENTER);
     });
-    return { ringLit, drops };
+    return { ringLit, drops, onChange };
   } finally {
     window.removeEventListener("virgil-stack-drop", onDrop);
   }
@@ -130,9 +134,24 @@ describe("dragging a float onto the StackIcon", () => {
     expect(getStackDropTarget()).toBe(false);
   });
 
+  it("a release over the icon PERSISTS where the user left the float", () => {
+    // The stack-drop branch returns before the shared position commit, which
+    // was harmless only while the host closed the float unconditionally. Now
+    // that it closes only on a capture that landed, a refusal it cannot
+    // foresee (a deleted source) would strand the float over the icon at a
+    // rect nothing had stored — visible on the next reload.
+    const { onChange } = dragOntoIcon("note:n1");
+    expect(onChange).toHaveBeenCalled();
+    const last = onChange.mock.calls.at(-1)![0] as { x: number; y: number };
+    // The header was grabbed at AWAY and released at the icon centre, so the
+    // committed rect must carry that delta — not the mount-time origin.
+    expect(last.x).toBe(300 + (ICON_CENTER.clientX - AWAY.clientX));
+    expect(last.y).toBe(200 + (ICON_CENTER.clientY - AWAY.clientY));
+  });
+
   it("a capturable float released AWAY from the icon dispatches nothing", () => {
     // Geometry still has to hold: the capability is a gate, not a bypass.
-    const header = mountFloat("note:n1");
+    const { header } = mountFloat("note:n1");
     const drops: unknown[] = [];
     const onDrop = (e: Event) => drops.push((e as CustomEvent).detail);
     window.addEventListener("virgil-stack-drop", onDrop);

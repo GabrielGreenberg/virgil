@@ -57,6 +57,15 @@ import { isCardKind } from "@/cards/predicates";
  * Deliberately NOT keyed on `TEXT_OBJECT_REGISTRY[kind].floatBodyComponent`,
  * which is mutable state written by a side-effect registration module — an
  * affordance must not depend on import order.
+ *
+ * **Stated limit**, since the two branches are not symmetric: this answers the
+ * textobject domain without validating the KIND, while the door
+ * (`resolveFloatable`) refuses a kind the registry does not know. The gap is
+ * reachable only from a prefs blob written by a build that had a kind this one
+ * has dropped, and it fails the benign way — a ring that lights over a capture
+ * the report then refuses, leaving the float where the user put it. Closing it
+ * would mean importing the text-object registry into a module the drag shell
+ * takes, which is the weight this file exists to avoid.
  */
 export function canCaptureToStack(floatKey: string): boolean {
   const parsed = parseAnyKey(floatKey);

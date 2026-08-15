@@ -10,6 +10,8 @@
 // be importable, not mounted.
 
 import { describe, it, expect, vi } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 // `@/cards/floats` transitively pulls `@/lib/storage`, whose
 // `require("@/lib/storage-fsa")` vitest's resolver can't alias (the known
@@ -252,8 +254,20 @@ describe("captureFloatToStack — the ONE capture door", () => {
     (k) => !CARD_REGISTRY[k].stackable && FIXTURES[k] !== null,
   )) {
     it(`${kind}: REFUSES — the capability is read before any record is`, () => {
+      // The null alone would be VACUOUS: these kinds' own `snapshotForStack`
+      // already returns null (the leg above), so the assertion passes with the
+      // door's capability check deleted — and a door that re-answers from each
+      // kind's Floatable instead of from `canCaptureToStack` is the two-tables
+      // shape task 332 exists to retire, restored with CI green. So assert the
+      // record is never even resolved.
+      const spy = vi.spyOn(CARD_REGISTRY[kind], "toFloatable");
       const key = buildFloatKey({ domain: "card", kind, id: FIXTURES[kind]!.id });
       expect(captureFloatToStack(key, mockCtx, SOURCE)).toBeNull();
+      expect(
+        spy,
+        "the door must refuse from the DECLARATION, not from the record",
+      ).not.toHaveBeenCalled();
+      spy.mockRestore();
     });
   }
 
@@ -278,5 +292,35 @@ describe("captureFloatToStack — the ONE capture door", () => {
     const rev = captureFloatToStack("revision:s:rev-s-1", mockCtx, SOURCE);
     expect(cardPayload(rev!).cardKind).toBe("revision-suggestion");
     expect(captureFloatToStack("report:report-1", mockCtx, SOURCE)).toBeNull();
+  });
+});
+
+describe("nothing captures except through the door", () => {
+  it("`snapshotForStack` has exactly ONE production caller", () => {
+    // The census. `captureFloatToStack` was never the part that could
+    // misbehave — a second capture site that resolves a `Floatable` and
+    // serializes it directly is, and such a site asks no capability at all:
+    // the ring would be honest and the commit would not. Both silos, source
+    // read, tests excluded (they call the method by design).
+    const roots = ["src", "library"];
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, e.name);
+        if (e.isDirectory()) {
+          if (e.name === "__tests__" || e.name === "node_modules") continue;
+          walk(full);
+        } else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name)) {
+          const src = readFileSync(full, "utf8");
+          if (src.includes("snapshotForStack(")) hits.push(full);
+        }
+      }
+    };
+    for (const r of roots) walk(resolve(__dirname, "../../..", r));
+    const callers = hits
+      .map((h) => h.replace(/^.*\/(src|library)\//, "$1/"))
+      .filter((h) => h !== "src/floats/types.ts") // the DECLARATION, not a call
+      .sort();
+    expect(callers).toEqual(["src/floats/resolve-floatable.ts"]);
   });
 });

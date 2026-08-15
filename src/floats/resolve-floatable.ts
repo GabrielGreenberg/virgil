@@ -13,10 +13,13 @@
  * text-object branch instead of the one hanging off the ctx it already had.
  *
  * The side-effect import of `@/cards/floats` lives here rather than in
- * `FloatHost`, which is what makes the CAPTURE path self-sufficient: before,
- * the host's copy resolved `CARD_REGISTRY[kind].toFloatable` and was correct
- * only because some other module had already rendered a float and run the
- * registration for it.
+ * `FloatHost`, which is what makes the CAPTURE path self-sufficient. Stated
+ * precisely, since the loose "float-render path" phrasing this inherited says
+ * something stronger than the truth: those registrations are module-eval, not
+ * render-gated, so the host's mirror resolved `CARD_REGISTRY[kind].toFloatable`
+ * correctly — but only because `EditorPane` happens to statically import
+ * `FloatHost`, an obligation discharged by a transitive import the capture path
+ * never declared. Now it declares it.
  *
  * The DECLARED half of the capture question — "may this float be captured at
  * all?" — is `./stack-capture`, deliberately kept light enough for the drag
@@ -25,10 +28,14 @@
 import { parseAnyKey } from "./float-key";
 import { canCaptureToStack } from "./stack-capture";
 import type { Floatable } from "./types";
-// Side-effect: register every poppable card kind's `toFloatable` builder onto
-// CARD_REGISTRY before any popout renders — or any capture resolves (mirrors
-// the text-object float registry).
+// Side-effect: register every poppable kind's float body before any popout
+// renders — or any capture resolves. BOTH halves, because both are read here:
+// the card builders onto `CARD_REGISTRY.toFloatable`, and the text-object
+// bodies onto `TEXT_OBJECT_REGISTRY.floatBodyComponent`, which
+// `textObjectFloatable` refuses without. Declaring one and inheriting the other
+// from `Editor.tsx` would leave this module's self-sufficiency claim half true.
 import "@/cards/floats";
+import "@/text-objects/floats";
 import { CARD_REGISTRY } from "@/cards/card-registry";
 import { isCardKind } from "@/cards/predicates";
 import type { CardFloatCtx } from "@/cards/card-float-ctx";
