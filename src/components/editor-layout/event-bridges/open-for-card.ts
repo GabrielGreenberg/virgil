@@ -3,7 +3,7 @@ import { dockedSideOf } from "@/hooks/view-prefs-derived";
 import type { CardKind, PanelKind } from "@/panels/_shared/types";
 import type { OmniCategory } from "@/panels/Omni";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
-import { alignEntryToY, scrollEntryIntoView } from "../layout-scroll";
+import { alignEntryToYIfNeeded, scrollEntryIntoView } from "../layout-scroll";
 
 /**
  * Routing helper used by every main-text click that wants to "show me
@@ -86,7 +86,7 @@ function scrollAfterMount(selector: string, targetY?: number) {
   requestAnimationFrame(() => {
     const entry = document.querySelector(selector) as HTMLElement | null;
     if (!entry) return;
-    if (typeof targetY === "number") alignEntryToY(entry, targetY);
+    if (typeof targetY === "number") alignEntryToYIfNeeded(entry, targetY);
     else scrollEntryIntoView(entry);
   });
 }
@@ -145,7 +145,7 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
     const entry =
       omniEntry ?? (document.querySelector(entrySelector) as HTMLElement | null);
     if (!entry) return;
-    if (typeof targetY === "number") alignEntryToY(entry, targetY);
+    if (typeof targetY === "number") alignEntryToYIfNeeded(entry, targetY);
     else scrollEntryIntoView(entry);
   });
 }

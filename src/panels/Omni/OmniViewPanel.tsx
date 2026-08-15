@@ -32,10 +32,11 @@ import { AnchoredMenu } from "@/components/menu/AnchoredMenu";
 import { MenuToggleRow } from "@/components/menu/MenuToggleRow";
 import { MenuSeparator, MenuSectionLabel } from "@/components/menu/MenuChrome";
 import {
-  omniPinStore,
   usePinRequest,
   type PinSide,
 } from "@/components/editor-layout/omni-pin-store";
+import { holdOmniCard } from "@/components/editor-layout/omni-card-placement";
+import { useLayoutGestureActive } from "@/lib/pane-resize";
 import { INTERACTIVE_CONTROL_SELECTOR } from "@/lib/drag-blocklist";
 import { iconHint } from "@/components/Hint";
 
@@ -57,6 +58,31 @@ import { iconHint } from "@/components/Hint";
  */
 
 export type { OmniItem };
+
+/**
+ * How long after this pod mounts the slide stays disarmed (ms).
+ *
+ * Comfortably past `useInTextPositions`' bounded settle loop (~500ms of rAF
+ * re-measures) and past a typical web-font swap, both of which legitimately
+ * correct every card's top after first paint. Animating those reads as a
+ * fly-in — the deck assembling itself in front of the user — which is the
+ * opposite of what the transition is for. Deliberately a wall-clock window
+ * rather than a settle signal: the corrections come from three independent
+ * sources (settle loop, `document.fonts.ready`, NodeView mounts) and only a
+ * timer covers all three without a fourth piece of state to thread.
+ * Residual, stated: a font swap later than this animates once.
+ */
+const SLIDE_ARM_MS = 700;
+
+/** True once this pod's first-paint corrections are past. See above. */
+function useSlideArmed(): boolean {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const t = window.setTimeout(() => setArmed(true), SLIDE_ARM_MS);
+    return () => window.clearTimeout(t);
+  }, []);
+  return armed;
+}
 
 /** Category keys are PanelKinds. The omni filter menu shows one row per
  *  omni-eligible panel. */
@@ -679,6 +705,24 @@ function OmniViewPanel({
   const { positions, editorContentHeight, panelScrollRef } =
     useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned, resolvePos);
 
+  // Motion (task 328): a sanctioned move SLIDES instead of teleporting.
+  // Suppressed in the three cases where a transition would be a lie about
+  // what happened:
+  //  • the arming window — the settle loop, the FOUT corrector and the
+  //    NodeView mounts all re-measure in the first moments after this pod
+  //    appears, and animating those corrections is a fly-in, not a move;
+  //  • while any layout gesture runs (pane drag, OS window resize, content
+  //    drag) — those are imperative by law, and the deck settles once on the
+  //    gesture's end edge;
+  //  • under `prefers-reduced-motion`, handled in globals.css so the opt-in
+  //    lives with the rule rather than in a second JS branch.
+  // A freshly mounted wrapper never animates either — a CSS transition does
+  // not run on an element's FIRST computed value, and a card renders only
+  // once `positions` has a top for it.
+  const slideArmed = useSlideArmed();
+  const gestureActive = useLayoutGestureActive();
+  const slide = slideArmed && !gestureActive;
+
   // Pin lifecycle: a pin is a persistent "deck anchor" cleared only when a
   // new pin replaces it (handled by `omniPinStore.requestPin` itself when
   // the cardId differs). Untying it from selection means collapse-toggling
@@ -749,7 +793,9 @@ function OmniViewPanel({
               key={item.id}
               data-omni-entry-wrapper={item.id}
               data-omni-nested-child={isNested ? "" : undefined}
-              className={`absolute left-2 right-2${isNested ? " pl-4" : ""}`}
+              className={`absolute left-2 right-2${isNested ? " pl-4" : ""}${
+                slide ? " omni-entry-slide" : ""
+              }`}
               style={{
                 top: 0,
                 transform: `translateY(${top}px)`,
@@ -771,13 +817,7 @@ function OmniViewPanel({
                 if (target.closest(INTERACTIVE_CONTROL_SELECTOR)) {
                   return;
                 }
-                const wrapper = e.currentTarget;
-                const pod = wrapper.parentElement;
-                if (!pod) return;
-                const pinTop =
-                  wrapper.getBoundingClientRect().top -
-                  pod.getBoundingClientRect().top;
-                omniPinStore.requestPin(side as PinSide, item.id, pinTop);
+                holdOmniCard(item.id);
               }}
             >
               {item.content}

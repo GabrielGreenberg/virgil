@@ -123,12 +123,12 @@ import {
 } from "./editor-layout/constants";
 import { cardFloatZ } from "@/floats/float-policy";
 import {
-  alignEntryToY,
+  alignEntryToYIfNeeded,
   scrollEntryIntoView,
   findEditorScrollFor,
   SECTION_ACTIVE_LINE_FRACTION,
 } from "./editor-layout/layout-scroll";
-import { omniPinStore } from "./editor-layout/omni-pin-store";
+import { requestOmniCardPlacement } from "./editor-layout/omni-card-placement";
 import { TopBar } from "./editor-layout/TopBar";
 import type { TabStripProps } from "./editor-layout/TabStrip";
 import type { StatusClusterProps } from "./editor-layout/StatusCluster";
@@ -1164,70 +1164,38 @@ export default function EditorLayout() {
   // it on both flag paths.
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
   // Marker-click → omni card alignment. The user clicked at viewport Y
-  // `clickY` and we want the corresponding omni card to lock there.
-  // Conversion to pod-relative happens here, at the publish site: the
-  // wrapper's `.parentElement` is the pod that hosts all absolute card
-  // wrappers, and `clickY - podRect.top` is the pod-relative Y that the
-  // OmniViewPanel renders directly (no further conversion in the hook).
-  // Scroll-invariant by construction — the pod scrolls with the row, so
-  // pod-relative stays valid through any subsequent natural scroll.
-  //
-  // If the panel isn't yet mounted (omni column was activated this
-  // render), retry one frame later — that's enough for `openForCard`'s
-  // setActiveLeft/setActiveRight to commit and the OmniViewPanel to
-  // render its first frame.
+  // `clickY` and the corresponding omni card would lock there — IF the move
+  // is necessary. `requestOmniCardPlacement` owns the whole resolution now
+  // (prefix-or-exact wrapper match, the `@N` row's own id, the pod-relative
+  // conversion, the one-frame retry for a column activated this render) and,
+  // crucially, the necessity rule: a card that is already fully visible and
+  // near enough to the click is pinned at its CURRENT top instead, so
+  // neither it nor its neighbours move at all (task 328, example 2).
   const alignOmniCardWithClick = useCallback(
     (cardId: string, clickY: number, _sourceEl: HTMLElement | null) => {
-      let tried = false;
-      const apply = () => {
-        // Prefix-or-exact (T5 Pillar E-2): a multi-anchor card's wrapper id is
-        // `…@<anchorIndex>`, so an `@N`-suffixed `cardId` lands on its own row
-        // (exact), and a bare key still resolves a multi-anchor card's first
-        // row (prefix). Pin the wrapper's ACTUAL id — not the passed key — so
-        // omniPinStore's `pinRequest.cardId === item.id` match holds for the
-        // resolved `@N` row (REP-F3-01).
-        const wrapper = findOmniEntry(cardId, "data-omni-entry-wrapper");
-        const wrapperId = wrapper?.dataset.omniEntryWrapper ?? cardId;
-        const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
-        const side = sideEl?.dataset.panelColumnSide;
-        const pod = wrapper?.parentElement as HTMLElement | null;
-        if ((side !== "left" && side !== "right") || !pod) {
-          if (!tried) {
-            tried = true;
-            requestAnimationFrame(apply);
-          }
-          return;
-        }
-        const pinTop = clickY - pod.getBoundingClientRect().top;
-        omniPinStore.requestPin(side, wrapperId, pinTop);
-      };
-      apply();
+      requestOmniCardPlacement(cardId, { viewportY: clickY });
     },
     [],
   );
 
   // Card-body click → editor scroll alignment. `jumpToLink`/`jumpToCard`
   // (links.ts) scroll the row so the in-text anchor lands at the card's
-  // pre-jump viewport Y. The publisher there computes `pinTop` from the
-  // pre-scroll pod rect (pod-relative is scroll-invariant under unified
-  // scroll, so the pre-scroll value is already correct post-scroll) and
-  // hands it to us as `detail.pinTop`. We just route to the right side
-  // and publish — no rAF, no post-scroll measurement.
+  // pre-jump viewport Y — and fire this event ONLY when that scroll actually
+  // happened, since the pin exists to compensate for the document moving
+  // under the card. The publisher computes `pinTop` from the pre-scroll pod
+  // rect (pod-relative is scroll-invariant under unified scroll, so the
+  // pre-scroll value is already correct post-scroll) and hands it over as
+  // `detail.pinTop`; we route it through the same placement door, which asks
+  // the necessity rule against the card's POST-scroll rect — exactly the
+  // right question, since a card the scroll pushed off screen should come
+  // back to its marker while one still comfortably in view should not move.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as
         | { omniKey?: string; pinTop?: number }
         | undefined;
       if (!detail?.omniKey || typeof detail.pinTop !== "number") return;
-      const { omniKey, pinTop } = detail;
-      // Prefix-or-exact match + pin the wrapper's ACTUAL id (T5 Pillar E-2) so
-      // a multi-anchor card's `@N` jump lands on its own row.
-      const wrapper = findOmniEntry(omniKey, "data-omni-entry-wrapper");
-      const wrapperId = wrapper?.dataset.omniEntryWrapper ?? omniKey;
-      const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
-      const side = sideEl?.dataset.panelColumnSide;
-      if (side !== "left" && side !== "right") return;
-      omniPinStore.requestPin(side, wrapperId, pinTop);
+      requestOmniCardPlacement(detail.omniKey, { podTop: detail.pinTop });
     };
     window.addEventListener("virgil-card-jumped", handler);
     return () => window.removeEventListener("virgil-card-jumped", handler);
@@ -2235,7 +2203,11 @@ export default function EditorLayout() {
       if (!entry) return false;
       requestAnimationFrame(() => {
         if (typeof targetY === "number") {
-          alignEntryToY(entry, targetY);
+          // Necessity-gated (task 328): this scrolls the shared ROW, so an
+          // unconditional align drags the document to re-place a card the
+          // user can already see. `scrollEntryIntoView`'s `block:"nearest"`
+          // default is self-gating in the same way.
+          alignEntryToYIfNeeded(entry, targetY);
         } else {
           scrollEntryIntoView(entry);
         }
