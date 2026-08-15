@@ -3605,6 +3605,16 @@ export default function EditorLayout() {
           )}
           {paneState?.pdfStale && paneState?.pdfBlobUrl && (
             <div className="absolute top-3 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow flex items-center gap-1.5 z-10">
+              {/* Deliberately still a hand-rolled dot (task 315), and the
+                  reasoning is recorded in status-dot-ssot.test.ts's allowlist:
+                  this is the SAME signal StatusCluster's pdf-stale dot paints,
+                  but from a different family — that dot reads
+                  `var(--status-warn)` (#eab308) while this one is Tailwind v4's
+                  `yellow-500` (oklch 79.5% 0.184 86.047 ≈ #f0b100), which its
+                  own chip's `bg-yellow-100`/`text-yellow-800` are on the ramp
+                  of. The two already differ. Converting the dot alone would
+                  repaint it AND strand it off its chip's ramp, so which family
+                  wins is a colour decision, not a cleanup. */}
               <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
               PDF is out of date
             </div>

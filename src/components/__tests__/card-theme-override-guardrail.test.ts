@@ -61,7 +61,8 @@
 //   • KEY — the detector keys on a `Record<…Kind, …>` type annotation, which is
 //     what makes the "this is a KIND vocabulary" claim checkable. A colour table
 //     keyed by something else — a STATUS (`AIWindow`'s `STATUS_META`), a
-//     collaborator state (`CollabStatusPill`'s `DOT_COLORS`), a
+//     collaborator state (`CollabStatusPill`'s `DOT_COLORS`, retired by task
+//     315 — that whole class now answers to `status-dot-ssot.test.ts`), a
 //     `Record<string, string>` — is invisible to it and is a different question
 //     (those are state vocabularies, not kind vocabularies). Type-alias,
 //     `satisfies` and interface-typed indirections evade the annotation too;

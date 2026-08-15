@@ -494,12 +494,29 @@
   /* Status dots (traffic-light) — the semantic triple every red/green/yellow
      status affordance reads from (the Virgil-bar AI-status dot today; other
      status glyphs can converge here). Values pinned to their prior hexes so
-     adopting the token is a zero-diff swap. Red aliases --danger. */
+     adopting the token is a zero-diff swap. Red aliases --danger.
+     Consumed through the ONE `<StatusDot tone=…>` primitive
+     (src/components/StatusDot.tsx) — see its header for the tone→token map. */
   --status-danger: var(--danger); /* red   — error / failure */
   --status-ok: #22c55e;           /* green — success / done (≈ green-500) */
   --status-warn: #eab308;         /* yellow — pending / working (≈ yellow-500) */
   --status-warn-strong: #a16207;  /* darker amber stroke companion to --status-warn (IconZap outline; pinned to its prior hex — not a scalar darken of --status-warn, so a color-mix would desync) */
   --status-info: #7191b0;         /* steel — informational severity; deliberately NOT the alarm ramp (error/warning) */
+
+  /* Collaborator pen state (task 315) — its OWN pair, deliberately not the
+     alarm ramp above. The collab pill is a MODE indicator, not an alarm, and
+     ships a softer palette: this green is darker than --status-ok and this
+     amber is honeyed against --status-warn's yellow, so pointing the pill at
+     the traffic light would be a real colour shift. Equally deliberately NOT
+     --note-color / --amber-500, which these are byte-identical to today: those
+     belong to the note CARD KIND and the warm-amber SCALE, and borrowing them
+     would couple pen state to a card kind (the coupling task 135's own comment
+     warns against) — a retint of the note kind would repaint the collab dot.
+     Values pinned to the hexes the pill painted before it read a token.
+     The other two pen states have honest homes already and take them:
+     stale → --ink-muted, free → --status-info. */
+  --status-collab-active: #15803d; /* darker green — partner is editing now */
+  --status-collab-idle: #d4a843;   /* honeyed amber — partner stepped away */
 
   /* Interaction */
   --ring-drag-target: #fcd34d; /* drop-target highlight ring (≈ amber-300) */

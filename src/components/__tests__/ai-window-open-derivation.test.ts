@@ -7,7 +7,7 @@
  * The regression this pins: an answered-L3 proposal row
  * (`status: "in-progress"` + `resultId`) is CLOSED per `isRequestOpen` (the user
  * owns accept/reject now), but the old binary check painted it "open" / lit the
- * yellow dot. After archive terminates such a row to `complete` (GAP 2), the
+ * warn dot. After archive terminates such a row to `complete` (GAP 2), the
  * surface must also agree it is resolved. Both are enumerated over the
  * `status × resultId` matrix here.
  */
@@ -66,18 +66,18 @@ function dotOne(r: AiRequest) {
 }
 
 describe("AI-inbox surface honors isRequestOpen (task 093 GAP 1)", () => {
-  it("pending → list 'open' + cancel affordance + yellow dot", () => {
+  it("pending → list 'open' + cancel affordance + warn dot", () => {
     const vm = listOne(req({ status: "pending" }));
     expect(vm.status).toBe("open");
     expect(vm.onCancel).toBeTypeOf("function");
-    expect(dotOne(req({ status: "pending" }))).toBe("yellow");
+    expect(dotOne(req({ status: "pending" }))).toBe("warn");
   });
 
-  it("in-progress WITHOUT resultId (skill mid-flight) still OPEN → yellow dot", () => {
+  it("in-progress WITHOUT resultId (skill mid-flight) still OPEN → warn dot", () => {
     // Negative control: only the resultId stamp closes an in-progress row.
     const vm = listOne(req({ status: "in-progress" }));
     expect(vm.status).toBe("open");
-    expect(dotOne(req({ status: "in-progress" }))).toBe("yellow");
+    expect(dotOne(req({ status: "in-progress" }))).toBe("warn");
   });
 
   it("answered-L3 (in-progress + resultId) → list 'resolved', NO cancel, NO dot", () => {

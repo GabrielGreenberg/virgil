@@ -55,6 +55,7 @@ import { Button } from "./panel-primitives";
 import { Input, Select, Textarea } from "./field-primitives";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { iconHint } from "@/components/Hint";
+import type { StatusTone } from "./StatusDot";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -376,10 +377,27 @@ export function buildRequests(args: BuildArgs): AIRequestVM[] {
 /* ── Notification dot helper (used by toolbar button) ─────────────── */
 
 /**
- * Returns the notification dot color for the AI requests toolbar icon.
- *   - "red"    → user has approved changes that the AI has not yet applied
- *   - "green"  → AI has replied to one or more requests
- *   - "yellow" → user requests are pending an AI response
+ * What the AI-requests toolbar icon's notification dot MEANS.
+ *
+ * A subset of the shared `StatusTone` vocabulary, so the Virgil bar renders it
+ * with `<StatusDot tone={aiDot}>` and NOTHING maps a state to a colour on the
+ * way (task 315). It was `"red" | "green" | "yellow"` until then — a
+ * colour-named state union, which only moves the paint decision up a layer: the
+ * producer names the pixel and every consumer re-derives the meaning.
+ *
+ * KNOWN, and deliberately not decided here: `aiRequestDotStatus` can only
+ * return `"warn"` or `null` today — the two states `danger` and `ok` describe
+ * are real and surfaced elsewhere in the AI window, but no producer lights the
+ * dot for them, so both arms of the bar's render are unreachable. Retiring them
+ * versus building them is a product call, not a rename's to make.
+ */
+export type AiDotTone = Extract<StatusTone, "danger" | "ok" | "warn">;
+
+/**
+ * Returns the notification dot tone for the AI requests toolbar icon.
+ *   - "danger" → user has approved changes that the AI has not yet applied
+ *   - "ok"     → AI has replied to one or more requests
+ *   - "warn"   → user requests are pending an AI response
  *   - null     → nothing outstanding
  */
 export function aiRequestDotStatus(args: {
@@ -387,7 +405,7 @@ export function aiRequestDotStatus(args: {
   bibEntryRequests: BibEntryRequest[];
   comments: RevisionCard[];
   panelAiRequests: AiRequest[];
-}): "red" | "green" | "yellow" | null {
+}): AiDotTone | null {
   const { bibReviewRequests, bibEntryRequests, comments, panelAiRequests } = args;
 
   let hasOpen = false;
@@ -403,7 +421,7 @@ export function aiRequestDotStatus(args: {
   if (!hasOpen) {
     for (const r of panelAiRequests) {
       // Same SSOT as `buildRequests` above: an answered-L3 row is closed, so it
-      // must not light the yellow inbox dot (task 093 GAP 1).
+      // must not light the inbox dot (task 093 GAP 1).
       if (isRequestOpen(r)) { hasOpen = true; break; }
     }
   }
@@ -413,7 +431,7 @@ export function aiRequestDotStatus(args: {
     }
   }
 
-  if (hasOpen) return "yellow";
+  if (hasOpen) return "warn";
   return null;
 }
 

@@ -60,7 +60,7 @@ import {
 } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import VirgilEditor, { type EditorHandle } from "./Editor";
-import AIWindow, { aiRequestDotStatus } from "./AIWindow";
+import AIWindow, { aiRequestDotStatus, type AiDotTone } from "./AIWindow";
 import { EditorChromeProvider } from "./editor-layout/chrome-context";
 import {
   FULL_CHROME,
@@ -682,7 +682,7 @@ export interface PaneState {
   switchToCodeView: () => void;
   switchToVisualView: () => void;
   codeView: boolean;
-  aiDot: "red" | "green" | "yellow" | null;
+  aiDot: AiDotTone | null;
   // EditorPane owns the live collab hook because it mounts inside
   // <DocPipeline> and therefore holds a valid write handle. EditorLayout
   // reads from here so its topbar collab icon/badge can drive real
