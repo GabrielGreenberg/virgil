@@ -57,7 +57,13 @@ export const omniPinStore = {
   },
 
   /** Pin a card at the given pod-relative Y. Replaces any existing pin
-   *  on this side. */
+   *  on this side.
+   *
+   *  MECHANISM, not policy: this writes whatever Y it is handed. Whether a
+   *  card may be moved at all — and to which Y — is decided ONCE by
+   *  `omni-card-placement.ts`, the only production caller (task 328; CI:
+   *  `gutter-stability-census`). Three publishers used to reach this
+   *  directly and each moved its card unconditionally. */
   requestPin(side: PinSide, cardId: string, pinTop: number): void {
     const cur = _pins[side];
     if (cur && cur.cardId === cardId && cur.pinTop === pinTop) {

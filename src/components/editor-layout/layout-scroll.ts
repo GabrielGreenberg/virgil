@@ -11,6 +11,8 @@
  * (still used for entries inside list-mode panel scrolls).
  */
 
+import { isFullyVisible, mayReposition } from "@/lib/reposition-policy";
+
 /**
  * The single "this section is now current" line, expressed as a fraction of
  * the editor viewport height measured from its top. A heading/parTitle becomes
@@ -75,14 +77,33 @@ export function findEditorScrollFor(viewDom: HTMLElement | null | undefined): HT
   return findRowScroll();
 }
 
-/** Scroll so `entry` lines up with viewport-Y `targetY`. */
-export function alignEntryToY(entry: HTMLElement, targetY: number) {
-  // List-mode entries continue to scroll their own panel ancestor.
-  // Editor-anchored entries route through the row scroll.
+/**
+ * The scroll container an align gesture would actually move for `entry`.
+ *
+ * List-mode entries scroll their own panel ancestor; editor-anchored entries
+ * route through the unified row scroll. Shared by `alignEntryToY` (which
+ * moves it) and `alignEntryToYIfNeeded` (which asks whether it should),
+ * because the band the necessity rule judges visibility against MUST be the
+ * container the scroll would move — two different answers there is a gate
+ * that reasons about a different viewport than the one it governs.
+ */
+export function resolveAlignScroll(entry: HTMLElement): HTMLElement | null {
   const own = findScrollParent(entry);
   const row = findRowScroll();
   const isListPanelScroll = !!own && own !== row;
-  const scrollEl = isListPanelScroll ? own : row;
+  return isListPanelScroll ? own : row;
+}
+
+/** Scroll so `entry` lines up with viewport-Y `targetY`.
+ *
+ *  UNCONDITIONAL by design — this is the mechanism, not the policy. Every
+ *  gesture-driven caller goes through `alignEntryToYIfNeeded` below (CI:
+ *  `gutter-stability-census`); the only direct callers left in this module
+ *  are that door and `scrollHeadingToActiveLine`, whose Outline click is a
+ *  deliberate "take me there" navigation rather than an incidental
+ *  reposition. */
+export function alignEntryToY(entry: HTMLElement, targetY: number) {
+  const scrollEl = resolveAlignScroll(entry);
   if (!scrollEl) {
     entry.scrollIntoView({ block: "nearest" });
     return;
@@ -91,6 +112,54 @@ export function alignEntryToY(entry: HTMLElement, targetY: number) {
   const desired = scrollEl.scrollTop + (cardY - targetY);
   const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
   scrollEl.scrollTop = Math.max(0, Math.min(maxScroll, desired));
+}
+
+/**
+ * The ONE necessity-gated align door (task 328) — "put `entry` at `targetY`,
+ * but only if it isn't already where the user needs it."
+ *
+ * Returns whether the scroll actually happened, which callers need for more
+ * than logging: a jump that also pins its omni card publishes that pin ONLY
+ * on a real scroll, because the pin exists to compensate for the document
+ * moving under the card. No scroll, no compensation, nothing moves at all.
+ *
+ * The rule itself lives in `reposition-policy`; this door only supplies the
+ * two measurements it takes — the entry's own rect and the band of the
+ * container that would scroll.
+ */
+export function alignEntryToYIfNeeded(
+  entry: HTMLElement,
+  targetY: number,
+): boolean {
+  const scrollEl = resolveAlignScroll(entry);
+  const rect = entry.getBoundingClientRect();
+  const band = scrollEl ? scrollEl.getBoundingClientRect() : null;
+  if (mayReposition({ current: rect.top, target: targetY, rect, band }) === "hold") {
+    return false;
+  }
+  alignEntryToY(entry, targetY);
+  return true;
+}
+
+/**
+ * Bring `entry` into view ONLY if it isn't fully visible already.
+ *
+ * The `block: "nearest"` form of `scrollEntryIntoView` is self-gating (the
+ * browser no-ops when the element is already in view), but `"center"` is
+ * not: it re-centres a perfectly visible element, which is the same
+ * unconditional-reposition shape one API over. Callers that want the
+ * centring behaviour for a genuinely off-screen target use this.
+ */
+export function scrollEntryIntoViewIfNeeded(
+  entry: HTMLElement,
+  opts?: ScrollIntoViewOptions,
+): boolean {
+  const scrollEl = resolveAlignScroll(entry);
+  const rect = entry.getBoundingClientRect();
+  const band = scrollEl ? scrollEl.getBoundingClientRect() : null;
+  if (isFullyVisible(rect, band)) return false;
+  entry.scrollIntoView(opts ?? { behavior: "instant", block: "nearest" });
+  return true;
 }
 
 /**

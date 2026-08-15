@@ -11,6 +11,7 @@ import { useIsVisible } from "@/lib/keep-alive/visibility-context";
 import { requestLowPriority } from "@/lib/keep-alive/schedule-low-priority";
 import { getBus } from "@/lib/tiptap/doc-structure";
 import { resolveVisiblePosBand } from "@/lib/editor-geometry/viewport-probe";
+import { holdWithinEpsilon, HEIGHT_EPSILON_PX } from "@/lib/reposition-policy";
 import { onFontReady } from "@/lib/text-metrics";
 import {
   isLayoutGestureActive,
@@ -611,6 +612,37 @@ export function useInTextPositions(
     // derived geometry estimate, and it only ever WIDENS the exact set — so it
     // cannot re-introduce the absorbing state, while it keeps the cold pass
     // richly seeded with knots for everything that follows.
+    // ── Hysteresis (task 328): the ONE place a card's rendered top is
+    // decided is this commit, so it is the one place that can decide a
+    // re-measure isn't worth showing. A pass that would move a card by less
+    // than `REPOSITION_EPSILON_PX` — or resize it by less than
+    // `HEIGHT_EPSILON_PX` — keeps the previously committed value, so
+    // `changed` stays false, `measureVersion` doesn't bump, and the deck
+    // doesn't re-render at all.
+    //
+    // This is what kills the per-scroll-pause "reset" (task 328, example 1):
+    // the C5 scroll-idle refinement re-runs the pass on every 150ms scroll
+    // pause while approximated items exist, and post-327 its corrections are
+    // small — but small and visible are different things, and each one used
+    // to commit. Height gets the tighter epsilon because it feeds the
+    // cascade: every card packed below an unchanged card inherits its wobble.
+    //
+    // Comparing against the COMMITTED value (never the last measured one) is
+    // what bounds the error at one epsilon instead of letting a slow real
+    // drift integrate silently: five 3px moves in the same direction reach
+    // 15px from the commit and commit.
+    const committed = (
+      id: string,
+      naturalTop: number,
+      height: number,
+    ): NaturalEntry => {
+      const prev = naturalRef.current.get(id);
+      return {
+        naturalTop: holdWithinEpsilon(prev?.naturalTop, naturalTop),
+        height: holdWithinEpsilon(prev?.height, height, HEIGHT_EPSILON_PX),
+      };
+    };
+
     const band = resolveVisiblePosBand(
       editor.view,
       visibleTop,
@@ -678,10 +710,12 @@ export function useInTextPositions(
       // the pod). The degeneracy guard below — which reads the *pre-clamp*
       // values in `raws` — is what protects against baking a top-stack from
       // an un-laid-out editor.
-      next.set(id, {
-        naturalTop: preClampTop < 0 ? 0 : preClampTop,
-        height,
-      });
+      //
+      // …and then HYSTERESIS (task 328): a pass that would move this card by
+      // less than the epsilon keeps the committed value. The knots above are
+      // deliberately fed the RAW read — the interpolation is arithmetic about
+      // the document, not about what the deck currently shows.
+      next.set(id, committed(id, preClampTop < 0 ? 0 : preClampTop, height));
     }
 
     // Approximate the deferred (out-of-band) items — zero DOM reads. The two
@@ -703,15 +737,16 @@ export function useInTextPositions(
       for (const { id, pos } of deferredItems) {
         const approx = approxTopForPos(pos, knots);
         nextApprox.add(id);
-        next.set(id, {
-          naturalTop: approx < 0 ? 0 : approx,
-          // Out-of-band by construction — the retained real height (or the
-          // placeholder for a never-measured card), exactly as before.
-          height: retainedEntryHeight(
-            undefined,
-            realHeightRef.current.get(id),
+        next.set(
+          id,
+          committed(
+            id,
+            approx < 0 ? 0 : approx,
+            // Out-of-band by construction — the retained real height (or the
+            // placeholder for a never-measured card), exactly as before.
+            retainedEntryHeight(undefined, realHeightRef.current.get(id)),
           ),
-        });
+        );
       }
     }
     approxIdsRef.current = nextApprox;

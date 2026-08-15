@@ -19,7 +19,7 @@
 import { useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { resolveLink } from "../links";
-import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
+import { alignEntryToYIfNeeded } from "@/components/editor-layout/layout-scroll";
 import { cardPopKey } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import {
@@ -145,13 +145,15 @@ export function usePlacement({ editor, collections, store }: UsePlacementArgs): 
     }
     if (!best) return;
 
-    // Skip if the chosen anchor is already roughly aligned with the card —
-    // avoids tiny jitter when the user is selecting cards that are
-    // already in view next to their anchors.
-    const anchorY = best.el.getBoundingClientRect().top;
-    if (Math.abs(anchorY - cardY) < 8) return;
-
-    alignEntryToY(best.el, cardY);
+    // The necessity rule decides whether the document moves. This hook is
+    // where the rule was FIRST discovered, as a private `Math.abs(anchorY -
+    // cardY) < 8` skip — right about the question and alone in asking it,
+    // while five sibling reposition paths moved unconditionally. It now reads
+    // the shared predicate (task 328), which subsumes the 8px jitter guard in
+    // its epsilon rung and adds the two this copy never had: an anchor that
+    // is already fully visible, or one within the band's "far" threshold,
+    // does not drag the document to meet a card the user can already see.
+    alignEntryToYIfNeeded(best.el, cardY);
   }, [selection, editor, collections]);
 }
 

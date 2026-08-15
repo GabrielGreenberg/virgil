@@ -4993,6 +4993,31 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   isolation: isolate;
 }
 
+/* Gutter stability, motion half (task 328). A card in the in-text lane moves
+ * only when the necessity rule sanctions it — and when it does, it SLIDES.
+ *
+ * The property is `transform`, because that is how the cascade positions a
+ * card (`translateY`, composite-only — a pin click must not invalidate
+ * layout). Compositor-driven, so a moving deck costs no main-thread work.
+ *
+ * The class is applied by `OmniViewPanel` and withheld during the pod's
+ * arming window and any live layout gesture; this rule adds the third
+ * suppression, `prefers-reduced-motion`, by OPTING IN rather than opting out
+ * — the same shape as the scrollbar-thumb fade above, and the one that
+ * cannot be forgotten, since the absent class is simply no transition.
+ *
+ * A plain scroll never reaches this rule at all: tops are pod-relative and
+ * therefore scroll-invariant, and sub-threshold measure corrections are held
+ * (never committed) by `holdWithinEpsilon` — so an unchanged transform has
+ * nothing to animate. That is load-bearing rather than incidental: without
+ * the hysteresis this transition would convert per-scroll-pause jitter from
+ * a teleport the eye can miss into a visible glide it cannot. */
+@media (prefers-reduced-motion: no-preference) {
+  .omni-entry-slide {
+    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
 /* Round the top/bottom inner children to match the card's rounded
  * corners. Without this, header tints (e.g. `bg-[#fef3c3]/40` on
  * unanchored citation cards) are rectangles that, at 40% alpha, leak

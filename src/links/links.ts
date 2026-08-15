@@ -45,7 +45,10 @@ import {
   legacyMarkKindToCardKind,
   defaultTintForLinkedAnchorKind,
 } from "@/cards/legacy-token-crosswalk";
-import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
+import {
+  alignEntryToYIfNeeded,
+  scrollEntryIntoViewIfNeeded,
+} from "@/components/editor-layout/layout-scroll";
 
 // Re-exports so callers import everything from one module.
 export type { Link, LinkAnchor, LinkKind, LinkResolution, LinkTarget, ModeBAnchorLink } from "./_shared/types";
@@ -376,6 +379,10 @@ export function jumpToLink(
     const resolved = resolveLink(editor, link);
     if (resolved?.domEl) {
       if (sourceY != null) {
+        // Necessity-gated since task 328: a jump is TWO movements — the
+        // document's and the card's — and the card's exists only to
+        // compensate for the document's, so the pin rides the scroll's
+        // verdict. Marker already visible and near enough ⇒ neither happens.
         // Compute the pin's pod-relative Y from the marker's pre-scroll
         // position (NOT the card's). After alignEntryToY scrolls the row
         // by `markerY - sourceY`, the pinned card's viewport Y will land
@@ -395,8 +402,8 @@ export function jumpToLink(
             ? resolved.domEl.getBoundingClientRect().top -
               pod.getBoundingClientRect().top
             : null;
-        alignEntryToY(resolved.domEl, sourceY);
-        if (omniKey && pinTop !== null) {
+        const moved = alignEntryToYIfNeeded(resolved.domEl, sourceY);
+        if (moved && omniKey && pinTop !== null) {
           window.dispatchEvent(
             new CustomEvent("virgil-card-jumped", {
               detail: { omniKey, pinTop },
@@ -404,7 +411,10 @@ export function jumpToLink(
           );
         }
       } else {
-        resolved.domEl.scrollIntoView({ behavior: "instant", block: "center" });
+        scrollEntryIntoViewIfNeeded(resolved.domEl, {
+          behavior: "instant",
+          block: "center",
+        });
       }
     }
   }
@@ -414,9 +424,12 @@ export function jumpToLink(
     ) as HTMLElement | null;
     if (entryEl) {
       if (sourceY != null) {
-        alignEntryToY(entryEl, sourceY);
+        alignEntryToYIfNeeded(entryEl, sourceY);
       } else {
-        entryEl.scrollIntoView({ behavior: "instant", block: "center" });
+        scrollEntryIntoViewIfNeeded(entryEl, {
+          behavior: "instant",
+          block: "center",
+        });
       }
     }
   }
@@ -465,8 +478,12 @@ export function jumpToCard(
             ? resolved.domEl.getBoundingClientRect().top -
               pod.getBoundingClientRect().top
             : null;
-        alignEntryToY(resolved.domEl, preY);
-        if (omniKey && pinTop !== null) {
+        // Necessity-gated (task 328), and the pin rides the scroll's verdict:
+        // if the marker is already fully visible and near enough to the card,
+        // the click moves nothing at all — no document scroll, and therefore
+        // no compensating pin to re-cascade the deck.
+        const moved = alignEntryToYIfNeeded(resolved.domEl, preY);
+        if (moved && omniKey && pinTop !== null) {
           window.dispatchEvent(
             new CustomEvent("virgil-card-jumped", {
               detail: { omniKey, pinTop },
@@ -474,7 +491,10 @@ export function jumpToCard(
           );
         }
       } else {
-        resolved.domEl.scrollIntoView({ behavior: "instant", block: "center" });
+        scrollEntryIntoViewIfNeeded(resolved.domEl, {
+          behavior: "instant",
+          block: "center",
+        });
       }
       return true;
     }

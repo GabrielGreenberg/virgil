@@ -1917,6 +1917,22 @@ matching panel theme accent via `markerPaletteFromAccent()`.
 Click → opens panel + selects card + scrolls. Cmd-click → opens
 without scrolling. Hover → highlights linked text range.
 
+**The gutter feels stable: a card moves only when it must, and then it
+slides (task 328).** "Scrolls" above is conditional, on both ends. Clicking
+linked text re-places its card, and clicking a card scrolls the document to
+its text, only when the counterpart is not ALREADY fully visible and near
+enough — one predicate, `mayReposition` in `src/lib/reposition-policy.ts`,
+answers that for every such gesture, and refusing writes nothing at all
+rather than a no-op pin (the omni pin store holds one pin per side, so even
+a same-position pin would release another card's). When a move IS sanctioned
+the omni wrapper glides instead of teleporting: `.omni-entry-slide`, 180ms
+`transform` ease-out, opted in under `prefers-reduced-motion:
+no-preference`, and withheld during the pod's first moments (the settle-loop
+and font-swap corrections are not moves — animating them is a fly-in) and
+during any live layout gesture, which the pane-drag law keeps imperative.
+Motion is the reward for necessity: if you find yourself adding a
+transition to something that moves often, the movement is the bug.
+
 **Cramped margins hide the side (task 214).** The columns are pod-anchored at
 fixed lane offsets while the prose edge moves with the margin, so a margin too
 narrow to host the lane would paint badges over the text. Every margin-lane

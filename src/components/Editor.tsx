@@ -20,7 +20,7 @@ import {
 import type { Link as VirgilLink, CardWithLinks } from "@/links/links";
 import { applyLinkedAnchorsImpl } from "@/links/_shared/apply-linked-anchors";
 import type { ModeBReapplyRecord } from "@/links/_shared/reapply-mode-b-anchors";
-import { alignEntryToY, findEditorScrollFor, scrollHeadingToActiveLine } from "@/components/editor-layout/layout-scroll";
+import { alignEntryToYIfNeeded, findEditorScrollFor, scrollHeadingToActiveLine } from "@/components/editor-layout/layout-scroll";
 import {
   isAnchorableNode,
   isAnchorableAtom,
@@ -1318,7 +1318,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (sourceEl) {
         const domEl = editor.view.nodeDOM(target) as HTMLElement | null;
         if (domEl) {
-          alignEntryToY(domEl, sourceEl.getBoundingClientRect().top);
+          // Necessity-gated (task 328): clicking an example card should not
+          // drag the document when the example is already on screen beside it.
+          alignEntryToYIfNeeded(domEl, sourceEl.getBoundingClientRect().top);
           return;
         }
       }
