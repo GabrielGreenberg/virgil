@@ -77,11 +77,11 @@ const PERMITTED_WINDOW_DRAG_GESTURES: Record<string, string> = {
   "src/components/drop-mode/controller.ts":
     "Drop-a-card placement mode — not a resize gesture: crosshair/none body cursor stamped on mode edges; the mousemove hit-tests the hovered block for the placement caret (throttled by hit-test bail), commits once on click.",
   "src/components/panel-primitives.tsx":
-    "File-level conjunction of three non-divider pieces: clearStaleHover's one-shot self-removing pointermove; the card-lift threshold detector (distance check, then hands off to FloatWindow and removes itself); and the band handle's static cursor-row-resize hit-target className — the band GESTURE itself runs on usePaneResizeHandle.",
+    "File-level conjunction of three non-divider pieces: clearStaleHover's one-shot self-removing pointermove; the card-lift threshold detector (distance check, then hands off to FloatWindow and removes itself — since task 333 it takes both engine predicates, so a swallowed mouseup tears the detector down instead of leaving it armed to pop a card out on the user's next stray movement); and the band handle's static cursor-row-resize hit-target className — the band GESTURE itself runs on usePaneResizeHandle.",
   "src/hooks/useDragPosition.ts":
-    "Floating-panel drag positioner — RAF-coalesced setPosition (≤1 per frame) on one small fixed panel; body cursor set/cleared on the edges; no persistence (position IS the session state).",
+    "[cost: per move = pointer arithmetic + a RAF-coalesced setPosition on one small fixed panel; per gesture EDGE = one offsetWidth/offsetHeight read] The Preferences window's drag positioner — a position:fixed dialog, not a layout pane; no persistence (position IS the session state), body cursor set/cleared on the edges. Since task 333 it takes BOTH engine predicates from lib/pane-resize/pointer-invariants (`isPrimaryDragStart` gates the mousedown; `isMissedRelease` ends the gesture through the ONE end path, which also cancels the queued frame so no stray coordinate can commit behind it) and snapshots its clamp bounds on the gesture edge in the `MoveGeometry` shape FloatingPanel introduced — the pre-333 RAF body read `panel.offsetWidth`/`offsetHeight` per frame, a forced layout inside the write path for a value that cannot change during the drag.",
   "src/hooks/useMarginEdit.ts":
-    "Margin-edit guides — engine-conformant by hand: frame rect snapshotted at drag start, RAF-coalesced CSS-var writes on the editor column per frame, ONE setLiveMargins commit on release, body cursor on the edges, primary-button start gate + (buttons & 1)===0 mid-move bail + window-blur failsafe closing the missed-release end edge (a release over the compiled-PDF iframe must not ghost-resume or wedge the cursor). Pre-dates the engine; its 4-side axis tables + opposite-side snap live outside the single-value PaneResizeSpec shape.",
+    "Margin-edit guides — engine-conformant by hand: frame rect snapshotted at drag start, RAF-coalesced CSS-var writes on the editor column per frame, ONE setLiveMargins commit on release, body cursor on the edges, primary-button start gate + missed-release mid-move bail (both IMPORTED from lib/pane-resize/pointer-invariants since task 333 — this file previously hand-wrote twins of both predicates, comments and all) + window-blur failsafe closing the missed-release end edge (a release over the compiled-PDF iframe must not ghost-resume or wedge the cursor). Pre-dates the engine; its 4-side axis tables + opposite-side snap live outside the single-value PaneResizeSpec shape.",
   "src/panels/Outline/focus-band-drag.ts":
     "Focus-band edge drag (snap-to-row selection, not a pane resize): row geometry snapshotted at drag start (offsetTop reads, none per frame), RAF-coalesced transient band paint, ONE onSnapBoundary commit on the end edge; body cursor on the edges. Since task 185 it also closes the missed-release end edge the way the engine does — it shares the engine's own predicates (lib/pane-resize/pointer-invariants): primary-button start gate + an isMissedRelease(e) mid-move bail that ends before reading the stray coordinate, plus a teardown end path so unmount can't leave the stamp. Extracted out of OutlinePanel.tsx so the gesture is a testable unit.",
 };
@@ -142,6 +142,75 @@ const PERMITTED_UNCHROMED_RESIZERS: Record<string, string> = {
 // a resize handle earns a role by becoming focusable and arrow-operable with
 // `aria-valuenow/min/max` wired from its clamp, which is the deferred half.
 const PERMITTED_ANNOUNCED_SEPARATORS: Record<string, string> = {};
+
+// ── The pointer-gesture census (task 333) ────────────────────────────────────
+// The BLIND SPOT the chrome census above cannot see, and the reason it is a
+// finding rather than an incidental: `detectWindowDragGesture` is a
+// CONJUNCTION — a window-level move listener AND drag chrome (a body-cursor
+// write, a CSS resize cursor, or the shared handle classes). A whole category
+// of window drag wears none of that. A scrollbar thumb sets no cursor; a
+// hold-threshold detector (the card lift, the marginalia marker re-anchor, the
+// inline-atom grab, the block grab handle) is invisible until it hands off.
+// Every one of those installs window `mousemove` + `mouseup` and owns a
+// gesture, so every one of them owes the two pointer invariants — and four of
+// them silently didn't, for as long as they have existed, with all three
+// existing legs green.
+//
+// So this census asks the WIDER question the law actually asks: *who installs
+// a window-level move listener at all?* Chrome is not part of it. Membership
+// is not the finding — the two legs after it are:
+//
+//   INVARIANTS  — a file that also tears down from a pointer RELEASE owns a
+//                 gesture, and must REFERENCE `lib/pane-resize/pointer-
+//                 invariants`. Allowlist empty: a gesture without the
+//                 predicates stays live after a release it never observed.
+//   NO TWINS    — and it must not RE-DERIVE them. `e.button !== 0` and
+//                 `(e.buttons & 1) === 0` are the two spellings the law names
+//                 (AGENTS.md "Pane-drag stability": *it imports these; it does
+//                 not re-derive them*). Allowlist empty; nine production sites
+//                 carried a twin before task 333.
+//
+// Deliberately file-level, like its sibling: "is this gesture safe" is
+// semantic, so the justification is what carries the verification. A file that
+// merely WATCHES the pointer (a hover tracker) is a legitimate entry and says
+// so; it is exempt from the invariants leg by construction, since it registers
+// no release teardown.
+const PERMITTED_WINDOW_POINTER_LISTENERS: Record<string, string> = {
+  "src/components/FloatingPanel.tsx":
+    "Float move + edge resize — the reference implementation of the four bespoke-gesture obligations (task 330). Also on the chrome census above.",
+  "src/components/Marginalia.tsx":
+    "Marker re-anchor press watcher: a >3px movement arms `suppressClickRef` so the trailing click can't also open the panel; the drop session itself is the drop-mode controller's. Both invariants since task 333 — without the bail a swallowed mouseup left these listeners installed forever, so every later mouse movement re-armed the suppressor and the marker's click stopped opening its panel, permanently.",
+  "src/components/drop-mode/controller.ts":
+    "Drop-mode placement session — the ONE chokepoint every pointer-driven content drag routes through; throttled hit-test, commit once on release, `isMissedRelease` bail (with the LayoutGestureBus in the loop, a swallowed mouseup would wedge every parked follower app-wide). Also on the chrome census above.",
+  "src/components/editor-layout/editor-scrollbar.tsx":
+    "Scrollbar THUMB drag — the category-defining entry: it writes `row.scrollTop` per raw move and wears no drag chrome whatsoever, so the census above is structurally blind to it and it ran with ZERO pointer invariants (not even a button gate) until task 333. Now: primary-button start gate, `isMissedRelease` bail through the one end path. Its per-move write is a scroll position rather than layout state, and the browser coalesces those, so it is deliberately not RAF-gated.",
+  "src/components/panel-primitives.tsx":
+    "Card-lift threshold detector + clearStaleHover's one-shot pointermove. Both invariants since task 333. Also on the chrome census above.",
+  "src/hooks/useDragPosition.ts":
+    "The Preferences window's drag positioner — RAF-coalesced, gesture-edge geometry snapshot, both invariants. Also on the chrome census above.",
+  "src/hooks/useMarginEdit.ts":
+    "Margin-edit guides — engine-conformant by hand, both invariants IMPORTED since task 333. Also on the chrome census above.",
+  "src/lib/tiptap/inline-atom-grab.ts":
+    "Inline-atom grab: an 8px hold-threshold detector that hands the post-threshold gesture to the drop-mode controller. The bail is PRE-threshold only, which is this handler's exclusive ownership window — post-threshold the controller owns the gesture and carries its own bail, so ending it from here would commit the drop at a stale coordinate.",
+  "src/panels/Outline/focus-band-drag.ts":
+    "Focus-band edge drag (snap-to-row selection) — both invariants since task 185. Also on the chrome census above.",
+  "src/text-objects/LiftHost.tsx":
+    "The shared post-threshold lift host: overlay state, window listeners and the terminal policy for every block/text-object lift. Carries `isMissedRelease`.",
+  "src/text-objects/TextObjectGrabHandle.tsx":
+    "TWO listeners, and they are different animals. (a) The grab handle's hold-threshold detector — both invariants since task 333, the bail PRE-threshold only for the same reason inline-atom-grab's is (LiftHost owns the gesture after handoff). (b) A permanent `document` mousemove HOVER tracker that resolves which block the handle should point at: not a gesture, registers no release teardown, and therefore outside the invariants leg by construction.",
+};
+
+/** Empty, and that is the statement: a file that owns a pointer gesture takes
+ *  the two predicates from the engine's SSOT. An entry here would have to
+ *  explain how a gesture survives a release it never observed. */
+const PERMITTED_INVARIANT_FREE_GESTURES: Record<string, string> = {};
+
+/** Empty likewise. A hand-written twin is the "never re-derive" half of the
+ *  law (AGENTS.md "Pane-drag stability"), and it is how the four gestures task
+ *  333 fixed drifted: each looked complete at its own site while agreeing with
+ *  the engine on the start gate and not on the release. MIGRATE it, never list
+ *  it. */
+const PERMITTED_REDERIVED_INVARIANTS: Record<string, string> = {};
 
 /** Strip comments so doctrine prose (this repo documents the banned call
  *  forms heavily) can't read as a live gesture. Strings are KEPT: every needle
@@ -285,12 +354,66 @@ export function findInertlyLabeledDragZones(source: string): string[] {
   );
 }
 
+/**
+ * A window/document-level MOVE listener, chrome or no chrome — the widened
+ * question of the pointer-gesture census (task 333). Same receiver set and
+ * same event alternation as the conjunction below, which reads it, so the two
+ * censuses can never disagree about what counts as a window-level move.
+ */
+export function detectWindowMoveListener(source: string): boolean {
+  return WINDOW_LEVEL_MOVE.test(stripComments(source));
+}
+
+/**
+ * ...and a teardown scoped to a pointer RELEASE. That is what separates a
+ * GESTURE (a press the user is holding, which must survive a release it never
+ * observes) from a permanent hover WATCHER, which has no release to miss and
+ * therefore owes no invariants. Deliberately generous — any window/document
+ * `mouseup`/`pointerup`/`touchend` registration counts, since a gesture that
+ * ends some OTHER way is exactly the shape that must not slip through.
+ */
+export function detectPointerReleaseTeardown(source: string): boolean {
+  return /(?:window|document)(?:\.body|\.documentElement)?\.addEventListener\(\s*["'](?:mouseup|pointerup|touchend)["']/.test(
+    stripComments(source),
+  );
+}
+
+/** Does the file take its predicates from the ONE source? */
+export function referencesPointerInvariants(source: string): boolean {
+  return /\bpane-resize\/pointer-invariants\b/.test(stripComments(source));
+}
+
+/**
+ * A RE-DERIVED invariant: the two spellings the law names. `button !== 0` /
+ * `button === 0` is `isPrimaryDragStart` written out; `buttons & 1` and
+ * `buttons === 0` are `isMissedRelease` written out (the second is the
+ * subtly-wrong variant the SSOT's own docblock exists to explain — it keeps a
+ * button-up drag tracking while a second button is chorded).
+ *
+ * Returns the offending fragments so a failure names them. Comments are
+ * stripped and literals KEPT, as everywhere in this file: the drift lives in
+ * code, and this repo documents the banned forms heavily.
+ */
+export function findRederivedInvariants(source: string): string[] {
+  const src = stripComments(source);
+  return [
+    ...src.matchAll(
+      /\bbuttons\s*&\s*1|\bbuttons\s*===?\s*0|\bbutton\s*!==?\s*0|\bbutton\s*===?\s*0/g,
+    ),
+  ].map((m) => m[0]);
+}
+
+/** The receiver + event alternation BOTH censuses key on (see the class
+ *  docblock above for why each is as wide as it is). Declared once so the
+ *  widened pointer-gesture census and this conjunction can never disagree
+ *  about what a window-level move listener is. Stateless — no /g flag, since a
+ *  shared RegExp with one would carry `lastIndex` between callers. */
+const WINDOW_LEVEL_MOVE =
+  /(?:window|document)(?:\.body|\.documentElement)?\.addEventListener\(\s*["'](?:pointermove|mousemove|touchmove)["']/;
+
 export function detectWindowDragGesture(source: string): boolean {
   const src = stripComments(source);
-  const windowLevelMove =
-    /(?:window|document)(?:\.body|\.documentElement)?\.addEventListener\(\s*["'](?:pointermove|mousemove|touchmove)["']/.test(
-      src,
-    );
+  const windowLevelMove = WINDOW_LEVEL_MOVE.test(src);
   const dragChrome =
     /(?:body|documentElement)\.style\.cursor\s*=/.test(src) ||
     // The complete set of CSS resize cursors — `-resize\b`-anchored so a
@@ -778,5 +901,130 @@ describe("pane-drag guardrail — divider a11y-announcement census (task 189)", 
     const out = stripComments(trap);
     expect(out).toContain("band-grip");
     expect(out).toContain("data-resize-edge");
+  });
+});
+
+// ── Task 333: the pointer-gesture census ─────────────────────────────────────
+// The chrome census at the top of this file detects a bespoke DIVIDER. It is
+// structurally blind to a bespoke gesture that paints no divider chrome —
+// which is most of them — and that blindness is how four gestures shipped
+// without the two invariants the law makes mandatory. These three legs ask the
+// wider question and then ask the two that have teeth.
+describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
+  const files = walkBothSilos();
+  const listeners = files.filter((f) => detectWindowMoveListener(f.source));
+
+  it("censuses every window-level move listener in both silos — chrome or no chrome", () => {
+    // EXTRA file = a new pointer gesture (or hover watcher) landed. Verify it
+    // against the four obligations (AGENTS.md "Pane-drag stability":
+    // coalesce / snapshot geometry at the gesture edge / commit once / the two
+    // pointer invariants), then list it here with that justification. If it
+    // resizes a pane it does not belong here at all — migrate it onto
+    // `usePaneResizeHandle`.
+    expect(listeners.map((f) => f.rel).sort()).toEqual(
+      Object.keys(PERMITTED_WINDOW_POINTER_LISTENERS).sort(),
+    );
+  });
+
+  it("every censused GESTURE takes its pointer invariants from the SSOT", () => {
+    // The leg with teeth. A file that installs a window move listener AND
+    // tears down from a pointer release owns a held gesture, so it must
+    // reference `lib/pane-resize/pointer-invariants`. A hover WATCHER (no
+    // release teardown) is exempt by construction, not by allowlist.
+    const gestures = listeners.filter((f) =>
+      detectPointerReleaseTeardown(f.source),
+    );
+    // Anchor: if the release-teardown needle ever stops matching, this leg
+    // goes vacuously green while every gesture drifts. Ten of the eleven
+    // censused files own a gesture (TextObjectGrabHandle owns one AND the lone
+    // hover watcher, so it is counted here through its gesture half).
+    expect(gestures.length).toBeGreaterThanOrEqual(10);
+    const bare = gestures
+      .filter((f) => !referencesPointerInvariants(f.source))
+      .map((f) => f.rel)
+      .sort();
+    expect(bare).toEqual(Object.keys(PERMITTED_INVARIANT_FREE_GESTURES).sort());
+  });
+
+  it("no production file RE-DERIVES an invariant the SSOT publishes", () => {
+    // The other leg with teeth, and the one the census above cannot reach: a
+    // gesture can reference the SSOT for its start gate and still hand-write
+    // its release bail (or vice versa) — which is precisely how `useMarginEdit`
+    // sat correct-but-forked, restating the engine's reasoning verbatim in its
+    // own comments. Swept over BOTH silos, not just the censused files: a
+    // `button !== 0` gate on a click handler is the same re-derivation, and it
+    // is where the next gesture's start gate gets copied from.
+    const offenders = files
+      .map((f) => ({ rel: f.rel, hits: findRederivedInvariants(f.source) }))
+      .filter((f) => f.hits.length > 0);
+    expect(
+      Object.fromEntries(offenders.map((o) => [o.rel, o.hits])),
+      "import isPrimaryDragStart / isMissedRelease from @/lib/pane-resize/pointer-invariants instead",
+    ).toEqual(
+      Object.fromEntries(
+        Object.keys(PERMITTED_REDERIVED_INVARIANTS).map((k) => [k, expect.any(Array)]),
+      ),
+    );
+  });
+
+  it("would flag the four pre-333 shapes, and lets a hover watcher through (fixtures)", () => {
+    // (a) A chrome-less gesture: the scrollbar thumb verbatim. The chrome
+    //     census returns FALSE for it — that is the blind spot, pinned.
+    const chromelessThumb = `
+      const onThumbMouseDown = (e) => {
+        const onMove = (mv) => { row.scrollTop = startScroll + (mv.clientY - startY) * ratio; };
+        const onUp = () => {
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      };
+    `;
+    expect(detectWindowDragGesture(chromelessThumb)).toBe(false);
+    expect(detectWindowMoveListener(chromelessThumb)).toBe(true);
+    expect(detectPointerReleaseTeardown(chromelessThumb)).toBe(true);
+    expect(referencesPointerInvariants(chromelessThumb)).toBe(false);
+
+    // (b) A hold-threshold detector: a gesture until it hands off, and the
+    //     shape that pops a card out on a stray move after a swallowed
+    //     mouseup. Same three answers as (a) — it is the same category.
+    const thresholdDetector = `
+      const onMove = (ev) => {
+        if (triggered) return;
+        const dx = ev.clientX - startX, dy = ev.clientY - startY;
+        if (dx * dx + dy * dy < THRESHOLD * THRESHOLD) return;
+        triggered = true;
+        popOut();
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    `;
+    expect(detectWindowMoveListener(thresholdDetector)).toBe(true);
+    expect(detectPointerReleaseTeardown(thresholdDetector)).toBe(true);
+
+    // (c) Both re-derivation spellings, including the subtly-wrong
+    //     `buttons === 0` the SSOT's docblock exists to warn about.
+    expect(findRederivedInvariants(`if (e.button !== 0) return;`)).toEqual(["button !== 0"]);
+    expect(findRederivedInvariants(`if ((mv.buttons & 1) === 0) onUp();`)).toEqual(["buttons & 1"]);
+    expect(findRederivedInvariants(`if (e.buttons === 0) end();`)).toEqual(["buttons === 0"]);
+    // A file that IMPORTS them re-derives nothing.
+    expect(
+      findRederivedInvariants(
+        `import { isMissedRelease } from "@/lib/pane-resize/pointer-invariants";
+         if (isMissedRelease(mv)) return;`,
+      ),
+    ).toEqual([]);
+    // Prose naming the banned form is not a re-derivation (comments stripped).
+    expect(findRederivedInvariants(`// never write button !== 0 by hand`)).toEqual([]);
+
+    // (d) A permanent hover tracker: censused as a listener, exempt from the
+    //     invariants leg because it has no release to miss.
+    const hoverWatcher = `
+      document.addEventListener("mousemove", onMouseMove);
+      return () => document.removeEventListener("mousemove", onMouseMove);
+    `;
+    expect(detectWindowMoveListener(hoverWatcher)).toBe(true);
+    expect(detectPointerReleaseTeardown(hoverWatcher)).toBe(false);
   });
 });

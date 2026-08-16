@@ -7,6 +7,10 @@ import {
   parkDuringLayoutGesture,
   type LayoutGestureKind,
 } from "@/lib/pane-resize";
+import {
+  isMissedRelease,
+  isPrimaryDragStart,
+} from "@/lib/pane-resize/pointer-invariants";
 import { LAYOUT_SITE_EDITOR_SCROLLBAR } from "@/lib/layout-gesture-probe";
 import { SCROLLBAR_THUMB_WIDTH, SCROLLBAR_RIGHT_INSET } from "./constants";
 import {
@@ -285,9 +289,13 @@ export function EditorScrollbar({
 
   const onThumbMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      e.preventDefault();
       const row = rowRef.current;
-      if (!row) return;
+      // Primary button only (the engine's own predicate): a right-press must
+      // not begin a gesture whose end event the context menu then eats — this
+      // thumb had NO button gate at all, so a right-click on it started a drag
+      // that then tracked the pointer with nothing left to end it.
+      if (!isPrimaryDragStart(e) || !row) return;
+      e.preventDefault();
       setDragging(true);
       scheduleFade();
       const startY = e.clientY;
@@ -295,15 +303,25 @@ export function EditorScrollbar({
       const trackPx = layout.height - thumbHeight;
       const scrollPx = scroll.height - scroll.client;
       const ratio = trackPx > 0 ? scrollPx / trackPx : 0;
-      const onMove = (mv: MouseEvent) => {
-        const dy = mv.clientY - startY;
-        row.scrollTop = startScroll + dy * ratio;
-      };
+      // ONE end path — release, missed release, both.
       const onUp = () => {
         setDragging(false);
         scheduleFade();
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
+      };
+      const onMove = (mv: MouseEvent) => {
+        // Missed-release failsafe (task 185): the primary button is up, so the
+        // release happened somewhere we never observed. End the gesture and do
+        // NOT scroll by this event's coordinate — without it the document
+        // ghost-scrolls under a released pointer all the way back to the
+        // thumb's start offset.
+        if (isMissedRelease(mv)) {
+          onUp();
+          return;
+        }
+        const dy = mv.clientY - startY;
+        row.scrollTop = startScroll + dy * ratio;
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);

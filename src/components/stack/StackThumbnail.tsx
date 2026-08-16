@@ -10,6 +10,7 @@
  */
 
 import { useMemo } from "react";
+import { isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
 import type { StackItem } from "@/lib/stack/types";
 import { STACK_PULL_PREFIX } from "@/lib/stack/types";
 import { beginDropSession } from "@/components/drop-mode/controller";
@@ -29,8 +30,8 @@ export function StackThumbnail({ item, onRemove }: StackThumbnailProps) {
     // Suppress when the click was on the X — its own handler fires.
     const target = e.target as HTMLElement;
     if (target.closest("[data-stack-thumb-x]")) return;
-    // Only left button.
-    if (e.button !== 0) return;
+    // Only left button — the engine's start gate (SSOT, never re-derived).
+    if (!isPrimaryDragStart(e)) return;
     e.preventDefault();
     e.stopPropagation();
     beginDropSession({

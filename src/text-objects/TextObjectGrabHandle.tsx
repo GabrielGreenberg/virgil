@@ -63,6 +63,10 @@ import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import { geomHoverEnabled, getGeometry } from "@/lib/editor-geometry";
 import { onFontReady, opticalCenterY } from "@/lib/text-metrics";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
+import {
+  isMissedRelease,
+  isPrimaryDragStart,
+} from "@/lib/pane-resize/pointer-invariants";
 import { LAYOUT_SITE_GRAB_HANDLE } from "@/lib/layout-gesture-probe";
 import {
   TEXT_OBJECT_REGISTRY,
@@ -567,7 +571,8 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     handleEl: HTMLDivElement,
     startRef: TextObjectRef | SelectionRef,
   ) => {
-    if (downEv.button !== 0) return;
+    // The engine's start gate (SSOT, never re-derived).
+    if (!isPrimaryDragStart(downEv)) return;
     downEv.preventDefault();
     downEv.stopPropagation();
     const editor = editorRef.current;
@@ -587,6 +592,16 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
 
     const onMove = (mv: MouseEvent) => {
       if (triggered) return;
+      // Missed-release failsafe (task 185/333) — PRE-threshold only, which is
+      // this handler's exclusive ownership window: once the threshold is
+      // crossed the gesture belongs to `LiftHost`, which carries its own
+      // `isMissedRelease` bail. Without this, a swallowed mouseup left the
+      // detector armed and the user's next stray movement lifted the block
+      // out of the document from a press they had already released.
+      if (isMissedRelease(mv)) {
+        cleanup();
+        return;
+      }
       const dx = mv.clientX - startX;
       const dy = mv.clientY - startY;
       if (dx * dx + dy * dy < LIFT_THRESHOLD * LIFT_THRESHOLD) return;

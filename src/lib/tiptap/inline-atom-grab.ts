@@ -33,6 +33,10 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import type { RefObject } from "react";
 import {
+  isMissedRelease,
+  isPrimaryDragStart,
+} from "@/lib/pane-resize/pointer-invariants";
+import {
   ATOM_DOM_SELECTOR,
   atomMetaForDomType,
   type AtomMeta,
@@ -124,6 +128,19 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
 
     const onMove = (e: MouseEvent) => {
       if (!pending) return;
+      // Missed-release failsafe (task 185/333) — PRE-threshold only, which is
+      // this handler's exclusive ownership window. A swallowed mouseup used to
+      // leave `pending` armed with these listeners installed, so the user's
+      // next stray movement crossed the threshold and started a whole drop
+      // session (ghost, click suppressor and all) from a press they had
+      // already released. Post-threshold the drop-mode controller owns the
+      // gesture and carries its OWN `isMissedRelease` bail — ending it from
+      // here would commit the drop at a stale coordinate.
+      if (!pending.triggered && isMissedRelease(e)) {
+        clearInlineAtomSource();
+        cleanup();
+        return;
+      }
       if (pending.triggered) {
         // Post-threshold: the controller's own mousemove drives the hit-test
         // + indicator; here we only keep the floating ghost glued to the
@@ -205,7 +222,8 @@ export const InlineAtomGrab = Extension.create<InlineAtomGrabOptions>({
           handleDOMEvents: {
             mousedown(view, event) {
               if (pending) return false;
-              if (event.button !== 0) return false;
+              // The engine's start gate (SSOT, never re-derived).
+              if (!isPrimaryDragStart(event)) return false;
               if (
                 event.shiftKey ||
                 event.metaKey ||

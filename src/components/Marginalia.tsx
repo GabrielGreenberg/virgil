@@ -30,6 +30,10 @@ import { getOrCreateGeometry } from "@/lib/editor-geometry";
 import type { EditorViewportFrame } from "@/lib/editor-geometry/viewport-frame";
 import { buildFloatKey } from "@/floats/float-key";
 import { beginCardDropGesture } from "@/components/drop-mode/card-drop-gesture";
+import {
+  isMissedRelease,
+  isPrimaryDragStart,
+} from "@/lib/pane-resize/pointer-invariants";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import type { PanelSideMap } from "@/lib/margin-side";
 import {
@@ -362,8 +366,9 @@ export function MarkerButton({
       data-hint={m.title || meta.label}
       onMouseDown={reanchorKey ? (e) => {
         // Primary button only — a right/middle press passes through to native
-        // behavior (matches inline-atom-grab + the header lift + CardDropButton).
-        if (e.button !== 0) return;
+        // behavior. The predicate is the engine's SSOT
+        // (lib/pane-resize/pointer-invariants), never re-derived.
+        if (!isPrimaryDragStart(e)) return;
         // Don't let the press bubble into the card-root lift / native drag.
         e.stopPropagation();
         e.preventDefault();
@@ -381,17 +386,26 @@ export function MarkerButton({
         suppressClickRef.current = false;
         const startX = e.clientX;
         const startY = e.clientY;
+        const onUp = () => {
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        };
         const onMove = (ev: MouseEvent) => {
+          // Missed-release failsafe (task 185/333). Two costs without it, and
+          // the second is the one that bites: a swallowed mouseup leaves these
+          // listeners installed forever, so every later mouse movement re-arms
+          // `suppressClickRef` and the marker's click stops opening its panel.
+          // Do NOT read this event's coordinate — it is not part of the drag.
+          if (isMissedRelease(ev)) {
+            onUp();
+            return;
+          }
           if (
             Math.abs(ev.clientX - startX) > 3 ||
             Math.abs(ev.clientY - startY) > 3
           ) {
             suppressClickRef.current = true;
           }
-        };
-        const onUp = () => {
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
         };
         window.addEventListener("mousemove", onMove);
         window.addEventListener("mouseup", onUp);

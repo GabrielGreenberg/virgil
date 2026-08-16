@@ -6,6 +6,10 @@ import {
   MARGINALIA_MIN_MARGIN_LEFT,
   MARGINALIA_MIN_MARGIN_RIGHT,
 } from "@/lib/marginalia";
+import {
+  isMissedRelease,
+  isPrimaryDragStart,
+} from "@/lib/pane-resize/pointer-invariants";
 
 /**
  * Margin-edit state machine for the editor pod's reading viewport.
@@ -363,9 +367,11 @@ export function useMarginEdit({
   const beginDrag = useCallback(
     (e: React.MouseEvent<HTMLElement>, side: MarginSide) => {
       // Primary button only (pane-resize-engine contract): the mid-move
-      // buttons failsafe below keys on the primary bit, and a right-click
-      // must not start a gesture whose end edge the context menu then eats.
-      if (e.button !== 0) return;
+      // failsafe below keys on the primary bit, and a right-click must not
+      // start a gesture whose end edge the context menu then eats. Taken from
+      // the engine's SSOT rather than re-derived — this file carried
+      // hand-written twins of BOTH predicates, comments and all (task 333).
+      if (!isPrimaryDragStart(e)) return;
       e.preventDefault();
       e.stopPropagation();
       // Measure the drag against the GUIDE OVERLAY (`data-margin-frame`),
@@ -447,10 +453,10 @@ export function useMarginEdit({
         // cursor releases over it — without this bail the guide would
         // ghost-resume on re-entry and a later stray mouseup would commit a
         // margin the user never chose. Primary button up ⇒ end with the last
-        // live value, WITHOUT incorporating this event's coordinate. Bit
-        // test, not `buttons === 0`, so a chorded second button can't mask
-        // the primary release.
-        if ((mv.buttons & 1) === 0) {
+        // live value, WITHOUT incorporating this event's coordinate. The bit
+        // test lives in the SSOT; the reasoning is restated here because it
+        // is what makes the bail correct at THIS site.
+        if (isMissedRelease(mv)) {
           onUp();
           return;
         }

@@ -112,7 +112,10 @@ function dragHeader(container: HTMLElement) {
   const header = container.querySelector('[data-card-header="1"]') as HTMLElement;
   expect(header).toBeTruthy();
   fireEvent.mouseDown(header, { button: 0, clientX: 10, clientY: 10 });
-  fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 60, clientY: 60 }));
+  // `buttons: 1` is load-bearing since task 333: the detector now bails on a
+  // move that arrives with the primary button up (jsdom's default), which is
+  // exactly how a swallowed mouseup used to leave it armed. A held drag says so.
+  fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 60, clientY: 60, buttons: 1 }));
   fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
 }
 

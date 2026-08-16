@@ -147,7 +147,8 @@ describe("suppress-click guard after a lift gesture", () => {
 
     // Press on the header, drag past the 5px threshold → lift triggers.
     fireEvent.mouseDown(header, { button: 0, clientX: 10, clientY: 10 });
-    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 40, clientY: 40 }));
+    // `buttons: 1` is load-bearing since task 333 — see card-lift-affordance.
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 40, clientY: 40, buttons: 1 }));
     expect(onTogglePopout).toHaveBeenCalledTimes(1);
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
 
@@ -232,7 +233,7 @@ describe("lift spawn rect + handoff (backlog #20 wiring)", () => {
   function driveLift() {
     const header = screen.getByLabelText(/Expand card|Collapse card/);
     fireEvent.mouseDown(header, { button: 0, clientX: 10, clientY: 10 });
-    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 40, clientY: 40 }));
+    fireEvent(window, new MouseEvent("mousemove", { bubbles: true, clientX: 40, clientY: 40, buttons: 1 }));
     fireEvent(window, new MouseEvent("mouseup", { bubbles: true }));
   }
 
