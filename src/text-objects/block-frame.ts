@@ -321,8 +321,27 @@ function markerElementLeft(
 function bulletBandAnchor(li: HTMLElement, contentLeft: number): number {
   const list = li.closest("ul, ol");
   if (!(list instanceof HTMLElement)) return contentLeft;
+  return bulletBandAnchorIn(list, li.getBoundingClientRect().left);
+}
+
+/**
+ * {@link bulletBandAnchor} for a caller that ALREADY holds the list element and
+ * the item's measured left edge — the markerless-container arm, where `el` IS
+ * the `<ul>`/`<ol>`. Splitting it out drops that arm's duplicate work: before
+ * task 336 it read the child's rect, then handed the child to
+ * `bulletBandAnchor`, which walked `closest("ul, ol")` back to the very element
+ * it was called from and read the child's rect a SECOND time.
+ *
+ * The `padding-left` read stays: the band is authored in `em` on the parent list
+ * (`.tiptap ul { padding-left: 1.5em }`), and the tempting rect-only derivation
+ * — the midpoint of the list box's left and the item's left — is equal to this
+ * only while the list carries no left border and the item no left margin, which
+ * is a stylesheet fact no code here can check. One computed-style read per
+ * container placement, off the keystroke path since the modality gate.
+ */
+function bulletBandAnchorIn(list: HTMLElement, liLeft: number): number {
   const padLeft = parseFloat(getComputedStyle(list).paddingLeft) || 0;
-  return li.getBoundingClientRect().left - padLeft / 2;
+  return liLeft - padLeft / 2;
 }
 
 /**
@@ -362,8 +381,12 @@ export function resolveMarkerLeft(
       // uniform gap left of its first item's handle (`⠿⠿ • text`).
       const child = el.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
       if (!child) return contentLeft - trackWidthPx;
-      const childLeft = child.getBoundingClientRect().left;
-      return bulletBandAnchor(child, childLeft) - trackWidthPx;
+      // `el` IS the list, so the band resolves with no `closest()` walk and ONE
+      // rect read for the child (task 336 — the pre-fix line read it twice).
+      return (
+        bulletBandAnchorIn(el, child.getBoundingClientRect().left) -
+        trackWidthPx
+      );
     }
     default:
       return contentLeft;
@@ -433,11 +456,20 @@ export function resolveBlockFrame(
   const { target, firstLineRect, contentLeft, contentWidth, contentRight } =
     resolveContentEdges(el);
 
+  // ---- The target's computed style: read ONCE, used twice ----
+  // Both the vertical axis (via `capBandCenterOffset`'s font metrics) and the
+  // em margin tokens below read `target`'s computed style. Reading it here and
+  // threading it into the metrics primitive halves this resolve's
+  // computed-style count for EVERY block kind (task 336; before the fix the
+  // optical-center line issued its own `getComputedStyle` on the same element
+  // one line above the read below).
+  const cs = getComputedStyle(target);
+
   // ---- Vertical axis (chip 1) ----
   // Composed from the shared `capBandCenterOffset` primitive (one
   // `measureFontMetrics` read) so this optical center, the marginalia markers,
   // and the selection grab handle can never drift from a copied expression.
-  const opticalCenterY = firstLineRect.top + capBandCenterOffset(target);
+  const opticalCenterY = firstLineRect.top + capBandCenterOffset(target, cs);
   const root: HTMLElement | null =
     cache?.editorEl ?? (editor?.view?.dom as HTMLElement | null) ?? null;
   const depth = countUuidAncestors(el, root);
@@ -447,8 +479,8 @@ export function resolveBlockFrame(
   // for paragraphs / example items / headings — AND now the `<li>`→inner-`<p>`
   // case (task 217), so `target` is already the prose element the optical
   // center reads. No separate `fontEl` descent: the em token and the chip-1
-  // optical center read the SAME element by construction.
-  const cs = getComputedStyle(target);
+  // optical center read the SAME element by construction — and, since task 336,
+  // from the SAME `getComputedStyle` call (read above).
   const fontSizePx = parseFloat(cs.fontSize) || DEFAULT_HANDLE_GAP_PX * 1.6;
   const gapPx = resolveMarginEm(
     cs,

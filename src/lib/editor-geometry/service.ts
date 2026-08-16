@@ -45,6 +45,7 @@ import {
   findRowScroll,
 } from "@/components/editor-layout/layout-scroll";
 import { getBus } from "@/lib/tiptap/doc-structure";
+import { resolveGlyphAnchor } from "./glyph-anchor";
 import {
   recordKeystrokeWork,
   KEYSTROKE_WORK_MARGINALIA_RO,
@@ -148,10 +149,11 @@ export function measureBlock(
     // [data-glyph-anchor] override — a NodeView's declared "visual top" for
     // kinds whose wrapper carries label chrome above the pod (titled tex-block
     // pod, expex `(n)` number). Consulted for both atoms and the rare non-atom
-    // container that declares it, before the text SSOT.
-    const anchorOverride = dom.querySelector(
-      "[data-glyph-anchor]",
-    ) as HTMLElement | null;
+    // container that declares it, before the text SSOT. KIND-GATED since task
+    // 336: an unconditional query costs a FULL-SUBTREE walk to report the
+    // no-match that is the only possible answer for prose and containers — a
+    // whole-list scan per wrap-changing keystroke on a `bulletList`.
+    const anchorOverride = resolveGlyphAnchor(dom);
 
     // ── Atoms: anchor on the element's own border-box top (no text line). ──
     if (isAtom) {
@@ -194,7 +196,13 @@ export function measureBlock(
       // vertical anchor grab handles use, via the shared `opticalCenterY`
       // primitive (block-frame.ts `opticalCenterY` composes the same one).
       // Store `optical − lineHeight/2` so the grid centers the icon on it.
-      const optical = opticalCenterY(targetRect.top - hostRect.top, target);
+      // `style` is threaded in: it is already this target's computed style, and
+      // the primitive would otherwise read it a second time (task 336).
+      const optical = opticalCenterY(
+        targetRect.top - hostRect.top,
+        target,
+        style,
+      );
       top = optical - lineHeight / 2;
     }
 
@@ -276,6 +284,12 @@ export interface GeometryStats {
    *  after the near-zone populates. */
   blocksAtYCalls: number;
   blocksAtYNulls: number;
+  /** Invalidation cascades run (task 336). Each is one O(observed) pass, so
+   *  the contract this counter exists to make visible is ONE PER RO FLUSH,
+   *  never one per entry — a rewrap inside a list delivers the `<li>` and its
+   *  title wrapper together, and a cascade from the topmost of them subsumes
+   *  the other. Typing that changes no wrap leaves it flat. */
+  cascades: number;
 }
 
 /** A hover hit from {@link EditorGeometryService.blocksAtY} — the block's
@@ -461,6 +475,7 @@ export function createEditorGeometryService(
   // mousemove-work visibility the diagnosis flagged as a probe blind spot).
   let blocksAtYCalls = 0;
   let blocksAtYNulls = 0;
+  let cascades = 0;
 
   // ── Viewport frame (C7) ──────────────────────────────────────────────────
   // ONE cached frame per editor, its own subscriber channel (frame changes
@@ -656,28 +671,45 @@ export function createEditorGeometryService(
   }
 
   /**
-   * Invalidate cached Y for `uuid` and for every block below it in
-   * document order — a height change in N shifts blocks N+1, N+2, …
-   * down by the delta. We don't compute the delta, we just re-measure
-   * on the next RAF (option (c) from the audit memo: safer than
+   * Invalidate cached Y for every uuid in `uuids` and for every block below the
+   * TOPMOST of them in document order — a height change in N shifts blocks
+   * N+1, N+2, … down by the delta. We don't compute the delta, we just
+   * re-measure on the next RAF (option (c) from the audit memo: safer than
    * computing the delta from a possibly-stale cached height).
+   *
+   * Takes the whole RO FLUSH rather than one entry at a time (task 336). A
+   * cascade from index `i` is a superset of a cascade from any `j > i`, so N
+   * entries in one flush produce ONE pass over `observed` from the minimum
+   * index — O(entries + observed) instead of O(entries × observed). The batch
+   * shape is not hypothetical: a wrap-changing keystroke inside a list resizes
+   * BOTH the `<li>` and its title wrapper, and both are uuid-observed, so the
+   * commonest list keystroke delivered two entries and paid the cascade twice
+   * for a result identical to paying it once.
+   *
+   * Only OBSERVED (near-zone) blocks have metrics to refresh, so the cascade
+   * intersects with `observed` rather than walking the doc tail (S3b — with the
+   * O(1) `orderIndex` lookup replacing the old O(doc) `indexOf`). An off-zone
+   * block below re-measures on its own IO ENTER; a DETACHED block's kept-alive
+   * cache entry survives an unrelated cascade, which is what the detach path
+   * always intended ("stale metrics beat a culled marker until the re-observe
+   * re-measures"). A uuid with no `orderIndex` still invalidates ITSELF —
+   * unchanged from the per-entry form, which likewise skipped the cascade.
    */
-  function invalidateFromUuid(uuid: string) {
-    pendingRecompute.add(uuid);
-    const idx = orderIndex.get(uuid);
-    if (idx !== undefined) {
-      // Blocks BELOW the resized one shift by its height delta — but only
-      // OBSERVED (near-zone) blocks have metrics to refresh, so the cascade
-      // intersects with `observed`: O(observed) per RO entry, not O(doc
-      // tail) (S3b — with the O(1) `orderIndex` lookup replacing the old
-      // O(doc) `indexOf`, a reflow entry costs O(near-zone) total). An
-      // off-zone block below re-measures on its own IO ENTER; a DETACHED
-      // block's kept-alive cache entry now survives an unrelated cascade
-      // too, which is what the detach path always intended ("stale metrics
-      // beat a culled marker until the re-observe re-measures").
+  function invalidateFromUuids(uuids: Iterable<string>) {
+    let minIdx = Infinity;
+    let any = false;
+    for (const uuid of uuids) {
+      any = true;
+      pendingRecompute.add(uuid);
+      const idx = orderIndex.get(uuid);
+      if (idx !== undefined && idx < minIdx) minIdx = idx;
+    }
+    if (!any) return;
+    cascades++;
+    if (minIdx !== Infinity) {
       for (const u of observed.keys()) {
         const i = orderIndex.get(u);
-        if (i !== undefined && i >= idx) pendingRecompute.add(u);
+        if (i !== undefined && i >= minIdx) pendingRecompute.add(u);
       }
     }
     fireRecompute();
@@ -943,21 +975,23 @@ export function createEditorGeometryService(
       fireViewportRefresh();
     }
     if (isLayoutGestureActive()) {
-      // Mid-gesture the ENTIRE observed set is moving, so the per-entry
-      // invalidation is both redundant and quadratic: `invalidateFromUuid`
-      // is O(docOrder) per entry, and a width change delivers one entry per
-      // block — O(blocks²) per frame at 300+ blocks. Collapse it to one
-      // O(observed) "everything is dirty" mark; the park then defers the
-      // single measure pass to the gesture's end edge.
+      // Mid-gesture the ENTIRE observed set is moving, so a per-block
+      // invalidation is both redundant and quadratic: a width change delivers
+      // one entry per block, so a cascade per entry is O(blocks²) per frame at
+      // 300+ blocks. Collapse it to one O(observed) "everything is dirty" mark;
+      // the park then defers the single measure pass to the gesture's end edge.
+      // (Off-gesture the same collapse is `invalidateFromUuids` below, which
+      // cascades ONCE from the flush's topmost entry.)
       recomputeAllObserved();
       return;
     }
+    const dirty: string[] = [];
     for (const entry of entries) {
       const el = entry.target as HTMLElement;
       const uuid = el.getAttribute("data-uuid");
-      if (!uuid) continue;
-      invalidateFromUuid(uuid);
+      if (uuid) dirty.push(uuid);
     }
+    invalidateFromUuids(dirty);
   }
 
   /**
@@ -1146,6 +1180,7 @@ export function createEditorGeometryService(
       version,
       blocksAtYCalls,
       blocksAtYNulls,
+      cascades,
     }),
     blocksAtY: (clientY) => {
       blocksAtYCalls++;

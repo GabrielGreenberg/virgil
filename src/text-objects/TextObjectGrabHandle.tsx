@@ -26,6 +26,14 @@
  *      no handles. (Cursor-based discovery is intentionally removed —
  *      the handle is a pure hover affordance, like a tooltip.)
  *
+ * Modality (task 336): branch 3 is the only POINTER-derived branch, so it is
+ * answered only while the user is in POINTER modality. A keystroke hides the
+ * handle until the next real `mousemove` re-arms it — the standard editor
+ * behaviour, and the reason a keystroke no longer re-runs a hover hit-test at
+ * a pointer that never moved. Branches 1/2 are SELECTION-derived and keep
+ * answering on `selectionUpdate` (a shift-arrow selection must move its
+ * handle). The rule lives in `@/lib/input-modality`, not here.
+ *
  * Rendering: handles portal into `[data-grab-handle-portal]` mounted
  * inside `editor-pane-column` as a sibling of the editor pod. The
  * column placement (rather than inside `paper-render`) is required: the
@@ -62,6 +70,11 @@ import { type EditorViewportFrame } from "@/lib/editor-geometry";
 import { useViewportFrame } from "@/lib/editor-geometry/use-viewport-frame";
 import { geomHoverEnabled, getGeometry } from "@/lib/editor-geometry";
 import { onFontReady, opticalCenterY } from "@/lib/text-metrics";
+import {
+  isTypingModality,
+  notePointerInput,
+  subscribeInputModality,
+} from "@/lib/input-modality";
 import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import {
   isMissedRelease,
@@ -779,7 +792,17 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       }
       // 3. Mouse hover — every containing TextObject level via Y-axis
       // containment scan over the editor's [data-uuid] decorations.
-      const mouse = mousePosRef.current;
+      //
+      // THE ONE POINTER-DERIVED BRANCH, so it is answered only in POINTER
+      // modality (task 336). The physical pointer is armed for the whole
+      // session — it rests wherever the user last clicked to place the caret —
+      // and this component subscribes to docChanged AND selectionUpdate, so
+      // before the gate every keystroke re-ran the hover hit-test plus one
+      // `computePlacement` per containing level at a pointer that never moved.
+      // While the user types, the handle HIDES (branches 1/2 still answer: a
+      // selection handle is selection-derived, not pointer-derived); the next
+      // real `mousemove` re-arms it. See `@/lib/input-modality`.
+      const mouse = isTypingModality() ? null : mousePosRef.current;
       if (mouse) {
         return resolveTextObjectsAtMouse(
           editor,
@@ -830,15 +853,25 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     };
     scheduleRefRef.current = scheduleRaf;
 
-    const onSelectionUpdate = () => scheduleRaf();
-    const onDocUpdate = ({
+    // DECLARATIONS, not consts: `cleanupListeners` (above) detaches all three
+    // of these, and it runs from `ensureSubscribed` — which `poll()` calls
+    // SYNCHRONOUSLY inside this effect body. With `const`, a mount whose
+    // `editorRef.current` is already non-null (a warm keep-alive re-mount)
+    // reached the detach while they were still in the temporal dead zone and
+    // threw out of the effect, taking the whole handle with it. Hoisting is the
+    // fix that doesn't reorder the effect. Identity is preserved for the
+    // `editor.off(...)` pairs by construction.
+    function onSelectionUpdate() {
+      scheduleRaf();
+    }
+    function onDocUpdate({
       transaction,
     }: {
       transaction: import("@tiptap/pm/state").Transaction;
-    }) => {
+    }) {
       if (!transaction.docChanged) return;
       scheduleRaf();
-    };
+    }
 
     const ensureSubscribed = () => {
       const editor = editorRef.current;
@@ -898,7 +931,15 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
     const onResize = () => {
       gesturePark.fire();
     };
-    const onMouseMove = (e: MouseEvent) => {
+    // A declaration for the same hoisting reason as `onDocUpdate` above.
+    function onMouseMove(e: MouseEvent) {
+      // A REAL pointer event: restore pointer modality, so the hover branch
+      // becomes answerable again after a typing burst (task 336). Reported
+      // BEFORE the hover-zone check — a move that leaves the zone is pointer
+      // input too, and it must be able to clear a stale handle. O(1), and it
+      // notifies only on the flip edge, so a 240 Hz move stream costs one
+      // boolean compare per event.
+      notePointerInput();
       // Always-on tracking: hover is the primary discovery mechanism, so
       // the position must update during text selection / node selection
       // too. (The resolver prioritizes selection/node refs above hover,
@@ -923,7 +964,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       // the gesture's end edge; outside a gesture `fire()` runs inline and
       // hover behaves exactly as before.
       gesturePark.fire();
-    };
+    }
     const onDocSelectionChange = () => {
       const editor = editorRef.current;
       if (!editor || editor.isDestroyed) return;
@@ -968,6 +1009,13 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       }
     };
 
+    // Modality FLIPS only — never per event (task 336). The first keystroke of
+    // a burst schedules ONE resolve, which yields no hover refs and so hides
+    // the handle; the rest of the burst schedules nothing from here. The flip
+    // back to pointer rides the same `onMouseMove` that already schedules, so
+    // the two coalesce into one RAF.
+    const unsubModality = subscribeInputModality(() => scheduleRaf());
+
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);
     // DOM listeners (mousemove, mouseleave) attach via `ensureSubscribed`
@@ -987,6 +1035,7 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
       }
       subscribedEditorRef.current = null;
       prevEditor = null;
+      unsubModality();
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
       gesturePark.dispose();
