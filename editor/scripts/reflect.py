@@ -726,6 +726,14 @@ def main(argv: list[str]) -> int:
         fm["runs"] = runs
 
     target = existing_path or (memos_root / date_str / f"{time_str}-{a.skill}.md")
+    if existing_path is None and target.exists():
+        # Same second, same skill, DIFFERENT identity (a different taskId, or a
+        # different doc on the task-less path) — minting here would silently
+        # clobber the other memo. Disambiguate rather than overwrite.
+        n = 2
+        while (alt := target.with_name(f"{time_str}-{a.skill}-{n}.md")).exists():
+            n += 1
+        target = alt
     target.parent.mkdir(parents=True, exist_ok=True)
     atomic_write([(target, _render(fm, buckets))])
 

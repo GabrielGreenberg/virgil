@@ -54,25 +54,26 @@ SSOT: [editor/dev/README.md](../dev/README.md).
 Only in **DEV mode** (`VIRGIL_DEV=1`). Both scripts no-op without it, so an
 accidental invocation in a non-dev (or end-user) session writes nothing. The
 dream is itself a Virgil skill, so it runs in DEV mode like everything else —
-and it reflects on its **own** run (the bootstrap, step 7).
+and it reflects on its **own** run (the bootstrap, step 8).
 
 A real overnight dream runs **in a fresh git worktree off `main`** — its
-acts-directly edits become commits on the dream branch, which the user merges in
-the morning; its proposed changes get their own `dream/<date>` worktrees. You do
-not need a live worktree to exercise the logic (the routing + the guard + the
-digest are all script-driven), but a true scheduled run should branch first.
+acts-directly edits become commits on the dream branch; a branch whose gates
+come back green merges to `main` at the end of the run (step 6) and ships with
+the next nightly update. You do not need a live worktree to exercise the logic
+(the routing + the guard + the digest are all script-driven), but a true
+scheduled run should branch first.
 
-### Two ways to schedule it (document both; wire neither here)
+### How it is scheduled (wired)
 
-1. **`/loop /editor/dream <docPath>`** on a long interval — simplest to start.
-   The loop fires the dream every N hours; each run reads only the memos written
-   since the previous digest, so back-to-back runs with no new memos are cheap
-   no-ops.
-2. **A scheduled task / cron** — the steady state. A nightly job runs
-   `/editor/dream` once. Same skill, same since-last-dream selection; the only
-   difference is the trigger. (See `mcp__scheduled-tasks__create_scheduled_task`
-   / the `/schedule` skill for the mechanism — do not stand one up as part of
-   this skill.)
+Two Claude scheduled tasks drive the loop, both cwd'd at the repo:
+`editor-skill-base-dream` (cron `0 22 * * *`) runs `/editor/dream` nightly, and
+`virgil-update` (cron `0 0 * * *`) runs `/cleanup-virgil` — merge sweep, version
+bump, push, GitHub Pages deploy — a couple of hours later. The dream lands
+before the update sweeps, so a green night is LIVE (deployed, and re-synced into
+paper folders on their next doc-open or `sync_skills.py` run) the following day
+with no human step. `/loop /editor/dream` on an interval remains a supported
+manual mode — same since-last-digest selection, and a same-day re-run rotates
+the prior digest rather than erasing it.
 
 ## Args
 
@@ -82,15 +83,15 @@ digest are all script-driven), but a true scheduled run should branch first.
 ```
 
 `<docPath>` is only needed so step 2 can ground a finding in the worked-on text
-(`get_para_context.py`) and so step 7's self-reflection has a `virgil/` folder
+(`get_para_context.py`) and so step 8's self-reflection has a `virgil/` folder
 to satisfy `reflect.py` — it is **not** the subject of the dream. Default it to
 `samples/annotation-history` when the user names none.
 
 ## The flow
 
 ```
-sync ─► read ─► detect ─► route ─► act ─► digest ─► reflect-on-self
- §0      §1      §2       §4/§5    §3+§4   §6         §7
+sync ─► read ─► detect ─► route ─► act ─► land ─► digest ─► reflect-on-self
+ §0      §1      §2       §4/§5    §3+§4   §6      §7         §8
 ```
 
 ### 0. Reconcile with existing dream work FIRST
@@ -102,7 +103,7 @@ This was hard-won lore across several nights; it is now an explicit step.
 - **Check-first, don't fork.** Run `git worktree list` and `git branch --list 'dream/*'`. If a `dream/<date>` branch/worktree already holds the complementary half of what you were about to do, **compose onto it** rather than opening a competing branch — two dream branches editing the same script produce merge conflicts and split provenance.
 - **Composing onto a prior branch inherits its BASE — refresh it before you reason.** §4 branches a fresh dream off `main`, so it reads current code; the bullet above composes onto a *prior* dream branch, whose base is whatever `main` was on that earlier night — and nothing ever advances it, so a stack's staleness compounds one night per night. (Measured 2026-08-11: the 08-03 → 08-09 → 08-10 stack sat **227 commits** behind `main`, eight days out.) The visible cost is merge risk, which git will at least tell you about. The dangerous one is silent: the dream **justifies** a change by reading code `main` has already moved — on 2026-08-10 that nearly shipped a regex pinned to a builder constant `main` had already reshaped, caught only because that run happened to add a canary. So before authoring on an inherited branch, merge `main` into it and re-run the editor suite; then read every premise — every constant, signature and call site your reasoning leans on — from the refreshed tree, never from the inherited one. If the merge conflicts, that *is* the night's finding: surface it in the digest and stop, rather than resolving another run's work blind.
 - **Preserve provenance of a prior run's uncommitted change.** If the existing dream worktree has an *uncommitted* change from an earlier run (a finished, dream-voiced proposal left in the working tree), commit **that** as its own commit first — attributing it to the run that authored it — *then* stack your own change on top. Never fold another run's work into your commit; it conflates authorship on a shared checkout. The committed branch keeps its original `dream/<prior-date>` name, so tonight's digest points its `git merge dream/<prior-date>` hint at an *earlier* date than the digest itself — that date skew is correct, not staleness: a finished proposal's rightful home is the branch that authored it, and a prior-date `dream/*` branch carrying its own completed work should never be read as orphaned.
-- **Built-artifact regeneration is a human ruling, never a self-heal.** Regenerating a distributed artifact — most importantly rebuilding/deploying the skill bundle (`npm run build:skill-bundles`) — is out of bounds for an unattended run on a live shared checkout, even when a stale bundle is demonstrably the loop's bottleneck. Do **not** run it. Surface it in the digest as a ruling owed to the human, and keep surfacing it until they rule.
+- **Never rebuild the skill bundle unattended** (`npm run build:skill-bundles`) — it mutates the live checkout's mirrors mid-session. This now costs the loop nothing: the nightly deploy regenerates the served bundle from source (CI's `prebuild`), the repo-local mirrors regenerate on the next `predev`/`prebuild`, and the freshness guard ([skill-bundle-freshness.test.ts](../skills/__tests__/skill-bundle-freshness.test.ts)) catches a stale mirror. The old standing "ruling owed to the human" on this is retired — nothing is lost by not rebuilding.
 
 ### 1. Read the memos since the last dream
 
@@ -243,12 +244,16 @@ python3 editor/scripts/dream_land.py --change @change.json
   # (Never local date.today(): at night in a US timezone it lands a day behind
   #  the UTC digest, forking dream/<D> from the <D+1>.md digest.)
   DATE=$(python3 editor/scripts/dream.py select | python3 -c "import sys,json;print(json.load(sys.stdin)['dreamDate'])")
-  git worktree add -b dream/$DATE ../virgil-dream-$DATE main
-  # …make the change in ../virgil-dream-$DATE…, commit it there…
+  # INSIDE the repo (.claude/worktrees/, gitignored) — not a sibling dir — so
+  # node module resolution walks up to the repo's node_modules and step 6's
+  # gates (tsc/vitest) can actually run in the worktree.
+  git worktree add -b dream/$DATE .claude/worktrees/dream-$DATE main
+  # …make the change in .claude/worktrees/dream-$DATE…, commit it there…
   ```
 
-  The user reviews the diff and merges (or doesn't). One worktree per dream run
-  is fine; group the run's proposals onto the one `dream/<date>` branch.
+  One worktree per dream run is fine; group the run's proposals onto the one
+  `dream/<date>` branch. Step 6 then lands it when its gates are green; the
+  `git merge dream/<date>` hint in the digest covers only a PARKED branch.
 - **`refused`** — the change crosses a boundary (step 5). **Do not apply it and
   do not propose it.** Record it under `refused` with the `boundary` + `reason`.
 
@@ -273,7 +278,59 @@ digest, **not** to act on. The guard enforces this from the change's content (a
 boundary-file edit with no content to adjudicate is refused), so it cannot be
 sidestepped by leaving the intent vague.
 
-### 6. Write the digest
+### 6. Land the night's work — green merges, red files a task
+
+The loop's learning goes live through the ordinary daily update (the nightly
+`virgil-update` task runs `/cleanup-virgil`: merge sweep, push, deploy), so a
+branch merged to `main` tonight ships tomorrow with no human step. The merge
+gate is **green, not human review** — Gabriel's standing ruling (2026-08-15):
+*"no cap, go with green."* Key decisions still reach him, through the task
+pipeline (below), never through the digest alone.
+
+For **every** `dream/<date>` branch present after steps 3–5 (tonight's and any
+inherited branch you composed onto):
+
+1. **Run the gates in the worktree** (`.claude/worktrees/dream-<date>`):
+   `npx tsc --noEmit` · `npx vitest run` · every
+   `editor/scripts/tests/test_*.py`. All three families, no shortcuts.
+2. **All green AND the primary checkout is clean on `main`**
+   (`git -C /Users/gabriel/Programming/virgil status --porcelain` empty of
+   tracked changes, `branch --show-current` = `main`) → **land-and-clean**, the
+   task worker's own discipline (`~/virgil-tasks/PROFILE.md`):
+   `git -C /Users/gabriel/Programming/virgil merge --no-ff dream/<date>`, remove
+   the worktree, delete the branch. Record **LANDED** in the digest entry.
+3. **Green but the primary tree is dirty** (the human mid-edit) → leave the
+   branch and worktree standing; the nightly sweep merges green work. Record
+   **PARKED** with the `git merge dream/<date>` hint.
+4. **Any gate red** → the branch must **not** survive the run: the nightly
+   sweep (`/cleanup-worktrees`) merges *every* surviving branch blindly, so a
+   red branch left standing ships anyway. Export the diff
+   (`git diff main...dream/<date>` →
+   `~/virgil-tasks/attachments/<UTC-date>-dream-<slug>.patch`), file an
+   UNMINTED work task into `~/virgil-tasks/inbox/` naming the patch, the
+   failing gate and its output tail — then remove the worktree AND delete the
+   branch. Record **FILED**.
+
+**Never self-merge — route to the human instead** (the "key decisions" half of
+the autonomy ruling):
+
+- a proposal touching the loop's own operating procedure (`DEV_LOOP_SKILLS`:
+  `dream.md` / `reflect.md` / `iterate-virgil-editor.md`) stays staged whatever
+  its gates say, and gets a DECISION task;
+- every `refused` verdict that names a ruling owed gets a DECISION task too —
+  digests are write-only, the task queue is what the human actually reviews.
+
+**Filing conventions** (`~/virgil-tasks`; the catcher is the ONLY id-minter):
+drop an unminted file `inbox/<UTC-date>-from-dream-<slug>.md` — never mint an
+id (a non-catcher mint has already collided with a live catcher session once;
+unminted inbox drops are the worker's own precedent). A DECISION item leads
+with `## Questions`, a **bold recommendation**, and the sentence *"I cannot
+just take my own recommendation here because ___"* (the auditor's routing-test
+discipline), and notes `source: dream` in the body. A red-gate WORK item
+carries `## Description` / `## Done when` / `## Design` / `## Verify`, the
+patch path, and the gate output tail.
+
+### 7. Write the digest
 
 Always — even on a no-op night. Hand the script your qualitative entries; it
 re-derives the deterministic facts (memo count, counts, the next marker) so they
@@ -290,14 +347,16 @@ python3 editor/scripts/dream.py digest --report @report.json
   "proposed": [ { "summary": "...", "paths": ["editor/scripts/y.py"], "branch": "dream/2026-06-06",
                   "reason": "touches a .py script", "memoRefs": ["..."] } ],
   "refused":  [ { "summary": "...", "boundary": "B1:agents-dont-rules", "reason": "...", "memoRefs": ["..."] } ],
-  "bootstrap": "<one line on how this dream went — feeds step 7>" }
+  "bootstrap": "<one line on how this dream went — feeds step 8>" }
 ```
 
 It writes `editor/dev/dream-digests/<YYYY-MM-DD>.md` (gitignored, the sibling of
 `memos/`), recording ACTED + PROPOSED + REFUSED, the counts by tier/skill/lens,
-and the `marker` the next dream reads.
+and the `marker` the next dream reads. Note each proposed entry's landing
+outcome from step 6 — **LANDED / PARKED / FILED** — at the head of its
+`summary`, so the digest reads as what actually happened, not what was staged.
 
-### 7. Reflect on this dream (bootstrap / recursion)
+### 8. Reflect on this dream (bootstrap / recursion)
 
 The dream is a Virgil skill, so it reflects on itself like any other —
 **after** the digest, so the memo lands past this run's marker and the **next**
@@ -314,7 +373,7 @@ Be honest and unsparing — "the first dreams will be the worst," and the only w
 the dream improves at dreaming is by reading its past self-critiques. A
 `skill=dream` memo is read first by the next dream (it's your own track record).
 
-**Recursion guard — skip step 7 on a no-signal no-op.** `select` emits
+**Recursion guard — skip step 8 on a no-signal no-op.** `select` emits
 `selfReferentialOnly: true` whenever **no** memo since the last dream came from a
 real skill run (`nonDreamMemoCount == 0`) — that covers a window holding only the
 dream's OWN prior self-reflections *and* an **empty** window, which is the
@@ -324,10 +383,10 @@ by-eye reading goes wrong, and doing so re-opens the two-night oscillator:
 suppress on the self-memo night → empty window next night → write a fresh
 contentless memo → suppress again → …) When that flag is
 true **and** this run acted/proposed/refused **nothing** (a pure no-op), do
-**not** write a step-7 memo — a self-reflection with no real skill signal to
+**not** write a step-8 memo — a self-reflection with no real skill signal to
 reflect on is exactly what perpetuates the infinite self-referential recursion
 (dream reads its own note → no-ops → writes another note → …). Still write the
-digest (step 6, always) and flag the cadence in its `bootstrap` line so the next
+digest (step 7, always) and flag the cadence in its `bootstrap` line so the next
 dream reads zero new memos until a **real** skill runs. Reflect normally
 whenever the run did real work (acted/proposed/refused > 0) — even in a
 self-referential window — since then there is something worth recording.
@@ -376,5 +435,7 @@ acts-on-branch / propose-via-worktree; that machinery is `dream`'s alone. See
 
 Echo `dream.py digest`'s one-line `Done:` reply (counts + digest path), then a
 ≤5-line summary: the memo count + tier split, what you ACTED on, what you
-PROPOSED (with the `git merge dream/<date>` hint), and any REFUSED items with
-their boundary. If DEV mode is off, say so in one line and stop.
+PROPOSED and its landing outcome (LANDED / PARKED with the `git merge
+dream/<date>` hint / FILED with the task filename), any REFUSED items with
+their boundary, and any DECISION tasks filed. If DEV mode is off, say so in one
+line and stop.

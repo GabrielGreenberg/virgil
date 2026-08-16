@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import asdict, dataclass, field
 
@@ -77,7 +78,7 @@ B_DEV_GATE = "B3:dev-mode-gate"
 # editing its own operating procedure must surface that self-modification for
 # human review (→ PROPOSES).  This is the softer sibling of the three boundaries
 # below — those REFUSE outright; this only WITHHOLDS the acts fast-lane.  The
-# loop MUST be able to improve at looping (dream.md step 7's recursion), but only
+# loop MUST be able to improve at looping (dream.md step 8's recursion), but only
 # on a reviewed branch, never committed unattended to the acts-branch.  Retires
 # the "should the dream editing dream.md always propose?" ruling flagged in the
 # 2026-07-22 self-reflection, generalized to the whole self-improvement triad.
@@ -130,10 +131,21 @@ _CONTRACT_SHAPE_SIGNS = [
     "complete-task", "write-silent", "write-with-comment", "complete-only",
 ]
 # B3 — the gate's identifiers, plus explicit "turn it off" phrasings that could
-# appear in a skill prompt anywhere (not just the gate files).
+# appear in a skill prompt anywhere (not just the gate files). The bare env
+# name is matched as a TOKEN via _gate_token, not listed here as a substring:
+# the sink/home seams share its prefix (VIRGIL_DEV_MEMOS_DIR, VIRGIL_DEV_HOME,
+# VIRGIL_DEV_ITERATIONS_DIR) and are NOT the gate — a memo-sink fix must not
+# read as a gate edit (the 2026-08-15 false positive this distinction retires;
+# the guard refused the throwaway-paper fix on the substring alone).
 _DEV_GATE_SIGNS = [
-    "dev_mode_enabled", "dev_mode_env", "_dev_true_tokens", "virgil_dev",
+    "dev_mode_enabled", "dev_mode_env", "_dev_true_tokens",
 ]
+_GATE_TOKEN_RE = re.compile(r"virgil_dev(?![a-z0-9_])")
+
+
+def _gate_token(haystack: str) -> str | None:
+    """The VIRGIL_DEV gate env named as a complete token (lowercased input)."""
+    return "virgil_dev" if _GATE_TOKEN_RE.search(haystack) else None
 _DISABLE_GATE_PHRASES = [
     "disable dev mode", "disable virgil_dev", "remove the dev gate",
     "remove the dev-mode gate", "skip the dev gate", "skip the dev-mode gate",
@@ -267,7 +279,7 @@ def boundary_for(change: dict) -> Verdict | None:
                                f"refused by construction (it defines or enforces "
                                f"the VIRGIL_DEV gate)",
                                boundary=B_DEV_GATE, paths=paths)
-            sig = _hits(content, _DEV_GATE_SIGNS)
+            sig = _hits(content, _DEV_GATE_SIGNS) or _gate_token(content)
             if sig:
                 return Verdict(LAND_REFUSED,
                                f"would touch the VIRGIL_DEV gate in {p} "

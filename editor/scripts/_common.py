@@ -503,12 +503,25 @@ def _is_throwaway_paper(doc: Path) -> bool:
     trusting the seventeenth to remember — which is the shape that produced the
     bug. So the guard lives at the ONE place every tail-trigger passes through,
     is derived from `tempfile.gettempdir()` rather than a naming convention,
-    and is scoped so it can only ever suppress the accidental case: an
-    EXPLICITLY pinned sink always writes (that is a caller who has said where
-    the memos go, including every test that pins a temp sink on purpose), and
-    a real paper is never under `$TMPDIR`."""
-    if _dir_override("VIRGIL_DEV_MEMOS_DIR") is not None:
-        return False  # explicitly pinned — the caller has said where these go
+    and is scoped so it can only ever suppress the accidental case: a sink
+    pinned AWAY from the default always writes (that is a caller who has said
+    where the memos go, including every test that pins a temp sink on purpose),
+    a pin at the default sink expresses no intent and leaves the guard armed
+    (an ambient `~/.zshenv` export at the default disarmed it machine-wide for
+    ten weeks), and a real paper is never under `$TMPDIR`."""
+    override = _dir_override("VIRGIL_DEV_MEMOS_DIR")
+    if override is not None:
+        # A pin only counts as caller intent when it points AWAY from the
+        # default sink. A pin whose value equals the computed default expresses
+        # no intent — it is an ambient convenience export — and honoring it
+        # disarmed this guard machine-wide for every test run (2026-08-14: 30
+        # synthetic memos per suite run into the human's real stream).
+        try:
+            default_sink = (dev_home() / "memos").resolve()
+        except OSError:
+            default_sink = None
+        if default_sink is None or override.resolve() != default_sink:
+            return False  # pinned away from the default — the caller has said where these go
     try:
         return Path(tempfile.gettempdir()).resolve() in doc.resolve().parents
     except OSError:

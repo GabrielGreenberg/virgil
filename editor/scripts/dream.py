@@ -401,10 +401,10 @@ def cmd_select(_argv: list[str]) -> int:
 
     new_marker = _memo_sort_key(recs[-1]) if recs else (marker or ("", ""))
     # No-real-signal window: NOTHING since the last dream came from a real skill
-    # run — the window holds only the dream's OWN self-reflections (step 7), or
+    # run — the window holds only the dream's OWN self-reflections (step 8), or
     # nothing at all.  Writing another self-reflection here perpetuates an
     # infinite no-op recursion, so surface the fact once here (SSOT) and let the
-    # skill suppress step 7 on it.
+    # skill suppress step 8 on it.
     #
     # The predicate is `no non-dream memos`, FULL STOP — an EMPTY window counts.
     # It used to carry a `bool(recs)` conjunct, which exempted the zero-memo case

@@ -1312,6 +1312,9 @@ def cmd_revert(doc: Path, request_id: str) -> dict:
     txn.add_raw(vpath, vcontent)
 
     commit_under_pen(doc, txn.writes())
+    # A revert is a writeback too — same day-capture floor as the other two
+    # commit finalizers (cmd_write / _mutation_commit).
+    _reflect_tail(doc, "revert", request_id)
     return {"ok": True, "reverted": True, "version": vnum}
 
 
