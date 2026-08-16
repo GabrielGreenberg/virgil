@@ -73,17 +73,17 @@ const ENGINE_DIR = path.resolve(SRC, "lib/pane-resize"); // the ONE gesture owne
 // (library/AGENTS.md).
 const PERMITTED_WINDOW_DRAG_GESTURES: Record<string, string> = {
   "src/components/FloatingPanel.tsx":
-    "[cost: per move = pointer arithmetic + a RAF-coalesced equality-bailed translate3d write; per gesture EDGE = one geometry sweep + one React commit + one persist] Floating-window move/edge-resize — a position:fixed float, not a layout pane. MOVE: the shell is moved imperatively by `translate3d` on its own element (composite-only; React renders on edges only and JSX never sets transform — the drop-mode lift-overlay law), dock/viewport geometry is SNAPSHOT once per gesture (`readDockGeometry` + the clamp bounds) and hit-tested as pure arithmetic against `resolveDockTargetByPanelProximity`, and `setPos` + `onChange` commit ONCE on the end edge. RESIZE keeps its per-move `setPos` deliberately — a resize IS a layout change of the hosted body, so there is no composite-only representation to defer. Both take the engine's pointer invariants from `lib/pane-resize/pointer-invariants` (`isPrimaryDragStart` gates both mousedowns; `isMissedRelease` ends the gesture before reading a stray coordinate), and the body cursor is set/cleared on the edges. Task 330 — the pre-330 entry read \"per-move setPos re-renders one small float subtree\", which described the GATE and said nothing about the per-move forced-layout DOM sweep (querySelectorAll + a rect per column, plus a rect PER BAND inside the 80px dock gate) that ran interleaved with those commits. Stated precisely: the commit re-rendered THIS component and rewrote the shell inline left/top (a layout invalidation), not the hosted body — children is built by the parent render, so React's same-element bailout spares that subtree. Residual: the [cost:] tag convention this entry opens with is not yet enforced by a leg in this file the way keystroke-subscriber-guardrail enforces its own.",
+    "[cost: per MOVE event = pointer arithmetic + a scheduled frame; per coalesced FRAME = ONE equality-bailed translate3d; per RESIZE event = one uncoalesced React setPos commit, no DOM read (scope, not principle — filed as task 335); per gesture EDGE = one geometry sweep + one React commit + one persist] Floating-window move/edge-resize — a position:fixed float, not a layout pane. MOVE: the shell is moved imperatively by `translate3d` on its own element (composite-only; React renders on edges only and JSX never sets transform — the drop-mode lift-overlay law), dock/viewport geometry is SNAPSHOT once per gesture (`readDockGeometry` + the clamp bounds) and hit-tested as pure arithmetic against `resolveDockTargetByPanelProximity`, and `setPos` + `onChange` commit ONCE on the end edge. RESIZE re-lays-out the hosted body by construction, so there is no composite-only representation to defer — but that argues for a layout write, not for an UNCOALESCED one (the engine's own apply() writes real layout and still coalesces), which is why its per-event commit is recorded above as a residual rather than as a justification. Both take the engine's pointer invariants from `lib/pane-resize/pointer-invariants` (`isPrimaryDragStart` gates both mousedowns; `isMissedRelease` ends the gesture before reading a stray coordinate), and the body cursor is set/cleared on the edges. Task 330 — the pre-330 entry read \"per-move setPos re-renders one small float subtree\", which described the GATE and said nothing about the per-move forced-layout DOM sweep (querySelectorAll + a rect per column, plus a rect PER BAND inside the 80px dock gate) that ran interleaved with those commits. Stated precisely: the commit re-rendered THIS component and rewrote the shell inline left/top (a layout invalidation), not the hosted body — children is built by the parent render, so React's same-element bailout spares that subtree.",
   "src/components/drop-mode/controller.ts":
-    "Drop-a-card placement mode — not a resize gesture: crosshair/none body cursor stamped on mode edges; the mousemove hit-tests the hovered block for the placement caret (throttled by hit-test bail), commits once on click.",
+    "[cost: per move = a 16 ms setTimeout-paced throttle gate; per THROTTLED run = one hitTest (its own per-move block-rect read, threaded into the placement builders — wave-2b C8); per mode EDGE = one body-cursor stamp; per gesture = one commit on click] Drop-a-card placement mode — not a resize gesture. The pacing is setTimeout rather than rAF deliberately: headless / inactive-tab environments throttle rAF to the point of never firing under synthetic events, and the trailing timer is what keeps a slow-moving pointer's LAST position from being dropped.",
   "src/components/panel-primitives.tsx":
-    "File-level conjunction of three non-divider pieces: clearStaleHover's one-shot self-removing pointermove; the card-lift threshold detector (distance check, then hands off to FloatWindow and removes itself — since task 333 it takes both engine predicates, so a swallowed mouseup tears the detector down instead of leaving it armed to pop a card out on the user's next stray movement); and the band handle's static cursor-row-resize hit-target className — the band GESTURE itself runs on usePaneResizeHandle.",
+    "[cost: per move = one squared-distance compare (the card-lift threshold detector), then it hands off to FloatWindow and removes itself; clearStaleHover's pointermove is one-shot self-removing; the band handle's className is static] File-level conjunction of three non-divider pieces — the band GESTURE itself runs on usePaneResizeHandle. Since task 333 the lift detector takes both engine predicates, so a swallowed mouseup tears it down instead of leaving it armed to pop a card out on the user's next stray movement.",
   "src/hooks/useDragPosition.ts":
-    "[cost: per move = pointer arithmetic + a RAF-coalesced setPosition on one small fixed panel; per gesture EDGE = one offsetWidth/offsetHeight read] The Preferences window's drag positioner — a position:fixed dialog, not a layout pane; no persistence (position IS the session state), body cursor set/cleared on the edges. Since task 333 it takes BOTH engine predicates from lib/pane-resize/pointer-invariants (`isPrimaryDragStart` gates the mousedown; `isMissedRelease` ends the gesture through the ONE end path, which also cancels the queued frame so no stray coordinate can commit behind it) and snapshots its clamp bounds on the gesture edge in the `MoveGeometry` shape FloatingPanel introduced — the pre-333 RAF body read `panel.offsetWidth`/`offsetHeight` per frame, a forced layout inside the write path for a value that cannot change during the drag.",
+    "[cost: per move = pointer arithmetic + a scheduled frame; per coalesced FRAME = one setPosition on one small fixed panel; per gesture EDGE = one offsetWidth/offsetHeight read] The Preferences window's drag positioner — a position:fixed dialog, not a layout pane; no persistence (position IS the session state), body cursor set/cleared on the edges. Since task 333 it takes BOTH engine predicates from lib/pane-resize/pointer-invariants (`isPrimaryDragStart` gates the mousedown; `isMissedRelease` ends the gesture through the ONE end path, which also cancels the queued frame so no stray coordinate can commit behind it) and snapshots its clamp bounds on the gesture edge in the `MoveGeometry` shape FloatingPanel introduced — the pre-333 RAF body read `panel.offsetWidth`/`offsetHeight` per frame, a forced layout inside the write path for a value that cannot change during the drag.",
   "src/hooks/useMarginEdit.ts":
-    "Margin-edit guides — engine-conformant by hand: frame rect snapshotted at drag start, RAF-coalesced CSS-var writes on the editor column per frame, ONE setLiveMargins commit on release, body cursor on the edges, primary-button start gate + missed-release mid-move bail (both IMPORTED from lib/pane-resize/pointer-invariants since task 333 — this file previously hand-wrote twins of both predicates, comments and all) + window-blur failsafe closing the missed-release end edge (a release over the compiled-PDF iframe must not ghost-resume or wedge the cursor). Pre-dates the engine; its 4-side axis tables + opposite-side snap live outside the single-value PaneResizeSpec shape.",
+    "[cost: per move = pointer arithmetic against the drag-start frame rect + a scheduled frame; per coalesced FRAME = two CSS-var writes on the editor column (no read, no equality bail — a var write the browser already de-dupes, on ONE element); per gesture EDGE = one frame-rect snapshot + ONE setLiveMargins commit] Margin-edit guides — engine-conformant by hand: body cursor on the edges, primary-button start gate + missed-release mid-move bail (both IMPORTED from lib/pane-resize/pointer-invariants since task 333 — this file previously hand-wrote twins of both predicates, comments and all) + window-blur failsafe closing the missed-release end edge (a release over the compiled-PDF iframe must not ghost-resume or wedge the cursor). Pre-dates the engine; its 4-side axis tables + opposite-side snap live outside the single-value PaneResizeSpec shape.",
   "src/panels/Outline/focus-band-drag.ts":
-    "Focus-band edge drag (snap-to-row selection, not a pane resize): row geometry snapshotted at drag start (offsetTop reads, none per frame), RAF-coalesced transient band paint, ONE onSnapBoundary commit on the end edge; body cursor on the edges. Since task 185 it also closes the missed-release end edge the way the engine does — it shares the engine's own predicates (lib/pane-resize/pointer-invariants): primary-button start gate + an isMissedRelease(e) mid-move bail that ends before reading the stray coordinate, plus a teardown end path so unmount can't leave the stamp. Extracted out of OutlinePanel.tsx so the gesture is a testable unit.",
+    "[cost: per move = pure arithmetic against geometry snapshotted at the gesture edge (rows at mousedown; the scroll container's viewport top per container identity — task 334) plus a live scrollTop read, and a scheduled frame; per coalesced FRAME = one O(rows) nearest-row scan + one transient band paint; per gesture EDGE = the measureRows snapshot + ONE onSnapBoundary commit] Focus-band edge drag (snap-to-row selection, not a pane resize); body cursor on the edges. Since task 185 it also closes the missed-release end edge the way the engine does — it shares the engine's own predicates (lib/pane-resize/pointer-invariants): primary-button start gate + an isMissedRelease(e) mid-move bail that ends before reading the stray coordinate, plus a teardown end path so unmount can't leave the stamp. Extracted out of OutlinePanel.tsx so the gesture is a testable unit. Writing this tag is what surfaced the container `getBoundingClientRect()` it used to run PER MOVE — a forced layout in the write path for an origin that cannot move while the pointer is held, the same shape task 333 took out of useDragPosition's RAF body, and invisible to every other leg here.",
 };
 
 // ── The library ResizeObserver census ────────────────────────────────────────
@@ -99,15 +99,15 @@ const PERMITTED_WINDOW_DRAG_GESTURES: Record<string, string> = {
 // equality-bail justification, in BOTH places.
 const PERMITTED_LIBRARY_RESIZE_OBSERVERS: Record<string, string> = {
   "library/components/panel-tabs/PanelTabStrip.tsx":
-    "Flush-right tuck measure — the ONE surviving chrome RO (whether the active tab sits flush with the body's right edge is a cross-subtree sum CSS can't express); RAF-coalesced, equality-bailed boolean, parked via parkDuringLayoutGesture.",
+    "[cost: per fire = a scheduled frame; per coalesced FRAME = one flush-right boolean measure behind an equality bail; ZERO fires during a layout gesture (parked)] Flush-right tuck measure — the ONE surviving chrome RO (whether the active tab sits flush with the body's right edge is a cross-subtree sum CSS can't express); parked via parkDuringLayoutGesture.",
   "library/components/LeftList.tsx":
-    "Rows-viewport measure — virtualization window height; equality-bailed setState (a horizontal gutter drag doesn't change the height, so mid-drag fires bail to the same state).",
+    "[cost: per fire = one equality-bailed setState of the rows-viewport height; live during gestures BY DESIGN] Rows-viewport measure for the virtualization window. Deliberately unparked: a horizontal gutter drag cannot change the height, so mid-drag fires bail to the same state and cost one comparison.",
   "library/components/RightDetail.tsx":
-    "textPodRect header↔pod pinning — RAF-coalesced, ±0.5px equality gate, parked via parkDuringLayoutGesture (defense-in-depth behind the PaneFreeze width lock).",
+    "[cost: per fire = a scheduled frame; per coalesced FRAME = one header↔pod rect pin behind a ±0.5px equality gate; ZERO fires during a layout gesture (parked)] textPodRect pinning — parkDuringLayoutGesture as defense-in-depth behind the PaneFreeze width lock.",
   "library/components/PaperHeader.tsx":
-    "Narrow flag — boolean threshold from borderBoxSize; React bails unless the 560px line is crossed mid-gesture.",
+    "[cost: per fire = one boolean threshold read off the delivered borderBoxSize (no DOM read of its own); React bails unless the 560px line is crossed] Narrow flag.",
   "library/hooks/usePgmarkPages.ts":
-    "\\pgmark chip re-scan — RAF-coalesced, parked via parkDuringLayoutGesture, and the `pages` array is identity-gated (label+docY) so consumer memos (PaperRender → EditorPane) hold.",
+    "[cost: per fire = a scheduled frame; per coalesced FRAME = an O(pgmarks) chip re-scan whose `pages` array is identity-gated on (label+docY), so consumer memos (PaperRender → EditorPane) hold across a no-op re-scan; ZERO fires during a layout gesture (parked)] \\pgmark chip re-scan.",
 };
 
 // ── The unchromed-resizer allowlist (task 189) ───────────────────────────────
@@ -177,27 +177,27 @@ const PERMITTED_ANNOUNCED_SEPARATORS: Record<string, string> = {};
 // no release teardown.
 const PERMITTED_WINDOW_POINTER_LISTENERS: Record<string, string> = {
   "src/components/FloatingPanel.tsx":
-    "Float move + edge resize — the reference implementation of the four bespoke-gesture obligations (task 330). Also on the chrome census above.",
+    "[cost: see the chrome-census entry — per MOVE event pointer arithmetic + a scheduled frame, per RESIZE event one uncoalesced setPos (task 335)] Float move + edge resize — the reference implementation of the four bespoke-gesture obligations (task 330). Also on the chrome census above.",
   "src/components/Marginalia.tsx":
-    "Marker re-anchor press watcher: a >3px movement arms `suppressClickRef` so the trailing click can't also open the panel; the drop session itself is the drop-mode controller's. Both invariants since task 333 — without the bail a swallowed mouseup left these listeners installed forever, so every later mouse movement re-armed the suppressor and the marker's click stopped opening its panel, permanently.",
+    "[cost: per move = one absolute-delta compare against the press origin + at most one ref write; no DOM read, no state commit, no frame] Marker re-anchor press watcher: a >3px movement arms `suppressClickRef` so the trailing click can't also open the panel; the drop session itself is the drop-mode controller's. Both invariants since task 333 — without the bail a swallowed mouseup left these listeners installed forever, so every later mouse movement re-armed the suppressor and the marker's click stopped opening its panel, permanently.",
   "src/components/drop-mode/controller.ts":
-    "Drop-mode placement session — the ONE chokepoint every pointer-driven content drag routes through; throttled hit-test, commit once on release, `isMissedRelease` bail (with the LayoutGestureBus in the loop, a swallowed mouseup would wedge every parked follower app-wide). Also on the chrome census above.",
+    "[cost: see the chrome-census entry — per move a 16 ms throttle gate, per throttled run one hitTest] Drop-mode placement session — the ONE chokepoint every pointer-driven content drag routes through; commit once on release, `isMissedRelease` bail (with the LayoutGestureBus in the loop, a swallowed mouseup would wedge every parked follower app-wide). Also on the chrome census above.",
   "src/components/editor-layout/editor-scrollbar.tsx":
-    "Scrollbar THUMB drag — the category-defining entry: it writes `row.scrollTop` per raw move and wears no drag chrome whatsoever, so the census above is structurally blind to it and it ran with ZERO pointer invariants (not even a button gate) until task 333. Now: primary-button start gate, `isMissedRelease` bail through the one end path. Its per-move write is a scroll position rather than layout state, and the browser coalesces those, so it is deliberately not RAF-gated.",
+    "[cost: per move = one arithmetic delta + one `row.scrollTop` write; no DOM read, deliberately NOT frame-gated] Scrollbar THUMB drag — the category-defining entry: it wears no drag chrome whatsoever, so the census above is structurally blind to it and it ran with ZERO pointer invariants (not even a button gate) until task 333. Now: primary-button start gate, `isMissedRelease` bail through the one end path. The un-coalesced write is justified rather than inherited: a scroll position is state the browser itself coalesces to one paint, unlike a layout write — which is exactly the argument FloatingPanel's resize branch CANNOT make.",
   "src/components/panel-primitives.tsx":
-    "Card-lift threshold detector + clearStaleHover's one-shot pointermove. Both invariants since task 333. Also on the chrome census above.",
+    "[cost: see the chrome-census entry — per move one squared-distance compare, then handoff] Card-lift threshold detector + clearStaleHover's one-shot pointermove. Both invariants since task 333. Also on the chrome census above.",
   "src/hooks/useDragPosition.ts":
-    "The Preferences window's drag positioner — RAF-coalesced, gesture-edge geometry snapshot, both invariants. Also on the chrome census above.",
+    "[cost: see the chrome-census entry — per move pointer arithmetic + a scheduled frame, one setPosition per frame] The Preferences window's drag positioner — gesture-edge geometry snapshot, both invariants. Also on the chrome census above.",
   "src/hooks/useMarginEdit.ts":
-    "Margin-edit guides — engine-conformant by hand, both invariants IMPORTED since task 333. Also on the chrome census above.",
+    "[cost: see the chrome-census entry — per move arithmetic + a scheduled frame, CSS-var writes per frame] Margin-edit guides — engine-conformant by hand, both invariants IMPORTED since task 333. Also on the chrome census above.",
   "src/lib/tiptap/inline-atom-grab.ts":
-    "Inline-atom grab: an 8px hold-threshold detector that hands the post-threshold gesture to the drop-mode controller. The bail is PRE-threshold only, which is this handler's exclusive ownership window — post-threshold the controller owns the gesture and carries its own bail, so ending it from here would commit the drop at a stale coordinate.",
+    "[cost: per move = one squared-distance compare until the 8px threshold; after handoff the drop-mode controller owns the pointer and this handler does nothing per event] Inline-atom grab. The bail is PRE-threshold only, which is this handler's exclusive ownership window — post-threshold the controller carries its own bail, so ending it from here would commit the drop at a stale coordinate.",
   "src/panels/Outline/focus-band-drag.ts":
-    "Focus-band edge drag (snap-to-row selection) — both invariants since task 185. Also on the chrome census above.",
+    "[cost: see the chrome-census entry — per move arithmetic against gesture-edge geometry + a scheduled frame, one nearest-row scan + band paint per frame] Focus-band edge drag (snap-to-row selection) — both invariants since task 185. Also on the chrome census above.",
   "src/text-objects/LiftHost.tsx":
-    "The shared post-threshold lift host: overlay state, window listeners and the terminal policy for every block/text-object lift. Carries `isMissedRelease`.",
+    "[cost: per move = one containsContentZone arithmetic test against the geometry service's cached viewport frame + a scheduled frame; per coalesced FRAME = ONE equality-bailed translate3d across the overlay's two portal nodes; React renders on EDGES only (ghost↔popout flips, document leave)] The shared post-threshold lift host: overlay state, window listeners and the terminal policy for every block/text-object lift. Carries `isMissedRelease`, and its one end path cancels the queued frame so a bailed gesture cannot commit a coordinate behind itself. The equality bail landed in task 334 — this copy of the translate channel had none while its `FloatingPanel` twin had carried one since task 330, which is the divergence that task filed: a parked cursor (a hold over a drop target, or drag auto-scroll re-running the hit-test at a still pointer) rewrote both nodes' transform per frame for a delta that had not changed. Behavioural contract: `src/text-objects/__tests__/lift-overlay-motion-cost.test.tsx`.",
   "src/text-objects/TextObjectGrabHandle.tsx":
-    "TWO listeners, and they are different animals. (a) The grab handle's hold-threshold detector — both invariants since task 333, the bail PRE-threshold only for the same reason inline-atom-grab's is (LiftHost owns the gesture after handoff). (b) A permanent `document` mousemove HOVER tracker that resolves which block the handle should point at: not a gesture, registers no release teardown, and therefore outside the invariants leg by construction.",
+    "[cost: per move = one squared-distance compare (the gesture half, pre-threshold); the hover tracker resolves the pointed-at block through the geometry service's cached `blocksAtY` bands, RAF-coalesced, with the legacy O(doc) `[data-uuid]` rect sweep surviving only under the `virgil:geom-hover` kill-switch] TWO listeners, and they are different animals. (a) The grab handle's hold-threshold detector — both invariants since task 333, the bail PRE-threshold only for the same reason inline-atom-grab's is (LiftHost owns the gesture after handoff). (b) A permanent `document` mousemove HOVER tracker that resolves which block the handle should point at: not a gesture, registers no release teardown, and therefore outside the invariants leg by construction.",
 };
 
 /** Empty, and that is the statement: a file that owns a pointer gesture takes
@@ -211,6 +211,71 @@ const PERMITTED_INVARIANT_FREE_GESTURES: Record<string, string> = {};
  *  the engine on the start gate and not on the release. MIGRATE it, never list
  *  it. */
 const PERMITTED_REDERIVED_INVARIANTS: Record<string, string> = {};
+
+// ── The allowlist registry + the [cost: …] tag rule (task 334) ───────────────
+// `keystroke-subscriber-guardrail` has enforced a `[cost: …]` prefix on every
+// justification in every one of its allowlists since Wave-4 P6; this file
+// carried the convention (task 330's FloatingPanel entry opens with one) and
+// enforced it nowhere, so it read as a rule and was a habit. Two of the five
+// pre-334 entries in the drag census, and all five ResizeObserver entries,
+// described the MECHANISM and never the per-event cost — the same gate-not-
+// callback shape that let `float-sync` sit on the keystroke list for a year.
+//
+// What the tag buys here is not tidiness. Writing one for
+// `focus-band-drag.ts` is what surfaced the `getBoundingClientRect()` it ran
+// PER MOVE, which no leg in this file can see: the chrome census asks who
+// installs a listener, the pointer census asks whether it takes the
+// invariants, and neither asks what a move COSTS. A sentence that must name
+// the per-event and per-frame cost separately is the cheapest instrument that
+// asks.
+//
+// Membership is DISCOVERED from this file's own source rather than hand-listed
+// below — a hand list inside the guard that outlaws hand lists is the task-260
+// defect one level up, and it would sit green while a sixth allowlist was
+// added with untagged entries. `cost: false` is a real answer for a list whose
+// justifications answer a different question (a LOOK, an a11y ROLE, a safety
+// argument), and it must say which.
+type AllowlistFacet =
+  | { readonly cost: true }
+  | { readonly cost: false; readonly why: string };
+
+const ALLOWLISTS: Record<
+  string,
+  { readonly list: Record<string, string> } & AllowlistFacet
+> = {
+  PERMITTED_WINDOW_DRAG_GESTURES: {
+    list: PERMITTED_WINDOW_DRAG_GESTURES,
+    cost: true,
+  },
+  PERMITTED_LIBRARY_RESIZE_OBSERVERS: {
+    list: PERMITTED_LIBRARY_RESIZE_OBSERVERS,
+    cost: true,
+  },
+  PERMITTED_WINDOW_POINTER_LISTENERS: {
+    list: PERMITTED_WINDOW_POINTER_LISTENERS,
+    cost: true,
+  },
+  PERMITTED_UNCHROMED_RESIZERS: {
+    list: PERMITTED_UNCHROMED_RESIZERS,
+    cost: false,
+    why: "answers a LOOK question (why this handle wears different chrome), not a cost one — its gestures all run on the engine, whose per-frame cost is the engine's to state",
+  },
+  PERMITTED_ANNOUNCED_SEPARATORS: {
+    list: PERMITTED_ANNOUNCED_SEPARATORS,
+    cost: false,
+    why: "answers an a11y SEMANTICS question (why this divider may announce itself); empty, and a future entry would be a static non-interactive divider with no per-event cost at all",
+  },
+  PERMITTED_INVARIANT_FREE_GESTURES: {
+    list: PERMITTED_INVARIANT_FREE_GESTURES,
+    cost: false,
+    why: "answers a SAFETY question (how a gesture survives a release it never observed); empty and staying that way — a hit is MIGRATE-it",
+  },
+  PERMITTED_REDERIVED_INVARIANTS: {
+    list: PERMITTED_REDERIVED_INVARIANTS,
+    cost: false,
+    why: "answers the same SAFETY question from the no-twins side; empty likewise",
+  },
+};
 
 /** Strip comments so doctrine prose (this repo documents the banned call
  *  forms heavily) can't read as a live gesture. Strings are KEPT: every needle
@@ -1026,5 +1091,65 @@ describe("pane-drag guardrail — pointer-gesture census (task 333)", () => {
     `;
     expect(detectWindowMoveListener(hoverWatcher)).toBe(true);
     expect(detectPointerReleaseTeardown(hoverWatcher)).toBe(false);
+  });
+});
+
+// ── Task 334: the cost-class tag leg ─────────────────────────────────────────
+// The sibling `keystroke-subscriber-guardrail` has enforced this on its own
+// allowlists since Wave-4 P6. See the registry above for why the membership
+// half is discovered from source rather than listed.
+describe("pane-drag guardrail — cost-class tags (task 334)", () => {
+  const ownSource = readFileSync(fileURLToPath(import.meta.url), "utf8");
+
+  it("every justification in every COST allowlist begins with a [cost: …] tag", () => {
+    for (const [name, entry] of Object.entries(ALLOWLISTS)) {
+      if (!entry.cost) continue;
+      for (const [key, justification] of Object.entries(entry.list)) {
+        expect(
+          /^\[cost: [^\]]+\]/.test(justification),
+          `${name}["${key}"] justification must start with a [cost: …] tag naming the per-EVENT cost and, where the site coalesces, what one FRAME writes — "RAF-coalesced" alone does not qualify, the same rule keystroke-subscriber-guardrail applies to its own lists`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("a non-cost allowlist states WHY it answers a different question", () => {
+    // The escape hatch is a decision someone makes on purpose, not a silent
+    // omission: `cost: false` with no reason would let a real per-event
+    // census walk out of the tag rule by relabelling itself.
+    for (const [name, entry] of Object.entries(ALLOWLISTS)) {
+      if (entry.cost) continue;
+      expect(entry.why.length, `${name} must say why it is not a cost list`).toBeGreaterThan(20);
+    }
+  });
+
+  it("the registry names EVERY allowlist declared in this file (discovered, not hand-listed)", () => {
+    // A hand list inside the guard that outlaws hand lists is the task-260
+    // defect one level up. Read our own source: any
+    // `const PERMITTED_*: Record<string, string>` must be registered above,
+    // so a sixth allowlist cannot land untagged and unnoticed.
+    const declared = [
+      ...stripComments(ownSource).matchAll(
+        /\bconst\s+(PERMITTED_\w+)\s*:\s*Record<\s*string\s*,\s*string\s*>/g,
+      ),
+    ].map((m) => m[1]);
+    expect(declared.length, "the declaration scan found nothing — it has stopped matching").toBeGreaterThanOrEqual(5);
+    expect([...new Set(declared)].sort()).toEqual(Object.keys(ALLOWLISTS).sort());
+  });
+
+  it("would flag an untagged entry and a mechanism-only tag (fixtures)", () => {
+    // The pre-334 shape: a justification that describes the mechanism and
+    // never the cost.
+    const untagged =
+      "Drop-a-card placement mode — not a resize gesture: crosshair body cursor on mode edges, commits once on click.";
+    expect(/^\[cost: [^\]]+\]/.test(untagged)).toBe(false);
+    // An EMPTY tag is not a tag.
+    expect(/^\[cost: [^\]]+\]/.test("[cost: ] whatever")).toBe(false);
+    // A well-formed one passes.
+    expect(
+      /^\[cost: [^\]]+\]/.test(
+        "[cost: per move = one compare; per FRAME = one equality-bailed write] …",
+      ),
+    ).toBe(true);
   });
 });
