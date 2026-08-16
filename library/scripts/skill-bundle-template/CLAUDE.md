@@ -22,6 +22,28 @@ If no library is configured, library-touching skills print "No library set up
 
 ---
 
+## Session start in DEV mode: keep the synced skills fresh
+
+If `VIRGIL_DEV=1` is set in the environment (the maintainer's machines), check
+this folder's synced bundle before substantive work:
+
+```
+python3 .virgil/scripts/editor/sync_skills.py --check
+```
+
+- Exit 0 (fresh) or exit 2 (offline / unreachable): continue — a session is
+  never blocked on this check.
+- Exit 1 (stale): run `python3 .virgil/scripts/editor/sync_skills.py` to
+  update, then continue. Scripts are live immediately; changed COMMAND prompts
+  load on the next session, so note the refresh in your first reply.
+
+This is what keeps skill fixes — and the dev-dream capture layer — reaching
+real paper sessions without waiting for a doc-open in the Virgil app (a stale
+bundle once held capture out of a busy paper for ten weeks). With `VIRGIL_DEV`
+unset, skip this section entirely.
+
+---
+
 ## When the user says "follow the instructions here"
 
 The right answer depends on what kind of folder this is.

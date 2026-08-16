@@ -179,6 +179,25 @@ v = verdict({"paths": ["editor/skills/review.md"], "intent": "expand-guidance",
 check(v.mode == LAND_REFUSED and v.boundary == B_DEV_GATE,
       "B3: a skill prompt trying to ungate reflection → refused")
 
+# B3 precision — the gate env is matched as a TOKEN, not a substring. The sink
+# and home seams share its prefix (VIRGIL_DEV_MEMOS_DIR, VIRGIL_DEV_HOME) and
+# are NOT the gate: a memo-sink fix in a gate file must classify on its own
+# merits (script-change → proposes), not refuse. This is the 2026-08-15 false
+# positive — the guard refused the throwaway-paper fix because the change text
+# named the sink env var.
+v = verdict({"paths": ["editor/scripts/_common.py"], "intent": "script-change",
+             "oldText": 'if _dir_override("VIRGIL_DEV_MEMOS_DIR") is not None:',
+             "newText": 'override = _dir_override("VIRGIL_DEV_MEMOS_DIR")\n'
+                        'if override is not None and override != default_sink:'})
+check(v.mode == LAND_PROPOSES,
+      f"B3 precision: a sink-seam edit naming VIRGIL_DEV_MEMOS_DIR is NOT the gate "
+      f"→ proposes (got {v.mode}/{v.boundary})")
+
+v = verdict({"paths": ["editor/scripts/_common.py"], "intent": "script-change",
+             "newText": 'os.environ.pop("VIRGIL_DEV", None)  # scrub before spawning'})
+check(v.mode == LAND_REFUSED and v.boundary == B_DEV_GATE,
+      "B3 precision: the bare VIRGIL_DEV token (no other gate sign present) still refuses")
+
 # Conservative: a boundary-file touch with no content to adjudicate → refused.
 v = verdict({"paths": ["editor/scripts/apply_response.py"], "intent": "script-change"})
 check(v.mode == LAND_REFUSED and v.boundary == B_CONTRACT_SHAPE,

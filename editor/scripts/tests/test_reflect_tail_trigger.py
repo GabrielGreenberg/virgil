@@ -220,6 +220,54 @@ run([APPLY, str(sb), "archive", json.dumps({"cardId": TODO_CARD})], mem)
 check(only_skill(mem) == "archive-card", f"archive → archive-card (got {only_skill(mem)})")
 
 
+# ── REVERT → capture too (the one writeback path that had no tail) ───────────
+print("\n=== revert → capture (skill 'revert') ===")
+sb = sandbox(); mem = tempfile.mkdtemp(prefix="cowork-m-")
+run([APPLY, str(sb), "complete-only", REQ_CITATION], mem)
+mem2 = tempfile.mkdtemp(prefix="cowork-m-")
+r = run([APPLY, str(sb), "revert", REQ_CITATION], mem2)
+check(r.returncode == 0 and json.loads(r.stdout).get("reverted") is True,
+      f"revert succeeds (stderr={r.stderr.strip()[:120]})")
+check(only_skill(mem2) == "revert",
+      f"revert fires the same day-capture floor → one 'revert' memo (got {only_skill(mem2)})")
+
+
+# ── mint collision: same second, same skill, DIFFERENT identity → no clobber ─
+# The mint path resolves `<HH-MM-SS>-<skill>.md`; before this leg's fix, two
+# different-taskId memos landing in the same second silently overwrote each
+# other (`existing_path is None` for both → same filename → atomic clobber).
+print("\n=== mint collision: same-second same-skill different-task memos coexist ===")
+mem = Path(tempfile.mkdtemp(prefix="cowork-m-"))
+_prev_pin = os.environ.get("VIRGIL_DEV_MEMOS_DIR")
+_prev_dev = os.environ.get("VIRGIL_DEV")
+os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(mem)
+os.environ["VIRGIL_DEV"] = "1"
+_real_now_parts = reflect._now_parts
+reflect._now_parts = lambda: ("2026-01-01T00:00:00.000Z", "2026-01-01", "00-00-00")
+try:
+    sb = sandbox()
+    inject_request(sb, {"id": "req-fn-collide", "kind": "footnote",
+                        "status": "submitted", "text": "second footnote ask"})
+    reflect.main([str(sb), "draft-footnote", REQ_FOOTNOTE])
+    reflect.main([str(sb), "draft-footnote", "req-fn-collide"])
+finally:
+    reflect._now_parts = _real_now_parts
+    os.environ.pop("VIRGIL_DEV_MEMOS_DIR", None)
+    if _prev_pin is not None:
+        os.environ["VIRGIL_DEV_MEMOS_DIR"] = _prev_pin
+    if _prev_dev is None:
+        os.environ.pop("VIRGIL_DEV", None)
+    else:
+        os.environ["VIRGIL_DEV"] = _prev_dev
+_collide = sorted(p.name for p in (mem / "2026-01-01").glob("*.md"))
+check(_collide == ["00-00-00-draft-footnote-2.md", "00-00-00-draft-footnote.md"],
+      f"both memos survive, second disambiguated (got {_collide})")
+_re_run = run([str(SCRIPTS / 'reflect.py'), str(sb), "draft-footnote", REQ_FOOTNOTE], str(mem))
+_after = sorted(p.name for p in (mem / "2026-01-01").glob("*.md")) if (mem / "2026-01-01").exists() else []
+check(len([n for n in _after if "draft-footnote" in n]) == 2,
+      f"a RE-run for the same (skill, taskId) still MERGES rather than minting a third (got {_after})")
+
+
 # ── DEV gate: off → writeback succeeds, NO memo ─────────────────────────────
 print("\n=== DEV gate: off → writeback succeeds, NO memo ===")
 sb = sandbox(); mem = tempfile.mkdtemp(prefix="cowork-m-")
@@ -260,7 +308,16 @@ try:
 
     os.environ["VIRGIL_DEV_MEMOS_DIR"] = tempfile.mkdtemp(prefix="cowork-pin-")
     check(not _common._is_throwaway_paper(sb),
-          "an EXPLICITLY pinned sink always writes, temp paper or not")
+          "a sink pinned AWAY from the default always writes, temp paper or not")
+
+    # The vacuous-pin case is now structural, not just an environment finding:
+    # a pin whose value IS the computed default expresses no caller intent, so
+    # the guard stays armed. This is what makes the standing "do NOT re-add the
+    # ~/.zshenv pins" lore unnecessary — an ambient convenience export at the
+    # default can no longer disarm anything.
+    os.environ["VIRGIL_DEV_MEMOS_DIR"] = str(_common.dev_home() / "memos")
+    check(_common._is_throwaway_paper(sb),
+          "a pin AT the default sink expresses no intent — the guard stays armed")
 finally:
     os.environ.pop("VIRGIL_DEV_MEMOS_DIR", None)
     if _prev is not None:

@@ -327,12 +327,15 @@ The dream is itself a Virgil skill, so it reflects on its **own** run via
 memo lands past this run's marker, so the next dream reads it first (it's the
 dream's own track record). "The first dreams will be the worst."
 
-### Scheduling (both documented; neither wired)
+### Scheduling (wired — two Claude scheduled tasks)
 
-`/loop /editor/dream` on a long interval (simplest to start) **or** a scheduled
-task / cron (the steady state). Same skill, same since-last-dream selection —
-only the trigger differs. The dream skill documents both; this subsystem stands
-up no scheduler.
+`editor-skill-base-dream` (cron `0 22 * * *`) runs `/editor/dream` nightly from
+the repo, and `virgil-update` (cron `0 0 * * *`) runs `/cleanup-virgil` — merge
+sweep, version bump, push, deploy — after it. Green dream branches merge to
+`main` at the end of the run (dream.md step 6) and ship with that update;
+decisions and red-gate work are filed into `~/virgil-tasks/inbox/` for the
+catcher. `/loop /editor/dream` on an interval remains a supported manual mode —
+same since-last-dream selection, and a same-day re-run rotates the prior digest.
 
 ## The unified engine: `iterations/` and `memos/` (chip 19)
 
