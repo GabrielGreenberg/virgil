@@ -504,14 +504,49 @@ export function LiftHost({ editorRef, children }: Props) {
       let liveCursorX = origin.x;
       let liveCursorY = origin.y;
       let motionRaf = 0;
+      /** What the last frame actually WROTE, and to which nodes — the
+       *  equality bail (task 334). `FloatingPanel`'s `applyTranslate` has had
+       *  one since task 330 and this copy did not, which is the divergence
+       *  that task filed: a lift gesture whose pointer re-enters the same
+       *  coordinate (a hold, a jitter, an auto-scroll frame re-running the
+       *  hit-test at a parked cursor) rewrote both nodes' `transform` for a
+       *  delta that had not changed.
+       *
+       *  It records the TARGET NODES alongside the delta, and it records
+       *  NOTHING when neither node is mounted yet — the two ways a naive
+       *  `{dx,dy}` bail turns into a missed write: a frame that ran before
+       *  the overlay's portal committed would otherwise claim the delta as
+       *  applied and the node would never receive it. */
+      let appliedMotion: {
+        dx: number;
+        dy: number;
+        root: HTMLElement | null;
+        header: HTMLElement | null;
+      } | null = null;
       const applyMotion = () => {
         motionRaf = 0;
         const dx = liveCursorX - origin.x;
         const dy = liveCursorY - origin.y;
-        const t = `translate3d(${dx}px, ${dy}px, 0)`;
-        const targets = motionTargetsRef.current;
-        if (targets.root) targets.root.style.transform = t;
-        if (targets.header) targets.header.style.transform = t;
+        const { root, header } = motionTargetsRef.current;
+        if (!root && !header) return; // nothing mounted — nothing applied
+        const prev = appliedMotion;
+        if (
+          prev &&
+          prev.dx === dx &&
+          prev.dy === dy &&
+          prev.root === root &&
+          prev.header === header
+        ) {
+          return;
+        }
+        appliedMotion = { dx, dy, root, header };
+        // Same rest value as the float shell's: an empty string at zero
+        // rather than an identity transform (`willChange` already holds the
+        // layer, so nothing is lost by dropping the property).
+        const t =
+          dx === 0 && dy === 0 ? "" : `translate3d(${dx}px, ${dy}px, 0)`;
+        if (root) root.style.transform = t;
+        if (header) header.style.transform = t;
       };
       const scheduleMotion = () => {
         if (motionRaf) return;

@@ -66,6 +66,14 @@ function setup() {
   const restore = vi.fn();
   const container = document.createElement("div");
   document.body.appendChild(container);
+  // Count the container's rect reads and let a test MOVE it between gestures.
+  // jsdom's own rect is all-zeros, which is what every pre-334 leg above was
+  // written against — `rect.top` stays 0 unless a leg sets it.
+  const rect = { reads: 0, top: 0 };
+  container.getBoundingClientRect = () => {
+    rect.reads += 1;
+    return { top: rect.top, left: 0, width: 0, height: 0, bottom: rect.top, right: 0 } as DOMRect;
+  };
 
   const rendered = renderHook(() => {
     const isDraggingRef = useRef(false);
@@ -108,7 +116,7 @@ function setup() {
       document.dispatchEvent(new MouseEvent("mouseup", { buttons: 0 }));
     });
 
-  return { rendered, press, move, release, onSnapBoundary, setBand, restore, setAnimated };
+  return { rendered, press, move, release, onSnapBoundary, setBand, restore, setAnimated, rect };
 }
 
 describe("useFocusBandEdgeDrag — pointer invariants (task 185)", () => {
@@ -208,5 +216,42 @@ describe("useFocusBandEdgeDrag — pointer invariants (task 185)", () => {
     expect(document.body.style.cursor).toBe("");
     expect(document.body.style.userSelect).toBe("");
     expect(onSnapBoundary).not.toHaveBeenCalled();
+  });
+});
+
+// ── Task 334: the per-move cost the allowlist entry claims ───────────────────
+// Writing the `[cost: …]` tag for this gesture in `pane-drag-guardrail` is what
+// surfaced the `getBoundingClientRect()` it ran PER MOVE — a forced layout in
+// the write path for an origin that cannot move while the pointer is held. No
+// census in that file can see it (they ask who installs a listener and whether
+// it takes the invariants, never what a move COSTS), so the claim is pinned
+// here, where the real gesture can be driven.
+describe("useFocusBandEdgeDrag — per-move cost (task 334)", () => {
+  it("reads the scroll container's rect ONCE per gesture, however many moves arrive", () => {
+    const { press, move, release, rect } = setup();
+    press("bottom");
+    rect.reads = 0;
+    for (let y = 120; y <= 260; y += 10) move(y);
+    expect(rect.reads, "one snapshot for fifteen moves").toBe(1);
+    release();
+  });
+
+  it("re-reads on the NEXT gesture — a snapshot is never inherited across drags", () => {
+    // Same container ELEMENT, moved between gestures (a pane resize, an
+    // ancestor scroll). Inheriting the first drag's origin would offset every
+    // snap in the second by the distance the container travelled.
+    const { press, move, release, setBand, rect } = setup();
+    press("bottom");
+    move(250); // origin 0 → row 9 (mid 250)
+    release();
+
+    rect.top = 100; // the outline column moved down 100px between gestures
+    rect.reads = 0;
+    press("bottom");
+    setBand.mockClear();
+    move(250); // container-relative 150 now → row 5 (mid 150), NOT row 9
+    expect(rect.reads, "the new gesture measures for itself").toBe(1);
+    expect(setBand).toHaveBeenCalledWith({ top: 0, height: 200 });
+    release();
   });
 });

@@ -147,6 +147,24 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
 
     let rafId: number | null = null;
     let lastY = 0;
+    // The scroll container's VIEWPORT top, snapshotted per container identity
+    // rather than read per move (task 334 — the same forced-layout-in-the-
+    // write-path shape task 333 took out of `useDragPosition`'s RAF body).
+    // `scrollTop` stays LIVE below, because scrolling the outline mid-drag
+    // genuinely moves the rows under the cursor; the container's own viewport
+    // top is what cannot move under a held pointer by any gesture the page
+    // itself can run — no other pointer gesture can start while this one owns
+    // the button. Stated honestly rather than claimed: this gesture is NOT on
+    // the LayoutGestureBus, so a one-shot reflow with the button held (an OS
+    // window resize by keyboard, Stage Manager, a DPR change) leaves the
+    // origin stale for the rest of THIS drag — a constant offset in the
+    // transient band, healed by the next mousedown, and the same exposure
+    // task 330's own snapshot accepts for the same reason. Keyed on the
+    // ELEMENT, so a re-render that swaps the container mid-gesture re-reads
+    // instead of using a stale origin.
+    // Cost contract: `focus-band-edge-drag.test.tsx` counts the rect reads.
+    let rectContainer: HTMLElement | null = null;
+    let rectTop = 0;
 
     // Snap the dragged edge to the nearest row and repaint the transient rect.
     const flush = () => {
@@ -183,6 +201,11 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
      * writing anything.
      */
     const endDrag = (mode: "commit" | "detach") => {
+      // Drop the container-rect snapshot on EVERY ending, before the guard —
+      // the element's identity can outlive a gesture while its position moves
+      // between them (a pane resize, a scroll of an ancestor), so the next
+      // drag must re-read rather than inherit this one's origin.
+      rectContainer = null;
       const drag = dragRef.current;
       if (!drag) return;
       const { onSnapBoundary, restore, setAnimated, setDragging } = optionsRef.current;
@@ -243,8 +266,11 @@ export function useFocusBandEdgeDrag(options: FocusBandEdgeDragOptions): {
       }
       const container = optionsRef.current.getScrollContainer();
       if (!container) return;
-      const rect = container.getBoundingClientRect();
-      lastY = e.clientY - rect.top + container.scrollTop;
+      if (container !== rectContainer) {
+        rectContainer = container;
+        rectTop = container.getBoundingClientRect().top;
+      }
+      lastY = e.clientY - rectTop + container.scrollTop;
       if (rafId === null) rafId = requestAnimationFrame(flush);
     };
 
