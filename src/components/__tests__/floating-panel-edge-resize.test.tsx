@@ -16,17 +16,56 @@
 // The shell portals to document.body and positions itself via inline
 // `position: fixed; left/top/width/height`, so we drive real window mouse
 // events and read the live geometry straight off the shell's inline style.
+//
+// Since task 335 the resize branch is RAF-COALESCED (≤1 React commit per frame,
+// equality-bailed) rather than committing per raw `mousemove`, so this suite
+// owns the frame clock the way `float-move-gesture-cost` does: nothing is
+// applied until `flushFrame()`. Every assertion's VALUE below is unchanged —
+// the clamp math and the pinned-right-edge behaviour are what this file exists
+// to pin, and neither moved.
 
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, fireEvent, cleanup } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { Profiler } from "react";
+import { render, fireEvent, cleanup, act } from "@testing-library/react";
 import FloatingPanel, {
   FLOAT_MIN_W,
   FLOAT_MAX_W,
   FLOAT_MIN_H,
 } from "@/components/FloatingPanel";
 
+/* ── RAF control (mirrors float-move-gesture-cost.test.tsx) ─────────────── */
+let frameQueue: FrameRequestCallback[] = [];
+let rafCalls = 0;
+let realRaf: typeof window.requestAnimationFrame;
+let realCancelRaf: typeof window.cancelAnimationFrame;
+
+function flushFrame() {
+  const queued = frameQueue;
+  frameQueue = [];
+  act(() => {
+    for (const cb of queued) cb(performance.now());
+  });
+}
+
+beforeEach(() => {
+  frameQueue = [];
+  rafCalls = 0;
+  realRaf = window.requestAnimationFrame;
+  realCancelRaf = window.cancelAnimationFrame;
+  window.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    rafCalls += 1;
+    frameQueue.push(cb);
+    return frameQueue.length;
+  }) as typeof window.requestAnimationFrame;
+  window.cancelAnimationFrame = ((id: number) => {
+    frameQueue.splice(id - 1, 1);
+  }) as typeof window.cancelAnimationFrame;
+});
+
 afterEach(() => {
   cleanup();
+  window.requestAnimationFrame = realRaf;
+  window.cancelAnimationFrame = realCancelRaf;
   // Reset body chrome the gesture sets so it can't leak between tests.
   document.body.style.userSelect = "";
   document.body.style.cursor = "";
@@ -60,6 +99,34 @@ function renderFloat(overrides: Partial<typeof INIT> = {}) {
   return { shell, onChange };
 }
 
+/** Same mount, wrapped in a `<Profiler>` so React COMMITS are countable — the
+ *  only externally visible difference an equality bail makes. */
+function renderProfiledFloat() {
+  const onChange = vi.fn();
+  const commits = { count: 0 };
+  render(
+    <Profiler id="float" onRender={() => { commits.count += 1; }}>
+      <FloatingPanel
+        cardKey="note:n1"
+        mode="floating"
+        surface="card"
+        initialX={INIT.x}
+        initialY={INIT.y}
+        initialWidth={INIT.width}
+        initialHeight={INIT.height}
+        zIndex={1200}
+        onChange={onChange}
+      >
+        <div data-testid="body">float body</div>
+      </FloatingPanel>
+    </Profiler>,
+  );
+  const shell = document.querySelector<HTMLDivElement>(
+    '[data-floating-panel="true"]',
+  )!;
+  return { shell, onChange, commits };
+}
+
 /** Read the live geometry off the shell's inline `position: fixed` style. */
 function geom(shell: HTMLDivElement) {
   return {
@@ -74,7 +141,20 @@ function zone(shell: HTMLDivElement, edge: string) {
   return shell.querySelector<HTMLDivElement>(`[data-resize-edge="${edge}"]`)!;
 }
 
-/** Press an edge zone at (sx,sy), move to (mx,my). Does NOT release. */
+function moveTo(mx: number, my: number) {
+  act(() => {
+    fireEvent(
+      window,
+      // `buttons: 1` — the primary button is HELD. Since task 330 the move
+      // handler bails on `isMissedRelease`, so a move with jsdom's default
+      // `buttons: 0` reads as a release this gesture never observed.
+      new MouseEvent("mousemove", { bubbles: true, clientX: mx, clientY: my, buttons: 1 }),
+    );
+  });
+}
+
+/** Press an edge zone at (sx,sy), move to (mx,my), let the frame land. Does
+ *  NOT release. */
 function dragEdge(
   shell: HTMLDivElement,
   edge: string,
@@ -84,20 +164,17 @@ function dragEdge(
   my: number,
 ) {
   fireEvent.mouseDown(zone(shell, edge), { clientX: sx, clientY: sy });
-  fireEvent(
-    window,
-    // `buttons: 1` — the primary button is HELD. Since task 330 the move
-    // handler bails on `isMissedRelease`, so a move with jsdom's default
-    // `buttons: 0` reads as a release this gesture never observed.
-    new MouseEvent("mousemove", { bubbles: true, clientX: mx, clientY: my, buttons: 1 }),
-  );
+  moveTo(mx, my);
+  flushFrame();
 }
 
 function release(mx: number, my: number) {
-  fireEvent(
-    window,
-    new MouseEvent("mouseup", { bubbles: true, clientX: mx, clientY: my }),
-  );
+  act(() => {
+    fireEvent(
+      window,
+      new MouseEvent("mouseup", { bubbles: true, clientX: mx, clientY: my }),
+    );
+  });
 }
 
 describe("FloatingPanel edge-resize math", () => {
@@ -227,6 +304,114 @@ describe("FloatingPanel edge-resize math", () => {
     });
     expect(document.body.style.cursor).toBe("nesw-resize");
     release(200, 450);
+  });
+});
+
+describe("the resize branch coalesces (task 335)", () => {
+  it("schedules at most ONE frame however many events arrive, and applies nothing before it", () => {
+    const { shell } = renderFloat();
+    fireEvent.mouseDown(zone(shell, "right"), { clientX: 600, clientY: 300 });
+    for (let i = 1; i <= 8; i += 1) moveTo(600 + i * 5, 300);
+    expect(rafCalls, "one frame queued for eight events").toBe(1);
+    expect(frameQueue).toHaveLength(1);
+    expect(
+      geom(shell).width,
+      "nothing is committed before the frame — the handler only advanced a ref",
+    ).toBe(INIT.width);
+
+    flushFrame();
+    expect(geom(shell).width, "the frame applies the LAST event's geometry").toBe(
+      INIT.width + 40,
+    );
+
+    // The next event opens a new frame — and only one.
+    moveTo(700, 300);
+    expect(rafCalls).toBe(2);
+  });
+
+  it("bails the COMMIT when a frame's geometry equals what React already rendered", () => {
+    // The bail's only observable is React's commit itself — with equal values
+    // React's own style diff writes nothing either way, so an inline-style
+    // probe could not tell the two apart. `<Profiler>` can.
+    const { shell, commits } = renderProfiledFloat();
+    fireEvent.mouseDown(zone(shell, "right"), { clientX: 600, clientY: 300 });
+
+    moveTo(700, 300);
+    const before = commits.count;
+    flushFrame();
+    expect(commits.count, "a real geometry change commits (the control)").toBe(before + 1);
+    expect(geom(shell).width).toBe(INIT.width + 100);
+
+    // Frames whose geometry is unchanged: a held pointer re-reporting the same
+    // coordinate, and a movement on the axis this edge does not own.
+    moveTo(700, 300);
+    flushFrame();
+    moveTo(700, 999);
+    flushFrame();
+    expect(commits.count, "an unchanged geometry commits nothing").toBe(before + 1);
+    expect(geom(shell).width).toBe(INIT.width + 100);
+  });
+
+  it("holds the commit at a clamp bound — a whole drag past MAX_W costs one", () => {
+    const { shell, commits } = renderProfiledFloat();
+    fireEvent.mouseDown(zone(shell, "right"), { clientX: 600, clientY: 300 });
+    const before = commits.count;
+    // Every one of these resolves to FLOAT_MAX_W; only the first can commit.
+    for (const x of [600 + 5000, 600 + 6000, 600 + 7000]) {
+      moveTo(x, 300);
+      flushFrame();
+    }
+    expect(geom(shell).width).toBe(FLOAT_MAX_W);
+    expect(commits.count).toBe(before + 1);
+  });
+
+  it("a release whose frame never ran still commits the geometry the user dragged to", () => {
+    const { shell, onChange } = renderFloat();
+    fireEvent.mouseDown(zone(shell, "bottom"), { clientX: 999, clientY: 450 });
+    moveTo(999, 520); // queued, never flushed
+    expect(frameQueue).toHaveLength(1);
+    release(999, 520);
+    expect(geom(shell).height).toBe(INIT.height + 70);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ height: INIT.height + 70 }),
+    );
+    // …and the stale frame, if it somehow ran, can no longer commit behind it.
+    flushFrame();
+    expect(geom(shell).height).toBe(INIT.height + 70);
+  });
+
+  it("a missed release ends the resize at the last observed geometry", () => {
+    const { shell, onChange } = renderFloat();
+    fireEvent.mouseDown(zone(shell, "right"), { clientX: 600, clientY: 300 });
+    moveTo(700, 300);
+    flushFrame();
+
+    // The primary button is UP: a release we never observed.
+    act(() => {
+      fireEvent(
+        window,
+        new MouseEvent("mousemove", {
+          bubbles: true,
+          clientX: 2000,
+          clientY: 300,
+          buttons: 0,
+        }),
+      );
+    });
+    expect(onChange, "the missed release commits, exactly once").toHaveBeenCalledTimes(1);
+    expect(
+      geom(shell).width,
+      "and it must NOT incorporate the stray coordinate",
+    ).toBe(INIT.width + 100);
+    expect(document.body.style.cursor, "chrome teardown runs on every end").toBe("");
+    expect(document.body.style.userSelect).toBe("");
+
+    // The gesture is really over.
+    moveTo(3000, 300);
+    flushFrame();
+    expect(geom(shell).width).toBe(INIT.width + 100);
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 });
 
