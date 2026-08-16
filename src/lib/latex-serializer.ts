@@ -70,6 +70,132 @@ function declareFromRawLatex(raw: string): void {
   if (/\\begin\{xlist\}/.test(raw)) need("xlistenv");
 }
 
+// -----------------------------------------------------------------------------
+// Child-part memo — the CONTAINER half of the incremental pipeline (task 337).
+//
+// `serializeTopLevelBlock` is cached per top-level PM node, which makes the
+// unit of re-derivation the top-level BLOCK. For a container that unit is a
+// lie: a keystroke inside one bullet re-serializes the WHOLE list, because PM
+// re-creates every ancestor of an edited node. On a 100-item enumeration that
+// is 100× the work the edit deserves, landing in the 300 ms interactive tier
+// exactly as the user resumes typing after a think-pause.
+//
+// So a container's children are memoized too, on a memo the CALLER supplies
+// (block-caches.ts), keyed on the child's JSON object — which the DocProducts
+// pipeline guarantees is a faithful proxy for PM node identity, because its
+// `getNodeJson` composes container JSON from per-child cached JSON and never
+// mutates a cached entry. No memo ⇒ every call is a plain `serializeNode`, so
+// the cold path (`serializeToLatex`, the code pane, every test) is unchanged.
+//
+// TWO properties make this byte-safe, and both are load-bearing:
+//
+//  1. The memo is consulted ONLY where a parent maps its children through
+//     `serializeNode(child, S, D)` with S and D constant across the map — so a
+//     child's bytes are a pure function of (child, S, D), independent of its
+//     index and its siblings. The parent's own framing (indent, `\begin`,
+//     separators, any post-processing of the JOINED string) stays in the
+//     parent, so a non-concatenative assembly like `listItem`'s tail strip is
+//     applied exactly as before. `serializeNode` is not the only walker in
+//     this file — the example-body and gloss walkers serialize several of the
+//     same node types to DIFFERENT bytes — so the context key names the walker
+//     MODE as well, and only `serializeNode` populates the memo today.
+//  2. The collector side channel is fully captured by a part's
+//     `{requirementIds, bibFamily}`: `need` is a Set add (idempotent,
+//     commutative) and `needBibFamily` folds first-concrete-wins with
+//     distinct ⇒ natbib (idempotent, commutative). Replaying a child's pair
+//     into the enclosing collector is therefore byte-equivalent to running the
+//     child inside it — the same argument `foldBibFamilies` already rests on.
+// -----------------------------------------------------------------------------
+
+/** One serialized subtree + the requirements its emit-sites declared. */
+export interface SerializedPart {
+  latex: string;
+  requirementIds: readonly string[];
+  bibFamily: BibFamily | null;
+}
+
+/**
+ * The child-part memo a cached serialize runs against. Keyed by the CALLER on
+ * JSON-object identity + a context key; see the header above for why that is
+ * a faithful proxy for PM node identity on the pipeline's path.
+ */
+export interface SerializeMemo {
+  get(node: JSONContent, ctx: number): SerializedPart | undefined;
+  set(node: JSONContent, ctx: number, part: SerializedPart): void;
+}
+
+/** The only walker that populates the memo today. Encoded in the context key
+ *  so a future example-body/gloss memo cannot collide with these entries —
+ *  five node types serialize to different bytes under those walkers. */
+const MODE_SERIALIZE_NODE = 0;
+
+/** Context key layout: `mode * 4096 + listDepth * 2 + suppressChildUuids`.
+ *  4096 is far above any reachable list nesting depth. */
+function childContextKey(
+  mode: number,
+  suppressChildUuids: boolean,
+  listDepth: number,
+): number {
+  return mode * 4096 + listDepth * 2 + (suppressChildUuids ? 1 : 0);
+}
+
+let activeMemo: SerializeMemo | null = null;
+
+/** Serialize one subtree with its OWN collector, capturing the declared
+ *  requirements as data instead of leaving them in the enclosing collector. */
+function serializePartScoped(
+  node: JSONContent,
+  suppressChildUuids: boolean,
+  listDepth: number,
+): SerializedPart {
+  const collector = createRequirementCollector();
+  const prevCollector = activeCollector;
+  activeCollector = collector;
+  let latex: string;
+  try {
+    latex = serializeNode(node, suppressChildUuids, listDepth);
+  } finally {
+    activeCollector = prevCollector;
+  }
+  return {
+    latex,
+    requirementIds: [...collector.ids],
+    bibFamily: collector.bibFamily,
+  };
+}
+
+/** Replay a memoized part's declarations into the ACTIVE collector. */
+function replayPart(part: SerializedPart): void {
+  for (const id of part.requirementIds) need(id);
+  if (part.bibFamily) needBibFamily(part.bibFamily);
+}
+
+/**
+ * Serialize ONE child of a container through the active memo. Identical to
+ * `serializeNode(node, suppressChildUuids, listDepth)` in every byte — the
+ * memo only skips recomputation, and the collector effects are replayed.
+ */
+function serializeContainerChild(
+  node: JSONContent,
+  suppressChildUuids: boolean,
+  listDepth: number,
+): string {
+  const memo = activeMemo;
+  if (!memo) return serializeNode(node, suppressChildUuids, listDepth);
+  const key = childContextKey(
+    MODE_SERIALIZE_NODE,
+    suppressChildUuids,
+    listDepth,
+  );
+  let part = memo.get(node, key);
+  if (!part) {
+    part = serializePartScoped(node, suppressChildUuids, listDepth);
+    memo.set(node, key, part);
+  }
+  replayPart(part);
+  return part.latex;
+}
+
 // The classic preset is the historical default — used as the fallback
 // when a doc has no preserved preamble and the caller didn't pass one.
 const DEFAULT_PREAMBLE = CLASSIC_PREAMBLE;
@@ -441,14 +567,18 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // one on re-parse (the parser only splits the quote body on `\n\n`). The
       // separator preserves the hard paragraph break inside a multi-paragraph
       // quote; a single-paragraph quote is byte-unchanged (single-element join).
-      const inner = (node.content || []).map((n) => serializeNode(n, true)).join("\n\n");
+      const inner = (node.content || [])
+        .map((n) => serializeContainerChild(n, true, 0))
+        .join("\n\n");
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       return `\\begin{quote}\n${inner}\\end{quote}${anchor}\n\n`;
     }
 
     case "bulletList": {
-      const items = (node.content || []).map((n) => serializeNode(n, false, listDepth)).join("");
+      const items = (node.content || [])
+        .map((n) => serializeContainerChild(n, false, listDepth))
+        .join("");
       const uuid = node.attrs?.uuid as string | null;
       const preamble = node.attrs?.listPreamble as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
@@ -463,7 +593,9 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     }
 
     case "orderedList": {
-      const items = (node.content || []).map((n) => serializeNode(n, false, listDepth)).join("");
+      const items = (node.content || [])
+        .map((n) => serializeContainerChild(n, false, listDepth))
+        .join("");
       const uuid = node.attrs?.uuid as string | null;
       const preamble = node.attrs?.listPreamble as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
@@ -490,8 +622,12 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       // Serialize trailing block children (nested lists, etc.) with bumped depth
+      // Per-child memo, join-level strip: the `.replace` runs on the
+      // CONCATENATION exactly as before (it can eat into the second-to-last
+      // child's trailing newlines when the last one is all newlines), so
+      // memoizing the children individually is byte-neutral.
       const tailText = tail
-        .map((n) => serializeNode(n, false, listDepth + 1))
+        .map((n) => serializeContainerChild(n, false, listDepth + 1))
         .join("")
         .replace(/\n+$/, ""); // strip trailing blank lines from nested blocks
       if (tailText) {
@@ -988,33 +1124,29 @@ function collapseBlankRuns(s: string): string {
  *  declared — the per-block unit `serializeToLatex` assembles from, and the
  *  cacheable entry for the Wave-1 incremental pipeline (cache key = PM node
  *  identity; a block's output depends on nothing outside its own subtree). */
-export interface TopLevelBlockLatex {
-  latex: string;
-  requirementIds: readonly string[];
-  bibFamily: BibFamily | null;
-}
+export type TopLevelBlockLatex = SerializedPart;
 
 /**
  * Serialize ONE top-level block with its own requirement collector.
  * Top level ⇒ `suppressChildUuids = false`, `listDepth = 0` (always true for
  * doc children), so the emitted bytes are exactly the block's slice of a
  * whole-doc `serializeNode(doc)` walk.
+ *
+ * `memo` (task 337) makes the CONTAINER children of this block incremental
+ * too — see the child-part memo header above. Omit it and every child is
+ * serialized fresh, which is what every non-pipeline caller does.
  */
-export function serializeTopLevelBlock(node: JSONContent): TopLevelBlockLatex {
-  const collector = createRequirementCollector();
-  const prevCollector = activeCollector;
-  activeCollector = collector;
-  let latex: string;
+export function serializeTopLevelBlock(
+  node: JSONContent,
+  memo?: SerializeMemo | null,
+): TopLevelBlockLatex {
+  const prevMemo = activeMemo;
+  activeMemo = memo ?? null;
   try {
-    latex = serializeNode(node);
+    return serializePartScoped(node, false, 0);
   } finally {
-    activeCollector = prevCollector;
+    activeMemo = prevMemo;
   }
-  return {
-    latex,
-    requirementIds: [...collector.ids],
-    bibFamily: collector.bibFamily,
-  };
 }
 
 /**

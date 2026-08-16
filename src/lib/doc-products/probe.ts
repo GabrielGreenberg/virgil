@@ -21,6 +21,10 @@ export interface DocProductsStats {
   blockJsonHits: number;
   blockLatexMisses: number;
   blockLatexHits: number;
+  /** Container CHILDREN re-serialized (task 337). A keystroke inside a
+   *  100-item list must move this by ONE item, not by the list. */
+  childPartMisses: number;
+  childPartHits: number;
 }
 
 export function readDocProductsStats(): DocProductsStats {
@@ -35,6 +39,8 @@ export function readDocProductsStats(): DocProductsStats {
     blockJsonHits: blockCacheStats.jsonHits,
     blockLatexMisses: blockCacheStats.latexMisses,
     blockLatexHits: blockCacheStats.latexHits,
+    childPartMisses: blockCacheStats.partMisses,
+    childPartHits: blockCacheStats.partHits,
   };
 }
 
