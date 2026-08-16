@@ -13,6 +13,7 @@ import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import {
   serializeToLatex,
   assignUuids,
+  needsUuidWork,
   extractSidecarData,
 } from "@/lib/latex-serializer";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
@@ -479,7 +480,19 @@ export async function writeDocBundle(
     );
     // recoverOrphanedUuids disabled — fingerprint matching causes UUID collisions.
     // Lost UUIDs get fresh ones via assignUuids instead.
-    assignUuids(content);
+    //
+    // Parity with storage-fsa (S3): `content` here is the caller's object, and
+    // under the DocProducts pipeline that is the SHARED docJson — whose cached
+    // per-node entries must never be mutated. With `BlockUuidBackfill` live
+    // this is a steady-state no-op, so gate on the read-only twin and deep-copy
+    // when work IS needed. The dev backend is the one the perf work is
+    // previewed on, and since task 337 the shared JSON is composed from
+    // per-CHILD cache entries — so an in-place `node.attrs = {}` here would
+    // reach back into every prior generation's snapshot, not just this one.
+    if (needsUuidWork(content)) {
+      content = JSON.parse(JSON.stringify(content)) as JSONContent;
+      assignUuids(content);
+    }
 
     // Preserve the user's preamble/postamble by re-reading the existing
     // .tex file. The editor never sees these chunks, so the disk is the

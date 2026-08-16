@@ -218,7 +218,21 @@ export const LatexCommandMark = Mark.create({
             // Also rebuild if any existing decoration overlaps a
             // changed region (the typed text might land mid-command and
             // change its length without inserting a `\`).
-            if (!touched && oldSet.find().length > 0) {
+            //
+            // KEYSTROKE SANCTITY (task 337): this loop used to be gated on
+            // `oldSet.find().length > 0` — an ARGLESS find, which is the one
+            // DecorationSet call that is O(all decorations in the document):
+            // `findInner` with the default `0 … 1e9` range enters EVERY child
+            // subtree and allocates a copied `Decoration` per hit. It ran on
+            // exactly the path that exists to be cheap — a plain keystroke
+            // whose changed region holds no backslash — so a paper with
+            // hundreds of `\commands` paid a full-set walk per character.
+            // The gate bought nothing: `find(from, to)` descends only into
+            // children whose span overlaps the query, so on an empty set the
+            // loop below is already O(steps), and mapping can never ADD a
+            // decoration — so the guard could never suppress a `touched` the
+            // loop would have set. Bounded ranges only; never argless.
+            if (!touched) {
               tr.mapping.maps.forEach((stepMap) => {
                 if (touched) return;
                 stepMap.forEach((_oldFrom, _oldTo, newFrom, newTo) => {
