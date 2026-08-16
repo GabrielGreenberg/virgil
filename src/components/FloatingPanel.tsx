@@ -249,15 +249,34 @@ interface FloatingPanelProps {
  *     window) leaves the panel ghost-glued to the cursor and commits on the
  *     user's next click.
  *
- * The RESIZE branch keeps its per-move `setPos`, and the honest reason is
- * SCOPE, not a principle: a resize genuinely has no composite-only
- * representation (the hosted body must reflow to the new width/height), but
- * "must re-layout" is not "must re-layout uncoalesced" — the engine's own
- * `apply()` writes real layout and still coalesces behind an equality bail. So
- * this is a recorded residual, filed rather than fixed here: the reported
- * defect and this task's contract are the MOVE path, and the resize branch does
- * no DOM read, so it never had the interleaved-thrash half. Both pointer
- * invariants cover it either way.
+ * ── AND THE RESIZE BRANCH'S (task 335) ─────────────────────────────────────
+ *
+ * Task 330 left the resize branch committing `setPos` per raw `mousemove`, and
+ * recorded the reason as SCOPE rather than principle: a resize genuinely has no
+ * composite-only representation (the hosted body must reflow to the new
+ * width/height), but "must re-layout" is not "must re-layout uncoalesced" — the
+ * engine's own `apply()` writes real layout and still coalesces behind an
+ * equality bail. That residual is now closed, and the shape it took is the
+ * decision worth recording:
+ *
+ *   - React stays the OWNER of the shell's `width`/`height` (and of the `x`
+ *     the left edge re-derives). The coalescing sits IN FRONT of the owner
+ *     rather than beside it: the handler advances `liveResizeRef` and
+ *     schedules ONE frame; the frame commits through the same `commitPos`
+ *     door, behind an equality bail against what React last rendered.
+ *   - The rejected alternative was the move path's own shape — imperative
+ *     width/height writes with a single commit on release. It is faster and it
+ *     FORKS the source of truth in a way the transform does not: JSX never
+ *     sets `transform`, so a mid-gesture re-render (a parent prop change)
+ *     leaves the move's imperative write standing, while it would rewrite
+ *     `width`/`height` from the stale `pos` and snap the float back until the
+ *     next mousemove. There is no third representation to defer onto, so the
+ *     honest ceiling for a resize is one commit per FRAME, not zero.
+ *   - So the per-event cost is arithmetic + a scheduled frame, and the release
+ *     still commits + persists exactly once, reading `liveRect()` so a gesture
+ *     whose last frame never ran keeps the geometry the user dragged to.
+ *
+ * Both pointer invariants covered it before and cover it now.
  *
  * Two consequences of the transform, stated because neither is a free win. It
  * makes the shell a containing block for `position: fixed` DESCENDANTS, so an
@@ -410,6 +429,25 @@ function FloatingPanelInner({
    * lazy capture.
    */
   const moveGeomRef = useRef<MoveGeometry | null>(null);
+
+  /* ── Resize-gesture locals (task 335) ───────────────────────────────────
+   * The same discipline, one representation down. A resize has no
+   * composite-only form — the hosted body must reflow — so React stays the
+   * OWNER of the shell's width/height and the coalescing happens in front of
+   * it: the handler advances `liveResizeRef` per event (pure arithmetic off
+   * the gesture's captured original geometry) and schedules ONE frame, whose
+   * body commits through the same `commitPos` door the move's end edge uses.
+   * The release reads the live ref back out, so a gesture whose last frame
+   * never ran still persists the geometry the user dragged to. */
+  /** Where the resize gesture has reached. Null outside a resize gesture. */
+  const liveResizeRef = useRef<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const resizeRafRef = useRef<number | null>(null);
+
   // Latest callbacks/mode in a ref so the move/up effect can install
   // listeners once and stay stable across renders. Avoids tearing down
   // and re-binding window listeners on every prop change, and keeps
@@ -475,13 +513,18 @@ function FloatingPanelInner({
   // Window-level move/up listeners. Both modes share these — only the
   // body of the move handler differs based on dragStateRef contents.
   useEffect(() => {
-    /** The gesture's live rect: rendered pos, overridden by the move's own
-     *  live x/y. THE thing the release commits — `latestPosRef` alone is a
-     *  frame behind by design now (the shell moves by transform). */
+    /** The gesture's live rect: rendered pos, overridden by whichever branch
+     *  is live — the move's own x/y, or the resize's whole geometry. THE thing
+     *  the release commits, because `latestPosRef` alone is a frame behind by
+     *  design in BOTH branches (the move writes a transform; the resize commits
+     *  from a scheduled frame). The two are mutually exclusive — one
+     *  `dragStateRef` — so the order here is a tie-break that never fires. */
     const liveRect = () => {
       const base = latestPosRef.current;
       const live = liveMoveRef.current;
-      return live ? { ...base, x: live.x, y: live.y } : { ...base };
+      if (live) return { ...base, x: live.x, y: live.y };
+      const resized = liveResizeRef.current;
+      return resized ? { ...resized } : { ...base };
     };
 
     /** Write the pending translate. ONE per frame, equality-bailed. */
@@ -526,6 +569,37 @@ function FloatingPanelInner({
       latestPosRef.current = rect;
       clearTranslateOnCommitRef.current = true;
       setPos(rect);
+    };
+
+    /** Commit the pending resize geometry through that same door. ONE per
+     *  frame, equality-bailed against what React last rendered — a resize held
+     *  still (the user pausing at a clamp bound, a mouse re-reporting the same
+     *  coordinate, a second axis moving while this one is frozen) re-renders
+     *  nothing and reflows the hosted body not at all. */
+    const applyResize = () => {
+      resizeRafRef.current = null;
+      const live = liveResizeRef.current;
+      if (!live) return;
+      const cur = latestPosRef.current;
+      if (
+        cur.x === live.x &&
+        cur.y === live.y &&
+        cur.width === live.width &&
+        cur.height === live.height
+      ) {
+        return;
+      }
+      commitPos({ ...live });
+    };
+    const scheduleResize = () => {
+      if (resizeRafRef.current !== null) return; // a frame is already queued
+      resizeRafRef.current = requestAnimationFrame(applyResize);
+    };
+    const cancelResize = () => {
+      if (resizeRafRef.current !== null) {
+        cancelAnimationFrame(resizeRafRef.current);
+        resizeRafRef.current = null;
+      }
     };
 
     const onMove = (e: MouseEvent) => {
@@ -684,7 +758,9 @@ function FloatingPanelInner({
       } else {
         // Edge-aware resize. Start from the gesture's ORIGINAL geometry
         // (captured at mousedown) so each axis is a pure function of the
-        // cursor delta — never an accumulation off the live pos.
+        // cursor delta — never an accumulation off the live pos. Per event
+        // this is arithmetic and a scheduled frame; the commit itself is the
+        // frame's (task 335).
         const dx = e.clientX - s.startX;
         const dy = e.clientY - s.startY;
         let x = s.origX;
@@ -710,7 +786,8 @@ function FloatingPanelInner({
           // Bottom edge follows the cursor; top (y) stays fixed.
           height = clampH(s.origH + dy);
         }
-        setPos((p) => ({ ...p, x, y, width, height }));
+        liveResizeRef.current = { x, y, width, height };
+        scheduleResize();
       }
     };
     /**
@@ -730,10 +807,15 @@ function FloatingPanelInner({
     const endGesture = (cursor: { x: number; y: number } | null) => {
       const s = dragStateRef.current;
       if (!s) return;
-      // Flush nothing and cancel the pending frame: the commit below writes
-      // the final left/top and the layout effect drops the transform, so an
-      // outstanding translate would only paint a doubled offset for a frame.
+      // Flush nothing and cancel the pending frames: the commit below writes
+      // the final geometry, so an outstanding translate would only paint a
+      // doubled offset for a frame and an outstanding resize frame would
+      // re-commit a value this one already supersedes. Cancelling does NOT
+      // discard the value — `liveRect()` reads it straight out of the live
+      // refs on the next line, which is what makes a gesture whose last frame
+      // never ran still persist where the user dragged to.
       cancelTranslate();
+      cancelResize();
       const finalRect = liveRect();
       const wasFloatingMove =
         s.mode === "move" && !s.pendingUndock && handlersRef.current.mode === "floating";
@@ -765,6 +847,7 @@ function FloatingPanelInner({
         setDockDragTarget(null);
         dragStateRef.current = null;
         liveMoveRef.current = null;
+        liveResizeRef.current = null;
         moveGeomRef.current = null;
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
@@ -827,10 +910,14 @@ function FloatingPanelInner({
       }
       dragStateRef.current = null;
       liveMoveRef.current = null;
+      liveResizeRef.current = null;
       moveGeomRef.current = null;
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
-      // ONE React commit and ONE persistence write per gesture, on the edge.
+      // ONE React commit and ONE persistence write per gesture, on the edge —
+      // and for a resize this is the LAST of at most one-per-frame commits,
+      // not the only one: React owns width/height, so there is no imperative
+      // channel to defer them onto (see the header's cost contract).
       commitPos(finalRect);
       handlersRef.current.onChange(finalRect);
       if (wasFloatingMove && handlersRef.current.onMaybeRedock && dropTarget) {
@@ -869,6 +956,7 @@ function FloatingPanelInner({
       window.removeEventListener("mouseup", onUp);
       unsubscribeGestureBus();
       cancelTranslate();
+      cancelResize();
     };
   }, []);
 
@@ -940,6 +1028,7 @@ function FloatingPanelInner({
     // React rendered it) and no geometry snapshot — the first move captures
     // one, which for this docked start lands after the undock reflow.
     liveMoveRef.current = null;
+    liveResizeRef.current = null;
     moveGeomRef.current = null;
     document.body.style.userSelect = "none";
     document.body.style.cursor = "grabbing";
@@ -969,6 +1058,7 @@ function FloatingPanelInner({
         lastCursor: { x: clientX, y: clientY },
       };
       liveMoveRef.current = null;
+      liveResizeRef.current = null;
       moveGeomRef.current = null;
       document.body.style.userSelect = "none";
       document.body.style.cursor = "grabbing";
@@ -1006,6 +1096,9 @@ function FloatingPanelInner({
       origH: pos.height,
       lastCursor: { x: e.clientX, y: e.clientY },
     };
+    // Arm the resize gesture's locals: nothing live yet, and no frame queued.
+    liveResizeRef.current = null;
+    liveMoveRef.current = null;
     document.body.style.userSelect = "none";
     document.body.style.cursor = resizeCursor(edges);
     e.preventDefault();

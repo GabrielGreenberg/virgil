@@ -609,7 +609,9 @@ describe("source contract: the MOVE branch reads no geometry and commits no stat
   const code = strip(src, /* keepStrings */ false);
 
   /** The `onMove` handler's MOVE branch: its declaration through the start of
-   *  the resize branch, which is deliberately allowed to commit per event. */
+   *  the resize branch. (Pre-335 that branch was allowed to commit per event;
+   *  since 335 neither may, which the effect-wide `setPos` leg below pins for
+   *  both at once — this region survives to localize a failure to the move.) */
   function moveBranch(): string {
     const start = code.indexOf("const onMove = (e: MouseEvent)");
     expect(start, "onMove moved — re-aim this census").toBeGreaterThan(0);
@@ -673,6 +675,24 @@ describe("source contract: the MOVE branch reads no geometry and commits no stat
     // bug class AGENTS.md "Pane-drag stability" exists to kill.
     expect(region.includes("setPos(")).toBe(false);
     expect(region.includes("scheduleTranslate()"), "the shell moves by transform").toBe(true);
+  });
+
+  it("the whole gesture effect commits React state through exactly ONE call site", () => {
+    // Task 335. The per-frame-commit bug class is not a MOVE-branch fact — the
+    // resize branch carried it for a year one `else` away, and the region leg
+    // above is blind to it by construction. `commitPos` is the single door
+    // (the move's edges, the resize's coalesced frame), so a second `setPos(`
+    // anywhere in the effect is either a per-event commit or a second door
+    // that skips the transform-retire the first one owns.
+    const effect = gestureEffect();
+    expect(effect.split("setPos(").length - 1).toBe(1);
+    // …and the resize branch reaches it only through its scheduler.
+    expect(effect.includes("scheduleResize()"), "the resize coalesces").toBe(true);
+    // Both coalesced channels cancel on the ONE end path, so a queued frame
+    // can never commit a coordinate behind a gesture that has ended.
+    const end = effect.slice(effect.indexOf("const endGesture ="));
+    expect(end.includes("cancelTranslate()")).toBe(true);
+    expect(end.includes("cancelResize()")).toBe(true);
   });
 
   it("NO helper reachable inside the gesture effect measures the DOM either", () => {
