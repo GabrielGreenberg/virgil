@@ -24,6 +24,10 @@
 import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { usePaneResizeHandle } from "@/lib/pane-resize";
+import {
+  isMissedRelease,
+  isPrimaryDragStart,
+} from "@/lib/pane-resize/pointer-invariants";
 import { MIN_BAND_PX, type PanelId, type Side } from "@/hooks/useViewPrefs";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog, { useConfirmDialog } from "./ConfirmDialog";
@@ -846,12 +850,12 @@ export function CardDropButton({
       // The button tag already excludes it from the lift; these are defensive.
       onMouseDown={(e) => {
         // Primary button only — a right/middle press must pass through
-        // untouched (no phantom drop session), matching the 3 proven
-        // producers (inline-atom-grab `if (event.button !== 0) return false`,
-        // the header lift's `if (e.button !== 0) return`). This guard runs
-        // BEFORE stopPropagation/preventDefault so a non-primary press keeps
-        // its native behavior (context menu, etc.).
-        if (e.button !== 0) return;
+        // untouched (no phantom drop session), matching every other pointer
+        // producer in the app. The predicate is the engine's SSOT
+        // (lib/pane-resize/pointer-invariants), never re-derived. This guard
+        // runs BEFORE stopPropagation/preventDefault so a non-primary press
+        // keeps its native behavior (context menu, etc.).
+        if (!isPrimaryDragStart(e)) return;
         e.stopPropagation();
         e.preventDefault();
         if (disabled) return;
@@ -2521,7 +2525,8 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     // subsumed by `canLift`; it is restated so TS narrows the key to `string`
     // for the handoff payloads below.
     if (!canLift || !cardKey) return;
-    if (e.button !== 0) return;
+    // The engine's start gate (SSOT, never re-derived).
+    if (!isPrimaryDragStart(e)) return;
     const cardEl = innerRef.current;
     if (!cardEl) return;
     const headerEl = cardEl.firstElementChild as HTMLElement | null;
@@ -2562,6 +2567,16 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     cardEl.addEventListener("dragstart", suppressDragStart);
     const onMove = (ev: MouseEvent) => {
       if (triggered) return;
+      // Missed-release failsafe (task 185): the primary button is up, so the
+      // press ended somewhere we never observed and this move is not part of
+      // the user's gesture. Tear down WITHOUT testing the threshold — the
+      // pre-fix detector stayed armed after a swallowed mouseup, so the next
+      // stray mouse movement popped the card out spontaneously.
+      if (isMissedRelease(ev)) {
+        cleanup();
+        setCardLiftTarget(null);
+        return;
+      }
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (dx * dx + dy * dy < CARD_LIFT_THRESHOLD * CARD_LIFT_THRESHOLD) return;

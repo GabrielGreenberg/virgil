@@ -23,6 +23,7 @@
  */
 
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
@@ -288,7 +289,8 @@ export function SelectionActionsMenu({
       update();
     };
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button !== 0) return;
+      // The engine's start gate (SSOT, never re-derived).
+      if (!isPrimaryDragStart(e)) return;
       const ed = editorRef.current;
       if (!ed) return;
       const t = e.target as Node | null;

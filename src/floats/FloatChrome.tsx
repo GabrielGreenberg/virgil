@@ -1,6 +1,7 @@
 "use client";
 
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { isPrimaryDragStart } from "@/lib/pane-resize/pointer-invariants";
 import { PopoutButton } from "@/components/panel-primitives";
 import { DropChevrons } from "@/components/icons/DropChevrons";
 import { JumpChevron } from "@/components/icons/JumpChevron";
@@ -146,8 +147,9 @@ export function FloatChrome({
           type="button"
           onMouseDown={(e) => {
             // Primary button only — a right/middle press passes through (no
-            // phantom session), matching the docked button + the 3 producers.
-            if (e.button !== 0) return;
+            // phantom session). The predicate is the engine's SSOT
+            // (lib/pane-resize/pointer-invariants), never re-derived.
+            if (!isPrimaryDragStart(e)) return;
             e.stopPropagation();
             e.preventDefault();
             // Domain dispatch (Chip 2): a caller-supplied `onDropPress` wins
