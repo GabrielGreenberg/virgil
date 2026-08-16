@@ -50,6 +50,7 @@ beforeEach(() => {
 function delta() {
   return {
     jsonMisses: blockCacheStats.jsonMisses - baseline.jsonMisses,
+    jsonHits: blockCacheStats.jsonHits - baseline.jsonHits,
     latexMisses: blockCacheStats.latexMisses - baseline.latexMisses,
     partMisses: blockCacheStats.partMisses - baseline.partMisses,
     partHits: blockCacheStats.partHits - baseline.partHits,
@@ -170,11 +171,14 @@ describe("container-granular doc products", () => {
     expect(after.json[0]).toBe(before.json[0]);
     expect(after.json[2]).toBe(before.json[2]);
 
-    // The JSON walk visited the changed PATH, not the container: the list,
-    // the touched item, its paragraph, and the doc's other two children —
-    // every one of which is a HIT except the three on the path.
+    // The JSON walk visited the changed PATH and nothing else: the list, the
+    // touched item, its paragraph — three misses — while the 99 untouched
+    // items are HITS. The HIT count is the leg with teeth: a miss count alone
+    // is directionally vacuous, since the pre-337 cache reports ONE miss (the
+    // list is its only entry) and satisfies any upper bound.
     const d = delta();
-    expect(d.jsonMisses).toBeLessThanOrEqual(4);
+    expect(d.jsonMisses).toBe(3);
+    expect(d.jsonHits).toBeGreaterThanOrEqual(N - 1);
   });
 
   it("composed container JSON deep-equals prosemirror's own toJSON", () => {
@@ -188,6 +192,13 @@ describe("container-granular doc products", () => {
     for (let i = 0; i < doc.childCount; i++) {
       const node = doc.child(i);
       expect(getBlockJson(node)).toEqual(node.toJSON());
+      // Key ORDER too, not just structure: `extractSidecarData` and
+      // `writeDocBundle`'s deep copy both go through JSON.stringify, so a
+      // reordered `type/attrs/content/marks` emission would move bytes on
+      // disk while `toEqual` stayed green.
+      expect(JSON.stringify(getBlockJson(node))).toBe(
+        JSON.stringify(node.toJSON()),
+      );
     }
   });
 
@@ -213,28 +224,100 @@ describe("container-granular doc products", () => {
   });
 
   it("replays declared requirements from a memo HIT (the collector side channel)", () => {
-    // `\includegraphics` inside a list item declares graphicx at its emit
-    // site. A cached child must replay that into the enclosing collector,
-    // or the second serialize silently drops the \usepackage.
-    const ed = makeEditor(
-      "<ul><li><p>plain</p></li><li><p>x</p></li></ul><p>tail</p>",
-    );
-    const list = ed.state.doc.child(0);
-    const first = getBlockLatex(list);
-    // Re-derive the SAME node: every child is a memo hit now.
-    mark();
-    const second = getBlockLatex(list);
-    expect(second).toBe(first); // top-level cache hit, same object
+    // The property AGENTS.md names as the dangerous one: a cached child that
+    // silently dropped its `need("graphicx")` would emit a `.tex` with no
+    // `\usepackage`. So this leg needs BOTH halves the naive version lacks —
+    // a real memo (or nothing is ever a hit) and children that actually
+    // DECLARE something (or the assertion compares [] to []).
+    //
+    // The serializer takes plain JSON, so the fixture is hand-built: the
+    // editor schema here has no graphicsBlock or citation node.
+    const listJson: JSONContent = {
+      type: "bulletList",
+      attrs: { uuid: "L1" },
+      content: [
+        {
+          type: "listItem",
+          attrs: { uuid: "i1" },
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "one" }] },
+            {
+              type: "graphicsBlock",
+              attrs: { uuid: "g1", command: "\\includegraphics{fig.png}" },
+            },
+          ],
+        },
+        {
+          type: "listItem",
+          attrs: { uuid: "i2" },
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "two " },
+                {
+                  type: "citation",
+                  attrs: { citationId: "c1", command: "\\citep{smith2020}" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
 
-    // Force the top-level miss while keeping the children cached, exactly as
-    // an attrs-only change on the list would.
-    const json = getBlockJson(list);
-    const again = serializeTopLevelBlock(json);
-    expect(again.latex).toBe(first.latex);
-    expect([...again.requirementIds].sort()).toEqual(
+    let hits = 0;
+    let misses = 0;
+    const store = new WeakMap<JSONContent, Map<number, unknown>>();
+    const memo = {
+      get(node: JSONContent, ctx: number) {
+        const found = store.get(node)?.get(ctx);
+        if (found) hits++;
+        else misses++;
+        return found as never;
+      },
+      set(node: JSONContent, ctx: number, part: unknown) {
+        let byCtx = store.get(node);
+        if (!byCtx) {
+          byCtx = new Map();
+          store.set(node, byCtx);
+        }
+        byCtx.set(ctx, part);
+      },
+    };
+
+    const first = serializeTopLevelBlock(listJson, memo);
+    // Both items, plus the graphicsBlock in item 1's TAIL (a memoized child
+    // one level down at `(false, listDepth + 1)`).
+    expect(misses).toBe(3);
+    expect(hits).toBe(0);
+    // Both declarations reached the top-level part on the COLD pass.
+    expect([...first.requirementIds].sort()).toContain("graphicx");
+    expect(first.bibFamily).toBe("natbib");
+
+    // Second pass over the SAME child objects: every item is a memo HIT, so
+    // the declarations can only arrive by replay.
+    hits = 0;
+    misses = 0;
+    const second = serializeTopLevelBlock(listJson, memo);
+    // Two hits, not three: the tail's graphicsBlock is never re-entered
+    // because its own ITEM was served from the memo — which is exactly the
+    // nested case, and why the grandchild's `graphicx` can only arrive by
+    // being carried in the item's captured part and replayed.
+    expect(hits).toBe(2);
+    expect(misses).toBe(0);
+    expect(second.latex).toBe(first.latex);
+    expect([...second.requirementIds].sort()).toEqual(
       [...first.requirementIds].sort(),
     );
-    expect(again.bibFamily).toBe(first.bibFamily);
+    expect(second.bibFamily).toBe(first.bibFamily);
+
+    // …and identical to a memo-free serialize of the same JSON.
+    const bare = serializeTopLevelBlock(listJson);
+    expect(second.latex).toBe(bare.latex);
+    expect([...second.requirementIds].sort()).toEqual(
+      [...bare.requirementIds].sort(),
+    );
   });
 
   it("a top-level paragraph edit is unchanged in cost (the non-regression pin)", () => {

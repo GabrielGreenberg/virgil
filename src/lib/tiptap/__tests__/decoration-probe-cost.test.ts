@@ -77,22 +77,31 @@ describe("latex-command decoration probe cost", () => {
 
     expect(argless).toBe(0);
     // The bounded per-step probe still runs — that is the behaviour being
-    // preserved, and it is what makes the deleted guard redundant.
-    expect(bounded).toBeGreaterThan(0);
+    // preserved, and it is what makes the deleted guard redundant. A FLOOR
+    // (one per keystroke), not `> 0`: this counts every DecorationSet.find
+    // in the editor, so a bare `> 0` would stay satisfied by some other
+    // plugin's bounded probe if this loop were deleted outright.
+    expect(bounded).toBeGreaterThanOrEqual(12);
   });
 
-  it("still rebuilds when typing lands inside an existing command run", () => {
+  it("still REBUILDS when typing lands inside an existing command run", () => {
     editor = new Editor({
       extensions: [StarterKit, LatexCommandMark],
       content: "<p>\\emph</p>",
     });
     const ed = editor;
-    // Land a character INSIDE the command with no backslash in the change —
-    // the case the (now unconditional) overlap loop exists for.
-    ed.commands.insertContentAt(4, "X"); // \emX ph
-    const html = ed.view.dom.innerHTML;
-    expect(html).toContain("latex-cmd");
-    expect(ed.state.doc.textContent).toContain("\\emXph");
+    // A SPACE inside the command name is the case that distinguishes a
+    // rebuild from a map: `\emph` (5 chars) becomes `\em ph`, and only a
+    // rebuilt set shrinks the run to `\em`. Mapping alone EXPANDS the
+    // existing decoration to cover the inserted character, so this leg
+    // fails if the overlap loop the deleted guard used to gate is removed.
+    // No backslash lands in the changed region (`m`, ` `), so the cheap
+    // scan says nothing and the overlap loop is the only thing that can
+    // set `touched`.
+    ed.commands.insertContentAt(4, " ");
+    expect(ed.state.doc.textContent).toBe("\\em ph");
+    const spans = [...ed.view.dom.querySelectorAll(".latex-cmd")];
+    expect(spans.map((s) => s.textContent)).toEqual(["\\em"]);
   });
 });
 
@@ -113,6 +122,21 @@ function walk(dir: string, out: string[] = []): string[] {
 /** Tests may enumerate a whole set — the cost rule is about production. */
 const isTest = (f: string) => /__tests__|\.test\.tsx?$/.test(f);
 
+/**
+ * The unbounded spellings. `find()` is the obvious one; `find(null, null)` /
+ * `find(undefined)` take the SAME `start == null ? 0 : start` default path in
+ * prosemirror-view and cost exactly the same, so the needle names them too.
+ *
+ * Stated limits: the scan is per LINE (a call split across lines is missed),
+ * and the reported `file:line` is computed off the comment-stripped source,
+ * whose block-comment removal does not preserve newlines — so a hit under a
+ * multi-line comment reports a line number that is low by the comment's
+ * height. Pre-existing to this suite (`_source-scan.ts`'s CSS twin preserves
+ * them and its TS twin does not); the SET of hits is exact either way.
+ */
+const ARGLESS_FIND =
+  /\.find\(\s*(?:\)|(?:null|undefined)\s*(?:,\s*(?:null|undefined)\s*)?\))/;
+
 describe("argless DecorationSet.find census", () => {
   const files = ROOTS.flatMap((r) => walk(r)).filter((f) => !isTest(f));
 
@@ -123,7 +147,7 @@ describe("argless DecorationSet.find census", () => {
       // code, and the plugin's own explanatory comment names the shape.
       const src = commentsStripped(readFileSync(file, "utf8"));
       src.split("\n").forEach((line, i) => {
-        if (/\.find\(\s*\)/.test(line)) hits.push(`${file}:${i + 1}`);
+        if (ARGLESS_FIND.test(line)) hits.push(`${file}:${i + 1}`);
       });
     }
     expect(hits).toEqual([]);
@@ -133,12 +157,14 @@ describe("argless DecorationSet.find census", () => {
     // A synthetic fixture, never a live production line — a canary standing
     // on the defect evaporates the moment the defect is drained.
     const fixture = commentsStripped(
-      "// oldSet.find() in a comment does not count\nconst n = oldSet.find().length;\n",
+      "// oldSet.find() in a comment does not count\n" +
+        "const n = oldSet.find().length;\n" +
+        "const m = other.find(null, null).length;\n" +
+        "const ok = arr.find((x) => x.id === 1);\n",
     );
-    const flagged = fixture
-      .split("\n")
-      .filter((line) => /\.find\(\s*\)/.test(line));
-    expect(flagged).toHaveLength(1);
+    const flagged = fixture.split("\n").filter((line) => ARGLESS_FIND.test(line));
+    expect(flagged).toHaveLength(2);
     expect(flagged[0]).toContain("const n =");
+    expect(flagged[1]).toContain("const m =");
   });
 });

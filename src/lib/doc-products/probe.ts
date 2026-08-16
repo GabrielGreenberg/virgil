@@ -3,8 +3,15 @@
  *
  * The verification instrument for the pipeline's exit criteria: per typing
  * pause there should be ONE Tier A run + ONE Tier B run + one assembly,
- * with block-cache misses ≈ blocks actually edited (the WeakMap-miss-is-
- * the-diff property). Read + diff across a typing burst in the dev preview.
+ * with cache misses ≈ the NODES actually edited (the WeakMap-miss-is-the-diff
+ * property). Read + diff across a typing burst in the dev preview.
+ *
+ * UNIT CHANGE (task 337): the json counters were per TOP-LEVEL BLOCK and are
+ * now per NODE at every depth, because the cache composes a container's JSON
+ * from its children's. So a keystroke inside a list now reports ~3 misses and
+ * ~99 HITS where it used to report 1 miss and 0 hits — a bigger number that
+ * means strictly less work. The fields are renamed to say so; a soak diff
+ * across the flag flip must not read the hit count as a regression.
  */
 
 import { blockCacheStats } from "./block-caches";
@@ -17,8 +24,8 @@ export interface DocProductsStats {
   ensureFreshCalls: number;
   lastTierAMs: number;
   lastTierBMs: number;
-  blockJsonMisses: number;
-  blockJsonHits: number;
+  nodeJsonMisses: number;
+  nodeJsonHits: number;
   blockLatexMisses: number;
   blockLatexHits: number;
   /** Container CHILDREN re-serialized (task 337). A keystroke inside a
@@ -35,8 +42,8 @@ export function readDocProductsStats(): DocProductsStats {
     ensureFreshCalls: pipelineStats.ensureFreshCalls,
     lastTierAMs: Math.round(pipelineStats.lastTierAMs * 10) / 10,
     lastTierBMs: Math.round(pipelineStats.lastTierBMs * 10) / 10,
-    blockJsonMisses: blockCacheStats.jsonMisses,
-    blockJsonHits: blockCacheStats.jsonHits,
+    nodeJsonMisses: blockCacheStats.jsonMisses,
+    nodeJsonHits: blockCacheStats.jsonHits,
     blockLatexMisses: blockCacheStats.latexMisses,
     blockLatexHits: blockCacheStats.latexHits,
     childPartMisses: blockCacheStats.partMisses,

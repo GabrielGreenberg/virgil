@@ -106,8 +106,12 @@ function composeJson(node: PMNode): JSONContent {
  * The shared JSON for one node. READ-ONLY for every caller: entries are shared
  * across generations and across the whole product pipeline, so a mutation
  * poisons every consumer's snapshot (see `needsUuidWork`'s deep-copy guard).
+ *
+ * Module-PRIVATE on purpose: `getBlockJson` is the one door, so nothing
+ * outside this file can address a node at an arbitrary depth and start
+ * treating a shared sub-entry as its own. A sibling call is not a consumer.
  */
-export function getNodeJson(node: PMNode): JSONContent {
+function getNodeJson(node: PMNode): JSONContent {
   const hit = nodeJsonCache.get(node);
   if (hit) {
     blockCacheStats.jsonHits++;
