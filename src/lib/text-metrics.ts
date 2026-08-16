@@ -103,9 +103,16 @@ export function resolveLineHeightPx(cs: CSSStyleDeclaration, fontSizePx: number)
  * Returns null if no document/canvas is available (SSR safety) or if the
  * canvas stub doesn't report the metrics we need.
  */
-function measureFontMetrics(el: HTMLElement): CapTopMetrics | null {
+function measureFontMetrics(
+  el: HTMLElement,
+  known?: CSSStyleDeclaration,
+): CapTopMetrics | null {
   if (typeof window === "undefined") return null;
-  const cs = window.getComputedStyle(el);
+  // `known` is a computed style the CALLER already read for THIS element (see
+  // the parameter doc on `capBandCenterOffset`). Reading it again here is not
+  // free — a placement pass resolving a container and its first item paid two
+  // `getComputedStyle` calls per block for one element's style (task 336).
+  const cs = known ?? window.getComputedStyle(el);
   const fontSizePx = parseFloat(cs.fontSize);
   if (!Number.isFinite(fontSizePx) || fontSizePx <= 0) return null;
   const lineHeightPx = resolveLineHeightPx(cs, fontSizePx);
@@ -171,9 +178,19 @@ export function capHeight(el: HTMLElement): number {
  * so `capTopOffset` and `capHeight` can never drift and a consumer that needs
  * the center pays a SINGLE measurement (not two). Returns 0 when metrics are
  * unavailable (SSR / canvas stub) — matching the degrade of its two terms.
+ *
+ * `cs` is an OPTIONAL already-read computed style **for `el` itself**. Two
+ * callers (`resolveBlockFrame`, the geometry service's `measureBlock`) read the
+ * target's computed style for their own purposes one line away, so without it
+ * every placement / measure paid `getComputedStyle` twice for one element
+ * (task 336). Passing another element's style would silently key the metrics
+ * cache on the wrong font — the parameter is `el`'s style or nothing.
  */
-export function capBandCenterOffset(el: HTMLElement): number {
-  const m = measureFontMetrics(el);
+export function capBandCenterOffset(
+  el: HTMLElement,
+  cs?: CSSStyleDeclaration,
+): number {
+  const m = measureFontMetrics(el, cs);
   return m ? computeCapTopOffset(m) + m.capHeight / 2 : 0;
 }
 
@@ -191,8 +208,12 @@ export function capBandCenterOffset(el: HTMLElement): number {
  * top (viewport for the block frame / grab handle; host-relative for the
  * marginalia registry) — the added offset is space-invariant.
  */
-export function opticalCenterY(lineTop: number, el: HTMLElement): number {
-  return lineTop + capBandCenterOffset(el);
+export function opticalCenterY(
+  lineTop: number,
+  el: HTMLElement,
+  cs?: CSSStyleDeclaration,
+): number {
+  return lineTop + capBandCenterOffset(el, cs);
 }
 
 /**
