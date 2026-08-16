@@ -19,10 +19,18 @@
  *      today) while document-class gets the FULL family plus a
  *      boundary-correct inline `\verb` matcher.
  *
- *  (b) Scanners — position-based `findMatchingBrace`/`extractBraced`, a
- *      depth-counted `findMatchingEnv`, and a greedy `matchCommandToken`,
- *      consolidating the parser's copies. `matchAccent`/`matchSpecialLetter`
- *      are re-exported so consumers import them from one place.
+ *  (b) Scanners — position-based `findMatchingBrace`/`extractBraced`, the
+ *      construct terminators `findMatchingEnv`/`findMatchingGloss`/
+ *      `findMatchingXe`, and a greedy `matchCommandToken`, consolidating the
+ *      parser's copies. `matchAccent`/`matchSpecialLetter` are re-exported so
+ *      consumers import them from one place.
+ *
+ *      All three terminators run ONE forward scan (`scanLive`) over ONE
+ *      nesting vocabulary (`skipOpaqueConstructAt`), so they cannot drift on
+ *      what is opaque to them — which is exactly what the parser's three
+ *      private copies had done: two were comment-blind, none knew about
+ *      `\begin{env}` in general, and the body splitters that asked the same
+ *      question carried a third and fourth answer (task 338).
  *
  * Imports ONLY latex-typography (a leaf) to avoid a cycle.
  */
@@ -105,6 +113,36 @@ export const LATEX_VERBATIM_MARK = "latexVerbatim";
 /** The mark object every verbatim-emitting parser branch pushes. */
 export function verbatimMark(): { type: string } {
   return { type: LATEX_VERBATIM_MARK };
+}
+
+/**
+ * THE `verbatim` env body ↔ `.tex` pair, spelled once (task 338).
+ *
+ * A body line reading `\end{verbatim}` would close the environment early, so
+ * it is escaped to a private form that breaks the delimiter substring and
+ * un-escaped on the way back in. The single wrapping `\n` on each side is part
+ * of the same contract — a blunt `.trim()` on the read side would drop
+ * first-line indentation and blank lines every cycle.
+ *
+ * Three call sites must agree byte-for-byte: the serializer's `codeBlock`
+ * emit, the parser's `case "verbatim"` read, and the example-item builder,
+ * which cannot hold a `codeBlock` and so preserves one as a byte-literal
+ * carrier paragraph. When those three were separate spellings the third did
+ * not exist at all — the block was silently DROPPED.
+ */
+export function wrapVerbatimEnvBody(inner: string): string {
+  const escaped = inner.replace(/\\end\{verbatim\}/g, "\\end{verbatim%!v-esc}");
+  return `\\begin{verbatim}\n${escaped}\n\\end{verbatim}`;
+}
+
+/** Inverse of {@link wrapVerbatimEnvBody}: takes the raw env CONTENT (what
+ *  sits between `\begin{verbatim}` and `\end{verbatim}`) and returns the body
+ *  bytes. */
+export function unwrapVerbatimEnvBody(envContent: string): string {
+  let text = envContent;
+  if (text.startsWith("\n")) text = text.slice(1);
+  if (text.endsWith("\n")) text = text.slice(0, -1);
+  return text.replace(/\\end\{verbatim%!v-esc\}/g, "\\end{verbatim}");
 }
 
 /** True when a mark list carries the verbatim carrier — the ONE test every
@@ -381,47 +419,199 @@ export function extractBraced(
 // ---------------------------------------------------------------------------
 
 /**
+ * `\begin{<env>}` at `pos`? Returns the env NAME and the index just past the
+ * closing brace, or null.
+ *
+ * THE spelling of an environment name — `\w+` with an optional trailing `*`
+ * (`figure*`, `enumerate*`, `verbatim*`). Both the parser's env dispatcher and
+ * {@link skipOpaqueConstructAt} read it here rather than each carrying a
+ * regex, because the two must agree byte-for-byte: a construct the skipper
+ * does not RECOGNIZE is a construct whose `\item`/`\a` lines leak into the
+ * enclosing body, and one it recognizes differently is a construct the
+ * dispatcher then re-reads from the wrong offset (task 338).
+ */
+export function matchBeginEnvAt(
+  src: string,
+  pos: number,
+): { name: string; end: number } | null {
+  if (src[pos] !== "\\") return null;
+  BEGIN_ENV_STICKY.lastIndex = pos;
+  const m = BEGIN_ENV_STICKY.exec(src);
+  if (!m) return null;
+  return { name: m[1], end: pos + m[0].length };
+}
+
+const BEGIN_ENV_STICKY = /\\begin\{(\w+\*?)\}/y;
+
+/** `\b`-style word boundary: is the char at `i` a word char? */
+function isWordChar(ch: string | undefined): boolean {
+  return ch !== undefined && /[a-zA-Z0-9_]/.test(ch);
+}
+
+/** `\ex` / `\pex` at `pos` (control word, so `\b`-terminated), or null. */
+function matchExOpenAt(
+  src: string,
+  pos: number,
+): { name: string; end: number } | null {
+  if (src[pos] !== "\\") return null;
+  for (const name of ["pex", "ex"]) {
+    if (src.startsWith(name, pos + 1) && !isWordChar(src[pos + 1 + name.length]))
+      return { name, end: pos + 1 + name.length };
+  }
+  return null;
+}
+
+/**
+ * **THE nesting vocabulary.** Does an OPAQUE nested construct start at `pos` —
+ * one whose interior belongs to itself and must be invisible to whatever body
+ * scan is walking past it? Returns the index to CONTINUE from, or -1 when no
+ * such construct opens here.
+ *
+ * Membership is DERIVED from the LaTeX grammar rather than hand-listed: any
+ * `\begin{<env>}` at all (so `description`, `enumerate*`, `minipage`,
+ * `tabular`, `align`, a third-party list env, and every `VERBATIM_ENVS_FULL`
+ * member are covered with nothing to add), plus the two expex pairs that are
+ * NOT `\begin`/`\end` — `\begingl…\endgl` and `\ex`/`\pex…\xe` — plus an
+ * inline `\verb<delim>…<delim>` run.
+ *
+ * Before task 338 each body splitter carried its own incomplete answer:
+ * `splitListItems` knew literal `itemize`/`enumerate` and nothing else, so an
+ * `\item` inside a nested `description` (or a `verbatim` code listing) split
+ * the OUTER list — the nested env's body was hoisted out as sibling items and
+ * its `\end{…}` left stranded in the prose, on the first save, with no edit by
+ * the user. `splitPexBody` knew three expex constructs and no `\begin{env}` at
+ * all.
+ *
+ * **Unterminated ⇒ TRANSPARENT.** A construct with no terminator answers with
+ * the index just past its OPENING token, so the scan continues INSIDE it
+ * rather than swallowing to end-of-source. That is the fail-soft direction:
+ * mid-edit or malformed input degrades to the pre-338 behaviour (the `\item`s
+ * split as before) instead of collapsing the rest of the document into one
+ * node — the failure mode task 243 exists to prevent, arriving from the other
+ * side. It is ONE policy, stated here, so no caller re-decides it.
+ */
+export function skipOpaqueConstructAt(src: string, pos: number): number {
+  if (src[pos] !== "\\") return -1;
+
+  // Inline `\verb<delim>…<delim>` — a literal run that can hide anything.
+  if (src.startsWith("\\verb", pos)) {
+    const verbEnd = matchInlineVerbAt(src, pos);
+    if (verbEnd !== -1) return verbEnd;
+  }
+
+  const begin = matchBeginEnvAt(src, pos);
+  if (begin) {
+    const close = findMatchingEnv(src, begin.end, begin.name);
+    return close === -1 ? begin.end : close + `\\end{${begin.name}}`.length;
+  }
+
+  if (src.startsWith("\\begingl", pos) && !isLetter(src[pos + "\\begingl".length])) {
+    const bodyStart = pos + "\\begingl".length;
+    const close = findMatchingGloss(src, bodyStart);
+    return close === -1 ? bodyStart : close + "\\endgl".length;
+  }
+
+  const ex = matchExOpenAt(src, pos);
+  if (ex) {
+    const close = findMatchingXe(src, ex.end);
+    return close === -1 ? ex.end : close + "\\xe".length;
+  }
+
+  return -1;
+}
+
+/**
+ * The ONE forward scan every terminator matcher below runs, so all three share
+ * a single AWARENESS POLICY instead of the three different ones the parser's
+ * private copies had (`findMatchingEnd`/`findMatchingXlistEnd` were
+ * comment-blind, `findMatchingGloss` was not, so a `% \end{xlist}` terminated
+ * one and not the other).
+ *
+ * The policy: a `%`-comment tail is inert (escaping decided by the shared
+ * {@link isEscaped} backslash-run parity rule), an escaped char is consumed
+ * whole, and an opaque nested construct is skipped via
+ * {@link skipOpaqueConstructAt} — which is also what makes same-name nesting
+ * pair correctly, so no matcher needs its own depth counter.
+ *
+ * `probe` is called at each LIVE backslash and returns the answer index, or
+ * null to keep scanning. Returns -1 if the probe never answers.
+ *
+ * Stated limit: comment detection does not model an inline `\verb` run's
+ * literal `%` beyond what `skipOpaqueConstructAt` skips, and a `%` inside a
+ * verbatim ENV body is reached only via that skip (never scanned directly).
+ */
+function scanLive(
+  src: string,
+  startPos: number,
+  probe: (pos: number) => number | null,
+): number {
+  let pos = startPos;
+  let inComment = false;
+  while (pos < src.length) {
+    const ch = src[pos];
+    if (ch === "\n") {
+      inComment = false;
+      pos++;
+      continue;
+    }
+    if (inComment) {
+      pos++;
+      continue;
+    }
+    if (ch === "%" && !isEscaped(src, pos)) {
+      inComment = true;
+      pos++;
+      continue;
+    }
+    if (ch === "\\") {
+      const hit = probe(pos);
+      if (hit !== null) return hit;
+      const skip = skipOpaqueConstructAt(src, pos);
+      if (skip !== -1 && skip > pos) {
+        pos = skip;
+        continue;
+      }
+      // Escaped char / ordinary command: never re-read its second char, so
+      // `\%` and `\\` can't confuse the comment scan.
+      pos += 2;
+      continue;
+    }
+    pos++;
+  }
+  return -1;
+}
+
+/**
  * Given a `\begin{env}` that has ALREADY been consumed (so `startPos` points
  * just past it, into the environment body), find the position (index of the
- * `\`) of the matching `\end{env}`. Depth-counted so nested same-name
- * environments pair correctly. Returns -1 if no matching close is found.
+ * `\`) of the matching `\end{env}`. Returns -1 if no matching close is found.
+ *
+ * Nested same-name environments pair correctly because the scan SKIPS every
+ * nested construct wholesale (see {@link skipOpaqueConstructAt}) rather than
+ * counting depth — which also makes a `\end{env}` inside a nested verbatim
+ * listing or an inline `\verb` run inert, and a commented one likewise.
  *
  * `verbatim`-family environments are non-nestable and their body is literal,
  * so for those the correct terminator is the FIRST `\end{env}` — depth
- * counting is actively wrong (a literal `\begin{verbatim}` in the body would
- * bump the counter and swallow the real close). This mirrors the special
- * case the parser applied at the call site of the former `findMatchingEnd`.
+ * counting (and any comment awareness — a `%` in a verbatim body is a literal
+ * percent) is actively wrong there. This is the fork the parser used to
+ * hand-write at its own call site.
  */
 export function findMatchingEnv(
   src: string,
   startPos: number,
   envName: string,
 ): number {
-  const beginTok = `\\begin{${envName}}`;
   const endTok = `\\end{${envName}}`;
 
   // Non-nestable literal envs: first close wins.
   if (isVerbatimFamily(envName)) {
-    const idx = src.indexOf(endTok, startPos);
-    return idx;
+    return src.indexOf(endTok, startPos);
   }
 
-  let depth = 1;
-  let pos = startPos;
-  while (pos < src.length) {
-    const nextBegin = src.indexOf(beginTok, pos);
-    const nextEnd = src.indexOf(endTok, pos);
-    if (nextEnd === -1) return -1;
-    if (nextBegin !== -1 && nextBegin < nextEnd) {
-      depth++;
-      pos = nextBegin + beginTok.length;
-    } else {
-      depth--;
-      if (depth === 0) return nextEnd;
-      pos = nextEnd + endTok.length;
-    }
-  }
-  return -1;
+  return scanLive(src, startPos, (p) =>
+    src.startsWith(endTok, p) ? p : null,
+  );
 }
 
 function isVerbatimFamily(envName: string): boolean {
@@ -439,58 +629,31 @@ function isVerbatimFamily(envName: string): boolean {
  *
  * Boundary-correct: `\endgl` (and nested `\begingl`) must be terminated by a
  * non-letter, so `\endglpreamble`/`\beginglx` do not falsely terminate or
- * nest. Depth-counted so a nested `\begingl` pairs with its own `\endgl`.
- * Comment-aware: a `\endgl` in a `%`-comment tail does not terminate the
- * gloss. Returns -1 if no matching close is found.
+ * nest. A nested `\begingl` pairs with its own `\endgl` because the shared
+ * scan skips it wholesale. Comment-aware (and, since task 338, inert to an
+ * `\endgl` inside a nested env or `\verb` run): see {@link scanLive}. Returns
+ * -1 if no matching close is found.
  */
 export function findMatchingGloss(src: string, startPos: number): number {
-  // Project comments away so a commented `\endgl` is inert, but keep byte
-  // offsets aligned by only scanning the live projection for structure while
-  // reporting raw offsets. Comments only remove a line-tail, never shift
-  // earlier bytes, so we track an in-comment flag inline instead.
-  let depth = 1;
-  let pos = startPos;
-  let inComment = false;
-  while (pos < src.length) {
-    const ch = src[pos];
-    if (ch === "\n") {
-      inComment = false;
-      pos++;
-      continue;
-    }
-    if (inComment) {
-      pos++;
-      continue;
-    }
-    if (ch === "%") {
-      // Unescaped `%` starts a comment: an even run of backslashes before it
-      // does not escape it (`\\%` = line break + comment). Same shared parity
-      // rule the brace/math scanners use.
-      if (!isEscaped(src, pos)) {
-        inComment = true;
-        pos++;
-        continue;
-      }
-    }
-    if (ch === "\\") {
-      if (src.startsWith("\\begingl", pos) && !isLetter(src[pos + "\\begingl".length])) {
-        depth++;
-        pos += "\\begingl".length;
-        continue;
-      }
-      if (src.startsWith("\\endgl", pos) && !isLetter(src[pos + "\\endgl".length])) {
-        depth--;
-        if (depth === 0) return pos;
-        pos += "\\endgl".length;
-        continue;
-      }
-      // Skip an escaped char (so `\%`, `\\` don't confuse the comment scan).
-      pos += 2;
-      continue;
-    }
-    pos++;
-  }
-  return -1;
+  return scanLive(src, startPos, (p) =>
+    src.startsWith("\\endgl", p) && !isLetter(src[p + "\\endgl".length])
+      ? p
+      : null,
+  );
+}
+
+/**
+ * Given an `\ex`/`\pex` that has ALREADY been consumed (so `startPos` points
+ * just past it, into the example body), find the position (index of the `\`)
+ * of the matching `\xe`. expex's `\ex`/`\pex…\xe` is not a `\begin`/`\end`
+ * pair either, so this matches the bare command tokens — boundary-correct, so
+ * `\xetc` does not terminate. Nested `\ex`/`\pex` blocks pair with their own
+ * `\xe` through the shared scan. Returns -1 if no matching close is found.
+ */
+export function findMatchingXe(src: string, startPos: number): number {
+  return scanLive(src, startPos, (p) =>
+    src.startsWith("\\xe", p) && !isWordChar(src[p + "\\xe".length]) ? p : null,
+  );
 }
 
 function isLetter(ch: string | undefined): boolean {
