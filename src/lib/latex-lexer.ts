@@ -64,14 +64,56 @@ export { isEscaped, findUnescaped };
  *  Kept exactly as today so `projectDetectableBody` stays byte-identical. */
 export const VERBATIM_ENVS_NARROW = ["verbatim", "verbatim*"] as const;
 
-/** The FULL verbatim family — what document-class scanning uses, AND the set
- *  whose bodies the parser must treat as BYTE-LITERAL (see the carrier below). */
+/**
+ * The FULL verbatim family — environments whose body **does not execute as
+ * LaTeX**. Membership grants three things, and the criterion is exactly what
+ * those three need:
+ *
+ *  1. first-close-wins end-finding (`findMatchingEnv` — depth counting is
+ *     actively wrong for a non-nestable literal env, see there);
+ *  2. INERTNESS to every scanner that projects live LaTeX out of source
+ *     (`projectLiveLatex` → document-class detection, `\label`/`\ref`
+ *     resolution, the syntax checker's brace/math/env balance);
+ *  3. the `codeBlock` node for bare `verbatim`.
+ *
+ * It does **not** decide byte-literalness of the round trip any more: since
+ * task 342 every environment Virgil doesn't model rides the byte-literal
+ * carrier by DEFAULT (`latex-parser.ts`, the `default:` env branch), so a
+ * member added or forgotten here can no longer cost the user their bytes.
+ *
+ * `Verbatim`/`BVerbatim`/`LVerbatim` (+ starred) are fancyvrb's — `Verbatim`
+ * is the commonest verbatim env in real academic LaTeX after bare `verbatim`.
+ * `comment` (the `comment` package) is a body LaTeX discards wholesale, so
+ * scanning it for structure was always wrong: a commented-out
+ * `\documentclass`, `\label` or unbalanced brace must not count.
+ *
+ * `alltt` is deliberately NOT a member. It looks verbatim and isn't: `\`, `{`
+ * and `}` keep their meanings inside it, so its `\ref`s are real references
+ * and its braces are real braces. It still round-trips byte-for-byte through
+ * the default carrier — which is the whole point of making that the default.
+ */
 export const VERBATIM_ENVS_FULL = [
   "verbatim",
   "verbatim*",
   "lstlisting",
   "minted",
+  "Verbatim",
+  "Verbatim*",
+  "BVerbatim",
+  "BVerbatim*",
+  "LVerbatim",
+  "LVerbatim*",
+  "comment",
 ] as const;
+
+/**
+ * THE membership test for the family above. Exported so no consumer
+ * re-enumerates the list or re-casts it to `readonly string[]` — the parser,
+ * the syntax checker and `findMatchingEnv` all ask here (task 342).
+ */
+export function isVerbatimFamilyEnv(envName: string): boolean {
+  return (VERBATIM_ENVS_FULL as readonly string[]).includes(envName);
+}
 
 // ---------------------------------------------------------------------------
 // The verbatim CARRIER — one mark for "these bytes are literal" (task 264)
@@ -775,7 +817,7 @@ export function findMatchingEnv(
   const endTok = `\\end{${envName}}`;
 
   // Non-nestable literal envs: first close wins.
-  if (isVerbatimFamily(envName)) {
+  if (isVerbatimFamilyEnv(envName)) {
     return src.indexOf(endTok, startPos);
   }
 
@@ -791,12 +833,6 @@ export function findMatchingEnv(
   );
 }
 
-function isVerbatimFamily(envName: string): boolean {
-  // Derive from the single vocab SSOT — never re-enumerate the family here.
-  // Adding a member to VERBATIM_ENVS_FULL must automatically grant it the
-  // first-close-wins / literal-body handling below (task 243).
-  return (VERBATIM_ENVS_FULL as readonly string[]).includes(envName);
-}
 
 /**
  * Given a `\begingl` that has ALREADY been consumed (so `startPos` points

@@ -7,8 +7,9 @@
  *   - `\ref{key}` / `\eqref{key}` / etc. to undefined `\label{key}`
  *   - `\cite{key}` / `\citep{key}` / etc. to keys not in the .bib
  *
- * Verbatim-style envs (`verbatim`, `lstlisting`, `minted`, `comment`)
- * are skipped so their bodies don't generate spurious diagnostics.
+ * Verbatim-style envs are skipped so their bodies don't generate spurious
+ * diagnostics — membership comes from the lexer's family SSOT
+ * (`isVerbatimFamilyEnv`), never a private list here.
  *
  * Exposed as a single function so the visual editor can later call it
  * on the rendered .tex output to flag missing refs/citations there too.
@@ -17,6 +18,7 @@
 import type { LatexError } from "./latex-errors";
 import { makeErrorId } from "./latex-errors";
 import { KNOWN_CITE_COMMANDS, MULTI_CITE_NAMES } from "./cite-commands";
+import { isVerbatimFamilyEnv } from "./latex-lexer";
 
 export interface SyntaxCheckOptions {
   /** Bib keys known from the project's .bib files. When provided,
@@ -25,14 +27,13 @@ export interface SyntaxCheckOptions {
   knownBibKeys?: Set<string>;
 }
 
-const VERBATIM_ENVS = new Set([
-  "verbatim",
-  "verbatim*",
-  "lstlisting",
-  "minted",
-  "Verbatim",
-  "comment",
-]);
+// Which envs the balance/ref checks must skip is the SAME question the lexer's
+// verbatim family answers — "does this body execute as LaTeX?" — so it is asked
+// there, not re-declared here (task 342). Pre-342 this file carried its own
+// six-name Set while the module that calls itself the lexical SSOT carried
+// four, and the SSOT was the SHORTER list: the linter knew about fancyvrb's
+// `Verbatim` and the `comment` package and the round trip did not. Both are now
+// members, so the fork is retired in the direction of the more complete list.
 
 const REF_CMDS = new Set([
   "ref",
@@ -253,7 +254,7 @@ export function runSyntaxChecks(
         i = arg.end;
         if (macroName === "begin") {
           envStack.push({ name: envName, idx: macroIdx });
-          if (VERBATIM_ENVS.has(envName)) verbatimEnv = envName;
+          if (isVerbatimFamilyEnv(envName)) verbatimEnv = envName;
         } else {
           const top = envStack[envStack.length - 1];
           if (!top) {

@@ -38,7 +38,6 @@ import {
   unwrapVerbatimEnvBody,
   verbatimMark,
   wrapVerbatimEnvBody,
-  VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
 
 /**
@@ -1594,14 +1593,12 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       // since a literal `\begin{env}` in the body would bump the counter and
       // swallow the real close (and, when the counter never rebalances,
       // swallow the rest of the document into one block). Membership reads the
-      // vocab SSOT (`VERBATIM_ENVS_FULL`), so every family member —
-      // `verbatim*`/`lstlisting`/`minted`, not just bare `verbatim` — gets
-      // first-close-wins handling (task 243). The serializer escapes any body
-      // `\end{verbatim}` (→ `\end{verbatim%!v-esc}`), so the first literal
-      // `\end{env}` we find is the block's true end.
-      const isLiteralEnv = (VERBATIM_ENVS_FULL as readonly string[]).includes(
-        env,
-      );
+      // vocab SSOT (`isVerbatimFamilyEnv`), so every family member —
+      // `verbatim*`/`lstlisting`/`minted`/fancyvrb's `Verbatim`/`comment`, not
+      // just bare `verbatim` — gets first-close-wins handling (task 243). The
+      // serializer escapes any body `\end{verbatim}` (→
+      // `\end{verbatim%!v-esc}`), so the first literal `\end{env}` we find is
+      // the block's true end.
       const envEnd = findMatchingEnv(ctx.src, ctx.pos, env);
       const envContent =
         envEnd !== -1
@@ -1609,64 +1606,35 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
           : ctx.src.slice(ctx.pos);
       ctx.pos = envEnd !== -1 ? envEnd + `\\end{${env}}`.length : ctx.src.length;
 
-      // Check for a trailing %!v:xxxx UUID anchor right after \end{env}.
-      // The whole verbatim FAMILY is listed via the SSOT, not just bare
-      // `verbatim`: every family member now produces a uuid-bearing node
-      // (codeBlock for `verbatim`, the byte-literal carrier paragraph for the
-      // rest), so the serializer emits an anchor after `\end{env}` for all
-      // four. Harvesting for only one of them meant the other three's anchor
-      // was left in the stream and re-read as a STANDALONE empty paragraph:
-      // the block got a fresh uuid on every save (orphaning any card anchored
-      // to it) and the `.tex` grew one stray `%!v:` line per save, unbounded
-      // (task 264).
-      const isUuidAnchoredEnv =
-        isLiteralEnv ||
-        env === "itemize" ||
-        env === "enumerate" ||
-        env === "quote" ||
-        env === "figure" ||
-        env === "figure*";
+      // Harvest the trailing %!v:xxxx UUID anchor right after \end{env} —
+      // UNCONDITIONALLY, for every environment name (task 342).
+      //
+      // The anchor is EMITTED per node TYPE and was HARVESTED per environment
+      // NAME, from a hand list of the six names the switch below happens to
+      // model. But EVERY branch of that switch produces a node, and the
+      // serializer emits a trailing anchor for any carrier node carrying a
+      // uuid — so the correct list of anchor-less envs is EMPTY, and the hand
+      // list could only ever be missing names. It was: `align`, `equation`,
+      // `table`, `tabular`, `center`, `abstract`, `theorem` and every other env
+      // Virgil doesn't model were written WITH an anchor and read back WITHOUT
+      // one, so `assignUuids` minted a fresh uuid every save (orphaning every
+      // card anchored to that block, with no edit by the user) and the orphaned
+      // line was re-read as a STANDALONE empty paragraph — one stray `%!v:`
+      // line and one blank block per save, unbounded. Task 264 closed exactly
+      // this for the verbatim family and left the general case live; this
+      // deletes the list rather than extending it.
+      //
+      // Safe to run for every name because `NODE_UUID_ANCHOR` is anchored at
+      // the start with `[ \t]*` only: it can match nothing but an anchor on the
+      // SAME line as the `\end{env}` we just consumed, which is precisely where
+      // this env's own carrier node would have put it.
       let envUuid: string | null = null;
-      if (isUuidAnchoredEnv) {
-        const afterEnd = ctx.src.slice(ctx.pos);
-        const uuidMatch = afterEnd.match(NODE_UUID_ANCHOR);
+      {
+        const uuidMatch = ctx.src.slice(ctx.pos).match(NODE_UUID_ANCHOR);
         if (uuidMatch) {
           envUuid = uuidMatch[1];
           ctx.pos += uuidMatch[0].length;
         }
-      }
-
-      // The verbatim FAMILY is byte-literal, and that must drive NODE
-      // PRODUCTION, not just the end-finding above. Task 243 unified the
-      // first-close-wins leg on `VERBATIM_ENVS_FULL` but left this switch with
-      // a single `case "verbatim"`, so the other three members fell to
-      // `default:` — a plain `latexCommand`-marked paragraph, whose serializer
-      // path runs the prose smart-quote reverse-map. A `lstlisting` body
-      // reading `x = "hi"` therefore came back `x = ``hi''` on the FIRST save:
-      // silent, durable source corruption, idempotent on the corrupted form
-      // (task 264).
-      //
-      // Bare `verbatim` keeps its richer byte-preserving `codeBlock` (below).
-      // The other members have no modeled node yet — Virgil doesn't render
-      // `lstlisting` options or `minted` languages — so they ride the VERBATIM
-      // CARRIER: the whole `\begin{env}…\end{env}` preserved byte-for-byte,
-      // env name and arguments included, and flagged so no serializer ever
-      // runs typography over it. That defers rich rendering without deferring
-      // correctness, and a fifth family member added to the SSOT is now
-      // byte-safe by construction instead of silently corrupting.
-      if (isLiteralEnv && env !== "verbatim") {
-        parent.content.push({
-          type: "paragraph",
-          ...(envUuid ? { attrs: { uuid: envUuid } } : {}),
-          content: [
-            {
-              type: "text",
-              text: `\\begin{${env}}${optArg}${envContent}\\end{${env}}`,
-              marks: [verbatimMark()],
-            },
-          ],
-        });
-        continue;
       }
 
       switch (env) {
@@ -1748,14 +1716,41 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
           break;
         }
         default:
-          // Unknown environment — preserve as grey monospace paragraph
+          // Every environment Virgil does not model rides the VERBATIM
+          // CARRIER: the whole `\begin{env}…\end{env}` preserved byte-for-byte,
+          // env name and arguments included, flagged so no serializer runs
+          // typography over it, and carrying the block's uuid so its identity
+          // survives the save (task 342).
+          //
+          // **An environment body Virgil does not model is byte-literal by
+          // definition.** It is raw source being carried through — nothing
+          // downstream is entitled to rewrite it. Under the old
+          // `latexCommand` mark it went through `smartenStraightQuotes`, so a
+          // fancyvrb `\begin{Verbatim}` body reading `print("hi")` came back
+          // `print(``hi'')` on the FIRST save — silent, durable, idempotent on
+          // the corrupted form, and (the env being verbatim) visibly wrong in
+          // the compiled PDF as literal backticks. `alltt` and `comment` the
+          // same. Widening the verbatim vocabulary fixes those three names and
+          // leaves the NEXT unmodeled env corrupting; making the default
+          // byte-literal fixes every environment Virgil will ever fail to
+          // model, including ones that don't exist yet. The vocabulary now
+          // decides only the RICHER treatments (the `codeBlock` node,
+          // first-close-wins end-finding, scanner inertness) — never whether
+          // the user's bytes are safe.
+          //
+          // Bare `verbatim` keeps its richer byte-preserving `codeBlock`
+          // (above); the family's other members have no modeled node — Virgil
+          // doesn't render `lstlisting` options or `minted` languages — so they
+          // land here, exactly as they did before this branch became the
+          // carrier they were being special-cased into (task 264).
           parent.content.push({
             type: "paragraph",
+            ...(envUuid ? { attrs: { uuid: envUuid } } : {}),
             content: [
               {
                 type: "text",
                 text: `\\begin{${env}}${optArg}${envContent}\\end{${env}}`,
-                marks: [{ type: "latexCommand" }],
+                marks: [verbatimMark()],
               },
             ],
           });

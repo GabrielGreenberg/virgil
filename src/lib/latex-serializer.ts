@@ -23,7 +23,6 @@ import {
   hasVerbatimMark,
   isEscaped,
   wrapVerbatimEnvBody,
-  VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
 import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
 import { classifyCiteFamily } from "@/lib/bib-family";
@@ -1065,46 +1064,85 @@ function serializeInline(node: JSONContent): string {
 }
 
 /**
- * Collapse runs of 3+ newlines down to a single blank-line separator —
- * EXCEPT inside the `verbatim` FAMILY, whose bodies are byte-preserving.
- * Verbatim blocks are pulled out behind placeholders, the collapse runs on
- * the remaining prose, then the blocks are spliced back intact. A body line
- * reading `\end{verbatim}` is escaped (`%!v-esc`) at emit time, so the
- * non-greedy match always stops at the block's real terminator even when the
- * body itself contains a literal `\begin{verbatim}`.
+ * Environments whose `.tex` bytes THIS serializer GENERATES from a structural
+ * node, as opposed to the ones it CARRIES byte-for-byte out of the document.
+ * Read only by `collapseBlankRuns` below, which is the one pass entitled to
+ * tidy generated output and must never touch carried source.
  *
- * The stash pattern is built from the `VERBATIM_ENVS_FULL` vocab SSOT (not a
- * hard-coded bare-`verbatim` literal), so `verbatim*`/`lstlisting`/`minted`
- * bodies keep their interior blank runs too (task 243). A capture-group
- * backreference (`\1`) pairs each `\begin{env}` with its own `\end{env}`, and
- * the alternation is longest-first so `verbatim*` is tried before `verbatim`.
+ * Membership is "the serializer emits `\begin{<name>}` itself" — every entry
+ * corresponds to an emit site in `serializeNode` / `serializeExampleBlock`.
+ * Bare `verbatim` is deliberately NOT here although its wrapper is generated
+ * (`wrapVerbatimEnvBody`): its BODY is byte-literal, which is what the
+ * collapse must keep its hands off.
  *
- * The `(?:[…]|{…})*` run after the env name is load-bearing (task 264): two of
- * the four family members are normally written WITH an argument —
- * `\begin{lstlisting}[language=Python]`, and `\begin{minted}{python}` whose
- * language argument is MANDATORY, so no real `minted` block has a newline
- * immediately after `\begin{minted}`. Requiring that newline meant those
- * blocks never stashed and the `\n{3,}` collapse below ran straight over their
- * bodies: a PEP8 listing lost one of its two blank lines between top-level
- * defs on the FIRST save, silently and idempotently. Task 243 unified the
- * VOCABULARY here but the pattern still only fit the no-argument spelling.
+ * CI derives the reverse direction from this list — see
+ * `unmodeled-env-roundtrip.test.ts`, which fails a `\begin{<literal>}` emitted
+ * anywhere in this file that names an env not listed here.
  */
-const VERBATIM_BLOCK_RE = new RegExp(
-  `\\\\begin\\{(${[...VERBATIM_ENVS_FULL]
+const SERIALIZER_GENERATED_ENVS = [
+  "quote", // case "blockquote"
+  "itemize", // case "bulletList"
+  "enumerate", // case "orderedList"
+  "figure", // case "figureBlock"
+  "figure*", // case "figureBlock", starred
+  "xlist", // serializeExampleBlock, nested example list
+] as const;
+
+/**
+ * Collapse runs of 3+ newlines down to a single blank-line separator — EXCEPT
+ * inside any environment whose bytes we CARRIED rather than generated, whose
+ * body is byte-preserving. Those blocks are pulled out behind placeholders, the
+ * collapse runs on the remaining prose, then the blocks are spliced back
+ * intact. A body line reading `\end{verbatim}` is escaped (`%!v-esc`) at emit
+ * time, so the non-greedy match always stops at the block's real terminator
+ * even when the body itself contains a literal `\begin{verbatim}`.
+ *
+ * The stash set is DERIVED, as the complement of `SERIALIZER_GENERATED_ENVS`
+ * above, rather than enumerated (task 342). It used to be the verbatim family
+ * (`VERBATIM_ENVS_FULL`, task 243) — which is a list of names, so every
+ * environment nobody thought to name lost its interior blank runs on the first
+ * save: measured, `\begin{align}` with a 3-blank-line gap came back with one,
+ * silently and idempotently, while `lstlisting` was clean. Same shape as the
+ * uuid-anchor hand list this task deleted in the parser, one file over: the
+ * question is not "is this env verbatim?" but "did WE write these bytes?", and
+ * only the second one has an answer that can't go stale.
+ *
+ * The `(?:[…]|{…})*` run after the env name is load-bearing (task 264): a
+ * carried env is normally written WITH an argument —
+ * `\begin{lstlisting}[language=Python]`, `\begin{minted}{python}` whose
+ * language argument is MANDATORY, `\begin{tabular}{ll}` — so no real block has
+ * a newline immediately after the `\begin{…}`. Requiring that newline meant
+ * those blocks never stashed and the `\n{3,}` collapse ran straight over their
+ * bodies: a PEP8 listing lost one of its two blank lines between top-level
+ * defs. Task 243 unified the VOCABULARY here but the pattern still only fit the
+ * no-argument spelling.
+ *
+ * Known residual, unchanged by this task: the non-greedy tail stops at the
+ * FIRST `\end{<same name>}`, so a carried env nested inside another of the same
+ * name leaves the outer block's tail unstashed. Correct for the whole verbatim
+ * family (non-nestable by construction) and a stale-blank-line risk only for a
+ * self-nested `tabular`/`align`, which the pre-342 code got wrong too — and
+ * wrong for every env rather than one shape of one.
+ */
+const CARRIED_BLOCK_RE = new RegExp(
+  // Any `\begin{name}` whose name is not one we generate. The name matcher is
+  // the lexer's own env-name shape (`\w+\*?`, so starred envs match), and the
+  // exclusion alternation is longest-first so `figure*` is tried before
+  // `figure`.
+  `\\\\begin\\{(?!(?:${[...SERIALIZER_GENERATED_ENVS]
     .sort((a, b) => b.length - a.length)
     .map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-    .join(
-      "|",
-    )})\\}(?:\\[[^\\]\\n]*\\]|\\{[^}\\n]*\\})*\\n[\\s\\S]*?\\n\\\\end\\{\\1\\}`,
+    .join("|")})\\})(\\w+\\*?)` +
+    `\\}(?:\\[[^\\]\\n]*\\]|\\{[^}\\n]*\\})*\\n[\\s\\S]*?\\n\\\\end\\{\\1\\}`,
   "g",
 );
 function collapseBlankRuns(s: string): string {
   const blocks: string[] = [];
-  // Stash each verbatim block behind a placeholder that carries no newline
+  // Stash each carried block behind a placeholder that carries no newline
   // (so the collapse pass can't touch it) and cannot collide with real prose
   // (`@@` + a reserved tag). Restore is index-guarded — an unmatched token is
   // left verbatim rather than turning into "undefined".
-  const stashed = s.replace(VERBATIM_BLOCK_RE, (m) => {
+  const stashed = s.replace(CARRIED_BLOCK_RE, (m) => {
     blocks.push(m);
     return `@@VBTSTASH:${blocks.length - 1}@@`;
   });
