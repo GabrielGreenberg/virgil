@@ -649,6 +649,41 @@ function findMatchingBrace(text: string, open: number): number {
 }
 
 /**
+ * Is `ch` a legal base for a LaTeX text-mode accent command?
+ *
+ * The accent fold below maps a Unicode COMBINING MARK back to `\cmd{base}`,
+ * and that is only meaningful where the base is a **Latin-script** letter:
+ * `\'{e}` is é, while `\'{η}` is an `inputenc`/pdflatex error (or garbage
+ * under XeLaTeX) — the accent commands are defined over the Latin alphabet.
+ * Before this guard the fold decomposed anything and folded any mark it knew,
+ * so Greek `ή` was written to disk as `\'{η}` and Cyrillic `й` as `\u{и}` —
+ * both STABLE inside Virgil (the parse rung composes them straight back to the
+ * same glyph, so the editor looked right forever) and both wrong in the `.tex`
+ * (task 349 M7).
+ *
+ * The test is the base character's SCRIPT rather than a hand list of ranges:
+ * ASCII letters (what NFD leaves behind for every precomposed Latin accented
+ * letter), the special-letter glyphs that have no decomposition and are legal
+ * accent bases (`ø`, `ß`, `ł`, `ı`, …), and every Latin Extended letter are
+ * all `Script=Latin`; Greek, Cyrillic, Hebrew, CJK and — deliberately — digits
+ * and punctuation are not. A combining mark over a digit was never a LaTeX
+ * accent either, so excluding those is the same correction.
+ *
+ * RESIDUAL, stated rather than implied: the fold NFD-decomposes the whole
+ * string, so a non-Latin letter whose combining mark is NOT in `ACCENT_TABLE`
+ * (polytonic Greek's U+0313, say) still leaves the loop as an NFD sequence
+ * rather than its original precomposed code point — the mark never enters
+ * `marks`, so this guard never sees it. The reachable-and-measured members
+ * (Greek `ή` = η + U+0301, Cyrillic `й` = и + U+0306) both carry marks the
+ * table knows and are therefore re-composed exactly. Closing the wider case
+ * means decomposing per code point instead of per string, which is a rewrite
+ * of the stacked-diacritic walk rather than a guard.
+ */
+function isLatinAccentBase(ch: string): boolean {
+  return /\p{Script=Latin}/u.test(ch);
+}
+
+/**
  * Convert `--`/`---` runs in a plain-text buffer to en/em dash glyphs.
  * Longest-first (`---` before `--`). Only ASCII hyphen runs are touched;
  * existing glyphs pass through. Callers must NOT run this inside code spans.
@@ -701,6 +736,17 @@ export function typographyToLatex(text: string): string {
       j++;
     }
     if (marks.length > 0) {
+      // A NON-LATIN base is not an accent — it is a precomposed letter of
+      // another script that happens to decompose. Re-COMPOSE it (NFC) and emit
+      // the code point, rather than leaving the NFD sequence this pass created:
+      // the fold is the only reason the string was decomposed at all, so a base
+      // it declines must be handed back in the form it arrived in. See
+      // `isLatinAccentBase` for why the script is the right question (349 M7).
+      if (!isLatinAccentBase(ch)) {
+        out += (ch + marks.map((m) => m.combining).join("")).normalize("NFC");
+        i = j - 1;
+        continue;
+      }
       // Canonical serialize form is braced for BOTH control symbols and
       // control words (`\'{e}`, `\v{s}`) — braces are unambiguous and the
       // form LaTeX always accepts. The base `ch` is the bare letter NFD left
