@@ -1597,13 +1597,6 @@ export function needsUuidWork(doc: JSONContent): boolean {
       return;
     }
     if (
-      (node.type === "heading" || node.type === "titleField") &&
-      !node.attrs?.uuid
-    ) {
-      work = true;
-      return;
-    }
-    if (
       node.type === "paragraph" &&
       !insideContainer &&
       node.content &&
@@ -1613,14 +1606,17 @@ export function needsUuidWork(doc: JSONContent): boolean {
       work = true;
       return;
     }
+    // Mirrors `assignUuids`' default branch EXACTLY, and reads the same SSOT to
+    // do it. This predicate is the save path's gate — both backends run
+    // `assignUuids` only when it answers true — so a hand list here is not a
+    // second copy of the rule, it is the rule: whatever this branch cannot see,
+    // the mutator never gets the chance to heal. Keeping the pre-343 list of
+    // seven here would have left the new default mint unreachable in production
+    // (task 343; the equivalence is swept per uuid-bearing type in
+    // `latex-serializer-needs-uuid-work.test.ts`).
     if (
-      (node.type === "displayMath" ||
-        node.type === "latexComment" ||
-        node.type === "codeBlock" ||
-        node.type === "exampleBlock" ||
-        node.type === "figureBlock" ||
-        node.type === "graphicsBlock" ||
-        node.type === "maketitleMarker") &&
+      node.type !== "paragraph" &&
+      UUID_BEARING_NODE_TYPES.has(node.type!) &&
       !node.attrs?.uuid
     ) {
       work = true;

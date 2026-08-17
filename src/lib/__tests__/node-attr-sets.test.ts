@@ -279,62 +279,159 @@ describe("node-attr-sets · assignUuids mints for every uuid-bearing type", () =
 // ── Layer 3 · the census: the .tex layer keeps no second copy ──────────────
 
 describe("node-attr-sets · the round-trip layer holds no second hand list", () => {
-  // Scope: the two TipTap-free files that own the sidecar `paragraphs`
-  // vocabulary — `mergeSidecarTitles` is the only reader of a sidecar title in
-  // `src/`, and `extractSidecarData` / `recoverOrphanedUuids` the only writers,
-  // so this is exactly the surface where a re-derived list can do the damage.
-  const FILES = ["src/lib/latex-parser.ts", "src/lib/latex-serializer.ts"];
+  /** Every production `.ts`/`.tsx` in either silo. */
+  function productionFiles(): string[] {
+    const out: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(path.join(REPO_ROOT, dir), { withFileTypes: true })) {
+        const rel = `${dir}/${e.name}`;
+        if (e.isDirectory()) {
+          if (e.name === "node_modules" || e.name === "__tests__") continue;
+          walk(rel);
+        } else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name)) {
+          out.push(rel);
+        }
+      }
+    };
+    walk("src");
+    walk("library");
+    return out;
+  }
 
-  /** Bracketed literal lists naming >= 3 distinct titled node types. That is
-   *  what an alternation / array / Set of attr-bearing kinds looks like; the
-   *  legitimate `CONTAINER_TYPES` sets (bulletList, orderedList, blockquote)
-   *  name two and answer a different question, so they are below the needle
-   *  rather than allowlisted out of it. */
+  /**
+   * The scope is DISCOVERED, not hand-listed: every file that touches a sidecar
+   * `paragraphs` map is asked the question. A hand list would have been the
+   * defect one level up — it could only speak for the files someone remembered,
+   * which is exactly how the read set went one member short in the first place.
+   * Today this resolves to the parser and the serializer; a third reader is
+   * censused the day it appears rather than the day someone updates a list.
+   */
+  const readers = productionFiles().filter((rel) =>
+    /\.paragraphs\b|paragraphs\[/.test(
+      commentsStripped(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8")),
+    ),
+  );
+
+  /**
+   * Statement-shaped segments naming >= 3 distinct titled node types.
+   *
+   * Splitting on `;{}` is what makes this see a `||` CHAIN and a `case` run,
+   * not just a bracketed array — and that matters because the two hand lists
+   * this task deleted had different SHAPES: the read set was
+   * `new Set([...])` and `assignUuids`' was `a === "x" || a === "y" || …`.
+   * A needle that only matched brackets would have been blind to the second
+   * defect in the very commit that fixed it. A membership test lives inside one
+   * expression (no `;` or brace); a dispatch `switch` puts statements between
+   * its cases, so it splits and falls below the threshold.
+   *
+   * The legitimate `CONTAINER_TYPES` sets (bulletList / orderedList /
+   * blockquote) name two titled types and answer a different question, so they
+   * sit below the needle rather than in an allowlist.
+   */
   function handListsIn(rel: string): string[] {
     const src = commentsStripped(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
     const hits: string[] = [];
-    // No `s` flag needed (and the tsconfig target forbids it): the negated
-    // class already spans newlines.
-    for (const m of src.matchAll(/\[[^[\]]{0,600}\]/g)) {
-      const seg = m[0];
+    for (const seg of src.split(/[;{}]/)) {
       const named = [...TITLED_NODE_TYPES].filter((t) => seg.includes(`"${t}"`));
+      if (named.length < 3) continue;
+      const flat = seg.replace(/\s+/g, " ").trim();
+      if (PERMITTED_TYPE_LISTS.some((frag) => flat.includes(frag))) continue;
       // The stripper removes comment bytes rather than blanking them, so a line
-      // number computed here would drift; report the literal itself instead.
-      if (named.length >= 3) hits.push(`${rel} → ${seg.replace(/\s+/g, " ").slice(0, 120)}`);
+      // number computed here would drift; report the segment itself instead.
+      hits.push(`${rel} → ${flat.slice(0, 140)}`);
     }
     return hits;
   }
 
-  it("neither file re-lists the titled node types", () => {
-    expect(FILES.flatMap(handListsIn)).toEqual([]);
+  /**
+   * Allowlisted per SEGMENT CONTENT, never per file — a file-scoped entry would
+   * excuse the next hand list added beside it, which is the shape task 204
+   * names. One entry, and it is not a membership test at all: it classifies
+   * which parsed children an expex item body may hold, so its answer has
+   * nothing to do with which types carry an attr.
+   */
+  const PERMITTED_TYPE_LISTS = [
+    'child.type === "paragraph" || child.type === "exampleGloss"',
+  ];
+
+  it("the discovered reader set is non-empty (the census can see anything at all)", () => {
+    // Without this, a broken walk or a renamed accessor would empty the scope
+    // and every leg below would pass by looking at nothing.
+    expect(readers).toContain("src/lib/latex-parser.ts");
+    expect(readers).toContain("src/lib/latex-serializer.ts");
   });
 
-  it("the census can see such a list when there is one (canary)", () => {
-    // Against a synthetic fixture, never a production line: a canary standing
-    // on the defect evaporates the moment the defect is drained.
-    const fixture = commentsStripped(
-      'const TITLED = new Set(["paragraph", "bulletList", "orderedList", "texBlock"]);',
-    );
-    const named = [...TITLED_NODE_TYPES].filter((t) => fixture.includes(`"${t}"`));
-    expect(named.length).toBeGreaterThanOrEqual(3);
+  it("no sidecar-paragraph reader re-lists the titled node types", () => {
+    expect(readers.flatMap(handListsIn)).toEqual([]);
   });
 
-  it("both readers import the SSOT", () => {
-    for (const rel of FILES) {
-      const src = fs.readFileSync(path.join(REPO_ROOT, rel), "utf8");
-      expect(src, `${rel} does not read @/lib/node-attr-sets`).toContain(
-        '@/lib/node-attr-sets',
+  it("the census sees BOTH hand-list shapes this task deleted (canary)", () => {
+    // Synthetic fixtures, never a production line: a canary standing on the
+    // defect evaporates the moment the defect is drained.
+    const asArray = 'const TITLED = new Set(["paragraph", "bulletList", "orderedList", "texBlock"]);';
+    const asChain =
+      'if (node.type === "paragraph" || node.type === "bulletList" || node.type === "orderedList") return;';
+    for (const fixture of [asArray, asChain]) {
+      const flagged = commentsStripped(fixture)
+        .split(/[;{}]/)
+        .some(
+          (seg) => [...TITLED_NODE_TYPES].filter((t) => seg.includes(`"${t}"`)).length >= 3,
+        );
+      expect(flagged, `census blind to: ${fixture}`).toBe(true);
+    }
+  });
+
+  it("every reader IMPORTS the SSOT (not merely mentions its path)", () => {
+    // A `toContain("@/lib/node-attr-sets")` over raw source is satisfied by a
+    // comment saying "mirrors @/lib/node-attr-sets — keep in sync", which is
+    // the fork this whole task exists to prevent. So: comments stripped, and a
+    // real import statement binding at least one of the three names.
+    for (const rel of readers) {
+      const src = commentsStripped(fs.readFileSync(path.join(REPO_ROOT, rel), "utf8"));
+      const importsSsot = /import\s*(type\s*)?\{[^}]*\}\s*from\s*["']@\/lib\/node-attr-sets["']/.test(
+        src,
       );
+      expect(importsSsot, `${rel} does not import @/lib/node-attr-sets`).toBe(true);
+      const binds = ["UUID_BEARING_NODE_TYPES", "TITLED_NODE_TYPES", "COLLAPSIBLE_NODE_TYPES"].some(
+        (n) => src.includes(n),
+      );
+      expect(binds, `${rel} imports the SSOT but binds none of its names`).toBe(true);
     }
   });
 
   it("the leaf stays import-free", () => {
     // The placement rule `latex-markers.ts` earned: a facet the layer that
-    // needs it cannot import will be re-copied. An import here is the first
-    // step back toward a module the parser cannot take.
+    // needs it cannot import will be re-copied. Three shapes, because two of
+    // them defeat the obvious `^\s*import\s` needle while creating exactly the
+    // edge this forbids: a re-export is a static dependency edge that starts
+    // with `export`, and `await import("…")` has no space after `import` — and
+    // the second, aimed back at the serializer, would be a cycle into the very
+    // layer the leaf exists to stay below.
     const src = commentsStripped(
       fs.readFileSync(path.join(REPO_ROOT, "src/lib/node-attr-sets.ts"), "utf8"),
     );
-    expect(src).not.toMatch(/^\s*import\s/m);
+    expect(src, "static import").not.toMatch(/^\s*import\s/m);
+    expect(src, "re-export edge").not.toMatch(/^\s*export\s[^;]*\bfrom\s*["']/m);
+    expect(src, "dynamic import").not.toMatch(/\bimport\s*\(/);
+  });
+
+  it("the MINT question is covered behaviourally, where a grep cannot reach", () => {
+    // Stated rather than implied. `assignUuids`' hand list named only ONE
+    // titled type (`exampleBlock`), so the census above is structurally blind
+    // to it — a titled-name needle cannot see a uuid-bearing-name list, and
+    // widening it to all sixteen names flags every legitimate content
+    // classifier in these two files (measured: seven sites).
+    //
+    // So that half is guarded by BEHAVIOUR instead, in the sibling suite: the
+    // predicate/mutator equivalence is swept per uuid-bearing type, driven from
+    // this same SSOT. That catches a re-derived list in EITHER function, which
+    // is strictly stronger than a grep — and it is what caught the real one
+    // (`needsUuidWork`, the save-path gate, still on the pre-343 list).
+    const sibling = fs.readFileSync(
+      path.join(REPO_ROOT, "src/lib/__tests__/latex-serializer-needs-uuid-work.test.ts"),
+      "utf8",
+    );
+    expect(sibling).toContain("UUID_BEARING_NODE_TYPES");
+    expect(sibling).toContain("@/lib/node-attr-sets");
   });
 });
