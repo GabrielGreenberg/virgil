@@ -19,6 +19,7 @@ import {
   matchAccent,
   matchSpecialLetter,
   dashesToGlyphs,
+  matchCharEscapeAt,
 } from "@/lib/latex-typography";
 import {
   extractBraced,
@@ -235,8 +236,17 @@ export function parseInlineContent(
       // Dashes (-- / ---) → en/em glyph at flush time, EXCEPT inside code
       // spans where `--` is literal (memo §A exclusion). Accents/special
       // letters are matched as commands below, also gated by `inCode`.
+      //
+      // There is no un-escape pass here, deliberately: character un-escaping
+      // happens in the SCANNER (`matchCharEscapeAt`, driven by
+      // `CHAR_ESCAPE_TABLE`), so by the time a run reaches the buffer every
+      // `\{` / `\$` / `\textbackslash{}` is already the literal character.
+      // Until task 339 this line called `unescapeLatex(flushed)` — an
+      // `unescapeLatex(text) { return text; }` stub, i.e. a dead SSOT that the
+      // serializer's own comment cited as the round trip's other half. That is
+      // exactly how the two rungs came to disagree with nobody noticing.
       const flushed = inCode ? buffer : dashesToGlyphs(buffer);
-      nodes.push({ type: "text", text: unescapeLatex(flushed) });
+      nodes.push({ type: "text", text: flushed });
       buffer = "";
     }
   };
@@ -257,22 +267,27 @@ export function parseInlineContent(
     }
 
     // Protected prose brackets: `{[}` / `{]}` → literal `[` / `]` (task 037's
-    // `$` twin, serializer side in `escapeLatex`). The serializer wraps a prose
-    // `[`/`]` in its own brace group so it can't be absorbed as a LaTeX optional
-    // argument (`\\[len]`, `\cmd[opt]`); here we unwrap it back to a bare glyph
-    // in the buffer, so adjacent letters stay one text node. Not gated on
-    // `inCode`: inline-code (`\texttt`) prose is escaped the same way and must
-    // round-trip identically. Genuine structural brackets never reach this
-    // inline scanner as the literal triple `{[}` — they live on latexCommand /
-    // texBlock / example paths.
-    if (
-      text[i] === "{" &&
-      text[i + 2] === "}" &&
-      (text[i + 1] === "[" || text[i + 1] === "]")
-    ) {
-      buffer += text[i + 1];
-      i += 3;
-      continue;
+    // `$` twin). The serializer wraps a prose `[`/`]` in its own brace group so
+    // it can't be absorbed as a LaTeX optional argument (`\\[len]`,
+    // `\cmd[opt]`); here we unwrap it back to a bare glyph in the buffer, so
+    // adjacent letters stay one text node. Not gated on `inCode`: inline-code
+    // (`\texttt`) prose is escaped the same way and must round-trip
+    // identically. Genuine structural brackets never reach this inline scanner
+    // as the literal triple `{[}` — they live on latexCommand / texBlock /
+    // example paths.
+    //
+    // The spellings come from `CHAR_ESCAPE_TABLE` (task 339) — the same table
+    // the serializer's escape rung reads — so the `protect` members cannot
+    // drift from their emit side. Guarded on `{` so this can only ever match a
+    // protection here; the `escape` family is matched from the `\` branch below
+    // at the position it has always been matched, after the command rules.
+    if (text[i] === "{") {
+      const prot = matchCharEscapeAt(text, i);
+      if (prot) {
+        buffer += prot.char;
+        i = prot.end;
+        continue;
+      }
     }
 
     // Display math: $$...$$  (checked BEFORE single-$ — longest-first).
@@ -718,17 +733,16 @@ export function parseInlineContent(
         continue;
       }
 
-      // Escaped special chars
-      const escMatch = rest.match(
-        /^\\(textbackslash\{\}|textasciitilde\{\}|textasciicircum\{\}|[&%$#_{}])/
-      );
-      if (escMatch) {
-        const ch = escMatch[1];
-        if (ch === "textbackslash{}") buffer += "\\";
-        else if (ch === "textasciitilde{}") buffer += "~";
-        else if (ch === "textasciicircum{}") buffer += "^";
-        else buffer += ch;
-        i += escMatch[0].length;
+      // Escaped special chars — matched from `CHAR_ESCAPE_TABLE` (task 339),
+      // the same table the serializer emits from, longest-spelling-first so
+      // `\textbackslash{}` wins over any shorter member prefixing it. Sits
+      // exactly where the hand-written alternation sat: AFTER the command
+      // rules above (so `\ldots` etc. still win) and BEFORE the `\\` hard
+      // break, which no table member spells.
+      const esc = matchCharEscapeAt(text, i);
+      if (esc) {
+        buffer += esc.char;
+        i = esc.end;
         continue;
       }
 
@@ -796,12 +810,13 @@ export function parseInlineContent(
         // `[x]` as literal prose instead of folding `[` into the command.
         let braceCount = 0;
         while (i < text.length && text[i] === "{" && braceCount < 2) {
-          if (
-            (text[i + 1] === "[" || text[i + 1] === "]") &&
-            text[i + 2] === "}"
-          ) {
-            break;
-          }
+          // "Is the group at `i` a protection?" is a question about the
+          // vocabulary, so it is asked of `CHAR_ESCAPE_TABLE` rather than
+          // re-spelled here (task 339) — this was the THIRD hand copy of the
+          // `{[}` / `{]}` shape, and a fourth spelling of a protection would
+          // silently fold prose into a command argument again.
+          const prot = matchCharEscapeAt(text, i);
+          if (prot) break;
           const inner = extractBraced(text, i);
           if (inner) {
             cmdText += "{" + inner.content + "}";
@@ -831,10 +846,6 @@ export function parseInlineContent(
 
   flush();
   return nodes;
-}
-
-function unescapeLatex(text: string): string {
-  return text;
 }
 
 export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent {

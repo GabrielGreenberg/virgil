@@ -21,6 +21,8 @@ import {
   dashesToGlyphs,
   typographyToLatex,
   smartenStraightQuotes,
+  escapeLatexChars,
+  matchCharEscapeAt,
 } from "@/lib/latex-typography";
 import {
   findMatchingBrace,
@@ -295,16 +297,18 @@ export function htmlToJson(html: string): JSONContent {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function escapeLatex(text: string, opts?: { typography?: boolean }): string {
-  // Quote smartening goes through the shared `smartenStraightQuotes` SSOT, not
-  // a local copy: this file's copy had drifted from the main serializer's (it
-  // was missing `/` from the opener character class, so `and/"or"` produced a
-  // wrong-way closing pair inside a footnote but not in body prose).
-  const escaped = smartenStraightQuotes(
-    text
-      .replace(/(?<!\\)([&%#_])/g, "\\$1")
-      .replace(/~/g, "\\textasciitilde{}")
-      .replace(/\^/g, "\\textasciicircum{}"),
-  );
+  // Both halves go through the shared SSOTs, not local copies, because this
+  // file's copies had each drifted from the main serializer's:
+  //  - quote smartening was missing `/` from the opener character class, so
+  //    `and/"or"` produced a wrong-way closing pair inside a footnote but not
+  //    in body prose (task 209);
+  //  - char-escaping was missing `$`, `{`, `}`, `\` and the bracket
+  //    protections, so a prose `$` in a footnote body came back as an
+  //    `inlineMath` atom on reload and the `.tex` in between was already wrong
+  //    for LaTeX itself (task 339). `escapeLatexChars` reads
+  //    `CHAR_ESCAPE_TABLE` — the same table the parse rung below matches
+  //    against, and the same one the main serializer emits from.
+  const escaped = smartenStraightQuotes(escapeLatexChars(text));
   // Typographic reverse-map runs AFTER char-escaping so its `\^{e}`/`\~{n}`
   // output isn't re-escaped. Suppressed for code spans by the caller.
   return opts?.typography === false ? escaped : typographyToLatex(escaped);
@@ -485,6 +489,21 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
       continue;
     }
 
+    // Protected prose brackets `{[}` / `{]}` → literal `[` / `]`, the twin of
+    // the main parser's branch. It arrives WITH the emit half in task 339: the
+    // fork's escape rung now reads the same `CHAR_ESCAPE_TABLE`, so its
+    // `protect` members are emitted here too, and an unwrap-less parse would
+    // make a footnote body holding `arr[0]` grow a brace layer on EVERY save,
+    // unbounded — the non-idempotency `serializeMarklessTextBody` warns about.
+    if (text[i] === "{") {
+      const prot = matchCharEscapeAt(text, i);
+      if (prot) {
+        buffer += prot.char;
+        i = prot.end;
+        continue;
+      }
+    }
+
     // Inline math: $...$
     if (text[i] === "$" && !isEscaped(text, i)) {
       const end = findUnescaped(text, "$", i + 1);
@@ -654,15 +673,13 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         continue;
       }
 
-      // Escaped specials
-      const escMatch = rest.match(/^\\(textbackslash\{\}|textasciitilde\{\}|textasciicircum\{\}|[&%$#_{}])/);
-      if (escMatch) {
-        const ch = escMatch[1];
-        if (ch === "textbackslash{}") buffer += "\\";
-        else if (ch === "textasciitilde{}") buffer += "~";
-        else if (ch === "textasciicircum{}") buffer += "^";
-        else buffer += ch;
-        i += escMatch[0].length;
+      // Escaped specials — from `CHAR_ESCAPE_TABLE`, the twin of the main
+      // parser's rung (task 339). Same position as the hand-written
+      // alternation it replaces: after `\\` above, before the accents.
+      const esc = matchCharEscapeAt(text, i);
+      if (esc) {
+        buffer += esc.char;
+        i = esc.end;
         continue;
       }
 

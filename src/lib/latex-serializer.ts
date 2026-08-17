@@ -13,7 +13,11 @@ import {
   detectBodyRequirements,
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
-import { typographyToLatex, smartenStraightQuotes } from "@/lib/latex-typography";
+import {
+  typographyToLatex,
+  smartenStraightQuotes,
+  escapeLatexChars,
+} from "@/lib/latex-typography";
 import {
   extractBraced,
   hasVerbatimMark,
@@ -321,46 +325,31 @@ function escapeLatex(
   text: string,
   opts?: { typography?: boolean },
 ): string {
-  // Don't escape backslashes — they're intentional LaTeX commands.
-  // The editor preserves raw LaTeX, so we only escape the few chars
-  // that would break LaTeX if they appeared as literal text.
-  // `$` IS escaped here (→ `\$`): a bare `$` in a plain-text node is re-read
-  // as an inline-math delimiter by the parser (`$…$` → inlineMath), so leaving
-  // it raw silently converts prose like `costs $5, $10` into a math atom on the
-  // next save→reload. Genuine inline math never reaches escapeLatex — it is a
-  // separate `inlineMath` node serialized directly as `$${latex}$` — and the
-  // parser un-escapes `\$` back to a literal `$`, so this closes the round-trip.
-  // We still don't escape {, } since those are structural LaTeX syntax the
-  // editor emits and re-reads verbatim.
+  // Char-escaping is `escapeLatexChars`, driven by `CHAR_ESCAPE_TABLE` — THE
+  // vocabulary, shared with the parser's un-escape rung and with the
+  // card/footnote fork, so the two directions cannot drift (task 339; the
+  // rationale for each member, and for why prose is the only input this ever
+  // sees, lives on the table).
   //
-  // `[` / `]` are escaped SYMMETRICALLY as `{[}` / `{]}` (task 037's `$` twin).
-  // A literal prose `[` that abuts a preceding `\\` hard-break or a
-  // `\command` is otherwise re-read as an OPTIONAL ARGUMENT: `\\[Note]` reads
-  // as a line-break of length `Note`, and `\cmd[Note]` folds `[Note]` into the
-  // command atom (the parser's optional-arg absorber). Wrapping the bracket in
-  // its own brace group (`{[}`) neutralizes both — a braced `[` can never begin
-  // an optional arg — while still rendering as a plain `[`. We deliberately do
-  // NOT use `\[` (that starts DISPLAY MATH, silently turning `[Note]` into a
-  // math block on reload). Genuine structural brackets (`\begin{figure}[t]`,
-  // `\ex[exno=3]`, real `\\[2em]` lengths) live on latexCommand/texBlock/example
-  // paths that bypass escapeLatex, so only prose text is touched. The parser
-  // collapses `{[}`/`{]}` back to a bare `[`/`]`, closing the round-trip.
+  // What changed with the table: `{` and `}` are now escaped in a text run
+  // that PROVABLY holds no LaTeX (no backslash in it), which is what closes the
+  // `\{` → bare `{` destruction — an unmatched brace that swallowed the rest of
+  // the document into a group. They stay raw in a run that does hold a
+  // backslash, because a BARE unmarked text node is a real carrier for raw
+  // LaTeX the user is typing (the grey-monospace decoration in
+  // `tiptap/latex-command.ts`), and escaping there turns a typed `\emph{hi}`
+  // into literal prose. The measurement, the rule and its residual are stated
+  // once, on the table.
+  //
   // Straight/curly `"` → smart LaTeX pairs via the shared serialize-side
   // helper (also used by serializeMarks' latexCommand path) so the
   // opener/closer character class has exactly ONE definition.
-  const escaped = smartenStraightQuotes(
-    text
-      .replace(/(?<!\\)([&%#$_])/g, "\\$1")
-      .replace(/\[/g, "{[}")
-      .replace(/\]/g, "{]}")
-      .replace(/~/g, "\\textasciitilde{}")
-      .replace(/\^/g, "\\textasciicircum{}"),
-  );
+  const escaped = smartenStraightQuotes(escapeLatexChars(text));
   // Typographic reverse-map (accents/special-letters/dashes/ellipsis →
   // canonical LaTeX) runs AFTER char-escaping so its emitted `\^{e}` / `\~{n}`
-  // commands aren't re-escaped by the `^`/`~` rules above. Suppressed for
+  // commands aren't re-escaped by the `^`/`~` members above. Suppressed for
   // code spans by the caller (memo §A). The dash-glyph used as a `"`-opening
-  // lookbehind (— –) is preserved by that rule above before being mapped here.
+  // lookbehind (— –) is untouched by the escape pass before being mapped here.
   return opts?.typography === false ? escaped : typographyToLatex(escaped);
 }
 
