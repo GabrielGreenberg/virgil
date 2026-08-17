@@ -36,6 +36,10 @@ import {
   needsUuidWork,
   extractSidecarData,
 } from "@/lib/latex-serializer";
+import {
+  checkTexPreservation,
+  describePreservationRefusal,
+} from "@/lib/tex-preservation";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
@@ -604,6 +608,21 @@ async function writeReStampedTexOnLoad(
       serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
     }
     const latex = serializeToLatex(content, serializeOpts);
+
+    // THE PRESERVATION GATE (task 350 defect D). This write is automatic — the
+    // user did not ask for it — so it must not be able to lose content. If the
+    // re-serialized document holds materially fewer content words than the
+    // bytes we just read, a parse could not represent this document and the
+    // right answer is to REFUSE and say so, not to write the loss to disk.
+    //
+    // Neither the sidecar nor the ledger is stamped on a refusal: the `.tex`
+    // stays byte-identical, so claiming otherwise would make the DiskWatcher
+    // report Virgil's own untaken write as an external change.
+    const verdict = checkTexPreservation(existingLatex, latex);
+    if (!verdict.ok) {
+      console.error(describePreservationRefusal(verdict, h.docId));
+      return;
+    }
 
     // Snapshot the prior bundle before overwriting — same forensic safety
     // net writeDocBundle uses.

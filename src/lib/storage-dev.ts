@@ -16,6 +16,10 @@ import {
   needsUuidWork,
   extractSidecarData,
 } from "@/lib/latex-serializer";
+import {
+  checkTexPreservation,
+  describePreservationRefusal,
+} from "@/lib/tex-preservation";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
@@ -437,6 +441,18 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
     void enqueueWrite(`${docId}/bundle`, async () => {
       try {
         if (!isActive(writebackHandle)) return;
+        // THE PRESERVATION GATE (task 350 defect D) — parity with
+        // storage-fsa's `writeReStampedTexOnLoad`. This write is automatic, so
+        // it must not be able to lose content; a re-serialization that holds
+        // materially fewer content words than the bytes just read is REFUSED
+        // and the `.tex` left byte-identical. The ledger is deliberately not
+        // stamped on a refusal — nothing was written, so stamping would make
+        // the watcher report an untaken write as an external change.
+        const verdict = checkTexPreservation(latex, newLatex);
+        if (!verdict.ok) {
+          console.error(describePreservationRefusal(verdict, docId));
+          return;
+        }
         await Promise.all([
           putText(`${API}/doc/${docId}/${texFilename}`, newLatex),
           putText(`${API}/doc/${docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
