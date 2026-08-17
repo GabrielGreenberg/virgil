@@ -32,6 +32,13 @@ import { describe, expect, it } from "vitest";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
 import { richLatexToJson, richJsonToLatex } from "@/lib/footnote-content";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { commentsStripped } from "@/lib/__tests__/_source-scan";
+import {
+  CHAR_ESCAPE_LEADS,
+  CHAR_ESCAPE_TABLE,
+} from "@/lib/latex-typography";
 
 /** ONE save cycle, mirroring `storage-fsa.writeDocBundle` byte for byte. */
 function save(tex: string): string {
@@ -459,5 +466,128 @@ describe("M6 — a bare `{…}` group survives a save", () => {
     );
     expect(raw).toHaveLength(0);
     expectStable("Some \\textbf{bold} here.\n");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// CENSUS — the doors were never the part that could misbehave
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Both M5 and M6 are shared DOORS read by two inline parsers, and the whole
+// class this task closes is "a construct reached the prose buffer". A behavioural
+// test of a door proves the door works; what it cannot see is a SCANNER that
+// never asks it — which is precisely the shape that shipped:
+//
+//  - the non-backslash char-escape members were gated on a literal
+//    `text[i] === "{"` in BOTH parsers, so `~` was emitted by
+//    `escapeLatexChars` and unreachable on the way back in;
+//  - `footnote-content.ts` is a complete second inline parser (task 341), and
+//    every vocabulary that has ever drifted across that seam drifted by one
+//    side simply not calling what the other side calls.
+
+const SILOS = ["src", "library"];
+
+function walk(dir: string, out: string[] = []): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const name of entries) {
+    if (name === "node_modules" || name === "__tests__" || name === ".next") continue;
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) walk(full, out);
+    else if (/\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name)) out.push(full);
+  }
+  return out;
+}
+
+const PRODUCTION_FILES = SILOS.flatMap((s) => walk(s));
+
+/**
+ * The two files that SCAN prose character by character. Stated here rather than
+ * discovered, because that is what the census is asserting: exactly these two,
+ * and both of them read both doors.
+ */
+const INLINE_PARSERS = [
+  "src/lib/latex-parser.ts",
+  "src/lib/footnote-content.ts",
+];
+
+describe("CENSUS — the scanners ask the derived doors", () => {
+  it("finds a real production corpus (self-check)", () => {
+    expect(PRODUCTION_FILES.length).toBeGreaterThan(300);
+    for (const f of INLINE_PARSERS) expect(PRODUCTION_FILES).toContain(f);
+  });
+
+  it("both inline parsers gate on CHAR_ESCAPE_LEADS, not on a hand-written `{`", () => {
+    // Neuter this and the tie is emitted correctly and never read back — the
+    // one-directional rewrite the whole task is about, with the emit half green.
+    for (const f of INLINE_PARSERS) {
+      const code = commentsStripped(readFileSync(f, "utf8"));
+      expect(code, `${f} must ask the derived lead set`).toContain(
+        "CHAR_ESCAPE_LEADS.has(",
+      );
+    }
+  });
+
+  it("both inline parsers carry a bare group through the shared door", () => {
+    // The task-341 twin rule: a vocabulary one fork reads and the other does
+    // not is how every prior divergence across this seam began.
+    for (const f of INLINE_PARSERS) {
+      const code = commentsStripped(readFileSync(f, "utf8"));
+      expect(code, `${f} must call matchBraceGroupAt`).toContain(
+        "matchBraceGroupAt(",
+      );
+    }
+  });
+
+  it("no production file outside the lexer hand-lists the lead characters", () => {
+    // A second spelling of "which characters can begin a table member" is the
+    // hand list `CHAR_ESCAPE_LEADS` replaces. The lexer is exempt by shape: it
+    // asks `matchCharEscapeAt` a `{`-guarded PROTECTION question inside
+    // `matchCommandArgumentRun` / `matchBraceGroupAt`, which is a test, not a
+    // scanner gate.
+    const offenders: string[] = [];
+    const examined: string[] = [];
+    for (const f of PRODUCTION_FILES) {
+      if (f === "src/lib/latex-lexer.ts") continue;
+      if (f === "src/lib/latex-typography.ts") continue;
+      const code = commentsStripped(readFileSync(f, "utf8"));
+      if (!code.includes("matchCharEscapeAt(")) continue;
+      examined.push(f);
+      if (!code.includes("CHAR_ESCAPE_LEADS")) offenders.push(f);
+    }
+    // Not vacuous: the two scanners MUST be the files it looked at. A needle
+    // that matches nothing passes for the wrong reason.
+    expect(examined.sort()).toEqual([...INLINE_PARSERS].sort());
+    expect(offenders).toEqual([]);
+  });
+
+  it("the lead set is DERIVED and covers exactly the non-backslash spellings", () => {
+    // Read from the table rather than restated, so a new member joins by
+    // declaration. Today: `{` (the two protections) and `~` (the tie).
+    const leads = [...CHAR_ESCAPE_LEADS].sort();
+    const expected = CHAR_ESCAPE_TABLE.filter(
+      (e) => !e.tex.startsWith("\\"),
+    ).map((e) => e.tex[0]);
+    expect(new Set(leads)).toEqual(new Set(expected));
+    expect(leads).toEqual(["{", "~"].sort());
+  });
+
+  it("the tie is declared as a GLYPH, and the ASCII tilde is still an escape", () => {
+    // The pair that makes the provenance representable at all. Dropping either
+    // is the "just delete the table entry" fix the Done-when forbids.
+    const tie = CHAR_ESCAPE_TABLE.find((e) => e.text === NBSP_CH);
+    expect(tie).toEqual({
+      text: NBSP_CH,
+      tex: "~",
+      kind: "glyph",
+      emit: "always",
+    });
+    const tilde = CHAR_ESCAPE_TABLE.find((e) => e.text === "~");
+    expect(tilde?.tex).toBe("\\textasciitilde{}");
+    expect(tilde?.emit).toBe("always");
   });
 });
