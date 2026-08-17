@@ -27,6 +27,7 @@ import {
   hasVerbatimMark,
   isEscaped,
   findUnescaped,
+  matchCommandToken,
   matchInlineVerbAt,
   verbatimMark,
 } from "@/lib/latex-lexer";
@@ -683,11 +684,14 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         }
       }
 
-      // Unknown \command — preserve as raw text marked latexCommand
-      const unknownCmd = rest.match(/^\\([a-zA-Z@]+)/);
+      // Unknown \command — preserve as raw text marked latexCommand. The
+      // control-WORD read comes from the lexer SSOT (`matchCommandToken`), the
+      // same one the main inline parser reads, so this fork cannot drift on
+      // what a command NAME is (task 338).
+      const unknownCmd = matchCommandToken(text, i);
       if (unknownCmd) {
-        let cmdText = "\\" + unknownCmd[1];
-        let p = i + unknownCmd[0].length;
+        let cmdText = "\\" + unknownCmd.name;
+        let p = unknownCmd.end;
         if (p < text.length && text[p] === "*") { cmdText += "*"; p++; }
         while (p < text.length && text[p] === "[") {
           const close = text.indexOf("]", p);

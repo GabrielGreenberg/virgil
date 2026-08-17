@@ -22,11 +22,18 @@ import {
 } from "@/lib/latex-typography";
 import {
   extractBraced,
+  findMatchingEnv,
   findMatchingGloss,
+  findMatchingXe,
   isEscaped,
   findUnescaped,
+  matchBeginEnvAt,
+  matchCommandToken,
   matchInlineVerbAt,
+  skipOpaqueConstructAt,
+  unwrapVerbatimEnvBody,
   verbatimMark,
+  wrapVerbatimEnvBody,
   VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
 
@@ -756,12 +763,16 @@ export function parseInlineContent(
         }
       }
 
-      // Unknown \command{...} or \command[...]{...} — render as grey monospace
-      const unknownCmd = rest.match(/^\\([a-zA-Z@]+)/);
+      // Unknown \command{...} or \command[...]{...} — render as grey monospace.
+      // The control-WORD read is the lexer's (`matchCommandToken`), not a
+      // local `[a-zA-Z@]+` copy: `footnote-content.ts` is a second inline
+      // parser that had hand-rolled the identical regex, and the two must
+      // agree on what a command name IS (task 338 / the vocabulary rule).
+      const unknownCmd = matchCommandToken(text, i);
       if (unknownCmd) {
         flush();
-        let cmdText = "\\" + unknownCmd[1];
-        i += unknownCmd[0].length;
+        let cmdText = "\\" + unknownCmd.name;
+        i = unknownCmd.end;
         // Consume optional starred
         if (i < text.length && text[i] === "*") {
           cmdText += "*";
@@ -1659,30 +1670,32 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
     }
 
     // \begin{...}[optional]
-    // `\w+\*?` so starred envs (figure*, table*) match too.
-    const beginMatch = rest.match(/^\\begin\{(\w+\*?)\}(\[[^\]]*\])?/);
-    if (beginMatch) {
-      const env = beginMatch[1];
-      const optArg = beginMatch[2] || "";
-      ctx.pos += beginMatch[0].length;
-      // Find the matching \end{env}. For most envs we depth-count so nested
-      // same-name environments pair correctly. The `verbatim` FAMILY is the
-      // exception: those envs are non-nestable and their body is LITERAL, so
-      // the correct terminator is the FIRST `\end{env}` — depth-counting is
-      // actively wrong here, since a literal `\begin{env}` in the body would
-      // bump the counter and swallow the real close (and, when the counter
-      // never rebalances, swallow the rest of the document into one block).
-      // The membership test reads the vocab SSOT (`VERBATIM_ENVS_FULL`), so
-      // every family member — `verbatim*`/`lstlisting`/`minted`, not just bare
-      // `verbatim` — gets first-close-wins handling (task 243). The serializer
-      // escapes any body `\end{verbatim}` (→ `\end{verbatim%!v-esc}`), so the
-      // first literal `\end{env}` we find is the block's true end.
+    // The env-name spelling comes from the lexer (`\w+\*?`, so starred envs
+    // like figure*/table* match) — the SAME matcher `skipOpaqueConstructAt`
+    // uses, so the dispatcher and the body splitters can never disagree about
+    // where a construct begins or what it is called (task 338).
+    const beginAt = matchBeginEnvAt(ctx.src, ctx.pos);
+    if (beginAt) {
+      const env = beginAt.name;
+      const optMatch = ctx.src.slice(beginAt.end).match(/^\[[^\]]*\]/);
+      const optArg = optMatch ? optMatch[0] : "";
+      ctx.pos = beginAt.end + optArg.length;
+      // Find the matching \end{env} through the lexer SSOT. It owns the
+      // `verbatim` FAMILY fork the parser used to hand-write here: those envs
+      // are non-nestable and their body is LITERAL, so the correct terminator
+      // is the FIRST `\end{env}` — depth-counting is actively wrong there,
+      // since a literal `\begin{env}` in the body would bump the counter and
+      // swallow the real close (and, when the counter never rebalances,
+      // swallow the rest of the document into one block). Membership reads the
+      // vocab SSOT (`VERBATIM_ENVS_FULL`), so every family member —
+      // `verbatim*`/`lstlisting`/`minted`, not just bare `verbatim` — gets
+      // first-close-wins handling (task 243). The serializer escapes any body
+      // `\end{verbatim}` (→ `\end{verbatim%!v-esc}`), so the first literal
+      // `\end{env}` we find is the block's true end.
       const isLiteralEnv = (VERBATIM_ENVS_FULL as readonly string[]).includes(
         env,
       );
-      const envEnd = isLiteralEnv
-        ? ctx.src.indexOf(`\\end{${env}}`, ctx.pos)
-        : findMatchingEnd(ctx.src, ctx.pos, env);
+      const envEnd = findMatchingEnv(ctx.src, ctx.pos, env);
       const envContent =
         envEnd !== -1
           ? ctx.src.slice(ctx.pos, envEnd)
@@ -1751,17 +1764,12 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
       switch (env) {
         case "verbatim": {
-          // Verbatim is byte-preserving. Undo ONLY the serializer's single
-          // wrapping `\n` on each side (`\begin{verbatim}\n${inner}\n\end…`),
-          // not all edge whitespace — a blunt `.trim()` would drop first-line
-          // indentation, trailing whitespace, and leading/trailing blank
-          // lines every cycle. Then un-escape any `\end{verbatim%!v-esc}`
-          // sentinel the serializer emitted to protect a body line that reads
-          // `\end{verbatim}` from terminating the block early.
-          let text = envContent;
-          if (text.startsWith("\n")) text = text.slice(1);
-          if (text.endsWith("\n")) text = text.slice(0, -1);
-          text = text.replace(/\\end\{verbatim%!v-esc\}/g, "\\end{verbatim}");
+          // Verbatim is byte-preserving: `unwrapVerbatimEnvBody` is the exact
+          // inverse of the serializer's emit (undo the single wrapping `\n` on
+          // each side — never a blunt `.trim()`, which would drop first-line
+          // indentation and blank lines every cycle — then un-escape the
+          // `\end{verbatim%!v-esc}` sentinel).
+          const text = unwrapVerbatimEnvBody(envContent);
           const codeNode: JSONContent = {
             type: "codeBlock",
             content: [{ type: "text", text }],
@@ -1998,32 +2006,6 @@ function stripUuidAnchor(text: string): { text: string; uuid: string | null } {
 }
 
 /**
- * Find the position (index of "\") of the \end{env} that matches the
- * already-opened \begin{env} just before `startPos`. Returns -1 if no
- * matching close is found. Properly handles nested \begin{env}…\end{env}.
- */
-function findMatchingEnd(src: string, startPos: number, env: string): number {
-  const beginTok = `\\begin{${env}}`;
-  const endTok = `\\end{${env}}`;
-  let depth = 1;
-  let pos = startPos;
-  while (pos < src.length) {
-    const nextBegin = src.indexOf(beginTok, pos);
-    const nextEnd = src.indexOf(endTok, pos);
-    if (nextEnd === -1) return -1;
-    if (nextBegin !== -1 && nextBegin < nextEnd) {
-      depth++;
-      pos = nextBegin + beginTok.length;
-    } else {
-      depth--;
-      if (depth === 0) return nextEnd;
-      pos = nextEnd + endTok.length;
-    }
-  }
-  return -1;
-}
-
-/**
  * Split list-environment content into individual item slices, respecting
  * nested itemize/enumerate environments. Each returned string is the text
  * between an `\item` and the next sibling `\item` (or end of content),
@@ -2041,18 +2023,16 @@ function splitListItems(content: string): { items: string[]; preamble: string } 
   // Track where the first \item is so we can extract the preamble
   let firstItemPos = -1;
   while (pos < content.length) {
-    // Skip past nested list environments — \item markers inside them
-    // belong to the inner list, not the current one.
-    if (content.startsWith("\\begin{itemize}", pos)) {
-      pos += "\\begin{itemize}".length;
-      const inner = findMatchingEnd(content, pos, "itemize");
-      pos = inner === -1 ? content.length : inner + "\\end{itemize}".length;
-      continue;
-    }
-    if (content.startsWith("\\begin{enumerate}", pos)) {
-      pos += "\\begin{enumerate}".length;
-      const inner = findMatchingEnd(content, pos, "enumerate");
-      pos = inner === -1 ? content.length : inner + "\\end{enumerate}".length;
+    // Skip past ANY nested construct — an `\item` inside one belongs to that
+    // construct, not to this list. Membership is the lexer's grammar-derived
+    // vocabulary, never a hand list here: before task 338 this branch knew
+    // literal `itemize`/`enumerate` and nothing else, so a nested
+    // `description` / `enumerate*` / `minipage` / `verbatim` code listing was
+    // TORN APART on the first save — its `\item` lines hoisted out as siblings
+    // of the outer list's items and its `\end{…}` stranded in the prose.
+    const skip = skipOpaqueConstructAt(content, pos);
+    if (skip !== -1 && skip > pos) {
+      pos = skip;
       continue;
     }
     // Look for \item at depth 0 (must be word-boundary so \items etc. don't match)
@@ -2200,60 +2180,6 @@ function readParagraph(ctx: ParseContext): string {
 // expex helpers
 // ---------------------------------------------------------------------------
 
-/** Scan for the `\end{xlist}` that closes the `\begin{xlist}` opened at
- *  `startPos`. Handles nested xlist environments by tracking depth.
- *  Returns the index of the backslash in `\end{xlist}`, or -1 if not
- *  found. */
-function findMatchingXlistEnd(src: string, startPos: number): number {
-  let depth = 1;
-  let pos = startPos;
-  while (pos < src.length) {
-    if (src.startsWith("\\begin{xlist}", pos)) {
-      depth++;
-      pos += "\\begin{xlist}".length;
-      continue;
-    }
-    if (src.startsWith("\\end{xlist}", pos)) {
-      depth--;
-      if (depth === 0) return pos;
-      pos += "\\end{xlist}".length;
-      continue;
-    }
-    pos++;
-  }
-  return -1;
-}
-
-/** Scan for the `\xe` that closes the `\ex`/`\pex` opened just before
- *  `startPos`. Handles nested `\ex`/`\pex` by tracking depth. Returns the
- *  index of the backslash in `\xe`, or -1 if not found. */
-function findMatchingXe(src: string, startPos: number): number {
-  let depth = 1;
-  let pos = startPos;
-  while (pos < src.length) {
-    if (src[pos] !== "\\") {
-      pos++;
-      continue;
-    }
-    const tail = src.slice(pos);
-    const openMatch = tail.match(/^\\(ex|pex)\b/);
-    if (openMatch) {
-      depth++;
-      pos += openMatch[0].length;
-      continue;
-    }
-    const closeMatch = tail.match(/^\\xe\b/);
-    if (closeMatch) {
-      depth--;
-      if (depth === 0) return pos;
-      pos += closeMatch[0].length;
-      continue;
-    }
-    pos++;
-  }
-  return -1;
-}
-
 /** Split a `\pex` body into [preambleText, ...itemSegments] where each
  *  itemSegment starts just after an `\a` (with its option/tag consumed). */
 function splitPexBody(
@@ -2302,26 +2228,16 @@ function splitPexBody(
   };
 
   while (pos < body.length) {
-    // Skip nested \begingl … \endgl, nested \ex/\pex blocks, and nested
-    // \begin{xlist} … \end{xlist} so their internal \a markers don't get
-    // confused with ours at the current tier.
-    if (body.startsWith("\\begingl", pos)) {
-      // Depth-counted, boundary/comment-aware terminator so a nested/commented
-      // `\endgl` inside the gloss doesn't prematurely end the skip.
-      const endIdx = findMatchingGloss(body, pos + "\\begingl".length);
-      pos = endIdx === -1 ? body.length : endIdx + "\\endgl".length;
-      continue;
-    }
-    if (body.startsWith("\\begin{xlist}", pos)) {
-      const xlistEnd = findMatchingXlistEnd(body, pos + "\\begin{xlist}".length);
-      pos = xlistEnd === -1 ? body.length : xlistEnd + "\\end{xlist}".length;
-      continue;
-    }
-    const exStart = body.slice(pos).match(/^\\(ex|pex)\b/);
-    if (exStart) {
-      pos += exStart[0].length;
-      const innerEnd = findMatchingXe(body, pos);
-      pos = innerEnd === -1 ? body.length : innerEnd + "\\xe".length;
+    // Skip nested \begingl … \endgl, nested \ex/\pex blocks, and ANY nested
+    // `\begin{env}` (xlist included) so their internal \a markers don't get
+    // confused with ours at the current tier. Same grammar-derived vocabulary
+    // `splitListItems` reads: before task 338 this branch listed three expex
+    // constructs and no `\begin{env}` at all, so a `verbatim` body containing
+    // a literal `\a` SPLIT the example and its `\begin{verbatim}` line was
+    // deleted outright.
+    const skip = skipOpaqueConstructAt(body, pos);
+    if (skip !== -1 && skip > pos) {
+      pos = skip;
       continue;
     }
     // \vxid{xxxx} — id marker preceding the next \a item. Stash and skip.
@@ -2512,7 +2428,7 @@ function buildExampleItemFromText(
   const xlistOpen = stripped.indexOf("\\begin{xlist}");
   if (xlistOpen !== -1) {
     const innerStart = xlistOpen + "\\begin{xlist}".length;
-    const innerEnd = findMatchingXlistEnd(stripped, innerStart);
+    const innerEnd = findMatchingEnv(stripped, innerStart, "xlist");
     if (innerEnd !== -1) {
       const innerBody = stripped.slice(innerStart, innerEnd);
       nestedList = buildExampleItemListFromBody(innerBody);
@@ -2615,11 +2531,41 @@ function parseExampleBodyAsBlocks(
       (opts?.allowDisplayMath && child.type === "displayMath")
     ) {
       out.push(child);
+      continue;
     }
-    // Unknown block types are dropped. The previous fallback re-emitted
-    // `body.trim()` as a latex-command paragraph, which leaked every
-    // `\vfid{}` / `\vcid{}` marker back into the source verbatim and
-    // doubled the matched footnotes/citations on every save → reload.
+    if (child.type === "codeBlock") {
+      // An example item's schema has no `codeBlock` slot, so a `verbatim`
+      // block inside one used to be DROPPED here — silently, losing the
+      // user's code on the first save. Preserve it as the same byte-literal
+      // CARRIER paragraph the top-level parser already gives the other
+      // `VERBATIM_ENVS_FULL` members (task 264): the whole
+      // `\begin{verbatim}…\end{verbatim}` re-wrapped through the shared
+      // `wrapVerbatimEnvBody` SSOT — never a third private copy of the
+      // sentinel-escape rule — and marked so no serializer runs typography
+      // over it.
+      out.push({
+        type: "paragraph",
+        ...(child.attrs?.uuid ? { attrs: { uuid: child.attrs.uuid } } : {}),
+        content: [
+          {
+            type: "text",
+            text: wrapVerbatimEnvBody(
+              (child.content ?? []).map((c) => c.text ?? "").join(""),
+            ),
+            marks: [verbatimMark()],
+          },
+        ],
+      });
+      continue;
+    }
+    // Other unknown block types are still dropped. The previous fallback
+    // re-emitted `body.trim()` as a latex-command paragraph, which leaked
+    // every `\vfid{}` / `\vcid{}` marker back into the source verbatim and
+    // doubled the matched footnotes/citations on every save → reload. Known
+    // residual, PRE-DATING task 338 and unchanged by it: a nested
+    // `itemize`/`enumerate`/`blockquote`/`figure` inside an example item is
+    // dropped by this filter or by `buildExampleItemFromText`'s head filter —
+    // preserving those needs a per-node re-serialize this leaf cannot reach.
   }
   return out;
 }

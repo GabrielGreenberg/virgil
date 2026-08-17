@@ -18,6 +18,7 @@ import {
   extractBraced,
   hasVerbatimMark,
   isEscaped,
+  wrapVerbatimEnvBody,
   VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
 import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
@@ -478,19 +479,16 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       // A body line reading `\end{verbatim}` would otherwise close the
-      // environment early (the parser's `findMatchingEnd` matches the
-      // literal string). Escape it to a private form that breaks the
-      // delimiter substring; the parser un-escapes it on the way back in.
-      // Mirrors the `texBlock` `%!vtex:end` → `%!v tex:end` sentinel guard.
-      // The `%` is injected into an already-RAW body, so it stays raw (not
-      // `\%`) and reverses cleanly. Verbatim bodies containing
-      // a literal `\end{verbatim}` are uncompilable in raw LaTeX anyway, so
-      // preserving Virgil's representation losslessly is strictly better.
-      const escaped = inner.replace(
-        /\\end\{verbatim\}/g,
-        "\\end{verbatim%!v-esc}",
-      );
-      return `\\begin{verbatim}\n${escaped}\n\\end{verbatim}${anchor}\n\n`;
+      // environment early (the lexer's `findMatchingEnv` matches the
+      // literal string), so `wrapVerbatimEnvBody` escapes it to a private form
+      // that breaks the delimiter substring; the parser un-escapes it on the
+      // way back in through that helper's inverse. Mirrors the `texBlock`
+      // `%!vtex:end` → `%!v tex:end` sentinel guard. The `%` is injected into
+      // an already-RAW body, so it stays raw (not `\%`) and reverses cleanly.
+      // Verbatim bodies containing a literal `\end{verbatim}` are uncompilable
+      // in raw LaTeX anyway, so preserving Virgil's representation losslessly
+      // is strictly better.
+      return `${wrapVerbatimEnvBody(inner)}${anchor}\n\n`;
     }
 
     case "texBlock": {
