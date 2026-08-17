@@ -25,10 +25,12 @@ import {
   smartenStraightQuotes,
   escapeLatexChars,
   matchCharEscapeAt,
+  CHAR_ESCAPE_LEADS,
 } from "@/lib/latex-typography";
 import {
   findMatchingBrace,
   hasVerbatimMark,
+  matchBraceGroupAt,
   matchCommandToken,
   matchCommandArgumentRun,
   matchInlineMathAt,
@@ -492,17 +494,45 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
       continue;
     }
 
-    // Protected prose brackets `{[}` / `{]}` → literal `[` / `]`, the twin of
-    // the main parser's branch. It arrives WITH the emit half in task 339: the
-    // fork's escape rung now reads the same `CHAR_ESCAPE_TABLE`, so its
-    // `protect` members are emitted here too, and an unwrap-less parse would
-    // make a footnote body holding `arr[0]` grow a brace layer on EVERY save,
-    // unbounded — the non-idempotency `serializeMarklessTextBody` warns about.
-    if (text[i] === "{") {
-      const prot = matchCharEscapeAt(text, i);
-      if (prot) {
-        buffer += prot.char;
-        i = prot.end;
+    // Non-backslash members of `CHAR_ESCAPE_TABLE` — the `{[}` / `{]}` prose
+    // bracket protections and the `~` TIE — the twin of the main parser's
+    // branch, at the same position, reading the same DERIVED lead set
+    // (tasks 339 / 349). The protections arrived with their emit half in 339:
+    // an unwrap-less parse would make a footnote body holding `arr[0]` grow a
+    // brace layer on EVERY save, unbounded — the non-idempotency
+    // `serializeMarklessTextBody` warns about. The tie is the same shape one
+    // member over: this fork's escape rung emits `\textasciitilde{}` for an
+    // ASCII `~`, so without the inward half a tie in a footnote or card body
+    // came back as a printed tilde, permanently.
+    if (CHAR_ESCAPE_LEADS.has(text[i])) {
+      const glyph = matchCharEscapeAt(text, i);
+      if (glyph) {
+        buffer += glyph.char;
+        i = glyph.end;
+        continue;
+      }
+    }
+
+    // A BARE `{…}` GROUP → braces on the raw-LaTeX carrier, content as prose
+    // (task 349 M6) — the twin of the main parser's branch. A card body is
+    // itself a braced ARGUMENT, so this fork recognizes no comment tails at
+    // all; the group's own recursion therefore has no opt to thread.
+    {
+      const group = matchBraceGroupAt(text, i);
+      if (group) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: "{",
+          marks: [{ type: "latexCommand" }],
+        });
+        nodes.push(...parseInlineLatex(group.content, inCode));
+        nodes.push({
+          type: "text",
+          text: "}",
+          marks: [{ type: "latexCommand" }],
+        });
+        i = group.end;
         continue;
       }
     }

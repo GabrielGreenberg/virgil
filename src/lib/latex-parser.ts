@@ -30,6 +30,7 @@ import {
   matchSpecialLetter,
   dashesToGlyphs,
   matchCharEscapeAt,
+  CHAR_ESCAPE_LEADS,
 } from "@/lib/latex-typography";
 import {
   extractBraced,
@@ -40,6 +41,7 @@ import {
   isEscaped,
   findUnescaped,
   matchBeginEnvAt,
+  matchBraceGroupAt,
   matchCommandToken,
   matchCommandArgumentRun,
   matchInlineMathAt,
@@ -276,26 +278,61 @@ export function parseInlineContent(
       continue;
     }
 
-    // Protected prose brackets: `{[}` / `{]}` → literal `[` / `]` (task 037's
-    // `$` twin). The serializer wraps a prose `[`/`]` in its own brace group so
-    // it can't be absorbed as a LaTeX optional argument (`\\[len]`,
-    // `\cmd[opt]`); here we unwrap it back to a bare glyph in the buffer, so
-    // adjacent letters stay one text node. Not gated on `inCode`: inline-code
-    // (`\texttt`) prose is escaped the same way and must round-trip
-    // identically. Genuine structural brackets never reach this inline scanner
-    // as the literal triple `{[}` — they live on latexCommand / texBlock /
-    // example paths.
+    // Non-backslash members of `CHAR_ESCAPE_TABLE`: the `{[}` / `{]}` prose
+    // bracket protections (task 037's `$` twin) and the `~` TIE (task 349 M5).
     //
-    // The spellings come from `CHAR_ESCAPE_TABLE` (task 339) — the same table
-    // the serializer's escape rung reads — so the `protect` members cannot
-    // drift from their emit side. Guarded on `{` so this can only ever match a
-    // protection here; the `escape` family is matched from the `\` branch below
-    // at the position it has always been matched, after the command rules.
-    if (text[i] === "{") {
-      const prot = matchCharEscapeAt(text, i);
-      if (prot) {
-        buffer += prot.char;
-        i = prot.end;
+    // The serializer wraps a prose `[`/`]` in its own brace group so it can't
+    // be absorbed as a LaTeX optional argument (`\\[len]`, `\cmd[opt]`); here
+    // we unwrap it back to a bare glyph in the buffer, so adjacent letters stay
+    // one text node. A `~` resolves to U+00A0, the character it MEANS — which
+    // is what keeps it distinguishable from the ASCII tilde `\textasciitilde{}`
+    // un-escapes to two lines further down, and so from being re-escaped into a
+    // printed tilde on the next save.
+    //
+    // Not gated on `inCode`: inline-code (`\texttt`) prose is escaped by the
+    // same rung and must round-trip identically, and a `~` inside `\texttt{a~b}`
+    // is a tie exactly as it is outside one. Genuine structural brackets never
+    // reach this inline scanner as the literal triple `{[}` — they live on
+    // latexCommand / texBlock / example paths.
+    //
+    // The spellings AND the set of positions come from `CHAR_ESCAPE_TABLE`
+    // (task 339 / 349) — the same table the serializer's escape rung reads — so
+    // neither the members nor their reachability can drift from the emit side.
+    // The `\`-led family is matched from the `\` branch below at the position it
+    // has always been matched, after the command rules.
+    if (CHAR_ESCAPE_LEADS.has(text[i])) {
+      const glyph = matchCharEscapeAt(text, i);
+      if (glyph) {
+        buffer += glyph.char;
+        i = glyph.end;
+        continue;
+      }
+    }
+
+    // A BARE `{…}` GROUP → its braces on the raw-LaTeX carrier, its content
+    // parsed as ordinary inline prose (task 349 M6). Reached only after the
+    // protections above have declined, so `{[}` still unwraps to a literal `[`.
+    // The `opts` are passed DOWN rather than reset: these braces are the
+    // SOURCE's own bytes at these positions, so re-emitting the content exactly
+    // as it arrived is what makes the group byte-identical — where a braced
+    // ARGUMENT (below) is a wrapper the serializer fabricates, and a comment
+    // tail inside one would comment out a `}` the source never had.
+    {
+      const group = matchBraceGroupAt(text, i);
+      if (group) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: "{",
+          marks: [{ type: "latexCommand" }],
+        });
+        nodes.push(...parseInlineContent(group.content, inCode, opts));
+        nodes.push({
+          type: "text",
+          text: "}",
+          marks: [{ type: "latexCommand" }],
+        });
+        i = group.end;
         continue;
       }
     }

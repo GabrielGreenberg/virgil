@@ -1183,3 +1183,47 @@ export function matchCommandArgumentRun(
   }
   return { raw: text.slice(pos, p), end: p };
 }
+
+/**
+ * A BARE `{…}` GROUP at `pos` — braces that belong to no command (task 349 M6).
+ *
+ * In LaTeX a bare `{a, b}` is a group: it scopes, and it typesets `a, b` with
+ * no braces printed. Virgil has no node for a group, so the braces fell into
+ * the prose buffer and `CHAR_ESCAPE_TABLE`'s `{`/`}` members rewrote them to
+ * `\{`/`\}` — which typesets the braces the source did not print. Same shape as
+ * the tie one table over: a construct with no representation is demoted to
+ * prose, and the escape table then decides its meaning.
+ *
+ * The carrier is 342's, not 347's: a group's braces ARE typeset-relevant (they
+ * scope), so `LATEX_COMMENT_TAIL_MARK`'s promise — *not typeset at all* — is
+ * false for them. The braces ride `latexCommand` ("raw LaTeX the editor doesn't
+ * model") and the CONTENT stays ordinary prose, so `{a, b}` keeps `a, b`
+ * editable instead of greying out the user's words.
+ *
+ * Returns null — leaving today's escape-to-`\{` behaviour in place — unless the
+ * bytes are unambiguously a group. Three bounds, deliberately the ones
+ * {@link matchCommandArgumentRun} already states:
+ *
+ *  - `extractBraced` FAILS CLOSED on an unbalanced group, so a stray `{` in
+ *    hand-written prose can never swallow the rest of the document;
+ *  - a group whose content spans a BLANK LINE is refused (that bounds a caller
+ *    handing over a wider slice than one paragraph);
+ *  - a `{[}` / `{]}` PROTECTION is not a group, and that rule is ASKED of
+ *    `CHAR_ESCAPE_TABLE` rather than re-spelled.
+ *
+ * Note the asymmetry with the escape members it sits beside: `\{` still parses
+ * to a literal `{` in the prose buffer and still re-emits as `\{`, so a brace
+ * the user genuinely means to PRINT is untouched. Only a BARE brace — one the
+ * source already carried as syntax — takes the carrier.
+ */
+export function matchBraceGroupAt(
+  text: string,
+  pos: number,
+): { content: string; end: number } | null {
+  if (text[pos] !== "{" || isEscaped(text, pos)) return null;
+  if (matchCharEscapeAt(text, pos)) return null;
+  const group = extractBraced(text, pos);
+  if (!group) return null;
+  if (/\n[ \t]*\n/.test(group.content)) return null;
+  return group;
+}

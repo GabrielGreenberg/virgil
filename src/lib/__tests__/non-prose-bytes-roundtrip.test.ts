@@ -9,8 +9,8 @@
 //   M2  `\definecolor{myblue}{rgb}{0.2,0.4,0.8}`       → third arg escaped, COMPILE ERROR
 //   M3  `\resizebox{3cm}{!}{Some content}`             → same
 //   M4  `Line one\\[2pt]`                              → hard break DESTROYED, unterminated `\[`
-//   M5  `Section~\ref{sec:a}`                          → `\textasciitilde{}` (later member)
-//   M6  `The set {a, b} is finite.`                    → `\{a, b\}`         (later member)
+//   M5  `Section~\ref{sec:a}`                          → `\textasciitilde{}`, a PRINTED tilde
+//   M6  `The set {a, b} is finite.`                    → `\{a, b\}`, PRINTED braces
 //   M7  `αλήθεια` / `й`                                → `\'{η}` / `\u{и}`
 //
 // The unifying diagnosis is task 342's rule (*what the system does not model,
@@ -278,5 +278,186 @@ describe("M7 — the accent fold is Latin-scoped", () => {
     // `ø` has no decomposition, so it survives NFD intact and is Latin script:
     // the guard must not exclude it.
     expect(twoCycles("søster.\n")).toBe("s\\o{}ster.");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// M5 — the `~` TIE is a GLYPH, not an escapable character
+// ───────────────────────────────────────────────────────────────────────────
+//
+// `CHAR_ESCAPE_TABLE`'s tilde entry is `emit: "always"` and the parse rung
+// collapsed BOTH a bare `~` and `\textasciitilde{}` to the same character, so
+// the rewrite was one-directional and unrecoverable: `Fig.~1` and
+// `Section~\ref{…}` — the standard idiom — printed a literal tilde after the
+// first save, permanently, and nothing downstream could tell a promoted tie
+// from a tilde the user meant.
+//
+// The fix is a MODEL distinction rather than a mark: LaTeX's `~` IS Unicode
+// U+00A0, so the tie parses to that character and serializes back to `~`,
+// while an ASCII `~` the user types as prose stays ASCII and still emits
+// `\textasciitilde{}`. That is why nothing is dropped from the table — this is
+// about PROVENANCE, and the prose direction must keep escaping.
+
+const NBSP_CH = "\u00A0";
+
+describe("M5 — a `~` tie survives a save", () => {
+  it("`Fig.~1` round-trips (was a printed tilde)", () => {
+    expectStable("See Section~\\ref{sec:a} and Fig.~1.\n");
+  });
+
+  it("the tie reaches the document as U+00A0, not as an ASCII tilde", () => {
+    // The whole fix in one assertion: the two spellings must resolve to two
+    // DIFFERENT characters, or the emit rung has nothing to tell apart.
+    const doc = parseLatex("Fig.~1 and a tilde.\n");
+    const para = (doc.content ?? []).find((n) => n.type === "paragraph");
+    const text = (para?.content ?? []).map((n) => n.text ?? "").join("");
+    expect(text).toContain(`Fig.${NBSP_CH}1`);
+    expect(text).not.toContain("Fig.~1");
+  });
+
+  it("a tie inside `\\texttt{}` round-trips too", () => {
+    // The code path suppresses the typography rung, which is exactly why the
+    // pair lives in `CHAR_ESCAPE_TABLE` and not in `LITERAL_TABLE`.
+    expectStable("Run \\texttt{a~b} now.\n");
+  });
+
+  it("a tie in a heading and in an `\\item` body round-trips", () => {
+    expectStable("\\section{Fig.~1 and more}\n");
+    // The serializer indents `\\item`, so this one is pinned at its canonical
+    // form rather than at the hand-written input.
+    expectStable(
+      "\\begin{itemize}\n  \\item See Fig.~1 here.\n\\end{itemize}\n",
+    );
+  });
+
+  it("the card-body fork answers identically (task 341's twin rule)", () => {
+    // `footnote-content.ts` is a second inline parser; both must resolve a tie
+    // the same way or a footnote body loses it while the paragraph keeps it.
+    expect(richJsonToLatex(richLatexToJson("See Fig.~1 now."))).toBe(
+      "See Fig.~1 now.",
+    );
+    expect(richJsonToLatex(richLatexToJson("A \\texttt{x~y} b."))).toBe(
+      "A \\texttt{x~y} b.",
+    );
+  });
+
+  it("a footnote body carries its tie through the whole pipeline", () => {
+    // A first save mints the footnote's `\\vfid` id marker, so the assertion is
+    // on the BODY rather than on the whole line.
+    const out = twoCycles("Prose.\\footnote{See Fig.~1 there.}\n");
+    expect(out).toContain("\\footnote{See Fig.~1 there.}");
+  });
+
+  it("CONTROL — an ASCII tilde the user typed as PROSE is still escaped", () => {
+    // The other direction, and the one the "Done when" forbids breaking: a
+    // literal tilde must keep reaching the `.tex` as `\textasciitilde{}`.
+    const doc = parseLatex("A \\textasciitilde{} sign.\n");
+    const para = (doc.content ?? []).find((n) => n.type === "paragraph");
+    const text = (para?.content ?? []).map((n) => n.text ?? "").join("");
+    expect(text).toContain("A ~ sign");
+    expect(text).not.toContain(NBSP_CH);
+    expectStable("A \\textasciitilde{} sign.\n");
+  });
+
+  it("CONTROL — a tie inside `\\url{}` / `\\verb` / math is untouched", () => {
+    // Each is consumed by its own matcher BEFORE the lead branch can see the
+    // byte, which is what task 338's `\url` case rests on.
+    expectStable("Visit \\url{http://x.com/~bob} today.\n");
+    expectStable("Type \\verb|a~b| here.\n");
+    expectStable("Math $a~b$ here.\n");
+  });
+
+  it("CONTROL — a `~` inside a comment tail stays in the comment", () => {
+    expectStable("Prose here. % see Fig.~1\n");
+  });
+
+  it("CONTROL — a pasted U+00A0 is written as the tie it means", () => {
+    // Pre-fix this reached disk as a raw U+00A0 byte, which pdflatex+inputenc
+    // may refuse outright. The DIRECT-TYPED-GLYPH policy says canonicalize.
+    expect(twoCycles(`Fig.${NBSP_CH}1 here.\n`)).toBe("Fig.~1 here.");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// M6 — a bare `{…}` GROUP is LaTeX syntax, not two literal characters
+// ───────────────────────────────────────────────────────────────────────────
+//
+// In LaTeX `The set {a, b} is finite.` typesets `The set a, b is finite.` —
+// the braces scope, they do not print. Escaped to `\{a, b\}` they DO print, so
+// opening the paper silently changed what the PDF says. Task 339 recorded this
+// as the case its "bare text is a carrier for typed raw LaTeX" premise does
+// not cover; the carrier here is 342's `latexCommand` on the braces alone, so
+// the enclosed words stay editable prose.
+
+describe("M6 — a bare `{…}` group survives a save", () => {
+  it("`The set {a, b} is finite.` round-trips (braces were PRINTED)", () => {
+    expectStable("The set {a, b} is finite.\n");
+  });
+
+  it("the braces carry, the CONTENT stays prose", () => {
+    // Marking the whole group raw would grey out the user's words, which is
+    // worse than the bug for `{a, b}`.
+    const doc = parseLatex("The set {a, b} is finite.\n");
+    const para = (doc.content ?? []).find((n) => n.type === "paragraph");
+    const raw = (para?.content ?? []).filter((n) =>
+      n.marks?.some((m) => m.type === "latexCommand"),
+    );
+    expect(raw.map((n) => n.text)).toEqual(["{", "}"]);
+    const prose = (para?.content ?? []).filter((n) => !n.marks?.length);
+    expect(prose.map((n) => n.text).join("")).toContain("a, b");
+  });
+
+  it("a group holding a command round-trips", () => {
+    expectStable("Then {\\bf bold words} follow.\n");
+  });
+
+  it("nested groups round-trip", () => {
+    expectStable("Outer {a {b} c} tail.\n");
+  });
+
+  it("an empty group round-trips", () => {
+    expectStable("Before {} after.\n");
+  });
+
+  it("the card-body fork answers identically (task 341's twin rule)", () => {
+    expect(richJsonToLatex(richLatexToJson("The set {a, b} is finite."))).toBe(
+      "The set {a, b} is finite.",
+    );
+  });
+
+  it("CONTROL — an ESCAPED brace the user typed is still a literal", () => {
+    // The other direction: `\{` parses to a literal `{` in the prose buffer and
+    // re-emits as `\{`, so a brace the author means to PRINT is untouched.
+    expectStable("The set \\{a, b\\} is finite.\n");
+  });
+
+  it("CONTROL — a brace the user types in the EDITOR is escaped on the way out", () => {
+    // A prose text node holding a literal `{` (no backslash in the run) must
+    // still emit `\{` — task 339's rule, which M6 must not weaken.
+    const doc = parseLatex("placeholder\n");
+    const para = (doc.content ?? []).find((n) => n.type === "paragraph");
+    para!.content = [{ type: "text", text: "a { b } c" }];
+    expect(serializeToLatex(doc)).toContain("a \\{ b \\} c");
+  });
+
+  it("CONTROL — `{[}` is still a protection, not a group", () => {
+    expectStable("A \\mycmd{[}x{]} tail.\n");
+  });
+
+  it("CONTROL — an unbalanced `{` still fails closed to today's escaping", () => {
+    const out = twoCycles("The set {a, b is finite.\n");
+    expect(out).toContain("\\{a, b is finite.");
+  });
+
+  it("CONTROL — a command's own argument braces are still its arguments", () => {
+    // The group branch sits AFTER the `\` branch, so `\textbf{x}` is consumed
+    // whole by the command rules and never reaches it.
+    const doc = parseLatex("Some \\textbf{bold} here.\n");
+    const para = (doc.content ?? []).find((n) => n.type === "paragraph");
+    const raw = (para?.content ?? []).filter((n) =>
+      n.marks?.some((m) => m.type === "latexCommand"),
+    );
+    expect(raw).toHaveLength(0);
+    expectStable("Some \\textbf{bold} here.\n");
   });
 });
