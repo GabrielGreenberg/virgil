@@ -68,6 +68,78 @@ function expectStable(input: string): void {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// M4 — `\\[2pt]`: a break's own ARGUMENT RUN demoted to prose
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Two independent halves, and each one alone leaves the bytes wrong:
+//
+//   * `readParagraph`'s `\[` boundary test fires at the SECOND backslash of
+//     `\\[`, where `result` holds only ONE — so the `/\\\\\s*$/` guard that
+//     exists to suppress exactly this break can never match. The paragraph
+//     split, leaving `Line one\` with a dangling backslash and `\[2pt]` as an
+//     UNTERMINATED display-math opener: a `.tex` that no longer compiles.
+//   * even with the split fixed, the `[` fell into the prose buffer, where the
+//     escape table's `protect` member wrapped it as `{[}` — so the PDF printed
+//     a literal `[2pt]` where the author asked for 2pt of extra leading.
+
+describe("M4 — a line break carries its own argument run", () => {
+  it("`\\\\[2pt]` round-trips (was a split paragraph + an unterminated `\\[`)", () => {
+    expectStable("Line one\\\\[2pt]\nLine two.\n");
+  });
+
+  it("does not emit an unterminated display-math opener", () => {
+    const out = twoCycles("Line one\\\\[2pt]\nLine two.\n");
+    // The pre-fix output was `Line one\` / blank / `\[2pt]` / `Line two.` —
+    // an opener with no `\]` anywhere, which is the compile error.
+    expect(out.split("\n").filter((l) => l.trim() === "\\[2pt]")).toEqual([]);
+    expect(out).not.toContain("{[}");
+  });
+
+  it("stays ONE paragraph", () => {
+    const doc = parseLatex(save("Line one\\\\[2pt]\nLine two.\n"));
+    const paras = (doc.content ?? []).filter((n) => n.type === "paragraph");
+    expect(paras).toHaveLength(1);
+  });
+
+  it("`\\\\*` (the no-page-break form) round-trips", () => {
+    expectStable("Line one\\\\*\nLine two.\n");
+  });
+
+  it("`\\\\*[1ex]` round-trips", () => {
+    expectStable("Line one\\\\*[1ex]\nLine two.\n");
+  });
+
+  it("CONTROL — a bare `\\\\` still becomes the modelled hardBreak", () => {
+    // The shipped behaviour, and what Shift+Enter produces. It must keep its
+    // node (not the raw carrier), which is what the re-emitted `\\\n` proves.
+    const doc = parseLatex("Line one\\\\\nLine two.\n");
+    const para = (doc.content ?? []).find((n) => n.type === "paragraph");
+    expect((para?.content ?? []).some((n) => n.type === "hardBreak")).toBe(true);
+    expectStable("Line one\\\\\nLine two.\n");
+  });
+
+  it("CONTROL — an UNTERMINATED `\\\\[` fails closed to today's reading", () => {
+    // `extractBracketed` answers null, so the break stays bare and the `[`
+    // remains prose — byte-for-byte the pre-fix behaviour, deliberately.
+    const out = twoCycles("Line one\\\\[unclosed\nLine two.\n");
+    expect(out).toContain("{[}unclosed");
+  });
+
+  it("CONTROL — a prose `[` after a bare break is still protected", () => {
+    // Task 037's `{[}` protection, which is why the carrier is ABUTTING-only.
+    const out = twoCycles("Line one\\\\\n[note] follows.\n");
+    expect(out).toContain("{[}note{]}");
+  });
+
+  it("CONTROL — `\\\\` then a real block boundary on the next line still breaks", () => {
+    // The case the `/\\\\\\\\\\s*$/` guard was written for: the boundary fires at
+    // a THIRD, unescaped backslash, so the `isEscaped` gate leaves it alone.
+    const out = twoCycles("Line one\\\\\n\\section{Next}\n");
+    expect(out).toContain("\\section{Next}");
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
 // M7 — the accent fold had no SCRIPT guard
 // ───────────────────────────────────────────────────────────────────────────
 //

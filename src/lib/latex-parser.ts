@@ -43,6 +43,7 @@ import {
   matchCommandToken,
   matchInlineMathAt,
   matchInlineVerbAt,
+  matchLineBreakAt,
   skipOpaqueConstructAt,
   unwrapVerbatimEnvBody,
   verbatimMark,
@@ -673,13 +674,40 @@ export function parseInlineContent(
         continue;
       }
 
-      // \\  -> hard break
-      if (rest.startsWith("\\\\")) {
+      // `\\` -> hard break, and its own ARGUMENT RUN if it has one.
+      //
+      // A bare `\\` is the modelled `hardBreak` node (what Shift+Enter produces,
+      // and what the serializer writes back as `\\\n`). A break carrying `*`
+      // and/or `[<len>]` is carried byte-literally on the raw-LaTeX mark
+      // instead: Virgil does not model break spacing, and before task 349 M4
+      // those bytes were demoted to prose, where the escape table's `protect`
+      // member turned `\\[2pt]` into a printed `[2pt]` and (one step earlier)
+      // `readParagraph` split the paragraph at the `\[` and emitted an
+      // unterminated display-math opener. The token's shape comes from the
+      // lexer's `matchLineBreakAt`, beside the boundary predicate whose
+      // disagreement with it was the defect.
+      //
+      // The trailing newline is deliberately NOT consumed on the carrier path
+      // (unlike the bare-break path, which re-emits its own): a newline left in
+      // the following prose buffer round-trips verbatim, which is what makes the
+      // bytes identical — a paragraph's interior newlines are already carried
+      // that way.
+      const lineBreak = matchLineBreakAt(text, i);
+      if (lineBreak) {
         flush();
-        nodes.push({ type: "hardBreak" });
-        i += 2;
-        // skip optional newline
-        if (i < text.length && text[i] === "\n") i++;
+        if (lineBreak.plain) {
+          nodes.push({ type: "hardBreak" });
+          i = lineBreak.end;
+          // skip optional newline
+          if (i < text.length && text[i] === "\n") i++;
+        } else {
+          nodes.push({
+            type: "text",
+            text: lineBreak.raw,
+            marks: [{ type: "latexCommand" }],
+          });
+          i = lineBreak.end;
+        }
         continue;
       }
 
@@ -2205,7 +2233,26 @@ function readParagraph(ctx: ParseContext): string {
       // the enclosing construct actually ends. Reading TeX's wider rule here
       // would re-open exactly the layer disagreement task 338 closed, in the
       // direction that swallows the rest of the document.
-      !inLineComment
+      !inLineComment &&
+      // …and is a REAL control-sequence start. A backslash that is itself
+      // ESCAPED is the second half of a `\\` line break, so what follows it is
+      // that break's business, not a new block's (task 349 M4).
+      //
+      // This is the off-by-one that destroyed `\\[2pt]`: `startsBlockBoundary`
+      // tests `\[` (it must — see its own note on the trailing `\b`), and that
+      // test fires at the SECOND backslash of `\\[`, where the accumulated
+      // `result` holds only ONE backslash — so the `/\\\\\s*$/` guard below,
+      // which exists to suppress exactly this break, can never match for the
+      // ABUTTING shape. The paragraph split, `Line one\` was emitted with a
+      // dangling backslash, and `\[2pt]` became an unterminated display-math
+      // opener: a `.tex` that no longer compiles, written on OPEN.
+      //
+      // Asking `isEscaped` rather than widening the guard states the rule at the
+      // right altitude — a construct begins at a live `\`, never at the tail of
+      // an escaped pair — and it leaves the `\\`-then-newline case the guard was
+      // written for (`Line one\\\n\section{X}`) reading exactly as before, since
+      // there the boundary fires at a third, unescaped backslash.
+      !isEscaped(ctx.src, ctx.pos)
     ) {
       // The boundary vocabulary is the LEXER's (`startsBlockBoundary`), not a
       // private copy: the serializer asks the same question of a list item's

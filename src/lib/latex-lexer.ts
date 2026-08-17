@@ -528,6 +528,60 @@ export function startsBlockBoundary(text: string): boolean {
   return text.startsWith("\\[") || BLOCK_BOUNDARY_COMMAND_RE.test(text);
 }
 
+/**
+ * A `\\` LINE BREAK and its own argument run at `start`, or null.
+ *
+ * `\\` is a control SYMBOL that takes an optional `*` (no page break here) and
+ * an optional `[<len>]` (extra vertical space) — `\\[2pt]`, `\\*`, `\\*[1ex]`.
+ * Those are the break's arguments, not prose, and before task 349 M4 nothing
+ * modelled them: the `[` fell into the prose buffer, where the escape table's
+ * `protect` member wrapped it as `{[}` and the PDF grew a printed `[2pt]`, and
+ * one step earlier `readParagraph` had already split the paragraph AT the `\[`
+ * and emitted an unterminated display-math opener — a document that no longer
+ * compiles, on OPEN, with no edit by the user.
+ *
+ * `plain` is the whole point of the return shape: a bare `\\` stays the modelled
+ * `hardBreak` node (the shipped behaviour, and what a Shift+Enter produces),
+ * while a break WITH arguments is carried byte-literally, because Virgil does
+ * not model break spacing — 342's rule, *what the system does not model, it
+ * CARRIES*. A modelled `hardBreak` spacing ATTR is the richer treatment and a
+ * schema change across three surfaces; the carrier is what makes the bytes safe
+ * today.
+ *
+ * Deliberately ABUTTING only: LaTeX itself skips spaces before the `*`/`[`, and
+ * reading that wider rule here would swallow a genuinely prose `[` one space
+ * after a break (`Line\\ [note]`) into an argument. The serializer emits a prose
+ * `[` as `{[}` precisely so it cannot be absorbed, so the abutting form is the
+ * only one Virgil's own output can produce — and a hand-written `\\ [note]`
+ * keeps today's reading. Stated as a residual rather than guessed at.
+ *
+ * Lives beside {@link startsBlockBoundary} because the two are the halves of one
+ * question — where a `\\` token ENDS, and whether what follows it begins a new
+ * block — and the M4 defect was the two answering differently.
+ */
+export function matchLineBreakAt(
+  text: string,
+  start: number,
+): { raw: string; end: number; plain: boolean } | null {
+  if (text[start] !== "\\" || text[start + 1] !== "\\") return null;
+  let p = start + 2;
+  let plain = true;
+  if (text[p] === "*") {
+    p++;
+    plain = false;
+  }
+  if (text[p] === "[") {
+    // FAILS CLOSED through the shared scanner: an unterminated `[` answers null
+    // and the break stays bare, which is byte-for-byte today's behaviour.
+    const opt = extractBracketed(text, p);
+    if (opt) {
+      p = opt.end;
+      plain = false;
+    }
+  }
+  return { raw: text.slice(start, p), end: p, plain };
+}
+
 export function startsLineComment(src: string, pos: number): boolean {
   if (src[pos] !== "%" || isEscaped(src, pos)) return false;
   for (let i = pos - 1; i >= 0; i--) {
