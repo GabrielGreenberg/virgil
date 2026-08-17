@@ -608,6 +608,14 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
           : "";
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
+      // The optional `[label]` (task 340) — raw, opaque LaTeX the parser
+      // captured verbatim. It goes immediately after `\item`, BEFORE the body,
+      // because that is where LaTeX reads it; the per-item `%!v:` marker stays
+      // at the end of the body, so `ITEM_TRAILING_UUID_REGEX` still matches.
+      // `null` means the item had no optional argument at all and must emit a
+      // bare `\item`; `""` is a real `\item[]` (a marker-suppressed item).
+      const itemLabel = (node.attrs?.itemLabel as string | null) ?? null;
+      const label = itemLabel === null ? "" : `[${itemLabel}]`;
       // Serialize trailing block children (nested lists, etc.) with bumped depth
       // Per-child memo, join-level strip: the `.replace` runs on the
       // CONCATENATION exactly as before (it can eat into the second-to-last
@@ -618,9 +626,9 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         .join("")
         .replace(/\n+$/, ""); // strip trailing blank lines from nested blocks
       if (tailText) {
-        return `${indent}\\item ${headText}${anchor}\n${tailText}\n`;
+        return `${indent}\\item${label} ${headText}${anchor}\n${tailText}\n`;
       }
-      return `${indent}\\item ${headText}${anchor}\n`;
+      return `${indent}\\item${label} ${headText}${anchor}\n`;
     }
 
     case "horizontalRule":

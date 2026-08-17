@@ -456,6 +456,56 @@ export function extractBraced(
   return { content: text.slice(startOfBrace + 1, i - 1), end: i };
 }
 
+/**
+ * Extract the contents of the `[...]` OPTIONAL ARGUMENT starting at
+ * `startOfBracket`. Returns `{ content, end }` where `end` is the index just
+ * past the closing `]`, or null if the char at `startOfBracket` is not `[` or
+ * no closing `]` is found.
+ *
+ * THE spelling of an optional-argument scan, for the same reason
+ * {@link matchBeginEnvAt} is THE spelling of an environment name: a caller that
+ * re-rolls it gets the wrong close bracket, and the failure is silent in both
+ * directions — a label captured too short leaks the rest of the argument into
+ * the item body, and one captured from a `]` that was never a delimiter eats
+ * prose.
+ *
+ * Two rules the naive `indexOf("]")` gets wrong, both borrowed verbatim from
+ * the brace scanners above so the three agree:
+ *
+ * - **Brace-aware.** A `]` inside a balanced `{...}` group is ordinary text,
+ *   not the delimiter — `\item[\textbf{a]b}]` closes at the LAST bracket.
+ * - **Escape parity.** `\]` is literal, decided by the shared `isEscaped`
+ *   backslash-run rule, so `\\]` (a `\\` line break followed by a REAL
+ *   delimiter) still closes.
+ *
+ * FAILS CLOSED: an unterminated argument (`\item[a{b`) answers null rather
+ * than guessing a delimiter, so the caller leaves the bytes where they are as
+ * ordinary text. Losing the optional-argument READING of malformed input is
+ * strictly better than consuming bytes on a delimiter that isn't one — the
+ * whole point of the class this belongs to (task 340) is that a construct
+ * Virgil half-understands must not be silently destroyed.
+ */
+export function extractBracketed(
+  text: string,
+  startOfBracket: number,
+): { content: string; end: number } | null {
+  if (text[startOfBracket] !== "[") return null;
+  let braceDepth = 0;
+  let i = startOfBracket + 1;
+  while (i < text.length) {
+    const ch = text[i];
+    if (!isEscaped(text, i)) {
+      if (ch === "{") braceDepth++;
+      else if (ch === "}") braceDepth--;
+      else if (ch === "]" && braceDepth <= 0) {
+        return { content: text.slice(startOfBracket + 1, i), end: i + 1 };
+      }
+    }
+    i++;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Environment / command scanners
 // ---------------------------------------------------------------------------

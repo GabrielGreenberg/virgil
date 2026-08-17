@@ -23,6 +23,7 @@ import {
 } from "@/lib/latex-typography";
 import {
   extractBraced,
+  extractBracketed,
   findMatchingEnv,
   findMatchingGloss,
   findMatchingXe,
@@ -2017,20 +2018,45 @@ function stripUuidAnchor(text: string): { text: string; uuid: string | null } {
 }
 
 /**
+ * One item slice: the text between an `\item` and the next sibling `\item`,
+ * plus the RAW `[label]` optional argument if the item carried one.
+ *
+ * `label` is `null` for a bare `\item` and `""` for `\item[]` — the two are
+ * different LaTeX (the second suppresses the marker entirely), so the empty
+ * string must stay distinguishable from absence.
+ */
+interface ListItemSlice {
+  text: string;
+  label: string | null;
+}
+
+/**
  * Split list-environment content into individual item slices, respecting
- * nested itemize/enumerate environments. Each returned string is the text
- * between an `\item` and the next sibling `\item` (or end of content),
- * with surrounding whitespace trimmed.
+ * nested itemize/enumerate environments. Each returned slice holds the text
+ * between an `\item` and the next sibling `\item` (or end of content), with
+ * surrounding whitespace trimmed, plus the item's raw optional label.
  *
  * Also returns any "preamble" — content that appears before the first
  * `\item` (e.g. `\itemsep`, `\setlength`, custom commands).  This content
  * is invisible in the editor but preserved across round-trips.
+ *
+ * The optional `[label]` is CAPTURED, not merely skipped (task 340). It used
+ * to be consumed here to find where the body starts and then dropped on the
+ * floor, so a hand-lettered enumeration or a custom bullet was destroyed on
+ * the first save — the user made no edit; opening and saving was enough. It
+ * rides the `listItem` node as `itemLabel`, raw and opaque, exactly as the
+ * list's own unmodeled `listPreamble` already did one field over.
  */
-function splitListItems(content: string): { items: string[]; preamble: string } {
-  const items: string[] = [];
+function splitListItems(content: string): {
+  items: ListItemSlice[];
+  preamble: string;
+} {
+  const items: ListItemSlice[] = [];
   let pos = 0;
   // Index where the current item's body starts (-1 = before any \item)
   let currentStart = -1;
+  // Label of the item whose body starts at `currentStart`.
+  let currentLabel: string | null = null;
   // Track where the first \item is so we can extract the preamble
   let firstItemPos = -1;
   while (pos < content.length) {
@@ -2052,14 +2078,23 @@ function splitListItems(content: string): { items: string[]; preamble: string } 
       if (after === undefined || /[\s\W]/.test(after)) {
         if (firstItemPos === -1) firstItemPos = pos;
         if (currentStart >= 0) {
-          items.push(content.slice(currentStart, pos).trim());
+          items.push({
+            text: content.slice(currentStart, pos).trim(),
+            label: currentLabel,
+          });
         }
         pos += 5;
-        // Consume the optional [label] argument and trailing whitespace
+        // Capture the optional [label] argument and skip trailing whitespace.
+        // The scan is the lexer's shared brace-aware, escape-parity bracket
+        // reader — never a local `indexOf("]")`, which finds the wrong close
+        // for `\item[\textbf{a]b}]`. An unterminated argument answers null and
+        // the bytes stay put as ordinary body text.
         while (pos < content.length && /[ \t]/.test(content[pos])) pos++;
-        if (content[pos] === "[") {
-          const close = content.indexOf("]", pos);
-          if (close !== -1) pos = close + 1;
+        currentLabel = null;
+        const bracket = extractBracketed(content, pos);
+        if (bracket) {
+          currentLabel = bracket.content;
+          pos = bracket.end;
         }
         while (pos < content.length && /[ \t]/.test(content[pos])) pos++;
         currentStart = pos;
@@ -2069,7 +2104,7 @@ function splitListItems(content: string): { items: string[]; preamble: string } 
     pos++;
   }
   if (currentStart >= 0) {
-    items.push(content.slice(currentStart).trim());
+    items.push({ text: content.slice(currentStart).trim(), label: currentLabel });
   }
   // Extract preamble: everything before the first \item, trimmed
   const preamble = firstItemPos > 0 ? content.slice(0, firstItemPos).trim() : "";
@@ -2084,11 +2119,11 @@ function parseList(content: string, type: string): JSONContent {
   const items: JSONContent[] = [];
   const { items: itemTexts, preamble } = splitListItems(content);
 
-  for (const rawItemText of itemTexts) {
+  for (const slice of itemTexts) {
     // Pull off a trailing `%!v:xxxx` per-item marker if present. Stripped
     // before parsing so the marker doesn't leak into the rendered text.
     let itemUuid: string | null = null;
-    let itemText = rawItemText;
+    let itemText = slice.text;
     const m = itemText.match(ITEM_TRAILING_UUID_REGEX);
     if (m) {
       itemUuid = m[1];
@@ -2099,7 +2134,13 @@ function parseList(content: string, type: string): JSONContent {
     // become real list nodes, not unknown commands. parseBody emits
     // paragraphs for plain text and bulletList/orderedList for nested envs.
     const itemDoc: JSONContent = { type: "listItem", content: [] };
+    // `null` (no optional argument) is left OFF the node so a plain `\item`
+    // round-trips byte-identically; `""` (a marker-suppressing `\item[]`) is
+    // a real value and is stamped.
     if (itemUuid) itemDoc.attrs = { uuid: itemUuid };
+    if (slice.label !== null) {
+      itemDoc.attrs = { ...itemDoc.attrs, itemLabel: slice.label };
+    }
     const itemCtx: ParseContext = { pos: 0, src: itemText };
     parseBody(itemCtx, itemDoc);
 
