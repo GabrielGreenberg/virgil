@@ -1,6 +1,11 @@
 import type { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
-import { generateShortId } from "@/lib/uuid";
+import {
+  appendUuidAnchor,
+  generateShortId,
+  uuidAnchorSuffix,
+  uuidAnchorToken,
+} from "@/lib/uuid";
 import {
   UUID_BEARING_NODE_TYPES,
   TITLED_NODE_TYPES,
@@ -29,6 +34,7 @@ import {
   hasCommentTailMark,
   isEscaped,
   projectDetectableLatex,
+  startsBlockBoundary,
   wrapVerbatimEnvBody,
 } from "@/lib/latex-lexer";
 import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
@@ -386,7 +392,7 @@ function serializeTitleField(node: JSONContent): string {
   const field = node.attrs?.field as string;
   const rawPrefix = (node.attrs?.rawPrefix as string) || "";
   const uuid = node.attrs?.uuid as string | null;
-  const anchor = uuid ? ` %!v:${uuid}` : "";
+  const anchor = uuidAnchorSuffix(uuid);
   if (node.attrs?.isToday) {
     // Interpolate rawPrefix exactly as the non-today branch below does — the
     // parser strips a sizing/weight prefix (`\small`, `\Large`, …) into
@@ -449,7 +455,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         // anchor on UUIDs, and load-bearing empty paragraphs (left behind
         // by archive) need to round-trip without losing their identity.
         const uuid = node.attrs?.uuid as string | null;
-        return uuid ? `%!v:${uuid}\n` : "%!v:blank\n";
+        return `${uuidAnchorToken(uuid ?? "blank")}\n`;
       }
       // `lineFinal` only when this paragraph emits its OWN line ending below.
       // Under `suppressChildUuids` the bare `inner` is joined into an
@@ -460,7 +466,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       });
       if (suppressChildUuids) return inner;
       const uuid = node.attrs?.uuid as string | null;
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       return inner + anchor + "\n\n";
     }
 
@@ -477,7 +483,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const cmd = commands[clampedLevel];
       const star = numbered === false ? "*" : "";
       const labelStr = label ? `\n\\label{${label}}` : "";
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       return `${cmd}${star}{${inner}}${labelStr}${anchor}\n\n`;
     }
 
@@ -491,7 +497,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 
     case "maketitleMarker": {
       const uuid = node.attrs?.uuid as string | null;
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       return `\\maketitle${anchor}\n\n`;
     }
 
@@ -501,7 +507,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // `serializeMarklessTextBody`.
       const inner = serializeMarklessTextBody(node.content);
       const uuid = node.attrs?.uuid as string | null;
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       // A body line reading `\end{verbatim}` would otherwise close the
       // environment early (the lexer's `findMatchingEnv` matches the
       // literal string), so `wrapVerbatimEnvBody` escapes it to a private form
@@ -556,7 +562,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const captionTex = captionChild
         ? serializeInlineSequence(captionChild.content || [])
         : "";
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       const envName = starred ? "figure*" : "figure";
       // Tasks 318 + 319: the env body is built by the ONE builder shared with
       // the popover surface, off DECLARED facts — `hasCaption` (did the source
@@ -581,7 +587,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // `command`, with the trailing UUID anchor if present.
       const command = (node.attrs?.command as string) ?? "";
       const uuid = node.attrs?.uuid as string | null;
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       need("graphicx"); // \includegraphics is graphicx-bound
       return `${command}${anchor}\n\n`;
     }
@@ -597,7 +603,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         .map((n) => serializeContainerChild(n, true, 0))
         .join("\n\n");
       const uuid = node.attrs?.uuid as string | null;
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       return `\\begin{quote}\n${inner}\\end{quote}${anchor}\n\n`;
     }
 
@@ -607,7 +613,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         .join("");
       const uuid = node.attrs?.uuid as string | null;
       const preamble = node.attrs?.listPreamble as string | null;
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       const indent = "  ".repeat(listDepth);
       const innerIndent = indent + "  ";
       const preambleStr = preamble
@@ -624,7 +630,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         .join("");
       const uuid = node.attrs?.uuid as string | null;
       const preamble = node.attrs?.listPreamble as string | null;
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       const indent = "  ".repeat(listDepth);
       const innerIndent = indent + "  ";
       const preambleStr = preamble
@@ -644,17 +650,16 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const headText =
         head && head.type === "paragraph"
           ? // The item head is line-final in exactly the paragraph case's
-            // sense: what follows is `${anchor}\n`, and the anchor is `%!v:`
-            // comment bytes that `ITEM_TRAILING_UUID_REGEX` strips back off on
-            // the way in. So a trailing comment tail may end the line itself.
+            // sense: what follows is either a newline (a tail child begins on
+            // its own line) or `${anchor}\n`, and the anchor is `%!v:` comment
+            // bytes `detachItemAnchor` strips back off on the way in. So a
+            // trailing comment tail may end the line itself.
             serializeInlineSequence(head.content || [], { lineFinal: true })
           : "";
       const uuid = node.attrs?.uuid as string | null;
-      const anchor = uuid ? ` %!v:${uuid}` : "";
       // The optional `[label]` (task 340) — raw, opaque LaTeX the parser
       // captured verbatim. It goes immediately after `\item`, BEFORE the body,
-      // because that is where LaTeX reads it; the per-item `%!v:` marker stays
-      // at the end of the body, so `ITEM_TRAILING_UUID_REGEX` still matches.
+      // because that is where LaTeX reads it.
       // `null` means the item had no optional argument at all and must emit a
       // bare `\item`; `""` is a real `\item[]` (a marker-suppressed item).
       const itemLabel = (node.attrs?.itemLabel as string | null) ?? null;
@@ -668,10 +673,31 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         .map((n) => serializeContainerChild(n, false, listDepth + 1))
         .join("")
         .replace(/\n+$/, ""); // strip trailing blank lines from nested blocks
-      if (tailText) {
-        return `${indent}\\item${label} ${headText}${anchor}\n${tailText}\n`;
-      }
-      return `${indent}\\item${label} ${headText}${anchor}\n`;
+      // Task 348. TWO rules, both of which the pre-348 shape broke:
+      //
+      // (a) The head is separated from the tail by whatever the PARSER needs to
+      //     read them back as two blocks, asked of the parser's own rule
+      //     (`startsBlockBoundary`, the lexer SSOT `readParagraph` reads). A
+      //     nested `\begin{itemize}` is self-delimiting, so a single newline is
+      //     right and the bytes are unchanged; a second PARAGRAPH — or a
+      //     comment line, which since task 347 continues a paragraph rather
+      //     than ending it — is not, and the single newline merged it into the
+      //     head on the next open, destroying the user's paragraph break with
+      //     no edit. Answering from the parser's vocabulary rather than a list
+      //     of self-delimiting child kinds is what keeps the two halves from
+      //     drifting the way the anchor's two halves did.
+      //
+      // (b) The anchor is appended to the item's whole BODY — head plus tail —
+      //     which is where `detachItemAnchor` takes it off. When the last tail
+      //     child is itself uuid-bearing this stacks two anchors on one line
+      //     (`\end{itemize} %!v:child %!v:me`); that is unambiguous by
+      //     construction, because the detach is greedy-prefixed and takes
+      //     exactly ONE, innermost-first.
+      const tailSep = startsBlockBoundary(tailText.replace(/^[ \t]*/, ""))
+        ? "\n"
+        : "\n\n";
+      const body = tailText ? `${headText}${tailSep}${tailText}` : headText;
+      return `${indent}\\item${label} ${appendUuidAnchor(body, uuid)}\n`;
     }
 
     case "horizontalRule":
@@ -682,7 +708,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 
     case "displayMath": {
       const uuid = node.attrs?.uuid as string | null;
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       return `\\[\n${node.attrs?.latex || ""}\n\\]${anchor}\n\n`;
     }
 
@@ -695,7 +721,7 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
 
     case "latexComment": {
       const uuid = node.attrs?.uuid as string | null;
-      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const anchor = uuidAnchorSuffix(uuid);
       // Comment text is native inline content now (`content: text*`), not an
       // `attrs.text` — flatten the text nodes raw, via the shared markless
       // byte-passthrough helper it shares with `codeBlock`.
@@ -828,7 +854,7 @@ function serializeExampleBlock(node: JSONContent): string {
       // when the equation carries a uuid); `readParagraph` breaks at `\[` so a
       // preceding paragraph stays its own block on re-parse.
       const mUuid = child.attrs?.uuid as string | null;
-      const mAnchor = mUuid ? ` %!v:${mUuid}` : "";
+      const mAnchor = uuidAnchorSuffix(mUuid);
       const latex = (child.attrs?.latex as string) || "";
       pieces.push({ type: "displayMath", text: `\\[\n${latex}\n\\]${mAnchor}` });
     } else if (child.type === "exampleGloss") {
@@ -905,7 +931,7 @@ function serializeExampleItem(node: JSONContent): string {
       // `readParagraph` breaks at `\[` so a preceding paragraph stays its own
       // block on re-parse (round-trip verified in displaymath-in-item-roundtrip).
       const mUuid = child.attrs?.uuid as string | null;
-      const mAnchor = mUuid ? ` %!v:${mUuid}` : "";
+      const mAnchor = uuidAnchorSuffix(mUuid);
       const latex = (child.attrs?.latex as string) || "";
       pieces.push(`\\[\n${latex}\n\\]${mAnchor}`);
     } else if (child.type === "exampleGloss") {
