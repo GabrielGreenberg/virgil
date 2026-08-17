@@ -603,6 +603,31 @@ export function projectLiveLatex(
   return out.join("\n");
 }
 
+/**
+ * The bytes a DETECTOR may believe: the live projection at the NARROW
+ * verbatim family (`verbatim` / `verbatim*`) with inline `\verb` left in.
+ *
+ * This is one named door rather than a spelled-out option bag at each call
+ * site, because "which bytes count as live for a detector?" is a single
+ * question that several layers must answer identically — the requirements
+ * side (`detectBodyRequirements` / `ensurePreambleRequirements`'s satisfaction
+ * test) and the bib-family side (`detectBibFamily`). Before task 344 the bib
+ * detector answered it with the RAW `.tex`, so a commented-out
+ * `% \usepackage{biblatex}` outranked a live `\usepackage{natbib}`.
+ *
+ * The family stays NARROW deliberately (the P3 design fork F1): the
+ * requirements pass injects `\usepackage` lines off this projection, so
+ * widening it to `VERBATIM_ENVS_FULL` would change which packages get
+ * injected for docs that put cite/expex commands inside `lstlisting`/`minted`
+ * — a change to saved `.tex` bytes, not a tidy-up. Inline `\verb` is likewise
+ * left live for byte-compatibility with the pre-consolidation implementation.
+ * Both are stated residuals, not oversights: a `\verb|\usepackage{biblatex}|`
+ * still reads as a live load.
+ */
+export function projectDetectableLatex(src: string): string {
+  return projectLiveLatex(src, { envs: VERBATIM_ENVS_NARROW });
+}
+
 // ---------------------------------------------------------------------------
 // Brace scanners
 // ---------------------------------------------------------------------------

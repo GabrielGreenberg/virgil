@@ -71,8 +71,7 @@ import {
   hashContent,
 } from "@/lib/disk-ledger";
 import {
-  detectPreambleBibFamily,
-  detectCommandBibFamily,
+  detectBibFamily,
   asBibFamily,
   type BibFamily,
 } from "@/lib/bib-family";
@@ -820,31 +819,27 @@ async function resolveBibFilename(docId: string): Promise<string> {
 export type BibPackage = "natbib" | "biblatex";
 
 /**
- * Detect natbib vs biblatex from preamble + command usage in the .tex source.
- *
- * Preamble load wins first (via bib-family's `detectPreambleBibFamily`, which
- * recognizes `\usepackage` AND `\RequirePackage`, comma-lists, options, and
- * wrapper packages like `biblatex-chicago` — the previous regex missed
- * `\RequirePackage{biblatex}`, seeding the wrong family). Falls back to the
- * command-family classifier over the source (again the SSOT buckets, so a new
- * cite command is classified consistently everywhere). Defaults to natbib
- * (Virgil's baseline) when nothing pins a family.
+ * The backend's name for `bib-family.detectBibFamily` — the ONE detector.
+ * Kept as a backend export because it is part of the storage API surface
+ * (`storage.detectBibPackage`, mirrored by storage-dev); the logic itself
+ * lives in the family SSOT, where the inertness projection and the
+ * preamble/body split are stated (task 344).
  */
 export function detectBibPackage(tex: string): BibPackage {
-  const loaded = detectPreambleBibFamily(tex);
-  if (loaded) return loaded;
-  const byCommand = detectCommandBibFamily(tex);
-  if (byCommand) return byCommand;
-  return "natbib";
+  return detectBibFamily(tex);
 }
 
 /**
  * Read the authoritative per-doc bib family off the citations sidecar
- * (`virgil/citations.json`), the existing user-settable SSOT (seeded from
- * `detectBibPackage` on load by useCitations, and never overridden by detection
- * once set). Returns `null` when the sidecar is absent or carries no valid
- * family — so a brand-new doc falls back to the serializer's body-derived
- * family (today's behavior), never forcing the wrong package.
+ * (`virgil/citations.json`) — the user-settable SSOT. The key is present ONLY
+ * when the user has chosen a family in the Citations panel: detection is a
+ * seed for the in-memory view and writes to no sidecar (task 344 — before
+ * that, `refreshBib` stomped the stored choice into state on every load, and
+ * the next unrelated citations write made the mis-detection durable).
+ *
+ * Returns `null` when the sidecar is absent or carries no valid family — so a
+ * document the user has never spoken for falls back to the serializer's
+ * body-derived family, never forcing the wrong package.
  */
 async function readDocBibFamily(
   virgil: FileSystemDirectoryHandle,

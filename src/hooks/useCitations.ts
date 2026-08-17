@@ -28,12 +28,14 @@ import {
 } from "@/lib/identity/identity-cascade";
 import { wholeWordPatternFor } from "@/lib/whole-word";
 import { mintBibUid } from "@/lib/bib-uid";
+import { asBibFamily, DEFAULT_BIB_FAMILY, type BibFamily } from "@/lib/bib-family";
 
+/** No stored family: the user has not chosen one. Detection seeds the VIEW
+ *  (never the sidecar) and `DEFAULT_BIB_FAMILY` answers until it resolves. */
 const EMPTY: CitationsState = {
   citations: [],
   bibPath: "",
   citationStyle: "apa",
-  bibPackage: "biblatex",
 };
 
 export type CitationsHook = ReturnType<typeof useCitations>;
@@ -48,7 +50,7 @@ export const CITATIONS_INERT: CitationsHook = {
   citations: _emptyArr,
   bibPath: "",
   citationStyle: "apa",
-  bibPackage: "biblatex",
+  bibPackage: DEFAULT_BIB_FAMILY,
   bibEntries: _emptyArr,
   bibRaw: "",
   addCitation: (command: string) => ({
@@ -79,18 +81,23 @@ export const CITATIONS_INERT: CitationsHook = {
 function migrate(raw: unknown): CitationsState {
   const s = raw as Partial<CitationsState>;
   if (!Array.isArray(s.citations)) return EMPTY;
+  // `bibPackage` is normalized through `asBibFamily`, so an absent key and a
+  // value this build doesn't recognize both come back UNSET — the state can
+  // then represent "the user has not chosen", which is what makes the
+  // seed-not-stomp rule expressible at all (task 344). Fabricating a default
+  // here is what made a detection guess indistinguishable from a user choice.
+  const stored = asBibFamily(s.bibPackage);
   return {
     citations: s.citations,
     bibPath: s.bibPath ?? "",
     citationStyle: s.citationStyle ?? "apa",
-    bibPackage: s.bibPackage ?? "biblatex",
+    ...(stored ? { bibPackage: stored } : {}),
   };
 }
 
 export function useCitations(docId: string | null, pristine?: PristineKindApi | null) {
   const {
     state,
-    setState,
     update,
     stateRef,
   } = usePersistentState<CitationsState>(docId, "citations.json", EMPTY, {
@@ -102,7 +109,49 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   // with its own parse/serialize pipeline.
   const [bibEntries, setBibEntries] = useState<BibEntry[]>([]);
   const [bibRaw, setBibRaw] = useState("");
+  /**
+   * What the `.tex` DETECTS (task 344). Deliberately local component state and
+   * NOT part of the persisted `CitationsState`: detection can never distinguish
+   * "found natbib" from "found nothing" (it defaults), so writing it into the
+   * sidecar would let a guess overwrite the user's own Package choice — which
+   * it did, on every doc open and every `DOC_BIB_CHANGED_EVENT`, with the next
+   * unrelated citations write making the guess durable on disk.
+   *
+   * Keeping it out of the persisted state also retires the ordering hazard a
+   * gated write would have carried: `refreshBib` is async and races the sidecar
+   * load, so any "write only if unset" guard would have to be evaluated against
+   * the LOADED state rather than the pre-load default. A non-writer has no race
+   * to lose.
+   *
+   * It carries the `docId` it was detected FOR rather than being cleared on a
+   * doc switch: a family detected from another paper's `.tex` then cannot
+   * answer for this one BY CONSTRUCTION, with no clearing step to get wrong (and
+   * no setState in an effect body).
+   */
+  const [detected, setDetected] = useState<{
+    docId: string;
+    family: BibFamily | null;
+  } | null>(null);
+  const detectedFamily =
+    detected && detected.docId === docId ? detected.family : null;
   const docRef = useRef(docId);
+
+  /**
+   * The family every consumer reads, resolved at READ time from one authority
+   * chain: the user's STORED choice wins; failing that the `.tex` DETECTION
+   * seeds it; failing that `DEFAULT_BIB_FAMILY` (Virgil's baseline) answers
+   * until the read resolves.
+   *
+   * The last rung is why the baseline is spelled once (task 344): this hook
+   * used to open at `"biblatex"` while the detector defaulted to `"natbib"`,
+   * so on the majority of documents an ordinary doc OPEN changed this value —
+   * and `CitationCard`'s package-change effect reads any change of it as a
+   * package switch and re-derives every citation's command shape. Agreeing
+   * with the detector makes the common case settle with no change at all.
+   */
+  const storedFamily = asBibFamily(state.bibPackage);
+  const bibPackage: BibFamily =
+    storedFamily ?? detectedFamily ?? DEFAULT_BIB_FAMILY;
 
   // The IdentityCascade — the single writer for identity-changing ops, owned
   // here (one per doc, NOT a module singleton — D1.4 / T1 §3.2c). A stable
@@ -135,15 +184,15 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         } else {
           setBibEntries([]);
         }
-        // Auto-set bib package from tex preamble detection.
-        if (data.detectedPackage) {
-          setState((prev) => ({ ...prev, bibPackage: data.detectedPackage }));
-        }
+        // SEED the detected family into the view. It does NOT touch the
+        // persisted state: a stored family is the user's choice and detection
+        // is never entitled to overwrite it (task 344).
+        setDetected({ docId: id, family: asBibFamily(data.detectedPackage) });
       })
       .catch((e) => {
         console.warn(`readBib failed for ${id}:`, e);
       });
-  }, [setState]);
+  }, []);
 
   useEffect(() => {
     docRef.current = docId;
@@ -304,6 +353,9 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [update],
   );
 
+  /** The ONE writer of the stored family — the user's Package control. Every
+   *  other path (detection, a doc open, a `.bib` change) may only SEED the
+   *  view. */
   const setBibPackage = useCallback(
     (pkg: string) => {
       update((prev) => ({ ...prev, bibPackage: pkg }));
@@ -537,10 +589,15 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [bibEntries],
   );
 
+  // Depends on the RESOLVED family rather than `stateRef.current.bibPackage`:
+  // the stored field is now only the user's explicit choice and is absent on
+  // most documents (task 344). A real dependency rather than a ref read — the
+  // family changes at most once per doc load plus per user toggle, so this
+  // callback's identity is no less stable than `bibEntries` already makes it.
   const getDisplayText = useCallback(
     (command: string): string =>
-      formatInlineCitation(command, bibEntries, stateRef.current.bibPackage, bibEntryMap),
-    [bibEntries, bibEntryMap, stateRef],
+      formatInlineCitation(command, bibEntries, bibPackage, bibEntryMap),
+    [bibEntries, bibEntryMap, bibPackage],
   );
 
   /** Reconcile a ref's own anchor intent once its `\cite{}` atom is back in the
@@ -631,7 +688,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       citations: state.citations,
       bibPath: state.bibPath,
       citationStyle: state.citationStyle,
-      bibPackage: state.bibPackage || "biblatex",
+      bibPackage,
       bibEntries,
       bibRaw,
       addCitation,
@@ -657,7 +714,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
       state.citations,
       state.bibPath,
       state.citationStyle,
-      state.bibPackage,
+      bibPackage,
       bibEntries,
       bibRaw,
       addCitation,

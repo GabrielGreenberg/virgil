@@ -402,7 +402,21 @@ export interface CitationsState {
   citations: CitationRef[];
   bibPath: string; // relative path to .bib file
   citationStyle: string; // CSL template name: "apa", "chicago-author-date", "mla"
-  bibPackage: string; // "natbib" | "biblatex"
+  /**
+   * The user's EXPLICIT bib-family choice ("natbib" | "biblatex"), or absent
+   * when they have never spoken for this document.
+   *
+   * OPTIONAL is load-bearing (task 344). The field used to be required and
+   * defaulted to `"biblatex"` on load, so "the user chose biblatex" and
+   * "nobody has chosen anything" were the same value — which is exactly why
+   * the stomp could not be gated: detection wrote its guess here on every doc
+   * open, the next unrelated citations write made the guess durable, and the
+   * save path then injected it into the user's preamble as authoritative.
+   * Absent means DETECTION decides the in-memory view and the serializer falls
+   * back to its body-derived family; present means the user decided, and
+   * nothing but the user may overwrite it.
+   */
+  bibPackage?: string;
 }
 
 export interface CitationInfo {
