@@ -32,7 +32,7 @@
  *      `\begin{env}` in general, and the body splitters that asked the same
  *      question carried a third and fourth answer (task 338).
  *
- * Imports ONLY latex-typography (a leaf) to avoid a cycle.
+ * Imports ONLY latex-typography and latex-markers (both leaves) to avoid a cycle.
  */
 
 import {
@@ -41,6 +41,7 @@ import {
   isEscaped,
   findUnescaped,
 } from "@/lib/latex-typography";
+import { BLOCK_TEX_MARKERS } from "@/lib/latex-markers";
 
 export { matchAccent, matchSpecialLetter };
 
@@ -487,6 +488,46 @@ function stripCommentTail(line: string): string {
  * the only reading that makes the comment meaningful, and its failure mode is
  * bounded (a construct closes early) rather than absorbing.
  */
+/**
+ * Commands whose appearance at the head of a line ENDS the paragraph being
+ * read. Built rather than spelled because Virgil's own block-position markers
+ * belong in it: absorb a `\vexid`/`\vxid` into the preceding paragraph and the
+ * next save re-emits it as literal text, accumulating one stray marker per
+ * round trip. Their names come from the vocabulary SSOT
+ * ([latex-markers.ts](latex-markers.ts)), so a future block-position marker
+ * joins this boundary set by declaring itself.
+ */
+const BLOCK_BOUNDARY_COMMAND_RE = new RegExp(
+  "^\\\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|" +
+    "begin|end|\\[|hrulefill|title|author|date|maketitle|includegraphics|" +
+    "noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|" +
+    "usepackage|bibliographystyle|bibliography|tableofcontents|appendix|" +
+    "clearpage|newpage|par|ex|pex|xe|" +
+    BLOCK_TEX_MARKERS.map((m) => m.command).join("|") +
+    "|begingl|endgl)\\b",
+);
+
+/**
+ * True iff `text` OPENS with a construct that ends the paragraph above it.
+ *
+ * The parse side asks this of each continuation line (`readParagraph`); the
+ * emit side asks it of a list item's TAIL to choose the separator that follows
+ * the item's head. That is the whole reason it lives here rather than in the
+ * parser: a single `\n` is enough where the next construct is self-delimiting
+ * and DESTROYS a paragraph break where it is not, so the two halves have to
+ * read the same rule or a list item's second paragraph is silently merged into
+ * its first on the next open (task 348).
+ *
+ * `\[` is tested separately because the trailing `\b` never fires after the
+ * non-word `[` — so `\[` followed by whitespace (a serialized `\[\n…`) would
+ * otherwise be absorbed. A `%` comment is deliberately NOT a boundary: in LaTeX
+ * a comment line between two prose lines is discarded with its newline, so the
+ * paragraph continues through it (task 347).
+ */
+export function startsBlockBoundary(text: string): boolean {
+  return text.startsWith("\\[") || BLOCK_BOUNDARY_COMMAND_RE.test(text);
+}
+
 export function startsLineComment(src: string, pos: number): boolean {
   if (src[pos] !== "%" || isEscaped(src, pos)) return false;
   for (let i = pos - 1; i >= 0; i--) {

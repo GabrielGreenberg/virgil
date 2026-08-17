@@ -2,7 +2,12 @@ import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { richLatexToJson } from "@/lib/footnote-content";
 import { matchCiteCommandAt } from "@/lib/cite-commands";
-import { generateShortId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid";
+import {
+  detachItemAnchor,
+  generateShortId,
+  NODE_UUID_ANCHOR,
+  NODE_UUID_REGEX,
+} from "@/lib/uuid";
 import { collectExampleBodyLabelsJSON } from "@/lib/example-refs";
 import {
   UUID_BEARING_NODE_TYPES,
@@ -10,7 +15,6 @@ import {
   COLLAPSIBLE_NODE_TYPES,
 } from "@/lib/node-attr-sets";
 import {
-  BLOCK_TEX_MARKERS,
   markerArgStart,
   markerOpensAt,
   PendingMarkerId,
@@ -45,28 +49,9 @@ import {
   commentTailMark,
   matchCommentTailAt,
   startsLineComment,
+  startsBlockBoundary,
   wrapVerbatimEnvBody,
 } from "@/lib/latex-lexer";
-
-/**
- * Commands whose appearance at the head of a line ENDS the paragraph being
- * read. Hoisted to module scope so it compiles once (it is tested per
- * paragraph-continuation candidate), and built rather than spelled because
- * Virgil's own block-position markers belong in it: absorb a `\vexid`/`\vxid`
- * into the preceding paragraph and the next save re-emits it as literal text,
- * accumulating one stray marker per round trip. Their names come from the
- * vocabulary SSOT ([latex-markers.ts](latex-markers.ts)), so a future
- * block-position marker joins this boundary set by declaring itself.
- */
-const BLOCK_BOUNDARY_COMMAND_RE = new RegExp(
-  "^\\\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|" +
-    "begin|end|\\[|hrulefill|title|author|date|maketitle|includegraphics|" +
-    "noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|" +
-    "usepackage|bibliographystyle|bibliography|tableofcontents|appendix|" +
-    "clearpage|newpage|par|ex|pex|xe|" +
-    BLOCK_TEX_MARKERS.map((m) => m.command).join("|") +
-    "|begingl|endgl)\\b",
-);
 
 interface ParseContext {
   pos: number;
@@ -2089,24 +2074,17 @@ function splitListItems(content: string): {
   return { items, preamble };
 }
 
-// Trailing `%!v:xxxx` marker on a list item's body. Captures the UUID
-// after stripping the marker so the inner text isn't polluted.
-const ITEM_TRAILING_UUID_REGEX = /[ \t]*%!v:([0-9a-f]{4})\s*$/;
-
 function parseList(content: string, type: string): JSONContent {
   const items: JSONContent[] = [];
   const { items: itemTexts, preamble } = splitListItems(content);
 
   for (const slice of itemTexts) {
-    // Pull off a trailing `%!v:xxxx` per-item marker if present. Stripped
-    // before parsing so the marker doesn't leak into the rendered text.
-    let itemUuid: string | null = null;
-    let itemText = slice.text;
-    const m = itemText.match(ITEM_TRAILING_UUID_REGEX);
-    if (m) {
-      itemUuid = m[1];
-      itemText = itemText.slice(0, m.index).trimEnd();
-    }
+    // Pull off the item's `%!v:xxxx` marker if present, from the ONE place the
+    // serializer appends it (`appendUuidAnchor`, at the end of the item's whole
+    // body) — plus the pre-348 head-line position, so an existing document's
+    // items keep their identity across the upgrade. Stripped before parsing so
+    // the marker doesn't leak into the rendered text.
+    const { text: itemText, uuid: itemUuid } = detachItemAnchor(slice.text);
 
     // Parse the item body as a block sequence so nested itemize/enumerate
     // become real list nodes, not unknown commands. parseBody emits
@@ -2229,22 +2207,13 @@ function readParagraph(ctx: ParseContext): string {
       // direction that swallows the rest of the document.
       !inLineComment
     ) {
-      const rest = ctx.src.slice(ctx.pos);
-      if (
-        // `\[` opens display math — always a block boundary. Checked
-        // separately because the trailing `\b` below never fires after the
-        // non-word `[` (so `\[` followed by whitespace/newline, e.g. a
-        // serialized `\[\n…`, would otherwise be absorbed into the paragraph).
-        // Feature A1 relies on this so a paragraph + equation in one
-        // exampleItem round-trips with the equation as its own displayMath.
-        rest.startsWith("\\[") ||
-        // `\includegraphics` is a block boundary too — the picture-side twin of
-        // the `\[` case above (Feature A2). Without it a serialized
-        // `paragraph\n\includegraphics{…}` re-merges, absorbing the picture into
-        // the paragraph as literal text and losing the graphicsBlock on reload.
-        // (`\b` fires fine here — the word ends before the `[`/`{` argument.)
-        BLOCK_BOUNDARY_COMMAND_RE.test(rest)
-      ) {
+      // The boundary vocabulary is the LEXER's (`startsBlockBoundary`), not a
+      // private copy: the serializer asks the same question of a list item's
+      // tail to choose the separator that follows the item's head, and the two
+      // halves disagreeing is what merged an item's second paragraph into its
+      // first on every open (task 348). `\[` and `\includegraphics` are covered
+      // there — see that predicate for why `\[` needs its own test.
+      if (startsBlockBoundary(ctx.src.slice(ctx.pos))) {
         // Don't break if the previous content ends with \\ (a hardBreak
         // continuation from shift+enter). Otherwise multi-line LaTeX joined by
         // soft line breaks would get split into separate paragraphs on reload.
