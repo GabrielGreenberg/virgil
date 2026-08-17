@@ -1,13 +1,14 @@
 import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { richLatexToJson } from "@/lib/footnote-content";
-import { CITE_NAMES_RE_INLINE, MULTI_CITE_NAMES } from "@/lib/cite-commands";
+import { matchCiteCommandAt } from "@/lib/cite-commands";
 import { generateShortId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid";
 import { collectExampleBodyLabelsJSON } from "@/lib/example-refs";
 import {
   BLOCK_TEX_MARKERS,
   markerArgStart,
   markerOpensAt,
+  PendingMarkerId,
   VIRGIL_MARKERS,
 } from "@/lib/latex-markers";
 import {
@@ -31,6 +32,7 @@ import {
   findUnescaped,
   matchBeginEnvAt,
   matchCommandToken,
+  matchInlineMathAt,
   matchInlineVerbAt,
   skipOpaqueConstructAt,
   unwrapVerbatimEnvBody,
@@ -217,8 +219,9 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
  * `\vfid{uuid}` and `\vcid{uuid}` are no-op markers the serializer emits
  * right before `\footnote{...}` / `\cite{...}` to preserve stable
  * `footnoteId` / `citationId` values across parse cycles. When we see one,
- * we stash the id in `pendingFootnoteId` / `pendingCitationId`; the next
- * matching entity consumes it. Without these markers we fall back to
+ * we stash the id in `pendingFootnoteId` / `pendingCitationId`; the atom that
+ * starts at exactly that position consumes it, and nothing else can (see
+ * {@link PendingMarkerId} — task 341). Without these markers we fall back to
  * `generateShortId()` for legacy `.tex` files without markers — first
  * save will anchor the generated id back into the source.
  */
@@ -229,8 +232,8 @@ export function parseInlineContent(
   const nodes: JSONContent[] = [];
   let i = 0;
   let buffer = "";
-  let pendingFootnoteId: string | null = null;
-  let pendingCitationId: string | null = null;
+  const pendingFootnoteId = new PendingMarkerId();
+  const pendingCitationId = new PendingMarkerId();
 
   const flush = () => {
     if (buffer) {
@@ -291,40 +294,25 @@ export function parseInlineContent(
       }
     }
 
-    // Display math: $$...$$  (checked BEFORE single-$ — longest-first).
+    // Inline math — `$…$`, `$$…$$`, `\[…\]`, `\(…\)`, longest-opener-first.
     // Its content is LITERAL math and must NEVER reach the dash/accent buffer
     // (memo §A "Critical exclusions": math stays literal). Preserving it as a
     // math node keeps `--`, `\'e`, etc. verbatim in the latex attr — the
     // transforms only run on the plain-text buffer, which math content never
     // enters. (Pre-typography behavior left two empty inlineMath nodes with
     // the content leaking as glyphified plain text — the D2 regression.)
-    if (
-      text[i] === "$" &&
-      text[i + 1] === "$" &&
-      !isEscaped(text, i)
-    ) {
-      const end = findUnescaped(text, "$$", i + 2);
-      if (end !== -1) {
+    //
+    // The delimiter set and the escape-aware close search live in the lexer's
+    // `matchInlineMathAt`, which the footnote/card fork reads too (task 341) —
+    // the same shared-scanner shape `matchInlineVerbAt` already has. Block-level
+    // `\[…\]` at a paragraph boundary is handled by the block parser; this
+    // catches the mid-paragraph case the block parser doesn't split out.
+    {
+      const math = matchInlineMathAt(text, i);
+      if (math) {
         flush();
-        nodes.push({
-          type: "inlineMath",
-          attrs: { latex: text.slice(i + 2, end) },
-        });
-        i = end + 2;
-        continue;
-      }
-    }
-
-    // Inline math: $...$
-    if (text[i] === "$" && !isEscaped(text, i)) {
-      flush();
-      const end = findUnescaped(text, "$", i + 1);
-      if (end !== -1) {
-        nodes.push({
-          type: "inlineMath",
-          attrs: { latex: text.slice(i + 1, end) },
-        });
-        i = end + 1;
+        nodes.push({ type: "inlineMath", attrs: { latex: math.latex } });
+        i = math.end;
         continue;
       }
     }
@@ -332,32 +320,6 @@ export function parseInlineContent(
     // LaTeX commands for marks
     if (text[i] === "\\") {
       const rest = text.slice(i);
-
-      // Display / inline math via \[ … \] and \( … \). Like $$…$$ above, the
-      // math content is LITERAL and must NEVER reach the dash/accent buffer
-      // (memo §A exclusion). We preserve it as an inlineMath node so its
-      // latex (`a -- b`, `\'e`) survives verbatim. Block-level \[…\] at a
-      // paragraph boundary is handled by the block parser; this catches the
-      // mid-paragraph case the block parser doesn't split out — without it the
-      // `--`/accent inside leaks into the plain buffer (the D2 regression).
-      if (rest.startsWith("\\[") || rest.startsWith("\\(")) {
-        const closer = rest.startsWith("\\[") ? "\\]" : "\\)";
-        // Escape-aware close search through the parity SSOT (task 210 did the
-        // same for $/$$): a `\\` line break immediately before a literal `]`/`)`
-        // must not be mistaken for the `\]`/`\)` closer. `findUnescaped` skips
-        // the occurrence whose backslash sits after an odd-length run; it is
-        // byte-identical to `indexOf` when no escaped delimiter is present.
-        const closeIdx = findUnescaped(text, closer, i + 2);
-        if (closeIdx !== -1) {
-          flush();
-          nodes.push({
-            type: "inlineMath",
-            attrs: { latex: text.slice(i + 2, closeIdx).trim() },
-          });
-          i = closeIdx + 2;
-          continue;
-        }
-      }
 
       // \verb<delim>…<delim> and \verb*<delim>…<delim> — verbatim. The
       // delimiter-paired payload is LITERAL (`--` is two hyphens, `\'e` is raw)
@@ -508,11 +470,11 @@ export function parseInlineContent(
       }
 
       // \vfid{uuid} — no-op marker stashing a stable footnoteId for the
-      // next \footnote{...} in the stream. Emitted by the serializer.
+      // footnote that starts where the marker ends. Emitted by the serializer.
       if (markerOpensAt(text, i, VIRGIL_MARKERS.footnote)) {
         const idArg = extractBraced(text, markerArgStart(i, VIRGIL_MARKERS.footnote));
         if (idArg !== null) {
-          pendingFootnoteId = idArg.content || null;
+          pendingFootnoteId.set(idArg.content || null, idArg.end);
           i = idArg.end;
           continue;
         }
@@ -522,7 +484,7 @@ export function parseInlineContent(
       if (markerOpensAt(text, i, VIRGIL_MARKERS.citation)) {
         const idArg = extractBraced(text, markerArgStart(i, VIRGIL_MARKERS.citation));
         if (idArg !== null) {
-          pendingCitationId = idArg.content || null;
+          pendingCitationId.set(idArg.content || null, idArg.end);
           i = idArg.end;
           continue;
         }
@@ -575,10 +537,9 @@ export function parseInlineContent(
             attrs: {
               content: richLatexToJson(inner.content),
               number: 0,
-              footnoteId: pendingFootnoteId || generateShortId(),
+              footnoteId: pendingFootnoteId.take(i) || generateShortId(),
             },
           });
-          pendingFootnoteId = null;
           i = inner.end;
           continue;
         }
@@ -596,104 +557,38 @@ export function parseInlineContent(
             attrs: {
               content: richLatexToJson(inner.content),
               number: 0,
-              footnoteId: pendingFootnoteId || generateShortId(),
+              footnoteId: pendingFootnoteId.take(i) || generateShortId(),
               thanks: true,
             },
           });
-          pendingFootnoteId = null;
           i = inner.end;
           continue;
         }
       }
 
-      // Citation commands: natbib (\cite, \citet, \citep, etc.) and biblatex (\textcite, \parencite, \cites, etc.)
-      // Longer names must come first to avoid partial matches.
-      // CITE_NAMES_RE is shared with bib-parser.ts and tiptap-extensions.ts.
-      const citeMatch = rest.match(CITE_NAMES_RE_INLINE);
-      if (citeMatch) {
+      // Citation commands: natbib (\cite, \citet, \citep, etc.) and biblatex
+      // (\textcite, \parencite, \cites, etc.). Both the NAME vocabulary and the
+      // `[pre][post]{key}` argument grammar (repeated, for the plural forms)
+      // come from the registry's `matchCiteCommandAt`, which the footnote/card
+      // fork reads too — task 341, where the fork's hand-written twin of this
+      // loop was ten names short AND consumed the repetition wrong.
+      const cite = matchCiteCommandAt(text, i);
+      if (cite) {
         flush();
-        let pos = i + citeMatch[0].length;
-        let fullCmd = citeMatch[0];
-        const cmdLower = citeMatch[1].toLowerCase();
-        const isMultiCite =
-          cmdLower.endsWith("s") &&
-          MULTI_CITE_NAMES.has(cmdLower);
-
-        if (isMultiCite) {
-          // Biblatex multi-cite: \cites[pre1][post1]{key1}[pre2][post2]{key2}
-          // Consume groups of optional [pre][post] followed by {key}.
-          let found = false;
-          while (pos < text.length) {
-            const savedPos = pos;
-            // Optional [pre][post] before this key
-            let bracketsStr = "";
-            for (let bcount = 0; bcount < 2 && pos < text.length && text[pos] === "["; bcount++) {
-              const closeBracket = text.indexOf("]", pos);
-              if (closeBracket === -1) break;
-              bracketsStr += text.slice(pos, closeBracket + 1);
-              pos = closeBracket + 1;
-            }
-            // Mandatory {key}
-            if (pos < text.length && text[pos] === "{") {
-              const inner = extractBraced(text, pos);
-              if (inner !== null) {
-                fullCmd += bracketsStr + "{" + inner.content + "}";
-                pos = inner.end;
-                found = true;
-                continue;
-              }
-            }
-            // No key after optional brackets — restore and stop
-            pos = savedPos;
-            break;
-          }
-          if (found) {
-            nodes.push({
-              type: "citation",
-              attrs: {
-                citationId: pendingCitationId || generateShortId(),
-                command: fullCmd,
-                displayText: "",
-              },
-            });
-            pendingCitationId = null;
-            i = pos;
-            continue;
-          }
+        if (cite.keyed) {
+          nodes.push({
+            type: "citation",
+            attrs: {
+              citationId: pendingCitationId.take(i) || generateShortId(),
+              command: cite.command,
+              displayText: "",
+            },
+          });
         } else {
-          // Single-key form (natbib or biblatex singular):
-          // \cmd[pre][post]{keys}
-          for (let optCount = 0; optCount < 2 && pos < text.length && text[pos] === "["; optCount++) {
-            const closeBracket = text.indexOf("]", pos);
-            if (closeBracket !== -1) {
-              fullCmd += text.slice(pos, closeBracket + 1);
-              pos = closeBracket + 1;
-            } else {
-              break;
-            }
-          }
-          if (pos < text.length && text[pos] === "{") {
-            const inner = extractBraced(text, pos);
-            if (inner !== null) {
-              fullCmd += "{" + inner.content + "}";
-              nodes.push({
-                type: "citation",
-                attrs: {
-                  citationId: pendingCitationId || generateShortId(),
-                  command: fullCmd,
-                  displayText: "",
-                },
-              });
-              pendingCitationId = null;
-              i = inner.end;
-              continue;
-            }
-          }
+          // No braced arg — treat as unknown text (will be raw).
+          buffer += cite.command;
         }
-
-        // If no braced arg, treat as unknown text (will be raw)
-        buffer += fullCmd;
-        i = pos;
+        i = cite.end;
         continue;
       }
 
@@ -2179,6 +2074,22 @@ function skipWhitespace(ctx: ParseContext): void {
 
 function readParagraph(ctx: ParseContext): string {
   let result = "";
+  // Depth of the brace groups open at `ctx.pos`. A block-level command inside
+  // a command's ARGUMENT is not a block boundary — it is that command's
+  // business (task 341). Without this, `Text.\footnote{Display \[x^2\] here.}`
+  // split at the `\[`: the `\footnote` lost its argument and was demoted to a
+  // grey `latexCommand`, the `{Display` and `here.}` became prose in two
+  // different paragraphs, and the document round-tripped to
+  // `\footnote\{Display` / `\[…\]` / `here.\}` — LaTeX errors on that
+  // ("Paragraph ended before \footnote was complete"), and no `\vfid` is
+  // emitted, so it has stopped being a footnote at all.
+  //
+  // Only the COMMAND-boundary test is gated. The blank-line and comment breaks
+  // stay unconditional, and that is what bounds the damage of an unbalanced
+  // `{` in hand-written source: depth is re-zeroed at every paragraph, so a
+  // stray brace can cost at most the rest of its own paragraph's boundary
+  // splits, never the rest of the file.
+  let braceDepth = 0;
   while (ctx.pos < ctx.src.length) {
     // Double newline ends paragraph
     if (ctx.src[ctx.pos] === "\n" && ctx.pos + 1 < ctx.src.length && ctx.src[ctx.pos + 1] === "\n") {
@@ -2196,7 +2107,7 @@ function readParagraph(ctx: ParseContext): string {
     }
 
     // Check if next non-space char is a block-level command
-    if (ctx.src[ctx.pos] === "\\" && result.trim()) {
+    if (ctx.src[ctx.pos] === "\\" && result.trim() && braceDepth === 0) {
       const rest = ctx.src.slice(ctx.pos);
       if (
         // `\[` opens display math — always a block boundary. Checked
@@ -2222,7 +2133,13 @@ function readParagraph(ctx: ParseContext): string {
       }
     }
 
-    result += ctx.src[ctx.pos];
+    const ch = ctx.src[ctx.pos];
+    if ((ch === "{" || ch === "}") && !isEscaped(ctx.src, ctx.pos)) {
+      // Clamp at 0: a stray `}` must not drive the depth negative and make the
+      // next real `{` look balanced.
+      braceDepth = ch === "{" ? braceDepth + 1 : Math.max(0, braceDepth - 1);
+    }
+    result += ch;
     ctx.pos++;
   }
   return result.trim();
