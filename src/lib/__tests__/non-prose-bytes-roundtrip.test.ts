@@ -31,6 +31,7 @@
 import { describe, expect, it } from "vitest";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import { serializeToLatex, assignUuids } from "@/lib/latex-serializer";
+import { richLatexToJson, richJsonToLatex } from "@/lib/footnote-content";
 
 /** ONE save cycle, mirroring `storage-fsa.writeDocBundle` byte for byte. */
 function save(tex: string): string {
@@ -66,6 +67,94 @@ function twoCycles(input: string): string {
 function expectStable(input: string): void {
   expect(twoCycles(input)).toBe(input.trim());
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// M1 / M2 / M3 — a command atom must carry ALL of its arguments
+// ───────────────────────────────────────────────────────────────────────────
+//
+// The unknown-command reader consumed `[…]` groups only BEFORE the braces and
+// capped the braces at TWO, so a command's THIRD argument fell out of the atom
+// into the prose buffer, where the escape table treats `{`/`}` as literals.
+// `\definecolor` and `\resizebox` then reach the compiler with too few
+// arguments — the paper **stops compiling**. `\addcontentsline` still compiles
+// and silently produces a wrong ToC plus stray printed text, which is worse in
+// one way: nothing tells the user.
+//
+// The fixed ORDER was the same defect one axis over: `\newcommand{\x}[1]{…}`
+// puts its optional argument AFTER a brace, so the bracket loop had already
+// finished and `[1]` was escaped to `{[}1{]}` — printed text in the PDF.
+
+describe("M1–M3 — a command carries its whole argument run", () => {
+  it("M1 `\\addcontentsline` keeps its third argument (ToC was destroyed)", () => {
+    expectStable("\\addcontentsline{toc}{section}{Introduction}\n");
+  });
+
+  it("M2 `\\definecolor` keeps its third argument (was a COMPILE ERROR)", () => {
+    expectStable("\\definecolor{myblue}{rgb}{0.2,0.4,0.8}\n");
+  });
+
+  it("M3 `\\resizebox` keeps its third argument (was a COMPILE ERROR)", () => {
+    expectStable("\\resizebox{3cm}{!}{Some content}\n");
+  });
+
+  it("an optional argument AFTER a brace is an argument, not prose", () => {
+    expectStable("\\newcommand{\\mycmd}[1]{Hello #1}\n");
+  });
+
+  it("interleaved `{…}[…]{…}` all travel", () => {
+    expectStable("\\somecmd{a}[b]{c}[d]{e}\n");
+  });
+
+  it("nine arguments travel; a tenth group does not", () => {
+    const nine = "{1}{2}{3}{4}{5}{6}{7}{8}{9}";
+    const out = twoCycles(`\\deepcmd${nine}{ten}\n`);
+    // TeX's own ceiling. The tenth group is prose from here on, which is what
+    // bounds the scan — and it is stable, which is what matters.
+    expect(out.startsWith(`\\deepcmd${nine}`)).toBe(true);
+  });
+
+  it("CONTROL — two arguments are unchanged", () => {
+    expectStable("\\textcolor{red}{warning} here.\n");
+  });
+
+  it("CONTROL — a protected prose bracket still ENDS the run", () => {
+    // `\cmd{[}x{]}`: those braces are prose abutting the command (task 037's
+    // sentinel), so the atom must close and `[x]` stay editable prose.
+    //
+    // Asserted on the DOCUMENT MODEL rather than the bytes, and deliberately:
+    // measured by deleting the protection check, the emitted `.tex` is
+    // byte-identical either way (an absorbed `{[}` re-emits raw; an unwrapped
+    // one is re-escaped by the prose rung), so a byte leg here has no teeth. The
+    // real difference is what the user can EDIT — grey-monospace raw LaTeX
+    // versus prose — which is the whole reason the rule exists.
+    const doc = parseLatex("\\mycmd{[}x{]} tail.\n");
+    const para = (doc.content ?? []).find((n) => n.type === "paragraph");
+    const raw = (para?.content ?? []).filter((n) =>
+      n.marks?.some((m) => m.type === "latexCommand"),
+    );
+    expect(raw.map((n) => n.text)).toEqual(["\\mycmd"]);
+    expect(twoCycles("\\mycmd{[}x{]} tail.\n")).toBe("\\mycmd{[}x{]} tail.");
+  });
+
+  it("CONTROL — an unbalanced `{` fails closed and cannot swallow the doc", () => {
+    const out = twoCycles("\\mycmd{unclosed and more prose here.\n\nSecond para.\n");
+    expect(out).toContain("Second para.");
+  });
+
+  it("the card-body fork answers identically (task 341's twin rule)", () => {
+    // The fork had its OWN copy of the two-brace cap and the fixed order, and —
+    // unlike the main parser — no `{[}`-protection check at all. One door, one
+    // answer: a card body must read the same bytes the document does.
+    for (const src of [
+      "\\definecolor{myblue}{rgb}{0.2,0.4,0.8}",
+      "\\resizebox{3cm}{!}{Some content}",
+      "\\somecmd{a}[b]{c}",
+      "\\mycmd{[}x{]} tail.",
+    ]) {
+      expect(richJsonToLatex(richLatexToJson(src)).trim(), src).toBe(src);
+    }
+  });
+});
 
 // ───────────────────────────────────────────────────────────────────────────
 // M4 — `\\[2pt]`: a break's own ARGUMENT RUN demoted to prose

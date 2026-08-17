@@ -41,6 +41,7 @@ import {
   findUnescaped,
   matchBeginEnvAt,
   matchCommandToken,
+  matchCommandArgumentRun,
   matchInlineMathAt,
   matchInlineVerbAt,
   matchLineBreakAt,
@@ -740,52 +741,22 @@ export function parseInlineContent(
       const unknownCmd = matchCommandToken(text, i);
       if (unknownCmd) {
         flush();
-        let cmdText = "\\" + unknownCmd.name;
-        i = unknownCmd.end;
-        // Consume optional starred
-        if (i < text.length && text[i] === "*") {
-          cmdText += "*";
-          i++;
-        }
-        // Consume optional [...] args
-        while (i < text.length && text[i] === "[") {
-          const closeBracket = text.indexOf("]", i);
-          if (closeBracket !== -1) {
-            cmdText += text.slice(i, closeBracket + 1);
-            i = closeBracket + 1;
-          } else {
-            break;
-          }
-        }
-        // Consume {braced} args (up to 2) — but NEVER a protected prose
-        // bracket group `{[}`/`{]}` (the `escapeLatex` sentinel for a literal
-        // `[`/`]`). Those are prose that merely ABUTS the command, not an
-        // argument to it: breaking here lets the command atom close and returns
-        // control to the top-of-loop `{[}`→`[` unwrap, so `\cmd{[}x{]}` keeps
-        // `[x]` as literal prose instead of folding `[` into the command.
-        let braceCount = 0;
-        while (i < text.length && text[i] === "{" && braceCount < 2) {
-          // "Is the group at `i` a protection?" is a question about the
-          // vocabulary, so it is asked of `CHAR_ESCAPE_TABLE` rather than
-          // re-spelled here (task 339) — this was the THIRD hand copy of the
-          // `{[}` / `{]}` shape, and a fourth spelling of a protection would
-          // silently fold prose into a command argument again.
-          const prot = matchCharEscapeAt(text, i);
-          if (prot) break;
-          const inner = extractBraced(text, i);
-          if (inner) {
-            cmdText += "{" + inner.content + "}";
-            i = inner.end;
-            braceCount++;
-          } else {
-            break;
-          }
-        }
+        // A command atom carries ALL of its arguments — the `*`, and every
+        // abutting `{…}` / `[…]` group in whatever order, from the lexer's
+        // `matchCommandArgumentRun`. Until task 349 this was a bracket loop
+        // followed by a brace loop capped at TWO, so a third argument fell into
+        // the prose buffer and its braces were escaped as literals:
+        // `\definecolor{myblue}{rgb}{0.2,0.4,0.8}` reached disk with two
+        // arguments and the paper stopped compiling. The bounds, the fail-closed
+        // scanners and the `{[}`-protection rule all live at that door, which
+        // the card/footnote fork reads too (task 341's twin rule).
+        const args = matchCommandArgumentRun(text, unknownCmd.end);
         nodes.push({
           type: "text",
-          text: cmdText,
+          text: "\\" + unknownCmd.name + args.raw,
           marks: [{ type: "latexCommand" }],
         });
+        i = args.end;
         continue;
       }
 

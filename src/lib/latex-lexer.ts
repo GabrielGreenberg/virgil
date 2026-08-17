@@ -40,6 +40,7 @@ import {
   matchSpecialLetter,
   isEscaped,
   findUnescaped,
+  matchCharEscapeAt,
 } from "@/lib/latex-typography";
 import { BLOCK_TEX_MARKERS } from "@/lib/latex-markers";
 
@@ -1111,4 +1112,74 @@ export function matchCommandToken(
   const m = src.slice(pos + 1).match(/^[a-zA-Z@]+/);
   if (!m) return null;
   return { name: m[0], end: pos + 1 + m[0].length };
+}
+
+/**
+ * TeX's own ceiling on a macro's arguments (`#1` … `#9`). Used as the bound on
+ * the argument run below — a principled number rather than a guessed one.
+ */
+const MAX_COMMAND_ARGS = 9;
+
+/**
+ * Read a command's whole ARGUMENT RUN starting at `pos`, which must be the index
+ * just past its control-word name (i.e. `matchCommandToken(...).end`).
+ *
+ * Consumes an optional trailing `*` and then every abutting `{…}` / `[…]` group
+ * in WHATEVER ORDER they appear, up to {@link MAX_COMMAND_ARGS} groups. Returns
+ * `{ raw, end }`; `raw` is `""` where the command takes no arguments here.
+ *
+ * WHY IT IS NOT A COUNT OF TWO (task 349 M1–M3). Both inline parsers read the
+ * unknown-`\command` fallback with `[…]` groups consumed only BEFORE the braces
+ * and the braces capped at TWO, so a command's THIRD argument fell out of the
+ * command atom into the prose buffer — where the escape table treats `{`/`}` as
+ * literal characters. Measured through the real save pipeline:
+ *
+ *   `\addcontentsline{toc}{section}{Introduction}`
+ *      → `\addcontentsline{toc}{section}\{Introduction\}`   ToC destroyed, braces PRINT
+ *   `\definecolor{myblue}{rgb}{0.2,0.4,0.8}`
+ *      → `\definecolor{myblue}{rgb}\{0.2,0.4,0.8\}`         two args: COMPILE ERROR
+ *   `\resizebox{3cm}{!}{Some content}`  → same
+ *
+ * and the fixed ORDER was the same defect one axis over: `\newcommand{\x}[1]{…}`
+ * put its `[1]` after a brace, so the bracket loop had already finished and
+ * `[1]` was emitted as `{[}1{]}` — printed text in the PDF.
+ *
+ * Three bounds, so a stray `{` in hand-written source cannot swallow the
+ * document (the failure mode task 338 spent a whole task on):
+ *
+ *  - the group scanners are the SSOT pair (`extractBraced` / `extractBracketed`),
+ *    which FAIL CLOSED on an unbalanced group — the run simply ends there, which
+ *    is byte-for-byte the pre-349 behaviour for that shape;
+ *  - a group whose content spans a BLANK LINE is refused. A paragraph's text is
+ *    all either inline parser is ever handed, so this cannot fire on Virgil's
+ *    own output; it bounds a caller that passes a wider slice;
+ *  - the group count is capped at TeX's own `#1`…`#9`.
+ *
+ * A `{[}` / `{]}` PROTECTION also ends the run, and that rule is asked of
+ * `CHAR_ESCAPE_TABLE` rather than re-spelled (task 339): those braces are prose
+ * that merely ABUTS the command, so breaking here returns control to the
+ * top-of-loop unwrap and `\cmd{[}x{]}` keeps `[x]` as literal prose. The main
+ * parser had this check and the card/footnote fork did not — a pre-existing
+ * divergence this shared door closes on the way past (the task-341 twin rule).
+ */
+export function matchCommandArgumentRun(
+  text: string,
+  pos: number,
+): { raw: string; end: number } {
+  let p = pos;
+  if (text[p] === "*") p++;
+  let groups = 0;
+  while (p < text.length && groups < MAX_COMMAND_ARGS) {
+    const ch = text[p];
+    if (ch !== "{" && ch !== "[") break;
+    // A protected prose bracket group is not an argument — see above.
+    if (ch === "{" && matchCharEscapeAt(text, p)) break;
+    const group =
+      ch === "{" ? extractBraced(text, p) : extractBracketed(text, p);
+    if (!group) break;
+    if (/\n[ \t]*\n/.test(group.content)) break;
+    p = group.end;
+    groups++;
+  }
+  return { raw: text.slice(pos, p), end: p };
 }
