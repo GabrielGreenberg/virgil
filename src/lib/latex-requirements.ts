@@ -28,7 +28,7 @@ import {
   NATBIB_ONLY_CITE_COMMANDS,
   SHARED_CITE_COMMANDS,
 } from "@/lib/cite-commands";
-import { projectLiveLatex, VERBATIM_ENVS_NARROW } from "@/lib/latex-lexer";
+import { projectDetectableLatex } from "@/lib/latex-lexer";
 import {
   reconcileBibFamily,
   type BibFamily,
@@ -202,16 +202,15 @@ const SHARED_NON_KERNEL_RE = familyRe(
  * compiling paper). An unterminated `\begin{verbatim}` (mid-edit) swallows
  * to the end of the body, matching how TeX would lex it.
  *
- * Delegates to the lexer's `projectLiveLatex` with the NARROW verbatim family
- * and inline-verb OFF, so the output is byte-identical to the former inline
- * implementation — the drift gate and requirements-injection ORDER depend on
- * this. The requirements side deliberately keeps the NARROW family (see the
- * P3 design fork F1): widening it could change which packages get injected
- * for docs that put cite/expex commands inside lstlisting/minted, altering
- * saved .tex bytes.
+ * Delegates to the lexer's `projectDetectableLatex` — the ONE named door for
+ * "which bytes may a detector believe?", shared with the bib-family detector
+ * (task 344). Byte-identical to the former inline implementation (NARROW
+ * verbatim family, inline-verb off) — the drift gate and the
+ * requirements-injection ORDER depend on that; the family choice and its
+ * residuals are stated at the door.
  */
 function projectDetectableBody(bodyLatex: string): string {
-  return projectLiveLatex(bodyLatex, { envs: VERBATIM_ENVS_NARROW });
+  return projectDetectableLatex(bodyLatex);
 }
 
 /**

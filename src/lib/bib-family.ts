@@ -28,8 +28,26 @@ import {
   NATBIB_ONLY_CITE_COMMANDS,
   SHARED_CITE_COMMANDS,
 } from "@/lib/cite-commands";
+import { projectDetectableLatex } from "@/lib/latex-lexer";
 
 export type BibFamily = "natbib" | "biblatex";
+
+/**
+ * The family a document is assumed to use when NOTHING pins one — Virgil's
+ * baseline, and the family `VIRGIL_BASELINE_PACKAGES` ships in every
+ * Virgil-authored preamble.
+ *
+ * Spelled ONCE (task 344). It had three hand-written copies that disagreed:
+ * `detectBibPackage` fell back to `"natbib"` while `useCitations`' EMPTY state
+ * and its inert twin both said `"biblatex"`. The disagreement was not
+ * cosmetic — the hook announced `"biblatex"` before detection resolved and
+ * then changed to the detected family, and `CitationCard`'s package-change
+ * effect reads any change of that value as a user toggle and re-derives every
+ * citation's command shape. So on the majority of documents (the baseline is
+ * natbib) an ordinary doc OPEN looked like a package switch. One constant
+ * makes the common case settle with no change at all.
+ */
+export const DEFAULT_BIB_FAMILY: BibFamily = "natbib";
 
 /** Narrow an arbitrary stored value (the citations sidecar types `bibPackage`
  *  as a free-form string) to a `BibFamily`, or `null` when it is neither. Used
@@ -139,14 +157,60 @@ export function detectCommandBibFamily(source: string): BibFamily | null {
  * biblatex wins the report — the caller only uses this to detect a conflict,
  * and a doc loading both is already broken.
  *
- * Callers should pass the INERT-STRIPPED preamble (comments/verbatim removed)
+ * Callers must pass the INERT-STRIPPED preamble (comments/verbatim removed)
  * so a commented `% \usepackage{biblatex}` does not read as loaded — mirroring
- * the requirements side.
+ * the requirements side. `detectBibFamily` below is the door that does this
+ * for the whole-`.tex` question; `ensurePreambleRequirements` projects its own
+ * preamble before calling `reconcileBibFamily`.
  */
 export function detectPreambleBibFamily(preamble: string): BibFamily | null {
   if (BIBLATEX_LOAD_RE.test(preamble)) return "biblatex";
   if (NATBIB_LOAD_RE.test(preamble)) return "natbib";
   return null;
+}
+
+const BEGIN_DOCUMENT = "\\begin{document}";
+
+/**
+ * Which family does this WHOLE `.tex` source use? The single detector behind
+ * `storage.detectBibPackage`, and the seed for a document that carries no
+ * stored choice.
+ *
+ * Three rules, each of which was a measured defect before task 344:
+ *
+ *  1. **Only LIVE bytes count.** The source is run through
+ *     `projectDetectableLatex` first, so a commented-out
+ *     `% \usepackage{biblatex}` — the single most ordinary thing in an
+ *     academic preamble — and a verbatim-quoted package name in a
+ *     methods paragraph are both inert here, exactly as they are on the
+ *     requirements side. Before this the raw source was scanned and either
+ *     one outranked a live `\usepackage{natbib}`.
+ *  2. **The `\usepackage` question is asked of the PREAMBLE.** The split is
+ *     taken on the PROJECTED text, not the raw source, so a commented-out
+ *     `% \begin{document}` cannot move the boundary. A source with no
+ *     `\begin{document}` at all (a fragment, a brand-new doc) fails OPEN —
+ *     the whole projection is treated as preamble, which is what a fragment
+ *     scan did before.
+ *  3. **The command-usage fallback stays whole-source**, deliberately: it is
+ *     a fallback for documents that pin no package, a `\citep` inside a
+ *     `\newcommand` in the preamble is real usage, and NARROWING a fallback
+ *     can only lose detections. What it gains from this fix is inertness —
+ *     a `\citep` inside a verbatim listing no longer pins natbib.
+ *
+ * Never returns null: with nothing pinning a family the answer is
+ * `DEFAULT_BIB_FAMILY`. That is why this must be treated as a SEED and never
+ * as an override — a caller cannot distinguish "detected natbib" from "found
+ * nothing". `useCitations` writes it to no sidecar for exactly that reason.
+ */
+export function detectBibFamily(tex: string): BibFamily {
+  const live = projectDetectableLatex(tex);
+  const beginDoc = live.indexOf(BEGIN_DOCUMENT);
+  const preamble = beginDoc === -1 ? live : live.slice(0, beginDoc);
+  const loaded = detectPreambleBibFamily(preamble);
+  if (loaded) return loaded;
+  const byCommand = detectCommandBibFamily(live);
+  if (byCommand) return byCommand;
+  return DEFAULT_BIB_FAMILY;
 }
 
 // ---------------------------------------------------------------------------

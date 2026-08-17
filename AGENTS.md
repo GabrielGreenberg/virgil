@@ -752,6 +752,91 @@ Same law, other tense (task 205). "Which side does this card's margin chrome liv
 
 The same task retired the marginalia builder's second orphan formula: the re-pin dock flag was `resolveCardAnchor(…).source === "orphan"`, a parallel path to `resolveAnchorState` that structurally could not see a card's declared intent. It now asks the SSOT (`state !== "anchored"` — the margin's question is binary, expressed *on top of* the SSOT rather than beside it), and `resolveAnchorState`'s witness parameter admits a uuid as well as a position, since being `number`-only is exactly why this surface couldn't call it. CI: [src/lib/\_\_tests\_\_/margin-side-ssot.test.tsx](src/lib/__tests__/margin-side-ssot.test.tsx) — the defect-catching leg drives the REAL reconciler against a REAL editor under a left-docked Notes panel and asserts the rail's `data-margin-side` equals the grid's marker side (it fails on the pre-fix read); the census legs pin `src/` + `library/` free of `anchor.margin`, `inferMarginSide`, `MarkerMeta.defaultSide`/`panelId`, any `source === "orphan"` comparison, and any `defaultStripSide` read outside the SSOT and the named strip sites — plus a THIRD root, `editor/`'s Python writers and skill markdown, which the two-silo habit does not reach and where a fifth `margin` writer survived this task's own first cut. Two of those legs earned their own repairs under review: the `orphan` needle must run against comments-stripped source (the code-only stripper blanks the very literal it greps for, so the leg was unfalsifiable), and the stripper is a one-pass SCANNER rather than a regex chain — chained template-then-string stripping let a backtick inside a double-quoted string swallow 7 kB of a real production file, the task-202b runaway, which a declaration-count self-check now pins.
 
+#### The seed half: a DETECTED answer never overwrites a DECLARED one
+
+Same law read in reverse (task 344). Above, a live answer was frozen into a record; here a
+GUESS overwrote the authoritative record — and the two defects that made it were each
+invisible on their own.
+
+**The detector was fed bytes its own contract forbids.** `detectBibPackage` handed the WHOLE
+RAW `.tex` — preamble, body, comments, verbatim blocks — to `detectPreambleBibFamily`, whose
+docstring says in as many words to pass the inert-stripped preamble. So a commented-out
+`% \usepackage{biblatex}`, the single most ordinary thing in an academic preamble, outranked a
+live `\usepackage{natbib}`; so did a verbatim-quoted package line in a methods paragraph. The
+requirements side has projected inert bytes away since P4 and its comment explains exactly why.
+Two detectors, one question, opposite discipline.
+
+**And the answer was written into the user's record.** `refreshBib` did
+`if (data.detectedPackage) setState(…)` — and the detector never returns null (it defaults), so
+the guard was always true. The Citations panel's own Package control was discarded on every doc
+open AND every `DOC_BIB_CHANGED_EVENT`; since `usePersistentState.update` persists the whole
+state object, the next unrelated citations write made the mis-detection durable, whereupon the
+SAVE path reads `citations.json` as authoritative, hands it to `ensurePreambleRequirements` as
+`declaredBibFamily`, and injects the wrong `\usepackage` into the `.tex`. Biblatex under
+natbib-style `\citep` usage leaves an undefined `\citep`: **the paper stops compiling.**
+`storage-fsa.ts`'s own comment claimed the family was "never overridden by detection once set."
+
+> **A detector that cannot report "I found nothing" is a SEED, never an authority.** It answers
+> the VIEW where nothing is declared and writes to no record — and it believes only the bytes
+> the compiler would, through the same projection every sibling detector uses.
+
+Five rules it earned:
+
+- **The projection is a NAMED door, not an option bag.** [`projectDetectableLatex`](src/lib/latex-lexer.ts)
+  (`projectLiveLatex` at the NARROW verbatim family) is what "which bytes may a detector
+  believe?" means; `latex-requirements`' `projectDetectableBody` and `bib-family`'s
+  `detectBibFamily` both call it, so the P3 fork-F1 family decision cannot be re-made per
+  caller. Kept NARROW deliberately: the requirements pass injects `\usepackage` lines off this
+  projection, so widening it to `VERBATIM_ENVS_FULL` changes saved `.tex` bytes rather than
+  tidying anything. Inline `\verb` stays live for the same byte-compatibility reason — both are
+  stated residuals at the door, not oversights.
+- **Ask each half of the question where it lives.** The `\usepackage` half is asked of the
+  PREAMBLE, split on the PROJECTED text so a commented-out `\begin{document}` cannot move the
+  boundary, and failing OPEN (no marker ⇒ the whole projection is preamble) so a fragment still
+  answers. The command-usage FALLBACK stays whole-source on purpose: a `\citep` inside a
+  `\newcommand` is real usage, and narrowing a fallback can only lose detections. What it gains
+  is inertness.
+- **The record must be able to say "nobody has chosen."** `CitationsState.bibPackage` is
+  OPTIONAL now, and `migrate` normalizes through `asBibFamily` instead of defaulting to
+  `"biblatex"`. That fabricated default is *why* the stomp could not be gated: "the user chose
+  biblatex" and "nobody has spoken" were the same value. Detection resolves at READ time
+  (`stored ?? detected ?? DEFAULT_BIB_FAMILY`) and writes nothing, which also retires the
+  ordering hazard a gated write would carry — `refreshBib` races the sidecar load, so any
+  "write only if unset" guard would have to be evaluated against the LOADED state, and a
+  non-writer has no race to lose.
+- **The baseline is spelled ONCE, and the disagreement was not cosmetic.** `DEFAULT_BIB_FAMILY`
+  ( = `"natbib"`, the family `VIRGIL_BASELINE_PACKAGES` ships) had three hand copies that
+  disagreed: the detector fell back to natbib while the hook's EMPTY state and its inert twin
+  said biblatex. So the hook announced biblatex, then changed to the detected family — and
+  `CitationCard`'s package-change effect reads any CHANGE of that value as a user toggle and
+  re-derives every citation's command shape. On the majority of documents an ordinary doc OPEN
+  looked like a package switch. One constant makes the common case settle with no change at all.
+- **No silent correction, and that is the pre-existing decision rather than a new one.** A
+  document stored as natbib whose preamble later hard-loads biblatex is a CONFLICT, and
+  `reconcileBibFamily`'s locked user decision is *warn, never rewrite*. Detection correcting the
+  record would be that rewrite by another route.
+
+CI: [bib-family-detection-authority.test.ts](src/lib/__tests__/bib-family-detection-authority.test.ts)
+(detection + the census) and [citations-bib-family-seed.test.tsx](src/hooks/__tests__/citations-bib-family-seed.test.tsx)
+(the authority half, through the REAL hook — a stored natbib under a `.tex` that detects
+biblatex, the `DOC_BIB_CHANGED_EVENT` re-stomp, and the bytes that reach disk). The leg with
+teeth is the CENSUS: the door was never the part that could misbehave, a second call site
+feeding it raw bytes is — which is exactly what shipped, spelling no needle any behavioural test
+of the door could see. So only `bib-family.ts` may call the raw-byte primitives, only the lexer
+may spell the projection's option bag, and the hook may not spell a family literal. Measured by
+neutering each half in turn: the projection takes 5 legs, the seed-not-stomp rule 4, the shared
+baseline 1.
+
+**Residual, stated.** Documents whose `citations.json` already carries a family *written by the
+pre-344 stomp* keep it, and it is now authoritative — right by the no-silent-correction rule,
+and fixable in one click from the panel, but it does mean the fix does not retroactively undo
+what the old behaviour persisted. And the mount-time settle is narrowed rather than closed: a
+biblatex document still transitions once from the baseline to its resolved family on load, where
+`CitationCard`'s effect can re-derive command shapes — now toward the CORRECT family. Closing it
+properly means the effect riding the explicit `setBibPackage` EVENT instead of a value diff (the
+"read the DEVICE, not the derived change" rule, one subsystem over), which is a change to the
+citation-command pipeline rather than to this one.
+
 ### The field half: a context field is a promise that some `run()` consults it
 
 Same law, third tense (task 227). The export census above asks whether a published symbol is CALLED and structurally **cannot** see a declared field that is written but never read — so `ActionContext` accumulated three of them.
