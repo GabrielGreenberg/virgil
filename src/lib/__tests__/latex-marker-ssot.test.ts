@@ -202,6 +202,13 @@ describe("marker vocabulary — the third root (leg 1b)", () => {
   });
 });
 
+/** Declaration-shaped lines — the stripper self-check's unit of measure (the
+ *  `margin-side-ssot` shape). A declaration cannot live inside a comment, so a
+ *  correct comment-stripper preserves every one of them. */
+const DECL_RE =
+  /^[ \t]*(export[ \t]+)?(default[ \t]+)?(async[ \t]+)?(function|class|interface|type|const|let)[ \t]+[A-Za-z_$]/gm;
+const countDecls = (s: string) => (s.match(DECL_RE) ?? []).length;
+
 describe("marker vocabulary — census canary (leg 2)", () => {
   it("the needle fires on a hand-spelled marker, in code and in a literal", () => {
     expect(MARKER_NEEDLE.test(commentsStripped(`const m = "\\\\vfid{" + id;`))).toBe(true);
@@ -227,10 +234,22 @@ describe("marker vocabulary — census canary (leg 2)", () => {
   it("the stripper does not swallow the files it scans", () => {
     // 202b's runaway (a backtick inside a double-quoted string ate 7 kB
     // silently) is the reason every census that strips carries this check.
+    //
+    // The measure is the surviving DECLARATION COUNT, not a surviving-BYTES
+    // ratio — the shape task 205 settled on, adopted here in task 347 after
+    // the ratio form failed for the wrong reason. A ratio conflates the two
+    // things it must separate: "the stripper ate a contiguous run of code"
+    // (the 202b defect, which drops declarations wholesale) and "this file is
+    // heavily commented" (which this repo's own doctrine drives toward, and
+    // past, 50%). `latex-serializer.ts` crossed the old 0.5 line by GAINING
+    // documentation, so the canary was rewarding thinner comments — the exact
+    // opposite of what it is here to protect. Declarations cannot hide inside
+    // a comment, so a correct stripper can only ever preserve every one.
     for (const rel of ["src/lib/latex-parser.ts", "src/lib/latex-serializer.ts"]) {
       const raw = fs.readFileSync(path.join(REPO, rel), "utf8");
       const stripped = commentsStripped(raw);
-      expect(stripped.length / raw.length, rel).toBeGreaterThan(0.5);
+      expect(countDecls(stripped), rel).toBe(countDecls(raw));
+      expect(countDecls(raw), rel).toBeGreaterThan(20);
       expect(stripped, rel).toContain("export function");
     }
   });

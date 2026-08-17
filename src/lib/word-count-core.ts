@@ -31,7 +31,7 @@
  */
 
 import type { JSONContent } from "@tiptap/react";
-import { LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
+import { LATEX_COMMENT_TAIL_MARK, LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
 
 export type Category =
   | "mainText"
@@ -174,6 +174,15 @@ export function collectCategoryParts(node: JSONContent): Record<Category, string
 
   const collectInline = (n: JSONContent, bucket: string[]) => {
     if (n.type === "text" && n.text) {
+      // An inline `%` comment TAIL is a comment, not prose — the same bucket
+      // its `latexComment` block sibling goes to below, so the two carriers of
+      // one construct are counted alike (task 347). Checked first: a comment is
+      // never a caption, so it must not reach the `\caption{…}` extraction the
+      // raw-LaTeX branch runs.
+      if (n.marks?.some((m) => m.type === LATEX_COMMENT_TAIL_MARK)) {
+        cats.comments.push(n.text);
+        return;
+      }
       // Text marked as latexCommand — or as the byte-literal `latexVerbatim`
       // carrier — is raw LaTeX, not prose.
       // Extract any \caption{...} text into captions, skip the rest.

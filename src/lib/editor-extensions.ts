@@ -54,6 +54,7 @@ import {
   LabelRef,
   LatexCommandMark,
   LatexVerbatimMark,
+  LatexCommentTailMark,
   SlashPopupExtension,
   LabelHandler,
   TitleField,
@@ -1946,6 +1947,7 @@ export function buildEditorExtensions(ctx: EditorExtensionsCtx) {
     ...(isMain ? [ExpexNumbering] : []),
     LatexCommandMark,
     LatexVerbatimMark,
+    LatexCommentTailMark,
     // Direct in-text Atom grab (footnote/citation/ref/inline math →
     // drag to a new inline cursor). Ungated: present on every surface
     // (main + card bodies) so any editor's atoms are graspable. Reads the

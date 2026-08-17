@@ -2,7 +2,7 @@ import { Mark, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { COMMAND_MAP } from "./commands";
-import { LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
+import { LATEX_COMMENT_TAIL_MARK, LATEX_VERBATIM_MARK } from "@/lib/latex-lexer";
 
 /**
  * BYTE-LITERAL raw LaTeX — the verbatim carrier (task 264).
@@ -62,6 +62,49 @@ export const LatexVerbatimMark = Mark.create({
       mergeAttributes(HTMLAttributes, {
         "data-latex-verbatim": "",
         class: "latex-cmd latex-verbatim",
+      }),
+      0,
+    ];
+  },
+});
+
+/**
+ * A `%` COMMENT TAIL — the third carrier in this family (task 347).
+ *
+ * Its two siblings above say "these bytes are raw LaTeX" and "these bytes are
+ * literal". This one says something the other two do not: **LaTeX will not
+ * typeset these bytes at all**, and it owns the rest of its line. Before task
+ * 347 a mid-line `%` had no representation, so it fell into the prose buffer
+ * and came back out of the serializer as `\%` — which silently turned every
+ * `% TODO cite` into printed body text.
+ *
+ * Rationale for a separate mark rather than an attr on a sibling, plus the
+ * carrier contract and the serializer's line obligation, live with the name in
+ * `latex-lexer.ts`.
+ *
+ * `code: true` and `inclusive: false` for the same two reasons the verbatim
+ * carrier gives, and one more for the second: text typed at the trailing edge
+ * of a comment must NOT inherit the mark, because the serializer would then
+ * emit it after the `%` on the same line — where LaTeX discards it. That is
+ * this task's own defect arriving through the keyboard, so the boundary is
+ * closed here as well as guarded at the emit end.
+ */
+export const LatexCommentTailMark = Mark.create({
+  name: LATEX_COMMENT_TAIL_MARK,
+
+  code: true,
+  inclusive: false,
+
+  parseHTML() {
+    return [{ tag: "span[data-latex-comment-tail]" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-latex-comment-tail": "",
+        class: "latex-comment-tail",
       }),
       0,
     ];

@@ -3644,6 +3644,20 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
   border-color: var(--footnote-color, #b45757);
 }
 
+/* An INLINE `%` comment tail (task 347) — the mid-line sibling of the
+   `.latex-comment` block below. It reads as a comment rather than as prose,
+   which is the whole point: before 347 a mid-line `%` was shown as ordinary
+   body text, which is how a user comes to edit (or trust) writing LaTeX was
+   discarding all along. Same palette and family as the block so the two read
+   as one construct; no chip background, since it sits mid-sentence. */
+.latex-comment-tail {
+  color: var(--latex-comment-color, #7191b0);
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  font-size: 0.85em;
+  font-style: italic;
+  opacity: 0.9;
+}
+
 /* LaTeX comments */
 .latex-comment {
   display: flex;
@@ -4555,8 +4569,10 @@ html {
   display: none !important;
 }
 
-/* View toggles — hide LaTeX % comments */
-.hide-latex-comments .latex-comment {
+/* View toggles — hide LaTeX % comments. Both carriers: the block node and the
+   inline tail are the same construct to the reader, so one toggle owns both. */
+.hide-latex-comments .latex-comment,
+.hide-latex-comments .latex-comment-tail {
   display: none !important;
 }
 
@@ -5181,7 +5197,8 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   html[data-print-e-title="false"] .par-title-wrapper,
   html[data-print-e-title="false"] .maketitle-marker { display: none; }
   html[data-print-e-section-numbers="false"] [data-section-number]::before { content: none; }
-  html[data-print-e-latex-comments="false"] .latex-comment { display: none; }
+  html[data-print-e-latex-comments="false"] .latex-comment,
+  html[data-print-e-latex-comments="false"] .latex-comment-tail { display: none; }
   html[data-print-e-footnote-markers="false"] .footnote-marker { display: none; }
   html[data-print-e-citations="false"] .citation-node { display: none; }
   html[data-print-e-examples="false"] .expex-block { display: none; }

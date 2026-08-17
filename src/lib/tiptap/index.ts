@@ -3,7 +3,7 @@
 // this barrel) to keep call-site imports unchanged.
 
 export { VIRGIL_COMMANDS, VIRGIL_COMMAND_NAMES, COMMAND_MAP, type VirgilCommand } from "./commands";
-export { LatexCommandMark, LatexVerbatimMark } from "./latex-command";
+export { LatexCommandMark, LatexVerbatimMark, LatexCommentTailMark } from "./latex-command";
 export { SlashPopupExtension } from "./slash-popup";
 export { InlineMath, DisplayMath } from "./math";
 export { Footnote } from "./footnote";
