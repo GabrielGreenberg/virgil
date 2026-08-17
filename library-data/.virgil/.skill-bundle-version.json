@@ -1,6 +1,6 @@
 {
-  "version": "5fafcfbb21d1",
-  "syncedAt": "2026-08-09T20:39:29.739Z",
+  "version": "c7c74aa91f28",
+  "syncedAt": "2026-08-16T06:03:49.310315Z",
   "files": [
     "library/CLAUDE.md",
     "library/claude-commands/_doctrine.md",
@@ -131,6 +131,7 @@
     "library/scripts/validate_bib_coherence.py",
     "library/scripts/verify_pgmark_coverage.py",
     "library/scripts/work_identity.py",
+    "editor/claude-commands/_ask-shape.md",
     "editor/claude-commands/_dev-loop-principle.md",
     "editor/claude-commands/_find-or-surface.md",
     "editor/claude-commands/_latex-allowlist.md",
@@ -173,6 +174,7 @@
     "editor/scripts/list_requests.py",
     "editor/scripts/reflect.py",
     "editor/scripts/rename_citekey.py",
+    "editor/scripts/sync_skills.py",
     "virgil/claude-commands/start.md",
     "manifest/INDEX.md",
     "manifest/actions.md",
