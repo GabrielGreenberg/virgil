@@ -13,8 +13,10 @@ import {
   emitMarker,
   markerArgStart,
   markerOpensAt,
+  PendingMarkerId,
   VIRGIL_MARKERS,
 } from "@/lib/latex-markers";
+import { matchCiteCommandAt } from "@/lib/cite-commands";
 import {
   matchAccent,
   matchSpecialLetter,
@@ -27,9 +29,8 @@ import {
 import {
   findMatchingBrace,
   hasVerbatimMark,
-  isEscaped,
-  findUnescaped,
   matchCommandToken,
+  matchInlineMathAt,
   matchInlineVerbAt,
   verbatimMark,
 } from "@/lib/latex-lexer";
@@ -463,9 +464,10 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
   const nodes: JSONContent[] = [];
   let i = 0;
   let buffer = "";
-  // `\vcid{uuid}` marker stashes a stable citationId for the next cite.
-  // Footnotes don't nest, so `\vfid` isn't handled in this inline parser.
-  let pendingCitationId: string | null = null;
+  // `\vcid{uuid}` marker stashes a stable citationId for the cite that starts
+  // where the marker ends — and for nothing else (task 341; see
+  // `PendingMarkerId`). Footnotes don't nest, so `\vfid` isn't handled here.
+  const pendingCitationId = new PendingMarkerId();
 
   const flush = () => {
     if (buffer) {
@@ -504,13 +506,21 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
       }
     }
 
-    // Inline math: $...$
-    if (text[i] === "$" && !isEscaped(text, i)) {
-      const end = findUnescaped(text, "$", i + 1);
-      if (end !== -1) {
+    // Inline math — `$…$`, `$$…$$`, `\[…\]`, `\(…\)`. Read through the lexer's
+    // `matchInlineMathAt`, the same scanner the main inline parser calls, at
+    // the same position in the branch order (task 341). This fork knew `$…$`
+    // and nothing else, so `\(x^2\)` / `$$E=mc^2$$` / `\[x^2\]` in a footnote
+    // or card body fell through to the PROSE buffer and were char-escaped —
+    // `x^2` came back as `x\textasciicircum{}2`, a literal caret in math mode,
+    // so every superscript and subscript in the body was lost in the PDF while
+    // the editor kept showing it correctly (the unescape rung maps the
+    // spelling back on the way in, so the wrong bytes on disk never surface).
+    {
+      const math = matchInlineMathAt(text, i);
+      if (math) {
         flush();
-        nodes.push({ type: "inlineMath", attrs: { latex: text.slice(i + 1, end) } });
-        i = end + 1;
+        nodes.push({ type: "inlineMath", attrs: { latex: math.latex } });
+        i = math.end;
         continue;
       }
     }
@@ -572,49 +582,37 @@ function parseInlineLatex(text: string, inCode = false): JSONContent[] {
         const open = markerArgStart(i, VIRGIL_MARKERS.citation);
         const closed = findClose(text, open);
         if (closed !== -1) {
-          pendingCitationId = text.slice(open + 1, closed) || null;
+          pendingCitationId.set(text.slice(open + 1, closed) || null, closed + 1);
           i = closed + 1;
           continue;
         }
       }
 
-      // Citation commands: \cite, \citep, \citet, \textcite, \parencite, \cites, etc.
-      const citeMatch = rest.match(/^\\(Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Textcites|Parencites|Autocites|Footcites|Textcite|Parencite|Autocite|Footcite|Cites|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|textcites|parencites|autocites|footcites|textcite|parencite|autocite|footcite|cites|cite)(\*?)/);
-      if (citeMatch) {
-        let pos = i + citeMatch[0].length;
-        let fullCmd = citeMatch[0];
-        // Optional [...] args
-        for (let optCount = 0; optCount < 2 && pos < text.length && text[pos] === "["; optCount++) {
-          const close = text.indexOf("]", pos);
-          if (close !== -1) {
-            fullCmd += text.slice(pos, close + 1);
-            pos = close + 1;
-          } else break;
-        }
-        // {keys} (one or more for biblatex multi-cite)
-        if (pos < text.length && text[pos] === "{") {
-          while (pos < text.length && text[pos] === "{") {
-            const close = findClose(text, pos);
-            if (close === -1) break;
-            fullCmd += text.slice(pos, close + 1);
-            pos = close + 1;
-            const cmdLower = citeMatch[1].toLowerCase();
-            const isMulti = ["cites", "textcites", "parencites", "autocites", "footcites"].includes(cmdLower);
-            if (!isMulti) break;
-          }
-          flush();
-          nodes.push({
-            type: "citation",
-            attrs: {
-              citationId: pendingCitationId || generateShortId(),
-              command: fullCmd,
-              displayText: "",
-            },
-          });
-          pendingCitationId = null;
-          i = pos;
-          continue;
-        }
+      // Citation commands — vocabulary AND `[pre][post]{key}` argument grammar
+      // both from the registry's `matchCiteCommandAt`, the same call the main
+      // inline parser makes (task 341). This branch used to hand-spell 17 of
+      // the registry's 27 names, so ten cite commands (`\fullcite`, `\nocite`,
+      // `\citetitle`, `\citeurl`, `\citedate`, `\smartcite`, `\smartcites`,
+      // `\footfullcite`, `\citenum`, `\citetext`) became grey monospace text
+      // inside a card body while behaving as citations in the document — no
+      // card, no panel row, no `.bib` linkage, and the `\vcid` deleted from the
+      // `.tex` on the next save. It also hand-wrote the multi-cite loop with
+      // the per-key brackets consumed only BEFORE the first key, so
+      // `\footcites[p1][q1]{a}[p2][q2]{jones_21}` — a name it already had —
+      // leaked its tail into prose and had the citekey escaped to `jones\_21`.
+      const cite = matchCiteCommandAt(text, i);
+      if (cite && cite.keyed) {
+        flush();
+        nodes.push({
+          type: "citation",
+          attrs: {
+            citationId: pendingCitationId.take(i) || generateShortId(),
+            command: cite.command,
+            displayText: "",
+          },
+        });
+        i = cite.end;
+        continue;
       }
 
       // \ref{key} / \getref{key} / \getfullref{key} — cross-reference, the

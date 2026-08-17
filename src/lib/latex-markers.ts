@@ -167,3 +167,41 @@ export function markerOpensAt(
 export function markerArgStart(pos: number, m: VirgilMarker): number {
   return pos + m.macro.length;
 }
+
+/**
+ * An id parked by an inline `\vfid{…}` / `\vcid{…}` marker for the atom that
+ * comes next.
+ *
+ * **The id binds to the IMMEDIATELY following atom, or to nothing** (task 341).
+ * Both inline scanners used to hold a bare `pendingCitationId` that was cleared
+ * only when a citation actually consumed it, so a marker whose atom the scanner
+ * failed to recognize kept its id alive for the rest of the body and handed it
+ * to the NEXT citation instead — two cards resolving to one identity, the later
+ * one now writing its edits into the earlier one's `.bib` entry. That was
+ * routinely reachable in the footnote/card fork, whose cite vocabulary was ten
+ * names short of the registry's, and is reachable in any body by a hand-typed
+ * stray marker.
+ *
+ * Parking the POSITION alongside the id makes the binding structural: a taker
+ * standing anywhere but exactly where the marker left off gets nothing, and an
+ * unclaimed marker is simply dropped — which is right, since it names an atom
+ * that is not there.
+ */
+export class PendingMarkerId {
+  private id: string | null = null;
+  private at = -1;
+
+  /** Park `id` for an atom starting at `pos` (the index just past the marker). */
+  set(id: string | null, pos: number): void {
+    this.id = id;
+    this.at = pos;
+  }
+
+  /** Claim the id for an atom starting at `pos`, or get null. Always clears. */
+  take(pos: number): string | null {
+    const id = this.at === pos ? this.id : null;
+    this.id = null;
+    this.at = -1;
+    return id;
+  }
+}

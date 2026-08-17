@@ -14,6 +14,8 @@
  * - The optional starred suffix is matched outside this list as `(\*?)`.
  */
 
+import { extractBraced } from "@/lib/latex-lexer";
+
 // Canonical (lowercase) base command names that accept the multi-cite
 // `\cmds[pre1][post1]{key1}[pre2][post2]{key2}…` syntax.
 export const MULTI_CITE_NAMES = new Set<string>([
@@ -167,3 +169,89 @@ export const CITE_RE_FULL = new RegExp(
 export const CITE_RE_BARE = new RegExp(
   `\\\\(${NAMES_ALT})(\\*?)$`
 );
+
+// ---------------------------------------------------------------------------
+// The ANCHORED matcher — vocabulary AND argument grammar, in one operation.
+// ---------------------------------------------------------------------------
+
+export interface CiteCommandMatch {
+  /** Canonical (lowercased) base name, e.g. `footcites`. */
+  name: string;
+  /** The full consumed spelling: `\Name*` + every `[opt]` and `{key}` group. */
+  command: string;
+  /** Index just past the consumed spelling. */
+  end: number;
+  /**
+   * Did a mandatory `{key}` group appear? `false` means the bytes named a cite
+   * command and gave it no key — the caller must NOT build a citation node.
+   * The two callers keep their own (byte-equivalent) fallthrough for that case.
+   */
+  keyed: boolean;
+}
+
+/**
+ * **THE cite-command scanner.** Does a citation command open at `start`?
+ * Returns its canonical name, full consumed spelling and end index, or null.
+ *
+ * Publishing the whole OPERATION rather than only the name regex is the point
+ * (task 341). Both inline parsers already agreed that a cite command's argument
+ * shape is `\name*` + up to two `[opt]` groups + `{key}` — and for the biblatex
+ * PLURAL forms, that whole `[pre][post]{key}` unit REPEATED. The main parser
+ * implemented the repetition; the footnote/card fork hand-wrote a loop that
+ * consumed brackets only before the FIRST key, so
+ * `\footcites[p1][q1]{alpha}[p2][q2]{jones_21}` in a card body captured one
+ * group, let the tail fall through to prose, and char-escaped the citekey to
+ * `\{jones\_21\}` on the way back out to disk. Sharing the NAME list alone
+ * would not have closed that — `\footcites` is a name the fork already had.
+ *
+ * Escape-aware brace matching comes from the lexer, so a `\}` inside a key
+ * group cannot end it early.
+ */
+export function matchCiteCommandAt(
+  text: string,
+  start: number,
+): CiteCommandMatch | null {
+  if (text[start] !== "\\") return null;
+  const head = text.slice(start).match(CITE_NAMES_RE_INLINE);
+  if (!head) return null;
+
+  const name = head[1].toLowerCase();
+  const multi = MULTI_CITE_NAMES.has(name);
+  let command = head[0];
+  let pos = start + head[0].length;
+  let keyed = false;
+
+  // One iteration per `[pre][post]{key}` unit. A singular command takes exactly
+  // one; a plural takes as many as follow. Anything the unit does not match
+  // ends the command and is left for the caller.
+  for (;;) {
+    const unitStart = pos;
+    let brackets = "";
+    for (let n = 0; n < 2 && text[pos] === "["; n++) {
+      const close = text.indexOf("]", pos);
+      if (close === -1) break;
+      brackets += text.slice(pos, close + 1);
+      pos = close + 1;
+    }
+    if (text[pos] !== "{") {
+      // Optional args with no key after them are not ours — give them back so
+      // the caller sees the command exactly as far as it is well-formed.
+      pos = unitStart;
+      break;
+    }
+    const inner = extractBraced(text, pos);
+    if (inner === null) {
+      pos = unitStart;
+      break;
+    }
+    command += brackets + "{" + inner.content + "}";
+    pos = inner.end;
+    keyed = true;
+    if (!multi) break;
+  }
+
+  // On `!keyed` nothing was appended and `pos` was restored, so `command` is
+  // the bare head and `end` sits just past it: the caller gets back exactly the
+  // bytes that are well-formed and keeps the rest as prose.
+  return { name, command, end: pos, keyed };
+}

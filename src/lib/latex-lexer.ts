@@ -200,6 +200,73 @@ export function matchInlineVerbAt(text: string, i: number): number {
   return closeIdx + 1;
 }
 
+/**
+ * The four inline math delimiter pairs, longest-opener-first. `$$` MUST precede
+ * `$` or a display run opens an empty inline atom on its own second `$`.
+ *
+ * `trim` mirrors the main parser's long-standing per-form behaviour: the
+ * backslash forms trim their payload, the dollar forms do not. It is data here
+ * rather than a branch so the two inline scanners cannot disagree about it.
+ */
+const INLINE_MATH_DELIMS: readonly { open: string; close: string; trim: boolean }[] = [
+  { open: "$$", close: "$$", trim: false },
+  { open: "$", close: "$", trim: false },
+  { open: "\\[", close: "\\]", trim: true },
+  { open: "\\(", close: "\\)", trim: true },
+];
+
+export interface InlineMathMatch {
+  /** The payload between the delimiters (trimmed for the backslash forms). */
+  latex: string;
+  /** Index just past the closing delimiter. */
+  end: number;
+}
+
+/**
+ * **THE inline-math vocabulary.** Does an inline math run open at `start`?
+ * Returns its payload + the index to continue from, or null.
+ *
+ * Shared by BOTH inline parsers — the main one in `latex-parser.ts` and the
+ * footnote/card fork in `footnote-content.ts` — the same way
+ * {@link matchInlineVerbAt} is (task 341). Before that the fork knew `$…$` and
+ * nothing else, so `\(x^2\)` / `$$E=mc^2$$` inside a footnote or card body fell
+ * through to the PROSE buffer and were char-escaped: `^` became
+ * `\textasciicircum{}`, which in math mode typesets a literal caret, so every
+ * superscript and subscript in the body was silently lost in the PDF. The
+ * damage was invisible in the editor, because the fork's unescape rung mapped
+ * the spelling back to `^` on the way in — the file on disk stayed wrong
+ * forever while the footnote kept looking right.
+ *
+ * Math content is LITERAL and must never reach the dash/accent/quote buffer
+ * (memo §A "Critical exclusions"), which is the whole reason a delimiter this
+ * scanner does not know is worse than one it refuses.
+ *
+ * The close search runs through {@link findUnescaped} for every form, so a `\\`
+ * line break immediately before a literal `]`/`)`/`$` cannot close the run
+ * early (task 210's parity rule, now stated once for all four pairs).
+ */
+export function matchInlineMathAt(
+  text: string,
+  start: number,
+): InlineMathMatch | null {
+  const ch = text[start];
+  if (ch !== "$" && ch !== "\\") return null;
+  for (const d of INLINE_MATH_DELIMS) {
+    if (!text.startsWith(d.open, start)) continue;
+    // A `$` preceded by an ODD backslash run is an escaped literal dollar, not
+    // a delimiter. (The backslash forms ARE the backslash, so the test only
+    // makes sense for the dollar pair — `isEscaped` at a `\[` would ask about
+    // the backslash before the backslash.)
+    if (d.open[0] === "$" && isEscaped(text, start)) return null;
+    const payloadStart = start + d.open.length;
+    const closeIdx = findUnescaped(text, d.close, payloadStart);
+    if (closeIdx === -1) continue;
+    const raw = text.slice(payloadStart, closeIdx);
+    return { latex: d.trim ? raw.trim() : raw, end: closeIdx + d.close.length };
+  }
+  return null;
+}
+
 export interface ProjectLiveLatexOptions {
   /** Verbatim-family environments whose CONTENTS are dropped. Default: the
    *  NARROW family (`verbatim`/`verbatim*`). */
