@@ -1,4 +1,4 @@
-<!-- last-verified: ef13712e 2026-08-11 -->
+<!-- last-verified: 0e081a07 2026-08-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: editor/skills/reflect.md, editor/AGENTS.md, library/scripts/skill-bundle-template/CLAUDE.md -->
 
@@ -40,6 +40,23 @@ label.
   the user finds it when browsing that paper.
 - A **library memo** is *about the indexing pipeline* and lives in the library —
   the pipeline's home.
+
+## A stale bundle silently disables the reflection stream
+
+Reflections reach the dev-loop only if the paper folder's **synced skill bundle**
+is current. It used to refresh only on a doc-open in the Virgil app, so a busy
+paper worked on entirely from the terminal could run for weeks on an old bundle —
+capture simply didn't exist there, and nothing said so. In DEV mode
+(`VIRGIL_DEV=1`) a session therefore starts by checking:
+
+```
+python3 .virgil/scripts/editor/sync_skills.py --check
+```
+
+Exit 0 (fresh) or 2 (offline) → continue; exit 1 (stale) → run it without
+`--check`, then continue. A session is **never blocked** on this. Scripts go live
+immediately; changed command prompts load on the next session, so a refresh is
+worth mentioning in the first reply. With `VIRGIL_DEV` unset, skip it entirely.
 
 ## Memos vs. reports
 

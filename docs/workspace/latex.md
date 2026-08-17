@@ -1,4 +1,4 @@
-<!-- last-verified: baf05ee5 2026-08-15 -->
+<!-- last-verified: 0e081a07 2026-08-17 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-typography.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -79,6 +79,16 @@ byte-faithful even when Virgil doesn't model it:
 **Operational consequence:** you can leave LaTeX Virgil doesn't model untouched
 and trust it to round-trip. But text inside a grey `latexCommand` block is opaque
 — Virgil won't structure it, so don't expect to anchor a Card mid-table.
+
+**Nested constructs are skipped, not split** (task 338). One vocabulary —
+`skipOpaqueConstructAt` in `src/lib/latex-lexer.ts` — answers "what is opaque to
+this scan?" for every body splitter and every environment terminator: any
+`\begin{env}`, the two expex pairs (`\begingl…\endgl`, `\xlist`), and an inline
+`\verb` run, with `%` comments respected. So an `\item` at the head of a line
+inside a nested environment, or a literal `\a` inside a `verbatim` body nested in
+an example, no longer splits the enclosing construct. An **unterminated** opener
+is treated as transparent past its own token rather than swallowing to EOF — a
+truncated `\begin{…}` degrades locally instead of eating the rest of the file.
 
 ## Serialization and escaping
 
