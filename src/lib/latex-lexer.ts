@@ -609,11 +609,16 @@ export function projectLiveLatex(
  *
  * This is one named door rather than a spelled-out option bag at each call
  * site, because "which bytes count as live for a detector?" is a single
- * question that several layers must answer identically — the requirements
- * side (`detectBodyRequirements` / `ensurePreambleRequirements`'s satisfaction
- * test) and the bib-family side (`detectBibFamily`). Before task 344 the bib
- * detector answered it with the RAW `.tex`, so a commented-out
- * `% \usepackage{biblatex}` outranked a live `\usepackage{natbib}`.
+ * question that several layers must answer identically. THREE layers ask it:
+ * the requirements side (`detectBodyRequirements` /
+ * `ensurePreambleRequirements`'s satisfaction test), the bib-family side
+ * (`detectBibFamily`), and — since task 345 — the serializer's own
+ * raw-passthrough declaration (`declareFromRawLatex`, the one emit-site
+ * requirement that SCANS user bytes rather than reading Virgil's own emit).
+ * Before task 344 the bib detector answered it with the RAW `.tex`, so a
+ * commented-out `% \usepackage{biblatex}` outranked a live
+ * `\usepackage{natbib}`; before 345 the raw-passthrough declaration did the
+ * same for `\includegraphics` / tikz / expex.
  *
  * The family stays NARROW deliberately (the P3 design fork F1): the
  * requirements pass injects `\usepackage` lines off this projection, so
@@ -623,6 +628,15 @@ export function projectLiveLatex(
  * left live for byte-compatibility with the pre-consolidation implementation.
  * Both are stated residuals, not oversights: a `\verb|\usepackage{biblatex}|`
  * still reads as a live load.
+ *
+ * A third residual, and the one 345 made load-bearing: the comment-tail strip
+ * runs on the visible span REGARDLESS of `inlineVerb`, so a raw `%` inside a
+ * `\verb|100%|` or a hyperref `\url{…a%20b}` truncates the rest of that LINE.
+ * Every reader now shares that, so nothing rescues an over-strip: a live
+ * `\includegraphics` sharing such a line goes undeclared. That is the safe
+ * direction — a missing `\usepackage` is a loud compile error, where the
+ * over-declaration it replaced silently broke a compiling paper — but it is a
+ * behaviour, not an accident.
  */
 export function projectDetectableLatex(src: string): string {
   return projectLiveLatex(src, { envs: VERBATIM_ENVS_NARROW });

@@ -837,6 +837,99 @@ properly means the effect riding the explicit `setBibPackage` EVENT instead of a
 "read the DEVICE, not the derived change" rule, one subsystem over), which is a change to the
 citation-command pipeline rather than to this one.
 
+##### …and the same detector rule had a THIRD reader, sitting inside the emitter
+
+Same rule, one layer down (task 345). 344's law — *a detector believes only the bytes the
+compiler would* — was applied to the two detectors that look like detectors. It missed the one
+that does not: `declareFromRawLatex` ([latex-serializer.ts](src/lib/latex-serializer.ts)), the
+P4 "requirements by emission" declaration for a **raw-passthrough** block. Every other `need()`
+site in that file declares from the NODE MODEL — the serializer knows an `exampleBlock` emits
+`\ex`, a gloss `\begingl`, a `graphicsBlock` an `\includegraphics` — and so searches for
+nothing. A `texBlock`'s `code` and a `figureBlock`'s `extras` are the only inputs that reach a
+declaration where the emitter has no idea what the bytes mean, so it has to SCAN them. It
+scanned the RAW string.
+
+> **A requirement declared by SCANNING bytes is a DETECTION wherever it sits, so it projects.
+> A declaration read off the node model is exempt — the line is not "did a regex touch user
+> bytes" but "is a regex SEARCHING user bytes for a package's vocabulary".**
+
+That distinction is drawn where it is because the looser one has a counterexample in the same
+file: the `textColor` mark validates a user-authored hex with `/^[0-9A-F]{6}$/` and then declares
+xcolor beside the `\textcolor[HTML]{…}` it is itself about to write. A regex runs over something
+the user wrote, and projecting a hex colour would be nonsense — it shapes bytes the emitter
+emits, it does not search them.
+
+Because `assembleLatex` UNIONs declared with detected ("the two never subtract"), the
+unprojected half always won: a commented-out `\includegraphics` in a figure's `extras` injected
+`\usepackage{graphicx}`, and a paragraph EXPLAINING expex inside a `\begin{verbatim}` wrote a
+`\newenvironment{xlist}` macro into the user's preamble on the strength of prose. Injecting a
+package a document never runs can break a previously compiling paper — which is the reason the
+requirements side has projected since P4, in a comment directly above the vocabulary the
+non-projecting half was already importing from. Case D is the everyday one: commenting an old
+figure path out while trying a new one is ordinary editing, and a raw-passthrough block is
+precisely where a user parks LaTeX they are *not* running.
+
+Three rules it earned:
+
+- **The projection lives INSIDE the declaration, not at its two call sites**, so a third caller
+  cannot forget it and there is no second spelling of "inert" for the two halves to drift on.
+  It spells `projectDetectableLatex` — the named door, never an option bag (344's rule).
+- **The vocabulary was forked too, and that was the deeper half.** `TIKZ_RE` was shared and the
+  other four regexes were hand-copied between `declareFromRawLatex` and `BODY_DETECTORS`,
+  byte-for-byte, while the collector's own header described the shared-predicate design the
+  copies had already half escaped. `PACKAGE_DETECTORS`
+  ([latex-requirement-collector.ts](src/lib/latex-requirement-collector.ts)) is now the one
+  table both read. Byte-neutral when it landed — the regexes were identical — which is exactly
+  why it needed doing before the next vocabulary change landed in one half only.
+- **A "declares nothing" leg needs a live CONTROL somewhere**, or it passes when the vocabulary
+  is simply broken. And the injected-bytes probe needs a BARE preamble: `CLASSIC_PREAMBLE`
+  already ships graphicx / xcolor / natbib / expex, and `xcolor` is on `ALWAYS_REQUIRED_IDS`, so
+  against the default seed "did this inject a package?" has no observable answer at all — the
+  per-member sweep reads `serializeTopLevelBlock(...).requirementIds` instead.
+- **"Declared from the node model" is a claim about the MECHANISM, not a promise that the bytes
+  are live.** `graphicsBlock` is the near miss worth knowing, because it is the shape the next
+  member of this class will have: it declares graphicx off its node TYPE while its whole payload
+  is one free-form `command` attr that `applyGraphicsCommandEdit` stores verbatim when it can't
+  parse it, so a commented-out command still declares. Left alone deliberately — fail-open is
+  the right direction for a node whose type says what it is, graphicx is in
+  `VIRGIL_BASELINE_PACKAGES` so the over-declaration is unobservable, and a commented command
+  stops being a `graphicsBlock` on the next parse anyway.
+- **A needle that rides on another needle's evidence is unfalsifiable.** The census's first cut
+  asserted "at least N−1 of the needles fire in the collector", which absorbs exactly one
+  silently-broken needle — and the tikz needle matches nothing outside the collector (it was the
+  one member already shared), so that leg was its ONLY evidence anywhere. The liveness assertion
+  is exact now, and the canary spells all five shapes rather than two.
+
+**Residuals, stated rather than implied.** The projection is inherited WHOLE, including the
+door's own over-strip — a raw `%` inside a `\verb|100%|` or a `\url{…a%20b}` truncates the rest
+of that line — and since both readers now project, nothing rescues it: a live `\includegraphics`
+sharing such a line goes undeclared. The failure direction flips from over-injection (which
+silently breaks a compiling paper) to under-injection (a loud `Undefined control sequence`),
+which is the better trade and not a free one. The projection is also stateful over the string it
+is GIVEN, so a `code` beginning mid-verbatim reads LIVE here and INERT in the whole-body
+detector — per-block isolation, the conservative direction. And the class has known-open members
+this task deliberately did not close, so the section does not read as drained: the **preamble
+boundary** is still resolved by a raw `indexOf("\begin{document}")` at five sites (including
+`injectPreambleRequirements` itself, whose splice would *un-comment* an inert
+`% \begin{document}` and write a non-compiling `.tex`), which needs an offset-preserving
+`firstLiveIndexOf` rather than this projection — `document-class.ts`'s private
+`isLiveDocumentClass` is the shape; `StyleApplyDialog.diffPreambles` counts commented-out
+packages as things a style swap will destroy; and `compile-service`'s `hasBiblatex` probe scans
+unprojected while its own neighbour `reference-resolution.ts` projects.
+
+CI: [raw-passthrough-declaration.test.ts](src/lib/__tests__/raw-passthrough-declaration.test.ts)
+— fixtures A/B/D through the REAL `serializeToLatex` with two live controls, plus a per-member
+sweep (driven FROM `PACKAGE_DETECTORS`, so a new package is covered by declaration alone, and
+supplying the live half for the ids the fixtures don't control) asserting the declaration and
+the projected detector agree on the same raw bytes in both the comment and verbatim shapes. The
+leg with teeth is the CENSUS, swept over BOTH silos: the declaration function was never the part
+that could misbehave — a caller handing it raw bytes is, and so is a SECOND scanner spelling its
+own copy of the vocabulary, which is invisible to every behavioural test of this function.
+Measured, that sweep needs no allowlist — 763 production files, one hit, the collector. Measured
+by neutering each half in turn: dropping the projection takes 5 legs, re-forking the vocabulary
+WITH a drifted member 2 (a byte-identical re-fork trips only the census, which is the point),
+and hoisting the projection to the call sites 1 — behaviour identical, rule broken.
+
 ### The field half: a context field is a promise that some `run()` consults it
 
 Same law, third tense (task 227). The export census above asks whether a published symbol is CALLED and structurally **cannot** see a declared field that is written but never read — so `ActionContext` accumulated three of them.
