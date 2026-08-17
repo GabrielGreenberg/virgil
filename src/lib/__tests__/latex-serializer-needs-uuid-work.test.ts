@@ -14,6 +14,7 @@ import { describe, it, expect } from "vitest";
 import type { JSONContent } from "@tiptap/react";
 import { assignUuids, needsUuidWork } from "@/lib/latex-serializer";
 import { parseLatex } from "@/lib/latex-parser";
+import { UUID_BEARING_NODE_TYPES } from "@/lib/node-attr-sets";
 
 function mutatesUnderAssign(doc: JSONContent): boolean {
   const copy = JSON.parse(JSON.stringify(doc)) as JSONContent;
@@ -132,4 +133,27 @@ describe("needsUuidWork ⇔ assignUuids mutation", () => {
     expect(needsUuidWork(doc)).toBe(false);
     check("clean synthetic", doc);
   });
+
+  // Task 343. The equivalence above was pinned over HAND-WRITTEN fixtures, so
+  // it could only speak for the node types someone had thought to write down —
+  // and both sides carried their own list of seven, which agreed with each
+  // other and disagreed with the schema. `texBlock` and `exampleItem` were
+  // missing from both: uuid-less, the predicate said "no work", the mutator
+  // never ran, and the serializer emitted `%!vtex:begin ` with an EMPTY id,
+  // which the parser cannot match — the block came back as prose with its raw
+  // LaTeX mangled by smart typography.
+  //
+  // So the sweep is driven FROM the SSOT rather than from fixtures: a new
+  // uuid-bearing node type is covered by declaration alone, on the one property
+  // that matters here — whatever the mutator would heal, the gate must let
+  // through.
+  it.each([...UUID_BEARING_NODE_TYPES].sort())(
+    "a uuid-less %s is seen by the predicate exactly as the mutator sees it",
+    (type) => {
+      // A child so container/list branches take their real path rather than
+      // bailing on an empty node.
+      const node: JSONContent = { type, content: [{ type: "paragraph" }] };
+      check(`uuid-less ${type}`, { type: "doc", content: [node] });
+    },
+  );
 });
