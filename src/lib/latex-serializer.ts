@@ -28,13 +28,14 @@ import {
   hasVerbatimMark,
   hasCommentTailMark,
   isEscaped,
+  projectDetectableLatex,
   wrapVerbatimEnvBody,
 } from "@/lib/latex-lexer";
 import type { BibFamily, BibFamilyConflict } from "@/lib/bib-family";
 import { classifyCiteFamily } from "@/lib/bib-family";
 import {
   createRequirementCollector,
-  TIKZ_RE,
+  PACKAGE_DETECTORS,
   type RequirementCollector,
 } from "@/lib/latex-requirement-collector";
 
@@ -62,22 +63,36 @@ function needBibFamily(fam: BibFamily | null): void {
   activeCollector?.needBibFamily(fam);
 }
 
-/** Run the shared tikz/bib/expex/graphicx vocabulary over a raw-passthrough
- *  block's OWN bytes (texBlock code, figure extras) and declare accordingly —
- *  co-locating even raw-passthrough detection with its emitter. */
+/**
+ * Run the shared package vocabulary over a raw-passthrough block's OWN bytes
+ * (texBlock code, figure extras) and declare accordingly — co-locating even
+ * raw-passthrough detection with its emitter.
+ *
+ * This is the ONE emit-site declaration that SCANS user-authored bytes rather
+ * than reading Virgil's own emit, so it is a DETECTOR, and a detector believes
+ * only LIVE bytes (task 345). It therefore projects through the same named door
+ * its sibling `detectBodyRequirements` uses — `projectDetectableLatex`, the
+ * NARROW verbatim family — so declaration and detection cannot disagree about
+ * what "inert" means. Before this, the two were asked the same question about
+ * the same vocabulary from opposite premises, and since `assembleLatex` UNIONs
+ * them ("the two never subtract") the unprojected declaration always won: a
+ * commented-out `\includegraphics` in a figure's `extras` injected
+ * `\usepackage{graphicx}`, and a paragraph EXPLAINING expex inside a
+ * `\begin{verbatim}` wrote a `\newenvironment{xlist}` macro into the user's
+ * preamble. Injecting packages a document never runs can break a previously
+ * compiling paper, which is the reason the requirements side has projected
+ * since P4.
+ *
+ * The projection lives INSIDE this function rather than at its two call sites,
+ * so a third caller cannot forget it, and there is no second spelling of
+ * "inert" for the two to drift apart on.
+ */
 function declareFromRawLatex(raw: string): void {
   if (!raw) return;
-  if (TIKZ_RE.test(raw)) need("tikz");
-  if (/\\includegraphics(?![a-zA-Z])/.test(raw)) need("graphicx");
-  if (/\\textcolor(?![a-zA-Z])/.test(raw)) need("xcolor");
-  if (
-    /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z])|\\begin\{xlist\}/.test(
-      raw,
-    )
-  ) {
-    need("expex");
+  const live = projectDetectableLatex(raw);
+  for (const d of PACKAGE_DETECTORS) {
+    if (d.re.test(live)) need(d.id);
   }
-  if (/\\begin\{xlist\}/.test(raw)) need("xlistenv");
 }
 
 // -----------------------------------------------------------------------------
@@ -490,7 +505,8 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // Raw passthrough is unmodeled: run the shared vocabulary over its OWN
       // bytes so tikz/graphicx/xcolor/expex used inside a texBlock declare
       // their package at the emit-site (co-located with the fallback detector's
-      // vocabulary, so declared and detected can't diverge).
+      // vocabulary AND its inertness projection, so declared and detected can't
+      // diverge — the projection is inside `declareFromRawLatex`, never here).
       declareFromRawLatex(rawCode);
       const escaped = rawCode.replace(/%!vtex:end/g, "%!v tex:end");
       return `%!vtex:begin ${uuid}\n${escaped}\n%!vtex:end ${uuid}\n\n`;
@@ -508,7 +524,10 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const label = (node.attrs?.label as string) ?? "";
       const extras = ((node.attrs?.extras as string) ?? "").replace(/\s+$/, "");
       // `extras` is raw passthrough (\includegraphics, TikZ, pgfplots) — run the
-      // shared vocabulary over it so its packages declare at the emit-site.
+      // shared vocabulary over it so its packages declare at the emit-site. Its
+      // COMMENTED-OUT lines declare nothing: commenting an old figure path out
+      // while trying a new one is ordinary editing, and the projection inside
+      // `declareFromRawLatex` is what makes that true.
       declareFromRawLatex(extras);
       const captionChild = (node.content || []).find(
         (c) => c.type === "figureCaption",

@@ -22,9 +22,10 @@
  * can only ever be a superset-improvement over the old detector — which is
  * what keeps the change byte-stable for existing docs.
  *
- * The shared vocabulary predicates (`TIKZ_RE`) live HERE and are imported by
- * BOTH the co-located emit-site declarations and the fallback detector, so the
- * two layers call the SAME predicate and can never diverge.
+ * The shared vocabulary predicates (`PACKAGE_DETECTORS`, and `TIKZ_RE` inside
+ * it) live HERE and are imported by BOTH the co-located emit-site declarations
+ * and the fallback detector, so the two layers call the SAME predicates and can
+ * never diverge.
  */
 
 import type { BibFamily } from "@/lib/bib-family";
@@ -38,14 +39,58 @@ import type { BibFamily } from "@/lib/bib-family";
  *
  * `\tikz(?![a-zA-Z])` boundary-guards the inline form so `\tikzstyle` etc. are
  * not double-counted as a bare `\tikz` (they still legitimately need tikz, so
- * the match is harmless either way — the guard is for cleanliness). The
- * pattern runs ONLY over texBlock/figure raw bytes for the co-located
- * declaration and over the projected body for the fallback, so the `\begin{axis}`
- * false-positive risk (a non-pgf `axis` env) is bounded to raw-passthrough
- * content the user typed as LaTeX.
+ * the match is harmless either way — the guard is for cleanliness). Both
+ * readers run it over the INERT-STRIPPED projection (the co-located
+ * declaration over a texBlock/figure's projected raw bytes, the fallback over
+ * the projected body), so the `\begin{axis}` false-positive risk (a non-pgf
+ * `axis` env) is bounded to live LaTeX the user typed.
  */
 export const TIKZ_RE =
   /\\begin\{tikzpicture\}|\\begin\{tikzcd\}|\\tikz(?![a-zA-Z])|\\begin\{axis\}|\\usepackage(?:\[[^\]]*\])?\{[^}]*pgfplots[^}]*\}|\\begin\{pgfplots[^}]*\}/;
+
+/**
+ * The package vocabulary a byte-SCAN answers with: `{ id, re }` per package
+ * requirement, run against LaTeX source to ask "does this text use it?".
+ *
+ * ONE table, two readers, because there are exactly two byte-scanning
+ * detectors and they answer the same question about the same vocabulary:
+ *
+ *  - `detectBodyRequirements` (latex-requirements.ts) — the after-the-fact
+ *    FALLBACK over the whole serialized body;
+ *  - `declareFromRawLatex` (latex-serializer.ts) — the emit-site declaration
+ *    for a raw-passthrough block (a `texBlock`'s `code`, a `figureBlock`'s
+ *    `extras`), the one input class where the emitter cannot know what the
+ *    bytes mean and so has to scan them.
+ *
+ * Before task 345 only `TIKZ_RE` was shared and the other four regexes were
+ * hand-copied between the two, byte-for-byte — the P4 collector header above
+ * describes the shared-predicate design that the copies had already half
+ * escaped. The regexes were identical when they were unified, so the move is
+ * byte-neutral; what it buys is that the next vocabulary change cannot land in
+ * one half only.
+ *
+ * NOTE the OTHER half of the same law, which lives at each reader rather than
+ * here: a byte SCAN is a detection, so it believes only bytes the compiler
+ * would — both readers project through `projectDetectableLatex` first. A
+ * requirement declared from Virgil's OWN emit (the serializer knows it is
+ * writing `\ex`, `\begingl`, `\includegraphics`) scans nothing and needs no
+ * projection; those `need()` sites do not read this table.
+ */
+export const PACKAGE_DETECTORS: ReadonlyArray<{
+  readonly id: string;
+  readonly re: RegExp;
+}> = [
+  {
+    id: "expex",
+    re: /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z])|\\begin\{xlist\}/,
+  },
+  // A nested example tier needs the `xlist` environment defined (see the
+  // `xlistenv` requirement); expex itself does not provide it.
+  { id: "xlistenv", re: /\\begin\{xlist\}/ },
+  { id: "graphicx", re: /\\includegraphics(?![a-zA-Z])/ },
+  { id: "tikz", re: TIKZ_RE },
+  { id: "xcolor", re: /\\textcolor(?![a-zA-Z])/ },
+];
 
 /**
  * A per-serialize requirement collector. Mutable set-wrapper: emit-sites push

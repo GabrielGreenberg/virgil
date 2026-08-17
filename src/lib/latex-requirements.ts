@@ -34,7 +34,7 @@ import {
   type BibFamily,
   type BibFamilyConflict,
 } from "@/lib/bib-family";
-import { TIKZ_RE } from "@/lib/latex-requirement-collector";
+import { PACKAGE_DETECTORS } from "@/lib/latex-requirement-collector";
 import { VIRGIL_MARKER_COMMANDS } from "@/lib/latex-markers";
 
 export type LatexRequirementKind = "package" | "shim";
@@ -149,22 +149,14 @@ const ALWAYS_REQUIRED_IDS: string[] = [
 // verbatim environments) must be projected away first; see
 // `projectDetectableBody` below. The `(?![a-zA-Z])` guard stops `\ex`
 // matching `\example` etc. (LaTeX command names are letters only).
-const BODY_DETECTORS: Array<{ id: string; re: RegExp }> = [
-  {
-    id: "expex",
-    re: /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z])|\\begin\{xlist\}/,
-  },
-  // A nested example tier needs the `xlist` environment defined (see the
-  // `xlistenv` requirement); expex itself does not provide it.
-  { id: "xlistenv", re: /\\begin\{xlist\}/ },
-  { id: "graphicx", re: /\\includegraphics(?![a-zA-Z])/ },
-  // Broadened, shared tikz vocabulary (tikzpicture | tikzcd | \tikz inline |
-  // pgfplots | \begin{axis}) — the SAME predicate the emit-site declarations
-  // use (latex-requirement-collector.ts), so the fallback detector and the
-  // co-located declaration can never diverge.
-  { id: "tikz", re: TIKZ_RE },
-  { id: "xcolor", re: /\\textcolor(?![a-zA-Z])/ },
-];
+//
+// The vocabulary itself is the SHARED `PACKAGE_DETECTORS` table
+// (latex-requirement-collector.ts) — the same one the serializer's
+// raw-passthrough declaration scans with, so the fallback detector and the
+// co-located declaration can never disagree about what a package's bytes look
+// like (task 345; before it only `TIKZ_RE` was shared and the other four were
+// hand-copied here).
+const BODY_DETECTORS = PACKAGE_DETECTORS;
 
 /** Alternation over the family's commands + capitalized sentence-start
  *  variants, longest-first (same convention as cite-commands.ts). */

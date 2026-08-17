@@ -837,6 +837,61 @@ properly means the effect riding the explicit `setBibPackage` EVENT instead of a
 "read the DEVICE, not the derived change" rule, one subsystem over), which is a change to the
 citation-command pipeline rather than to this one.
 
+##### …and the same detector rule had a THIRD reader, sitting inside the emitter
+
+Same rule, one layer down (task 345). 344's law — *a detector believes only the bytes the
+compiler would* — was applied to the two detectors that look like detectors. It missed the one
+that does not: `declareFromRawLatex` ([latex-serializer.ts](src/lib/latex-serializer.ts)), the
+P4 "requirements by emission" declaration for a **raw-passthrough** block. Every other `need()`
+site in that file declares from Virgil's OWN emit — the serializer knows it is writing `\ex`,
+`\begingl`, `\includegraphics` — and needs no projection, because those bytes are Virgil's and
+live by construction. A `texBlock`'s `code` and a `figureBlock`'s `extras` are the one input
+class where the emitter has no idea what the bytes mean, so it has to SCAN them. It scanned the
+RAW string.
+
+> **A requirement declared by SCANNING bytes is a DETECTION wherever it sits, so it projects.
+> Only a declaration read off the emitter's own output is exempt — and the line between them is
+> whether a regex is being run over something the user wrote.**
+
+Because `assembleLatex` UNIONs declared with detected ("the two never subtract"), the
+unprojected half always won: a commented-out `\includegraphics` in a figure's `extras` injected
+`\usepackage{graphicx}`, and a paragraph EXPLAINING expex inside a `\begin{verbatim}` wrote a
+`\newenvironment{xlist}` macro into the user's preamble on the strength of prose. Injecting a
+package a document never runs can break a previously compiling paper — which is the reason the
+requirements side has projected since P4, in a comment 30 lines from the code that didn't.
+Case D is the everyday one: commenting an old figure path out while trying a new one is ordinary
+editing, and a raw-passthrough block is precisely where a user parks LaTeX they are *not*
+running.
+
+Three rules it earned:
+
+- **The projection lives INSIDE the declaration, not at its two call sites**, so a third caller
+  cannot forget it and there is no second spelling of "inert" for the two halves to drift on.
+  It spells `projectDetectableLatex` — the named door, never an option bag (344's rule).
+- **The vocabulary was forked too, and that was the deeper half.** `TIKZ_RE` was shared and the
+  other four regexes were hand-copied between `declareFromRawLatex` and `BODY_DETECTORS`,
+  byte-for-byte, while the collector's own header described the shared-predicate design the
+  copies had already half escaped. `PACKAGE_DETECTORS`
+  ([latex-requirement-collector.ts](src/lib/latex-requirement-collector.ts)) is now the one
+  table both read. Byte-neutral when it landed — the regexes were identical — which is exactly
+  why it needed doing before the next vocabulary change landed in one half only.
+- **A "declares nothing" leg needs a live CONTROL beside it**, or it passes when the vocabulary
+  is simply broken. And the injected-bytes probe needs a BARE preamble: `CLASSIC_PREAMBLE`
+  already ships graphicx / xcolor / natbib / expex, and `xcolor` is on `ALWAYS_REQUIRED_IDS`, so
+  against the default seed "did this inject a package?" has no observable answer at all — the
+  per-member sweep reads `serializeTopLevelBlock(...).requirementIds` instead.
+
+CI: [raw-passthrough-declaration.test.ts](src/lib/__tests__/raw-passthrough-declaration.test.ts)
+— fixtures A/B/D through the REAL `serializeToLatex` with their controls, plus a per-member
+sweep (driven FROM `PACKAGE_DETECTORS`, so a new package is covered by declaration alone)
+asserting the declaration and the projected detector agree on the same raw bytes in both the
+comment and verbatim shapes. The leg with teeth is the CENSUS: the declaration function was
+never the part that could misbehave — a caller handing it raw bytes is, and so is a SECOND
+scanner spelling its own copy of the vocabulary, which is invisible to every behavioural test of
+this function. Measured by neutering each half in turn: dropping the projection takes 5 legs,
+re-forking the vocabulary 2, and hoisting the projection to the call sites 1 (behaviour
+identical, rule broken).
+
 ### The field half: a context field is a promise that some `run()` consults it
 
 Same law, third tense (task 227). The export census above asks whether a published symbol is CALLED and structurally **cannot** see a declared field that is written but never read — so `ActionContext` accumulated three of them.
