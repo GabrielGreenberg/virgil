@@ -263,6 +263,13 @@ const LITERAL_BY_GLYPH = new Map<string, string>(
 // closing it is an editor-behaviour decision (mark a command span at type time,
 // so bare text is prose by construction), filed as its own task rather than
 // guessed at here.
+//
+// TWO NAMED CASES OF THAT RESIDUAL ARE NOW CLOSED (task 349 M5/M6), and by the
+// other route — not a carrier on the text, but a REPRESENTATION. The `~` tie is
+// the `"glyph"` member below (U+00A0 in the document, `~` on disk), and a bare
+// `{…}` GROUP is recognized by the lexer's `matchBraceGroupAt` and carried on
+// `latexCommand`. What survives is the backslash itself, which has no Unicode
+// counterpart to be represented BY — so it stays exactly as stated above.
 
 export type CharEscapeKind = "escape" | "protect" | "glyph";
 
