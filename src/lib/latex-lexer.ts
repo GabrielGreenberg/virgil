@@ -40,6 +40,7 @@ import {
   matchSpecialLetter,
   isEscaped,
   findUnescaped,
+  matchCharEscapeAt,
 } from "@/lib/latex-typography";
 import { BLOCK_TEX_MARKERS } from "@/lib/latex-markers";
 
@@ -526,6 +527,60 @@ const BLOCK_BOUNDARY_COMMAND_RE = new RegExp(
  */
 export function startsBlockBoundary(text: string): boolean {
   return text.startsWith("\\[") || BLOCK_BOUNDARY_COMMAND_RE.test(text);
+}
+
+/**
+ * A `\\` LINE BREAK and its own argument run at `start`, or null.
+ *
+ * `\\` is a control SYMBOL that takes an optional `*` (no page break here) and
+ * an optional `[<len>]` (extra vertical space) — `\\[2pt]`, `\\*`, `\\*[1ex]`.
+ * Those are the break's arguments, not prose, and before task 349 M4 nothing
+ * modelled them: the `[` fell into the prose buffer, where the escape table's
+ * `protect` member wrapped it as `{[}` and the PDF grew a printed `[2pt]`, and
+ * one step earlier `readParagraph` had already split the paragraph AT the `\[`
+ * and emitted an unterminated display-math opener — a document that no longer
+ * compiles, on OPEN, with no edit by the user.
+ *
+ * `plain` is the whole point of the return shape: a bare `\\` stays the modelled
+ * `hardBreak` node (the shipped behaviour, and what a Shift+Enter produces),
+ * while a break WITH arguments is carried byte-literally, because Virgil does
+ * not model break spacing — 342's rule, *what the system does not model, it
+ * CARRIES*. A modelled `hardBreak` spacing ATTR is the richer treatment and a
+ * schema change across three surfaces; the carrier is what makes the bytes safe
+ * today.
+ *
+ * Deliberately ABUTTING only: LaTeX itself skips spaces before the `*`/`[`, and
+ * reading that wider rule here would swallow a genuinely prose `[` one space
+ * after a break (`Line\\ [note]`) into an argument. The serializer emits a prose
+ * `[` as `{[}` precisely so it cannot be absorbed, so the abutting form is the
+ * only one Virgil's own output can produce — and a hand-written `\\ [note]`
+ * keeps today's reading. Stated as a residual rather than guessed at.
+ *
+ * Lives beside {@link startsBlockBoundary} because the two are the halves of one
+ * question — where a `\\` token ENDS, and whether what follows it begins a new
+ * block — and the M4 defect was the two answering differently.
+ */
+export function matchLineBreakAt(
+  text: string,
+  start: number,
+): { raw: string; end: number; plain: boolean } | null {
+  if (text[start] !== "\\" || text[start + 1] !== "\\") return null;
+  let p = start + 2;
+  let plain = true;
+  if (text[p] === "*") {
+    p++;
+    plain = false;
+  }
+  if (text[p] === "[") {
+    // FAILS CLOSED through the shared scanner: an unterminated `[` answers null
+    // and the break stays bare, which is byte-for-byte today's behaviour.
+    const opt = extractBracketed(text, p);
+    if (opt) {
+      p = opt.end;
+      plain = false;
+    }
+  }
+  return { raw: text.slice(start, p), end: p, plain };
 }
 
 export function startsLineComment(src: string, pos: number): boolean {
@@ -1057,4 +1112,118 @@ export function matchCommandToken(
   const m = src.slice(pos + 1).match(/^[a-zA-Z@]+/);
   if (!m) return null;
   return { name: m[0], end: pos + 1 + m[0].length };
+}
+
+/**
+ * TeX's own ceiling on a macro's arguments (`#1` … `#9`). Used as the bound on
+ * the argument run below — a principled number rather than a guessed one.
+ */
+const MAX_COMMAND_ARGS = 9;
+
+/**
+ * Read a command's whole ARGUMENT RUN starting at `pos`, which must be the index
+ * just past its control-word name (i.e. `matchCommandToken(...).end`).
+ *
+ * Consumes an optional trailing `*` and then every abutting `{…}` / `[…]` group
+ * in WHATEVER ORDER they appear, up to {@link MAX_COMMAND_ARGS} groups. Returns
+ * `{ raw, end }`; `raw` is `""` where the command takes no arguments here.
+ *
+ * WHY IT IS NOT A COUNT OF TWO (task 349 M1–M3). Both inline parsers read the
+ * unknown-`\command` fallback with `[…]` groups consumed only BEFORE the braces
+ * and the braces capped at TWO, so a command's THIRD argument fell out of the
+ * command atom into the prose buffer — where the escape table treats `{`/`}` as
+ * literal characters. Measured through the real save pipeline:
+ *
+ *   `\addcontentsline{toc}{section}{Introduction}`
+ *      → `\addcontentsline{toc}{section}\{Introduction\}`   ToC destroyed, braces PRINT
+ *   `\definecolor{myblue}{rgb}{0.2,0.4,0.8}`
+ *      → `\definecolor{myblue}{rgb}\{0.2,0.4,0.8\}`         two args: COMPILE ERROR
+ *   `\resizebox{3cm}{!}{Some content}`  → same
+ *
+ * and the fixed ORDER was the same defect one axis over: `\newcommand{\x}[1]{…}`
+ * put its `[1]` after a brace, so the bracket loop had already finished and
+ * `[1]` was emitted as `{[}1{]}` — printed text in the PDF.
+ *
+ * Three bounds, so a stray `{` in hand-written source cannot swallow the
+ * document (the failure mode task 338 spent a whole task on):
+ *
+ *  - the group scanners are the SSOT pair (`extractBraced` / `extractBracketed`),
+ *    which FAIL CLOSED on an unbalanced group — the run simply ends there, which
+ *    is byte-for-byte the pre-349 behaviour for that shape;
+ *  - a group whose content spans a BLANK LINE is refused. A paragraph's text is
+ *    all either inline parser is ever handed, so this cannot fire on Virgil's
+ *    own output; it bounds a caller that passes a wider slice;
+ *  - the group count is capped at TeX's own `#1`…`#9`.
+ *
+ * A `{[}` / `{]}` PROTECTION also ends the run, and that rule is asked of
+ * `CHAR_ESCAPE_TABLE` rather than re-spelled (task 339): those braces are prose
+ * that merely ABUTS the command, so breaking here returns control to the
+ * top-of-loop unwrap and `\cmd{[}x{]}` keeps `[x]` as literal prose. The main
+ * parser had this check and the card/footnote fork did not — a pre-existing
+ * divergence this shared door closes on the way past (the task-341 twin rule).
+ */
+export function matchCommandArgumentRun(
+  text: string,
+  pos: number,
+): { raw: string; end: number } {
+  let p = pos;
+  if (text[p] === "*") p++;
+  let groups = 0;
+  while (p < text.length && groups < MAX_COMMAND_ARGS) {
+    const ch = text[p];
+    if (ch !== "{" && ch !== "[") break;
+    // A protected prose bracket group is not an argument — see above.
+    if (ch === "{" && matchCharEscapeAt(text, p)) break;
+    const group =
+      ch === "{" ? extractBraced(text, p) : extractBracketed(text, p);
+    if (!group) break;
+    if (/\n[ \t]*\n/.test(group.content)) break;
+    p = group.end;
+    groups++;
+  }
+  return { raw: text.slice(pos, p), end: p };
+}
+
+/**
+ * A BARE `{…}` GROUP at `pos` — braces that belong to no command (task 349 M6).
+ *
+ * In LaTeX a bare `{a, b}` is a group: it scopes, and it typesets `a, b` with
+ * no braces printed. Virgil has no node for a group, so the braces fell into
+ * the prose buffer and `CHAR_ESCAPE_TABLE`'s `{`/`}` members rewrote them to
+ * `\{`/`\}` — which typesets the braces the source did not print. Same shape as
+ * the tie one table over: a construct with no representation is demoted to
+ * prose, and the escape table then decides its meaning.
+ *
+ * The carrier is 342's, not 347's: a group's braces ARE typeset-relevant (they
+ * scope), so `LATEX_COMMENT_TAIL_MARK`'s promise — *not typeset at all* — is
+ * false for them. The braces ride `latexCommand` ("raw LaTeX the editor doesn't
+ * model") and the CONTENT stays ordinary prose, so `{a, b}` keeps `a, b`
+ * editable instead of greying out the user's words.
+ *
+ * Returns null — leaving today's escape-to-`\{` behaviour in place — unless the
+ * bytes are unambiguously a group. Three bounds, deliberately the ones
+ * {@link matchCommandArgumentRun} already states:
+ *
+ *  - `extractBraced` FAILS CLOSED on an unbalanced group, so a stray `{` in
+ *    hand-written prose can never swallow the rest of the document;
+ *  - a group whose content spans a BLANK LINE is refused (that bounds a caller
+ *    handing over a wider slice than one paragraph);
+ *  - a `{[}` / `{]}` PROTECTION is not a group, and that rule is ASKED of
+ *    `CHAR_ESCAPE_TABLE` rather than re-spelled.
+ *
+ * Note the asymmetry with the escape members it sits beside: `\{` still parses
+ * to a literal `{` in the prose buffer and still re-emits as `\{`, so a brace
+ * the user genuinely means to PRINT is untouched. Only a BARE brace — one the
+ * source already carried as syntax — takes the carrier.
+ */
+export function matchBraceGroupAt(
+  text: string,
+  pos: number,
+): { content: string; end: number } | null {
+  if (text[pos] !== "{" || isEscaped(text, pos)) return null;
+  if (matchCharEscapeAt(text, pos)) return null;
+  const group = extractBraced(text, pos);
+  if (!group) return null;
+  if (/\n[ \t]*\n/.test(group.content)) return null;
+  return group;
 }

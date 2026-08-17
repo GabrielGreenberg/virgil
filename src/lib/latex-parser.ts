@@ -30,6 +30,7 @@ import {
   matchSpecialLetter,
   dashesToGlyphs,
   matchCharEscapeAt,
+  CHAR_ESCAPE_LEADS,
 } from "@/lib/latex-typography";
 import {
   extractBraced,
@@ -40,9 +41,12 @@ import {
   isEscaped,
   findUnescaped,
   matchBeginEnvAt,
+  matchBraceGroupAt,
   matchCommandToken,
+  matchCommandArgumentRun,
   matchInlineMathAt,
   matchInlineVerbAt,
+  matchLineBreakAt,
   skipOpaqueConstructAt,
   unwrapVerbatimEnvBody,
   verbatimMark,
@@ -274,26 +278,61 @@ export function parseInlineContent(
       continue;
     }
 
-    // Protected prose brackets: `{[}` / `{]}` → literal `[` / `]` (task 037's
-    // `$` twin). The serializer wraps a prose `[`/`]` in its own brace group so
-    // it can't be absorbed as a LaTeX optional argument (`\\[len]`,
-    // `\cmd[opt]`); here we unwrap it back to a bare glyph in the buffer, so
-    // adjacent letters stay one text node. Not gated on `inCode`: inline-code
-    // (`\texttt`) prose is escaped the same way and must round-trip
-    // identically. Genuine structural brackets never reach this inline scanner
-    // as the literal triple `{[}` — they live on latexCommand / texBlock /
-    // example paths.
+    // Non-backslash members of `CHAR_ESCAPE_TABLE`: the `{[}` / `{]}` prose
+    // bracket protections (task 037's `$` twin) and the `~` TIE (task 349 M5).
     //
-    // The spellings come from `CHAR_ESCAPE_TABLE` (task 339) — the same table
-    // the serializer's escape rung reads — so the `protect` members cannot
-    // drift from their emit side. Guarded on `{` so this can only ever match a
-    // protection here; the `escape` family is matched from the `\` branch below
-    // at the position it has always been matched, after the command rules.
-    if (text[i] === "{") {
-      const prot = matchCharEscapeAt(text, i);
-      if (prot) {
-        buffer += prot.char;
-        i = prot.end;
+    // The serializer wraps a prose `[`/`]` in its own brace group so it can't
+    // be absorbed as a LaTeX optional argument (`\\[len]`, `\cmd[opt]`); here
+    // we unwrap it back to a bare glyph in the buffer, so adjacent letters stay
+    // one text node. A `~` resolves to U+00A0, the character it MEANS — which
+    // is what keeps it distinguishable from the ASCII tilde `\textasciitilde{}`
+    // un-escapes to two lines further down, and so from being re-escaped into a
+    // printed tilde on the next save.
+    //
+    // Not gated on `inCode`: inline-code (`\texttt`) prose is escaped by the
+    // same rung and must round-trip identically, and a `~` inside `\texttt{a~b}`
+    // is a tie exactly as it is outside one. Genuine structural brackets never
+    // reach this inline scanner as the literal triple `{[}` — they live on
+    // latexCommand / texBlock / example paths.
+    //
+    // The spellings AND the set of positions come from `CHAR_ESCAPE_TABLE`
+    // (task 339 / 349) — the same table the serializer's escape rung reads — so
+    // neither the members nor their reachability can drift from the emit side.
+    // The `\`-led family is matched from the `\` branch below at the position it
+    // has always been matched, after the command rules.
+    if (CHAR_ESCAPE_LEADS.has(text[i])) {
+      const glyph = matchCharEscapeAt(text, i);
+      if (glyph) {
+        buffer += glyph.char;
+        i = glyph.end;
+        continue;
+      }
+    }
+
+    // A BARE `{…}` GROUP → its braces on the raw-LaTeX carrier, its content
+    // parsed as ordinary inline prose (task 349 M6). Reached only after the
+    // protections above have declined, so `{[}` still unwraps to a literal `[`.
+    // The `opts` are passed DOWN rather than reset: these braces are the
+    // SOURCE's own bytes at these positions, so re-emitting the content exactly
+    // as it arrived is what makes the group byte-identical — where a braced
+    // ARGUMENT (below) is a wrapper the serializer fabricates, and a comment
+    // tail inside one would comment out a `}` the source never had.
+    {
+      const group = matchBraceGroupAt(text, i);
+      if (group) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: "{",
+          marks: [{ type: "latexCommand" }],
+        });
+        nodes.push(...parseInlineContent(group.content, inCode, opts));
+        nodes.push({
+          type: "text",
+          text: "}",
+          marks: [{ type: "latexCommand" }],
+        });
+        i = group.end;
         continue;
       }
     }
@@ -673,13 +712,40 @@ export function parseInlineContent(
         continue;
       }
 
-      // \\  -> hard break
-      if (rest.startsWith("\\\\")) {
+      // `\\` -> hard break, and its own ARGUMENT RUN if it has one.
+      //
+      // A bare `\\` is the modelled `hardBreak` node (what Shift+Enter produces,
+      // and what the serializer writes back as `\\\n`). A break carrying `*`
+      // and/or `[<len>]` is carried byte-literally on the raw-LaTeX mark
+      // instead: Virgil does not model break spacing, and before task 349 M4
+      // those bytes were demoted to prose, where the escape table's `protect`
+      // member turned `\\[2pt]` into a printed `[2pt]` and (one step earlier)
+      // `readParagraph` split the paragraph at the `\[` and emitted an
+      // unterminated display-math opener. The token's shape comes from the
+      // lexer's `matchLineBreakAt`, beside the boundary predicate whose
+      // disagreement with it was the defect.
+      //
+      // The trailing newline is deliberately NOT consumed on the carrier path
+      // (unlike the bare-break path, which re-emits its own): a newline left in
+      // the following prose buffer round-trips verbatim, which is what makes the
+      // bytes identical — a paragraph's interior newlines are already carried
+      // that way.
+      const lineBreak = matchLineBreakAt(text, i);
+      if (lineBreak) {
         flush();
-        nodes.push({ type: "hardBreak" });
-        i += 2;
-        // skip optional newline
-        if (i < text.length && text[i] === "\n") i++;
+        if (lineBreak.plain) {
+          nodes.push({ type: "hardBreak" });
+          i = lineBreak.end;
+          // skip optional newline
+          if (i < text.length && text[i] === "\n") i++;
+        } else {
+          nodes.push({
+            type: "text",
+            text: lineBreak.raw,
+            marks: [{ type: "latexCommand" }],
+          });
+          i = lineBreak.end;
+        }
         continue;
       }
 
@@ -712,52 +778,22 @@ export function parseInlineContent(
       const unknownCmd = matchCommandToken(text, i);
       if (unknownCmd) {
         flush();
-        let cmdText = "\\" + unknownCmd.name;
-        i = unknownCmd.end;
-        // Consume optional starred
-        if (i < text.length && text[i] === "*") {
-          cmdText += "*";
-          i++;
-        }
-        // Consume optional [...] args
-        while (i < text.length && text[i] === "[") {
-          const closeBracket = text.indexOf("]", i);
-          if (closeBracket !== -1) {
-            cmdText += text.slice(i, closeBracket + 1);
-            i = closeBracket + 1;
-          } else {
-            break;
-          }
-        }
-        // Consume {braced} args (up to 2) — but NEVER a protected prose
-        // bracket group `{[}`/`{]}` (the `escapeLatex` sentinel for a literal
-        // `[`/`]`). Those are prose that merely ABUTS the command, not an
-        // argument to it: breaking here lets the command atom close and returns
-        // control to the top-of-loop `{[}`→`[` unwrap, so `\cmd{[}x{]}` keeps
-        // `[x]` as literal prose instead of folding `[` into the command.
-        let braceCount = 0;
-        while (i < text.length && text[i] === "{" && braceCount < 2) {
-          // "Is the group at `i` a protection?" is a question about the
-          // vocabulary, so it is asked of `CHAR_ESCAPE_TABLE` rather than
-          // re-spelled here (task 339) — this was the THIRD hand copy of the
-          // `{[}` / `{]}` shape, and a fourth spelling of a protection would
-          // silently fold prose into a command argument again.
-          const prot = matchCharEscapeAt(text, i);
-          if (prot) break;
-          const inner = extractBraced(text, i);
-          if (inner) {
-            cmdText += "{" + inner.content + "}";
-            i = inner.end;
-            braceCount++;
-          } else {
-            break;
-          }
-        }
+        // A command atom carries ALL of its arguments — the `*`, and every
+        // abutting `{…}` / `[…]` group in whatever order, from the lexer's
+        // `matchCommandArgumentRun`. Until task 349 this was a bracket loop
+        // followed by a brace loop capped at TWO, so a third argument fell into
+        // the prose buffer and its braces were escaped as literals:
+        // `\definecolor{myblue}{rgb}{0.2,0.4,0.8}` reached disk with two
+        // arguments and the paper stopped compiling. The bounds, the fail-closed
+        // scanners and the `{[}`-protection rule all live at that door, which
+        // the card/footnote fork reads too (task 341's twin rule).
+        const args = matchCommandArgumentRun(text, unknownCmd.end);
         nodes.push({
           type: "text",
-          text: cmdText,
+          text: "\\" + unknownCmd.name + args.raw,
           marks: [{ type: "latexCommand" }],
         });
+        i = args.end;
         continue;
       }
 
@@ -2205,7 +2241,26 @@ function readParagraph(ctx: ParseContext): string {
       // the enclosing construct actually ends. Reading TeX's wider rule here
       // would re-open exactly the layer disagreement task 338 closed, in the
       // direction that swallows the rest of the document.
-      !inLineComment
+      !inLineComment &&
+      // …and is a REAL control-sequence start. A backslash that is itself
+      // ESCAPED is the second half of a `\\` line break, so what follows it is
+      // that break's business, not a new block's (task 349 M4).
+      //
+      // This is the off-by-one that destroyed `\\[2pt]`: `startsBlockBoundary`
+      // tests `\[` (it must — see its own note on the trailing `\b`), and that
+      // test fires at the SECOND backslash of `\\[`, where the accumulated
+      // `result` holds only ONE backslash — so the `/\\\\\s*$/` guard below,
+      // which exists to suppress exactly this break, can never match for the
+      // ABUTTING shape. The paragraph split, `Line one\` was emitted with a
+      // dangling backslash, and `\[2pt]` became an unterminated display-math
+      // opener: a `.tex` that no longer compiles, written on OPEN.
+      //
+      // Asking `isEscaped` rather than widening the guard states the rule at the
+      // right altitude — a construct begins at a live `\`, never at the tail of
+      // an escaped pair — and it leaves the `\\`-then-newline case the guard was
+      // written for (`Line one\\\n\section{X}`) reading exactly as before, since
+      // there the boundary fires at a third, unescaped backslash.
+      !isEscaped(ctx.src, ctx.pos)
     ) {
       // The boundary vocabulary is the LEXER's (`startsBlockBoundary`), not a
       // private copy: the serializer asks the same question of a list item's

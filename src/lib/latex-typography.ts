@@ -164,6 +164,18 @@ export const EM_DASH = "—"; // —
 export const ELLIPSIS = "…"; // …
 
 /**
+ * U+00A0 NO-BREAK SPACE — the Unicode glyph LaTeX's `~` tie MEANS.
+ *
+ * It is NOT in `LITERAL_TABLE` even though it reads like a member of it: the
+ * dash/ellipsis rung runs only on the PROSE path (`typographyToLatex` is
+ * suppressed for code spans, and its parse twin `dashesToGlyphs` is suppressed
+ * by `inCode`), and a `~` inside `\texttt{a~b}` is a tie exactly as it is
+ * outside one. The pair therefore lives in `CHAR_ESCAPE_TABLE`, the rung that
+ * runs on BOTH — see the `"glyph"` kind on `CharEscapeKind`.
+ */
+export const NBSP = "\u00A0";
+
+/**
  * Literal-sequence table. Ordered longest-first so the serialize/parse
  * passes match `---` before `--`. `parse` is what the LaTeX source emits;
  * `glyph` is the editor glyph. Ellipsis lists `\ldots` as canonical and
@@ -251,8 +263,15 @@ const LITERAL_BY_GLYPH = new Map<string, string>(
 // closing it is an editor-behaviour decision (mark a command span at type time,
 // so bare text is prose by construction), filed as its own task rather than
 // guessed at here.
+//
+// TWO NAMED CASES OF THAT RESIDUAL ARE NOW CLOSED (task 349 M5/M6), and by the
+// other route — not a carrier on the text, but a REPRESENTATION. The `~` tie is
+// the `"glyph"` member below (U+00A0 in the document, `~` on disk), and a bare
+// `{…}` GROUP is recognized by the lexer's `matchBraceGroupAt` and carried on
+// `latexCommand`. What survives is the backslash itself, which has no Unicode
+// counterpart to be represented BY — so it stays exactly as stated above.
 
-export type CharEscapeKind = "escape" | "protect";
+export type CharEscapeKind = "escape" | "protect" | "glyph";
 
 /**
  * When the emit rung may write `tex` for `text`:
@@ -281,6 +300,16 @@ export interface CharEscapeEntry {
    *                  length). `{[}` neutralizes that — a braced `[` can never
    *                  begin an optional arg — and renders as a plain `[`. NOT
    *                  `\[`, which starts DISPLAY MATH.
+   *  - `"glyph"`   — `tex` is an ACTIVE character (LaTeX gives it a meaning
+   *                  other than "print me") and `text` is the Unicode glyph
+   *                  that means the same thing. The pair is a MODEL
+   *                  distinction, not a safety one, and the direction that
+   *                  matters is INWARD: without it the construct is demoted to
+   *                  the bare ASCII character and the `escape` member for that
+   *                  character then rewrites it — a `~` tie printed as a tilde
+   *                  (task 349 M5). Because the two spellings resolve to two
+   *                  DIFFERENT characters in the document, the escape and the
+   *                  glyph coexist in one pass with nothing to order.
    */
   kind: CharEscapeKind;
   /** Emit-side reachability. Every member PARSES; not every member emits. */
@@ -308,6 +337,34 @@ export const CHAR_ESCAPE_TABLE: readonly CharEscapeEntry[] = [
   // above: neither can occur inside a command name or a brace group's syntax.
   { text: "~", tex: "\\textasciitilde{}", kind: "escape", emit: "always" },
   { text: "^", tex: "\\textasciicircum{}", kind: "escape", emit: "always" },
+  // The `~` TIE, as a GLYPH (task 349 M5). LaTeX's `~` is a non-breaking
+  // space, and Unicode already HAS that character — so the provenance lives in
+  // the DOCUMENT MODEL as two different code points rather than as a mark on
+  // the text, which is strictly stronger: a mark degrades the first time an
+  // edit splits or merges a run, and a grey-monospace run between `Section`
+  // and a `\ref` chip is not what the reader should see. A tie renders in the
+  // editor as what it is — a space that does not break.
+  //
+  // Before this, `Fig.~1` and `Section~\ref{sec:a}` — the standard idiom —
+  // came back from every save as `Fig.\textasciitilde{}1`, a PRINTED tilde,
+  // and the rewrite was unrecoverable: the parse rung collapsed a bare `~` and
+  // `\textasciitilde{}` to the SAME character, so nothing downstream could tell
+  // a promoted tie from a tilde the user meant.
+  //
+  // It sits BELOW the `escape` member for the ASCII tilde and that costs
+  // nothing: `escapeLatexChars` is a single-pass character scan keyed on the
+  // character, so the two members are disjoint by construction and neither can
+  // see the other's output. The parse rung is longest-`tex`-first and `~` is
+  // the shortest spelling in the table, so `\textasciitilde{}` still wins
+  // wherever both could match. A tilde the user types as PROSE stays the ASCII
+  // character and still emits `\textasciitilde{}` — this is about PROVENANCE,
+  // not about ceasing to escape.
+  //
+  // Bonus, and the reason the direction is not merely a preference: a bare
+  // U+00A0 arriving by PASTE (from a PDF, from Word) used to be written through
+  // into the `.tex` verbatim, where pdflatex+inputenc may refuse it outright.
+  // It is now written as the tie it means.
+  { text: NBSP, tex: "~", kind: "glyph", emit: "always" },
   // ── The members a typed `\command` is MADE of.
   { text: "{", tex: "\\{", kind: "escape", emit: "prose-only" },
   { text: "}", tex: "\\}", kind: "escape", emit: "prose-only" },
@@ -381,12 +438,30 @@ export function escapeLatexChars(text: string): string {
  * `\textbackslash{}` wins over any shorter member that prefixes it.
  *
  * Returns the literal character and the index just past the consumed spelling,
- * or null. Both inline scanners call this at the two positions a member can
- * begin: a `\` (the escape family) and a `{` (the protections).
+ * or null. Both inline scanners call this at two places: inside their `\`
+ * branch (the escape family, after the command rules), and at the top of the
+ * loop for every character in {@link CHAR_ESCAPE_LEADS}.
  */
 const CHAR_UNESCAPE_ORDER: readonly CharEscapeEntry[] = [
   ...CHAR_ESCAPE_TABLE,
 ].sort((a, b) => b.tex.length - a.tex.length);
+
+/**
+ * The first character of every NON-backslash spelling in the table — i.e. the
+ * positions an inline scanner must OFFER to `matchCharEscapeAt` outside its `\`
+ * branch. Today: `{` (the two `protect` members) and `~` (the tie).
+ *
+ * DERIVED rather than hand-listed, and that is the load-bearing part: both
+ * inline parsers gated this on a literal `text[i] === "{"`, so a member whose
+ * spelling begins with anything else could be added to the table, emitted
+ * correctly by `escapeLatexChars`, and never matched on the way back in — read
+ * as a literal character and re-escaped, which is the one-directional rewrite
+ * this whole class is about. A new member is now reachable by declaration
+ * alone.
+ */
+export const CHAR_ESCAPE_LEADS: ReadonlySet<string> = new Set(
+  CHAR_ESCAPE_TABLE.filter((e) => !e.tex.startsWith("\\")).map((e) => e.tex[0]),
+);
 
 export function matchCharEscapeAt(
   text: string,
@@ -649,6 +724,41 @@ function findMatchingBrace(text: string, open: number): number {
 }
 
 /**
+ * Is `ch` a legal base for a LaTeX text-mode accent command?
+ *
+ * The accent fold below maps a Unicode COMBINING MARK back to `\cmd{base}`,
+ * and that is only meaningful where the base is a **Latin-script** letter:
+ * `\'{e}` is é, while `\'{η}` is an `inputenc`/pdflatex error (or garbage
+ * under XeLaTeX) — the accent commands are defined over the Latin alphabet.
+ * Before this guard the fold decomposed anything and folded any mark it knew,
+ * so Greek `ή` was written to disk as `\'{η}` and Cyrillic `й` as `\u{и}` —
+ * both STABLE inside Virgil (the parse rung composes them straight back to the
+ * same glyph, so the editor looked right forever) and both wrong in the `.tex`
+ * (task 349 M7).
+ *
+ * The test is the base character's SCRIPT rather than a hand list of ranges:
+ * ASCII letters (what NFD leaves behind for every precomposed Latin accented
+ * letter), the special-letter glyphs that have no decomposition and are legal
+ * accent bases (`ø`, `ß`, `ł`, `ı`, …), and every Latin Extended letter are
+ * all `Script=Latin`; Greek, Cyrillic, Hebrew, CJK and — deliberately — digits
+ * and punctuation are not. A combining mark over a digit was never a LaTeX
+ * accent either, so excluding those is the same correction.
+ *
+ * RESIDUAL, stated rather than implied: the fold NFD-decomposes the whole
+ * string, so a non-Latin letter whose combining mark is NOT in `ACCENT_TABLE`
+ * (polytonic Greek's U+0313, say) still leaves the loop as an NFD sequence
+ * rather than its original precomposed code point — the mark never enters
+ * `marks`, so this guard never sees it. The reachable-and-measured members
+ * (Greek `ή` = η + U+0301, Cyrillic `й` = и + U+0306) both carry marks the
+ * table knows and are therefore re-composed exactly. Closing the wider case
+ * means decomposing per code point instead of per string, which is a rewrite
+ * of the stacked-diacritic walk rather than a guard.
+ */
+function isLatinAccentBase(ch: string): boolean {
+  return /\p{Script=Latin}/u.test(ch);
+}
+
+/**
  * Convert `--`/`---` runs in a plain-text buffer to en/em dash glyphs.
  * Longest-first (`---` before `--`). Only ASCII hyphen runs are touched;
  * existing glyphs pass through. Callers must NOT run this inside code spans.
@@ -701,6 +811,17 @@ export function typographyToLatex(text: string): string {
       j++;
     }
     if (marks.length > 0) {
+      // A NON-LATIN base is not an accent — it is a precomposed letter of
+      // another script that happens to decompose. Re-COMPOSE it (NFC) and emit
+      // the code point, rather than leaving the NFD sequence this pass created:
+      // the fold is the only reason the string was decomposed at all, so a base
+      // it declines must be handed back in the form it arrived in. See
+      // `isLatinAccentBase` for why the script is the right question (349 M7).
+      if (!isLatinAccentBase(ch)) {
+        out += (ch + marks.map((m) => m.combining).join("")).normalize("NFC");
+        i = j - 1;
+        continue;
+      }
       // Canonical serialize form is braced for BOTH control symbols and
       // control words (`\'{e}`, `\v{s}`) — braces are unambiguous and the
       // form LaTeX always accepts. The base `ch` is the bare letter NFD left
