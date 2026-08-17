@@ -52,8 +52,9 @@ export const TIKZ_RE =
  * The package vocabulary a byte-SCAN answers with: `{ id, re }` per package
  * requirement, run against LaTeX source to ask "does this text use it?".
  *
- * ONE table, two readers, because there are exactly two byte-scanning
- * detectors and they answer the same question about the same vocabulary:
+ * ONE table, two readers — the only two scanners that ask THIS question about
+ * THIS vocabulary (the repo has other byte scanners: the cite-family scan in
+ * the same function, `detectBibFamily`, document-class detection). They are:
  *
  *  - `detectBodyRequirements` (latex-requirements.ts) — the after-the-fact
  *    FALLBACK over the whole serialized body;
@@ -72,9 +73,15 @@ export const TIKZ_RE =
  * NOTE the OTHER half of the same law, which lives at each reader rather than
  * here: a byte SCAN is a detection, so it believes only bytes the compiler
  * would — both readers project through `projectDetectableLatex` first. A
- * requirement declared from Virgil's OWN emit (the serializer knows it is
- * writing `\ex`, `\begingl`, `\includegraphics`) scans nothing and needs no
- * projection; those `need()` sites do not read this table.
+ * requirement declared from the NODE MODEL (the serializer knows an
+ * `exampleBlock` emits `\ex`, a `graphicsBlock` an `\includegraphics`) searches
+ * for nothing and needs no projection; those `need()` sites do not read this
+ * table.
+ *
+ * These five patterns are module-level singletons read by two call sites, so
+ * none may carry `/g` or `/y` — `lastIndex` would persist across `.test()`
+ * calls and skip matches on alternate ones. Pinned in
+ * raw-passthrough-declaration.test.ts.
  */
 export const PACKAGE_DETECTORS: ReadonlyArray<{
   readonly id: string;

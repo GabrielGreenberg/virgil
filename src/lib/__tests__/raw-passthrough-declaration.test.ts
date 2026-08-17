@@ -25,16 +25,18 @@
 // Injecting packages a document never runs can BREAK a previously compiling
 // paper, which is the reason the requirements side has projected since P4.
 //
-// A CONTROL (C, a live tikzpicture) runs beside each defect leg: without it
-// every leg here passes when the vocabulary is simply broken.
+// CONTROLS: two live fixtures (C, a tikzpicture in a texBlock; D', a live
+// \includegraphics in figure extras) plus the per-member sweep, which supplies
+// the live half for every id including expex and xlistenv — without them every
+// "declares nothing" leg here passes when the vocabulary is simply broken.
 //
-// The leg with teeth is the CENSUS. The declaration function was never the
-// part that could misbehave — a caller handing it raw bytes is, and so is a
-// SECOND scanner spelling its own copy of the vocabulary somewhere else in the
-// serializer. Both are invisible to any behavioural test of this function.
+// The leg with teeth is the CENSUS, swept over BOTH silos. The declaration
+// function was never the part that could misbehave — a caller handing it raw
+// bytes is, and so is a SECOND scanner spelling its own copy of the vocabulary
+// anywhere. Both are invisible to any behavioural test of this function.
 
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { JSONContent } from "@tiptap/react";
 import { codeOnly } from "./_source-scan";
@@ -209,6 +211,18 @@ describe("the vocabulary sweep covers every member", () => {
       Object.keys(SAMPLE_FOR).sort(),
     );
   });
+
+  it("no member carries /g — the table is shared by two callers", () => {
+    // A `/g` RegExp keeps `lastIndex` across `.test()` calls, so five module
+    // singletons now read by two call sites would silently skip matches on
+    // alternate calls: a package injected for some documents and not others,
+    // with no error. Pre-fix only `TIKZ_RE` was shared, so the surface for this
+    // grew from one member to five with the consolidation.
+    for (const d of PACKAGE_DETECTORS) {
+      expect(d.re.global, d.id).toBe(false);
+      expect(d.re.sticky, d.id).toBe(false);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -217,17 +231,52 @@ describe("the vocabulary sweep covers every member", () => {
 
 const ROOT = join(__dirname, "..", "..", "..");
 const SERIALIZER = join(ROOT, "src", "lib", "latex-serializer.ts");
-const REQUIREMENTS = join(ROOT, "src", "lib", "latex-requirements.ts");
 const COLLECTOR = join(ROOT, "src", "lib", "latex-requirement-collector.ts");
 
-/** A vocabulary regex being TESTED against a string — what a second scanner
- *  looks like. Comments are stripped; literals are KEPT, because the drift
- *  lives in regex literals. */
+function walk(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) {
+      if (name === "node_modules" || name === "__tests__") continue;
+      walk(p, out);
+    } else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) {
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+// BOTH silos, as the sibling census in this class does
+// (bib-family-detection-authority.test.ts). The pre-fix fork lived in two named
+// files, but a census scoped to the files that already drifted can only ever
+// re-find the drift someone already knew about.
+const PRODUCTION_FILES = [join(ROOT, "src"), join(ROOT, "library")].flatMap(
+  (d) => walk(d),
+);
+
+/**
+ * One needle per vocabulary member, each matching that member's REGEX SOURCE as
+ * it appears in code — which is what a second scanner looks like. Every needle
+ * fires on BOTH pre-fix forks (measured on HEAD^: the serializer's four inline
+ * copies and `BODY_DETECTORS`' four) except the tikz one, which fires only in
+ * the collector because `TIKZ_RE` was the one member already shared.
+ *
+ * Two stated limits, since a guard that overstates its reach is the failure
+ * mode this whole class is about. (1) `codeOnly` BLANKS string and template
+ * literals as well as comments, so a fork built as
+ * `new RegExp("\\\\includegraphics(?![a-zA-Z])")` is invisible here — measured,
+ * no such construction exists for these five vocabularies in either silo today.
+ * Blanking is nonetheless the right choice: needle-shaped prose in a doc comment
+ * or an error string is not a scanner, and a regex LITERAL is not a string
+ * literal, so the drift this watches for survives the blanking. (2) The needles
+ * are exact spellings; a semantically equivalent respelling
+ * (`\\includegraphics(?![A-Za-z])`) would pass.
+ */
 const VOCAB_NEEDLES: ReadonlyArray<RegExp> = [
   /\\\\includegraphics\(\?!/,
   /\\\\textcolor\(\?!/,
   /\\\\begin\\\{xlist\\\}/,
-  /begingl\|getfullref/,
+  /\\\\\(\?:begingl\|getfullref/,
   /\\\\begin\\\{tikzpicture\\\}/,
 ];
 
@@ -236,21 +285,27 @@ function vocabularyHits(code: string): string[] {
 }
 
 describe("census — one vocabulary, one projection", () => {
-  it("the package vocabulary is spelled ONLY in the collector", () => {
-    // A second scanner elsewhere is the drift this task deleted: four of the
+  it("the package vocabulary is spelled in exactly ONE file, both silos swept", () => {
+    // A second scanner anywhere is the drift this task deleted: four of the
     // five regexes were hand-copied between `declareFromRawLatex` and
-    // `BODY_DETECTORS`, byte-for-byte, with only `TIKZ_RE` shared. A copy is
-    // MIGRATE-it, never an allowlist entry.
-    expect(vocabularyHits(codeOnly(readFileSync(SERIALIZER, "utf8")))).toEqual(
-      [],
+    // `BODY_DETECTORS`, byte-for-byte, with only `TIKZ_RE` shared. A hit is
+    // MIGRATE-it, never an allowlist entry — measured, the sweep over 763
+    // production files needs no allowlist because the collector is the only one.
+    const offenders = PRODUCTION_FILES.filter((f) => {
+      if (f === COLLECTOR) return false;
+      return vocabularyHits(codeOnly(readFileSync(f, "utf8"))).length > 0;
+    }).map((f) => f.slice(ROOT.length + 1));
+    expect(offenders).toEqual([]);
+  });
+
+  it("EVERY needle is live — no needle rides on another's evidence", () => {
+    // A slack "at least N-1 fire" leg lets one silently-broken needle (a single
+    // wrong backslash) sit undetected forever, and the tikz needle in particular
+    // matches nothing outside the collector, so this exact leg is its ONLY
+    // evidence anywhere in the suite.
+    expect(vocabularyHits(codeOnly(readFileSync(COLLECTOR, "utf8")))).toEqual(
+      VOCAB_NEEDLES.map((re) => re.source),
     );
-    expect(
-      vocabularyHits(codeOnly(readFileSync(REQUIREMENTS, "utf8"))),
-    ).toEqual([]);
-    // …and it IS spelled in the collector, so the needles are live.
-    expect(
-      vocabularyHits(codeOnly(readFileSync(COLLECTOR, "utf8"))).length,
-    ).toBeGreaterThanOrEqual(VOCAB_NEEDLES.length - 1);
   });
 
   it("the raw-passthrough declaration projects, through the NAMED door", () => {
@@ -267,6 +322,10 @@ describe("census — one vocabulary, one projection", () => {
     // A projection at the call site is a rule a third caller can forget. There
     // must be exactly one `projectDetectableLatex(` in the serializer, and the
     // two `declareFromRawLatex(` calls must hand it the raw attr directly.
+    // Deliberately brittle: a second legitimate use of the door in this file
+    // would fail here, and that is the right outcome — it means the serializer
+    // has grown a SECOND byte-scanning detector, which is exactly the decision
+    // this census exists to surface rather than wave through.
     const code = codeOnly(readFileSync(SERIALIZER, "utf8"));
     expect(code.match(/projectDetectableLatex\s*\(/g) ?? []).toHaveLength(1);
     const calls = code.match(/declareFromRawLatex\((.*?)\);/g) ?? [];
@@ -274,13 +333,31 @@ describe("census — one vocabulary, one projection", () => {
     for (const c of calls) expect(c).not.toContain("project");
   });
 
-  it("the census can see (canary)", () => {
-    // Synthetic, not standing on the drained defect: the needles must match a
-    // fabricated second scanner.
+  it("the census can see, and the stripper swallows nothing (canary)", () => {
+    // Synthetic, not standing on the drained defect: the fixture spells ALL
+    // FIVE shapes, so a needle broken by one backslash fails here too rather
+    // than resting on the collector leg alone.
     const fixture = codeOnly(
       `if (/\\\\includegraphics(?![a-zA-Z])/.test(raw)) need("graphicx");\n` +
-        `if (/\\\\begin\\{xlist\\}/.test(raw)) need("xlistenv");\n`,
+        `if (/\\\\textcolor(?![a-zA-Z])/.test(raw)) need("xcolor");\n` +
+        `if (/\\\\begin\\{xlist\\}/.test(raw)) need("xlistenv");\n` +
+        `if (/\\\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z])/.test(raw)) need("expex");\n` +
+        `if (/\\\\begin\\{tikzpicture\\}/.test(raw)) need("tikz");\n`,
     );
-    expect(vocabularyHits(fixture).length).toBeGreaterThanOrEqual(2);
+    expect(vocabularyHits(fixture)).toEqual(VOCAB_NEEDLES.map((r) => r.source));
+
+    // The stripper self-check the 202b runaway earned: a backtick inside a
+    // double-quoted string once ate 7 kB of a real file, silently, with the
+    // suite green. Declaration counts must survive `codeOnly` on the files this
+    // census actually reads.
+    for (const f of [SERIALIZER, COLLECTOR]) {
+      const raw = readFileSync(f, "utf8");
+      const decls = (s: string) =>
+        (s.match(/\b(?:function|const|export)\s/g) ?? []).length;
+      expect(decls(codeOnly(raw)), f).toBeGreaterThanOrEqual(
+        Math.floor(decls(raw) * 0.6),
+      );
+    }
+    expect(PRODUCTION_FILES.length).toBeGreaterThan(300);
   });
 });

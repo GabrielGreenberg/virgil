@@ -86,6 +86,27 @@ function needBibFamily(fam: BibFamily | null): void {
  * The projection lives INSIDE this function rather than at its two call sites,
  * so a third caller cannot forget it, and there is no second spelling of
  * "inert" for the two to drift apart on.
+ *
+ * Three residuals, stated rather than implied:
+ *
+ *  - The projection is INHERITED WHOLE, including the door's own over-strip (a
+ *    raw `%` inside a `\verb|100%|` or a `\url{…a%20b}` truncates the rest of
+ *    that line). Every reader now shares it, so the pre-345 unprojected scan is
+ *    no longer a rescue net: a live `\includegraphics` sharing such a line goes
+ *    undeclared. The failure direction flips from over-injection (which
+ *    silently breaks a compiling paper) to under-injection (a loud
+ *    `Undefined control sequence`), which is the better trade, not a free one.
+ *  - The projection is stateful over the string it is GIVEN, and this one is a
+ *    single block's attr while `detectBodyRequirements` gets the whole joined
+ *    body. So a `code` beginning mid-verbatim (an earlier block left a
+ *    `\begin{verbatim}` open) reads LIVE here and INERT there, and the union
+ *    keeps this answer. Per-block isolation is the conservative direction and
+ *    the more accurate one — a mid-edit unterminated verbatim would otherwise
+ *    swallow every later block.
+ *  - It is not the ONLY raw passthrough the serializer emits, only the only one
+ *    that reaches a declaration: figure `label`/`shortCaption`, a list's
+ *    `listPreamble`, and task 342's byte-literal carriers all land in the body
+ *    unscanned, where the projected fallback detector covers them.
  */
 function declareFromRawLatex(raw: string): void {
   if (!raw) return;
