@@ -2,6 +2,11 @@ import type { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { generateShortId } from "@/lib/uuid";
 import {
+  UUID_BEARING_NODE_TYPES,
+  TITLED_NODE_TYPES,
+  COLLAPSIBLE_NODE_TYPES,
+} from "@/lib/node-attr-sets";
+import {
   emitMarker,
   INLINE_TEX_MARKERS,
   VIRGIL_MARKERS,
@@ -204,35 +209,9 @@ function serializeContainerChild(
 // when a doc has no preserved preamble and the caller didn't pass one.
 const DEFAULT_PREAMBLE = CLASSIC_PREAMBLE;
 
-// Node types that carry a `uuid` attr — kept as a local list because the
-// serializer operates on JSONContent without access to the live schema.
-// Mirror the `textObject` schema group declared in Editor.tsx / tiptap
-// node specs. Adding a kind to that group requires adding it here too.
-const UUID_BEARING_NODE_TYPES = new Set([
-  "paragraph",
-  "heading",
-  "bulletList",
-  "orderedList",
-  "listItem",
-  "blockquote",
-  "codeBlock",
-  "displayMath",
-  "latexComment",
-  "titleField",
-  "texBlock",
-  "figureBlock",
-  "graphicsBlock",
-  "exampleBlock",
-  "exampleItem",
-  // The \maketitle stand-in declares the uuid attr and both serializer
-  // (`%!v:` anchor emission) and parser already round-trip it — but its
-  // absence HERE meant assignUuids never minted for it, so it reached the
-  // editor uuid-less and the drop-mode hit-test minted mid-drag (full doc
-  // walk + synchronous .tex flush per pointermove — the D4 drag cliff,
-  // MEMO_PERF_DEEP_RESEARCH_2026_08_08.md §5).
-  "maketitleMarker",
-]);
-
+// Which node types carry `uuid` / `parTitle` / `collapsed` is one declaration,
+// read by the parser too — see the header of `node-attr-sets.ts` for why it
+// lives in an import-free leaf and what a second hand list cost (task 343).
 const DEFAULT_POSTAMBLE = `
 \\end{document}
 `;
@@ -1467,11 +1446,8 @@ export function assignUuids(doc: JSONContent): void {
       node.content?.forEach((child) => assign(child, true));
       return;
     }
-    // Headings and titleFields always get a UUID
-    if ((node.type === "heading" || node.type === "titleField") && !node.attrs?.uuid) {
-      ensureUuid(node);
-    }
-    // Non-empty paragraphs get a UUID (unless inside a container)
+    // Non-empty paragraphs get a UUID (unless inside a container). This is the
+    // ONE remaining policy: a paragraph's identity is conditional.
     if (
       node.type === "paragraph" &&
       !insideContainer &&
@@ -1481,17 +1457,24 @@ export function assignUuids(doc: JSONContent): void {
     ) {
       ensureUuid(node);
     }
-    // Atom-like block nodes always get a UUID. maketitleMarker included
-    // (D4 drag-cliff fix): uuid-less, it forced the drop hit-test to mint
-    // mid-drag; minting here at load kills that path.
+    // Everything else that DECLARES a uuid gets one, unconditionally — headings,
+    // titleFields, and every atom-like block (`maketitleMarker` among them: the
+    // D4 drag-cliff fix, since uuid-less it forced the drop hit-test to mint
+    // mid-drag). Read from the SSOT rather than listed, so a new uuid-bearing
+    // node type mints by DEFAULT instead of being silently skipped — the rule
+    // task 342 earned one branch over. Two types were already being skipped
+    // that way: `texBlock`, whose serializer writes `%!vtex:begin <uuid>` and
+    // whose parser recovers the block by matching that id, so a uuid-less one
+    // emitted an empty marker and came back as prose (its raw LaTeX shredded
+    // into a latexComment + a smart-typography-mangled paragraph — `--` → `–`);
+    // and `exampleItem`, whose `\vxid` marker is what makes an item's identity
+    // survive a reload at all. Both are covered in practice by the parser and by
+    // `BlockUuidBackfill` (whose own eligibility IS schema-derived), so this
+    // changes no real document's bytes — it heals the pathological case instead
+    // of destroying it.
     if (
-      (node.type === "displayMath" ||
-        node.type === "latexComment" ||
-        node.type === "codeBlock" ||
-        node.type === "exampleBlock" ||
-        node.type === "figureBlock" ||
-        node.type === "graphicsBlock" ||
-        node.type === "maketitleMarker") &&
+      node.type !== "paragraph" &&
+      UUID_BEARING_NODE_TYPES.has(node.type!) &&
       !node.attrs?.uuid
     ) {
       ensureUuid(node);
@@ -1711,8 +1694,17 @@ export function extractSidecarData(doc: JSONContent): VirgilSidecar {
     if (UUID_ELIGIBLE.has(node.type!) && node.attrs?.uuid) {
       const uuid = node.attrs.uuid as string;
       const fp = computeFingerprint(node);
-      const title = node.attrs.parTitle as string | undefined;
-      const collapsed = node.attrs.collapsed === true;
+      // Ask the SAME sets `mergeSidecarTitles` reads back, so what is written
+      // is what can be restored. A node type that does not declare the attr
+      // cannot carry a meaningful value here (TipTap drops undeclared attrs),
+      // so this is behaviour-neutral today — it is the SYMMETRY that matters:
+      // a write set broader than the read set is exactly how an exampleBlock's
+      // title was persisted faithfully and refused on reload (task 343).
+      const title = TITLED_NODE_TYPES.has(node.type!)
+        ? (node.attrs.parTitle as string | undefined)
+        : undefined;
+      const collapsed =
+        COLLAPSIBLE_NODE_TYPES.has(node.type!) && node.attrs.collapsed === true;
       if (title || fp || collapsed) {
         paragraphs[uuid] = {
           ...(title ? { title } : {}),
@@ -1808,7 +1800,16 @@ export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): 
     const orphan = candidates[0];
     if (!node.attrs) node.attrs = {};
     node.attrs.uuid = orphan.uuid;
-    if (orphan.title) node.attrs.parTitle = orphan.title;
+    // Same symmetry rule as `extractSidecarData`: only stamp a title onto a
+    // type that declares one. This walk reaches `heading` / `displayMath` /
+    // `codeBlock` / the two figure kinds, none of which carry `parTitle` —
+    // stamping there wrote an attr the schema then dropped. (This function has
+    // no production caller — fingerprint matching caused uuid collisions and
+    // both storage backends leave it disabled — so this is a consistency fix,
+    // not a live one.)
+    if (orphan.title && TITLED_NODE_TYPES.has(node.type!)) {
+      node.attrs.parTitle = orphan.title;
+    }
     currentUuids.add(orphan.uuid);
     orphansByFingerprint.delete(fp); // consumed
   }
