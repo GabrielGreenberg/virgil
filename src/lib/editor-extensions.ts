@@ -773,6 +773,23 @@ export function createListItemWithUuid() {
         ...this.parent?.(),
         // No NodeView → renderHTML is the live DOM; emit uuid + kind (2d).
         uuid: makeUuidAttr("listItem"),
+        // Raw `\item[label]` optional argument (task 340) — opaque LaTeX, the
+        // per-item twin of the list's own `listPreamble`. Registered on the
+        // NODE rather than re-read from the source at save time so it survives
+        // an edit to the item's text; `rendered: false` because it is source
+        // provenance, not something the live DOM shows (the editor draws the
+        // list's own marker), which also means copy-paste cannot carry it —
+        // same fresh-node reasoning as `uuid`'s `parseHTML: () => null`.
+        // `null` = a bare `\item`; `""` = `\item[]`.
+        //
+        // `keepOnSplit: false` is load-bearing and NOT what `uuid` does one
+        // line up: TipTap's default is to carry an attr across a split, so
+        // pressing Enter at the end of `\item[(b)] beta` would mint a second
+        // item ALSO labelled `(b)` — a duplicate marker in the compiled PDF
+        // that the user never typed. `uuid` can afford the default because
+        // `BlockUuidBackfill` re-mints the collision; a label has no such net
+        // and no meaning to re-mint, so the new item must simply have none.
+        itemLabel: { default: null, rendered: false, keepOnSplit: false },
       };
     },
   });
