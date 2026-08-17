@@ -5,6 +5,11 @@ import { matchCiteCommandAt } from "@/lib/cite-commands";
 import { generateShortId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid";
 import { collectExampleBodyLabelsJSON } from "@/lib/example-refs";
 import {
+  UUID_BEARING_NODE_TYPES,
+  TITLED_NODE_TYPES,
+  COLLAPSIBLE_NODE_TYPES,
+} from "@/lib/node-attr-sets";
+import {
   BLOCK_TEX_MARKERS,
   markerArgStart,
   markerOpensAt,
@@ -853,14 +858,24 @@ function hoistTitleFieldsToTop(doc: JSONContent): void {
   doc.content = [...titles, ...rest];
 }
 
+/**
+ * Restore the sidecar-only attrs (`parTitle`, `collapsed`) onto the parsed doc.
+ *
+ * This is the ONLY consumer of `sidecar.paragraphs[…].title` in the app, and
+ * the sidecar is the sole carrier for both fields — nothing downstream heals a
+ * value this walk declines to restore, and the next save serializes the doc as
+ * it now stands back over the sidecar entry. So a type this misses does not
+ * merely fail to render its title: it DESTROYS it. Both sets therefore come
+ * from the one declaration `extractSidecarData` writes by (task 343, where a
+ * hand list of four silently ate every exampleBlock title).
+ */
 function mergeSidecarTitles(node: JSONContent, sidecar: VirgilSidecar): void {
-  const TITLED = new Set(["paragraph", "bulletList", "orderedList", "texBlock"]);
-  if (TITLED.has(node.type!) && node.attrs?.uuid) {
+  if (UUID_BEARING_NODE_TYPES.has(node.type!) && node.attrs?.uuid) {
     const meta = sidecar.paragraphs[node.attrs.uuid as string];
-    if (meta?.title) {
+    if (meta?.title && TITLED_NODE_TYPES.has(node.type!)) {
       node.attrs.parTitle = meta.title;
     }
-    if (meta?.collapsed && node.type === "texBlock") {
+    if (meta?.collapsed && COLLAPSIBLE_NODE_TYPES.has(node.type!)) {
       node.attrs.collapsed = true;
     }
   }
