@@ -258,6 +258,48 @@ function stripCommentTail(line: string): string {
   return i === -1 ? line : line.slice(0, i);
 }
 
+/**
+ * Does a comment *Virgil recognizes* begin at `pos`? An unescaped `%` with
+ * nothing but whitespace between it and the start of its line.
+ *
+ * **This is deliberately NARROWER than {@link commentTailStart}, and the two
+ * answer different questions.** `commentTailStart` asks what a LaTeX COMPILER
+ * would see, which is the right question for `projectLiveLatex` (document-class
+ * detection, verbatim projection) — there, TeX's rule (any unescaped `%` runs
+ * to end of line) is the truth. This one asks what VIRGIL'S PARSER sees, which
+ * is the only question a construct-terminator scan may ask, and the parser
+ * recognizes a comment ONLY at the head of a line: `parseBody` takes its
+ * `%` branch at a block boundary (after `skipWhitespace`), and `readParagraph`
+ * breaks on a `%` only when the previous char is a newline. A mid-line `%` is
+ * ordinary PROSE to Virgil, preserved byte-for-byte — `See a%b and more.` is
+ * one text node, and `\url{http://ex.com/a%20b}` is one `latexCommand` run.
+ *
+ * Reading TeX's rule here instead is a layer disagreement with exactly one
+ * failure direction, and it is catastrophic: the scan calls a LIVE `\end{env}`
+ * inert, `findMatchingEnv` answers -1, and the parser's unterminated branch
+ * swallows the rest of the document into that environment. Measured on this
+ * fix's own first cut — a `\url{…%20…}` inside a `quote` (the serializer emits
+ * `\end{quote}` on the last content line, so the `%` and the terminator share a
+ * line) never reaches a fixed point: successive round trips ALTERNATE between
+ * two texts, one of which has swallowed every following paragraph.
+ *
+ * Known limit, stated rather than implied: at a MID-line `%` the two layers
+ * still disagree in the other direction — the scan treats a `% \end{itemize}`
+ * written after prose on the same line as live. That is byte-for-byte the
+ * pre-338 behaviour of every comment-blind scanner, it is malformed input in
+ * the only reading that makes the comment meaningful, and its failure mode is
+ * bounded (a construct closes early) rather than absorbing.
+ */
+function startsLineComment(src: string, pos: number): boolean {
+  if (src[pos] !== "%" || isEscaped(src, pos)) return false;
+  for (let i = pos - 1; i >= 0; i--) {
+    const ch = src[i];
+    if (ch === "\n") return true;
+    if (ch !== " " && ch !== "\t" && ch !== "\r") return false;
+  }
+  return true; // start of source
+}
+
 /** Drop inline `\verb<delim>…<delim>` / `\verb*<delim>…<delim>` runs from a
  *  single line, leaving everything else intact. The delimiter is the char
  *  right after `\verb`/`\verb*` and must be a non-letter (so `\verbatim`,
@@ -527,14 +569,25 @@ export function skipOpaqueConstructAt(src: string, pos: number): number {
  * comment-blind, `findMatchingGloss` was not, so a `% \end{xlist}` terminated
  * one and not the other).
  *
- * The policy: a `%`-comment tail is inert (escaping decided by the shared
- * {@link isEscaped} backslash-run parity rule), an escaped char is consumed
- * whole, and an opaque nested construct is skipped via
- * {@link skipOpaqueConstructAt} — which is also what makes same-name nesting
- * pair correctly, so no matcher needs its own depth counter.
+ * The policy: a comment tail is inert from a LINE-LEADING `%` onward — the rule
+ * VIRGIL's parser itself applies, spelled once in {@link startsLineComment},
+ * which is where the reason a mid-line `%` may NOT be read as a comment here is
+ * written down; an escaped char is consumed whole; and an opaque nested
+ * construct is skipped via {@link skipOpaqueConstructAt} — which is also what
+ * makes same-name nesting pair correctly, so no matcher needs its own depth
+ * counter.
  *
  * `probe` is called at each LIVE backslash and returns the answer index, or
  * null to keep scanning. Returns -1 if the probe never answers.
+ *
+ * **Callers MUST gate on `hasTerminator` first.** The scan RECURSES through
+ * `skipOpaqueConstructAt`, and an unterminated nested construct that answers
+ * fail-soft leaves the enclosing scan to walk into it and meet the SAME nested
+ * constructs again — which for k unterminated `\begin{…}`s in one body is
+ * EXPONENTIAL, not quadratic (measured before the gate: 20 of them cost 245 ms,
+ * 100 did not finish). Mid-edit source with an unterminated environment is
+ * ordinary, and the code-pane bridge re-parses on a debounce, so this is a real
+ * input rather than a hypothetical one.
  *
  * Stated limit: comment detection does not model an inline `\verb` run's
  * literal `%` beyond what `skipOpaqueConstructAt` skips, and a `%` inside a
@@ -558,7 +611,7 @@ function scanLive(
       pos++;
       continue;
     }
-    if (ch === "%" && !isEscaped(src, pos)) {
+    if (ch === "%" && startsLineComment(src, pos)) {
       inComment = true;
       pos++;
       continue;
@@ -609,6 +662,13 @@ export function findMatchingEnv(
     return src.indexOf(endTok, startPos);
   }
 
+  // The gate scanLive's doc demands. NECESSARY condition, checked without
+  // recursing: the live scan can only ever answer at a position where the
+  // literal token starts, so a source with no `\end{env}` at all after
+  // `startPos` cannot have one — and answering that in one native `indexOf`
+  // is what keeps an unterminated environment from costing a recursive walk.
+  if (src.indexOf(endTok, startPos) === -1) return -1;
+
   return scanLive(src, startPos, (p) =>
     src.startsWith(endTok, p) ? p : null,
   );
@@ -635,6 +695,7 @@ function isVerbatimFamily(envName: string): boolean {
  * -1 if no matching close is found.
  */
 export function findMatchingGloss(src: string, startPos: number): number {
+  if (src.indexOf("\\endgl", startPos) === -1) return -1; // see scanLive
   return scanLive(src, startPos, (p) =>
     src.startsWith("\\endgl", p) && !isLetter(src[p + "\\endgl".length])
       ? p
@@ -651,6 +712,7 @@ export function findMatchingGloss(src: string, startPos: number): number {
  * `\xe` through the shared scan. Returns -1 if no matching close is found.
  */
 export function findMatchingXe(src: string, startPos: number): number {
+  if (src.indexOf("\\xe", startPos) === -1) return -1; // see scanLive
   return scanLive(src, startPos, (p) =>
     src.startsWith("\\xe", p) && !isWordChar(src[p + "\\xe".length]) ? p : null,
   );

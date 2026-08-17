@@ -246,6 +246,55 @@ describe("one AWARENESS policy: a commented terminator is inert (member 7)", () 
       ),
     );
   });
+
+  it("a MID-line `%` does not make a live `\\end{env}` inert", () => {
+    // The narrowing this awareness policy needed, and the direction that is
+    // NOT symmetric. Virgil's parser recognizes a comment only at the head of
+    // a line — `See a%b` is one text node and `\url{…%20…}` one `latexCommand`
+    // run, both preserved byte-for-byte — so reading TeX's any-unescaped-`%`
+    // rule in the terminator scan is a layer disagreement whose only failure
+    // direction is catastrophic: the live `\end{quote}` is called inert,
+    // `findMatchingEnv` answers -1, and the parser's unterminated branch
+    // swallows the rest of the document into the environment.
+    //
+    // The serializer emits `\end{env}` on the last content line, so the `%`
+    // and the terminator SHARE a line after one save — which is what makes
+    // this reachable from ordinary input rather than hand-written source.
+    expectStableIdentity(
+      ["\\begin{quote}", "See \\url{http://ex.com/a%20b}\\end{quote}"].join("\n"),
+    );
+    expect(
+      findMatchingEnv("x \\url{a%b} \\end{quote} tail", 0, "quote"),
+    ).toBe("x \\url{a%b} ".length);
+  });
+
+  it("never reaches a fixed point when a mid-line `%` is read as a comment", () => {
+    // The defect leg for the case above, in the shape that makes it a DATA
+    // LOSS rather than a formatting wobble: successive round trips ALTERNATE
+    // between two texts, one of which has absorbed every following paragraph
+    // into the quote. A single-generation assertion is not enough — the
+    // swallowed generation is itself stable under one more pass.
+    const body = [
+      "\\begin{quote}",
+      "See \\url{http://ex.com/a%20b}",
+      "\\end{quote}",
+      "",
+      "SECOND PARAGRAPH.",
+    ].join("\n");
+    const gens: string[] = [];
+    let cur = body;
+    for (let i = 0; i < 4; i++) {
+      cur = roundTrip(cur);
+      gens.push(cur);
+    }
+    // Converged by the first generation, and every later one identical.
+    expect(new Set(gens).size).toBe(1);
+    // The paragraph after the quote is still OUTSIDE it.
+    expect(gens[0]).toMatch(/\\end\{quote\}[\s\S]*SECOND PARAGRAPH\./);
+    expect(gens[0]).not.toMatch(
+      /begin\{quote\}[\s\S]*SECOND PARAGRAPH[\s\S]*end\{quote\}/,
+    );
+  });
 });
 
 describe("skipOpaqueConstructAt — the vocabulary itself", () => {
@@ -283,6 +332,25 @@ describe("skipOpaqueConstructAt — the vocabulary itself", () => {
     expect(skipOpaqueConstructAt(src, 0)).toBe("\\begin{description}".length);
     expect(skipOpaqueConstructAt("\\begingl x", 0)).toBe("\\begingl".length);
     expect(skipOpaqueConstructAt("\\pex\\a x", 0)).toBe("\\pex".length);
+  });
+
+  it("answers an UNTERMINATED construct without recursing (300 of them)", () => {
+    // The shared scan RECURSES through this vocabulary, so a fail-soft answer
+    // leaves the enclosing scan to walk into the construct and meet the SAME
+    // nested constructs again: for k unterminated `\begin{…}`s in one body that
+    // is EXPONENTIAL. Measured on the fix's own first cut, before the
+    // `hasTerminator` gate: 20 cost 245 ms and 100 did not finish.
+    //
+    // Deliberately NOT a wall-clock assertion (this file's own doctrine calls
+    // one a flaky test in a guard's clothes) — the regression is orders of
+    // magnitude, so an exponential scan simply cannot complete this leg. What
+    // IS asserted is the CONTENT: mid-edit source with an unterminated
+    // environment is ordinary input, and it must still parse fail-soft.
+    const opens = Array.from({ length: 300 }, (_, i) => `\\begin{env${i}}`);
+    const body = ["\\begin{itemize}", "\\item alpha", ...opens, "\\end{itemize}"].join("\n");
+    const out = roundTrip(body);
+    expect(out).toContain("alpha");
+    expect(out).toContain("\\begin{env299}");
   });
 
   it("does not mis-lex a longer command as `\\ex`/`\\pex`/`\\begingl`", () => {
