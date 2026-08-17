@@ -160,6 +160,51 @@ describe("A · the opener vocabulary is the lexer's, and it is strict", () => {
     expect(c1).not.toContain("\\xe");
     expect(c2).not.toContain("\\xe");
   });
+
+  it("a linguex opener is CARRIED, not modelled, even when a `\\xe` exists", () => {
+    // The leg that gives the linguex `.` rule its own teeth, and getting here
+    // took two wrong drafts worth recording — because the honest reach of that
+    // rule is narrower than it first looks.
+    //
+    // With NO `\xe` in the file, defect B alone rescues a linguex document (the
+    // opener finds no terminator and is carried), so neither of the survival
+    // legs above can distinguish the two fixes. A `\xe` therefore has to be
+    // present for recognition to be the load-bearing half — and then the
+    // CONTENT survives either way, because the swallow is bounded by that `\xe`
+    // and `buildExampleBlockFromBody`'s whitelist happens to keep paragraphs.
+    //
+    // So what the rule buys here is not survival but the MODEL: whether the
+    // user's linguex example is carried as the raw LaTeX it is, or claimed as
+    // an expex example and rendered as a mangled card with a stranded `.` where
+    // its first item should be. That is what this leg asserts, and it is the
+    // only shape in which the `.` rule can be falsified.
+    const src = doc(
+      [
+        "\\ex.\\a. Linguex item one.",
+        "    \\b. Linguex item two.",
+        "",
+        "\\xe",
+        "",
+        "\\section{After}",
+      ].join("\n"),
+      "\\usepackage{expex}\n\\usepackage{linguex}",
+    );
+    // NO expex example is produced: the linguex opener is carried. Neutering
+    // the `.` rule makes this ONE, because the stray `\xe` gives the swallow a
+    // terminator and defect B never fires.
+    const parsed = parseLatex(src);
+    expect(
+      (parsed.content ?? []).filter((n) => n.type === "exampleBlock"),
+    ).toHaveLength(0);
+    const { c1, c2 } = twoCycles(src);
+    expectAllPresent(c1, [
+      "\\ex.",
+      "Linguex item one.",
+      "Linguex item two.",
+      "\\section{After}",
+    ]);
+    expect(c2).toBe(c1);
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────────
