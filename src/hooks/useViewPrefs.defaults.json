@@ -103,7 +103,7 @@
   ],
   "dividerWidth": "text",
   "omniHideAllCards": {
-    "left": false,
+    "left": true,
     "right": false
   },
   "omniCategories": {
