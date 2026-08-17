@@ -26,6 +26,7 @@ import {
 import {
   extractBraced,
   hasVerbatimMark,
+  hasCommentTailMark,
   isEscaped,
   wrapVerbatimEnvBody,
 } from "@/lib/latex-lexer";
@@ -222,6 +223,20 @@ function serializeMarks(
 ): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
 
+  // latexCommentTail mark: a `%` COMMENT TAIL — bytes LaTeX discards entirely
+  // (task 347). Emitted EXACTLY as parsed, and checked FIRST because it is the
+  // strictest carrier of the three: not merely literal, but not typeset at all.
+  // Sending it down the prose path is what made `% TODO cite` start typesetting
+  // (the char-escape rung rewrites `%` → `\%`), turned `5%` into a printed
+  // percent followed by the text LaTeX had been discarding, and broke `…%` at
+  // end of line, which is TeX's line-JOIN idiom. All three were fixed points,
+  // so nothing downstream could tell a promoted comment from a `\%` the user
+  // actually wrote.
+  //
+  // The line obligation this carrier owns is discharged by its caller — see
+  // `serializeInlineSequence`.
+  if (hasCommentTailMark(marks)) return text;
+
   // latexVerbatim mark: BYTE-LITERAL LaTeX (an inline `\verb<delim>…<delim>`
   // run, or a `VERBATIM_ENVS_FULL` env with no modeled node). Emit it exactly
   // as parsed — no escaping, and above all no `smartenStraightQuotes`: inside
@@ -400,7 +415,13 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         const uuid = node.attrs?.uuid as string | null;
         return uuid ? `%!v:${uuid}\n` : "%!v:blank\n";
       }
-      const inner = serializeInlineSequence(node.content || []);
+      // `lineFinal` only when this paragraph emits its OWN line ending below.
+      // Under `suppressChildUuids` the bare `inner` is joined into an
+      // enclosing construct (an `\ex … \xe` body), so a trailing comment must
+      // still close its line or it would swallow the `\xe`.
+      const inner = serializeInlineSequence(node.content || [], {
+        lineFinal: !suppressChildUuids,
+      });
       if (suppressChildUuids) return inner;
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
@@ -582,7 +603,11 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const tail = children.slice(1);
       const headText =
         head && head.type === "paragraph"
-          ? serializeInlineSequence(head.content || [])
+          ? // The item head is line-final in exactly the paragraph case's
+            // sense: what follows is `${anchor}\n`, and the anchor is `%!v:`
+            // comment bytes that `ITEM_TRAILING_UUID_REGEX` strips back off on
+            // the way in. So a trailing comment tail may end the line itself.
+            serializeInlineSequence(head.content || [], { lineFinal: true })
           : "";
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
@@ -977,10 +1002,65 @@ export function containsInternalMarker(text: string): boolean {
  * switch), so the inline wrapping (`\textbf{…}` etc.) sits inside
  * `\vlid…\vlidend`, e.g.: `\vlid{x}\textbf{bold range}\vlidend{x}`.
  */
-function serializeInlineSequence(nodes: JSONContent[]): string {
+/**
+ * THE comment carrier's line obligation (task 347).
+ *
+ * A `%` comment runs to the end of its LINE, so a comment tail is the one
+ * carrier that owns the rest of the line it is written on. Two things follow,
+ * and both are byte-neutral for content the parser produced — it always reads
+ * a tail up to (never across) a newline, and always leaves that newline at the
+ * head of the next prose run:
+ *
+ *  - a tail carrying an interior newline must re-comment its continuation
+ *    lines, or the bytes after the newline stop being a comment and start
+ *    TYPESETTING (reachable by editing, not by parsing);
+ *  - anything emitted after a tail on the same line is swallowed by it, so a
+ *    tail not already followed by a newline gets one.
+ *
+ * Without the second rule the failure is the one this whole task is about,
+ * arriving from the keyboard instead of from save: type a word after a comment
+ * chip and the word stops appearing in the PDF, silently, while round-tripping
+ * perfectly (the re-parse simply reads it back as more comment).
+ */
+function closeCommentTail(raw: string, restStartsWithNewline: boolean): string {
+  const recommented = raw.split("\n").join("\n%");
+  return restStartsWithNewline ? recommented : `${recommented}\n`;
+}
+
+function serializeInlineSequence(
+  nodes: JSONContent[],
+  opts?: { lineFinal?: boolean },
+): string {
   const open = new Set<string>();
   let out = "";
-  for (const node of nodes) {
+  for (const [idx, node] of nodes.entries()) {
+    if (node.type === "text" && hasCommentTailMark(node.marks)) {
+      // Closing an open `linkedAnchor` range across a comment is not
+      // representable — the close marker would land inside the comment — so a
+      // tail is emitted with the ranges left open; the loop's own tail-flush
+      // below still closes them at the end of the sequence.
+      const next = nodes[idx + 1];
+      const nextText = next?.type === "text" ? (next.text ?? "") : "";
+      // `lineFinal` is the caller's promise that what it appends after this
+      // sequence is comment bytes and then a newline — true at exactly ONE
+      // site, the `paragraph` case, whose tail is `anchor + "\n\n"` and whose
+      // anchor is a `%!v:` comment. There the tail may end the line itself and
+      // let the anchor ride inside it, which is both fewer bytes and what the
+      // user wrote. Every other consumer wraps the sequence in BRACES
+      // (heading, titleField, figure caption, an example's `\ex …` head), and
+      // a tail there would comment out the closing brace — so the default is
+      // the fail-safe newline. The parser's `PARAGRAPH_INLINE` opt-in is the
+      // same rule read from the other end: the sites that may PRODUCE a tail
+      // are the sites that may END a line with one.
+      const lineFinal = opts?.lineFinal && idx === nodes.length - 1;
+      out += lineFinal
+        ? serializeMarks(node.text || "", node.marks).split("\n").join("\n%")
+        : closeCommentTail(
+            serializeMarks(node.text || "", node.marks),
+            nextText.startsWith("\n"),
+          );
+      continue;
+    }
     if (node.type === "text") {
       const marks = node.marks || [];
       const currentIds = new Set<string>();

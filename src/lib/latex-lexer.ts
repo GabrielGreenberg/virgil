@@ -195,6 +195,80 @@ export function hasVerbatimMark(
   return !!marks?.some((m) => m.type === LATEX_VERBATIM_MARK);
 }
 
+// ---------------------------------------------------------------------------
+// The COMMENT carrier — the third member of the same family (task 347)
+// ---------------------------------------------------------------------------
+//
+// A `%` comment tail is byte-literal for exactly the reason `latexVerbatim` is,
+// and one reason more: LaTeX does not TYPESET it at all. Before task 347 the
+// inline parser had no representation for a mid-line `%`, so it fell into the
+// prose buffer and the serializer's char-escape rung rewrote it to `\%` — which
+// silently CHANGES what LaTeX does. `% TODO cite` started typesetting in the
+// PDF; `5%` began printing " was observed." that LaTeX had been discarding; and
+// `continues%` at end of line, which is TeX's line-JOIN idiom, became a printed
+// percent sign that keeps the space. All three were fixed points, so no later
+// save healed them and nothing downstream could tell a promoted comment from a
+// `\%` the user actually wrote.
+//
+// So a comment tail rides its own carrier for the same two reasons task 264
+// gave for splitting `latexVerbatim` off `latexCommand`: a separate mark type
+// keeps the JSON shape of the other carriers untouched, and two different mark
+// types can never be merged into one text node — a comment abutting a stray
+// `latexCommand` run stays distinguishable.
+//
+// It is a THIRD carrier rather than a flag on `latexVerbatim` because the two
+// make different promises at the EMIT end. Verbatim bytes are typeset; comment
+// bytes are not, so a comment tail additionally owns everything to end-of-line
+// — which is what makes the serializer's newline obligation (nothing else may
+// share its line) this carrier's alone.
+//
+// Like its sibling, the mark is re-derived from the source bytes on every
+// parse, so it needs no representation in the `.tex` and nothing to migrate.
+
+/** Mark name for a `%`-comment TAIL — the bytes from an unescaped `%` to the
+ *  end of its line, which LaTeX discards. Lives here beside the verbatim
+ *  carrier and reachable from the tiptap-free parser/serializer; the TipTap
+ *  `Mark.create` in `src/lib/tiptap/latex-command.ts` reads it. */
+export const LATEX_COMMENT_TAIL_MARK = "latexCommentTail";
+
+/** The mark object every comment-tail-emitting parser branch pushes. */
+export function commentTailMark(): { type: string } {
+  return { type: LATEX_COMMENT_TAIL_MARK };
+}
+
+/** True when a mark list carries the comment carrier. Checked BEFORE the
+ *  verbatim test by every serializer: a comment is the stricter promise of the
+ *  two (not merely literal — not typeset at all). */
+export function hasCommentTailMark(
+  marks: readonly { type: string }[] | undefined,
+): boolean {
+  return !!marks?.some((m) => m.type === LATEX_COMMENT_TAIL_MARK);
+}
+
+/**
+ * Does a comment TAIL begin at `i`? Returns its raw bytes — from the `%`
+ * through to (not including) the next newline — or null.
+ *
+ * This is the positional form of {@link commentTailStart}, which answers the
+ * same question for a whole line, and it reads the SAME escaping rule through
+ * `isEscaped` so `\%` can never be mistaken for a comment. Deliberately NOT the
+ * narrower `startsLineComment`: that one answers "what does VIRGIL'S
+ * CONSTRUCT-TERMINATOR SCAN see", where TeX's rule is catastrophic (task 338 —
+ * a comment-aware scan calls a LIVE `\end{env}` inert and swallows the rest of
+ * the document). This one is a REPRESENTATION question asked from inside the
+ * inline parser, at a position every command / verb / math / URL matcher has
+ * already declined, so `\url{http://ex.com/a%20b}` never reaches it.
+ */
+export function matchCommentTailAt(
+  text: string,
+  i: number,
+): { raw: string; end: number } | null {
+  if (text[i] !== "%" || isEscaped(text, i)) return null;
+  const nl = text.indexOf("\n", i);
+  const end = nl === -1 ? text.length : nl;
+  return { raw: text.slice(i, end), end };
+}
+
 /** The inline-`\verb` delimiter class, as ONE definition. `\verb` is a control
  *  WORD, so it is terminated by a non-letter — the delimiter must not be a
  *  letter (else `\verbatim` / `\verbdef` mis-lex as `\verb` + a delimiter), and
@@ -375,13 +449,27 @@ function stripCommentTail(line: string): string {
  * answer different questions.** `commentTailStart` asks what a LaTeX COMPILER
  * would see, which is the right question for `projectLiveLatex` (document-class
  * detection, verbatim projection) — there, TeX's rule (any unescaped `%` runs
- * to end of line) is the truth. This one asks what VIRGIL'S PARSER sees, which
- * is the only question a construct-terminator scan may ask, and the parser
- * recognizes a comment ONLY at the head of a line: `parseBody` takes its
- * `%` branch at a block boundary (after `skipWhitespace`), and `readParagraph`
- * breaks on a `%` only when the previous char is a newline. A mid-line `%` is
- * ordinary PROSE to Virgil, preserved byte-for-byte — `See a%b and more.` is
- * one text node, and `\url{http://ex.com/a%20b}` is one `latexCommand` run.
+ * to end of line) is the truth. This one asks what VIRGIL'S CONSTRUCT-TERMINATOR
+ * SCAN may treat as inert, and the answer is: only a comment at the head of a
+ * line. `parseBody` takes its `%` branch at a block boundary (after
+ * `skipWhitespace`), and `readParagraph`'s block-boundary test suppresses
+ * itself inside a line-start comment — both read THIS predicate, so the parser
+ * and the terminator scan agree by construction about where a construct ends.
+ *
+ * **Task 347 corrected the sentence that used to stand here.** It read: "A
+ * mid-line `%` is ordinary PROSE to Virgil, preserved byte-for-byte — `See a%b
+ * and more.` is one text node, and `\url{http://ex.com/a%20b}` is one
+ * `latexCommand` run." The `\url` half was true and still is. The first half
+ * was false, and false in the direction that matters: 338 had verified the
+ * PARSE side and never asked the EMIT side, where the char-escape table
+ * rewrote that `%` to `\%` — so `See a%b and more.` came back as
+ * `See a\%b and more.`, and every `% TODO cite` in a real paper started
+ * TYPESETTING. A mid-line `%` is no longer prose at all: it is carried on
+ * `LATEX_COMMENT_TAIL_MARK` and re-emitted verbatim, which is what finally
+ * makes "preserved byte-for-byte" true.
+ *
+ * The narrowing itself was right and must not be reverted — see the failure
+ * direction below.
  *
  * Reading TeX's rule here instead is a layer disagreement with exactly one
  * failure direction, and it is catastrophic: the scan calls a LIVE `\end{env}`
@@ -399,7 +487,7 @@ function stripCommentTail(line: string): string {
  * the only reading that makes the comment meaningful, and its failure mode is
  * bounded (a construct closes early) rather than absorbing.
  */
-function startsLineComment(src: string, pos: number): boolean {
+export function startsLineComment(src: string, pos: number): boolean {
   if (src[pos] !== "%" || isEscaped(src, pos)) return false;
   for (let i = pos - 1; i >= 0; i--) {
     const ch = src[i];

@@ -42,6 +42,9 @@ import {
   skipOpaqueConstructAt,
   unwrapVerbatimEnvBody,
   verbatimMark,
+  commentTailMark,
+  matchCommentTailAt,
+  startsLineComment,
   wrapVerbatimEnvBody,
 } from "@/lib/latex-lexer";
 
@@ -228,10 +231,22 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
  * {@link PendingMarkerId} — task 341). Without these markers we fall back to
  * `generateShortId()` for legacy `.tex` files without markers — first
  * save will anchor the generated id back into the source.
+ *
+ * `opts.commentTails` opts this run in to recognizing a `%` COMMENT TAIL as
+ * the byte-literal carrier it is (task 347). It is OFF by default, and the
+ * default is the load-bearing half: a comment tail owns everything to the end
+ * of its LINE, so it may only be recognized where the emitted form actually
+ * ends a line. Inside a braced ARGUMENT (`\texttt{5% off}`, a `\footnote{}`
+ * body, a gloss cell, a figure caption) the very next byte the serializer
+ * writes is the closing `}` — a carrier there would comment out the brace and
+ * break the user's document. So the block-level paragraph callers opt IN, the
+ * six recursive argument calls below inherit the OFF default, and a new caller
+ * has to state that its content is line-final before it can get one.
  */
 export function parseInlineContent(
   text: string,
   inCode = false,
+  opts?: { commentTails?: boolean },
 ): JSONContent[] {
   const nodes: JSONContent[] = [];
   let i = 0;
@@ -317,6 +332,33 @@ export function parseInlineContent(
         flush();
         nodes.push({ type: "inlineMath", attrs: { latex: math.latex } });
         i = math.end;
+        continue;
+      }
+    }
+
+    // `%` COMMENT TAIL → the byte-literal comment carrier (task 347).
+    //
+    // Position matters twice over. It sits AFTER the verb/math matchers above
+    // and after every command rule below is unreachable for this byte — a `%`
+    // inside `\verb|a%b|`, inside `$…$`, or inside `\url{http://ex.com/a%20b}`
+    // has already been consumed as part of that construct, which is why task
+    // 338's `\url` case stays byte-identical and why this branch never has to
+    // re-derive what a command IS. And it is reached only for an UNESCAPED `%`:
+    // `\%` enters the `\` branch and is consumed by `matchCharEscapeAt`, so a
+    // percent the user genuinely wrote still round-trips as `\%`.
+    //
+    // Gated on `opts.commentTails` — see the header for why OFF is the default
+    // and which callers may turn it on.
+    if (opts?.commentTails && text[i] === "%") {
+      const tail = matchCommentTailAt(text, i);
+      if (tail) {
+        flush();
+        nodes.push({
+          type: "text",
+          text: tail.raw,
+          marks: [commentTailMark()],
+        });
+        i = tail.end;
         continue;
       }
     }
@@ -1878,7 +1920,7 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
         const para = readParagraph(ctx);
         if (para) {
           const { text: paraText, uuid } = stripUuidAnchor(para);
-          const content = parseInlineContent(paraText);
+          const content = parseInlineContent(paraText, false, PARAGRAPH_INLINE);
           if (content.length > 0) {
             const attrs: Record<string, unknown> = { parTitle: inner.content };
             if (uuid) attrs.uuid = uuid;
@@ -1898,7 +1940,7 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
     const para = readParagraph(ctx);
     if (para) {
       const { text: paraText, uuid } = stripUuidAnchor(para);
-      const content = parseInlineContent(paraText);
+      const content = parseInlineContent(paraText, false, PARAGRAPH_INLINE);
       if (content.length > 0) {
         const node: JSONContent = { type: "paragraph", content };
         if (uuid) node.attrs = { uuid };
@@ -1908,15 +1950,46 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
   }
 }
 
-/** Strip trailing %!v:xxxx anchor(s) from paragraph text, return text + uuid (last one wins) */
+/**
+ * The inline-parse options a BLOCK-level paragraph reads its content with:
+ * a `%` here begins a real comment tail, because what the serializer writes
+ * after this content is a newline. Named once so the two paragraph call sites
+ * cannot drift, and so the difference from the six ARGUMENT recursions (which
+ * take the OFF default) is legible at both ends — see `parseInlineContent`.
+ */
+const PARAGRAPH_INLINE = { commentTails: true } as const;
+
+/**
+ * Strip the trailing `%!v:xxxx` anchor(s) from block text, returning the text
+ * and the uuid (last one wins).
+ *
+ * The anchor Virgil emits IS a comment by TeX's own rule — everything from its
+ * `%` to end of line is discarded — which is what makes the second group
+ * necessary (task 347). A user who opens the code pane and types a note after
+ * the anchor produces `Some prose. %!v:aaaa % user note`, where the anchor is
+ * no longer last. The pre-347 end-anchored match simply failed there: the whole
+ * tail fell through as prose, `\%`-escaped on the way out, and the block's uuid
+ * was DESTROYED on the next save — orphaning every card, marginalia marker and
+ * sidecar title keyed on it, with no edit by the user.
+ *
+ * So the anchors may be followed by a comment REMAINDER, which is handed back
+ * as ordinary text for the inline parser to carry (it re-emits it verbatim,
+ * and the serializer re-appends the anchor after it — a one-cycle reordering
+ * into the canonical `… % user note %!v:aaaa`, stable from then on). The
+ * anchors themselves must still be present for either branch to fire, so this
+ * can never mistake a trailing `\url{…a%20b}` for an anchor.
+ */
 function stripUuidAnchor(text: string): { text: string; uuid: string | null } {
-  // Match one or more %!v:xxxx markers at the end of the line
-  const match = text.match(/(\s*(?:%!v:[0-9a-f]{4}\s*)+)$/);
+  // Group 1: one or more %!v:xxxx markers. Group 2 (optional): a comment
+  // remainder the user typed after them, which stays content.
+  const match = text.match(/(\s*(?:%!v:[0-9a-f]{4}\s*)+)(%[^\n]*)?$/);
   if (match) {
-    const cleaned = text.slice(0, match.index).trimEnd();
+    const head = text.slice(0, match.index).trimEnd();
+    const remainder = match[2] ? match[2].trimEnd() : "";
     // Extract the last UUID from the matched markers
     const uuids = [...match[1].matchAll(new RegExp(NODE_UUID_REGEX.source, "g"))];
     const lastUuid = uuids.length > 0 ? uuids[uuids.length - 1][1] : null;
+    const cleaned = remainder ? (head ? `${head} ${remainder}` : remainder) : head;
     return { text: cleaned, uuid: lastUuid };
   }
   return { text, uuid: null };
@@ -2100,24 +2173,62 @@ function readParagraph(ctx: ParseContext): string {
   // stray brace can cost at most the rest of its own paragraph's boundary
   // splits, never the rest of the file.
   let braceDepth = 0;
+  // Are we inside a line-start `%` comment? Maintained forward as we scan (the
+  // `startsLineComment` SSOT answers the OPENING question; a comment always
+  // ends at its newline), and read only by the block-boundary test below.
+  let inLineComment = false;
   while (ctx.pos < ctx.src.length) {
+    if (ctx.src[ctx.pos] === "\n") inLineComment = false;
+    else if (
+      !inLineComment &&
+      ctx.src[ctx.pos] === "%" &&
+      startsLineComment(ctx.src, ctx.pos)
+    ) {
+      inLineComment = true;
+    }
+
     // Double newline ends paragraph
     if (ctx.src[ctx.pos] === "\n" && ctx.pos + 1 < ctx.src.length && ctx.src[ctx.pos + 1] === "\n") {
       ctx.pos += 2;
       break;
     }
 
-    // Break at % comment lines (only if at start of line)
-    if (ctx.src[ctx.pos] === "%" && result.trim()) {
-      // Check if this is at start of a line
-      const prevChar = ctx.pos > 0 ? ctx.src[ctx.pos - 1] : "\n";
-      if (prevChar === "\n") {
-        break;
-      }
-    }
+    // A comment line does NOT end a paragraph (task 347). In LaTeX a `%` line
+    // sitting between two non-blank lines is discarded WITH its newline, so
+    // `A\n% c\nB` is one paragraph reading "A B". Breaking here split it into
+    // two — the serializer then wrote a blank line around the comment block it
+    // had made, and one paragraph became two in the compiled PDF, on OPEN,
+    // before the user had edited anything.
+    //
+    // Nothing is lost by not breaking: the comment is carried inline by the
+    // `commentTails` branch of `parseInlineContent`, in place, so the bytes
+    // round-trip exactly and the reader still sees a comment where they wrote
+    // one. And the two shapes that genuinely DO separate paragraphs still do,
+    // because they are blank-line shapes: `A\n\n% c\nB` breaks at the blank
+    // line above, leaving the `%` at a block boundary where `parseBody` makes
+    // it a `latexComment` BLOCK exactly as before, and `A\n% c\n\nB` breaks at
+    // the blank line below. The distinction the pre-347 code could not draw is
+    // precisely the one LaTeX draws.
 
     // Check if next non-space char is a block-level command
-    if (ctx.src[ctx.pos] === "\\" && result.trim() && braceDepth === 0) {
+    if (
+      ctx.src[ctx.pos] === "\\" &&
+      result.trim() &&
+      braceDepth === 0 &&
+      // …and is not sitting inside a COMMENT. A block-level command LaTeX
+      // never reads is not a block boundary — the same rule task 341 drew for
+      // a command inside a braced argument, one construct over. Without it,
+      // dropping the paragraph's comment break (task 347) let `% \end{itemize}`
+      // terminate the paragraph AT the `\end`, splitting one comment line into
+      // an empty `%` plus a live-looking terminator.
+      //
+      // The gate reads `startsLineComment` — the SCAN's rule, not TeX's — so
+      // this agrees byte-for-byte with `findMatchingEnv`, which decides where
+      // the enclosing construct actually ends. Reading TeX's wider rule here
+      // would re-open exactly the layer disagreement task 338 closed, in the
+      // direction that swallows the rest of the document.
+      !inLineComment
+    ) {
       const rest = ctx.src.slice(ctx.pos);
       if (
         // `\[` opens display math — always a block boundary. Checked
@@ -2532,6 +2643,32 @@ function parseExampleBodyAsBlocks(
               (child.content ?? []).map((c) => c.text ?? "").join(""),
             ),
             marks: [verbatimMark()],
+          },
+        ],
+      });
+      continue;
+    }
+    if (child.type === "latexComment") {
+      // An example item's schema has no `latexComment` slot, so a `%` line
+      // inside an `\ex`/`\pex` body was DROPPED here — silently deleting the
+      // user's writing on the first save, while `itemize`, `quote` and
+      // `figure` all preserved theirs (task 347). Preserve it as the same
+      // byte-literal CARRIER paragraph the `codeBlock` branch above already
+      // uses, on the comment carrier this time, so it re-emits as the exact
+      // `% …` line it was read from and lands back here as a fixed point.
+      //
+      // The `% ` prefix is re-added because the block parser strips it when it
+      // builds the node's text — this is the inverse of that read, and it is
+      // the same pair the serializer's `latexComment` case emits.
+      const commentText = (child.content ?? []).map((c) => c.text ?? "").join("");
+      out.push({
+        type: "paragraph",
+        ...(child.attrs?.uuid ? { attrs: { uuid: child.attrs.uuid } } : {}),
+        content: [
+          {
+            type: "text",
+            text: `% ${commentText}`,
+            marks: [commentTailMark()],
           },
         ],
       });
