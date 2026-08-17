@@ -331,8 +331,16 @@ describe("342 · the blank-run collapse touches only GENERATED envs", () => {
     // and never reaches the top-level env dispatcher, so it is probed there.
     for (const env of generatedEnvsFromSource()) {
       if (env === "xlist") {
+        // The opener is `\ex`, NOT `\ex.` — this fixture spelled the latter
+        // until task 350, where `\ex.` became linguex's opener and is carried
+        // as raw content rather than claimed as an expex example. The period
+        // was incidental scaffolding (it was never part of what this leg
+        // asserts, which is that `xlist` is a GENERATED env), so removing it
+        // preserves the assertion exactly. That it was written by accident at
+        // all is a small piece of evidence FOR the strict rule: the linguex
+        // form is easy to type when you mean expex.
         const doc = parseLatex(
-          "\\begin{document}\n\n\\ex.\nleaf\n\\begin{xlist}\n\\a inner\n\\end{xlist}\n\\xe\n\n\\end{document}\n",
+          "\\begin{document}\n\n\\ex\nleaf\n\\begin{xlist}\n\\a inner\n\\end{xlist}\n\\xe\n\n\\end{document}\n",
         );
         expect(doc.content?.[0]?.type, env).toBe("exampleBlock");
         continue;

@@ -872,15 +872,60 @@ function isWordChar(ch: string | undefined): boolean {
   return ch !== undefined && /[a-zA-Z0-9_]/.test(ch);
 }
 
-/** `\ex` / `\pex` at `pos` (control word, so `\b`-terminated), or null. */
-function matchExOpenAt(
+/**
+ * **THE expex example-opener vocabulary** — `\ex` / `\pex` at `pos`, optionally
+ * `~`-suffixed, or null. Returns the index to continue from (`end`, past any
+ * `~`) plus the two facts the parser needs to build the node.
+ *
+ * This is a shared SSOT rather than a private helper because **the parser and
+ * the nesting scan must agree on what an opener IS** (task 350). Pre-350 they
+ * did not: this function enforced the control-word boundary and the dispatcher
+ * in `latex-parser.ts` matched a bare `/^\\(ex|pex)(~?)/` with no lookahead at
+ * all, so the two layers disagreed about `\example` / `\exercise` /
+ * `\expandafter`. Whichever one is wrong, the damage is the same shape — the
+ * body pairing is computed against a different set of openers than the one the
+ * node was built from — so there is one answer and both read it here.
+ *
+ * Two conditions, and each is a different kind of claim:
+ *
+ *  - **TeX's own rule.** A control WORD is a maximal run of letters, so `\ex`
+ *    is `\ex` only where the next character is not a word char. A rule about
+ *    the LANGUAGE, so it needs no package to justify it.
+ *  - **`.` is linguex, not expex.** `\ex.` / `\pex.` open a *linguex* example,
+ *    and expex's grammar never puts a period after `\ex`. The delimiter alone
+ *    settles it, which is why this deliberately does NOT consult the preamble
+ *    for `\usepackage{linguex}`: a fragment, a card body and a paste have no
+ *    preamble, and a form check that works everywhere beats a package signal
+ *    that works sometimes. (The reproducing document loaded BOTH packages, so
+ *    a preamble signal could not have decided it either way.)
+ *
+ * A declined opener is CARRIED as raw content by the parser (task 342's rule),
+ * which is what keeps a linguex document byte-intact through a save.
+ */
+export function matchExpexOpenerAt(
   src: string,
   pos: number,
-): { name: string; end: number } | null {
+): {
+  name: "ex" | "pex";
+  kind: "single" | "multi";
+  suppressSpace: boolean;
+  end: number;
+} | null {
   if (src[pos] !== "\\") return null;
-  for (const name of ["pex", "ex"]) {
-    if (src.startsWith(name, pos + 1) && !isWordChar(src[pos + 1 + name.length]))
-      return { name, end: pos + 1 + name.length };
+  for (const name of ["pex", "ex"] as const) {
+    if (!src.startsWith(name, pos + 1)) continue;
+    const afterName = pos + 1 + name.length;
+    if (isWordChar(src[afterName])) return null;
+    const suppressSpace = src[afterName] === "~";
+    const end = afterName + (suppressSpace ? 1 : 0);
+    // linguex `\ex.` — carry it, don't claim it.
+    if (src[end] === ".") return null;
+    return {
+      name,
+      kind: name === "pex" ? "multi" : "single",
+      suppressSpace,
+      end,
+    };
   }
   return null;
 }
@@ -935,7 +980,7 @@ export function skipOpaqueConstructAt(src: string, pos: number): number {
     return close === -1 ? bodyStart : close + "\\endgl".length;
   }
 
-  const ex = matchExOpenAt(src, pos);
+  const ex = matchExpexOpenerAt(src, pos);
   if (ex) {
     const close = findMatchingXe(src, ex.end);
     return close === -1 ? ex.end : close + "\\xe".length;
@@ -1097,6 +1142,7 @@ export function findMatchingXe(src: string, startPos: number): number {
 function isLetter(ch: string | undefined): boolean {
   return ch !== undefined && /[a-zA-Z]/.test(ch);
 }
+
 
 /**
  * Read a greedy control-word token at `pos`, which must point at `\`. Returns

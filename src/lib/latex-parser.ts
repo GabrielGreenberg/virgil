@@ -38,6 +38,7 @@ import {
   findMatchingEnv,
   findMatchingGloss,
   findMatchingXe,
+  matchExpexOpenerAt,
   isEscaped,
   findUnescaped,
   matchBeginEnvAt,
@@ -1522,11 +1523,22 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
     }
 
     // \ex / \pex … \xe  — expex single or multi-part example block.
-    const exStartMatch = rest.match(/^\\(ex|pex)(~?)/);
+    //
+    // Recognition is the LEXER's (task 350 defect A). The pre-350 test here was
+    // `rest.match(/^\\(ex|pex)(~?)/)`, which never looked at what followed — so
+    // `\example` / `\exercise` / `\expandafter` were each claimed as openers,
+    // and so was linguex's `\ex.`, whose stranded period is the fingerprint the
+    // reproducing document left behind (`.\label{s1-disjoint}\a. …`). The scan
+    // that PAIRS the body (`findMatchingXe` → `skipOpaqueConstructAt`) already
+    // asked the strict question; only this dispatcher did not, so the two layers
+    // disagreed about the very set of openers the pairing is computed over.
+    const exStartMatch = matchExpexOpenerAt(ctx.src, ctx.pos);
     if (exStartMatch) {
-      const kind = exStartMatch[1] === "pex" ? "multi" : "single";
-      const suppressSpace = exStartMatch[2] === "~";
-      ctx.pos += exStartMatch[0].length;
+      const { kind, suppressSpace } = exStartMatch;
+      // Where the opener BEGINS, so an unterminated example can put it back —
+      // see the fail-closed branch below.
+      const exOpenStart = ctx.pos;
+      ctx.pos = exStartMatch.end;
 
       // Optional [opts]
       let exnoOverride: string | null = null;
@@ -1571,9 +1583,38 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       // Consume the body up to the matching \xe (handling nested \ex/\pex).
       const bodyStart = ctx.pos;
       const bodyEnd = findMatchingXe(ctx.src, bodyStart);
-      const bodyText =
-        bodyEnd !== -1 ? ctx.src.slice(bodyStart, bodyEnd) : ctx.src.slice(bodyStart);
-      ctx.pos = bodyEnd !== -1 ? bodyEnd + "\\xe".length : ctx.src.length;
+      if (bodyEnd === -1) {
+        // FAIL CLOSED (task 350 defect B). An `\ex` with no `\xe` is not an
+        // example: put the cursor back on the opener and let it be carried as
+        // ordinary raw content, exactly as any other unmodelled command is.
+        //
+        // The pre-350 arm took `ctx.src.slice(bodyStart)` and set
+        // `ctx.pos = ctx.src.length` — the REST OF THE DOCUMENT became one
+        // example body, and `buildExampleBlockFromBody`'s whitelist then kept
+        // the paragraphs and silently discarded every heading, figure,
+        // blockquote, nested example and texBlock in the tail. Measured on the
+        // reproducing document: ~350 of 394 lines destroyed, on OPEN, with no
+        // edit by the user, because `readDocBundle` fires the load-writeback
+        // unconditionally. The serializer then wrote a `\xe` the user never
+        // typed, so the damage was a FIXED POINT — no later save healed it.
+        //
+        // Damage from malformed input must be LOCAL: the same rule task 347
+        // drew for an unbalanced `{` (bounded to its own paragraph) and task
+        // 338 for a construct whose end nobody can find. Note this is the
+        // policy `skipOpaqueConstructAt` ALREADY states for the identical
+        // question one layer down ("Unterminated ⇒ TRANSPARENT") — the two
+        // layers disagreed, and this is the layer that was wrong.
+        ctx.pos = exOpenStart;
+        // Deliberately NOT `continue` — fall through to the remaining block
+        // dispatchers and ultimately `readParagraph`, which is what carries the
+        // bytes. `rest` was sliced at `exOpenStart`, so restoring the cursor
+        // leaves it accurate for those tests. Progress is guaranteed:
+        // `readParagraph`'s block-boundary test requires a non-empty accumulated
+        // `result`, so the opener that begins the paragraph can never terminate
+        // it, and the cursor always advances past at least `\ex`.
+      } else {
+      const bodyText = ctx.src.slice(bodyStart, bodyEnd);
+      ctx.pos = bodyEnd + "\\xe".length;
 
       const uuid = ctx.pendingExampleId || null;
       ctx.pendingExampleId = null;
@@ -1588,12 +1629,15 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       });
       parent.content.push(exampleNode);
       continue;
+      }
     }
 
     // \begingl … \endgl — expex interlinear gloss block (top-level or
     // nested inside an ex/pex body).
     const beginGlMatch = rest.match(/^\\begingl\b/);
     if (beginGlMatch) {
+      // Where the opener BEGINS — see the fail-closed branch below.
+      const glOpenStart = ctx.pos;
       ctx.pos += beginGlMatch[0].length;
       // Optional `[opts]` — expex's documented gloss-option bracket
       // (`glhangstyle`, `aboveglftskip`, `glstyle`, `everygla`, `textoffset`,
@@ -1613,12 +1657,23 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       // Boundary/comment-aware, depth-counted terminator (a bare indexOf
       // would stop at a commented or nested `\endgl`, or at `\endglpreamble`).
       const endIdx = findMatchingGloss(ctx.src, bodyStart);
-      const bodyText =
-        endIdx !== -1 ? ctx.src.slice(bodyStart, endIdx) : ctx.src.slice(bodyStart);
-      ctx.pos = endIdx !== -1 ? endIdx + "\\endgl".length : ctx.src.length;
+      if (endIdx === -1) {
+        // FAIL CLOSED — the `\ex` twin, and worse in its own way (task 350
+        // defect B). The pre-350 arm swallowed the rest of the document as
+        // gloss body, and `buildGlossFromBody` keeps only `\gla`/`\glb`/`\glc`/
+        // `\glft`/`\glpreamble` segments, so everything before the first tier
+        // marker vanished and everything after it was FOLDED INTO a gloss line
+        // — measured: `\glb one two// \section{Two} This section must survive.
+        // //`, a heading and its prose absorbed into an interlinear tier.
+        ctx.pos = glOpenStart;
+        // Falls through to `readParagraph`, as above.
+      } else {
+      const bodyText = ctx.src.slice(bodyStart, endIdx);
+      ctx.pos = endIdx + "\\endgl".length;
       const glossNode = buildGlossFromBody(bodyText, glossOptions);
       parent.content.push(glossNode);
       continue;
+      }
     }
 
     // \includegraphics — standalone (block-level) graphics insertion not
