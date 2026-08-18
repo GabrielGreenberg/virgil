@@ -370,6 +370,13 @@ export async function readSidecarIfExists<T>(
  * two post-write obligations — bundle coherence and the disk-ledger stamp —
  * exactly once. NEVER call this outside the funnel: it does no queueing, no
  * pipeline check and no library-paper guard of its own.
+ *
+ * tex-write-exempt: writes a `virgil/*.json` sidecar, never the `.tex`. Its own
+ * preservation authority is `mutateSidecar` — a read-modify-MERGE computed
+ * inside this same critical section (AGENTS.md "The sidecar half") — which is a
+ * different guarantee from a word-mass gate and the right one for a JSON
+ * document with several writers. The bundle path's `snapshotPriorBundle` copies
+ * `virgil.json` alongside the `.tex`, so the forensic net does reach here.
  */
 async function persistSidecarInLock<T>(
   docId: string,
@@ -484,6 +491,20 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
   // rewrite and silently undo it.
   return enqueueDocWrite(h, "bundle", async () => {
     const meta = await getDocMetaOrThrow(h.docId);
+    // FORENSIC SNAPSHOT (task 357). This write is USER-INTENT — a style switch
+    // or a documentclass swap deliberately replaces the preamble — so it takes
+    // no preservation GATE: refusing it would refuse what the user asked for.
+    // It is still the most destructive single write Virgil makes, and it was
+    // the one `.tex` writer with no net under it at all. Unconditional rather
+    // than rate-limited, for the same reason a delimiters commit is: this fires
+    // only on a discrete gesture, never on a timer, so "at most one snapshot a
+    // minute" would be a limit with nothing to limit. Stamping the shared
+    // rate-limit clock means the gesture costs ONE snapshot, not two nearly
+    // identical ones when the autosave follows it.
+    const docHandle = await requireDocHandle(h.docId);
+    const virgil = await getVirgilSubdir(docHandle);
+    await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
+    lastSnapshotAtByDoc.set(h.docId, Date.now());
     const fh = await getTexFileHandle(h.docId, { create: true });
     await writeTextToHandle(fh, latex);
     await touchDocTimestamp(h.docId);
@@ -1116,6 +1137,9 @@ export async function readFigureIndex(
   }
 }
 
+// tex-write-exempt: a DERIVED cache index (figure raster fingerprints), not
+// user content — regenerated from the figures on the next scan. Nothing here
+// can lose a word of the document.
 export async function writeFigureIndex(
   h: DocWriteHandle,
   index: Record<string, { source: string; mtimeMs: number; size: number }>,
@@ -1410,6 +1434,10 @@ function resolveTemplate(id?: string): DocumentTemplate {
   return chosen;
 }
 
+// tex-write-exempt: CREATION only. Both callers (`createDoc`,
+// `createDocInFolder`) refuse when any of the template's filenames already
+// exists, so this can never overwrite a byte of anyone's document — there is
+// no prior state for a gate to compare against or for a snapshot to keep.
 async function writeTemplateFiles(
   docHandle: FileSystemDirectoryHandle,
   template: DocumentTemplate,

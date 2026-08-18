@@ -67,7 +67,11 @@
  * outranks everything here, because refusing a user who has been told and has
  * decided is the worse failure.
  */
-import { measureContentWords } from "@/lib/tex-preservation";
+import {
+  compareRegionBags,
+  measureContentBag,
+  type WordBag,
+} from "@/lib/tex-preservation";
 import {
   clearPreservationNotice,
   isPreservationAcknowledged,
@@ -82,8 +86,16 @@ export interface RetainedCounts {
   body: number;
 }
 
+/** Per-region word MULTISETS of the bytes a doc was loaded from — what the
+ *  comparison actually needs since task 357's shortfall measure. `RetainedCounts`
+ *  is the totals projected out of these, for the mount gate's one reader. */
+interface RetainedBags {
+  preamble: WordBag;
+  body: WordBag;
+}
+
 interface Entry {
-  counts: RetainedCounts;
+  bags: RetainedBags;
   /** Set once a real user edit lands; the gate steps aside from then on. */
   userEdited: boolean;
 }
@@ -94,13 +106,13 @@ const byDoc = new Map<string, Entry>();
 
 /** Split on `\begin{document}`, mirroring `tex-preservation`'s own regions so
  *  the two gates cannot disagree about what a region is. */
-function regionCounts(tex: string): RetainedCounts {
+function regionBags(tex: string): RetainedBags {
   const i = tex.indexOf("\\begin{document}");
   const preamble = i === -1 ? "" : tex.slice(0, i);
   const body = i === -1 ? tex : tex.slice(i);
   return {
-    preamble: measureContentWords(preamble),
-    body: measureContentWords(body),
+    preamble: measureContentBag(preamble),
+    body: measureContentBag(body),
   };
 }
 
@@ -108,7 +120,7 @@ function regionCounts(tex: string): RetainedCounts {
  *  the same doc RESETS the baseline and the edited flag, because a fresh load
  *  is a fresh document as far as this gate is concerned. */
 export function retainLoadedCounts(docId: string, latex: string): void {
-  byDoc.set(docId, { counts: regionCounts(latex), userEdited: false });
+  byDoc.set(docId, { bags: regionBags(latex), userEdited: false });
   // A fresh load is a fresh document for BOTH halves of this gate, so the
   // standing refusal notice is dropped here rather than at each backend's read
   // — one door, so the baseline and the posture cannot disagree about what a
@@ -140,7 +152,8 @@ export function noteUserEdit(docId: string): void {
  * how much a document had before Virgil touched it.
  */
 export function getRetainedCounts(docId: string): RetainedCounts | null {
-  return byDoc.get(docId)?.counts ?? null;
+  const bags = byDoc.get(docId)?.bags;
+  return bags ? { preamble: bags.preamble.total, body: bags.body.total } : null;
 }
 
 /** Test hook / doc-close cleanup. */
@@ -183,14 +196,21 @@ export function checkWriteAgainstRetained(
   // gates only delay the loss by one gesture: the user types into the lossy
   // model and the next autosave writes exactly what was just refused.
   if (entry.userEdited && !isWriteProtected(docId)) return null;
-  const now = regionCounts(latex);
+  const now = regionBags(latex);
   for (const region of ["body", "preamble"] as const) {
-    const before = entry.counts[region];
-    const after = now[region];
-    const allowed = Math.max(4, Math.floor(before * 0.01));
-    const lost = Math.max(0, before - after);
-    if (lost > allowed) {
-      return { ok: false, region, before, after, lost, allowed };
+    // ONE comparison, shared with the load gate (task 357): same slack, same
+    // shortfall rule. A second copy here is exactly how the two gates would
+    // come to disagree about what counts as a loss.
+    const v = compareRegionBags(entry.bags[region], now[region]);
+    if (!v.ok) {
+      return {
+        ok: false,
+        region,
+        before: v.before,
+        after: v.after,
+        lost: v.lost,
+        allowed: v.allowed,
+      };
     }
   }
   return null;

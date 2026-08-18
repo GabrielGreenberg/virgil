@@ -1,0 +1,280 @@
+{
+  "cases": [
+    {
+      "name": "byte-identical",
+      "why": "the commonest honest save — nothing moves in either region",
+      "before": "\\documentclass{article}\n\\usepackage{expex}\n\n\\begin{document}\n\nA short paragraph of prose.\n\n\\end{document}\n",
+      "after": "\\documentclass{article}\n\\usepackage{expex}\n\n\\begin{document}\n\nA short paragraph of prose.\n\n\\end{document}\n",
+      "expected": {
+        "ok": true,
+        "body": {
+          "before": 9,
+          "after": 9,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        },
+        "preamble": {
+          "before": 4,
+          "after": 4,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "marker-injection-is-not-growth",
+      "why": "the load-writeback ADDS Virgil's own markers; both sides project them away",
+      "before": "\\documentclass{article}\n\n\\begin{document}\n\nA claim with a note.\n\n\\end{document}\n",
+      "after": "\\documentclass{article}\n\\providecommand{\\vfid}[1]{}\n\n\\begin{document}\n\nA claim with a note.\\vfid{ab12} %!v:c3d4\n\n\\end{document}\n",
+      "expected": {
+        "ok": true,
+        "body": {
+          "before": 9,
+          "after": 9,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        },
+        "preamble": {
+          "before": 2,
+          "after": 5,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "body-loses-a-section",
+      "why": "the pre-350 example-body whitelist shape — a heading and a quote gone",
+      "before": "\\documentclass{article}\n\n\\begin{document}\n\n\\section{Beginnings}\n\nFirst paragraph of the section.\n\n\\begin{quote}\nA quoted remark worth keeping.\n\\end{quote}\n\n\\end{document}\n",
+      "after": "\\documentclass{article}\n\n\\begin{document}\n\nFirst paragraph of the section.\n\n\\end{document}\n",
+      "expected": {
+        "ok": false,
+        "body": {
+          "before": 20,
+          "after": 9,
+          "lost": 11,
+          "allowed": 4,
+          "ok": false
+        },
+        "preamble": {
+          "before": 2,
+          "after": 2,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "growing-preamble-cannot-mask-a-shrinking-body",
+      "why": "the measured masking that earned the region split",
+      "before": "\\documentclass{article}\n\n\\begin{document}\n\n\\section{Beginnings}\n\nFirst paragraph of the section, with several distinctive words in it.\n\n\\begin{quote}\nA quoted remark nobody should lose.\n\\end{quote}\n\n\\end{document}\n",
+      "after": "\\documentclass{article}\n\\usepackage{graphicx}\n\\usepackage{xcolor}\n\\usepackage{natbib}\n\\usepackage{amsmath}\n\\usepackage{microtype}\n\n\\begin{document}\n\nFirst paragraph of the section, with several distinctive words in it.\n\n\\end{document}\n",
+      "expected": {
+        "ok": false,
+        "body": {
+          "before": 27,
+          "after": 15,
+          "lost": 12,
+          "allowed": 4,
+          "ok": false
+        },
+        "preamble": {
+          "before": 2,
+          "after": 12,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "growth-inside-a-region-cannot-mask-loss",
+      "why": "the SHORTFALL rule: a net count scores this at zero, which is the point",
+      "before": "\\documentclass{article}\n\n\\begin{document}\n\nAlpha beta gamma delta epsilon zeta eta theta.\n\n\\end{document}\n",
+      "after": "\\documentclass{article}\n\n\\begin{document}\n\nAlpha beta gamma one two three four five six.\n\n\\end{document}\n",
+      "expected": {
+        "ok": false,
+        "body": {
+          "before": 12,
+          "after": 13,
+          "lost": 5,
+          "allowed": 4,
+          "ok": false
+        },
+        "preamble": {
+          "before": 2,
+          "after": 2,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "the-four-word-floor-passes-one-author-line",
+      "why": "the measured limit, recorded rather than wished away",
+      "before": "\\documentclass{article}\n\\author{Jane Q. Doe}\n\n\\begin{document}\n\nProse.\n\n\\end{document}\n",
+      "after": "\\documentclass{article}\n\n\\begin{document}\n\nProse.\n\n\\end{document}\n",
+      "expected": {
+        "ok": true,
+        "body": {
+          "before": 5,
+          "after": 5,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        },
+        "preamble": {
+          "before": 6,
+          "after": 2,
+          "lost": 4,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "no-begin-document-is-all-body",
+      "why": "the fail-safe direction: every word falls under the stricter comparison",
+      "before": "Just a fragment with several words in it.\n",
+      "after": "Just a fragment.\n",
+      "expected": {
+        "ok": false,
+        "body": {
+          "before": 8,
+          "after": 3,
+          "lost": 5,
+          "allowed": 4,
+          "ok": false
+        },
+        "preamble": {
+          "before": 0,
+          "after": 0,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "a-user-comment-is-content",
+      "why": "since task 347 a % comment round-trips, so dropping every one is a loss",
+      "before": "\\documentclass{article}\n\n\\begin{document}\n\n% TODO cite the Nagel paper here\n% and check the page range\nProse that survives.\n\n\\end{document}\n",
+      "after": "\\documentclass{article}\n\n\\begin{document}\n\nProse that survives.\n\n\\end{document}\n",
+      "expected": {
+        "ok": false,
+        "body": {
+          "before": 18,
+          "after": 7,
+          "lost": 11,
+          "allowed": 4,
+          "ok": false
+        },
+        "preamble": {
+          "before": 2,
+          "after": 2,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "punctuation-normalization-is-free",
+      "why": "the reason the measure is words: none of these move a token",
+      "before": "\\documentclass{article}\n\n\\begin{document}\n\nInline \\(x^2\\) and display $$E=mc^2$$ and a dash -- here.\n\n\\end{document}\n",
+      "after": "\\documentclass{article}\n\n\\begin{document}\n\nInline $x^2$ and display $E=mc^2$ and a dash – here.\n\n\\end{document}\n",
+      "expected": {
+        "ok": true,
+        "body": {
+          "before": 16,
+          "after": 16,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        },
+        "preamble": {
+          "before": 2,
+          "after": 2,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "a-reordered-preamble-loses-nothing",
+      "why": "task 356 hoists \\title to the far end; an order-sensitive rule would refuse this",
+      "before": "\\documentclass{article}\n\\title{On Annotation}\n\\usepackage{expex}\n\\usepackage{graphicx}\n\n\\begin{document}\n\nProse.\n\n\\end{document}\n",
+      "after": "\\documentclass{article}\n\\usepackage{expex}\n\\usepackage{graphicx}\n\\title{On Annotation}\n\n\\begin{document}\n\nProse.\n\n\\end{document}\n",
+      "expected": {
+        "ok": true,
+        "body": {
+          "before": 5,
+          "after": 5,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        },
+        "preamble": {
+          "before": 9,
+          "after": 9,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "an-empty-after-loses-everything",
+      "why": "the total-destruction case both languages must agree is a refusal",
+      "before": "\\documentclass{article}\n\n\\begin{document}\n\nOne two three four five six seven eight nine ten.\n\n\\end{document}\n",
+      "after": "",
+      "expected": {
+        "ok": false,
+        "body": {
+          "before": 14,
+          "after": 0,
+          "lost": 14,
+          "allowed": 4,
+          "ok": false
+        },
+        "preamble": {
+          "before": 2,
+          "after": 0,
+          "lost": 2,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    },
+    {
+      "name": "unicode-words-count",
+      "why": "the token class is ASCII-alphanumeric; accented prose contributes its runs",
+      "before": "\\documentclass{article}\n\n\\begin{document}\n\nCafé søster naïve Frühling prose survives here.\n\n\\end{document}\n",
+      "after": "\\documentclass{article}\n\n\\begin{document}\n\nprose survives here.\n\n\\end{document}\n",
+      "expected": {
+        "ok": false,
+        "body": {
+          "before": 14,
+          "after": 7,
+          "lost": 7,
+          "allowed": 4,
+          "ok": false
+        },
+        "preamble": {
+          "before": 2,
+          "after": 2,
+          "lost": 0,
+          "allowed": 4,
+          "ok": true
+        }
+      }
+    }
+  ]
+}

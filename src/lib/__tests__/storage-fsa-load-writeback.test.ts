@@ -154,6 +154,7 @@ import {
   __resetForTests as resetPipelines,
 } from "@/lib/multi-window/doc-pipeline";
 import { readDocBundle, writeDocBundle } from "@/lib/storage-fsa";
+import { clearRetained } from "@/lib/write-preservation";
 import {
   getDiskFingerprint,
   hashContent,
@@ -208,6 +209,16 @@ async function settle(): Promise<void> {
 beforeEach(() => {
   resetPipelines();
   __resetDiskLedgerForTests();
+  // The write gate's baseline is module state keyed by docId, so a
+  // `readDocBundle` in one test retains counts that outlive it — and every test
+  // below re-seeds the SAME docId with a fresh `.tex`. Clearing makes each test
+  // independent, which is what `seedDoc` here already intends: a test that
+  // never loads the doc is a doc this process never loaded, and the gate
+  // correctly has nothing to say about it. (Before task 357's shortfall measure
+  // the leak was invisible — the delimiters-override trio's synthetic model
+  // differs from the seeded body by 9 word occurrences while the NET is only 3,
+  // so it slipped under the 4-word floor by luck rather than by design.)
+  clearRetained();
   seedDoc(SOURCE_TEX);
 });
 

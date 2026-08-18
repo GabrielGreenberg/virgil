@@ -287,7 +287,11 @@ export async function readSidecarIfExists<T>(
 }
 
 /** Dev mirror of storage-fsa's `persistSidecarInLock` — the write half, run
- *  inside the per-file serial queue. No queueing/guards of its own. */
+ *  inside the per-file serial queue. No queueing/guards of its own.
+ *
+ *  tex-write-exempt: writes a `virgil/*.json` sidecar, never the `.tex` — see the
+ *  FSA twin for the full reason (its authority is `mutateSidecar`'s serialized
+ *  read-modify-merge, not a word-mass gate). */
 async function persistSidecarInLock<T>(
   docId: string,
   filename: string,
@@ -375,6 +379,12 @@ export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> 
   // storage-fsa, where writeTex shares the bundle subkey): raw .tex rewrites
   // (style switch, compile documentclass-switch) and bundle autosaves target
   // the same file and must land in enqueue order.
+  //
+  // tex-write-exempt: user-intent write (style switch / documentclass swap), so
+  // no preservation GATE by design — the FSA twin takes the same view. Its
+  // forensic `snapshotPriorBundle` has no counterpart here at all: this backend
+  // keeps no `virgil/.history/` folder, which is the same absence the refusal
+  // path's armed-edge snapshot states at its own two sites (task 357).
   return enqueueWrite(`${h.docId}/bundle`, async () => {
     assertNotSuperseded(h);
     const docs = await getDevIndex();
@@ -630,6 +640,9 @@ export async function readBib(docId: string): Promise<BibReadResult> {
   return { bibText, bibFilename, detectedPackage };
 }
 
+// tex-write-exempt: writes the `.bib`, never the `.tex`, and a bibliography edit
+// is user-intent. The FSA twin still takes `snapshotPriorBib`; this backend keeps
+// no `virgil/.history/` folder, so it has no forensic net to take (task 357).
 export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void> {
   // Read-only library-paper docs never persist (parity with storage-fsa).
   if (isLibraryPaper(h.docId)) return;
@@ -799,6 +812,8 @@ export async function readFigureIndex(
   }
 }
 
+// tex-write-exempt: a DERIVED cache index, not user content (parity with the FSA
+// twin) — regenerated from the figures on the next scan.
 export async function writeFigureIndex(
   h: DocWriteHandle,
   index: Record<string, { source: string; mtimeMs: number; size: number }>,
@@ -1002,6 +1017,9 @@ export async function listDocs(): Promise<FsaDocMeta[]> {
     }));
 }
 
+// tex-write-exempt: the dev doc REGISTRY (`index.json`), not a paper file — it
+// records which folders exist, and it is read-modify-written from the file it
+// is about to replace, so it cannot carry a document's words away.
 export async function renameDoc(id: string, newName: string): Promise<void> {
   const raw = await fetchText(`${API}/index.json`);
   if (!raw) return;
@@ -1014,6 +1032,8 @@ export async function renameDoc(id: string, newName: string): Promise<void> {
   await putText(`${API}/index.json`, JSON.stringify(index, null, 2));
 }
 
+// tex-write-exempt: the dev doc REGISTRY (`index.json`), not a paper file — see
+// `renameDoc` above. Removing a row leaves every byte on disk untouched.
 export async function deleteDocFromIndex(id: string): Promise<void> {
   const raw = await fetchText(`${API}/index.json`);
   if (!raw) return;

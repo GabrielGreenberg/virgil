@@ -150,7 +150,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 from _common import (
+    DOCUMENT_MARKER,
     NODE_UUID_REGEX,
+    check_tex_preservation,
     commit_under_pen,
     die,
     find_bib_file,
@@ -642,6 +644,57 @@ class _Txn:
 # ---------------------------------------------------------------------------
 
 
+def _guard_region_replace(before: str, after: str) -> None:
+    """The net under a whole-preamble rewrite from MODEL OUTPUT (task 357).
+
+    `region-replace` is the style merge: it replaces everything up to and
+    including `\\begin{document}` with a blob the responder composed. Two
+    refusals, and the asymmetry between them is the whole design:
+
+    * The **BODY** is measured with the shared preservation rule
+      (`check_tex_preservation`, the port of the in-app gate). By construction
+      this mode preserves body bytes verbatim — it splices `replacement` in
+      front of the text AFTER the marker — so a body shortfall can only mean
+      the splice ate document content, which happens when a caller supplies an
+      `endMarker` that occurs later in the file than it believed. That is the
+      catastrophic case and it is exactly what a word measure sees.
+
+    * The **PREAMBLE** is NOT word-gated, and that is a decision rather than an
+      omission. `/editor/style-merge` legitimately drops preamble words by
+      design — the current `\\documentclass`, the Virgil `\\providecommand`
+      shim block, the `\\title`/`\\author`/`\\date` fields (re-injected at
+      serialize time), and any package the target style shadows. A word gate
+      there would refuse the skill's own contract on an ordinary merge, which
+      is the false-refusal direction a net must not have. What the preamble
+      gets instead is the STRUCTURAL invariant the whole mode rests on: the
+      result carries exactly one `\\begin{document}`. A replacement that
+      forgot to re-supply the marker leaves a `.tex` that cannot compile and
+      that Virgil reads as one enormous body — silent, total, and invisible to
+      any word count.
+
+    A refusal here is `die()`: the caller's atomic commit never runs, so the
+    `.tex`, the sidecars and the request row are all left exactly as they were.
+    """
+    markers = after.count(DOCUMENT_MARKER)
+    if markers != 1:
+        die(
+            f"region-replace refused: the result would contain {markers} "
+            f"`{DOCUMENT_MARKER}` markers (exactly 1 is required). The "
+            "replacement must re-supply the marker it consumed. Nothing was "
+            "written."
+        )
+    verdict = check_tex_preservation(before, after)
+    body = verdict["body"]
+    if not body["ok"]:
+        die(
+            f"region-replace refused: it would drop {body['lost']} of "
+            f"{body['before']} content words from the document BODY "
+            f"({body['after']} would remain; at most {body['allowed']} may be "
+            "lost). A preamble rewrite must not touch the body — check the "
+            "`endMarker`. Nothing was written."
+        )
+
+
 def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
     """Compute the new .tex content for `te`. Returns (tex_path, new_text); dies
     if the anchor / marker can't be located.
@@ -671,14 +724,16 @@ def _tex_splice(doc: Path, te: dict) -> tuple[Path, str]:
         replacement = te.get("replacement")
         if replacement is None:
             die("texEdit.replacement is required for mode=region-replace")
-        marker = te.get("endMarker") or "\\begin{document}"
+        marker = te.get("endMarker") or DOCUMENT_MARKER
         i = text.find(marker)
         if i == -1:
             die(f"region-replace end marker not found in .tex: {marker}")
         end = i + len(marker)
         while end < len(text) and text[end] == "\n":
             end += 1
-        return tex_path, replacement + text[end:]
+        spliced = replacement + text[end:]
+        _guard_region_replace(text, spliced)
+        return tex_path, spliced
 
     if mode == "replace-span":
         return tex_path, _replace_span_in_tex(text, te)
