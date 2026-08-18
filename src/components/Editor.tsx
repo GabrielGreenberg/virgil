@@ -62,6 +62,7 @@ import {
 import type { HeadingTypePick } from "./HeadingTypeMenu";
 import { buildEditorExtensions } from "@/lib/editor-extensions";
 import { registerEditorMount } from "@/lib/editor-census-probe";
+import { reportDocMount } from "@/lib/mount-preservation";
 
 /**
  * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
@@ -802,6 +803,27 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
   // Editor-census probe (__editorCensus): one live-instance tick per mount.
   useEffect(() => registerEditorMount("main"), []);
+
+  // THE MOUNT GATE (task 357, hole 3). The load-writeback and write-side gates
+  // both measure the parse OUTPUT; neither asks whether the EDITOR kept it.
+  // With `enableContentCheck` off (see the `useEditor` call above), TipTap
+  // answers a schema mismatch by silently substituting an EMPTY document — so a
+  // word-complete parse naming a node type this build lacks opens the paper
+  // blank over an intact file, and the write gate steps aside on the user's
+  // first keystroke into that blank. `reportDocMount` measures what was KEPT
+  // and, on a shortfall, raises the same refusal posture a lossy write does.
+  //
+  // Deps are `[editor]` ALONE, deliberately: `useEditor` seeds from
+  // `initialContent` exactly once, at creation. Re-running this when a later
+  // render supplies a different prop would measure a mount that never happened.
+  //
+  // KEYSTROKE SANCTITY: once per mount, and O(1) unless the document came out
+  // empty — the walk that names the cause runs only on the failure path.
+  useEffect(() => {
+    if (!editor) return;
+    reportDocMount(editor.schema, editor.state.doc, initialContent, docId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   // No `setEditable` sync: PM stays `editable: true` for the entire
   // lifetime of the view so native selection always works. Read-only

@@ -140,34 +140,50 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
 
   const lost = notice?.lost ?? 0;
   const region = notice?.region ?? "body";
+  // A MOUNT refusal (task 357 hole 3) is a different KIND of fact from a word
+  // shortfall: the editor could not hold the parsed document at all and opened
+  // blank, so there is no partial figure to quote — and where this process
+  // never loaded the file through `readDocBundle` there is no baseline either,
+  // which is exactly why the sentence must not be assembled out of the numbers.
+  const isMount = notice?.source === "mount";
 
   const handleSaveAnyway = useCallback(async () => {
     closeMenu();
     if (!docId) return;
     const ok = await confirm({
       title: "Save anyway?",
-      message:
-        `Virgil could not represent about ${lost} words of this document's ${region} — ` +
-        `saving will write the version you see in the editor over the file on disk, ` +
-        `and those words will be gone from it. A copy of the current file is in the ` +
-        `paper's virgil/.history/ folder.`,
+      message: isMount
+        ? `Virgil could not open this document at all — the editor you see is ` +
+          `EMPTY, and saving will write that empty document over the file on ` +
+          `disk. A copy of the current file is in the paper's virgil/.history/ ` +
+          `folder.`
+        : `Virgil could not represent about ${lost} words of this document's ${region} — ` +
+          `saving will write the version you see in the editor over the file on disk, ` +
+          `and those words will be gone from it. A copy of the current file is in the ` +
+          `paper's virgil/.history/ folder.`,
       confirmLabel: "Save anyway — I understand",
       tone: "danger",
     });
     if (!ok) return;
     acknowledgePreservationNotice(docId);
-  }, [closeMenu, confirm, docId, lost, region]);
+  }, [closeMenu, confirm, docId, lost, region, isMount]);
 
   // ── render gate ────────────────────────────────────────────────────
   // No doc, no refusal, or the user has already answered → nothing to say.
   if (!notice || notice.acknowledged) return null;
 
-  const detail =
-    `Virgil read this file but could not represent all of it: about ${lost} of ` +
-    `${notice.before} content words in the ${region} are missing from the editor's ` +
-    `version. Your file on disk has NOT been changed, and Virgil will not write to ` +
-    `it. Open the code view to see the source, or fix the file in another editor ` +
-    `and reopen it.`;
+  const detail = isMount
+    ? `Virgil read this file but could not display it: the parsed document uses ` +
+      `something this version of the editor doesn't know${
+        notice.reason ? ` (${notice.reason})` : ""
+      }, so the editor opened EMPTY. Your file on disk has NOT been changed, and ` +
+      `Virgil will not write to it. Open the code view to see the source, or ` +
+      `update Virgil and reopen the paper.`
+    : `Virgil read this file but could not represent all of it: about ${lost} of ` +
+      `${notice.before} content words in the ${region} are missing from the editor's ` +
+      `version. Your file on disk has NOT been changed, and Virgil will not write to ` +
+      `it. Open the code view to see the source, or fix the file in another editor ` +
+      `and reopen it.`;
 
   const menu: ReactNode =
     menuOpen && anchorRect && typeof document !== "undefined" ? (
@@ -187,7 +203,11 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
       >
         <MenuRow
           id="save-anyway"
-          label="Save anyway — drops the missing text"
+          label={
+            isMount
+              ? "Save anyway — writes an EMPTY document"
+              : "Save anyway — drops the missing text"
+          }
           detail="Writes the editor's version over the file on disk. A copy of the current file is kept in virgil/.history/."
           danger
           run={() => void handleSaveAnyway()}
@@ -217,7 +237,11 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
         <span aria-hidden style={{ color: "var(--danger)", display: "inline-flex" }}>
           <ShieldIcon />
         </span>
-        <span className="truncate">Not saving — this file didn&apos;t fully load</span>
+        <span className="truncate">
+          {isMount
+            ? "Not saving — this file didn't open"
+            : "Not saving — this file didn't fully load"}
+        </span>
       </span>
 
       <button

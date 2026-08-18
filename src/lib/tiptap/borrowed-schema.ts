@@ -56,6 +56,10 @@
 
 import { getSchema, type AnyExtension } from "@tiptap/core";
 import type { Schema } from "@tiptap/pm/model";
+import {
+  canMountInSchema,
+  type SchemaMountCheck,
+} from "@/lib/tiptap/schema-mount";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
 import {
@@ -233,10 +237,9 @@ function schemaForScope(scope: CardBodySchemaScope): Schema {
   return cached;
 }
 
-/** Result of {@link canMountInCardBody}. */
-export type CardBodyMountCheck =
-  | { ok: true }
-  | { ok: false; reason: string };
+/** Result of {@link canMountInCardBody}. Structurally the shared
+ *  {@link SchemaMountCheck} — the two surfaces ask ONE question. */
+export type CardBodyMountCheck = SchemaMountCheck;
 
 /**
  * Can this captured JSONContent actually be REPRESENTED by a card body at
@@ -263,16 +266,12 @@ export function canMountInCardBody(
   json: unknown,
   scope: CardBodySchemaScope,
 ): CardBodyMountCheck {
-  if (json == null) return { ok: true };
-  try {
-    schemaForScope(scope).nodeFromJSON(json as never);
-    return { ok: true };
-  } catch (err) {
-    // ProseMirror's messages are already precise and user-legible enough to act
-    // on ("Unknown node type: heading"); surface it rather than flattening every
-    // cause to one opaque string.
-    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
-  }
+  // ONE probe, three surfaces (task 357 hole 3): the card capture asks it here,
+  // and the main document asks the same primitive at its own mount doors. The
+  // question — "can this schema hold this model?" — has one answer, and the
+  // silent failure it guards (TipTap swallows a schema mismatch into an EMPTY
+  // document) is identical on both sides.
+  return canMountInSchema(schemaForScope(scope), json);
 }
 
 /**
