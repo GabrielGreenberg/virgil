@@ -188,12 +188,35 @@ const MAX_CONTAINER_DESCENT = 8;
  * otherwise descend wrapper NodeViews to the inline-context element via the
  * shared `resolveInlineContextElement`.
  */
-function resolveFirstLineTarget(el: HTMLElement, guard = 0): HTMLElement {
+function resolveFirstLineTarget(
+  el: HTMLElement,
+  guard = 0,
+  descendTo: HTMLElement | null = null,
+): HTMLElement {
   if (guard < MAX_CONTAINER_DESCENT) {
     const kind = el.getAttribute("data-text-object-kind");
     if (kind && CONTAINER_KINDS.has(kind)) {
+      // Task 353: descend to the item the POINTER is on when the caller names
+      // one, not to the first item in document order.
+      //
+      // The stated intent of this descent has always been "a container and its
+      // item produce the SAME opticalCenterY by construction" — and with the
+      // pointer on item 2 the first-child rule broke exactly that: the list's
+      // handle stayed pinned at row 1 while the item's handle moved down, so
+      // the list handle read as a SECOND item's handle lighting on the wrong
+      // row. (That is what Gabriel reported; it was never a stale placement or
+      // a band overlap.) Descending to the hovered item restores the invariant
+      // for every row instead of only for row 1.
+      //
+      // `contains` is the guard that keeps this a HINT rather than a second
+      // resolution path: a hint from another subtree is ignored and the
+      // first-child rule answers, so a caller cannot aim a container's chrome
+      // at an unrelated block.
+      if (descendTo && descendTo !== el && el.contains(descendTo)) {
+        return resolveFirstLineTarget(descendTo, guard + 1, descendTo);
+      }
       const child = el.querySelector<HTMLElement>(GRABBABLE_CHILD_SELECTOR);
-      if (child) return resolveFirstLineTarget(child, guard + 1);
+      if (child) return resolveFirstLineTarget(child, guard + 1, descendTo);
     }
   }
   return resolveInlineContextElement(el);
@@ -417,8 +440,11 @@ export interface ContentEdges {
   contentRight: number;
 }
 
-export function resolveContentEdges(el: HTMLElement): ContentEdges {
-  const target = resolveFirstLineTarget(el);
+export function resolveContentEdges(
+  el: HTMLElement,
+  descendTo: HTMLElement | null = null,
+): ContentEdges {
+  const target = resolveFirstLineTarget(el, 0, descendTo);
   const firstLineRect = firstLineRectOf(target);
   const contentLeft = firstLineRect.left;
   const contentWidth = firstLineRect.width;
@@ -448,13 +474,17 @@ export function resolveBlockFrame(
   el: HTMLElement,
   editor: Editor,
   cache?: EditorViewportFrame | null,
+  /** Task 353 — the item the pointer is on, so a CONTAINER's chrome anchors to
+   *  the hovered row rather than to its first item. Ignored unless `el`
+   *  actually contains it. */
+  descendTo: HTMLElement | null = null,
 ): BlockFrame {
   // ---- Horizontal content edges (chips 2 / 4a / 4b) ----
   // Composed from the shared `resolveContentEdges` primitive so a full frame
   // and a lean direct `resolveContentEdges` call (drop indicator / figure
   // chrome) read ONE measurement and can never drift.
   const { target, firstLineRect, contentLeft, contentWidth, contentRight } =
-    resolveContentEdges(el);
+    resolveContentEdges(el, descendTo);
 
   // ---- The target's computed style: read ONCE, used twice ----
   // Both the vertical axis (via `capBandCenterOffset`'s font metrics) and the
