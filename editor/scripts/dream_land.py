@@ -4,21 +4,30 @@ r"""Landing-mode classifier + the three-boundary guard for the dev-dream night.
 This is the SHARED, low-risk seam the dream phase (/editor/dream, chip 18) and
 the manual stress-test (/editor/iterate-virgil-editor, chip 11) can both stand
 on — the genuinely-common mechanism extracted now, not a premature one-engine
-rewrite. It answers ONE question for a single proposed change:
+rewrite. It answers HOW a proposed change lands:
 
-    classify_change(change) -> Verdict(mode, reason, boundary?)
+    classify_change(change) -> Verdict(mode, reason, boundary?, neverSelfMerge)
 
     mode ∈ { "acts", "proposes", "refused" }
 
-  • ACTS    — lands directly on the dream's working branch (the user merges it):
+`mode` is the routing question ("apply it, stage it, or refuse it?").
+`neverSelfMerge` is the SECOND, independent question dream.md §6 asks of the
+same paths ("may this merge unattended once its gates are green?") — a change
+can be `proposes` because it is a script and unmergeable-unattended because it
+is THIS loop's script.  Both are answered here so neither is re-derived by eye.
+
+  • ACTS    — lands directly on the dream's working branch (step 6 then disposes
+              of that branch in the same run; the user reverts via git):
               a single-skill-prompt change that does NOT touch a behavior
               contract — tighten wording, add a clarifying example, fix a typo,
               expand guidance.  Recorded "ACTED" in the digest; reverted via git.
-  • PROPOSES — runs in a git worktree, recorded "PROPOSED" with a
-              `git merge dream/<date>` hint for the user to review: anything
-              cross-skill, any .py script change, anything touching the manifest
+  • PROPOSES — runs in a git worktree, recorded "PROPOSED": anything cross-skill,
+              any .py script change, anything touching the manifest
               (docs/workspace/), any skill rename/merge/split, or any
-              behavior-contract-adjacent change.
+              behavior-contract-adjacent change.  The skill's §6 then LANDS it
+              on green gates or EXPORTS it as a patch and deletes the branch —
+              a `dream/*` branch never outlives its run, because the nightly
+              sweep merges every surviving branch blindly.
   • REFUSED — crosses one of the THREE load-bearing boundaries the loop CANNOT
               cross.  Logged in the digest as a refused item; never silently
               applied AND never proposed.
@@ -45,6 +54,12 @@ write path.
 CLI (for the skill and the test slice):
   dream_land.py --change '<inline-json>'      # classify one change → JSON verdict
   dream_land.py --change @path/to/change.json
+  git diff --name-only main...dream/<date> | dream_land.py --self-merge-check
+        # → { "neverSelfMerge": bool, "procedurePaths": [...], "reason": "..." }
+        #   dream.md §6's second question, asked of a BRANCH rather than a
+        #   change: may this merge unattended on green gates?  Every verdict
+        #   above also carries the same two fields, so a per-change caller
+        #   never has to ask twice.
 A change object (every field but `paths` optional):
   { "summary": "tighten the anchor-lookup wording in draft-footnote",
     "paths": ["editor/skills/draft-footnote.md"],
@@ -87,6 +102,37 @@ DEV_LOOP_SKILLS = {
     "editor/skills/reflect.md",
     "editor/skills/iterate-virgil-editor.md",
 }
+
+# Dev-loop procedure SCRIPTS — the same operating procedure, in script form ---
+# `dream.py`/`reflect.py` decide what the loop READS and WRITES, `dream_land.py`
+# IS this classifier, and `dev_loop.py` is the shared read→derive→route spine: a
+# run editing one of them rewrites how the loop operates just as surely as an
+# edit to the three markdowns above.  Deliberately a SECOND set rather than four
+# more members of DEV_LOOP_SKILLS, because the two sets answer two different
+# questions and only one of them had a gap (Gabriel's ruling, 2026-08-18):
+#
+#   • DEV_LOOP_SKILLS withholds the ACTS fast lane.  Every `.py` is ALREADY
+#     withheld from acts by the non-skill-prompt rule (classify_change step 4),
+#     so adding the scripts there would buy nothing — and would misstate what
+#     the set means (its members are skill PROMPTS; `_skill_name` assumes it).
+#   • DEV_LOOP_PROCEDURE answers the NEVER-SELF-MERGE question (dream.md §6):
+#     may this branch merge unattended on green gates, or must it route to the
+#     human?  That clause was keyed on the three markdowns alone, so the
+#     2026-08-18 dream's edit to `dream.py`'s marker semantics — the file that
+#     decides what the NEXT dream is allowed to read, i.e. the loop's memory —
+#     reached `proposes` only incidentally (it is a `.py` at all) and never
+#     fired the clause.
+#
+# The union is DERIVED, never re-listed: a fifth procedure file joins ONE set
+# and both readers follow.
+DEV_LOOP_SCRIPTS = {
+    "editor/scripts/dream.py",
+    "editor/scripts/reflect.py",
+    "editor/scripts/dream_land.py",
+    "editor/scripts/dev_loop.py",
+}
+
+DEV_LOOP_PROCEDURE = DEV_LOOP_SKILLS | DEV_LOOP_SCRIPTS
 
 # Repo-relative boundary-sensitive paths --------------------------------------
 AGENTS_MD = "editor/AGENTS.md"
@@ -170,9 +216,21 @@ class Verdict:
     reason: str                  # one line, for the digest
     boundary: str | None = None  # set iff mode == refused
     paths: list[str] = field(default_factory=list)
+    # dream.md §6's never-self-merge answer, PUBLISHED on every verdict — so the
+    # skill READS A FLAG instead of re-deriving the membership by eye (the rule
+    # `dream.py select`'s `driftChecked` already follows).  Stamped centrally in
+    # `classify_change`, so no routing branch can forget it, and independent of
+    # `mode`: a dev-loop-procedure change is `proposes` for one reason (it is a
+    # script / a loop skill) and unmergeable-unattended for another.
+    never_self_merge: bool = False
+    procedure_paths: list[str] = field(default_factory=list)
 
     def to_json(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        # camelCase on the wire, matching the loop's other JSON seams.
+        d["neverSelfMerge"] = d.pop("never_self_merge")
+        d["procedurePaths"] = d.pop("procedure_paths")
+        return d
 
 
 # ---------------------------------------------------------------------------
@@ -180,14 +238,47 @@ class Verdict:
 # ---------------------------------------------------------------------------
 
 
+def _norm_path(p: str) -> str:
+    return str(p).strip().lstrip("./")
+
+
 def _norm_paths(change: dict) -> list[str]:
     raw = change.get("paths") or ([change["path"]] if change.get("path") else [])
     out: list[str] = []
     for p in raw:
-        s = str(p).strip().lstrip("./")
+        s = _norm_path(p)
         if s and s not in out:
             out.append(s)
     return out
+
+
+def dev_loop_procedure_paths(paths) -> list[str]:
+    """The DEV_LOOP_PROCEDURE members among `paths` (normalized, sorted).
+
+    The whole operation, not a piece: "does this touch the loop's own operating
+    procedure?" has ONE answer, and both readers take it from here — the verdict
+    stamp below, and the `--self-merge-check` door step 6 asks about a BRANCH
+    (`git diff --name-only main...dream/<date>`), which has paths but no change
+    objects.  A caller that re-listed the membership would be the hand list this
+    set exists to retire."""
+    touched = {_norm_path(p) for p in (paths or [])}
+    return sorted(touched & DEV_LOOP_PROCEDURE)
+
+
+def self_merge_check(paths) -> dict:
+    """dream.md §6's never-self-merge question, answered for a set of paths."""
+    procedure = dev_loop_procedure_paths(paths)
+    if procedure:
+        reason = (f"touches the dev-loop's own operating procedure "
+                  f"({', '.join(procedure)}) — never merges unattended, however "
+                  f"green: export it as a patch, delete the branch, file a "
+                  f"DECISION task")
+    else:
+        reason = ("touches no dev-loop procedure file — the ordinary "
+                  "green-gates landing applies")
+    return {"neverSelfMerge": bool(procedure),
+            "procedurePaths": procedure,
+            "reason": reason}
 
 
 def _content(change: dict) -> str:
@@ -303,7 +394,8 @@ def boundary_for(change: dict) -> Verdict | None:
 
 
 def classify_change(change: dict) -> Verdict:
-    """Route one proposed change → acts | proposes | refused.
+    """Route one proposed change → acts | proposes | refused, and stamp the
+    never-self-merge answer onto whatever verdict comes back.
 
     `change` keys (only `paths` required):
       paths      list[str]  repo-relative files the change would touch
@@ -311,7 +403,19 @@ def classify_change(change: dict) -> Verdict:
       oldText    str        the text being replaced (for boundary adjudication)
       newText    str        the replacement text
       summary    str        one-line human description (carried to the digest)
+
+    The stamp is applied HERE rather than inside each routing branch, so the
+    flag is a property of the classifier and not of the branch that happened to
+    fire — the same reason the boundary guard runs before the routing at all.
     """
+    verdict = _route_change(change)
+    verdict.procedure_paths = dev_loop_procedure_paths(verdict.paths or _norm_paths(change))
+    verdict.never_self_merge = bool(verdict.procedure_paths)
+    return verdict
+
+
+def _route_change(change: dict) -> Verdict:
+    """The routing itself (see `classify_change`)."""
     paths = _norm_paths(change)
     if not paths:
         return Verdict(LAND_REFUSED, "change names no paths — nothing to classify",
@@ -408,9 +512,26 @@ def _load_change(arg: str) -> dict:
 
 def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(prog="dream_land.py", description=__doc__)
-    p.add_argument("--change", required=True,
-                   help="a change object as inline JSON or @file")
+    p.add_argument("--change",
+                   help="a change object as inline JSON or @file → a verdict")
+    p.add_argument("--self-merge-check", action="store_true",
+                   help="answer dream.md §6's never-self-merge question for the "
+                        "PATHS given as positional args (or one per line on "
+                        "stdin, e.g. `git diff --name-only main...dream/<date>`)")
+    p.add_argument("paths", nargs="*", help="paths for --self-merge-check")
     a = p.parse_args(argv)
+
+    if a.self_merge_check:
+        if a.change:
+            print("error: --change and --self-merge-check are separate doors",
+                  file=sys.stderr)
+            return 2
+        paths = a.paths or [ln.strip() for ln in sys.stdin.read().splitlines()]
+        print(json.dumps(self_merge_check([q for q in paths if q]), indent=2))
+        return 0
+
+    if not a.change:
+        p.error("one of --change or --self-merge-check is required")
     verdict = classify_change(_load_change(a.change))
     print(json.dumps(verdict.to_json(), indent=2))
     return 0

@@ -31,17 +31,26 @@ Usage:
             mechanical op (a card-op / writes-only edit that completed no Task).
 
 Options:
-  --memo-json <inline|@file>  the structured reflection (see SCHEMA below)
+  --memo-json <inline|@file>  the structured reflection (see SCHEMA below).
+                              A supplied analytic bucket REPLACES that bucket's
+                              prior body — it does NOT append. Only `userTagged`
+                              (and `--tag`) accumulates. To add a late finding,
+                              read the memo back and re-send the WHOLE bucket;
+                              sending just the addition silently destroys what
+                              was there (attested 2026-08-17, a dream appending
+                              to its own memo — caught by a char count).
   --tag <text>                append a user tag ("put this in the memo");
                               promotes tier → flagged. Repeatable. Additive
                               across runs (deduped) — the after-the-fact channel.
+                              "Additive" is true of TAGS, not of buckets.
   --fix-now                   set the fast-path flag (implies flagged)
   --tier <unremarkable|noted|flagged>  agent tier escalation (floor stays the
                               result-derived baseline; this can only raise it)
   --summary <text>            the skill's one-line Done: reply
   --kind <kind>               override the recorded kind (Task-less ops)
 
-SCHEMA (--memo-json): every field optional.
+SCHEMA (--memo-json): every field optional. A supplied bucket REPLACES the
+prior body; an omitted one is preserved (see --memo-json above).
   { "buckets": {
        "issues":       "...",   # Issues / ambiguities / errors
        "streamlining": "...",   # Streamlining / repetition

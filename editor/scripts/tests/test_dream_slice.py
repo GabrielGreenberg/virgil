@@ -43,7 +43,8 @@ sys.path.insert(0, str(SCRIPTS))
 from dream_land import (  # noqa: E402
     LAND_ACTS, LAND_PROPOSES, LAND_REFUSED,
     B_AGENTS_DONT, B_CONTRACT_SHAPE, B_DEV_GATE,
-    classify_change,
+    DEV_LOOP_SKILLS, DEV_LOOP_SCRIPTS, DEV_LOOP_PROCEDURE,
+    classify_change, dev_loop_procedure_paths, self_merge_check,
 )
 from apply_response import ALL_RESULTS  # noqa: E402
 from reflect import RESULT_TIER  # noqa: E402
@@ -128,6 +129,149 @@ v = verdict({"paths": ["editor/skills/dream.md"], "intent": "expand-guidance",
              "newText": "Always reflect regardless of dev mode."})
 check(v.mode == LAND_REFUSED and v.boundary == B_DEV_GATE,
       "self-mod that crosses B3 → refused (boundary precedence over self-mod guard)")
+
+
+# ── (a3) the never-self-merge answer — membership, union, publication ────────
+# Gabriel's ruling 2026-08-18 (task 359), from the loop's own escalation: step 6's
+# never-self-merge clause was keyed on the three MARKDOWNS, so an edit to
+# `dream.py`'s marker semantics — the file that decides what the NEXT dream may
+# read — reached `proposes` only incidentally (it is a `.py`) and the clause never
+# fired. DEV_LOOP_SCRIPTS is the second set; the clause reads the UNION. The
+# acts-lane withholding (DEV_LOOP_SKILLS) is deliberately NOT widened: every .py
+# is already withheld from acts by the non-skill-prompt rule.
+print("\n=== (a3) never-self-merge: membership, the derived union, publication ===")
+
+check(DEV_LOOP_SKILLS == {"editor/skills/dream.md", "editor/skills/reflect.md",
+                          "editor/skills/iterate-virgil-editor.md"},
+      "DEV_LOOP_SKILLS is exactly the three loop skill prompts (NOT widened)")
+check(DEV_LOOP_SCRIPTS == {"editor/scripts/dream.py", "editor/scripts/reflect.py",
+                           "editor/scripts/dream_land.py", "editor/scripts/dev_loop.py"},
+      "DEV_LOOP_SCRIPTS is exactly the four loop scripts")
+check(not (DEV_LOOP_SKILLS & DEV_LOOP_SCRIPTS), "the two sets are disjoint (skills vs scripts)")
+# The union is DERIVED, never re-listed — a fifth procedure file joins ONE set.
+check(DEV_LOOP_PROCEDURE == DEV_LOOP_SKILLS | DEV_LOOP_SCRIPTS,
+      "DEV_LOOP_PROCEDURE is the derived union of both sets")
+# A member naming no file is a rule that governs nothing.
+missing = sorted(m for m in DEV_LOOP_PROCEDURE if not (ROOT / m).is_file())
+check(not missing, f"every DEV_LOOP_PROCEDURE member is a real file (missing: {missing})")
+
+# The published operation answers for a member of EITHER set...
+for member in sorted(DEV_LOOP_PROCEDURE):
+    check(dev_loop_procedure_paths([member, "src/lib/foo.ts"]) == [member],
+          f"dev_loop_procedure_paths picks {member} out of a branch's touched paths")
+
+# ...and every VERDICT carries the same answer, whatever mode fired (the skill
+# reads a flag; it never re-derives the membership by eye).
+v = verdict({"paths": ["editor/scripts/dream.py"], "intent": "script-change",
+             "oldText": "marker semantics", "newText": "guarded marker semantics"})
+check(v.mode == LAND_PROPOSES and v.never_self_merge is True
+      and v.procedure_paths == ["editor/scripts/dream.py"],
+      f"a dream.py change publishes neverSelfMerge (got {v.mode}/{v.never_self_merge})")
+check("self-modification" not in v.reason,
+      "…and its ROUTING reason is unchanged (structural/script, not the self-mod rule) — "
+      "the acts lane was not widened")
+
+v = verdict({"paths": ["editor/skills/dream.md"], "intent": "clarify",
+             "newText": "a harmless clarification of the loop's own flow"})
+check(v.mode == LAND_PROPOSES and v.never_self_merge is True,
+      "a dream.md self-edit still proposes AND publishes neverSelfMerge")
+
+v = verdict({"paths": ["editor/skills/draft-footnote.md"], "intent": "fix-typo",
+             "newText": "a typo fix"})
+check(v.mode == LAND_ACTS and v.never_self_merge is False and v.procedure_paths == [],
+      "an ordinary acts verdict publishes neverSelfMerge: false")
+
+v = verdict({"paths": ["editor/scripts/card_by_id.py"], "intent": "script-change"})
+check(v.mode == LAND_PROPOSES and v.never_self_merge is False,
+      "a NON-procedure script proposes but may still self-merge (flag is scoped)")
+
+# A REFUSED verdict publishes it too — the flag is a property of the paths, not
+# of the branch that happened to fire.
+v = verdict({"paths": ["editor/scripts/reflect.py"], "intent": "script-change",
+             "oldText": "if not dev_mode_enabled():", "newText": "if False:"})
+check(v.mode == LAND_REFUSED and v.boundary == B_DEV_GATE and v.never_self_merge is True,
+      "a refused verdict on a procedure file still publishes neverSelfMerge")
+
+# camelCase on the wire (what the skill's CLI reader sees).
+j = verdict({"paths": ["editor/scripts/dev_loop.py"], "intent": "script-change"}).to_json()
+check(j.get("neverSelfMerge") is True and j.get("procedurePaths") == ["editor/scripts/dev_loop.py"],
+      "the verdict JSON publishes neverSelfMerge / procedurePaths")
+check("never_self_merge" not in j and "procedure_paths" not in j,
+      "…and does not leak the snake_case field names onto the wire")
+
+# self_merge_check answers for a BRANCH's touched paths (what step 6 has).
+ans = self_merge_check(["src/lib/foo.ts", "editor/scripts/dream_land.py",
+                        "editor/skills/draft-footnote.md"])
+check(ans["neverSelfMerge"] is True and ans["procedurePaths"] == ["editor/scripts/dream_land.py"],
+      "self_merge_check flags a branch that touches ONE procedure file")
+ans = self_merge_check(["src/lib/foo.ts", "editor/skills/draft-footnote.md"])
+check(ans["neverSelfMerge"] is False and ans["procedurePaths"] == [],
+      "self_merge_check clears an ordinary branch")
+check(self_merge_check([])["neverSelfMerge"] is False, "an empty branch clears")
+
+# The CLI door step 6 actually types — positional args AND stdin (the pipe form
+# the skill documents), plus the two doors kept separate.
+r = subprocess.run([sys.executable, DREAM_LAND, "--self-merge-check",
+                    "editor/scripts/dream.py", "src/lib/foo.ts"],
+                   capture_output=True, text=True)
+check(r.returncode == 0 and json.loads(r.stdout)["neverSelfMerge"] is True,
+      "--self-merge-check CLI (positional paths) flags a procedure file")
+r = subprocess.run([sys.executable, DREAM_LAND, "--self-merge-check"],
+                   input="editor/scripts/reflect.py\nsrc/lib/foo.ts\n",
+                   capture_output=True, text=True)
+check(r.returncode == 0 and json.loads(r.stdout)["procedurePaths"] == ["editor/scripts/reflect.py"],
+      "--self-merge-check CLI reads `git diff --name-only` on stdin")
+r = subprocess.run([sys.executable, DREAM_LAND, "--self-merge-check", "--change", "{}"],
+                   capture_output=True, text=True)
+check(r.returncode == 2, "--change and --self-merge-check are separate doors")
+
+
+# ── (a4) census: the SKILL asks the guard, and no branch survives its run ────
+# The leg with teeth. The guard was never the part that could misbehave — a
+# clause that re-states the membership in prose is, and so is a PARKED path that
+# leaves a branch for a sweep that merges everything blindly. Both are invisible
+# to any behavioural test of dream_land.
+print("\n=== (a4) census: dream.md asks the guard; no dream branch outlives its run ===")
+
+DREAM_MD = (ROOT / "editor/skills/dream.md").read_text(encoding="utf-8")
+# Search a WHITESPACE-NORMALIZED copy: this prose is hard-wrapped at ~78 cols, so
+# a multi-word needle straddles a newline as often as not. Measured — the first
+# draft of this census matched two of its four pre-fix phrases and would have
+# passed vacuously on the other two (an unfalsifiable leg wearing a defect leg's
+# clothes). Single-token needles (PARKED) are unaffected either way.
+DREAM_MD_FLAT = " ".join(DREAM_MD.split())
+
+check("--self-merge-check" in DREAM_MD,
+      "dream.md step 6 asks the guard (spells the --self-merge-check door)")
+check("DEV_LOOP_PROCEDURE" in DREAM_MD,
+      "dream.md names the union constant, so the membership stays in dream_land.py")
+
+# Pre-fix phrasings: each one granted a surviving branch, which the nightly
+# /cleanup-worktrees sweep then merged whatever the clause said.
+for needle in ("leave the branch and worktree standing",
+               "stays staged whatever its gates say",
+               "the nightly sweep merges green work",
+               "PARKED"):
+    check(needle not in DREAM_MD_FLAT,
+          f"dream.md no longer grants a surviving branch ({needle!r} is gone)")
+
+check("EXPORTED" in DREAM_MD and "branch -D dream/" in DREAM_MD
+      and "virgil-tasks/attachments/" in DREAM_MD,
+      "dream.md carries the export recipe (patch under attachments/ + branch deletion)")
+check("apply --check" in DREAM_MD,
+      "…and verifies the patch applies BEFORE the branch is deleted")
+
+# No second speller: the membership lives in dream_land.py alone. A sibling
+# script re-listing it would drift silently (dev_loop.py imports the classifier).
+spellers = []
+for f in sorted((ROOT / "editor/scripts").glob("*.py")):
+    if f.name == "dream_land.py":
+        continue
+    text = f.read_text(encoding="utf-8")
+    named = [m for m in DEV_LOOP_PROCEDURE if m in text]
+    if len(named) >= 2:
+        spellers.append(f"{f.name}: {named}")
+check(not spellers, f"no sibling script re-lists the procedure membership ({spellers})")
 
 
 # ── (b) boundary-refusal for each of the three ───────────────────────────────
@@ -350,8 +494,18 @@ check(fm.get("marker") == "2026-06-06T10:01:00.000Z" and fm.get("memoCount") == 
       "digest frontmatter carries the marker + memoCount")
 check("## Acted (1)" in text and "clarified anchor wording" in text, "ACTED entry rendered")
 check("## Proposed (1)" in text and "git merge dream/2026-06-06" in text,
-      "PROPOSED entry rendered with the merge hint")
+      "PROPOSED entry rendered with the merge hint (a LANDED entry names its branch)")
 check("## Refused (1)" in text and B_AGENTS_DONT in text, "REFUSED entry rendered with its boundary")
+
+exported = dict(report)
+exported["proposed"] = [{**report["proposed"][0], "summary": "EXPORTED — guard the marker",
+                         "patch": "~/virgil-tasks/attachments/2026-06-06-dream-marker.patch"}]
+r = dream(mem, dig, "digest", "--report", json.dumps(exported), now="2026-06-06T23:30:00")
+text2 = (Path(dig) / "2026-06-06.md").read_text()
+check(r.returncode == 0 and "git apply ~/virgil-tasks/attachments/2026-06-06-dream-marker.patch" in text2,
+      "an EXPORTED entry points at its patch, not at a branch step 6 deleted")
+check("git merge dream/2026-06-06" not in text2,
+      "…and carries no merge hint naming a branch that no longer exists")
 check("## Bootstrap" in text and "low confidence" in text, "bootstrap note rendered")
 check("Next dream reads memos after marker" in text, "digest records the next-dream marker line")
 

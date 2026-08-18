@@ -354,5 +354,44 @@ check(fm.get("taskId") == rid, "frontmatter taskId matches the Task")
 check(fm.get("skill") == "draft-suggestion", "frontmatter skill matches")
 
 
+# ── a supplied bucket REPLACES; only tags accumulate — and it SAYS so ────────
+# The 2026-08-17 dream read `--tag`'s "Repeatable. Additive" across to
+# `--memo-json`, sent one bucket to append a late finding, and silently
+# destroyed the paragraph already there (caught by a character count). The
+# behaviour is deliberate — the analytic buckets are this run's reflection —
+# so the fix is the documentation, and this pins BOTH halves: the semantics,
+# and the two surfaces that have to state them (the agent reads the skill
+# markdown; a maintainer reads the script header).
+print("\n=== --memo-json buckets REPLACE (documented, not additive) ===")
+
+sb = sandbox(); mem = tempfile.mkdtemp(prefix="reflect-replace-")
+rid = task_id(sb)
+run(mem, str(sb), "draft-footnote", rid, "--memo-json",
+    json.dumps({"buckets": {"issues": "first finding", "alignment": "keep me"}}))
+run(mem, str(sb), "draft-footnote", rid, "--memo-json",
+    json.dumps({"buckets": {"issues": "second finding"}}))
+text = body_of(only_memo(mem))
+check("second finding" in text, "a re-sent bucket lands")
+check("first finding" not in text,
+      "…and REPLACES the prior body (it does not append) — the behaviour the docs must state")
+check("keep me" in text, "an OMITTED bucket is preserved")
+
+run(mem, str(sb), "draft-footnote", rid, "--tag", "tag one")
+run(mem, str(sb), "draft-footnote", rid, "--tag", "tag two")
+text = body_of(only_memo(mem))
+check("tag one" in text and "tag two" in text,
+      "…while --tag really is additive (which is what got read across)")
+
+REFLECT_HEADER = Path(REFLECT).read_text(encoding="utf-8")
+flat = " ".join(REFLECT_HEADER.split())
+check("REPLACES that bucket's prior body" in flat,
+      "reflect.py's header states that a supplied bucket replaces")
+skill_flat = " ".join((ROOT / "editor/skills/reflect.md").read_text(encoding="utf-8").split())
+check("REPLACES that bucket's prior body" in skill_flat,
+      "reflect.md states it too — the agent reads the skill, not the script header")
+check("true of TAGS, not of buckets" in skill_flat and "true of TAGS, not of buckets" in flat,
+      "…and both name the exact cross-reading that caused the loss")
+
+
 print(f"\n===== {PASS} passed, {FAIL} failed =====")
 sys.exit(1 if FAIL else 0)

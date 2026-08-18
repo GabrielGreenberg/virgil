@@ -135,6 +135,14 @@ always mean the former; **never file a reflection under `.virgil/memos/`.**
    you left the matching bucket blank, so the memo is never empty when the
    outcome itself is the signal.
 
+   **A supplied bucket REPLACES that bucket's prior body — it does not append.**
+   Only `userTagged` (and `--tag`, step 4) accumulates. So to add a late finding
+   to a memo you already wrote, read the memo back and re-send the WHOLE bucket;
+   sending only the addition silently destroys what was there. (Attested
+   2026-08-17: a dream appending a late finding to its own memo lost the
+   paragraph already in it, caught by a character count. The word "additive" in
+   step 4 is true of TAGS, not of buckets.)
+
 4. **User tag (the "put this in the reflection" path).** When the maintainer
    says "put this in the reflection: …", re-invoke with `--tag` (repeatable). It
    is additive — it appends to the existing reflection memo for that Task and
