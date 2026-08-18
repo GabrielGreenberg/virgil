@@ -189,6 +189,61 @@ const SAME_ROW_EPS = 16;
  * docChanged-gated `update` subscriber is a sanctioned cheap subscriber in
  * AGENTS.md), adding no doc-proportional work.
  */
+/**
+ * Minimum CENTER-to-center distance between two handles that share a visual
+ * row (task 353). Handles are {@link HANDLE_WIDTH}=12 wide, so this leaves a
+ * 12px void between the boxes — the gap reads as "two controls" rather than as
+ * one wide glyph.
+ *
+ * **This CONSTANT is calibrated on synthetic geometry and is the one part of
+ * task 353 that wants a real eyeball.** The mechanism below is geometry-
+ * independent and is the durable half; the number is a first cut. Gabriel
+ * reported the pre-353 row-1 spacing (20px center-to-center = an 8px void) as
+ * "one unreadable blob", so this is deliberately wider than that and no wider
+ * than it has to be.
+ */
+const MIN_SAME_ROW_GAP_PX = 24;
+
+/**
+ * Task 353: keep same-row handles far enough apart to read as separate
+ * controls, by pushing each INNER handle inboard.
+ *
+ * Why inboard rather than outboard, which is what "stack the container further
+ * out" would suggest: the outermost handle is already sitting ON the floor.
+ * `computeHandleLeftEdge` clamps at `editorColumnLeft − marginInset`, and a
+ * container's marker is left of its item's, so the container's proposed left
+ * is normally BELOW the floor and gets clamped there — measured, the list
+ * handle lands exactly on it. There is no room further out, and taking some
+ * would push into the margin lane the lane-regime predicate governs. So the
+ * outermost position is fixed and the inner ones give way.
+ *
+ * Runs AFTER every placement is computed (a single compute cannot see its
+ * siblings) and BEFORE {@link applyHitCaps}, so the halo caps are derived from
+ * the positions actually rendered rather than from pre-separation ones.
+ *
+ * KEYSTROKE SANCTITY: same contract as `applyHitCaps` — operates on the
+ * freshly-built per-hover array (one entry per containing level, so a handful),
+ * O(handles log handles), no DOM read and no doc walk.
+ */
+function applySameRowSeparation(placements: Placement[]): void {
+  const rows: Placement[][] = [];
+  for (const p of placements) {
+    const row = rows.find((r) => Math.abs(r[0].top - p.top) <= SAME_ROW_EPS);
+    if (row) row.push(p);
+    else rows.push([p]);
+  }
+  for (const row of rows) {
+    if (row.length < 2) continue;
+    // Outermost (smallest left) keeps its floored slot; each next one is
+    // pushed to at least MIN_SAME_ROW_GAP_PX inboard of the one before it.
+    row.sort((a, b) => a.left - b.left);
+    for (let i = 1; i < row.length; i++) {
+      const floor = row[i - 1].left + MIN_SAME_ROW_GAP_PX;
+      if (row[i].left < floor) row[i].left = floor;
+    }
+  }
+}
+
 function applyHitCaps(placements: Placement[]): void {
   for (let i = 0; i < placements.length; i++) {
     let nearest = Infinity;
@@ -376,6 +431,9 @@ function computePlacement(
   cache: EditorViewportFrame,
   ref: TextObjectRef | SelectionRef,
   preEl: HTMLElement | null,
+  /** Task 353 — the innermost element this hover resolved, so a CONTAINER in
+   *  the same set anchors to the hovered row. */
+  hoveredEl: HTMLElement | null = null,
 ): Placement | null {
   // Keep-alive: a hidden (display:none) editor has offsetHeight 0 and all
   // block rects collapse to 0×0, so any placement would be garbage. Bail before
@@ -429,7 +487,7 @@ function computePlacement(
   // gapPx for X, opticalCenterY for Y), so the handle, a container + its first
   // item, and the future drop indicator align to the SAME numbers by
   // construction.
-  const frame = resolveBlockFrame(anchorDom, editor, cache);
+  const frame = resolveBlockFrame(anchorDom, editor, cache, hoveredEl);
 
   // ---- Horizontal: hug the block's MEASURED marker one uniform gap left ----
   // BOTH a TextObject handle and a SELECTION handle hug the block's `markerLeft`
@@ -833,14 +891,21 @@ export function TextObjectGrabHandle({ editorRef }: Props) {
         return;
       }
       const resolved = resolveActiveRefs(editor);
+      // The hover branch answers INNERMOST-first, so `resolved[0]` is the block
+      // the pointer is actually on. Every containing level anchors its chrome to
+      // that row (task 353) instead of to its own first item.
+      const hoveredEl = resolved[0]?.el ?? null;
       const next: Placement[] = [];
       for (const { ref, el } of resolved) {
-        const p = computePlacement(editor, cacheRef.current, ref, el);
+        const p = computePlacement(editor, cacheRef.current, ref, el, hoveredEl);
         if (p) next.push(p);
       }
       // Chip 3: resolve each handle's hit-halo cap from the full set's sibling
       // geometry (so close nested handles don't overlap) — must run after every
       // placement is computed, since a single compute can't see its siblings.
+      // Separation FIRST, then the halo caps — the caps must be derived from
+      // the positions actually rendered (task 353).
+      applySameRowSeparation(next);
       applyHitCaps(next);
       setPlacements((prev) => (placementArrayEqual(prev, next) ? prev : next));
     };
@@ -1141,6 +1206,17 @@ function GrabHandleRender({
       className="text-object-grab-handle"
       style={style}
       data-hint="Drag to pop out, click for actions"
+      // Task 353: the handle names its OWNER in the DOM. Without this a
+      // rendered handle was identifiable only by its React key, so the only way
+      // to ask "whose handle is that?" was to eyeball dots on a screenshot —
+      // which is exactly how this bug was first mis-filed as "item 1's handle
+      // lights on item 2" when the row-1 handle belonged to the LIST. Two
+      // consumers: the spec suites assert set membership by owner rather than
+      // by count, and a screenshot can be diagnosed from the inspector.
+      data-grab-owner-kind={placement.ref.kind}
+      data-grab-owner-uuid={
+        placement.ref.kind === "selection" ? null : placement.ref.id
+      }
       aria-hidden="true"
     >
       <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
