@@ -73,10 +73,57 @@ describe("the gate passes an honest save", () => {
 });
 
 describe("the gate refuses a real loss", () => {
-  it("catches a body the example-body whitelist truncates", () => {
-    // A LIVE reproducer, not a synthetic one: defect C is still open, so
-    // `parseExampleBodyAsBlocks` drops a heading and a blockquote inside an
-    // `\ex` body. Measured through the REAL save pipeline.
+  it("catches a lossy parse whose PREAMBLE grew, through real pipeline bytes", () => {
+    // RENEGOTIATED BY TASK 350 C, and the reason is worth stating rather than
+    // quietly rewriting: this leg used to be a LIVE reproducer — defect C's
+    // example-body whitelist really did drop the heading and the blockquote
+    // below, and the gate really did catch it. C has since landed
+    // (`parseExampleBodyAsBlocks` now CARRIES what the target schema cannot
+    // hold), so that fixture no longer loses anything, and a canary standing
+    // on a drained defect is not a canary — it is a leg that has stopped
+    // asking its question.
+    //
+    // What replaces it keeps the part that mattered: the OUTPUT is real
+    // pipeline bytes (shim injection and all), and the loss has the exact
+    // shape a lossy parse produces — a body that shrank under a preamble that
+    // grew. It is produced by saving a source with the construct REMOVED,
+    // which is precisely what any future whitelist-shaped bug does to it.
+    const body = (withHeading: boolean) =>
+      [
+        "\\ex",
+        "Body paragraph one.",
+        "",
+        ...(withHeading
+          ? [
+              "\\section{A heading inside the example body}",
+              "",
+              "\\begin{quote}",
+              "A blockquote a whitelist would drop.",
+              "\\end{quote}",
+              "",
+            ]
+          : []),
+        "Body paragraph two.",
+        "\\xe",
+        "",
+        "Tail prose.",
+      ].join("\n");
+
+    const src = doc(body(true));
+    const lossyOut = save(doc(body(false)));
+    // The loss is real — asserted independently of the gate, so this leg still
+    // means something if the gate's own arithmetic changes.
+    expect(lossyOut).not.toContain("A heading inside the example body");
+    const v = checkTexPreservation(src, lossyOut);
+    expect(v.ok, JSON.stringify(v)).toBe(false);
+    expect(v.body.ok).toBe(false);
+  });
+
+  it("…and the fixture that USED to lose it now passes the gate (350 C)", () => {
+    // The other half of the renegotiation: the same document, saved honestly,
+    // must now be quiet. If C ever regresses this goes red here as well as in
+    // its own suite — the gate is the net, and a net that has started catching
+    // its own subject again is the loudest possible signal.
     const src = doc(
       [
         "\\ex",
@@ -85,7 +132,7 @@ describe("the gate refuses a real loss", () => {
         "\\section{A heading inside the example body}",
         "",
         "\\begin{quote}",
-        "A blockquote the whitelist drops.",
+        "A blockquote a whitelist would drop.",
         "\\end{quote}",
         "",
         "Body paragraph two.",
@@ -95,12 +142,11 @@ describe("the gate refuses a real loss", () => {
       ].join("\n"),
     );
     const out = save(src);
-    // The loss is real — assert it independently of the gate, so this leg
-    // still means something if the gate's own arithmetic changes.
-    expect(out).not.toContain("A heading inside the example body");
+    expect(out).toContain("A heading inside the example body");
+    expect(out).toContain("A blockquote a whitelist would drop.");
     const v = checkTexPreservation(src, out);
-    expect(v.ok, JSON.stringify(v)).toBe(false);
-    expect(v.body.ok).toBe(false);
+    expect(v.ok, JSON.stringify(v)).toBe(true);
+    expect(v.body.lost).toBe(0);
   });
 
   it("a growing PREAMBLE cannot mask a shrinking body", () => {
