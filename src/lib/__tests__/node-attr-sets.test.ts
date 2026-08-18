@@ -347,11 +347,17 @@ describe("node-attr-sets · the round-trip layer holds no second hand list", () 
    * Allowlisted per SEGMENT CONTENT, never per file — a file-scoped entry would
    * excuse the next hand list added beside it, which is the shape task 204
    * names. One entry, and it is not a membership test at all: it classifies
-   * which parsed children an expex item body may hold, so its answer has
+   * which parsed children an expex EXAMPLE BODY may hold, so its answer has
    * nothing to do with which types carry an attr.
+   *
+   * Task 350 C moved that classifier from an inline `||` chain to the
+   * `EXAMPLE_BODY_ACCEPTS` table (three targets, read off the expex schemas),
+   * so the entry follows it. The justification is unchanged and the old
+   * fragment is GONE from source rather than kept alongside — a stale
+   * allowlist entry is an exemption nobody is watching.
    */
   const PERMITTED_TYPE_LISTS = [
-    'child.type === "paragraph" || child.type === "exampleGloss"',
+    'block: new Set([ "paragraph", "exampleGloss", "bulletList", "orderedList", "graphicsBlock", "displayMath", ])',
   ];
 
   it("the discovered reader set is non-empty (the census can see anything at all)", () => {

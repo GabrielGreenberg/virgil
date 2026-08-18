@@ -1349,12 +1349,53 @@ function resolveRefs(node: JSONContent): void {
 
 const seenTitleFields = new Set<string>();
 
-function parseBody(ctx: ParseContext, parent: JSONContent): void {
+/** The half-open byte range of `ctx.src` a top-level child of `parseBody` was
+ *  parsed from. Recorded ONLY when a caller asks for it (task 350 C): a
+ *  consumer whose target schema cannot hold the node the parser produced needs
+ *  the ORIGINAL BYTES so it can CARRY the construct instead of dropping it —
+ *  byte-exact by construction rather than by re-serialization luck, and
+ *  reachable from this leaf, which cannot import the serializer. */
+interface SourceSpan {
+  start: number;
+  end: number;
+}
+
+/** Per-child spans, keyed by the produced node object (unique per parse). */
+type SourceSpanMap = Map<JSONContent, SourceSpan>;
+
+function parseBody(
+  ctx: ParseContext,
+  parent: JSONContent,
+  spans?: SourceSpanMap,
+): void {
   if (!parent.content) parent.content = [];
 
+  // Span recording is closed LAZILY — at the top of the NEXT iteration, and
+  // once after the loop. The alternative (closing at the end of each
+  // iteration) is unreachable without extracting the loop body: the ~20 arms
+  // below all exit by `continue`, and one exits by `break`. Closing before
+  // `skipWhitespace` also keeps a construct's span free of the whitespace that
+  // follows it, which the opening `skipWhitespace` already excluded at the
+  // other end.
+  let pendingStart = -1;
+  let pendingFrom = 0;
+  const closePendingSpan = (): void => {
+    if (!spans || pendingStart < 0) return;
+    const kids = parent.content!;
+    for (let i = pendingFrom; i < kids.length; i++) {
+      spans.set(kids[i], { start: pendingStart, end: ctx.pos });
+    }
+    pendingStart = -1;
+  };
+
   while (ctx.pos < ctx.src.length) {
+    closePendingSpan();
     skipWhitespace(ctx);
     if (ctx.pos >= ctx.src.length) break;
+    if (spans) {
+      pendingStart = ctx.pos;
+      pendingFrom = parent.content.length;
+    }
 
     const rest = ctx.src.slice(ctx.pos);
 
@@ -2024,6 +2065,7 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       }
     }
   }
+  closePendingSpan();
 }
 
 /**
@@ -2538,17 +2580,19 @@ function buildExampleBlockFromBody(
     // Parse the body as a sequence of paragraphs / glosses / pictures /
     // equations. Feature A2 widens `exampleBlock` to accept graphicsBlock +
     // displayMath directly, so a dropped picture / equation joins a single
-    // `\ex` body — pass `allowDisplayMath` so a serialized `\[…\]` survives the
-    // reload (graphicsBlock already parses unconditionally). The `\pex`
-    // preamble path below stays un-widened (Non-goals §5).
-    const inner = parseExampleBodyAsBlocks(body, { allowDisplayMath: true });
+    // `\ex` body — the `block` target admits `\[…\]` so a serialized equation
+    // survives the reload (graphicsBlock already parses unconditionally). The
+    // `\pex` preamble path below stays un-widened (Non-goals §5).
+    const inner = parseExampleBodyAsBlocks(body, { target: "block" });
     content.push(...inner);
     if (content.length === 0) content.push({ type: "paragraph" });
   } else {
     // \pex — split into preamble + items.
     const { preamble, items } = splitPexBody(body);
     if (preamble) {
-      const pNodes = parseExampleBodyAsBlocks(preamble);
+      const pNodes = parseExampleBodyAsBlocks(preamble, {
+        target: "preamble",
+      });
       content.push(...pNodes);
     }
     const itemNodes: JSONContent[] = [];
@@ -2588,10 +2632,18 @@ function buildExampleItemFromText(
   text: string,
   exnoOverride: string | null = null,
 ): JSONContent {
-  // Slice out any `\begin{xlist}…\end{xlist}` body before parsing the
-  // surrounding text as paragraphs/gloss. We keep just the FIRST nested
-  // list for schema compliance — multiple xlist environments in the
-  // same item are uncommon and would be flattened by re-serializing.
+  // Lift a nested `\begin{xlist}…\end{xlist}` into the schema's single
+  // `exampleItemList?` slot — but ONLY when the item holds exactly one.
+  //
+  // Two sibling xlists is the `exampleGloss` multiplicity case one construct
+  // over, with the same oscillation (see `EXAMPLE_BODY_ACCEPTS_ONCE`): a
+  // second xlist stays in `stripped`, where `parseBody`'s environment
+  // dispatcher has no `xlist` case and task 342's `default:` makes it a
+  // byte-literal carrier PARAGRAPH — which the schema then puts BEFORE the
+  // lifted list, so the two swap on every save, forever. Measured. Lifting
+  // neither keeps the user's order and settles in one cycle; both survive as
+  // bytes either way, so what the all-or-none rule costs is the nested-list
+  // MODEL for a shape that is already outside what expex renders as one item.
   let nestedList: JSONContent | null = null;
   let stripped = text;
   const xlistOpen = stripped.indexOf("\\begin{xlist}");
@@ -2599,32 +2651,43 @@ function buildExampleItemFromText(
     const innerStart = xlistOpen + "\\begin{xlist}".length;
     const innerEnd = findMatchingEnv(stripped, innerStart, "xlist");
     if (innerEnd !== -1) {
-      const innerBody = stripped.slice(innerStart, innerEnd);
-      nestedList = buildExampleItemListFromBody(innerBody);
-      stripped =
+      const withoutFirst =
         stripped.slice(0, xlistOpen) +
         stripped.slice(innerEnd + "\\end{xlist}".length);
+      // Any `\begin{xlist}` still standing once the FIRST one's whole body has
+      // been removed is a sibling, not a nesting.
+      if (!withoutFirst.includes("\\begin{xlist}")) {
+        nestedList = buildExampleItemListFromBody(
+          stripped.slice(innerStart, innerEnd),
+        );
+        stripped = withoutFirst;
+      }
     }
   }
 
-  const itemContent = parseExampleBodyAsBlocks(stripped, {
-    allowDisplayMath: true,
-  });
+  const itemContent = parseExampleBodyAsBlocks(stripped, { target: "item" });
   const normalized: JSONContent[] = [];
   // Head section: (paragraph | graphicsBlock | displayMath)+. Preserve document
   // order so an `\includegraphics` or `\[…\]` between two paragraphs round-trips
   // faithfully (Feature A1 adds displayMath alongside A0's graphicsBlock).
-  const head = itemContent.filter(
-    (n) =>
-      n.type === "paragraph" ||
-      n.type === "graphicsBlock" ||
-      n.type === "displayMath",
-  );
-  const glosses = itemContent.filter((n) => n.type === "exampleGloss");
+  //
+  // A PARTITION, never a whitelist filter (task 350 C): "everything that is
+  // not the gloss" IS the head, so nothing can fall off the end.
+  //
+  // Stated honestly, because the neuter measures it: this is a HARDENING with
+  // no behavioural delta today. What actually rescued task 348's nested
+  // `itemize` residual — and every gloss after the first — is the carrier one
+  // function up, which hands this filter a `paragraph` where the pre-350 code
+  // handed it a `bulletList` the three-name filter then deleted. Reverting
+  // this line alone fails nothing. It is written as a partition so that a
+  // future widening of the `item` accept set lands in the head instead of
+  // silently re-opening the hole, which is the shape the whole task is about.
+  const head = itemContent.filter((n) => n.type !== "exampleGloss");
+  const gloss = itemContent.find((n) => n.type === "exampleGloss") ?? null;
   if (head.length === 0) normalized.push({ type: "paragraph" });
   else normalized.push(...head);
   if (nestedList) normalized.push(nestedList);
-  if (glosses.length > 0) normalized.push(glosses[0]);
+  if (gloss) normalized.push(gloss);
 
   return {
     type: "exampleItem",
@@ -2675,30 +2738,140 @@ function buildExampleItemListFromBody(body: string): JSONContent {
   return { type: "exampleItemList", content: itemNodes };
 }
 
-/** Parse an example body fragment (between `\ex`/`\pex` and `\xe`, or between
- *  consecutive `\a` markers) as a sequence of paragraph + gloss blocks.
+/** Which node types the container that will hold an example body can actually
+ *  accept — read off the three expex schemas in
+ *  [expex.ts](src/lib/tiptap/expex.ts), stated ONCE so the two builders below
+ *  cannot answer it differently.
  *
- *  `opts.allowDisplayMath` lets a `\[…\]` equation survive as a `displayMath`
- *  block — passed ONLY from the `\a` item path (Feature A1), since `exampleItem`
- *  accepts displayMath but the `exampleBlock` itself (single `\ex` bodies, `\pex`
- *  preambles) does NOT. Default false keeps those contexts byte-unchanged. */
+ *  - `block` — a single `\ex … \xe` body, held by `exampleBlock`:
+ *    `(paragraph | exampleGloss | exampleItemList | bulletList | orderedList |
+ *      graphicsBlock | displayMath)*`.
+ *  - `preamble` — a `\pex` preamble, held by the SAME node. Deliberately
+ *    narrower than `block` by `displayMath` only: pre-350 that context passed
+ *    `allowDisplayMath: false`, and widening it here would move bytes for a
+ *    reason unrelated to this fix. The equation is no longer DROPPED either
+ *    way — it falls to the carrier below, which is the whole point.
+ *  - `item` — an `\a` item body, held by `exampleItem`:
+ *    `(paragraph | graphicsBlock | displayMath)+ exampleItemList? exampleGloss?`.
+ *    Its ORDER is the caller's business (`buildExampleItemFromText` groups
+ *    head → list → gloss); its MULTIPLICITY is stated here, because a second
+ *    gloss is a thing the container cannot hold and this is the one place that
+ *    holds the bytes needed to carry it. Pre-350 the caller kept `glosses[0]`
+ *    and dropped the rest. */
+type ExampleBodyTarget = "block" | "preamble" | "item";
+
+/** Types the target accepts at most ONCE — and therefore, when the body holds
+ *  more than one, NONE of them: every occurrence is carried.
+ *
+ *  "Keep the first, carry the rest" is the obvious rule and it OSCILLATES.
+ *  A carrier is a paragraph, and `exampleItem`'s content expression puts every
+ *  paragraph BEFORE the trailing `exampleGloss?`, so the carried second gloss
+ *  is emitted first — and the next parse models THAT one and carries the
+ *  other. Measured: two glosses swap places on every save, forever, so a
+ *  document nobody is editing never reaches a fixed point (a moving `.tex`,
+ *  a `DiskWatcher` badge, a dirty diff). Carrying both keeps the user's ORDER
+ *  and settles in one cycle. `exampleBlock`'s content expression is free-order
+ *  `*`, so only the item constrains multiplicity. */
+const EXAMPLE_BODY_ACCEPTS_ONCE: Record<
+  ExampleBodyTarget,
+  ReadonlySet<string>
+> = {
+  block: new Set<string>(),
+  preamble: new Set<string>(),
+  item: new Set(["exampleGloss"]),
+};
+
+const EXAMPLE_BODY_ACCEPTS: Record<
+  ExampleBodyTarget,
+  ReadonlySet<string>
+> = {
+  block: new Set([
+    "paragraph",
+    "exampleGloss",
+    "bulletList",
+    "orderedList",
+    "graphicsBlock",
+    "displayMath",
+  ]),
+  preamble: new Set([
+    "paragraph",
+    "exampleGloss",
+    "bulletList",
+    "orderedList",
+    "graphicsBlock",
+  ]),
+  item: new Set(["paragraph", "graphicsBlock", "displayMath", "exampleGloss"]),
+};
+
+/** A byte-literal CARRIER paragraph holding raw source the target schema
+ *  cannot represent (task 350 C; the shape task 342 made the DEFAULT for
+ *  unmodeled environments, and 347 for comments).
+ *
+ *  `verbatimMark` rather than the raw-LaTeX mark, for 342's reason: what the
+ *  system does not model, nothing downstream is entitled to REWRITE — the
+ *  raw-LaTeX mark still runs `smartenStraightQuotes`, which would turn a
+ *  carried `\begin{quote}`'s `"…"` into `` `` ``…`'' `` on the first save. */
+function exampleBodyCarrierParagraph(
+  raw: string,
+  uuid?: unknown,
+): JSONContent {
+  return {
+    type: "paragraph",
+    ...(typeof uuid === "string" && uuid ? { attrs: { uuid } } : {}),
+    content: [{ type: "text", text: raw, marks: [verbatimMark()] }],
+  };
+}
+
+/** Parse an example body fragment (between `\ex`/`\pex` and `\xe`, or between
+ *  consecutive `\a` markers) as a sequence of blocks the `target` container can
+ *  hold.
+ *
+ *  **Nothing is ever dropped.** A child whose type the target cannot accept is
+ *  CARRIED as a byte-literal paragraph cut from the ORIGINAL SOURCE — the span
+ *  `parseBody` recorded for it. Before task 350 this function had a whitelist
+ *  `if`, two rescue branches (`codeBlock` → task 264, `latexComment` → task
+ *  347) and **no `else`**, so `heading`, `blockquote`, `figureBlock`,
+ *  `texBlock`, `horizontalRule`, `titleField`, a NESTED `exampleBlock` and a
+ *  `displayMath` in a `\pex` preamble all fell off the end of the loop and out
+ *  of the user's document — silently, on the first save, with no edit. Making
+ *  the DEFAULT what the two rescues do (342's rule) fixes every block kind the
+ *  builder will ever fail to model, including ones that don't exist yet.
+ *
+ *  The two rescues stay: each re-emits its construct's CANONICAL form (through
+ *  `wrapVerbatimEnvBody`, and with the `% ` prefix re-added) and preserves the
+ *  node's uuid, which a raw slice would only reproduce by luck. */
 function parseExampleBodyAsBlocks(
   body: string,
-  opts?: { allowDisplayMath?: boolean },
+  opts: { target: ExampleBodyTarget },
 ): JSONContent[] {
   const sub: JSONContent = { type: "__scratch", content: [] };
   const subCtx: ParseContext = { pos: 0, src: body };
-  parseBody(subCtx, sub);
+  const spans: SourceSpanMap = new Map();
+  parseBody(subCtx, sub, spans);
+  const accepts = EXAMPLE_BODY_ACCEPTS[opts.target];
+  const acceptsOnce = EXAMPLE_BODY_ACCEPTS_ONCE[opts.target];
+  // A once-only type that appears more than once is demoted to "cannot be
+  // accepted at all" for this body — see the constant's own note on why
+  // keeping the first oscillates.
+  const overSubscribed = new Set<string>();
+  for (const kind of acceptsOnce) {
+    let n = 0;
+    for (const child of sub.content || []) if (child.type === kind) n++;
+    if (n > 1) overSubscribed.add(kind);
+  }
   const out: JSONContent[] = [];
+  // Carry a span at most once. MEASURED and stated rather than implied: no
+  // branch of `parseBody` pushes more than one child in a single iteration
+  // today — instrumented across the whole suite, zero hits — so this guard has
+  // no reachable trigger. It stays because "at most one push per iteration" is
+  // an unenforced property of some twenty branches, and the failure it
+  // prevents is not a wrong render but byte DUPLICATION on every save:
+  // unbounded growth of the user's file, in the one place that exists to stop
+  // the file being damaged.
+  let lastCarriedStart = -1;
   for (const child of sub.content || []) {
-    if (
-      child.type === "paragraph" ||
-      child.type === "exampleGloss" ||
-      child.type === "bulletList" ||
-      child.type === "orderedList" ||
-      child.type === "graphicsBlock" ||
-      (opts?.allowDisplayMath && child.type === "displayMath")
-    ) {
+    const kind = child.type ?? "";
+    if (accepts.has(kind) && !overSubscribed.has(kind)) {
       out.push(child);
       continue;
     }
@@ -2753,14 +2926,33 @@ function parseExampleBodyAsBlocks(
       });
       continue;
     }
-    // Other unknown block types are still dropped. The previous fallback
-    // re-emitted `body.trim()` as a latex-command paragraph, which leaked
-    // every `\vfid{}` / `\vcid{}` marker back into the source verbatim and
-    // doubled the matched footnotes/citations on every save → reload. Known
-    // residual, PRE-DATING task 338 and unchanged by it: a nested
-    // `itemize`/`enumerate`/`blockquote`/`figure` inside an example item is
-    // dropped by this filter or by `buildExampleItemFromText`'s head filter —
-    // preserving those needs a per-node re-serialize this leaf cannot reach.
+    // DEFAULT — carry the original bytes (task 350 C).
+    //
+    // The old fallback re-emitted `body.trim()` — the WHOLE body — as a
+    // latex-command paragraph, which leaked every `\vfid{}` / `\vcid{}` marker
+    // back into the source verbatim and doubled the matched
+    // footnotes/citations on every save → reload. That is why it was deleted
+    // and nothing put in its place. The span is what makes a carrier possible
+    // without that cost: it is THIS CHILD's bytes, not the body's, so a
+    // sibling paragraph's markers are not re-emitted alongside it.
+    //
+    // A child with no recorded span is unreachable — every top-level child of
+    // a span-recording `parseBody` gets one. If it ever did happen we DROP it,
+    // which is the pre-350 defect, and that is the least-bad of three bad
+    // options rather than an oversight: pushing the unmountable child instead
+    // would hand TipTap a schema mismatch, which `createNodeFromContent`
+    // SWALLOWS into an empty document (AGENTS.md "Capture/schema symmetry") —
+    // a blank paper rather than one lost construct. And a drop here is not
+    // silent any more: the load-writeback preservation gate (task 350 D)
+    // weighs the serialized output against the source and REFUSES the write,
+    // so the user's `.tex` stays byte-identical.
+    const span = spans.get(child);
+    if (!span) continue;
+    if (span.start === lastCarriedStart) continue;
+    lastCarriedStart = span.start;
+    const raw = body.slice(span.start, span.end).trimEnd();
+    if (!raw) continue;
+    out.push(exampleBodyCarrierParagraph(raw, child.attrs?.uuid));
   }
   return out;
 }
