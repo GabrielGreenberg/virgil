@@ -97,12 +97,16 @@ sync ─► read ─► detect ─► route ─► act ─► land ─► digest
 ### 0. Reconcile with existing dream work FIRST
 
 Before you author anything, reconcile with what is already in flight on this
-shared checkout — the human drives it live and prior dream runs leave work here.
-This was hard-won lore across several nights; it is now an explicit step.
+shared checkout — the human drives it live, and an *interrupted* prior run can
+leave work here. (Since 2026-08-18 a run that reaches step 6 never leaves a
+branch standing: it merges, or exports a patch and deletes. So a surviving
+`dream/*` branch means a run that never finished — reconcile with it, don't
+assume it was parked on purpose.) This was hard-won lore across several nights;
+it is now an explicit step.
 
 - **Check-first, don't fork.** Run `git worktree list` and `git branch --list 'dream/*'`. If a `dream/<date>` branch/worktree already holds the complementary half of what you were about to do, **compose onto it** rather than opening a competing branch — two dream branches editing the same script produce merge conflicts and split provenance.
 - **Composing onto a prior branch inherits its BASE — refresh it before you reason.** §4 branches a fresh dream off `main`, so it reads current code; the bullet above composes onto a *prior* dream branch, whose base is whatever `main` was on that earlier night — and nothing ever advances it, so a stack's staleness compounds one night per night. (Measured 2026-08-11: the 08-03 → 08-09 → 08-10 stack sat **227 commits** behind `main`, eight days out.) The visible cost is merge risk, which git will at least tell you about. The dangerous one is silent: the dream **justifies** a change by reading code `main` has already moved — on 2026-08-10 that nearly shipped a regex pinned to a builder constant `main` had already reshaped, caught only because that run happened to add a canary. So before authoring on an inherited branch, merge `main` into it and re-run the editor suite; then read every premise — every constant, signature and call site your reasoning leans on — from the refreshed tree, never from the inherited one. If the merge conflicts, that *is* the night's finding: surface it in the digest and stop, rather than resolving another run's work blind.
-- **Preserve provenance of a prior run's uncommitted change.** If the existing dream worktree has an *uncommitted* change from an earlier run (a finished, dream-voiced proposal left in the working tree), commit **that** as its own commit first — attributing it to the run that authored it — *then* stack your own change on top. Never fold another run's work into your commit; it conflates authorship on a shared checkout. The committed branch keeps its original `dream/<prior-date>` name, so tonight's digest points its `git merge dream/<prior-date>` hint at an *earlier* date than the digest itself — that date skew is correct, not staleness: a finished proposal's rightful home is the branch that authored it, and a prior-date `dream/*` branch carrying its own completed work should never be read as orphaned.
+- **Preserve provenance of a prior run's uncommitted change.** If the existing dream worktree has an *uncommitted* change from an earlier run (a finished, dream-voiced proposal left in the working tree), commit **that** as its own commit first — attributing it to the run that authored it — *then* stack your own change on top. Never fold another run's work into your commit; it conflates authorship on a shared checkout. The committed branch keeps its original `dream/<prior-date>` name, so tonight's digest records a landing outcome (LANDED / EXPORTED) against an *earlier* date than the digest itself — that date skew is correct, not staleness: a finished proposal's rightful home is the branch that authored it. Step 6 then disposes of it tonight like any other branch; nothing is left standing on the strength of "it belongs to an earlier run."
 - **Never rebuild the skill bundle unattended** (`npm run build:skill-bundles`) — it mutates the live checkout's mirrors mid-session. This now costs the loop nothing: the nightly deploy regenerates the served bundle from source (CI's `prebuild`), the repo-local mirrors regenerate on the next `predev`/`prebuild`, and the freshness guard ([skill-bundle-freshness.test.ts](../skills/__tests__/skill-bundle-freshness.test.ts)) catches a stale mirror. The old standing "ruling owed to the human" on this is retired — nothing is lost by not rebuilding.
 
 ### 1. Read the memos since the last dream
@@ -266,7 +270,7 @@ python3 editor/scripts/dream_land.py --change @change.json
 - **`proposes`** — anything cross-skill, any `.py` script, anything under
   `docs/workspace/` (the manifest), any rename/merge/split, or anything
   contract-adjacent. **Do not apply it on the dream branch.** Stage it in a
-  worktree and record it under `proposed` with a `git merge dream/<date>` hint:
+  worktree and record it under `proposed`:
 
   ```bash
   # Key the branch off select's canonical UTC dreamDate — the SAME clock
@@ -282,8 +286,10 @@ python3 editor/scripts/dream_land.py --change @change.json
   ```
 
   One worktree per dream run is fine; group the run's proposals onto the one
-  `dream/<date>` branch. Step 6 then lands it when its gates are green; the
-  `git merge dream/<date>` hint in the digest covers only a PARKED branch.
+  `dream/<date>` branch. **That branch is a WORKSPACE for step 6, never a
+  durable pointer** — step 6 either merges it or exports it as a patch and
+  deletes it, so no `dream/*` branch outlives the run that made it, and the
+  digest's pointer to unlanded work is the **patch path**, not a merge hint.
 - **`refused`** — the change crosses a boundary (step 5). **Do not apply it and
   do not propose it.** Record it under `refused` with the `boundary` + `reason`.
 
@@ -308,7 +314,7 @@ digest, **not** to act on. The guard enforces this from the change's content (a
 boundary-file edit with no content to adjudicate is refused), so it cannot be
 sidestepped by leaving the intent vague.
 
-### 6. Land the night's work — green merges, red files a task
+### 6. Land the night's work — green merges, everything else EXPORTS
 
 The loop's learning goes live through the ordinary daily update (the nightly
 `virgil-update` task runs `/cleanup-virgil`: merge sweep, push, deploy), so a
@@ -325,30 +331,70 @@ inherited branch you composed onto):
    `editor/scripts/tests/test_*.py`. All three families, no shortcuts.
 2. **All green AND the primary checkout is clean on `main`**
    (`git -C /Users/gabriel/Programming/virgil status --porcelain` empty of
-   tracked changes, `branch --show-current` = `main`) → **land-and-clean**, the
+   tracked changes, `branch --show-current` = `main`) **AND the guard answers
+   `neverSelfMerge: false`** (the clause below — ask it *before* you merge, not
+   after) → **land-and-clean**, the
    task worker's own discipline (`~/virgil-tasks/PROFILE.md`):
    `git -C /Users/gabriel/Programming/virgil merge --no-ff dream/<date>`, remove
    the worktree, delete the branch. Record **LANDED** in the digest entry.
-3. **Green but the primary tree is dirty** (the human mid-edit) → leave the
-   branch and worktree standing; the nightly sweep merges green work. Record
-   **PARKED** with the `git merge dream/<date>` hint.
-4. **Any gate red** → the branch must **not** survive the run: the nightly
-   sweep (`/cleanup-worktrees`) merges *every* surviving branch blindly, so a
-   red branch left standing ships anyway. Export the diff
-   (`git diff main...dream/<date>` →
-   `~/virgil-tasks/attachments/<UTC-date>-dream-<slug>.patch`), file an
-   UNMINTED work task into `~/virgil-tasks/inbox/` naming the patch, the
-   failing gate and its output tail — then remove the worktree AND delete the
-   branch. Record **FILED**.
+3. **Green but the primary tree is dirty** (the human mid-edit) → **export and
+   delete**, exactly as rule 4 does. Do **not** leave the branch standing "for
+   the nightly sweep": `/cleanup-worktrees` merges *every* surviving branch
+   blindly ("merge them all — do not ask which"), and `virgil-update` runs it
+   about two hours after this dream, so a branch left behind ships tonight
+   whether or not anyone cleared it. **A branch that survives this run is a
+   branch that has already merged.** So: export the diff, drop the landing
+   note (below), remove the worktree AND delete the branch. Record
+   **EXPORTED** with the patch path.
+4. **Any gate red** → the branch must **not** survive the run, for the same
+   reason. Export the diff, file an UNMINTED work task into
+   `~/virgil-tasks/inbox/` naming the patch, the failing gate and its output
+   tail — then remove the worktree AND delete the branch. Record **FILED**.
+
+**Export recipe** (rules 3, 4, and the never-self-merge clause below — one
+shape, so no path can be half-followed):
+
+```bash
+git -C /Users/gabriel/Programming/virgil diff main...dream/$DATE \
+  > ~/virgil-tasks/attachments/$DATE-dream-<slug>.patch
+# verify it applies before you delete the only other copy of the work:
+git -C /Users/gabriel/Programming/virgil apply --check \
+  ~/virgil-tasks/attachments/$DATE-dream-<slug>.patch
+git -C /Users/gabriel/Programming/virgil worktree remove .claude/worktrees/dream-$DATE
+git -C /Users/gabriel/Programming/virgil branch -D dream/$DATE
+```
+
+The inbox note (or DECISION task) carries the patch path, the one-line
+`git apply` command that lands it, the gate results, and **why it did not
+land** (dirty tree / red gate / the loop's own procedure). `--check` before the
+delete is not optional: after `branch -D` the patch is the only copy.
 
 **Never self-merge — route to the human instead** (the "key decisions" half of
-the autonomy ruling):
+the autonomy ruling). **Ask the guard; never eyeball the membership:**
 
-- a proposal touching the loop's own operating procedure (`DEV_LOOP_SKILLS`:
-  `dream.md` / `reflect.md` / `iterate-virgil-editor.md`) stays staged whatever
-  its gates say, and gets a DECISION task;
+```bash
+git -C /Users/gabriel/Programming/virgil diff --name-only main...dream/$DATE \
+  | python3 editor/scripts/dream_land.py --self-merge-check
+# → { "neverSelfMerge": true, "procedurePaths": [...], "reason": "..." }
+```
+
+(Every `--change` verdict carries the same `neverSelfMerge` / `procedurePaths`
+fields, so a per-change caller already has the answer and need not ask twice.)
+
+- `neverSelfMerge: true` — the change touches the loop's **own operating
+  procedure** (`DEV_LOOP_PROCEDURE` = `DEV_LOOP_SKILLS` ∪ `DEV_LOOP_SCRIPTS`:
+  the three skill prompts *and* `dream.py` / `reflect.py` / `dream_land.py` /
+  `dev_loop.py`, which are that procedure in script form). It does **not**
+  merge, however green its gates: take the **export recipe** above and file a
+  DECISION task naming the patch. Staging it is not an option — a staged
+  branch self-merges via the sweep, which is precisely how this guard was
+  unenforceable until 2026-08-18.
 - every `refused` verdict that names a ruling owed gets a DECISION task too —
   digests are write-only, the task queue is what the human actually reviews.
+
+The membership lives in `dream_land.py` and **only** there; the names above are
+a reader's gloss, not the list. A fifth procedure file joins that set and this
+clause follows it with no edit here.
 
 **Filing conventions** (`~/virgil-tasks`; the catcher is the ONLY id-minter):
 drop an unminted file `inbox/<UTC-date>-from-dream-<slug>.md` — never mint an
@@ -374,7 +420,9 @@ python3 editor/scripts/dream.py digest --report @report.json
 
 ```json
 { "acted":    [ { "summary": "...", "paths": ["editor/skills/x.md"], "memoRefs": ["..."] } ],
-  "proposed": [ { "summary": "...", "paths": ["editor/scripts/y.py"], "branch": "dream/2026-06-06",
+  "proposed": [ { "summary": "EXPORTED — ...", "paths": ["editor/scripts/y.py"],
+                  "branch": "dream/2026-06-06",
+                  "patch": "~/virgil-tasks/attachments/2026-06-06-dream-y.patch",
                   "reason": "touches a .py script", "memoRefs": ["..."] } ],
   "refused":  [ { "summary": "...", "boundary": "B1:agents-dont-rules", "reason": "...", "memoRefs": ["..."] } ],
   "bootstrap": "<one line on how this dream went — feeds step 8>" }
@@ -383,8 +431,11 @@ python3 editor/scripts/dream.py digest --report @report.json
 It writes `editor/dev/dream-digests/<YYYY-MM-DD>.md` (gitignored, the sibling of
 `memos/`), recording ACTED + PROPOSED + REFUSED, the counts by tier/skill/lens,
 and the `marker` the next dream reads. Note each proposed entry's landing
-outcome from step 6 — **LANDED / PARKED / FILED** — at the head of its
+outcome from step 6 — **LANDED / EXPORTED / FILED** — at the head of its
 `summary`, so the digest reads as what actually happened, not what was staged.
+**An entry that did not land carries its `patch` path**, and the digest points
+at `git apply <patch>` instead of a merge hint: step 6 leaves no branch behind
+either way, so the patch is the only pointer to unlanded work.
 
 ### 8. Reflect on this dream (bootstrap / recursion)
 
@@ -465,7 +516,7 @@ acts-on-branch / propose-via-worktree; that machinery is `dream`'s alone. See
 
 Echo `dream.py digest`'s one-line `Done:` reply (counts + digest path), then a
 ≤5-line summary: the memo count + tier split, what you ACTED on, what you
-PROPOSED and its landing outcome (LANDED / PARKED with the `git merge
-dream/<date>` hint / FILED with the task filename), any REFUSED items with
+PROPOSED and its landing outcome (LANDED / EXPORTED with the patch path /
+FILED with the patch path + task filename), any REFUSED items with
 their boundary, and any DECISION tasks filed. If DEV mode is off, say so in one
 line and stop.

@@ -565,13 +565,19 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
     out.append("")
 
     out.append(f"## Proposed ({len(proposed)})")
-    out.append("_Staged in a worktree for review — cross-skill / script / "
-               "manifest / contract-adjacent._")
+    out.append("_Staged in a worktree — cross-skill / script / manifest / "
+               "contract-adjacent. Step 6 then LANDED it, or EXPORTED it as a "
+               "patch and deleted the branch (no `dream/*` branch outlives its "
+               "run — the nightly sweep merges every surviving one blindly)._")
     if proposed:
         for e in proposed:
+            # An entry that did NOT land points at its PATCH: after step 6 the
+            # branch is gone either way, so a merge hint would name nothing.
+            patch = (e.get("patch") or "").strip()
             branch = e.get("branch") or f"dream/{fm['_date']}"
+            pointer = f"git apply {patch}" if patch else f"git merge {branch}"
             paths = ", ".join(e.get("paths") or [])
-            out.append(f"- **{e.get('summary', '?')}** — `git merge {branch}`")
+            out.append(f"- **{e.get('summary', '?')}** — `{pointer}`")
             out.append(f"  - touches: {paths or '—'}{_fmt_refs(e.get('memoRefs'))}")
             if e.get("reason"):
                 out.append(f"  - why proposed: {e['reason']}")
@@ -628,9 +634,11 @@ def _rotate_prior_digest(target: Path, new_iso: str) -> Path | None:
     run of a day selects 0 memos and rewrites the day's record as an EMPTY one.
 
     That is worse than losing a summary. The digest is the only durable output
-    the dream authors, and a `proposed` entry's `git merge dream/<date>` hint is
-    the ONLY pointer to a staged proposal worktree — erase it and the branch is
-    still there but nothing references it. The marker itself survives (an empty
+    the dream authors, and an UNLANDED `proposed` entry's patch path is the ONLY
+    pointer to that work — since 2026-08-18 the skill's §6 exports and deletes
+    rather than parking a branch (a parked branch self-merges via the nightly
+    sweep), so there is no surviving worktree to rediscover it from: erase the
+    record and the patch sits orphaned in `~/virgil-tasks/attachments/`. The marker itself survives (an empty
     re-select preserves it), so the window does not reopen; the loss is confined
     to the record, which is exactly the part a human reads in the morning.
 
