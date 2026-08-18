@@ -146,6 +146,61 @@ class DriftCheckTest(unittest.TestCase):
         (self.repo / "editor/scripts/create_card.py").write_text("print('v2')\n")
         self.assertEqual(dream._detect_skill_drift(), [])
 
+    # -- "clean" must be distinguishable from "could not look" ----------------
+    # Every case below returns the SAME empty list as a genuinely clean bundle,
+    # which is why the reason is the only thing that can tell them apart.
+    #
+    # `unbuilt-bundle` is reachable but CONFIG-DEPENDENT, which is what makes a
+    # published flag worth more than a comment — it works on the dev box and
+    # degrades quietly where the environment is thinner. `public/skill-bundle/`
+    # is gitignored, so no fresh `git worktree add` carries a bundle; whether
+    # that matters turns on `source_repo_root()`, which prefers
+    # `VIRGIL_REPO_ROOT` before walking up from `__file__`. Measured from a
+    # dream worktree on 2026-08-17: with the pin set (this machine's
+    # `~/.zshenv`) it resolves to the primary checkout and checks correctly;
+    # with the pin unset it resolved to the worktree and returned
+    # `([], 'unbuilt-bundle')` — silently `[]` before this change.
+    #
+    # That env fallback is deliberately NOT asserted here: the walk-up lands on
+    # whatever real tree hosts this file, so a leg pinning it would assert a
+    # property of the checkout rather than of the code.
+
+    def test_clean_bundle_reports_the_check_actually_ran(self):
+        drifted, reason = dream._detect_skill_drift_status()
+        self.assertEqual(drifted, [])
+        self.assertIsNone(reason)
+
+    def test_real_drift_also_reports_the_check_ran(self):
+        (self.repo / "editor/scripts/create_card.py").write_text("print('v2')\n")
+        drifted, reason = dream._detect_skill_drift_status()
+        self.assertEqual(drifted, ["editor/scripts/create_card.py"])
+        self.assertIsNone(reason)
+
+    def test_unbuilt_bundle_names_itself_rather_than_reading_clean(self):
+        (self.bundle / "bundle-manifest.json").unlink()
+        self.assertEqual(
+            dream._detect_skill_drift_status(), ([], "unbuilt-bundle"))
+
+    def test_unparseable_rewrite_table_names_itself(self):
+        (self.repo / "editor/build/build-editor-bundle.mjs").write_text("// moved\n")
+        (self.repo / "editor/scripts/create_card.py").write_text("print('v2')\n")
+        self.assertEqual(
+            dream._detect_skill_drift_status(), ([], "unparseable-rewrite-table"))
+
+    def test_unreadable_manifest_names_itself(self):
+        (self.bundle / "bundle-manifest.json").write_text("{ not json\n")
+        self.assertEqual(
+            dream._detect_skill_drift_status(), ([], "unreadable-manifest"))
+
+    def test_select_publishes_the_reason_beside_the_list(self):
+        """The prompt reads a FLAG the script computed — it never re-derives
+        'was this checkable?' by eye. Same rule as `selfReferentialOnly`."""
+        (self.bundle / "bundle-manifest.json").unlink()
+        drifted, reason = dream._detect_skill_drift_status()
+        self.assertEqual((drifted, reason), ([], "unbuilt-bundle"))
+        # The two published fields are derived from exactly that pair.
+        self.assertIs(reason is None, False)
+
     def test_prefixes_are_read_from_the_builder(self):
         """The prefixes are a token two layers must agree on byte-for-byte, so
         they are PARSED from the builder, never re-spelled here."""
