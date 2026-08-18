@@ -46,6 +46,50 @@ import {
   type RequirementCollector,
 } from "@/lib/latex-requirement-collector";
 
+/**
+ * **The serializer's refusal** — task 357, the last of the write-side holes.
+ *
+ * `serializeNode` had a `default:` arm that emitted a node's CHILDREN and
+ * dropped its WRAPPER (and, for a childless node, emitted nothing at all), and
+ * `serializeInline` had a trailing `return ""` of the same shape. Both are
+ * silent: the output is well-formed LaTeX, the save succeeds, and the document
+ * on disk is simply shorter than the one the user has.
+ *
+ * > **A serializer that cannot represent its input REFUSES. It never emits
+ * > LESS** — "less" is byte-indistinguishable from a correct shorter document,
+ * > and the words measure that would have caught it steps aside the moment the
+ * > user genuinely edits (which is the moment the model becomes the only copy).
+ *
+ * The refusal is a THROW rather than a sentinel return, for the reason the drop
+ * specs' `refuseOnThrow` gives: every one of `serializeToLatex`'s ~ten callers
+ * would otherwise have to remember to test a sentinel, and the one that forgot
+ * would write the sentinel to disk. A throw is refused by default and has to be
+ * caught on purpose — and the two doors that must NOT crash on it (the bundle
+ * writers) catch it and publish to the preservation-notice channel, exactly as
+ * a lossy write does, while every read-only projection of the `.tex` fails OPEN
+ * and keeps its last good text.
+ *
+ * Reachability, stated rather than implied: `serializer-node-coverage.test.ts`
+ * asserts that EVERY node type the real main-editor schema declares has an arm,
+ * so this cannot fire for a document today's editor can hold. It is the net for
+ * the two cases where the schema and this file genuinely diverge — a node
+ * extension registered without a serializer arm (which CI turns into a build
+ * failure rather than a silent drop), and a model reaching the serializer from
+ * outside the schema (a `virgil.json` written by a newer Virgil). The same two
+ * cases the schema-mount probe exists for, from the other end.
+ */
+export class UnserializableNodeError extends Error {
+  readonly nodeType: string;
+  constructor(nodeType: string | undefined) {
+    super(
+      `Cannot serialize node type "${nodeType ?? "(untyped)"}" — refusing to ` +
+        `emit a document with this node's content dropped.`,
+    );
+    this.name = "UnserializableNodeError";
+    this.nodeType = nodeType ?? "(untyped)";
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Requirement collection — side channel (P4, requirements by emission).
 //
@@ -773,11 +817,39 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     case "hardBreak":
       return "\\\\\n";
 
-    default:
-      if (node.content) {
-        return (node.content || []).map((n) => serializeNode(n)).join("");
-      }
+    case "text":
+      // A text node reaching the BLOCK walk is a malformed model — text lives
+      // inside a textblock, and `serializeInlineSequence` answers it there with
+      // the linked-anchor bookkeeping this arm cannot do. Emit the user's bytes
+      // anyway rather than refuse: the marks round-trip, and losing a run of
+      // prose to a structural anomaly is precisely the failure this class is
+      // about. Before task 357 this fell to the `default:` arm below, where a
+      // text node has no `content` and therefore vanished without trace.
+      return serializeMarks(node.text || "", node.marks);
+
+    case "figureCaption":
+      // Consumed CONTEXTUALLY by `case "figureBlock"`, which reads the caption
+      // child directly (it must, to route those bytes through
+      // `buildFigureEnvBody` with the `hasCaption` provenance). Declared here
+      // rather than left to the default arm, so the schema census can see this
+      // type has an ANSWER — the same shape the expex family above has.
       return "";
+
+    default:
+      // THE SERIALIZER REFUSES (task 357). This arm used to emit a node's
+      // CHILDREN and drop its WRAPPER — and, for a childless node, emit
+      // nothing at all. Both are silent losses, and no gate downstream can see
+      // them once the user has typed: the write gate's step-aside rests on
+      // "after a real user edit the model IS the document", which is exactly
+      // the moment a wrapper-dropping serialize stops being measured against
+      // anything.
+      //
+      // A serializer that cannot represent its input must not emit LESS —
+      // "less" is byte-indistinguishable from a correct shorter document. The
+      // refusal reaches the same channel a lossy write does (both bundle
+      // writers publish it); every read-only projection of the `.tex` fails
+      // OPEN and keeps its last good text.
+      throw new UnserializableNodeError(node.type);
   }
 }
 
@@ -1188,42 +1260,20 @@ function serializeInlineSequence(
       }
       out += serializeMarks(node.text || "", marks);
     } else {
-      out += serializeInline(node);
+      // ONE dispatcher (task 357). `serializeInline` was a second if-chain
+      // whose five non-text arms were byte-identical duplicates of
+      // `serializeNode`'s — and whose trailing `return ""` was the second of
+      // this task's two silent drops: an inline node type that chain had not
+      // heard of serialized to nothing, even where `serializeNode` knew it.
+      // Delegating retires the fork by construction rather than by repairing
+      // it, and leaves exactly ONE place where a node can be refused.
+      out += serializeNode(node);
     }
   }
   for (const id of open) {
     out += emitMarker(VIRGIL_MARKERS.linkedRangeClose, id);
   }
   return out;
-}
-
-function serializeInline(node: JSONContent): string {
-  if (node.type === "text") {
-    return serializeMarks(node.text || "", node.marks);
-  }
-  if (node.type === "inlineMath") {
-    return `$${node.attrs?.latex || ""}$`;
-  }
-  if (node.type === "footnote") {
-    const fid = node.attrs?.footnoteId as string | undefined;
-    const idMarker = fid ? emitMarker(VIRGIL_MARKERS.footnote, fid) : "";
-    const cmd = node.attrs?.thanks ? "thanks" : "footnote";
-    return `${idMarker}\\${cmd}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
-  }
-  if (node.type === "citation") {
-    const cid = node.attrs?.citationId as string | undefined;
-    const idMarker = cid ? emitMarker(VIRGIL_MARKERS.citation, cid) : "";
-    const command = (node.attrs?.command as string) || "";
-    needBibFamily(classifyCiteFamily(command));
-    return `${idMarker}${command}`;
-  }
-  if (node.type === "labelRef") {
-    return serializeLabelRef(node);
-  }
-  if (node.type === "hardBreak") {
-    return "\\\\\n";
-  }
-  return "";
 }
 
 /**
@@ -1474,8 +1524,13 @@ export function serializeBodyOnly(doc: JSONContent): string {
  * applicator computes matches the headless Python accept's splice.
  *
  * `node` must be a JSONContent `paragraph` (e.g. from `pmNode.toJSON()` on the
- * live block); any other node type returns its default `serializeNode`
- * projection. No `%!v:` trailer is emitted regardless.
+ * live block); any other node type takes its own `serializeNode` arm — which
+ * since task 357 means a node type the serializer cannot express THROWS
+ * (`UnserializableNodeError`) rather than projecting a shorter string. That is
+ * the right outcome for this caller: the applicator byte-matches the
+ * suggestion's `originalText` against this projection, so a projection missing
+ * a node it could not express would silently splice against the wrong bytes.
+ * No `%!v:` trailer is emitted regardless.
  */
 export function serializeParagraphInline(node: JSONContent): string {
   return serializeNode(node, /* suppressChildUuids */ true);
@@ -1565,7 +1620,6 @@ function extractTitleFieldLines(preamble: string): string[] {
   }
   return out;
 }
-
 
 /** Assign UUIDs to all block-level nodes that lack one. Mutates the doc in place.
  *  Container nodes (lists, blockquote) get a single UUID — inner paragraphs are suppressed.

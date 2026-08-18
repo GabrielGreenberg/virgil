@@ -57,8 +57,14 @@
  *  the one that describes what went wrong (a load refusal means the parse
  *  could not represent the file; a write refusal means the model shrank; a
  *  MOUNT refusal means the editor could not hold the parse at all and opened
- *  blank — task 357 hole 3). */
-export type PreservationRefusalSource = "load" | "write" | "mount";
+ *  blank — task 357 hole 3; a SERIALIZE refusal means the model holds a node
+ *  this build cannot express in LaTeX at all, so no bytes could be produced —
+ *  the one source with nothing for the user to "save anyway"). */
+export type PreservationRefusalSource =
+  | "load"
+  | "write"
+  | "mount"
+  | "serialize";
 
 /** The measured shape of a refusal, shared by both gates' verdicts. */
 export interface PreservationRefusalDetail {

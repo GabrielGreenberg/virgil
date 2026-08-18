@@ -146,6 +146,12 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
   // never loaded the file through `readDocBundle` there is no baseline either,
   // which is exactly why the sentence must not be assembled out of the numbers.
   const isMount = notice?.source === "mount";
+  // A SERIALIZE refusal (task 357) is the one source with NOTHING to save: the
+  // serializer could not produce bytes at all, so there is no shorter document
+  // for the user to knowingly accept. The "Save anyway" row is withheld rather
+  // than offered-and-refused one gesture later — an affordance must not promise
+  // what the commit cannot do.
+  const isSerialize = notice?.source === "serialize";
 
   const handleSaveAnyway = useCallback(async () => {
     closeMenu();
@@ -172,7 +178,13 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
   // No doc, no refusal, or the user has already answered → nothing to say.
   if (!notice || notice.acknowledged) return null;
 
-  const detail = isMount
+  const detail = isSerialize
+    ? `Virgil read this file and can display it, but cannot write it back to ` +
+      `LaTeX: the document holds something this version of the editor cannot ` +
+      `express${notice.reason ? ` (${notice.reason})` : ""}. Your file on disk ` +
+      `has NOT been changed, and Virgil will not write to it. Copy anything you ` +
+      `have added out of the editor, then update Virgil and reopen the paper.`
+    : isMount
     ? `Virgil read this file but could not display it: the parsed document uses ` +
       `something this version of the editor doesn't know${
         notice.reason ? ` (${notice.reason})` : ""
@@ -201,6 +213,7 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
         trackAnchor={trackAnchor}
         containerClassName="min-w-[260px] max-w-[340px] py-1"
       >
+        {isSerialize ? null : (
         <MenuRow
           id="save-anyway"
           label={
@@ -212,6 +225,7 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
           danger
           run={() => void handleSaveAnyway()}
         />
+        )}
         <div className="px-3 pt-1.5 mt-1 border-t border-edge-subtle text-[10px] text-ink-subtle leading-snug">
           {detail}
         </div>
@@ -238,9 +252,11 @@ function PreservationNoticeBadge({ docId }: { docId: string | null }) {
           <ShieldIcon />
         </span>
         <span className="truncate">
-          {isMount
-            ? "Not saving — this file didn't open"
-            : "Not saving — this file didn't fully load"}
+          {isSerialize
+            ? "Not saving — Virgil can't write this document"
+            : isMount
+              ? "Not saving — this file didn't open"
+              : "Not saving — this file didn't fully load"}
         </span>
       </span>
 

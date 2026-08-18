@@ -175,24 +175,45 @@ export default function CodeEditor({
         preambleRef.current = extracted?.preamble;
         postambleRef.current = extracted?.postamble;
         // Perf Wave 1 (S3): per-block caches when the pipeline is mounted.
-        const initial =
-          getDocProducts(editor)?.assembleSourceWith({
-            preamble: preambleRef.current,
-            postamble: postambleRef.current,
-          }) ??
-          serializeToLatex(editor.getJSON(), {
-            preamble: preambleRef.current,
-            postamble: postambleRef.current,
-          });
+        //
+        // FAIL OPEN onto the DISK bytes (task 357). The serializer now REFUSES
+        // a node it cannot express rather than emitting the document without
+        // it — and the preservation banner's own advice is "open the code view
+        // to see the source", so this is precisely the surface that must still
+        // work on a refused document. `diskText` is the intact file: strictly
+        // better than an empty pane, and better than a serialize that dropped
+        // the node silently, which is what this used to show.
+        let initial: string;
+        try {
+          initial =
+            getDocProducts(editor)?.assembleSourceWith({
+              preamble: preambleRef.current,
+              postamble: postambleRef.current,
+            }) ??
+            serializeToLatex(editor.getJSON(), {
+              preamble: preambleRef.current,
+              postamble: postambleRef.current,
+            });
+        } catch {
+          initial = diskText;
+        }
         setValue(initial);
         onTextChange?.(initial);
       })
       .catch(() => {
         if (cancelled) return;
-        // Fall back to a serialize with default preamble.
-        const fallback =
-          getDocProducts(editor)?.assembleSourceWith({}) ??
-          serializeToLatex(editor.getJSON());
+        // Fall back to a serialize with default preamble. With no disk bytes
+        // to fall back ON (this branch is the read itself having failed), a
+        // serializer refusal leaves the pane empty rather than throwing inside
+        // a rejection handler — an unhandled rejection helps nobody.
+        let fallback: string;
+        try {
+          fallback =
+            getDocProducts(editor)?.assembleSourceWith({}) ??
+            serializeToLatex(editor.getJSON());
+        } catch {
+          fallback = "";
+        }
         setValue(fallback);
         onTextChange?.(fallback);
       });

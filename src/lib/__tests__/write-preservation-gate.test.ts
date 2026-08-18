@@ -200,7 +200,16 @@ describe("census · both backends ask the gate before writing a bundle", () => {
       // searching forward from the gate cannot see a write that PRECEDES it
       // (the toothless shape task 350-D's own census had to repair).
       const fnAt = src.lastIndexOf("writeDocBundle", gateAt);
-      for (const needle of ["putText(", "writeTextToHandle(", "stampLedger(", "snapshotPriorBundle("]) {
+      // The needles are the DESTRUCTIVE ones — the two file PUTs and the ledger
+      // stamp. `snapshotPriorBundle(` left this list in task 357's serializer
+      // pass and the reason is worth stating: it is a copy INTO
+      // `virgil/.history/` that overwrites nothing, and every refusal path now
+      // deliberately takes one on its armed edge (the serializer gate refuses
+      // BEFORE this one, so its armed snapshot legitimately precedes this
+      // refusal). Requiring it after the refusal would indict the forensic net
+      // the refusal exists to arm. That it happens on exactly the armed edge is
+      // pinned in `preservation-refusal-posture.test.ts`.
+      for (const needle of ["putText(", "writeTextToHandle(", "stampLedger("]) {
         const at = src.indexOf(needle, fnAt);
         if (at === -1 || at > src.indexOf("\n}\n", refuseAt) + 100000) continue;
         expect(
@@ -208,6 +217,26 @@ describe("census · both backends ask the gate before writing a bundle", () => {
           `${rel}: ${needle} must come AFTER the gate's refusal`,
         ).toBeGreaterThan(refuseAt);
       }
+    }
+  });
+
+  it("the SERIALIZER gate precedes the words gate, in both backends", () => {
+    // Task 357. The words measure counts the bytes a serialize produced; a
+    // serialize that REFUSED produced none, so asking the word gate first would
+    // be asking about a string that does not exist. Ordering is the whole of
+    // it: both refusals must sit above every write, and the serializer's must
+    // sit above the words gate's.
+    for (const rel of BACKENDS) {
+      const src = readFileSync(join(REPO, rel), "utf8");
+      const serializeGuardAt = src.indexOf("reportSerializeRefusal(");
+      expect(
+        serializeGuardAt,
+        `${rel} must catch the serializer's refusal, not let it escape`,
+      ).toBeGreaterThan(-1);
+      expect(
+        src.indexOf("checkWriteAgainstRetained("),
+        `${rel}: the words gate must come after the serializer gate`,
+      ).toBeGreaterThan(serializeGuardAt);
     }
   });
 

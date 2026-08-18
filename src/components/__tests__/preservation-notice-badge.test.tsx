@@ -85,4 +85,35 @@ describe("PreservationNoticeBadge", () => {
     });
     expect(pill()).toBeNull();
   });
+
+  it("a SERIALIZE refusal reads differently and offers no way to save", () => {
+    // Task 357's serializer gate. The other three refusals have a version to
+    // save — a shorter document the user may knowingly accept. This one does
+    // not: the serializer produced no bytes at all, so "Save anyway" would
+    // promise what the commit cannot do and refuse again one gesture later.
+    render(<PreservationNoticeBadge docId={DOC} />);
+    act(() => {
+      recordPreservationRefusal(DOC, {
+        ...DETAIL,
+        source: "serialize",
+        after: 0,
+        lost: DETAIL.before,
+        allowed: 0,
+        reason: "Unknown node type: sideNoteBlock",
+      });
+    });
+    const el = pill();
+    expect(el).not.toBeNull();
+    expect(el?.getAttribute("data-preservation-notice")).toBe("serialize");
+    // The pill says the right thing — "can't write", not "didn't load".
+    expect(el?.textContent ?? "").toMatch(/can't write/i);
+    // …and the one action row is withheld. Open the menu and look.
+    act(() => {
+      (el?.querySelector("button[aria-haspopup='menu']") as HTMLElement)?.click();
+    });
+    expect(screen.queryByText(/save anyway/i)).toBeNull();
+    // The explanation is still there — withholding the action must not mean
+    // withholding the account of what happened.
+    expect(document.body.textContent ?? "").toMatch(/sideNoteBlock/);
+  });
 });

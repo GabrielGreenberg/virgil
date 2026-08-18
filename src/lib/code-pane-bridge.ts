@@ -47,7 +47,10 @@ import {
   parseLatex,
   extractPreambleAndPostamble,
 } from "@/lib/latex-parser";
-import { serializeToLatex } from "@/lib/latex-serializer";
+import {
+  serializeToLatex,
+  UnserializableNodeError,
+} from "@/lib/latex-serializer";
 import { checkTexPreservation } from "@/lib/tex-preservation";
 import { canMountInSchema } from "@/lib/tiptap/schema-mount";
 import { getDocProducts } from "@/lib/doc-products/pipeline";
@@ -291,13 +294,24 @@ export function createCodePaneBridge(
             `Your text is unchanged here and the document is untouched — this is ` +
             `usually an unterminated construct mid-edit.`;
         }
-      } catch {
-        // A serializer throw is not evidence the PARSE was lossy, and refusing
-        // on it would block the code pane on an unrelated defect. Fail OPEN
-        // here and let the write-side gate (which measures the same thing one
-        // layer down) be the backstop. The mount question is asked ABOVE this
-        // try, so a serializer defect can never swallow the schema's answer.
-        refusal = null;
+      } catch (err) {
+        // Narrowed by task 357: an `UnserializableNodeError` IS evidence about
+        // this parse — it says the model holds a node this build cannot express
+        // in LaTeX at all, so committing it would put the live paper into a
+        // state no write could ever leave. Refuse, and say which node.
+        //
+        // Any OTHER throw keeps the original rule: it is not evidence the PARSE
+        // was lossy, and refusing on it would block the code pane on an
+        // unrelated defect. Fail OPEN there and let the write-side gate (which
+        // measures the same thing one layer down) be the backstop. The mount
+        // question is asked ABOVE this try, so a serializer defect can never
+        // swallow the schema's answer.
+        refusal =
+          err instanceof UnserializableNodeError
+            ? `Not applied: Virgil cannot write this document back to LaTeX ` +
+              `(unknown node type "${err.nodeType}"). Your text is unchanged ` +
+              `here and the document is untouched.`
+            : null;
       }
     }
     if (refusal) {

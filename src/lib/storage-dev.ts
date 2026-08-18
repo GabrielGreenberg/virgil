@@ -28,6 +28,7 @@ import {
   writeRefusalDetail,
 } from "@/lib/write-preservation";
 import { recordPreservationRefusal } from "@/lib/preservation-notice";
+import { reportSerializeRefusal } from "@/lib/serialize-refusal";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
@@ -449,7 +450,24 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
     const settings = migrateDocumentSettings(rawSettings);
     serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
   }
-  const newLatex = serializeToLatex(content, serializeOpts);
+  // THE SERIALIZER GATE (task 357) — parity with storage-fsa. Unlike its twin
+  // this serialize runs on the READ path (outside the writeback's queued
+  // closure), so an escaping throw would stop the document OPENING rather than
+  // merely skipping a write. Refusing here opens the paper against the intact
+  // file, publishes the refusal, and skips the writeback — which is exactly
+  // what the refusal means.
+  let serialized: string;
+  try {
+    serialized = serializeToLatex(content, serializeOpts);
+  } catch (err) {
+    // The dev backend keeps no `virgil/.history/`, so the armed edge has no
+    // forensic snapshot to force — the same real asymmetry the word gates below
+    // state at their own sites. Returning here opens the paper against the
+    // INTACT file and skips only the writeback, which is what a refusal means.
+    if (!reportSerializeRefusal(err, docId)) throw err;
+    return { content, editorState };
+  }
+  const newLatex = serialized;
   const writebackHandle = getActiveHandle(docId);
   // Read-only library-paper docs never persist — skip the opportunistic
   // load-writeback (the tex + virgil.json PUTs observed in the live smoke).
@@ -567,7 +585,16 @@ export async function writeDocBundle(
       const settings = migrateDocumentSettings(rawSettings);
       serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
     }
-    const latex = serializeToLatex(content, serializeOpts);
+    // THE SERIALIZER GATE (task 357) — parity with storage-fsa. A refusal
+    // leaves both the `.tex` and `virgil.json` untouched; the dev backend takes
+    // no forensic snapshot on the armed edge because it keeps no history folder.
+    let latex: string;
+    try {
+      latex = serializeToLatex(content, serializeOpts);
+    } catch (err) {
+      if (!reportSerializeRefusal(err, h.docId)) throw err;
+      return;
+    }
 
     // THE WRITE-SIDE PRESERVATION GATE (task 357) — parity with storage-fsa.
     // Refuses BEFORE either PUT and before the ledger stamp, so both the .tex
