@@ -38,7 +38,12 @@ import {
   findMatchingEnv,
   findMatchingGloss,
   findMatchingXe,
+  blockMarkerPrefixLength,
   matchExpexOpenerAt,
+  matchLinguexItemAt,
+  matchLinguexOpenerAt,
+  LINGUEX_UNMODELLED_RE,
+  preambleLoadsPackage,
   isEscaped,
   findUnescaped,
   matchBeginEnvAt,
@@ -57,6 +62,10 @@ import {
   startsBlockBoundary,
   wrapVerbatimEnvBody,
 } from "@/lib/latex-lexer";
+import {
+  DEFAULT_EXAMPLE_DIALECT,
+  type ExampleDialect,
+} from "@/lib/example-dialect";
 
 interface ParseContext {
   pos: number;
@@ -65,6 +74,25 @@ interface ParseContext {
    *  the next `\ex` / `\pex` block. */
   pendingExampleId?: string | null;
 }
+
+/**
+ * **May this parse MODEL linguex examples?** — a per-DOCUMENT fact, so it is
+ * module state beside `seenTitleFields` rather than a `ParseContext` field.
+ *
+ * That placement is the whole point. `ParseContext` is per-SLICE: `parseBody`
+ * runs on a quote body, a list item and an example body in their own contexts,
+ * and a document-level capability threaded through four constructors is a
+ * capability someone forgets at the fifth. Reset at the top of `parseLatex`,
+ * which is the ONLY layer that has a preamble to ask.
+ *
+ * It gates MODELLING, never RECOGNITION: a `\ex.` site is linguex by FORM
+ * wherever it appears (`matchLinguexOpenerAt` — form alone, no preamble), and
+ * this decides whether Virgil claims it as an `exampleBlock` (task 355) or
+ * carries its bytes raw as task 350 left it. Absent — a fragment, a card body,
+ * a paste, anything with no preamble — the answer is `false`, so the CARRY is
+ * the fail-safe default rather than a decision anyone has to remember.
+ */
+let linguexModelled = false;
 
 function stripPreamble(latex: string): string {
   const beginDoc = latex.indexOf("\\begin{document}");
@@ -871,6 +899,11 @@ export function parseInlineContent(
 
 export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent {
   seenTitleFields.clear();
+  // Which example dialect may be MODELLED here (task 355). Asked ONCE, of the
+  // LIVE preamble (`preambleLoadsPackage` projects comments and verbatim away
+  // first — the detector law tasks 344/345 earned, so a commented-out
+  // `% \usepackage{linguex}` enables nothing).
+  linguexModelled = preambleLoadsPackage(latex, "linguex");
   const body = stripPreamble(latex);
   const doc: JSONContent = { type: "doc", content: [] };
 
@@ -1617,6 +1650,32 @@ function parseBody(
       if (idArg !== null) {
         ctx.pos = idArg.end;
         continue;
+      }
+    }
+
+    // \ex. … <blank line> — a LINGUEX example (task 355).
+    //
+    // Recognition is the LEXER's, exactly as the expex twin below: the PERIOD
+    // is the per-site discriminator between the two dialects, so a mixed
+    // document (Gabriel's own paper loads both packages) is read correctly
+    // example by example. What the PREAMBLE decides is different and is asked
+    // once, in `parseLatex`: whether Virgil may MODEL a linguex site at all.
+    // With the package absent, `linguexModelled` is false, nothing here fires,
+    // and task 350's carry-raw behaviour stands byte-for-byte.
+    //
+    // A refusal (`readLinguexExample` → null, for a construct this v1 does not
+    // model) leaves `ctx.pos` untouched and falls through to `readParagraph`,
+    // which carries the bytes — the same shape as the fail-closed expex arm
+    // below, and the reason the modelled subset can be small without any of it
+    // costing the user a byte.
+    if (linguexModelled) {
+      const linguexOpen = matchLinguexOpenerAt(ctx.src, ctx.pos);
+      if (linguexOpen) {
+        const linguexNode = readLinguexExample(ctx, linguexOpen.end);
+        if (linguexNode) {
+          parent.content.push(linguexNode);
+          continue;
+        }
       }
     }
 
@@ -2725,6 +2784,242 @@ function splitPexBody(
   return { preamble, items };
 }
 
+/**
+ * Where a linguex example ENDS: the first BLANK line at or after `from`, or
+ * the first line that OPENS a block construct, or end-of-source.
+ *
+ * This is the load-bearing safety property of the whole dialect, and it is a
+ * property of linguex's GRAMMAR rather than of this code: a linguex example
+ * has no closing command — it is terminated by the paragraph break — so a
+ * linguex reader **cannot** swallow past its own paragraph. The catastrophe
+ * task 350 fixed (an unterminated `\ex` claiming the rest of the document) is
+ * unrepresentable here, and stays that way only while this scan has no
+ * "continuation" heuristic bolted onto it. Do not add one.
+ *
+ * The block-boundary rung is a strict NARROWING of the blank-line rule, and it
+ * is faithful to what TeX does: `\section` issues its own `\par`, so linguex
+ * ends the example there whether or not the author left a blank line. Reading
+ * the boundary vocabulary from the lexer (`startsBlockBoundary`) rather than
+ * a private list is what keeps this agreeing with `readParagraph`, which is
+ * the function that will carry these same bytes if the example is refused.
+ */
+function linguexExampleEnd(src: string, from: number): number {
+  let scan = from;
+  while (scan < src.length) {
+    const nl = src.indexOf("\n", scan);
+    // unterminated-ok: end-of-source IS a linguex example's terminator. The
+    // construct has no closing command — it ends at the paragraph break — and
+    // the last paragraph of a document ends at its end. There is nothing here
+    // that could have been "missing", so there is nothing to fail closed on;
+    // the bound below reads ONE line and cannot exceed it either way.
+    if (nl === -1) return src.length;
+    const nextNl = src.indexOf("\n", nl + 1);
+    const line = src.slice(nl + 1, nextNl === -1 ? src.length : nextNl);
+    const trimmed = line.trim();
+    // Ask the boundary question of the line MINUS any leading `\vexid`/`\vxid`
+    // run: those are Virgil's own bookkeeping and belong to THIS example (they
+    // label the very `\a.` that follows), while a marker sitting in front of a
+    // real `\ex` must not hide the boundary it opens. Reading the raw line
+    // instead cut every re-opened Virgil-saved document's example off at its
+    // first item — measured, on cycle 2 of the round trip.
+    const afterMarkers = trimmed.slice(blockMarkerPrefixLength(trimmed));
+    if (trimmed === "" || startsBlockBoundary(afterMarkers)) return nl;
+    scan = nl + 1;
+  }
+  return src.length;
+}
+
+/**
+ * Read a linguex `\ex.` example at `ctx.pos`, or REFUSE.
+ *
+ * On success the node is returned and `ctx.pos` advances past the body. On a
+ * refusal `ctx.pos` is left exactly where it was, so the caller falls through
+ * to `readParagraph` and the bytes are carried raw — task 350's carrier, and
+ * the reason this function can afford to model only the shapes it understands.
+ *
+ * `afterOpener` is the index just past `\ex.` (from `matchLinguexOpenerAt`).
+ */
+function readLinguexExample(
+  ctx: ParseContext,
+  afterOpener: number,
+): JSONContent | null {
+  const bodyEnd = linguexExampleEnd(ctx.src, afterOpener);
+  // Optional `\label{…}` on the header. Exactly ONE is lifted onto the node:
+  // a second stays in the body text, where the inline parser carries it as a
+  // raw-LaTeX atom and the serializer re-emits it — bytes preserved without a
+  // refusal, where "last one wins" would have dropped a `\label` silently.
+  let cursor = afterOpener;
+  let label = "";
+  const labelMatch = ctx.src
+    .slice(cursor, bodyEnd)
+    .match(/^[ \t]*\\label\{([^}]*)\}/);
+  if (labelMatch) {
+    label = labelMatch[1];
+    cursor += labelMatch[0].length;
+  }
+
+  const split = splitLinguexBody(ctx.src.slice(cursor, bodyEnd));
+  if (!split) return null;
+
+  const uuid = ctx.pendingExampleId || null;
+  const node = buildExampleBlockFromBody("", {
+    kind: split.items.length > 0 ? "multi" : "single",
+    tag: "",
+    label,
+    uuid,
+    exnoOverride: null,
+    rawOptions: null,
+    suppressSpace: false,
+    dialect: "linguex",
+    prebuilt:
+      split.items.length > 0
+        ? { preamble: split.preamble, items: split.items.map(toItemSpec) }
+        : { singleBody: split.preamble },
+  });
+  ctx.pendingExampleId = null;
+  ctx.pos = bodyEnd;
+  return node;
+}
+
+/** A linguex item in the shared item shape — the expex-only three at their
+ *  neutral values (linguex has no `<tag>` and no `[exno=…]`). */
+function toItemSpec(item: {
+  label: string;
+  uuid: string | null;
+  text: string;
+}): ExampleItemSpec {
+  return {
+    tag: "",
+    label: item.label,
+    uuid: item.uuid,
+    text: item.text,
+    exnoOverride: null,
+    rawOptions: null,
+  };
+}
+
+/**
+ * **The linguex body splitter** — the `splitPexBody` twin, and deliberately a
+ * separate function rather than a mode on it (the two grammars agree on
+ * nothing but the shape of what they produce).
+ *
+ * `body` is the text AFTER the `\ex.` header and BEFORE the blank line that
+ * terminates it — a bound the caller established and this function cannot
+ * exceed, which is the safety property the whole feature rests on (task 355:
+ * *never scan past the blank line, even for a continuation heuristic*). The
+ * task-350 disease is unrepresentable here: there is no terminator to fail to
+ * find.
+ *
+ * Returns `null` to REFUSE — an example holding a construct this v1 does not
+ * model is carried raw, whole, by the caller. Never half-parsed: the rule task
+ * 350 defect C states one layer down, *never emit a node that serializes to
+ * less than it consumed.*
+ */
+function splitLinguexBody(
+  body: string,
+): {
+  preamble: string;
+  items: Array<{ label: string; uuid: string | null; text: string }>;
+} | null {
+  // The refusal vocabulary, asked of the WHOLE body rather than at line starts
+  // only — over-refusing costs the model for a rare shape, under-refusing
+  // costs the user's bytes, and only one of those is recoverable.
+  if (LINGUEX_UNMODELLED_RE.test(body)) return null;
+
+  const items: Array<{ label: string; uuid: string | null; text: string }> = [];
+  let current: { label: string; uuid: string | null; start: number } | null =
+    null;
+  let firstAt = -1;
+  let aCount = 0;
+  let pendingItemUuid: string | null = null;
+  let pos = 0;
+  // True at the head of the body (a first item may abut the `\ex.` header) and
+  // after every newline + indentation run. Survives a `\vxid{…}` marker,
+  // which is Virgil's own byte sitting between the indent and the marker it
+  // labels — see `matchLinguexItemAt` on why the line-start rule is what keeps
+  // `\i.` (dotless i) out of the item vocabulary.
+  let lineStart = true;
+
+  const flush = (end: number) => {
+    if (!current) return;
+    items.push({
+      label: current.label,
+      uuid: current.uuid,
+      text: body.slice(current.start, end).trim(),
+    });
+    current = null;
+  };
+
+  while (pos < body.length) {
+    if (lineStart) {
+      // \vxid{xxxx} — id marker for the item that follows. Stash and skip,
+      // keeping `lineStart` so the marker cannot hide the item behind it.
+      if (markerOpensAt(body, pos, VIRGIL_MARKERS.exampleItem)) {
+        const idArg = extractBraced(
+          body,
+          markerArgStart(pos, VIRGIL_MARKERS.exampleItem),
+        );
+        if (idArg !== null) {
+          pendingItemUuid = idArg.content || null;
+          pos = idArg.end;
+          continue;
+        }
+      }
+      const item = matchLinguexItemAt(body, pos, true);
+      if (item) {
+        // A SECOND `\a.` opens a deeper tier in linguex, which this v1 does
+        // not model — refuse the example whole rather than flatten a nesting
+        // level into its parent.
+        if (item.letter === "a" && ++aCount > 1) return null;
+        if (firstAt === -1) firstAt = pos;
+        flush(pos);
+        let cursor = item.end;
+        // Optional `\label{…}`, abutting or one space away.
+        let label = "";
+        const labelMatch = body
+          .slice(cursor)
+          .match(/^[ \t]*\\label\{([^}]*)\}/);
+        if (labelMatch) {
+          label = labelMatch[1];
+          cursor += labelMatch[0].length;
+        }
+        while (cursor < body.length && /[ \t]/.test(body[cursor])) cursor++;
+        current = { label, uuid: pendingItemUuid, start: cursor };
+        pendingItemUuid = null;
+        pos = cursor;
+        lineStart = false;
+        continue;
+      }
+    }
+    // An opaque nested construct (an inline `\verb`, a `\begin{env}`) is
+    // stepped over whole so a literal `\a.` inside one cannot split the
+    // example — the same grammar-derived vocabulary `splitPexBody` reads.
+    const skip = skipOpaqueConstructAt(body, pos);
+    if (skip !== -1 && skip > pos) {
+      pos = skip;
+      lineStart = false;
+      continue;
+    }
+    const ch = body[pos];
+    if (ch === "\n") {
+      lineStart = true;
+      pos++;
+      continue;
+    }
+    if (lineStart && (ch === " " || ch === "\t")) {
+      pos++;
+      continue;
+    }
+    lineStart = false;
+    pos++;
+  }
+  flush(body.length);
+
+  const preamble =
+    firstAt === -1 ? body.trim() : firstAt > 0 ? body.slice(0, firstAt).trim() : "";
+  return { preamble, items };
+}
+
 function buildExampleBlockFromBody(
   body: string,
   opts: {
@@ -2737,6 +3032,22 @@ function buildExampleBlockFromBody(
      *  `serializeExampleBlock`. */
     rawOptions?: string | null;
     suppressSpace: boolean;
+    /** Which package's syntax this example was written in. Absent ⇒ expex,
+     *  which is what every pre-355 call site means (task 355). */
+    dialect?: ExampleDialect;
+    /**
+     * An ALREADY-split body, for a dialect whose grammar this function's own
+     * expex splitter cannot read. Absent ⇒ `body` is expex source and
+     * `splitPexBody` reads it.
+     *
+     * The split is what differs between the dialects; the ATTRS and the
+     * ASSEMBLY are what they share, so there is one block builder with two
+     * splitters rather than two block builders that must be kept agreeing
+     * about `uuid` minting, the `number` seed and the empty-body fallbacks.
+     */
+    prebuilt?:
+      | { singleBody: string }
+      | { preamble: string; items: ExampleItemSpec[] };
   },
 ): JSONContent {
   const attrs: Record<string, unknown> = {
@@ -2751,53 +3062,87 @@ function buildExampleBlockFromBody(
     exnoOverride: opts.exnoOverride,
     rawOptions: opts.rawOptions ?? null,
     suppressSpace: opts.suppressSpace,
+    dialect: opts.dialect ?? DEFAULT_EXAMPLE_DIALECT,
     number: 0,
   };
 
+  const pre = opts.prebuilt;
+  const content = pre
+    ? "singleBody" in pre
+      ? assembleExampleBody(pre.singleBody)
+      : assembleExampleBody(null, pre)
+    : opts.kind === "single"
+      ? assembleExampleBody(body)
+      : assembleExampleBody(null, splitPexBody(body));
+  return { type: "exampleBlock", attrs, content };
+}
+
+/** One item, in the shape both splitters produce. The expex splitter fills
+ *  every field; the linguex one leaves the expex-only three at their neutral
+ *  values, since linguex's grammar has no `<tag>` and no `[exno=…]`. */
+interface ExampleItemSpec {
+  tag: string;
+  label: string;
+  uuid: string | null;
+  text: string;
+  exnoOverride: string | null;
+  rawOptions: string | null;
+}
+
+/**
+ * **The ONE example-body assembly**, shared by both dialects (task 355).
+ *
+ * The two dialects disagree about everything up to this point — their opener,
+ * their terminator, their item markers, their option syntax — and about
+ * nothing after it: both produce the same `exampleBlock` children, under the
+ * same schema, with the same empty-body fallbacks. Sharing the assembly is
+ * what makes every consumer downstream (numbering, cards, the Examples panel,
+ * drop specs, the float bodies) dialect-BLIND rather than dialect-aware, and
+ * it is where a per-dialect drift in those fallbacks would otherwise live.
+ *
+ * `singleBody` non-null ⇒ a `single` example (`\ex` / `\ex.` with no
+ * sub-items); `split` non-null ⇒ a `multi` one.
+ */
+function assembleExampleBody(
+  singleBody: string | null,
+  split?: { preamble: string; items: ExampleItemSpec[] },
+): JSONContent[] {
   const content: JSONContent[] = [];
-  if (opts.kind === "single") {
+  if (singleBody !== null) {
     // Parse the body as a sequence of paragraphs / glosses / pictures /
     // equations. Feature A2 widens `exampleBlock` to accept graphicsBlock +
     // displayMath directly, so a dropped picture / equation joins a single
     // `\ex` body — the `block` target admits `\[…\]` so a serialized equation
     // survives the reload (graphicsBlock already parses unconditionally). The
     // `\pex` preamble path below stays un-widened (Non-goals §5).
-    const inner = parseExampleBodyAsBlocks(body, { target: "block" });
+    const inner = parseExampleBodyAsBlocks(singleBody, { target: "block" });
     content.push(...inner);
     if (content.length === 0) content.push({ type: "paragraph" });
-  } else {
-    // \pex — split into preamble + items.
-    const { preamble, items } = splitPexBody(body);
-    if (preamble) {
-      const pNodes = parseExampleBodyAsBlocks(preamble, {
-        target: "preamble",
-      });
-      content.push(...pNodes);
-    }
-    const itemNodes: JSONContent[] = [];
-    for (const item of items) {
-      itemNodes.push(
-        buildExampleItemFromText(
-          item.tag,
-          item.label,
-          item.uuid,
-          item.text,
-          item.exnoOverride,
-          item.rawOptions,
-        ),
-      );
-    }
-    if (itemNodes.length === 0) {
-      itemNodes.push({
-        type: "exampleItem",
-        attrs: { uuid: generateShortId(), tag: "", label: "", subLabel: "" },
-        content: [{ type: "paragraph" }],
-      });
-    }
-    content.push({ type: "exampleItemList", content: itemNodes });
+    return content;
   }
-
-  return { type: "exampleBlock", attrs, content };
+  const { preamble, items } = split ?? { preamble: "", items: [] };
+  if (preamble) {
+    content.push(...parseExampleBodyAsBlocks(preamble, { target: "preamble" }));
+  }
+  const itemNodes: JSONContent[] = items.map((item) =>
+    buildExampleItemFromText(
+      item.tag,
+      item.label,
+      item.uuid,
+      item.text,
+      item.exnoOverride,
+      item.rawOptions,
+    ),
+  );
+  if (itemNodes.length === 0) {
+    itemNodes.push({
+      type: "exampleItem",
+      attrs: { uuid: generateShortId(), tag: "", label: "", subLabel: "" },
+      content: [{ type: "paragraph" }],
+    });
+  }
+  content.push({ type: "exampleItemList", content: itemNodes });
+  return content;
 }
 
 /** Build an exampleItem JSONContent from a raw item body string. The

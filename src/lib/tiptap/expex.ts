@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection, Selection } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import { generateShortId } from "@/lib/uuid";
+import { DEFAULT_EXAMPLE_DIALECT } from "@/lib/example-dialect";
 import { UUID_ATTR_SPEC, stampTextObjectAttrs } from "./uuid-attr";
 import { readPendingDiff, resolveTouchedBlock } from "@/lib/tiptap/doc-structure";
 
@@ -726,6 +727,14 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       // Virgil does not interpret survives the round trip (task 356 site 4).
       rawOptions: { default: null },
       suppressSpace: { default: false }, // \ex~
+      /** Which package's syntax this example was written in — "expex"
+       *  (`\ex … \xe`) or "linguex" (`\ex.` + blank line). A SCHEMA attr, so
+       *  it survives every TipTap round trip, the card/float bodies and a
+       *  copy-paste; the serializer writes each example back in its OWN
+       *  dialect so a mixed document (both packages loaded — the ordinary
+       *  shape in linguistics) is never silently converted. See
+       *  `@/lib/example-dialect` for the vocabulary and the mint rule. */
+      dialect: { default: DEFAULT_EXAMPLE_DIALECT },
       number: { default: 0 },
       /** Optional paragraph-title rendered above the block (Virgil feature —
        *  not emitted to the .tex). Same role as a regular paragraph's

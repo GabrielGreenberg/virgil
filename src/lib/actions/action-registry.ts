@@ -129,6 +129,11 @@ import type { Slice, Fragment, Node as PMNode } from "@tiptap/pm/model";
 // `freshTexBlockAttrs`). A plain string-id leaf — no React/DOM/TipTap — so the
 // value import is free for every consumer of this registry.
 import { generateShortId } from "@/lib/uuid";
+import {
+  dominantExampleDialect,
+  exampleDialectOf,
+  type ExampleDialect,
+} from "@/lib/example-dialect";
 import type { AtomCreateKind, OpenAtomCreateOpts } from "./atom-create";
 // VALUE import: the ONE container-aware block-atom insert helper (CHIP 6a, DA-2).
 // `figureRun` / `graphicsRun` insert their block through `smartInsertBlock` so
@@ -1904,6 +1909,7 @@ export function extractInlineFromSlice(slice: Slice): Record<string, unknown>[] 
 function buildExampleNode(
   kind: "single" | "multi",
   existing: Set<string>,
+  dialect: ExampleDialect,
   inlineContent?: Record<string, unknown>[],
 ): { uuid: string; node: Record<string, unknown> } {
   const uuid = generateShortId(existing);
@@ -1913,6 +1919,12 @@ function buildExampleNode(
     label: "",
     exnoOverride: null,
     suppressSpace: false,
+    // Which dialect a NEW example is written in (task 355). A REQUIRED
+    // argument, not a default: this is the ONE canonical example creator, so a
+    // default here would be a decision nobody made — and the wrong one would
+    // put an expex example into a linguex-only paper, whose preamble does not
+    // load expex until the requirements pass injects it.
+    dialect,
     number: 0,
   };
   if (kind === "single") {
@@ -2014,14 +2026,24 @@ export function exampleRun(ctx: ActionContext): void {
     ? []
     : extractInlineFromSlice(state.doc.slice(from, to));
 
+  // ONE walk, two answers: the uuid collision set this always needed, and the
+  // per-dialect census the mint rule reads (task 355). O(doc) on a user
+  // gesture — never per keystroke — and it was already being paid.
   const existing = new Set<string>();
+  const dialectCounts = { expex: 0, linguex: 0 };
   state.doc.descendants((node) => {
-    if (node.type.name === "exampleBlock" && node.attrs.uuid) {
-      existing.add(node.attrs.uuid as string);
+    if (node.type.name === "exampleBlock") {
+      if (node.attrs.uuid) existing.add(node.attrs.uuid as string);
+      dialectCounts[exampleDialectOf(node.attrs)]++;
     }
     return true;
   });
-  const { uuid, node } = buildExampleNode("single", existing, inlineContent);
+  const { uuid, node } = buildExampleNode(
+    "single",
+    existing,
+    dominantExampleDialect(dialectCounts),
+    inlineContent,
+  );
 
   // Build the example block on the live schema and insert it. `deleteSelection`
   // before insert is required when wrapping a non-empty range so the new block
