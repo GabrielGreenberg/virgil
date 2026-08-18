@@ -49,6 +49,7 @@ import {
 } from "@/lib/latex-parser";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import { checkTexPreservation } from "@/lib/tex-preservation";
+import { canMountInSchema } from "@/lib/tiptap/schema-mount";
 import { getDocProducts } from "@/lib/doc-products/pipeline";
 import {
   getRanges,
@@ -263,23 +264,41 @@ export function createCodePaneBridge(
     // proportionate surface is the code pane's own inline error, which is
     // where the text that could not be applied is sitting.
     let refusal: string | null = null;
-    try {
-      const roundTripped = serializeToLatex(parsed, { preamble, postamble });
-      const verdict = checkTexPreservation(text, roundTripped);
-      if (!verdict.ok) {
-        const r = verdict.body.ok ? verdict.preamble : verdict.body;
-        refusal =
-          `Not applied: parsing this would drop ${r.lost} of ${r.before} ` +
-          `content words from the document ${verdict.body.ok ? "preamble" : "body"}. ` +
-          `Your text is unchanged here and the document is untouched — this is ` +
-          `usually an unterminated construct mid-edit.`;
+    // THE MOUNT HALF OF THE SAME QUESTION (task 357, hole 3). The words measure
+    // below asks whether the model represents the TEXT; it cannot ask whether
+    // the EDITOR can hold the model, because `serializeToLatex` walks plain
+    // JSON and will happily emit a complete document from a model naming a node
+    // type the schema has not got. `setContent` would then swallow the mismatch
+    // into an EMPTY document and blank the live paper — measured word-complete
+    // on the way past. Asked FIRST because a model the editor cannot hold makes
+    // the words verdict moot.
+    const mount = canMountInSchema(editor.schema, parsed);
+    if (!mount.ok) {
+      refusal =
+        `Not applied: the editor cannot represent this document ` +
+        `(${mount.reason}). Your text is unchanged here and the document is ` +
+        `untouched.`;
+    }
+    if (!refusal) {
+      try {
+        const roundTripped = serializeToLatex(parsed, { preamble, postamble });
+        const verdict = checkTexPreservation(text, roundTripped);
+        if (!verdict.ok) {
+          const r = verdict.body.ok ? verdict.preamble : verdict.body;
+          refusal =
+            `Not applied: parsing this would drop ${r.lost} of ${r.before} ` +
+            `content words from the document ${verdict.body.ok ? "preamble" : "body"}. ` +
+            `Your text is unchanged here and the document is untouched — this is ` +
+            `usually an unterminated construct mid-edit.`;
+        }
+      } catch {
+        // A serializer throw is not evidence the PARSE was lossy, and refusing
+        // on it would block the code pane on an unrelated defect. Fail OPEN
+        // here and let the write-side gate (which measures the same thing one
+        // layer down) be the backstop. The mount question is asked ABOVE this
+        // try, so a serializer defect can never swallow the schema's answer.
+        refusal = null;
       }
-    } catch {
-      // A serializer throw is not evidence the PARSE was lossy, and refusing on
-      // it would block the code pane on an unrelated defect. Fail OPEN here and
-      // let the write-side gate (which measures the same thing one layer down)
-      // be the backstop.
-      refusal = null;
     }
     if (refusal) {
       if (lastParseError !== refusal) {

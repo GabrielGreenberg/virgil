@@ -55,8 +55,10 @@
 
 /** Which gate refused. The FIRST refusal's source is the one recorded — it is
  *  the one that describes what went wrong (a load refusal means the parse
- *  could not represent the file; a write refusal means the model shrank). */
-export type PreservationRefusalSource = "load" | "write";
+ *  could not represent the file; a write refusal means the model shrank; a
+ *  MOUNT refusal means the editor could not hold the parse at all and opened
+ *  blank — task 357 hole 3). */
+export type PreservationRefusalSource = "load" | "write" | "mount";
 
 /** The measured shape of a refusal, shared by both gates' verdicts. */
 export interface PreservationRefusalDetail {
@@ -68,6 +70,13 @@ export interface PreservationRefusalDetail {
   after: number;
   lost: number;
   allowed: number;
+  /**
+   * Why, in the producing gate's own words, when it has something more specific
+   * to say than the numbers. Today only the MOUNT gate sets it (ProseMirror's
+   * own "Unknown node type: …"), because a mount failure is a fact about the
+   * SCHEMA that the word measure can only report as a total loss.
+   */
+  reason?: string;
 }
 
 export interface PreservationNotice extends PreservationRefusalDetail {

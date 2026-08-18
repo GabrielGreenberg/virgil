@@ -132,6 +132,17 @@ export function noteUserEdit(docId: string): void {
   if (e) e.userEdited = true;
 }
 
+/**
+ * The per-region word counts this doc was LOADED from, or `null` when this
+ * process never loaded it (a `initialContent` prop, the Library Reader, a
+ * hand-built fixture). Read by the MOUNT gate (task 357 hole 3), which needs
+ * the same baseline this one measures against so the two cannot disagree about
+ * how much a document had before Virgil touched it.
+ */
+export function getRetainedCounts(docId: string): RetainedCounts | null {
+  return byDoc.get(docId)?.counts ?? null;
+}
+
 /** Test hook / doc-close cleanup. */
 export function clearRetained(docId?: string): void {
   if (docId === undefined) byDoc.clear();

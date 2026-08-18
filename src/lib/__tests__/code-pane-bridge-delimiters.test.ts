@@ -33,6 +33,11 @@ import { EditorState } from "@codemirror/state";
 import type { EditorView, ViewUpdate } from "@codemirror/view";
 import type { Editor as TipTapEditor, JSONContent } from "@tiptap/react";
 import { createCodePaneBridge } from "@/lib/code-pane-bridge";
+import { getSchema } from "@tiptap/core";
+import {
+  buildEditorExtensions,
+  type EditorExtensionsCtx,
+} from "@/lib/editor-extensions";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
 
@@ -44,6 +49,20 @@ vi.mock("@/lib/latex-parser", async (importOriginal) => {
 });
 import { parseLatex } from "@/lib/latex-parser";
 const parseLatexMock = vi.mocked(parseLatex);
+
+function mainCtx(): EditorExtensionsCtx {
+  return {
+    surface: "main",
+    editableRef: { current: true },
+    cardContext: false,
+    callbacks: {},
+    docIdRef: { current: null },
+    texBlockIsPoppedRef: { current: undefined },
+    anchoredUuidsRef: { current: new Set<string>() },
+    host: null,
+  };
+}
+const MAIN_SCHEMA = getSchema(buildEditorExtensions(mainCtx()));
 
 const DOC: JSONContent = {
   type: "doc",
@@ -63,6 +82,10 @@ function makeStubEditor(json: JSONContent) {
     off: vi.fn(),
     commands: { setContent },
     getJSON: () => json,
+    // The bridge asks the schema whether it could hold a parse before it
+    // commits one (task 357 hole 3), so the stub carries the REAL main schema
+    // — a stub without one is fiction that would make every flush refuse.
+    schema: MAIN_SCHEMA,
     // Only touched inside try/catch paths (cursor band); a bare object is fine.
     state: { selection: null },
   } as unknown as TipTapEditor;
