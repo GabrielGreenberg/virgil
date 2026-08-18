@@ -71,6 +71,8 @@ function stripPreamble(latex: string): string {
   const endDoc = latex.indexOf("\\end{document}");
   if (beginDoc !== -1) {
     const start = beginDoc + "\\begin{document}".length;
+    // unterminated-ok: no `\end{document}` means the body genuinely does run to
+    // EOF — there is no content past it that this claim could swallow.
     const end = endDoc !== -1 ? endDoc : latex.length;
     return latex.slice(start, end).trim();
   }
@@ -2072,6 +2074,9 @@ function parseBody(
         const eol = ctx.src.indexOf("\n", ctx.pos);
         // Blank paragraph marker (legacy: empty paragraph with no UUID)
         if (rest.startsWith("%!v:blank")) {
+          // unterminated-ok: a comment ends at its newline, so a missing one
+          // means EOL IS EOF. Line-bounded, not a construct-body claim — the
+          // same for every `eol !== -1 ? eol + 1 : ctx.src.length` below.
           ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
           parent.content.push({ type: "paragraph" });
           continue;
@@ -2084,15 +2089,18 @@ function parseBody(
         const lineMatch = rest.match(NODE_UUID_REGEX);
         if (lineMatch && lineMatch.index === 0) {
           const afterUuidPos = ctx.pos + lineMatch[0].length;
+          // unterminated-ok: line-bounded comment scan (see above).
           const eolPos = eol !== -1 ? eol : ctx.src.length;
           const trailing = ctx.src.slice(afterUuidPos, eolPos);
           if (!trailing.trim()) {
+            // unterminated-ok: line-bounded comment scan (see above).
             ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
             parent.content.push({ type: "paragraph", attrs: { uuid: lineMatch[1] } });
             continue;
           }
         }
-        // Skip UUID anchor comments silently
+        // Skip UUID anchor comments silently.
+        // unterminated-ok: line-bounded comment scan (see above).
         ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
         continue;
       }
@@ -2100,6 +2108,8 @@ function parseBody(
       const rawComment = eol !== -1
         ? ctx.src.slice(ctx.pos + 1, eol).trim()
         : ctx.src.slice(ctx.pos + 1).trim();
+      // unterminated-ok: line-bounded comment scan — and the bytes are CAPTURED
+      // into `rawComment` above, so nothing is claimed and nothing is dropped.
       ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
       // Strip trailing %!v:xxxx UUID anchor from comment text
       const { text: commentText, uuid: commentUuid } = stripUuidAnchor(rawComment);
@@ -3157,6 +3167,9 @@ function buildGlossFromBody(
   for (let i = 0; i < markers.length; i++) {
     const cur = markers[i];
     const next = markers[i + 1];
+    // unterminated-ok: `body` is the already-bounded `\begingl … \endgl` body,
+    // and the LAST tier's segment runs to its end by construction — there is no
+    // outer content for this slice to reach.
     let segment = body.slice(cur.end, next ? next.start : body.length);
     // Strip the trailing `//` terminator if present.
     segment = segment.replace(/\s*\/\/\s*$/, "").trim();
@@ -3211,6 +3224,9 @@ function tokenizeGlossCells(text: string): JSONContent[] {
         token = inner.content;
         i = inner.end;
       } else {
+        // unterminated-ok: an unbalanced `{` in a gloss line takes the rest of
+        // THAT LINE into the cell — `src` is one already-bounded tier segment,
+        // and the bytes are kept rather than dropped.
         token = src.slice(i);
         i = src.length;
       }

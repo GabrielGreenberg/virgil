@@ -30,10 +30,21 @@
  * caller. Callers: [margin-side-ssot.test.ts](margin-side-ssot.test.tsx),
  * [action-context-honesty.test.ts](../actions/__tests__/action-context-honesty.test.ts).
  */
-export function strip(src: string, keepStrings: boolean): string {
+export function strip(
+  src: string,
+  keepStrings: boolean,
+  /** Emit a `\n` for every newline blanked, so the result is LINE-ALIGNED with
+   *  the input. A census that reports `file:line`, or that must read a marker
+   *  COMMENT near a code hit, needs the two views to agree on line numbers.
+   *  Off by default — every pre-356 caller asks a whole-file `toContain`-shaped
+   *  question and is unaffected either way. */
+  keepLines = false,
+): string {
   let out = "";
   let i = 0;
   const n = src.length;
+  const blanked = (from: number, to: number): string =>
+    keepLines ? src.slice(from, to).replace(/[^\n]/g, "") : "";
   while (i < n) {
     const c = src[i];
     const d = src[i + 1];
@@ -42,9 +53,11 @@ export function strip(src: string, keepStrings: boolean): string {
       continue;
     }
     if (c === "/" && d === "*") {
+      const start = i;
       i += 2;
       while (i < n && !(src[i] === "*" && src[i + 1] === "/")) i++;
       i += 2;
+      out += blanked(start, Math.min(i, n));
       continue;
     }
     if (c === '"' || c === "'") {
@@ -87,7 +100,7 @@ export function strip(src: string, keepStrings: boolean): string {
         if (depth > 0 && !keepStrings) out += src[i];
         i++;
       }
-      out += keepStrings ? src.slice(start, i) : "``";
+      out += keepStrings ? src.slice(start, i) : "``" + blanked(start, i);
       continue;
     }
     out += c;
@@ -103,6 +116,10 @@ export const codeOnly = (src: string) => strip(src, false);
 /** Comments blanked, literals intact — for a needle whose match lives inside
  *  the quotes. */
 export const commentsStripped = (src: string) => strip(src, true);
+
+/** {@link codeOnly}, LINE-ALIGNED with the input — for a census that reports
+ *  `file:line` or reads a marker comment sitting near a code hit. */
+export const codeOnlyLines = (src: string) => strip(src, false, true);
 
 /**
  * CSS RULE BODIES only — the token-home blocks (`:root`, `@theme`) removed.
