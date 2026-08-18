@@ -33,6 +33,30 @@
  * can be tight instead of generous, which is the whole difference between a net
  * and a formality.
  *
+ * ## Which words, not how many — the shortfall (task 357)
+ *
+ * A NET count is defeated by simultaneous growth, one region in. The region
+ * split above closed the cross-region form of that masking; within a region a
+ * pass that dropped `\author{Jane Q. Doe}` while adding four words elsewhere
+ * still scored a loss of ZERO. So the measure is a per-token SHORTFALL —
+ * `Σ max(0, count_before(t) − count_after(t))` — which is the number of word
+ * OCCURRENCES present before and missing after, whatever else arrived.
+ *
+ * It is a strict strengthening: the shortfall is `≥` the net loss for every
+ * input, so nothing the old rule refused is now allowed. And it is
+ * ORDER-INVARIANT, which is why it is a multiset rather than the contiguous-run
+ * check this was first sketched as: the serializer legitimately MOVES word runs
+ * (task 356 hoists a `\title{…}` to the far end of the preamble; a figure's
+ * attrs are re-emitted in the serializer's own order), and a run check
+ * false-refuses on every one of those. A run check would catch one thing this
+ * does not — a deleted run whose every token appears elsewhere in the same
+ * region — and pays for it with refusals on documents that lost nothing.
+ *
+ * Measured before adopting it: over every `.tex` corpus in the repo (the
+ * reference paper, both indexed library papers, all four document templates),
+ * two save cycles each, the shortfall is **0** in both regions. It absorbs no
+ * known behaviour, exactly as the net count did.
+ *
  * ## What is projected away first
  *
  * Virgil's OWN markers, on both sides — the `%!v:xxxx` block anchors, the
@@ -110,6 +134,37 @@ function projectAwayVirgilMarkers(tex: string): string {
 }
 
 /**
+ * The user's content as a MULTISET of word tokens, plus the total. See the
+ * module header: the total answers "how much", the per-token counts answer
+ * "which", and only the second survives simultaneous growth.
+ */
+export interface WordBag {
+  total: number;
+  counts: ReadonlyMap<string, number>;
+}
+
+export function measureContentBag(tex: string): WordBag {
+  const words = projectAwayVirgilMarkers(tex).match(WORD_RE) ?? [];
+  const counts = new Map<string, number>();
+  for (const w of words) counts.set(w, (counts.get(w) ?? 0) + 1);
+  return { total: words.length, counts };
+}
+
+/**
+ * Word OCCURRENCES present in `before` and missing from `after`. Always `≥`
+ * `max(0, before.total − after.total)`, and unlike that net it cannot be paid
+ * off by unrelated growth in the same region.
+ */
+export function missingWords(before: WordBag, after: WordBag): number {
+  let missing = 0;
+  for (const [token, n] of before.counts) {
+    const kept = after.counts.get(token) ?? 0;
+    if (n > kept) missing += n - kept;
+  }
+  return missing;
+}
+
+/**
  * The user's content, as a word count. See the module header for why words
  * rather than characters.
  */
@@ -132,7 +187,11 @@ function splitRegions(tex: string): { preamble: string; body: string } {
 export interface RegionVerdict {
   before: number;
   after: number;
-  /** Words lost (never negative — a gain reports 0). */
+  /**
+   * Word occurrences present before and missing after — the SHORTFALL, not the
+   * net difference (see the module header). Never negative: a region that only
+   * grew reports 0.
+   */
   lost: number;
   /** The largest loss that would still have been allowed. */
   allowed: number;
@@ -146,15 +205,22 @@ export interface PreservationVerdict {
   preamble: RegionVerdict;
 }
 
-function checkRegion(before: string, after: string): RegionVerdict {
-  const b = measureContentWords(before);
-  const a = measureContentWords(after);
+/**
+ * The one comparison both gates make, over two already-measured bags. Exported
+ * so the WRITE gate (which retains its baseline bag at load rather than holding
+ * the bytes) asks exactly this question rather than a second copy of it.
+ */
+export function compareRegionBags(b: WordBag, a: WordBag): RegionVerdict {
   const allowed = Math.max(
     PRESERVATION_SLACK_WORDS,
-    Math.floor(b * PRESERVATION_SLACK_RATIO),
+    Math.floor(b.total * PRESERVATION_SLACK_RATIO),
   );
-  const lost = Math.max(0, b - a);
-  return { before: b, after: a, lost, allowed, ok: lost <= allowed };
+  const lost = missingWords(b, a);
+  return { before: b.total, after: a.total, lost, allowed, ok: lost <= allowed };
+}
+
+function checkRegion(before: string, after: string): RegionVerdict {
+  return compareRegionBags(measureContentBag(before), measureContentBag(after));
 }
 
 /**

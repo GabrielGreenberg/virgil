@@ -700,3 +700,106 @@ def commit_under_pen(doc: Path, writes: list[tuple[Path, str | None]]) -> None:
         atomic_write(writes)
     finally:
         release_pen(doc)
+
+
+# ---------------------------------------------------------------------------
+# The preservation measure — a PORT of src/lib/tex-preservation.ts (task 357).
+#
+# The `/editor/*` skills are the THIRD writer of a paper's `.tex` (the two
+# in-app backends being the others), and until now the only one with no net
+# under it at all: `apply_response.py`'s `region-replace` rewrites the whole
+# preamble from MODEL OUTPUT, unchecked.
+#
+# A rule reimplemented in a second language drifts. Nothing can share code
+# across the seam, so what holds the two halves together is a shared FIXTURE
+# CORPUS both must answer identically —
+# `src/lib/__tests__/fixtures/preservation-corpus.json`, driven from the TS side
+# by `preservation-measure-parity.test.ts` and from here by
+# `tests/test_preservation_measure.py`. Change the rule in one language and the
+# corpus makes the other one say so.
+#
+# Read the TS module for WHY each choice is what it is (words rather than
+# characters; Virgil's own markers projected away on both sides; user comments
+# deliberately NOT projected; the preamble and body weighed separately; and the
+# per-token SHORTFALL rather than a net count, which is what survives a pass
+# that loses one thing while adding another).
+# ---------------------------------------------------------------------------
+
+PRESERVATION_SLACK_RATIO = 0.01
+PRESERVATION_SLACK_WORDS = 4
+
+# Mirrors VIRGIL_MARKER_COMMANDS in src/lib/latex-markers.ts. Python cannot
+# import the SSOT, so the list is pinned against it by the parity suite's
+# membership leg — the same instrument the marker census uses for the skill
+# markdown it likewise cannot reach.
+VIRGIL_MARKER_COMMANDS = (
+    "vfid",
+    "vcid",
+    "vbid",
+    "vexid",
+    "vxid",
+    "vlid",
+    "vlidend",
+)
+
+_MARKER_COMMAND_RE = re.compile(
+    r"\\(?:" + "|".join(VIRGIL_MARKER_COMMANDS) + r")\{[^}]*\}"
+)
+_MARKER_COMMENT_RE = re.compile(r"%!v(?:tex)?:[^\s]*")
+_WORD_RE = re.compile(r"[A-Za-z0-9]+")
+
+DOCUMENT_MARKER = "\\begin{document}"
+
+
+def measure_content_bag(tex: str) -> dict[str, int]:
+    """The user's content as a multiset of word tokens, Virgil's own markers
+    projected away on the way (they are ADDED by the very passes being gated)."""
+    projected = _MARKER_COMMENT_RE.sub(" ", _MARKER_COMMAND_RE.sub(" ", tex))
+    bag: dict[str, int] = {}
+    for w in _WORD_RE.findall(projected):
+        bag[w] = bag.get(w, 0) + 1
+    return bag
+
+
+def measure_content_words(tex: str) -> int:
+    return sum(measure_content_bag(tex).values())
+
+
+def missing_words(before: dict[str, int], after: dict[str, int]) -> int:
+    """Word OCCURRENCES present before and missing after. Always >= the net
+    difference, and unlike it cannot be paid off by unrelated growth."""
+    return sum(max(0, n - after.get(t, 0)) for t, n in before.items())
+
+
+def split_regions(tex: str) -> tuple[str, str]:
+    """(preamble, body). A source with no `\\begin{document}` is ALL BODY — the
+    fail-safe direction, since it puts every word under a comparison."""
+    i = tex.find(DOCUMENT_MARKER)
+    if i == -1:
+        return "", tex
+    return tex[:i], tex[i:]
+
+
+def check_region_preservation(before: str, after: str) -> dict[str, Any]:
+    b = measure_content_bag(before)
+    a = measure_content_bag(after)
+    b_total = sum(b.values())
+    allowed = max(PRESERVATION_SLACK_WORDS, int(b_total * PRESERVATION_SLACK_RATIO))
+    lost = missing_words(b, a)
+    return {
+        "before": b_total,
+        "after": sum(a.values()),
+        "lost": lost,
+        "allowed": allowed,
+        "ok": lost <= allowed,
+    }
+
+
+def check_tex_preservation(before: str, after: str) -> dict[str, Any]:
+    """Would writing `after` over `before` lose content? The two regions are
+    weighed independently and EITHER shrinking is a refusal."""
+    b_pre, b_body = split_regions(before)
+    a_pre, a_body = split_regions(after)
+    body = check_region_preservation(b_body, a_body)
+    preamble = check_region_preservation(b_pre, a_pre)
+    return {"ok": body["ok"] and preamble["ok"], "body": body, "preamble": preamble}

@@ -227,6 +227,7 @@ describe("a STANDING refusal suspends the write gate's step-aside", () => {
 // by SOURCE — and so is the save path, which lives in a hook no test mounts
 // against a real backend.
 import { readFileSync } from "node:fs";
+import { codeOnly } from "@/lib/__tests__/_source-scan";
 import { join } from "node:path";
 
 const REPO = join(__dirname, "../../..");
@@ -258,7 +259,11 @@ describe("census · every refusal reaches the channel", () => {
     const fsa = read("src/lib/storage-fsa.ts");
     const armedBlocks = fsa.match(/if \(armed\) \{\s*await snapshotPriorBundle\(/g) ?? [];
     expect(armedBlocks.length, "both gates must snapshot on the armed edge").toBe(2);
-    const dev = read("src/lib/storage-dev.ts");
+    // Asked of CODE, not raw source: the dev backend's own sites now NAME the
+    // missing snapshot in prose to state the asymmetry (task 357's `writeTex`
+    // marker does exactly that), and a guard that cannot tell a comment from a
+    // call would read that honesty as the mechanism it is denying.
+    const dev = codeOnly(read("src/lib/storage-dev.ts"));
     expect(dev).not.toContain("snapshotPriorBundle");
   });
 
