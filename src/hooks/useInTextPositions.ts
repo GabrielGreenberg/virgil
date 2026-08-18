@@ -1126,11 +1126,20 @@ export function useInTextPositions(
     [measureVersion, items, pinned],
   );
 
-  // `naturals` rides the same `measureVersion` gate `positions` does, so a
-  // pass held by hysteresis publishes nothing — which is correct: nothing
-  // was committed. Exposed because a pin is stored ANCHOR-RELATIVE (task
-  // 362) and the publish site therefore needs the card's natural top; the
-  // pod hands it on through `data-omni-natural-top`.
+  // Exposed because a pin is stored ANCHOR-RELATIVE (task 362) and the
+  // publish site therefore needs the card's natural top; the pod hands it on
+  // through `data-omni-natural-top`.
+  //
+  // Keyed on `measureVersion` alone — a NARROWER dep list than `positions`
+  // (which also depends on `items` and `pinned`), because neither of those
+  // can change a natural. The invariant the wrapper's render relies on
+  // (`positions.get(id) !== undefined ⇒ naturals.get(id) !== undefined`)
+  // therefore does NOT rest on the two memos sharing a trigger; it rests on
+  // `measure()` being the only writer of `naturalRef` and bumping the
+  // version whenever it commits a change — so a pass held by hysteresis
+  // republishes nothing, which is correct, and any pass that ADDS an entry
+  // bumps. Worth writing down: widen either memo's deps and this argument,
+  // not a dep-list equality, is what has to keep holding.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const naturals = useMemo(
     () => naturalRef.current as ReadonlyMap<string, NaturalEntry>,

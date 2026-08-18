@@ -121,7 +121,15 @@ function publish(
       // that opened the panel), so the wrapper isn't in the DOM yet. One
       // frame is enough for the column to commit its first render; a second
       // miss means there is no such card and there is nothing to pin.
-      if (!retried) {
+      //
+      // Only the KEY-lookup form retries, which is the only form the retry
+      // was ever for: a caller holding its element (`holdOmniCard`, from a
+      // mousedown on the wrapper itself) is holding a MOUNTED node, so a
+      // second resolve of that same node re-reads the same answer. Since
+      // this branch is now also reachable from the fail-closed natural-top
+      // check, retrying it would burn a frame on every such mousedown to
+      // reach a guaranteed second refusal.
+      if (!retried && !(target instanceof HTMLElement)) {
         retried = true;
         requestAnimationFrame(apply);
       }

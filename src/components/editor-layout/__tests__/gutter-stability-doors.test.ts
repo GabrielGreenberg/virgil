@@ -100,11 +100,13 @@ function scene(
 }
 
 beforeEach(() => {
-  omniPinStore.clearAll();
+  omniPinStore.clearPin("left");
+  omniPinStore.clearPin("right");
 });
 afterEach(() => {
   document.body.innerHTML = "";
-  omniPinStore.clearAll();
+  omniPinStore.clearPin("left");
+  omniPinStore.clearPin("right");
 });
 
 const KEY = "float:card:note:abc";
@@ -199,13 +201,25 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     expect(omniPinStore.get("right")!.offset).toBe(80);
   });
 
-  it("refuses a wrapper carrying no natural top — fail CLOSED", () => {
+  it.each([
+    ["absent", null],
+    ["empty", ""],
+    ["whitespace", "  "],
+    ["non-numeric", "auto"],
+    ["NaN", "NaN"],
+  ])("refuses a wrapper whose natural top is %s — fail CLOSED", (_label, value) => {
     // The alternative (store the absolute Y when the anchor reference is
     // missing) is exactly the decoupling 362 retires, arriving silently on
-    // whichever path lost the attribute. A wrapper with no readable natural
+    // whichever path lost the attribute. A wrapper with no READABLE natural
     // top is treated as "nothing to pin", like a missing wrapper.
+    //
+    // The empty/whitespace cases are the ones with teeth: `Number("")` and
+    // `Number("  ")` are both 0, so a presence-blind parse would read them
+    // as an anchor sitting at the very top of the pod and store a plausible
+    // WRONG offset rather than refusing — silent, where absence is not.
     const { wrapper } = scene(KEY, 1400); // off screen ⇒ otherwise sanctioned
-    wrapper.removeAttribute("data-omni-natural-top");
+    if (value === null) wrapper.removeAttribute("data-omni-natural-top");
+    else wrapper.setAttribute("data-omni-natural-top", value);
     requestOmniCardPlacement(KEY, { viewportY: 140 });
     expect(omniPinStore.get("right")).toBeNull();
     holdOmniCard(wrapper);

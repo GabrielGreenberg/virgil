@@ -41,8 +41,26 @@
 // moving. Their shared premise is that both are affine in the anchor's screen
 // top with slope 1, which is what an edit above the anchor does to each: it
 // translates the block, and both readers re-measure it.
+//
+// ── Which leg covers which half, stated because it is not obvious ─────────
+// The fix has TWO halves and no single leg sees both:
+//   • the CASCADE half (re-derive `naturalTop + offset` each pass) is what
+//     the gap-invariance legs below catch;
+//   • the DOOR half (STORE the offset rather than the absolute Y) is caught
+//     only by "the offset is the gesture's durable half" and by the doors
+//     suite — neuter the door alone and the gap legs still pass, because an
+//     absolute Y re-added to a natural top still translates 1:1.
+// And `markerY` is deliberately honest rather than impressive: it is a real
+// call into the real `computeMarkerPositions`, but `cellAt` reduces at row 0
+// to `node.top + const`, so its DISCRIMINATING power is limited to "the
+// marker side gained a stored Y / stopped tracking `AnchorNodeMetrics.top`".
+// That is worth pinning — it is the half of this class the marker renderer
+// could regress into — but it is not what makes the gap legs fail.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { codeOnly } from "@/lib/__tests__/_source-scan";
 import { omniPinStore } from "../omni-pin-store";
 import {
   holdOmniCard,
@@ -146,10 +164,43 @@ function cardY(naturalTop: number, pinned: { id: string; offset: number } | null
   return y!;
 }
 
-beforeEach(() => omniPinStore.clearAll());
+/** The RETIRED rule, reimplemented locally: the pre-362 cascade forced the
+ *  pinned row to the STORED number (`rows[i].top = pinned.pinTop`) instead of
+ *  re-deriving it from the anchor. Kept here — twenty lines, over the same
+ *  deck `cardY` builds — so the defect leg fails on the behaviour it names
+ *  rather than on an arithmetic identity of the fixed code. */
+function preFixCardY(naturalTop: number, storedAbsoluteTop: number): number {
+  const rows = [
+    { id: "neighbour", top: 40, height: 80 },
+    { id: KEY, top: naturalTop, height: 120 },
+  ].sort((a, b) => a.top - b.top);
+  const MIN_GAP = 4;
+  for (let i = 0; i < rows.length; i++) {
+    if (i > 0) {
+      const prev = rows[i - 1];
+      const minTop = prev.top + prev.height + MIN_GAP;
+      if (rows[i].top < minTop) rows[i].top = minTop;
+    }
+    if (rows[i].id === KEY) rows[i].top = storedAbsoluteTop; // ← the defect
+  }
+  for (let i = rows.length - 1; i > 0; i--) {
+    const cur = rows[i];
+    const prev = rows[i - 1];
+    const maxPrevTop = cur.top - prev.height - MIN_GAP;
+    if (prev.top > maxPrevTop) prev.top = maxPrevTop;
+  }
+  return rows.find((r) => r.id === KEY)!.top;
+}
+
+const clearPins = () => {
+  omniPinStore.clearPin("left");
+  omniPinStore.clearPin("right");
+};
+
+beforeEach(clearPins);
 afterEach(() => {
   document.body.innerHTML = "";
-  omniPinStore.clearAll();
+  clearPins();
 });
 
 describe("a pinned card and its marker never disagree about the anchor", () => {
@@ -182,28 +233,25 @@ describe("a pinned card and its marker never disagree about the anchor", () => {
     );
   });
 
-  it("the pre-fix semantics, modelled — a pod-absolute pin drifts by the full edit distance", () => {
-    // The pre-362 store held the absolute Y the gesture computed. This leg
-    // MODELS that (there is no longer an API that can express it) by
-    // re-deriving the offset per natural top so the product is constant —
-    // which is arithmetically identical to `rows[i].top = pinned.pinTop`.
-    //
-    // The real neuter was measured, not assumed: reverting the two
-    // production lines (the door storing `desiredPodTop`, the cascade
-    // reading the stored value as absolute) fails EIGHT legs — four here
-    // and four in `gutter-stability-doors`.
+  // Neuter counts, measured rather than asserted: reverting the CASCADE half
+  // alone (read the stored value as absolute) fails this leg's siblings here;
+  // reverting the DOOR half alone (store `desiredPodTop`) fails SEVEN legs
+  // across this file and `gutter-stability-doors`; reverting BOTH fails EIGHT.
+  // The two halves are covered by different legs — see the header.
+  it("DEFECT LEG — the retired pod-absolute rule drifts by the full edit distance", () => {
+    // `preFixCardY` is a local reimplementation of the RETIRED rule, not a
+    // re-parameterisation of the live one: it runs the pre-362 cascade
+    // (`rows[i].top = <the stored number>`, verbatim) so the leg can fail
+    // for the reason it names rather than by arithmetic identity.
     const absolutePinTop = 140 - POD_TOP;
-    const frozen = (naturalTop: number) => {
-      // A frozen pin is `naturalTop + offset` with the offset re-derived so
-      // the product is constant — i.e. exactly what "store the absolute Y"
-      // computes, expressed in today's type.
-      return cardY(naturalTop, { id: KEY, offset: absolutePinTop - naturalTop });
-    };
-    const gapBefore = frozen(ANCHOR_0) - markerY(ANCHOR_0);
-    const gapAfter = frozen(ANCHOR_0 + DELTA) - markerY(ANCHOR_0 + DELTA);
+    const gapBefore = preFixCardY(ANCHOR_0, absolutePinTop) - markerY(ANCHOR_0);
+    const gapAfter =
+      preFixCardY(ANCHOR_0 + DELTA, absolutePinTop) - markerY(ANCHOR_0 + DELTA);
     expect(Math.abs(gapAfter - gapBefore)).toBeCloseTo(DELTA, 6);
     // …and the card genuinely did not move, which is what Gabriel saw.
-    expect(frozen(ANCHOR_0 + DELTA)).toBe(frozen(ANCHOR_0));
+    expect(preFixCardY(ANCHOR_0 + DELTA, absolutePinTop)).toBe(
+      preFixCardY(ANCHOR_0, absolutePinTop),
+    );
   });
 
   it("the card really does travel — the post-fix leg is not passing vacuously", () => {
@@ -236,7 +284,6 @@ describe("a pinned card and its marker never disagree about the anchor", () => {
     expect(deck(2000).get(KEY)).toBe(deck(2400).get(KEY));
     // Guard against a vacuous pass: the tail really did move.
     expect(deck(2400).get("tail")).not.toBe(deck(2000).get("tail"));
-    expect(markerY(ANCHOR_0)).toBe(markerY(ANCHOR_0));
   });
 });
 
@@ -264,18 +311,61 @@ describe("the offset is the gesture's durable half", () => {
   });
 });
 
+describe("the reference may be an ESTIMATE, and the pin rides its correction", () => {
+  it("a refined natural moves the pinned card by exactly the correction", () => {
+    // Moving an OFF-SCREEN card is the case the necessity rule sanctions, and
+    // an off-band card's committed natural is an INTERPOLATION (wave-2b C5),
+    // refined to exact on scroll idle. Post-362 the pinned card's absolute Y
+    // is re-derived every pass, so it MOVES by the estimation error when the
+    // refinement lands — where a pod-absolute pin was immune by construction.
+    //
+    // Accepted deliberately and pinned here so it is a contract rather than a
+    // surprise: the correction moves the card TOWARD its anchor (the offset
+    // the user chose, now measured from the truth), and it lands on the next
+    // pass because the pin has just brought the card into view.
+    const APPROX = 880;
+    const EXACT = 900;
+    scene(1400, APPROX); // off screen ⇒ sanctioned; natural still estimated
+    requestOmniCardPlacement(KEY, { viewportY: 140 });
+    const offset = omniPinStore.get("right")!.offset;
+
+    // The pin lands exactly where the gesture asked, against the estimate…
+    expect(cardY(APPROX, { id: KEY, offset })).toBe(140 - POD_TOP);
+    // …and the refinement moves it by the estimation error, no more.
+    expect(cardY(EXACT, { id: KEY, offset })).toBe(140 - POD_TOP + (EXACT - APPROX));
+  });
+});
+
 describe("the lift clears the pin it actually holds", () => {
-  it("clears a multi-anchor row's pin, which the bare card key never could", () => {
-    // A pin stores the WRAPPER's id, and a multi-anchor card's row is
-    // `<key>@N`. `clearPin`'s identity guard declines a mismatch, so the
-    // lift gesture's bare-key clear silently did nothing for exactly those
-    // rows — the card left the deck and its pin stayed.
+  it("the store's identity guard declines a bare key for an `@N` row", () => {
+    // Why the fork mattered: a pin stores the WRAPPER's id, and a
+    // multi-anchor card's row is `<key>@N`. This pins the MECHANISM only —
+    // it was already true before the fix, and the census below is what
+    // catches the part that actually misbehaved.
     const rowId = `${KEY}@1`;
     omniPinStore.requestPin("right", rowId, 40);
     omniPinStore.clearPin("right", KEY); // what the lift used to pass
     expect(omniPinStore.get("right")).not.toBeNull();
     omniPinStore.clearPin("right", rowId); // what it passes now
     expect(omniPinStore.get("right")).toBeNull();
+  });
+
+  it("CENSUS — the lift gesture clears by the WRAPPER's id, never the bare card key", () => {
+    // The store was never the part that could misbehave; the caller was, and
+    // `clearPin(side, cardKey)` type-checks perfectly while silently clearing
+    // nothing for exactly the rows that need it. No unit test of the store
+    // can see that, so the leg with teeth reads the call site's source.
+    const src = codeOnly(
+      readFileSync(
+        path.resolve(__dirname, "../../panel-primitives.tsx"),
+        "utf8",
+      ),
+    );
+    const call = /omniPinStore\.clearPin\(([\s\S]{0,160}?)\)/.exec(src);
+    expect(call, "the lift's clearPin call must exist").not.toBeNull();
+    expect(call![1]).toMatch(/omniEntryWrapper/);
+    // …and the pre-fix spelling is gone.
+    expect(call![1]).not.toMatch(/^\s*side\s*,\s*cardKey\s*$/);
   });
 });
 
@@ -285,9 +375,15 @@ describe("a pin that names no measured card is inert", () => {
     // pin still sits in the store (nothing clears it but a replacement), and
     // the deck must simply re-pack as if it were not there — never bake an
     // absolute Y for a card that has no anchor to be relative to.
+    // The deck OVERLAPS naturally (100 < 40 + 80 + MIN_GAP), so the forward
+    // pass has to push and the backward pass has something it could pull.
+    // That matters: the only thing the dead pin could still change is
+    // whether the backward pass runs at all, and on a deck that already
+    // clears, that pass is the identity — so a non-overlapping fixture
+    // would hold whether or not the gate exists.
     const natural = new Map<string, NaturalEntry>([
       ["neighbour", { naturalTop: 40, height: 80 }],
-      ["other", { naturalTop: 300, height: 90 }],
+      ["other", { naturalTop: 100, height: 90 }],
     ]);
     const items = [
       { id: "neighbour", pos: 1 },
@@ -299,5 +395,7 @@ describe("a pin that names no measured card is inert", () => {
       offset: 999,
     });
     expect([...withDeadPin.entries()]).toEqual([...unpinned.entries()]);
+    // Guard against a vacuous pass: the deck really did have packing to do.
+    expect(unpinned.get("other")).toBe(40 + 80 + 4);
   });
 });

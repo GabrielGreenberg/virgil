@@ -36,14 +36,37 @@
  *
  * The absolute→relative conversion happens ONCE, at the publish site
  * (`omni-card-placement.ts`), against the natural top the pod published on
- * the wrapper (`data-omni-natural-top`) — the same pass that produced the
- * geometry the gesture was aimed at. A gesture genuinely speaks in screen
- * coordinates ("put it where I clicked"); what is DURABLE about it is the
- * relationship to the anchor, and that is what is kept.
+ * the wrapper (`data-omni-natural-top`). A gesture genuinely speaks in
+ * screen coordinates ("put it where I clicked"); what is DURABLE about it
+ * is the relationship to the anchor, and that is what is kept.
  *
  * Scroll invariance is unchanged and comes for free: the pod moves with
  * the row under the unified scroll, so both `naturalTop` and `offset` are
  * scroll-invariant and a pin change still costs zero DOM measurement.
+ *
+ * ## Two things the conversion is NOT, stated rather than implied
+ *
+ * **It is not a single-clock read.** The door's `podTop`/`rect` are LIVE
+ * `getBoundingClientRect()` reads at gesture time; the natural top is the
+ * value React last COMMITTED. They can disagree — most concretely during
+ * task 328's 180 ms `.omni-entry-slide`, where a rect read returns the
+ * INTERPOLATED transform, so a freeze fired mid-slide stores a mid-flight
+ * offset. That is pre-existing (the absolute pin stored a mid-flight Y for
+ * the same reason) and it self-corrects on the next committed measure,
+ * which is the point of storing the relationship rather than the number.
+ *
+ * **The reference may be an ESTIMATE.** A card whose anchor is outside the
+ * visible band carries an interpolated natural (`approxTopForPos`, wave-2b
+ * C5), refined to exact on scroll idle — and moving an off-screen card is
+ * precisely the case the necessity rule sanctions, so this is the ordinary
+ * path, not an exotic one. The pinned card therefore MOVES by the
+ * interpolation error when the refinement lands, where a pod-absolute pin
+ * was immune to it by construction. Accepted deliberately: the correction
+ * moves the card TOWARD its anchor (the offset the user chose, measured
+ * from the truth), it lands on the very next pass because the pin has just
+ * brought the card into view, it is bounded by the same interpolation task
+ * 327 made non-absorbing, and the 328 slide renders it as a glide rather
+ * than a teleport. Pinned as a contract in `omni-pin-anchor-lifecycle`.
  *
  * Single pin per side: marker clicks track the selection, and there's at
  * most one selected card at a time, so a new marker click simply REPLACES
@@ -133,14 +156,6 @@ export const omniPinStore = {
     if (!_pins[side]) return;
     if (cardId && _pins[side]!.cardId !== cardId) return;
     _pins[side] = null;
-    emit();
-  },
-
-  /** Clear all pins on both sides. */
-  clearAll(): void {
-    if (!_pins.left && !_pins.right) return;
-    _pins.left = null;
-    _pins.right = null;
     emit();
   },
 

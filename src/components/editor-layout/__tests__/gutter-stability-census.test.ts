@@ -80,6 +80,54 @@ describe("card axis — omniPinStore.requestPin has exactly one caller", () => {
   });
 });
 
+describe("anchor axis — the natural-top DOM channel agrees across the layer break", () => {
+  // Task 362 added a THIRD cross-layer contract to this doctrine, and it is
+  // the shape `link-dom-contract` (tasks 204/255) exists for: an attribute
+  // name two layers must agree on byte-for-byte, where only one of them CAN
+  // import the constant. The READER does (`DATA_OMNI_NATURAL_TOP`); the
+  // WRITER cannot, because JSX has no computed-attribute syntax, so it
+  // spells the literal.
+  //
+  // A drift is silent in the worst direction: the door FAILS CLOSED, so
+  // every omni pin — marker click, card jump, and the collapse/expand
+  // freeze — simply stops working, with no test failing and no console
+  // output. Nothing but this leg stands between the fix and that.
+  const ATTR = "data-omni-natural-top";
+  const WRITER = "panels/Omni/OmniViewPanel.tsx";
+
+  const STORE = "components/editor-layout/omni-pin-store.ts";
+
+  it("the writer spells the attribute the reader's constant declares", () => {
+    // The SSOT's value, read from source rather than restated here. (The
+    // declaration's own string literal is stripped from `CODE`, so this one
+    // read goes to the raw file — one file, not a sweep.)
+    const store = readFileSync(path.join(SRC, STORE), "utf8");
+    const declared = /DATA_OMNI_NATURAL_TOP\s*=\s*"([^"]+)"/.exec(store);
+    expect(declared, "the constant must exist").not.toBeNull();
+    expect(declared![1]).toBe(ATTR);
+
+    // The writer — a bare JSX attribute NAME, which survives the literal
+    // strip because it is not a string literal.
+    expect(CODE.get(path.join(SRC, WRITER))).toContain(`${ATTR}=`);
+
+    // The reader — through the constant, never a second literal.
+    const door = CODE.get(path.join(SRC, PIN_DOOR))!;
+    expect(door).toMatch(/DATA_OMNI_NATURAL_TOP/);
+    expect(door).not.toContain(ATTR);
+  });
+
+  it("nothing else in either silo reads or writes it", () => {
+    // A second reader would be a second place the anchor reference could be
+    // interpreted differently — the two-tables shape this whole doctrine is
+    // about.
+    const offenders = [...CODE.entries()]
+      .filter(([, code]) => code.includes(ATTR))
+      .map(([f]) => rel(f))
+      .filter((f) => f !== WRITER && f !== STORE);
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("document axis — alignEntryToY has one home", () => {
   it("no production file outside layout-scroll scrolls the row unconditionally", () => {
     // `alignEntryToYIfNeeded(` does not match: the needle ends at the paren.

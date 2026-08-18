@@ -251,10 +251,14 @@ export function useMarkerClickBridges(deps: {
       editor: Editor;
     } | null>
   >;
-  /** Pins the omni card with the given id at `clickY` (viewport-Y).
-   *  Converts to pod-relative internally and publishes to omniPinStore;
-   *  OmniViewPanel reads the pin and overrides that one card's transform.
-   *  No document scroll. */
+  /** ASKS for the omni card with the given id to be placed at `clickY`
+   *  (viewport-Y). Not a promise: the placement door applies the necessity
+   *  rule and a refused move writes NOTHING (task 328), and a wrapper with
+   *  no readable anchor reference refuses too (task 362). When it does
+   *  publish, what it stores is the OFFSET from the card's anchor-derived
+   *  natural top, not a pod coordinate — so the pinned card rides later
+   *  document edits. OmniViewPanel reads the pin and overrides that one
+   *  card's transform. No document scroll. */
   alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
   /** Resolve the ACTIVE doc's interaction store at click time (see
    *  `AnchorClickEnv.getActiveCardStore`). */

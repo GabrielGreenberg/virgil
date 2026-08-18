@@ -684,11 +684,16 @@ function OmniViewPanel({
   );
 
   // Per-card pin: when a marker is clicked in the editor (or a card jump
-  // fires `virgil-card-jumped`), the pin store gains an entry with the
-  // pod-relative Y the publisher computed at click time. We pass it
-  // through to useInTextPositions, which bakes it into the cascade —
-  // cards AFTER the pinned card pack below it; cards BEFORE pack above
-  // it. Result: the whole deck reflows around the pin without overlap.
+  // fires `virgil-card-jumped`), the pin store gains an entry holding the
+  // OFFSET from that card's anchor-derived natural top that the placement
+  // door computed at gesture time (task 362 — the store used to hold an
+  // absolute pod Y, which froze a derived answer and decoupled the card
+  // from the marker that shares its anchor). We pass it through to
+  // useInTextPositions, which does NOT bake it: `resolveCascade` re-derives
+  // `naturalTop + offset` on every measure, so the pinned card rides
+  // document edits with its anchor. Cards AFTER it pack below; cards BEFORE
+  // pack above. Result: the whole deck reflows around the pin without
+  // overlap, and the pin cannot go stale.
   const pinRequest = usePinRequest(side as PinSide);
   const pinned = useMemo(
     () => (pinRequest

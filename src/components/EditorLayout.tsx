@@ -1166,11 +1166,13 @@ export default function EditorLayout() {
   // Marker-click → omni card alignment. The user clicked at viewport Y
   // `clickY` and the corresponding omni card would lock there — IF the move
   // is necessary. `requestOmniCardPlacement` owns the whole resolution now
-  // (prefix-or-exact wrapper match, the `@N` row's own id, the pod-relative
-  // conversion, the one-frame retry for a column activated this render) and,
-  // crucially, the necessity rule: a card that is already fully visible and
-  // near enough to the click is pinned at its CURRENT top instead, so
-  // neither it nor its neighbours move at all (task 328, example 2).
+  // (prefix-or-exact wrapper match, the `@N` row's own id, the screen → pod
+  // → anchor-relative conversion, the one-frame retry for a column activated
+  // this render) and, crucially, the necessity rule: a card that is already
+  // fully visible and near enough to the click has NOTHING written for it —
+  // not even a pin at its current top, which would release whichever card
+  // another gesture had pinned — so neither it nor its neighbours move at
+  // all (task 328, example 2).
   const alignOmniCardWithClick = useCallback(
     (cardId: string, clickY: number, _sourceEl: HTMLElement | null) => {
       requestOmniCardPlacement(cardId, { viewportY: clickY });
