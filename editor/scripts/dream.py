@@ -301,6 +301,62 @@ def _last_marker(digests_root: Path) -> tuple[tuple[str, str] | None, Path | Non
     return best_marker, best_path
 
 
+def _digest_dreamed_at(digest_path: Path | None) -> str:
+    """The `dreamedAt` of the most recent digest, or "" when there is none."""
+    if digest_path is None or not digest_path.is_file():
+        return ""
+    try:
+        fm, _ = _parse_memo(digest_path.read_text(encoding="utf-8")[:2000])
+    except OSError:
+        return ""
+    return (fm.get("dreamedAt") or "").strip()
+
+
+def _advance_marker(recs: list[dict], inherited: tuple[str, str] | None,
+                    prior_digest_at: str) -> tuple[tuple[str, str], list[str]]:
+    """The high-water marker this digest may claim, plus any memo it HELD BACK.
+
+    The marker means "the newest memo this dream CONSUMED", so it may only land
+    on a memo some digest has actually dreamed over.  Exactly one memo can never
+    satisfy that: the dream's OWN step-8 self-reflection.  Step 7 -> 8 is ordered
+    digest-then-reflect precisely so that memo lands PAST the marker and the
+    NEXT dream reads it -- but step 4 also sanctions a same-day digest RE-RUN,
+    and a re-run after step 8 re-selects, finds that self-memo, and advances the
+    marker onto a reflection no dream has ever read.  The next dream then selects
+    nothing and the whole reflection is lost.  (Measured 2026-08-17 and corrected
+    BY HAND in that digest's frontmatter; this guard retires the hand-correction.)
+
+    `_rotate_prior_digest`'s docstring claims the marker survives a re-run
+    "(an empty re-select preserves it)" -- true only while the re-select IS
+    empty, which step 8 guarantees it is not.  That is the invariant restored
+    here, at the one place the marker is computed.
+
+    So: walk newest -> oldest and refuse to settle on a TRAILING `skill: dream`
+    memo written after the last digest ran.  A dream self-memo that PREDATES the
+    last digest was dreamed over by it and is eligible; a non-dream memo is
+    always eligible, and because the marker is a high-water mark, landing on one
+    already covers every self-memo before it -- so the hold is narrow in effect
+    while being general in statement.
+
+    The failure direction is deliberate.  Holding a marker back costs the next
+    dream a redundant RE-READ (bounded -- at most the newest self-memo, and it
+    self-heals on the following run); advancing it too far LOSES a reflection
+    outright, silently and unrecoverably.  Fail toward re-reading."""
+    fallback = inherited or ("", "")
+    if not recs:
+        return fallback, []
+    held: list[str] = []
+    for rec in reversed(recs):
+        if (prior_digest_at and rec.get("skill") == "dream"
+                and _memo_sort_key(rec)[0] > prior_digest_at):
+            held.append(rec["path"])
+            continue
+        return _memo_sort_key(rec), list(reversed(held))
+    # Every memo in the window is an unread self-memo -- keep the inherited
+    # marker so the next dream still sees them.
+    return fallback, list(reversed(held))
+
+
 # ---------------------------------------------------------------------------
 # Reading + grouping the memos
 # ---------------------------------------------------------------------------
@@ -399,7 +455,8 @@ def cmd_select(_argv: list[str]) -> int:
     recs = _select(memos_root, marker)
     summ = _summarize(recs)
 
-    new_marker = _memo_sort_key(recs[-1]) if recs else (marker or ("", ""))
+    new_marker, marker_held = _advance_marker(
+        recs, marker, _digest_dreamed_at(last_digest))
     # No-real-signal window: NOTHING since the last dream came from a real skill
     # run — the window holds only the dream's OWN self-reflections (step 8), or
     # nothing at all.  Writing another self-reflection here perpetuates an
@@ -438,6 +495,11 @@ def cmd_select(_argv: list[str]) -> int:
         "memoCount": len(recs),
         "marker": new_marker[0],
         "markerMemo": new_marker[1],
+        # Memos the marker was HELD BACK from (unread step-8 self-memos). READ
+        # this rather than re-deriving the condition by eye -- the rule
+        # selfReferentialOnly already follows.  Non-empty means the next dream
+        # will deliberately RE-READ them; it never means something was lost.
+        "markerHeld": marker_held,
         **summ,
         # the full selected set (brief) for the agent's pattern detection
         "memos": recs,
@@ -492,8 +554,9 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
     by_tier = counts["byTier"]
 
     out: list[str] = ["---"]
-    for k in ("dreamedAt", "since", "marker", "markerMemo", "memoCount",
-              "acted", "proposed", "refused", "bootstrap", "dreamSha"):
+    for k in ("dreamedAt", "since", "marker", "markerMemo", "markerHeld",
+              "memoCount", "acted", "proposed", "refused", "bootstrap",
+              "dreamSha"):
         v = fm[k]
         if isinstance(v, bool):
             v = "true" if v else "false"
@@ -596,9 +659,17 @@ def _rotate_prior_digest(target: Path, new_iso: str) -> Path | None:
     That is worse than losing a summary. The digest is the only durable output
     the dream authors, and a `proposed` entry's `git merge dream/<date>` hint is
     the ONLY pointer to a staged proposal worktree — erase it and the branch is
-    still there but nothing references it. The marker itself survives (an empty
-    re-select preserves it), so the window does not reopen; the loss is confined
-    to the record, which is exactly the part a human reads in the morning.
+    still there but nothing references it. The loss is confined to the record,
+    which is exactly the part a human reads in the morning.
+
+    This docstring used to add "the marker itself survives (an empty re-select
+    preserves it), so the window does not reopen" — and that was FALSE, in the
+    one ordering the skill itself mandates. The re-select is empty only while
+    nothing was written between the two digest calls, and step 8 (reflect after
+    the digest) guarantees one memo WAS: this run's own self-reflection. A
+    re-run therefore consumed it and advanced the marker onto a memo no dream
+    had read. `_advance_marker` is the guard that makes the claim true; see its
+    docstring for the measured incident.
 
     Rotation rather than merge, deliberately: `<date>.md` keeps meaning "the
     latest run of that day" (so nothing that looks for it has to change), the
@@ -631,17 +702,19 @@ def cmd_digest(argv: list[str]) -> int:
 
     memos_root = _memos_root()
     digests_root = _digests_root()
-    marker, _ = _last_marker(digests_root)
+    marker, last_digest = _last_marker(digests_root)
     recs = _select(memos_root, marker)        # re-select → authoritative facts
     summ = _summarize(recs)
 
     iso, date_str = _now_iso_date()
-    new_marker = _memo_sort_key(recs[-1]) if recs else (marker or ("", ""))
+    new_marker, marker_held = _advance_marker(
+        recs, marker, _digest_dreamed_at(last_digest))
     fm = {
         "dreamedAt": iso,
         "since": (marker[0] if marker else "(bootstrap)"),
         "marker": new_marker[0],
         "markerMemo": new_marker[1],
+        "markerHeld": " ".join(marker_held),
         "memoCount": len(recs),
         "acted": len(report.get("acted") or []),
         "proposed": len(report.get("proposed") or []),

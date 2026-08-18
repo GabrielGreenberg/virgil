@@ -241,6 +241,19 @@ b = body_of(only_memo(mem))
 check("KEEP-ME ambiguity" in b, "pure --tag run preserved the prior analytic bucket")
 check("- late thought" in b, "pure --tag run appended the tag")
 
+# ...but a SUPPLIED bucket REPLACES rather than appends. The two facts sit
+# together deliberately: --tag's "additive across runs" is a property of TAGS,
+# and a reader who carries that promise across to --memo-json silently destroys
+# the paragraph they meant to extend (measured 2026-08-17, in the dream's own
+# step 8). The help text now says so; this is what keeps it true.
+run(mem, str(sb), "draft-footnote", rid, "--memo-json",
+    json.dumps({"buckets": {"issues": "SECOND THOUGHT only"}}))
+b = body_of(only_memo(mem))
+check("SECOND THOUGHT only" in b, "a supplied bucket lands")
+check("KEEP-ME ambiguity" not in b,
+      "a supplied bucket REPLACES the prior body — it does not append")
+check("- late thought" in b, "…while the additive tag channel is untouched")
+
 
 # ── --fix-now fast-path flag ─────────────────────────────────────────────────
 print("\n=== --fix-now → flagged + fixNow:true ===")

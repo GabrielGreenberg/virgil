@@ -31,17 +31,26 @@ Usage:
             mechanical op (a card-op / writes-only edit that completed no Task).
 
 Options:
-  --memo-json <inline|@file>  the structured reflection (see SCHEMA below)
+  --memo-json <inline|@file>  the structured reflection (see SCHEMA below).
+                              A supplied bucket REPLACES that bucket's prior
+                              body — it does not append. To add to a bucket you
+                              already wrote (the dream's step 8 does this after
+                              a late correction), read the existing memo and
+                              resend the WHOLE bucket. A bucket you omit is
+                              preserved; only --tag is additive.
   --tag <text>                append a user tag ("put this in the memo");
-                              promotes tier → flagged. Repeatable. Additive
+                              promotes tier → flagged. Repeatable, and additive
                               across runs (deduped) — the after-the-fact channel.
+                              NOTE: this additivity is a property of --tag ONLY;
+                              it does not extend to --memo-json's buckets.
   --fix-now                   set the fast-path flag (implies flagged)
   --tier <unremarkable|noted|flagged>  agent tier escalation (floor stays the
                               result-derived baseline; this can only raise it)
   --summary <text>            the skill's one-line Done: reply
   --kind <kind>               override the recorded kind (Task-less ops)
 
-SCHEMA (--memo-json): every field optional.
+SCHEMA (--memo-json): every field optional. A supplied bucket REPLACES the
+prior body for that key (see --memo-json above); an omitted one is preserved.
   { "buckets": {
        "issues":       "...",   # Issues / ambiguities / errors
        "streamlining": "...",   # Streamlining / repetition
