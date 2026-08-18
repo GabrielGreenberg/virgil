@@ -40,6 +40,11 @@ import {
   checkTexPreservation,
   describePreservationRefusal,
 } from "@/lib/tex-preservation";
+import {
+  retainLoadedCounts,
+  checkWriteAgainstRetained,
+  describeWriteRefusal,
+} from "@/lib/write-preservation";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
@@ -508,6 +513,10 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
   // since the writeback is the newer authoritative on-disk state. `stampLedger`
   // re-stats, so a missing .tex (latex === DEFAULT_LATEX fallback) is skipped.
   await stampLedger(docId, meta.texFilename, latex);
+  // Task 357: retain what this document was LOADED with, so an automatic write
+  // that lands before the user has genuinely edited can be measured against the
+  // bytes rather than against Virgil's own re-stamped output.
+  retainLoadedCounts(docId, latex);
   const virgil = await getVirgilSubdir(docHandle);
   const sidecar = await safeReadJson<VirgilSidecar>(
     virgil,
@@ -728,6 +737,24 @@ export async function writeDocBundle(
       serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
     }
     const latex = serializeToLatex(content, serializeOpts);
+
+    // THE WRITE-SIDE PRESERVATION GATE (task 357). 350-D gated the LOAD
+    // writeback and deliberately exempted the autosave — once the user has
+    // edited, the model is their document. That rationale does not cover
+    // `flushNow`, which writes this whole bundle on an anchor-UUID MINT: one
+    // card gesture on a uuid-less paragraph persists immediately, with no
+    // typing at all. So a write is measured against the loaded bytes until a
+    // REAL (undoable) user edit lands; after that the gate steps aside.
+    //
+    // Refusing before `snapshotPriorBundle` and before either file write means
+    // the `.tex` AND `virgil.json` are both left alone — the sidecar matters
+    // here because this path replaces it wholesale, carrying damage no .tex
+    // gate could see.
+    const writeVerdict = checkWriteAgainstRetained(h.docId, latex);
+    if (writeVerdict) {
+      console.error(describeWriteRefusal(writeVerdict, h.docId));
+      return;
+    }
     const latexHash = hashContent(latex);
     const sidecarJson = JSON.stringify(newSidecar, null, 2);
     const sidecarHash = hashContent(sidecarJson);

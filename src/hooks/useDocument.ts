@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { JSONContent, type Editor } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
 import { isAnchorMintTransaction } from "@/lib/anchor-mint-signal";
+import { isRealUserEdit, noteUserEdit } from "@/lib/write-preservation";
 import { getDocProducts } from "@/lib/doc-products/pipeline";
 import { readDocBundle, writeDocBundle } from "@/lib/storage";
 import { isStalePipelineError } from "@/lib/multi-window/doc-pipeline";
@@ -543,10 +544,17 @@ export function useDocument() {
   const onUpdate = useCallback(
     (editor: Editor, tx?: Transaction) => {
       editorRef.current = editor;
+      // Task 357: the write-side gate steps aside once the user has GENUINELY
+      // edited — the 350-D rationale ("their typing is their document") applied
+      // at the boundary it actually names. `isRealUserEdit` is an UNDOABLE
+      // docChanged test, never a bare `docChanged`: an anchor mint is
+      // doc-changing too, and keying on that would re-open the very hole the
+      // gate closes. O(1) per transaction — two field reads, no doc walk.
+      if (isRealUserEdit(tx)) noteUserEdit(docId);
       debouncedSave();
       if (isAnchorMintTransaction(tx)) flushNow();
     },
-    [debouncedSave, flushNow],
+    [debouncedSave, flushNow, docId],
   );
 
   // Returns the load promise so the external-change Reload path can await
