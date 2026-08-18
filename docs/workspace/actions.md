@@ -1,4 +1,4 @@
-<!-- last-verified: 0e081a07 2026-08-17 -->
+<!-- last-verified: 6c5a2181 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -85,8 +85,8 @@ a `cutter-comment`, and `report` → a `report-request` (the quick gesture files
 the ask). The authored `revision-suggestion` / `cutter-suggestion` / `report`
 kinds are AI/responder outputs (see [cards.md](cards.md)). Footnote and Citation
 collapse the selection to the passage end before inserting their atom
-([drag-handle-actions.ts:271](../../src/components/editor-layout/card-actions/drag-handle-actions.ts),
-[:291](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
+([drag-handle-actions.ts:316](../../src/components/editor-layout/card-actions/drag-handle-actions.ts),
+[:343](../../src/components/editor-layout/card-actions/drag-handle-actions.ts)) —
 the audit's CITE behavior, below.
 
 **No-scroll create (two halves).** Creating any card must NOT jump the viewport —
@@ -468,7 +468,7 @@ assembled in [editor-extensions.ts](../../src/lib/editor-extensions.ts).
 
 ### Inherited TipTap defaults (enabled in StarterKit)
 
-`StarterKit.configure({…})` ([editor-extensions.ts:1652](../../src/lib/editor-extensions.ts))
+`StarterKit.configure({…})` ([editor-extensions.ts:1807](../../src/lib/editor-extensions.ts))
 **disables** the block nodes (`heading`, `paragraph`, `bulletList`,
 `orderedList`, `listItem`, `blockquote`, `codeBlock`) and replaces each with a
 Virgil builder that `.extend()`s the base — so they keep the inherited keymaps
@@ -482,7 +482,7 @@ their default bindings survive:
 | `Shift-Enter`, `Mod-Enter` | hard line break | StarterKit `HardBreak` |
 | `Mod-Alt-1…6` | set heading level | `createHeadingWithLabel` (extends `Heading`) |
 | `Mod-Shift-8` / `Mod-Shift-7` / `Mod-Shift-B` | toggle Bullet / Numbered list / Blockquote | the list/blockquote builders (extend the base) |
-| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1742](../../src/lib/editor-extensions.ts)) |
+| `Mod-Shift-H` | toggle the highlight **mark** (multicolor text tint) | `Highlight` ([editor-extensions.ts:1900](../../src/lib/editor-extensions.ts)) |
 
 > The `Mod-Shift-H` **mark** (a text-background tint) is distinct from the
 > Family-1 **Highlight card** action (`H`), which creates a `HighlightCard`

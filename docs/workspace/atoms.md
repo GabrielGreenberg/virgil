@@ -1,4 +1,4 @@
-<!-- last-verified: 0e081a07 2026-08-17 -->
+<!-- last-verified: 6c5a2181 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/tiptap/citation.ts, src/lib/tiptap/math.ts, src/lib/tiptap/label.ts, src/lib/tiptap/linked-anchor.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts, src/lib/cite-commands.ts, src/lib/latex-parser.ts, src/lib/identity/, src/lib/bib-uid.ts -->
 
@@ -47,7 +47,11 @@ Citation Atoms cover the full natbib + biblatex vocabulary (SSOT:
 `src/lib/cite-commands.ts`) — `\cite` `\citet` `\citep` `\citealt` … `\textcite`
 `\parencite` `\autocite` … plus the biblatex multi-cite forms
 (`\cites[..]{k1}[..]{k2}`) and capitalized sentence-start variants (`\Citet`, …).
-The Atom carries `citationId` ← `\vcid` and the cite **key(s)**.
+The Atom carries `citationId` ← `\vcid` and the cite **key(s)**. Since task 341
+the **card-body / `\footnote{}` inline parser reads the same vocabulary** — both
+surfaces call the shared scanner `matchCiteCommandAt` (`cite-commands.ts`), which
+answers the command name AND its argument grammar in one call, so a `\cite` inside
+a footnote body or a note card is a real citation Atom, not grey passthrough.
 
 - **Card linkage:** a citation Atom ties to a `citation` Card (the in-text
   instance) and, through its key, to the `bib` Card (the bibliography entry in the
@@ -80,6 +84,11 @@ not Atoms, but a skill editing inline content meets them:
 - **`textColor`** — `\textcolor[HTML]{RRGGBB}{}` (only the `[HTML]{6-hex}` form;
   named colors round-trip as plain text).
 - **`label`** — `\label{}` carried as a mark (the target of a `labelRef`).
+- **`latexCommentTail`** — a `%` comment tail and the rest of its source line
+  (task 347). Distinct from `latexCommand`/`latexVerbatim`: it says LaTeX will not
+  typeset these bytes at all, and it owns the line, so the serializer must never
+  emit anything after it on the same line. `inclusive: false` — text typed at its
+  trailing edge does not join the comment.
 - **`linkedAnchor`** — the mark that backs a **linkedRange** TextObject; persists
   via `\vlid`/`\vlidend` ([identity.md](identity.md)) and links a Card to a text
   *span* (Mode B anchoring). Its Card-linkage rules are [anchoring.md](anchoring.md).

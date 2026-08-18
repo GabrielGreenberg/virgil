@@ -1,6 +1,6 @@
-<!-- last-verified: 0e081a07 2026-08-17 -->
+<!-- last-verified: 6c5a2181 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
-<!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-typography.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
+<!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
 # LaTeX round-trip — operational manifest
 
@@ -41,14 +41,15 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `\begin{itemize}` / `\begin{enumerate}` | `bulletList` / `orderedList` |
 | `\begin{figure}` / `\begin{figure*}` | `figureBlock` (+ `figureCaption`; non-caption body kept verbatim as `extras`) |
 | `\hrulefill` | `horizontalRule` |
-| `% …` comment | `latexComment` |
+| `% …` **full-line** comment | `latexComment` (a MID-line `%` is a comment *tail*, inline table below) |
+| any other `\begin{env}…\end{env}` | carried **byte-literally** — see the fallbacks below |
 | **anything else** | `paragraph` (default) |
 
 ## Inline constructs accepted
 
 | Source | → node / mark |
 |---|---|
-| `$ … $` | `inlineMath` (KaTeX) |
+| `$ … $`, `$$ … $$`, `\( … \)`, `\[ … \]` (mid-paragraph) | `inlineMath` (KaTeX). ONE scanner — `matchInlineMathAt` (`src/lib/latex-lexer.ts`) — shared by the main parser and the card/footnote fork; all four spellings normalize to `$ … $` inline (task 341) |
 | `` `` `` / `''` | smart quotes “ / ” |
 | `\textbf{}` | bold mark |
 | `\emph{}` / `\textit{}` | italic mark (both) |
@@ -61,20 +62,45 @@ examples, figures) → resolve `\ref` display text → merge sidecar paragraph t
 | `\ldots` `\dots` `\LaTeX` `\TeX` | literal text (`…`, `LaTeX`, `TeX`) |
 | accents / special letters (`\'e` `\`e` `\^o` `\"u` `\~n` `\v{s}` `\c{c}` `\=o` …; `\ss` `\o` `\ae` `\oe` `\i` `\j` …) and en/em dashes (`--`→–, `---`→—) | the composed Unicode glyph — **round-tripped bidirectionally** via the typography table (SSOT [src/lib/latex-typography.ts](../../src/lib/latex-typography.ts): `matchAccent` / `matchSpecialLetter` / `dashesToGlyphs` parse→glyph, `typographyToLatex` serialize→command). Skipped inside code/verbatim/math/`latexCommand` spans |
 | `\&` `\%` `\$` `\#` `\_` `\{` `\}` `\textbackslash{}` `\textasciitilde{}` `\textasciicircum{}` | the literal character |
-| `\\` | `hardBreak` |
+| `\\` (bare) | `hardBreak` |
+| `\\*`, `\\[2pt]`, `\\*[1ex]` | carried on `latexCommand` — Virgil doesn't model break spacing, so the whole token + its argument run rides the carrier (`matchLineBreakAt`, task 349 M4) |
+| `~` (tie) | **U+00A0** in the document, re-emitted as `~`. A tie is a `"glyph"` member of `CHAR_ESCAPE_TABLE`, so provenance lives as two distinct code points; a prose-typed ASCII `~` still emits `\textasciitilde{}` (task 349 M5) |
+| a BARE `{ … }` group | braces carried on `latexCommand`, content stays editable prose (`matchBraceGroupAt`, task 349 M6). An escaped `\{` is still a literal brace |
+| a mid-line `% …` tail | text under the **`latexCommentTail`** mark — *not typeset at all*, re-emitted verbatim (`matchCommentTailAt`, task 347). A comment line between two prose lines does NOT break the paragraph, because LaTeX doesn't break there |
+| `\verb<d>…<d>` | text under the **`latexVerbatim`** mark (byte-literal — no typography, no escaping) |
 
-## The two opaque fallbacks
+## The opaque fallbacks
 
-The round-trip promise rests on two fallbacks that keep **any** valid LaTeX
-byte-faithful even when Virgil doesn't model it:
+The round-trip promise rests on three carrier marks that keep **any** valid LaTeX
+byte-faithful even when Virgil doesn't model it. `latexCommand` = "raw LaTeX the
+editor doesn't model"; `latexVerbatim` = "these bytes are literal";
+`latexCommentTail` = "not typeset at all".
 
 1. **Unknown inline `\command`** → kept verbatim as text under the **`latexCommand`**
-   mark (grey monospace). Consumes an optional `*`, optional `[...]` args, and up
-   to two `{braced}` args, then serializes straight back to raw LaTeX.
-2. **Unknown `\begin{env}…\end{env}`** → the **entire** environment kept verbatim
-   as a single grey-monospace `latexCommand` paragraph. Only `verbatim`, `quote`,
-   `itemize`, `enumerate`, `figure`, `figure*` are modeled; everything else
-   (tables, `align`, `tikzpicture`, custom envs) takes this path.
+   mark (grey monospace), then serialized straight back. It carries **ALL** of its
+   arguments: `matchCommandArgumentRun` (`src/lib/latex-lexer.ts`) consumes an
+   optional `*` and then every abutting `{…}` / `[…]` group in **whatever order**
+   — not a fixed "brackets then at most two braces" shape, which silently
+   truncated `\definecolor{myblue}{rgb}{0.2,0.4,0.8}`, `\resizebox{3cm}{!}{…}`
+   and `\newcommand{\x}[1]{…}` and stopped papers compiling (task 349 M1–M3).
+   Three bounds, all fail-closed: an unbalanced group ends the run, a group
+   spanning a blank line is refused, and the count is capped at TeX's `#1`…`#9`.
+   A `{[}` / `{]}` prose protection is not an argument and also ends the run.
+2. **Unknown `\begin{env}…\end{env}`** → one paragraph carrying the **entire**
+   environment **byte-literally** on `latexVerbatim` (env name + arguments
+   included), and
+   carrying the block's `%!v:` uuid so its identity survives the save (task 342).
+   Only `verbatim`, `quote`, `itemize`, `enumerate`, `figure`, `figure*` are
+   modeled; everything else (tables, `align`, `tikzpicture`, `alltt`, the fancyvrb
+   family, custom envs) takes this path. **Byte-literal is the DEFAULT**, so an
+   env Virgil will fail to model in future is safe with nothing to add — the
+   verbatim vocabulary (`VERBATIM_ENVS_FULL`) now decides only the *richer*
+   treatments (the `codeBlock` node, first-close-wins end-finding, inertness to
+   the package/label scanners), never whether the user's bytes are safe.
+3. **A modeled branch that meets a body outside its model REFUSES and carries.**
+   `\begin{itemize}` whose body holds no `\item` (an `\input{}`, a tuning-only
+   body, items hidden inside a nested `verbatim`) is carried whole rather than
+   reduced to one empty bullet (task 356).
 
 **Operational consequence:** you can leave LaTeX Virgil doesn't model untouched
 and trust it to round-trip. But text inside a grey `latexCommand` block is opaque
@@ -86,23 +112,42 @@ this scan?" for every body splitter and every environment terminator: any
 `\begin{env}`, the two expex pairs (`\begingl…\endgl`, `\xlist`), and an inline
 `\verb` run, with `%` comments respected. So an `\item` at the head of a line
 inside a nested environment, or a literal `\a` inside a `verbatim` body nested in
-an example, no longer splits the enclosing construct. An **unterminated** opener
-is treated as transparent past its own token rather than swallowing to EOF — a
-truncated `\begin{…}` degrades locally instead of eating the rest of the file.
+an example, no longer splits the enclosing construct.
+
+**Unterminated ⇒ transparent, at every layer** (tasks 338 / 350 / 356). A
+construct whose end nobody can find is not that construct: the parser puts its
+cursor back on the opener and the bytes are carried as ordinary content. This
+holds for `skipOpaqueConstructAt`, for `\ex`/`\begingl`, for the generic
+`\begin{env}` dispatcher (which used to slurp to EOF — and the routine trigger
+was *typing*, since the code pane re-parses a document whose tail is inside the
+environment for the seconds before the close exists), and for a `%!vtex:begin`
+with no matching `end`. A truncated opener degrades locally instead of eating
+the rest of the file.
 
 ## Serialization and escaping
 
 - **Mark → command:** bold→`\textbf`, italic→`\emph`, underline→`\underline`,
   code→`\texttt`, textColor→`\textcolor[HTML]{HEX}{}`; `latexCommand`→raw
   passthrough; `linkedAnchor`→no command (wrapped by `\vlid`/`\vlidend`).
-- **`escapeLatex` escapes** `& % # _ $` (when not already backslash-prefixed),
-  `[`→`{[}` / `]`→`{]}`, `~`→`\textasciitilde{}`, `^`→`\textasciicircum{}`, and
-  smart quotes. `$` is escaped (→`\$`) so a literal prose `$` isn't re-read as an
-  inline-math delimiter (task 037); `[`/`]` are brace-wrapped so they can't begin
-  a LaTeX optional arg (task 046, the `$`-twin). It **deliberately does not
-  escape** `\ { }` — those stay live LaTeX syntax the editor preserves. So plain
-  text a skill inserts as a Card body is escaped for those specials, but
-  braces/backslashes you write are treated as real LaTeX.
+- **Escaping is ONE table read by both rungs on both surfaces** —
+  `CHAR_ESCAPE_TABLE` in [src/lib/latex-typography.ts](../../src/lib/latex-typography.ts)
+  (emit = `escapeLatexChars`, parse = `matchCharEscapeAt`; task 339). Three
+  member kinds: `escape` (a LaTeX special that must be escaped to render at
+  all), `protect` (legal but ambiguous, wrapped in its own brace group), and
+  `glyph` (an ACTIVE character whose Unicode counterpart carries the provenance
+  — today the `~` tie ↔ U+00A0).
+  Each member also declares **when** it may be written:
+  - **`always`** — `& % # _ $ ~ ^` (and the U+00A0 tie → `~`). `$`→`\$` so a
+    prose `$` isn't re-read as an inline-math delimiter (task 037).
+  - **`prose-only`** — `{ } \ [ ]` are escaped **only in a run with no
+    backslash anywhere in it**, i.e. one provably not raw LaTeX. A run that
+    contains a backslash is ambiguous and its braces/brackets are left live, so
+    a hand-typed `\cmd[opt]{arg}` keeps its arguments. (`\`→`\textbackslash{}`
+    is therefore emit-unreachable by construction; it still parses.)
+  So a plain-prose Card body a skill inserts **does** get its braces and
+  brackets escaped; text you write that carries a backslash is treated as real
+  LaTeX and left alone. `[`→`{[}` rather than `\[`, which starts display math
+  (task 046).
   With `{ typography }` set it also runs `typographyToLatex` after char-escaping,
   reverse-mapping directly-typed glyphs (é, –, —, …) back to canonical LaTeX
   commands (the smart-quote precedent), suppressed inside code spans.
@@ -116,6 +161,13 @@ truncated `\begin{…}` degrades locally instead of eating the rest of the file.
   entry's durable surrogate uid (a `\vbid{<uid>}` line before each block, minted
   + round-tripped by `serializeBibFile` / `src/lib/bib-uid.ts`); the preamble
   no-op is declared only so a paper opened in raw LaTeX never breaks.
+- **Detection believes only the bytes the compiler would.** Every scan that
+  decides a requirement (or a bib family) runs over `projectDetectableLatex`
+  (`src/lib/latex-lexer.ts`) first — comments and verbatim bodies projected away
+  — so a commented-out `% \usepackage{biblatex}` or an `\includegraphics` inside
+  a `\begin{verbatim}` no longer injects a package the document never runs
+  (tasks 344 / 345). The declaration side reads the same vocabulary
+  (`PACKAGE_DETECTORS`, `src/lib/latex-requirement-collector.ts`).
 
 ## Display-math source form
 
@@ -138,6 +190,11 @@ Each has a capitalized sentence-start variant; the alternation is longest-first
 (`\footfullcite` beats `\footcite`). Optional `[locator]` and comma-separated
 multi-key keys are accepted.
 
+`matchCiteCommandAt` answers **vocabulary AND argument shape in one call**, and
+both inline parsers (`latex-parser.ts` and the card/footnote fork
+`footnote-content.ts`) call it — the multi-cite forms repeat `[pre][post]` before
+*each* `{key}` group, which the fork's hand-written loop got wrong (task 341).
+
 ## Emitting LaTeX as a skill — the curated subset
 
 `parseLatex()` accepts **more** than a skill should emit. The canonical
@@ -159,8 +216,10 @@ output stays clean and portable.
 
 1. **Preserve the raw source.** Don't normalize or reflow LaTeX you didn't change
    — `unescapeLatex` is a deliberate no-op, and the editor keeps text verbatim.
-2. **Don't escape `\ { }`.** They're live syntax; the specials above (incl. `$`
-   and `[`/`]`) are escaped for you.
+2. **A backslash in your run makes it "ambiguous LaTeX".** `& % # _ $ ~ ^` are
+   always escaped for you; `{ } \ [ ]` are escaped only in a run with **no**
+   backslash. So `\cmd[opt]{arg}` you write stays live syntax, but a
+   pure-prose `{` will be escaped to `\{`.
 3. **Emit `\[…\]`, not `$$…$$`,** for display math in a `.tex` you write.
 4. **Stay in the curated output subset** when composing LaTeX; rely on the opaque
    fallbacks only for source you're passing through unchanged.

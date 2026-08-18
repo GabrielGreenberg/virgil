@@ -1,4 +1,4 @@
-<!-- last-verified: 0e081a07 2026-08-17 -->
+<!-- last-verified: 6c5a2181 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#public-type-registry -->
 <!-- covers-code: src/lib/types.ts, src/lib/storage-fsa.ts, src/hooks/useOrphanedFootnotes.ts -->
 
@@ -107,15 +107,20 @@ file ⇒ start empty (nothing to migrate from). See
 **`citations.json` — `CitationsState`:**
 
 ```ts
-CitationsState { citations: CitationRef[]; bibPath; citationStyle; bibPackage }
+CitationsState { citations: CitationRef[]; bibPath; citationStyle; bibPackage? }
 CitationRef    { id; command; keys: string[]; createdAt; unanchored?; archived? }
 ```
 
 `command` is the full LaTeX cite string; `keys` the extracted citekeys; read
-`unanchored` through `isUnanchored(card)`, not directly. `bibPackage` is
-`"natbib" | "biblatex"`; `citationStyle` a CSL name. (`CitationInfo { citationId;
-command; displayText; pos }` is a **live** in-text descriptor computed at render —
-not persisted.)
+`unanchored` through `isUnanchored(card)`, not directly. `citationStyle` is a
+CSL name. `bibPackage` (`"natbib" | "biblatex"`) is **optional, and its absence
+is meaningful** (task 344): present = the user explicitly chose, and nothing but
+the user may overwrite it; **absent = nobody has chosen**, and `.tex` detection
+merely SEEDS the in-memory view without writing here. A skill must not
+materialize this field from a detected value — that stomp is what injected a
+wrong `\usepackage` into papers and stopped them compiling.
+(`CitationInfo { citationId; command; displayText; pos }` is a **live** in-text
+descriptor computed at render — not persisted.)
 
 **`cutter.json` — `CutterState { cards: CutterCard[]; goal?: CutterGoal | null }`**
 (`CutterCard = CutterCommentCard | CutterSuggestionCard`):

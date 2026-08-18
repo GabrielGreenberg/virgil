@@ -1,4 +1,4 @@
-<!-- last-verified: 0e081a07 2026-08-17 -->
+<!-- last-verified: 6c5a2181 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology -->
 <!-- covers-code: src/text-objects/text-object-registry.ts, src/cards/card-registry.tsx, src/cards/types.ts, src/panels/_shared/types.ts, src/links/link-dom-contract.ts, src/lib/tiptap, src/lib/latex-serializer.ts, src/lib/bib-uid.ts -->
 
@@ -39,17 +39,27 @@ the other four primitives exist *within* or *alongside* it.
 ## TextObjects — the graspable set
 
 The single answer to "is this graspable?" is membership in the `textObject`
-schema group. Members (SSOT: `TEXT_OBJECT_REGISTRY`, mirrored by the serializer's
-`UUID_BEARING_NODE_TYPES`):
+schema group. Members (SSOT: the `TextObjectKind` union +
+`TEXT_OBJECT_REGISTRY`, `src/text-objects/`):
 
 `paragraph` · `heading` · `bulletList` · `orderedList` · `listItem` ·
 `blockquote` · `codeBlock` · `displayMath` · `titleField` · `latexComment` ·
 `texBlock` · `figureBlock` · `graphicsBlock` · `exampleBlock` · `exampleItem`.
 
 `linkedRange` is a TextObject too, but lives **outside** the node group — it is a
-mark range (the `linkedAnchor` mark), not a node. Each member carries a `%!v:`
-block id; the LaTeX form of each is in [latex.md](latex.md), the marker rules in
-[identity.md](identity.md).
+mark range (the `linkedAnchor` mark), not a node.
+
+The parallel question — *which node types carry a `uuid` attr* — is answered by
+`UUID_BEARING_NODE_TYPES` in `src/lib/node-attr-sets.ts`, an import-free leaf the
+TipTap-free `.tex` layers can read and **CI-checked against the real editor
+schema** (tasks 343/346). The two sets are close but not identical: it adds
+`maketitleMarker` and omits `linkedRange` (a mark, not a node). Its siblings
+`TITLED_NODE_TYPES` / `COLLAPSIBLE_NODE_TYPES` decide what the `virgil.json`
+sidecar round-trips, and `DEFERRING_PARENTS` decides which inner paragraphs
+yield their identity to the container above them.
+
+Each node member carries a `%!v:` block id; the LaTeX form of each is in
+[latex.md](latex.md), the marker rules in [identity.md](identity.md).
 
 ## Atoms — inline, text-bound
 

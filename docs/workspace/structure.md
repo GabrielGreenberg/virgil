@@ -1,4 +1,4 @@
-<!-- last-verified: 0e081a07 2026-08-17 -->
+<!-- last-verified: 6c5a2181 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#code-organization, docs/architecture/VIRGIL.md#sidecar-and-panel-inventory, docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/panels/panel-registry.ts, editor/scripts, library/lib/skill-sync.ts -->
 
@@ -64,7 +64,7 @@ Two classes of file (schemas → [sidecars.md](sidecars.md)):
 
 Also under `virgil/`: `figures-cache/` (rasterized `<sha>.webp` + `index.json`,
 keyed by source-content sha) and `.history/` (timestamped shadow snapshots of
-`virgil.json` + `editor-state.json`).
+the `.tex` + `virgil.json` + `editor-state.json`, taken before each overwrite).
 
 The panel surface itself is `PANEL_REGISTRY` (`src/panels/panel-registry.ts`) —
 15 panels, 11 hosting cards (7 single-kind, 4 polymorphic), 4 tool surfaces. A
@@ -134,6 +134,41 @@ contract is **built and validated end-to-end through the footnote kind**, then
 fanned out to the full create-able set — `note` / `todo` / `citation` / `report` /
 `report-request` (and the tex-only `example`) — each a small, uniform addition on
 the same contract (`editor/scripts/create_card.py`), **no contract change**.
+
+## The preservation gate (the app's own writes)
+
+Two writes the **user never asked for** touch the `.tex`: the load-writeback
+(`readDocBundle` re-serializes the parsed model and writes it back on OPEN) and
+`writeDocBundle` via `flushNow` (an anchor-UUID mint — one card gesture on a
+uuid-less paragraph persists immediately, with no typing at all). A parser bug on
+either destroys content with **zero user edits**, so both are gated (tasks 350-D
+/ 357):
+
+- **The measure is WORDS**, not characters — `measureContentWords`
+  (`src/lib/tex-preservation.ts`), tokens `[A-Za-z0-9]+`, with Virgil's own
+  markers (`%!v:`, `%!vtex:`, every `\v*` command + its argument) projected away
+  on both sides. User comments are **not** projected away — since task 347 a `%`
+  comment is content that round-trips.
+- **Preamble and body are weighed SEPARATELY**, because the first save's
+  shim-block injection is ~21 words of legitimate preamble growth that would
+  otherwise mask a real body loss.
+- **A shrink is a REFUSAL**, loud: nothing is written, the sidecar is untouched,
+  the disk ledger is *not* stamped (a stamp would make the `DiskWatcher` report
+  Virgil's own untaken write as an external change), and the first refusal takes
+  an unconditional forensic snapshot into `virgil/.history/`.
+- The `writeDocBundle` gate measures against the bytes the doc was **loaded**
+  with (`retainLoadedCounts`) until a **real user edit** lands — defined
+  positively as an *undoable* transaction (`isRealUserEdit`), since system writes
+  like an anchor mint dispatch with `addToHistory: false`. After that the gate
+  steps aside.
+- A refusal is **a fact about the document**, not a log line: it publishes
+  through `src/lib/preservation-notice.ts` into a write-protected posture plus a
+  `PreservationNoticeBadge` in the status cluster.
+
+**Stated scope** — the gate covers those two paths only. The code-pane re-parse,
+the schema-mount probe, `writeTex`'s snapshot and **`apply_response.py`'s
+region-replace are NOT covered.** A skill's own `.tex` splice has no such net, so
+splice narrowly and never rewrite the whole file.
 
 ## What a skill may read and write
 
