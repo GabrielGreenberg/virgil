@@ -44,6 +44,11 @@ import {
 } from "@/lib/pane-resize/layout-gesture-bus";
 import { isMissedRelease } from "@/lib/pane-resize/pointer-invariants";
 import { feedAutoScroll, stopAutoScroll } from "./auto-scroll";
+import {
+  armMoveGeometry,
+  disarmMoveGeometry,
+  readMoveGeometry,
+} from "./move-geometry";
 import { findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 
 // ── Per-doc context: a REGISTRY, not a single slot ───────────────────
@@ -316,16 +321,16 @@ export function cancelDropSession() {
 
 // ── Window listeners ─────────────────────────────────────────────────
 
-let lastMoveTs = 0;
-let pendingMove: { x: number; y: number; t: ReturnType<typeof setTimeout> } | null = null;
-// Auto-scroll support: the last pointer point (so the loop can re-hit-test
-// while the pointer parks in the edge zone) and the session's scroll
-// container (undefined = not yet resolved this session; null = none).
+// The LIVE pointer point. The coalesced pass reads it at frame time rather
+// than closing over the coordinate of the event that scheduled it, so a burst
+// of events inside one frame resolves at the LAST position by construction.
 let lastPointerX = 0;
 let lastPointerY = 0;
-let sessionScrollEl: HTMLElement | null | undefined;
+/** Ask for a pass — never run one inline. Auto-scroll's frame writes
+ *  `scrollTop` and then calls this, so the WRITE and the next READ land in
+ *  different frames. */
 const reHitTestAtPointer = () => {
-  if (session) handleMove(lastPointerX, lastPointerY);
+  if (session) scheduleMovePass();
 };
 let onMove: ((e: MouseEvent) => void) | null = null;
 let onUp: ((e: MouseEvent) => void) | null = null;
@@ -335,6 +340,15 @@ let onEnter: ((e: MouseEvent) => void) | null = null;
 
 function installListeners(opts: { attachMouseUp: boolean }) {
   if (typeof window === "undefined") return;
+  // Arm the gesture's ONE geometry door (paired with `disarmMoveGeometry` in
+  // `removeListeners`, the single teardown every ending funnels through). The
+  // container resolve is a closure rather than a value because a producer can
+  // begin a session while its editor's view is still settling — the door
+  // captures on first READ, not here.
+  armMoveGeometry(() => {
+    const dom = session?.ctx.mainEditor?.view?.dom as HTMLElement | undefined;
+    return dom ? ((findEditorScrollFor(dom) as HTMLElement | null) ?? null) : null;
+  });
   onMove = (e: MouseEvent) => {
     // Missed-release failsafe (the pane-engine invariant, task 185): every
     // producer is a hold-drag (mousedown → drag → mouseup), so a move with
@@ -347,20 +361,18 @@ function installListeners(opts: { attachMouseUp: boolean }) {
       cancelDropSession();
       return;
     }
+    // Everything below this line is arithmetic or a scheduling bail — the raw
+    // pointer path measures NOTHING (task 351). `feedAutoScroll` tests the
+    // edge zone against the gesture's snapshotted container band, and the
+    // hit-test runs once per coalesced frame rather than inline here.
     lastPointerX = e.clientX;
     lastPointerY = e.clientY;
-    handleMove(e.clientX, e.clientY);
-    // Edge-zone auto-scroll (wave 2 P4): scroll container resolved lazily
-    // once per session; the loop re-runs the throttled hit-test at the
-    // parked pointer as content slides underneath, and listener teardown
-    // stops it.
-    if (sessionScrollEl === undefined) {
-      const dom = session?.ctx.mainEditor?.view?.dom as HTMLElement | undefined;
-      sessionScrollEl = (dom ? findEditorScrollFor(dom) : null) as
-        | HTMLElement
-        | null;
-    }
-    feedAutoScroll(sessionScrollEl, e.clientY, reHitTestAtPointer);
+    scheduleMovePass();
+    // Edge-zone auto-scroll (wave 2 P4): the container comes from the ONE
+    // gesture geometry door (captured on first read, dropped at teardown); the
+    // loop scrolls and asks for a pass at the parked pointer as content slides
+    // underneath, and listener teardown stops it.
+    feedAutoScroll(readMoveGeometry().scroll, e.clientY, reHitTestAtPointer);
   };
   onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") cancelDropSession();
@@ -389,56 +401,72 @@ function installListeners(opts: { attachMouseUp: boolean }) {
 function removeListeners() {
   if (typeof window === "undefined") return;
   stopAutoScroll();
-  sessionScrollEl = undefined;
+  cancelMovePass();
+  // The ONE end path every session ending funnels through, so a snapshot can
+  // never survive into the next gesture.
+  disarmMoveGeometry();
   if (onMove) window.removeEventListener("mousemove", onMove);
   if (onUp) window.removeEventListener("mouseup", onUp);
   if (onKey) window.removeEventListener("keydown", onKey);
   if (onLeave) document.documentElement.removeEventListener("mouseleave", onLeave);
   if (onEnter) document.documentElement.removeEventListener("mouseenter", onEnter);
   onMove = onUp = onKey = onLeave = onEnter = null;
-  if (pendingMove) {
-    clearTimeout(pendingMove.t);
-    pendingMove = null;
-  }
 }
 
 // ── Move / up handlers ───────────────────────────────────────────────
 
-/**
- * Throttle hit-test to ~one run per 16ms. Uses setTimeout-based pacing
- * rather than `requestAnimationFrame` because headless / inactive-tab
- * environments throttle rAF aggressively (in some cases it never fires
- * during synthetic-event tests).
- */
-function handleMove(x: number, y: number) {
-  if (!session) return;
-  const now = Date.now();
-  const minGap = 16;
-  const sinceLast = now - lastMoveTs;
-  const run = () => {
-    pendingMove = null;
-    lastMoveTs = Date.now();
-    if (!session) return;
-    const placement = hitTest(
-      x,
-      y,
-      session.spec,
-      session.placements,
-      session.cardKey,
-      session.ctx.mainEditor,
-    );
-    updatePlacement(placement);
-  };
-  if (sinceLast >= minGap) {
-    if (pendingMove) {
-      clearTimeout(pendingMove.t);
-      pendingMove = null;
-    }
-    run();
-  } else {
-    if (pendingMove) clearTimeout(pendingMove.t);
-    pendingMove = { x, y, t: setTimeout(run, minGap - sinceLast) };
+// ── The move pass: ONE per FRAME, never per event ────────────────────
+//
+// The hit-test is the gesture's only measuring work, so it runs exactly where
+// a coalesced gesture's reads belong: in a scheduled frame, at the latest
+// pointer position, after React has committed the previous frame's indicator.
+// Before task 351 it was paced by a 16 ms wall-clock gate whose FAST branch
+// ran the whole hit-test synchronously INSIDE the mousemove handler — so on a
+// 240 Hz mouse roughly every fourth raw event forced a layout, interleaved
+// with the indicator's own React style write. Read → write → read per frame,
+// which is the shape task 330 took out of the float move.
+//
+// rAF is the primary clock with a setTimeout SAFETY NET behind it, because
+// headless / inactive-tab environments throttle rAF (in some cases it never
+// fires under synthetic events) and a dropped pass would strand the last
+// pointer position. Whichever fires first runs; the other is cancelled. The
+// net is deliberately longer than a 60 Hz frame so rAF wins in a live browser.
+const MOVE_PASS_FALLBACK_MS = 20;
+let movePassRaf = 0;
+let movePassTimer: ReturnType<typeof setTimeout> | null = null;
+
+function cancelMovePass() {
+  if (movePassRaf && typeof cancelAnimationFrame === "function") {
+    cancelAnimationFrame(movePassRaf);
   }
+  movePassRaf = 0;
+  if (movePassTimer !== null) {
+    clearTimeout(movePassTimer);
+    movePassTimer = null;
+  }
+}
+
+function runMovePass() {
+  cancelMovePass();
+  if (!session) return;
+  const placement = hitTest(
+    lastPointerX,
+    lastPointerY,
+    session.spec,
+    session.placements,
+    session.cardKey,
+    session.ctx.mainEditor,
+  );
+  updatePlacement(placement);
+}
+
+function scheduleMovePass() {
+  if (!session) return;
+  if (movePassRaf || movePassTimer !== null) return; // already queued
+  if (typeof requestAnimationFrame === "function") {
+    movePassRaf = requestAnimationFrame(runMovePass);
+  }
+  movePassTimer = setTimeout(runMovePass, MOVE_PASS_FALLBACK_MS);
 }
 
 function updatePlacement(placement: Placement | null) {
@@ -448,7 +476,15 @@ function updatePlacement(placement: Placement | null) {
   if (typeof document !== "undefined") {
     // Crosshair signals "no valid drop here"; once a placement (the blue
     // insert bar) is showing, drop the crosshair so it can't obscure the bar.
-    document.body.style.cursor = placement ? "none" : "crosshair";
+    // `cursor` INHERITS, so a real change on `<body>` is a full-tree style
+    // recalc — the same shape the drop-mode `user-select` rule was scoped to
+    // the body element for (globals.css, measured 36 ms at 18.5k nodes). It is
+    // a MODE edge, not a per-move one, so it is bailed here rather than left
+    // to the CSSOM's own same-value check.
+    const cursor = placement ? "none" : "crosshair";
+    if (document.body.style.cursor !== cursor) {
+      document.body.style.cursor = cursor;
+    }
   }
   emitSession();
 }

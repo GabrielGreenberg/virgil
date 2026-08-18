@@ -8,6 +8,7 @@ import {
   getGeometry,
 } from "@/lib/editor-geometry";
 import { installKeystrokeLatencyProbe } from "@/lib/keystroke-latency-probe";
+import { parkDuringLayoutGesture } from "@/lib/pane-resize";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
@@ -836,7 +837,19 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (next) next.classList.add("hovered");
       prev = next;
     };
-    const onMove = (e: MouseEvent) => {
+    // The kill-switch reads `localStorage` (service.ts). Read it ONCE per
+    // mount rather than per pointer event: a flag whose whole job is to be
+    // flipped in devtools and reloaded is not a per-move question, and a
+    // storage read at pointer rate is invisible to every "no
+    // getBoundingClientRect" grep — the shape task 330 found in
+    // `getWindowInsetTopPx`, here on the hottest listener in the editor.
+    const geomHover = geomHoverEnabled();
+    // The pointer Y this resolve should answer for. `null` = nothing pending.
+    let pendingY: number | null = null;
+    const resolveAtPendingY = () => {
+      const y = pendingY;
+      pendingY = null;
+      if (y === null) return;
       // Wave-2 C3: this ran the full-document scan below on EVERY raw
       // mousemove, uncoalesced — the diagnosis's D1 (8.7 ms + 1,063 rect
       // reads per move at 2,883 blocks, during drags and plain mouse travel
@@ -846,8 +859,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // block's wrapper can't shadow its container's. Null (engine off /
       // nothing observed) falls through to the legacy scan; kill-switch
       // `virgil:geom-hover = "off"`.
-      if (editor && geomHoverEnabled()) {
-        const hits = getGeometry(editor)?.blocksAtY(e.clientY);
+      if (editor && geomHover) {
+        const hits = getGeometry(editor)?.blocksAtY(y);
         if (hits) {
           let found: Element | null = null;
           for (const { el } of hits) {
@@ -859,7 +872,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             // is (or was) its own hit.
             if (!wrapper || wrapper.closest("[data-uuid]") !== el) continue;
             const r = wrapper.getBoundingClientRect();
-            if (e.clientY >= r.top && e.clientY <= r.bottom) {
+            if (y >= r.top && y <= r.bottom) {
               found = wrapper;
               break;
             }
@@ -874,19 +887,51 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       let found: Element | null = null;
       for (const w of Array.from(wrappers)) {
         const r = w.getBoundingClientRect();
-        if (e.clientY >= r.top && e.clientY <= r.bottom) {
+        if (y >= r.top && y <= r.bottom) {
           found = w;
           break;
         }
       }
       setHovered(found);
     };
-    const onLeave = () => setHovered(null);
+    // Through the PARK, then through a frame — the two disciplines this
+    // listener's sibling (`TextObjectGrabHandle`'s hover tracker) took in
+    // Wave 2 and this one never did (task 351). They answer the SAME question
+    // from the SAME source (`blocksAtY`), and during a content drag the answer
+    // is invisible under the drag ghost, so re-resolving per pointer event is
+    // pure waste — and its per-hit `querySelector` is an UNINDEXED subtree
+    // scan, which for a `bulletList` hit walks the whole list. That is why the
+    // cost is list-shaped, and why a bullet-item drag felt worse than any
+    // other. Parked calls settle ONCE on the gesture's end edge; outside a
+    // gesture the RAF coalesces a 240 Hz stream to one resolve per frame.
+    let hoverRaf = 0;
+    const runResolve = () => {
+      hoverRaf = 0;
+      resolveAtPendingY();
+    };
+    const scheduleResolve = () => {
+      if (hoverRaf) return;
+      hoverRaf = requestAnimationFrame(runResolve);
+    };
+    const gesturePark = parkDuringLayoutGesture(
+      scheduleResolve,
+      "editor.par-title-hover",
+    );
+    const onMove = (e: MouseEvent) => {
+      pendingY = e.clientY;
+      gesturePark.fire();
+    };
+    const onLeave = () => {
+      pendingY = null;
+      setHovered(null);
+    };
     scroller.addEventListener("mousemove", onMove);
     scroller.addEventListener("mouseleave", onLeave);
     return () => {
       scroller!.removeEventListener("mousemove", onMove);
       scroller!.removeEventListener("mouseleave", onLeave);
+      if (hoverRaf) cancelAnimationFrame(hoverRaf);
+      gesturePark.dispose();
     };
   }, [editor]);
 

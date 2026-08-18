@@ -11,17 +11,30 @@
  * Shape: the controller feeds every pointer move; while the pointer parks
  * inside the top/bottom edge zone of the MAIN editor's scroll container, a
  * self-sustaining RAF loop applies an eased per-frame scroll delta and asks
- * the controller to re-run its (throttled) hit-test at the unchanged pointer
- * position — so the drop indicator tracks the content sliding under the
- * cursor. The loop self-terminates the frame the pointer leaves the zone,
- * and the controller stops it on session teardown. Scope is deliberately
- * the main editor's container only (the far-target case this exists for);
- * hovering a card body's own scroller doesn't auto-scroll it.
+ * the controller to re-run its (frame-coalesced) hit-test — so the drop
+ * indicator tracks the content sliding under the cursor. The loop
+ * self-terminates the frame the pointer leaves the zone, and the controller
+ * stops it on session teardown. Scope is deliberately the main editor's
+ * container only (the far-target case this exists for); hovering a card
+ * body's own scroller doesn't auto-scroll it.
  *
- * Cost: zero when idle (no listeners of its own, no timers); while
- * scrolling, one rect read + one scroll write + one re-hit-test request per
- * frame — bounded, gesture-scoped, and off every non-drag path.
+ * **Cost (task 351).** The arming test is PURE — it reads the container's
+ * viewport band from the gesture snapshot (`move-geometry.ts`), never the DOM.
+ * That is the whole point of the snapshot: `feedAutoScroll` runs on every RAW
+ * pointer event (120–240 Hz), and it used to open with
+ * `el.getBoundingClientRect()` — a forced layout per event, for a container
+ * that cannot move while the pointer is held. The only live reads left are
+ * `scrollTop` (read + write) inside the RAF `tick`, which is where the write
+ * happens and so the one place a live value is required.
+ *
+ * The re-hit-test is REQUESTED, not run: `onFrame` schedules the controller's
+ * coalesced pass, so this frame WRITES and the next frame READS. Calling the
+ * hit-test inline here would put a forced-layout read immediately after our
+ * own scroll write, once per frame, for a one-frame-fresher indicator nobody
+ * can see.
  */
+
+import type { ScrollTarget } from "./move-geometry";
 
 /** Pointer-to-edge distance that arms auto-scroll. */
 const EDGE_ZONE_PX = 56;
@@ -29,56 +42,70 @@ const EDGE_ZONE_PX = 56;
 const MAX_SPEED_PX = 18;
 
 let rafId = 0;
-let scrollEl: HTMLElement | null = null;
+let target: ScrollTarget | null = null;
 let pointerY = 0;
 let onFrame: (() => void) | null = null;
 
-function deltaFor(el: HTMLElement, clientY: number): number {
-  const rect = el.getBoundingClientRect();
-  if (rect.height <= 0) return 0;
-  const fromTop = clientY - rect.top;
-  const fromBottom = rect.bottom - clientY;
+/**
+ * Signed px-per-frame for a pointer at `clientY`, from the SNAPSHOTTED band.
+ * Pure arithmetic — no DOM read, so it is safe on the raw-event path. Says
+ * nothing about whether the container can still scroll that way; the range
+ * limit is the `tick`'s business, because only a live `scrollTop` can answer it.
+ */
+export function edgeSpeedFor(t: ScrollTarget, clientY: number): number {
+  const height = t.bottom - t.top;
+  if (height <= 0) return 0;
+  const fromTop = clientY - t.top;
+  const fromBottom = t.bottom - clientY;
+  // `Math.max(0, …)` keeps a pointer ABOVE / BELOW the container at full
+  // speed rather than easing back off — the pre-351 behaviour, preserved.
   if (fromTop < EDGE_ZONE_PX) {
-    if (el.scrollTop <= 0) return 0;
-    // Eased: full speed at the edge, tapering to 0 at the zone boundary.
-    const t = 1 - Math.max(0, fromTop) / EDGE_ZONE_PX;
-    return -Math.ceil(MAX_SPEED_PX * t * t);
+    const s = 1 - Math.max(0, fromTop) / EDGE_ZONE_PX;
+    return -Math.ceil(MAX_SPEED_PX * s * s);
   }
   if (fromBottom < EDGE_ZONE_PX) {
-    if (el.scrollTop >= el.scrollHeight - el.clientHeight) return 0;
-    const t = 1 - Math.max(0, fromBottom) / EDGE_ZONE_PX;
-    return Math.ceil(MAX_SPEED_PX * t * t);
+    const s = 1 - Math.max(0, fromBottom) / EDGE_ZONE_PX;
+    return Math.ceil(MAX_SPEED_PX * s * s);
   }
   return 0;
 }
 
 function tick() {
   rafId = 0;
-  const el = scrollEl;
-  if (!el || !onFrame) return;
-  const delta = deltaFor(el, pointerY);
-  if (delta === 0) return; // left the zone / hit the end — self-terminate
-  el.scrollTop += delta;
-  // Content moved under the parked pointer — the indicator must re-resolve.
-  onFrame();
+  const t = target;
+  if (!t || !onFrame) return;
+  const speed = edgeSpeedFor(t, pointerY);
+  if (speed === 0) return; // left the zone — self-terminate
+  const el = t.el;
+  // Read → write → (no read). The browser clamps the assignment at both ends
+  // of the range, so reading it back is both cheaper and more accurate than
+  // the pre-351 `scrollHeight - clientHeight` arithmetic, and it is what tells
+  // us whether content actually moved.
+  const before = el.scrollTop;
+  el.scrollTop = before + speed;
+  if (el.scrollTop !== before) onFrame();
+  // Keep looping while the pointer is in the zone even at the end of the
+  // range: the loop is one scrollTop read + one write, and terminating there
+  // meant a pointer parked at the edge could never resume when the user
+  // dragged back into scrollable content.
   rafId = requestAnimationFrame(tick);
 }
 
 /**
- * Feed a pointer move. `el` is the session's scroll container (resolved
- * once per session by the controller), `reHitTest` re-runs the controller's
- * throttled hit-test at the current pointer point.
+ * Feed a pointer move. `t` is the session's scroll target from the gesture
+ * geometry snapshot (null = nothing to scroll), `reHitTest` SCHEDULES the
+ * controller's coalesced hit-test pass.
  */
 export function feedAutoScroll(
-  el: HTMLElement | null,
+  t: ScrollTarget | null,
   clientY: number,
   reHitTest: () => void,
 ): void {
-  scrollEl = el;
+  target = t;
   pointerY = clientY;
   onFrame = reHitTest;
-  if (!el) return;
-  if (!rafId && deltaFor(el, clientY) !== 0) {
+  if (!t) return;
+  if (!rafId && edgeSpeedFor(t, clientY) !== 0) {
     rafId = requestAnimationFrame(tick);
   }
 }
@@ -88,6 +115,6 @@ export function feedAutoScroll(
 export function stopAutoScroll(): void {
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
-  scrollEl = null;
+  target = null;
   onFrame = null;
 }

@@ -3741,6 +3741,30 @@ body.card-outline-chrome [data-floating-panel][data-panel-shell-mode="floating"]
 body[data-drop-mode-active="true"] [data-floating-panel="true"] {
   pointer-events: none;
 }
+/* …and so does every OTHER `pointer-events: auto` overlay painted above the
+ * editor. Same law, and the member list was incomplete for a year (task 351).
+ *
+ * The rule above exists because the hit-test must reach the editor through
+ * whatever is on top ("floats become click-through so the cursor falls through
+ * to the editor for hit-testing"). The MARGIN chrome — grab handles, marginalia
+ * markers and their overflow / orphan docks — sits inside `.ProseMirror`'s own
+ * 88px/72px padding band and was never added, and the cost of that is not a
+ * missed hover: it is a doc-proportional forced-layout sweep on the hottest
+ * path in the gesture. `view.posAtCoords` asks `document.elementFromPoint`
+ * first, and when the answer is a node OUTSIDE `view.dom` — a marker the cursor
+ * happened to cross — ProseMirror falls back to `elementFromPoint(view.dom, …)`,
+ * a wrap-around `getClientRects()` scan over EVERY top-level block with no
+ * early break, and `posFromCaret` then usually returns null so `posFromElement`
+ * sweeps them all again. Two O(doc) forced-layout passes per throttled move,
+ * for as long as the pointer tracks the margin — which is exactly where a
+ * Notion-style user drags. Nothing in the margin is a drop target, so falling
+ * through is also the correct ANSWER, not merely the cheap one. */
+body[data-drop-mode-active="true"] .text-object-grab-handle,
+body[data-drop-mode-active="true"] .marginalia-marker,
+body[data-drop-mode-active="true"] [data-marginalia-overflow],
+body[data-drop-mode-active="true"] [data-marginalia-orphan-dock] {
+  pointer-events: none;
+}
 body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-source="true"] {
   opacity: 0.6;
   transition: opacity 0.1s ease;
@@ -3807,19 +3831,29 @@ body.perf-contain .static-borrowed-text {
 .dropmode-bar-inline {
   animation: dropmode-bar-fadein 0.08s ease-out;
 }
+/* The bar is positioned by `transform: translate3d(...)` (Indicator.tsx), so
+ * its EASE is composite-only. Easing `top` on a position:fixed element — the
+ * pre-351 form — ran an 80 ms main-thread LAYOUT animation after every
+ * placement change, and a drag through a dense list changes placement on most
+ * frames: the tree was never clean, so every rect read in the app (the
+ * gesture's own hit-test first) paid a forced style+layout flush. Same law the
+ * float shell and the lift overlay already follow. `height` is still a layout
+ * property and stays eased only on the bars that CHANGE height as they snap
+ * (the side / inline / vertical forms); the horizontal gap line is 2px tall
+ * always, so it eases transform alone. */
 .dropmode-bar-side,
 .dropmode-bar-inline {
-  transition: top 0.08s ease, height 0.08s ease;
+  transition: transform 0.08s ease, height 0.08s ease;
 }
 .dropmode-bar-gap {
-  transition: top 0.08s ease;
+  transition: transform 0.08s ease;
 }
 /* Feature A1 — the expex unified-drop bar reuses `.dropmode-bar-gap` but is
  * VERTICAL (a tall left-edge bar). It snaps between a full-item-height bar and a
  * short new-item tick, so ease `height` too (the horizontal gap line only moves
  * on `top`). Slightly rounded so the tall bar reads as a clean rule. */
 .dropmode-bar-vertical {
-  transition: top 0.08s ease, height 0.08s ease;
+  transition: transform 0.08s ease, height 0.08s ease;
   border-radius: var(--radius-xs);
 }
 @keyframes dropmode-bar-fadein {
