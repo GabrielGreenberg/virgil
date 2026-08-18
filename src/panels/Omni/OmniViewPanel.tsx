@@ -692,7 +692,7 @@ function OmniViewPanel({
   const pinRequest = usePinRequest(side as PinSide);
   const pinned = useMemo(
     () => (pinRequest
-      ? { id: pinRequest.cardId, pinTop: pinRequest.pinTop }
+      ? { id: pinRequest.cardId, offset: pinRequest.offset }
       : null),
     [pinRequest],
   );
@@ -702,7 +702,7 @@ function OmniViewPanel({
   // `resolvePos(id) ?? item.pos` at measure time, so paragraph-anchored cards
   // track their anchor live on every reflow instead of riding the stale baked
   // pos — the core of the "cards stack at the top while typing" fix.
-  const { positions, editorContentHeight, panelScrollRef } =
+  const { positions, naturals, editorContentHeight, panelScrollRef } =
     useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned, resolvePos);
 
   // Motion (task 328): a sanctioned move SLIDES instead of teleporting.
@@ -792,6 +792,18 @@ function OmniViewPanel({
             <div
               key={item.id}
               data-omni-entry-wrapper={item.id}
+              // The card's ANCHOR-derived top, published for the one reader
+              // that needs it: `omni-card-placement.ts` stores a pin as an
+              // OFFSET from this number (task 362), so a pinned card rides
+              // document edits with its anchor instead of freezing at a pod
+              // coordinate the anchor has since left. Present on every
+              // rendered wrapper by construction — this branch runs only
+              // when `positions` has a top, which requires a measured
+              // natural. Deliberately OMITTED rather than defaulted if it
+              // ever isn't: the door fails CLOSED on a missing attribute,
+              // and substituting the CASCADED top here would hand it a
+              // plausible wrong reference instead.
+              data-omni-natural-top={naturals.get(item.id)?.naturalTop}
               data-omni-nested-child={isNested ? "" : undefined}
               className={`absolute left-2 right-2${isNested ? " pl-4" : ""}${
                 slide ? " omni-entry-slide" : ""

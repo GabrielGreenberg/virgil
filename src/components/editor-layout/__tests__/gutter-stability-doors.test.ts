@@ -60,8 +60,19 @@ interface Scene {
 /** A row scroll → side column → pod → one absolutely-positioned card
  *  wrapper, with the geometry the cascade would have produced: the card's
  *  pod-relative top is `podRelTop`, so its screen top is `POD_TOP +
- *  podRelTop`. */
-function scene(cardKey: string, podRelTop: number, height = 120): Scene {
+ *  podRelTop`.
+ *
+ *  `naturalTop` is the card's ANCHOR-derived top — what the pod publishes on
+ *  `data-omni-natural-top` and what every stored pin is expressed against
+ *  since task 362. It defaults to `podRelTop` (an unpacked deck, where the
+ *  two coincide); pass them apart to model a card the cascade has pushed
+ *  away from its anchor. */
+function scene(
+  cardKey: string,
+  podRelTop: number,
+  height = 120,
+  naturalTop: number = podRelTop,
+): Scene {
   const row = document.createElement("div");
   row.setAttribute("data-virgil-row-scroll", "");
   Object.defineProperty(row, "offsetParent", { value: document.body });
@@ -78,6 +89,7 @@ function scene(cardKey: string, podRelTop: number, height = 120): Scene {
 
   const wrapper = document.createElement("div");
   wrapper.dataset.omniEntryWrapper = cardKey;
+  wrapper.setAttribute("data-omni-natural-top", String(naturalTop));
   wrapper.getBoundingClientRect = () => rect(POD_TOP + podRelTop, height);
 
   pod.appendChild(wrapper);
@@ -120,18 +132,20 @@ describe("the card door — clicking the text of a visible card moves nothing", 
       { id: "c", pos: 3 },
     ];
     const unpinned = resolveCascade(natural, items, null);
-    const pin = omniPinStore.get("right") as { pinTop: number } | null;
+    const pin = omniPinStore.get("right") as { offset: number } | null;
     const after = resolveCascade(
       natural,
       items,
-      pin ? { id: KEY, pinTop: pin.pinTop } : null,
+      pin ? { id: KEY, offset: pin.offset } : null,
     );
     expect([...after.entries()]).toEqual([...unpinned.entries()]);
     // Guard against passing vacuously: the pre-fix placement really would
-    // have moved this deck.
+    // have moved this deck. (Pins are anchor-relative since 362, so the
+    // pre-fix absolute Y of `140 - POD_TOP` is that Y minus this card's
+    // natural top.)
     const preFix = resolveCascade(natural, items, {
       id: KEY,
-      pinTop: 140 - POD_TOP,
+      offset: 140 - POD_TOP - 300,
     });
     expect([...preFix.entries()]).not.toEqual([...unpinned.entries()]);
   });
@@ -146,14 +160,16 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     requestOmniCardPlacement(KEY, { viewportY: 140 });
     const pin = omniPinStore.get("right")!;
     expect(pin.cardId).toBe("float:card:note:other");
-    expect(pin.pinTop).toBe(999);
+    expect(pin.offset).toBe(999);
   });
 
   it("MOVES a card that is off screen — necessity (a)", () => {
     // Pod-relative 1400 → screen 1200, well below the band.
     scene(KEY, 1400);
     requestOmniCardPlacement(KEY, { viewportY: 140 });
-    expect(omniPinStore.get("right")!.pinTop).toBe(140 - POD_TOP);
+    // Stored ANCHOR-RELATIVE (task 362): the requested absolute pod Y minus
+    // the card's natural top.
+    expect(omniPinStore.get("right")!.offset).toBe(140 - POD_TOP - 1400);
   });
 
   it("MOVES a visible card that is very far from the click — necessity (b)", () => {
@@ -161,22 +177,39 @@ describe("the card door — clicking the text of a visible card moves nothing", 
     // buried card's cascade offset from its own anchor IS the burial.
     scene(KEY, 300);
     requestOmniCardPlacement(KEY, { viewportY: 620 });
-    expect(omniPinStore.get("right")!.pinTop).toBe(620 - POD_TOP);
+    expect(omniPinStore.get("right")!.offset).toBe(620 - POD_TOP - 300);
   });
 
   it("takes a pod-relative desired top verbatim (the jump path's pre-scroll measurement)", () => {
     scene(KEY, 1400); // off screen ⇒ sanctioned
     requestOmniCardPlacement(KEY, { podTop: 42 });
-    expect(omniPinStore.get("right")!.pinTop).toBe(42);
+    expect(omniPinStore.get("right")!.offset).toBe(42 - 1400);
   });
 
   it("holdOmniCard pins the current top — the collapse/expand freeze still works", () => {
     // Takes the wrapper the user pressed, never a key: under multi-pane
     // keep-alive a `document.querySelector` by key can answer with a
     // `display:none` warm pane's twin, whose rects all read zero.
-    const { wrapper } = scene(KEY, 300);
+    //
+    // Deliberately a PACKED card: the cascade has pushed it 80px below its
+    // anchor, so "freeze me where I am" is 80, not 0 — a scene where natural
+    // and current coincided would pass with the conversion deleted.
+    const { wrapper } = scene(KEY, 300, 120, 220);
     holdOmniCard(wrapper);
-    expect(omniPinStore.get("right")!.pinTop).toBe(300);
+    expect(omniPinStore.get("right")!.offset).toBe(80);
+  });
+
+  it("refuses a wrapper carrying no natural top — fail CLOSED", () => {
+    // The alternative (store the absolute Y when the anchor reference is
+    // missing) is exactly the decoupling 362 retires, arriving silently on
+    // whichever path lost the attribute. A wrapper with no readable natural
+    // top is treated as "nothing to pin", like a missing wrapper.
+    const { wrapper } = scene(KEY, 1400); // off screen ⇒ otherwise sanctioned
+    wrapper.removeAttribute("data-omni-natural-top");
+    requestOmniCardPlacement(KEY, { viewportY: 140 });
+    expect(omniPinStore.get("right")).toBeNull();
+    holdOmniCard(wrapper);
+    expect(omniPinStore.get("right")).toBeNull();
   });
 
   it("pins the WRAPPER's own id, so a multi-anchor `@N` row still matches", () => {
