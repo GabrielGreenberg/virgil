@@ -547,7 +547,8 @@ def _render_digest(fm: dict, report: dict, summ: dict, recs: list[dict]) -> str:
     if fm.get("_rotated"):
         out.append(
             f"> **Second run today.** The earlier run's digest was preserved as "
-            f"`{fm['_rotated']}` — read it too; its proposal branches are still live. "
+            f"`{fm['_rotated']}` — read it too; anything it did not land is a "
+            f"patch under `~/virgil-tasks/attachments/`, not a live branch. "
             f"This file covers only the memos written since that run."
         )
         out.append("")

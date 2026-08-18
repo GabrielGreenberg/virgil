@@ -283,8 +283,8 @@ remains a forward item, deferred past the chip-19 unification.)
 
 | Mode | When | Where it lands |
 |---|---|---|
-| **acts** | a single skill-prompt `.md`, prose-polish intent (`tighten-wording` / `add-example` / `fix-typo` / `expand-guidance` / `clarify`), no contract token | committed directly on the dream branch — the user merges/reverts via git |
-| **proposes** | cross-skill · any `.py` script · the manifest (`docs/workspace/`) · rename/merge/split · any contract-adjacent change | staged in a `dream/<date>` worktree; the digest carries a `git merge dream/<date>` hint for review |
+| **acts** | a single skill-prompt `.md`, prose-polish intent (`tighten-wording` / `add-example` / `fix-typo` / `expand-guidance` / `clarify`), no contract token | committed directly on the dream branch, which step 6 then disposes of in the same run — the user reverts via git |
+| **proposes** | cross-skill · any `.py` script · the manifest (`docs/workspace/`) · rename/merge/split · any contract-adjacent change | staged in a `dream/<date>` worktree, which step 6 then LANDS or EXPORTS as a patch under `~/virgil-tasks/attachments/` before deleting the branch — no `dream/*` branch outlives its run, so the digest's pointer to unlanded work is the patch, never a merge hint |
 | **refused** | crosses a boundary (below) | recorded only — never applied, never proposed |
 
 Precedence is **refused > proposes > acts**: the boundary guard runs first, and
@@ -316,8 +316,10 @@ loop runs *inside*.
 `memos/` and `iterations/` (with a checked-in `.gitkeep`). Written **every**
 run, even a no-op night. Frontmatter carries `dreamedAt` / `since` / `marker` /
 `markerMemo` / the acted/proposed/refused counts / `dreamSha`; the body lists
-the ACTED, PROPOSED (each with its merge hint), and REFUSED (each with its
-boundary) entries, the counts by tier/skill/lens, and a bootstrap note. The
+the ACTED, PROPOSED (each with its step-6 outcome — **LANDED / EXPORTED /
+FILED** — and, for anything that did not land, `git apply <patch>` rather than a
+merge hint), and REFUSED (each with its boundary) entries, the counts by
+tier/skill/lens, and a bootstrap note. The
 clock is pinnable via `VIRGIL_DREAM_NOW` (mirroring reflect's `VIRGIL_REFLECT_NOW`).
 
 ### Bootstrap / recursion
@@ -331,9 +333,22 @@ dream's own track record). "The first dreams will be the worst."
 
 `editor-skill-base-dream` (cron `0 22 * * *`) runs `/editor/dream` nightly from
 the repo, and `virgil-update` (cron `0 0 * * *`) runs `/cleanup-virgil` — merge
-sweep, version bump, push, deploy — after it. Green dream branches merge to
-`main` at the end of the run (dream.md step 6) and ship with that update;
-decisions and red-gate work are filed into `~/virgil-tasks/inbox/` for the
+sweep, version bump, push, deploy — after it. Step 6 merges a green branch to
+`main` at the end of the dream's own run, and it ships with that update.
+
+**Green is necessary, not sufficient, and the two hours between those crons are
+why.** `/cleanup-virgil` runs `/cleanup-worktrees` first, which merges *every*
+surviving branch blindly ("merge them all — do not ask which"), so a `dream/*`
+branch left standing at 22:00 ships at 00:00 whether or not anything cleared
+it — which made a "leave it parked for review" instruction unenforceable as
+written. Step 6 therefore EXPORTS rather than parks in the three cases a green
+merge is withheld: the primary tree is dirty (the human mid-edit), a gate is
+red, or the guard answers `neverSelfMerge: true` — the change touches the
+loop's **own** operating procedure (`DEV_LOOP_PROCEDURE` in `dream_land.py`:
+the three loop skill prompts ∪ `dream.py` / `reflect.py` / `dream_land.py` /
+`dev_loop.py`). In each case the diff goes to a patch under
+`~/virgil-tasks/attachments/`, the worktree and branch are deleted, and the
+work — plus any decision owed — is filed into `~/virgil-tasks/inbox/` for the
 catcher. `/loop /editor/dream` on an interval remains a supported manual mode —
 same since-last-dream selection, and a same-day re-run rotates the prior digest.
 

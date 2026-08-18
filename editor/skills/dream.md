@@ -59,7 +59,10 @@ and it reflects on its **own** run (the bootstrap, step 8).
 A real overnight dream runs **in a fresh git worktree off `main`** — its
 acts-directly edits become commits on the dream branch; a branch whose gates
 come back green merges to `main` at the end of the run (step 6) and ships with
-the next nightly update. You do not need a live worktree to exercise the logic
+the next nightly update. Green is **necessary, not sufficient**: step 6 also
+requires a clean primary tree and a change that is not this loop's own
+operating procedure, and it EXPORTS a patch (deleting the branch) in every
+other case — no `dream/*` branch outlives its run. You do not need a live worktree to exercise the logic
 (the routing + the guard + the digest are all script-driven), but a true
 scheduled run should branch first.
 

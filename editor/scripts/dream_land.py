@@ -16,7 +16,8 @@ same paths ("may this merge unattended once its gates are green?") — a change
 can be `proposes` because it is a script and unmergeable-unattended because it
 is THIS loop's script.  Both are answered here so neither is re-derived by eye.
 
-  • ACTS    — lands directly on the dream's working branch (the user merges it):
+  • ACTS    — lands directly on the dream's working branch (step 6 then disposes
+              of that branch in the same run; the user reverts via git):
               a single-skill-prompt change that does NOT touch a behavior
               contract — tighten wording, add a clarifying example, fix a typo,
               expand guidance.  Recorded "ACTED" in the digest; reverted via git.
