@@ -530,6 +530,35 @@ export function startsBlockBoundary(text: string): boolean {
 }
 
 /**
+ * How many characters of a leading run of VIRGIL's own block markers
+ * (`\vexid{…}`, `\vxid{…}`) sit at the head of `text` — 0 when none do.
+ *
+ * A marker is Virgil's bookkeeping, not a LaTeX construct, so a scan asking
+ * "does a new BLOCK open on this line?" has to look past it. It cannot simply
+ * ignore markers, either: `\vexid{ab12}\ex` really does open one. The two
+ * facts together mean the question is asked of the line MINUS its marker
+ * prefix, which is what this exists for.
+ *
+ * (Deliberately not folded into {@link startsBlockBoundary}: `readParagraph`
+ * has always broken a paragraph AT a marker line, and every serialized
+ * document depends on that spacing. This is a separate question a separate
+ * caller asks.)
+ */
+export function blockMarkerPrefixLength(text: string): number {
+  let pos = 0;
+  outer: for (;;) {
+    for (const m of BLOCK_TEX_MARKERS) {
+      if (!text.startsWith(m.open, pos)) continue;
+      const close = text.indexOf("}", pos + m.open.length);
+      if (close === -1) continue;
+      pos = close + 1;
+      continue outer;
+    }
+    return pos;
+  }
+}
+
+/**
  * A `\\` LINE BREAK and its own argument run at `start`, or null.
  *
  * `\\` is a control SYMBOL that takes an optional `*` (no page break here) and
@@ -738,6 +767,62 @@ export function projectDetectableLatex(src: string): string {
   return projectLiveLatex(src, { envs: VERBATIM_ENVS_NARROW });
 }
 
+/** The `\begin{document}` token — the preamble/body boundary, spelled once for
+ *  the two readers below rather than a sixth raw `indexOf`. */
+const BEGIN_DOCUMENT_TOKEN = "\\begin{document}";
+
+/**
+ * The LIVE preamble of a `.tex` source — `projectDetectableLatex` applied to
+ * the whole file, then split at `\begin{document}`.
+ *
+ * The two halves of that sentence are each a rule task 344 had to learn, and
+ * they are stated here so a third detector cannot re-learn them:
+ *
+ *  - **Only live bytes count.** A commented-out `% \usepackage{linguex}` is
+ *    the single most ordinary thing in an academic preamble, and before 344 it
+ *    outranked a live load one detector over.
+ *  - **The split is taken on the PROJECTED text**, so a commented-out
+ *    `% \begin{document}` cannot move the boundary. A source with no
+ *    `\begin{document}` at all (a fragment, a brand-new doc) fails OPEN — the
+ *    whole projection is preamble, which is what a fragment scan wants.
+ *
+ * NOT offset-preserving: this answers "what does the preamble SAY", never
+ * "where is byte N". The `injectPreambleRequirements` family needs the second
+ * question and keeps its own raw scan (AGENTS.md records that as an open
+ * residual of the same class).
+ */
+export function livePreamble(tex: string): string {
+  const live = projectDetectableLatex(tex);
+  const beginDoc = live.indexOf(BEGIN_DOCUMENT_TOKEN);
+  return beginDoc === -1 ? live : live.slice(0, beginDoc);
+}
+
+/**
+ * Does the LIVE preamble of `tex` load `\usepackage{<name>}`? Tolerates the
+ * option form (`\usepackage[opt]{name}`) and a comma-separated package list
+ * (`\usepackage{expex,linguex}`), which is how a real preamble writes it.
+ *
+ * A detector, so it obeys the detector law: it believes only the bytes the
+ * compiler would ({@link livePreamble}).
+ */
+export function preambleLoadsPackage(tex: string, name: string): boolean {
+  return preambleListLoadsPackage(livePreamble(tex), name);
+}
+
+/** The {@link preambleLoadsPackage} question asked of an ALREADY-projected
+ *  preamble, for a caller that has one in hand (and must not project twice). */
+export function preambleListLoadsPackage(
+  livePreambleText: string,
+  name: string,
+): boolean {
+  const re = /\\(?:usepackage|RequirePackage)\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(livePreambleText)) !== null) {
+    if (m[1].split(",").some((p) => p.trim() === name)) return true;
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Brace scanners
 // ---------------------------------------------------------------------------
@@ -929,6 +1014,91 @@ export function matchExpexOpenerAt(
   }
   return null;
 }
+
+/**
+ * **THE linguex example-opener vocabulary** — `\ex.` at `pos`, or null.
+ *
+ * The expex twin above is where the two dialects are told apart, and the
+ * discriminator is the PERIOD, per SITE: expex's grammar never puts one after
+ * `\ex`, linguex's always does. That is why neither function consults the
+ * preamble — a fragment, a card body and a paste have no preamble, and the
+ * reproducing document for task 350 loaded BOTH packages, so a package signal
+ * could not have decided it either way.
+ *
+ * The package signal decides something ELSE, and the parser asks it separately
+ * (`preambleLoadsPackage(tex, "linguex")`): whether a recognized linguex site
+ * is MODELLED (task 355) or CARRIED RAW as task 350 left it. Form answers
+ * "which dialect is this"; the package answers "may Virgil claim it".
+ *
+ * **What is deliberately NOT an opener**, and why it needs no code: `\exg.`
+ * (glossed), `\exi.` (indented continuation) and `\exr.` (repeated number) are
+ * different control WORDS, so the control-word boundary declines them and task
+ * 342's carrier takes their bytes byte-faithfully. That is the whole of the
+ * v1 scope line — the out-of-scope forms are carried by construction rather
+ * than by a list someone has to maintain.
+ */
+export function matchLinguexOpenerAt(
+  src: string,
+  pos: number,
+): { end: number } | null {
+  if (src[pos] !== "\\") return null;
+  if (!src.startsWith("ex", pos + 1)) return null;
+  const afterName = pos + 3;
+  if (isWordChar(src[afterName])) return null;
+  if (src[afterName] !== ".") return null;
+  return { end: afterName + 1 };
+}
+
+/**
+ * **THE linguex sub-item vocabulary** — `\a.` … `\y.` at `pos`, or null.
+ *
+ * linguex defines the whole `\a.`–`\z.` range as sub-item markers, all
+ * equivalent (the visible letter is computed from position, exactly as expex
+ * computes it for `\a`); authors type them in alphabetical order so the
+ * rendered label matches. `\z.` is EXCLUDED here because it additionally
+ * CLOSES the list level, which is a nesting fact this v1 does not model — an
+ * example containing one is refused whole and carried raw rather than
+ * half-parsed (see `LINGUEX_UNMODELLED_RE`).
+ *
+ * `lineStart` is the caller's answer to "is `pos` at the start of a line
+ * (after optional indentation), or immediately after the example header?" —
+ * the only two places a real linguex item marker appears. Requiring it is what
+ * keeps `\i.` (dotless i) and `\o.` (ø) from being read as item markers when
+ * they occur mid-sentence in the body prose, which is the same false-split
+ * class `splitPexBody` guards with `matchAccent`/`matchSpecialLetter`.
+ */
+export function matchLinguexItemAt(
+  src: string,
+  pos: number,
+  lineStart: boolean,
+): { letter: string; end: number } | null {
+  if (!lineStart) return null;
+  if (src[pos] !== "\\") return null;
+  const letter = src[pos + 1];
+  if (letter === undefined || !/[a-y]/.test(letter)) return null;
+  if (src[pos + 2] !== ".") return null;
+  return { letter, end: pos + 3 };
+}
+
+/**
+ * The linguex constructs this build does NOT model. An `\ex.` body containing
+ * any of them is REFUSED whole (carried raw, task 350's carrier) rather than
+ * half-parsed — the rule task 350 defect C states for the example body one
+ * layer down: *never emit a node that serializes to less than it consumed.*
+ *
+ * Members, each with the reason it cannot be half-parsed:
+ *  - `\z.` — a sub-item that also CLOSES its level. Parsed as a plain item its
+ *    close would be dropped on re-emit, silently re-opening the level for
+ *    whatever follows.
+ *  - `\ag.` / `\bg.` / … — GLOSSED sub-items, whose body is three
+ *    `\\`-separated interlinear tiers. Virgil has a gloss model (expex's
+ *    `\begingl`), but mapping linguex's tiers onto it is a second feature; a
+ *    plain-text parse would flatten the alignment.
+ *  - a SECOND `\a.` — in linguex `\a.` opens a level, so a second one inside
+ *    one example body is the third nesting tier, which this v1 does not model.
+ *    (Detected by the caller, which counts them; it cannot be a regex.)
+ */
+export const LINGUEX_UNMODELLED_RE = /\\(?:z\.|[a-z]g\.)/;
 
 /**
  * **THE nesting vocabulary.** Does an OPAQUE nested construct start at `pos` —

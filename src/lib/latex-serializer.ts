@@ -18,6 +18,7 @@ import {
   VIRGIL_MARKERS,
 } from "@/lib/latex-markers";
 import { buildFigureEnvBody } from "@/lib/figures/env-body";
+import { exampleDialectOf } from "@/lib/example-dialect";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
 import {
@@ -893,6 +894,14 @@ function serializeExampleBlockBodyParagraphs(
 }
 
 function serializeExampleBlock(node: JSONContent): string {
+  // Which DIALECT this example was written in decides which syntax it is
+  // written back in (task 355). Virgil's `.tex` is co-authored on Overleaf, so
+  // silently re-emitting a collaborator's linguex examples as expex would
+  // rewrite every example in the file on OPEN — a diff bomb against a document
+  // Virgil was merely asked to read.
+  if (exampleDialectOf(node.attrs) === "linguex") {
+    return serializeLinguexExample(node);
+  }
   // An example block emits `\ex`/`\pex … \xe` — an expex construct.
   need("expex");
   const kind = node.attrs?.kind === "multi" ? "pex" : "ex";
@@ -1000,6 +1009,120 @@ function serializeExampleBlock(node: JSONContent): string {
     (body ? body + "\n" : "") +
     `\\xe\n\n`
   );
+}
+
+/**
+ * Emit an example in LINGUEX syntax (task 355) — the `serializeExampleBlock`
+ * twin, and deliberately NOT a mode inside it.
+ *
+ * The two assemblies share nothing but their children: expex wraps a body in
+ * an explicit `\ex … \xe` pair and prefixes each part with `\a`, while linguex
+ * has no closing command at all — the example is terminated by the blank line
+ * this function's own tail emits — and spells each part `\a.` / `\b.` / `\c.`.
+ * Folding them would produce a function that is a `dialect` switch at every
+ * line, which is how the expex walker's separator coupling (task 337's memo
+ * boundary) would end up being re-decided for a grammar it does not describe.
+ *
+ * **Requirements: NONE, deliberately.** `need("expex")` is absent because
+ * linguex arrives ONLY through the user's own preamble — it is not in any
+ * auto-inject vocabulary, and never will be (declaring it here would inject a
+ * `\usepackage{linguex}` into a document whose author never asked for one, and
+ * loading both packages is a real compile hazard). The `\vexid` / `\vxid`
+ * markers this emits are dialect-neutral no-ops shimmed unconditionally.
+ *
+ * **The one stated normalization.** Author layout inside the example is
+ * canonicalized: the header goes on its own line and each part starts a line
+ * of its own, so `\ex.\label{s1}\a.\label{s1a} Susan …` re-emits as three
+ * lines. That is the same one-time normalization every other construct in this
+ * file performs (an expex example, a list, a figure), it is a FIXED POINT from
+ * the first save, and it changes no bytes that mean anything to LaTeX — a
+ * linguex part marker is legal wherever whitespace is.
+ */
+function serializeLinguexExample(node: JSONContent): string {
+  const uuid = node.attrs?.uuid as string | null;
+  const idMarker = uuid ? emitMarker(VIRGIL_MARKERS.exampleBlock, uuid) : "";
+  const label = (node.attrs?.label as string) || "";
+  const labelStr = label ? `\\label{${label}}` : "";
+
+  const pieces: string[] = [];
+  for (const child of node.content || []) {
+    if (child.type === "paragraph") {
+      pieces.push(serializeExampleInlineChildren(child.content));
+    } else if (child.type === "exampleItemList") {
+      const items = (child.content || []).filter(
+        (c) => c.type === "exampleItem",
+      );
+      const itemsStr = items
+        .map((it, i) => serializeLinguexItem(it, i))
+        .join("");
+      if (itemsStr) pieces.push(itemsStr.trimEnd());
+    } else {
+      // TERMINAL ELSE — the `serializeExampleBlock` twin, same reason (task
+      // 356's triage). A child kind the parse could not have produced here can
+      // still ARRIVE here: the user may drop a picture, an equation or a gloss
+      // into a linguex example in the editor, and a silent drop of it would sit
+      // well under the write gate's word slack. The generic serializer emits
+      // whatever the node knows how to emit — expex bytes inside a linguex
+      // example, which is honest (it is what the user built) and, in a document
+      // that loads both packages, exactly what compiles.
+      const text = serializeNode(child).trimEnd();
+      if (text) pieces.push(text);
+    }
+  }
+  const live = pieces.filter((p) => p !== "");
+  // The example's own prose — a `single` example's body, or a `multi` one's
+  // lead-in — rides the HEADER line, which is how linguex is written by hand
+  // (`\ex. Susan went to the store.`) and what makes the common one-sentence
+  // example round-trip to the line the author typed. Parts always start lines
+  // of their own.
+  const headLine =
+    live.length > 0 && (node.content ?? [])[0]?.type === "paragraph"
+      ? ` ${live.shift()}`
+      : "";
+  const body = live.join("\n");
+  // The trailing blank line is not cosmetic — it is linguex's TERMINATOR, the
+  // whole reason the parse side can be bounded by construction.
+  return (
+    `${idMarker}\\ex.${labelStr}${headLine}\n` +
+    (body ? body + "\n" : "") +
+    `\n`
+  );
+}
+
+/**
+ * One linguex part — `\a.` for the first, `\b.` / `\c.` / … after it.
+ *
+ * linguex defines the whole `\a.`–`\z.` range as part markers and computes the
+ * printed letter from POSITION, so the letter here is derived from the item's
+ * index rather than carried: an author writes them in order (that is what the
+ * 26 aliases are for), so this reproduces their bytes, and a source that typed
+ * them out of order is normalized on the next save — exactly what the expex
+ * item walker does when it emits `\a` for every part whatever the source said.
+ *
+ * Capped at `y`: `\z.` additionally CLOSES the level, which this build does not
+ * model (an example containing one is refused at the parse and carried raw), so
+ * emitting one for a 26th part would assert a nesting fact nobody stated. A
+ * repeated `\y.` is a valid continuation marker and the shape is unreachable in
+ * practice — no example has 26 parts.
+ */
+function serializeLinguexItem(node: JSONContent, index: number): string {
+  const uuid = node.attrs?.uuid as string | null;
+  const idMarker = uuid ? emitMarker(VIRGIL_MARKERS.exampleItem, uuid) : "";
+  const label = (node.attrs?.label as string) || "";
+  const labelStr = label ? `\\label{${label}}` : "";
+  const letter = String.fromCharCode(97 + Math.min(index, 24));
+  const pieces: string[] = [];
+  for (const child of node.content || []) {
+    if (child.type === "paragraph") {
+      pieces.push(serializeExampleInlineChildren(child.content));
+    } else {
+      // TERMINAL ELSE — see the block twin above.
+      const text = serializeNode(child).trimEnd();
+      if (text) pieces.push(text);
+    }
+  }
+  const body = pieces.filter((p) => p !== "").join("\n");
+  return `${idMarker}\\${letter}.${labelStr} ${body}\n`;
 }
 
 function serializeExampleItem(node: JSONContent): string {

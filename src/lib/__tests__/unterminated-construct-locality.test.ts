@@ -161,7 +161,16 @@ describe("A · the opener vocabulary is the lexer's, and it is strict", () => {
     expect(c2).not.toContain("\\xe");
   });
 
-  it("a linguex opener is CARRIED, not modelled, even when a `\\xe` exists", () => {
+  it("a linguex opener with NO linguex package is CARRIED, even when a `\\xe` exists", () => {
+    // RENEGOTIATED by task 355, and the assertion is preserved rather than
+    // weakened. This leg's claim has always been about the `.` RULE: `\ex.` is
+    // not an expex opener, so it is never claimed as one. What 355 changed is
+    // what happens to it INSTEAD — with `\usepackage{linguex}` present it is
+    // now modelled as a linguex example (the leg directly below), and without
+    // it the carry this leg pins is unchanged, byte for byte. So the fixture
+    // drops the linguex package and keeps everything else; the pre-355 fixture
+    // loaded BOTH, which is why the two tasks meet here.
+    //
     // The leg that gives the linguex `.` rule its own teeth, and getting here
     // took two wrong drafts worth recording — because the honest reach of that
     // rule is narrower than it first looks.
@@ -187,7 +196,7 @@ describe("A · the opener vocabulary is the lexer's, and it is strict", () => {
         "",
         "\\section{After}",
       ].join("\n"),
-      "\\usepackage{expex}\n\\usepackage{linguex}",
+      "\\usepackage{expex}",
     );
     // NO expex example is produced: the linguex opener is carried. Neutering
     // the `.` rule makes this ONE, because the stray `\xe` gives the swallow a

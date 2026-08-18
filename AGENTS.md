@@ -1483,6 +1483,103 @@ Four rules it earned:
 
 Same *class* as task 259 (a per-kind capability that "looks pinned" and isn't) and adjacent to the parked 228 (this same assertion's consumer-**reconciliation** symmetry, a different axis, still open).
 
+### The dialect half: what a system DOES model, it gives back in the form it was given
+
+Same round trip, and the case that is the carrier doctrine's other side (task
+355). Task 342's rule — *what the system does not model, it CARRIES* — kept a
+linguex paper byte-intact by refusing to claim it (task 350). This one models
+it, and the interesting question is then not whether the bytes survive but
+whether they come back in the SAME SYNTAX.
+
+Linguistics papers number examples with one of two mutually incompatible
+packages, and a real paper loads both:
+
+```
+expex     \ex \label{s1} … \xe      (an explicit close)
+linguex   \ex.\label{s1} …          (terminated by a blank line)
+```
+
+> **A per-example `dialect` attr, and the serializer writes each example back
+> in ITS OWN dialect.** Converting on open would rewrite every example in a
+> co-authored file Virgil was merely asked to READ — an Overleaf diff bomb —
+> and, since both packages define `\ex`, it would need a `\usepackage{expex}`
+> that BREAKS the paper. Faithful round-trip is the Virgil-shaped answer;
+> convert-on-open was considered and rejected.
+
+Six rules it earned:
+
+- **FORM decides which dialect; the PACKAGE decides whether to model.** The
+  period is the per-SITE discriminator ([latex-lexer.ts](src/lib/latex-lexer.ts)
+  `matchExpexOpenerAt` / `matchLinguexOpenerAt`, neither consulting a preamble —
+  a fragment, a card body and a paste have none), so a mixed document is read
+  example by example. Whether Virgil may CLAIM a linguex site is a different
+  question, asked once of the LIVE preamble (`preambleLoadsPackage` →
+  `livePreamble`, the 344/345 detector law) and held as module state beside
+  `seenTitleFields`, because it is a per-DOCUMENT fact and `ParseContext` is
+  per-SLICE — a document capability threaded through four sub-context
+  constructors is one someone forgets at the fifth.
+- **The bound is the GRAMMAR's, not the code's.** A linguex example has no
+  closing command; it ends at the paragraph break. So `linguexExampleEnd` stops
+  at the first blank line (or block boundary), and task 350's swallow-to-EOF is
+  **unrepresentable** here — a property that survives only while nothing bolts a
+  "continuation" heuristic onto that scan. Do not add one.
+- **What is not modelled is refused WHOLE.** `\exg.` / `\exi.` / `\exr.` are
+  different control words, so the control-word boundary declines them and 342's
+  carrier takes their bytes with no list to maintain; `\z.`, a glossed part
+  (`\bg.`) and a third nesting tier are detected and REFUSE the example, which
+  falls back to the same carrier. Never half-parsed — 350 defect C's rule
+  (*never emit a node that serializes to less than it consumed*), one dialect
+  over.
+- **One assembly, two splitters.** The dialects agree on nothing before the
+  split and everything after it, so `assembleExampleBody` is shared and every
+  consumer downstream — numbering, cards, the panel, drop specs, the float
+  bodies — is dialect-BLIND by construction rather than by care. The SERIALIZER
+  is deliberately NOT shared (the two assemblies differ line for line, and the
+  expex walker's separator coupling describes a grammar linguex does not have).
+- **A live compile hazard fell out of the same discriminator.** The
+  requirements FALLBACK detector matched `\ex` with no period lookahead, so a
+  linguex `\ex.` — carried raw post-350, or modelled post-355 — declared expex
+  and `ensurePreambleRequirements` injected `\usepackage{expex}` AFTER the
+  user's own `\usepackage{linguex}`. Both define `\ex`, the later load wins, and
+  every example in the paper stops compiling: a preamble the user never wrote,
+  breaking a document that compiled before Virgil opened it. Fixed at
+  [PACKAGE_DETECTORS](src/lib/latex-requirement-collector.ts), and the detector
+  is CHECKED against the opener SSOT rather than restated (148's instrument),
+  since it sits in a leaf that cannot import the lexer.
+- **A NEW example takes the document's DOMINANT dialect, derived from the
+  document** ([example-dialect.ts](src/lib/example-dialect.ts)) — purely linguex
+  mints linguex, empty / expex / MIXED mints expex. Derived rather than
+  re-asking the preamble, because a linguex example only exists in the tree
+  because the parse found the package; and the fallback direction is the safe
+  one, since expex is injected from the emit itself where linguex never is. The
+  task text's gloss ("linguex iff the package is loaded and expex is not") is
+  materially worse for the papers this exists for: Gabriel's own loads BOTH and
+  writes linguex, so it would start minting expex into a linguex file.
+
+**Stated normalization:** author layout INSIDE an example is canonicalized once
+(header line, one part per line, the prose of a single example riding the header)
+and is a fixed point from cycle 1 — the same one-time normalization every other
+construct in the serializer performs. Part letters are derived from POSITION,
+which is what linguex's own 26 aliases are for, so an in-order source reproduces
+byte-for-byte and an out-of-order one normalizes.
+
+CI: [linguex-dialect-roundtrip.test.ts](src/lib/__tests__/linguex-dialect-roundtrip.test.ts)
+drives the REAL save pipeline over two cycles per leg, with an expex example and
+a linguex paper with the package COMMENTED OUT as controls through the identical
+harness. Every pre-355 example fixture in the repo is spelled in expex, so a
+dialect divergence was unrepresentable in all of them. The leg with teeth is the
+**census**: the parse and the serializer were never the part that can misbehave —
+a CONSUMER that starts special-casing the dialect is, and it would type-check
+perfectly. So the literal `"linguex"` may appear in production code only in the
+five layers that DECIDE the dialect; a hit is a design question, not an allowlist
+entry. Measured by neutering each half in turn: dropping the modelling takes 10
+legs, the extent scan's marker skip 4, the detector lookahead 2, the refusal
+vocabulary 2, the preamble projection 2.
+
+**Owed, not claimed:** a preview eyeball and a real-FSA open of Gabriel's own
+co-authored linguex paper. What is proven here is the `.tex` round trip end to
+end, which is not FSA-masked.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's

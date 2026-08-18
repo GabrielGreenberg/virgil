@@ -88,8 +88,20 @@ export const PACKAGE_DETECTORS: ReadonlyArray<{
   readonly re: RegExp;
 }> = [
   {
+    // The `.` in the lookahead is the LINGUEX discriminator, and it is
+    // load-bearing rather than tidy (task 355). expex's grammar never puts a
+    // period after `\ex`; linguex's always does — the per-site rule task 350
+    // established and `matchExpexOpenerAt` owns. Without it this FALLBACK
+    // claimed a linguex `\ex.` as expex and `ensurePreambleRequirements`
+    // injected `\usepackage{expex}` AFTER the user's own
+    // `\usepackage{linguex}` — and the two packages both define `\ex`, so the
+    // later load wins and EVERY example in the paper stops compiling. A
+    // preamble the user never wrote, breaking a document that compiled before
+    // Virgil opened it, which is precisely the failure direction
+    // `latex-requirements`' own header warns about. Measured on a
+    // linguex-only paper, before and after.
     id: "expex",
-    re: /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z])|\\begin\{xlist\}/,
+    re: /\\(?:begingl|getfullref|getref|pex|ex)(?![a-zA-Z.])|\\begin\{xlist\}/,
   },
   // A nested example tier needs the `xlist` environment defined (see the
   // `xlistenv` requirement); expex itself does not provide it.
