@@ -60,6 +60,8 @@ import {
   UUID_BEARING_NODE_TYPES,
   TITLED_NODE_TYPES,
   COLLAPSIBLE_NODE_TYPES,
+  DEFERRING_PARENTS,
+  deferringParent,
 } from "@/lib/node-attr-sets";
 // Comments stripped, string literals KEPT — the drift this census hunts lives
 // in literals (`new Set(["paragraph", …])`), so blanking them would make the
@@ -93,6 +95,46 @@ function schemaTypesDeclaring(attr: string): string[] {
 }
 
 const sorted = (s: ReadonlySet<string>) => [...s].sort();
+
+describe("node-attr-sets · DEFERRING_PARENTS is checked against the schema too", () => {
+  // Task 346 moved this set here from `anchor-uuid.ts` because the `.tex` layer
+  // could not import that module and re-typed the rule three times instead.
+  // "Does my inner paragraph defer?" is a POLICY, not an attr, so it cannot be
+  // derived from the schema the way the three sets above are — but two things
+  // about it can be checked, and both are failures this fork would have shown.
+  it("every member is a node type the real schema declares", () => {
+    const schema = getSchema(buildEditorExtensions(mainCtx()));
+    const unknown = sorted(DEFERRING_PARENTS).filter((n) => !(n in schema.nodes));
+    expect(unknown, "a member the schema has never heard of").toEqual([]);
+  });
+
+  it("every member that can hold a paragraph is one the editor really defers", () => {
+    // The predicate and the set must agree — `deferringParent` is what all
+    // three `.tex` walks and every editor surface now ask.
+    for (const name of DEFERRING_PARENTS) {
+      expect(deferringParent(name), name).toBe(true);
+    }
+    // …and a container that is NOT a member must not be swept in. `bulletList`
+    // is the one worth pinning: it is a DESCEND kind, and conflating the two
+    // roles is exactly the taxonomy merge `anchor-resolution.ts` warns against
+    // (a list's own child is a `listItem`, and it is the ITEM that absorbs the
+    // paragraph).
+    for (const name of ["bulletList", "orderedList", "figureBlock", "doc"]) {
+      expect(deferringParent(name), name).toBe(false);
+    }
+    expect(deferringParent(null)).toBe(false);
+    expect(deferringParent(undefined)).toBe(false);
+  });
+
+  it("`codeBlock` is inert here, and that is recorded rather than asserted away", () => {
+    // A `codeBlock`'s content is TEXT, not paragraphs, so this member can never
+    // fire. It is pre-existing, harmless, and left alone — but stating it stops
+    // a future reader from inferring that every member is load-bearing, and
+    // stops a "tidy-up" from deleting a member on the theory that it must be.
+    const schema = getSchema(buildEditorExtensions(mainCtx()));
+    expect(schema.nodes.codeBlock.spec.content ?? "").not.toContain("paragraph");
+  });
+});
 
 describe("node-attr-sets · the declared sets equal the real schema", () => {
   it.each([
