@@ -18,13 +18,16 @@ import {
 } from "@/lib/latex-serializer";
 import {
   checkTexPreservation,
+  preservationRefusalDetail,
   describePreservationRefusal,
 } from "@/lib/tex-preservation";
 import {
   retainLoadedCounts,
   checkWriteAgainstRetained,
   describeWriteRefusal,
+  writeRefusalDetail,
 } from "@/lib/write-preservation";
+import { recordPreservationRefusal } from "@/lib/preservation-notice";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
@@ -460,6 +463,12 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
         const verdict = checkTexPreservation(latex, newLatex);
         if (!verdict.ok) {
           console.error(describePreservationRefusal(verdict, docId));
+          // Task 357 hole 4 (parity with storage-fsa): publish the refusal so
+          // the doc enters the write-protected posture and the banner rises.
+          // The dev backend keeps no `virgil/.history/` snapshots, so there is
+          // no forensic write to force here — the `armed` edge is simply
+          // unused, and that asymmetry is real rather than an omission.
+          recordPreservationRefusal(docId, preservationRefusalDetail(verdict));
           return;
         }
         await Promise.all([
@@ -557,6 +566,9 @@ export async function writeDocBundle(
     const writeVerdict = checkWriteAgainstRetained(h.docId, latex);
     if (writeVerdict) {
       console.error(describeWriteRefusal(writeVerdict, h.docId));
+      // Publish the refusal (task 357 hole 4) — see the load gate above for
+      // why the dev backend takes no forensic snapshot on the armed edge.
+      recordPreservationRefusal(h.docId, writeRefusalDetail(writeVerdict));
       return;
     }
 

@@ -52,8 +52,28 @@
  * So every ambiguity resolves toward refusing: no retained baseline means the
  * gate cannot speak and the write proceeds (it has nothing to compare), but a
  * retained baseline plus an unproven user edit means the write is measured.
+ *
+ * ## A STANDING refusal suspends the step-aside (357 hole 4)
+ *
+ * The step-aside above rests on the model faithfully representing the file.
+ * Once EITHER gate has refused — this one, or 350-D's load-writeback gate —
+ * that premise is disproven for this document, so while the refusal stands
+ * unanswered every write is measured, user edit or not. Otherwise the gates
+ * only delay the loss by one gesture: the user types into the lossy model and
+ * the very next autosave writes what was just refused.
+ *
+ * The refusal is published to [preservation-notice.ts](preservation-notice.ts),
+ * which is also where the user's ACKNOWLEDGMENT lands — and an acknowledgment
+ * outranks everything here, because refusing a user who has been told and has
+ * decided is the worse failure.
  */
 import { measureContentWords } from "@/lib/tex-preservation";
+import {
+  clearPreservationNotice,
+  isPreservationAcknowledged,
+  isWriteProtected,
+  type PreservationRefusalDetail,
+} from "@/lib/preservation-notice";
 import type { Transaction } from "@tiptap/pm/state";
 
 /** Per-region word counts of the bytes a doc was LOADED from. */
@@ -89,6 +109,12 @@ function regionCounts(tex: string): RetainedCounts {
  *  is a fresh document as far as this gate is concerned. */
 export function retainLoadedCounts(docId: string, latex: string): void {
   byDoc.set(docId, { counts: regionCounts(latex), userEdited: false });
+  // A fresh load is a fresh document for BOTH halves of this gate, so the
+  // standing refusal notice is dropped here rather than at each backend's read
+  // — one door, so the baseline and the posture cannot disagree about what a
+  // reload means. The load-writeback that follows re-arms it if the parse is
+  // still lossy (task 357 hole 4).
+  clearPreservationNotice(docId);
 }
 
 /**
@@ -132,8 +158,20 @@ export function checkWriteAgainstRetained(
   docId: string,
   latex: string,
 ): WriteVerdict | null {
+  // The user's informed choice outranks everything here (task 357 hole 4):
+  // once they have answered a standing refusal, refusing their saves would be
+  // the worse failure — and the intact bundle is already in `virgil/.history/`
+  // from the snapshot the first refusal forced.
+  if (isPreservationAcknowledged(docId)) return null;
   const entry = byDoc.get(docId);
-  if (!entry || entry.userEdited) return null;
+  if (!entry) return null;
+  // The 350-D step-aside — "after a real user edit the model is theirs" —
+  // rests on the model faithfully representing the file. A STANDING REFUSAL is
+  // precisely the evidence that it does not, so while one is unanswered the
+  // step-aside is suspended and every write is measured. Without this the
+  // gates only delay the loss by one gesture: the user types into the lossy
+  // model and the next autosave writes exactly what was just refused.
+  if (entry.userEdited && !isWriteProtected(docId)) return null;
   const now = regionCounts(latex);
   for (const region of ["body", "preamble"] as const) {
     const before = entry.counts[region];
@@ -145,6 +183,19 @@ export function checkWriteAgainstRetained(
     }
   }
   return null;
+}
+
+/** The measured shape of a write-gate refusal, in the refusal CHANNEL's
+ *  vocabulary — the twin of `preservationRefusalDetail` on the load side. */
+export function writeRefusalDetail(v: WriteVerdict): PreservationRefusalDetail {
+  return {
+    source: "write",
+    region: v.region,
+    before: v.before,
+    after: v.after,
+    lost: v.lost,
+    allowed: v.allowed,
+  };
 }
 
 /** One-line diagnostic, shared by both backends so they cannot drift. */

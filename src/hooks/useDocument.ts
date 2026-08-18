@@ -5,6 +5,7 @@ import { JSONContent, type Editor } from "@tiptap/react";
 import type { Transaction } from "@tiptap/pm/state";
 import { isAnchorMintTransaction } from "@/lib/anchor-mint-signal";
 import { isRealUserEdit, noteUserEdit } from "@/lib/write-preservation";
+import { isWriteProtected } from "@/lib/preservation-notice";
 import { getDocProducts } from "@/lib/doc-products/pipeline";
 import { readDocBundle, writeDocBundle } from "@/lib/storage";
 import { isStalePipelineError } from "@/lib/multi-window/doc-pipeline";
@@ -131,6 +132,17 @@ export function useDocument() {
       setSaveStatus("saving");
       try {
         await writeDocBundle(handle, doc, opts);
+        // A REFUSED write returns normally — the gate leaves the `.tex` and the
+        // sidecar byte-identical rather than throwing (task 357 hole 4). So the
+        // refusal is read off the channel the gate publishes to, never inferred
+        // from the absence of a throw: claiming "saved" here would be the same
+        // silence the gate exists to end, and advancing `lastSavedRef` to a doc
+        // that never reached disk would make the mint-flush suppression skip a
+        // later legitimate write of it. The banner is what tells the user.
+        if (isWriteProtected(handle.docId)) {
+          setSaveStatus("idle");
+          return;
+        }
         lastSavedRef.current = doc;
         setSaveStatus("saved");
         setTimeout(() => {
