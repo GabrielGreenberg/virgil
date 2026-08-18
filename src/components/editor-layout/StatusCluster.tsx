@@ -15,6 +15,7 @@ import SkillSyncControls from "../SkillSyncControls";
 import CollabStatusPill from "../CollabStatusPill";
 import ExternalChangeBadge from "../ExternalChangeBadge";
 import PreservationNoticeBadge from "../PreservationNoticeBadge";
+import { PomodoroTimer, PomodoroToggleButton } from "../PomodoroTimer";
 import { ExternalChangeActiveReporter } from "./ExternalChangeActiveReporter";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "@/components/StatusDot";
@@ -205,6 +206,17 @@ function StatusClusterImpl(props: StatusClusterProps) {
         onDismissError={onDismissSkillSyncError}
         onDismissNotice={onDismissSkillSyncNotice}
       />
+      {/* The bar timer's WIDGET (task 354). Sits OUTSIDE the
+          topbarRightCollapsed group — a running timer must stay legible when
+          the user collapses the toolbar, which is the whole point of the
+          request. Self-gating (renders null while closed), and PROP-LESS: it
+          reads the session store directly, so a timer tick cannot re-render
+          this memoized cluster. Rendered before BOTH gates: a timer already
+          running must stay legible when the toolbar is collapsed (the point of
+          the request) and in zen mode (a timed writing sitting is exactly when
+          zen is on). Its ICON takes the ordinary tool rules below — see
+          there. */}
+      <PomodoroTimer />
       {!topbarRightCollapsed && (<>
       {/* ── Status-indicator group (left of divider) ───────────────
           Passive indicators for system-wide modes that are activated
@@ -380,6 +392,14 @@ function StatusClusterImpl(props: StatusClusterProps) {
           document.body,
         )}
       </div>
+      {/* The bar timer's ICON (task 354) — an ordinary tool, so it takes the
+          ordinary tool rules: it lives inside the collapsible group and inside
+          the zen gate, rather than minting an exception for itself. A timer is
+          STARTED from a normal bar and stays VISIBLE in a stripped one, which
+          is the asymmetry the widget's placement above encodes. Prop-less for
+          the same reason the widget is; its status dot is what keeps a timer
+          running behind a closed widget visible. */}
+      <PomodoroToggleButton />
       {/* Print — opens a dialog with toggles for which document elements and
           panel appendices to include. Disabled in code/PDF view. */}
       <button
