@@ -448,3 +448,67 @@ describe("6 · census · every EOF-reaching bound states why EOF is safe there",
     }
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// 7 · triage · the two whitelist-drop members that were CHEAP to close
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Both are unreachable from the parser TODAY — the schema constrains what these
+// serializers can meet, which is exactly the reason they were left dropping
+// silently. A drop node, a paste, or a future schema addition reaches them, and
+// the loss is under the write gate's word slack, so nothing else would see it.
+// Driven from hand-built nodes, which is the only way to represent the shape.
+
+describe("7 · a serializer that meets an unexpected child emits it, never drops it", () => {
+  it("listItem: a non-paragraph first child is kept, not sliced away", () => {
+    const item: JSONContent = {
+      type: "listItem",
+      content: [
+        { type: "bulletList", content: [
+          { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "nested only" }] }] },
+        ] },
+      ],
+    };
+    const out = serializeToLatex({
+      type: "doc",
+      content: [{ type: "bulletList", content: [item] }],
+    });
+    expect(out).toContain("nested only");
+  });
+
+  it("exampleBlock / exampleItem: an unexpected child still serializes", () => {
+    const stray: JSONContent = {
+      type: "heading",
+      attrs: { level: 2 },
+      content: [{ type: "text", text: "stray child" }],
+    };
+    const block: JSONContent = {
+      type: "exampleBlock",
+      attrs: { kind: "single", tag: "", label: "" },
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "body" }] },
+        stray,
+      ],
+    };
+    expect(serializeToLatex({ type: "doc", content: [block] })).toContain(
+      "stray child",
+    );
+
+    const item: JSONContent = {
+      type: "exampleItem",
+      attrs: { tag: "", label: "", subLabel: "" },
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "one" }] },
+        stray,
+      ],
+    };
+    const multi: JSONContent = {
+      type: "exampleBlock",
+      attrs: { kind: "multi", tag: "", label: "" },
+      content: [{ type: "exampleItemList", content: [item] }],
+    };
+    expect(serializeToLatex({ type: "doc", content: [multi] })).toContain(
+      "stray child",
+    );
+  });
+});
