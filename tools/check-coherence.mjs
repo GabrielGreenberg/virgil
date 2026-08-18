@@ -829,10 +829,25 @@ const PARSER_TS = "src/lib/latex-parser.ts";
 // Serializer-internal UUID markers — emitted by latex-serializer.ts, not
 // author vocabulary, so they are excluded from the allowlist inventory.
 const ALLOWLIST_INTERNAL_MARKERS = new Set(["vfid", "vcid", "vlid", "vlidend"]);
-// Escape-special commands the parser handles (the escMatch branch) that the
-// alternation extractor below can't fully see — it stops at the first source
-// `{`, so it captures only `textbackslash`. Add the other two explicitly.
-const ALLOWLIST_ESCAPE_SPECIALS = new Set(["textasciitilde", "textasciicircum"]);
+// Escape-special commands the parser handles are NOT visible to the
+// alternation extractor below: since task 349 they are matched from
+// `CHAR_ESCAPE_TABLE` (src/lib/latex-typography.ts) via `matchCharEscapeAt`,
+// not from a `/^\\cmd\{/` literal inside parseInlineContent. So DERIVE them
+// from that table rather than hand-listing — a hand list can only be missing a
+// name, and this one already was: the 349 refactor left `\textbackslash`
+// reading as a phantom while the doc was right and the checker was blind.
+const TYPOGRAPHY_TS = "src/lib/latex-typography.ts";
+function escapeSpecialCommands() {
+  if (!exists(TYPOGRAPHY_TS)) return new Set();
+  const src = read(TYPOGRAPHY_TS);
+  const m = /CHAR_ESCAPE_TABLE[^=]*=\s*\[([\s\S]*?)\n\];/.exec(src);
+  if (!m) return new Set();
+  const out = new Set();
+  // In the .ts source a `tex: "\\textbackslash{}"` value is the chars
+  // `" \ \ t e x t …`, so match two literal backslashes + a command name.
+  for (const sm of m[1].matchAll(/tex:\s*"\\\\([A-Za-z]+)/g)) out.add(sm[1]);
+  return out;
+}
 // `\verb<delim>…<delim>` / `\verb*` — inline verbatim, genuinely rendered
 // (latex-parser.ts handles it via the delimiter-based verbatim branch →
 // `verbatimMark()`, task 264), but NOT as a `/^\\cmd\{/` literal inside
@@ -869,7 +884,7 @@ function parserInlineCommands() {
       if (name && !ALLOWLIST_INTERNAL_MARKERS.has(name)) out.add(name);
     }
   }
-  for (const e of ALLOWLIST_ESCAPE_SPECIALS) out.add(e);
+  for (const e of escapeSpecialCommands()) out.add(e);
   for (const e of ALLOWLIST_VERBATIM_HANDLED) out.add(e);
   return out;
 }
