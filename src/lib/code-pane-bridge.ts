@@ -48,6 +48,7 @@ import {
   extractPreambleAndPostamble,
 } from "@/lib/latex-parser";
 import { serializeToLatex } from "@/lib/latex-serializer";
+import { checkTexPreservation } from "@/lib/tex-preservation";
 import { getDocProducts } from "@/lib/doc-products/pipeline";
 import {
   getRanges,
@@ -235,6 +236,59 @@ export function createCodePaneBridge(
         lastParseError = message;
         opts.onParseError?.(err instanceof Error ? err : new Error(message));
       }
+      return;
+    }
+    // THE CODE-PANE PARSE GATE (task 357, hole 2).
+    //
+    // A parse that THROWS was already refused above. The dangerous one is the
+    // parse that succeeds and quietly represents less than it was given — and
+    // mid-typing is exactly when that happens, because an unterminated
+    // construct EXISTS for as long as it takes to type its closer. Without this
+    // check the lossy model went straight into `setContent(..., {emitUpdate:
+    // true})`, which arms the autosaver, and the document became the parse.
+    //
+    // Measured with the SAME words rule both other gates use, and serialized
+    // with the delimiters just extracted so the preamble region compares like
+    // for like and only the BODY can move.
+    //
+    // The refusal keeps the LAST-GOOD model simply by not calling `setContent`
+    // — TipTap keeps what it has, so nothing lossy ever enters the editor.
+    //
+    // Deliberately NOT published to the `preservation-notice` store, and this
+    // is the point worth stating: that store installs a document-wide
+    // write-gating POSTURE, which is right when a lossy model already reached
+    // the editor and every later write would carry it. Here the model never
+    // entered — the danger is averted, not pending — so raising a banner and
+    // gating unrelated writes would report a hazard that does not exist. The
+    // proportionate surface is the code pane's own inline error, which is
+    // where the text that could not be applied is sitting.
+    let refusal: string | null = null;
+    try {
+      const roundTripped = serializeToLatex(parsed, { preamble, postamble });
+      const verdict = checkTexPreservation(text, roundTripped);
+      if (!verdict.ok) {
+        const r = verdict.body.ok ? verdict.preamble : verdict.body;
+        refusal =
+          `Not applied: parsing this would drop ${r.lost} of ${r.before} ` +
+          `content words from the document ${verdict.body.ok ? "preamble" : "body"}. ` +
+          `Your text is unchanged here and the document is untouched — this is ` +
+          `usually an unterminated construct mid-edit.`;
+      }
+    } catch {
+      // A serializer throw is not evidence the PARSE was lossy, and refusing on
+      // it would block the code pane on an unrelated defect. Fail OPEN here and
+      // let the write-side gate (which measures the same thing one layer down)
+      // be the backstop.
+      refusal = null;
+    }
+    if (refusal) {
+      if (lastParseError !== refusal) {
+        lastParseError = refusal;
+        opts.onParseError?.(new Error(refusal));
+      }
+      // Leave `pendingPersist` armed: the delimiter edit is real, but committing
+      // it while the BODY was refused would write a preamble whose body never
+      // landed. The next flush that passes commits both together.
       return;
     }
     if (lastParseError !== null) {
