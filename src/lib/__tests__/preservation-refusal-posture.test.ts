@@ -257,8 +257,17 @@ describe("census · every refusal reaches the channel", () => {
     // backend keeps no `virgil/.history/`, so it has no snapshot to force —
     // an asymmetry stated at both of its sites rather than silently absent.
     const fsa = read("src/lib/storage-fsa.ts");
-    const armedBlocks = fsa.match(/if \(armed\) \{\s*await snapshotPriorBundle\(/g) ?? [];
-    expect(armedBlocks.length, "both gates must snapshot on the armed edge").toBe(2);
+    // FOUR refusal paths since task 357's serializer pass: the load gate, the
+    // write gate, and the serializer gate in front of each of them. Every one
+    // arms the same forensic snapshot on the same edge — a refusal that skipped
+    // it would leave the user acknowledging their way past a gate with no copy
+    // of the intact file behind them.
+    const armedBlocks =
+      fsa.match(/if \((?:refusal\.)?armed\) \{\s*await snapshotPriorBundle\(/g) ?? [];
+    expect(
+      armedBlocks.length,
+      "every FSA refusal path must snapshot on its armed edge",
+    ).toBe(4);
     // Asked of CODE, not raw source: the dev backend's own sites now NAME the
     // missing snapshot in prose to state the asymmetry (task 357's `writeTex`
     // marker does exactly that), and a guard that cannot tell a comment from a

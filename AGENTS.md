@@ -1483,6 +1483,243 @@ Four rules it earned:
 
 Same *class* as task 259 (a per-kind capability that "looks pinned" and isn't) and adjacent to the parked 228 (this same assertion's consumer-**reconciliation** symmetry, a different axis, still open).
 
+## The write path: no automatic write may lose content
+
+> **A write the user did not ask for is measured before it lands.** Virgil's
+> `.tex` is the user's only copy, and every automatic path to it — the
+> load-writeback, the 1500 ms autosave, an anchor-mint flush, a code-pane
+> re-parse, the editor's own mount — can persist a model that represents the
+> file less completely than the file does. Each of those doors MEASURES what it
+> is about to commit against what the document was READ with, and a shortfall is
+> a REFUSAL published to one channel that reaches the user and gates the door.
+
+This is the content-loss cluster (task 350 defect D, then 357), and the reason it
+needs a section rather than a fix is that every member is **silent and a fixed
+point**: the output is well-formed LaTeX, the save succeeds, the reload looks
+consistent, and the document is simply shorter than the one the user wrote.
+Nothing throws. The parser-side laws above ("what a system does not model, it
+CARRIES", and its five siblings) keep a round trip honest; this section is what
+happens when one of them is nonetheless wrong.
+
+**Five gates, one channel.** Each asks a different question, in the order a byte
+travels:
+
+- **LOAD** ([tex-preservation.ts](src/lib/tex-preservation.ts), `checkTexPreservation`)
+  — the load-writeback re-stamps the `.tex` seconds after open. Refuses when the
+  re-serialization holds materially fewer content words than the bytes just read:
+  a parse that could not represent this file must not overwrite it.
+- **MOUNT** ([mount-preservation.ts](src/lib/mount-preservation.ts) over
+  [schema-mount.ts](src/lib/tiptap/schema-mount.ts)) — *a model that a gate has
+  measured is not yet a document.* `enableContentCheck` is off, so
+  `createNodeFromContent` swallows a `nodeFromJSON` throw and returns an **empty
+  document**: a model naming one node type this build's schema has not got opens
+  the paper BLANK, word-complete on the way past, and the write gate steps aside
+  on the user's first keystroke into that blank. Both main-document doors ask,
+  and they ask differently on purpose — the load door measures what the editor
+  KEPT (that catch has exactly one product, so it is O(1) on the happy path), the
+  code-pane door asks BEFORE it commits so nothing lossy ever enters.
+- **CODE PANE** ([code-pane-bridge.ts](src/lib/code-pane-bridge.ts)) — 600 ms
+  after a code-view keystroke the text is re-parsed into the live document, and
+  mid-typing is exactly when unterminated constructs EXIST. Round-trips the parse
+  against the delimiters it just extracted and refuses BEFORE `setContent`,
+  keeping the last-good model. Surfaces on the pane's own inline error rather
+  than the document banner: the model never entered, so the hazard is averted
+  rather than pending — and the refusal is a state the user types their way OUT
+  of.
+- **SERIALIZE** ([`UnserializableNodeError`](src/lib/latex-serializer.ts),
+  published by [serialize-refusal.ts](src/lib/serialize-refusal.ts)) — the
+  serializer itself. See "The dispatcher half" below.
+- **WRITE** ([write-preservation.ts](src/lib/write-preservation.ts)) — 350-D
+  exempted the autosave on the sound ground that once the user has edited, the
+  model IS their document. That rationale does not cover `writeDocBundle`'s OTHER
+  caller: `flushNow` writes the whole bundle on an anchor-UUID MINT, so ONE card
+  gesture (grab-handle click, omni open, card drag) on a uuid-less paragraph
+  persists immediately with **no typing at all** — and replaces `virgil.json`
+  wholesale, carrying sidecar damage no `.tex` gate can see. So a write is
+  measured against the bytes the doc was LOADED with until a real user edit lands.
+
+Ten rules the cluster earned:
+
+- **A "real user edit" is an UNDOABLE transaction, not a `docChanged` one.** An
+  anchor mint IS doc-changing, so keying the step-aside on that re-opens the very
+  hole it closes. The test is `addToHistory !== false` — a POSITIVE test, so a new
+  system write cannot count as a user edit by merely not being on a denylist; it
+  must opt in by being undoable. Stated limit at the door: that is a convention,
+  not an enforced invariant.
+- **The baseline is RETAINED at read, never re-read at write.** By write time the
+  file may already carry the load-writeback's own re-stamp, so a re-read would
+  compare the model against Virgil's own output and measure nothing.
+- **The measure asks WHICH words, not how many.** A net count is defeated by
+  simultaneous growth: a pass that dropped `\author{Jane Q. Doe}` while adding
+  four words elsewhere scored a loss of ZERO. `Σ max(0, before(t) − after(t))` is
+  `≥` the net for every input (a strict strengthening — nothing the old rule
+  refused is now allowed) and is ORDER-INVARIANT, which is why it is a multiset
+  and **not** a contiguous-run check: the serializer legitimately MOVES word runs
+  (`\title` hoisted past the package block; a figure's attrs re-emitted in the
+  serializer's own order), and a run check false-refuses on every one of those.
+  Measured before adopting — over every `.tex` corpus in the repo, two save cycles
+  each, the shortfall is 0 in both regions.
+- **The regions are measured separately** (body / preamble), because a preamble
+  rewrite and a body loss mask each other in one total.
+- **A refusal is a fact about the DOCUMENT, not a log line.** Every gate publishes
+  to [preservation-notice.ts](src/lib/preservation-notice.ts) — a store, not a
+  return value, because the fact is produced on a promise nobody awaits and
+  consumed by a topbar pill and by the save path, two readers with no call
+  relationship to the producer (the `useSyncExternalStore` shape the DiskWatcher's
+  external-change store has).
+- **The posture is WRITE-GATING, not read-only.** While a notice stands the 350-D
+  step-aside is SUSPENDED — that rationale assumes the model represents the file,
+  and a refusal is exactly the evidence that it does not, so without this the gates
+  only delay the loss by one gesture. The editor stays EDITABLE: the danger is
+  exclusively what reaches disk, the file on disk is intact whatever the user does
+  in the editor, and a read-only posture would take away the two things they most
+  need (copying text out, reading the source in the code view) on a stronger
+  diagnosis than the gate can support.
+- **Acknowledgment outranks everything, and cannot silently cost the missing
+  bytes.** "Save anyway…" (behind a danger confirm) is the one way out — refusing a
+  user who has been told and has decided is the worse failure. The FIRST refusal
+  forces an unconditional forensic snapshot of the intact bundle into
+  `virgil/.history/`, bypassing the autosave rate limit, so the pre-refusal file
+  is on disk before any acknowledged write. Only the armed EDGE snapshots (the
+  autosave retries every 1500 ms while the notice stands). The dev backend keeps
+  no history folder, so its armed edge is unused — stated at its sites rather than
+  silently absent. There is deliberately NO plain dismiss: dismissing would hide
+  the notice while every write stayed refused, which is the silence the surface
+  exists to end. And the banner sits BEFORE the `topbarRightCollapsed` gate — a
+  data-integrity notice must not be hideable by a layout preference.
+- **A refused write returns NORMALLY, so the save path reads the CHANNEL rather
+  than the absence of a throw.** It used to set `saveStatus: "saved"` and advance
+  `lastSavedRef` for a write that never happened — the second of which also
+  suppresses a later legitimate mint-flush of that doc.
+- **Every function that writes a document's file is ACCOUNTABLE** — it MEASURES
+  the write against what was read, or SNAPSHOTS the bytes it is about to
+  overwrite, or states at the site why it needs neither. `writeTex` (the style
+  swap) was the one `.tex` writer with neither, carrying the most destructive write
+  Virgil makes. No GATE, deliberately — the swap is user-intent and refusing it
+  would refuse what the user asked for — but an **unconditional**
+  `snapshotPriorBundle`, unconditional because it fires on a discrete gesture and
+  never on a timer.
+- **The `/editor/*` skills are the THIRD writer and had no net.**
+  `apply_response.py`'s `region-replace` rewrites the whole preamble from model
+  output. The rule is ported to `_common.py`, held to the TS implementation by a
+  shared fixture CORPUS whose `expected` numbers are GENERATED from it — a golden
+  file rather than a shared input, because a shared input alone is satisfied by
+  both languages drifting the same way, which is what a "port the rule" commit is
+  most likely to do. The splice refuses on two grounds and the asymmetry is the
+  design: the BODY takes the words rule (this mode preserves body bytes verbatim,
+  so a body shortfall can only mean a wrong `endMarker` ate document content),
+  while the PREAMBLE is deliberately NOT word-gated (`/editor/style-merge`
+  legitimately drops the `\documentclass`, the shim block, the title fields and
+  shadowed packages) and gets the structural invariant the mode rests on instead:
+  exactly one `\begin{document}` in the result.
+
+### The dispatcher half: a serializer that cannot represent its input REFUSES
+
+The last member, and the one where the gates above were all correct and still
+could not help. `serializeNode`'s `default:` arm emitted a node's CHILDREN and
+dropped its WRAPPER — and, for a childless node, emitted nothing at all; the
+second dispatcher, `serializeInline`, had a trailing `return ""` of the same
+shape. Both produce well-formed LaTeX that is simply shorter, and no gate
+downstream can see it once the user has typed: **the write gate's step-aside
+rests on "after a real user edit the model IS the document", which is exactly
+the moment a wrapper-dropping serialize stops being measured against anything.**
+
+> **A serializer that cannot represent its input must not emit LESS** — "less" is
+> byte-indistinguishable from a correct shorter document. And the set of node
+> types it CAN represent is CHECKED against the real schema, since the serializer
+> is TipTap-free by construction and cannot ask.
+
+Five rules it earned:
+
+- **ONE dispatcher.** `serializeInline`'s five non-text arms were byte-identical
+  duplicates of `serializeNode`'s, so the sequence walker now delegates and the
+  second `return ""` is retired **by construction rather than by repair** — the
+  twin rule, one file over. Two arms were added on the way: `figureCaption`
+  (consumed contextually by `figureBlock`, declared so the census can see it has an
+  ANSWER — the expex family's shape) and `text` (a text node reaching the BLOCK
+  walk is a malformed model, but the answer to a structural anomaly is never "lose
+  the user's prose"; pre-357 it fell to the default arm and vanished).
+- **The refusal is a THROW, not a sentinel.** Every one of `serializeToLatex`'s
+  ~ten callers would otherwise have to remember to test a sentinel, and the one
+  that forgot would write the sentinel to disk. A throw is refused by default and
+  has to be caught on purpose.
+- **…so the doors split into two kinds, and both are censused.** The four bundle
+  writers (two per backend) CATCH it and publish to the same channel a lossy write
+  uses — a throw escaping one of them would be a third inert refusal, since
+  nothing awaits the load writeback and `save()` catches, logs and leaves the doc
+  dirty, so the user watches an autosave that never lands and is told nothing.
+  Every read-only projection of the `.tex` FAILS OPEN and keeps its last good
+  text: the pipeline's idle tier, `useLatexSource`, the outline's line probe, the
+  example cache — and the CODE VIEW, which falls back to the intact DISK bytes,
+  because "open the code view to see the source" is the banner's own advice and
+  that surface must still work on a refused document.
+- **The code pane's fail-open was NARROWED, not inherited.** An
+  `UnserializableNodeError` IS evidence about the parse — committing that model
+  would put the live paper into a state no write could ever leave — so the bridge
+  refuses and names the node. Any other throw keeps the original rule (not
+  evidence the parse was lossy; refusing on it would block the pane on an
+  unrelated defect).
+- **This refusal offers no "Save anyway", and that is the honest answer.** The
+  other three refusals have a version to save — a shorter document the user may
+  knowingly accept. This one does not: the serializer produced no bytes at all, so
+  acknowledgment would promise what the commit cannot do and refuse again one
+  gesture later. The badge branches on `source` and withholds the row.
+
+**Reachability, stated rather than implied.** `parseLatex` builds for this schema,
+so this cannot fire for a document today's editor can hold — and CI keeps it that
+way. It is the net for the two cases where the schema and the serializer genuinely
+diverge: a node extension registered without a serializer arm (which CI turns into
+a build failure rather than a silent drop), and a model reaching the serializer
+from outside the schema. The same two cases the mount probe exists for, from the
+other end.
+
+### CI, and the limits stated rather than implied
+
+Suites: [write-preservation-gate](src/lib/__tests__/write-preservation-gate.test.ts),
+[preservation-refusal-posture](src/lib/__tests__/preservation-refusal-posture.test.ts),
+[preservation-notice-badge](src/components/__tests__/preservation-notice-badge.test.tsx),
+[mount-preservation-gate](src/lib/__tests__/mount-preservation-gate.test.ts),
+[code-pane-preservation-gate](src/lib/__tests__/code-pane-preservation-gate.test.ts),
+[serializer-node-coverage](src/lib/__tests__/serializer-node-coverage.test.ts),
+[tex-write-accountability](src/lib/__tests__/tex-write-accountability.test.ts),
+[write-tex-forensic-snapshot](src/lib/__tests__/write-tex-forensic-snapshot.test.ts),
+[preservation-measure-parity](src/lib/__tests__/preservation-measure-parity.test.ts),
+[preservation-measure-python](src/lib/__tests__/preservation-measure-python.test.ts)
++ `editor/scripts/tests/test_preservation_measure.py`.
+
+**The legs with teeth are the censuses, every time** — the gates were never the
+part that could misbehave; a WRITER or a DOOR that never asks is, and such a
+writer type-checks perfectly and is invisible to every behavioural test of every
+gate. `tex-write-accountability`'s needle is the WRITE, not the filename (a
+filename census is a hand list wearing a regex's clothes, and `writeTemplateFiles`
+writes a `.tex` without ever spelling the word). `serializer-node-coverage`'s
+premise leg sweeps the REAL main-editor schema, so a node extension added without
+a serializer arm fails the build; its door census requires both backends to catch
+the refusal at BOTH bundle-write sites **and to rethrow anything else** — swallowing
+an unrelated failure there turns a real bug into a silently skipped save, the
+defect's own shape.
+
+Known limits, none of them papered over:
+
+- **The 4-word floor is real.** Deleting `\usepackage{expex}` (2 words) does not
+  trip the gate, and a lone `\author{Jane Q. Doe}` still passes. Recorded as a
+  PASSING leg that documents the limit rather than a failing one that pretends the
+  gate is tighter than it is.
+- **A words measure cannot see re-ORDERING or `%`-fusion damage**, and the
+  contiguous-run check that would catch one shape of it costs false refusals on
+  every legitimate hoist — measured, then declined.
+- **The Python half reaches only the skills.** `withDocLock` is a Web Locks
+  primitive: it serializes this browser's windows and does not reach the
+  out-of-process `/editor/*` scripts at all. What covers that writer is the
+  words/structural refusal in `_common.py`, not the lock.
+- **The autosave after a real user edit is deliberately UNGATED** (unless a notice
+  stands). That is 350-D's decision, not an oversight: refusing to save the user's
+  own typing is the worse failure.
+- **Owed, not claimed:** a real-FSA eyeball of the banner, the refusal posture, and
+  a live style switch leaving a `virgil/.history/` slot behind. This class masks in
+  the dev preview (see the FSA-masking note in the memory index), so the durable
+  proof here is the unit contracts.
+
 ## Style
 
 [src/STYLE_GUIDE.md](src/STYLE_GUIDE.md) is the design-system reference. Check it before building new UI. Update it when a UI decision feels generalizable.

@@ -177,7 +177,17 @@ export function createDocProducts(
     if (!preambleReady) return snapshot.sourceText;
     const doc = editor.state.doc;
     const parts = [];
-    for (let i = 0; i < doc.childCount; i++) parts.push(getBlockLatex(doc.child(i)));
+    try {
+      for (let i = 0; i < doc.childCount; i++) parts.push(getBlockLatex(doc.child(i)));
+    } catch {
+      // FAIL OPEN (task 357). The serializer now REFUSES a node it cannot
+      // express rather than emitting the document without it. This tier is a
+      // read-only projection running on an idle callback, so the honest answer
+      // is the LAST GOOD text — never a shorter one, and never an exception
+      // escaping into `requestIdleCallback`. The write-side gate is where a
+      // refusal is published and the user is told.
+      return snapshot.sourceText;
+    }
     pipelineStats.assemblies++;
     return assembleLatex(
       parts,

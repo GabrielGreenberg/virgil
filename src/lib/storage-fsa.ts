@@ -48,6 +48,7 @@ import {
   writeRefusalDetail,
 } from "@/lib/write-preservation";
 import { recordPreservationRefusal } from "@/lib/preservation-notice";
+import { reportSerializeRefusal } from "@/lib/serialize-refusal";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
@@ -640,7 +641,26 @@ async function writeReStampedTexOnLoad(
       const settings = migrateDocumentSettings(rawSettings);
       serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
     }
-    const latex = serializeToLatex(content, serializeOpts);
+    // THE SERIALIZER GATE (task 357). A model holding a node this build cannot
+    // express in LaTeX no longer serializes to a SHORTER document — the
+    // serializer refuses (`UnserializableNodeError`), and the refusal is
+    // published to the same channel the two word-measure gates below use. It
+    // is caught HERE rather than left to escape because a throw out of this
+    // fire-and-forget writeback would be a third inert refusal: nothing awaits
+    // this promise, so the user would be told nothing at all.
+    let latex: string;
+    try {
+      latex = serializeToLatex(content, serializeOpts);
+    } catch (err) {
+      const refusal = reportSerializeRefusal(err, h.docId);
+      if (!refusal) throw err;
+      if (refusal.armed) {
+        await snapshotPriorBundle(docHandle, virgil, meta.texFilename).catch(
+          () => {},
+        );
+      }
+      return;
+    }
 
     // THE PRESERVATION GATE (task 350 defect D). This write is automatic — the
     // user did not ask for it — so it must not be able to lose content. If the
@@ -776,7 +796,23 @@ export async function writeDocBundle(
       const settings = migrateDocumentSettings(rawSettings);
       serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
     }
-    const latex = serializeToLatex(content, serializeOpts);
+    // THE SERIALIZER GATE (task 357) — see `writeReStampedTexOnLoad` above.
+    // Refusing here leaves the `.tex` AND `virgil.json` untouched, which is the
+    // half a `.tex`-only gate could never cover: this path replaces the sidecar
+    // wholesale.
+    let latex: string;
+    try {
+      latex = serializeToLatex(content, serializeOpts);
+    } catch (err) {
+      const refusal = reportSerializeRefusal(err, h.docId);
+      if (!refusal) throw err;
+      if (refusal.armed) {
+        await snapshotPriorBundle(docHandle, virgil, meta.texFilename).catch(
+          () => {},
+        );
+      }
+      return;
+    }
 
     // THE WRITE-SIDE PRESERVATION GATE (task 357). 350-D gated the LOAD
     // writeback and deliberately exempted the autosave — once the user has
