@@ -26,13 +26,20 @@
  * `holdOmniCard` is the deliberate exception and the reason the two doors are
  * spelled separately: there the pin IS the point.
  *
- * Coordinates: `omniPinStore` speaks POD-RELATIVE Y (see its header), so the
- * conversion happens here, once, against the pod that hosts the absolute
- * wrappers — and the necessity rule is asked in that same space, with the
- * wrapper's viewport rect and its scroll band supplying visibility.
+ * Coordinates: a gesture speaks in SCREEN Y, the necessity rule is asked in
+ * POD-RELATIVE Y (against the pod that hosts the absolute wrappers, with the
+ * wrapper's viewport rect and its scroll band supplying visibility), and the
+ * store speaks ANCHOR-RELATIVE offsets (task 362 — see `omni-pin-store`'s
+ * header for why the durable half of a pin is its offset from the anchor and
+ * never a pod coordinate). All three conversions happen HERE, once, which is
+ * what lets the store hold a value no later document edit can falsify.
  */
 
-import { omniPinStore, type PinSide } from "./omni-pin-store";
+import {
+  omniPinStore,
+  DATA_OMNI_NATURAL_TOP,
+  type PinSide,
+} from "./omni-pin-store";
 import { findOmniEntry } from "./event-bridges/open-for-card";
 import { resolveAlignScroll } from "./layout-scroll";
 import { mayReposition } from "@/lib/reposition-policy";
@@ -50,9 +57,21 @@ interface Resolved {
   wrapperId: string;
   wrapper: HTMLElement;
   pod: HTMLElement;
+  /** The card's pod-relative NATURAL top — the position its ANCHOR gives
+   *  it, published by the pod on the wrapper each measure. The reference
+   *  every stored pin is expressed against (task 362). */
+  naturalTop: number;
 }
 
-/** Everything a placement needs, from the wrapper element itself. */
+/** Everything a placement needs, from the wrapper element itself.
+ *
+ *  A wrapper with no readable `data-omni-natural-top` resolves to `null` —
+ *  the same "there is nothing to pin" answer as a missing wrapper, and the
+ *  fail-CLOSED direction on purpose: the alternative (fall back to storing
+ *  an absolute Y) is precisely the decoupling task 362 exists to retire,
+ *  and it would come back silently on whichever path lost the attribute.
+ *  This costs nothing in practice, because the pod renders a positioned
+ *  wrapper only for a card it has a measured natural top for. */
 function resolveFrom(
   wrapper: HTMLElement | null,
   fallbackKey: string,
@@ -61,11 +80,19 @@ function resolveFrom(
   const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
   const side = sideEl?.dataset.panelColumnSide;
   if (!wrapper || !pod || (side !== "left" && side !== "right")) return null;
+  // `Number(null)` and `Number("")` are both 0, so the presence check is
+  // separate from the parse — a missing attribute must not read as an
+  // anchor sitting at the top of the pod.
+  const rawNatural = wrapper.getAttribute(DATA_OMNI_NATURAL_TOP);
+  const naturalTop =
+    rawNatural === null || rawNatural.trim() === "" ? NaN : Number(rawNatural);
+  if (!Number.isFinite(naturalTop)) return null;
   return {
     side,
     wrapperId: wrapper.dataset.omniEntryWrapper ?? fallbackKey,
     wrapper,
     pod,
+    naturalTop,
   };
 }
 
@@ -94,7 +121,15 @@ function publish(
       // that opened the panel), so the wrapper isn't in the DOM yet. One
       // frame is enough for the column to commit its first render; a second
       // miss means there is no such card and there is nothing to pin.
-      if (!retried) {
+      //
+      // Only the KEY-lookup form retries, which is the only form the retry
+      // was ever for: a caller holding its element (`holdOmniCard`, from a
+      // mousedown on the wrapper itself) is holding a MOUNTED node, so a
+      // second resolve of that same node re-reads the same answer. Since
+      // this branch is now also reachable from the fail-closed natural-top
+      // check, retrying it would burn a frame on every such mousedown to
+      // reach a guaranteed second refusal.
+      if (!retried && !(target instanceof HTMLElement)) {
         retried = true;
         requestAnimationFrame(apply);
       }
@@ -120,7 +155,13 @@ function publish(
       });
       if (verdict === "hold") return; // refused: write nothing, move nothing
     }
-    omniPinStore.requestPin(r.side, r.wrapperId, desiredPodTop);
+    // Absolute → ANCHOR-RELATIVE, here and nowhere else (task 362). The
+    // necessity question above is a SCREEN question (is the card visible,
+    // is it far from where the user pointed?) and is rightly asked in
+    // absolute pod space; what gets STORED is the durable half — the
+    // offset from the anchor — so the card rides later edits instead of
+    // decoupling from the marker that shares its anchor.
+    omniPinStore.requestPin(r.side, r.wrapperId, desiredPodTop - r.naturalTop);
   };
   apply();
 }

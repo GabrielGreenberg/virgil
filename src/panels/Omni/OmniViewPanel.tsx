@@ -684,15 +684,20 @@ function OmniViewPanel({
   );
 
   // Per-card pin: when a marker is clicked in the editor (or a card jump
-  // fires `virgil-card-jumped`), the pin store gains an entry with the
-  // pod-relative Y the publisher computed at click time. We pass it
-  // through to useInTextPositions, which bakes it into the cascade —
-  // cards AFTER the pinned card pack below it; cards BEFORE pack above
-  // it. Result: the whole deck reflows around the pin without overlap.
+  // fires `virgil-card-jumped`), the pin store gains an entry holding the
+  // OFFSET from that card's anchor-derived natural top that the placement
+  // door computed at gesture time (task 362 — the store used to hold an
+  // absolute pod Y, which froze a derived answer and decoupled the card
+  // from the marker that shares its anchor). We pass it through to
+  // useInTextPositions, which does NOT bake it: `resolveCascade` re-derives
+  // `naturalTop + offset` on every measure, so the pinned card rides
+  // document edits with its anchor. Cards AFTER it pack below; cards BEFORE
+  // pack above. Result: the whole deck reflows around the pin without
+  // overlap, and the pin cannot go stale.
   const pinRequest = usePinRequest(side as PinSide);
   const pinned = useMemo(
     () => (pinRequest
-      ? { id: pinRequest.cardId, pinTop: pinRequest.pinTop }
+      ? { id: pinRequest.cardId, offset: pinRequest.offset }
       : null),
     [pinRequest],
   );
@@ -702,7 +707,7 @@ function OmniViewPanel({
   // `resolvePos(id) ?? item.pos` at measure time, so paragraph-anchored cards
   // track their anchor live on every reflow instead of riding the stale baked
   // pos — the core of the "cards stack at the top while typing" fix.
-  const { positions, editorContentHeight, panelScrollRef } =
+  const { positions, naturals, editorContentHeight, panelScrollRef } =
     useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned, resolvePos);
 
   // Motion (task 328): a sanctioned move SLIDES instead of teleporting.
@@ -792,6 +797,18 @@ function OmniViewPanel({
             <div
               key={item.id}
               data-omni-entry-wrapper={item.id}
+              // The card's ANCHOR-derived top, published for the one reader
+              // that needs it: `omni-card-placement.ts` stores a pin as an
+              // OFFSET from this number (task 362), so a pinned card rides
+              // document edits with its anchor instead of freezing at a pod
+              // coordinate the anchor has since left. Present on every
+              // rendered wrapper by construction — this branch runs only
+              // when `positions` has a top, which requires a measured
+              // natural. Deliberately OMITTED rather than defaulted if it
+              // ever isn't: the door fails CLOSED on a missing attribute,
+              // and substituting the CASCADED top here would hand it a
+              // plausible wrong reference instead.
+              data-omni-natural-top={naturals.get(item.id)?.naturalTop}
               data-omni-nested-child={isNested ? "" : undefined}
               className={`absolute left-2 right-2${isNested ? " pl-4" : ""}${
                 slide ? " omni-entry-slide" : ""

@@ -272,16 +272,26 @@ export function approxTopForPos(
 
 const DEFAULT_ENTRY = (id: string) => linkCardIdSelector(id);
 
-/** Optional pin: force one card's `top` to a fixed pod-relative Y. Cards
- *  AFTER the pinned card in source-anchor-order cascade off the pinned
- *  card's bottom; cards BEFORE cascade upward off the pinned card's top.
- *  Net effect: the deck reflows around the pin without overlap. */
+/** Optional pin: hold one card at a fixed OFFSET from its natural
+ *  (anchor-derived) top. Cards AFTER the pinned card in source-anchor-order
+ *  cascade off the pinned card's bottom; cards BEFORE cascade upward off the
+ *  pinned card's top. Net effect: the deck reflows around the pin without
+ *  overlap.
+ *
+ *  ANCHOR-RELATIVE, not pod-absolute (task 362). The pin's absolute Y is
+ *  re-derived here, every measure, as `naturalTop + offset` — so a pinned
+ *  card rides every document edit with its anchor, exactly as its margin
+ *  marker does. Storing the absolute Y instead froze a derived answer: the
+ *  anchor moved, the marker moved with it, and the card did not.
+ *
+ *  A pin whose card has no measured natural top is INERT (it names no row
+ *  the cascade can place), which is also what happens when the anchor is
+ *  deleted — the deck simply re-packs naturally. */
 export interface Pinned {
   id: string;
-  /** Pod-relative Y (px). Computed at publish time against the pod that
-   *  hosts the absolute card wrappers — same coordinate space as the
-   *  natural positions this hook returns. */
-  pinTop: number;
+  /** Pod-relative pixels from the card's natural top. Computed at publish
+   *  time (`omni-card-placement.ts`) as `desiredPodTop - naturalTop`. */
+  offset: number;
 }
 
 /** Per-item measurement consumed by the pure cascade resolver. */
@@ -298,7 +308,8 @@ export interface NaturalEntry {
  * Pure-JS cascade resolver. Given measured natural positions + heights
  * and the current item list, returns a Map of final pod-relative Y
  * values. If `pinned` is set, the pinned card's position is forced to
- * `pinTop` and the cascade reflows in both directions to avoid overlap.
+ * `its natural top + pinned.offset` and the cascade reflows in both
+ * directions to avoid overlap.
  *
  * This is the hot path on every pin change. NO DOM reads — operates
  * entirely on numbers measured separately.
@@ -309,6 +320,15 @@ export function resolveCascade(
   pinned: Pinned | null,
 ): Map<string, number> {
   if (items.length === 0 || natural.size === 0) return new Map();
+
+  // The pin's absolute Y is DERIVED, here, from the natural top this pass
+  // measured (task 362) — never carried. An unmeasured pinned card resolves
+  // to null and the pin is inert, the same as a pin naming a card that is
+  // no longer in the deck.
+  const pinnedNatural = pinned ? natural.get(pinned.id) : undefined;
+  const pinnedTop = pinned && pinnedNatural
+    ? pinnedNatural.naturalTop + pinned.offset
+    : null;
 
   // Build sorted list by natural top (so cascade-after is well-defined).
   // Skip items we haven't measured yet — they're not renderable.
@@ -330,8 +350,8 @@ export function resolveCascade(
       const minTop = prev.top + prev.height + MIN_GAP;
       if (rows[i].top < minTop) rows[i].top = minTop;
     }
-    if (pinned && rows[i].id === pinned.id) {
-      rows[i].top = pinned.pinTop;
+    if (pinned && pinnedTop !== null && rows[i].id === pinned.id) {
+      rows[i].top = pinnedTop;
     }
   }
 
@@ -340,7 +360,7 @@ export function resolveCascade(
   // bottom-up) until they clear. With `transform: translateY` positioning
   // this is essentially free; the deck stays symmetric around the pin
   // instead of overlapping on the upward side.
-  if (pinned) {
+  if (pinnedTop !== null) {
     for (let i = rows.length - 1; i > 0; i--) {
       const cur = rows[i];
       const prev = rows[i - 1];
@@ -1106,5 +1126,25 @@ export function useInTextPositions(
     [measureVersion, items, pinned],
   );
 
-  return { positions, editorContentHeight, panelScrollRef };
+  // Exposed because a pin is stored ANCHOR-RELATIVE (task 362) and the
+  // publish site therefore needs the card's natural top; the pod hands it on
+  // through `data-omni-natural-top`.
+  //
+  // Keyed on `measureVersion` alone — a NARROWER dep list than `positions`
+  // (which also depends on `items` and `pinned`), because neither of those
+  // can change a natural. The invariant the wrapper's render relies on
+  // (`positions.get(id) !== undefined ⇒ naturals.get(id) !== undefined`)
+  // therefore does NOT rest on the two memos sharing a trigger; it rests on
+  // `measure()` being the only writer of `naturalRef` and bumping the
+  // version whenever it commits a change — so a pass held by hysteresis
+  // republishes nothing, which is correct, and any pass that ADDS an entry
+  // bumps. Worth writing down: widen either memo's deps and this argument,
+  // not a dep-list equality, is what has to keep holding.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const naturals = useMemo(
+    () => naturalRef.current as ReadonlyMap<string, NaturalEntry>,
+    [measureVersion],
+  );
+
+  return { positions, naturals, editorContentHeight, panelScrollRef };
 }

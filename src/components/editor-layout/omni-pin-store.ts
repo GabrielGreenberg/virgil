@@ -3,41 +3,110 @@
 /**
  * Module-scope store for per-card pin requests in the omni view.
  *
- * A "pin" is a one-shot "place this card at this pod-relative Y" request.
+ * A "pin" is "hold this card at this OFFSET from where its anchor puts it".
  * Marker clicks in the editor and the `virgil-card-jumped` event (from
  * card-body click jumps) both publish pin requests; `OmniViewPanel`
  * subscribes and overrides the card's natural transform for the pinned
  * card only. Other cards keep their `useInTextPositions`-computed natural
  * Y. No group transform, no global offset, no compensation listener.
  *
- * Pod-relative coordinates: the pin's Y is in the same space that
- * `useInTextPositions` produces (relative to the panel pod's top). The
- * viewport → pod conversion happens once at the publish site, against
- * the pod rect currently on screen. The cascade then reads a pre-baked
- * number and never re-derives from a live `podRect.top` — so pin changes
- * don't trigger DOM measurement, and the pin is scroll-invariant under
- * the unified row scroll (the pod moves with the row, so pod-relative
- * stays valid as the user scrolls naturally).
+ * ## Anchor-relative, not pod-absolute (task 362)
+ *
+ * > **A pin overrides WHERE a card sits relative to its anchor — never
+ * > where it sits on the pod.** The absolute Y is a live function of the
+ * > anchor's position, so a pin that stored one would be a frozen copy of
+ * > a derived answer: every edit above the anchor moves the anchor (and
+ * > its margin marker, which resolves the live block) while the pinned
+ * > card stayed at the stale Y. Two renderers of one anchor, disagreeing.
+ *
+ * That is exactly what shipped until 362 — task 328's own recorded
+ * residual ("a pin is still PERSISTENT … so a card pinned by a sanctioned
+ * move decouples from its anchor if the document is later edited above
+ * it"), and Gabriel reported it from a real paper: an archive card and its
+ * marker in completely different places, with the anchor demonstrably
+ * healthy.
+ *
+ * So the stored value is `offset` — pod-relative pixels from the card's
+ * NATURAL top (`coordsAtPos(anchorPos).top - podRect.top`, the number
+ * `useInTextPositions` measures for every card). The cascade re-derives
+ * the absolute Y as `naturalTop + offset` on every measure, so a pinned
+ * card rides its anchor through any edit while keeping the offset the
+ * user's gesture chose. Nothing expires, because nothing can drift: the
+ * invariant holds by construction rather than by a threshold.
+ *
+ * The absolute→relative conversion happens ONCE, at the publish site
+ * (`omni-card-placement.ts`), against the natural top the pod published on
+ * the wrapper (`data-omni-natural-top`). A gesture genuinely speaks in
+ * screen coordinates ("put it where I clicked"); what is DURABLE about it
+ * is the relationship to the anchor, and that is what is kept.
+ *
+ * Scroll invariance is unchanged and comes for free: the pod moves with
+ * the row under the unified scroll, so both `naturalTop` and `offset` are
+ * scroll-invariant and a pin change still costs zero DOM measurement.
+ *
+ * ## Two things the conversion is NOT, stated rather than implied
+ *
+ * **It is not a single-clock read.** The door's `podTop`/`rect` are LIVE
+ * `getBoundingClientRect()` reads at gesture time; the natural top is the
+ * value React last COMMITTED. They can disagree — most concretely during
+ * task 328's 180 ms `.omni-entry-slide`, where a rect read returns the
+ * INTERPOLATED transform, so a freeze fired mid-slide stores a mid-flight
+ * offset. That is pre-existing (the absolute pin stored a mid-flight Y for
+ * the same reason) and it self-corrects on the next committed measure,
+ * which is the point of storing the relationship rather than the number.
+ *
+ * **The reference may be an ESTIMATE.** A card whose anchor is outside the
+ * visible band carries an interpolated natural (`approxTopForPos`, wave-2b
+ * C5), refined to exact on scroll idle — and moving an off-screen card is
+ * precisely the case the necessity rule sanctions, so this is the ordinary
+ * path, not an exotic one. The pinned card therefore MOVES by the
+ * interpolation error when the refinement lands, where a pod-absolute pin
+ * was immune to it by construction. Accepted deliberately: the correction
+ * moves the card TOWARD its anchor (the offset the user chose, measured
+ * from the truth), it lands on the very next pass because the pin has just
+ * brought the card into view, it is bounded by the same interpolation task
+ * 327 made non-absorbing, and the 328 slide renders it as a glide rather
+ * than a teleport. Pinned as a contract in `omni-pin-anchor-lifecycle`.
  *
  * Single pin per side: marker clicks track the selection, and there's at
- * most one selected card at a time. When the selection changes,
- * `OmniViewPanel` clears the stale pin via its subscription to
- * `useSelection()`. When a different marker is clicked, `requestPin`
- * replaces the prior pin atomically.
+ * most one selected card at a time, so a new marker click simply REPLACES
+ * the prior pin atomically. Nothing else clears one — the pin is untied
+ * from selection deliberately, so collapse-toggling a pinned card doesn't
+ * snap it back to its cascaded position. (An earlier version of this
+ * header claimed `OmniViewPanel` cleared the pin from a `useSelection()`
+ * subscription; there is no such subscription and there has not been one
+ * since the pin was made persistent. Corrected rather than left standing:
+ * a header describing a lifecycle the code does not have is how the next
+ * reader concludes the pin is already bounded.)
+ *
+ * The one non-replacement clear is the card LIFT / pop-out gesture
+ * (`panel-primitives.tsx`), which unmounts the wrapper from the cascade.
+ * It clears by the WRAPPER's id — the same identity `requestPin` stores —
+ * because a multi-anchor card's row is `<key>@N` and `clearPin`'s identity
+ * guard declines a mismatch, which used to leave a lifted multi-anchor
+ * row's pin standing forever.
  */
 
 import { useSyncExternalStore } from "react";
 
 export type PinSide = "left" | "right";
 
+/** The DOM channel the pod publishes each card's measured natural top on,
+ *  and the ONE thing that makes the publish site able to speak in anchor-
+ *  relative terms. Read by `omni-card-placement.ts`; written by
+ *  `OmniViewPanel`'s positioned wrapper, which renders only once the card
+ *  HAS a measured natural top — so a wrapper in the DOM always carries it. */
+export const DATA_OMNI_NATURAL_TOP = "data-omni-natural-top";
+
 export interface PinRequest {
   /** `data-omni-entry-wrapper` key — the canonical `float:card:<kind>:<id>`
    *  grammar, e.g. "float:card:citation:abc123". */
   cardId: string;
-  /** Pod-relative Y (px) the card should be pinned at. Computed by the
-   *  publisher as `viewportY - podRect.top` against the pod that hosts
-   *  the absolute card wrappers. Scroll-invariant under unified scroll. */
-  pinTop: number;
+  /** Pod-relative pixels from the card's NATURAL top (the anchor-derived
+   *  position `useInTextPositions` measures). Positive = below the anchor.
+   *  The cascade resolves the absolute Y as `naturalTop + offset` on every
+   *  measure, so the pin rides document edits with its anchor. */
+  offset: number;
   /** Monotonically increasing version, so an identical-payload re-request
    *  still triggers an update via `useSyncExternalStore`. */
   version: number;
@@ -56,17 +125,19 @@ export const omniPinStore = {
     return _pins[side];
   },
 
-  /** Pin a card at the given pod-relative Y. Replaces any existing pin
-   *  on this side.
+  /** Pin a card at the given offset from its natural (anchor-derived) top.
+   *  Replaces any existing pin on this side.
    *
-   *  MECHANISM, not policy: this writes whatever Y it is handed. Whether a
-   *  card may be moved at all — and to which Y — is decided ONCE by
-   *  `omni-card-placement.ts`, the only production caller (task 328; CI:
-   *  `gutter-stability-census`). Three publishers used to reach this
-   *  directly and each moved its card unconditionally. */
-  requestPin(side: PinSide, cardId: string, pinTop: number): void {
+   *  MECHANISM, not policy: this writes whatever offset it is handed.
+   *  Whether a card may be moved at all — and to which Y — is decided ONCE
+   *  by `omni-card-placement.ts`, the only production caller (task 328;
+   *  CI: `gutter-stability-census`), which is also the only place the
+   *  absolute→anchor-relative conversion happens (task 362). Three
+   *  publishers used to reach this directly and each moved its card
+   *  unconditionally. */
+  requestPin(side: PinSide, cardId: string, offset: number): void {
     const cur = _pins[side];
-    if (cur && cur.cardId === cardId && cur.pinTop === pinTop) {
+    if (cur && cur.cardId === cardId && cur.offset === offset) {
       // Same payload — still bump version so any subscriber treats it as
       // a fresh request (e.g. user re-clicked the same marker after
       // scroll, intending to re-pin at the original Y).
@@ -74,7 +145,7 @@ export const omniPinStore = {
       emit();
       return;
     }
-    _pins[side] = { cardId, pinTop, version: ++_nextVersion };
+    _pins[side] = { cardId, offset, version: ++_nextVersion };
     emit();
   },
 
@@ -85,14 +156,6 @@ export const omniPinStore = {
     if (!_pins[side]) return;
     if (cardId && _pins[side]!.cardId !== cardId) return;
     _pins[side] = null;
-    emit();
-  },
-
-  /** Clear all pins on both sides. */
-  clearAll(): void {
-    if (!_pins.left && !_pins.right) return;
-    _pins.left = null;
-    _pins.right = null;
     emit();
   },
 

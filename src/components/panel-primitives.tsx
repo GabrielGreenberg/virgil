@@ -2620,12 +2620,24 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       // the lift unmounts the wrapper from the cascade. Leaving the pin
       // would be a dead reference (resolveCascade skips it harmlessly,
       // but no reason to dangle stale state).
+      //
+      // Clear by the WRAPPER's own id, never the bare `cardKey`: a pin
+      // stores the id the wrapper carries, and a multi-anchor card's row
+      // is `<key>@N`. `clearPin`'s identity guard declines a mismatch, so
+      // the bare key silently cleared nothing for exactly those rows and
+      // left the pin standing after the card had left the deck.
       const sideEl = cardEl.closest(
         "[data-panel-column-side]",
       ) as HTMLElement | null;
       const side = sideEl?.dataset.panelColumnSide;
+      const pinnedWrapper = cardEl.closest(
+        "[data-omni-entry-wrapper]",
+      ) as HTMLElement | null;
       if (side === "left" || side === "right") {
-        omniPinStore.clearPin(side, cardKey);
+        omniPinStore.clearPin(
+          side,
+          pinnedWrapper?.dataset.omniEntryWrapper ?? cardKey,
+        );
       }
       // Schedule the highlight's fade-out — a brief pulse on lift-off.
       window.setTimeout(() => setCardLiftTarget(null), 150);

@@ -45,6 +45,11 @@ vi.mock("@/lib/storage", () => {
 // meaningless in jsdom. The mock echoes each item's pos as its translateY and
 // CAPTURES the inTextItems argument (cascade-purity pin) plus hands back a
 // stable panelScrollRef the test can inspect for parentage.
+/** How far the mock's CASCADED top sits below its NATURAL top, so the two
+ *  are distinguishable in the DOM. Declared before the `vi.mock` factory
+ *  body runs (hoisted mock, evaluated lazily on first import). */
+const NATURAL_MINUS_CASCADED = 7;
+
 vi.mock("@/hooks/useInTextPositions", () => {
   const state = {
     panelScrollRef: { current: null as HTMLElement | null },
@@ -58,6 +63,22 @@ vi.mock("@/hooks/useInTextPositions", () => {
       state.lastItems = items;
       return {
         positions: new Map(items.map((i) => [i.id, i.pos])),
+        // Anchor-relative pins (task 362): the panel publishes each card's
+        // measured natural top on its wrapper, so the placement door can
+        // store an OFFSET from the anchor rather than a pod coordinate.
+        //
+        // The natural top is deliberately NOT the cascaded top here — the
+        // producer leg below is the only thing standing between the fix and
+        // `data-omni-natural-top={positions.get(id)}`, which type-checks,
+        // renders, and makes every stored pin self-referential (its
+        // reference would move with the pin). Two numbers that differ is
+        // what gives that leg its teeth.
+        naturals: new Map(
+          items.map((i) => [
+            i.id,
+            { naturalTop: i.pos - NATURAL_MINUS_CASCADED, height: 60 },
+          ]),
+        ),
         editorContentHeight: 600,
         panelScrollRef: state.panelScrollRef,
       };
@@ -151,6 +172,23 @@ describe("OmniViewPanel (REAL component) — split routing with a live editor", 
     expect(wrapper).not.toBeNull();
     expect(bin!.contains(wrapper)).toBe(false);
     expect(wrapper.style.transform).toBe("translateY(10px)");
+  });
+
+  it("publishes the card's NATURAL top on the wrapper — the anchor reference a pin is stored against", () => {
+    // Task 362: a pin is an OFFSET from this number, so if the wrapper
+    // published the CASCADED top instead, the pin's own reference would
+    // move with the pin and the card would decouple from its anchor all
+    // over again — one field over. Both values are `number | undefined`,
+    // so nothing but this leg distinguishes them.
+    const { container } = renderPanel(liveEditor);
+    const wrapper = container.querySelector(
+      `[data-omni-entry-wrapper="${anchoredNote.id}"]`,
+    ) as HTMLElement;
+    expect(wrapper.getAttribute("data-omni-natural-top")).toBe(
+      String(anchoredNote.pos! - NATURAL_MINUS_CASCADED),
+    );
+    // …and it is NOT the cascaded top the same element is translated by.
+    expect(wrapper.style.transform).toBe(`translateY(${anchoredNote.pos}px)`);
   });
 
   it("cascade purity: useInTextPositions only ever receives number-pos items", () => {
