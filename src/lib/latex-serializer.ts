@@ -1524,8 +1524,13 @@ export function serializeBodyOnly(doc: JSONContent): string {
  * applicator computes matches the headless Python accept's splice.
  *
  * `node` must be a JSONContent `paragraph` (e.g. from `pmNode.toJSON()` on the
- * live block); any other node type returns its default `serializeNode`
- * projection. No `%!v:` trailer is emitted regardless.
+ * live block); any other node type takes its own `serializeNode` arm — which
+ * since task 357 means a node type the serializer cannot express THROWS
+ * (`UnserializableNodeError`) rather than projecting a shorter string. That is
+ * the right outcome for this caller: the applicator byte-matches the
+ * suggestion's `originalText` against this projection, so a projection missing
+ * a node it could not express would silently splice against the wrong bytes.
+ * No `%!v:` trailer is emitted regardless.
  */
 export function serializeParagraphInline(node: JSONContent): string {
   return serializeNode(node, /* suppressChildUuids */ true);
