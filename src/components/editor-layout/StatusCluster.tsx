@@ -14,6 +14,7 @@ import { OPEN_CHROME_MENU_Z } from "@/floats/float-policy";
 import SkillSyncControls from "../SkillSyncControls";
 import CollabStatusPill from "../CollabStatusPill";
 import ExternalChangeBadge from "../ExternalChangeBadge";
+import PreservationNoticeBadge from "../PreservationNoticeBadge";
 import { ExternalChangeActiveReporter } from "./ExternalChangeActiveReporter";
 import { iconHint } from "@/components/Hint";
 import { StatusDot } from "@/components/StatusDot";
@@ -188,6 +189,12 @@ function StatusClusterImpl(props: StatusClusterProps) {
           Virgil update — click to refresh
         </button>
       )}
+      {/* Preservation notice (task 357 hole 4). A gate refused a write because
+          it would have dropped content this document was loaded with, so Virgil
+          is not saving this paper. Self-gates (renders null with no standing
+          refusal) and sits BEFORE the topbarRightCollapsed gate — a
+          data-integrity notice must not be hideable by a layout preference. */}
+      <PreservationNoticeBadge docId={currentDocId} />
       {/* Skill-bundle sync surface. Sits before the topbarRightCollapsed gate
           (like the Virgil-update banner) so a sync failure can't be hidden by
           a collapsed right toolbar. Pure UI: no per-keystroke work. */}

@@ -38,13 +38,16 @@ import {
 } from "@/lib/latex-serializer";
 import {
   checkTexPreservation,
+  preservationRefusalDetail,
   describePreservationRefusal,
 } from "@/lib/tex-preservation";
 import {
   retainLoadedCounts,
   checkWriteAgainstRetained,
   describeWriteRefusal,
+  writeRefusalDetail,
 } from "@/lib/write-preservation";
+import { recordPreservationRefusal } from "@/lib/preservation-notice";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
@@ -630,6 +633,22 @@ async function writeReStampedTexOnLoad(
     const verdict = checkTexPreservation(existingLatex, latex);
     if (!verdict.ok) {
       console.error(describePreservationRefusal(verdict, h.docId));
+      // Task 357 hole 4: the refusal is a fact about the DOCUMENT, not a log
+      // line. Publishing it puts this doc into the write-protected posture (so
+      // the user's first keystroke can no longer let the model this gate just
+      // refused reach disk) and raises the banner that tells them so. On the
+      // FIRST refusal we also take an UNCONDITIONAL forensic snapshot, bypassing
+      // the autosave rate-limit: the bytes on disk are still the intact ones,
+      // and this is the last moment we are certain of that.
+      const { armed } = recordPreservationRefusal(
+        h.docId,
+        preservationRefusalDetail(verdict),
+      );
+      if (armed) {
+        await snapshotPriorBundle(docHandle, virgil, meta.texFilename).catch(
+          () => {},
+        );
+      }
       return;
     }
 
@@ -753,6 +772,19 @@ export async function writeDocBundle(
     const writeVerdict = checkWriteAgainstRetained(h.docId, latex);
     if (writeVerdict) {
       console.error(describeWriteRefusal(writeVerdict, h.docId));
+      // Publish the refusal (task 357 hole 4) — see the load gate above for
+      // why the FIRST one snapshots unconditionally. The autosave retries this
+      // write every 1500 ms while the notice stands, so only the armed EDGE
+      // snapshots; the rest merely bump the notice's refusal count.
+      const { armed } = recordPreservationRefusal(
+        h.docId,
+        writeRefusalDetail(writeVerdict),
+      );
+      if (armed) {
+        await snapshotPriorBundle(docHandle, virgil, meta.texFilename).catch(
+          () => {},
+        );
+      }
       return;
     }
     const latexHash = hashContent(latex);

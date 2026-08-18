@@ -80,6 +80,7 @@
  * for the round-trip suites.
  */
 import { VIRGIL_MARKER_COMMANDS } from "@/lib/latex-markers";
+import type { PreservationRefusalDetail } from "@/lib/preservation-notice";
 
 /**
  * Fraction of the original word count that may disappear before the write is
@@ -172,6 +173,27 @@ export function checkTexPreservation(
   const body = checkRegion(b.body, a.body);
   const preamble = checkRegion(b.preamble, a.preamble);
   return { ok: body.ok && preamble.ok, body, preamble };
+}
+
+/**
+ * The measured shape of a load-gate refusal, in the vocabulary the refusal
+ * CHANNEL speaks ([preservation-notice.ts](preservation-notice.ts)). Kept
+ * beside `describePreservationRefusal` for the same reason: both backends must
+ * report one thing, and the region-picking rule ("body first, else preamble")
+ * is that one thing stated once.
+ */
+export function preservationRefusalDetail(
+  v: PreservationVerdict,
+): PreservationRefusalDetail {
+  const region = !v.body.ok ? v.body : v.preamble;
+  return {
+    source: "load",
+    region: !v.body.ok ? "body" : "preamble",
+    before: region.before,
+    after: region.after,
+    lost: region.lost,
+    allowed: region.allowed,
+  };
 }
 
 /**
