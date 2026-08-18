@@ -1649,8 +1649,8 @@ Five rules it earned:
   nothing awaits the load writeback and `save()` catches, logs and leaves the doc
   dirty, so the user watches an autosave that never lands and is told nothing.
   Every read-only projection of the `.tex` FAILS OPEN and keeps its last good
-  text: the pipeline's idle tier, `useLatexSource`, the outline's line probe, the
-  example cache — and the CODE VIEW, which falls back to the intact DISK bytes,
+  text: the pipeline's idle tier, `useLatexSource`, the code-view line probe, the
+  example-card LaTeX cache — and the CODE VIEW, which falls back to the intact DISK bytes,
   because "open the code view to see the source" is the banner's own advice and
   that surface must still work on a refused document.
 - **The code pane's fail-open was NARROWED, not inherited.** An
