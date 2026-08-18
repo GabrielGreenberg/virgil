@@ -1197,6 +1197,134 @@ CI: [non-prose-bytes-roundtrip.test.ts](src/lib/__tests__/non-prose-bytes-roundt
 
 **Residuals, stated.** M5 changes two derived numbers that are not bytes: a tie is now WHITESPACE to `word-count-core`'s `/\s+/` split, so `Fig.~1` counts as two words rather than one (arguably the truer answer — the PDF prints two — but a visible change), and the same is true of any plain-text projection. Search is unaffected in either direction: neither `~` nor U+00A0 ever matched a typed space. M6 is scoped to a BARE group the source already carried as syntax; the tie is scoped to the MAIN document body and the card-body fork, and `footnote-content.ts` still escapes `%` to `\%` for the reason 347's residual gives. One byte does move exactly once on a group holding a trailing comment (`{a % c}` gains the newline `closeCommentTail` owes it) — which CLOSES a group the source had left open, and is a repair rather than a rewrite.
 
+#### The dispatcher half: the LAST layer that still read "unterminated" as "yours"
+
+Same round trip, and the case where the law had been written down twice, applied
+twice, and left unapplied at the branch that fires most often (task 356). Task
+350 closed `\ex` and `\begingl`; the lexer's own `skipOpaqueConstructAt` states
+the policy outright ("Unterminated ⇒ TRANSPARENT"). The generic `\begin{env}`
+DISPATCHER — the branch every list, quote, figure and unmodeled environment
+enters — still took `ctx.src.slice(ctx.pos)` and `ctx.pos = ctx.src.length` when
+`findMatchingEnv` answered -1.
+
+Four members, and the order below is the order they bite:
+
+- **The dispatcher's EOF slurp.** The whole document tail became one environment
+  body, and the modeled branches then kept only what their node can hold —
+  `parseList` keeps `\item` slices, `figure` keeps its recognised attrs — so the
+  tail was DESTROYED, not merely mis-shaped. The serializer then wrote the
+  `\end{X}` the user never typed, making it a fixed point. **The routine trigger
+  is not a typo'd or commented-out close: it is TYPING.** In the code pane the
+  user writes `\begin{itemize}` and, for the seconds before the close exists,
+  every keystroke re-parses a document whose tail is inside that environment.
+- **`splitListItems` destroyed an item-less body on WELL-FORMED input.**
+  `firstItemPos > 0 ? content.slice(0, firstItemPos).trim() : ""` conflated "no
+  `\item` anywhere" (-1) with "an item at offset 0" (no preamble), so a body with
+  content but no item reported zero items AND an empty preamble, and `parseList`
+  substituted one empty `listItem`. `\begin{itemize}\input{bullets}\end{itemize}`,
+  a tuning-only body (`\itemsep`), items hidden inside a `verbatim` — every byte
+  gone, emitted as `\begin{itemize}\item\end{itemize}`. No unterminated close, so
+  no fail-closed arm anywhere could have caught it.
+- **The title family was TWO scans that disagreed twice.** Neither
+  `stripTitleFieldsFromText` nor `parsePreambleTitleFields` predated the
+  `%`-projection SSOT, so `%\title{old draft}` above the live `\title{…}` was
+  PROMOTED to be the document title while the real one was stripped and never
+  emitted — and the strip swallowed the trailing newline, fusing the orphaned `%`
+  onto the NEXT preamble line and commenting that out too. And the strip was
+  strip-ALL against a keep-FIRST parse, so an `amsart`/ACM multi-`\author`
+  preamble lost every author but one. All of it under the 350-D gate's word slack.
+- **expex `[opts]` were filtered down to `exno=`.** `[everypar={\itshape}]`,
+  `[aboveexskip=1ex]` and every other key were consumed and discarded — a
+  typographic instruction destroyed on OPEN, costing zero words.
+
+> **"Unterminated ⇒ transparent" is a law about the LAYER, so it holds at every
+> layer: a construct whose end nobody can find is not that construct, and the
+> parser puts its cursor back on the opener and carries the bytes. And a modeled
+> branch that meets a body outside its model has exactly two honest answers —
+> carry the whole environment, or throw. Never keep the fraction it recognises.**
+
+Five rules it earned:
+
+- **The refusal is the CARRIER, spelled once.** `pushVerbatimEnvCarrier`
+  ([latex-parser.ts](src/lib/latex-parser.ts)) was the environment dispatcher's
+  `default:` arm and is now also what a modeled branch takes when it refuses —
+  task 342's rule ("what the system does not model, it CARRIES") read one level
+  in, at the BODY instead of at the env name. `parseList` answers `null` and the
+  caller carries; routing the body through `listPreamble` was the other candidate
+  and is strictly worse, since the serializer would then emit an `\item` the user
+  never typed.
+- **A refusal is scoped to a body with CONTENT.** A genuinely empty
+  `\begin{itemize}\end{itemize}` is not a refusal — there is nothing to lose, and
+  the one-empty-item node is the editable thing the user wants.
+- **Two scans of one question is the defect; ONE scan read by both halves is the
+  fix.** `findPreambleTitleFields` is comment-aware through `matchCommentTailAt`
+  (TeX's rule, escape-aware, so `\%` is never a comment and a mid-line `%` still
+  shadows the rest of its line), and `hoistablePreambleTitleFields` states the
+  shared rule: a field is hoisted only when it occurs exactly ONCE live. A
+  repeated field stays RAW in the preserved preamble, in its original order.
+  **Order is why the obvious symmetric fix is wrong:** hoisting the first and
+  leaving the rest raw re-injects the first into the canonical block just before
+  `\begin{document}`, which moves the FIRST author to LAST. Cost, stated: a
+  multi-author paper's authors are not editable from the title strip. Data over
+  affordance.
+- **`exno` is INTERPRETED and the rest is CARRIED, and the two cannot drift.**
+  `rawOptions` holds the raw bracket run and the serializer emits it verbatim,
+  falling back to `[exno=N]` only for a node built programmatically (no source
+  bytes). `exnoOverride` stays parsed because the renumberer reads it — and
+  nothing WRITES it, which is what makes carrying the raw run safe rather than a
+  staleness hazard.
+- **A guard that overstates its reach is the thing being fixed.** Two shipped
+  suites pinned the pre-356 losses as intended behaviour — `unmodeled-env-roundtrip`
+  spelled its list fixture as a bare `body` (passing only because that body was
+  destroyed), and `latex-roundtrip-titles` asserted outright that a duplicate
+  `\title` is DELETED, "first occurrence wins". Both are renegotiated in place
+  with the reason at the site, not quietly re-scoped.
+
+Same pass closed the census's own `%!vtex:begin` twin (a stranded begin marker
+folded the document tail into one opaque texBlock, or deleted its own line) and
+two silent whitelist drops in the serializer that are unreachable from the parser
+today — which is exactly why they had been left dropping: `listItem` took
+`children.slice(1)` while emitting an empty head whenever child 0 was not a
+paragraph, and the two example-family if/else-if chains, which match the schema
+TODAY, had no terminal `else`.
+
+**Verdicts on the rest of the census's triage list, recorded rather than skipped:**
+`tokenizeGlossCells`' `cells.join(" ")` and the `latexComment` trim are
+whitespace-only normalizations that are fixed points — safe. `stripFigureOwnCommands`
+cuts exactly the ranges the serializer re-emits from attrs, which its own comment
+states and the round trip proves — safe. `serializeNode`'s `default:` arm (emits
+children, drops the wrapper) and `serializeInline`'s childless `return ""` are
+REAL silent drops and are deliberately NOT fixed here: making them refuse needs a
+decision about what a refusal on the SAVE path does, which is task 357's subject
+(the 350-D gate's refusal is itself inert today). Footnote `richJsonToLatex`'s
+flattening (a list becomes `· a; · b`) is a modeling gap in the card-body schema,
+not a member of this class.
+
+CI: [content-loss-round-2.test.ts](src/lib/__tests__/content-loss-round-2.test.ts).
+Every pre-356 env / list / title fixture in the repo is WELL-FORMED and
+single-valued, so each of these losses was **unrepresentable** in all of them —
+which is how they shipped green. Each leg drives the REAL save pipeline over TWO
+cycles (cycle 1 is where the loss happens; cycle 2 proves nothing accumulates,
+and every one of these was a fixed point) with controls through the identical
+harness. The leg with teeth is a SOURCE CENSUS over both parsers: any assignment
+that lets a cursor or a bound reach the end of a source string must carry an
+`unterminated-ok:` justification within the eight lines above it — no allowlist, a
+hit is JUSTIFY-it or FAIL-CLOSED-it, and the eight surviving sites are justified
+in place (line-bounded comment scans, or already-bounded bodies). The census reads
+CODE, which this task's own fixes make load-bearing: they explain themselves by
+quoting the pre-fix line verbatim, so a raw-source grep would flag its own
+explanation. `_source-scan` gains a LINE-ALIGNED mode (`codeOnlyLines`) for it —
+the fourth private stripper variant this repo was about to grow. Measured by
+neutering each half in turn: the env fail-closed arm takes 4 legs + the census,
+the list refusal 6, the title comment-awareness 2, the title symmetry 1 (the
+orphaned-`%` leg needs BOTH, which is what the pre-356 tree actually was), the raw
+options 2, the vtex arm 1 + the census, the two serializer drops 1 each, and a
+single dropped marker the census alone.
+
+**Owed, not claimed:** a real-FSA eyeball. Everything here is proven by the unit
+contract; the code-pane mid-typing trigger in particular is worth watching once in
+the running app.
+
 ### The membership half: a per-kind capability is spelled once, and its guard is the sibling every other facet already has
 
 Same law, fifth tense (task 259) — and the case where the dead facet and the missing guard were the *same* fact.

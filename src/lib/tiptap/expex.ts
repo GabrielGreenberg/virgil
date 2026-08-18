@@ -722,6 +722,9 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
       label: { default: "" },
       kind: { default: "single" }, // "single" (\ex) | "multi" (\pex)
       exnoOverride: { default: null },
+      // Raw `[opts]` bracket run, carried opaquely so every expex option key
+      // Virgil does not interpret survives the round trip (task 356 site 4).
+      rawOptions: { default: null },
       suppressSpace: { default: false }, // \ex~
       number: { default: 0 },
       /** Optional paragraph-title rendered above the block (Virgil feature —
@@ -1404,6 +1407,9 @@ export const ExampleItem = Node.create({
       // sub-label numbering still derives from item position (numbering-honor
       // is a noted follow-up, see task 244).
       exnoOverride: { default: null },
+      // Raw `[opts]` bracket run, carried opaquely so every expex option key
+      // Virgil does not interpret survives the round trip (task 356 site 4).
+      rawOptions: { default: null },
     };
   },
 

@@ -345,8 +345,17 @@ describe("342 · the blank-run collapse touches only GENERATED envs", () => {
         expect(doc.content?.[0]?.type, env).toBe("exampleBlock");
         continue;
       }
+      // The list envs need a real `\item`: since task 356 a list body with
+      // CONTENT but no item is refused by `parseList` and carried whole, because
+      // Virgil's list model IS its items. The pre-356 fixture spelled a bare
+      // `body` here and passed only because that body was DESTROYED (parsed to
+      // one empty `listItem`) — i.e. it pinned the very defect 356 closed. What
+      // this leg asserts is unchanged: `itemize`/`enumerate` are GENERATED env
+      // names, not carried ones.
+      const body =
+        env === "itemize" || env === "enumerate" ? "\\item body" : "body";
       const doc = parseLatex(
-        `\\begin{document}\n\n\\begin{${env}}\nbody\n\\end{${env}}\n\n\\end{document}\n`,
+        `\\begin{document}\n\n\\begin{${env}}\n${body}\n\\end{${env}}\n\n\\end{document}\n`,
       );
       const block = doc.content?.[0];
       // A carried env is a paragraph whose single text child wears the verbatim

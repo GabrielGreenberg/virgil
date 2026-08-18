@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { JSONContent } from "@tiptap/core";
 import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import {
   serializeToLatex,
@@ -95,7 +96,14 @@ Hello.
     expect(out2).toMatch(/\\date\{\\today\}/);
   });
 
-  it("dedups duplicate \\title{} entries — first occurrence wins", () => {
+  // RENEGOTIATED by task 356 site 3. This leg used to assert that a repeated
+  // field is DEDUPED with "first occurrence wins" — i.e. that `\title{Second}`
+  // is DELETED from the user's file on open, which is the destruction 356
+  // closes (measured on a multi-`\author` amsart preamble: every author but
+  // the first, gone). A repeated field is outside Virgil's one-field-per-kind
+  // title model, so neither occurrence is hoisted and BOTH survive raw, in
+  // place, in their original order.
+  it("preserves duplicate \\title{} entries rather than deleting the extras", () => {
     const duplicated = `\\documentclass{article}
 
 \\title{First}
@@ -112,7 +120,21 @@ Hello.
     const out = serializeToLatex(doc, delimiters ?? undefined);
 
     expect(out).toMatch(/\\title\{First\}/);
-    expect(out).not.toMatch(/\\title\{Second\}/);
+    expect(out).toMatch(/\\title\{Second\}/);
+    // Order preserved, and neither was hoisted into an editable node.
+    expect(out.indexOf("\\title{First}")).toBeLessThan(
+      out.indexOf("\\title{Second}"),
+    );
+    const titleNodes: JSONContent[] = [];
+    const walk = (n: JSONContent) => {
+      if (n.type === "titleField" && n.attrs?.field === "title")
+        titleNodes.push(n);
+      n.content?.forEach(walk);
+    };
+    walk(doc);
+    expect(titleNodes).toHaveLength(0);
+    // The unrepeated `\author{Me}` is still hoisted and editable.
+    expect(out).toMatch(/\\author\{Me\}/);
   });
 
   it("preserves a sizing prefix on the \\today path (\\date{\\small\\today})", () => {

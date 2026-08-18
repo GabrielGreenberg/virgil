@@ -646,8 +646,17 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       // any further children are block-level (typically nested lists).
       const indent = "  ".repeat(listDepth + 1);
       const children = node.content || [];
-      const head = children[0];
-      const tail = children.slice(1);
+      // The head is child 0 only when it IS a paragraph. The schema is
+      // `paragraph block*` and the parser normalizes to it, so a non-paragraph
+      // first child means the node was built some other way (a drop, a paste,
+      // a future schema) — and the pre-356 shape both emitted an empty head AND
+      // took `children.slice(1)`, so that child was DROPPED outright. Nothing
+      // upstream can see that: the word gate reads the whole document, and one
+      // list item's worth of prose is under its slack. Keep every child instead
+      // — the head is simply empty and all of them serialize as the tail.
+      const headIsParagraph = children[0]?.type === "paragraph";
+      const head = headIsParagraph ? children[0] : undefined;
+      const tail = headIsParagraph ? children.slice(1) : children;
       const headText =
         head && head.type === "paragraph"
           ? // The item head is line-final in exactly the paragraph case's
@@ -819,8 +828,22 @@ function serializeExampleBlock(node: JSONContent): string {
   const idMarker = uuid ? emitMarker(VIRGIL_MARKERS.exampleBlock, uuid) : "";
   const tag = (node.attrs?.tag as string) || "";
   const tagStr = tag ? `<${tag}>` : "";
+  // `[opts]` — the RAW bracket run when the parse captured one, else the
+  // interpreted `exno` alone (task 356 site 4).
+  //
+  // expex's option keys are open-ended (`everypar={…}`, `aboveexskip`,
+  // `labelwidth`, `interpartskip`, …) and the parse interpreted exactly ONE of
+  // them, so every other key the user wrote was consumed and DISCARDED — a
+  // typographic instruction destroyed on OPEN, with no edit, and no gate can
+  // see it (it costs zero words). Carrying the raw run is the shape
+  // `\begingl[opts]` already had one construct over.
+  //
+  // `exnoOverride` stays PARSED beside it because the renumberer reads it;
+  // nothing writes it, so the two cannot drift. A node built programmatically
+  // (no source bytes) has no raw run and falls back to the interpreted form.
   const override = (node.attrs?.exnoOverride as string | null) || null;
-  const optStr = override ? `[exno=${override}]` : "";
+  const raw = (node.attrs?.rawOptions as string | null) || null;
+  const optStr = raw ?? (override ? `[exno=${override}]` : "");
   const suppress = (node.attrs?.suppressSpace as boolean) ? "~" : "";
   const label = (node.attrs?.label as string) || "";
   const labelStr = label ? `\\label{${label}}` : "";
@@ -872,6 +895,15 @@ function serializeExampleBlock(node: JSONContent): string {
         pieces.push({ type: "exampleItemList", text: itemsStr.trimEnd() });
     } else if (child.type === "bulletList" || child.type === "orderedList") {
       pieces.push({ type: child.type, text: serializeNode(child).trimEnd() });
+    } else {
+      // TERMINAL ELSE (task 356's triage). The chain above matches the schema
+      // TODAY, which is exactly why it needs one: a child kind added to
+      // `exampleBlock`'s content expression and forgotten here would be DROPPED
+      // silently, and a single example body is well under the write gate's
+      // word slack. The generic serializer is the honest fallback — it emits
+      // whatever the node knows how to emit rather than nothing.
+      const text = serializeNode(child).trimEnd();
+      if (text) pieces.push({ type: child.type ?? "unknown", text });
     }
   }
   // Join with a soft "\n", EXCEPT two consecutive paragraphs need a blank line
@@ -909,7 +941,8 @@ function serializeExampleItem(node: JSONContent): string {
   // (`serializeExampleBlock`: `optStr` before `tagStr`). Emitted only when
   // present, so an override-free item serializes byte-identically.
   const override = (node.attrs?.exnoOverride as string | null) || null;
-  const optStr = override ? `[exno=${override}]` : "";
+  const raw = (node.attrs?.rawOptions as string | null) || null;
+  const optStr = raw ?? (override ? `[exno=${override}]` : "");
   const label = (node.attrs?.label as string) || "";
   const labelStr = label ? `\\label{${label}}` : "";
   const pieces: string[] = [];
@@ -955,6 +988,10 @@ function serializeExampleItem(node: JSONContent): string {
       pieces.push(
         `\\begin{xlist}\n${nestedStr.trimEnd()}\n\\end{xlist}`,
       );
+    } else {
+      // TERMINAL ELSE — the `serializeExampleBlock` twin, same reason.
+      const text = serializeNode(child).trimEnd();
+      if (text) pieces.push(text);
     }
   }
   const body = pieces.join("\n");
