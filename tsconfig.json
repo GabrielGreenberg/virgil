@@ -43,7 +43,9 @@
     ".next-preview-dev/types/**/*.ts",
     ".next-preview-dev/dev/types/**/*.ts",
     ".next-preview-audit/types/**/*.ts",
-    ".next-preview-audit/dev/types/**/*.ts"
+    ".next-preview-audit/dev/types/**/*.ts",
+    ".next-prod-trace/types/**/*.ts",
+    ".next-prod-trace/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

@@ -127,3 +127,6 @@ next-env.d.ts
 /library-data/queue/*.lock
 /library-data/queue/*.done
 /library-data/logs/
+
+# Prod trace build output (npm run build --profile)
+/.next-prod-trace/
