@@ -20,6 +20,11 @@ import {
   checkTexPreservation,
   describePreservationRefusal,
 } from "@/lib/tex-preservation";
+import {
+  retainLoadedCounts,
+  checkWriteAgainstRetained,
+  describeWriteRefusal,
+} from "@/lib/write-preservation";
 import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 import { resolveStyle } from "@/lib/style-library";
 import { migrateDocumentSettings } from "@/lib/document-settings";
@@ -397,6 +402,10 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   // load-writeback stamp if the writeback fires — that's correct, the
   // writeback is the newer authoritative on-disk state.
   await stampLedger(docId, texFilename, latex);
+  // Task 357 (parity with storage-fsa): retain the loaded bytes' word counts so
+  // an automatic write landing before the user's first real edit is measured
+  // against them.
+  retainLoadedCounts(docId, latex);
 
   const content = parseLatex(latex, sidecar);
   // Assign UUIDs immediately on load so every paragraph is addressable
@@ -540,6 +549,16 @@ export async function writeDocBundle(
       serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
     }
     const latex = serializeToLatex(content, serializeOpts);
+
+    // THE WRITE-SIDE PRESERVATION GATE (task 357) — parity with storage-fsa.
+    // Refuses BEFORE either PUT and before the ledger stamp, so both the .tex
+    // and `virgil.json` are left untouched and the watcher does not read an
+    // untaken write as an external change.
+    const writeVerdict = checkWriteAgainstRetained(h.docId, latex);
+    if (writeVerdict) {
+      console.error(describeWriteRefusal(writeVerdict, h.docId));
+      return;
+    }
 
     // Re-check before the actual writes — a doc switch could have
     // landed between the awaits above. Lenient: an ended-cleanly pipeline
