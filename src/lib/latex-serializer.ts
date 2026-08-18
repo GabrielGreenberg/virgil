@@ -819,8 +819,22 @@ function serializeExampleBlock(node: JSONContent): string {
   const idMarker = uuid ? emitMarker(VIRGIL_MARKERS.exampleBlock, uuid) : "";
   const tag = (node.attrs?.tag as string) || "";
   const tagStr = tag ? `<${tag}>` : "";
+  // `[opts]` — the RAW bracket run when the parse captured one, else the
+  // interpreted `exno` alone (task 356 site 4).
+  //
+  // expex's option keys are open-ended (`everypar={…}`, `aboveexskip`,
+  // `labelwidth`, `interpartskip`, …) and the parse interpreted exactly ONE of
+  // them, so every other key the user wrote was consumed and DISCARDED — a
+  // typographic instruction destroyed on OPEN, with no edit, and no gate can
+  // see it (it costs zero words). Carrying the raw run is the shape
+  // `\begingl[opts]` already had one construct over.
+  //
+  // `exnoOverride` stays PARSED beside it because the renumberer reads it;
+  // nothing writes it, so the two cannot drift. A node built programmatically
+  // (no source bytes) has no raw run and falls back to the interpreted form.
   const override = (node.attrs?.exnoOverride as string | null) || null;
-  const optStr = override ? `[exno=${override}]` : "";
+  const raw = (node.attrs?.rawOptions as string | null) || null;
+  const optStr = raw ?? (override ? `[exno=${override}]` : "");
   const suppress = (node.attrs?.suppressSpace as boolean) ? "~" : "";
   const label = (node.attrs?.label as string) || "";
   const labelStr = label ? `\\label{${label}}` : "";
@@ -909,7 +923,8 @@ function serializeExampleItem(node: JSONContent): string {
   // (`serializeExampleBlock`: `optStr` before `tagStr`). Emitted only when
   // present, so an override-free item serializes byte-identically.
   const override = (node.attrs?.exnoOverride as string | null) || null;
-  const optStr = override ? `[exno=${override}]` : "";
+  const raw = (node.attrs?.rawOptions as string | null) || null;
+  const optStr = raw ?? (override ? `[exno=${override}]` : "");
   const label = (node.attrs?.label as string) || "";
   const labelStr = label ? `\\label{${label}}` : "";
   const pieces: string[] = [];

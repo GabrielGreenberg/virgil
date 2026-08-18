@@ -110,41 +110,126 @@ export function extractPreambleAndPostamble(
 }
 
 /**
- * Remove `\title{…}`, `\author{…}`, `\date{…}` commands from a LaTeX
- * string. Matching follows the parser rules (balanced braces, allows
- * optional `%!v:xxxx` UUID anchor right after the closing brace).
- * Collapses the whitespace left behind so the result stays tidy.
+ * One occurrence of a `\title{…}` / `\author{…}` / `\date{…}` command in a
+ * preamble, with the exact byte span the hoist would remove.
  */
-function stripTitleFieldsFromText(text: string): string {
-  let result = "";
-  let i = 0;
-  while (i < text.length) {
-    const rest = text.slice(i);
-    const m = rest.match(/^\\(title|author|date)\{/);
-    if (m) {
-      const bracedStart = i + m[0].length - 1;
-      const inner = extractBraced(text, bracedStart);
-      if (inner) {
-        let end = inner.end;
-        const afterMatch = text.slice(end).match(NODE_UUID_ANCHOR);
-        if (afterMatch) end += afterMatch[0].length;
-        // Swallow one trailing newline so we don't leave blank rows.
-        if (text[end] === "\n") end++;
-        i = end;
-        continue;
-      }
-    }
-    result += text[i];
-    i++;
-  }
-  return result;
+interface PreambleTitleFieldOccurrence {
+  field: string;
+  /** Index of the leading backslash. */
+  start: number;
+  /** One past the last byte the hoist removes (brace close, any `%!v:` anchor, one trailing newline). */
+  end: number;
+  /** Raw brace content. */
+  inner: string;
+  uuid: string | null;
 }
 
 /**
- * Parse `\title{…}` / `\author{…}` / `\date{…}` commands from a
- * preamble string into `titleField` nodes. Used so that title commands
- * placed before `\begin{document}` are still visible and editable in
- * the editor.
+ * Find every LIVE `\title` / `\author` / `\date` command in a preamble — ONE
+ * scan, read by BOTH the strip and the parse (task 356 site 3).
+ *
+ * That the two were separate scans is the whole defect: they disagreed in two
+ * ways at once, and each disagreement destroyed something different.
+ *
+ *  - **Comment-blindness.** Neither predated the `%`-projection SSOT, so
+ *    `%\title{old draft}` sitting above the live `\title{…}` was PROMOTED to
+ *    be the document title (the parse keeps the FIRST match) while the real
+ *    one was stripped from the preamble and never emitted — the user's title
+ *    replaced by a commented-out draft, on OPEN, with no edit. The strip also
+ *    swallowed the trailing newline, fusing the orphaned `%` onto the NEXT
+ *    preamble line and commenting THAT out too. Comment membership is asked of
+ *    `matchCommentTailAt` — TeX's rule, escape-aware, so `\%` is never a
+ *    comment and a mid-line `%` still shadows what follows it on that line.
+ *  - **strip-ALL vs keep-FIRST.** The strip removed every occurrence and the
+ *    parse kept only the first of each field, so an `amsart`/ACM-style
+ *    multi-author preamble (repeated `\author{…}`) lost every author but one —
+ *    silently, and under the 350-D preservation gate's word slack.
+ *
+ * The rule both halves now share: a field is HOISTED only when it occurs
+ * exactly ONCE live. A repeated field is left RAW in the preserved preamble,
+ * where it round-trips byte-for-byte in its original order — Virgil's title
+ * model is one field per kind, so a repeated field is simply outside it, and
+ * the answer to that is task 342's ("what the system does not model, it
+ * CARRIES"), not a silent drop. Cost, stated: a multi-author paper's authors
+ * are not editable from the title strip. Data over affordance.
+ */
+function findPreambleTitleFields(
+  text: string,
+): PreambleTitleFieldOccurrence[] {
+  const out: PreambleTitleFieldOccurrence[] = [];
+  let i = 0;
+  while (i < text.length) {
+    // A comment tail owns everything to the end of its line — including any
+    // `\title{…}` inside it. Skip the whole run.
+    const comment = matchCommentTailAt(text, i);
+    if (comment) {
+      i = comment.end;
+      continue;
+    }
+    if (text[i] !== "\\") {
+      i++;
+      continue;
+    }
+    const m = text.slice(i).match(/^\\(title|author|date)\{/);
+    if (!m) {
+      i++;
+      continue;
+    }
+    const bracedStart = i + m[0].length - 1;
+    const braced = extractBraced(text, bracedStart);
+    if (!braced) {
+      // Unbalanced argument — fail closed: the bytes stay put as raw preamble.
+      i++;
+      continue;
+    }
+    let end = braced.end;
+    let uuid: string | null = null;
+    const afterMatch = text.slice(end).match(NODE_UUID_ANCHOR);
+    if (afterMatch) {
+      uuid = afterMatch[1];
+      end += afterMatch[0].length;
+    }
+    // Swallow one trailing newline so the hoist doesn't leave a blank row.
+    if (text[end] === "\n") end++;
+    out.push({ field: m[1], start: i, end, inner: braced.content, uuid });
+    i = braced.end;
+  }
+  return out;
+}
+
+/** The occurrences the parse hoists into `titleField` nodes and the strip
+ *  therefore removes — a field that occurs more than once live stays raw. */
+function hoistablePreambleTitleFields(
+  text: string,
+): PreambleTitleFieldOccurrence[] {
+  const found = findPreambleTitleFields(text);
+  const count = new Map<string, number>();
+  for (const o of found) count.set(o.field, (count.get(o.field) ?? 0) + 1);
+  return found.filter((o) => count.get(o.field) === 1);
+}
+
+/**
+ * Remove exactly the `\title{…}` / `\author{…}` / `\date{…}` commands the
+ * parser HOISTS into the doc tree — no more, no less. Anything left behind
+ * (a commented-out draft, a repeated field) is preserved raw, in place.
+ */
+function stripTitleFieldsFromText(text: string): string {
+  const spans = hoistablePreambleTitleFields(text);
+  if (spans.length === 0) return text;
+  let out = "";
+  let cursor = 0;
+  for (const span of spans) {
+    out += text.slice(cursor, span.start);
+    cursor = span.end;
+  }
+  out += text.slice(cursor);
+  return out;
+}
+
+/**
+ * Parse the hoistable `\title{…}` / `\author{…}` / `\date{…}` commands from a
+ * preamble string into `titleField` nodes, so title commands placed before
+ * `\begin{document}` are visible and editable in the editor.
  *
  * Note: titleField nodes are ALWAYS treated as preamble-bound by the
  * serializer (it walks the whole doc and re-emits them in canonical
@@ -154,37 +239,8 @@ function stripTitleFieldsFromText(text: string): string {
  */
 function parsePreambleTitleFields(preamble: string): JSONContent[] {
   const nodes: JSONContent[] = [];
-  const seen = new Set<string>();
-  let i = 0;
-  while (i < preamble.length) {
-    const rest = preamble.slice(i);
-    const m = rest.match(/^\\(title|author|date)\{/);
-    if (!m) {
-      i++;
-      continue;
-    }
-    const field = m[1];
-    if (seen.has(field)) {
-      // Skip duplicate — still advance past the command to avoid re-matching.
-      i += m[0].length;
-      continue;
-    }
-    const bracedStart = i + m[0].length - 1;
-    const inner = extractBraced(preamble, bracedStart);
-    if (!inner) {
-      i++;
-      continue;
-    }
-    seen.add(field);
-    let pos = inner.end;
-    const afterTitle = preamble.slice(pos);
-    const uuidMatch = afterTitle.match(NODE_UUID_ANCHOR);
-    let uuid: string | null = null;
-    if (uuidMatch) {
-      uuid = uuidMatch[1];
-      pos += uuidMatch[0].length;
-    }
-    let rawContent = inner.content;
+  for (const occ of hoistablePreambleTitleFields(preamble)) {
+    let rawContent = occ.inner;
     let rawPrefix = "";
     const prefixMatch = rawContent.match(/^((?:\\(?:rmfamily|Large|large|huge|Huge|bfseries|itshape|sffamily|normalsize|small|footnotesize|tiny|textbf|textit|textsf)\s*)+)/);
     if (prefixMatch) {
@@ -199,10 +255,9 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
     }
     nodes.push({
       type: "titleField",
-      attrs: { field, rawPrefix: rawPrefix || null, isToday, uuid },
+      attrs: { field: occ.field, rawPrefix: rawPrefix || null, isToday, uuid: occ.uuid },
       content: parseInlineContent(rawContent),
     });
-    i = pos;
   }
   // Stable canonical order: title, author, date.
   const order: Record<string, number> = { title: 0, author: 1, date: 2 };
@@ -1581,14 +1636,17 @@ function parseBody(
       const exOpenStart = ctx.pos;
       ctx.pos = exStartMatch.end;
 
-      // Optional [opts]
+      // Optional [opts]. `exno=` is INTERPRETED (the renumberer reads it); every
+      // other key is CARRIED raw — see `rawOptions` (task 356 site 4).
       let exnoOverride: string | null = null;
+      let rawOptions = "";
       while (ctx.pos < ctx.src.length && ctx.src[ctx.pos] === "[") {
         const close = ctx.src.indexOf("]", ctx.pos);
         if (close === -1) break;
         const optStr = ctx.src.slice(ctx.pos + 1, close);
         const exnoMatch = optStr.match(/exno\s*=\s*([^,\s]+)/);
         if (exnoMatch) exnoOverride = exnoMatch[1];
+        rawOptions += ctx.src.slice(ctx.pos, close + 1);
         ctx.pos = close + 1;
       }
       // Optional <tag>  (angle-bracket tag)
@@ -1615,6 +1673,7 @@ function parseBody(
         if (optsMatch) {
           const exnoMatch = optsMatch[1].match(/exno\s*=\s*([^,\s]+)/);
           if (exnoMatch && !exnoOverride) exnoOverride = exnoMatch[1];
+          rawOptions += `[${optsMatch[1]}]`;
           ctx.pos += optsMatch[0].length;
           continue;
         }
@@ -1666,6 +1725,7 @@ function parseBody(
         label,
         uuid,
         exnoOverride,
+        rawOptions: rawOptions || null,
         suppressSpace,
       });
       parent.content.push(exampleNode);
@@ -1757,6 +1817,8 @@ function parseBody(
     const beginAt = matchBeginEnvAt(ctx.src, ctx.pos);
     if (beginAt) {
       const env = beginAt.name;
+      // Where the opener BEGINS — see the fail-closed branch below.
+      const envOpenStart = ctx.pos;
       const optMatch = ctx.src.slice(beginAt.end).match(/^\[[^\]]*\]/);
       const optArg = optMatch ? optMatch[0] : "";
       ctx.pos = beginAt.end + optArg.length;
@@ -1774,11 +1836,39 @@ function parseBody(
       // `\end{verbatim%!v-esc}`), so the first literal `\end{env}` we find is
       // the block's true end.
       const envEnd = findMatchingEnv(ctx.src, ctx.pos, env);
-      const envContent =
-        envEnd !== -1
-          ? ctx.src.slice(ctx.pos, envEnd)
-          : ctx.src.slice(ctx.pos);
-      ctx.pos = envEnd !== -1 ? envEnd + `\\end{${env}}`.length : ctx.src.length;
+      if (envEnd === -1) {
+        // FAIL CLOSED — the `\ex` / `\begingl` twin, and the member of the
+        // family that fires most often (task 356 site 1; task 350 defect B is
+        // the same disease one branch over).
+        //
+        // The pre-356 arm took `ctx.src.slice(ctx.pos)` and set
+        // `ctx.pos = ctx.src.length`: any `\begin{X}` whose exact `\end{X}`
+        // never appears swallowed THE WHOLE DOCUMENT TAIL into one environment
+        // body — and the modeled branches below then discard what their node
+        // cannot hold (`parseList` keeps only `\item` slices, `figure` keeps
+        // only its recognised attrs), so the tail was not merely mis-shaped, it
+        // was DESTROYED. The serializer then wrote the `\end{X}` the user never
+        // typed, making the damage a FIXED POINT that no later save healed.
+        //
+        // The routine trigger is not a typo'd or commented-out close — it is
+        // TYPING: in the code pane the user writes `\begin{itemize}` and, for
+        // the seconds before the close exists, every keystroke re-parses a
+        // document whose tail is inside that environment.
+        //
+        // Damage from malformed input must be LOCAL: put the cursor back on the
+        // opener and let it be carried as ordinary raw content, exactly as any
+        // other unmodelled command is. This is the policy `skipOpaqueConstructAt`
+        // ALREADY states one layer down ("Unterminated ⇒ TRANSPARENT") — this
+        // dispatcher was the layer that still disagreed.
+        ctx.pos = envOpenStart;
+        // Deliberately NOT `continue` — fall through to the remaining block
+        // dispatchers and ultimately `readParagraph`, which is what carries the
+        // bytes. Progress is guaranteed: `readParagraph`'s block-boundary test
+        // requires a non-empty accumulated `result`, so the opener that begins
+        // the paragraph can never terminate it.
+      } else {
+      const envContent = ctx.src.slice(ctx.pos, envEnd);
+      ctx.pos = envEnd + `\\end{${env}}`.length;
 
       // Harvest the trailing %!v:xxxx UUID anchor right after \end{env} —
       // UNCONDITIONALLY, for every environment name (task 342).
@@ -1840,17 +1930,18 @@ function parseBody(
             parent.content.push(quoteDoc);
           }
           break;
-        case "itemize": {
-          const listNode = parseList(envContent, "bulletList");
-          if (envUuid) {
-            if (!listNode.attrs) listNode.attrs = {};
-            listNode.attrs.uuid = envUuid;
-          }
-          parent.content.push(listNode);
-          break;
-        }
+        case "itemize":
         case "enumerate": {
-          const listNode = parseList(envContent, "orderedList");
+          const listNode = parseList(
+            envContent,
+            env === "itemize" ? "bulletList" : "orderedList",
+          );
+          if (!listNode) {
+            // The body holds no `\item` — not a list Virgil can model. Carry
+            // the whole environment rather than keep an empty shell (task 356).
+            pushVerbatimEnvCarrier(parent, env, optArg, envContent, envUuid);
+            break;
+          }
           if (envUuid) {
             if (!listNode.attrs) listNode.attrs = {};
             listNode.attrs.uuid = envUuid;
@@ -1917,19 +2008,10 @@ function parseBody(
           // doesn't render `lstlisting` options or `minted` languages — so they
           // land here, exactly as they did before this branch became the
           // carrier they were being special-cased into (task 264).
-          parent.content.push({
-            type: "paragraph",
-            ...(envUuid ? { attrs: { uuid: envUuid } } : {}),
-            content: [
-              {
-                type: "text",
-                text: `\\begin{${env}}${optArg}${envContent}\\end{${env}}`,
-                marks: [verbatimMark()],
-              },
-            ],
-          });
+          pushVerbatimEnvCarrier(parent, env, optArg, envContent, envUuid);
       }
       continue;
+      }
     }
 
     // % comment line
@@ -1939,30 +2021,40 @@ function parseBody(
       // verbatim — do NOT recurse into parseBody, the whole point is to
       // hold raw LaTeX the editor doesn't try to render.
       const texBeginMatch = rest.match(/^%!vtex:begin[ \t]+([0-9a-f]+)/);
-      if (texBeginMatch) {
+      const texBeginEol = texBeginMatch ? ctx.src.indexOf("\n", ctx.pos) : -1;
+      const texEndIdx =
+        texBeginMatch && texBeginEol !== -1
+          ? ctx.src.indexOf(`%!vtex:end ${texBeginMatch[1]}`, texBeginEol + 1)
+          : -1;
+      // FAIL CLOSED on a begin marker whose `%!vtex:end` never appears — or
+      // which has no line at all after it (task 356's census).
+      //
+      // The pre-356 arms took `ctx.src.slice(bodyStart)` to EOF and `ctx.pos =
+      // ctx.src.length`: the whole document tail became ONE opaque texBlock,
+      // and the serializer then wrote the `%!vtex:end` the user never typed, so
+      // every heading, list and card anchor below the stranded marker was
+      // permanently folded into raw source with no way back through the editor.
+      // The other arm DELETED the marker line outright.
+      //
+      // Failing closed here means simply not claiming the construct: the
+      // `%!vtex:begin …` line falls through to the general comment branch below
+      // (it is comment bytes, and `%!v:` does not match `%!vtex:`), so it is
+      // carried as a `latexComment` and parsing continues normally past it. The
+      // stranded marker is defused on the way out (`% !vtex:begin …`), which is
+      // right: a begin with no end is not a construct, and leaving it live
+      // would re-slurp on the next open.
+      if (texBeginMatch && texBeginEol !== -1 && texEndIdx !== -1) {
         const uuid = texBeginMatch[1];
-        const eolAfterBegin = ctx.src.indexOf("\n", ctx.pos);
-        if (eolAfterBegin === -1) {
-          // Malformed: begin marker with no newline. Skip the line.
-          ctx.pos = ctx.src.length;
-          continue;
-        }
-        const bodyStart = eolAfterBegin + 1;
-        const endMarker = `%!vtex:end ${uuid}`;
-        const endIdx = ctx.src.indexOf(endMarker, bodyStart);
-        let bodyEnd: number;
-        let advanceTo: number;
-        if (endIdx === -1) {
-          // Unterminated. Recover by treating the rest of the source as body.
-          bodyEnd = ctx.src.length;
-          advanceTo = ctx.src.length;
-        } else {
-          bodyEnd = endIdx;
-          // Trim the single newline the serializer always emits before the end marker.
-          if (bodyEnd > bodyStart && ctx.src[bodyEnd - 1] === "\n") bodyEnd--;
-          const eolAfterEnd = ctx.src.indexOf("\n", endIdx);
-          advanceTo = eolAfterEnd === -1 ? ctx.src.length : eolAfterEnd + 1;
-        }
+        const bodyStart = texBeginEol + 1;
+        const endIdx = texEndIdx;
+        let bodyEnd: number = endIdx;
+        // Trim the single newline the serializer always emits before the end marker.
+        if (bodyEnd > bodyStart && ctx.src[bodyEnd - 1] === "\n") bodyEnd--;
+        const eolAfterEnd = ctx.src.indexOf("\n", endIdx);
+        // unterminated-ok: `eolAfterEnd === -1` means the END marker is the
+        // last line, so EOF genuinely is the end of the construct — no
+        // unrelated content can lie past it.
+        const advanceTo = eolAfterEnd === -1 ? ctx.src.length : eolAfterEnd + 1;
         let code = ctx.src.slice(bodyStart, bodyEnd);
         // Unescape any `%!v tex:end` → `%!vtex:end` that the serializer
         // emitted to protect user-pasted markers from terminating early.
@@ -2127,6 +2219,40 @@ interface ListItemSlice {
 }
 
 /**
+ * Push the WHOLE `\begin{env}…\end{env}` onto `parent` as one byte-literal
+ * carrier paragraph — env name, optional argument and body included, flagged
+ * so no serializer runs typography over it, and carrying the block's uuid so
+ * its identity survives the save (task 342).
+ *
+ * This is the ONE place that spelling lives. It is the environment
+ * dispatcher's `default:` arm — and, since task 356, the REFUSAL every modeled
+ * branch takes when the body is not something its node can hold. A modeled
+ * branch that meets a body outside its model has exactly two honest answers:
+ * carry the bytes, or throw. It must never keep the fraction it recognises and
+ * drop the rest, which is the whitelist-drop-without-carrier class this and
+ * task 350 exist to close.
+ */
+function pushVerbatimEnvCarrier(
+  parent: JSONContent,
+  env: string,
+  optArg: string,
+  envContent: string,
+  envUuid: string | null,
+): void {
+  parent.content!.push({
+    type: "paragraph",
+    ...(envUuid ? { attrs: { uuid: envUuid } } : {}),
+    content: [
+      {
+        type: "text",
+        text: `\\begin{${env}}${optArg}${envContent}\\end{${env}}`,
+        marks: [verbatimMark()],
+      },
+    ],
+  });
+}
+
+/**
  * Split list-environment content into individual item slices, respecting
  * nested itemize/enumerate environments. Each returned slice holds the text
  * between an `\item` and the next sibling `\item` (or end of content), with
@@ -2146,6 +2272,7 @@ interface ListItemSlice {
 function splitListItems(content: string): {
   items: ListItemSlice[];
   preamble: string;
+  hasItems: boolean;
 } {
   const items: ListItemSlice[] = [];
   let pos = 0;
@@ -2202,14 +2329,45 @@ function splitListItems(content: string): {
   if (currentStart >= 0) {
     items.push({ text: content.slice(currentStart).trim(), label: currentLabel });
   }
-  // Extract preamble: everything before the first \item, trimmed
-  const preamble = firstItemPos > 0 ? content.slice(0, firstItemPos).trim() : "";
-  return { items, preamble };
+  // Extract preamble: everything before the first \item, trimmed.
+  //
+  // `firstItemPos === -1` (NO `\item` anywhere) is a different fact from
+  // `firstItemPos === 0` (an item at offset 0, so there is no preamble), and
+  // the pre-356 `firstItemPos > 0 ? … : ""` conflated the two: a body with no
+  // items at all reported an EMPTY preamble and zero items, so `parseList`
+  // substituted one empty `listItem` and every byte of the body was destroyed
+  // — on WELL-FORMED input, with no unterminated close for the fail-closed arms
+  // above to catch. The whole body is preamble when there is no item to
+  // separate it from; `hasItems` lets the caller refuse outright.
+  const preamble =
+    firstItemPos === -1
+      ? content.trim()
+      : firstItemPos > 0
+        ? content.slice(0, firstItemPos).trim()
+        : "";
+  return { items, preamble, hasItems: firstItemPos !== -1 };
 }
 
-function parseList(content: string, type: string): JSONContent {
+/**
+ * Parse a list environment's body into a `bulletList`/`orderedList`, or answer
+ * `null` when the body is not something the list model can hold.
+ *
+ * The refusal (task 356 site 2) covers a body with CONTENT but no `\item`:
+ * `\begin{itemize}\input{bullets}\end{itemize}`, a tuning-only body
+ * (`\itemsep`/`\setlength`), or items hidden inside an opaque construct.
+ * Virgil's list model IS its items, so such a body is unrepresentable — and
+ * the caller carries the whole environment byte-for-byte instead, which is task
+ * 342's rule ("what the system does not model, it CARRIES") read one level in.
+ * Routing it through `listPreamble` was the other candidate and is strictly
+ * worse: the serializer would re-emit an `\item` the user never typed.
+ *
+ * A body that is EMPTY (or whitespace only) is not a refusal — there is nothing
+ * to lose, and the one-empty-item list is the editable node the user wants.
+ */
+function parseList(content: string, type: string): JSONContent | null {
   const items: JSONContent[] = [];
-  const { items: itemTexts, preamble } = splitListItems(content);
+  const { items: itemTexts, preamble, hasItems } = splitListItems(content);
+  if (!hasItems && content.trim() !== "") return null;
 
   for (const slice of itemTexts) {
     // Pull off the item's `%!v:xxxx` marker if present, from the ONE place the
@@ -2401,6 +2559,7 @@ function splitPexBody(
     tag: string;
     label: string;
     exnoOverride: string | null;
+    rawOptions: string | null;
     uuid: string | null;
     text: string;
   }>;
@@ -2409,6 +2568,7 @@ function splitPexBody(
     tag: string;
     label: string;
     exnoOverride: string | null;
+    rawOptions: string | null;
     uuid: string | null;
     text: string;
   }> = [];
@@ -2422,6 +2582,7 @@ function splitPexBody(
     tag: string;
     label: string;
     exnoOverride: string | null;
+    rawOptions: string | null;
     uuid: string | null;
     start: number;
   } | null = null;
@@ -2432,6 +2593,7 @@ function splitPexBody(
       tag: current.tag,
       label: current.label,
       exnoOverride: current.exnoOverride,
+      rawOptions: current.rawOptions,
       uuid: current.uuid,
       text: body.slice(current.start, endPos).trim(),
     });
@@ -2501,14 +2663,16 @@ function splitPexBody(
         if (firstAt === -1) firstAt = pos;
         flushCurrent(pos);
         let cursor = pos + 2;
-        // Optional [opts]
+        // Optional [opts] — `exno=` interpreted, the rest carried (task 356).
         let exnoOverride: string | null = null;
+        let rawOptions = "";
         while (cursor < body.length && body[cursor] === "[") {
           const close = body.indexOf("]", cursor);
           if (close === -1) break;
           const optStr = body.slice(cursor + 1, close);
           const m = optStr.match(/exno\s*=\s*([^,\s]+)/);
           if (m) exnoOverride = m[1];
+          rawOptions += body.slice(cursor, close + 1);
           cursor = close + 1;
         }
         // Optional <tag>
@@ -2534,6 +2698,7 @@ function splitPexBody(
           tag,
           label,
           exnoOverride,
+          rawOptions: rawOptions || null,
           uuid: pendingItemUuid,
           start: cursor,
         };
@@ -2558,6 +2723,9 @@ function buildExampleBlockFromBody(
     label: string;
     uuid: string | null;
     exnoOverride: string | null;
+    /** The raw `[opts]` bracket run, verbatim — see the `rawOptions` note on
+     *  `serializeExampleBlock`. */
+    rawOptions?: string | null;
     suppressSpace: boolean;
   },
 ): JSONContent {
@@ -2571,6 +2739,7 @@ function buildExampleBlockFromBody(
     tag: opts.tag,
     label: opts.label,
     exnoOverride: opts.exnoOverride,
+    rawOptions: opts.rawOptions ?? null,
     suppressSpace: opts.suppressSpace,
     number: 0,
   };
@@ -2604,6 +2773,7 @@ function buildExampleBlockFromBody(
           item.uuid,
           item.text,
           item.exnoOverride,
+          item.rawOptions,
         ),
       );
     }
@@ -2631,6 +2801,7 @@ function buildExampleItemFromText(
   uuid: string | null,
   text: string,
   exnoOverride: string | null = null,
+  rawOptions: string | null = null,
 ): JSONContent {
   // Lift a nested `\begin{xlist}…\end{xlist}` into the schema's single
   // `exampleItemList?` slot — but ONLY when the item holds exactly one.
@@ -2705,6 +2876,7 @@ function buildExampleItemFromText(
       label,
       subLabel: "",
       exnoOverride: exnoOverride ?? null,
+      rawOptions,
     },
     content: normalized,
   };
@@ -2725,6 +2897,7 @@ function buildExampleItemListFromBody(body: string): JSONContent {
         item.uuid,
         item.text,
         item.exnoOverride,
+        item.rawOptions,
       ),
     );
   }
