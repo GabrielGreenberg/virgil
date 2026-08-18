@@ -58,6 +58,12 @@ vi.mock("@/hooks/useInTextPositions", () => {
       state.lastItems = items;
       return {
         positions: new Map(items.map((i) => [i.id, i.pos])),
+        // Anchor-relative pins (task 362): the panel publishes each card's
+        // measured natural top on its wrapper, so the placement door can
+        // store an OFFSET from the anchor rather than a pod coordinate.
+        naturals: new Map(
+          items.map((i) => [i.id, { naturalTop: i.pos, height: 60 }]),
+        ),
         editorContentHeight: 600,
         panelScrollRef: state.panelScrollRef,
       };
