@@ -10,6 +10,7 @@ import {
   UUID_BEARING_NODE_TYPES,
   TITLED_NODE_TYPES,
   COLLAPSIBLE_NODE_TYPES,
+  deferringParent,
 } from "@/lib/node-attr-sets";
 import {
   emitMarker,
@@ -1540,7 +1541,21 @@ function extractTitleFieldLines(preamble: string): string[] {
  *  prefixed `citation:` / `footnote:`, so cross-kind collisions are not a
  *  rendering problem). */
 export function assignUuids(doc: JSONContent): void {
-  const CONTAINER_TYPES = new Set(["bulletList", "orderedList", "blockquote"]);
+  // Task 346: "does MY inner paragraph defer?" is asked of the paragraph's
+  // IMMEDIATE PARENT, from the shared `DEFERRING_PARENTS` SSOT — never from a
+  // local `CONTAINER_TYPES` literal, and never from an INHERITED
+  // "am I somewhere inside a container" flag.
+  //
+  // Both halves of that mattered. The literal was missing `exampleItem` and
+  // `exampleBlock` (the editor's set gained them; these three copies never
+  // did), and the inherited flag was only an approximation of the real rule —
+  // `exampleItemList` sits between an `exampleBlock` and its `exampleItem`s and
+  // is not a container name, so a flag would have been reset there even with
+  // the names added. The two sets stay distinct in ROLE: `CONTAINER_DESCEND`
+  // below decides where the walk descends and which nodes own their own uuid;
+  // `DEFERRING_PARENTS` decides only whether a paragraph yields identity to the
+  // node directly above it.
+  const CONTAINER_DESCEND = new Set(["bulletList", "orderedList", "blockquote"]);
   const existing = new Set<string>();
 
   // First pass: collect existing UUIDs and detect duplicates.
@@ -1569,34 +1584,34 @@ export function assignUuids(doc: JSONContent): void {
     existing.add(node.attrs.uuid as string);
   }
 
-  // Second pass: assign missing UUIDs (skip paragraphs inside containers)
-  function assign(node: JSONContent, insideContainer = false) {
-    // Strip stale UUIDs on paragraphs inside a container (listItem,
-    // blockquote, codeBlock). The container itself or its listItem owns
-    // the anchor identity; inner paragraphs don't.
-    if (insideContainer && node.type === "paragraph" && node.attrs?.uuid) {
+  // Second pass: assign missing UUIDs (a deferred inner paragraph gets none)
+  function assign(node: JSONContent, parentType: string | null = null) {
+    const deferred = node.type === "paragraph" && deferringParent(parentType);
+    // Strip a stale uuid on a deferred inner paragraph — its container owns
+    // the anchor identity.
+    if (deferred && node.attrs?.uuid) {
       node.attrs.uuid = null;
       node.attrs.parTitle = null;
     }
     // Container nodes (bulletList / orderedList / blockquote) get a UUID.
-    if (CONTAINER_TYPES.has(node.type!)) {
+    if (CONTAINER_DESCEND.has(node.type!)) {
       if (!node.attrs?.uuid) ensureUuid(node);
-      node.content?.forEach((child) => assign(child, true));
+      node.content?.forEach((child) => assign(child, node.type));
       return;
     }
     // List items are per-item anchor targets (so the action button works
     // inside an item, marginalia can pin to a single line, etc.). Their
-    // inner paragraph stays UUID-less — handled by insideContainer=true.
+    // inner paragraph stays UUID-less — `listItem` is a DEFERRING_PARENT.
     if (node.type === "listItem") {
       if (!node.attrs?.uuid) ensureUuid(node);
-      node.content?.forEach((child) => assign(child, true));
+      node.content?.forEach((child) => assign(child, node.type));
       return;
     }
-    // Non-empty paragraphs get a UUID (unless inside a container). This is the
-    // ONE remaining policy: a paragraph's identity is conditional.
+    // Non-empty paragraphs get a UUID (unless deferred). This is the ONE
+    // remaining policy: a paragraph's identity is conditional.
     if (
       node.type === "paragraph" &&
-      !insideContainer &&
+      !deferred &&
       node.content &&
       node.content.length > 0 &&
       !node.attrs?.uuid
@@ -1625,7 +1640,7 @@ export function assignUuids(doc: JSONContent): void {
     ) {
       ensureUuid(node);
     }
-    node.content?.forEach((child) => assign(child, insideContainer));
+    node.content?.forEach((child) => assign(child, node.type ?? null));
   }
   assign(doc);
 
@@ -1699,7 +1714,12 @@ export function assignUuids(doc: JSONContent): void {
  * `latex-serializer-needs-uuid-work.test.ts` (predicate ⇔ mutation).
  */
 export function needsUuidWork(doc: JSONContent): boolean {
-  const CONTAINER_TYPES = new Set(["bulletList", "orderedList", "blockquote"]);
+  // Mirrors `assignUuids` exactly, including its task-346 SSOT read: this
+  // predicate IS the save-path gate, so a stale rule here is not a second copy
+  // — it is the rule, and whatever this walk cannot see the mutator never gets
+  // the chance to heal. That is precisely what kept it answering TRUE forever
+  // on any paper holding one `\ex`.
+  const CONTAINER_DESCEND = new Set(["bulletList", "orderedList", "blockquote"]);
   let work = false;
 
   // Pass 1 mirror: duplicate uuids among bearing nodes.
@@ -1720,18 +1740,19 @@ export function needsUuidWork(doc: JSONContent): boolean {
   if (work) return true;
 
   // Pass 2 mirror: any node the assign ladder would touch.
-  function assign(node: JSONContent, insideContainer = false) {
+  function assign(node: JSONContent, parentType: string | null = null) {
     if (work) return;
-    if (insideContainer && node.type === "paragraph" && node.attrs?.uuid) {
+    const deferred = node.type === "paragraph" && deferringParent(parentType);
+    if (deferred && node.attrs?.uuid) {
       work = true; // assignUuids would CLEAR uuid/parTitle here
       return;
     }
-    if (CONTAINER_TYPES.has(node.type!)) {
+    if (CONTAINER_DESCEND.has(node.type!)) {
       if (!node.attrs?.uuid) {
         work = true;
         return;
       }
-      node.content?.forEach((child) => assign(child, true));
+      node.content?.forEach((child) => assign(child, node.type));
       return;
     }
     if (node.type === "listItem") {
@@ -1739,12 +1760,12 @@ export function needsUuidWork(doc: JSONContent): boolean {
         work = true;
         return;
       }
-      node.content?.forEach((child) => assign(child, true));
+      node.content?.forEach((child) => assign(child, node.type));
       return;
     }
     if (
       node.type === "paragraph" &&
-      !insideContainer &&
+      !deferred &&
       node.content &&
       node.content.length > 0 &&
       !node.attrs?.uuid
@@ -1768,7 +1789,7 @@ export function needsUuidWork(doc: JSONContent): boolean {
       work = true;
       return;
     }
-    node.content?.forEach((child) => assign(child, insideContainer));
+    node.content?.forEach((child) => assign(child, node.type ?? null));
   }
   assign(doc);
   if (work) return true;
@@ -1886,18 +1907,25 @@ export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): 
 
   if (orphansByFingerprint.size === 0) return;
 
-  const CONTAINER_TYPES = new Set(["bulletList", "orderedList", "blockquote"]);
+  // Same task-346 SSOT read as its two siblings. This walk restores orphans BY
+  // FINGERPRINT, so a stale rule here is worse than a churning uuid: while the
+  // inner paragraph kept an identity, it and its container carried the SAME
+  // fingerprint, and a fingerprint that names two nodes is a wrong-restore.
+  // (This path is currently disabled, which is the only reason that was a
+  // hazard rather than a defect.)
+  const CONTAINER_DESCEND = new Set(["bulletList", "orderedList", "blockquote"]);
 
   // 3. Walk document for UUID-eligible nodes missing a UUID, try to recover
-  function recover(node: JSONContent, insideContainer = false) {
+  function recover(node: JSONContent, parentType: string | null = null) {
+    if (node.type === "paragraph" && deferringParent(parentType)) return;
     // Container nodes (bulletList / orderedList / blockquote): recover
     // the container UUID, then recurse so listItems can recover too.
-    if (CONTAINER_TYPES.has(node.type!)) {
+    if (CONTAINER_DESCEND.has(node.type!)) {
       if (!node.attrs?.uuid) {
         const fp = computeFingerprint(node);
         if (fp) tryRestore(node, fp);
       }
-      node.content?.forEach((child) => recover(child, true));
+      node.content?.forEach((child) => recover(child, node.type));
       return;
     }
     // List items are per-item anchor targets — recover via the item's
@@ -1907,14 +1935,14 @@ export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): 
         const fp = computeFingerprint(node);
         if (fp) tryRestore(node, fp);
       }
-      node.content?.forEach((child) => recover(child, true));
+      node.content?.forEach((child) => recover(child, node.type));
       return;
     }
     // Headings and titleFields always recoverable
     if (
       node.type === "heading" ||
       node.type === "titleField" ||
-      (node.type === "paragraph" && !insideContainer && node.content && node.content.length > 0)
+      (node.type === "paragraph" && node.content && node.content.length > 0)
     ) {
       if (!node.attrs?.uuid) {
         const fp = computeFingerprint(node);
@@ -1933,7 +1961,7 @@ export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): 
       const fp = computeFingerprint(node);
       if (fp) tryRestore(node, fp);
     }
-    node.content?.forEach((child) => recover(child, insideContainer));
+    node.content?.forEach((child) => recover(child, node.type ?? null));
   }
 
   function tryRestore(node: JSONContent, fp: string) {

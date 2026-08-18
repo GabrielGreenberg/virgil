@@ -90,3 +90,59 @@ export const TITLED_NODE_TYPES: ReadonlySet<string> = new Set([
 export const COLLAPSIBLE_NODE_TYPES: ReadonlySet<string> = new Set([
   "texBlock",
 ]);
+
+/**
+ * Container kinds whose DIRECT-child `paragraph` DEFERS its anchor identity to
+ * the container — the container is the real text object, and the inner
+ * paragraph must carry no uuid of its own.
+ *
+ * **This lived in `anchor-uuid.ts` and could not be read from here** (task
+ * 346), which is the whole reason it forked. That module imports `EditorView`,
+ * `@/lib/marginalia` and the text-object registry, so the TipTap-free `.tex`
+ * layer cannot touch it — and `latex-serializer.ts` therefore re-typed the rule
+ * as a `CONTAINER_TYPES` literal, three times over. The editor's set later
+ * gained `exampleItem` and `exampleBlock`; none of the three copies did.
+ *
+ * The cost was not byte corruption — the `.tex` was stable — it was IDENTITY.
+ * Measured over three parse cycles, a paragraph inside `\ex`/`\pex` re-minted
+ * a fresh uuid on EVERY open, so `virgil/virgil.json` churned with no user
+ * edit, the container and its inner paragraph carried DUPLICATE fingerprints,
+ * and `needsUuidWork` — the save-path gate — never reached the `[true, false,
+ * false]` fixed point every modelled container reaches. Any paper holding one
+ * `\ex` paid the full copy-and-walk on every save, forever.
+ *
+ * Same class as this module's own reason for existing, one file over: a rule
+ * single-declared on one side and hand-listed on the other agrees only about
+ * the members somebody remembered.
+ *
+ * NOT a taxonomy of containers. Three orthogonal facts live nearby and must
+ * stay apart (`anchor-resolution.ts` states this): this set answers "does MY
+ * inner paragraph defer?" and is read of a paragraph's IMMEDIATE PARENT;
+ * `CONTAINER_DESCEND_KINDS` answers where a walk descends; `removeOnEmptyChildren`
+ * answers what dies when emptied. `bulletList`/`orderedList` are descend kinds
+ * and are deliberately NOT here — a list's own child is a `listItem`, and it is
+ * the ITEM that absorbs its paragraph. `figureBlock` is deliberately absent
+ * too, recorded as a considered decision at
+ * `text-objects/text-object-registry.ts`.
+ */
+export const DEFERRING_PARENTS: ReadonlySet<string> = new Set([
+  "listItem",
+  "blockquote",
+  "codeBlock",
+  "exampleItem",
+  "exampleBlock",
+]);
+
+/**
+ * True iff `node` is a `paragraph` whose IMMEDIATE parent defers — the one
+ * predicate every layer asks, so the editor and the `.tex` layer cannot answer
+ * differently.
+ *
+ * Immediate-parent, never an inherited "am I somewhere inside a container"
+ * flag: the flag the serializer used was only an APPROXIMATION of this rule,
+ * and it is the approximation that let `exampleItemList` (an unlisted
+ * structural node between `exampleBlock` and `exampleItem`) reset it.
+ */
+export function deferringParent(parentType: string | null | undefined): boolean {
+  return !!parentType && DEFERRING_PARENTS.has(parentType);
+}

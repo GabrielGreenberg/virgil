@@ -8,10 +8,16 @@
  * button, etc.). This module is that hydration surface: every entry point
  * that needs a stable anchor identity should call `ensureAnchorUuid`.
  *
- * Walk policy: paragraphs nested inside `listItem` / `blockquote` / `codeBlock`
- * defer to their parent container — those parents are the real anchor target.
+ * Walk policy: a paragraph whose IMMEDIATE parent is a {@link DEFERRING_PARENTS}
+ * container defers to that container — the parent is the real anchor target.
  * Inner-paragraph UUIDs inside those containers are stripped at serialization,
  * so anchoring to them is pointless.
+ *
+ * That last sentence was FALSE for two of the set's own members until task 346:
+ * the `.tex` layer hand-listed three container names and never gained
+ * `exampleItem`/`exampleBlock`, so every example body paragraph re-minted a
+ * uuid on every open. The set is declared in `node-attr-sets.ts` now, where
+ * both silos can read it.
  */
 
 import type { EditorView } from "@tiptap/pm/view";
@@ -29,26 +35,18 @@ import type { TextObjectKind } from "@/text-objects/types";
  * grabbing it as its own text-object) is pointless and produces a phantom
  * second handle ON the body text (backlog #49).
  *
- * `exampleBlock` joins the original three here: a SINGLE example (`\ex`) holds
- * its body `paragraph` DIRECTLY (not via an `exampleItem`), so without this the
- * body paragraph mints its own uuid → gets a grab handle anchored at text-start,
- * right of the `(n)` number. (`exampleItem` was already covered for the multi
- * `\pex` sub-item case.) Every OTHER child of an exampleBlock —
- * exampleItemList / bulletList / orderedList / graphicsBlock / displayMath — is
- * NOT a `paragraph`, so it stays an independent anchor, unchanged.
- *
- * The single owner: `block-uuid-backfill` (insertion-time mint) and the
- * decoration walk in `@/lib/tiptap/uuid-attr` both IMPORT this + the
- * {@link isDeferredInnerParagraph} predicate rather than re-declaring it, so
- * the "what is a grabbable text-object" boundary can't drift between surfaces.
+ * **Re-exported from [node-attr-sets.ts](./node-attr-sets.ts), where it now
+ * lives** (task 346). It was declared here, and the `.tex` layer cannot import
+ * this module — `EditorView`, `@/lib/marginalia` and the text-object registry
+ * all arrive with it — so `latex-serializer.ts` re-typed the rule as a
+ * `CONTAINER_TYPES` literal in three places. When `exampleItem`/`exampleBlock`
+ * were added here, none of the three followed, and the stripping the doc
+ * comment above promises simply did not happen for them. The set moved to the
+ * import-free leaf so both silos read one declaration; every editor-side call
+ * site is unchanged.
  */
-export const DEFERRING_PARENTS = new Set([
-  "listItem",
-  "blockquote",
-  "codeBlock",
-  "exampleItem",
-  "exampleBlock",
-]);
+export { DEFERRING_PARENTS } from "@/lib/node-attr-sets";
+import { DEFERRING_PARENTS } from "@/lib/node-attr-sets";
 
 /**
  * True iff `node` is a `paragraph` whose immediate `parent` is a
