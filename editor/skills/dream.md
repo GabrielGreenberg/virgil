@@ -147,6 +147,24 @@ on the `.claude/commands/` mirror instead sees only non-underscore markdown and
 reports green for the rest — on 2026-08-10 that hid a stale `create_card.py`
 sitting behind seven stale skills from the same commit.
 
+**An empty `drift` is only an answer when `driftChecked` is true.** `[]` also
+means *"I could not look,"* byte-identical to `[]` meaning *"in sync."* Read
+`driftChecked` / `driftReason` (`unbuilt-bundle`, `no-source-repo`,
+`unparseable-rewrite-table`, `unreadable-manifest`), never the list alone — the
+same rule `selfReferentialOnly` follows: the script computes the condition, you
+read the flag. If it could not run, say so in the digest rather than reporting a
+green preflight you never performed.
+
+The reachable case is **config-dependent**, so it works on the dev box and goes
+quiet exactly where the environment is thinner. The check needs a BUILT bundle
+and `public/skill-bundle/` is gitignored, so no fresh `git worktree add` carries
+one; whether that matters turns on `VIRGIL_REPO_ROOT`, which `source_repo_root()`
+prefers before walking up from the script. With the pin set (this machine's
+`~/.zshenv`) a worktree run resolves to the PRIMARY checkout and checks its
+bundle correctly; with it absent — a clean-env cron, another machine, a synced
+paper copy — the walk lands on the bundle-less tree and answers `[]` to
+everything. Prefer running the preflight from the primary checkout anyway.
+
 If anything drifted — **that is the night's top finding**, ahead of anything in
 the memos. Record it in the digest with the rebuild command. Then **read the
 SSOT (`editor/skills/…`), not your own served text, for the rest of the run**:
@@ -174,6 +192,18 @@ This is the judgment the scripts can't do. Over the selected memos:
 - **Flagged first.** Each `flagged` memo is a near-miss Don't-rule, an error, a
   low-confidence call, or a user `--tag`. Read its buckets; decide if it's a
   real fix or a one-off.
+- **Date the premise, not just the evidence.** A memo is a *dated observation*,
+  and the code moves between the run that wrote it and the dream that reads it —
+  so a memo's observation can be accurate while its proposed FIX has already
+  gone stale. Before acting on any recommendation, re-verify the premise it
+  rests on against the CURRENT tree: read the constant, run the function, check
+  `git log` on the files the premise names against the memo's `reflectedAt`.
+  Read the mechanism; never reason forward from the memo's own account of it.
+  This is step 1's *"date the drift before you discount anything"* generalized —
+  the same rule, applied there to a memo's evidence and here to its
+  recommendation. When a premise HAS gone stale, record that as the finding and
+  move on: re-authoring a fix `main` already carries is the costliest way to
+  spend a night, and baking a dead premise into a prompt is permanent.
 - **Group the `noted`.** A bucket that recurs for one skill (e.g. three
   `draft-suggestion` memos all flagging the same `alignment` mismatch) is a
   pattern worth a skill-prompt fix. A friction that appears across *several*

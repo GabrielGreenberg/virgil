@@ -1,4 +1,4 @@
-<!-- last-verified: 0e081a07 2026-08-17 -->
+<!-- last-verified: 6c5a2181 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#reserved-name-inventory -->
 <!-- covers-code: src/lib/storage-fsa.ts, src/lib/latex-serializer.ts, src/lib/document-styles.ts, src/app/globals.css, editor/scripts/create_card.py -->
 
@@ -49,6 +49,17 @@ commands the parser depends on — don't redefine them either.
 
 Never type, move, or delete one by hand ([identity.md](identity.md#the-marker-family)).
 
+**Where the `%!v:` anchor sits is no longer "the last token on the line."** Two
+recent moves matter to any hand-computed splice: a paragraph ending in a `%`
+comment carries its anchor INSIDE that comment tail (`prose % note %!v:aaaa`, task
+347 — the anchor is comment bytes, so it may ride there), and a `listItem`'s anchor
+is APPENDED to the end of the item's whole serialized body and may STACK with a
+nested child's (`\end{itemize} %!v:child %!v:me`, task 348 — the LAST anchor is the
+outer item's). So "splice just before the trailing `%!v:`" can land your text inside
+a comment (where LaTeX will not typeset it) or inside the wrong node. Splice through
+`apply_response.py`'s `texEdit`, which owns the placement, rather than computing the
+offset yourself.
+
 **Reserved CSS classes & `data-*` attributes** (SSOT [src/app/globals.css](../../src/app/globals.css)).
 A skill rarely emits CSS, but **content a skill pastes or authors must not collide**
 with the structural hook namespace: `.tiptap` / `.ProseMirror` / `.react-renderer`
@@ -86,6 +97,31 @@ The write rules live in two places — follow them, don't duplicate them:
   ([editor/AGENTS.md → Don't](../../editor/AGENTS.md)).
 
 Gardening adds no new write rule — only the deny-list above and the orphan duty below.
+
+### The preservation gates (tasks 350-D / 357) — and why they don't cover you
+
+Virgil now refuses its own **automatic** `.tex` writes when the re-serialized model
+would lose content. Two gates, one rule: project away Virgil's own markers, count
+WORDS in the preamble and the body **separately**, and refuse on a shrink in either
+region, leaving the file byte-identical.
+
+- **Load-writeback gate** — `checkTexPreservation`
+  ([src/lib/tex-preservation.ts](../../src/lib/tex-preservation.ts)), on the
+  unconditional re-stamp `readDocBundle` fires on open.
+- **Write gate** — `write-preservation.ts`, on every `writeDocBundle` that lands
+  **before the user's first genuinely undoable edit** (an anchor-UUID mint from a
+  grab-handle click or a card drag is an automatic write, not a user edit).
+- A refusal is **published**, not logged: `recordPreservationRefusal`
+  ([src/lib/preservation-notice.ts](../../src/lib/preservation-notice.ts)) raises a
+  non-dismissable topbar banner, forces a forensic snapshot of the intact bundle
+  into `virgil/.history/`, and **suspends** the post-user-edit step-aside until the
+  user acknowledges. The editor stays editable; only writes to disk are held.
+
+**Stated at the door and repeated here: `apply_response.py` is NOT covered.** The
+gates govern writes the *user* did not ask for; a skill's write is a write someone
+asked for, so it lands unmeasured. Preservation on the skill side is still the
+skill's own duty — splice, don't rewrite; never re-emit a region you merely
+re-read.
 
 ## Orphan handling
 

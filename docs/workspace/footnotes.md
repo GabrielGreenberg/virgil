@@ -1,4 +1,4 @@
-<!-- last-verified: 0e081a07 2026-08-17 -->
+<!-- last-verified: 6c5a2181 2026-08-18 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#cowork-pattern -->
 <!-- covers-code: src/lib/tiptap/footnote.ts, src/lib/footnote-commands.ts, src/lib/types.ts, src/hooks/useOrphanedFootnotes.ts, src/cards/has-content.ts, editor/scripts/create_card.py, editor/scripts/apply_response.py -->
 
@@ -42,6 +42,14 @@ before the trailing marker (above); `mode: "after-selected"` splices right after
 matched `selectedText` substring instead. The splice itself is kind-agnostic —
 `create_card.py` composes the `\vfid{<id>}\footnote{<body>}` insert string and the
 contract just places it.
+
+> **Caveat (task 347).** A `%` comment is now CONTENT that Virgil carries, and a
+> paragraph ending in one serializes with its anchor INSIDE the comment tail
+> (`…prose. % TODO cite %!v:3301`). `end-of-paragraph` finds the `%!v:` marker and
+> backs over whitespace only, so on such a paragraph it splices the atom **into the
+> comment**, where LaTeX will not typeset it. Prefer `after-selected` (anchored on a
+> real sentence-final substring) when the target paragraph carries a trailing
+> comment, and check the paragraph's last line before relying on the default mode.
 
 ## On-disk shape
 

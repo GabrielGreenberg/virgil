@@ -208,21 +208,48 @@ def _detect_skill_drift() -> list[str]:
     `select` (which always runs from source, never the bundle) so it is immune
     to the very drift it detects. Best-effort and never fatal — an unresolvable
     source repo, an unbuilt bundle (e.g. a synced paper copy), or an unparseable
-    rewrite table yields `[]`."""
+    rewrite table yields `[]`.
+
+    **`[]` alone is therefore not "clean" — it is also "I could not look."**
+    Callers that need to tell those apart read `_detect_skill_drift_status`,
+    whose second member names the reason the check could not run (`None` iff it
+    ran to completion). `select` publishes it as `driftChecked`/`driftReason`
+    so the dream never reports a green preflight it did not actually perform —
+    the same rule `selfReferentialOnly` follows: the SCRIPT computes the
+    condition, the prompt reads the flag instead of re-deriving it by eye.
+
+    The reachable case is CONFIG-DEPENDENT, which is what makes it worth a
+    flag rather than a comment — it works on the dev box and degrades quietly
+    exactly where the environment is thinner. `public/skill-bundle/` is
+    gitignored, so no fresh `git worktree add` carries a bundle; whether that
+    matters turns on `source_repo_root()`, which prefers `VIRGIL_REPO_ROOT`
+    and only then walks up from `__file__`. With the pin set (this machine:
+    `~/.zshenv` + `~/.claude/settings.json`) a worktree run resolves to the
+    PRIMARY checkout and checks its built bundle correctly. With the pin
+    absent — a clean-env cron, another machine, a synced paper copy — the walk
+    lands on the bundle-less tree and every question answers `[]`. Measured
+    both ways on 2026-08-17, from a dream worktree."""
+    return _detect_skill_drift_status()[0]
+
+
+def _detect_skill_drift_status() -> tuple[list[str], str | None]:
+    """`(drifted_paths, unavailable_reason)`. The reason is `None` iff the
+    check actually ran; otherwise the path list is empty because nothing could
+    be compared, NOT because nothing differs. See `_detect_skill_drift`."""
     repo = source_repo_root()
     if repo is None:
-        return []
+        return [], "no-source-repo"
     bundle_dir = repo / "public" / "skill-bundle" / "editor"
     manifest = bundle_dir / "bundle-manifest.json"
     if not manifest.is_file():
-        return []
+        return [], "unbuilt-bundle"
     prefixes = _paper_script_prefixes(repo)
     if prefixes is None:
-        return []
+        return [], "unparseable-rewrite-table"
     try:
         files = json.loads(manifest.read_text()).get("files", [])
     except Exception:
-        return []
+        return [], "unreadable-manifest"
 
     # bundlePath → repoPath, the inverse of build-editor-bundle.mjs buildSources.
     roots = (("claude-commands/", "editor/skills/"), ("scripts/", "editor/scripts/"))
@@ -253,7 +280,7 @@ def _detect_skill_drift() -> list[str]:
                 raw = raw.replace(a, b)
         if raw != shipped:
             drifted.append(repo_rel)
-    return sorted(drifted)
+    return sorted(drifted), None
 
 
 # ---------------------------------------------------------------------------
@@ -416,12 +443,19 @@ def cmd_select(_argv: list[str]) -> int:
     # exemption from the guard that exists to catch it.
     non_dream = [r for r in recs if r["skill"] != "dream"]
     self_referential_only = not non_dream
+    drift, drift_reason = _detect_skill_drift_status()
     out = {
         "devMode": True,
         # §1 preflight, computed from source so it survives a stale served prompt:
         # SSOT skills that differ from the built .claude/commands artifact (a
         # landed edit not yet rebuilt). Non-empty => the night's top finding.
-        "drift": _detect_skill_drift(),
+        "drift": drift,
+        # ...and an EMPTY `drift` is only meaningful when `driftChecked` is true.
+        # A gitignored `public/skill-bundle/` means every fresh worktree answers
+        # `[]` to every question, so "clean" and "could not look" are the same
+        # bytes unless the script says which it was.
+        "driftChecked": drift_reason is None,
+        "driftReason": drift_reason,
         "selfReferentialOnly": self_referential_only,
         "nonDreamMemoCount": len(non_dream),
         # Canonical UTC date — the branch name (step 4) keys off THIS, never a
