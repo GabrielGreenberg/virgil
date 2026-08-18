@@ -157,6 +157,99 @@ CI: [float-move-gesture-cost.test.tsx](src/components/__tests__/float-move-gestu
 
 Three properties of that census are load-bearing rather than incidental, each earned by its own first draft being wrong. It asks **per handle, not per file** — `LibraryView` holds three and `panel-column` two, so a file-level question lets one drifting handle be exempted by a chromed sibling, and the original `--accent` drift was catchable only because `LeftList` happens to hold exactly one. It reads JSX by scanning to the tag's **real** end rather than to the first `>`, because `onMouseDown={(e) => …}` is the repo's dominant idiom and a `[^>]*` class truncates the tag at the arrow — which is how the four margin guides sat unflagged under a guard written to indict them. And it asks whether a handle's subtree holds a **focusable node**, since that is the premise `aria-hidden` rests on and nothing else states it.
 
+### The content half: the drag that inherited none of the four obligations
+
+Same law, and the case where the reference implementation was written down, cited by name in
+the very allowlist the offender sits on, and simply never applied to the gesture people use
+most (task 351). Gabriel: dragging bullet-list items is "extremely choppy and rough — should
+be smooth-like-butter Notion-style." A content drag — the block / text-object lift that routes
+through the drop-mode controller — had a lift overlay that was exemplary (RAF-coalesced
+`translate3d`, equality bail, React on edges only) bolted onto a **controller that took none of
+task 330's four obligations**, and three costs outside it that only a real drag reaches.
+
+Four findings, each silent, and the order below is the order they bite:
+
+- **A `pointer-events: auto` overlay above the editor turns `posAtCoords` into an O(doc)
+  forced-layout sweep.** `view.posAtCoords` asks `document.elementFromPoint` first; when the
+  answer is a node OUTSIDE `view.dom`, ProseMirror falls back to `elementFromPoint(view.dom, …)`
+  — a wrap-around `getClientRects()` scan over EVERY top-level block with no early break — and
+  `posFromCaret` then returns null, so `posFromElement`'s `findOffsetInNode` sweeps them all
+  again. **Two doc-proportional passes per throttled move.** `globals.css` had made floating
+  panels click-through for exactly this reason in Wave 0 ("floats become click-through so the
+  cursor falls through to the editor for hit-testing") and the member list was never completed:
+  the MARGIN chrome — grab handles, marginalia markers, the overflow pill, the orphan dock —
+  sits inside `.ProseMirror`'s own 88/72px padding band, which is precisely where a Notion-style
+  user drags. One rule, an incomplete member list, and the cost of the gap is not a missed hover.
+- **The gesture measured at POINTER rate.** `feedAutoScroll` ran on every raw `mousemove` and
+  opened with `scrollEl.getBoundingClientRect()` — the zone gate lives *inside* the probe, so a
+  forced layout answered "am I near an edge?" about a container that cannot move under a held
+  pointer, 120–240 times a second, for a drag nowhere near an edge. Verbatim the shape task 334
+  found in `focus-band-drag` and task 333 in `useDragPosition`'s RAF body.
+- **It coalesced on a wall clock, not a frame** — and its fast branch ran the whole hit-test
+  SYNCHRONOUSLY inside the mousemove handler, so the indicator's own React style write landed
+  between two of the gesture's own reads. A 16 ms timer against a 16.67 ms frame also beats
+  against vsync at ~2.5 Hz, so the pass lands at a drifting phase relative to paint.
+- **The one thing that actually MOVES was moved by `top`.** The drop indicator is
+  `position: fixed` and `globals.css` eased its `top` — an 80 ms main-thread LAYOUT animation
+  restarted on every placement change, which during a drag through a dense list is most frames.
+  The tree was therefore never clean, so every rect read in the app paid a forced style+layout
+  flush. The float shell and the lift overlay both move by `translate3d` under a law this file
+  already states ("a `left`/`top` write re-lays-out every frame"); the bar was the one element in
+  the gesture that moves and the one that hadn't taken it.
+
+> **A content drag is a bespoke gesture, so it owes the four obligations whole: COALESCE (one
+> pass per FRAME, at the LIVE pointer, never inline in the event), SNAPSHOT (every geometry the
+> per-move math needs captured once at the edge and read through ONE lazy door), COMMIT ONCE,
+> and the two POINTER INVARIANTS. And the gesture's CHROME owes a fifth: everything painted
+> above the editor is click-through for the session, because the hit-test has to reach the
+> editor through it.**
+
+The snapshot door is [src/components/drop-mode/move-geometry.ts](src/components/drop-mode/move-geometry.ts),
+the same shape `FloatingPanel`'s `readMoveGeometry` has: lazy capture, re-armed off the bus's SET
+channel, dropped on the ONE teardown every ending funnels through. Two rules it earned:
+
+- **The span memo is HORIZONTAL-only, and that is load-bearing rather than tidy.** Auto-scroll
+  moves content vertically under a parked pointer, so a cached `.top` is stale within a frame,
+  while `.left`/`.width` cannot change without a reflow a drag does not cause. The door therefore
+  stores the PAIR, not the `ContentEdges` record — there is no `.top` to reach for — and a
+  consumer that needs a vertical number reads the one live block rect the hit-test already threads.
+- **The re-hit-test is REQUESTED, not run.** Auto-scroll's frame writes `scrollTop` and then asks
+  for a pass, so the WRITE and the next READ land in different frames. Running it inline bought a
+  one-frame-fresher indicator nobody can see, at the price of a forced flush immediately behind
+  the gesture's own write.
+
+The same pass closed the par-title hover band ([Editor.tsx](src/components/Editor.tsx)) — the grab
+handle's **twin**: same question (which block is the pointer over?), same source (`blocksAtY`),
+and during a drag the answer is invisible under the ghost. `TextObjectGrabHandle`'s tracker took
+`parkDuringLayoutGesture` + a RAF in Wave 2; this one took neither, so per RAW pointer event it
+ran a `localStorage` read (the `virgil:geom-hover` kill-switch — the `getWindowInsetTopPx` shape
+task 330 names, at pointer rate), a host rect, an O(near-zone) scan, and then an UNINDEXED
+`querySelector` over each hit's whole subtree. **A `bulletList` hit's subtree is the whole list**,
+which is why the felt cost was list-shaped and why a bullet-item drag was worse than any other.
+
+CI: [content-drag-move-cost.test.ts](src/components/drop-mode/__tests__/content-drag-move-cost.test.ts)
+drives the REAL controller and asserts what runs per EVENT versus per coalesced FRAME (twelve raw
+moves cost ZERO DOM reads after the gesture's one capture; eight cost ONE hit-test, at the LAST
+coordinate); [content-drag-guardrail](src/lib/__tests__/content-drag-guardrail.test.ts) gains the
+click-through census (per HOOK, and the hooks are re-checked against what the components emit — a
+rename would leave the CSS matching nothing) and the coalescing/snapshot pins. Every defect leg
+fails on its own pre-fix half, measured by neutering each in turn. One harness detail worth
+carrying forward: the fixture stubs the scroll container's OWN `getBoundingClientRect`, which
+**shadows `Element.prototype`** — so the first draft's prototype-only counter reported zero and the
+per-move-read leg passed vacuously under its own neuter. Count at the source (the trap
+`float-move-gesture-cost` records).
+
+**Owed, not claimed.** This run had no browser: the wall-clock half of the acceptance bar — a
+DevTools trace of a 5 s drag over `doc_perftest` with no >8 ms task attributable to the drag path,
+and Gabriel's own "smooth like butter" feel check — is outstanding. What is proven here is the
+STRUCTURE (call counts and coalescing), which is what the sibling harnesses prove too. Residuals
+the audit named and this pass did not close, in priority order: the geometry service's
+IntersectionObserver path is ungated during a gesture, so each auto-scroll frame can fire a
+`measureBlock` + a full Marginalia grid repack; `EditorLayout`'s section-path breadcrumb parks for
+RESIZE only and runs live on the scroll a drag generates; and three ungoverned scroll listeners
+(the editor scrollbar, the scroll-activity tracker, and `EditorPane`'s scroll-persist, which reads
+`offsetHeight` per event) run per scroll frame.
+
 ### The census half: an invariant with no census is how the others drifted
 
 Same law, and the case where the law was already written, already mandatory, and enforced by a guard that could not see most of the gestures it governed (task 333). `detectWindowDragGesture` is a **conjunction** — a window-level move listener AND drag chrome (a body-cursor write, a CSS resize cursor, or the shared handle classes) — because it was built to catch a bespoke *divider*, and a divider always wears one of those. A whole category of window drag wears none: a scrollbar thumb sets no cursor, and a **hold-threshold detector** (the card lift, the marginalia marker re-anchor, the inline-atom grab, the block grab handle) is chrome-free until it hands off. Eleven files in `src/` install a window-level move listener; the chrome census saw six.

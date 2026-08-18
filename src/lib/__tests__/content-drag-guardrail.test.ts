@@ -22,6 +22,16 @@
  *  4. NO MID-DRAG MINT — the hit-test resolves anchors with `mint: false`
  *     on the move path (minting per pointermove was the D4 drag cliff:
  *     full doc walk + dispatch + synchronous .tex flush per move).
+ *  5. CLICK-THROUGH CHROME — every `pointer-events: auto` overlay painted
+ *     above the editor goes click-through for the session's duration, so the
+ *     cursor falls through to the editor for hit-testing. The rule shipped in
+ *     Wave 0 for floating panels and its member list was never completed: the
+ *     MARGIN chrome (grab handles, marginalia markers, the overflow pill and
+ *     the orphan dock) sits inside `.ProseMirror`'s own 88/72px padding band,
+ *     and an overlay there does not merely eat a hover — it makes
+ *     `document.elementFromPoint` answer with a node OUTSIDE `view.dom`, which
+ *     sends `posAtCoords` down its wrap-around `getClientRects()` fallback over
+ *     EVERY top-level block, twice, per throttled move (task 351).
  */
 
 import { readFileSync } from "node:fs";
@@ -78,6 +88,53 @@ describe("content-drag guardrail", () => {
     // setOverlay calls inside the move path are mode-EDGE-gated. Structural
     // pin: onMove exists and schedules the motion RAF.
     expect(host.includes("scheduleMotion()")).toBe(true);
+  });
+
+  it("leg 5 — every margin overlay is click-through for the drop session", () => {
+    const css = read("src/app/globals.css");
+    // The four hooks the margin chrome actually emits. Each must appear under
+    // a `body[data-drop-mode-active]` rule whose declaration is
+    // `pointer-events: none`.
+    const HOOKS = [
+      ".text-object-grab-handle",
+      ".marginalia-marker",
+      "[data-marginalia-overflow]",
+      "[data-marginalia-orphan-dock]",
+    ];
+    // Collect every drop-mode rule that turns pointer events off.
+    const clickThrough = new Set<string>();
+    const RULE = /((?:body\[data-drop-mode-active[^{]*?)\{[^}]*\})/g;
+    for (const m of css.match(RULE) ?? []) {
+      if (!/pointer-events\s*:\s*none/.test(m)) continue;
+      const selector = m.slice(0, m.indexOf("{"));
+      for (const hook of HOOKS) if (selector.includes(hook)) clickThrough.add(hook);
+    }
+    expect([...clickThrough].sort()).toEqual([...HOOKS].sort());
+    // …and the hooks must still be what the components EMIT. A rename that
+    // silently un-covers the rule fails here rather than in a browser: the
+    // CSS above would keep matching nothing at all.
+    const marginalia = read("src/components/Marginalia.tsx");
+    expect(marginalia).toContain("marginalia-marker");
+    expect(marginalia).toContain("data-marginalia-overflow");
+    expect(marginalia).toContain("data-marginalia-orphan-dock");
+    expect(read("src/text-objects/TextObjectGrabHandle.tsx")).toContain(
+      "text-object-grab-handle",
+    );
+  });
+
+  it("leg 6 — the move path is frame-coalesced and snapshot-backed", () => {
+    const controller = stripComments(read("src/components/drop-mode/controller.ts"));
+    // The raw handler schedules; it never runs the hit-test inline (the
+    // pre-351 fast branch of the 16 ms wall-clock gate).
+    expect(controller).toContain("scheduleMovePass()");
+    expect(controller).toContain("requestAnimationFrame(runMovePass)");
+    // The ONE end path cancels the queued frame and disarms the snapshot, so
+    // no ending can leave a stale pass or a stale geometry behind it.
+    expect(controller).toContain("cancelMovePass()");
+    expect(controller).toContain("disarmMoveGeometry()");
+    // Auto-scroll's arming test reads the SNAPSHOT, never the container.
+    const autoScroll = stripComments(read("src/components/drop-mode/auto-scroll.ts"));
+    expect(autoScroll).not.toContain("getBoundingClientRect");
   });
 
   it("leg 4 — the hit-test move path never mints", () => {

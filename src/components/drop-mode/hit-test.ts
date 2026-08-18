@@ -26,7 +26,7 @@ import { isAnchorableNode } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
 import { resolveAnchorableNode, ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { markAnchorMint } from "@/lib/anchor-mint-signal";
-import { resolveContentEdges } from "@/text-objects/block-frame";
+import { contentSpanFor } from "./move-geometry";
 import {
   EXPEX_INNER_KINDS,
   isCompatibleParent,
@@ -450,8 +450,12 @@ interface ExpexItemGeom {
  * body / non-element DOM). Used for BOTH an exampleItem (multi) and the
  * exampleBlock body (single).
  *
- * O(1) — bounded DOM reads + cached font metrics; safe on the throttled-
- * mousemove drop path (AGENTS.md gesture sanctity), no doc walk.
+ * O(1) — bounded DOM reads + cached font metrics; safe on the frame-coalesced
+ * drop path (AGENTS.md gesture sanctity), no doc walk. Since task 351 it reads
+ * through `contentSpanFor`, the gesture-scoped memo: the extent is HORIZONTAL
+ * only, and horizontal is exactly what cannot change while the pointer is held
+ * (auto-scroll moves content vertically, so a cached Y would be stale within a
+ * frame — see `move-geometry.ts`).
  */
 function contentFrameEdges(
   editor: Editor,
@@ -463,8 +467,7 @@ function contentFrameEdges(
   if (container.childCount > 0) {
     const dom = editor.view.nodeDOM(containerPos + 1);
     if (dom instanceof HTMLElement) {
-      const frame = resolveContentEdges(dom);
-      return { left: frame.contentLeft, width: frame.contentWidth };
+      return contentSpanFor(dom);
     }
   }
   return { left: fallbackLeft, width: fallbackWidth };
@@ -766,9 +769,9 @@ export function makeBetweenBlocksPlacement(
     barLeft = blockRect.left;
     barWidth = blockRect.width;
   } else {
-    const frame = resolveContentEdges(block.dom);
-    barLeft = frame.contentLeft;
-    barWidth = frame.contentWidth;
+    const span = contentSpanFor(block.dom);
+    barLeft = span.left;
+    barWidth = span.width;
   }
   const rect: ViewportRect = {
     x: barLeft,
