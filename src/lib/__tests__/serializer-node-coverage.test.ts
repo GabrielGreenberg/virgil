@@ -280,6 +280,47 @@ describe("a real document is unaffected", () => {
 
 // ── Layer 3 · the census: the refusal reaches the user ────────────────────
 
+/**
+ * Does a `try { … } catch` BLOCK enclose `at`?
+ *
+ * The first cut asked `lastIndexOf("try {", at) > -1` and `indexOf("catch", at)
+ * > at` over the WHOLE FILE, and the adversarial pass on this commit measured
+ * what that buys: in `pipeline.ts` / `CodeEditor.tsx` / `useLatexSource.ts` the
+ * needle has exactly one `try` above it, so the leg had teeth by accident; in
+ * `EditorLayout.tsx` it had them only because no other `catch` follows; and in
+ * `Editor.tsx` — five tries above, ten catches below — it had NONE. Deleting
+ * the real try/catch around `serializeBodyOnly` there left the leg GREEN while
+ * a refusal escaped a read-only projection. "Every one of these sites is a
+ * small function" was a true sentence that the implementation never asked.
+ *
+ * So the containment is BRACE-BALANCED: from a candidate `try`'s own `{`, walk
+ * to the depth-0 close, require a `catch` to follow it, and require `at` to sit
+ * inside THAT span. The input is already comment- and literal-stripped
+ * (`codeOnly`), so a brace in prose or in a string cannot skew the depth.
+ */
+function enclosingTryCovers(src: string, at: number): boolean {
+  for (let i = src.lastIndexOf("try", at); i > -1; i = src.lastIndexOf("try", i - 1)) {
+    const open = src.indexOf("{", i);
+    if (open === -1 || open > at) continue;
+    let depth = 0;
+    for (let j = open; j < src.length; j++) {
+      if (src[j] === "{") depth++;
+      else if (src[j] === "}") {
+        depth--;
+        if (depth === 0) {
+          // A `try` block contains nothing unless a `catch` actually follows.
+          if (/^\s*catch\b/.test(src.slice(j + 1)) && at > open && at < j) {
+            return true;
+          }
+          break;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+
 describe("census · every door accounts for the serializer's refusal", () => {
   const BACKENDS = ["src/lib/storage-fsa.ts", "src/lib/storage-dev.ts"] as const;
 
@@ -346,13 +387,11 @@ describe("census · every door accounts for the serializer's refusal", () => {
       const src = codeOnly(read(rel));
       const at = src.indexOf(needle);
       expect(at, `${rel}: ${needle} not found`).toBeGreaterThan(-1);
-      // The call must sit under a `try` that opens before it and a `catch`
-      // that closes after — a coarse but honest containment test, and every
-      // one of these sites is a small function.
-      const tryAt = src.lastIndexOf("try {", at);
-      const catchAt = src.indexOf("catch", at);
-      expect(tryAt, `${rel}: ${needle} is not inside a try`).toBeGreaterThan(-1);
-      expect(catchAt, `${rel}: ${needle} has no catch after it`).toBeGreaterThan(at);
+      expect(
+        enclosingTryCovers(src, at),
+        `${rel}: ${needle} is not inside a try/catch — a refusal here would ` +
+          `take a read-only projection of the .tex down with it`,
+      ).toBe(true);
     }
   });
 
