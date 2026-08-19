@@ -875,10 +875,18 @@ Four rules it earned:
 **Decided, with its evidence:** a comment line that is only an anchor KEEPS minting
 its empty block. The uuid is a card's anchor identity, so dropping it at parse time
 would orphan the card on every load with no user gesture at all — strictly worse
-than the husk, which is now deletable. (The specific uuids `3be5` / `c194` could not
-be checked against their sidecars — that paper is not on this machine — but the
-verdict does not depend on the answer: anchored or not, the husk now deletes and the
-card, if any, orphans exactly as grab-handle Delete already orphans it.)
+than the husk, which is now deletable.
+
+**The premise is confirmed against the reporting paper, not only reproduced
+synthetically.** Both reported uuids are live Mode-A anchors in that paper's
+`virgil/revisions.json` — `3be5` on one revision card, `c194` on two — which is
+exactly the condition this guard fires on. Two details corroborate the fix's
+outcome. The husks themselves are now GONE from that `.tex` while those cards still
+name them, i.e. Gabriel already removed them the only way that worked (grab-handle
+Delete) and already accepted the orphaning this fix produces. And the THREE husks
+live in it today (`2d33`, `4a3b`, `f0c5`) are named by no sidecar at all — so they
+were always deletable, which is why the defect reads as intermittent: whether the
+key works depends on whether a card happens to anchor that husk.
 
 CI: [anchored-empty-block-keyboard-delete.test.ts](src/lib/tiptap/__tests__/anchored-empty-block-keyboard-delete.test.ts).
 Every leg drives `view.someProp("handleKeyDown", …)` on the REAL
