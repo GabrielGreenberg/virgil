@@ -48,6 +48,27 @@ const bundleManifestJsonPath = join(texbundleDir, "manifest.json");
 const FMT_FILEID = "swiftlatexpdftex.fmt";
 const FMT_PUBLIC_PATH = "/swiftlatex/swiftlatexpdftex.fmt";
 
+/**
+ * The SAME asset path, spelled for the SERVICE WORKER's precache manifest.
+ *
+ * Two tables come out of this script and their consumers apply DIFFERENT bases
+ * (task 365), so they cannot share one spelling:
+ *
+ *   - `tex-core-manifest.ts` is read by `tex-assets.ts`, which prefixes the
+ *     deploy basePath through `publicAssetUrl`. Root-relative, leading slash.
+ *   - `texbundle/manifest.json` is read by `public/sw.js`, which resolves each
+ *     entry with `new URL(p, self.location.href)` — i.e. against the SW's own
+ *     SCOPE. A leading slash DISCARDS that base and escapes to the origin root,
+ *     so under the production `/virgil` deploy every precache fetch 404'd, and
+ *     the SW's per-asset try/catch swallowed it: no offline TeX assets, no
+ *     error, and no symptom until the user went offline.
+ *
+ * So the SW list is scope-relative, matching `sw.js`'s own two constants
+ * (`"./swiftlatex/…"`). The SW normalizes a leading slash defensively too, but
+ * the table is emitted correct at the source.
+ */
+const swPath = (publicPath) => publicPath.replace(/^\/+/, "");
+
 function fail(msg) {
   console.error(`build-tex-bundle: ${msg}`);
   process.exit(1);
@@ -111,7 +132,7 @@ async function main() {
     if (e.fileid === FMT_FILEID) {
       // The .fmt is already vendored at public/swiftlatex/ — don't duplicate.
       manifest.push({ cacheKey: e.cacheKey, fileid: e.fileid, path: FMT_PUBLIC_PATH });
-      bundlePaths.push(FMT_PUBLIC_PATH);
+      bundlePaths.push(swPath(FMT_PUBLIC_PATH));
       console.log(`  fmt      ${e.cacheKey} -> ${FMT_PUBLIC_PATH} (${fmtBytes(bytes.length)}, referenced, not copied)`);
       continue;
     }
@@ -121,7 +142,7 @@ async function main() {
     writtenCount++;
     const publicPath = `/swiftlatex/texbundle/${e.fileid}`;
     manifest.push({ cacheKey: e.cacheKey, fileid: e.fileid, path: publicPath });
-    bundlePaths.push(publicPath);
+    bundlePaths.push(swPath(publicPath));
     console.log(`  asset    ${e.cacheKey} -> ${publicPath} (${fmtBytes(bytes.length)})`);
   }
 

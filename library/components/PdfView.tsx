@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { publicAssetUrl } from "@/lib/public-asset-url";
 import { readFile } from "@library/lib/library-storage";
 import type { PdfPageState } from "@library/lib/pdf-pgmark-adapter";
 
@@ -29,8 +30,17 @@ interface Props {
  *  `params.get("file")` returns "" (empty string, not null); `?? defaultUrl`
  *  only falls through on null/undefined, so `file` stays "" and the viewer's
  *  `if (file)` open-guard is falsy → no auto-open, no 404 flash. Our explicit
- *  PDFViewerApplication.open() in the load effect still fires normally. */
-const VIEWER_SRC = "/pdfjs/web/viewer.html?file=";
+ *  PDFViewerApplication.open() in the load effect still fires normally.
+ *
+ *  Through `publicAssetUrl` (task 365) because this is a HAND-BUILT iframe src:
+ *  Next prefixes nothing here, so the pre-365 root-absolute literal resolved to
+ *  `<origin>/pdfjs/…` under the production `/virgil` basePath — outside the app,
+ *  rendering the host's 404 page inside the pane. Byte-identical at the origin
+ *  root, which is why dev could never see it. */
+// Exported for the basePath contract test — the same "extract the one pure
+// seam so it can be unit-tested without a browser/iframe" reason
+// `pdfOpenArgs` below is exported for.
+export const VIEWER_SRC = publicAssetUrl("/pdfjs/web/viewer.html?file=");
 
 /** Minimal shape of the pdf.js eventBus we subscribe to. */
 interface PdfEventBus {

@@ -37,6 +37,7 @@ import {
   writeIndex,
 } from "@/lib/doc-index";
 import { drainDoc } from "@/lib/storage";
+import { publicAssetUrl } from "@/lib/public-asset-url";
 import { isDevStorage } from "@/lib/storage-mode";
 import {
   getOpfsDocDir,
@@ -83,12 +84,11 @@ interface ExampleManifest {
   files: { path: string; encoding: "utf8" | "binary" }[];
 }
 
-/** Build a same-origin asset URL, honoring a subdirectory deploy's basePath
- *  (mirrors the skill-bundle `bundleUrl` idiom, library/lib/skill-sync.ts). */
+/** Build a same-origin asset URL for this example's bundle, honoring a
+ *  subdirectory deploy's prefix through the ONE public-asset door (task 365 —
+ *  it replaced the hand-rolled copy this and skill-sync each carried). */
 function bundleUrl(relPath: string): string {
-  const base =
-    (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_BASE_PATH) || "";
-  return `${base}/examples/${EXAMPLE_DOC_ID}/${relPath}`;
+  return publicAssetUrl(`/examples/${EXAMPLE_DOC_ID}/${relPath}`);
 }
 
 async function fetchManifest(): Promise<ExampleManifest> {

@@ -2,12 +2,15 @@
 
 import { useEffect } from "react";
 import { setUpdateAvailable } from "@/hooks/useUpdateAvailable";
+import { publicAssetUrl } from "@/lib/public-asset-url";
 
-// Inlined at build time so the SW URL and scope honor the deploy-time
-// basePath. The SW file itself must live inside its scope (GitHub Pages
+// The SW URL and its scope both honor the deploy-time prefix, through the ONE
+// door (task 365). The SW file itself must live inside its scope (GitHub Pages
 // quirk: a SW served from /tools/virgil/sw.js can only control
-// /tools/virgil/* — not the parent origin).
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+// /tools/virgil/* — not the parent origin), which is exactly what routing both
+// through the same door guarantees.
+const SW_URL = publicAssetUrl("/sw.js");
+const SW_SCOPE = publicAssetUrl("/");
 
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
@@ -21,8 +24,8 @@ export default function ServiceWorkerRegistration() {
     // "Update available" banner; the user-driven SKIP_WAITING message
     // is sent from useUpdateAvailable.applyUpdate().
     void navigator.serviceWorker
-      .register(`${basePath}/sw.js`, {
-        scope: `${basePath}/`,
+      .register(SW_URL, {
+        scope: SW_SCOPE,
         updateViaCache: "none",
       })
       .then((reg) => {

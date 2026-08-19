@@ -34,18 +34,13 @@ import { get, set, keys, del, createStore } from "idb-keyval";
 import { hashContent } from "@/lib/disk-ledger";
 import { enqueueWrite } from "@/lib/write-queue";
 import { CORE_MANIFEST, PLACEHOLDER_FMT_CACHEKEY } from "@/lib/tex-core-manifest";
+import { publicAssetUrl } from "@/lib/public-asset-url";
 import type { TexCacheDumpEntry } from "@/types/swiftlatex";
 
 // Reuse the SAME origin store as doc-index.ts (do NOT open a second DB).
 const store = createStore("virgil", "kv");
 
 const KEY_PREFIX = "tex-asset/";
-
-// Same base-path idiom the swiftlatex engine loader + example-seeder use, so
-// subdirectory deploys (e.g. GitHub Pages at /virgil/) resolve the bundled
-// assets correctly.
-const BASE_PATH =
-  (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_BASE_PATH) || "";
 
 /**
  * Total-size cap for the persistent TeX cache. TeXLive's cacheKey namespace is
@@ -95,10 +90,13 @@ async function persistedStoreKeys(): Promise<string[]> {
     .filter((k): k is string => typeof k === "string" && k.startsWith(KEY_PREFIX));
 }
 
-/** Fetch a bundled same-origin asset's bytes (honoring BASE_PATH). Returns
- *  null on any failure so a missing/placeholder manifest entry is tolerated. */
+/** Fetch a bundled same-origin asset's bytes. `CORE_MANIFEST` holds ROOT-relative
+ *  paths (a DATA table — see its header); this is the CONSUMER, so it is where
+ *  the deploy prefix is applied, through the one public-asset door (task 365),
+ *  and subdirectory deploys (GitHub Pages at /virgil/) resolve. Returns null on
+ *  any failure so a missing/placeholder manifest entry is tolerated. */
 async function fetchBundledBytes(path: string): Promise<Uint8Array | null> {
-  const url = `${BASE_PATH}${path}`;
+  const url = publicAssetUrl(path);
   try {
     // The service worker serves these offline once cached (SW precache). We
     // still hit the network path first so a re-vendored asset refreshes.

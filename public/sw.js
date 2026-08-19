@@ -86,7 +86,15 @@ async function precacheTexAssets() {
     await Promise.all(
       paths.map(async (p) => {
         try {
-          const url = new URL(p, self.location.href).href;
+          // Scope-relative by contract (task 365): every path in this manifest
+          // is resolved against the SW's OWN scope, so a leading slash would
+          // discard that base and escape to the origin root — under a
+          // subdirectory deploy (/virgil) that 404s every asset, silently,
+          // because the catch below swallows it. The generator emits the
+          // relative form; this strip is the defensive twin, so a manifest
+          // written by an older build (or by hand) still precaches into scope
+          // rather than failing invisibly.
+          const url = new URL(String(p).replace(/^\/+/, ""), self.location.href).href;
           const resp = await fetch(url, { cache: "no-store" });
           if (resp.ok) await cache.put(url, resp.clone());
         } catch {
