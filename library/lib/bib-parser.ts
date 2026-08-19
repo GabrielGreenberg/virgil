@@ -7,6 +7,7 @@
 
 import type { BibEntry } from "./types";
 import { MULTI_CITE_NAMES } from "@/lib/cite-commands";
+import { latexToDisplayText } from "@/lib/latex-typography";
 
 // citation-js is CJS-only; we lazy-load it to avoid SSR issues
 let Cite: any = null;
@@ -380,7 +381,7 @@ export function formatMinimalCitation(key: string, bibEntries: BibEntry[]): stri
   if (!entry) return key;
   const author = formatAuthorLastNames(entry, false, false);
   const year = getEntryYear(entry);
-  return `${author} (${year})`;
+  return latexToDisplayText(`${author} (${year})`);
 }
 
 /** Returns author / year / title parts for a single bib key. Missing fields come back as empty strings. */
@@ -391,9 +392,9 @@ export function formatMediumCitationParts(
   const entry = bibEntries.find((e) => e.key === key);
   if (!entry) return { author: key, year: "", title: "" };
   return {
-    author: formatAuthorLastNames(entry, false, false),
-    year: getEntryYear(entry),
-    title: entry.fields.title || "",
+    author: latexToDisplayText(formatAuthorLastNames(entry, false, false)),
+    year: latexToDisplayText(getEntryYear(entry)),
+    title: latexToDisplayText(entry.fields.title || ""),
   };
 }
 
@@ -448,7 +449,25 @@ function renderFullEntry(
   }
 }
 
+/**
+ * The rendered text of an inline citation. The task-368 display projection is
+ * applied over the finished string — the same shape, and for the same reason,
+ * as its `src/lib/bib-parser.ts` twin: this file is a whole-file COPY of that
+ * one (the fork task 341 records), so a projection landed on one side only is a
+ * Library app that still shows `\textasciitilde{}` to the reader.
+ */
 export function formatInlineCitation(
+  command: string,
+  bibEntries: BibEntry[],
+  bibPackage: string = "natbib"
+): string {
+  return latexToDisplayText(
+    formatInlineCitationRaw(command, bibEntries, bibPackage),
+  );
+}
+
+/** Module-PRIVATE: an exported raw formatter is a second display door. */
+function formatInlineCitationRaw(
   command: string,
   bibEntries: BibEntry[],
   bibPackage: string = "natbib"

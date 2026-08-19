@@ -2326,6 +2326,96 @@ vocabulary 2, the preamble projection 2.
 co-authored linguex paper. What is proven here is the `.tex` round trip end to
 end, which is not FSA-masked.
 
+#### The display half: a fragment shown to a READER is projected, not printed
+
+Same vocabulary, other DIRECTION (task 368) — and the case where every rung was
+correct, shared and censused, and a whole family of surfaces never entered any
+of them.
+
+A `.tex` document reaches the screen through one of the two inline PARSERS. A
+great deal of LaTeX never takes that road: a citation's `[prenote][postnote]`
+lives on the atom as raw command BYTES, and a `.bib` entry's `author` / `title` /
+`year` are raw field bytes read straight out of the file. Both are then rendered
+as DISPLAY TEXT, and `formatInlineCitation` — the ONE formatter every citation
+surface reads (the inline chip, the Citations panel preview and card meta, the
+card-body surfaces live and static, the float bodies, the footnote hover preview,
+the drag ghosts) — interpolated them into its output with no projection at all.
+So Gabriel's chip rendered `(Kehler, 2002, ex.\textasciitilde{}38,
+p.\textasciitilde{}22)`: the four literal words `textasciitilde`, shown to the
+reader, from valid source. Nothing threw, the `.tex` was correct, and the body
+text one line away showed the same bytes correctly.
+
+> **A raw-LaTeX fragment shown as DISPLAY TEXT is projected through ONE door —
+> [`latexToDisplayText`](src/lib/latex-typography.ts) — derived from the same
+> tables the parse rungs read, and it is TOTAL by PASSING BYTES THROUGH rather
+> than by guessing: a construct the tables do not know arrives at the reader
+> exactly as it sits in the file. DISPLAY ONLY — nothing it returns is ever
+> written back.**
+
+Five rules it earned:
+
+- **Project the OUTPUT once, not the ten interpolations.** `formatInlineCitation`
+  is now a two-line wrapper over a module-PRIVATE `formatInlineCitationRaw`, so
+  every command branch is covered — including the ones a future dispatch case
+  adds — and there is no per-branch decision for anyone to forget. The raw
+  dispatch stays private because an exported one is a SECOND display door, and
+  the one a caller reaches for is the one that skips the projection.
+- **The branch order MIRRORS `parseInlineContent`**, so a fragment that could
+  have been body text projects to the characters body text would have shown.
+  That agreement is the whole point — two surfaces rendering one vocabulary two
+  ways is the class — and it is pinned as a leg rather than asserted.
+- **The reachability set is DERIVED from all four tables**, and that is the rule
+  that was measured rather than assumed: the first cut's hand-written character
+  class held the "interesting" leads (backslash, brace, tilde, quote) and bailed
+  on `15--20`, so the en dash was never folded with every other leg green. The
+  LITERAL rung has no interesting lead at all.
+- **No vocabulary is invented.** `\emph{x}` displays as `\emph{x}` and a BibTeX
+  grouping brace survives (`L{ó}pez`), because going further needs two SSOTs this
+  codebase does not have — which commands are formatting wrappers whose argument
+  should survive, and what a bare `{…}` means in each medium (task 349 M6 decided
+  a `.tex` group's braces are CARRIED; BibTeX says a field's braces are pure
+  grouping and never print). Hand-listing either inside a display helper is the
+  drift every census here exists to prevent. Recorded as a residual, with the
+  question routed to Gabriel rather than answered alone.
+- **A projection is a VIEW.** The stored `command` attr and the `.bib` bytes are
+  untouched, pinned over two full save cycles — this fix must not become the
+  one-directional rewrite the whole vocabulary exists to prevent.
+
+Same pass drained the two remaining **twin forks** across the inline parsers
+(341's rule), because the display door would otherwise have been a THIRD copy of
+each: the `\ldots|\dots|\LaTeX|\TeX` alternation, hand-written in both and
+whose ellipsis half was a second spelling of `LITERAL_TABLE`'s own `latexForms`
+(now `matchTextMacroAt`, with the ellipsis entries DERIVED from that table); and
+the `` `` ``/`''` quote-pair test, hand-written in both with the serialize half
+spelled a fourth time inside `smartenStraightQuotes` (now `QUOTE_PAIR_TABLE` +
+`matchQuotePairAt` + a derived `QUOTE_PAIR_LEADS`, read by all four). Both
+conversions are byte-identical, which is exactly why they were worth doing before
+the next vocabulary change landed in one half only.
+
+CI: [citation-display-projection.test.ts](src/lib/__tests__/citation-display-projection.test.ts).
+The leg with teeth is the CENSUS — the door was never the part that could
+misbehave, a formatter that interpolates without asking it is, and that
+type-checks perfectly. Membership is DISCOVERED (`export function format*` in
+BOTH bib-parsers, since `library/lib/bib-parser.ts` is a whole-file copy and a
+projection landed on one side only is a Library app that still shows
+`\textasciitilde{}`), each member must call the door inside its own declaration
+region, and the one exemption — `formatBibliography`, which returns citation-js
+HTML behind its own sanitizer — is keyed by NAME with its reason. Measured by
+neutering each half in turn: stubbing the door takes 11 legs, reverting the ONE
+call site 5 (the census among them), and re-forking either parser vocabulary 1.
+
+**Residuals, stated:** the bib ROW surfaces (`BibEntryCard`, the Citations
+per-key row, the Library entry chrome and picker) still read `entry.fields.*`
+raw, and each sits beside an EDITABLE input bound to the same field — so
+projecting there needs a display/edit split, which is a product change to the bib
+editor rather than a call this pass could make. Routed to the catcher
+(`inbox/2026-08-19-from-worker-368-raw-tex-display-residuals.md`) along with the
+brace question and one unrelated asymmetry found in passing:
+`serializeCiteCommand` reads pre/post from `entries[]` while `parseNatbibCommand`
+deliberately stores them top-level, so the round trip through those two functions
+drops a natbib annotation (no shipped path is known to reach it — the atom keeps
+its raw bytes — but the shape is how a silent drop ships).
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's
