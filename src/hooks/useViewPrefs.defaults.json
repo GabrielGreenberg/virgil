@@ -54,7 +54,7 @@
     },
     {
       "id": "reports",
-      "side": "left"
+      "side": "right"
     }
   ],
   "dockStack": {
@@ -106,20 +106,5 @@
     "left": true,
     "right": false
   },
-  "omniCategories": {
-    "left": [
-      "footnotes",
-      "citations",
-      "reports",
-      "examples"
-    ],
-    "right": [
-      "notes",
-      "todo",
-      "archive",
-      "revisions",
-      "cutter",
-      "errors"
-    ]
-  }
+  "omniHiddenCategories": []
 }

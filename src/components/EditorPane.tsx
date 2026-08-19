@@ -278,7 +278,6 @@ import { useSelectionsContext } from "./editor-layout/contexts/selections";
 import { IconBlank } from "./editor-layout/panel-icons";
 import {
   OmniFilterMenu,
-  DEFAULT_OMNI_CATEGORIES,
   type OmniBulkPendingChanges,
 } from "@/panels/Omni/OmniViewPanel";
 import MenuBar, {
@@ -298,6 +297,7 @@ import {
   marginAnchorIndex,
 } from "@/links/card-anchor-rows";
 import type { PanelSideMap } from "@/lib/margin-side";
+import { panelSidesFromPlacements, resolvePanelSide } from "@/lib/panel-side";
 import {
   resolveAnchorState,
   type AnchorIntent,
@@ -586,7 +586,7 @@ export interface EditorPaneViewPrefs {
    *  `useStripHandlers`. */
   openPanelDocked: (id: PanelId, side?: Side, freeSpacePx?: number) => void;
   /** OmniFilterMenu mutators for per-side category enablement. */
-  toggleOmniCategory: (side: Side, cat: OmniCategory) => void;
+  toggleOmniCategory: (cat: OmniCategory) => void;
   setOmniSideToDefault: (side: Side) => void;
   /** Map from each OmniCategory → which side its native panel lives on. */
   categorySides: Record<OmniCategory, Side>;
@@ -3545,11 +3545,7 @@ const EditorPane = memo(forwardRef<EditorHandle, EditorPaneProps>(function Edito
   // (main app, post-7.8) and the Reader's synthetic right-only fallback
   // both flow through the same path.
   const marginaliaPanelSides = useMemo<PanelSideMap>(
-    () => {
-      const result: Record<string, "left" | "right" | null> = {};
-      for (const p of effectivePlacements) result[p.id] = p.side;
-      return result;
-    },
+    () => panelSidesFromPlacements(effectivePlacements),
     [effectivePlacements],
   );
 
@@ -7392,10 +7388,9 @@ function IconStrip({
         <OmniFilterMenu
           side={side}
           enabled={viewPrefs.getOmniEnabled(side)}
-          onToggle={(cat) => viewPrefs.toggleOmniCategory(side, cat)}
+          onToggle={(cat) => viewPrefs.toggleOmniCategory(cat)}
           onSelectDefault={() => viewPrefs.setOmniSideToDefault(side)}
           categorySides={viewPrefs.categorySides}
-          defaultCategories={DEFAULT_OMNI_CATEGORIES[side]}
         />
       </div>
     </div>
@@ -7489,11 +7484,13 @@ function PaneRail({
   // Strip items: filter visiblePanels to this side. Driven by
   // `placementSideByKind` (caller-supplied placements) but the
   // canonical strip mirrors registry default if unplaced.
-  const stripItems: PanelKind[] = visiblePanels.filter((k) => {
-      const placed = viewPrefs.prefs.placements.find((p) => p.id === k);
-      const s = placed?.side ?? PANEL_REGISTRY[k]?.defaultStripSide ?? "right";
-      return s === side;
-    });
+  // Which strip a panel's icon sits on — the SAME ladder the margin markers
+  // and the omni column read (`@/lib/panel-side`), rather than a fourth inline
+  // copy of `placement ?? registry default ?? "right"` (task 381).
+  const stripSides = panelSidesFromPlacements(viewPrefs.prefs.placements);
+  const stripItems: PanelKind[] = visiblePanels.filter(
+    (k) => resolvePanelSide(k, stripSides) === side,
+  );
     // The docked stack for this side, top→bottom. Each band carries its
     // persisted height (px) or undefined ⇒ content-sized. This is the only
     // input PanelColumn needs to lay out the bands over omni.

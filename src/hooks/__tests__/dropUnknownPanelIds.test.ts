@@ -17,11 +17,24 @@ import { PRINT_PANELS } from "@/lib/print";
 import {
   filterPlacements,
   filterOmniSide,
-  filterOmniCategories,
   filterPrintPanels,
 } from "../dropUnknownPanelIds";
 
 // The real retired panel — the fixture that kept re-appearing in the snapshots.
+/** The pre-381 sided shape, as a LOCAL helper.
+ *  `filterOmniCategories` was retired with the per-side carrier (task 381) —
+ *  it had no production caller once `omniCategories` folded to the side-free
+ *  `omniHiddenCategories`, and a suite is not a consumer. These legs still
+ *  earn their keep on the per-side element rule they exercise, so the wrapper
+ *  moves here rather than the coverage being dropped. */
+function filterBothSides(omni: unknown): { left: string[]; right: string[] } {
+  const src = (omni && typeof omni === "object" ? omni : {}) as {
+    left?: unknown;
+    right?: unknown;
+  };
+  return { left: filterOmniSide(src.left), right: filterOmniSide(src.right) };
+}
+
 const REMOVED = "quotations";
 
 describe("dropUnknownPanelIds — the removed `quotations` panel in all three carriers", () => {
@@ -46,7 +59,7 @@ describe("dropUnknownPanelIds — the removed `quotations` panel in all three ca
   });
 
   it("drops `quotations` from omniCategories on BOTH sides, preserving order", () => {
-    const out = filterOmniCategories({
+    const out = filterBothSides({
       left: ["footnotes", REMOVED, "citations", "examples"],
       right: ["notes", "todo", REMOVED, "archive"],
     });
@@ -105,7 +118,7 @@ describe("dropUnknownPanelIds — known-good blob round-trips unchanged", () => 
       left: ["footnotes", "citations", "examples"],
       right: ["notes", "todo", "archive", "revisions"],
     };
-    expect(filterOmniCategories(good)).toEqual(good);
+    expect(filterBothSides(good)).toEqual(good);
   });
 
   it("printOptions.panels: all-valid input is unchanged", () => {
@@ -132,13 +145,13 @@ describe("dropUnknownPanelIds — malformed input is safe (never throws)", () =>
     ).toEqual([{ id: "footnotes", side: "left" }]);
   });
 
-  it("filterOmniCategories tolerates a missing / malformed container or sides", () => {
-    expect(filterOmniCategories(null)).toEqual({ left: [], right: [] });
-    expect(filterOmniCategories(undefined)).toEqual({ left: [], right: [] });
-    expect(filterOmniCategories("nope" as unknown)).toEqual({ left: [], right: [] });
-    expect(filterOmniCategories({})).toEqual({ left: [], right: [] });
+  it("filterOmniSide tolerates a missing / malformed container or sides", () => {
+    expect(filterBothSides(null)).toEqual({ left: [], right: [] });
+    expect(filterBothSides(undefined)).toEqual({ left: [], right: [] });
+    expect(filterBothSides("nope" as unknown)).toEqual({ left: [], right: [] });
+    expect(filterBothSides({})).toEqual({ left: [], right: [] });
     expect(
-      filterOmniCategories({ left: "notarray", right: [1, 2, "notes", REMOVED] }),
+      filterBothSides({ left: "notarray", right: [1, 2, "notes", REMOVED] }),
     ).toEqual({ left: [], right: ["notes"] });
   });
 

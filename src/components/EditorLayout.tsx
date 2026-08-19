@@ -105,6 +105,7 @@ const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
 import {
   type OmniCategory,
   deriveCategorySides,
+  omniCategoriesForSide,
   OmniFilterMenu,
 } from "@/panels/Omni";
 import { useViewPrefs, PanelId, Side, ALL_HIGHLIGHT_TYPES, HighlightType, dockedSideOf, isPanelDocked } from "@/hooks/useViewPrefs";
@@ -1338,21 +1339,31 @@ export default function EditorLayout() {
   // Omni-view category prefs + per-side hide-all toggle — sourced from
   // ViewPrefs (global, cross-window, promotable). The toggles arrive as
   // setters from useViewPrefs; here we just derive the read shape.
-  const omniCategories = prefs.omniCategories;
+  const omniHiddenCategories = prefs.omniHiddenCategories;
   const omniHideAllCards = prefs.omniHideAllCards;
+  // Derive which strip side each category's native panel lives on. This is the
+  // SAME ladder the margin markers and the strip icons read (`@/lib/panel-side`
+  // via `deriveCategorySides`), so a card's marker and its omni card can no
+  // longer disagree about which gutter they belong in (task 381).
+  const categorySides = useMemo(
+    () => deriveCategorySides(prefs.placements),
+    [prefs.placements],
+  );
   // Per-side Sets memoized separately so `getOmniEnabled(side)` returns
   // a reference-stable Set across renders. Previously the getter built
   // `new Set(omniCategories[side])` on every call — the fresh reference
   // broke OmniViewPanel's `memo()` and cascaded through useInTextPositions
   // into a per-keystroke `coordsAtPos` storm. See plan
-  // `ok-lets-do-a-dreamy-thacker.md` (flicker fix).
+  // `ok-lets-do-a-dreamy-thacker.md` (flicker fix). The inputs are now the
+  // derived sides + the side-free hidden set, both of which change only on a
+  // placement drag or a filter toggle — never per keystroke.
   const leftEnabled = useMemo(
-    () => new Set(omniCategories.left),
-    [omniCategories.left],
+    () => omniCategoriesForSide(categorySides, omniHiddenCategories, "left"),
+    [categorySides, omniHiddenCategories],
   );
   const rightEnabled = useMemo(
-    () => new Set(omniCategories.right),
-    [omniCategories.right],
+    () => omniCategoriesForSide(categorySides, omniHiddenCategories, "right"),
+    [categorySides, omniHiddenCategories],
   );
   const getOmniEnabled = useCallback(
     (side: "left" | "right") => (side === "left" ? leftEnabled : rightEnabled),
@@ -1364,12 +1375,6 @@ export default function EditorLayout() {
   const getOmniHideAll = useCallback(
     (side: "left" | "right") => omniHideAllCards[side],
     [omniHideAllCards],
-  );
-
-  // Derive which strip side each category's native panel lives on
-  const categorySides = useMemo(
-    () => deriveCategorySides(prefs.placements),
-    [prefs.placements],
   );
 
   // #27: Inject the in-text anchor accent map onto `:root` from the LIVE theme

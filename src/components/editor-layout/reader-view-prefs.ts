@@ -84,24 +84,10 @@ import {
   resolveBlockIndex,
   type BlockAddress,
 } from "@/lib/tiptap/block-address";
-import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import {
-  PANEL_TO_CATEGORY,
-  type OmniCategory,
-} from "@/panels/Omni/OmniViewPanel";
-
-// Each OmniCategory → its native side, sourced from PANEL_REGISTRY. Used as
-// the `categorySides` map the OmniFilterMenu renders against.
-const READER_CATEGORY_SIDES: Record<OmniCategory, Side> = (() => {
-  const out: Partial<Record<OmniCategory, Side>> = {};
-  for (const entry of Object.values(PANEL_REGISTRY)) {
-    const cat = PANEL_TO_CATEGORY[entry.kind];
-    if (cat && entry.defaultStripSide) {
-      out[cat] = entry.defaultStripSide;
-    }
-  }
-  return out as Record<OmniCategory, Side>;
-})();
+  deriveCategorySides,
+  omniCategoriesForSide,
+} from "@/panels/Omni/omni-categories";
 
 /**
  * The Reader's no-op editor handlers (everything EXCEPT `onScrollToHeading`,
@@ -594,13 +580,23 @@ export function useReaderView(
   // Omni read-helpers derived from the live ephemeral prefs (same shape the
   // main app derives in EditorLayout). Reference-stable per side so the
   // OmniViewPanel `memo()` isn't broken on each render.
+  // Same derivation the main app runs (task 381): the column a category's
+  // cards render in is its panel's LIVE strip side, not a stored per-side list.
+  // The Reader used to key its filter chips off a hand-built map of registry
+  // DEFAULTS while its cards read the stored lists — two answers to one
+  // question, in a surface that shares the prefs blob with the editor.
+  const categorySides = useMemo(
+    () => deriveCategorySides(vp.prefs.placements),
+    [vp.prefs.placements],
+  );
+  const hiddenCats = vp.prefs.omniHiddenCategories;
   const leftEnabled = useMemo(
-    () => new Set(vp.prefs.omniCategories.left),
-    [vp.prefs.omniCategories.left],
+    () => omniCategoriesForSide(categorySides, hiddenCats, "left"),
+    [categorySides, hiddenCats],
   );
   const rightEnabled = useMemo(
-    () => new Set(vp.prefs.omniCategories.right),
-    [vp.prefs.omniCategories.right],
+    () => omniCategoriesForSide(categorySides, hiddenCats, "right"),
+    [categorySides, hiddenCats],
   );
   const getOmniEnabled = useCallback(
     (side: Side) => (side === "left" ? leftEnabled : rightEnabled),
@@ -659,7 +655,7 @@ export function useReaderView(
       getOmniEnabled,
       getOmniHideAll,
       setOmniSideToDefault: vp.resetOmniSide,
-      categorySides: READER_CATEGORY_SIDES,
+      categorySides,
       // The real engine owns the card-popout-key remap; route it through.
       remapCardPopKey: (oldKey: string, newKey: string) =>
         vp.migratePoppedOutCards((k) => (k === oldKey ? newKey : k)),
@@ -668,7 +664,7 @@ export function useReaderView(
     // `vp` is referentially stable (useViewPrefs memoizes its return), so
     // listing the whole object — which exhaustive-deps prefers over the
     // individual `vp.*` member reads used here — adds no spurious recompute.
-    [vp, getOmniEnabled, getOmniHideAll],
+    [vp, getOmniEnabled, getOmniHideAll, categorySides],
   );
 
   // Reader breadcrumb — the current-session section path you're scrolled into

@@ -323,7 +323,10 @@ describe("margin side — one authority, total over the kinds that have chrome",
     expect(resolveMarginSide("notes", { notes: null })).toBe(
       defaultMarginSideForPanel("notes"),
     );
-    expect(resolveMarginSide("reports", {})).toBe("left");
+    // Reports defaults RIGHT since task 381 (Gabriel's call). The pinned value
+    // moves with the decision, and this is the leg that would catch a registry
+    // flip made without the matching defaults-JSON placement.
+    expect(resolveMarginSide("reports", {})).toBe("right");
   });
 
   it("every CardKind resolves to a panel with a NON-NULL registry strip side", () => {
@@ -359,7 +362,9 @@ describe("margin side — one authority, total over the kinds that have chrome",
       revision: "right",
       cut: "right",
       todo: "right",
-      report: "left",
+      // RIGHT since task 381 — Gabriel's call, and exactly the deliberate
+      // two-line diff this frozen table exists to force.
+      report: "right",
       error: "right",
     };
     for (const t of ALL_MARKER_TYPES) {
@@ -399,13 +404,14 @@ describe("margin side — no second speller", () => {
   });
 
   it("`defaultStripSide` is read only by the margin-side SSOT and the STRIP-placement sites", () => {
-    // Two different questions share one registry column: "where does this
-    // card's margin chrome go?" (this task's SSOT) and "where does this panel's
-    // STRIP go?" (placement/open/reader). The second legitimately has its own
-    // call sites with their own null-handling — `sideForKind` maps null to
-    // "this is a pod, not a strip", `resolveSide` opens a pod on the left. They
-    // are allowlisted BY NAME so a future MARGIN surface reading the column
-    // directly fails here instead of quietly becoming a fourth copy.
+    // Since task 381 the column has ONE derived reader — `@/lib/panel-side`,
+    // the ladder every side-answering surface enters (the strip icon, the
+    // margin marker and rail through `margin-side`, and the omni COLUMN). What
+    // remains beside it are sites answering a DIFFERENT question with their own
+    // null-handling: "where does this panel's POD open?" — `sideForKind` maps
+    // null to "this is a pod, not a strip", `resolveSide` opens a pod on the
+    // left. They are allowlisted BY NAME so a future MARGIN surface reading the
+    // column directly fails here instead of quietly becoming a fourth copy.
     // The five strip sites do NOT agree on their own last-resort fallback —
     // three answer "left", two "right", for the one panel (`omni`) whose strip
     // side is genuinely null. That is a real latent fork in the SAME policy
@@ -413,16 +419,16 @@ describe("margin side — no second speller", () => {
     // where margin chrome paints, and folding it would change omni's open side
     // on a task that has no mandate to. Filed as its own queue item.
     const PERMITTED = new Set([
-      // The SSOT itself — the only margin-chrome reader.
-      "src/lib/margin-side.ts",
+      // The LADDER — the one derived reader, which `margin-side` (and the strip
+      // filter, and the omni column) now delegate to.
+      "src/lib/panel-side.ts",
       // Declaration + the table.
       "src/panels/panel-registry.ts",
-      // STRIP placement: which rail renders a panel's icon (null ⇒ pod, filtered out).
+      // POD filter: a `null` strip side means "presentation pod, never on a
+      // strip" — a question about the column's null case, not about a side.
       "src/components/EditorPane.tsx",
       // STRIP placement: which side an OPENED panel docks to.
       "src/hooks/useViewPrefs.ts",
-      // STRIP placement: the Reader's omni category→side map.
-      "src/components/editor-layout/reader-view-prefs.ts",
       // STRIP placement: which side a jump-to-card target docks on.
       "src/components/editor-layout/jump-docks.ts",
       // STRIP placement: the open-for-card bridge's home-side fallback.

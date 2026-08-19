@@ -6,7 +6,13 @@ import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import type { PanelKind } from "@/panels/_shared/types";
 import { getWindowId } from "@/lib/multi-window/window-id";
 import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
-import { DEFAULT_OMNI_CATEGORIES, migrateOmniCategories, type OmniCategory } from "@/panels/Omni/OmniViewPanel";
+import {
+  deriveCategorySides,
+  hiddenFromLegacySides,
+  omniCategoriesOnSide,
+  type OmniCategory,
+} from "@/panels/Omni/omni-categories";
+import { applyPanelSideMigrations, PANEL_SIDE_MIGRATIONS } from "./panel-side-migrations";
 import defaultPrefsJson from "./useViewPrefs.defaults.json";
 import {
   REGISTRY_DEFAULTS,
@@ -21,7 +27,7 @@ import {
 import { migrateFloatKeys, migrateLegacyKeyToFloat } from "@/floats/float-key";
 import {
   filterPlacements,
-  filterOmniCategories,
+  filterOmniSide,
   filterPrintPanels,
   clampStack,
 } from "./dropUnknownPanelIds";
@@ -190,11 +196,26 @@ export interface ViewPrefs extends RegistryPrefs {
    *  registry-owned (`VIEW_PREF_REGISTRY`, global scope) and arrive via
    *  `RegistryPrefs`. Add a new decoration toggle there, not here. */
 
-  /** Omni-view filter chips: which card categories are enabled on each
-   *  side. */
-  omniCategories: Record<"left" | "right", OmniCategory[]>;
-  /** Sticky "hide all cards in omni-view" toggle per side. */
+  /** Omni-view filter chips: which card categories the user has HIDDEN.
+   *
+   *  Side-free since task 381 — which COLUMN a category renders in is derived
+   *  from its panel's live strip side (`deriveCategorySides` over `placements`),
+   *  so this carries visibility and nothing else. Stored as the HIDDEN set
+   *  rather than the enabled one so a newly omni-eligible panel is visible by
+   *  declaration, with no default list to keep in step and nothing to migrate.
+   *  Combined with the derived sides by `omniCategoriesForSide`. */
+  omniHiddenCategories: OmniCategory[];
+  /** Sticky "hide all cards in omni-view" toggle per side.
+   *
+   *  Stays per-SIDE deliberately: it describes a COLUMN ("show nothing in this
+   *  gutter"), not a category, so it has no panel whose placement it could
+   *  derive from. */
   omniHideAllCards: { left: boolean; right: boolean };
+  /** Ids of the one-shot prefs migrations already applied in this browser
+   *  profile (`PANEL_SIDE_MIGRATIONS`). GLOBAL, like the `placements` it
+   *  guards — a per-window marker would let each window re-apply a flip over a
+   *  deliberate drag. */
+  appliedPrefMigrations: string[];
 
   /* ── Card archive (per-card set-aside) ───────────────────────────── */
 
@@ -222,9 +243,11 @@ export { dockedSideOf, dockStackTop, isPanelDocked } from "./view-prefs-derived"
 
 // Shipped defaults are loaded from a JSON sidecar so the personal-prefs
 // promotion pipeline can rewrite them without touching TS source.
-// `printOptions` is filled in from DEFAULT_PRINT_OPTIONS (owned by
-// print.ts) and `omniCategories` from DEFAULT_OMNI_CATEGORIES (derived
-// from the panel registry) rather than duplicated into the JSON.
+// `printOptions` is filled in from DEFAULT_PRINT_OPTIONS (owned by print.ts)
+// rather than duplicated into the JSON. `omniHiddenCategories` IS in the JSON
+// (an empty list — nothing hidden by default) so the promote-defaults cron
+// folds a real value rather than refreshing a key the code overwrites, which is
+// what the retired per-side `omniCategories` key was doing.
 /** Pref keys a past build persisted for a feature that no longer exists.
  *  Deleted from the saved blob at load (see `loadPrefs`), so a stale value
  *  can neither reach the live prefs object nor round-trip back to disk.
@@ -249,14 +272,16 @@ const DEFAULT_PREFS: ViewPrefs = {
     ViewPrefs,
     | "bibFilter"
     | "printOptions"
-    | "omniCategories"
     | "cardArchiveView"
     | "suppressArchiveAtomWarning"
+    | "appliedPrefMigrations"
   >),
   printOptions: DEFAULT_PRINT_OPTIONS,
-  omniCategories: DEFAULT_OMNI_CATEGORIES,
   cardArchiveView: {},
   suppressArchiveAtomWarning: false,
+  // Not shipped in the JSON: a fresh profile has applied nothing, and baking a
+  // migration id into the defaults would mark it done for every new user.
+  appliedPrefMigrations: [],
 };
 
 const LEGACY_STORAGE_KEY = "virgil-view-prefs";
@@ -293,8 +318,9 @@ export const STRUCTURAL_GLOBAL_PREF_KEYS = [
   "editorTopMargin",
   "editorBottomMargin",
   "codePaneRatio",
-  "omniCategories",
+  "omniHiddenCategories",
   "omniHideAllCards",
+  "appliedPrefMigrations",
 ] as const;
 const GLOBAL_PREF_KEYS = [
   ...STRUCTURAL_GLOBAL_PREF_KEYS,
@@ -538,14 +564,15 @@ export function loadPrefs(): ViewPrefs {
         parse: (r) => (r === "full" || r === "mid" || r === "text" ? r : "full"),
       },
       {
+        // The ancient standalone key held the PER-SIDE enabled lists; fold it
+        // to the side-free hidden set through the same rule the blob-level
+        // migration uses, so a profile that never opened a post-split build
+        // lands on one shape rather than two.
         key: "virgil-omni-categories",
-        field: "omniCategories",
+        field: "omniHiddenCategories",
         parse: (r) => {
           const parsed = JSON.parse(r);
-          return {
-            left: migrateOmniCategories(parsed?.left) ?? DEFAULT_OMNI_CATEGORIES.left,
-            right: migrateOmniCategories(parsed?.right) ?? DEFAULT_OMNI_CATEGORIES.right,
-          };
+          return hiddenFromLegacySides(parsed);
         },
       },
       {
@@ -581,7 +608,21 @@ export function loadPrefs(): ViewPrefs {
 
     const windowRaw = localStorage.getItem(windowStorageKey());
     const globalRaw = localStorage.getItem(GLOBAL_STORAGE_KEY);
-    if (!windowRaw && !globalRaw) return DEFAULT_PREFS;
+    if (!windowRaw && !globalRaw) {
+      // A profile with NO stored state has nothing to migrate — the shipped
+      // defaults already carry every flip — so every side migration is recorded
+      // as applied here. Without this the marker would stay empty until some
+      // later load found a blob, and a user who dragged a migrated panel back
+      // on their very first session would have it moved again on reload: the
+      // "a deliberate drag sticks" rule failing for exactly the newest user.
+      // Recorded HERE and not in `DEFAULT_PREFS` itself, because the spread
+      // below (`{...DEFAULT_PREFS, ...parsed}`) would then hand every EXISTING
+      // profile a full marker list and the migration would never run at all.
+      return {
+        ...DEFAULT_PREFS,
+        appliedPrefMigrations: PANEL_SIDE_MIGRATIONS.map((m) => m.id),
+      };
+    }
     const windowParsed = windowRaw ? JSON.parse(windowRaw) : {};
     const globalParsed = globalRaw ? JSON.parse(globalRaw) : {};
 
@@ -604,7 +645,7 @@ export function loadPrefs(): ViewPrefs {
     // Panel RENAMES, applied to EVERY PanelId-keyed carrier before anything
     // else touches the blob — and in particular before the subtractive
     // cleaners (`filterPlacements` / `clampStack` / `validPanelId` /
-    // `filterOmniCategories` / `filterPrintPanels`) and the legacy `active*`
+    // `filterOmniSide` / `filterPrintPanels`) and the legacy `active*`
     // deletes, which are what silently DROP an id nobody renamed. The three
     // shipped renames live as data in `PANEL_RENAMES`; the applier is the
     // additive twin of `dropUnknownPanelIds` (task 275).
@@ -659,8 +700,18 @@ export function loadPrefs(): ViewPrefs {
     // hand-inlined here and touched only `placements` + the legacy `active*`
     // scalars, so a docked/floating panel under an old id was dropped and its
     // rect/height/mode/archive-view orphaned (task 275).
+    // One-shot SIDE migrations (task 381), before the default merge and the
+    // subtractive cleaners: a shipped `defaultStripSide` change reaches nobody
+    // whose blob already carries a placement for that panel, because the merge
+    // below only supplies ids the blob is MISSING. Recorded by id in
+    // `appliedPrefMigrations` so a later deliberate drag back is never undone.
+    const sideMigration = applyPanelSideMigrations(
+      parsed.placements,
+      parsed.appliedPrefMigrations,
+      PANEL_SIDE_MIGRATIONS,
+    );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let placements: any[] = parsed.placements || [];
+    let placements: any[] = (sideMigration.placements as any[]) || [];
     // Migrate: presentation-pod panels (registry `defaultStripSide: null`,
     // e.g. "omni") must never have a side placement. A drag in an older
     // build could leave one persisted, which then leaks the panel back
@@ -701,17 +752,25 @@ export function loadPrefs(): ViewPrefs {
     // printOptions.panels are filtered POST-merge, so even a stale entry baked
     // into DEFAULT_PREFS is scrubbed (the defaults JSON placements still lists
     // the retired `quotations` — it gets merged in then dropped here).
-    // omniCategories' default is derived clean from OMNI_PANELS, so there the
-    // filter guards the saved-blob path. Purely subtractive, order- and
+    // omniHiddenCategories' default is empty, so there the filter guards the
+    // saved-blob path. Purely subtractive, order- and
     // side-preserving, malformed-safe; runs once per load (no per-render work).
-    //   - placements          → PANEL_REGISTRY keys      (panel-registry.ts)
-    //   - omniCategories       → OMNI_PANELS kinds        (panel-registry.ts)
+    //   - placements               → PANEL_REGISTRY keys  (panel-registry.ts)
+    //   - omniHiddenCategories     → OMNI_PANELS kinds    (panel-registry.ts)
     //   - printOptions.panels  → PRINT_PANELS keys        (lib/print.ts)
     const cleanedPlacements = filterPlacements<PanelPlacement>(merged);
     printOptions.panels = filterPrintPanels(printOptions.panels) as PrintOptions["panels"];
-    const cleanedOmniCategories = filterOmniCategories(
-      parsed.omniCategories ?? DEFAULT_PREFS.omniCategories,
-    ) as ViewPrefs["omniCategories"];
+    // Omni category VISIBILITY (task 381). A pre-381 blob carries the per-side
+    // ENABLED lists; fold them to the side-free hidden set exactly once, then
+    // read the new key from then on. The legacy key is deleted below so it can
+    // never round-trip back and be re-folded over a later hide/show.
+    const cleanedOmniHidden = filterOmniSide(
+      parsed.omniHiddenCategories ??
+        (parsed.omniCategories !== undefined
+          ? hiddenFromLegacySides(parsed.omniCategories)
+          : DEFAULT_PREFS.omniHiddenCategories),
+    ) as ViewPrefs["omniHiddenCategories"];
+    delete (parsed as Record<string, unknown>).omniCategories;
     // Migrate the legacy ≤2-panel split model → the ordered dockStack.
     // Old persisted shape: activeLeft/Right (top/only) + active*Bottom
     // (split 2nd). New shape: dockStack (top→bottom, ≤MAX_STACK). When a
@@ -796,7 +855,8 @@ export function loadPrefs(): ViewPrefs {
       ...parsed,
       placements: cleanedPlacements,
       printOptions,
-      omniCategories: cleanedOmniCategories,
+      omniHiddenCategories: cleanedOmniHidden,
+      appliedPrefMigrations: sideMigration.applied,
       dockStack,
       panelMRU: { left: [], right: [] },
       panelHeights:
@@ -1315,23 +1375,39 @@ export function useViewPrefs(opts?: {
     [update],
   );
 
+  /** Show/hide one omni category. Takes NO side (task 381): visibility is
+   *  side-free, and the column the category renders in is derived from its
+   *  panel's live strip placement. A `side` parameter here would be a decision
+   *  nobody made — the filter menu only ever lists categories this side owns. */
   const toggleOmniCategory = useCallback(
-    (side: "left" | "right", cat: OmniCategory) => {
+    (cat: OmniCategory) => {
       update((p) => {
-        const list = p.omniCategories[side];
-        const next = list.includes(cat) ? list.filter((c) => c !== cat) : [...list, cat];
-        return { ...p, omniCategories: { ...p.omniCategories, [side]: next } };
+        const hidden = p.omniHiddenCategories;
+        const next = hidden.includes(cat)
+          ? hidden.filter((c) => c !== cat)
+          : [...hidden, cat];
+        return { ...p, omniHiddenCategories: next };
       });
     },
     [update],
   );
 
-  const resetOmniSide = useCallback((side: "left" | "right") => {
-    update((p) => ({
-      ...p,
-      omniCategories: { ...p.omniCategories, [side]: [...DEFAULT_OMNI_CATEGORIES[side]] },
-    }));
-  }, [update]);
+  /** "Default view" for one strip: make every category THIS side currently owns
+   *  visible again. Still per-side because the affordance is per-menu — but it
+   *  resets VISIBILITY only; side membership is derived and has no default to
+   *  restore. */
+  const resetOmniSide = useCallback(
+    (side: "left" | "right") => {
+      update((p) => {
+        const local = new Set(omniCategoriesOnSide(deriveCategorySides(p.placements), side));
+        const next = p.omniHiddenCategories.filter((c) => !local.has(c));
+        return next.length === p.omniHiddenCategories.length
+          ? p
+          : { ...p, omniHiddenCategories: next };
+      });
+    },
+    [update],
+  );
 
   const toggleOmniHideAllCards = useCallback((side: "left" | "right") => {
     update((p) => ({

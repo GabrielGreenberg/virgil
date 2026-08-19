@@ -33,9 +33,13 @@ export interface PanelRegistryEntry {
   card: CardLink | null;
   /** Whether this panel's items appear in the Omni view. */
   omniEligible: boolean;
-  /** Which omni column this panel's items default to. */
-  omniSide: "left" | "right" | null;
-  /** Default sidebar strip side. Mirrors `useViewPrefs.DEFAULT_PREFS.placements`. */
+  /** Default sidebar strip side. Mirrors `useViewPrefs.DEFAULT_PREFS.placements`.
+   *
+   *  THE panel's side default — the last rung of the `@/lib/panel-side` ladder,
+   *  which every surface reads: the strip icon, the card's margin marker and
+   *  rail, and (since task 381) the omni COLUMN its cards render in. A separate
+   *  `omniSide` column used to answer the last of those and was retired with it
+   *  — one panel, one side. */
   defaultStripSide: "left" | "right" | null;
 }
 
@@ -48,7 +52,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     // each kind declares its panel in CARD_REGISTRY); `card` stays null.
     card: null,
     omniEligible: true,
-    omniSide: "right",
     defaultStripSide: "right",
   },
   footnotes: {
@@ -56,7 +59,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Footnotes",
     card: { kind: "footnote", keyPrefix: "footnote", themeKey: "footnote" },
     omniEligible: true,
-    omniSide: "left",
     defaultStripSide: "left",
   },
   citations: {
@@ -64,7 +66,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Citations",
     card: { kind: "citation", keyPrefix: "citation", themeKey: "citation" },
     omniEligible: true,
-    omniSide: "left",
     defaultStripSide: "left",
   },
   bibliography: {
@@ -72,7 +73,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Bibliography",
     card: { kind: "bib", keyPrefix: "bib", themeKey: "bib" },
     omniEligible: false,
-    omniSide: null,
     defaultStripSide: "left",
   },
   reports: {
@@ -83,15 +83,20 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     // cards/predicates.ts); `card` stays null.
     card: null,
     omniEligible: true,
-    omniSide: "left",
-    defaultStripSide: "left",
+    // RIGHT since task 381 (Gabriel's call). The shipped
+    // `useViewPrefs.defaults.json` placement flips in lockstep — the task-223
+    // release-snapshot contract pins the two — and stored prefs are carried
+    // over by the one-shot `PANEL_SIDE_MIGRATIONS` entry, without which the
+    // loader's merge-only-missing-ids rule would leave every existing user on
+    // left forever (and the promote-defaults cron would fold left back into
+    // the JSON).
+    defaultStripSide: "right",
   },
   examples: {
     kind: "examples",
     label: "Examples",
     card: { kind: "example", keyPrefix: "example", themeKey: "example" },
     omniEligible: true,
-    omniSide: "left",
     defaultStripSide: "left",
   },
   todo: {
@@ -99,7 +104,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Todo List",
     card: { kind: "todo", keyPrefix: "todo", themeKey: "todo" },
     omniEligible: true,
-    omniSide: "right",
     defaultStripSide: "right",
   },
   archive: {
@@ -107,7 +111,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Archived Text",
     card: { kind: "archive", keyPrefix: "archive", themeKey: "archive" },
     omniEligible: true,
-    omniSide: "right",
     defaultStripSide: "right",
   },
   revisions: {
@@ -115,7 +118,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Revisions",
     card: { kind: "revision-comment", keyPrefix: "revision", themeKey: "revision" },
     omniEligible: true,
-    omniSide: "right",
     defaultStripSide: "right",
   },
   cutter: {
@@ -127,7 +129,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     // MARKER_META["cut"], CARD_THEMES.cut, panel-typography "cut").
     card: null,
     omniEligible: true,
-    omniSide: "right",
     defaultStripSide: "right",
   },
   outline: {
@@ -135,7 +136,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Outline",
     card: null,
     omniEligible: false,
-    omniSide: null,
     defaultStripSide: "left",
   },
   search: {
@@ -143,7 +143,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Search",
     card: null,
     omniEligible: false,
-    omniSide: null,
     defaultStripSide: "left",
   },
   wordcount: {
@@ -151,7 +150,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Word Count",
     card: null,
     omniEligible: false,
-    omniSide: null,
     defaultStripSide: "right",
   },
   errors: {
@@ -159,7 +157,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Errors",
     card: { kind: "error", keyPrefix: "error", themeKey: "error" },
     omniEligible: true,
-    omniSide: "right",
     defaultStripSide: "right",
   },
   omni: {
@@ -167,7 +164,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Omni-view",
     card: null,
     omniEligible: false,
-    omniSide: null,
     defaultStripSide: null,
   },
 };

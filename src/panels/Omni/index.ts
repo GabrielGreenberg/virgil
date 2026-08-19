@@ -1,11 +1,16 @@
 export {
   default,
-  type OmniCategory,
   type OmniItem,
   type OmniBulkPendingChanges,
-  PANEL_TO_CATEGORY,
-  DEFAULT_OMNI_CATEGORIES,
-  migrateOmniCategories,
-  deriveCategorySides,
   OmniFilterMenu,
 } from "./OmniViewPanel";
+export {
+  type OmniCategory,
+  PANEL_TO_CATEGORY,
+  OMNI_CATEGORIES,
+  migrateOmniCategories,
+  deriveCategorySides,
+  omniCategoriesForSide,
+  omniCategoriesOnSide,
+  hiddenFromLegacySides,
+} from "./omni-categories";
