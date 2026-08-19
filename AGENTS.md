@@ -821,6 +821,78 @@ The carrier is [src/lib/tiptap/transient-highlight.ts](src/lib/tiptap/transient-
 
 CI: [src/lib/\_\_tests\_\_/transient-highlight-guardrail.test.ts](src/lib/__tests__/transient-highlight-guardrail.test.ts) greps `src/` AND `library/` for `.setHighlight(`/`.unsetHighlight(`/`.toggleHighlight(` and asserts the flagged set is EMPTY (`PERMITTED_HIGHLIGHT_MARK_WRITERS`; the library twin likewise). The `highlight` mark stays registered in the schema so a genuinely *authored*, persisted highlighter can still be built — that would be a legitimate allowlist entry with its justification. The behavioral contract (no history entry, no `docChanged`, no `onUpdate`, band survives an edit by mapping, dies with its text) is pinned in [src/lib/tiptap/\_\_tests\_\_/transient-highlight.test.ts](src/lib/tiptap/__tests__/transient-highlight.test.ts) against the real main extension stack.
 
+## A preservation guard may not restore the removal itself
+
+> **A guard that reverts a user's removal must never leave the document
+> BYTE-IDENTICAL.** Where its remedy reproduces exactly what vanished, the guard
+> has preserved nothing — it has VETOED the gesture, silently, permanently, with no
+> feedback and no user-reachable escape. Ask the literal question
+> (`removed.eq(replacement)`) rather than a proxy for it, and fail OPEN.
+
+This is the "Backspace does NOTHING and only the grab-handle delete works" class
+(task 367), and its lesson is that the defect lived in a guard whose *contract* was
+right and whose *implementation of the exception* was one caller's meta.
+`MarginaliaAnchorGuard` ([linked-anchor.ts](src/lib/tiptap/linked-anchor.ts))
+re-inserts `paragraph({ uuid })` when an anchored uuid-bearing block vanishes, so a
+card's Mode-A anchor survives an incidental edit — correct, and load-bearing. Its
+one exception, `LIFECYCLE_DELETE_META`, is spelled by exactly two callers (the
+grab-handle Archive / Delete actions). So the contract reads *incidental vs
+deliberate* and the code reads *grab-handle vs everything else*, and a Backspace
+aimed squarely at a block is classified incidental.
+
+That is invisible for a NON-empty block (the remedy drops the content, so the
+gesture visibly did something). It is total for an EMPTY uuid-only paragraph: the
+remedy IS the removed node, so the document is byte-identical and the key is dead
+for every press, forever. And those husks are the guard's own output — a block the
+guard resurrected once is an invisible, undeletable husk from then on. A stray
+`%!v:XXXX` anchor line in the `.tex` parses to exactly this node, which is how
+Gabriel met it twice in one paper.
+
+Four rules it earned:
+
+- **The predicate IS the law.** `removed.eq(paraType.create({ uuid }))` asks
+  "would re-inserting reproduce what vanished?" — type, attrs, marks and content in
+  one call. No hand-listed conditions, and it follows automatically if the remedy's
+  shape ever changes. An empty paragraph carrying a `parTitle` is correctly NOT this
+  case: the title is visible, so dropping it changes the document.
+- **Fail OPEN, and re-check the identity to make that honest.** A position that
+  reads back as nothing, or as a node whose uuid doesn't match, resurrects — a
+  needless resurrection is the status quo, while a wrong stand-down orphans a card.
+  Without the uuid re-check a stale position would silently compare the WRONG node.
+- **Standing down is not data loss, because the sweep was already correct.**
+  `TextObjectOrphanGuard` re-reads the SETTLED doc in its deferred pass, so a block
+  this guard declined to resurrect is genuinely gone and its event fires: the card
+  lands in the orphan strip, re-pinnable — precisely the outcome the one
+  user-reachable deletion path already produces for the same block.
+- **The isolating-boundary hypothesis was FALSIFIED and is pinned as such.** The
+  filed diagnosis blamed PM's `findCutBefore` refusing to cross `isolating`, so that
+  both `joinBackward` and `selectNodeBackward` return false. Measured against the
+  real stack, `selectNodeBackward` node-selects an isolating sibling perfectly well
+  and the two-press select-then-delete affordance works at every isolating edge — so
+  no shared boundary handler was added, and a suite leg keeps that from being
+  "fixed" again. *Verify a phenomenon is general before generalizing the fix.*
+
+**Decided, with its evidence:** a comment line that is only an anchor KEEPS minting
+its empty block. The uuid is a card's anchor identity, so dropping it at parse time
+would orphan the card on every load with no user gesture at all — strictly worse
+than the husk, which is now deletable. (The specific uuids `3be5` / `c194` could not
+be checked against their sidecars — that paper is not on this machine — but the
+verdict does not depend on the answer: anchored or not, the husk now deletes and the
+card, if any, orphans exactly as grab-handle Delete already orphans it.)
+
+CI: [anchored-empty-block-keyboard-delete.test.ts](src/lib/tiptap/__tests__/anchored-empty-block-keyboard-delete.test.ts).
+Every leg drives `view.someProp("handleKeyDown", …)` on the REAL
+`buildEditorExtensions("main")` stack, and that is the whole point — the
+pre-existing [anchored-block-delete-reinsert.test.ts](src/lib/tiptap/__tests__/anchored-block-delete-reinsert.test.ts)
+characterizes this guard thoroughly by dispatching `tr.delete` DIRECTLY, where the
+remedy is a real change and the defect is **unrepresentable**. It only appears when a
+real keystroke removes a block that was already the husk. Measured by neutering the
+predicate: 5 defect legs fail, the 7 control and non-regression legs pass either way.
+
+**Owed, not claimed:** a real-FSA eyeball on Gabriel's own `.tex` geography — this
+class is FSA-masked (the husks come from a paper's stray anchors), so the durable
+proof here is the unit contract.
+
 ## Addressing the live document across an async gap
 
 > **A surface that renders from a SNAPSHOT and writes on a later gesture names its target by durable IDENTITY, never by position.** The vocabulary is [src/lib/tiptap/block-address.ts](src/lib/tiptap/block-address.ts) — `BlockAddress` (`uuid` + a pre-hydration `index` fallback), `BlockSpanAddress` (+ `section`), resolved against the LIVE doc at apply time by `resolveBlockIndex` / `resolveBlockSpan`.

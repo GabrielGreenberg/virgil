@@ -233,8 +233,14 @@ export const LinkedAnchorGuard = Extension.create({
 // listener doesn't walk every card on every removal.
 //
 // Overlap with MarginaliaAnchorGuard (below): that guard re-inserts a
-// uuid-bearing empty paragraph when an *anchored* block vanishes, so
-// blocks present in `anchoredUuidsRef` never actually become orphans.
+// uuid-bearing empty paragraph when an *anchored* block vanishes, so an
+// anchored block MOSTLY does not become an orphan. Two cases fall through
+// to this guard and MUST: a deliberate lifecycle removal (LIFECYCLE_DELETE_META),
+// and a removal whose resurrection would be a total no-op (task 367's EXCEPTION 2
+// — an empty uuid-only paragraph the user is deliberately deleting). Both are
+// handled correctly here by construction rather than by care, because the
+// deferred sweep below re-reads the SETTLED doc: a block the anchor guard
+// declined to resurrect is genuinely gone, so its event fires.
 // This guard is the safety net for blocks Mode-A-anchored but NOT
 // margin-tracked — common for cascade-extended deletions that swallow
 // a wrapper (list / exampleBlock) whose uuid was anchored. See
@@ -334,15 +340,77 @@ export const LIFECYCLE_DELETE_META = "virgilLifecycleDelete";
 // card's `links[].anchor.textObjectIds` entry therefore stays valid and
 // no card silently goes orphan through editor edits.
 //
-// EXCEPTION: a transaction tagged with `LIFECYCLE_DELETE_META` (the Archive /
+// EXCEPTION 1: a transaction tagged with `LIFECYCLE_DELETE_META` (the Archive /
 // Delete drag-handle actions) is a deliberate removal — the guard bypasses it
 // so the block actually goes. See the meta declaration above.
+//
+// EXCEPTION 2 — THE NO-OP IDENTITY (task 367). A preservation guard may restore
+// what a removal LOST; it may not restore the removal itself. The remedy here is
+// always the same node — `paragraph({ uuid })`, empty, every other attr at its
+// default — so whenever the vanished block WAS already exactly that node, the
+// re-insert reproduces the guard's own input and the document ends BYTE-IDENTICAL.
+// That is not a preservation: it is a silent, total, permanent veto of the user's
+// keystroke. Press Backspace once, ten times, a hundred — nothing moves, nothing
+// is said, and the only escape is the grab-handle Delete (the one path that
+// carries the meta above). Gabriel hit exactly this twice in one paper: a stray
+// `%!v:XXXX` anchor line parses to an empty uuid-bearing paragraph, and an
+// anchored one is an invisible block that cannot be removed.
+//
+// So where the resurrection would be a total no-op the guard STANDS DOWN and the
+// removal lands. Nothing is lost that the guard was protecting: the card's anchor
+// is swept by TextObjectOrphanGuard above — which re-reads the SETTLED doc, so it
+// sees this block as genuinely gone and fires — into the orphan strip, re-pinnable,
+// which is precisely the outcome the one user-reachable deletion path (grab-handle
+// Delete) already produces for the same block. Consistency, not new risk.
+//
+// The predicate IS the law, not a proxy for it: `removed.eq(replacement)` asks the
+// literal question "would re-inserting reproduce what vanished?" — so it needs no
+// hand-listed conditions and it follows automatically if the remedy's shape ever
+// changes. It fails OPEN (resurrect, today's behaviour) on any node it cannot read
+// back, because a needless resurrection is the status quo while a wrong stand-down
+// orphans a card. Note an empty paragraph carrying a `parTitle` is NOT this case:
+// the title is visible, dropping it changes the document, so the gesture HAS an
+// effect and the guard keeps preserving.
 //
 // To remove a card entirely, the user explicitly deletes it from the
 // margin (see `deleteMarginItem` in `src/lib/cards/delete-margin-item.ts`)
 // or via the panel's trash button. This is the unified contract behind
 // "cut down on unanchored cards".
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Would resurrecting `entry` reproduce the node that vanished, exactly?
+ *
+ * `oldDoc` is the document BEFORE the dispatched batch, which is the coordinate
+ * space `StructureDiff.removedBlocks[].pos` is expressed in (the guard maps those
+ * positions FORWARD through every docChanged mapping to place its insert, so they
+ * are pre-batch by construction). O(depth) per removed block — a `nodeAt`, never a
+ * walk — and only on a transaction that removed a block, so the typing path is
+ * untouched (keystroke sanctity).
+ *
+ * Fails OPEN — `false`, i.e. "resurrect" — on a position that reads back as
+ * something else or as nothing at all. The uuid re-check is what makes that
+ * honest: without it a stale position would silently compare the WRONG node.
+ */
+function resurrectionWouldBeANoOp(
+  oldDoc: PMNode2,
+  entry: { uuid: string; pos: number },
+  paraType: import("@tiptap/pm/model").NodeType,
+): boolean {
+  let removed: PMNode2 | null = null;
+  try {
+    removed = oldDoc.nodeAt(entry.pos);
+  } catch {
+    return false;
+  }
+  if (!removed) return false;
+  if ((removed.attrs as { uuid?: string | null } | undefined)?.uuid !== entry.uuid) {
+    return false;
+  }
+  // The exact node this guard would put back. `Node.eq` compares type, attrs,
+  // marks AND content — so this is the whole question in one call.
+  return removed.eq(paraType.create({ uuid: entry.uuid }));
+}
 
 export const MarginaliaAnchorGuard = Extension.create<{
   anchoredUuidsRef: MutableRefObject<Set<string>>;
@@ -360,7 +428,7 @@ export const MarginaliaAnchorGuard = Extension.create<{
     return [
       new Plugin({
         key: new PluginKey("marginaliaAnchorGuard"),
-        appendTransaction(transactions, _oldState, newState) {
+        appendTransaction(transactions, oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
           // A deliberate lifecycle removal (Archive / Delete) carries
@@ -394,17 +462,22 @@ export const MarginaliaAnchorGuard = Extension.create<{
           // paragraph here keeps margin cards consistent).
           const anchorVanished = diff.removedAnchors.length > 0;
 
+          const paraType = newState.schema.nodes.paragraph;
+          if (!paraType) return null;
+
           type Vanished = { uuid: string; pos: number };
           const vanished: Vanished[] = [];
           for (const b of diff.removedBlocks) {
-            if (anchored.has(b.uuid) || anchorVanished) {
-              vanished.push({ uuid: b.uuid, pos: b.pos });
-            }
+            if (!anchored.has(b.uuid) && !anchorVanished) continue;
+            // EXCEPTION 2 (see the header): a resurrection that reproduces the
+            // vanished node is a silent veto, not a preservation. Stand down.
+            // The `anchorVanished` half needs no separate argument — an EMPTY
+            // paragraph has no text for a `linkedAnchor` mark to sit on, so the
+            // inline-anchor justification is vacuous for exactly this shape.
+            if (resurrectionWouldBeANoOp(oldState.doc, b, paraType)) continue;
+            vanished.push({ uuid: b.uuid, pos: b.pos });
           }
           if (vanished.length === 0) return null;
-
-          const paraType = newState.schema.nodes.paragraph;
-          if (!paraType) return null;
           const tr = newState.tr;
           const docChangedMappings = transactions
             .filter((t) => t.docChanged)
