@@ -12,14 +12,22 @@ to be running.
 |---|---|---|---|
 | **Cowork memo** | *this paper's content* — an ambiguity worth surfacing, a decision made while editing | `<docPath>/.virgil/memos/<YYYY-MM-DD>-<slug>.md` | any session |
 | **Library memo** | *the library pipeline* — an extraction retro, a triage call, an indexing-flow idea | `~/Virgil-Library/.virgil/memos/<YYYY-MM-DD>-<slug>.md` | any session |
-| **Reflection** | *Virgil's skill set itself* — how a skill behaved, a tooling improvement | the dev-loop reflection sink, **outside** any paper or library folder, via `/editor:reflect` | **DEV mode only** (`VIRGIL_DEV=1`) |
+| **Reflection** (a.k.a. a **"dream memo"**) | *Virgil's skill set / tooling / app behavior* — how a skill behaved, what compiles, an improvement idea | the dev-loop reflection sink, **outside** any paper or library folder, via `/editor:reflect` | dev-mode machines only — **the script's own gate decides**; on any other machine it no-ops safely |
 
 ## The one decision rule
 
-> A note about **Virgil's skills** is a **reflection** → `/editor:reflect` → the
-> dev-loop sink. A note about **this paper's content** is a **cowork memo** →
-> `<docPath>/.virgil/memos/`. The words *reflect / reflection* **always** mean
-> the former; **never file a reflection under `.virgil/memos/`.**
+> A note about **Virgil's skills or tooling** is a **reflection** →
+> `/editor:reflect` → the dev-loop sink. A note about **this paper's content**
+> is a **cowork memo** → `<docPath>/.virgil/memos/`. The words *reflect /
+> reflection* — and **"dream memo"**, in any phrasing — **always** mean the
+> former; **never file a reflection under `.virgil/memos/`.**
+>
+> **And a matching cue means RUN the script, not ask.** Never interrogate the
+> user about where a reflection "should go" or whether this session is
+> dev-enough: `reflect.py` gates itself (dev mode is a machine marker,
+> `~/.virgil-dev/dev-mode`) and says so plainly when it declines. Only after
+> the script itself reports DEV mode off do you offer a paper-side note
+> instead.
 
 This rule is stated identically wherever the dev-loop is documented — the
 `/editor:reflect` skill and the editor subsystem guide — so any one of them

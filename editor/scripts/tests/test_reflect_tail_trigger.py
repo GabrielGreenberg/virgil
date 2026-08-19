@@ -82,7 +82,9 @@ def env_for(memos, *, dev=True):
     if dev:
         e["VIRGIL_DEV"] = "1"
     else:
-        e.pop("VIRGIL_DEV", None)
+        # Explicit "0", not pop: with the machine dev-mode marker, an unset
+        # env falls through to the marker and this helper would read ON.
+        e["VIRGIL_DEV"] = "0"
     return e
 
 
@@ -363,6 +365,36 @@ check(r.returncode == 0 and json.loads(r.stdout).get("ok") is True,
       "writeback on a temp sandbox still succeeds with the guard on")
 check(not probe.exists() or len(sorted(probe.rglob('*.md'))) == 0,
       "…and wrote NO memo into the default sink")
+
+
+# ── the gate itself: explicit env wins; unset env falls to the machine marker ─
+# Dev mode is a fact about the MACHINE (the ~/.virgil-dev/dev-mode marker), so
+# a session type that doesn't inherit ~/.zshenv still gates correctly — the
+# 2026-08-16 cowork refusal class. An explicit env value beats the marker both
+# ways, which is what keeps "simulate an end-user machine" testable on a dev box.
+print("\n=== dev-mode gate: explicit env wins; unset env falls to the machine marker ===")
+_prev_dev = os.environ.get("VIRGIL_DEV")
+_prev_home = os.environ.get("VIRGIL_DEV_HOME")
+_home = Path(tempfile.mkdtemp(prefix="cowork-devhome-"))
+os.environ["VIRGIL_DEV_HOME"] = str(_home)
+try:
+    os.environ.pop("VIRGIL_DEV", None)
+    check(not _common.dev_mode_enabled(), "no env + no marker → OFF (an end-user machine)")
+    (_home / "dev-mode").write_text("this machine runs the Virgil dev loop\n")
+    check(_common.dev_mode_enabled(), "no env + marker file → ON (dev mode is a machine fact)")
+    os.environ["VIRGIL_DEV"] = "0"
+    check(not _common.dev_mode_enabled(), "explicit VIRGIL_DEV=0 overrides the marker → OFF")
+    os.environ["VIRGIL_DEV"] = "1"
+    check(_common.dev_mode_enabled(), "explicit VIRGIL_DEV=1 is ON regardless of marker")
+finally:
+    if _prev_dev is None:
+        os.environ.pop("VIRGIL_DEV", None)
+    else:
+        os.environ["VIRGIL_DEV"] = _prev_dev
+    if _prev_home is None:
+        os.environ.pop("VIRGIL_DEV_HOME", None)
+    else:
+        os.environ["VIRGIL_DEV_HOME"] = _prev_home
 
 
 print(f"\n===== {PASS} passed, {FAIL} failed =====")

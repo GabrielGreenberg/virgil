@@ -54,14 +54,27 @@ step copied into other skill files — the one convention is the whole seam.
 
 **Explicit triggers — the unambiguous set.** Besides the automatic follow-up, a
 maintainer kicks off a reflection by saying **"log a dev reflection"** / **"log
-this as a dev reflection"** / **"dev reflection"** / **"dev-dream reflection"**
-(the recommended, least-ambiguous cues — the "dev"/"dev-dream" qualifier names
-this loop unmistakably), or "reflect on that", "capture a reflection", "log a
-reflection", "reflect on this run", or "/editor/reflect" — plus the after-the-fact
-"put this in the reflection: …" tag path (step 4). The words *reflect/reflection*
+this as a dev reflection"** / **"dev reflection"** / **"dev-dream reflection"**,
+or **"dream memo"** in any phrasing — "make a dream memo about X", "add that to
+the dream memos", "memo this for the dream" ("dream" names this loop as
+unmistakably as "dev" does; 2026-08-16 a cowork session met "make a dream memo"
+and, finding it in no vocabulary, interrogated the user instead of writing it) —
+or "reflect on that", "capture a reflection", "log a reflection", "reflect on
+this run", or "/editor/reflect" — plus the after-the-fact "put this in the
+reflection: …" tag path (step 4). The words *reflect/reflection/dream memo*
 **always** mean this dev-loop note. **"dev memo" is not a trigger** and names
 nothing: it used to title the per-paper channel, and that overload is exactly
 what misrouted reflections into `<docPath>/.virgil/memos/`.
+
+**A matching cue means RUN THE SCRIPT — never interrogate the user about
+routing or dev-ness.** The gate is the script's job, not yours: `reflect.py`
+no-ops safely on a non-dev machine and says so, and dev mode is a machine fact
+(the `~/.virgil-dev/dev-mode` marker), not something to be divined from prose.
+So on "make a dream memo about X": compose the buckets from X and run
+`/editor/reflect <docPath> <skill> -` with `--memo-json` — use the skill the
+observation is about, or `session` for a general observation (a compile issue,
+an app behavior) that belongs to no one skill. Only if the script itself
+reports DEV mode off do you fall back to offering a paper-side note.
 
 **Memo routing rule — one decision rule, stated identically in
 [editor/AGENTS.md](../AGENTS.md) ("Memo routing rule") so either file

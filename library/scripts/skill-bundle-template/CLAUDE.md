@@ -39,8 +39,22 @@ python3 .virgil/scripts/editor/sync_skills.py --check
 
 This is what keeps skill fixes — and the dev-dream capture layer — reaching
 real paper sessions without waiting for a doc-open in the Virgil app (a stale
-bundle once held capture out of a busy paper for ten weeks). With `VIRGIL_DEV`
-unset, skip this section entirely.
+bundle once held capture out of a busy paper for ten weeks). Dev mode is a
+machine fact: `VIRGIL_DEV=1` in the env, or the `~/.virgil-dev/dev-mode`
+marker file. On a machine with neither, skip this section entirely.
+
+**"Dream memo" / "dev reflection" — just write it.** When the user says "make
+a dream memo about X" (any phrasing with *dream memo* or *reflection*), that is
+the dev-loop capture channel: compose the observation and run
+
+```
+python3 .virgil/scripts/editor/reflect.py . <skill-or-"session"> - --memo-json '<buckets>'
+```
+
+Do **not** ask where the note should go, and do not reason yourself out of it
+from the docs — the script gates itself and no-ops harmlessly on a non-dev
+machine. Only if it PRINTS that DEV mode is off do you offer a paper-side note
+in `.virgil/memos/` instead. Details: `/editor:reflect` (the skill file).
 
 ---
 
