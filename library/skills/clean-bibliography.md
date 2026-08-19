@@ -782,16 +782,41 @@ semantics exist for.
 ## Bibliography synthesis (sources gap)
 
 When the source PDF's bibliography is truncated and many
-`missing-bib-entry:` warnings remain, synthesize canonical entries
-for well-known cited works via Crossref:
+`missing-bib-entry:` warnings remain, resolve canonical entries for
+well-known cited works — Library first, then Crossref:
 
 ```bash
 python3 .virgil/scripts/library/synthesize_canonical_entries.py $ARGUMENTS \
     --max-entries 30
 ```
 
-Synthesized entries are marked with a `% synthesized via Crossref on
-<date>` comment so future passes / users can verify or replace them.
+The script **declines** wherever the evidence does not single out one work,
+and says so on stdout (`Declined N target(s) — warning left in place:`). That
+is the success mode, not a failure: the warning survives for the next pass or
+a human, which is strictly better than a wrong canonical entry in the user's
+`references.bib` — see [_find-or-surface.md](_find-or-surface.md). Its
+acceptance contract (task 372; stated in full in the script's own docstring):
+
+- a `master.bib` entry whose year and authors cover the mention wins outright
+  and is copied verbatim, tagged `% from library master.bib` — the Library is
+  the strongest, cheapest source and the only path on which a target *title*
+  exists at all;
+- otherwise a Crossref record must clear BOTH bars, re-checked locally: the
+  issued **year** equals the warning's, and **every cited surname** appears
+  among the record's authors (an `et al.` mention needs its first surname
+  among the record's first three) — the lookup spec's own §3(b)(ii) rule;
+- survivors that describe **more than one distinct work** (`--min-similarity`
+  on title agreement, or a shared DOI) are REFUSED rather than guessed at.
+
+Every written entry carries a comment naming what was and was not verified —
+`% synthesized via Crossref on <date>; review before final publication`, or
+for a Library hit, that its fields are authenticated but the WORK was matched
+on author+year alone. That is the residual those tags exist for: with no
+target title, a lone author-and-year-plausible candidate is accepted on
+author+year evidence alone, from either source, and may still be the wrong
+work by that author in that year — and the unambiguity test only ever sees the
+candidates one Crossref query returned, so a further same-author, same-year
+work outside that window cannot make a target look ambiguous.
 
 ## Refresh the import badge (final step)
 

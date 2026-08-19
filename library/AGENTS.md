@@ -452,6 +452,77 @@ shells out to it — that's what puts it under the same `npx vitest run` that
 gates everything else. (The suite carries its own no-pytest runner for this
 reason; the other `library/scripts/tests/*` suites remain manual.)
 
+## An acceptance bar is DERIVED from the evidence the input carries
+
+> **A writer that puts a record into the user's files states its acceptance
+> contract and IMPLEMENTS that contract — and where the input cannot supply
+> what the contract asks for, the contract is renegotiated in the open rather
+> than promised and skipped. A wrong entry is worse than an unresolved
+> warning: it looks correct, survives every structural validator, and is only
+> caught by a human who tries to follow it.**
+
+This is the task-372 class. `synthesize_canonical_entries.py` resolves
+`missing-bib-entry:` warnings by writing canonical entries into a paper's
+`references.bib`. Its docstring — and its `--min-similarity 0.85` CLI surface
+— promised acceptance on "title-similarity ≥ 0.85 AND author overlap ≥ 1". The
+body implemented neither: `--min-similarity` was threaded from the CLI and
+never read, `_title_similarity` was defined and never called, acceptance was a
+substring test (`Smith` matched `Smithson`; `Kehler and Rohde` checked only
+`Rohde`), the year was never checked locally, and the ranking
+`score = 1.0 if not best else best[0] + 0.01` made whichever candidate the loop
+saw LAST win by construction. Nothing threw, nothing logged, and the entry
+looked exactly like a correct one.
+
+The finding under the finding is why it drifted: **the input cannot supply the
+promised evidence.** A `missing-bib-entry:` warning carries `<Author> <Year>`
+and no title (`clean-bibliography.md`, "Missing-bib-entry lookup spec"), so
+there is nothing to compute title similarity against — and the code's own
+comment said so while the docstring said otherwise. A contract that cannot be
+met is not met quietly; it is restated. Four rules it earned:
+
+- **Spend the metric on the question it CAN answer.** With no target title,
+  the title bar becomes an UNAMBIGUITY requirement: survivors are clustered
+  into distinct works (`--min-similarity` on `work_identity.title_jaccard`, or
+  a shared DOI) and more than one distinct work REFUSES. The knob is monotone
+  in the safe direction — raising it splits candidates and refuses more.
+- **Library first is where a target title exists at all** (see
+  [_find-or-surface.md](skills/_find-or-surface.md) rule 2, which this script
+  had never honoured): a `master.bib` entry whose year and authors cover the
+  mention wins outright and is copied verbatim. It is the user's own
+  authenticated metadata and citekey convention, not a guess.
+- **One symmetric key across every source.** A prose mention (`Barbara
+  Grosz`), a Crossref `family` (`van Fraassen`) and a bib `author` token
+  (`Grosz, Barbara`) must reduce the same way, or the comparison is a
+  coin-flip. Normalization comes from `work_identity` — the library's stated
+  SSOT for bibliographic identity — never a private fork, which is what the
+  two forks this file used to carry were.
+- **A refusal is a VALUE, reported.** Every declined target comes back in
+  `result["refusals"]` and is printed, including the cases the pre-372 loop
+  dropped in silence. A surfaced gap is the success mode.
+
+The residual is stated at the site rather than promised away: with no target
+title, a target with exactly one author-and-year-plausible candidate is
+accepted on author+year evidence alone — from EITHER source, since a lone
+`master.bib` row for `Smith 1998` is authenticated metadata about *a* Smith
+1998, not proof it is the one this paper cites. That is what the per-entry
+provenance tags exist to say. A second bound belongs in the same paragraph
+rather than being discoverable from a default argument: the unambiguity test
+can only see the candidates Crossref returned, so a further work by the same
+author in the same year that falls outside the query window is invisible to
+it and a genuinely ambiguous target can present as one survivor. Closing
+either means the warning grammar carrying more than `<Author> <Year>`.
+
+CI: [library/scripts/tests/test_synthesize_canonical_entries.py](scripts/tests/test_synthesize_canonical_entries.py),
+behind [library/lib/\_\_tests\_\_/synthesize-canonical-entries-python.test.ts](lib/__tests__/synthesize-canonical-entries-python.test.ts)
+since nothing in CI runs Python directly. Measured against the pre-372 tree,
+20 of its 28 legs fail; the other 8 are controls that pass on both trees —
+without them every refusal leg would be satisfied by a script that refuses
+everything, which is the shape a "safety" fix is most likely to take. Each of
+the ten mechanisms the fix installs was also neutered in turn on a scratch
+copy and fails at least one leg on its own; the one exception is the
+pre-clustering sort, whose leg says at the site that it pins the PROPERTY
+(order-invariance) rather than the mechanism.
+
 ## A citekey lookup is NFC-insensitive — and it is CENSUSED
 
 > **Every comparison of one citekey against another goes through the ONE
