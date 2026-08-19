@@ -560,7 +560,20 @@ describe("the Outline panel mirrors its in-prose originals' tokens (task 284)", 
     // asserted a literal class string inside SearchPanel.tsx, which made a
     // whitespace reformat over there fail a test named for the Outline.
     expect(ruleBody(".par-title-annotation")).toMatch(/--par-title-color/);
-    expect(outline).toContain("text-[var(--par-title-color,#c45a5a)]");
+    // RENEGOTIATED by task 2026-08-18-361, deliberately and in place: this leg
+    // used to require the BARE `--par-title-color` here. The Outline is the one
+    // consumer at 11px/400 (every other is 12.5px/500), where the shipped
+    // default measures 4.17:1 on --pod-panel — under AA. So it now reads the
+    // DERIVED rung `--par-title-color-dense`, which is an oklab mix OF the same
+    // preference: what this leg guards (the panel tracks the user's colour
+    // rather than a frozen literal) is unchanged, and the sheet's own
+    // derivation is what carries it. The contrast half — the property no
+    // palette census can see — is pinned in
+    // src/panels/Outline/__tests__/outline-partitle-contrast.test.ts.
+    expect(globalsCode).toMatch(
+      /--par-title-color-dense:\s*color-mix\(in oklab, var\(--par-title-color\)/,
+    );
+    expect(outline).toContain("text-[var(--par-title-color-dense,");
     expect(outline).not.toContain("#857070");
   });
 

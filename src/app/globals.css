@@ -249,6 +249,29 @@
   --h2h3-color: var(--editor-text-color);
   --par-title-size: 0.78rem;
   --par-title-color: #c45a5a;
+  /* The DENSE rung of --par-title-color (task 2026-08-18-361).
+     Every ordinary consumer of the preference (.par-title-annotation,
+     .card-title-input, .card-title-collapsed, .par-title-input, the Search
+     breadcrumb) renders it at --par-title-size (12.5px) / weight 500. The
+     Outline's parTitle rows are the one surface at 11px / weight 400, and at
+     that density the shipped default lands at 4.17:1 on --pod-panel (#fffdfa)
+     — under AA 4.5:1. So the Outline reads THIS rung instead: the same
+     preference, mixed 85% toward --ink-body.
+
+     Why 85%: it measures 4.76:1 (comfortable headroom over 4.5, where 90%
+     lands at 4.55 — i.e. exactly the pre-284 frozen literal #857070's 4.55,
+     but with a margin thinner than a rounding step), while retaining 85% of
+     the perceptual distance a user recolour travels. That is the whole trade
+     this token exists to make: a LOW mix would clear AA by effectively
+     freezing the preference, which is the objection that ruled the muted-mix
+     option out during task 284.
+
+     Stated limit: this rescues the SHIPPED default, not every choice. A user
+     who picks a pale ink (a light pink, a gold) is still under AA at any mix
+     that leaves their hue recognisable — that is their colour, and the rung
+     tracks it rather than overriding it. Contract:
+     src/panels/Outline/__tests__/outline-partitle-contrast.test.ts. */
+  --par-title-color-dense: color-mix(in oklab, var(--par-title-color) 85%, var(--ink-body));
   /* Margin coordinate system — distances are CSS-negative px from the
      content column's left edge. Two columns share this margin: the
      fold chevron (leftmost) and the grab-handle baseline (between

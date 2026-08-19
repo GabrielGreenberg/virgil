@@ -361,11 +361,35 @@ and the paragraph title 4.55:1 → **4.17:1** (`#857070` → `--par-title-color`
 crossing the 4.5:1 AA line). In prose the same blue is carried by the bordered
 `.heading-annotation` lozenge, and every other `--par-title-color` consumer
 renders at 12.5px/500 — so the token is right and the *rendering context* is
-what differs. Recorded as an open accessibility residual — filed to the task
-catcher as `inbox/2026-08-14-from-worker-284-outline-token-adoption-contrast-residual.md`,
-awaiting an id — in the same register as the `--danger` error-text residual
-below: the swap is not reverted, and the fix is a weight/size or a derived
-darker rung, which is a visual decision rather than a sweep.
+what differs.
+
+**Resolved for the paragraph title (task 2026-08-18-361): a DERIVED rung, not a
+second literal.** `--par-title-color-dense` is `color-mix(in oklab,
+var(--par-title-color) 85%, var(--ink-body))`, and the Outline's four parTitle
+sites read it. It measures **4.76:1** on `--pod-panel` — comfortably over AA,
+where 90% lands at 4.55 (over the line by less than a rounding step) — while
+retaining 85% of the perceptual distance a user recolour travels, so the
+preference the adoption bought is still visible. The generalizable half: when a
+panel renders a shared token in a harder context, derive a rung FROM the token
+rather than freeze a new literal beside it, and put the measurement at the
+declaration. Contract: `src/panels/Outline/__tests__/outline-partitle-contrast.test.ts`,
+which does the WCAG arithmetic no palette census can — the token guards ask
+whether a `var()` resolves and whether a panel reads a preference, never how
+legible the result is.
+
+*Stated limit:* the rung rescues the SHIPPED default, not every choice. A user
+who picks a pale ink (a light pink, a gold) is still under AA at any mix that
+leaves their hue recognisable — that is their colour, and the rung tracks it
+rather than overriding it.
+
+**Accepted residual — the Outline's label-key ink.**
+`--heading-annotation-color` at 11px bare text measures **2.94:1** on
+`--pod-panel`, and it failed AA *before* the 284 swap too (`blue-500` = 3.62:1):
+the adoption deepened a pre-existing shortfall rather than introducing one, and
+the "+" affordance beside it is opacity-gated chrome. Recorded rather than fixed
+(task 2026-08-18-361, Gabriel-ruled), in the same register as the `--danger`
+error-text residual below and the task-195 family: the swap is not reverted, and
+raising it is a visual decision about the Outline's density, not a sweep.
 
 That ban is on the **declaration, not the file**: a radius authored as CSS
 inside a `.tsx` string (`el.style.cssText = "…;border-radius:6px;…"`), as a
