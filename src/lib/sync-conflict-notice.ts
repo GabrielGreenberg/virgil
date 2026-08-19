@@ -21,21 +21,48 @@
  *   [sync-conflict.ts](sync-conflict.ts)). A notice that cannot be dismissed
  *   would be a permanent banner, which is how a real signal becomes furniture.
  *
- * Session-scoped and per document: a fresh activation re-scans, so nothing is
- * persisted and nothing can go stale. A dismissal lasts for the session — it is
- * the user saying "I have seen this folder's forks", and a re-scan on every tab
- * switch would otherwise re-raise the same 197.
+ * Session-scoped and per document: every scan re-derives, so nothing is
+ * persisted and nothing can go stale.
+ *
+ * ## What a dismissal actually dismisses
+ *
+ * A dismissal is keyed on the report's SIGNATURE, not on the document. What the
+ * user dismissed is a particular folder STATE — "I have seen these forks" — and
+ * Virgil is a PWA that stays open for days while a daemon keeps minting them.
+ * Keyed on the docId alone, dismissing the 197 forks that were there at 9am
+ * would silence a fork of `notes.json` minted at 4pm, on the one file where
+ * silence is the thing this whole surface exists to end. Keyed on the
+ * signature, an unchanged folder stays quiet through any number of re-scans and
+ * a genuinely NEW fork re-raises.
  */
 
 import type { SyncConflictReport } from "@/lib/sync-conflict";
 
 export interface SyncConflictNotice extends SyncConflictReport {
   docId: string;
+  /** The folder state this report describes — see {@link dismissSyncConflictNotice}. */
+  signature: string;
 }
 
 const byDoc = new Map<string, SyncConflictNotice>();
-const dismissed = new Set<string>();
+/** docId → the signature the user dismissed. */
+const dismissed = new Map<string, string>();
 const listeners = new Set<() => void>();
+
+/**
+ * What the user is dismissing: the exact set of sibling FILES the scan found.
+ * Names rather than counts, so a fork replacing another (a daemon re-forking a
+ * file it already forked) re-raises rather than reading as "same number, still
+ * dismissed". Swap debris is included: it never raises a pill on its own, but a
+ * report that is otherwise identical and has gained debris has still changed.
+ */
+function signatureOf(r: SyncConflictReport): string {
+  const names = [
+    ...r.groups.flatMap((g) => g.siblings.map((s) => s.name)),
+    ...r.swapFiles,
+  ];
+  return names.sort().join("\u0000");
+}
 
 function emit(): void {
   for (const fn of listeners) fn();
@@ -53,8 +80,10 @@ export function subscribeSyncConflictNotices(fn: () => void): () => void {
 export function getSyncConflictNotice(
   docId: string | null | undefined,
 ): SyncConflictNotice | null {
-  if (!docId || dismissed.has(docId)) return null;
-  return byDoc.get(docId) ?? null;
+  if (!docId) return null;
+  const notice = byDoc.get(docId);
+  if (!notice) return null;
+  return dismissed.get(docId) === notice.signature ? null : notice;
 }
 
 /**
@@ -67,17 +96,29 @@ export function recordSyncConflictReport(
   report: SyncConflictReport,
 ): void {
   if (report.total === 0 && report.swapFiles.length === 0) {
-    if (byDoc.delete(docId)) emit();
+    // A folder the user cleaned: drop the notice AND the dismissal, so a fork
+    // minted later is judged on its own signature rather than against a stale
+    // one.
+    const had = byDoc.delete(docId);
+    const wasDismissed = dismissed.delete(docId);
+    if (had || wasDismissed) emit();
     return;
   }
-  byDoc.set(docId, Object.freeze({ docId, ...report }));
+  const next = Object.freeze({ docId, ...report, signature: signatureOf(report) });
+  const prev = byDoc.get(docId);
+  if (prev && prev.signature === next.signature) return; // identical scan — no churn
+  byDoc.set(docId, next);
   emit();
 }
 
-/** The user has seen it. Lasts for the session; a reload re-raises. */
+/** The user has seen THIS folder state. A later scan that finds the same files
+ *  stays quiet; one that finds a different set re-raises. A reload re-raises
+ *  everything (nothing is persisted). A no-op for a doc with no notice — there
+ *  is no signature to record. */
 export function dismissSyncConflictNotice(docId: string): void {
-  if (dismissed.has(docId)) return;
-  dismissed.add(docId);
+  const notice = byDoc.get(docId);
+  if (!notice || dismissed.get(docId) === notice.signature) return;
+  dismissed.set(docId, notice.signature);
   emit();
 }
 

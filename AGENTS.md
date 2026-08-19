@@ -750,6 +750,21 @@ earned:
   file as their lost writing is a worse error than missing a fork. Stated rather
   than implied — this scanner is not complete over every sync service.
 
+**A detection half is worth what it is WIRED to, and the first wiring was
+almost nothing.** The scan was hung off `activateDoc`, which reads like the
+doc-open door and is not: the paths that actually open an already-indexed paper —
+`openFile` (the Recents list), `createFile`, and the session-restore effect that
+reopens last session's tabs — all set `currentDocId` directly and never reach it.
+So the whole surface fired for a first-ever open through the folder PICKER and
+never again, which is the silence it exists to end. It is keyed on `currentDocId`
+now, the one chokepoint every path funnels through; re-scanning on a warm tab
+switch is a feature rather than a cost, because a daemon mints forks while the
+app is open. Which in turn is why **the dismissal is keyed on the report's
+SIGNATURE, not on the docId** — what the user dismissed is a folder STATE ("I
+have seen these forks"), and Virgil is a PWA that stays open for days, so a
+doc-keyed dismissal would silence a fork of `notes.json` minted at 4pm because
+the 9am report was acknowledged.
+
 **The DiskWatcher/ledger interaction was already right and had never been named.**
 A daemon produces two shapes and the ledger has to tell them apart: a RE-WRITE of
 bytes Virgil itself just wrote (same content, new mtime/inode — the ping-pong
@@ -761,19 +776,54 @@ half of "no ping-pong" is that the app's reaction to an emit is a READ —
 `usePersistentState`'s handler calls `setState`, never `persist`, and defers
 entirely while a local write is pending.
 
-**What the forks actually cost, measured rather than assumed.**
+**What the forks actually cost — and the first answer was an OVER-CLAIM.**
 [tools/triage-sync-conflicts.mjs](tools/triage-sync-conflicts.mjs) reports
-per-file whether any fork holds a record the live sidecar lacks. On the reporting
-folder: **189 of 204 forks carry nothing** (every `editor-state`, `virgil`,
-`collab` and `todos` fork), and **12 forks hold 12 records that exist only in a
-fork** — one note, three archived excerpts, four revision cards, four citations.
-So the divergence is real and narrow, which is the shape the badge's copy takes.
-`--prune` deletes only what a run proved inert; nothing merges.
+per-file whether a fork holds anything the live sidecar does not. Its first
+version decided that by asking whether the fork carried a record ID the live file
+lacked, reading records out of a hand list of seven container keys, and it
+reported **189 of 204 forks carry nothing**. Both halves of that test fail OPEN
+in the destructive direction, and the adversarial pass on this task found both:
+eight of the twenty declared sidecars use a key that list does not know (or are
+not arrays at all — `annotations.json` is a bare citekey→prose map), so their
+forks were never inspected and `--prune` deleted them while the report said they
+carried nothing; and an ID-membership test cannot see the COMMONEST conflict
+shape there is — the same record edited on two machines, same id, different body.
+
+> **An "inert" verdict is POSITIVE evidence, and a shape the tool does not
+> understand is not evidence.** A fork is prunable only where a run PROVED it
+> carries nothing: its parsed JSON is structurally equal to the live file, or its
+> base is a VIEW-tier sidecar (recomputable by the app's own declaration), or it
+> is the browser's `.crswap` debris. Everything else is reported and KEPT. The
+> id-diff survives as a labelled hint, deciding nothing.
+
+Re-measured under that rule, the honest number on the reporting folder is **127
+proved inert and 96 that DIFFER** — 42 `notes`, 27 `virgil`, 20 `revisions`, 4
+`citations`, 2 `archive`, 1 `todos`, most of them "same records, different
+content". The divergence is much wider than the first pass claimed, which is
+exactly why the tool now keeps them.
+
+Two more rules the same pass earned, both about a copy that could not import its
+SSOT: the tool READS the sidecar vocabulary out of `sidecar-value.ts` rather than
+treating any lowercase `.json` in the folder as a declared base — the loose
+decoration grammars are safe only because the base set is CLOSED, and applying
+them to an open set on the side that DELETES inverts the whole argument — and CI
+pins both the extraction and the fact that the tool's regexes are a subset of the
+module's, since a `.mjs` script has no build step and must restate them.
 
 CI: [sidecar-value-ssot.test.ts](src/lib/__tests__/sidecar-value-ssot.test.ts)
 (totality over what production spells, the derivation, the byte-unchanged content
-cadence, and the CENSUS — no write site may spell its own debounce literal, which
-is exactly how a 400 ms *settle* came to mean a 400 ms *disk write*),
+cadence, and the CENSUS — no sidecar writer may spell its own debounce literal,
+which is exactly how a 400 ms *settle* came to mean a 400 ms *disk write*). That
+census's own first draft is the cautionary half: it named two files by hand and
+matched only the DEFAULT form (`debounceMs = 300`), so it was blind to the
+CALL-SITE form (`debounceMs: 150`) that `useFocusMode` was live-passing for a
+declared VIEW file — a leg that cannot see the one violation in the tree it ships
+with is a habit, not a guard. Membership is DISCOVERED now (every file that calls
+`usePersistentState`/`writeSidecar`, generics included — the needle that missed
+`usePersistentState<StoredBand>(` dropped the offending file straight out of the
+population), scoped to WRITERS rather than to every `debounceMs` in the tree
+(`useLatexLint` and `useLatexSource` share the word and answer a different
+question), and the allowlist is EMPTY.
 [sync-conflict.test.ts](src/lib/__tests__/sync-conflict.test.ts) (the grammars,
 over REAL fork names copied out of the reporting folder — a hand-invented fixture
 would only prove the regex matches its author's idea of Dropbox), the race-back

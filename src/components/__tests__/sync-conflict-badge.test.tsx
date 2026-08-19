@@ -15,8 +15,12 @@
 //                 go away by itself once the user tidies the folder.
 //   3. RENDER   — the pill states the count and the content split; a swap-only
 //                 folder raises nothing.
-//   4. DISMISS  — session-scoped, because the reporting folder holds four
-//                 months of forks and a permanent banner is furniture.
+//   4. DISMISS  — keyed on the report's SIGNATURE, not the docId: an unchanged
+//                 folder stays quiet (the reporting folder holds four months of
+//                 forks and a permanent banner is furniture) while a genuinely
+//                 NEW fork re-raises. Virgil is a PWA that stays open for days
+//                 and the daemon keeps minting, so a doc-keyed dismissal would
+//                 silence exactly the live case this feature exists for.
 //   5. WIRING   — the production doc-open path actually calls the scan (a
 //                 SOURCE leg: the defect this closes is silence, and an unwired
 //                 scan is silent in exactly the same way).
@@ -107,7 +111,7 @@ describe("sync-conflict badge", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("dismisses for the session", async () => {
+  it("dismisses this FOLDER STATE — an unchanged re-scan stays quiet", async () => {
     mockList.mockResolvedValue(FORKED);
     const { container } = render(<SyncConflictBadge docId="doc-1" />);
     await act(async () => {
@@ -116,11 +120,61 @@ describe("sync-conflict badge", () => {
     expect(container.innerHTML).not.toBe("");
     act(() => dismissSyncConflictNotice("doc-1"));
     expect(container.innerHTML).toBe("");
-    // A re-scan does NOT re-raise it — the user has seen this folder.
+    // The scan re-runs on every doc activation — an identical folder must not
+    // re-raise what the user has already seen.
     await act(async () => {
       await scanSyncConflicts("doc-1");
     });
     expect(container.innerHTML).toBe("");
+  });
+
+  it("…but a genuinely NEW fork re-raises after a dismissal", async () => {
+    // The live case: Virgil is a PWA that stays open for days, and the daemon
+    // keeps minting. A doc-keyed dismissal would silence a fork of notes.json
+    // made at 4pm because the user dismissed the 9am report — on the one file
+    // where silence is the thing this surface exists to end.
+    mockList.mockResolvedValue(FORKED);
+    const { container } = render(<SyncConflictBadge docId="doc-1" />);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    act(() => dismissSyncConflictNotice("doc-1"));
+    expect(container.innerHTML).toBe("");
+
+    mockList.mockResolvedValue([
+      ...FORKED,
+      "notes (Gabriel Greenberg's conflicted copy 2026-08-19).json",
+    ]);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    expect(container.innerHTML).not.toBe("");
+    expect(
+      container
+        .querySelector("[data-sync-conflict-notice]")!
+        .getAttribute("data-sync-conflict-notice"),
+    ).toBe("4");
+  });
+
+  it("a cleaned folder clears the dismissal too, so a later fork is judged fresh", async () => {
+    mockList.mockResolvedValue(FORKED);
+    const { container } = render(<SyncConflictBadge docId="doc-1" />);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    act(() => dismissSyncConflictNotice("doc-1"));
+    // The user tidies the folder in Finder.
+    mockList.mockResolvedValue(["notes.json", "editor-state.json"]);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    expect(container.innerHTML).toBe("");
+    // …and the SAME set forking again later must raise, not read as dismissed.
+    mockList.mockResolvedValue(FORKED);
+    await act(async () => {
+      await scanSyncConflicts("doc-1");
+    });
+    expect(container.innerHTML).not.toBe("");
   });
 });
 
@@ -135,7 +189,13 @@ describe("sync-conflict wiring", () => {
       path.join(REPO, "src/hooks/useFiles.ts"),
       "utf8",
     );
-    expect(useFiles).toContain("scanSyncConflicts(meta.id)");
+    // Keyed on `currentDocId`, NOT on activateDoc: the paths that actually open
+    // an already-indexed paper (`openFile` from Recents, `createFile`, the
+    // session-restore effect) all set `currentDocId` directly and never reach
+    // `activateDoc`, so a scan wired there fired for a first-ever picker open
+    // and never again.
+    expect(useFiles).toContain("void scanSyncConflicts(currentDocId);");
+    expect(useFiles).not.toContain("scanSyncConflicts(meta.id)");
     const cluster = fs.readFileSync(
       path.join(REPO, "src/components/editor-layout/StatusCluster.tsx"),
       "utf8",

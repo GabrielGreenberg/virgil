@@ -204,16 +204,18 @@ export function useFocusMode(docId: string | null, editor: Editor | null) {
     docId,
     "focus.json",
     INITIAL_STORED,
-    // Debounce the focus.json DISK write (CHIP B). React state (stored → band /
-    // state) still updates synchronously inside update() — only the write to
-    // disk coalesces — so the editor confine on lock and the band overlay stay
-    // immediate. This is a safety net for any residual rapid update() bursts
-    // (e.g. click-then-lock, or an in-flight-write race); the per-snap drag
-    // write storm is already eliminated by the commit-on-mouseup change in
-    // FocusBand. Pending writes are FLUSHED synchronously on unmount and on
-    // docId change (usePersistentState's cleanup effect → flushPending), so the
-    // band is never lost on navigation.
-    { migrate: migrateFocusState, errorLabel: "focus", debounceMs: 150 },
+    // The DISK write coalesces; React state (stored → band / state) still
+    // updates synchronously inside update(), so the editor confine on lock and
+    // the band overlay stay immediate. This was a hand-picked 150 ms (CHIP B, a
+    // safety net for residual rapid update() bursts — click-then-lock, an
+    // in-flight-write race); since task 363 the cadence comes from the file's
+    // own tier, and `focus.json` is declared VIEW state: a focus band is a UI
+    // mode the user re-establishes in one gesture, so there is nothing a
+    // coalesced write can cost. Pending writes are FLUSHED on unmount, on docId
+    // change, and when the tab goes hidden (usePersistentState), so the band is
+    // never lost on navigation — which is the property the 150 ms was standing
+    // in for.
+    { migrate: migrateFocusState, errorLabel: "focus" },
   );
   // Re-resolve trigger: rev.blocks bumps on block add/remove/reorder (CHIP 0),
   // never on a plain keystroke — so the derived indices below recompute exactly

@@ -440,6 +440,25 @@ export function useFiles() {
     currentDocIdRef.current = currentDocId;
   }, [currentDocId]);
 
+  // ── Sync-conflict scan (task 363) ────────────────────────────────────────
+  // Notice what a cloud-sync daemon did to this paper's `virgil/` folder. Keyed
+  // on `currentDocId` — the ONE chokepoint every open path funnels through —
+  // and deliberately NOT on `activateDoc`, which the paths that actually open
+  // an already-indexed paper never reach: `openFile` (the Recents list),
+  // `createFile`, and the session-restore effect all set `currentDocId`
+  // directly. A scan wired to the picker alone would have made the whole
+  // detection half fire for a first-ever open and never again, which is exactly
+  // the silence this feature exists to end.
+  //
+  // Re-scanning on a warm tab switch is a feature rather than a cost: a daemon
+  // mints forks while the app is open, and the notice is signature-keyed
+  // (`sync-conflict-notice.ts`), so an unchanged folder cannot re-raise a
+  // dismissed report. One directory enumeration, no file reads; never throws.
+  useEffect(() => {
+    if (!currentDocId) return;
+    void scanSyncConflicts(currentDocId);
+  }, [currentDocId]);
+
   const activateDocPane = useCallback(
     (id: string) => {
       flushOutgoing(currentDocIdRef.current, id);
@@ -645,12 +664,6 @@ export function useFiles() {
         syncedDocIdsRef.current.add(meta.id);
         void runSkillSync(meta.id);
       }
-      // Fire-and-forget: notice what a cloud-sync daemon did to this paper's
-      // `virgil/` folder (task 363). Deliberately NOT behind the skill-sync
-      // dedup — a fork can be minted at any time, so every activation re-scans,
-      // and a report with nothing to say clears any standing notice. One
-      // directory enumeration; never throws (see scanSyncConflicts).
-      void scanSyncConflicts(meta.id);
     },
     [appendToOuterOrder, bumpAccessed, claimWithHandoff, runSkillSync],
   );

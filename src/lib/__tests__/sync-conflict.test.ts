@@ -17,11 +17,15 @@
 //   4. TIER JOIN  — the report reads the value SSOT, so `editor-state.json`'s
 //                   102 forks are debris and `notes.json`'s 36 are not.
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import {
   classifySidecarSibling,
   hasSyncConflicts,
   scanSidecarSiblings,
+  SYNC_ORIGIN_LABEL,
 } from "@/lib/sync-conflict";
+import { ALL_VIRGIL_SIDECAR_FILENAMES, SIDECAR_VALUE } from "@/lib/sidecar-value";
 
 /** Verbatim from the reporting folder. */
 const REAL_NAMES = [
@@ -163,5 +167,103 @@ describe("sync-conflict — report", () => {
     expect(r.total).toBe(0);
     expect(r.swapFiles).toHaveLength(1);
     expect(hasSyncConflicts(r)).toBe(false);
+  });
+});
+
+
+// ── The offline tool is a SECOND SPELLER of two things it must not drift on ──
+// `tools/triage-sync-conflicts.mjs` is a `.mjs` script with no build step, so it
+// cannot import the TypeScript SSOTs. It therefore re-states the decoration
+// grammars and re-reads the sidecar vocabulary out of `sidecar-value.ts` by
+// regex — and it is the half that DELETES files, so a drift there is the
+// dangerous direction. These legs are what hold the two copies together.
+describe("triage tool — held to the app's SSOTs", () => {
+  const REPO = path.resolve(__dirname, "../../..");
+  const TOOL = fs.readFileSync(
+    path.join(REPO, "tools/triage-sync-conflicts.mjs"),
+    "utf8",
+  );
+  const MODULE = fs.readFileSync(
+    path.join(REPO, "src/lib/sync-conflict.ts"),
+    "utf8",
+  );
+
+  /** Every regex literal in a source, normalized to its own text. */
+  function regexes(src: string): string[] {
+    return [...src.matchAll(/\/\^[^\n]*?\/[gimsuy]*/g)].map((m) => m[0]);
+  }
+
+  it("spells the same decoration grammars as the module", () => {
+    const inModule = new Set(regexes(MODULE));
+    const inTool = regexes(TOOL);
+    // Every grammar the TOOL uses must be one the module also has — the tool is
+    // never allowed to be more permissive than the surface that only reports.
+    const extra = inTool.filter((r) => !inModule.has(r));
+    expect(extra).toEqual([]);
+    // …and it must actually carry them, or this leg passes vacuously.
+    expect(inTool.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("reads the vocabulary from sidecar-value.ts, and the extraction is exact", () => {
+    // The tool must NOT derive `declared` from the folder listing — that is the
+    // open base set the module's whole loose-grammar safety argument forbids,
+    // applied on the side that deletes.
+    expect(TOOL).toContain("sidecar-value.ts");
+    expect(TOOL).not.toMatch(/names\.filter\([^)]*\.json\$/);
+    // Run the tool's OWN extraction regex against the real SSOT source.
+    const ssot = fs.readFileSync(
+      path.join(REPO, "src/lib/sidecar-value.ts"),
+      "utf8",
+    );
+    const extracted = new Map<string, string>();
+    for (const m of ssot.matchAll(
+      /"([a-z][a-z0-9-]*\.json)":\s*\{\s*tier:\s*"(view|content)"/g,
+    )) {
+      extracted.set(m[1]!, m[2]!);
+    }
+    expect([...extracted.keys()].sort()).toEqual(
+      [...ALL_VIRGIL_SIDECAR_FILENAMES].sort(),
+    );
+    for (const [f, tier] of extracted) {
+      expect(SIDECAR_VALUE[f]!.tier).toBe(tier);
+    }
+  });
+
+  it("decides prunability by POSITIVE evidence, never by a hand list of shapes", () => {
+    // The first version asked "does this fork hold a record id the live file
+    // lacks?", reading records out of a seven-name key list — so eight of the
+    // twenty sidecars were deleted unexamined, and a same-id body edit (the
+    // commonest conflict shape there is) read as carrying nothing. Both halves
+    // fail OPEN in the destructive direction.
+    expect(TOOL).not.toMatch(/\["cards",\s*"snippets"/);
+    expect(TOOL).toContain("deepEqual");
+    // The id-diff survives only as a labelled HINT, and must not gate the prune.
+    expect(TOOL).toMatch(/newRecordHint/);
+    const pruneRegion = TOOL.slice(TOOL.indexOf("const prunable"));
+    expect(pruneRegion).not.toMatch(/prunable\.push\([^)]*newRecordHint/);
+  });
+});
+
+describe("sync-conflict — the origin column has a reader", () => {
+  it("reports ONE origin when every fork agrees, and null when they do not", () => {
+    const one = scanSidecarSiblings([
+      "notes.json",
+      "notes (X's conflicted copy 2026-01-01).json",
+      "archive (X's conflicted copy 2026-01-02).json",
+    ]);
+    expect(one.origin).toBe("dropbox");
+    expect(SYNC_ORIGIN_LABEL[one.origin!]).toBe("Dropbox");
+
+    const mixed = scanSidecarSiblings([
+      "notes (X's conflicted copy 2026-01-01).json",
+      "archive.sync-conflict-20260102-101010-AAAA.json",
+    ]);
+    expect(mixed.origin).toBeNull();
+  });
+
+  it("every origin has a human label", () => {
+    for (const k of ["dropbox", "syncthing", "drive", "icloud", "chrome-swap"] as const) {
+      expect(SYNC_ORIGIN_LABEL[k]).toBeTruthy();
+    }
   });
 });

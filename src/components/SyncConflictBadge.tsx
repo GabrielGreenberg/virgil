@@ -42,6 +42,7 @@
 import { memo, useCallback, useRef, useState, type ReactNode } from "react";
 import { useSyncConflictNotice } from "@/hooks/useSyncConflictNotice";
 import { dismissSyncConflictNotice } from "@/lib/sync-conflict-notice";
+import { SYNC_ORIGIN_LABEL } from "@/lib/sync-conflict";
 import { MenuProvider } from "./menu/MenuProvider";
 import { ANCHORED_MENU_PLACEMENTS } from "./menu/AnchoredMenu";
 import { useMenuItem } from "./menu/useMenuItem";
@@ -134,7 +135,12 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
   // rides an existing conflict report as context and raises nothing on its own.
   if (!notice || notice.total === 0) return null;
 
-  const { total, contentTotal, groups, swapFiles } = notice;
+  const { total, contentTotal, groups, swapFiles, origin } = notice;
+  // Name the service when every fork agrees on one — "Dropbox could not merge
+  // these" is actionable where the four-way family list is a shrug.
+  const writer = origin
+    ? SYNC_ORIGIN_LABEL[origin]
+    : "A file-sync service (Dropbox, iCloud Drive, Google Drive, Syncthing)";
   const label =
     contentTotal > 0
       ? `${total} conflicted ${total === 1 ? "copy" : "copies"} · ${contentTotal} with content`
@@ -158,9 +164,8 @@ function SyncConflictBadge({ docId }: { docId: string | null }) {
       >
         <MenuRow id="dismiss" label="Dismiss for this session" run={handleDismiss} />
         <div className="px-3 pt-1.5 mt-1 border-t border-edge-subtle text-[10px] text-ink-subtle leading-snug">
-          A file-sync service (Dropbox, iCloud Drive, Google Drive, Syncthing)
-          could not merge two versions of these files, so it kept both and
-          renamed one aside. Virgil is using the un-renamed one.
+          {writer} could not merge two versions of these files, so it kept both
+          and renamed one aside. Virgil is using the un-renamed one.
           {contentTotal > 0 && (
             <>
               {" "}

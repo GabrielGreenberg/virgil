@@ -152,38 +152,97 @@ describe("sidecar value SSOT — cadence", () => {
 });
 
 // ── The leg with teeth ────────────────────────────────────────────────────
-// The two writers that own a sidecar debounce must take it from the door. A
-// hand-picked number is exactly how `useEditorUIState` came to write ~100×
-// per reading session while `usePersistentState` wrote at 300 ms, with nothing
-// in the codebase relating the two.
-const DEBOUNCE_OWNERS = [
-  "src/hooks/usePersistentState.ts",
-  "src/hooks/useEditorUIState.ts",
-];
+// A sidecar write site must take its cadence from the door. A hand-picked
+// number is exactly how `useEditorUIState` came to write ~100x per reading
+// session while `usePersistentState` wrote at 300 ms, with nothing in the
+// codebase relating the two.
+//
+// MEMBERSHIP IS DISCOVERED, not listed — a hand list can only be missing a name,
+// and the first draft of this leg proved it: it named two files and matched only
+// the DEFAULT form (`debounceMs = 300`), so it was blind to the CALL-SITE form
+// (`debounceMs: 150`) that `useFocusMode` was passing for a declared VIEW file.
+// A leg that cannot see the one live violation in the tree it ships with is a
+// habit, not a guard.
+const DEBOUNCE_DECL = /debounceMs\s*=\s*\d+/;
+const DEBOUNCE_ARG = /debounceMs\s*:\s*\d+/;
+
+/** Files entitled to a hand-picked sidecar cadence, each with WHY. EMPTY, and
+ *  it stays that way: a hit is DERIVE-it (declare the file's tier), never a new
+ *  entry. */
+const PERMITTED_HAND_PICKED_CADENCE: Record<string, string> = {};
+
+/**
+ * The POPULATION the needle applies to: every production file that writes a
+ * sidecar. Discovered from the call, not listed.
+ *
+ * Scoped to WRITERS rather than to every `debounceMs` in the tree, because the
+ * name is shared with questions that are not this one — `useLatexLint` debounces
+ * a lint pass and `useLatexSource` a serialization, and neither writes a file.
+ * A needle that indicted those would be answering "who spells this word",
+ * where the law is "who sets a sidecar's WRITE cadence".
+ */
+function sidecarWriters(): string[] {
+  const out: string[] = [];
+  for (const file of SRC_FILES) {
+    const code = codeOnly(fs.readFileSync(file, "utf8"));
+    // `<T>` between the name and the paren is the local idiom
+    // (`usePersistentState<StoredBand>(…)`), and a needle that missed it would
+    // have dropped `useFocusMode` — the exact file this leg exists to catch —
+    // straight out of the population.
+    if (/\b(?:usePersistentState|writeSidecar)\s*(?:<[^;{}]*?>)?\s*\(/.test(code)) {
+      out.push(path.relative(REPO, file));
+    }
+  }
+  return out;
+}
 
 describe("sidecar value SSOT — census", () => {
-  it("no sidecar write site spells its own debounce number", () => {
-    for (const rel of DEBOUNCE_OWNERS) {
+  it("discovers a real population of sidecar writers", () => {
+    // A discovery that found nothing would make the leg below pass vacuously.
+    const writers = sidecarWriters();
+    expect(writers.length).toBeGreaterThan(5);
+    expect(writers).toContain("src/hooks/usePersistentState.ts");
+    expect(writers).toContain("src/hooks/useEditorUIState.ts");
+    expect(writers).toContain("src/hooks/useFocusMode.ts");
+  });
+
+  it("no sidecar writer spells its own debounce number", () => {
+    const offenders: string[] = [];
+    for (const r of sidecarWriters()) {
+      if (r in PERMITTED_HAND_PICKED_CADENCE) continue;
+      const code = codeOnly(fs.readFileSync(path.join(REPO, r), "utf8"));
+      if (DEBOUNCE_DECL.test(code) || DEBOUNCE_ARG.test(code)) offenders.push(r);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("the two coalescing writers read the cadence door", () => {
+    for (const rel of [
+      "src/hooks/usePersistentState.ts",
+      "src/hooks/useEditorUIState.ts",
+    ]) {
       const src = codeOnly(fs.readFileSync(path.join(REPO, rel), "utf8"));
-      // The shape a hand-picked cadence takes: a bare millisecond literal
-      // handed to setTimeout, or a `debounceMs = <n>` default.
-      expect(src, `${rel} sets a timer from a literal`).not.toMatch(
-        /setTimeout\([\s\S]{0,200}?,\s*\d{2,}\s*\)/,
-      );
-      expect(src, `${rel} defaults debounceMs to a literal`).not.toMatch(
-        /debounceMs\s*=\s*\d+/,
-      );
       expect(src, `${rel} does not read the cadence door`).toContain(
         "sidecarWriteDebounceMs",
+      );
+      // …and neither may set a timer from a bare millisecond literal.
+      expect(src, `${rel} sets a timer from a literal`).not.toMatch(
+        /setTimeout\([\s\S]{0,200}?,\s*\d{2,}\s*\)/,
       );
     }
   });
 
-  it("CANARY — the needles fire on the pre-363 shapes", () => {
-    const preFix = `const { debounceMs = 300 } = opts;\n` +
-      `timer = setTimeout(() => { write(); }, 400);\n`;
-    expect(codeOnly(preFix)).toMatch(/debounceMs\s*=\s*\d+/);
-    expect(codeOnly(preFix)).toMatch(/setTimeout\([\s\S]{0,200}?,\s*\d{2,}\s*\)/);
+  it("CANARY — BOTH needles fire, on both pre-363 shapes", () => {
+    // The DEFAULT form (what usePersistentState had) and the CALL-SITE form
+    // (what useFocusMode had). The first draft of this census saw only the
+    // former, which is why the latter shipped live under a green suite.
+    const asDefault = `const { debounceMs = 300 } = opts;`;
+    const asArg = `usePersistentState(id, "focus.json", INIT, { debounceMs: 150 });`;
+    const asTimer = `timer = setTimeout(() => { write(); }, 400);`;
+    expect(DEBOUNCE_DECL.test(codeOnly(asDefault))).toBe(true);
+    expect(DEBOUNCE_ARG.test(codeOnly(asArg))).toBe(true);
+    expect(DEBOUNCE_DECL.test(codeOnly(asArg))).toBe(false); // the blind spot
+    expect(codeOnly(asTimer)).toMatch(/setTimeout\([\s\S]{0,200}?,\s*\d{2,}\s*\)/);
   });
 
   it("CANARY — the stripper does not swallow the SSOT it reads", () => {

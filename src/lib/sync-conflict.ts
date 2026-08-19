@@ -74,6 +74,16 @@ export interface SyncConflictGroup {
   siblings: SidecarSibling[];
 }
 
+/** Human name for a grammar, for copy that can say WHO rather than "something". */
+export const SYNC_ORIGIN_LABEL: Readonly<Record<SyncConflictOrigin, string>> =
+  Object.freeze({
+    dropbox: "Dropbox",
+    syncthing: "Syncthing",
+    drive: "Google Drive",
+    icloud: "iCloud Drive",
+    "chrome-swap": "the browser",
+  });
+
 export interface SyncConflictReport {
   /** Per base, only for bases that HAVE a conflict fork. Sorted: content first
    *  (the half that can be unmerged writing), then by descending count. */
@@ -86,6 +96,17 @@ export interface SyncConflictReport {
   /** How many of those are forks of a CONTENT sidecar — the number that means
    *  "this may be your writing". */
   contentTotal: number;
+  /**
+   * The service that made them, when EVERY conflict fork shares one grammar —
+   * which is the ordinary case, since a folder sits in one sync service. `null`
+   * where they disagree (a paper moved between services, or a grammar collision)
+   * and the copy has to fall back to naming the family.
+   *
+   * This is what `SidecarSibling.origin` is FOR: a notice that says "Dropbox
+   * could not merge these" is actionable, and one that says "a file-sync service
+   * (Dropbox, iCloud Drive, Google Drive, Syncthing)" is a shrug.
+   */
+  origin: SyncConflictOrigin | null;
 }
 
 // A Dropbox fork: `notes (Gabriel Greenberg's conflicted copy 2026-08-18).json`,
@@ -177,7 +198,11 @@ export function scanSidecarSiblings(names: readonly string[]): SyncConflictRepor
   const contentTotal = groups
     .filter((g) => g.tier === "content")
     .reduce((n, g) => n + g.siblings.length, 0);
-  return { groups, swapFiles, total, contentTotal };
+  const origins = new Set(
+    groups.flatMap((g) => g.siblings.map((s) => s.origin)),
+  );
+  const origin = origins.size === 1 ? [...origins][0]! : null;
+  return { groups, swapFiles, total, contentTotal, origin };
 }
 
 /** True when there is anything at all worth telling the user about. */
