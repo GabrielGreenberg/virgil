@@ -172,8 +172,29 @@ def _paper_script_prefixes(repo: Path) -> list[tuple[str, str]] | None:
         text = src.read_text()
     except Exception:
         return None
+    # Destination half, two shapes the builder has actually had:
+    #   (a) inline literals   — `".virgil/scripts/<silo>/"` (pre-374);
+    #   (b) the layout SSOT   — `${scriptsDirFor("<silo>")}/` (task 374 routed
+    #       destinations through library/lib/skill-bundle-layout.mjs, and this
+    #       parser went quietly None for three days — the exact disarm the
+    #       canary exists to catch, caught 2026-08-16). For (b) the concrete
+    #       dir is READ from the layout module (VIRGIL_DIR + the scriptsDirFor
+    #       template), not re-spelled here, so a layout rename can't leave this
+    #       side carrying a stale path.
     targets = {m: f".virgil/scripts/{m}/"
                for m in re.findall(r'"\.virgil/scripts/(\w+)/"', text)}
+    ssot_silos = re.findall(r'scriptsDirFor\("(\w+)"\)', text)
+    if ssot_silos:
+        layout = repo / "library" / "lib" / "skill-bundle-layout.mjs"
+        try:
+            ltext = layout.read_text()
+        except Exception:
+            ltext = ""
+        vd = re.search(r'VIRGIL_DIR\s*=\s*"([^"]+)"', ltext)
+        template_ok = vd and "VIRGIL_DIR}/scripts/" in ltext
+        if template_ok:
+            for silo in ssot_silos:
+                targets.setdefault(silo, f"{vd.group(1)}/scripts/{silo}/")
     sources = {m: f"{m}/scripts/" for m in re.findall(r'"(\w+)/scripts/"', text)}
     pairs = [(sources[silo], targets[silo])
              for silo in sorted(targets) if silo in sources]
@@ -799,7 +820,7 @@ def main(argv: list[str]) -> int:
     # The gate. OFF (the default) → do nothing, succeed. The dream is a dev
     # affordance; it never runs — or writes — outside a DEV session.
     if not dev_mode_enabled():
-        print("dream: DEV mode off (VIRGIL_DEV unset) — no-op.")
+        print("dream: DEV mode off (no VIRGIL_DEV, no ~/.virgil-dev/dev-mode marker) — no-op.")
         return 0
 
     return _SUBCOMMANDS[argv[0]](argv[1:])

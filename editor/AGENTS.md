@@ -368,12 +368,16 @@ absolute, both work.
   self-improvement note *about Virgil's skill set*, say "reflect" / use
   [`/editor/reflect`](skills/reflect.md) (→ `editor/dev/memos/`).
 - **Memo routing rule (one decision, both channels point here).** Improving
-  Virgil's *skills* → a **reflection** → `/editor/reflect` → `editor/dev/memos/`.
-  A note about *this paper's* content → a **cowork memo** →
-  `<docPath>/.virgil/memos/`. The words *reflect/reflection* **always** mean the
-  former; never file a reflection under `.virgil/memos/`. (This rule is stated
-  identically in [skills/reflect.md](skills/reflect.md) so it disambiguates the
-  same way whichever file the agent reads.)
+  Virgil's *skills/tooling* → a **reflection** → `/editor/reflect` →
+  `editor/dev/memos/`. A note about *this paper's* content → a **cowork memo** →
+  `<docPath>/.virgil/memos/`. The words *reflect/reflection* — and **"dream
+  memo"**, in any phrasing — **always** mean the former;
+  never file a reflection under `.virgil/memos/`.
+  And a matching cue means RUN `reflect.py`, never
+  interrogate the user about routing or dev-ness: the script's own gate no-ops
+  safely off a dev machine. (This rule is stated identically in
+  [skills/reflect.md](skills/reflect.md) so it disambiguates the same way
+  whichever file the agent reads.)
 
 ## Plumbing in `src/`
 

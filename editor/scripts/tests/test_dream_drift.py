@@ -227,6 +227,35 @@ class DriftCheckTest(unittest.TestCase):
         (self.repo / "editor/scripts/create_card.py").write_text("print('v2')\n")
         self.assertEqual(dream._detect_skill_drift(), ["editor/scripts/create_card.py"])
 
+    def test_parse_survives_the_layout_ssot_spelling(self):
+        """Task 374 routed the destination half through the layout SSOT
+        (`${scriptsDirFor("editor")}/`) and the literal-only parse went quietly
+        None — the exact disarm the canary below exists to catch, and it caught
+        it (2026-08-16, three days disarmed). The destination now resolves by
+        READING the layout module (VIRGIL_DIR + the scriptsDirFor template),
+        never by re-spelling `.virgil` here, so a layout rename cannot leave
+        this side carrying a stale path."""
+        (self.repo / "editor/build/build-editor-bundle.mjs").write_text(
+            'import { scriptsDirFor } from "../../library/lib/skill-bundle-layout.mjs";\n'
+            "const PAPER_SCRIPT_PREFIXES = [\n"
+            '  ["editor/scripts/", `${scriptsDirFor("editor")}/`],\n'
+            '  ["library/scripts/", `${scriptsDirFor("library")}/`],\n'
+            "];\n"
+        )
+        layout = self.repo / "library/lib/skill-bundle-layout.mjs"
+        layout.parent.mkdir(parents=True, exist_ok=True)
+        layout.write_text(
+            'export const VIRGIL_DIR = ".virgil";\n'
+            "export function scriptsDirFor(subsystem) {\n"
+            "  return `${VIRGIL_DIR}/scripts/${subsystem}`;\n"
+            "}\n"
+        )
+        self.assertEqual(
+            dream._paper_script_prefixes(self.repo),
+            [("editor/scripts/", ".virgil/scripts/editor/"),
+             ("library/scripts/", ".virgil/scripts/library/")],
+        )
+
     def test_real_builder_constant_is_still_parseable(self):
         """Canary: the parse runs against the REAL build-editor-bundle.mjs, so a
         refactor that renames or reshapes PAPER_SCRIPT_PREFIXES fails here

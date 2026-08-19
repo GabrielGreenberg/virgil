@@ -81,7 +81,9 @@ def run(memos, *args, dev=True, now=NOW):
     if dev:
         env["VIRGIL_DEV"] = "1"
     else:
-        env.pop("VIRGIL_DEV", None)
+        # Explicit "0", not pop: with the machine dev-mode marker, an unset
+        # env falls through to the marker and this helper would read ON.
+        env["VIRGIL_DEV"] = "0"
     return subprocess.run([sys.executable, REFLECT, *args],
                           capture_output=True, text=True, env=env)
 

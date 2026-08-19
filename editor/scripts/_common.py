@@ -387,17 +387,33 @@ def now_iso() -> str:
 
 DEV_MODE_ENV = "VIRGIL_DEV"
 _DEV_TRUE_TOKENS = {"1", "true", "yes", "on"}
+DEV_MODE_MARKER = "dev-mode"  # file under dev_home(); its EXISTENCE means on
 
 
 def dev_mode_enabled() -> bool:
-    """True iff `VIRGIL_DEV` is set to a truthy token.
+    """True iff `VIRGIL_DEV` is set truthy, or — with the env entirely unset —
+    the machine carries the `~/.virgil-dev/dev-mode` marker file.
 
-    Truthy == one of {1, true, yes, on} (case-insensitive, surrounding
-    whitespace ignored). Everything else — unset, empty, `0`, `false`, `no`,
-    `off`, or any unrecognized value — is OFF. OFF is the safe default, so a
-    typo'd or forgotten export never silently turns capture on (or, worse, on
-    in a context that ships to a user)."""
-    return os.environ.get(DEV_MODE_ENV, "").strip().lower() in _DEV_TRUE_TOKENS
+    Two rungs, in order:
+    1. An EXPLICIT env value always wins, both ways: a truthy token
+       ({1, true, yes, on}, case-insensitive) is ON; anything else set
+       (`0`, `false`, empty, garbage) is OFF — which is how a test simulates
+       a non-dev machine on a dev machine.
+    2. Env unset → the marker file decides. The marker exists so dev mode is
+       a fact about the MACHINE, not about which shells sourced which rc file:
+       a session type that doesn't inherit `~/.zshenv` (2026-08-16: a cowork
+       session refused a "dream memo" over exactly this doubt) still gates
+       correctly, because every process agrees on `$HOME`.
+
+    OFF stays the safe default for end users: their machines have no
+    `~/.virgil-dev/` at all, so nothing ships capture to them."""
+    raw = os.environ.get(DEV_MODE_ENV)
+    if raw is not None:
+        return raw.strip().lower() in _DEV_TRUE_TOKENS
+    try:
+        return (dev_home() / DEV_MODE_MARKER).is_file()
+    except OSError:
+        return False
 
 
 # ---------------------------------------------------------------------------

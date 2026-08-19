@@ -621,7 +621,7 @@ def main(argv: list[str]) -> int:
     # The gate. OFF (the default) → write nothing, succeed. This is the whole
     # "never in an end-user session" guarantee: no VIRGIL_DEV, no memo.
     if not dev_mode_enabled():
-        print("reflect: DEV mode off (VIRGIL_DEV unset) — no memo written.")
+        print("reflect: DEV mode off (no VIRGIL_DEV, no ~/.virgil-dev/dev-mode marker) — no memo written.")
         return 0
 
     doc = resolve_doc(a.doc)

@@ -383,7 +383,9 @@ def reflect(memos, doc, skill, task_id, *args, now, dev=True):
     if dev:
         env["VIRGIL_DEV"] = "1"
     else:
-        env.pop("VIRGIL_DEV", None)
+        # Explicit "0", not pop: with the machine dev-mode marker, an unset
+        # env falls through to the marker and this helper would read ON.
+        env["VIRGIL_DEV"] = "0"
     return subprocess.run([sys.executable, REFLECT, str(doc), skill, task_id, *args],
                           capture_output=True, text=True, env=env)
 
@@ -396,7 +398,9 @@ def dream(memos, digests, sub, *args, now="2026-06-07T23:00:00", dev=True):
     if dev:
         env["VIRGIL_DEV"] = "1"
     else:
-        env.pop("VIRGIL_DEV", None)
+        # Explicit "0", not pop: with the machine dev-mode marker, an unset
+        # env falls through to the marker and this helper would read ON.
+        env["VIRGIL_DEV"] = "0"
     return subprocess.run([sys.executable, DREAM, sub, *args],
                           capture_output=True, text=True, env=env)
 
