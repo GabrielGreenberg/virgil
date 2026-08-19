@@ -134,6 +134,77 @@ describe("a nested construct inside a LIST ITEM survives the split (task 338)", 
   });
 });
 
+describe("358 · the two REPORTED family gaps stay closed", () => {
+  // The membership half of task 358 landed inside task 342 (which widened
+  // `VERBATIM_ENVS_FULL` to fancyvrb's `Verbatim`/`BVerbatim`/`LVerbatim` — plus
+  // their starred forms — and the `comment` package's `comment`). These two
+  // legs pin the REPORTER'S OWN fixtures, in their own spelling, so the
+  // regression that filed the task can never come back through a different
+  // door than the one 342 closed. The generic coverage lives in the sweeps —
+  // `latex-verbatim-byte-fidelity` for the typographic map, the `it.each`
+  // above for the `\item` split — which is exactly why these two stay literal.
+
+  it("a fancyvrb `Verbatim` body keeps its straight quotes (memo fixture 1)", () => {
+    // Pre-342 the body took the typographic reverse-map on the FIRST save:
+    // `print("hi")` came back ``print(`` `` hi'')``, durable and visibly wrong
+    // in the compiled PDF. `lstlisting` (a member since 243) is the control:
+    // the identical shape was always clean, which is what localized the
+    // finding to the vocabulary rather than to the map.
+    //
+    // Measured, and worth stating precisely: removing the fancyvrb names from
+    // `VERBATIM_ENVS_FULL` does NOT fail this leg today, because 342 gave every
+    // unmodeled env the byte-literal carrier by DEFAULT — two independent nets
+    // now stand where there were none. So this is a PROPERTY pin (the bytes the
+    // user gets), not a membership pin; its defect leg is the pre-342 tree,
+    // where neither net existed. Membership still buys the other two things —
+    // first-close-wins end-finding (fixture 2, which DOES fail when the names
+    // are removed) and inertness to every projecting scanner.
+    for (const env of ["Verbatim", "lstlisting"]) {
+      const body = [`\\begin{${env}}`, 'print("hi") -- ok', `\\end{${env}}`].join("\n");
+      expectStableIdentity(body);
+      const once = roundTrip(body);
+      expect(once, `${env} must not smart-quote its body`).not.toContain("``");
+      expect(once, env).not.toContain("''");
+      expect(once, `${env} must not en-dash its body`).toContain("--");
+    }
+  });
+
+  it("an UNBALANCED fragment inside a `comment` body cannot tear the outer list (memo fixture 2)", () => {
+    // The `comment` package exists to hold commented-out fragments, so an
+    // unbalanced `\begin{itemize}` inside one is ordinary rather than exotic.
+    // Read as a nestable env, the body was torn apart: `\item junk` was
+    // hoisted into the OUTER list and the `\end{comment}` was stranded as a
+    // stray item. Membership is what buys first-close-wins here — depth
+    // counting cannot terminate a body whose whole point is to be malformed.
+    expectStableIdentity(
+      [
+        "\\begin{itemize}",
+        "  \\item outer",
+        "\\begin{comment}",
+        "\\item junk",
+        "\\begin{itemize}",
+        "\\end{comment}",
+        "  \\item after",
+        "\\end{itemize}",
+      ].join("\n"),
+    );
+  });
+
+  it.each(VERBATIM_ENVS_FULL)(
+    "…and the same holds for every member: an unbalanced `\\begin` inside a `%s` body",
+    (env) => {
+      // Swept from the SSOT so a future member inherits the contract by
+      // declaration alone — the half a fixture written in the reporter's
+      // spelling structurally cannot give.
+      expectStableIdentity(
+        listWith(
+          [`\\begin{${env}}`, "\\item junk", "\\begin{itemize}", `\\end{${env}}`].join("\n"),
+        ),
+      );
+    },
+  );
+});
+
 describe("a nested construct inside an EXAMPLE ITEM survives the split (task 338)", () => {
   // `splitPexBody` splits on `\a`, so these fixtures put a literal `\a` inside
   // the nested construct. The serializer stamps the block/item id markers, so
