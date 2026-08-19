@@ -36,3 +36,26 @@ export const INTERACTIVE_CONTROL_SELECTOR =
  * any `[data-card]`.
  */
 export const WINDOW_DRAG_BLOCK_SELECTOR = `${INTERACTIVE_CONTROL_SELECTOR}, [data-card]`;
+
+/**
+ * True when a keyboard event originated inside an EDITABLE control — a text
+ * `<input>`, `<textarea>`, `<select>`, or a `contentEditable` region.
+ *
+ * The keyboard twin of {@link INTERACTIVE_CONTROL_SELECTOR}, and it lives here
+ * for the same reason: "which controls must a gesture pass through untouched"
+ * gets ONE definition, in a leaf every layer can import. It was authored inside
+ * the `panel-primitives` component barrel, which no lean hook can take — so the
+ * menu controller's window-CAPTURE key handler had no guard at all and a bare
+ * `Backspace` typed in a focused field activated the grab menu's DELETE row
+ * (task 386's sweep; the same class as that task's own card-title loss).
+ *
+ * Narrower than the selector on purpose: a `<button>` or a link is interactive
+ * but types nothing, so a bare-key shortcut over one is legitimate.
+ */
+export function isEditableEventTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}

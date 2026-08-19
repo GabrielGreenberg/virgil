@@ -1217,6 +1217,98 @@ Four rules, mirroring the capture side's:
 
 **Two doors, one queue** — the persistence half, and the reason the bug had a second life. `usePersistentState` exposes `update()` (coalesced through a 300 ms debounce) and `persist()` (write now), and only the first owned the queue: an immediate write could be OUTLIVED by an older scheduled payload, which flushed afterwards and **resurrected on disk** what had just been removed, with in-memory state and the sidecar permanently disagreeing until the next edit. That is a PRIMITIVE hazard rather than one caller's slip — it is inherent to two write doors where one owns the queue — so `persist()` now cancels the pending timer and drops the stale payload, once, for every caller, and stamps the loader-stomp flag *after* the two guards that can make the write not happen (stamping it for a suppressed or dropped write would hide the sidecar for the whole session). Scope, stated honestly: the sidecar hooks with their own bespoke `persist` (`useFootnotes`, `useExamples`, `useAiRequests`, `useBibReview`, `useStack`, `useEditorUIState`) do **not** go through this door; among this hook's consumers only `useSuggestions.clearSuggestions` still calls it directly. Prefer `update()` regardless; `persist()` is for a read-then-write that needs the computed value back synchronously, and it cancels rather than merges, so its payload must already reflect any `update()` issued before it. Contracts: [archive-restore-contract.test.tsx](src/hooks/__tests__/archive-restore-contract.test.tsx), [restore-excerpt.test.ts](src/lib/tiptap/__tests__/restore-excerpt.test.ts), [card-restore-affordance.test.tsx](src/components/__tests__/card-restore-affordance.test.tsx).
 
+### The keyboard half: a destructive key asks ONE door, and a danger confirm cues its SAFEST button
+
+Same law, the KEYBOARD carrier (task 386). Gabriel's repro: archive some text,
+click `+T` on the resulting card, type a title, press `Backspace` mid-word — the
+whole card is gone. Three defects compound, and any one of them alone would have
+prevented the loss:
+
+- **The guard hole.** `EditableCard` kept its own shell-level Delete/Backspace
+  handler instead of the shared `useCardDeleteKey` door, and its only field guard
+  was `isFocused` — which tracks the BODY rich-text editor and never the title
+  `<input>`. So a `Backspace` in the title ran `preventDefault()` (eating the
+  character edit) and deleted the card. The shared guard built for exactly this,
+  `keyEventFromInteractiveControl`, was not consulted — and its own docstring
+  asserted that EditableCard "already encodes this via its `isFocused`
+  focus-tracking", true of the body and FALSE of the title. **The
+  stated-invariant-with-no-consumer shape, in a docstring that granted the
+  exemption.**
+- **The keyboard trap.** The confirm a content-bearing card raises mounted with
+  its DANGER button `autoFocus`ed, under a user mid-typing. From the keyboard's
+  point of view "Backspace, keep typing" WAS "delete the card".
+- **The invisible in-flight title.** `CardBodyTitle` is UNCONTROLLED and commits
+  on BLUR, so `cardHasContent` read the value from before the user started. A
+  card whose only content is the title being typed read as EMPTY and deleted
+  instantly, with no dialog at all.
+
+> **Every card-level Delete/Backspace enters `useCardDeleteKey`, so both guards
+> (selection + interactive-control bail) hold by construction; a `tone="danger"`
+> confirm cues its SAFEST button; and a content gate reads what is ON SCREEN.**
+
+Five rules it earned:
+
+- **The interactive-control match is scoped to a STRICT DESCENDANT of the card
+  shell.** A card root is often itself `draggable="true"` (cross-editor anchor
+  drags — `CitationCard` ships it, `EditableCard` has the wiring), and
+  `[draggable='true']` is in `INTERACTIVE_CONTROL_SELECTOR` — so an unscoped
+  `closest()` walks past every nested target and matches the ROOT, and the delete
+  key would be dead app-wide with nothing to show for it. `PanelCard`'s own lift
+  blocklist scopes the identical query for the identical reason; this was latent
+  rather than live, and would have gone live the moment EditableCard gained a drag.
+- **The in-flight title is read LIVE, not committed per keystroke.** A title input
+  REGISTERS ITS ELEMENT with the enclosing card
+  ([panel-primitives.tsx](src/components/panel-primitives.tsx) `CardTitleRegistry`)
+  and the gate reads `el.value` when it asks. Committing on change would turn each
+  character into a sidecar write (the task-363 cadence doctrine) and retire the
+  input's own Escape-reverts affordance; reading the live ELEMENT can never go
+  stale, where a mirrored draft is only as fresh as the events someone remembered
+  to mirror. A Set, not a slot: a card may render more than one title surface.
+- **`autoFocus` marks the CUED DEFAULT, and it must never be destructive.**
+  `confirmDialogCuedDefault()` derives it for every caller — Cancel where there is
+  one, else the secondary answer, else NOTHING (a single-button danger notice cues
+  no button and `SystemDialog` focuses its FRAME, so Escape and Tab still start
+  inside the dialog). The danger action stays keyboard-reachable by Tab+Enter,
+  which is the right cost for a deliberate destructive choice. Recorded in
+  `STYLE_GUIDE.md` beside the "RED means destructive without a net" note.
+- **A destructive BARE-KEY shortcut bails on an editable target.** The sweep found
+  the same missing guard one layer up and worse: `useMenuKeyboard`'s window-CAPTURE
+  handler consumed bare keys with no `e.target` check, and `DragHandleMenu` aliases
+  `Backspace`/`Delete` onto its DELETE row — so with a menu open and the caret in
+  a field, one Backspace deleted the block before the field ever saw the key.
+  `isEditableEventTarget` moved to the import-free `drag-blocklist` leaf (the
+  placement rule `latex-markers.ts` earned) so a lean hook can reach it; the
+  COMBOBOX source deliberately does not bail, because its handler is wired by the
+  caller onto the menu's OWN input — the same `target === currentTarget` line
+  `keyEventFromInteractiveControl` draws.
+- **Every other title surface was swept and is safe BY CONSTRUCTION**, recorded
+  rather than assumed: the document par-title inputs are appended to
+  `document.body` (outside the PM DOM) or covered by NodeView `stopEvent`; the
+  Outline's rename input has no row-level delete key to reach; `ExampleCard`
+  attaches no `onKeyDown` at all; `FloatingPanel` / `FloatHost` / `LiftHost`
+  register no keydown listener, so a popped-out card repro'd purely through
+  EditableCard; and the margin marker's handler sits on a leaf `<button>` that can
+  contain no field.
+
+CI: [card-title-delete-guard.test.tsx](src/components/__tests__/card-title-delete-guard.test.tsx)
+drives the REAL components (EditableCard → PanelCard → CardBodyTitle →
+ConfirmDialog) per titled kind, because the parts that misbehaved were a call site
+that never asked a shared guard and a focus decision made in JSX — neither visible
+to any test of the guard or the dialog alone. The leg with teeth is the CENSUS
+([card-delete-key-door.test.ts](src/components/__tests__/card-delete-key-door.test.ts)):
+no card surface may spell its own Delete/Backspace card-delete handler, with ONE
+exemption scoped to the shape that justifies it (the margin marker's leaf
+`<button>`) and its own PROOF leg — the handler must still sit on a `<button>`,
+and the exemption must still be excusing something. Measured by neutering each
+half in turn: the bespoke handler takes 10 legs, the danger cue 2, the live-title
+read 2, the strict-descendant scoping 2, and the menu guard 2 (one census, one
+behavioural, in the REAL `DragHandleMenu`).
+
+**Owed, not claimed:** the preview eyeball. This class is NOT FSA-masked, so the
+check is cheap and real — archive text, `+T`, type, Backspace repeatedly (the
+title edits, the card stays), then trash-click the same card and see the confirm
+open with Cancel focused.
+
 ### The transport half: content that references PER-DOC state carries it, whatever payload it rides
 
 Same law across DOCUMENTS (task 235). The Stack is deliberately cross-document scope, so a pull into a different doc is a first-class flow — and a `\cite{smith2020}` means nothing there on its own: `references.bib` is per-doc and bib-review annotations live in a per-doc `annotations.json` sidecar, so no global resolver rescues an unknown citekey. Whatever a payload references has to travel with it.

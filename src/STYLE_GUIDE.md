@@ -1468,6 +1468,21 @@ as a darker shade of the paper. Destructive confirms use `variant="danger"`.
 `<ConfirmDialog>` is a `sm` modal pre-wired for delete-with-content
 and discard-unsaved.
 
+**A danger confirm CUES its safest button, never its destructive one**
+(task 386). `autoFocus` marks the CUED DEFAULT — the button that takes
+initial focus and that `Enter` therefore activates — and on a `tone="danger"`
+dialog that is Cancel (or the secondary answer; a single-button danger notice
+cues nothing and focus lands on the dialog frame). This is a data-safety rule,
+not a styling preference: these dialogs open under fingers that are already
+moving. The reporting case was a card TITLE being typed when a stray
+`Backspace` reached the card shell — the confirm mounted with `Delete`
+focused, so the very next keystroke of ordinary typing pressed it, and from
+the keyboard's point of view "Backspace, keep typing" WAS "delete the card".
+The destructive action stays fully keyboard-reachable (Tab, then Enter), which
+is the right cost for a deliberate destructive choice. `ConfirmDialog` derives
+this for every caller via `confirmDialogCuedDefault()`; a hand-built
+`SystemDialogFooter` must place `autoFocus` accordingly.
+
 **Placement follows the SCOPE of what the dialog acts on, not the component.**
 A confirm whose consequence is app- or document-wide centers and takes the
 scrim; a confirm acting on ONE object the user can see — a card, a block, a

@@ -74,6 +74,30 @@ describe("DragHandleMenu — letter fast-path parity", () => {
     expect(onSelect).toHaveBeenCalledTimes(2);
   });
 
+  // Task 386's sweep. The window-CAPTURE listener sees every key in the app,
+  // and `Backspace`/`Delete` are aliases for this menu's DESTRUCTIVE row — so
+  // with the caret in a field, one Backspace deleted the block instead of a
+  // character, before the field ever saw the key.
+  it("bare keys are inert while the caret sits in a text field", () => {
+    const onSelect = vi.fn();
+    render(<DragHandleMenu anchorRect={RECT} onSelect={onSelect} onClose={() => {}} kind="selection" />);
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    act(() => {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }),
+      );
+    });
+    act(() => {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "f", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(onSelect).not.toHaveBeenCalled();
+    input.remove();
+  });
+
   it("a disabled row's letter is inert", () => {
     // collab read-only greys EVERY card row → the F letter must not fire.
     const onSelect = vi.fn();

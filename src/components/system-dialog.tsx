@@ -16,8 +16,8 @@
  *       <p>This will move the footnote…</p>
  *     </SystemDialogBody>
  *     <SystemDialogFooter>
- *       <SystemDialogButton variant="secondary" onClick={cancel}>Cancel</SystemDialogButton>
- *       <SystemDialogButton variant="danger" onClick={confirm} autoFocus>Move</SystemDialogButton>
+ *       <SystemDialogButton variant="secondary" onClick={cancel} autoFocus>Cancel</SystemDialogButton>
+ *       <SystemDialogButton variant="danger" onClick={confirm}>Move</SystemDialogButton>
  *     </SystemDialogFooter>
  *   </SystemDialog>
  *
@@ -26,7 +26,16 @@
  *   - Esc to close
  *   - Enter-to-confirm when a button with autoFocus is focused
  *   - role=dialog, aria-modal=true, aria-labelledby/aria-describedby
- *   - requestAnimationFrame-deferred focus on the autoFocus button
+ *   - requestAnimationFrame-deferred focus on the autoFocus button — falling
+ *     back to the dialog FRAME when no button cues itself, so focus always
+ *     lands inside the dialog
+ *
+ * `autoFocus` marks the CUED DEFAULT: the button that takes initial focus and
+ * that `Enter` therefore activates. It must never be a DESTRUCTIVE action — a
+ * danger button armed under a hand that is already typing turns the user's next
+ * keystroke into the destructive choice (task 386). Cue the safe answer;
+ * `ConfirmDialog` derives this for every caller via
+ * `confirmDialogCuedDefault()`.
  *   - Optional anchor positioning near a source element
  *
  * Positioning variants (`variant` prop) — one shell, principled positioning
@@ -176,6 +185,12 @@ export default function SystemDialog({
   children,
 }: SystemDialogProps) {
   const autoFocusRef = useRef<HTMLButtonElement | null>(null);
+  // Fallback focus target for a dialog that cues NO button (task 386: a
+  // single-button DANGER notice has no safe button to cue, and cueing the only
+  // one would put the destructive action under an already-moving hand). Focus
+  // has to land inside the dialog regardless, or `Escape` and Tab-order both
+  // start from wherever the user happened to be.
+  const modalFrameRef = useRef<HTMLDivElement | null>(null);
   const [anchorPos, setAnchorPos] = useState<
     { top: number; left: number } | null
   >(null);
@@ -221,7 +236,11 @@ export default function SystemDialog({
     }
 
     const handle = requestAnimationFrame(() => {
-      autoFocusRef.current?.focus();
+      if (autoFocusRef.current) {
+        autoFocusRef.current.focus();
+        return;
+      }
+      (modalFrameRef.current ?? panelRef.current)?.focus();
     });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && onClose) {
@@ -242,7 +261,7 @@ export default function SystemDialog({
       cancelAnimationFrame(handle);
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, onClose, anchorRef, variant]);
+  }, [open, onClose, anchorRef, variant, panelRef]);
 
   // Point-anchored placement for the scrimless "anchored" variant. The frame
   // renders `visibility:hidden` until this effect measures it and clamps to the
@@ -361,7 +380,8 @@ export default function SystemDialog({
       <DialogCtx.Provider value={ctxValue}>
         <div
           ref={panelRef}
-          className={`${t.surface} ${frameClassName}`}
+          tabIndex={-1}
+          className={`${t.surface} ${frameClassName} focus:outline-none`}
           style={{ ...placement, zIndex }}
           role="dialog"
           aria-labelledby={labelledBy}
@@ -390,7 +410,9 @@ export default function SystemDialog({
         onClick={handleBackdrop}
       >
         <div
-          className={`${t.surface} w-full ${t.maxWidth[size]} mx-4 overflow-hidden ${frameClassName}`}
+          ref={modalFrameRef}
+          tabIndex={-1}
+          className={`${t.surface} w-full ${t.maxWidth[size]} mx-4 overflow-hidden focus:outline-none ${frameClassName}`}
           style={
             anchorPos
               ? {

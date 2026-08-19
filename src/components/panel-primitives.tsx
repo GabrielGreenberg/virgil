@@ -55,7 +55,7 @@ import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-conten
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { liftSpawnRect } from "@/floats/float-policy";
-import { INTERACTIVE_CONTROL_SELECTOR } from "@/lib/drag-blocklist";
+import { INTERACTIVE_CONTROL_SELECTOR, isEditableEventTarget } from "@/lib/drag-blocklist";
 import { cardTypeLabel } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { useInOmni } from "./editor-layout/contexts/omni";
@@ -75,28 +75,43 @@ import { iconHint } from "@/components/Hint";
  * through set) — rather than from the card shell itself.
  *
  * Card-level `Delete`/`Backspace` handlers must bail on this so a character
- * edit inside a field never triggers card deletion. `EditableCard` already
- * encodes this via its `isFocused` focus-tracking; cards that wire a *bare*
- * card-level delete handler around editable fields (e.g. Todo's plain
- * `<input>` + `<textarea>`, which never inherited that guard) reuse this helper
- * instead of duplicating focus state. It keys off the SAME interactive-controls
- * SSOT as the drag/lift/pin pass-through guards, so "controls a gesture must
- * pass through untouched" has one definition across the app.
+ * edit inside a field never triggers card deletion. EVERY card-level delete
+ * key goes through {@link useCardDeleteKey}, which calls this — including
+ * `EditableCard`, whose own bespoke handler was retired onto the hook in task
+ * 386. Until then this docstring claimed EditableCard "already encodes this via
+ * its `isFocused` focus-tracking", which was true of its BODY editor and false
+ * of its TITLE input: with the card selected and the caret in the title, every
+ * `Backspace` ate the character edit and deleted the card (DATA LOSS — the
+ * stated-invariant-with-no-consumer shape, one component over). The guard keys
+ * off the SAME interactive-controls SSOT as the drag/lift/pin pass-through
+ * guards, so "controls a gesture must pass through untouched" has one
+ * definition across the app.
  *
- * Returns `false` when the event target IS the card shell (`currentTarget`), so
- * a `Backspace` with the card shell — not a field — focused still deletes.
+ * The match is scoped to a STRICT DESCENDANT of the card shell
+ * (`currentTarget`), which is load-bearing rather than tidy: a card root is
+ * often itself `draggable="true"` (cross-editor anchor drags — `CitationCard`
+ * ships it today, and `EditableCard` has the wiring), and an unscoped
+ * `closest()` walks past every nested target and matches THAT — so the guard
+ * would bail on every keydown and the delete key would be dead app-wide, with
+ * nothing to show for it. `PanelCard`'s own lift blocklist scopes the identical
+ * query for the identical reason. An interactive ancestor OUTSIDE the shell is
+ * likewise not this card's business.
+ *
+ * Returns `false` when the event target IS the card shell, so a `Backspace`
+ * with the card shell — not a field — focused still deletes.
  */
 export function keyEventFromInteractiveControl(e: ReactKeyboardEvent): boolean {
   const target = e.target as HTMLElement | null;
-  if (!target || target === e.currentTarget) return false;
-  return !!target.closest(INTERACTIVE_CONTROL_SELECTOR);
+  const shell = e.currentTarget as HTMLElement | null;
+  if (!target || !shell || target === shell) return false;
+  const blocker = target.closest(INTERACTIVE_CONTROL_SELECTOR);
+  return !!blocker && blocker !== shell && shell.contains(blocker);
 }
 
 /**
  * The ONE card-level `Delete`/`Backspace` → "delete the selected card" keydown
- * handler for {@link PanelCard}-based cards that DON'T route through
- * {@link EditableCard} (which owns its own `isFocused`-guarded delete +
- * `cardHasContent` confirm). It bakes in the two guards every such card needs:
+ * handler — for EVERY card, {@link PanelCard}-direct and {@link EditableCard}
+ * alike. It bakes in the two guards every such card needs:
  *
  *  1. act only when the card is `selected`; and
  *  2. NEVER when the keydown came from a nested interactive control
@@ -112,6 +127,14 @@ export function keyEventFromInteractiveControl(e: ReactKeyboardEvent): boolean {
  * with a single `onKeyDown={useCardDeleteKey(selected, del)}` and cannot forget
  * it. `del` is invoked only when both guards pass; pass the card's own
  * (possibly confirm-wrapped) delete thunk.
+ *
+ * `EditableCard` was the ONE card left outside this door, on the strength of a
+ * docstring claim that its `isFocused` focus-tracking already encoded guard #2.
+ * It tracked the BODY editor only, so the TITLE input had no guard at all and a
+ * `Backspace` mid-word deleted the card (task 386). It is inside now, and the
+ * census in `card-delete-key-door.test.ts` keeps it there: no card component may
+ * attach a shell-level Delete/Backspace handler of its own. Two handlers whose
+ * guards must agree is exactly how these two drifted apart for a year.
  */
 export function useCardDeleteKey(
   selected: boolean,
@@ -191,6 +214,61 @@ export interface CardClaimSlot {
 const CardClaimContext = createContext<CardClaimSlot | null>(null);
 function useCardClaimSlot(): CardClaimSlot | null {
   return useContext(CardClaimContext);
+}
+
+/* ── The in-flight title channel (task 386) ──────────────────────────
+ *
+ * A card TITLE input is UNCONTROLLED — it commits on BLUR — so the committed
+ * `bodyTitle` prop lags what the user can see on screen by an entire editing
+ * session. `cardHasContent` is what decides whether a delete CONFIRMS or goes
+ * straight through, so a gate that reads only the committed value answers
+ * "empty" for a card whose ONLY content is the title being typed, and destroys
+ * it with no dialog at all.
+ *
+ * The fix is a LIVE READ, not a commit-on-change: committing per keystroke
+ * would turn each character into a sidecar write (the task-363 cadence
+ * doctrine) and would retire the input's own Escape-reverts affordance. So a
+ * title input REGISTERS ITSELF here and the gate reads `el.value` at the moment
+ * it asks. Reading the live ELEMENT can never go stale — an Escape revert, a
+ * programmatic set and a paste are all visible to it, where a mirrored draft
+ * value is only as fresh as the events someone remembered to mirror.
+ *
+ * A Set, not a slot: a card may render more than one title surface (the in-body
+ * `CardBodyTitle` plus a header `CardTitleInput`), and "has the user typed a
+ * title?" is a question about ANY of them.
+ */
+export interface CardTitleRegistry {
+  register: (el: HTMLInputElement) => () => void;
+}
+const CardTitleRegistryContext = createContext<CardTitleRegistry | null>(null);
+
+/** Ref-callback helper for a title input: registers with the enclosing card's
+ *  live-title channel for as long as it is mounted. A title rendered OUTSIDE a
+ *  card (Todo's row header) finds no provider and no-ops — its own delete path
+ *  is `useCardDeleteKey`, which never fires from inside a field at all. */
+function useCardTitleRegistration(): (el: HTMLInputElement | null) => void {
+  const reg = useContext(CardTitleRegistryContext);
+  const disposeRef = useRef<(() => void) | null>(null);
+  return useCallback(
+    (el: HTMLInputElement | null) => {
+      disposeRef.current?.();
+      disposeRef.current = el && reg ? reg.register(el) : null;
+    },
+    [reg],
+  );
+}
+
+/** Resolve the live title text for a card's content gate. Returns `undefined`
+ *  when NO title input is currently mounted (the `+T` affordance's un-titled
+ *  rest state), so the caller falls back to the committed value; returns the
+ *  first non-empty live value otherwise, or `""` when every mounted title is
+ *  empty — a title the user has just CLEARED must read as cleared. */
+function liveTitleOf(els: Set<HTMLInputElement>): string | undefined {
+  if (els.size === 0) return undefined;
+  for (const el of els) {
+    if (el.value.trim() !== "") return el.value;
+  }
+  return "";
 }
 
 /**
@@ -341,21 +419,6 @@ export function clearStaleHover(container: HTMLElement | null) {
     document.removeEventListener("pointermove", restore);
   };
   document.addEventListener("pointermove", restore);
-}
-
-/**
- * True when a keyboard event originated inside an editable control — a text
- * `<input>`, `<textarea>`, `<select>`, or a `contentEditable` region. Cardful
- * list panels use this to NOT hijack ArrowUp/Down for card-cycling while the
- * caret sits in a card's own field (the Code box, a +range/postnote input, the
- * "Add from library…" search), so the arrows move the caret instead.
- */
-export function isEditableEventTarget(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el) return false;
-  if (el.isContentEditable) return true;
-  const tag = el.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
 /**
@@ -896,6 +959,17 @@ export function CardBodyTitle({
 }) {
   const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Publish the live element to the enclosing card's content gate (task 386):
+  // this input is uncontrolled and commits on blur, so `value` is stale for the
+  // whole time the user is typing.
+  const registerTitle = useCardTitleRegistration();
+  const setInputRef = useCallback(
+    (el: HTMLInputElement | null) => {
+      inputRef.current = el;
+      registerTitle(el);
+    },
+    [registerTitle],
+  );
   const hasTitle = !!value?.trim();
 
   useEffect(() => {
@@ -913,7 +987,7 @@ export function CardBodyTitle({
     return (
       <div className="card-title-wrapper">
         <input
-          ref={inputRef}
+          ref={setInputRef}
           type="text"
           defaultValue={value ?? ""}
           onClick={(e) => e.stopPropagation()}
@@ -1009,6 +1083,16 @@ export function CardTitleInput({
   // when the partner has the card claimed.
   const slot = useCardClaimSlot();
   const { claim, release } = useCardClaim(slot?.panelKind, slot?.cardId);
+  // Same live-title publication as `CardBodyTitle` — this input is uncontrolled
+  // too, so the enclosing card's content gate must read the ELEMENT (task 386).
+  const registerTitle = useCardTitleRegistration();
+  const setInputRef = useCallback(
+    (el: HTMLInputElement | null) => {
+      inputRef.current = el;
+      registerTitle(el);
+    },
+    [registerTitle],
+  );
   useEffect(() => {
     if (!inputRef.current) return;
     return autoSizeInput(inputRef.current);
@@ -1016,7 +1100,7 @@ export function CardTitleInput({
   return (
     <div className="flex-1 min-w-0 flex items-center">
       <input
-        ref={inputRef}
+        ref={setInputRef}
         type="text"
         defaultValue={defaultValue ?? ""}
         onFocus={() => claim()}
@@ -1298,6 +1382,23 @@ export function EditableCard({
   // per-card-component threading). Shows iff the kind is archivable AND a real
   // provider is mounted; `archive` handles the atom splice + confirm for
   // footnote/citation. Distinct from the text-object Archive PANEL.
+  // Live-title channel (task 386) — every mounted title input inside this card
+  // publishes itself here so the content gate reads what is ON SCREEN, not the
+  // blur-committed `bodyTitle`. A ref-cell, never state: registration happens
+  // on mount/unmount of a child and must not re-render the card.
+  const titleInputsRef = useRef<Set<HTMLInputElement>>(new Set());
+  const titleRegistry = useMemo<CardTitleRegistry>(
+    () => ({
+      register: (el) => {
+        titleInputsRef.current.add(el);
+        return () => {
+          titleInputsRef.current.delete(el);
+        };
+      },
+    }),
+    [],
+  );
+
   const cardArchive = useCardArchiveActions();
   const archivable = isArchivable(kind) && cardArchive.enabled;
   const cardArchived = archivable && cardArchive.isArchived(id);
@@ -1325,7 +1426,16 @@ export function EditableCard({
    *  EditableCard with an `onDelete` (note/archive/footnote/report and the
    *  comment kinds — none of which has user content outside body+title). */
   const hasContent = useCallback(
-    () => cardHasContent(kind, { content: value, title: bodyTitle }),
+    () =>
+      cardHasContent(kind, {
+        content: value,
+        // The LIVE title wins over the committed prop when a title input is
+        // mounted (task 386) — the input commits on blur, so mid-typing
+        // `bodyTitle` is the value from before the user started. A card whose
+        // only content is the title being typed must CONFIRM, never delete
+        // straight through.
+        title: liveTitleOf(titleInputsRef.current) ?? bodyTitle,
+      }),
     [kind, value, bodyTitle],
   );
 
@@ -1339,15 +1449,19 @@ export function EditableCard({
     }
   }, [onDelete, hasContent]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (!selected || !onDelete || isFocused) return;
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        tryDelete();
-      }
-    },
-    [selected, onDelete, isFocused, tryDelete],
+  /** The shell-level delete key. Retired onto the SHARED door in task 386: the
+   *  bespoke copy that used to live here guarded only on `isFocused` — the BODY
+   *  editor's focus — so a `Backspace` typed in the card's TITLE input ran
+   *  `preventDefault()` (eating the character edit) and deleted the card. The
+   *  hook's second guard (`keyEventFromInteractiveControl`) covers the title,
+   *  every per-kind field rendered via `aboveBody`/`footer`, and every header
+   *  control, by construction rather than by focus bookkeeping someone has to
+   *  extend per control. `isFocused` is kept in the enable term as belt-and-
+   *  braces for a body editor that ever renders through a portal (where the key
+   *  event would not bubble through this shell at all). */
+  const handleKeyDown = useCardDeleteKey(
+    selected && !isFocused,
+    onDelete ? tryDelete : undefined,
   );
 
   const handleFocusChange = useCallback(
@@ -1416,6 +1530,7 @@ export function EditableCard({
     <CardClaimContext.Provider
       value={{ panelKind: collabScope, cardId: id, partnerClaimed: !!partnerClaim }}
     >
+    <CardTitleRegistryContext.Provider value={titleRegistry}>
     <PanelCard
       ref={cardRef}
       {...dataAttrs}
@@ -1621,6 +1736,7 @@ export function EditableCard({
         />
       )}
     </PanelCard>
+    </CardTitleRegistryContext.Provider>
     </CardClaimContext.Provider>
   );
 }
