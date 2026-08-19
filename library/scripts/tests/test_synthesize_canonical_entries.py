@@ -271,31 +271,226 @@ def test_two_distinct_works_by_the_same_author_and_year_refuse(tmp_path: Path):
           f"order-dependent verdict: {reversed_result!r}")
 
 
-def test_best_candidate_wins_regardless_of_iteration_order(tmp_path: Path):
-    """Two records for ONE work (title agreement clears the threshold); the
-    richer record must win from either input order.
+def _winner(tmp_path: Path, records, *, name="w", min_similarity=0.85) -> str:
+    """Drive the REAL resolution and return the text actually written."""
+    lib = _make_library(tmp_path / name, ["missing-bib-entry: Prior 1957"])
+    result, _ = _run(lib, records, min_similarity=min_similarity, dry_run=False)
+    check(result.get("synthesized") == 1, f"expected one entry: {result!r}")
+    return (lib / "papers" / CITEKEY / "references.bib").read_text()
 
-    Pre-372 this was `best[0] + 0.01` last-seen-wins, so the answer flipped
-    with the order Crossref happened to return them.
+
+def test_best_candidate_wins_regardless_of_iteration_order(tmp_path: Path):
+    """Two records for ONE work; the richer record must win from either order.
+
+    The fixture is deliberately built so the rich record sorts FIRST — its DOI
+    is lexicographically smaller. `_resolve_target` sorts survivors before
+    clustering, so a fixture whose rich record happened to sort LAST would be
+    satisfied by a plain "take the last one" selection: the sort would launder
+    the very defect the leg is named for. Measured: with the rich record
+    sorting first, replacing the ranked `max` with `[-1]` fails this leg.
     """
-    sparse = _rec("Prior", 1957, "Time and Modality")
-    rich = _rec("Prior", 1957, "Time and Modality",
-                doi="10.1093/acprof/9780198241584.001.0001",
+    sparse = _rec("Prior", 1957, "Time and Modality", doi="10.9999/zzz")
+    rich = _rec("Prior", 1957, "Time and Modality", doi="10.1093/aaa",
                 journal="Oxford University Press", page="1-160")
 
-    lib_a = _make_library(tmp_path / "a", ["missing-bib-entry: Prior 1957"])
-    forward, _ = _run(lib_a, [sparse, rich], dry_run=False)
-    lib_b = _make_library(tmp_path / "b", ["missing-bib-entry: Prior 1957"])
-    backward, _ = _run(lib_b, [rich, sparse], dry_run=False)
+    forward = _winner(tmp_path, [sparse, rich], name="a")
+    backward = _winner(tmp_path, [rich, sparse], name="b")
+    check("doi = {10.1093/aaa" in forward,
+          f"forward order picked the sparse record: {forward!r}")
+    check("doi = {10.1093/aaa" in backward,
+          f"reversed order picked the sparse record: {backward!r}")
 
-    check(forward.get("synthesized") == 1 and backward.get("synthesized") == 1,
-          f"same-work pair refused: {forward!r} / {backward!r}")
-    text_a = (lib_a / "papers" / CITEKEY / "references.bib").read_text()
-    text_b = (lib_b / "papers" / CITEKEY / "references.bib").read_text()
-    check("doi = {10.1093" in text_a,
-          f"forward order picked the sparse record: {text_a!r}")
-    check("doi = {10.1093" in text_b,
-          f"reversed order picked the sparse record: {text_b!r}")
+
+def test_surname_coverage_outranks_metadata_completeness(tmp_path: Path):
+    """The score's FIRST term, alone. A record covering both cited surnames
+    beats a richer record covering one — coverage is evidence about identity,
+    metadata is only about completeness."""
+    lib = _make_library(tmp_path, ["missing-bib-entry: Prior and Kenny 1957"])
+    thin_but_covering = _rec("Prior", 1957, "Time and Modality",
+                             doi="10.9/aaa", extra_authors=("Kenny",))
+    rich_but_partial = _rec("Prior", 1957, "Time and Modality",
+                            doi="10.1/zzz", journal="OUP", page="1-160",
+                            extra_authors=("Someone",))
+    result, _ = _run(lib, [rich_but_partial, thin_but_covering], dry_run=False)
+    # The partial record fails coverage outright, so only one survivor exists —
+    # which is itself the point: coverage is a BAR before it is a tie-break.
+    check(result.get("synthesized") == 1, f"{result!r}")
+    text = (lib / "papers" / CITEKEY / "references.bib").read_text()
+    check("10.9/aaa" in text, f"partial-coverage record won: {text!r}")
+
+
+def test_metadata_completeness_breaks_a_coverage_tie(tmp_path: Path):
+    """The score's MIDDLE terms, isolated: same coverage, same title, IDENTICAL
+    DOI strings, so neither the lexicographic tail nor the title-length term
+    can separate them. Only `container-title` / `page` presence can.
+
+    Measured: zeroing the metadata-presence terms fails this leg while leaving
+    every other leg green — which is what makes the stated policy ("coverage,
+    then metadata completeness, then title length") actually pinned.
+    """
+    bare = _rec("Prior", 1957, "Time and Modality", doi="10.1/same")
+    full = _rec("Prior", 1957, "Time and Modality", doi="10.1/same",
+                journal="Oxford University Press", page="1-160")
+    check("pages = {1-160}" in _winner(tmp_path, [full, bare], name="a"),
+          "bare record won a metadata-completeness tie (forward)")
+    check("pages = {1-160}" in _winner(tmp_path, [bare, full], name="b"),
+          "bare record won a metadata-completeness tie (reversed)")
+
+
+#: A CHAIN: `mid` is similar to both ends, the ends are not similar to each
+#: other — and `mid` sorts FIRST by normalized title, which is what makes the
+#: fixture load-bearing. Clustering against a cluster's REPRESENTATIVE (the
+#: shape a "greedy clustering" is most naturally written as) then absorbs
+#: both ends into `mid`'s cluster and reports ONE work. A fixture whose chain
+#: middle sorts second would be answered identically by both linkages, and
+#: the leg would pass on either — which is exactly what the first draft did.
+_CHAIN_MID = "aaa bbb ccc ddd"
+_CHAIN_END_1 = "aaa bbb ccc yyy"
+_CHAIN_END_2 = "bbb ccc ddd zzz"
+
+
+def test_a_chain_of_candidates_refuses_rather_than_merging(tmp_path: Path):
+    """Complete linkage, pinned against the representative-linkage shape.
+
+    Jaccard at 0.5: mid~end1 (0.6) and mid~end2 (0.6), end1!~end2 (0.33). A
+    representative-linkage pass admits BOTH ends into the first cluster and
+    reports one work — the accepting direction on exactly the evidence that
+    should decline, since three candidates that do not all agree with each
+    other are not one work. Every other fixture in this suite has at most two
+    survivors, where a chain is unrepresentable.
+    """
+    lib = _make_library(tmp_path, ["missing-bib-entry: Prior 1957"])
+    result, _ = _run(lib, [
+        _rec("Prior", 1957, _CHAIN_MID),
+        _rec("Prior", 1957, _CHAIN_END_1),
+        _rec("Prior", 1957, _CHAIN_END_2),
+    ], min_similarity=0.5)
+    check(result.get("synthesized") == 0,
+          f"a chain of candidates was merged into one work: {result!r}")
+    check(_reasons(result) == ["ambiguous-candidates"], f"{result!r}")
+
+
+def test_the_verdict_does_not_depend_on_the_order_crossref_returned(tmp_path: Path):
+    """The PROPERTY the `survivors.sort` exists for, asserted directly.
+
+    Stated honestly: for this fixture complete linkage alone already answers
+    the same way in every order, so removing the sort does not fail this leg —
+    it pins the property, not the mechanism, and the mechanism it most
+    plausibly protects (residual greedy order-sensitivity at four or more
+    candidates) has no fixture here. Keeping it means a future change that
+    makes the pass order-sensitive at THIS size is caught.
+    """
+    recs = [
+        _rec("Prior", 1957, _CHAIN_MID),
+        _rec("Prior", 1957, _CHAIN_END_1),
+        _rec("Prior", 1957, _CHAIN_END_2),
+    ]
+    verdicts = set()
+    for i, order in enumerate([
+        [recs[0], recs[1], recs[2]], [recs[2], recs[1], recs[0]],
+        [recs[1], recs[0], recs[2]], [recs[1], recs[2], recs[0]],
+    ]):
+        lib = _make_library(tmp_path / f"o{i}", ["missing-bib-entry: Prior 1957"])
+        result, _ = _run(lib, order, min_similarity=0.5)
+        verdicts.add((result.get("synthesized"), tuple(_reasons(result))))
+    check(len(verdicts) == 1,
+          f"verdict depends on input order: {verdicts!r}")
+
+
+def test_a_disambiguated_year_still_clears_the_year_bar(tmp_path: Path):
+    """`missing-bib-entry: Fodor 1975a` — author-year disambiguation is the
+    norm in the corpus this script is FOR.
+
+    `work_identity.norm_year` answers None for `1975a` (no word boundary
+    before the letter), and both acceptance bars short-circuit on None — so
+    without the target-year slice EVERY lettered target is refused whatever
+    the evidence, and reported as `no-author-year-match`, which names the
+    wrong cause. The suffix must survive into the citekey, since that is what
+    distinguishes it from its sibling.
+    """
+    lib = _make_library(tmp_path, ["missing-bib-entry: Fodor 1975a"])
+    result, _ = _run(lib, [_rec("Fodor", 1975, "The Language of Thought")],
+                     dry_run=False)
+    check(result.get("synthesized") == 1,
+          f"lettered year refused a perfect match: {result!r}")
+    text = (lib / "papers" / CITEKEY / "references.bib").read_text()
+    check("@book{fodor1975language," in text or "@article{fodor1975language," in text,
+          f"unexpected citekey for a lettered year: {text!r}")
+
+
+def test_the_citekey_names_the_FIRST_cited_author(tmp_path: Path):
+    """The one artifact the user has to type into `\cite{}`.
+
+    Building it from the raw phrase's last token gives `al<year>…` for every
+    `et al.` mention and the SECOND author for `A and B` — and the `et al.`
+    half is newly reachable, because the pre-372 substring gate refused every
+    `et al.` target before it could get there.
+    """
+    lib = _make_library(tmp_path, ["missing-bib-entry: Grosz et al. 1986"])
+    result, _ = _run(lib, [
+        _rec("Grosz", 1986, "Attention Intentions and Discourse",
+             extra_authors=("Sidner",)),
+    ])
+    check(result["citekeys"] == ["grosz1986attention"],
+          f"citekey not built from the first cited author: {result!r}")
+
+    lib2 = _make_library(tmp_path / "b", ["missing-bib-entry: Grosz and Sidner 1986"])
+    two, _ = _run(lib2, [
+        _rec("Grosz", 1986, "Attention Intentions and Discourse",
+             extra_authors=("Sidner",)),
+    ])
+    check(two["citekeys"] == ["grosz1986attention"],
+          f"citekey took the SECOND author: {two!r}")
+
+
+def test_a_generational_suffix_does_not_become_the_surname(tmp_path: Path):
+    """The lookup spec's step 1 ends "drop trailing jr|sr|iii".
+
+    A bib field carries the suffix inside the surname portion
+    (`King Jr., Martin Luther`) while Crossref carries it in a separate key —
+    so without the drop the Library side keys on `jr` and the other two
+    sources key on `king`, defeating Library-first for exactly those entries.
+    """
+    master = """@book{king1963letter,
+  author = {King Jr., Martin Luther},
+  year = {1963},
+  title = {Letter from Birmingham Jail},
+}
+"""
+    lib = _make_library(tmp_path, ["missing-bib-entry: King 1963"],
+                        master_bib=master)
+    result, calls = _run(lib, [_rec("King", 1963, "A Crossref Guess")])
+    check(result.get("synthesized") == 1, f"suffixed master row missed: {result!r}")
+    check(calls == [], f"fell through to Crossref: {calls!r}")
+
+
+def test_a_bare_single_surname_is_a_prefix_claim_too(tmp_path: Path):
+    """`Smith 1990` asserts SOLE-or-first authorship — a stronger claim than
+    `Smith et al. 1990`, so it cannot get the weaker test. Before this, the
+    bare mention was accepted against a ten-author record with Smith LAST
+    while the `et al.` form was refused, inverting the two."""
+    lib = _make_library(tmp_path, ["missing-bib-entry: Smith 1990"])
+    buried = _rec("Alpha", 1990, "A Very Large Collaboration",
+                  extra_authors=("Beta", "Gamma", "Delta", "Smith"))
+    result, _ = _run(lib, [buried])
+    check(result.get("synthesized") == 0,
+          f"bare surname matched a fifth-position author: {result!r}")
+    check(_reasons(result) == ["no-author-year-match"], f"{result!r}")
+
+
+def test_a_string_valued_title_is_written_whole(tmp_path: Path):
+    """Crossref's `title` is normally a list; the acceptance path tolerates a
+    bare string. The WRITER must read the same field the same way — indexing
+    `[0]` on a string yields the first CHARACTER, and a well-formed entry
+    whose title is one letter passes every filter into the user's `.bib`."""
+    lib = _make_library(tmp_path, ["missing-bib-entry: Prior 1957"])
+    rec = _rec("Prior", 1957, "Time and Modality", journal="Mind")
+    rec["title"] = "Time and Modality"
+    rec["container-title"] = "Mind"
+    _run(lib, [rec], dry_run=False)
+    text = (lib / "papers" / CITEKEY / "references.bib").read_text()
+    check("title = {Time and Modality}" in text, f"title truncated: {text!r}")
+    check("journal = {Mind}" in text, f"container truncated: {text!r}")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -346,7 +541,7 @@ MASTER = """@book{prior1957timeandmodality,
   year = {1957},
   title = {Time and Modality},
   publisher = {Oxford University Press},
-  doi = {10.1/authenticated},
+  doi = {10.1/masterrow},
 }
 """
 
@@ -360,7 +555,7 @@ def test_a_master_bib_hit_is_used_verbatim_and_never_queries_crossref(tmp_path: 
     text = (lib / "papers" / CITEKEY / "references.bib").read_text()
     check("@book{prior1957timeandmodality," in text,
           f"master citekey not preserved: {text!r}")
-    check("10.1/authenticated" in text, f"master fields not copied: {text!r}")
+    check("10.1/masterrow" in text, f"master fields not copied: {text!r}")
     check("from library master.bib" in text, f"provenance tag missing: {text!r}")
     # The tag must separate the two claims: the FIELDS are authenticated, the
     # WORK was matched on author+year alone. A tag that says only
@@ -368,6 +563,15 @@ def test_a_master_bib_hit_is_used_verbatim_and_never_queries_crossref(tmp_path: 
     # stated residual promised away again.
     check("verify it is the work this paper cites" in text,
           f"provenance tag overstates what was verified: {text!r}")
+    # …and it states the row's OWN recorded auth state rather than asserting
+    # one. master.bib legitimately holds `unverified` / `failed` rows, and
+    # stamping "authenticated" over one of those is `_find-or-surface.md`
+    # rule 1 — a low-confidence match passed off as authenticated, written
+    # into the user's file.
+    check("bib.state = none" in text,
+          f"provenance asserts an auth state it never read: {text!r}")
+    check("authenticated" not in text,
+          f"unchecked authentication claim: {text!r}")
     check("Some Crossref Guess" not in text, f"Crossref record leaked in: {text!r}")
 
 
@@ -389,8 +593,8 @@ def test_two_distinct_library_works_refuse_rather_than_pick(tmp_path: Path):
     lib = _make_library(tmp_path, ["missing-bib-entry: Prior 1957"], master_bib=master)
     result, calls = _run(lib, [])
     check(result.get("synthesized") == 0, f"library ambiguity resolved: {result!r}")
-    check(_reasons(result) == ["ambiguous-in-library"], f"{result!r}")
     check(calls == [], f"fell through to Crossref on an ambiguous Library: {calls!r}")
+    check(_reasons(result) == ["ambiguous-in-library"], f"{result!r}")
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -433,9 +637,11 @@ def test_a_truncated_master_entry_is_refused_not_spliced(tmp_path: Path):
                         master_bib=broken)
     result, _ = _run(lib, [], dry_run=False)
     check(result.get("synthesized") == 0, f"truncated entry spliced: {result!r}")
-    check(_reasons(result) == ["library-entry-unreadable"], f"{result!r}")
     text = (lib / "papers" / CITEKEY / "references.bib").read_text()
     check("prior1957" not in text, f"broken entry reached the .bib: {text!r}")
+    # Last, so a renamed reason reports a DISPLAY drift rather than standing in
+    # for the behavioural failure above.
+    check(_reasons(result) == ["library-entry-unreadable"], f"{result!r}")
 
 
 def test_an_already_present_citekey_is_reported_not_silently_skipped(tmp_path: Path):
@@ -446,15 +652,28 @@ def test_an_already_present_citekey_is_reported_not_silently_skipped(tmp_path: P
     master = MASTER.replace("prior1957timeandmodality", "existing2001")
     lib = _make_library(tmp_path, ["missing-bib-entry: Prior 1957"],
                         master_bib=master)
-    result, _ = _run(lib, [])
+    result, _ = _run(lib, [], dry_run=False)
     check(result.get("synthesized") == 0, f"{result!r}")
+    # The substantive half: the file must be untouched. Without it the leg's
+    # only tooth is a display string on a target that could not have resolved
+    # anyway, since no Crossref records were supplied.
+    check((lib / "papers" / CITEKEY / "references.bib").read_text()
+          == "@article{existing2001,\n  title = {Something Else},\n}\n",
+          "references.bib touched for an already-present citekey")
     check(_reasons(result) == ["already-in-references-bib"], f"{result!r}")
 
 
 def test_no_crossref_records_is_reported_distinctly(tmp_path: Path):
     lib = _make_library(tmp_path, ["missing-bib-entry: Obscure 1899"])
-    result, _ = _run(lib, [])
+    result, _ = _run(lib, [], dry_run=False)
+    check(result.get("synthesized") == 0, f"{result!r}")
     check(_reasons(result) == ["no-crossref-records"], f"{result!r}")
+    # The substantive half: an empty candidate set must leave the file alone.
+    # Without this the leg's only tooth is a display string, so a rename would
+    # be the whole failure and a real write would be invisible.
+    check((lib / "papers" / CITEKEY / "references.bib").read_text()
+          == "@article{existing2001,\n  title = {Something Else},\n}\n",
+          "references.bib touched on a no-match target")
 
 
 def _run_standalone() -> int:

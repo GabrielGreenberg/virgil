@@ -814,7 +814,9 @@ for a Library hit, that its fields are authenticated but the WORK was matched
 on author+year alone. That is the residual those tags exist for: with no
 target title, a lone author-and-year-plausible candidate is accepted on
 author+year evidence alone, from either source, and may still be the wrong
-work by that author in that year.
+work by that author in that year — and the unambiguity test only ever sees the
+candidates one Crossref query returned, so a further same-author, same-year
+work outside that window cannot make a target look ambiguous.
 
 ## Refresh the import badge (final step)
 

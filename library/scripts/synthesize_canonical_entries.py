@@ -69,9 +69,18 @@ path inherits this rather than escaping it: a lone `master.bib` row for
 `Smith 1998` is authenticated metadata about *a* Smith 1998, not proof that
 it is the Smith 1998 this paper cites. That is the synthesis assumption, and
 it is why every written entry carries a comment naming what was and was not
-verified. Closing it needs the warning to carry more than `<Author> <Year>`
-(a mention context or a title), which is a change to the warning grammar and
-its merge semantics, not to this file.
+verified.
+
+The unambiguity test carries its own bound, stated here rather than left in a
+default argument: it can only see the candidates `_crossref_query` returned
+(one query, `rows` of them, narrowed by a publication-date filter this file's
+own comment calls unreliable). A further work by the same author in the same
+year outside that window is invisible to the clustering, so a genuinely
+ambiguous target can present as one survivor and be accepted.
+
+Closing either needs the warning to carry more than `<Author> <Year>` (a
+mention context or a title), which is a change to the warning grammar and its
+merge semantics, not to this file.
 
 Identity primitives (surname normalization, title normalization, Jaccard,
 year parsing) are taken from `work_identity.py`, the library's stated SSOT
@@ -104,7 +113,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import work_identity as wi  # noqa: E402
-from _tools import citekey_matches, read_master_bib  # noqa: E402
+from _tools import (  # noqa: E402
+    citekey_matches,
+    iter_master_bib_states,
+    read_master_bib,
+)
 
 CROSSREF_URL = "https://api.crossref.org/works"
 UA = "virgil-library/synthesize-canonical (mailto:gabriel.greenberg@gmail.com)"
@@ -154,7 +167,7 @@ def _missing_bib_targets(warnings: list[str]) -> list[tuple[str, str]]:
     return out
 
 
-def _crossref_query(author: str, year: str, rows: int = 5) -> list[dict]:
+def _crossref_query(author: str, year: str, rows: int = 10) -> list[dict]:
     time.sleep(0.3)  # courtesy rate limit; lives with the wire call, not the loop
     params = {
         "query.author": author,
@@ -173,9 +186,15 @@ def _crossref_query(author: str, year: str, rows: int = 5) -> list[dict]:
 
 
 def _record_to_bib(record: dict, citekey: str) -> str | None:
-    """Convert a Crossref record to a BibTeX entry."""
-    title_list = record.get("title", [])
-    title = title_list[0] if title_list else None
+    """Convert a Crossref record to a BibTeX entry.
+
+    Title and container come through the SAME accessors the acceptance path
+    uses. Reading `record["title"][0]` directly here while `_record_title`
+    tolerates a bare string is two answers about one field: on a string title
+    the index yields the first CHARACTER, and a well-formed entry whose title
+    is one letter lands in the user's `.bib` having passed every filter.
+    """
+    title = _record_title(record) or None
     authors_list = record.get("author", [])
     if not title or not authors_list:
         return None
@@ -203,12 +222,12 @@ def _record_to_bib(record: dict, citekey: str) -> str | None:
         f"  year = {{{year}}},",
         f"  title = {{{title}}},",
     ]
-    container = record.get("container-title", [])
+    container = _record_container(record)
     if container:
         if bib_type == "article":
-            lines.append(f"  journal = {{{container[0]}}},")
+            lines.append(f"  journal = {{{container}}},")
         elif bib_type == "incollection":
-            lines.append(f"  booktitle = {{{container[0]}}},")
+            lines.append(f"  booktitle = {{{container}}},")
     vol = record.get("volume")
     if vol and bib_type == "article":
         lines.append(f"  volume = {{{vol}}},")
@@ -235,6 +254,9 @@ def _record_to_bib(record: dict, citekey: str) -> str | None:
 # rule drift away from its own docstring.
 
 
+_NAME_SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv", "v"})
+
+
 def _surname_key(one_author: str) -> str:
     """Normalized surname key for ONE name, from any of our three sources.
 
@@ -250,7 +272,15 @@ def _surname_key(one_author: str) -> str:
     a = (one_author or "").strip()
     if "," in a:
         a = a.split(",", 1)[0]
-    toks = a.split()
+    toks = [w for w in a.split() if w]
+    # `clean-bibliography.md`'s lookup spec step 1 ends "drop trailing
+    # jr|sr|iii". A bib field carries the suffix INSIDE the surname portion
+    # (`King Jr., Martin Luther`) while Crossref carries it in a separate
+    # `suffix` key — so without this the bib side keys on `jr` and the other
+    # two sources key on `king`, which is exactly the asymmetry this function
+    # exists to remove.
+    while len(toks) > 1 and wi.first_author_surname(toks[-1]) in _NAME_SUFFIXES:
+        toks.pop()
     if not toks:
         return ""
     return wi.first_author_surname(toks[-1])
@@ -301,6 +331,11 @@ def _record_author_surnames(record: dict) -> list[str]:
     return out
 
 
+#: How far into a record's author list a PREFIX claim (`X et al.`, or a bare
+#: single surname) may reach. The lookup spec names three for `et al.`.
+_PREFIX_CLAIM_DEPTH = 3
+
+
 def _authors_cover(
     cited: tuple[str, ...], et_al: bool, record_surnames: list[str],
 ) -> bool:
@@ -315,8 +350,13 @@ def _authors_cover(
     """
     if not cited or not record_surnames:
         return False
-    if et_al:
-        return cited[0] in record_surnames[:3]
+    if et_al or len(cited) == 1:
+        # A one-surname mention makes the STRONGER claim — sole or first
+        # author — so it cannot get the weaker test. Without the position
+        # bound, `Smith 1990` matched a ten-author record with Smith LAST
+        # while `Smith et al. 1990` (a weaker claim) was refused, inverting
+        # the two. Both are prefix claims; both take the prefix bound.
+        return cited[0] in record_surnames[:_PREFIX_CLAIM_DEPTH]
     return all(c in record_surnames for c in cited)
 
 
@@ -340,6 +380,14 @@ def _record_title(record: dict) -> str:
     return titles[0] if titles else ""
 
 
+def _record_container(record: dict) -> str:
+    """Journal / book title, tolerating the same string-or-list shape."""
+    c = record.get("container-title", []) or []
+    if isinstance(c, str):
+        return c
+    return c[0] if c else ""
+
+
 def _record_year(record: dict) -> "int | None":
     issued = (record.get("issued") or {}).get("date-parts") or []
     if issued and issued[0]:
@@ -359,25 +407,37 @@ def _same_work(a_title: str, a_doi: str, b_title: str, b_doi: str,
     direction: raising the threshold splits candidates and refuses more.
     """
     da, db = wi.normalize_doi(a_doi), wi.normalize_doi(b_doi)
-    if da and db:
-        return da == db
+    if da and db and da == db:
+        return True
+    # A DIFFERENT DOI is NOT evidence of a different work — a preprint and its
+    # journal version carry two, and Crossref returns both. So the DOI
+    # short-circuit is one-directional and the title bar always gets the last
+    # word, which is what the paragraph above already said the rule was.
     return wi.title_jaccard(wi.norm_title(a_title), wi.norm_title(b_title)) >= min_similarity
 
 
 def _cluster_distinct_works(
     items: list[tuple[str, str]], min_similarity: float,
 ) -> list[list[int]]:
-    """Greedy clustering of `(title, doi)` pairs into distinct works.
+    """Greedy COMPLETE-linkage clustering of `(title, doi)` pairs into works.
 
-    Deterministic: the caller sorts `items` first, so the greedy pass cannot
-    depend on the order Crossref (or a dict) happened to hand them over — the
-    order-dependence that made the pre-372 ranking "last seen wins".
+    Complete linkage is what makes the answer safe: a chain (A~B, B~C, A!~C)
+    splits, so a chain refuses rather than being merged into "one work" —
+    which is the accepting direction on exactly the evidence that should
+    decline. The caller additionally sorts `items` first, so no residual
+    greedy order-sensitivity can make the verdict depend on the order Crossref
+    (or a dict) happened to hand them over.
     """
     clusters: list[list[int]] = []
     for i, (title, doi) in enumerate(items):
         for cl in clusters:
-            rt, rd = items[cl[0]]
-            if _same_work(title, doi, rt, rd, min_similarity):
+            # COMPLETE linkage — every member, not just the representative.
+            # Single linkage merges a CHAIN (A~B, B~C, A!~C) into one cluster
+            # and reports "one work", which is the accepting direction on
+            # exactly the evidence that should refuse. Complete linkage splits
+            # the chain, so a chain refuses.
+            if all(_same_work(title, doi, items[j][0], items[j][1], min_similarity)
+                   for j in cl):
                 cl.append(i)
                 break
         else:
@@ -385,9 +445,15 @@ def _cluster_distinct_works(
     return clusters
 
 
-def _build_citekey(author: str, year: str, title: str) -> str:
-    """Produce `<surname><year><title-first-word>` lowercase."""
-    surname = _surname_key(author)
+def _build_citekey(surname: str, year: str, title: str) -> str:
+    r"""Produce `<first-author-surname><year><title-first-word>` lowercase.
+
+    `surname` is the FIRST CITED surname, already parsed — not the raw mention
+    phrase. Re-deriving it here from the phrase made the key depend on the
+    phrase's punctuation: the last token of `Grosz et al.` is `al`, and of
+    `Grosz and Sidner` it is the SECOND author. This is the one artifact of
+    the whole resolution the user has to type into `\cite{}`.
+    """
     title_word_m = re.search(r"\b([A-Za-z]{3,})\b", title)
     title_word = title_word_m.group(1).lower() if title_word_m else ""
     stop = {"the", "an", "of", "on", "in", "and", "for", "with", "to"}
@@ -401,11 +467,24 @@ def _build_citekey(author: str, year: str, title: str) -> str:
 # ── Resolution: Library first, then Crossref ───────────────────────────
 
 
+def _target_year(year: str) -> "int | None":
+    r"""The warning's year as an int, tolerating a disambiguating letter.
+
+    `_missing_bib_targets` deliberately captures `1975a` — author-year
+    disambiguation is the norm in the philosophy / cog-sci corpus this script
+    is FOR. `work_identity.norm_year` matches `\b(\d{4})\b`, and `1975a` has
+    no word boundary between the `5` and the `a`, so it answers None. Both
+    acceptance bars short-circuit on None, so without this slice every
+    lettered-year target is refused whatever the evidence — and reported as
+    `no-author-year-match`, which names the wrong cause.
+    """
+    return wi.norm_year(year[:4])
+
+
 def _master_candidates(
-    master: dict, cited: tuple[str, ...], et_al: bool, year: str,
+    master: dict, cited: tuple[str, ...], et_al: bool, want_year: "int | None",
 ) -> list[tuple[str, dict]]:
     """`master.bib` entries clearing the year + author-coverage bars."""
-    want_year = wi.norm_year(year)
     hits: list[tuple[str, dict]] = []
     for key in sorted(master):
         entry = master[key]
@@ -419,7 +498,8 @@ def _master_candidates(
 
 
 def _crossref_candidates(
-    records: list[dict], cited: tuple[str, ...], et_al: bool, year: str,
+    records: list[dict], cited: tuple[str, ...], et_al: bool,
+    want_year: "int | None",
 ) -> list[dict]:
     """Crossref records clearing the year + author-coverage bars.
 
@@ -428,7 +508,6 @@ def _crossref_candidates(
     issued year for online-first records, so the wire filter is a narrowing
     hint and not the bar.
     """
-    want_year = wi.norm_year(year)
     out: list[dict] = []
     for rec in records:
         if not _record_title(rec):
@@ -442,23 +521,26 @@ def _crossref_candidates(
 
 
 def _rank_crossref(rec: dict, cited: tuple[str, ...]) -> tuple:
-    """Order-INDEPENDENT candidate score, best-is-largest.
+    """Candidate score, best-is-largest: surname coverage, then metadata
+    completeness, then title length.
 
     Replaces `score = 1.0 if not best else best[0] + 0.01`, under which every
-    later candidate outscored the incumbent by construction. The trailing
-    lexicographic pair makes the maximum unique, so two equally-scored records
-    resolve the same way whatever order they arrive in.
+    later candidate outscored the incumbent by construction.
+
+    An earlier draft appended the normalized DOI and title as a lexicographic
+    tie-break "so the maximum is unique". It is deleted: `survivors` is sorted
+    before selection, so `max` already resolves a genuine tie the same way on
+    every run, and a term no leg can indict is dead weight — measured, blanking
+    the pair left every test green.
     """
     surnames = _record_author_surnames(rec)
     coverage = sum(1 for c in cited if c in surnames)
     return (
         coverage,
         1 if rec.get("DOI") else 0,
-        1 if rec.get("container-title") else 0,
+        1 if _record_container(rec) else 0,
         1 if rec.get("page") else 0,
         len(wi.norm_title(_record_title(rec))),
-        wi.normalize_doi(rec.get("DOI", "") or ""),
-        wi.norm_title(_record_title(rec)),
     )
 
 
@@ -477,9 +559,12 @@ def _resolve_target(
     cited, et_al = _parse_cited_mention(author)
     if not cited:
         return "unparsed-author", {}
+    want_year = _target_year(year)
+    if want_year is None:
+        return "unparsed-year", {}
 
     # 1. Library first (_find-or-surface.md rule 2).
-    hits = _master_candidates(master, cited, et_al, year)
+    hits = _master_candidates(master, cited, et_al, want_year)
     if hits:
         clusters = _cluster_distinct_works(
             [(e.get("fields", {}).get("title", ""), e.get("fields", {}).get("doi", ""))
@@ -498,7 +583,7 @@ def _resolve_target(
 
     # 2. Crossref, unambiguous only.
     records = _crossref_query(author, year)
-    survivors = _crossref_candidates(records, cited, et_al, year)
+    survivors = _crossref_candidates(records, cited, et_al, want_year)
     if not survivors:
         return ("no-author-year-match" if records else "no-crossref-records",
                 {"candidates": len(records)})
@@ -513,7 +598,7 @@ def _resolve_target(
                                         "works": len(clusters)}
     best = max((survivors[i] for i in clusters[0]),
                key=lambda r: _rank_crossref(r, cited))
-    return "crossref", {"record": best}
+    return "crossref", {"record": best, "surname": cited[0]}
 
 
 def synthesize(
@@ -538,7 +623,21 @@ def synthesize(
                    bib_path.read_text(encoding="utf-8"),
                    re.M)
     )
-    master = read_master_bib(library / "master.bib")
+    master_path = library / "master.bib"
+    master = read_master_bib(master_path)
+    # The per-entry auth state lives in a `% bib.state = …` comment BEFORE the
+    # entry, so `read_master_bib`'s `raw` structurally excludes it. Read it
+    # separately: master.bib legitimately holds `unverified` / `failed` /
+    # `needs-reauth` rows (`/library/merge-bibs` adds even when auth comes back
+    # failed), and stamping "authenticated" over one of those would be
+    # `_find-or-surface.md` rule 1 verbatim — passing off a low-confidence
+    # match as authenticated, written into the user's file.
+    try:
+        master_states = dict(
+            iter_master_bib_states(master_path.read_text(encoding="utf-8"))
+        )
+    except OSError:
+        master_states = {}
     new_entries: list[tuple[str, str]] = []  # (citekey, bib_text)
     refusals: list[dict] = []
     timestamp = datetime.date.today().isoformat()
@@ -566,18 +665,21 @@ def synthesize(
                                  "reason": "library-entry-unreadable",
                                  "citekey": proposed_key})
                 continue
-            # The FIELDS are the Library's authenticated ones; what is
-            # matched on author+year alone is WHICH WORK this is. Two
-            # different claims, so the tag makes both explicit rather than
-            # letting "authenticated" read as "verified to be the cited work".
+            # Two separate claims, and neither is asserted beyond what was
+            # checked: the row's own recorded auth state (which may well be
+            # `none` or `failed`), and the fact that WHICH WORK this is was
+            # decided on author+year alone.
+            state = master_states.get(proposed_key, "none")
             provenance = (
-                f"% from library master.bib on {timestamp}; fields are the "
-                f"Library's authenticated ones, but the work was matched on "
-                f"author+year alone — verify it is the work this paper cites\n"
+                f"% from library master.bib on {timestamp} "
+                f"(bib.state = {state}); the work was matched on author+year "
+                f"alone — verify it is the work this paper cites\n"
             )
         else:
             record = payload["record"]
-            proposed_key = _build_citekey(author, year, _record_title(record))
+            proposed_key = _build_citekey(
+                payload["surname"], year, _record_title(record),
+            )
             if proposed_key in existing_keys:
                 refusals.append({"target": f"{author} {year}",
                                  "reason": "already-in-references-bib",

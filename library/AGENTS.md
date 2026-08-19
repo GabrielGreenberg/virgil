@@ -505,15 +505,23 @@ title, a target with exactly one author-and-year-plausible candidate is
 accepted on author+year evidence alone — from EITHER source, since a lone
 `master.bib` row for `Smith 1998` is authenticated metadata about *a* Smith
 1998, not proof it is the one this paper cites. That is what the per-entry
-provenance tags exist to say. Closing it means the warning grammar carrying
-more than `<Author> <Year>`.
+provenance tags exist to say. A second bound belongs in the same paragraph
+rather than being discoverable from a default argument: the unambiguity test
+can only see the candidates Crossref returned, so a further work by the same
+author in the same year that falls outside the query window is invisible to
+it and a genuinely ambiguous target can present as one survivor. Closing
+either means the warning grammar carrying more than `<Author> <Year>`.
 
 CI: [library/scripts/tests/test_synthesize_canonical_entries.py](scripts/tests/test_synthesize_canonical_entries.py),
 behind [library/lib/\_\_tests\_\_/synthesize-canonical-entries-python.test.ts](lib/__tests__/synthesize-canonical-entries-python.test.ts)
 since nothing in CI runs Python directly. Measured against the pre-372 tree,
-14 of its 19 legs fail; the other 5 are controls that pass on both trees —
+20 of its 28 legs fail; the other 8 are controls that pass on both trees —
 without them every refusal leg would be satisfied by a script that refuses
-everything, which is the shape a "safety" fix is most likely to take.
+everything, which is the shape a "safety" fix is most likely to take. Each of
+the ten mechanisms the fix installs was also neutered in turn on a scratch
+copy and fails at least one leg on its own; the one exception is the
+pre-clustering sort, whose leg says at the site that it pins the PROPERTY
+(order-invariance) rather than the mechanism.
 
 ## A citekey lookup is NFC-insensitive — and it is CENSUSED
 
