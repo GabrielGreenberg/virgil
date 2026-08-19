@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from "react";
 import { drainDoc, readTex, writeTex } from "@/lib/storage";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
+import { findDocumentBoundary } from "@/lib/latex-lexer";
 import { rewriteDocumentClass } from "@/lib/document-class";
 import {
   dispatchTexDelimitersChanged,
@@ -81,9 +82,11 @@ export function useDocumentStyle(docId: string | null) {
           // preamble via the style-aware fallback path.
           return;
         }
-        const beginDoc = existingLatex.indexOf("\\begin{document}");
-        const endDoc = existingLatex.indexOf("\\end{document}");
-        const bodyStart = beginDoc + "\\begin{document}".length;
+        // The LIVE boundary, through the one door (task 375) — this splice
+        // REPLACES the user's preamble wholesale, so a boundary read off a
+        // commented-out or verbatim-quoted token would carve the swap out of
+        // the middle of the paper.
+        const { bodyStart, endDoc } = findDocumentBoundary(existingLatex);
         const bodyEnd = endDoc !== -1 ? endDoc : existingLatex.length;
         // preset.preamble ends with `\begin{document}\n\n` and
         // delimiters.postamble starts with `\n\end{document}…`, so trim

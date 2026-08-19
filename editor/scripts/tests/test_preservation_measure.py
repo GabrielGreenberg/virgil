@@ -73,6 +73,76 @@ def test_corpus_parity():
         check(same, f"{case['name']}" + ("" if same else f"\n      got  {got}\n      want {want}"))
 
 
+def test_boundary_parity():
+    r"""The preamble/body BOUNDARY, across the same seam (task 375).
+
+    The gate has to split the document the way the parser splits it. A gate
+    that split on a raw `find` while the parser split on the live boundary is
+    structurally blind to the defect it exists to catch: a boundary that MOVED
+    measures with everything under body on both sides and reports a shortfall
+    of 0 while the paper has been cut in half.
+
+    The `expected` offsets are GENERATED from the shipped TS implementation, so
+    this compares against TypeScript's own answer rather than a second
+    hand-typed table.
+    """
+    print("\nboundary parity (Python answers what TypeScript recorded)")
+    data = json.loads(CORPUS.read_text(encoding="utf-8"))
+    cases = data.get("boundaryCases") or []
+    check(len(cases) >= 10, f"boundary corpus is populated ({len(cases)} cases)")
+    names = [c["name"] for c in cases]
+    for member in ("M1", "M2", "M3", "M4", "M5", "ordinary"):
+        check(
+            any(n.startswith(member) for n in names),
+            f"the boundary corpus still carries its {member} case",
+        )
+    for case in cases:
+        tex = case["tex"]
+        want = case["expected"]
+        got = C.find_document_boundary(tex)
+        same = got == (want["beginDoc"], want["bodyStart"], want["endDoc"])
+        check(
+            same,
+            f"{case['name']}" + ("" if same else f"\n      got  {got}\n      want {want}"),
+        )
+        check(
+            C.count_live_document_begins(tex) == want["liveBegins"],
+            f"{case['name']}: live begin count",
+        )
+
+    # The projection PRESERVES OFFSETS — the whole design rests on it, and the
+    # `region-replace` splice is the caller that would silently corrupt a paper
+    # if it drifted (it replaces everything BEFORE the offset).
+    lengths_ok = all(
+        len(C.project_structural_latex(c["tex"])) == len(c["tex"]) for c in cases
+    )
+    check(lengths_ok, "the structural projection preserves offsets")
+
+    # The end is searched FROM the begin, so it can never precede it (M1).
+    ordered = all(
+        c["expected"]["endDoc"] == -1
+        or c["expected"]["beginDoc"] == -1
+        or c["expected"]["endDoc"] >= c["expected"]["bodyStart"]
+        for c in cases
+    )
+    check(ordered, "endDoc never precedes bodyStart")
+
+    # `first_live_index_of` is the generic primitive `region-replace` splices
+    # at. Its offset is into the RAW string, which is what makes the splice
+    # safe; a raw `find` would answer the commented-out token instead.
+    token = "\\begin{document}"
+    commented = "% " + token + "\n" + token + "\nBody.\n"
+    raw_i = commented.find(token)
+    live_i = C.first_live_index_of(commented, token)
+    check(
+        raw_i == 2
+        and live_i == len("% " + token + "\n")
+        and commented[live_i : live_i + len(token)] == token,
+        f"first_live_index_of skips a commented-out token a raw find answers "
+        f"(raw={raw_i} live={live_i})",
+    )
+
+
 def test_shortfall_properties():
     print("\nthe shortfall's own properties")
     # Never smaller than the net difference — what makes this a safe change to
@@ -208,6 +278,7 @@ def test_region_replace_refusals():
 
 if __name__ == "__main__":
     test_corpus_parity()
+    test_boundary_parity()
     test_shortfall_properties()
     test_region_replace_refusals()
     total = PASS + FAIL

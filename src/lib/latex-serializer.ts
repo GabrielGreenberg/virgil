@@ -31,7 +31,9 @@ import {
   escapeLatexChars,
 } from "@/lib/latex-typography";
 import {
+  END_DOCUMENT_TOKEN,
   extractBraced,
+  findDocumentBoundary,
   hasVerbatimMark,
   hasCommentTailMark,
   isEscaped,
@@ -301,9 +303,7 @@ const DEFAULT_PREAMBLE = CLASSIC_PREAMBLE;
 // Which node types carry `uuid` / `parTitle` / `collapsed` is one declaration,
 // read by the parser too — see the header of `node-attr-sets.ts` for why it
 // lives in an import-free leaf and what a second hand list cost (task 343).
-const DEFAULT_POSTAMBLE = `
-\\end{document}
-`;
+const DEFAULT_POSTAMBLE = `\n${END_DOCUMENT_TOKEN}\n`;
 
 function serializeMarks(
   text: string,
@@ -481,8 +481,9 @@ export function collectPreambleTitleFields(doc: JSONContent): JSONContent[] {
 function injectTitleFieldsIntoPreamble(preamble: string, titleFields: JSONContent[]): string {
   if (titleFields.length === 0) return preamble;
   const block = titleFields.map(serializeTitleField).join("") + "\n";
-  const beginMarker = "\\begin{document}";
-  const idx = preamble.indexOf(beginMarker);
+  // LIVE offset — same rule as `ensurePreambleRequirements` (task 375 M3): a
+  // splice at a raw index can land between a `%` and the token it comments out.
+  const idx = findDocumentBoundary(preamble).beginDoc;
   if (idx === -1) return preamble + block;
   const before = preamble.slice(0, idx).replace(/\s*$/, "");
   const after = preamble.slice(idx);
@@ -1559,8 +1560,15 @@ export function assembleLatex(
   // Requirements pass runs on EVERY serialize — including the no-options
   // DEFAULT_PREAMBLE fallback — so a body that emits expex / graphicx /
   // tikz / cite commands always has the matching \usepackage (and every
-  // `\v*id` shim) by the time the .tex hits disk. `||` (not `??`): an
-  // empty-string preamble falls back to the default, as before.
+  // `\v*id` shim) by the time the .tex hits disk.
+  //
+  // `??`, not `||` (task 375): an EXPLICIT empty preamble is an ANSWER — it is
+  // what `resolveWriteDelimiters` returns for a file that has bytes but no
+  // locatable `\begin{document}` (a fragment, a preamble-only file), and it
+  // means "add nothing above this body". Coalescing it to the classic default
+  // is precisely the write-a-preamble-nobody-asked-for behaviour that door
+  // exists to end. `undefined` — a caller that stated nothing — still falls
+  // back, which is every pre-375 caller's behaviour unchanged.
   //
   // The DECLARED set (per-block requirementIds, from emit-sites) is UNIONed
   // with the FALLBACK detector (detectBodyRequirements, for hand-typed raw
@@ -1579,7 +1587,7 @@ export function assembleLatex(
     options?.bibFamily ?? foldBibFamilies(parts);
 
   const rawPreamble = ensurePreambleRequirements(
-    options?.preamble || DEFAULT_PREAMBLE,
+    options?.preamble ?? DEFAULT_PREAMBLE,
     required,
     {
       declaredBibFamily: declaredFamily,
@@ -1681,13 +1689,12 @@ export function mergeTitlesIntoStylePreamble(
   oldLatex: string,
   newPreamble: string,
 ): string {
-  const beginDoc = oldLatex.indexOf("\\begin{document}");
+  const beginDoc = findDocumentBoundary(oldLatex).beginDoc;
   const oldPreamble = beginDoc !== -1 ? oldLatex.slice(0, beginDoc) : oldLatex;
   const harvested = extractTitleFieldLines(oldPreamble);
   if (harvested.length === 0) return newPreamble;
   const block = harvested.join("") + "\n";
-  const beginMarker = "\\begin{document}";
-  const idx = newPreamble.indexOf(beginMarker);
+  const idx = findDocumentBoundary(newPreamble).beginDoc;
   if (idx === -1) return newPreamble + block;
   const before = newPreamble.slice(0, idx).replace(/\s*$/, "");
   const after = newPreamble.slice(idx);

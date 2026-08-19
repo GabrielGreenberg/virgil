@@ -25,6 +25,7 @@
  */
 
 import { buildPreamble } from "@/lib/latex-requirements";
+import { END_DOCUMENT_TOKEN } from "@/lib/latex-lexer";
 import type { SectioningCommand } from "@/lib/document-class";
 
 export interface DocType {
@@ -198,7 +199,7 @@ function buildBody(dt: DocType): string {
     );
   }
 
-  lines.push("", "\\end{document}", "");
+  lines.push("", END_DOCUMENT_TOKEN, "");
   return lines.join("\n");
 }
 

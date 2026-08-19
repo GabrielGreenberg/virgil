@@ -28,8 +28,7 @@ import {
   detectBodyRequirements,
   ensurePreambleRequirements,
 } from "@/lib/latex-requirements";
-
-const BEGIN_MARKER = "\\begin{document}";
+import { findDocumentBoundary } from "@/lib/latex-lexer";
 
 /**
  * Inject any missing package/shim requirements into `.tex` source so it can
@@ -38,15 +37,18 @@ const BEGIN_MARKER = "\\begin{document}";
  * the preamble already satisfies every requirement.
  */
 export function applyRequirementsToFile(tex: string): string {
-  const beginIdx = tex.indexOf(BEGIN_MARKER);
+  // The LIVE boundary, through the one door (task 375) — a commented-out or
+  // verbatim-quoted `\begin{document}` used to take this split, so the compile
+  // copy injected its packages into the middle of a comment.
+  const { bodyStart } = findDocumentBoundary(tex);
   // No document body to scan / no place to inject — leave it byte-exact.
-  if (beginIdx === -1) return tex;
+  if (bodyStart === -1) return tex;
 
-  // Preamble is everything UP TO AND INCLUDING the marker's start; keeping the
-  // marker on the preamble side is what `ensurePreambleRequirements` expects
-  // (it finds `\begin{document}` and injects right before it).
-  const preamble = tex.slice(0, beginIdx + BEGIN_MARKER.length);
-  const body = tex.slice(beginIdx + BEGIN_MARKER.length);
+  // Preamble is everything UP TO AND INCLUDING the marker; keeping the marker
+  // on the preamble side is what `ensurePreambleRequirements` expects (it finds
+  // `\begin{document}` and injects right before it).
+  const preamble = tex.slice(0, bodyStart);
+  const body = tex.slice(bodyStart);
 
   const injected = ensurePreambleRequirements(
     preamble,

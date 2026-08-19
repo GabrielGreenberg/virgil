@@ -9,7 +9,7 @@
 
 import type { JSONContent } from "@tiptap/react";
 import type { EditorStateData, VirgilSidecar } from "@/lib/types";
-import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
+import { parseLatex, resolveWriteDelimiters } from "@/lib/latex-parser";
 import {
   serializeToLatex,
   assignUuids,
@@ -166,6 +166,41 @@ async function readDevDocBibFamily(docId: string): Promise<BibFamily | null> {
     `${API}/doc/${docId}/virgil/citations.json`,
   );
   return asBibFamily(raw?.bibPackage);
+}
+
+/**
+ * The dev twin of `storage-fsa.buildSerializeOpts` — the serialize options
+ * every `.tex`-producing path here shares. Factored in task 375 because the
+ * seed rule ("only a genuinely EMPTY file gets a style preamble") was
+ * hand-copied at THREE call sites in this file, which is three chances for the
+ * two backends to answer differently about the same document.
+ *
+ * `delimiters` comes from `resolveWriteDelimiters`, so `null` means the file is
+ * EMPTY — never merely "no `\begin{document}` was found".
+ */
+async function buildDevSerializeOpts(
+  docId: string,
+  delimiters: { preamble: string; postamble: string } | null | undefined,
+): Promise<{
+  preamble?: string;
+  postamble?: string;
+  bibFamily?: BibFamily | null;
+}> {
+  const bibFamily = await readDevDocBibFamily(docId);
+  const opts: {
+    preamble?: string;
+    postamble?: string;
+    bibFamily?: BibFamily | null;
+  } = { ...(delimiters ?? {}), bibFamily };
+  if (!delimiters) {
+    const rawSettings = await fetchJson<unknown>(
+      `${API}/doc/${docId}/virgil/document-settings.json`,
+      { styleId: DEFAULT_STYLE_ID },
+    );
+    const settings = migrateDocumentSettings(rawSettings);
+    opts.preamble = resolveStyle(settings.styleId).preamble;
+  }
+  return opts;
 }
 
 /**
@@ -432,24 +467,11 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   // the wrong file (the pipeline guard is normally what catches this).
   assignUuids(content);
   const newSidecar = extractSidecarData(content);
-  const delimiters = extractPreambleAndPostamble(latex);
+  const delimiters = resolveWriteDelimiters(latex);
   // Parity with storage-fsa's writeReStampedTexOnLoad: an existing doc keeps
-  // its verbatim delimiters; only a brand-new / empty doc (no
-  // \begin{document}) seeds a preamble, from the doc's selected style.
-  const bibFamily = await readDevDocBibFamily(docId);
-  const serializeOpts: {
-    preamble?: string;
-    postamble?: string;
-    bibFamily?: BibFamily | null;
-  } = { ...(delimiters ?? {}), bibFamily };
-  if (!delimiters) {
-    const rawSettings = await fetchJson<unknown>(
-      `${API}/doc/${docId}/virgil/document-settings.json`,
-      { styleId: DEFAULT_STYLE_ID },
-    );
-    const settings = migrateDocumentSettings(rawSettings);
-    serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
-  }
+  // its verbatim delimiters; only a genuinely EMPTY file seeds a preamble,
+  // from the doc's selected style (task 375 M5).
+  const serializeOpts = await buildDevSerializeOpts(docId, delimiters);
   // THE SERIALIZER GATE (task 357) — parity with storage-fsa. Unlike its twin
   // this serialize runs on the READ path (outside the writeback's queued
   // closure), so an escaping throw would stop the document OPENING rather than
@@ -569,28 +591,15 @@ export async function writeDocBundle(
     // storage-fsa), in which case the disk copy is the stale one.
     const delimiters =
       opts?.delimiters ??
-      extractPreambleAndPostamble(
+      resolveWriteDelimiters(
         (await fetchText(`${API}/doc/${h.docId}/${texFilename}`)) ?? "",
       );
 
     const newSidecar = extractSidecarData(content);
     // Authoritative per-doc bib family from the citations sidecar; missing →
-    // null → body-derived fallback. For a brand-new doc (no \begin{document})
-    // also seed the preamble from the selected style.
-    const bibFamily = await readDevDocBibFamily(h.docId);
-    const serializeOpts: {
-      preamble?: string;
-      postamble?: string;
-      bibFamily?: BibFamily | null;
-    } = { ...(delimiters ?? {}), bibFamily };
-    if (!delimiters) {
-      const rawSettings = await fetchJson<unknown>(
-        `${API}/doc/${h.docId}/virgil/document-settings.json`,
-        { styleId: DEFAULT_STYLE_ID },
-      );
-      const settings = migrateDocumentSettings(rawSettings);
-      serializeOpts.preamble = resolveStyle(settings.styleId).preamble;
-    }
+    // null → body-derived fallback. Only a genuinely EMPTY file also seeds the
+    // preamble from the selected style (task 375 M5).
+    const serializeOpts = await buildDevSerializeOpts(h.docId, delimiters);
     // THE SERIALIZER GATE (task 357) — parity with storage-fsa. A refusal
     // leaves both the `.tex` and `virgil.json` untouched; the dev backend takes
     // no forensic snapshot on the armed edge because it keeps no history folder.
@@ -682,13 +691,13 @@ export async function snapshotConflictSides(
 
     let mineName: string | null = null;
     if (mine) {
-      const delimiters = extractPreambleAndPostamble(
+      const delimiters = resolveWriteDelimiters(
         (await fetchText(`${base}/${texFilename}`)) ?? "",
       );
-      const bibFamily = await readDevDocBibFamily(h.docId);
+      const serializeOpts = await buildDevSerializeOpts(h.docId, delimiters);
       let body: string;
       try {
-        body = serializeToLatex(mine, { ...(delimiters ?? {}), bibFamily });
+        body = serializeToLatex(mine, serializeOpts);
         mineName = `unsaved-${texFilename}`;
       } catch {
         body = JSON.stringify(mine, null, 2);

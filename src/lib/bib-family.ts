@@ -28,7 +28,10 @@ import {
   NATBIB_ONLY_CITE_COMMANDS,
   SHARED_CITE_COMMANDS,
 } from "@/lib/cite-commands";
-import { projectDetectableLatex } from "@/lib/latex-lexer";
+import {
+  preambleSliceOfProjected,
+  projectDetectableLatex,
+} from "@/lib/latex-lexer";
 
 export type BibFamily = "natbib" | "biblatex";
 
@@ -169,8 +172,6 @@ export function detectPreambleBibFamily(preamble: string): BibFamily | null {
   return null;
 }
 
-const BEGIN_DOCUMENT = "\\begin{document}";
-
 /**
  * Which family does this WHOLE `.tex` source use? The single detector behind
  * `storage.detectBibPackage`, and the seed for a document that carries no
@@ -204,8 +205,7 @@ const BEGIN_DOCUMENT = "\\begin{document}";
  */
 export function detectBibFamily(tex: string): BibFamily {
   const live = projectDetectableLatex(tex);
-  const beginDoc = live.indexOf(BEGIN_DOCUMENT);
-  const preamble = beginDoc === -1 ? live : live.slice(0, beginDoc);
+  const preamble = preambleSliceOfProjected(live);
   const loaded = detectPreambleBibFamily(preamble);
   if (loaded) return loaded;
   const byCommand = detectCommandBibFamily(live);

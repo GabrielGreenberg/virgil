@@ -750,6 +750,180 @@ _WORD_RE = re.compile(r"[A-Za-z0-9]+")
 
 DOCUMENT_MARKER = "\\begin{document}"
 
+# ---------------------------------------------------------------------------
+# The preamble/body boundary — a PORT of `findDocumentBoundary` in
+# src/lib/latex-lexer.ts (task 375).
+#
+# Held to the TS rule by the same shared FIXTURE CORPUS the measure is (the
+# `boundary` cases), because a gate that split the document differently from the
+# parser is structurally blind to the defect it exists to catch: a boundary that
+# MOVED measures with everything under body on both sides and reports a
+# shortfall of 0 while the paper has been cut in half.
+#
+# Two rules, each a member of task 375:
+#   - only LIVE bytes count (a `%`-commented, `\verb`-quoted or verbatim-quoted
+#     token does not move the boundary), and
+#   - the end is searched FROM the end of the begin token, never from 0.
+#
+# The projection BLANKS rather than deletes, so an index into it is an index
+# into the original — which is what lets a caller slice the raw string at it.
+# ---------------------------------------------------------------------------
+
+# The FULL verbatim family, mirroring VERBATIM_ENVS_FULL in
+# src/lib/latex-lexer.ts. Python cannot import the SSOT; the parity suite's
+# membership leg pins the list, the same instrument the marker list above uses.
+VERBATIM_ENVS_FULL = (
+    "verbatim",
+    "verbatim*",
+    "lstlisting",
+    "minted",
+    "Verbatim",
+    "Verbatim*",
+    "BVerbatim",
+    "BVerbatim*",
+    "LVerbatim",
+    "LVerbatim*",
+    "comment",
+)
+
+_VERB_ALT = "|".join(
+    re.escape(e) for e in sorted(VERBATIM_ENVS_FULL, key=len, reverse=True)
+)
+_VERB_BEGIN_RE = re.compile(r"\\begin\{(?:" + _VERB_ALT + r")\}")
+_VERB_END_RE = re.compile(r"\\end\{(?:" + _VERB_ALT + r")\}")
+# Group 1 is the (unescaped) run right before the `%`; the `%` sits at
+# m.start() + len(m.group(1)). Mirrors `commentTailStart`.
+_COMMENT_TAIL_RE = re.compile(r"((?:^|[^\\])(?:\\\\)*)%")
+# `\verb<delim>` / `\verb*<delim>` — delimiter is any single non-letter,
+# non-`*`, non-space char, so `\verbatim` / `\verbdef` are not mis-lexed.
+_INLINE_VERB_RE = re.compile(r"\\verb(\*?)([^A-Za-z*\s])")
+
+BEGIN_DOCUMENT_RE = re.compile(r"\\begin[ \t]*\{[ \t]*document[ \t]*\}")
+END_DOCUMENT_RE = re.compile(r"\\end[ \t]*\{[ \t]*document[ \t]*\}")
+
+
+def _comment_tail_start(line: str) -> int:
+    m = _COMMENT_TAIL_RE.search(line)
+    return m.start() + len(m.group(1)) if m else -1
+
+
+def _blank_inline_verb(text: str) -> str:
+    out = []
+    i = 0
+    while True:
+        m = _INLINE_VERB_RE.search(text, i)
+        if not m:
+            out.append(text[i:])
+            break
+        out.append(text[i : m.start()])
+        delim = m.group(2)
+        payload = m.end()
+        close = text.find(delim, payload)
+        if close == -1:
+            out.append(" " * (len(text) - m.start()))
+            break
+        out.append(" " * (close + 1 - m.start()))
+        i = close + 1
+    return "".join(out)
+
+
+def project_structural_latex(src: str) -> str:
+    r"""`src` with every inert byte BLANKED to a space — comment tails, the FULL
+    verbatim family's contents, and inline `\verb` runs. Same length as `src`,
+    so an index into the result is an index into `src`.
+
+    Unterminated ⇒ TRANSPARENT: a family `\begin` with no matching `\end` below
+    it is not an open, so a half-typed `\begin{comment}` in a preamble cannot
+    erase the `\begin{document}` under it. Mirrors the `unterminatedIsLive`
+    option `projectStructuralLatex` passes on the TypeScript side.
+    """
+    out = []
+    lines = src.split("\n")
+    # Backward pass: does any line at or after i carry a family close? One O(n)
+    # sweep, so the terminated-ness test at each open is O(1).
+    close_at_or_after = [False] * (len(lines) + 1)
+    for i in range(len(lines) - 1, -1, -1):
+        close_at_or_after[i] = (
+            bool(_VERB_END_RE.search(lines[i])) or close_at_or_after[i + 1]
+        )
+    in_verbatim = False
+    for li, raw_line in enumerate(lines):
+        line = raw_line
+        kept = ""
+        while True:
+            if in_verbatim:
+                end = _VERB_END_RE.search(line)
+                if not end:
+                    kept += " " * len(line)
+                    break
+                in_verbatim = False
+                kept += " " * end.end()
+                line = line[end.end() :]
+                continue
+            begin = _VERB_BEGIN_RE.search(line)
+            comment = _comment_tail_start(line)
+            if not begin or (comment != -1 and begin.start() >= comment):
+                visible = line if comment == -1 else line[:comment]
+                kept += _blank_inline_verb(visible)
+                if comment != -1:
+                    kept += " " * (len(line) - comment)
+                break
+            rest = line[begin.end() :]
+            if not _VERB_END_RE.search(rest) and not close_at_or_after[li + 1]:
+                visible = line if comment == -1 else line[:comment]
+                kept += _blank_inline_verb(visible)
+                if comment != -1:
+                    kept += " " * (len(line) - comment)
+                break
+            kept += _blank_inline_verb(line[: begin.start()])
+            in_verbatim = True
+            kept += " " * len(begin.group(0))
+            line = rest
+        out.append(kept)
+    return "\n".join(out)
+
+
+def first_live_index_of(tex: str, token: str, start: int = 0) -> int:
+    """Index of the first LIVE occurrence of `token` at or after `start`, or -1.
+
+    An offset into `tex` itself — `project_structural_latex` BLANKS rather than
+    deletes, so a caller may splice the raw string at it. That is the whole
+    point: `apply_response.py`'s `region-replace` splices at this offset and
+    replaces everything before it, so a raw `find` landing inside a
+    `% \begin{document}` comment would un-comment the token AND take the user's
+    real preamble with it (task 375 M3, on the writer that composes preambles
+    from model output).
+
+    The TypeScript side has no equivalent export, deliberately: over there every
+    boundary question is the document boundary and goes through
+    `findDocumentBoundary`, and an exported primitive with no caller is the
+    dead-SSOT shape AGENTS.md outlaws. Here `endMarker` is caller-supplied, so
+    the generic form has a real consumer.
+    """
+    live = project_structural_latex(tex)
+    return live.find(token, start)
+
+
+def count_live_document_begins(tex: str) -> int:
+    """How many LIVE `\begin{document}` tokens `tex` carries. The structural
+    invariant `region-replace` rests on — counted live, so a marker the model
+    left commented out or inside a verbatim example neither satisfies the
+    invariant nor trips the duplicate refusal."""
+    return len(BEGIN_DOCUMENT_RE.findall(project_structural_latex(tex)))
+
+
+def find_document_boundary(tex: str) -> tuple[int, int, int]:
+    """(begin_doc, body_start, end_doc) as offsets into `tex`; -1 for absent.
+    `end_doc` is searched from `body_start`, so it can never precede
+    `begin_doc`."""
+    live = project_structural_latex(tex)
+    begin = BEGIN_DOCUMENT_RE.search(live)
+    if not begin:
+        return -1, -1, -1
+    body_start = begin.end()
+    end = END_DOCUMENT_RE.search(live, body_start)
+    return begin.start(), body_start, (end.start() if end else -1)
+
 
 def measure_content_bag(tex: str) -> dict[str, int]:
     """The user's content as a multiset of word tokens, Virgil's own markers
@@ -772,9 +946,11 @@ def missing_words(before: dict[str, int], after: dict[str, int]) -> int:
 
 
 def split_regions(tex: str) -> tuple[str, str]:
-    """(preamble, body). A source with no `\\begin{document}` is ALL BODY — the
-    fail-safe direction, since it puts every word under a comparison."""
-    i = tex.find(DOCUMENT_MARKER)
+    """(preamble, body), split at the LIVE `\\begin{document}` (task 375) so this
+    gate weighs the same regions the parser and the in-app gates do. A source
+    with no live marker is ALL BODY — the fail-safe direction, since it puts
+    every word under a comparison."""
+    i, _, _ = find_document_boundary(tex)
     if i == -1:
         return "", tex
     return tex[:i], tex[i:]

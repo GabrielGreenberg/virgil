@@ -276,5 +276,163 @@
         }
       }
     }
+  ],
+  "boundaryCases": [
+    {
+      "name": "ordinary",
+      "why": "the control — an everyday paper, both tokens live and in order",
+      "tex": "\\documentclass{article}\n\\usepackage{amsmath}\n\\begin{document}\nReal body.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 45,
+        "bodyStart": 61,
+        "endDoc": 73,
+        "liveBegins": 1,
+        "liveEnds": 1
+      }
+    },
+    {
+      "name": "M1-preamble-comment-names-end",
+      "why": "endDoc searched from 0 used to precede beginDoc and eject the whole body",
+      "tex": "\\documentclass{article}\n% put \\end{document} at the very end\n\\usepackage{amsmath}\n\\begin{document}\nReal body.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 82,
+        "bodyStart": 98,
+        "endDoc": 110,
+        "liveBegins": 1,
+        "liveEnds": 1
+      }
+    },
+    {
+      "name": "M2-commented-end-in-body",
+      "why": "the body cut used to land INSIDE the comment, severing the % and going live",
+      "tex": "\\documentclass{article}\n\\begin{document}\nReal body.\n% \\end{document}\nMore real body.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 24,
+        "bodyStart": 40,
+        "endDoc": 85,
+        "liveBegins": 1,
+        "liveEnds": 1
+      }
+    },
+    {
+      "name": "M3-commented-begin-in-preamble",
+      "why": "the injector's splice used to land between the % and the token, un-commenting it",
+      "tex": "\\documentclass{article}\n% \\begin{document} is below\n\\usepackage{natbib}\n\\begin{document}\nReal body.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 72,
+        "bodyStart": 88,
+        "endDoc": 100,
+        "liveBegins": 1,
+        "liveEnds": 1
+      }
+    },
+    {
+      "name": "M4-verbatim-quoted-end",
+      "why": "a paper that DOCUMENTS LaTeX used to be cut mid-verbatim, with a %!v: anchor printed in the PDF",
+      "tex": "\\documentclass{article}\n\\begin{document}\nIntro.\n\\begin{verbatim}\n\\end{document}\n\\end{verbatim}\nOutro.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 24,
+        "bodyStart": 40,
+        "endDoc": 102,
+        "liveBegins": 1,
+        "liveEnds": 1
+      }
+    },
+    {
+      "name": "M4b-lstlisting-quoted-begin",
+      "why": "the FULL verbatim family counts here, not only plain verbatim",
+      "tex": "\\documentclass{article}\n\\begin{lstlisting}\n\\begin{document}\n\\end{lstlisting}\n\\begin{document}\nBody.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 77,
+        "bodyStart": 93,
+        "endDoc": 100,
+        "liveBegins": 1,
+        "liveEnds": 1
+      }
+    },
+    {
+      "name": "M5-spaced-begin",
+      "why": "TeX skips spaces while scanning the argument; an exact literal reads this as no boundary at all",
+      "tex": "\\documentclass[11pt]{amsart}\n\\usepackage{natbib}\n\\begin {document}\nReal body.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 49,
+        "bodyStart": 66,
+        "endDoc": 78,
+        "liveBegins": 1,
+        "liveEnds": 1
+      }
+    },
+    {
+      "name": "inline-verb-quoted-begin",
+      "why": "a \\verb|\\begin{document}| is not a boundary either",
+      "tex": "\\documentclass{article}\nSee \\verb|\\begin{document}| here.\n\\begin{document}\nBody.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 58,
+        "bodyStart": 74,
+        "endDoc": 81,
+        "liveBegins": 1,
+        "liveEnds": 1
+      }
+    },
+    {
+      "name": "unterminated-verbatim-open-is-transparent",
+      "why": "a half-typed \\begin{comment} in a preamble is an ordinary mid-edit state; swallowing to EOF would erase the boundary under it",
+      "tex": "\\documentclass{article}\n\\begin{comment}\n\\usepackage{amsmath}\n\\begin{document}\nReal body.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 61,
+        "bodyStart": 77,
+        "endDoc": 89,
+        "liveBegins": 1,
+        "liveEnds": 1
+      }
+    },
+    {
+      "name": "no-end-at-all",
+      "why": "unterminated-ok: the body genuinely runs to EOF, so there is no content past it to swallow",
+      "tex": "\\documentclass{article}\n\\begin{document}\nBody with no close.\n",
+      "expected": {
+        "beginDoc": 24,
+        "bodyStart": 40,
+        "endDoc": -1,
+        "liveBegins": 1,
+        "liveEnds": 0
+      }
+    },
+    {
+      "name": "no-boundary-at-all",
+      "why": "a fragment — fails OPEN, and the seed rule must not read this as a brand-new document",
+      "tex": "A chapter fragment with \\section{Heading} and prose.\n",
+      "expected": {
+        "beginDoc": -1,
+        "bodyStart": -1,
+        "endDoc": -1,
+        "liveBegins": 0,
+        "liveEnds": 0
+      }
+    },
+    {
+      "name": "escaped-percent-is-not-a-comment",
+      "why": "\\% does not start a comment, so the token after it stays live",
+      "tex": "\\documentclass{article}\n100\\% \\begin{document}\nBody.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 30,
+        "bodyStart": 46,
+        "endDoc": 53,
+        "liveBegins": 1,
+        "liveEnds": 1
+      }
+    },
+    {
+      "name": "end-before-begin-live",
+      "why": "a genuinely LIVE \\end{document} above the begin — the projection cannot help, only the from-bodyStart rule can",
+      "tex": "\\documentclass{article}\n\\newcommand{\\stopnow}{\\end{document}}\n\\begin{document}\nBody.\n\\end{document}\n",
+      "expected": {
+        "beginDoc": 62,
+        "bodyStart": 78,
+        "endDoc": 85,
+        "liveBegins": 1,
+        "liveEnds": 2
+      }
+    }
   ]
 }
