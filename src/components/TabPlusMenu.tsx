@@ -33,6 +33,10 @@ import { EXAMPLE_DOC_ID } from "@/lib/example-doc/example-identity";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
 import { multiWindowSupported } from "@/lib/multi-window/bus";
+import {
+  RECENT_PAPERS_MENU_LIMIT,
+  selectRecentDocs,
+} from "@/lib/recent-docs";
 import { IconPlus } from "./editor-layout/panel-icons";
 import { Kbd } from "./Kbd";
 import { MenuProvider } from "./menu/MenuProvider";
@@ -113,15 +117,10 @@ export function TabPlusMenu({
     [],
   );
 
-  const openSet = new Set(openTabIds);
-  const recents = [...docs]
-    .filter((d) => !openSet.has(d.id))
-    .sort(
-      (a, b) =>
-        new Date(b.lastAccessedAt).getTime() -
-        new Date(a.lastAccessedAt).getTime(),
-    )
-    .slice(0, 5);
+  const recents = selectRecentDocs(docs, {
+    excludeIds: openTabIds,
+    limit: RECENT_PAPERS_MENU_LIMIT,
+  });
 
   const handleRecentClick = useCallback(
     async (id: string) => {
