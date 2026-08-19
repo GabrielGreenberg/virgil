@@ -1,4 +1,4 @@
-<!-- last-verified: a389c0d2 2026-08-18 -->
+<!-- last-verified: fb1fd726 2026-08-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#latex-round-trip-vocabulary -->
 <!-- covers-code: src/lib/latex-parser.ts, src/lib/latex-serializer.ts, src/lib/latex-lexer.ts, src/lib/latex-typography.ts, src/lib/footnote-content.ts, src/lib/tiptap, src/lib/cite-commands.ts, src/lib/heading-types.ts, src/lib/bib-uid.ts -->
 
@@ -84,6 +84,11 @@ editor doesn't model"; `latexVerbatim` = "these bytes are literal";
    — not a fixed "brackets then at most two braces" shape, which silently
    truncated `\definecolor{myblue}{rgb}{0.2,0.4,0.8}`, `\resizebox{3cm}{!}{…}`
    and `\newcommand{\x}[1]{…}` and stopped papers compiling (task 349 M1–M3).
+   Since task 360 the mark is applied at TYPE time too, not only at parse time —
+   the `latexCommandCarrier` plugin reads those same lexer doors over the
+   transaction's own changed ranges, so LaTeX you type in the editor is carried
+   in the same dispatch instead of sitting ambiguously in the prose buffer until
+   the next save.
    Three bounds, all fail-closed: an unbalanced group ends the run, a group
    spanning a blank line is refused, and the count is capped at TeX's `#1`…`#9`.
    A `{[}` / `{]}` prose protection is not an argument and also ends the run.
@@ -154,23 +159,24 @@ period lookahead: without it a linguex `\ex.` declared expex and
   passthrough; `linkedAnchor`→no command (wrapped by `\vlid`/`\vlidend`).
 - **Escaping is ONE table read by both rungs on both surfaces** —
   `CHAR_ESCAPE_TABLE` in [src/lib/latex-typography.ts](../../src/lib/latex-typography.ts)
-  (emit = `escapeLatexChars`, parse = `matchCharEscapeAt`; task 339). Three
+  (emit = `escapeLatexChars`, parse = `matchCharEscapeAt`; tasks 339/360). Three
   member kinds: `escape` (a LaTeX special that must be escaped to render at
   all), `protect` (legal but ambiguous, wrapped in its own brace group), and
   `glyph` (an ACTIVE character whose Unicode counterpart carries the provenance
   — today the `~` tie ↔ U+00A0).
-  Each member also declares **when** it may be written:
-  - **`always`** — `& % # _ $ ~ ^` (and the U+00A0 tie → `~`). `$`→`\$` so a
-    prose `$` isn't re-read as an inline-math delimiter (task 037).
-  - **`prose-only`** — `{ } \ [ ]` are escaped **only in a run with no
-    backslash anywhere in it**, i.e. one provably not raw LaTeX. A run that
-    contains a backslash is ambiguous and its braces/brackets are left live, so
-    a hand-typed `\cmd[opt]{arg}` keeps its arguments. (`\`→`\textbackslash{}`
-    is therefore emit-unreachable by construction; it still parses.)
-  So a plain-prose Card body a skill inserts **does** get its braces and
-  brackets escaped; text you write that carries a backslash is treated as real
-  LaTeX and left alone. `[`→`{[}` rather than `\[`, which starts display math
-  (task 046).
+  **Every member is written unconditionally** — `& % # _ $ ~ ^` and `{ } \ [ ]`
+  alike. `$`→`\$` so a prose `$` isn't re-read as an inline-math delimiter
+  (task 037); `[`→`{[}` rather than `\[`, which starts display math (task 046);
+  `\`→`\textbackslash{}`.
+  Task 339's evidence-keyed `emit: "prose-only"` narrowing (braces/brackets
+  escaped only in a run with no backslash) and the field that declared it are
+  **retired** by task 360, which made its premise true: a type-time carrier
+  marks raw LaTeX the moment an edit writes it, and both inline parsers carry a
+  control symbol (`\,` `\;` `\ `), so a bare `\` surviving in a text node is a
+  LITERAL backslash and escaping it is what round-trips it. Net effect for a
+  skill: a plain-prose Card body gets its braces and brackets escaped, and text
+  you write as real LaTeX is carried on the `latexCommand` mark rather than
+  left ambiguous in the prose buffer.
   With `{ typography }` set it also runs `typographyToLatex` after char-escaping,
   reverse-mapping directly-typed glyphs (é, –, —, …) back to canonical LaTeX
   commands (the smart-quote precedent), suppressed inside code spans.

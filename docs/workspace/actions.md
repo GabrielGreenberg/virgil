@@ -1,4 +1,4 @@
-<!-- last-verified: a389c0d2 2026-08-18 -->
+<!-- last-verified: fb1fd726 2026-08-19 -->
 <!-- derives-from: docs/architecture/VIRGIL.md#ontology, docs/architecture/VIRGIL.md#code-organization -->
 <!-- covers-code: src/lib/actions/action-registry.ts, src/lib/actions/editor-actions-bridge.ts, src/lib/actions/action-icons.tsx, src/lib/tiptap/smart-insert.ts, src/components/menu, src/components/DragHandleMenu.tsx, src/components/ActionsMenuPanel.tsx, src/components/SelectionActionsMenu.tsx, src/components/editor-layout/card-actions, src/lib/editor-extensions.ts, src/lib/tiptap/tab-indent.ts, src/lib/tiptap/expex.ts, src/lib/tiptap/latex-comment.ts, src/lib/section-folding.ts, src/lib/focus-view.ts, src/lib/tiptap/uuid-attr.ts, src/lib/tiptap/anchor-highlight-deco.ts, src/lib/tiptap/pgmark.ts, src/lib/tiptap/latex-command.ts, src/text-objects/text-object-registry.ts, src/text-objects/TextObjectGrabHandle.tsx, src/text-objects/LiftHost.tsx, src/text-objects/drop-adapters.ts, src/components/drop-mode, src/cards/drop-specs, src/lib/tiptap/atom-registry.ts, src/lib/tiptap/structural-edit.ts, src/lib/tiptap/insert-inline-atom.ts, src/lib/tiptap/chrome-scroll-margin.ts -->
 
@@ -515,7 +515,7 @@ see below):
 |---|---|---|---|---|
 | **UUID attrs** | `data-uuid` + `data-text-object-kind` on each anchorable block's DOM | node | [uuid-attr.ts](../../src/lib/tiptap/uuid-attr.ts) | Compliant — forward-maps, then adds/removes only for the `DocStructureBus` diff's added/removed blocks |
 | **Anchor hover/selection** | the four `data-card-selected` / `data-card-hovered` / `data-paragraph-kind` / `data-margin-side` attrs on in-editor NODE/ATOM anchor targets (paragraph / Mode-A block + footnote/citation atom) | node | [anchor-highlight-deco.ts](../../src/lib/tiptap/anchor-highlight-deco.ts) (driven by `useAnchorHighlightReconciler`) | Compliant — set rebuilds ONLY on a hover/selection meta tx; every other tx just `map(tr.mapping, tr.doc)`s the existing set (the meta tx is `!tr.docChanged`, so the bus stays silent) |
-| **LaTeX command** | grey-monospace `.latex-cmd` on in-progress `\command{…}` spans | inline | [latex-command.ts](../../src/lib/tiptap/latex-command.ts) | Compliant — `map(tr.mapping)` then rebuild only when a changed region holds a `\` |
+| **LaTeX command** | grey-monospace `.latex-cmd` on in-progress `\command{…}` spans | inline | [latex-command.ts](../../src/lib/tiptap/latex-command.ts) | Compliant — `map(tr.mapping)` then rebuild only when a changed region holds a `\`, **or** when this mark's presence changed (an `AddMarkStep`/`RemoveMarkStep` carries an EMPTY step map, so neither probe would otherwise see the type-time carrier's own promotion — task 360) |
 | **Pagination chip** | the `\pgmark{N}` label + page-break rule | inline + widget | [pgmark.ts](../../src/lib/tiptap/pgmark.ts) | Compliant — `map` + changed-region `\pgmark` scan |
 | **Section fold** | `.section-folded` (hides blocks under a collapsed heading) | node | [section-folding.ts](../../src/lib/section-folding.ts) | Rebuilds from a **top-level** `doc.forEach()` when a fold is active; gated to `DecorationSet.empty` when nothing is folded (see note) |
 | **Focus view** | `.focus-hidden` (hides out-of-band blocks while a focus band CONFINES the viewer) | node | [focus-view.ts](../../src/lib/focus-view.ts) | Compliant — only a **LOCKED** band confines (the `bandConfines` = `active && locked` gate, CHIP A); an unlocked selection-band bails to `DecorationSet.empty` and hides nothing. Rebuilds only on a band-change meta tx or a top-level block add/remove/boundary-replace; otherwise carries the cached set forward via `DecorationSet.map(tr.mapping)`, so a plain keystroke never rebuilds |
@@ -524,10 +524,14 @@ see below):
 **Decoration vs. mark — a load-bearing nuance.** `latexCommand` is *both*: the
 `LatexCommandMark` ([latex-command.ts](../../src/lib/tiptap/latex-command.ts))
 round-trips committed `\commands` to the `.tex` and styles them via its
-`renderHTML` class, while the *decoration* in the same extension styles
-*live-typed* commands that don't yet carry the mark. VIRGIL.md's "kept verbatim
-under the `latexCommand` mark" and this decoration are two halves of one
-feature.
+`renderHTML` class, while the *decoration* in the same extension styles bare-text
+commands that don't carry the mark. Since task 360 the two are the SAME state and
+must stay so: the `latexCommandCarrier` plugin promotes a raw-LaTeX span to the
+mark as soon as an edit WRITES one, so a decoration left standing over a
+now-marked run would paint a second `.latex-cmd` over the one the mark renders
+itself — hence the mark-presence rebuild trigger in the row above. Stated
+residual: a literal backslash that arrived from a source `\textbackslash{}` is
+still painted grey by the bare-text decoration although it emits escaped.
 
 **Not decorations** (so they're not in the table, despite looking like overlays):
 
