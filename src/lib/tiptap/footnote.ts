@@ -103,6 +103,13 @@ export const Footnote = Node.create<FootnoteOptions>({
       // serializer to round-trip back to `\thanks{...}` and the panel/omni
       // card to overline as ACKNOWLEDGEMENT instead of FOOTNOTE.
       thanks: { default: false, renderHTML: () => ({}) },
+      // Raw `\footnote[3]{…}` mark override (task 376 M5) — LaTeX's "print
+      // this mark instead of the counter". Carried OPAQUELY and deliberately
+      // NOT fed to `numberFootnotes`: in LaTeX the optional form also does not
+      // STEP the counter, so honouring it in Virgil's own chrome means
+      // renegotiating every following footnote's number. Null on a plain
+      // `\footnote`; never set on a `\thanks`, which has no optional argument.
+      numberOverride: { default: null, renderHTML: () => ({}) },
     };
   },
 

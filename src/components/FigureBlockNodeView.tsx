@@ -64,6 +64,7 @@ function figurePopoverRaw(node: NodeViewProps["node"]): string {
       captionChild?.type.name === "figureCaption" ? captionChild.textContent : "",
     hasCaption: node.attrs.hasCaption !== false,
     shortCaption: (node.attrs.shortCaption as string | null | undefined) ?? null,
+    numbered: node.attrs.numbered !== false,
     label: (node.attrs.label as string | undefined) || "",
   });
 }

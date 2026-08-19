@@ -8,18 +8,16 @@
  */
 
 import {
+  matchSectioningUseAt,
   projectLiveLatex,
   VERBATIM_ENVS_FULL,
 } from "@/lib/latex-lexer";
+import type { SectioningCommand } from "@/lib/heading-types";
 
-export type SectioningCommand =
-  | "part"
-  | "chapter"
-  | "section"
-  | "subsection"
-  | "subsubsection"
-  | "paragraph"
-  | "subparagraph";
+// The vocabulary lives in the import-free leaf so the lexer's sectioning door
+// can read it too (task 376). Re-exported here because this module's public
+// surface has named it since long before that door existed.
+export type { SectioningCommand };
 
 export interface DocumentClassInfo {
   className: string;
@@ -144,10 +142,15 @@ export function findSectioningCommands(latex: string): Set<SectioningCommand> {
     envs: VERBATIM_ENVS_FULL,
     inlineVerb: true,
   });
-  const re = /\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph)\b\*?\s*[\{\[]/g;
+  // The vocabulary and the "does an argument follow?" test both come from the
+  // lexer's sectioning door (task 376). This regex used to be the FOURTH
+  // spelling of the alternation and — being the only one that accepted the
+  // bracket and the whitespace — the only one that was right, while the
+  // parser's copy silently declined the same bytes.
   const found = new Set<SectioningCommand>();
-  for (const m of stripped.matchAll(re)) {
-    found.add(m[1] as SectioningCommand);
+  for (let i = stripped.indexOf("\\"); i !== -1; i = stripped.indexOf("\\", i + 1)) {
+    const use = matchSectioningUseAt(stripped, i);
+    if (use) found.add(use.command);
   }
   return found;
 }

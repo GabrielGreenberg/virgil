@@ -32,7 +32,8 @@
  *      `\begin{env}` in general, and the body splitters that asked the same
  *      question carried a third and fourth answer (task 338).
  *
- * Imports ONLY latex-typography and latex-markers (both leaves) to avoid a cycle.
+ * Imports ONLY latex-typography, latex-markers and heading-types (all leaves)
+ * to avoid a cycle.
  */
 
 import {
@@ -43,6 +44,8 @@ import {
   matchCharEscapeAt,
 } from "@/lib/latex-typography";
 import { BLOCK_TEX_MARKERS } from "@/lib/latex-markers";
+import { HEADING_TYPES } from "@/lib/heading-types";
+import type { SectioningCommand } from "@/lib/heading-types";
 
 export { matchAccent, matchSpecialLetter };
 
@@ -530,10 +533,15 @@ function stripCommentTail(line: string): string {
  * next save re-emits it as literal text, accumulating one stray marker per
  * round trip. Their names come from the vocabulary SSOT
  * ([latex-markers.ts](latex-markers.ts)), so a future block-position marker
- * joins this boundary set by declaring itself.
+ * joins this boundary set by declaring itself — and the seven SECTIONING names
+ * come from `HEADING_TYPES` for the same reason (task 376): this was the fifth
+ * hand-written copy of that alternation, and the four that decided anything
+ * had already drifted apart.
  */
 const BLOCK_BOUNDARY_COMMAND_RE = new RegExp(
-  "^\\\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|" +
+  "^\\\\(" +
+    HEADING_TYPES.map((t) => t.command).join("|") +
+    "|" +
     "begin|end|\\[|hrulefill|title|author|date|maketitle|includegraphics|" +
     "noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|" +
     "usepackage|bibliographystyle|bibliography|tableofcontents|appendix|" +
@@ -1533,15 +1541,45 @@ function isLetter(ch: string | undefined): boolean {
  * `{ name, end }` where `name` is the `[a-zA-Z@]+` run after the backslash
  * and `end` is the index just past it, or null if there is no letter run
  * (e.g. a control symbol like `\%` or `\\`).
+ *
+ * STICKY, not `slice(pos).match(/^…/)` — and the honest reason is narrower than
+ * the one this comment first gave (task 376). Every caller passes an OFFSET
+ * into a string it does not own, so the obvious spelling asks for the whole
+ * tail on each call, at every backslash of every parse; since 376 two callers
+ * probe a WHOLE DOCUMENT (`findSectioningCommands`, and `parseBody`'s per-block
+ * sectioning/title probes). MEASURED, that is NOT slower: V8 gives `slice` a
+ * SlicedString view rather than a copy, so a 500 kB document scans in the same
+ * ~2.4 ms either way. The sticky form is kept because it allocates nothing and
+ * does not rest silently on that representation — not because a win was
+ * demonstrated, and no claim of one is made here.
+ *
+ * The regex is module-level and its `lastIndex` is set on every call, so the
+ * shared state cannot leak between them (JS is single-threaded and this
+ * function neither yields nor recurses).
  */
+const CONTROL_WORD_STICKY = /[a-zA-Z@]+/y;
+
 export function matchCommandToken(
   src: string,
   pos: number,
 ): { name: string; end: number } | null {
   if (src[pos] !== "\\") return null;
-  const m = src.slice(pos + 1).match(/^[a-zA-Z@]+/);
+  CONTROL_WORD_STICKY.lastIndex = pos + 1;
+  const m = CONTROL_WORD_STICKY.exec(src);
   if (!m) return null;
   return { name: m[0], end: pos + 1 + m[0].length };
+}
+
+/** The gap TeX skips while scanning for a command's first argument: horizontal
+ *  whitespace and at most ONE newline (two would be a `\par`, which cannot
+ *  appear inside an argument scan). Sticky for the allocation reason above,
+ *  with the same measured caveat. */
+const ARGUMENT_GAP_STICKY = /[ \t]*\n?[ \t]*/y;
+
+function argumentGapAt(src: string, pos: number): number {
+  ARGUMENT_GAP_STICKY.lastIndex = pos;
+  const m = ARGUMENT_GAP_STICKY.exec(src);
+  return m ? m[0].length : 0;
 }
 
 /**
@@ -1549,6 +1587,29 @@ export function matchCommandToken(
  * the argument run below — a principled number rather than a guessed one.
  */
 const MAX_COMMAND_ARGS = 9;
+
+/** One `{…}` or `[…]` group of a command's argument run, with the offsets that
+ *  let a MODELED matcher consume only the arity it declares (task 376). */
+export interface CommandArgumentGroup {
+  kind: "brace" | "bracket";
+  /** Group contents, delimiters excluded. */
+  content: string;
+  /** Index of the opening delimiter. */
+  start: number;
+  /** One past the closing delimiter. */
+  end: number;
+}
+
+export interface CommandArgumentRun {
+  /** Every byte the run consumed, delimiters included. */
+  raw: string;
+  /** One past the last consumed byte. */
+  end: number;
+  /** A trailing `*` on the control word. */
+  starred: boolean;
+  /** The groups, in source order — bracket and brace interleaved as written. */
+  groups: readonly CommandArgumentGroup[];
+}
 
 /**
  * Read a command's whole ARGUMENT RUN starting at `pos`, which must be the index
@@ -1595,11 +1656,12 @@ const MAX_COMMAND_ARGS = 9;
 export function matchCommandArgumentRun(
   text: string,
   pos: number,
-): { raw: string; end: number } {
+): CommandArgumentRun {
   let p = pos;
-  if (text[p] === "*") p++;
-  let groups = 0;
-  while (p < text.length && groups < MAX_COMMAND_ARGS) {
+  const starred = text[p] === "*";
+  if (starred) p++;
+  const groups: CommandArgumentGroup[] = [];
+  while (p < text.length && groups.length < MAX_COMMAND_ARGS) {
     const ch = text[p];
     if (ch !== "{" && ch !== "[") break;
     // A protected prose bracket group is not an argument — see above.
@@ -1608,10 +1670,152 @@ export function matchCommandArgumentRun(
       ch === "{" ? extractBraced(text, p) : extractBracketed(text, p);
     if (!group) break;
     if (/\n[ \t]*\n/.test(group.content)) break;
+    groups.push({
+      kind: ch === "{" ? "brace" : "bracket",
+      content: group.content,
+      start: p,
+      end: group.end,
+    });
     p = group.end;
-    groups++;
   }
-  return { raw: text.slice(pos, p), end: p };
+  return { raw: text.slice(pos, p), end: p, starred, groups };
+}
+
+/**
+ * The SHAPE almost every MODELED construct actually has: an optional `*`, an
+ * optional `[…]`, and the one `{…}` the model holds — `\section*[Short]{Long}`,
+ * `\footnote[3]{…}`, `\title[Short]{Long}`, `\caption*[Short]{Long}`.
+ *
+ * `pos` is the index just past the control word (`matchCommandToken(...).end`).
+ * Returns null when no required brace follows, which is the REFUSAL direction
+ * (task 356): a `\section` with nothing to name is not a heading, and the
+ * carrier keeps its bytes rather than the model claiming it and re-emitting
+ * something else.
+ *
+ * WHY THIS IS NOT `matchCommandArgumentRun` ITSELF (task 376). That door
+ * answers "what could this command's arguments be?" and is deliberately
+ * MAXIMAL — it consumes every abutting group up to nine, which is right for
+ * the CARRIER (whose job is to keep bytes together) and wrong for a modeled
+ * construct, which consumes its OWN declared arity and no more: `\footnote{a}{b}`
+ * is a footnote whose body is `a` followed by a bare prose group `{b}`, and a
+ * maximal read would swallow the second into the footnote and re-emit it inside
+ * the note. So this reads the run's PARTS and stops at the first brace — one
+ * scanner, two arities.
+ *
+ * The gap before the FIRST argument is skipped, because that is TeX's own rule
+ * (it skips spaces while scanning for an argument) and `\section {X}` /
+ * `\section\n{X}` are spellings the four hand-written matchers all declined
+ * while the compat checker accepted them. A gap spanning a BLANK LINE is not
+ * skipped: a `\par` cannot appear inside an argument scan, and refusing there
+ * keeps a bare `\section` at the end of a paragraph from reaching forward into
+ * the next block. Gaps BETWEEN groups are deliberately not skipped — that is
+ * `matchCommandArgumentRun`'s existing rule and this door does not renegotiate
+ * it.
+ */
+export function matchStarOptBraceAt(
+  text: string,
+  pos: number,
+): { starred: boolean; optional: string | null; required: string; end: number } | null {
+  const run = matchCommandArgumentRun(text, pos + argumentGapAt(text, pos));
+  let optional: string | null = null;
+  for (const g of run.groups) {
+    if (g.kind === "bracket") {
+      // Only the FIRST bracket is this construct's optional argument; a second
+      // one belongs to whatever follows and is left in the stream.
+      if (optional !== null) return null;
+      optional = g.content;
+      continue;
+    }
+    return { starred: run.starred, optional, required: g.content, end: g.end };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Sectioning — the ONE answer to "is this a sectioning command, and what are
+// its arguments?" (task 376)
+// ---------------------------------------------------------------------------
+
+/**
+ * The sectioning vocabulary had FOUR spellings — the parser's own regex, the
+ * serializer's level-indexed `commands` array, `HEADING_TYPES` (whose
+ * `headingTypeCommand` had no callers at all: a dead SSOT, task 202's class),
+ * and `document-class.findSectioningCommands` — and **only the copy that
+ * decides nothing got the grammar right.** The parser's
+ * `/^\\(part|…)(\*?)\{/` requires the brace to ABUT, so
+ * `\section[Intro]{Introduction}` — an ordinary construct, legal in every
+ * class — parsed to a PARAGRAPH carrying a `latexCommand` mark. Bytes
+ * round-tripped (task 349/360's carrier did its job), and the whole heading
+ * apparatus was dead for it: no Outline row, no folding, no section number, no
+ * `\label`/`\ref` resolution, no `\partitle`, no focus band, no heading word
+ * counts, and grey monospace where a styled heading belongs. Meanwhile the
+ * compat checker's regex accepted the bracket AND the whitespace, so it
+ * correctly saw a `\chapter[Short]{X}` the parser had already thrown away.
+ *
+ * This is that answer, DERIVED from `HEADING_TYPES` so the vocabulary is
+ * stated once, and reading {@link matchStarOptBraceAt} so the argument grammar
+ * is the shared one rather than a fifth regex.
+ */
+export interface SectioningCommandMatch {
+  /** The control word, e.g. `"section"`. */
+  command: SectioningCommand;
+  /** `HEADING_TYPES` level: part 0 … subparagraph 6. */
+  level: number;
+  /** `\section*` — an unnumbered heading. */
+  starred: boolean;
+  /** Raw `[short]` running-head / ToC title; null when the source had none. */
+  shortTitle: string | null;
+  /** Raw brace body. */
+  title: string;
+  /** One past the closing brace. */
+  end: number;
+}
+
+const SECTIONING_BY_COMMAND: ReadonlyMap<string, number> = new Map(
+  HEADING_TYPES.map((t) => [t.command as string, t.level] as const),
+);
+
+/**
+ * A sectioning command USE at `pos` — the name plus evidence that an argument
+ * follows, with no requirement that the argument be well formed.
+ *
+ * This is the compat checker's question ("does this document REACH FOR
+ * `\chapter`?"), which is genuinely weaker than the parser's ("is this a
+ * heading, and what does it say?"): an undefined control sequence errors
+ * whatever its arguments look like. Both are answered here so neither spells
+ * the vocabulary itself.
+ */
+export function matchSectioningUseAt(
+  src: string,
+  pos: number,
+): { command: SectioningCommand; level: number; end: number } | null {
+  const word = matchCommandToken(src, pos);
+  if (!word) return null;
+  const level = SECTIONING_BY_COMMAND.get(word.name);
+  if (level === undefined) return null;
+  const after = word.end + argumentGapAt(src, word.end);
+  const ch = src[after];
+  if (ch !== "*" && ch !== "{" && ch !== "[") return null;
+  return { command: word.name as SectioningCommand, level, end: word.end };
+}
+
+/** The full parse of a sectioning command at `pos`, or null. */
+export function matchSectioningCommandAt(
+  src: string,
+  pos: number,
+): SectioningCommandMatch | null {
+  const use = matchSectioningUseAt(src, pos);
+  if (!use) return null;
+  const args = matchStarOptBraceAt(src, use.end);
+  if (!args) return null;
+  return {
+    command: use.command,
+    level: use.level,
+    starred: args.starred,
+    shortTitle: args.optional,
+    title: args.required,
+    end: args.end,
+  };
 }
 
 /**

@@ -32,6 +32,11 @@ export interface FigureAttrs {
   /** Optional `\caption[<short>]` list-of-figures argument, raw/opaque. Null if
    *  the caption had no `[short]` bracket (task 263). */
   shortCaption: string | null;
+  /** Did the source write `\caption*`? In LaTeX that is precisely an
+   *  UNNUMBERED float, which is the `numbered` attr's own meaning — so the
+   *  parser sets `numbered: !captionStarred` and the emitter writes the star
+   *  back from it (task 376 M4). One fact, one carrier. */
+  captionStarred: boolean;
   /** `\label{...}` body. Empty string if none. */
   label: string;
   /** Env body with `\caption{...}` and `\label{...}` stripped. Preserves
@@ -212,6 +217,11 @@ interface CommandHit {
 
 interface CaptionHit extends CommandHit {
   short: string | null;
+  /** `\caption*` — an UNNUMBERED caption. `CONTROL_WORD_RE` swallows the star
+   *  into `m[0]` while `m[1]` is the bare name, so the star was claimed as part
+   *  of the figure's own caption, cut from `extras` with it, and then never
+   *  re-emitted (task 376 M4). */
+  starred: boolean;
 }
 
 interface LabelHit extends CommandHit {
@@ -345,6 +355,9 @@ function scanFigureBody(envContent: string, ignoreDepth = false): FigureBodyScan
       continue;
     }
     if (depth === 0 && name === "caption" && !caption) {
+      // `CONTROL_WORD_RE` consumes a trailing `*` into `m[0]`; that byte is the
+      // whole numbered/unnumbered fact and it has to reach the model.
+      const starred = m[0].endsWith("*");
       let j = afterName;
       // Optional `[short]` list-of-figures argument (task 263) — opaque.
       let short: string | null = null;
@@ -358,7 +371,7 @@ function scanFigureBody(envContent: string, ignoreDepth = false): FigureBodyScan
       while (j < envContent.length && /\s/.test(envContent[j])) j++;
       const braced = findBracedBody(envContent, j);
       if (braced) {
-        caption = { start: i, end: braced.end, body: braced.body, short };
+        caption = { start: i, end: braced.end, body: braced.body, short, starred };
         // Keep scanning INSIDE the caption body: a `\label` in there still
         // names the figure (`\caption{Foo \label{fig:x}}` is idiomatic), so it
         // must reach the `label` attr for `\ref` to resolve.
@@ -494,6 +507,7 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
     caption: scan.caption?.body ?? "",
     hasCaption: scan.caption !== null,
     shortCaption: scan.caption?.short ?? null,
+    captionStarred: scan.caption?.starred ?? false,
     label: scan.labels[0]?.body ?? "",
     extras: stripFigureOwnCommands(envContent, scan),
   };

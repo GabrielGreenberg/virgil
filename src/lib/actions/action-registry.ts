@@ -2305,6 +2305,8 @@ export function figureRun(ctx: ActionContext): void {
         captionTex: "",
         hasCaption: attrs.hasCaption,
         shortCaption: null,
+        // A freshly inserted figure is numbered — plain `\caption`.
+        numbered: true,
         label: attrs.label,
       }),
       pos: found,
