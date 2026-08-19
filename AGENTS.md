@@ -2996,6 +2996,108 @@ itself. Measured by neutering each half in turn: the pre-377 carrier return take
 14 legs, the discarded atom marks 5, the main parser's `inCode` 3, the fork's 1,
 and a third speller 1.
 
+#### The splitter half: a comment is inert to EVERY scan on the surface, or to none
+
+Same round trip, and the case where the rule had been written down, shared, and
+adopted by every scanner on the surface EXCEPT the three that decide where a
+construct's parts begin (task 378). `scanLive`, `findPreambleTitleFields` (356),
+`scanFigureBody` and `readParagraph`'s block-boundary test had all been taught
+that a line-leading `%` is inert. The **body splitters** had not — so a construct
+the author had deliberately commented OUT was PROMOTED into the printed document.
+Six members, every one a FIXED POINT (no later save healed it), all landing on
+OPEN via `readDocBundle`'s unconditional load-writeback:
+
+- **M1 `splitListItems`.** `% \item Draft alternative.` became a **live, printed
+  bullet**, with the orphaned `%` stranded alone on its own line.
+- **M2 `splitPexBody`.** `% \a Draft alternative.` became a live example part —
+  and expex computes each part's printed label from POSITION, so a phantom part
+  **renumbers every part after it** and every `\ref` that names one.
+- **M3 the gloss `tierPattern`**, a bare `/g` regex over the raw body: a
+  `% \glb old //` minted a spurious live tier AND the orphaned `%` was tokenized
+  into the row above as extra `glossCell`s, silently changing the column
+  alignment the tier notation exists to express. Not even a fixed point.
+- **M4 the same builder DELETED everything before its first tier marker.**
+  Segments are built marker-to-marker, so `[0, markers[0].start)` was read by
+  nothing and the node carried no field for it: a `% Mandarin, adapted from Li
+  (2005)` note — or a `\setlength` tuning line — was simply GONE on the first
+  save. The asymmetry that makes it unarguable: the same comment SURVIVES one
+  line above the gloss, where `parseExampleBodyAsBlocks` explicitly carries it.
+- **M4b …and a gloss body with CONTENT but NO tier marker was destroyed
+  outright** — `\begingl\nsome text\n\endgl` → `\begingl\n\gla  //\n\endgl`.
+  The `splitListItems` shape task 356 closed for lists, still live here, on
+  WELL-FORMED input.
+- **M5 `splitLinguexBody` was correct only BY ACCIDENT** (the `%` itself cleared
+  its `lineStart` flag) — and its SERIALIZER twin then emitted a blank line after
+  a carried comment, which in linguex is the example's **TERMINATOR**: on the
+  next save every part after the comment fell OUT of the example, `\vxid`
+  identity and all.
+
+**No gate could see any of it.** M1–M3 MOVE words rather than losing them, so the
+write gate's multiset measure scores a shortfall of ZERO; M4 costs four word
+tokens in this fixture and fewer in the common shorter forms, at or under
+`PRESERVATION_SLACK_WORDS = 4`.
+
+> **A line-leading `%` is inert to every scan that walks raw bytes, read through
+> ONE primitive — [`skipLineCommentAt`](src/lib/latex-lexer.ts). A REGEX scan,
+> which cannot use a byte walk, gets the projection instead: SCAN PROJECTED,
+> SLICE RAW. And a segment that is TOKENIZED rather than carried must hold no
+> inert bytes at all — a construct whose body carries some is REFUSED whole.**
+
+Six rules it earned:
+
+- **The primitive is the NARROW rule, deliberately.** `startsLineComment`, not
+  TeX's own any-unescaped-`%`, for the reason task 338 records: a terminator scan
+  reading the wider rule calls a LIVE `\end{env}` inert and swallows the rest of
+  the document. The mid-line `%` therefore stays exactly as task 347 left it, and
+  the suite pins that so a later widening is a decision rather than a slip.
+- **The failure direction is what makes the narrow rule safe here.** A splitter
+  that skips a line it should not have skipped keeps those bytes inside the slice
+  it is currently building — nothing is dropped, only unsplit — while one that
+  fails to skip PROMOTES a comment into live output. Only one of those costs the
+  user's document.
+- **Declining to mint the tier was only half of M3.** A tier's segment is
+  tokenized into CELLS, so inert bytes left inside one come back as columns. A
+  row node has no slot for what it does not model, and inventing one per row
+  would be guessing which tier a free-standing comment belongs to — so the gloss
+  REFUSES (task 356's rule) when the projection diverges from the raw body at or
+  after the first marker. One test covers a comment, a `\verb` run and a
+  verbatim body instead of three.
+- **A refusal is carried BYTE-LITERALLY, not through the prose fall-through.**
+  `\endgl` is a block boundary, so `readParagraph` ends the paragraph before it
+  and the two are rejoined with a BLANK LINE — a `\par` inside a construct we
+  have just declined to model. The carrier also re-absorbs its own trailing
+  `%!v:` anchor, exactly as the `\begin{env}` carrier does, or the anchor is
+  re-read as a standalone empty block: one stray line per save, unbounded.
+- **The pre-marker region is the one place that DOES have a slot**, so M4 keeps
+  the model rather than refusing: `glossPreamble` on `exampleGloss`, raw and
+  opaque, the `listPreamble` / `rawOptions` shape one construct over, with
+  `keepOnSplit: false` for `itemLabel`'s reason.
+- **The join owns the separator, so no assembly piece may end with a newline of
+  its own.** The comment carrier's serializer appends one (task 347's "a comment
+  owns its line"), and both example assemblies joined pieces with another. For
+  expex that is a `\par` in a construct that does not take one; for linguex it is
+  the terminator, which is where it was measured.
+
+CI: [comment-blind-splitters.test.ts](src/lib/__tests__/comment-blind-splitters.test.ts).
+Every list / example / gloss fixture in the repo is spelled the one way the code
+happens to handle — with no comment in it — so each member is **unrepresentable**
+in all of them, which is how they shipped green. Each leg drives the REAL save
+pipeline over TWO cycles (cycle 1 is where the loss happens; cycle 2 proves
+nothing accumulates) with the same fixture minus its `%` as a CONTROL through the
+identical harness, so no leg can pass by making everything inert. The leg with
+teeth is the CENSUS, and its membership is DISCOVERED rather than listed: the
+population is every byte-walking scan that steps over an opaque construct,
+because a scan that has to know a `\verb` run is not its business has to know a
+comment is not either. Measured by neutering each half in turn: M1 takes 2 legs,
+M2 2, the projected tier scan 2, the gloss preamble 2, the no-marker refusal 1,
+the assembly join 1 — and removing the linguex comment skip fails ONLY the
+census, which is precisely the "correct by accident" claim, stated.
+
+**Residual, stated.** Non-comment unmodeled bytes AFTER the last tier's `//` are
+still tokenized into that tier's cells; only the pre-marker region has a carrier.
+Pre-existing and independent of comments (which the divergence test now refuses),
+so it is recorded rather than fixed under an unmeasured guess.
+
 ## The write path: no automatic write may lose content
 
 > **A write the user did not ask for is measured before it lands.** Virgil's

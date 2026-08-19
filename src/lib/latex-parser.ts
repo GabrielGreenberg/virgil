@@ -62,6 +62,8 @@ import {
   matchInlineVerbAt,
   matchLineBreakAt,
   skipOpaqueConstructAt,
+  skipLineCommentAt,
+  projectStructuralLatex,
   unwrapVerbatimEnvBody,
   verbatimMark,
   commentTailMark,
@@ -1991,10 +1993,55 @@ function parseBody(
         // Falls through to `readParagraph`, as above.
       } else {
       const bodyText = ctx.src.slice(bodyStart, endIdx);
-      ctx.pos = endIdx + "\\endgl".length;
       const glossNode = buildGlossFromBody(bodyText, glossOptions);
-      parent.content.push(glossNode);
-      continue;
+      if (glossNode === null) {
+        // REFUSED — the body is outside what the gloss model can hold (task
+        // 378: no tier marker at all, or inert bytes among the tiers). Same
+        // answer as an unterminated close one branch up: carry the bytes, never
+        // keep the fraction we recognise.
+        //
+        // A BYTE-LITERAL carrier, not the prose fall-through, and the
+        // difference is not cosmetic: `\endgl` is a block boundary, so
+        // `readParagraph` ends the paragraph before it and the two are rejoined
+        // with a BLANK LINE — a `\par` inside `\begingl … \endgl`, which is
+        // exactly the kind of byte a construct we have just declined to model
+        // must not acquire. The slice is the whole construct including its
+        // `[opts]` bracket, so the next parse meets the identical bytes and
+        // refuses identically: a fixed point from cycle 1.
+        let glEnd = endIdx + "\\endgl".length;
+        // Re-absorb the carrier's OWN trailing `%!v:` anchor, exactly as the
+        // `\begin{env}` carrier one branch up does and for the same reason: the
+        // serializer appends one to the paragraph this pushes, so leaving it in
+        // the stream would re-read it as a standalone empty block — one stray
+        // anchor line per save, unbounded. `NODE_UUID_ANCHOR` is start-anchored
+        // with `[ \t]*`, so it can match nothing but an anchor on the same line
+        // as the `\endgl` just consumed.
+        let glUuid: string | null = null;
+        {
+          const uuidMatch = ctx.src.slice(glEnd).match(NODE_UUID_ANCHOR);
+          if (uuidMatch) {
+            glUuid = uuidMatch[1];
+            glEnd += uuidMatch[0].length;
+          }
+        }
+        parent.content.push({
+          type: "paragraph",
+          ...(glUuid ? { attrs: { uuid: glUuid } } : {}),
+          content: [
+            {
+              type: "text",
+              text: ctx.src.slice(glOpenStart, endIdx + "\\endgl".length),
+              marks: [verbatimMark()],
+            },
+          ],
+        });
+        ctx.pos = glEnd;
+        continue;
+      } else {
+        ctx.pos = endIdx + "\\endgl".length;
+        parent.content.push(glossNode);
+        continue;
+      }
       }
     }
 
@@ -2526,6 +2573,21 @@ function splitListItems(content: string): {
   // Track where the first \item is so we can extract the preamble
   let firstItemPos = -1;
   while (pos < content.length) {
+    // A line-leading `%` is INERT (task 378, member M1). Without this the
+    // splitter read a `% \item Draft alternative.` the author had deliberately
+    // commented out as a real item boundary: the bullet became live and
+    // PRINTED on the first save, the `%` was stranded alone on its own line,
+    // and the whole thing was a fixed point (no later save healed it) that
+    // MOVED words rather than losing them, so the write gate's word measure
+    // scored a shortfall of zero. The rule is the lexer's one reader —
+    // `scanLive` and the two sibling splitters ask the identical question.
+    // Skipping keeps the commented bytes inside the CURRENT item's slice,
+    // where `parseBody` carries them as a comment child; nothing is dropped.
+    const afterComment = skipLineCommentAt(content, pos);
+    if (afterComment !== -1) {
+      pos = afterComment;
+      continue;
+    }
     // Skip past ANY nested construct — an `\item` inside one belongs to that
     // construct, not to this list. Membership is the lexer's grammar-derived
     // vocabulary, never a hand list here: before task 338 this branch knew
@@ -2859,6 +2921,17 @@ function splitPexBody(
   };
 
   while (pos < body.length) {
+    // A line-leading `%` is INERT — the `splitListItems` twin (task 378, member
+    // M2), reading the same one lexer primitive. A `% \a Draft alternative.`
+    // used to become a LIVE example part, which additionally RENUMBERS every
+    // later part and therefore every `\ref` to them; the commented bytes now
+    // stay inside the current part's slice, where `parseExampleBodyAsBlocks`
+    // carries them as a comment paragraph.
+    const afterComment = skipLineCommentAt(body, pos);
+    if (afterComment !== -1) {
+      pos = afterComment;
+      continue;
+    }
     // Skip nested \begingl … \endgl, nested \ex/\pex blocks, and ANY nested
     // `\begin{env}` (xlist included) so their internal \a markers don't get
     // confused with ours at the current tier. Same grammar-derived vocabulary
@@ -3140,6 +3213,19 @@ function splitLinguexBody(
   };
 
   while (pos < body.length) {
+    // A line-leading `%` is INERT — the third reader of the one lexer
+    // primitive (task 378, member M5). This splitter was already correct here
+    // and only BY ACCIDENT: the `%` itself cleared `lineStart`, so the
+    // `\b.` behind it never reached `matchLinguexItemAt`. That is not a
+    // property a refactor can be trusted to preserve, and it is the same
+    // question its two siblings were getting wrong outright — so it is stated
+    // rather than inherited. Byte-for-byte the pre-378 behaviour.
+    const afterComment = skipLineCommentAt(body, pos);
+    if (afterComment !== -1) {
+      pos = afterComment;
+      lineStart = true;
+      continue;
+    }
     if (lineStart) {
       // \vxid{xxxx} — id marker for the item that follows. Stash and skip,
       // keeping `lineStart` so the marker cannot hide the item behind it.
@@ -3674,18 +3760,59 @@ function parseExampleBodyAsBlocks(
   return out;
 }
 
-/** Parse a `\begingl … \endgl` body into an `exampleGloss` node with
- *  `alignedGlossRow` + `proseGlossRow` children. */
+/**
+ * Parse a `\begingl … \endgl` body into an `exampleGloss` node with
+ * `alignedGlossRow` + `proseGlossRow` children — or `null` to REFUSE, which
+ * the caller answers by carrying the whole construct's bytes (task 356's rule:
+ * carry the environment, or refuse; never keep the fraction you recognise).
+ *
+ * Two things about this scan are load-bearing, both task 378:
+ *
+ * **SCAN PROJECTED, SLICE RAW.** The tier markers are found in
+ * `projectStructuralLatex(body)` — inert bytes blanked to spaces, offsets
+ * preserved — while every segment is sliced out of the RAW body, so a marker
+ * the compiler never sees cannot mint a tier and no carried byte is ever taken
+ * from the projection. That asymmetry is the same one task 345 states for the
+ * requirement declarer, and it is what a REGEX scan needs where the sibling
+ * splitters get by with `skipLineCommentAt` inside their own byte walk. Before
+ * it, a `% \glb old //` minted a spurious LIVE tier.
+ *
+ * **AND THE TIER REGION MUST BE ENTIRELY LIVE, or the gloss is REFUSED.**
+ * Declining to mint the tier is only half the answer: a tier's segment is
+ * TOKENIZED INTO CELLS, not carried, so inert bytes left inside one come back
+ * as columns — the orphaned `%` above became an extra `glossCell` in the row
+ * before it, silently changing the alignment the tier notation exists to
+ * express, and the result was not even a fixed point. A row node has no slot
+ * for bytes it does not model and inventing one per row would be guessing which
+ * tier a free-standing comment belongs to, so the honest answer is task 356's:
+ * carry the whole environment. The test is the projection's own divergence from
+ * the raw body at or after the first marker, which covers a comment (line- or
+ * mid-line), a `\verb` run and a verbatim body with one rule instead of three.
+ * The PRE-marker region is exempt because it does have a slot — see below.
+ *
+ * **THE PRE-FIRST-MARKER BYTES ARE CARRIED.** Segments run from one marker to
+ * the next, so `[0, markers[0].start)` used to be read by nothing and the node
+ * carried no field for it: a `% Mandarin, adapted from Li (2005)` line — or any
+ * other unmodeled bytes an author put between `\begingl` and the first `\gla`
+ * — was simply GONE from the `.tex` on the first save. It rides `glossPreamble`
+ * now, raw and opaque, exactly as a list's `listPreamble` already carried the
+ * analogous pre-`\item` prefix. The asymmetry that made this unarguable: the
+ * same comment SURVIVES one line above the gloss, where
+ * `parseExampleBodyAsBlocks` explicitly carries a comment child.
+ */
 function buildGlossFromBody(
   body: string,
   glossOptions: string | null = null,
-): JSONContent {
+): JSONContent | null {
   const rows: JSONContent[] = [];
   // Split on \gla / \glb / \glc / \glft / \glpreamble markers at block-start.
   const tierPattern = /\\gl(a|b|c|ft|preamble)\b/g;
+  // The projected view — SCANNED, never sliced. Same length as `body` by the
+  // primitive's own contract, so `m.index` is an index into `body`.
+  const scan = projectStructuralLatex(body);
   const markers: Array<{ tier: string; start: number; end: number }> = [];
   let m: RegExpExecArray | null;
-  while ((m = tierPattern.exec(body)) !== null) {
+  while ((m = tierPattern.exec(scan)) !== null) {
     const tier =
       m[1] === "a"
         ? "gla"
@@ -3722,9 +3849,23 @@ function buildGlossFromBody(
       });
     }
   }
-  if (rows.length === 0) {
-    rows.push({ type: "alignedGlossRow", attrs: { tier: "gla" }, content: [] });
+  // The tier region is tokenized, so it must hold no bytes the compiler cannot
+  // see. Any divergence between the projection and the raw body at or after the
+  // first marker is an inert span that would come back as spurious CELLS —
+  // refuse and let the caller carry the construct whole.
+  if (markers.length > 0) {
+    for (let i = markers[0].start; i < body.length; i++) {
+      if (scan[i] !== body[i]) return null;
+    }
   }
+  // NO tier marker anywhere — REFUSE rather than substitute an empty `\gla`
+  // row (task 378, the M4 sibling; task 356's rule, and the exact shape
+  // `splitListItems` had for an item-less list body). Measured on the pre-fix
+  // tree: `\begingl\nsome unmodelled text here\n\endgl` round-tripped to
+  // `\begingl\n\gla  //\n\endgl` — every byte of the body destroyed, on
+  // WELL-FORMED input, so no fail-closed arm could have caught it. The caller
+  // restores its cursor to the `\begingl` and carries the construct whole.
+  if (rows.length === 0) return null;
   // Initial colCount — recomputed live by the numbering plugin.
   let maxCells = 1;
   for (const r of rows) {
@@ -3732,9 +3873,21 @@ function buildGlossFromBody(
       if (r.content.length > maxCells) maxCells = r.content.length;
     }
   }
+  // Everything before the first tier marker, raw. `trimEnd` only: the leading
+  // newline after `\begingl` is the serializer's own separator (it re-emits
+  // one), while the trailing newline before the first `\gla` is likewise
+  // re-added by the join — so the round trip is a FIXED POINT from cycle 1.
+  const glossPreamble = markers[0].start > 0
+    ? body.slice(0, markers[0].start).trim()
+    : null;
   return {
     type: "exampleGloss",
-    attrs: { glossId: null, colCount: maxCells, glossOptions },
+    attrs: {
+      glossId: null,
+      colCount: maxCells,
+      glossOptions,
+      ...(glossPreamble ? { glossPreamble } : {}),
+    },
     content: rows,
   };
 }

@@ -1642,6 +1642,17 @@ export const ExampleGloss = Node.create({
       // byte-exact LaTeX round-trip (task 262); null when the source had no
       // optional bracket. Mirrors the item-level `exnoOverride` opaque field.
       glossOptions: { default: null },
+      // Everything the source put between `\begingl[…]` and the FIRST tier
+      // marker, raw and opaque (task 378). Segments are built marker-to-marker,
+      // so this range was read by nothing and DELETED on the first save — a
+      // `% Mandarin, adapted from Li (2005)` note above the gloss, or any other
+      // unmodeled bytes. Carried, never interpreted: the `listPreamble` /
+      // `rawOptions` shape one construct over. `rendered: false` because it is
+      // source provenance and may hold newlines and quotes that have no
+      // business in a DOM attribute; `keepOnSplit: false` for the reason
+      // `itemLabel` takes it — a split must not mint a sibling carrying a
+      // preamble the user never typed there.
+      glossPreamble: { default: null, rendered: false, keepOnSplit: false },
     };
   },
 

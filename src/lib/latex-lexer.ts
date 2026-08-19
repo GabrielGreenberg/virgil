@@ -664,6 +664,43 @@ export function startsLineComment(src: string, pos: number): boolean {
   return true; // start of source
 }
 
+/**
+ * **THE line-comment skip for a byte-walking scanner** — if a line comment
+ * begins at `pos`, the index just past its newline (so the caller resumes at
+ * the next LINE START); otherwise -1.
+ *
+ * Every scanner on this surface that asks a question about raw bytes has to
+ * know that a line-leading `%` is inert, and before task 378 the rule was
+ * forked: {@link scanLive} carried its own `inComment` state machine, and the
+ * three BODY SPLITTERS in the parser (`splitListItems`, `splitPexBody`, the
+ * gloss tier scan) carried nothing at all — so a `% \item` / `% \a` /
+ * `% \glb` the author had deliberately commented out was PROMOTED into a
+ * live, printed construct on the first save, with the orphaned `%` stranded
+ * beside it. `splitLinguexBody` escaped only by ACCIDENT (its `lineStart`
+ * flag happens to be cleared by the `%` itself), which is not a property
+ * anyone can rely on through a refactor.
+ *
+ * So the rule is a single reader now, and this is it. It is deliberately the
+ * NARROW {@link startsLineComment} rather than TeX's own any-unescaped-`%`
+ * rule, for the reason written down there: a construct-terminator scan that
+ * reads the wider rule calls a LIVE `\end{env}` inert and swallows the rest of
+ * the document (task 338). The mid-line `%` therefore stays exactly as task 347
+ * recorded it — a residual, not an oversight.
+ *
+ * Direction of failure, stated: a caller that skips a line it should not have
+ * skipped keeps those bytes inside the slice it is currently building (nothing
+ * is dropped — only unsplit), while a caller that fails to skip promotes a
+ * comment into live output. Only one of those costs the user's document.
+ */
+export function skipLineCommentAt(src: string, pos: number): number {
+  if (!startsLineComment(src, pos)) return -1;
+  const nl = src.indexOf("\n", pos);
+  // unterminated-ok: a comment tail's terminator IS the end of its line, and
+  // the last line of a source ends at its end — there is nothing that could
+  // have been "missing" here, so there is nothing to fail closed on.
+  return nl === -1 ? src.length : nl + 1;
+}
+
 /** Drop inline `\verb<delim>…<delim>` / `\verb*<delim>…<delim>` runs from a
  *  single line, leaving everything else intact. The delimiter is the char
  *  right after `\verb`/`\verb*` and must be a non-letter (so `\verbatim`,
@@ -1389,9 +1426,11 @@ export function skipOpaqueConstructAt(src: string, pos: number): number {
  * one and not the other).
  *
  * The policy: a comment tail is inert from a LINE-LEADING `%` onward — the rule
- * VIRGIL's parser itself applies, spelled once in {@link startsLineComment},
- * which is where the reason a mid-line `%` may NOT be read as a comment here is
- * written down; an escaped char is consumed whole; and an opaque nested
+ * VIRGIL's parser itself applies, read through the ONE shared
+ * {@link skipLineCommentAt} (task 378) so this scan and the parser's three body
+ * splitters cannot answer it differently; {@link startsLineComment} is where the
+ * reason a mid-line `%` may NOT be read as a comment here is written down. An
+ * escaped char is consumed whole; and an opaque nested
  * construct is skipped via {@link skipOpaqueConstructAt} — which is also what
  * makes same-name nesting pair correctly, so no matcher needs its own depth
  * counter.
@@ -1418,22 +1457,19 @@ function scanLive(
   probe: (pos: number) => number | null,
 ): number {
   let pos = startPos;
-  let inComment = false;
   while (pos < src.length) {
     const ch = src[pos];
-    if (ch === "\n") {
-      inComment = false;
-      pos++;
-      continue;
-    }
-    if (inComment) {
-      pos++;
-      continue;
-    }
-    if (ch === "%" && startsLineComment(src, pos)) {
-      inComment = true;
-      pos++;
-      continue;
+    // The ONE reader of the line-comment rule (task 378). This used to be a
+    // private `inComment` state machine here; folding it onto the shared
+    // primitive is byte-for-byte the same walk — the flag existed only to
+    // step to the next line — and it is what lets the three body splitters
+    // ask the identical question instead of not asking it at all.
+    if (ch === "%") {
+      const afterComment = skipLineCommentAt(src, pos);
+      if (afterComment !== -1) {
+        pos = afterComment;
+        continue;
+      }
     }
     if (ch === "\\") {
       const hit = probe(pos);

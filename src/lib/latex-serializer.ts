@@ -1042,6 +1042,13 @@ function serializeExampleBlock(node: JSONContent): string {
   );
 }
 
+/** Drop a piece's own trailing newline(s) so a linguex assembly's `\n` join
+ *  cannot produce a BLANK line — which in linguex is the example's terminator,
+ *  not whitespace. */
+function stripTrailingNewlines(piece: string): string {
+  return piece.replace(/\n+$/, "");
+}
+
 /**
  * Emit an example in LINGUEX syntax (task 355) — the `serializeExampleBlock`
  * twin, and deliberately NOT a mode inside it.
@@ -1100,7 +1107,14 @@ function serializeLinguexExample(node: JSONContent): string {
       if (text) pieces.push(text);
     }
   }
-  const live = pieces.filter((p) => p !== "");
+  // A BLANK LINE inside a linguex example is its TERMINATOR, so no piece may
+  // end with a newline of its own (task 378). The comment carrier's serializer
+  // appends one — `closeCommentTail`, task 347's "a comment owns its line"
+  // rule — so a `% note` inside the example emitted `…\n\n` and the NEXT save
+  // read everything after it as ordinary prose: the parts fell OUT of the
+  // example, their `\vxid` identity with them. The join below re-adds exactly
+  // one newline, so the comment still owns its line and nothing else changes.
+  const live = pieces.map(stripTrailingNewlines).filter((p) => p !== "");
   // The example's own prose — a `single` example's body, or a `multi` one's
   // lead-in — rides the HEADER line, which is how linguex is written by hand
   // (`\ex. Susan went to the store.`) and what makes the common one-sentence
@@ -1152,7 +1166,12 @@ function serializeLinguexItem(node: JSONContent, index: number): string {
       if (text) pieces.push(text);
     }
   }
-  const body = pieces.filter((p) => p !== "").join("\n");
+  // No piece may end with its own newline — a blank line TERMINATES a linguex
+  // example. See the block twin above for what that cost.
+  const body = pieces
+    .map(stripTrailingNewlines)
+    .filter((p) => p !== "")
+    .join("\n");
   return `${idMarker}\\${letter}.${labelStr} ${body}\n`;
 }
 
@@ -1220,7 +1239,13 @@ function serializeExampleItem(node: JSONContent): string {
       if (text) pieces.push(text);
     }
   }
-  const body = pieces.join("\n");
+  // The join owns the separator, so no piece may end with a newline of its own
+  // (task 378) — the comment carrier's serializer appends one, and a blank line
+  // inside `\pex … \xe` is a `\par` in a construct that does not take one. The
+  // linguex twin is where this is load-bearing rather than tidy (a blank line
+  // there is the example's TERMINATOR, so the next parse dropped every part
+  // after the comment out of the example); the rule is stated once for both.
+  const body = pieces.map(stripTrailingNewlines).join("\n");
   return `${idMarker}\\a${optStr}${tagStr}${labelStr} ${body}\n`;
 }
 
@@ -1265,6 +1290,18 @@ function serializeExampleGloss(node: JSONContent): string {
   const rawOptions = node.attrs?.glossOptions;
   const glossOptions = typeof rawOptions === "string" ? rawOptions : null;
   const optStr = glossOptions !== null ? `[${glossOptions}]` : "";
+  // Whatever the source put between `\begingl[…]` and the first tier marker,
+  // verbatim (task 378). Before this the range was read by nothing and the
+  // author's `% Mandarin, adapted from Li (2005)` note — or any other unmodeled
+  // bytes there — was DELETED on the first save, while the identical comment
+  // ONE LINE ABOVE the gloss was carried. Emitted on its own line(s) ahead of
+  // the tiers, which is where it was read from, so the round trip is a fixed
+  // point from cycle 1.
+  const rawPreamble = node.attrs?.glossPreamble;
+  const preambleStr =
+    typeof rawPreamble === "string" && rawPreamble !== ""
+      ? `${rawPreamble}\n`
+      : "";
   const rows = node.content || [];
   const lines: string[] = [];
   for (const row of rows) {
@@ -1280,7 +1317,7 @@ function serializeExampleGloss(node: JSONContent): string {
       lines.push(`\\${tier} ${inner} //`);
     }
   }
-  return `\\begingl${optStr}\n${lines.join("\n")}\n\\endgl\n`;
+  return `\\begingl${optStr}\n${preambleStr}${lines.join("\n")}\n\\endgl\n`;
 }
 
 /**
